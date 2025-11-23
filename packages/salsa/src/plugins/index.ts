@@ -125,3 +125,4 @@ export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions
 }
 
 // Re-export other utility functions or classes if needed, following the RPN style.
+export * from './plugin_register.js';

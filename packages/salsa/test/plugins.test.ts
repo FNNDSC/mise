@@ -4,9 +4,10 @@ import {
   pluginMeta_readmeContentFetch,
   pluginMeta_documentationUrlGet,
   pluginMeta_pluginIDFromSearch,
+  plugin_register,
   PluginSearchOptions
 } from '../src/plugins/index';
-import { ChRISPlugin, QueryHits } from '@fnndsc/cumin';
+import { ChRISPlugin, QueryHits, chrisConnection } from '@fnndsc/cumin';
 import axios from 'axios';
 
 jest.mock('@fnndsc/cumin');
@@ -32,6 +33,32 @@ describe('plugins', () => {
     expect(ChRISPlugin).toHaveBeenCalledTimes(1);
     expect(mockPluginRun).toHaveBeenCalledWith(searchable, JSON.stringify(parameters));
     expect(result).toEqual({ id: 'plugin-instance-1' });
+  });
+
+  it('plugin_register should register a plugin', async () => {
+    const mockPost = jest.fn().mockResolvedValue({ data: { name: 'test-plugin', id: 1 } });
+    const mockGetPlugins = jest.fn().mockResolvedValue({
+      _post: mockPost
+    });
+    const mockClient = {
+      getPlugins: mockGetPlugins
+    };
+
+    // Ensure chrisConnection.client_get resolves to our mockClient
+    (chrisConnection.client_get as jest.Mock).mockResolvedValue(mockClient);
+
+    const pluginData = { name: 'test-plugin', dock_image: 'test/image' };
+    const computeResources = ['host1'];
+
+    const result = await plugin_register(pluginData, computeResources);
+
+    expect(chrisConnection.client_get).toHaveBeenCalled();
+    expect(mockGetPlugins).toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledWith({
+      ...pluginData,
+      compute_resources: computeResources
+    });
+    expect(result).toEqual({ name: 'test-plugin', id: 1 });
   });
 
   it('plugins_searchableToIDs should call ChRISPlugin.pluginIDs_resolve', async () => {

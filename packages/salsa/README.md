@@ -30,8 +30,8 @@
 ## Key Modules
 
 -   **`feeds`**: Logic for creating and managing feeds.
--   **`plugins`**: Logic for searching, resolving, and running plugins.
--   **`files`**: Primitives for file system interactions (touch, mkdir, list).
+-   **`plugins`**: Logic for searching, resolving, running, and registering plugins.
+-   **`files`**: Primitives for file system interactions (ls, mkdir, touch, create, upload).
 
 ## Development
 

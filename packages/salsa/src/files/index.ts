@@ -6,6 +6,8 @@ import {
   errorStack,
   chrisIO,
   chrisConnection,
+  ListOptions, // Added
+  FilteredResourceData, // Added
 } from "@fnndsc/cumin";
 import { FileBrowserFolder } from "@fnndsc/chrisapi"; // From chrisapi, not cumin
 
@@ -91,20 +93,11 @@ export async function files_mkdir(folderPath: string): Promise<boolean> {
  * Interface for file sharing options.
  */
 export interface FileShareOptions {
+  is_public?: boolean;
   // Define options for sharing files
   // e.g., userId: number, permission: 'read' | 'write'
   [key: string]: any;
 }
-
-/**
- * Interface for file viewing options.
- */
-export interface FileViewOptions {
-  // Define options for viewing files
-  // e.g., format: 'text' | 'json' | 'raw'
-  [key: string]: any;
-}
-
 
 /**
  * Creates a ChRISEmbeddedResourceGroup for a specific asset type (files, links, dirs).
@@ -165,6 +158,52 @@ export async function files_getGroup(
 }
 
 /**
+ * List files, links, or directories based on options.
+ *
+ * @param options - Search and pagination options.
+ * @param assetName - The type of asset to list ('files', 'links', 'dirs').
+ * @param path - Optional ChRIS path. Defaults to current folder context.
+ * @returns A Promise resolving to FilteredResourceData or null.
+ */
+export async function files_list(options: ListOptions, assetName: string = "files", path?: string): Promise<FilteredResourceData | null> {
+  const group = await files_getGroup(assetName, path);
+  if (!group) {
+    return null;
+  }
+  return await group.asset.resources_listAndFilterByOptions(options);
+}
+
+/**
+ * Get the list of available fields for files, links, or directories.
+ *
+ * @param assetName - The type of asset ('files', 'links', 'dirs').
+ * @returns A Promise resolving to an array of field names or null.
+ */
+export async function files_fields_get(assetName: string = "files"): Promise<string[] | null> {
+  const group = await files_getGroup(assetName);
+  if (!group) {
+    return null;
+  }
+  const results = await group.asset.resourceFields_get();
+  return results ? results.fields : null;
+}
+
+/**
+ * Deletes a file, link, or directory by its ID.
+ *
+ * @param id - The ID of the asset to delete.
+ * @param assetName - The type of asset ('files', 'links', 'dirs').
+ * @returns A Promise resolving to true on success, false on failure.
+ */
+export async function files_delete(id: number, assetName: string = "files"): Promise<boolean> {
+  const group = await files_getGroup(assetName);
+  if (!group) {
+    return false;
+  }
+  return await group.asset.resourceItem_delete(id);
+}
+
+/**
  * Creates a ChRISEmbeddedResourceGroup for a single file.
  * This function encapsulates the logic from `FileController.member_create`.
  *
@@ -198,23 +237,20 @@ export async function files_getSingle(
  *
  * @param fileId - The ID of the file to share.
  * @param options - Options for sharing (e.g., user, permissions).
- * @returns A Promise resolving to void.
+ * @returns A Promise resolving to true.
  */
-export async function files_share(fileId: number, options: FileShareOptions): Promise<void> {
+export async function files_share(fileId: number, options: FileShareOptions): Promise<boolean> {
   // Implement actual sharing logic using cumin/chrisapi
   console.log(`Sharing file ${fileId} with options:`, options);
-  return Promise.resolve();
+  return Promise.resolve(true);
 }
 
 /**
  * Views content of a file in ChRIS.
  *
  * @param fileId - The ID of the file to view.
- * @param options - Options for viewing (e.g., format).
- * @returns A Promise resolving to the file content (e.g., string, Buffer, or URL).
+ * @returns A Promise resolving to the file content as a Buffer, or null on failure.
  */
-export async function files_view(fileId: number, options: FileViewOptions): Promise<any> {
-  // Implement actual file viewing logic using cumin/chrisapi
-  console.log(`Viewing file ${fileId} with options:`, options);
-  return Promise.resolve(`Content of file ${fileId}`);
+export async function files_view(fileId: number): Promise<Buffer | null> {
+  return await chrisIO.file_download(fileId);
 }

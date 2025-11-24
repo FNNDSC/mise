@@ -6,8 +6,7 @@ import {
   files_mkdir,
   files_create, // Import the new function
   files_touch, // Re-import to test its new implementation
-  FileShareOptions,
-  FileViewOptions
+  FileShareOptions
 } from '../src/files/index';
 import {
   objContext_create,
@@ -49,7 +48,11 @@ describe('files', () => {
     });
     // Mock chrisIO.file_upload for files_create and files_touch
     (chrisIO.file_upload as jest.Mock).mockResolvedValue(true);
+    // Mock chrisIO.file_download for files_view
+    (chrisIO.file_download as jest.Mock).mockResolvedValue(Buffer.from('Content of file 456'));
   });
+
+  // ... (existing tests for getGroup, getSingle, mkdir, create, touch)
 
   describe('files_getGroup', () => {
     it('should create a files group with default context if path is not provided', async () => {
@@ -251,7 +254,7 @@ describe('files', () => {
   describe('files_share', () => {
     it('should log sharing info and resolve', async () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-      const options: FileShareOptions = { userId: 1, permission: 'read' };
+      const options: FileShareOptions = { is_public: true };
       await files_share(123, options);
       expect(consoleSpy).toHaveBeenCalledWith('Sharing file 123 with options:', options);
       consoleSpy.mockRestore();
@@ -259,13 +262,10 @@ describe('files', () => {
   });
 
   describe('files_view', () => {
-    it('should log viewing info and return placeholder content', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-      const options: FileViewOptions = { format: 'text' };
-      const result = await files_view(456, options);
-      expect(consoleSpy).toHaveBeenCalledWith('Viewing file 456 with options:', options);
-      expect(result).toBe('Content of file 456');
-      consoleSpy.mockRestore();
+    it('should call chrisIO.file_download and return content', async () => {
+      const result = await files_view(456);
+      expect(chrisIO.file_download).toHaveBeenCalledWith(456);
+      expect(result).toEqual(Buffer.from('Content of file 456'));
     });
   });
 });

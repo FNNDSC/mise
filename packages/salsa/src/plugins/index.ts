@@ -7,9 +7,53 @@ import {
   ChRISPlugin,
   QueryHits,
   Dictionary,
-  ChRISPluginMetaPluginGroup // Not directly used in functions yet, but for potential future logic
+  ChRISPluginMetaPluginGroup, // Not directly used in functions yet, but for potential future logic
+  ChRISPluginGroup,
+  FilteredResourceData,
+  ListOptions,
+  objContext_create
 } from '@fnndsc/cumin';
 import axios from 'axios';
+
+// ... existing interfaces ...
+
+/**
+ * List plugins based on options.
+ *
+ * @param options - Search and pagination options.
+ * @returns A Promise resolving to FilteredResourceData or null.
+ */
+export async function plugins_list(options: ListOptions): Promise<FilteredResourceData | null> {
+  const pluginGroup = (await objContext_create(
+    "ChRISPluginGroup",
+    "plugin"
+  )) as ChRISPluginGroup;
+
+  if (!pluginGroup) {
+    return null;
+  }
+
+  return await pluginGroup.asset.resources_listAndFilterByOptions(options);
+}
+
+/**
+ * Get the list of available fields for plugins.
+ *
+ * @returns A Promise resolving to an array of field names or null.
+ */
+export async function plugins_fields_get(): Promise<string[] | null> {
+  const pluginGroup = (await objContext_create(
+    "ChRISPluginGroup",
+    "plugin"
+  )) as ChRISPluginGroup;
+
+  if (!pluginGroup) {
+    return null;
+  }
+
+  const results = await pluginGroup.asset.resourceFields_get();
+  return results ? results.fields : null;
+}
 
 /**
  * Interface for options when searching for a plugin.
@@ -122,6 +166,49 @@ export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions
     return null; // Return null for ambiguous search results
   }
   return null;
+}
+
+/**
+ * Delete a plugin by its ID.
+ *
+ * @param id - The ID of the plugin to delete.
+ * @returns A Promise resolving to true on success, false on failure.
+ */
+export async function plugin_delete(id: number): Promise<boolean> {
+  const pluginGroup = (await objContext_create(
+    "ChRISPluginGroup",
+    "plugin"
+  )) as ChRISPluginGroup;
+
+  if (!pluginGroup) {
+    return false;
+  }
+
+  return await pluginGroup.asset.resourceItem_delete(id);
+}
+
+/**
+ * Provides an overview of plugin operations.
+ * Currently a placeholder.
+ *
+ * @returns A Promise resolving to void.
+ */
+export async function plugins_overview(): Promise<void> {
+  return Promise.resolve();
+}
+
+/**
+ * Fetch the README for a plugin given its ID.
+ *
+ * @param pluginId - The ID of the plugin.
+ * @returns A Promise resolving to the README content or null.
+ */
+export async function plugin_readme(pluginId: string): Promise<string | null> {
+  const docUrl = await pluginMeta_documentationUrlGet(pluginId);
+  if (!docUrl) {
+    return null;
+  }
+  return await pluginMeta_readmeContentFetch(docUrl);
 }
 
 // Re-export other utility functions or classes if needed, following the RPN style.

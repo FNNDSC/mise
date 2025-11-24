@@ -19,7 +19,27 @@ import {
 } from '@fnndsc/cumin';
 import { FileBrowserFolder } from '@fnndsc/chrisapi';
 
-jest.mock('@fnndsc/cumin');
+jest.mock('@fnndsc/cumin', () => {
+  return {
+    chrisConnection: {
+      client_get: jest.fn()
+    },
+    chrisIO: {
+      file_upload: jest.fn(),
+      file_download: jest.fn()
+    },
+    chrisContext: {
+      current_get: jest.fn()
+    },
+    objContext_create: jest.fn(),
+    errorStack: {
+      stack_push: jest.fn()
+    },
+    Context: {
+      ChRISfolder: 'folder'
+    }
+  };
+});
 jest.mock('@fnndsc/chrisapi');
 
 describe('files', () => {

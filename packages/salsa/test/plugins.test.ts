@@ -10,7 +10,15 @@ import {
 import { ChRISPlugin, QueryHits, chrisConnection } from '@fnndsc/cumin';
 import axios from 'axios';
 
-jest.mock('@fnndsc/cumin');
+jest.mock('@fnndsc/cumin', () => {
+  return {
+    chrisConnection: {
+      client_get: jest.fn()
+    },
+    ChRISPlugin: jest.fn(),
+    QueryHits: jest.fn()
+  };
+});
 jest.mock('axios');
 
 describe('plugins', () => {

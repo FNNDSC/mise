@@ -1,18 +1,30 @@
 {
   "name": "chell",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Interactive ChRIS REPL Shell",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "chell": "./dist/index.js"
+  },
   "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "dependencies": {
+    "@fnndsc/cumin": "file:../cumin",
+    "@fnndsc/salsa": "file:../salsa",
+    "@fnndsc/chili": "file:../chili",
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0",
+    "figlet": "^1.7.0"
+  },
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "@types/node": "^20.11.0",
+    "typescript": "^5.5.2"
   }
 }

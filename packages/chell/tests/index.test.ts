@@ -1,4 +1,4 @@
-import { chell_start } from '../src/index';
+import { chell_start } from '../src/chell';
 import { session } from '../src/session/index';
 import { REPL } from '../src/core/repl';
 

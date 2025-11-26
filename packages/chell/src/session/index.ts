@@ -12,6 +12,7 @@ import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContex
  */
 export class Session {
   private static instance: Session;
+  private _connection: typeof chrisConnection | undefined;
   
   /**
    * Private constructor for Singleton.
@@ -33,7 +34,8 @@ export class Session {
    */
   async init(): Promise<void> {
     const nodeStorageProvider = new NodeStorageProvider();
-    await chrisConnection_init(nodeStorageProvider);
+    // Initialize the connection singleton which also initializes config
+    this._connection = await chrisConnection_init(nodeStorageProvider);
   }
 
   /**
@@ -54,7 +56,7 @@ export class Session {
    * Access the underlying ChRIS Connection singleton.
    */
   get connection() {
-    return chrisConnection;
+    return this._connection || chrisConnection;
   }
 }
 

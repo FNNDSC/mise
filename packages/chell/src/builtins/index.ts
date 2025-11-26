@@ -74,6 +74,12 @@ export async function builtin_cd(args: string[]): Promise<void> {
       targetPath = targetPath.slice(0, -1);
     }
 
+    // Handle virtual directories
+    if (targetPath === '/bin') {
+      await session.setCWD('/bin');
+      return;
+    }
+
     const client = await session.connection.client_get();
     if (!client) {
       console.error(chalk.red('Not connected to ChRIS.'));

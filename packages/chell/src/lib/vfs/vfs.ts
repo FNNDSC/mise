@@ -24,7 +24,10 @@ export class VFS {
    * @param targetPath - The path to list. If empty, uses CWD.
    */
   async list(targetPath?: string): Promise<void> {
-    const effectivePath = targetPath || await session.getCWD();
+    const cwd = await session.getCWD();
+    const effectivePath = targetPath 
+      ? path.posix.resolve(cwd, targetPath) 
+      : cwd;
 
     if (effectivePath === '/bin') {
       await this.listVirtualBin();
@@ -32,6 +35,11 @@ export class VFS {
       // If path starts with /bin/..., it might be virtual file?
       // For now, only exact /bin is virtual dir.
       await this.listNative(effectivePath);
+      
+      // Inject 'bin' virtual directory if listing root
+      if (effectivePath === '/' || effectivePath === '') {
+        console.log(chalk.cyan('bin'));
+      }
     }
   }
 
@@ -40,10 +48,33 @@ export class VFS {
    */
   private async listVirtualBin(): Promise<void> {
     try {
-      const plugins = await plugins_fetchList({});
-      if (plugins && plugins.tableData) {
-        plugins.tableData.forEach((plugin: any) => console.log(plugin.name));
-      } else {
+      const limit = 100;
+      let offset = 0;
+      let fetchMore = true;
+      let foundAny = false;
+
+      while (fetchMore) {
+        const options: any = { limit, offset };
+        const plugins = await plugins_fetchList(options);
+
+        if (plugins && plugins.tableData && plugins.tableData.length > 0) {
+          foundAny = true;
+          plugins.tableData.forEach((plugin: any) => {
+            const version = plugin.version ? ` (${plugin.version})` : '';
+            console.log(`${plugin.name}${version}`);
+          });
+
+          if (plugins.tableData.length < limit) {
+            fetchMore = false;
+          } else {
+            offset += limit;
+          }
+        } else {
+          fetchMore = false;
+        }
+      }
+
+      if (!foundAny) {
         console.log(chalk.gray('No plugins found.'));
       }
     } catch (error: any) {

@@ -44,7 +44,13 @@ scrub:
 	@echo "🧽 Scrubbing chell..."
 	cd $(CHELL_DIR) && rm -rf dist node_modules package-lock.json
 
-meal: scrub prep cook
+pull:
+	@echo "⬇️ Pulling updates..."
+	cd $(CUMIN_DIR) && git pull
+	cd $(SALSA_DIR) && git pull
+	cd $(CHILI_DIR) && git pull
+
+meal: scrub pull prep cook
 
 install: prep
 build: cook

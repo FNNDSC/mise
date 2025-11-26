@@ -2,6 +2,8 @@
  * @file Application Settings
  * Singleton configuration store.
  */
+import * as os from 'os';
+import * as path from 'path';
 
 /**
  * Settings for the ChELL application.
@@ -9,6 +11,7 @@
 export interface ChellSettings {
   promptStyle: string;
   historySize: number;
+  historyFile: string;
 }
 
 /**
@@ -25,6 +28,7 @@ class Settings {
     this.config = {
       promptStyle: 'default',
       historySize: 1000,
+      historyFile: path.join(os.homedir(), '.chell_history'),
     };
   }
 

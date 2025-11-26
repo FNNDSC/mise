@@ -33,8 +33,8 @@ cook:
 	cd $(CHELL_DIR) && npm run build
 
 taste:
-	@echo "👅 Tasting chell (no tests yet)..."
-	# cd $(CHELL_DIR) && npm test
+	@echo "👅 Tasting chell..."
+	cd $(CHELL_DIR) && npm test
 
 serve:
 	@echo "🍽️ Serving chell..."

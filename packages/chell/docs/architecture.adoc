@@ -1,0 +1,60 @@
+= ChELL Architecture
+
+ChELL (ChRIS Execution Logic Layer) is an interactive shell for the ChRIS Research Integration System. It provides a familiar POSIX-like environment that abstracts the complex graph topology of ChRIS into a navigable filesystem.
+
+== Core Concepts
+
+=== 1. Unified File System (UFS)
+The user interacts with a single file tree. ChELL is responsible for routing paths to the correct provider.
+
+*   **Native ChRIS FS:** Paths that exist on the CUBE server (e.g., `/home/user/feeds/...`). These are accessed via the ChRIS API.
+*   **Virtual File System (VFS):** Supplemental paths that do not exist on the server but provide utility or abstraction (e.g., `/bin` for plugins).
+
+=== 2. The Router (`src/lib/vfs/vfs.ts`)
+The Router intercepts all filesystem operations (`ls`, `cd`, `pwd`).
+*   It checks the path against a configuration of **Virtual Mount Points**.
+*   If a path matches a mount (e.g., `/bin`), it delegates to the **Virtual Provider**.
+*   If a path does not match, it delegates to the **Chris Provider** (Native FS).
+
+=== 3. Execution Model
+*   **Builtins:** Shell commands like `cd`, `pwd`, `connect` run internally.
+*   **Plugins as Binaries:** Plugins appear as files in `/bin`. Executing `pl-dcm2niix` is translated into a ChRIS API call (`createFeed` or `createPluginInstance`).
+*   **Context Awareness:** Executing a plugin from within a specific directory (feed node) automatically pipes that node's data as input (`previous_id`).
+
+== Directory Structure
+
+[source]
+----
+src/
+├── config/           # App configuration and prompt styling
+│   ├── settings.ts
+│   └── prompt.ts
+├── core/             # Shell loop mechanics
+│   ├── repl.ts       # Readline wrapper, history, keybindings
+│   └── parser.ts     # Command line tokenizer
+├── lib/
+│   ├── vfs/          # File system abstraction
+│   │   ├── vfs.ts    # The Router
+│   │   └── providers/
+│   │       ├── chris.ts   # Native API wrapper
+│   │       └── virtual.ts # /bin logic
+│   └── completer/    # Tab completion engine
+│       ├── index.ts
+│       ├── path.ts
+│       └── command.ts
+├── builtins/         # Internal commands (cd, ls, pwd, connect)
+├── session/          # Runtime state (Connection, Environment, Context)
+└── index.ts          # Entry point
+----
+
+== Components
+
+=== Session (`src/session/`)
+Holds the persistent state:
+*   `chrisConnection`: The authenticated client (from `@fnndsc/cumin`).
+*   `currentContext`: The current working directory (`CWD`).
+
+=== Completer (`src/lib/completer/`)
+Provides intelligence for the `TAB` key.
+*   Queries the **Router** to autocomplete paths.
+*   Queries the **Plugin Registry** (virtual `/bin`) to autocomplete commands.

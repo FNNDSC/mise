@@ -32,7 +32,7 @@ export async function files_create(content: string | Buffer | Blob, path: string
     }
     const success = await chrisIO.file_upload(uploadContent, path);
     if (!success) {
-        errorStack.stack_push("error", `File upload failed for ${path}.`);
+      errorStack.stack_push("error", `File upload failed for ${path}.`);
     }
     return success;
   } catch (error) {
@@ -68,7 +68,7 @@ export async function files_mkdir(folderPath: string): Promise<boolean> {
 
     // Get the FileBrowserFolderList resource
     const folderList = await client.getFileBrowserFolders();
-    
+
     // Use the post method to create the new folder
     const response = await folderList.post({ path: folderPath });
 
@@ -80,8 +80,8 @@ export async function files_mkdir(folderPath: string): Promise<boolean> {
     }
   } catch (error: any) {
     if (error.response && error.response.status === 400 && error.response.data.path && error.response.data.path[0].includes('already exists')) {
-        errorStack.stack_push("warning", `Folder '${folderPath}' already exists.`);
-        return true; // Consider it a success if it already exists
+      errorStack.stack_push("warning", `Folder '${folderPath}' already exists.`);
+      return true; // Consider it a success if it already exists
     }
     errorStack.stack_push("error", `Error creating folder '${folderPath}': ${error.message}`);
     return false;
@@ -179,7 +179,7 @@ export async function files_list(options: ListOptions, assetName: string = "file
  * @param assetName - The type of asset ('files', 'links', 'dirs').
  * @returns A Promise resolving to an array of field names or null.
  */
-export async function files_fields_get(assetName: string = "files"): Promise<string[] | null> {
+export async function fileFields_get(assetName: string = "files"): Promise<string[] | null> {
   const group = await files_getGroup(assetName);
   if (!group) {
     return null;

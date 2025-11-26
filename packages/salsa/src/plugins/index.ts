@@ -41,7 +41,7 @@ export async function plugins_list(options: ListOptions): Promise<FilteredResour
  *
  * @returns A Promise resolving to an array of field names or null.
  */
-export async function plugins_fields_get(): Promise<string[] | null> {
+export async function pluginFields_get(): Promise<string[] | null> {
   const pluginGroup = (await objContext_create(
     "ChRISPluginGroup",
     "plugin"

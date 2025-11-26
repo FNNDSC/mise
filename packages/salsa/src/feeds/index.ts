@@ -30,7 +30,7 @@ export async function feeds_list(options: ListOptions): Promise<FilteredResource
  *
  * @returns A Promise resolving to an array of field names or null.
  */
-export async function feeds_fields_get(): Promise<string[] | null> {
+export async function feedFields_get(): Promise<string[] | null> {
   const feedGroup = (await objContext_create(
     "ChRISFeedGroup",
     "feed"

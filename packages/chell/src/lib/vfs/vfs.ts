@@ -1,3 +1,11 @@
+/**
+ * @file Virtual File System Router.
+ *
+ * Handles path resolution and dispatching to appropriate file system providers
+ * (native ChRIS or virtual overlays like /bin).
+ *
+ * @module
+ */
 import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
@@ -27,6 +35,9 @@ export class VFS {
     }
   }
 
+  /**
+   * Lists the contents of the virtual `/bin` directory (plugins).
+   */
   private async listVirtualBin(): Promise<void> {
     try {
       const plugins = await plugins_fetchList({});
@@ -40,22 +51,15 @@ export class VFS {
     }
   }
 
+  /**
+   * Lists the contents of a native ChRIS directory.
+   *
+   * @param target - The path to list.
+   */
   private async listNative(target: string): Promise<void> {
-    // Target is already absolute or relative? 
-    // The caller passes what user typed? Or resolved?
-    // In list(), I set effectivePath.
-    // But files_list in chili expects raw path and resolves it? 
-    // Wait, my fix in chili `files_list` calls `path_resolveChrisFs(pathStr, {})`.
-    // `path_resolveChrisFs` uses `chrisContext.current_get` if path is relative.
-    // So I can pass `target` directly if it's raw.
-    
-    // However, `session.getCWD()` returns absolute path.
-    // If user typed nothing, I pass CWD. Absolute.
-    // If user typed relative, I pass relative.
-    
     // `files_list` handles resolution.
     try {
-      const lsItems = await files_list({} as CLIoptions, target); 
+      const lsItems = await files_list({} as CLIoptions, target);
       lsItems.forEach((item: ResourceItem) => console.log(item.name));
     } catch (error: any) {
       console.error(chalk.red(`Failed to list ${target}: ${error.message}`));

@@ -12,8 +12,9 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import figlet from 'figlet';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { Command } from 'commander';
 import { REPL } from './core/repl.js';
@@ -27,13 +28,22 @@ import {
   builtin_chefs 
 } from './builtins/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename: string = fileURLToPath(import.meta.url);
+const __dirname: string = path.dirname(__filename);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const packageJson: any = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
 
+/**
+ * Spawns the `chili` CLI as a child process.
+ *
+ * @param command - The command to run (e.g., "feeds").
+ * @param args - The arguments to pass to the command.
+ * @returns A Promise resolving when the child process exits.
+ */
 async function chiliCommand_run(command: string, args: string[]): Promise<void> {
-  const chiliPath = path.resolve(__dirname, '../../chili/dist/index.js');
+  const chiliPath: string = path.resolve(__dirname, '../../chili/dist/index.js');
   return new Promise((resolve) => {
-    const child = spawn('node', [chiliPath, command, ...args], {
+    const child: ChildProcess = spawn('node', [chiliPath, command, ...args], {
       stdio: 'inherit', 
       env: process.env
     });
@@ -45,11 +55,17 @@ async function chiliCommand_run(command: string, args: string[]): Promise<void> 
   });
 }
 
+/**
+ * Handles a command entered by the user.
+ *
+ * @param line - The input line.
+ * @returns A Promise that resolves once the command has been processed.
+ */
 async function command_handle(line: string): Promise<void> {
-  const trimmedLine = line.trim();
+  const trimmedLine: string = line.trim();
   if (!trimmedLine) return;
 
-  const [command, ...args] = trimmedLine.split(/\s+/);
+  const [command, ...args]: string[] = trimmedLine.split(/\s+/);
 
   switch (command) {
     case 'connect': await builtin_connect(args); break;
@@ -72,7 +88,7 @@ async function command_handle(line: string): Promise<void> {
  */
 async function password_prompt(user: string, url: string): Promise<string> {
   return new Promise((resolve) => {
-    const rl = readline.createInterface({
+    const rl: readline.Interface = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
@@ -87,6 +103,8 @@ async function password_prompt(user: string, url: string): Promise<string> {
 /**
  * Starts the ChELL REPL.
  * Initializes connection and enters the command loop.
+ *
+ * @returns A Promise that resolves when the shell exits.
  */
 export async function chell_start(): Promise<void> {
   console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
@@ -95,9 +113,10 @@ export async function chell_start(): Promise<void> {
 
   await session.init();
 
-  const program = new Command();
+  const program: Command = new Command();
   program
     .name('chell')
+    .version(packageJson.version)
     .description('ChRIS Interactive Shell')
     .argument('[target]', 'Target CUBE (user@url or url)')
     .option('-u, --user <user>', 'Username')
@@ -113,13 +132,13 @@ Interactive Commands:
   exit       Exit the shell
   <other>    Any other command is passed to chili
     `)
-    .action(async (target, options) => {
-        let user = options.user;
-        let url = target;
-        let password = options.password;
+    .action(async (target: string | undefined, options: { user?: string, password?: string }) => {
+        let user: string | undefined = options.user;
+        let url: string | undefined = target;
+        let password: string | undefined = options.password;
 
         if (url && url.includes('@')) {
-            const parts = url.split('@');
+            const parts: string[] = url.split('@');
             user = parts[0];
             url = parts[1];
         }
@@ -148,12 +167,12 @@ Interactive Commands:
       await program.parseAsync(process.argv);
       // If --help or -h was provided, commander will usually print help and exit.
       // If it doesn't exit, we manually check for it and return to avoid starting REPL.
-      if (process.argv.includes('--help') || process.argv.includes('-h')) {
+      if (process.argv.includes('--help') || process.argv.includes('-h') || process.argv.includes('--version') || process.argv.includes('-V')) {
           return; 
       }
   }
 
-  const repl = new REPL();
+  const repl: REPL = new REPL();
   await repl.start(command_handle);
 }
 

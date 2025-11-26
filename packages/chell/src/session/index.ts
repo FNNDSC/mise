@@ -1,3 +1,10 @@
+/**
+ * @file Session Management.
+ *
+ * Maintains the global state of the shell, including connection and context.
+ *
+ * @module
+ */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
 
 /**
@@ -6,8 +13,14 @@ import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContex
 export class Session {
   private static instance: Session;
   
+  /**
+   * Private constructor for Singleton.
+   */
   private constructor() {}
 
+  /**
+   * Returns the singleton instance of the Session.
+   */
   static getInstance(): Session {
     if (!Session.instance) {
       Session.instance = new Session();

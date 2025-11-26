@@ -1,3 +1,10 @@
+/**
+ * @file REPL Logic.
+ *
+ * Manages the Read-Eval-Print Loop using Node.js readline.
+ *
+ * @module
+ */
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
@@ -8,6 +15,9 @@ import { session } from '../session/index.js';
 export class REPL {
   private rl: readline.Interface;
 
+  /**
+   * Initializes the REPL interface.
+   */
   constructor() {
     this.rl = readline.createInterface({
       input: process.stdin,
@@ -45,14 +55,14 @@ export class REPL {
    * Updates and redisplays the prompt based on current session state.
    */
   async prompt_update(): Promise<void> {
-    const conn = session.connection;
-    const user = (await conn.authToken_get()) ? await conn.user_get() : 'disconnected';
-    const uri = await conn.chrisURL_get();
-    const cwd = await session.getCWD();
+    const conn: typeof session.connection = session.connection;
+    const user: string | null = (await conn.authToken_get()) ? await conn.user_get() : 'disconnected';
+    const uri: string | null = await conn.chrisURL_get();
+    const cwd: string = await session.getCWD();
     
-    const promptUser = user || 'disconnected';
-    const promptUri = uri ? new URL(uri).hostname : 'no-cube';
-    const promptPath = cwd;
+    const promptUser: string = user || 'disconnected';
+    const promptUri: string = uri ? new URL(uri).hostname : 'no-cube';
+    const promptPath: string = cwd;
 
     this.rl.setPrompt(`${chalk.green(promptUser)}@${chalk.blue(promptUri)}:${chalk.yellow(promptPath)}$ `);
     this.rl.prompt();

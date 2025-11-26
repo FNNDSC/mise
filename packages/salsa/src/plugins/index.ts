@@ -24,10 +24,7 @@ import axios from 'axios';
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function plugins_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const pluginGroup = (await objContext_create(
-    "ChRISPluginGroup",
-    "plugin"
-  )) as ChRISPluginGroup;
+  const pluginGroup = new ChRISPluginGroup();
 
   if (!pluginGroup) {
     return null;
@@ -42,10 +39,7 @@ export async function plugins_list(options: ListOptions): Promise<FilteredResour
  * @returns A Promise resolving to an array of field names or null.
  */
 export async function pluginFields_get(): Promise<string[] | null> {
-  const pluginGroup = (await objContext_create(
-    "ChRISPluginGroup",
-    "plugin"
-  )) as ChRISPluginGroup;
+  const pluginGroup = new ChRISPluginGroup();
 
   if (!pluginGroup) {
     return null;
@@ -175,10 +169,7 @@ export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function plugin_delete(id: number): Promise<boolean> {
-  const pluginGroup = (await objContext_create(
-    "ChRISPluginGroup",
-    "plugin"
-  )) as ChRISPluginGroup;
+  const pluginGroup = new ChRISPluginGroup();
 
   if (!pluginGroup) {
     return false;

@@ -56,6 +56,14 @@ The following files and modules were refactored to adhere to `TYPESCRIPT-STYLE-G
 - `chili/src/utils/cli.ts` (`path_resolve_chrisfs` -> `path_resolveChrisFs`)
 - `chili/src/utils/docker.ts` (Renamed methods)
 
+### Chell (New Module)
+- `chell/src/index.ts` (Refactored to RPN, Added JSDoc/Types)
+- `chell/src/core/repl.ts` (Created, RPN/JSDoc/Types)
+- `chell/src/session/index.ts` (Created, RPN/JSDoc/Types)
+- `chell/src/builtins/index.ts` (Created, RPN/JSDoc/Types)
+- `chell/src/lib/vfs/vfs.ts` (Created, RPN/JSDoc/Types)
+- `chell/src/config/settings.ts` (Created, RPN/JSDoc/Types)
+
 ## Other Fixes
 - `Makefile`: Fixed bootstrapping for `scrub`.
 - `cumin`: Fixed `errorStack` missing export and syntax.

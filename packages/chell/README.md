@@ -1,6 +1,6 @@
-# Chell - The ChRIS Interactive Shell
+# ChELL - The ChRIS Interactive Shell
 
-`chell` (ChRIS Execution Logic Layer) is an interactive command-line interface (CLI) designed to provide a shell-like experience for interacting with a ChRIS instance. It abstracts complex ChRIS API interactions behind familiar Unix-like commands, leveraging the core functionalities provided by `cumin` (utilities), `salsa` (business logic), and `chili` (CLI helpers).
+`chell` (ChELL Execution Logic Layer) is an interactive command-line interface (CLI) designed to provide a shell-like experience for interacting with a ChRIS instance. It abstracts complex ChRIS API interactions behind familiar Unix-like commands, leveraging the core functionalities provided by `cumin` (utilities), `salsa` (business logic), and `chili` (CLI helpers).
 
 ## Features
 

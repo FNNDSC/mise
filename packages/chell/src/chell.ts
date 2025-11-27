@@ -21,7 +21,8 @@ import {
   builtin_pwd, 
   builtin_connect, 
   builtin_logout,
-  builtin_chefs 
+  builtin_chefs,
+  builtin_cat 
 } from './builtins/index.js';
 
 const __filename: string = fileURLToPath(import.meta.url);
@@ -69,14 +70,19 @@ async function command_handle(line: string): Promise<void> {
     case 'cd': await builtin_cd(args); break;
     case 'ls': await builtin_ls(args); break;
     case 'pwd': await builtin_pwd(); break;
+    case 'cat': await builtin_cat(args); break;
     case 'chefs': await builtin_chefs(args); break;
     case 'exit': process.exit(0); break;
     default: await chiliCommand_run(command, args); break;
   }
 }
 
+import { Writable } from 'stream';
+
+// ... (existing imports)
+
 /**
- * Prompts the user for a password.
+ * Prompts the user for a password without echoing input.
  *
  * @param user - The username.
  * @param url - The CUBE URL.
@@ -84,17 +90,35 @@ async function command_handle(line: string): Promise<void> {
  */
 async function password_prompt(user: string, url: string): Promise<string> {
   return new Promise((resolve) => {
-    const rl: readline.Interface = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
+    const mutableStdout = new Writable({
+      write: function(chunk, encoding, callback) {
+        if (!(this as any).muted)
+          process.stdout.write(chunk, encoding);
+        callback();
+      }
     });
-    // Simple prompt, visible text for MVP compatibility
-    rl.question(`Password for ${user}@${url}: `, (password: string) => {
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: mutableStdout,
+      terminal: true
+    });
+
+    (mutableStdout as any).muted = false;
+    process.stdout.write(`Password for ${user}@${url}: `);
+    (mutableStdout as any).muted = true;
+
+    rl.question('', (password: string) => {
       rl.close();
+      console.log(''); // Add newline after entry
       resolve(password);
     });
   });
 }
+
+import * as os from 'os';
+
+// ... (imports remain the same)
 
 /**
  * Starts the ChELL REPL.
@@ -163,13 +187,23 @@ Interactive Commands:
 
   // If we are still here, start the shell interface
   console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
-  console.log(chalk.cyan('ChELL Execution Logic Layer - The ChRIS Interactive Shell'));
-  console.log(chalk.yellow('The Taco Chell, filled with chili, salsa, and cumin goodness! 🌮'));
+  
+  const border = chalk.gray('----------------------------------------------------------------');
+  console.log(border);
+  console.log(` ${chalk.cyan.bold('ChELL')} - ChRIS Execution Logic Layer`);
+  console.log(` ${chalk.gray('Version:')} ${chalk.yellow(packageJson.version)}`);
+  console.log(` ${chalk.gray('System :')} ${os.platform()} ${os.release()} (${os.arch()})`);
+  console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);
+  console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
+  console.log(border);
 
+  console.log(chalk.blue('[-] Initializing session components...'));
   await session.init();
+  console.log(chalk.green('[+] Session initialized.'));
 
   if (connectConfig) {
       const config = connectConfig as ConnectConfig;
+      console.log(chalk.blue(`[-] Establishing uplink to ${config.url}...`));
       try {
           await session.connection.connection_connect({ 
               user: config.user!, 
@@ -177,12 +211,18 @@ Interactive Commands:
               url: config.url!, 
               debug: false 
           });
-          console.log(chalk.green('Successfully connected to ChRIS.'));
+          console.log(chalk.green('[+] Connection established.'));
       } catch (error: any) {
-          console.error(chalk.red(`Connection failed: ${error.message}`));
+          console.error(chalk.red(`[!] Connection failed: ${error.message}`));
           process.exit(1);
       }
+  } else {
+      console.log(chalk.yellow('[!] No target specified. Running in disconnected mode.'));
   }
+  
+  console.log(border);
+  console.log(chalk.yellow('The Taco Chell, filled with chili, salsa, and cumin goodness! 🌮'));
+  console.log('');
 
   const repl: REPL = new REPL();
   await repl.start(command_handle);

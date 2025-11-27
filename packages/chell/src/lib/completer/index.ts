@@ -2,10 +2,15 @@
  * @file REPL Autocompletion.
  *
  * Provides tab-completion logic for the REPL, including built-in commands
- * and future support for path completion.
+ * and path completion.
  *
  * @module
  */
+import { session } from '../../session/index.js';
+import { plugins_listAll } from '@fnndsc/salsa';
+import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
+import * as path from 'path';
 
 const BUILTINS: string[] = [
   'cd',
@@ -23,28 +28,125 @@ const BUILTINS: string[] = [
 
 /**
  * Computes autocomplete suggestions for a given input line.
- *
- * Currently supports:
- * - Built-in commands
+ * Uses the callback style to support asynchronous operations (fetching files).
  *
  * @param line - The current input line.
- * @returns A tuple containing the array of matching suggestions and the original substring used for matching.
+ * @param callback - The callback function to return results.
  */
-export function completer(line: string): [string[], string] {
+export function completer(line: string, callback: (err: any, result: [string[], string]) => void): void {
   const trimmed = line.trimStart();
   const args = trimmed.split(/\s+/);
   
+  // Case 1: Command Completion (First word)
   // If we are typing the first word (command)
-  if (args.length <= 1) {
-    if (!trimmed) {
-      return [BUILTINS, line];
-    }
+  // Note: If line ends with space, we are starting the next arg, so args.length would be 2 (with second being empty)
+  // But split(/\s+/) on "cmd " gives ["cmd", ""]? Let's verify standard split behavior.
+  // "cmd ".trimStart().split(/\s+/) -> ["cmd", ""]
+  
+  const isCommandCompletion = args.length === 1 && !line.endsWith(' ');
+
+  if (isCommandCompletion) {
     const hits = BUILTINS.filter((c) => c.startsWith(trimmed));
-    return [hits, trimmed];
+    callback(null, [hits.length ? hits : BUILTINS, trimmed]);
+    return;
+  }
+  
+  // Case 2: Path Completion (Argument to specific commands)
+  const cmd = args[0];
+  if (['cd', 'ls', 'mkdir', 'touch', 'cat'].includes(cmd)) {
+    // The partial path is the last argument being typed
+    // If the line ends with space, we are starting a new argument (empty prefix)
+    const partialPath = line.endsWith(' ') ? '' : args[args.length - 1];
+    
+    path_complete(partialPath).then((matches) => {
+        callback(null, [matches, partialPath]);
+    }).catch((err) => {
+        // On error, return no matches, don't crash REPL
+        callback(null, [[], partialPath]);
+    });
+    return;
+  }
+  
+  // Default: no completion
+  callback(null, [[], line]);
+}
+
+/**
+ * Resolves directory contents for completion.
+ * @param partial - The partial path string typed so far.
+ */
+async function path_complete(partial: string): Promise<string[]> {
+  // 1. Resolve the directory to list and the prefix to match
+  let dirToList: string;
+  let prefix: string;
+  
+  // Handle ~ expansion for the partial path base
+  let effectivePartial = partial;
+  if (partial.startsWith('~')) {
+    const user = await session.connection.user_get();
+    const home = user ? `/home/${user}` : '/';
+    if (partial === '~' || partial === '~/') {
+      effectivePartial = home + (partial.endsWith('/') ? '/' : '');
+    } else if (partial.startsWith('~/')) {
+      effectivePartial = path.posix.join(home, partial.substring(2));
+    }
   }
 
-  // TODO: Implement path completion for 'cd', 'ls' etc.
-  // This would require an async completer or caching the file structure.
+  if (effectivePartial.endsWith('/')) {
+     dirToList = effectivePartial;
+     prefix = '';
+  } else {
+     dirToList = path.posix.dirname(effectivePartial);
+     prefix = path.posix.basename(effectivePartial);
+     if (dirToList === '.') dirToList = ''; // Relative current dir
+  }
+
+  // 2. Resolve absolute path for listing
+  let absDirToList: string;
+  if (dirToList.startsWith('/')) {
+    absDirToList = dirToList;
+  } else {
+    const cwd = await session.getCWD();
+    absDirToList = dirToList ? path.posix.resolve(cwd, dirToList) : cwd;
+  }
+
+  // 3. Fetch contents
+  let items: string[] = [];
   
-  return [[], line];
+  if (absDirToList === '/bin') {
+     // Virtual bin - plugins
+     const plugins = await plugins_listAll({});
+     if (plugins && plugins.tableData) {
+       items = plugins.tableData.map((p: any) => p.name);
+     }
+  } else {
+     // Native ChRIS
+     try {
+       const lsItems = await files_list({} as CLIoptions, absDirToList);
+       if (lsItems) {
+           items = lsItems.map((i: any) => i.name);
+       }
+       
+       // Inject 'bin' if at root
+       if (absDirToList === '/') {
+         items.push('bin');
+       }
+     } catch (e) {
+       // Ignore errors (e.g. perms, not a dir)
+     }
+  }
+  
+  // 4. Filter and format matches
+  const matches = items.filter(i => i.startsWith(prefix));
+  
+  // Prepend the directory part from the *original* partial input to preserve user's input style (relative/absolute/tilde)
+  // If partial was '~/doc', dirPart is '~/'. Match 'docs' -> '~/docs'
+  // If partial was 'foo', dirPart is ''. Match 'foobar' -> 'foobar'
+  const dirPart = partial.endsWith('/') ? partial : (partial.includes('/') ? partial.substring(0, partial.lastIndexOf('/') + 1) : '');
+  
+  // Add trailing slash for directories? 
+  // Ideally yes, but we don't easily know which are dirs without checking types.
+  // For now, just return names.
+  
+  return matches.map(m => dirPart + m);
 }

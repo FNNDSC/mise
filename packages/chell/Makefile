@@ -12,7 +12,7 @@ CUMIN_REPO := https://github.com/FNNDSC/cumin.git
 SALSA_REPO := https://github.com/FNNDSC/salsa.git
 CHILI_REPO := https://github.com/FNNDSC/chili.git
 
-.PHONY: help shop prep cook taste serve scrub meal install build test clean link all
+.PHONY: help shop prep cook taste serve scrub taco install build test clean link all
 
 help:
 	@echo "Chell Makefile 🐚"
@@ -24,7 +24,7 @@ help:
 	@echo "  make taste   - Run tests"
 	@echo "  make serve   - Link globally"
 	@echo "  make scrub   - Clean artifacts"
-	@echo "  make meal    - Full build (scrub, shop, prep, cook)"
+	@echo "  make taco    - Full build (scrub, shop, prep, cook)"
 
 # --- Shop (Cloning) ---
 
@@ -81,11 +81,11 @@ scrub:
 	@echo "🧽 Scrubbing chell..."
 	cd $(CHELL_DIR) && rm -rf dist node_modules package-lock.json
 
-meal: scrub shop prep cook
+taco: scrub shop prep cook
 
 install: prep
 build: cook
 test: taste
 clean: scrub
 link: serve
-all: meal
+all: taco

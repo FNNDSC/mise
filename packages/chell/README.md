@@ -55,16 +55,16 @@ This layered approach ensures maintainability, reusability, and a clear separati
     Navigate into the cloned `chell` directory. The provided `Makefile` is designed to set up the entire `chell` ecosystem, including its dependencies (`cumin`, `salsa`, `chili`), with a single command:
     ```bash
     cd chell
-    make meal
+    make taco
     ```
     This powerful command orchestrates the following:
     *   `scrub`: Cleans up any previous build artifacts and `node_modules` directories across `chell` and its dependencies.
     *   `shop`: **Conditionally clones** `cumin`, `salsa`, and `chili` if they are not present in sibling directories. If they already exist, it performs a `git pull` to ensure they are up-to-date.
     *   `prep`: Installs `npm` dependencies for `chell` and all its newly cloned/updated dependencies.
     *   `cook`: Builds (compiles TypeScript) `chell` and all its dependencies in the correct order.
-    *   (Optionally, depending on your `meal` target definition, it might also include `taste` for running tests and `serve` for global `npm link`).
+    *   (Optionally, depending on your `taco` target definition, it might also include `taste` for running tests and `serve` for global `npm link`).
 
-    This makes `make meal` a convenient, all-in-one command for setting up your `chell` development environment from scratch.
+    This makes `make taco` a convenient, all-in-one command for setting up your `chell` development environment from scratch.
 
 ### Other Useful Makefile Targets
 

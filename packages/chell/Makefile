@@ -7,18 +7,55 @@ SALSA_DIR := ../salsa
 CHILI_DIR := ../chili
 CHELL_DIR := .
 
-.PHONY: help prep cook taste serve scrub meal install build test clean link all
+# Repository URLs
+CUMIN_REPO := https://github.com/FNNDSC/cumin.git
+SALSA_REPO := https://github.com/FNNDSC/salsa.git
+CHILI_REPO := https://github.com/FNNDSC/chili.git
+
+.PHONY: help shop prep cook taste serve scrub meal install build test clean link all
 
 help:
 	@echo "Chell Makefile 🐚"
 	@echo ""
 	@echo "Commands:"
+	@echo "  make shop    - Clone 'cumin', 'salsa', and 'chili' repositories"
 	@echo "  make prep    - Install dependencies"
 	@echo "  make cook    - Build dependencies (cumin, salsa, chili) and chell"
 	@echo "  make taste   - Run tests"
 	@echo "  make serve   - Link globally"
 	@echo "  make scrub   - Clean artifacts"
-	@echo "  make meal    - Full build (scrub, prep, cook)"
+	@echo "  make meal    - Full build (scrub, shop, prep, cook)"
+
+# --- Shop (Cloning) ---
+
+shop: shop-cumin shop-salsa shop-chili
+
+shop-cumin:
+	@if [ ! -d "$(CUMIN_DIR)" ]; then \
+		echo "🛒 Shopping for cumin..."; \
+		git clone $(CUMIN_REPO) $(CUMIN_DIR); \
+	else \
+		echo "🔄 Updating cumin..."; \
+		(cd $(CUMIN_DIR) && git pull) || echo "⚠️ Failed to update cumin. Please resolve manually."; \
+	fi
+
+shop-salsa:
+	@if [ ! -d "$(SALSA_DIR)" ]; then \
+		echo "🛒 Shopping for salsa..."; \
+		git clone $(SALSA_REPO) $(SALSA_DIR); \
+	else \
+		echo "🔄 Updating salsa..."; \
+		(cd $(SALSA_DIR) && git pull) || echo "⚠️ Failed to update salsa. Please resolve manually."; \
+	fi
+
+shop-chili:
+	@if [ ! -d "$(CHILI_DIR)" ]; then \
+		echo "🛒 Shopping for chili..."; \
+		git clone $(CHILI_REPO) $(CHILI_DIR); \
+	else \
+		echo "🔄 Updating chili..."; \
+		(cd $(CHILI_DIR) && git pull) || echo "⚠️ Failed to update chili. Please resolve manually."; \
+	fi
 
 prep:
 	@echo "🔪 Prepping chell (installing deps)..."
@@ -44,13 +81,7 @@ scrub:
 	@echo "🧽 Scrubbing chell..."
 	cd $(CHELL_DIR) && rm -rf dist node_modules package-lock.json
 
-pull:
-	@echo "⬇️ Pulling updates..."
-	cd $(CUMIN_DIR) && git pull
-	cd $(SALSA_DIR) && git pull
-	cd $(CHILI_DIR) && git pull
-
-meal: scrub pull prep cook
+meal: scrub shop prep cook
 
 install: prep
 build: cook

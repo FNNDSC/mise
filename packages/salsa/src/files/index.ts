@@ -1,3 +1,4 @@
+import * as path from 'path';
 import {
   ChRISEmbeddedResourceGroup,
   objContext_create,
@@ -174,6 +175,22 @@ export async function files_list(options: ListOptions, assetName: string = "file
 }
 
 /**
+ * List *all* files, links, or directories by automatically handling pagination.
+ *
+ * @param options - Search options (limit and offset will be managed internally).
+ * @param assetName - The type of asset to list ('files', 'links', 'dirs').
+ * @param path - Optional ChRIS path. Defaults to current folder context.
+ * @returns A Promise resolving to FilteredResourceData containing all matching assets, or null.
+ */
+export async function files_listAll(options: ListOptions, assetName: string = "files", path?: string): Promise<FilteredResourceData | null> {
+  const group = await files_getGroup(assetName, path);
+  if (!group) {
+    return null;
+  }
+  return await group.asset.resources_getAll(options);
+}
+
+/**
  * Get the list of available fields for files, links, or directories.
  *
  * @param assetName - The type of asset ('files', 'links', 'dirs').
@@ -253,4 +270,33 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
  */
 export async function files_view(fileId: number): Promise<Buffer | null> {
   return await chrisIO.file_download(fileId);
+}
+
+/**
+ * Retrieves the content of a file by its path.
+ *
+ * @param filePath - The full ChRIS path to the file.
+ * @returns A Promise resolving to the content string or null.
+ */
+export async function files_content(filePath: string): Promise<string | null> {
+  const dir = path.dirname(filePath);
+  const name = path.basename(filePath);
+  
+  const group = await files_getGroup('files', dir);
+  if (!group) return null;
+  
+  const results = await group.asset.resources_getAll();
+  if (results && results.tableData) {
+     const file = results.tableData.find((f: any) => {
+         const fname = f.fname || '';
+         // Compare basenames to find the file in this directory
+         return path.basename(fname) === name;
+     });
+     
+     if (file && file.id) {
+         const buffer = await files_view(Number(file.id));
+         return buffer ? buffer.toString('utf-8') : null;
+     }
+  }
+  return null;
 }

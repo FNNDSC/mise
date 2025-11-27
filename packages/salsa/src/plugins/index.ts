@@ -34,6 +34,18 @@ export async function plugins_list(options: ListOptions): Promise<FilteredResour
 }
 
 /**
+ * List *all* plugins by automatically handling pagination.
+ *
+ * @param options - Search options (limit and offset will be overridden/managed internally).
+ * @returns A Promise resolving to FilteredResourceData containing all matching plugins, or null.
+ */
+export async function plugins_listAll(options: ListOptions = {}): Promise<FilteredResourceData | null> {
+  const pluginGroup = new ChRISPluginGroup();
+  if (!pluginGroup) return null;
+  return await pluginGroup.asset.resources_getAll(options);
+}
+
+/**
  * Get the list of available fields for plugins.
  *
  * @returns A Promise resolving to an array of field names or null.

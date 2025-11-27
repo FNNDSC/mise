@@ -44,31 +44,36 @@ This layered approach ensures maintainability, reusability, and a clear separati
     *   [npm](https://www.npmjs.com/) (usually comes with Node.js)
     *   [NVM (Node Version Manager)](https://github.com/nvm-sh/nvm) is highly recommended for managing Node.js installations, especially for global package linking without `sudo`.
 
-2.  **Clone Repositories:**
-    `chell` depends on `cumin`, `salsa`, and `chili`. Ensure all are cloned as sibling directories:
+2.  **Clone `chell`:**
+    Begin by cloning only the `chell` repository into your desired projects directory:
     ```bash
     cd /path/to/your/projects/
     git clone https://github.com/FNNDSC/chell.git
-    git clone https://github.com/FNNDSC/cumin.git
-    git clone https://github.com/FNNDSC/salsa.git
-    git clone https://github.com/FNNDSC/chili.git
     ```
 
-3.  **Build and Link (Recommended):**
-    Navigate to the `chell` directory and use the provided `Makefile` to build and link all components:
+3.  **Build the Entire Ecosystem (Recommended):**
+    Navigate into the cloned `chell` directory. The provided `Makefile` is designed to set up the entire `chell` ecosystem, including its dependencies (`cumin`, `salsa`, `chili`), with a single command:
     ```bash
     cd chell
     make meal
     ```
-    This command will:
-    *   Clean previous builds.
-    *   Pull the latest changes for `cumin`, `salsa`, and `chili`.
-    *   Install dependencies (`npm install`) for all projects.
-    *   Build (`npm run build`) all projects.
+    This powerful command orchestrates the following:
+    *   `scrub`: Cleans up any previous build artifacts and `node_modules` directories across `chell` and its dependencies.
+    *   `shop`: **Conditionally clones** `cumin`, `salsa`, and `chili` if they are not present in sibling directories. If they already exist, it performs a `git pull` to ensure they are up-to-date.
+    *   `prep`: Installs `npm` dependencies for `chell` and all its newly cloned/updated dependencies.
+    *   `cook`: Builds (compiles TypeScript) `chell` and all its dependencies in the correct order.
+    *   (Optionally, depending on your `meal` target definition, it might also include `taste` for running tests and `serve` for global `npm link`).
 
-## Usage
+    This makes `make meal` a convenient, all-in-one command for setting up your `chell` development environment from scratch.
 
-After `make meal`, you can run `chell` from any directory in your terminal.
+### Other Useful Makefile Targets
+
+*   **`make shop`**: Checks for and clones/updates `cumin`, `salsa`, and `chili`.
+*   **`make prep`**: Installs `npm` dependencies for `chell` and its dependencies.
+*   **`make cook`**: Builds (compiles) `chell` and its dependencies.
+*   **`make taste`**: Runs tests for `chell`.
+*   **`make serve`**: Globally links `chell` (via `npm link`) so you can run it from any directory.
+*   **`make scrub`**: Cleans build artifacts and `node_modules`.
 
 ### Connecting to ChRIS
 

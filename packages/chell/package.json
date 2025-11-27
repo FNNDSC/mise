@@ -1,6 +1,6 @@
 {
   "name": "chell",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "description": "Interactive ChRIS REPL Shell",
   "main": "dist/index.js",
   "type": "module",

@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
+import { plugins_listAll } from '@fnndsc/salsa';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { ResourceItem } from '@fnndsc/chili/commands/fs/ls.js';
@@ -48,33 +48,14 @@ export class VFS {
    */
   private async listVirtualBin(): Promise<void> {
     try {
-      const limit = 100;
-      let offset = 0;
-      let fetchMore = true;
-      let foundAny = false;
-
-      while (fetchMore) {
-        const options: any = { limit, offset };
-        const plugins = await plugins_fetchList(options);
-
-        if (plugins && plugins.tableData && plugins.tableData.length > 0) {
-          foundAny = true;
-          plugins.tableData.forEach((plugin: any) => {
-            const version = plugin.version ? ` (${plugin.version})` : '';
-            console.log(`${plugin.name}${version}`);
-          });
-
-          if (plugins.tableData.length < limit) {
-            fetchMore = false;
-          } else {
-            offset += limit;
-          }
-        } else {
-          fetchMore = false;
-        }
-      }
-
-      if (!foundAny) {
+      const plugins = await plugins_listAll({});
+      
+      if (plugins && plugins.tableData && plugins.tableData.length > 0) {
+        plugins.tableData.forEach((plugin: any) => {
+          const version = plugin.version ? ` (${plugin.version})` : '';
+          console.log(`${plugin.name}${version}`);
+        });
+      } else {
         console.log(chalk.gray('No plugins found.'));
       }
     } catch (error: any) {

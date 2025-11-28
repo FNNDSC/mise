@@ -45,4 +45,24 @@ describe('CLI Parser', () => {
     expect(config.connectConfig?.url).toBe('http://cube.example.org');
     expect(config.connectConfig?.user).toBe('chris');
   });
+
+  it('should respect existing https protocol', async () => {
+    const args = ['node', 'chell', 'https://secure.cube.org', '-u', 'user'];
+    const config = await cli_parse(args, VERSION);
+    expect(config.mode).toBe('connect');
+    expect(config.connectConfig?.url).toBe('https://secure.cube.org');
+  });
+
+  it('should return help for unknown options', async () => {
+    const args = ['node', 'chell', '--unknown-flag'];
+    const config = await cli_parse(args, VERSION);
+    expect(config.mode).toBe('help');
+    expect(config.output).toBeDefined();
+  });
+
+  it('should return help for missing option argument', async () => {
+    const args = ['node', 'chell', 'url', '-u']; // Missing user
+    const config = await cli_parse(args, VERSION);
+    expect(config.mode).toBe('help');
+  });
 });

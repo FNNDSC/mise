@@ -8,7 +8,7 @@
 
 - **Consolidate Business Logic:** Centralizes "Intents" (e.g., "Create a Feed from these local files", "Run a Plugin with these parameters"). This ensures that `chili` (CLI), future web apps, and other frontends share the exact same behavior.
 - **Frontend Agnostic:** Designed to be free of CLI-specific dependencies (like `commander` or `process.stdout`). It returns pure data or typed objects.
-- **Powering Chefs:** Provides the primitive file operations (`files_getGroup`, `files_touch`, `files_content`) that power the `chefs` shell experience in `chili` and `chell`.
+- **Powering Chefs:** Provides the primitive file operations that power the `chefs` shell experience in `chili` and `chell`.
 
 ## Architecture: The Sandwich Model 🥪
 
@@ -30,10 +30,12 @@
 ## Key Modules
 
 -   **`feeds`**: Logic for creating and managing feeds.
--   **`plugins`**: Logic for searching, resolving, running, and registering plugins. Now includes `plugins_listAll` for fetching all plugins across paginated responses.
--   **`files`**: Primitives for file system interactions (ls, mkdir, touch, create, upload, view content). Now includes `files_listAll` for fetching all files/dirs/links in a directory across paginated responses, and `files_content` for retrieving file data.
-
-`salsa`'s listing methods (`*_listAll`) abstract away the complexities of CUBE API pagination, always returning complete resource lists.
+-   **`plugins`**: Logic for searching, resolving, running, and registering plugins. `plugins_listAll` fetches complete lists.
+-   **`files`**: File system interactions:
+    -   `files_listAll`: Fetch complete directory listings (pagination handling).
+    -   `files_content`: Read remote file content.
+    -   `files_uploadPath`: Recursively upload local files or directories to ChRIS.
+    -   `files_touch`, `files_mkdir`.
 
 ## Development
 

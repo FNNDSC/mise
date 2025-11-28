@@ -3,7 +3,7 @@
  * @module
  */
 
-import { ChRISFeed, SimpleRecord, ChRISObjectParams, ChRISFeedGroup, FilteredResourceData, ListOptions, objContext_create, chrisConnection, errorStack } from '@fnndsc/cumin';
+import { ChRISFeed, SimpleRecord, ChRISObjectParams, ChRISFeedGroup, FilteredResourceData, ListOptions, chrisConnection, errorStack } from '@fnndsc/cumin';
 import { Feed } from "@fnndsc/chrisapi";
 
 /**
@@ -13,12 +13,9 @@ import { Feed } from "@fnndsc/chrisapi";
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function feeds_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const feedGroup = (await objContext_create(
-    "ChRISFeedGroup",
-    "feed"
-  )) as ChRISFeedGroup;
+  const feedGroup = new ChRISFeedGroup(); // Instantiate directly
 
-  if (!feedGroup) {
+  if (!feedGroup) { // This check might be redundant if constructor always returns valid object
     return null;
   }
 
@@ -31,10 +28,7 @@ export async function feeds_list(options: ListOptions): Promise<FilteredResource
  * @returns A Promise resolving to an array of field names or null.
  */
 export async function feedFields_get(): Promise<string[] | null> {
-  const feedGroup = (await objContext_create(
-    "ChRISFeedGroup",
-    "feed"
-  )) as ChRISFeedGroup;
+  const feedGroup = new ChRISFeedGroup(); // Instantiate directly
 
   if (!feedGroup) {
     return null;
@@ -56,13 +50,6 @@ export async function feedFields_get(): Promise<string[] | null> {
  */
 export async function feed_create(dirs: string[], params: ChRISObjectParams = {}): Promise<SimpleRecord | null> {
     const chrisFeed = new ChRISFeed();
-    // In the future, logic to validate dirs or params could go here.
-    // For now, we delegate to cumin.
-    // Note: cumin's createFromDirs might expect a single string or array. 
-    // chili passed 'options.dirs as string'. let's assume string for now or check cumin.
-    // If cumin expects a string (comma separated?), we might need to join.
-    // But let's stick to the signature and fix implementation later once we verify cumin.
-    
     // For now, assuming dirs is passed as is or joined.
     const dirsArg = Array.isArray(dirs) ? dirs.join(',') : dirs;
 

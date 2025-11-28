@@ -7,21 +7,19 @@ import {
   errorStack,
   chrisIO,
   chrisConnection,
-  ListOptions, // Added
-  FilteredResourceData, // Added
+  ListOptions, 
+  FilteredResourceData,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/chrisapi"; // From chrisapi, not cumin
-
-// ... existing interfaces ...
+import { FileBrowserFolder } from "@fnndsc/chrisapi";
 
 /**
  * Uploads content to a specified ChRIS path, effectively creating or overwriting a file.
  *
  * @param content - The content to upload (string, Buffer, or Blob).
- * @param path - The ChRIS path for the new file.
+ * @param pathStr - The ChRIS path for the new file.
  * @returns A Promise resolving to true on success, false on failure.
  */
-export async function files_create(content: string | Buffer | Blob, path: string): Promise<boolean> {
+export async function files_create(content: string | Buffer | Blob, pathStr: string): Promise<boolean> {
   try {
     let uploadContent: Blob;
     if (typeof content === 'string') {
@@ -31,13 +29,19 @@ export async function files_create(content: string | Buffer | Blob, path: string
     } else {
       uploadContent = content; // Assume it's already a Blob
     }
-    const success = await chrisIO.file_upload(uploadContent, path);
+    
+    // Split path into directory and filename
+    const dir = path.dirname(pathStr);
+    const name = path.basename(pathStr);
+    
+    const success = await chrisIO.file_upload(uploadContent, dir, name);
     if (!success) {
-      errorStack.stack_push("error", `File upload failed for ${path}.`);
+      errorStack.stack_push("error", `File upload failed for ${pathStr}.`);
     }
     return success;
-  } catch (error) {
-    errorStack.stack_push("error", `File creation failed for ${path}: ${error}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `File creation failed for ${pathStr}: ${msg}`);
     return false;
   }
 }
@@ -51,6 +55,17 @@ export async function files_create(content: string | Buffer | Blob, path: string
 export async function files_touch(path: string): Promise<boolean> {
   // Use files_create with an empty Blob
   return await files_create(new Blob([""]), path);
+}
+
+/**
+ * Uploads a local file or directory to ChRIS recursively.
+ *
+ * @param localPath - The local filesystem path.
+ * @param remotePath - The ChRIS destination path.
+ * @returns Promise<boolean> success.
+ */
+export async function files_uploadPath(localPath: string, remotePath: string): Promise<boolean> {
+  return await chrisIO.uploadLocalPath(localPath, remotePath);
 }
 
 /**
@@ -287,7 +302,7 @@ export async function files_content(filePath: string): Promise<string | null> {
   
   const results = await group.asset.resources_getAll();
   if (results && results.tableData) {
-     const file = results.tableData.find((f: any) => {
+     const file = results.tableData.find((f: Record<string, any>) => {
          const fname = f.fname || '';
          // Compare basenames to find the file in this directory
          return path.basename(fname) === name;

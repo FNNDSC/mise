@@ -1,28 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { commandArgs_process } from '../src/builtins/index.js';
-
-// Mock session to avoid import errors if builtins imports it
-jest.mock('../src/session/index.js', () => ({
-  session: {
-    connection: {
-      user_get: jest.fn(),
-      client_get: jest.fn(),
-    },
-    getCWD: jest.fn(),
-    setCWD: jest.fn(),
-  }
-}));
-
-// Mock other heavy dependencies
-jest.mock('../src/lib/vfs/vfs.js', () => ({
-  vfs: { list: jest.fn() }
-}));
-jest.mock('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mkdir: jest.fn() }));
-jest.mock('@fnndsc/chili/commands/fs/touch.js', () => ({ files_touch: jest.fn() }));
-jest.mock('@fnndsc/chili/commands/fs/ls.js', () => ({ files_list: jest.fn() }));
-jest.mock('@fnndsc/salsa', () => ({ files_content: jest.fn() }));
-
-import { jest } from '@jest/globals';
+import { commandArgs_process, path_resolve_pure } from '../src/builtins/utils.js';
 
 describe('commandArgs_process', () => {
   it('should parse positional arguments', () => {
@@ -45,9 +22,7 @@ describe('commandArgs_process', () => {
     expect(result['h']).toBe(true);
   });
 
-  it('should parse combined short flags (if logic supported) or handle distinct short flags', () => {
-    // Current implementation splits combined flags?
-    // Implementation: const flags = arg.substring(1).split('');
+  it('should parse combined short flags', () => {
     const args = ['-lh'];
     const result = commandArgs_process(args);
     expect(result['l']).toBe(true);
@@ -60,5 +35,49 @@ describe('commandArgs_process', () => {
     expect(result._).toEqual(['ls', '/home/user']);
     expect(result['l']).toBe(true);
     expect(result['color']).toBe('auto');
+  });
+});
+
+describe('path_resolve_pure', () => {
+  const context = { user: 'chris', cwd: '/home/chris/work' };
+
+  it('should resolve ~ to user home', () => {
+    const p = path_resolve_pure('~', context);
+    expect(p).toBe('/home/chris');
+  });
+
+  it('should resolve ~/subdir to user home subdir', () => {
+    const p = path_resolve_pure('~/data', context);
+    expect(p).toBe('/home/chris/data');
+  });
+
+  it('should resolve relative path against CWD', () => {
+    const p = path_resolve_pure('file.txt', context);
+    expect(p).toBe('/home/chris/work/file.txt');
+  });
+
+  it('should resolve absolute path as is', () => {
+    const p = path_resolve_pure('/usr/local/bin', context);
+    expect(p).toBe('/usr/local/bin');
+  });
+
+  it('should resolve .. parent directory', () => {
+    const p = path_resolve_pure('..', context);
+    expect(p).toBe('/home/chris');
+  });
+
+  it('should resolve . current directory', () => {
+    const p = path_resolve_pure('.', context);
+    expect(p).toBe('/home/chris/work');
+  });
+
+  it('should handle root path correctly', () => {
+    const p = path_resolve_pure('/', context);
+    expect(p).toBe('/');
+  });
+
+  it('should handle missing user (fallback to root for ~)', () => {
+    const p = path_resolve_pure('~', { user: null, cwd: '/' });
+    expect(p).toBe('/');
   });
 });

@@ -15,76 +15,19 @@ import { files_content } from '@fnndsc/salsa';
 import chalk from 'chalk';
 import * as path from 'path';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 
-/**
- * Structure for parsed command line arguments.
- */
-export interface ParsedArgs {
-  _: string[];
-  [key: string]: string | boolean | string[];
-}
-
-/**
- * Parses raw argument strings into a structured object.
- * Flags starting with `--` are parsed as key-value pairs or boolean flags.
- * Flags starting with `-` are parsed as boolean flags (single or combined).
- * Positional arguments are collected in the `_` array.
- *
- * @param args - The array of raw argument strings to parse.
- * @returns An object containing parsed flags and positional arguments.
- */
-export function commandArgs_process(args: string[]): ParsedArgs {
-  const result: ParsedArgs = { _: [] };
-  for (let i = 0; i < args.length; i++) {
-    const arg: string = args[i];
-    if (arg.startsWith('--')) {
-      const key: string = arg.substring(2);
-      if (args[i + 1] && !args[i + 1].startsWith('-')) {
-        result[key] = args[i + 1];
-        i++;
-      } else {
-        result[key] = true;
-      }
-    } else if (arg.startsWith('-') && arg.length > 1) {
-      // Handle single dash flags (e.g. -l, -lh)
-      const flags = arg.substring(1).split('');
-      flags.forEach(flag => result[flag] = true);
-    } else {
-      (result._ as string[]).push(arg);
-    }
-  }
-  return result;
-}
+export { commandArgs_process, ParsedArgs };
 
 /**
  * Resolves a path argument, handling `~` expansion and relative paths.
  * @param inputPath - The path to resolve.
  * @returns The absolute path.
  */
-async function path_resolve(inputPath: string): Promise<string> {
+export async function path_resolve(inputPath: string): Promise<string> {
   const user = await session.connection.user_get();
-  let resolved = inputPath;
-  
-  if (inputPath.startsWith('~')) {
-    const home = user ? `/home/${user}` : '/';
-    if (inputPath === '~' || inputPath === '~/') {
-      resolved = home;
-    } else if (inputPath.startsWith('~/')) {
-      resolved = path.posix.join(home, inputPath.substring(2));
-    }
-  }
-  
-  if (!resolved.startsWith('/')) {
-    const cwd = await session.getCWD();
-    resolved = path.posix.resolve(cwd, resolved);
-  }
-  
-  // Normalize: remove trailing slash unless it's root
-  if (resolved.length > 1 && resolved.endsWith('/')) {
-    resolved = resolved.slice(0, -1);
-  }
-  
-  return resolved;
+  const cwd = await session.getCWD();
+  return path_resolve_pure(inputPath, { user, cwd });
 }
 
 /**

@@ -17,7 +17,8 @@ import * as path from 'path';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 
-export { commandArgs_process, ParsedArgs };
+export { commandArgs_process };
+export type { ParsedArgs };
 
 /**
  * Resolves a path argument, handling `~` expansion and relative paths.

@@ -117,6 +117,7 @@ async function password_prompt(user: string, url: string): Promise<string> {
 }
 
 import * as os from 'os';
+import { cli_parse, ChellCLIConfig } from './core/cli.js';
 
 // ... (imports remain the same)
 
@@ -127,63 +128,12 @@ import * as os from 'os';
  * @returns A Promise that resolves when the shell exits.
  */
 export async function chell_start(): Promise<void> {
-  const program: Command = new Command();
-  
-  interface ConnectConfig {
-    user?: string;
-    password?: string;
-    url?: string;
+  const config: ChellCLIConfig = await cli_parse(process.argv, packageJson.version);
+
+  if (config.mode === 'help' || config.mode === 'version') {
+      if (config.output) console.log(config.output);
+      return;
   }
-  
-  let connectConfig: ConnectConfig | null = null;
-
-  program
-    .name('chell')
-    .version(packageJson.version)
-    .description('ChRIS Interactive Shell')
-    .argument('[target]', 'Target CUBE (user@url or url)')
-    .option('-u, --user <user>', 'Username')
-    .option('-p, --password <password>', 'Password')
-    .addHelpText('after', `
-Interactive Commands:
-  connect    Connect to a ChRIS CUBE
-  logout     Log out from ChRIS
-  cd         Change directory
-  ls         List directory contents
-  pwd        Print working directory
-  chefs      Access ChRIS Experimental File System commands
-  exit       Exit the shell
-  <other>    Any other command is passed to chili
-    `)
-    .action(async (target: string | undefined, options: { user?: string, password?: string }) => {
-        let user: string | undefined = options.user;
-        let url: string | undefined = target;
-        let password: string | undefined = options.password;
-
-        if (url && url.includes('@')) {
-            const parts: string[] = url.split('@');
-            user = parts[0];
-            url = parts[1];
-        }
-
-        if (url) {
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                url = 'http://' + url;
-            }
-
-            if (!user) {
-                console.error(chalk.red('Error: Username required when connecting via CLI args.'));
-                process.exit(1);
-            }
-            if (!password) {
-                password = await password_prompt(user, url);
-            }
-            connectConfig = { user, password, url };
-        }
-    });
-
-  // Let commander handle args. If --version or --help is used, it will exit.
-  await program.parseAsync(process.argv);
 
   // If we are still here, start the shell interface
   console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
@@ -201,20 +151,31 @@ Interactive Commands:
   await session.init();
   console.log(chalk.green('[+] Session initialized.'));
 
-  if (connectConfig) {
-      const config = connectConfig as ConnectConfig;
-      console.log(chalk.blue(`[-] Establishing uplink to ${config.url}...`));
-      try {
-          await session.connection.connection_connect({ 
-              user: config.user!, 
-              password: config.password!, 
-              url: config.url!, 
-              debug: false 
-          });
-          console.log(chalk.green('[+] Connection established.'));
-      } catch (error: any) {
-          console.error(chalk.red(`[!] Connection failed: ${error.message}`));
+  if (config.mode === 'connect' && config.connectConfig) {
+      let { user, password, url } = config.connectConfig;
+      
+      if (!user) {
+          console.error(chalk.red('Error: Username required when connecting via CLI args.'));
           process.exit(1);
+      }
+      if (!password && url) {
+          password = await password_prompt(user, url);
+      }
+      
+      if (url && password) {
+          console.log(chalk.blue(`[-] Establishing uplink to ${url}...`));
+          try {
+              await session.connection.connection_connect({ 
+                  user: user!, 
+                  password: password, 
+                  url: url, 
+                  debug: false 
+              });
+              console.log(chalk.green('[+] Connection established.'));
+          } catch (error: any) {
+              console.error(chalk.red(`[!] Connection failed: ${error.message}`));
+              process.exit(1);
+          }
       }
   } else {
       console.log(chalk.yellow('[!] No target specified. Running in disconnected mode.'));

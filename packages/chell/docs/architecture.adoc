@@ -16,10 +16,13 @@ The Router intercepts all filesystem operations (`ls`, `cd`, `pwd`).
 *   If a path matches a mount (e.g., `/bin`), it delegates to the **Virtual Provider**.
 *   If a path does not match, it delegates to the **Chris Provider** (Native FS).
 
-=== 3. Execution Model
-*   **Builtins:** Shell commands like `cd`, `pwd`, `connect` run internally.
-*   **Plugins as Binaries:** Plugins appear as files in `/bin`. Executing `pl-dcm2niix` is translated into a ChRIS API call (`createFeed` or `createPluginInstance`).
-*   **Context Awareness:** Executing a plugin from within a specific directory (feed node) automatically pipes that node's data as input (`previous_id`).
+=== 3. Execution Model ("The Sandwich")
+ChELL is a consumer of the **ChILI Library**. It strictly adheres to the "Sandwich Model" architecture:
+
+*   **Presentation (Shell):** `chell` handles the REPL loop, history, and tab completion.
+*   **Controllers (ChILI):** `chell` imports command logic directly from `@fnndsc/chili`. It does not spawn external processes for core commands. This ensures shared state and high performance.
+*   **Logic (Salsa):** Pure business logic and resource models.
+*   **Infrastructure (Cumin):** State and API connectivity.
 
 == Directory Structure
 
@@ -27,23 +30,12 @@ The Router intercepts all filesystem operations (`ls`, `cd`, `pwd`).
 ----
 src/
 ├── config/           # App configuration and prompt styling
-│   ├── settings.ts
-│   └── prompt.ts
-├── core/             # Shell loop mechanics
-│   ├── repl.ts       # Readline wrapper, history, keybindings
-│   └── parser.ts     # Command line tokenizer
+├── core/             # Shell loop mechanics (REPL, Parser)
 ├── lib/
-│   ├── vfs/          # File system abstraction
-│   │   ├── vfs.ts    # The Router
-│   │   └── providers/
-│   │       ├── chris.ts   # Native API wrapper
-│   │       └── virtual.ts # /bin logic
+│   ├── vfs/          # File system abstraction (Router)
 │   └── completer/    # Tab completion engine
-│       ├── index.ts
-│       ├── path.ts
-│       └── command.ts
-├── builtins/         # Internal commands (cd, ls, pwd, connect)
-├── session/          # Runtime state (Connection, Environment, Context)
+├── builtins/         # Command wrappers (calling Chili library functions)
+├── session/          # Runtime state (Connection, Environment)
 └── index.ts          # Entry point
 ----
 
@@ -54,38 +46,10 @@ Holds the persistent state:
 *   `chrisConnection`: The authenticated client (from `@fnndsc/cumin`).
 *   `currentContext`: The current working directory (`CWD`).
 
-=== Completer (`src/lib/completer/`)
-Provides intelligence for the `TAB` key.
-*   Queries the **Router** to autocomplete paths.
-*   Queries the **Plugin Registry** (virtual `/bin`) to autocomplete commands.
+=== Builtins (`src/builtins/`)
+Each built-in command (`ls`, `connect`, `plugin`, `feed`) is a wrapper that:
+1.  Parses arguments.
+2.  Invokes the corresponding **ChILI Command** (e.g., `plugins_fetchList`).
+3.  Invokes the corresponding **ChILI View** (e.g., `renderPluginList`) to display the result.
 
-== Suitability for Web UIs
-
-The `chell` stack (composed of `cumin`, `salsa`, and `chell` itself) is designed with modularity that makes it highly adaptable for web-based user interfaces. The architectural "sandwich model" effectively separates concerns, allowing for flexible frontend integration.
-
-=== 1. For a Standard Web UI (e.g., React, Angular, Vue)
-
-The stack provides a robust backend for a traditional web application:
-
-*   **`salsa` (Business Logic Layer):** This is the key component. `salsa` is explicitly designed to be frontend-agnostic. Its functions (e.g., `plugins_listAll()`, `files_listAll()`, `files_content()`) return structured data, not UI components or CLI-formatted output. A web UI would directly consume these `salsa` functions to fetch and manipulate ChRIS data.
-*   **`cumin` (Infrastructure Layer):** Provides the foundational `chrisapi` integration, authentication, and generic resource fetching (`resources_getAll()`). This is directly reusable by any frontend needing to interact with ChRIS.
-*   **Adaptations Needed:**
-    *   **Persistence (`cumin`):** `cumin` currently uses `NodeStorageProvider` (relying on `fs`) for tokens and context. For a browser environment, this would need to be replaced with a `LocalStorageProvider` or `IndexedDBProvider` implementation.
-    *   **Error Handling (`cumin`):** `process.exit()` calls within `cumin` (and some `chell` related utilities) would need to be replaced with proper error throwing (`Promise.reject()`) to allow the web UI to catch and display errors gracefully without terminating the application.
-    *   **CLI-Specific Code:** `chili` and `chell`'s presentation layers (Commander.js, `chalk`, `figlet`, `readline` for REPL interaction) are specific to the CLI and would be entirely replaced by the web UI's framework (React components, HTML/CSS, etc.).
-
-=== 2. For a `term.js`-like Web Terminal Experience (Running `chell` in the browser)
-
-This scenario is remarkably well-suited given `chell`'s design:
-
-*   **Core `chell` Reusability:** The existing `chell` application (its REPL logic, VFS, and command processing) is perfectly designed for a terminal emulator. It consumes standard input and produces standard output with ANSI escape codes (via `chalk`).
-*   **Architecture:** The most practical approach involves running `chell` as a Node.js process on a backend server.
-    *   **Client-Side:** A web UI would host `term.js` (e.g., `xterm.js`) to emulate the terminal. This client connects to the backend via WebSockets.
-    *   **Server-Side:** The backend spawns a dedicated `chell` Node.js process for each user session.
-    *   **Communication:** WebSockets provide the bridge. Keyboard input from `term.js` is sent via WebSocket to `chell`'s `stdin`. `chell`'s `stdout` and `stderr` are captured and sent back over the WebSocket to `term.js` for rendering.
-*   **Adaptations Needed:**
-    *   **Stream Redirection:** `chell`'s `readline.createInterface()` (in `src/core/repl.ts`) would need to be configured to use custom `input` and `output` streams that are connected to the WebSocket.
-    *   **`process.exit()`:** Similar to the standard web UI, `process.exit()` calls would need to be re-evaluated to gracefully terminate the `chell` session for a specific client rather than crashing the server.
-    *   **Resource Management:** A robust backend system would be required to manage `chell` Node.js processes for each user session.
-
-In summary, the layered architecture of the `chell` stack makes it highly adaptable for web UIs, either by consuming its business logic directly via `salsa` or by embedding the `chell` CLI experience itself within a web terminal.
+This architecture ensures that `chell` acts as a unified interface to the underlying ChRIS ecosystem libraries.

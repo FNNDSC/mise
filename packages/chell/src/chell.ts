@@ -22,7 +22,10 @@ import {
   builtin_connect, 
   builtin_logout,
   builtin_chefs,
-  builtin_cat 
+  builtin_cat,
+  builtin_upload,
+  builtin_plugin,
+  builtin_feed
 } from './builtins/index.js';
 
 const __filename: string = fileURLToPath(import.meta.url);
@@ -72,6 +75,15 @@ async function command_handle(line: string): Promise<void> {
     case 'pwd': await builtin_pwd(); break;
     case 'cat': await builtin_cat(args); break;
     case 'chefs': await builtin_chefs(args); break;
+    case 'upload': await builtin_upload(args); break;
+    case 'plugin': 
+    case 'plugins':
+      await builtin_plugin(args); 
+      break;
+    case 'feed':
+    case 'feeds':
+      await builtin_feed(args);
+      break;
     case 'exit': process.exit(0); break;
     default: await chiliCommand_run(command, args); break;
   }

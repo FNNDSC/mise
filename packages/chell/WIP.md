@@ -1,34 +1,36 @@
 # Work In Progress (WIP)
 
 ## Current Status
-`chell` is a functional MVP with a modular architecture (`src/core`, `src/session`, `src/builtins`, `src/lib`). It features a Virtual File System (VFS) for plugins, robust connection handling, and utilizes a shared library architecture (`cumin`, `salsa`, `chili`) for core operations.
+`chell` is a functional MVP with a modular architecture (`src/core`, `src/session`, `src/builtins`, `src/lib`). It acts as a direct consumer of the `chili` library for all its commands, removing the previous reliance on spawning child processes. All unit tests are currently passing.
 
 ## Recently Implemented
-- **Pagination Architecture:**
-    - Refactored pagination logic from `chell` into `cumin`'s base `ChRISResource` class (`resources_getAll`).
-    - Enabled "fetch all" capability for all CUBE resources across the stack.
-    - Updated `salsa` and `chili` to leverage this shared logic, removing duplication.
-- **Virtual File System (VFS):**
-    - Implemented `/bin` virtual directory listing available plugins.
-    - Added plugin version display in `ls`.
-    - Integrated generic pagination for retrieving full plugin lists.
-- **Prompt & UX:**
-    - Updated prompt to show full URI (cyan) and current user/path.
-    - Fixed connection protocol handling (auto-prepend `http://`).
-- **Command History:** Persist history between sessions to `~/.chell_history`.
-- **Autocompletion:** Implemented basic tab completion for built-in commands.
-- **Refactoring:** Separated entry point (`index.ts`) from application logic (`chell.ts`) for better testability.
+- **Full In-Process Command Execution:**
+    - `chell` now directly imports and executes commands (e.g., `ls`, `cd`, `connect`, `upload`, `plugin`, `feed`) from the `chili` library.
+    - Eliminated process spawning for core commands, significantly improving performance and integration.
+- **Unified Command/View/Model Architecture:**
+    - `chell` utilizes shared command logic and presentation (`render*` views) provided by `chili`, ensuring consistent behavior and output across both the `chili` CLI and the `chell` REPL.
+    - All commands adhere to the strict typing guidelines, using `src/models` from `chili` where applicable.
+- **Enhanced `ls` Functionality:**
+    - `ls` command now supports `-l` (long listing), `-h` (human-readable sizes) and `/bin` virtual directory (for plugins).
+    - Generic output options (`--table`, `--csv`) are now available for listing commands.
+- **New `upload` Command:**
+    - Implemented a robust `upload <local_path> <remote_path>` command, supporting recursive directory uploads from the local filesystem to ChRIS.
+- **Improved Plugin Management:**
+    - `plugin list` and `plugin run` commands are now fully integrated and callable in-process.
+- **Improved Feed Management:**
+    - `feed list` and `feed create` commands are now fully integrated and callable in-process.
 
 ## Resolved Issues
-- **Data Retrieval:** Fixed `Unknown object context type` error by instantiating `ChRISPluginGroup` directly.
-- **Connection:** Fixed `Cannot read properties of undefined (reading 'context_set')` by ensuring proper `ChRISConnection` initialization.
-- **Prompt State:** Fixed "disconnected" prompt by ensuring `chell` uses the correct `chrisConnection` instance.
-- **Execution:** Fixed `permission denied` by adding `chmod +x` to build artifact.
+- **Data Retrieval:** Fixed `Unknown object context type` error by correctly instantiating `ChRISFeedGroup` in `salsa`.
+- **Command Dispatch:** Resolved issues with `chili` module import paths (`dist/` vs. co-located types).
+- **Previous `ls` Refactoring:** Successfully consolidated `ls` logic into `chili` and removed duplication in `chell`.
+- **Typing Strictness:** Ensured pervasive and explicit typing across all refactored code.
+- **Tests:** All unit tests are passing.
 
 ## Known Issues
-- **Tests:** `tests/index.test.ts` fails with `Maximum call stack size exceeded` (likely ESM/Jest config issue with dependencies).
+- None currently tracked.
 
 ## Next Steps
 - **Enhanced VFS:** Implement `/feed` virtual directory to navigate feeds as filesystems.
 - **Path Autocompletion:** Implement async path completion in `completer`.
-- **Fix Tests:** Investigate `index.test.ts` failure.
+- **Audit:** Final audit of `chili`, `chell` (beyond builtins), and `salsa` for strict typing and RPN naming (especially legacy code not touched in refactor).

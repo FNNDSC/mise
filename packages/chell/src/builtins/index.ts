@@ -9,12 +9,22 @@ import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
-import { files_list as chefs_ls_cmd } from '@fnndsc/chili/commands/fs/ls.js';
-import { ResourceItem } from '@fnndsc/chili/commands/fs/ls.js';
-import { files_content } from '@fnndsc/salsa';
+import { files_upload as chefs_upload_cmd } from '@fnndsc/chili/commands/fs/upload.js';
+import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
+import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
+import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
+import { renderMkdir, renderTouch, renderUpload, renderCat } from '@fnndsc/chili/views/fs.js';
+import { renderLogin, renderLogout } from '@fnndsc/chili/views/connect.js';
+import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
+import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
+import { renderPluginList, renderPluginRun } from '@fnndsc/chili/views/plugin.js';
+import { Plugin, PluginInstance } from '@fnndsc/chili/models/plugin.js';
+import { feeds_fetchList } from '@fnndsc/chili/commands/feeds/list.js';
+import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
+import { renderFeedList, renderFeedCreate } from '@fnndsc/chili/views/feed.js';
+import { Feed } from '@fnndsc/chili/models/feed.js';
+import { FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import chalk from 'chalk';
-import * as path from 'path';
-import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 
 export { commandArgs_process };
@@ -26,8 +36,8 @@ export type { ParsedArgs };
  * @returns The absolute path.
  */
 export async function path_resolve(inputPath: string): Promise<string> {
-  const user = await session.connection.user_get();
-  const cwd = await session.getCWD();
+  const user: string | null = await session.connection.user_get();
+  const cwd: string = await session.getCWD();
   return path_resolve_pure(inputPath, { user, cwd });
 }
 
@@ -43,16 +53,13 @@ export async function builtin_cd(args: string[]): Promise<void> {
   
   // 'cd' with no args goes to home
   if (!pathArg) {
-    const user = await session.connection.user_get();
-    const home = user ? `/home/${user}` : '/';
-    // We rely on the validation logic below to ensure home exists (it should)
-    // But wait, we need to check if it exists? Usually yes.
-    // Let's just reuse the logic by pretending arg is '~'
+    const user: string | null = await session.connection.user_get();
+    // Reuse logic by pretending arg is '~'
     return builtin_cd(['~']);
   }
 
   try {
-    const targetPath = await path_resolve(pathArg);
+    const targetPath: string = await path_resolve(pathArg);
 
     // Handle virtual directories
     if (targetPath === '/bin') {
@@ -67,18 +74,21 @@ export async function builtin_cd(args: string[]): Promise<void> {
     }
 
     try {
-      const folder = await client.getFileBrowserFolderByPath(targetPath);
+      // Note: getFileBrowserFolderByPath returns generic object or null.
+      // We treat it as unknown here as we only check existence.
+      const folder: unknown = await client.getFileBrowserFolderByPath(targetPath);
       if (folder) {
         await session.setCWD(targetPath);
       } else {
         console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
       }
-    } catch (apiError: any) {
+    } catch (apiError: unknown) {
       console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
     }
 
-  } catch (error: any) {
-    console.error(chalk.red(`Failed to cd: ${error.message}`));
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`Failed to cd: ${msg}`));
   }
 }
 
@@ -99,20 +109,45 @@ export async function builtin_pwd(): Promise<void> {
  * @returns A Promise that resolves when the directory contents are listed.
  */
 export async function builtin_ls(args: string[]): Promise<void> {
-  const parsed = commandArgs_process(args);
-  const pathArgs = parsed._ as string[];
-  let target = pathArgs[0];
+  const parsed: ParsedArgs = commandArgs_process(args);
+  const pathArgs: string[] = parsed._ as string[];
+  let target: string | undefined = pathArgs[0];
   
   if (target) {
     target = await path_resolve(target);
   }
   
-  const options = {
+  const options: { long: boolean; human: boolean } = {
     long: !!parsed['l'],
     human: !!parsed['h']
   };
   
   await vfs.list(target, options);
+}
+
+/**
+ * Uploads a local file or directory to ChRIS.
+ *
+ * @param args - [localPath, remotePath]
+ */
+export async function builtin_upload(args: string[]): Promise<void> {
+  if (args.length < 2) {
+    console.log(chalk.red('Usage: upload <local_path> <remote_path>'));
+    return;
+  }
+  const localPath: string = args[0];
+  const remotePath: string = args[1];
+  
+  const targetRemote: string = await path_resolve(remotePath);
+  
+  console.log(`Uploading ${localPath} to ${targetRemote}...`);
+  try {
+    const success: boolean = await chefs_upload_cmd(localPath, targetRemote);
+    console.log(renderUpload(localPath, targetRemote, success));
+  } catch (e: unknown) {
+    const msg: string = e instanceof Error ? e.message : String(e);
+    console.error(chalk.red(`Upload error: ${msg}`));
+  }
 }
 
 /**
@@ -129,10 +164,12 @@ export async function builtin_connect(args: string[]): Promise<void> {
 
   if (user && password && url) {
     try {
-      await session.connection.connection_connect({ user, password, url, debug: false });
-      console.log(chalk.green('Successfully connected to ChRIS.'));
-    } catch (error: any) {
-      console.error(chalk.red(`Connection failed: ${error.message}`));
+      const success: boolean = await connect_login({ user, password, url, debug: false });
+      console.log(renderLogin(success, url, user));
+    } catch (error: unknown) {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.log(renderLogin(false, url, user));
+      console.error(chalk.red(`Connection failed: ${msg}`));
     }
   } else {
     console.log(chalk.red('Usage: connect --user <username> --password <password> <url>'));
@@ -146,10 +183,86 @@ export async function builtin_connect(args: string[]): Promise<void> {
  */
 export async function builtin_logout(): Promise<void> {
   try {
-    await session.connection.connection_logout();
-    console.log(chalk.green('Logged out from ChRIS.'));
-  } catch (error: any) {
-    console.error(chalk.red(`Logout failed: ${error.message}`));
+    await connect_logout();
+    console.log(renderLogout(true));
+  } catch (error: unknown) {
+    console.log(renderLogout(false));
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`Logout failed: ${msg}`));
+  }
+}
+
+/**
+ * Handles plugin commands.
+ *
+ * @param args - command arguments.
+ */
+export async function builtin_plugin(args: string[]): Promise<void> {
+  const parsed: ParsedArgs = commandArgs_process(args);
+  const subcommand = parsed._[0];
+  
+  if (!subcommand) {
+     console.log(chalk.red("Usage: plugin <list|run> ..."));
+     return;
+  }
+
+  try {
+    if (subcommand === 'list') {
+       const plugins: Plugin[] = await plugins_fetchList(parsed as any);
+       console.log(renderPluginList(plugins));
+    } else if (subcommand === 'run') {
+       const searchable = parsed._[1];
+       if (!searchable) {
+          console.log(chalk.red("Usage: plugin run <plugin> [args...]"));
+          return;
+       }
+       const params = args.slice(2).join(' ');
+       const instance: PluginInstance | null = await plugin_execute(searchable, params);
+       if (instance) {
+          console.log(renderPluginRun(instance));
+       } else {
+          console.error(chalk.red("Plugin execution failed."));
+       }
+    } else {
+       console.log(chalk.red(`Unknown plugin command: ${subcommand}`));
+    }
+  } catch (e: unknown) {
+    const msg: string = e instanceof Error ? e.message : String(e);
+    console.error(chalk.red(`Plugin error: ${msg}`));
+  }
+}
+
+/**
+ * Handles feed commands.
+ *
+ * @param args - command arguments.
+ */
+export async function builtin_feed(args: string[]): Promise<void> {
+  const parsed: ParsedArgs = commandArgs_process(args);
+  const subcommand = parsed._[0];
+  
+  if (!subcommand) {
+     console.log(chalk.red("Usage: feed <list|create> ..."));
+     return;
+  }
+
+  try {
+    if (subcommand === 'list') {
+       const { feeds, selectedFields }: FeedListResult = await feeds_fetchList(parsed as any);
+       console.log(renderFeedList(feeds, selectedFields));
+    } else if (subcommand === 'create') {
+       // Requires --dirs and --params flag handling which parsed already has.
+       // feed create --dirs ...
+       const feed: Feed | null = await feed_create(parsed as any);
+       if (feed) {
+          console.log(renderFeedCreate(feed));
+       }
+    } else {
+       console.log(chalk.red(`Unknown feed command: ${subcommand}`));
+    }
+  } catch (e: unknown) {
+    const msg: string = e instanceof Error ? e.message : String(e);
+    console.error(chalk.red(`Feed error: ${msg}`));
   }
 }
 
@@ -175,9 +288,9 @@ export async function builtin_chefs(args: string[]): Promise<void> {
         if (subArgs[0]) {
           const targetPath: string = subArgs[0].startsWith('/')
             ? subArgs[0]
-            : path.posix.resolve(currentChrisFolder, subArgs[0]);
-          await chefs_mkdir_cmd(targetPath);
-          console.log(chalk.green(`Directory ${targetPath} created.`));
+            : await path_resolve(subArgs[0]);
+          const success: boolean = await chefs_mkdir_cmd(targetPath);
+          console.log(renderMkdir(targetPath, success));
         } else {
           console.log(chalk.red('Usage: chefs mkdir <path>'));
         }
@@ -186,19 +299,23 @@ export async function builtin_chefs(args: string[]): Promise<void> {
         if (subArgs[0]) {
           const targetPath: string = subArgs[0].startsWith('/')
             ? subArgs[0]
-            : path.posix.resolve(currentChrisFolder, subArgs[0]);
-          await chefs_touch_cmd(targetPath);
-          console.log(chalk.green(`File ${targetPath} created.`));
+            : await path_resolve(subArgs[0]);
+          const success: boolean = await chefs_touch_cmd(targetPath);
+          console.log(renderTouch(targetPath, success));
         } else {
           console.log(chalk.red('Usage: chefs touch <path>'));
         }
+        break;
+      case 'upload':
+        await builtin_upload(subArgs);
         break;
       default:
         console.log(chalk.red(`Unknown chefs subcommand: ${subcommand}`));
         break;
     }
-  } catch (error: any) {
-    console.error(chalk.red(`Chefs command failed: ${error.message}`));
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`Chefs command failed: ${msg}`));
   }
 }
 
@@ -208,13 +325,13 @@ export async function builtin_chefs(args: string[]): Promise<void> {
  * @param args - Command line arguments (file path).
  */
 export async function builtin_cat(args: string[]): Promise<void> {
-  const pathArg = args[0];
+  const pathArg: string | undefined = args[0];
   if (!pathArg) {
      console.error(chalk.red('Usage: cat <file>'));
      return;
   }
   
-  const target = await path_resolve(pathArg);
+  const target: string = await path_resolve(pathArg);
   
   if (target.startsWith('/bin/')) {
      console.error(chalk.red('Cannot cat plugins yet.'));
@@ -222,13 +339,10 @@ export async function builtin_cat(args: string[]): Promise<void> {
   }
   
   try {
-     const content = await files_content(target);
-     if (content !== null) {
-        console.log(content);
-     } else {
-        console.error(chalk.red(`cat: ${pathArg}: No such file or directory`));
-     }
-  } catch (e: any) {
-     console.error(chalk.red(`cat: ${e.message}`));
+     const content: string | null = await chefs_cat_cmd(target);
+     console.log(renderCat(content, pathArg));
+  } catch (e: unknown) {
+     const msg: string = e instanceof Error ? e.message : String(e);
+     console.error(chalk.red(`cat: ${msg}`));
   }
 }

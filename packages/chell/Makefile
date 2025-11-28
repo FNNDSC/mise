@@ -81,7 +81,7 @@ scrub:
 	@echo "🧽 Scrubbing chell..."
 	cd $(CHELL_DIR) && rm -rf dist node_modules package-lock.json
 
-taco: scrub shop prep cook
+taco: scrub shop prep cook taste
 
 install: prep
 build: cook

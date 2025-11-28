@@ -19,7 +19,7 @@ import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 /**
  * Structure for parsed command line arguments.
  */
-interface ParsedArgs {
+export interface ParsedArgs {
   _: string[];
   [key: string]: string | boolean | string[];
 }
@@ -33,7 +33,7 @@ interface ParsedArgs {
  * @param args - The array of raw argument strings to parse.
  * @returns An object containing parsed flags and positional arguments.
  */
-function commandArgs_process(args: string[]): ParsedArgs {
+export function commandArgs_process(args: string[]): ParsedArgs {
   const result: ParsedArgs = { _: [] };
   for (let i = 0; i < args.length; i++) {
     const arg: string = args[i];

@@ -35,19 +35,18 @@ const BUILTINS: string[] = [
  */
 export function completer(line: string, callback: (err: any, result: [string[], string]) => void): void {
   const trimmed = line.trimStart();
+  // Check if we are completing the first word (command) or subsequent args
+  // A simple split by space might be enough for now, assuming no quoted args with spaces for MVP
   const args = trimmed.split(/\s+/);
   
   // Case 1: Command Completion (First word)
-  // If we are typing the first word (command)
-  // Note: If line ends with space, we are starting the next arg, so args.length would be 2 (with second being empty)
-  // But split(/\s+/) on "cmd " gives ["cmd", ""]? Let's verify standard split behavior.
-  // "cmd ".trimStart().split(/\s+/) -> ["cmd", ""]
-  
+  // If we have only one token and the line doesn't end with space, we are typing the command
+  // Or if line is empty
   const isCommandCompletion = args.length === 1 && !line.endsWith(' ');
 
   if (isCommandCompletion) {
     const hits = BUILTINS.filter((c) => c.startsWith(trimmed));
-    callback(null, [hits.length ? hits : BUILTINS, trimmed]);
+    callback(null, [hits, trimmed]);
     return;
   }
   
@@ -82,6 +81,7 @@ async function path_complete(partial: string): Promise<string[]> {
   
   // Handle ~ expansion for the partial path base
   let effectivePartial = partial;
+  /*
   if (partial.startsWith('~')) {
     const user = await session.connection.user_get();
     const home = user ? `/home/${user}` : '/';
@@ -91,6 +91,7 @@ async function path_complete(partial: string): Promise<string[]> {
       effectivePartial = path.posix.join(home, partial.substring(2));
     }
   }
+  */
 
   if (effectivePartial.endsWith('/')) {
      dirToList = effectivePartial;
@@ -132,7 +133,7 @@ async function path_complete(partial: string): Promise<string[]> {
          items.push('bin');
        }
      } catch (e) {
-       // Ignore errors (e.g. perms, not a dir)
+       // Ignore errors (e.g., perms, not a dir)
      }
   }
   
@@ -145,7 +146,7 @@ async function path_complete(partial: string): Promise<string[]> {
   const dirPart = partial.endsWith('/') ? partial : (partial.includes('/') ? partial.substring(0, partial.lastIndexOf('/') + 1) : '');
   
   // Add trailing slash for directories? 
-  // Ideally yes, but we don't easily know which are dirs without checking types.
+  // Ideally yes, but we don't easily know which are directories without checking types.
   // For now, just return names.
   
   return matches.map(m => dirPart + m);

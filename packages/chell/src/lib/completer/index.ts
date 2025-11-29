@@ -10,7 +10,15 @@ import { session } from '../../session/index.js';
 import { plugins_listAll } from '@fnndsc/salsa';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
+import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import * as path from 'path';
+
+/**
+ * Callback function type for autocomplete results.
+ * @param err - Error if completion failed, null otherwise.
+ * @param result - Tuple of [matches array, original input string].
+ */
+type CompleterCallback = (err: Error | null, result: [string[], string]) => void;
 
 const BUILTINS: string[] = [
   'cd',
@@ -33,7 +41,7 @@ const BUILTINS: string[] = [
  * @param line - The current input line.
  * @param callback - The callback function to return results.
  */
-export function completer(line: string, callback: (err: any, result: [string[], string]) => void): void {
+export function completer(line: string, callback: CompleterCallback): void {
   const trimmed = line.trimStart();
   // Check if we are completing the first word (command) or subsequent args
   // A simple split by space might be enough for now, assuming no quoted args with spaces for MVP
@@ -118,14 +126,16 @@ async function path_complete(partial: string): Promise<string[]> {
      // Virtual bin - plugins
      const plugins = await plugins_listAll({});
      if (plugins && plugins.tableData) {
-       items = plugins.tableData.map((p: any) => p.name);
+       items = plugins.tableData.map((p: Record<string, unknown>) => {
+         return typeof p.name === 'string' ? p.name : String(p.name ?? '');
+       });
      }
   } else {
      // Native ChRIS
      try {
-       const lsItems = await files_list({} as CLIoptions, absDirToList);
+       const lsItems: ListingItem[] | null = await files_list({} as CLIoptions, absDirToList);
        if (lsItems) {
-           items = lsItems.map((i: any) => i.name);
+           items = lsItems.map((i: ListingItem) => i.name);
        }
        
        // Inject 'bin' if at root

@@ -90,11 +90,10 @@ export class VFS {
       if (target === '/' || target === '') {
         items.push({
           name: 'bin',
-          type: 'dir', // Display as dir
+          type: 'vfs', // Mark as virtual file system
           size: 0,
           owner: 'root',
           date: new Date().toISOString(),
-          // We can maybe mark it specially if needed, but type 'dir' works for standard views
         });
         // Re-sort to ensure bin appears in correct place
         items.sort((a: ListingItem, b: ListingItem) => a.name.localeCompare(b.name));

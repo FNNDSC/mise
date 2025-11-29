@@ -15,23 +15,35 @@ import { fileURLToPath } from 'url';
 import { Command } from 'commander';
 import { REPL } from './core/repl.js';
 import { session } from './session/index.js';
-import { 
-  builtin_cd, 
-  builtin_ls, 
-  builtin_pwd, 
-  builtin_connect, 
+import {
+  builtin_cd,
+  builtin_ls,
+  builtin_pwd,
+  builtin_connect,
   builtin_logout,
   builtin_chefs,
   builtin_cat,
   builtin_upload,
   builtin_plugin,
-  builtin_feed
+  builtin_feed,
+  builtin_files,
+  builtin_links,
+  builtin_dirs
 } from './builtins/index.js';
+
+/**
+ * Interface for package.json structure.
+ */
+interface PackageJson {
+  name: string;
+  version: string;
+  description?: string;
+  [key: string]: unknown;
+}
 
 const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = path.dirname(__filename);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const packageJson: any = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
+const packageJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
 
 /**
  * Spawns the `chili` CLI as a child process.
@@ -40,7 +52,7 @@ const packageJson: any = JSON.parse(readFileSync(path.resolve(__dirname, '../pac
  * @param args - The arguments to pass to the command.
  * @returns A Promise resolving when the child process exits.
  */
-async function chiliCommand_run(command: string, args: string[]): Promise<void> {
+export async function chiliCommand_run(command: string, args: string[]): Promise<void> {
   const chiliPath: string = path.resolve(__dirname, '../../chili/dist/index.js');
   return new Promise((resolve) => {
     const child: ChildProcess = spawn('node', [chiliPath, command, ...args], {
@@ -84,6 +96,15 @@ async function command_handle(line: string): Promise<void> {
     case 'feeds':
       await builtin_feed(args);
       break;
+    case 'files':
+      await builtin_files(args);
+      break;
+    case 'links':
+      await builtin_links(args);
+      break;
+    case 'dirs':
+      await builtin_dirs(args);
+      break;
     case 'exit': process.exit(0); break;
     default: await chiliCommand_run(command, args); break;
   }
@@ -91,7 +112,12 @@ async function command_handle(line: string): Promise<void> {
 
 import { Writable } from 'stream';
 
-// ... (existing imports)
+/**
+ * Extended Writable stream with muted property for password input.
+ */
+interface MutableWritable extends Writable {
+  muted?: boolean;
+}
 
 /**
  * Prompts the user for a password without echoing input.
@@ -102,23 +128,23 @@ import { Writable } from 'stream';
  */
 async function password_prompt(user: string, url: string): Promise<string> {
   return new Promise((resolve) => {
-    const mutableStdout = new Writable({
+    const mutableStdout: MutableWritable = new Writable({
       write: function(chunk, encoding, callback) {
-        if (!(this as any).muted)
+        if (!(this as MutableWritable).muted)
           process.stdout.write(chunk, encoding);
         callback();
       }
     });
-    
+
     const rl = readline.createInterface({
       input: process.stdin,
       output: mutableStdout,
       terminal: true
     });
 
-    (mutableStdout as any).muted = false;
+    mutableStdout.muted = false;
     process.stdout.write(`Password for ${user}@${url}: `);
-    (mutableStdout as any).muted = true;
+    mutableStdout.muted = true;
 
     rl.question('', (password: string) => {
       rl.close();
@@ -177,15 +203,16 @@ export async function chell_start(): Promise<void> {
       if (url && password) {
           console.log(chalk.blue(`[-] Establishing uplink to ${url}...`));
           try {
-              await session.connection.connection_connect({ 
-                  user: user!, 
-                  password: password, 
-                  url: url, 
-                  debug: false 
+              await session.connection.connection_connect({
+                  user: user!,
+                  password: password,
+                  url: url,
+                  debug: false
               });
               console.log(chalk.green('[+] Connection established.'));
-          } catch (error: any) {
-              console.error(chalk.red(`[!] Connection failed: ${error.message}`));
+          } catch (error: unknown) {
+              const errorMessage: string = error instanceof Error ? error.message : String(error);
+              console.error(chalk.red(`[!] Connection failed: ${errorMessage}`));
               process.exit(1);
           }
       }

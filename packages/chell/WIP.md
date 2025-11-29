@@ -5,7 +5,7 @@
 
 ## Recently Implemented
 - **Full In-Process Command Execution:**
-    - `chell` now directly imports and executes commands (e.g., `ls`, `cd`, `connect`, `upload`, `plugin`, `feed`) from the `chili` library.
+    - `chell` now directly imports and executes commands (e.g., `ls`, `cd`, `connect`, `upload`, `plugin`, `feed`, `files`, `links`, `dirs`) from the `chili` library.
     - Eliminated process spawning for core commands, significantly improving performance and integration.
 - **Unified Command/View/Model Architecture:**
     - `chell` utilizes shared command logic and presentation (`render*` views) provided by `chili`, ensuring consistent behavior and output across both the `chili` CLI and the `chell` REPL.
@@ -19,6 +19,14 @@
     - `plugin list` and `plugin run` commands are now fully integrated and callable in-process.
 - **Improved Feed Management:**
     - `feed list` and `feed create` commands are now fully integrated and callable in-process.
+- **File/Link/Dir Management:**
+    - Added builtin support for `files`, `links`, and `dirs` commands with native `list` and `fieldslist` subcommands.
+    - Unhandled subcommands (delete, share) automatically fall through to `chili` with informative messaging.
+- **Color Configuration System:**
+    - Implemented YAML-based color configuration for file system types (`colors.yml` in `chili`).
+    - Added `vfs` type to distinguish virtual directories like `/bin` from regular directories.
+    - VFS directories now display in cyanBright, regular dirs in cyan, plugins in green, etc.
+    - Color configuration properly resides in `chili` (view layer), not `cumin` (infrastructure layer).
 
 ## Resolved Issues
 - **Data Retrieval:** Fixed `Unknown object context type` error by correctly instantiating `ChRISFeedGroup` in `salsa`.
@@ -26,6 +34,9 @@
 - **Previous `ls` Refactoring:** Successfully consolidated `ls` logic into `chili` and removed duplication in `chell`.
 - **Typing Strictness:** Ensured pervasive and explicit typing across all refactored code.
 - **Tests:** All unit tests are passing.
+- **Architectural Layering:** Moved color configuration from `cumin` (infrastructure) to `chili` (view layer) to respect layer separation.
+- **VFS Type System:** Added `vfs` type to `ListingItem` model and updated VFS to properly mark virtual directories.
+- **js-yaml Import:** Fixed CommonJS/ESM interop issue with js-yaml by using default import pattern.
 
 ## Known Issues
 - None currently tracked.

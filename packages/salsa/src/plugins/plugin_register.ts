@@ -2,6 +2,23 @@ import { chrisConnection } from '@fnndsc/cumin';
 import { PluginList } from '@fnndsc/chrisapi';
 
 /**
+ * Interface for plugin registration data.
+ */
+export interface PluginRegistrationData {
+  name: string;
+  dock_image: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Interface for plugin registration response.
+ */
+export interface PluginRegistrationResponse {
+  name: string;
+  [key: string]: unknown;
+}
+
+/**
  * Registers a new plugin with ChRIS CUBE.
  *
  * @param pluginData - The JSON payload representing the plugin's descriptor.
@@ -9,9 +26,9 @@ import { PluginList } from '@fnndsc/chrisapi';
  * @returns A Promise resolving to the registered plugin's data, or null on failure.
  */
 export async function plugin_register(
-  pluginData: any,
+  pluginData: PluginRegistrationData,
   computeResources?: string[]
-): Promise<any | null> {
+): Promise<PluginRegistrationResponse | null> {
   try {
     const client = await chrisConnection.client_get();
     if (!client) {
@@ -22,7 +39,7 @@ export async function plugin_register(
     const pluginList: PluginList = await client.getPlugins();
 
     // Prepare data for POST request
-    const data: any = {
+    const data: Record<string, unknown> = {
       ...pluginData,
     };
 
@@ -33,6 +50,7 @@ export async function plugin_register(
     // Call the internal _post method directly.
     // The chrisapi library does not expose a public 'create' method on PluginList
     // but ListResource (its base class) provides _post.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = await (pluginList as any)._post(data);
 
     if (response && response.data) {
@@ -42,8 +60,9 @@ export async function plugin_register(
       console.error('Error: Failed to register plugin. No data in response.');
       return null;
     }
-  } catch (error: any) {
-    console.error(`Error registering plugin: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage: string = error instanceof Error ? error.message : String(error);
+    console.error(`Error registering plugin: ${errorMessage}`);
     return null;
   }
 }

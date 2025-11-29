@@ -62,7 +62,7 @@ export async function feed_create(dirs: string[], params: ChRISObjectParams = {}
 export interface FeedShareOptions {
   is_public?: boolean; // True to make public, false to make unpublic
   // Add other sharing options here if needed, e.g., for specific users/groups
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -97,8 +97,9 @@ export async function feeds_share(feedId: number, options: FeedShareOptions): Pr
     errorStack.stack_push("error", "No valid sharing option specified (e.g., --is_public).");
     return false;
 
-  } catch (error: any) {
-    errorStack.stack_push("error", `Error sharing feed ID ${feedId}: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Error sharing feed ID ${feedId}: ${errorMessage}`);
     return false;
   }
 }
@@ -124,8 +125,9 @@ export async function feed_delete(id: number): Promise<boolean> {
     }
     await feed.delete();
     return true;
-  } catch (error: any) {
-    errorStack.stack_push("error", `Error deleting feed ID ${id}: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Error deleting feed ID ${id}: ${errorMessage}`);
     return false;
   }
 }

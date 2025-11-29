@@ -94,12 +94,30 @@ export async function files_mkdir(folderPath: string): Promise<boolean> {
       errorStack.stack_push("error", `Failed to create folder: ${folderPath}. No data in response.`);
       return false;
     }
-  } catch (error: any) {
-    if (error.response && error.response.status === 400 && error.response.data.path && error.response.data.path[0].includes('already exists')) {
+  } catch (error: unknown) {
+    // Type guard for axios error with response
+    if (
+      error &&
+      typeof error === 'object' &&
+      'response' in error &&
+      error.response &&
+      typeof error.response === 'object' &&
+      'status' in error.response &&
+      error.response.status === 400 &&
+      'data' in error.response &&
+      error.response.data &&
+      typeof error.response.data === 'object' &&
+      'path' in error.response.data &&
+      Array.isArray(error.response.data.path) &&
+      error.response.data.path[0] &&
+      typeof error.response.data.path[0] === 'string' &&
+      error.response.data.path[0].includes('already exists')
+    ) {
       errorStack.stack_push("warning", `Folder '${folderPath}' already exists.`);
       return true; // Consider it a success if it already exists
     }
-    errorStack.stack_push("error", `Error creating folder '${folderPath}': ${error.message}`);
+    const errorMessage: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Error creating folder '${folderPath}': ${errorMessage}`);
     return false;
   }
 }
@@ -112,7 +130,7 @@ export interface FileShareOptions {
   is_public?: boolean;
   // Define options for sharing files
   // e.g., userId: number, permission: 'read' | 'write'
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**

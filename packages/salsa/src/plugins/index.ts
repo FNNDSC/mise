@@ -70,7 +70,7 @@ export interface PluginSearchOptions {
   name?: string;
   id?: string;
   // Add other search parameters as they become known and needed
-  [key: string]: any; // Allow for arbitrary key-value pairs initially
+  [key: string]: unknown; // Allow for arbitrary key-value pairs initially
 }
 
 /**

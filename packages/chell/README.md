@@ -71,7 +71,7 @@ Alternatively, use the `connect` command within the shell:
 
 ### Basic Commands
 
-*   **`ls`**: List contents. Supports `-l` (long) and `-h` (human-readable).
+*   **`ls`**: List contents. Supports `-l` (long), `-h` (human-readable), `--sort <field>` (sort by name/size/date/owner), and `-r`/`--reverse` (reverse order).
 *   **`cd <path>`**: Change directory.
 *   **`pwd`**: Print working directory.
 *   **`cat <file>`**: Display file content.

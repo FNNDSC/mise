@@ -265,7 +265,7 @@ describe('Builtins - Core Functions', () => {
     it('should list current directory when no args', async () => {
       await builtin_ls([]);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: false });
     });
 
     it('should list specified path', async () => {
@@ -273,25 +273,67 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_ls(['/tmp']);
 
-      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false });
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false });
     });
 
     it('should handle -l flag for long format', async () => {
       await builtin_ls(['-l']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false });
     });
 
     it('should handle -h flag for human-readable sizes', async () => {
       await builtin_ls(['-l', '-h']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true, sort: 'name', reverse: false });
     });
 
     it('should handle multiple paths by showing basenames', async () => {
       await builtin_ls(['file1.txt', 'file2.txt']);
 
       expect(consoleLogSpy).toHaveBeenCalledWith('file1.txt  file2.txt');
+    });
+
+    it('should handle --sort flag with size option', async () => {
+      await builtin_ls(['--sort', 'size']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: false });
+    });
+
+    it('should handle --sort flag with date option', async () => {
+      await builtin_ls(['--sort', 'date']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'date', reverse: false });
+    });
+
+    it('should handle --sort flag with owner option', async () => {
+      await builtin_ls(['--sort', 'owner']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'owner', reverse: false });
+    });
+
+    it('should handle --reverse flag', async () => {
+      await builtin_ls(['--reverse']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true });
+    });
+
+    it('should handle -r flag for reverse', async () => {
+      await builtin_ls(['-r']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true });
+    });
+
+    it('should handle combined --sort and --reverse flags', async () => {
+      await builtin_ls(['--sort', 'size', '--reverse']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true });
+    });
+
+    it('should handle combined -l, --sort, and --reverse flags', async () => {
+      await builtin_ls(['-l', '--sort', 'date', '--reverse']);
+
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'date', reverse: true });
     });
   });
 
@@ -501,7 +543,7 @@ describe('Builtins - Core Functions', () => {
     it('should handle ls subcommand', async () => {
       await builtin_chefs(['ls', '-l']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false });
     });
 
     it('should handle mkdir subcommand', async () => {

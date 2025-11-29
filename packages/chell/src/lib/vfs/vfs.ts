@@ -22,9 +22,9 @@ export class VFS {
   /**
    * List contents of a directory (Virtual or Native).
    * @param targetPath - The path to list. If empty, uses CWD.
-   * @param options - Listing options (long, human).
+   * @param options - Listing options (long, human, sort, reverse).
    */
-  async list(targetPath?: string, options: { long?: boolean, human?: boolean } = {}): Promise<void> {
+  async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
     const cwd: string = await session.getCWD();
     const effectivePath: string = targetPath 
       ? path.posix.resolve(cwd, targetPath) 
@@ -40,7 +40,7 @@ export class VFS {
   /**
    * Lists the contents of the virtual `/bin` directory (plugins).
    */
-  private async listVirtualBin(options: { long?: boolean, human?: boolean } = {}): Promise<void> {
+  private async listVirtualBin(options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
     try {
       const plugins = await plugins_listAll({});
       const items: ListingItem[] = [];
@@ -69,9 +69,9 @@ export class VFS {
 
       // Use shared view
       if (options.long) {
-        console.log(long_render(items, { human: !!options.human }));
+        console.log(long_render(items, { human: !!options.human, sort: options.sort, reverse: options.reverse }));
       } else {
-        console.log(grid_render(items));
+        console.log(grid_render(items, { sort: options.sort, reverse: options.reverse }));
       }
 
     } catch (error: unknown) {
@@ -85,7 +85,7 @@ export class VFS {
    *
    * @param target - The path to list.
    */
-  private async listNative(target: string, options: { long?: boolean, human?: boolean }): Promise<void> {
+  private async listNative(target: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean }): Promise<void> {
     try {
       // Fetch from shared logic
       const items: ListingItem[] = await files_list({ path: target }, target);
@@ -106,9 +106,9 @@ export class VFS {
       if (items.length === 0) return;
 
       if (options.long) {
-        console.log(long_render(items, { human: !!options.human }));
+        console.log(long_render(items, { human: !!options.human, sort: options.sort, reverse: options.reverse }));
       } else {
-        console.log(grid_render(items));
+        console.log(grid_render(items, { sort: options.sort, reverse: options.reverse }));
       }
 
     } catch (error: unknown) {

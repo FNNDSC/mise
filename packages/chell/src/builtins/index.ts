@@ -142,9 +142,25 @@ export async function builtin_ls(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
 
-  const options: { long: boolean; human: boolean } = {
+  // Parse sort option
+  let sortBy: 'name' | 'size' | 'date' | 'owner' = 'name';
+  if (parsed['sort']) {
+    const sortValue = String(parsed['sort']);
+    if (['name', 'size', 'date', 'owner'].includes(sortValue)) {
+      sortBy = sortValue as 'name' | 'size' | 'date' | 'owner';
+    }
+  }
+
+  const options: {
+    long: boolean;
+    human: boolean;
+    sort: 'name' | 'size' | 'date' | 'owner';
+    reverse: boolean;
+  } = {
     long: !!parsed['l'],
-    human: !!parsed['h']
+    human: !!parsed['h'],
+    sort: sortBy,
+    reverse: !!parsed['reverse'] || !!parsed['r']
   };
 
   // If no paths specified, list current directory

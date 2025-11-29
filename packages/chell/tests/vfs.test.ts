@@ -143,7 +143,7 @@ describe('VFS', () => {
       expect(mockGrid_render).toHaveBeenCalledWith([
         { name: 'pl-dircopy-v2.1.0', type: 'plugin', size: 0, owner: 'system', date: '2025-01-01' },
         { name: 'pl-simpledsapp-v1.0.0', type: 'plugin', size: 0, owner: 'system', date: '2025-01-02' }
-      ]);
+      ], { sort: undefined, reverse: undefined });
     });
 
     it('should handle plugin without version', async () => {
@@ -158,7 +158,7 @@ describe('VFS', () => {
 
       expect(mockGrid_render).toHaveBeenCalledWith([
         { name: 'pl-test', type: 'plugin', size: 0, owner: 'system', date: '2025-01-01' }
-      ]);
+      ], { sort: undefined, reverse: undefined });
     });
 
     it('should handle no plugins found', async () => {

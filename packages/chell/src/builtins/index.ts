@@ -28,7 +28,8 @@ import { FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import { files_fetchList } from '@fnndsc/chili/commands/files/list.js';
 import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
-import { FilteredResourceData } from '@fnndsc/cumin';
+import { FilteredResourceData, SingleContext } from '@fnndsc/cumin';
+import { context_getSingle } from '@fnndsc/salsa';
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 import { chiliCommand_run } from '../chell.js';
@@ -64,7 +65,8 @@ async function prompt_confirm(message: string): Promise<boolean> {
  * @returns The absolute path.
  */
 export async function path_resolve(inputPath: string): Promise<string> {
-  const user: string | null = await session.connection.user_get();
+  const context = context_getSingle();
+  const user: string | null = context.user;
   const cwd: string = await session.getCWD();
   return path_resolve_pure(inputPath, { user, cwd });
 }
@@ -579,4 +581,44 @@ export async function builtin_rm(args: string[]): Promise<void> {
       console.log(chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`));
     }
   }
+}
+
+/**
+ * Displays the current ChRIS context.
+ *
+ * @param args - Command line arguments (optional flags).
+ */
+export async function builtin_context(args: string[]): Promise<void> {
+  const context: SingleContext = context_getSingle();
+
+  const tableData = [
+    {
+      Context: 'ChRIS User',
+      Value: context.user || chalk.gray('Not set'),
+    },
+    {
+      Context: 'ChRIS URL',
+      Value: context.URL || chalk.gray('Not set'),
+    },
+    {
+      Context: 'ChRIS Folder',
+      Value: context.folder || chalk.gray('Not set'),
+    },
+    {
+      Context: 'ChRIS Feed',
+      Value: context.feed || chalk.gray('Not set'),
+    },
+    {
+      Context: 'ChRIS Plugin',
+      Value: context.plugin || chalk.gray('Not set'),
+    },
+  ];
+
+  table_display(
+    tableData,
+    ['Context', 'Value'],
+    {
+      title: { title: 'ChRIS Context', justification: 'center' },
+    }
+  );
 }

@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { completer } from '../lib/completer/index.js';
 import { settings } from '../config/settings.js';
+import { context_getSingle } from '@fnndsc/salsa';
 
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
@@ -62,15 +63,13 @@ export class REPL {
    */
   async prompt_update(): Promise<void> {
     if (!this.isOpen) return;
-    
-    const conn: typeof session.connection = session.connection;
-    // ...
-    const user: string | null = (await conn.authToken_get()) ? await conn.user_get() : 'disconnected';
-    const uri: string | null = await conn.chrisURL_get();
+
+    // Get current context to determine user and URL
+    const context = context_getSingle();
     const cwd: string = await session.getCWD();
-    
-    const promptUser: string = user || 'disconnected';
-    const promptUri: string = uri ? uri : 'no-cube'; // Use full URI
+
+    const promptUser: string = context.user || 'disconnected';
+    const promptUri: string = context.URL || 'no-cube';
     const promptPath: string = cwd;
 
     this.rl.setPrompt(`${chalk.green(promptUser)}@${chalk.cyan(promptUri)}:${chalk.yellow(promptPath)}$ `);

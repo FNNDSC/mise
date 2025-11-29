@@ -1,0 +1,355 @@
+= ChELL Login and Session Management
+:toc:
+:toclevels: 3
+
+== Overview
+
+ChELL manages user authentication and session persistence through integration with the underlying `cumin` library. Sessions are automatically saved to disk and restored on subsequent launches, providing a seamless experience across shell invocations.
+
+== Session State Management
+
+=== State Storage
+
+Session state is persisted to disk at `~/.config/@fnndsc/cumin/` and includes:
+
+* **User credentials**: Username and authentication token
+* **ChRIS URL**: The CUBE server endpoint
+* **Working directory**: Current folder path (`cwd`)
+* **Context**: Current feed and plugin selection
+
+=== Single Source of Truth
+
+ChELL uses the `chrisContext` object (from cumin) as the canonical source for all session state:
+
+* User identity
+* Server URL
+* Current working directory
+* Active feed and plugin context
+
+This ensures consistency across:
+
+* Startup boot sequence
+* Interactive prompt generation
+* Path resolution (`~`, `cd`, etc.)
+* All builtin commands
+
+== Boot Sequence
+
+=== Startup Flow
+
+When ChELL starts, it performs the following sequence:
+
+[source]
+----
+[-] Initializing session components...
+[+] Session initialized.
+[-] Checking for previous context...
+----
+
+==== Case 1: Valid Restored Session
+
+If a previous session is found with valid credentials:
+
+[source]
+----
+[+] Previous context detected
+    User: rudolphpienaar
+    URL:  http://ekanite.tch.harvard.edu:32223/api/v1/
+[-] Validating existing token...
+[-] Testing connection to http://ekanite.tch.harvard.edu:32223/api/v1/
+[+] Token validated with server
+[+] Session restored
+----
+
+The shell prompt will show the authenticated user:
+[source]
+----
+rudolphpienaar@http://ekanite.tch.harvard.edu:32223/api/v1/:/home/rudolphpienaar$
+----
+
+==== Case 2: Expired or Invalid Token
+
+If a previous session exists but the token is no longer valid:
+
+[source]
+----
+[+] Previous context detected
+    User: rudolphpienaar
+    URL:  http://ekanite.tch.harvard.edu:32223/api/v1/
+[-] Validating existing token...
+[-] Testing connection to http://ekanite.tch.harvard.edu:32223/api/v1/
+[!] Token expired or invalid
+    Error: 401 Unauthorized
+[!] Running in disconnected mode
+    Use: connect --user rudolphpienaar --password <pwd> http://ekanite.tch.harvard.edu:32223/api/v1/
+----
+
+The shell drops into disconnected mode:
+[source]
+----
+disconnected@http://ekanite.tch.harvard.edu:32223/api/v1/:/$
+----
+
+==== Case 3: No Previous Session
+
+If no previous session is found:
+
+[source]
+----
+[!] No previous context found
+----
+
+The shell starts in disconnected mode:
+[source]
+----
+disconnected@no-cube:/$
+----
+
+=== Token Validation
+
+ChELL does **not** blindly trust saved tokens. During boot, after finding a saved token on disk, ChELL:
+
+1. Loads the token from `~/.config/@fnndsc/cumin/<user>/<url_encoded>/`
+2. Creates a ChRIS API client with the token
+3. Makes an API call to validate the token (`client.getUser()`)
+4. Only marks the session as restored if the server responds successfully
+
+This ensures security and prevents using expired or revoked credentials.
+
+== Authentication Commands
+
+=== `connect`
+
+Establishes a new authenticated session with a ChRIS CUBE server.
+
+==== Syntax
+
+[source,bash]
+----
+connect --user <username> --password <password> <url>
+----
+
+==== Examples
+
+[source,bash]
+----
+# Connect to a ChRIS CUBE instance
+connect --user rudolphpienaar --password mypass123 http://localhost:8000/api/v1/
+
+# Connect with password prompt (more secure)
+connect --user rudolphpienaar http://localhost:8000/api/v1/
+Password for rudolphpienaar@http://localhost:8000/api/v1/:
+----
+
+==== Behavior
+
+The `connect` command:
+
+1. Prompts for password if not provided via `--password` flag
+2. Authenticates with the ChRIS CUBE server
+3. Saves the authentication token to disk
+4. Updates the session context (user, URL, cwd)
+5. Updates the shell prompt to reflect the authenticated user
+
+==== CLI Usage
+
+ChELL can also connect immediately on startup:
+
+[source,bash]
+----
+chell --user rudolphpienaar --password mypass123 http://localhost:8000/api/v1/
+----
+
+Or with password prompt:
+
+[source,bash]
+----
+chell --user rudolphpienaar http://localhost:8000/api/v1/
+Password for rudolphpienaar@http://localhost:8000/api/v1/:
+----
+
+=== `logout`
+
+Terminates the current authenticated session.
+
+==== Syntax
+
+[source,bash]
+----
+logout
+----
+
+==== Behavior
+
+The `logout` command:
+
+1. Removes the authentication token from disk
+2. Clears in-memory session state
+3. Returns the shell to disconnected mode
+4. Updates the prompt to show `disconnected@...`
+
+Note: The user context (username, URL, cwd) remains saved and can be used for reconnection hints.
+
+=== `context`
+
+Displays the current session context.
+
+==== Syntax
+
+[source,bash]
+----
+context
+----
+
+==== Example Output
+
+[source]
+----
+┌─────────────────────────────────────────────────────────────┐
+│                        ChRIS Context                        │
+├──────────────┬──────────────────────────────────────────────┤
+│      Context │ Value                                        │
+├──────────────┼──────────────────────────────────────────────┤
+│   ChRIS User │ rudolphpienaar                               │
+│    ChRIS URL │ http://ekanite.tch.harvard.edu:32223/api/v1/ │
+│ ChRIS Folder │ /home/rudolphpienaar                         │
+│   ChRIS Feed │ Not set                                      │
+│ ChRIS Plugin │ Not set                                      │
+└──────────────┴──────────────────────────────────────────────┘
+----
+
+==== Use Cases
+
+* Check current authentication status
+* Verify which server you're connected to
+* Confirm current working directory
+* Debug session state issues
+
+== Path Resolution
+
+=== Home Directory Expansion
+
+ChELL uses the authenticated username from the context to determine the home directory:
+
+[source,bash]
+----
+# When authenticated as rudolphpienaar
+pwd
+# Output: /
+
+cd ~
+# Goes to: /home/rudolphpienaar
+
+cd
+# Also goes to: /home/rudolphpienaar (cd with no args = cd ~)
+----
+
+If running in disconnected mode (no user context), `~` resolves to `/`:
+
+[source,bash]
+----
+# When disconnected
+cd ~
+# Goes to: /
+----
+
+=== Context-Based Resolution
+
+All path resolution operations use `context_getSingle()` to determine:
+
+* Username (for `~` expansion)
+* Current working directory (for relative paths)
+
+This ensures consistency whether the session was just connected or restored from disk.
+
+== Security Considerations
+
+=== Token Storage
+
+Authentication tokens are stored in plain text at:
+----
+~/.config/@fnndsc/cumin/<user>/<url_encoded>/@fnndsc_cumin_token.txt
+----
+
+**Important**: Ensure this directory has appropriate permissions (`0700`) to prevent unauthorized access.
+
+=== Token Validation
+
+ChELL validates tokens on every startup by making a server request. This means:
+
+* Network connectivity is required for session restoration
+* Expired tokens are immediately detected
+* Revoked credentials won't be silently used
+
+=== No Automatic Reauthentication
+
+For security, ChELL does **not** automatically prompt for password when tokens expire. Users must explicitly run `connect` to reauthenticate.
+
+== Troubleshooting
+
+=== "Token expired or invalid"
+
+**Cause**: Saved token is no longer accepted by the server.
+
+**Solution**: Reconnect with `connect` command:
+[source,bash]
+----
+connect --user <username> --password <password> <url>
+----
+
+=== "No previous context found"
+
+**Cause**: First time running ChELL or session was manually cleared.
+
+**Solution**: Connect to a ChRIS CUBE:
+[source,bash]
+----
+connect --user <username> --password <password> <url>
+----
+
+=== Prompt shows "disconnected" but context shows user
+
+**Cause**: Session state inconsistency (should not happen in current implementation).
+
+**Solution**:
+1. Run `logout` to clear state
+2. Run `connect` to establish fresh session
+
+=== Home directory not resolving correctly
+
+**Cause**: Username not loaded in context.
+
+**Solution**: Verify context with `context` command. If user is not set, reconnect with `connect`.
+
+== Implementation Details
+
+=== Architecture
+
+ChELL delegates session management to the `cumin` library:
+
+* `chrisContext`: Manages user, URL, folder, feed, plugin state
+* `chrisConnection`: Handles authentication and token storage
+* `NodeStorageProvider`: Provides filesystem I/O for state persistence
+
+=== State Consistency
+
+To ensure consistency, ChELL:
+
+1. Loads context from disk during `session.init()`
+2. Updates context with `chrisContext.currentContext_update()`
+3. Uses `context_getSingle()` as single source of truth throughout codebase
+4. Never directly accesses connection object for user/URL information
+
+=== Prompt Generation
+
+The REPL prompt is generated dynamically on each command:
+
+[source,typescript]
+----
+const context = context_getSingle();
+const promptUser = context.user || 'disconnected';
+const promptUri = context.URL || 'no-cube';
+const promptPath = context.folder || '/';
+----
+
+This ensures the prompt always reflects current session state.

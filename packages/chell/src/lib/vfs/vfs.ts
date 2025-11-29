@@ -47,13 +47,17 @@ export class VFS {
 
       if (plugins && plugins.tableData) {
         plugins.tableData.forEach((plugin: Record<string, any>) => {
+          // Format as single string: pl-name-v1.0.5
+          const displayName: string = plugin.version
+            ? `${plugin.name}-v${plugin.version}`
+            : plugin.name;
+
           items.push({
-            name: plugin.name,
+            name: displayName,
             type: 'plugin',
             size: 0,
             owner: 'system',
             date: plugin.creation_date || '',
-            version: plugin.version
           });
         });
       }

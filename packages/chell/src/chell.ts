@@ -29,7 +29,8 @@ import {
   builtin_feed,
   builtin_files,
   builtin_links,
-  builtin_dirs
+  builtin_dirs,
+  builtin_context
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
@@ -59,7 +60,7 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
   const chiliPath: string = path.resolve(__dirname, '../../chili/dist/index.js');
   return new Promise((resolve) => {
     const child: ChildProcess = spawn('node', [chiliPath, command, ...args], {
-      stdio: 'inherit', 
+      stdio: 'inherit',
       env: process.env
     });
     child.on('close', () => resolve());
@@ -115,9 +116,10 @@ async function command_handle(line: string): Promise<void> {
     case 'rm': await builtin_rm(args); break;
     case 'chefs': await builtin_chefs(args); break;
     case 'upload': await builtin_upload(args); break;
-    case 'plugin': 
+    case 'context': await builtin_context(args); break;
+    case 'plugin':
     case 'plugins':
-      await builtin_plugin(args); 
+      await builtin_plugin(args);
       break;
     case 'feed':
     case 'feeds':
@@ -186,6 +188,8 @@ async function password_prompt(user: string, url: string): Promise<string> {
 
 import * as os from 'os';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
+import { context_getSingle } from '@fnndsc/salsa';
+import { chrisContext } from '@fnndsc/cumin';
 
 // ... (imports remain the same)
 
@@ -199,13 +203,13 @@ export async function chell_start(): Promise<void> {
   const config: ChellCLIConfig = await cli_parse(process.argv, packageJson.version);
 
   if (config.mode === 'help' || config.mode === 'version') {
-      if (config.output) console.log(config.output);
-      return;
+    if (config.output) console.log(config.output);
+    return;
   }
 
   // If we are still here, start the shell interface
   console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
-  
+
   const border = chalk.gray('----------------------------------------------------------------');
   console.log(border);
   console.log(` ${chalk.cyan.bold('ChELL')} - ChRIS Execution Logic Layer`);
@@ -215,43 +219,88 @@ export async function chell_start(): Promise<void> {
   console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
   console.log(border);
 
-  console.log(chalk.blue('[-] Initializing session components...'));
+  console.log(chalk.cyan('[-] Initializing session components...'));
   await session.init();
   console.log(chalk.green('[+] Session initialized.'));
 
-  if (config.mode === 'connect' && config.connectConfig) {
-      let { user, password, url } = config.connectConfig;
-      
-      if (!user) {
-          console.error(chalk.red('Error: Username required when connecting via CLI args.'));
-          process.exit(1);
+  // Check if we have a saved session from a previous run
+  console.log(chalk.cyan('[-] Checking for previous context...'));
+  await chrisContext.currentContext_update();
+  const currentContext = context_getSingle();
+
+  if (currentContext.user && currentContext.URL) {
+    console.log(chalk.green('[+] Previous context detected'));
+    console.log(chalk.gray(`    User: ${chalk.cyan(currentContext.user)}`));
+    console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
+
+    // Check for existing token
+    console.log(chalk.cyan('[-] Validating existing token...'));
+    const token = await session.connection.authToken_get(true);
+    if (token) {
+      // Token exists on disk, now validate it with the server
+      console.log(chalk.cyan(`[-] Testing connection to ${currentContext.URL}`));
+      try {
+        const client = await session.connection.client_get();
+        if (client) {
+          // Make a simple API call to validate the token
+          await client.getUser();
+          console.log(chalk.green('[+] Token validated with server'));
+          console.log(chalk.green('[+] Session restored'));
+        } else {
+          console.log(chalk.yellow('[!] Failed to create client'));
+          console.log(chalk.yellow('[!] Running in disconnected mode'));
+          console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
+        }
+      } catch (error: unknown) {
+        const msg: string = error instanceof Error ? error.message : String(error);
+        console.log(chalk.yellow('[!] Token expired or invalid'));
+        console.log(chalk.gray(`    Error: ${msg}`));
+        console.log(chalk.yellow('[!] Running in disconnected mode'));
+        console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
       }
-      if (!password && url) {
-          password = await password_prompt(user, url);
-      }
-      
-      if (url && password) {
-          console.log(chalk.blue(`[-] Establishing uplink to ${url}...`));
-          try {
-              await session.connection.connection_connect({
-                  user: user!,
-                  password: password,
-                  url: url,
-                  debug: false
-              });
-              console.log(chalk.green('[+] Connection established.'));
-          } catch (error: unknown) {
-              const errorMessage: string = error instanceof Error ? error.message : String(error);
-              console.error(chalk.red(`[!] Connection failed: ${errorMessage}`));
-              process.exit(1);
-          }
-      }
+    } else {
+      console.log(chalk.yellow('[!] No token found'));
+      console.log(chalk.yellow('[!] Running in disconnected mode'));
+      console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
+    }
   } else {
-      console.log(chalk.yellow('[!] No target specified. Running in disconnected mode.'));
+    console.log(chalk.yellow('[!] No previous context found'));
   }
-  
+
+  if (config.mode === 'connect' && config.connectConfig) {
+    let { user, password, url } = config.connectConfig;
+
+    if (!user) {
+      console.error(chalk.red('Error: Username required when connecting via CLI args.'));
+      process.exit(1);
+    }
+    if (!password && url) {
+      password = await password_prompt(user, url);
+    }
+
+    if (url && password) {
+      console.log(chalk.cyan(`[-] Establishing uplink to ${url}...`));
+      try {
+        await session.connection.connection_connect({
+          user: user!,
+          password: password,
+          url: url,
+          debug: false
+        });
+        console.log(chalk.green('[+] Connection established.'));
+      } catch (error: unknown) {
+        const errorMessage: string = error instanceof Error ? error.message : String(error);
+        console.error(chalk.red(`[!] Connection failed: ${errorMessage}`));
+        process.exit(1);
+      }
+    }
+  } else if (!currentContext.user || !currentContext.URL) {
+    // Only show "disconnected mode" if there's truly no saved session
+    console.log(chalk.yellow('[!] Running in disconnected mode.'));
+  }
+
   console.log(border);
-  console.log(chalk.yellow('The Taco Chell, filled with chili, salsa, and cumin goodness! 🌮'));
+  console.log(chalk.yellow('Your Taco Chell, filled with chili, salsa, and cumin goodness is READY! 🌮'));
   console.log('');
 
   const repl: REPL = new REPL();

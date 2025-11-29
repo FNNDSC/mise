@@ -106,7 +106,10 @@ async function command_handle(line: string): Promise<void> {
       await builtin_dirs(args);
       break;
     case 'exit': process.exit(0); break;
-    default: await chiliCommand_run(command, args); break;
+    default:
+      console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
+      await chiliCommand_run(command, ['-s', ...args]);
+      break;
   }
 }
 

@@ -26,7 +26,8 @@
     *   `plugin list` / `plugin run`
     *   `feed list` / `feed create`
 *   **Command History:** Persists command history across sessions.
-*   **Tab Completion:** Auto-completes built-in commands and paths.
+*   **Tab Completion:** Auto-completes built-in commands, plugin/app names from `/bin`, and paths.
+*   **Piping Support:** Pipe chell command output to local system tools (e.g., `cat file.json | jq`).
 
 ## Architecture & Design Principles
 

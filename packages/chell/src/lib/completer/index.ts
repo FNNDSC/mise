@@ -35,6 +35,24 @@ const BUILTINS: string[] = [
 ];
 
 /**
+ * Fetches available plugin names from /bin.
+ * @returns Array of plugin names.
+ */
+async function plugins_getNames(): Promise<string[]> {
+  try {
+    const plugins = await plugins_listAll({});
+    if (plugins && plugins.tableData) {
+      return plugins.tableData.map((p: Record<string, unknown>) => {
+        return typeof p.name === 'string' ? p.name : String(p.name ?? '');
+      });
+    }
+  } catch (e) {
+    // Silently fail if plugins cannot be fetched
+  }
+  return [];
+}
+
+/**
  * Computes autocomplete suggestions for a given input line.
  * Uses the callback style to support asynchronous operations (fetching files).
  *
@@ -46,15 +64,23 @@ export function completer(line: string, callback: CompleterCallback): void {
   // Check if we are completing the first word (command) or subsequent args
   // A simple split by space might be enough for now, assuming no quoted args with spaces for MVP
   const args = trimmed.split(/\s+/);
-  
+
   // Case 1: Command Completion (First word)
   // If we have only one token and the line doesn't end with space, we are typing the command
   // Or if line is empty
   const isCommandCompletion = args.length === 1 && !line.endsWith(' ');
 
   if (isCommandCompletion) {
-    const hits = BUILTINS.filter((c) => c.startsWith(trimmed));
-    callback(null, [hits, trimmed]);
+    // Fetch plugin names and combine with builtins
+    plugins_getNames().then((pluginNames) => {
+      const allCommands = [...BUILTINS, ...pluginNames];
+      const hits = allCommands.filter((c) => c.startsWith(trimmed));
+      callback(null, [hits, trimmed]);
+    }).catch(() => {
+      // On error, fall back to just builtins
+      const hits = BUILTINS.filter((c) => c.startsWith(trimmed));
+      callback(null, [hits, trimmed]);
+    });
     return;
   }
   

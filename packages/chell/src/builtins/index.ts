@@ -11,9 +11,10 @@ import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_upload as chefs_upload_cmd } from '@fnndsc/chili/commands/fs/upload.js';
 import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
+import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
 import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
-import { renderMkdir, renderTouch, renderUpload, renderCat } from '@fnndsc/chili/views/fs.js';
+import { renderMkdir, renderTouch, renderUpload, renderCat, renderRm } from '@fnndsc/chili/views/fs.js';
 import { renderLogin, renderLogout } from '@fnndsc/chili/views/connect.js';
 import { plugins_fetchList, PluginListResult } from '@fnndsc/chili/commands/plugins/list.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
@@ -31,9 +32,31 @@ import { FilteredResourceData } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 import { chiliCommand_run } from '../chell.js';
+import * as readline from 'readline';
 
 export { commandArgs_process };
 export type { ParsedArgs };
+
+/**
+ * Prompts the user for confirmation.
+ *
+ * @param message - The prompt message.
+ * @returns A Promise resolving to true if user confirms (y/Y), false otherwise.
+ */
+async function prompt_confirm(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    rl.question(message, (answer: string) => {
+      rl.close();
+      const confirmed: boolean = answer.trim().toLowerCase() === 'y';
+      resolve(confirmed);
+    });
+  });
+}
 
 /**
  * Resolves a path argument, handling `~` expansion and relative paths.
@@ -107,27 +130,52 @@ export async function builtin_pwd(): Promise<void> {
 }
 
 /**
- * Lists the contents of the current or specified directory in the ChRIS filesystem context.
- * Supports a virtual `/bin` directory for plugins.
+ * Lists the contents of the current or specified directory/files in the ChRIS filesystem context.
+ * Supports a virtual `/bin` directory for plugins and multiple paths (e.g., from wildcard expansion).
  *
- * @param args - An array containing the target path as the first element (optional).
+ * @param args - An array containing target paths (optional).
  * @returns A Promise that resolves when the directory contents are listed.
  */
 export async function builtin_ls(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
-  let target: string | undefined = pathArgs[0];
-  
-  if (target) {
-    target = await path_resolve(target);
-  }
-  
+
   const options: { long: boolean; human: boolean } = {
     long: !!parsed['l'],
     human: !!parsed['h']
   };
-  
-  await vfs.list(target, options);
+
+  // If no paths specified, list current directory
+  if (pathArgs.length === 0) {
+    await vfs.list(undefined, options);
+    return;
+  }
+
+  // If single path, list it directly (could be file or directory)
+  if (pathArgs.length === 1) {
+    const target: string = await path_resolve(pathArgs[0]);
+    await vfs.list(target, options);
+    return;
+  }
+
+  // Multiple paths - likely from wildcard expansion
+  // List them as individual files (not directory contents)
+  // This matches Unix behavior: ls *.txt shows the files themselves
+  if (options.long) {
+    // For -l, we'd need to fetch file metadata
+    // For now, just show paths (can enhance later)
+    for (const pathArg of pathArgs) {
+      const target: string = await path_resolve(pathArg);
+      console.log(target);
+    }
+  } else {
+    // Grid format - just show basenames
+    const basenames: string[] = pathArgs.map((p: string) => {
+      const parts: string[] = p.split('/');
+      return parts[parts.length - 1] || p;
+    });
+    console.log(basenames.join('  '));
+  }
 }
 
 /**
@@ -415,19 +463,120 @@ export async function builtin_cat(args: string[]): Promise<void> {
      console.error(chalk.red('Usage: cat <file>'));
      return;
   }
-  
+
   const target: string = await path_resolve(pathArg);
-  
+
   if (target.startsWith('/bin/')) {
      console.error(chalk.red('Cannot cat plugins yet.'));
      return;
   }
-  
+
   try {
      const content: string | null = await chefs_cat_cmd(target);
      console.log(renderCat(content, pathArg));
   } catch (e: unknown) {
      const msg: string = e instanceof Error ? e.message : String(e);
      console.error(chalk.red(`cat: ${msg}`));
+  }
+}
+
+/**
+ * Removes one or more files or directories.
+ *
+ * @param args - Command line arguments (flags and paths).
+ */
+export async function builtin_rm(args: string[]): Promise<void> {
+  // Parse flags and paths
+  let recursive: boolean = false;
+  let force: boolean = false;
+  let interactive: boolean = false;
+  const pathArgs: string[] = [];
+
+  for (const arg of args) {
+    if (arg === '-r' || arg === '-R') {
+      recursive = true;
+    } else if (arg === '-f') {
+      force = true;
+    } else if (arg === '-i') {
+      interactive = true;
+    } else if (arg === '-rf' || arg === '-fr' || arg === '-Rf' || arg === '-fR') {
+      recursive = true;
+      force = true;
+    } else if (arg === '-ri' || arg === '-ir' || arg === '-Ri' || arg === '-iR') {
+      recursive = true;
+      interactive = true;
+    } else if (arg === '-fi' || arg === '-if') {
+      force = true;
+      interactive = true;
+    } else if (arg === '-rfi' || arg === '-rif' || arg === '-fri' || arg === '-fir' || arg === '-irf' || arg === '-ifr') {
+      recursive = true;
+      force = true;
+      interactive = true;
+    } else if (!arg.startsWith('-')) {
+      pathArgs.push(arg);
+    }
+  }
+
+  if (pathArgs.length === 0) {
+    console.error(chalk.red('Usage: rm [-rf] <path> [path...]'));
+    return;
+  }
+
+  const options: RmOptions = { recursive, force };
+  let successCount: number = 0;
+  let failCount: number = 0;
+
+  // Process each path
+  for (const pathArg of pathArgs) {
+    try {
+      const target: string = await path_resolve(pathArg);
+
+      if (target.startsWith('/bin/')) {
+        console.error(chalk.red(`rm: cannot remove '${pathArg}': virtual /bin directory`));
+        failCount++;
+        continue;
+      }
+
+      // Interactive prompt
+      if (interactive) {
+        const confirmed: boolean = await prompt_confirm(`rm: remove '${pathArg}'? (y/n): `);
+        if (!confirmed) {
+          console.log(chalk.gray(`skipped '${pathArg}'`));
+          continue; // Skip this file
+        }
+      }
+
+      const result: RmResult = await chefs_rm_cmd(target, options);
+
+      if (result.success) {
+        // Show success for each file when multiple files
+        if (pathArgs.length > 1) {
+          console.log(chalk.gray(`removed '${pathArg}'`));
+        } else {
+          console.log(renderRm(result));
+        }
+        successCount++;
+      } else {
+        // Always show errors
+        console.error(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));
+        failCount++;
+      }
+    } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      console.error(chalk.red(`rm: cannot remove '${pathArg}': ${msg}`));
+      failCount++;
+    }
+  }
+
+  // Print summary only if multiple files
+  if (pathArgs.length > 1 && (successCount > 0 || failCount > 0)) {
+    console.log('');
+    if (successCount > 0 && failCount === 0) {
+      console.log(chalk.green(`Successfully removed ${successCount} item${successCount !== 1 ? 's' : ''}`));
+    } else if (successCount > 0 && failCount > 0) {
+      console.log(chalk.yellow(`Removed ${successCount} item${successCount !== 1 ? 's' : ''}, failed ${failCount}`));
+    } else if (failCount > 0) {
+      console.log(chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`));
+    }
   }
 }

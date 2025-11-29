@@ -1,0 +1,936 @@
+= ChELL Command Reference
+:toc:
+:toclevels: 3
+:sectnums:
+
+== Introduction
+
+ChELL (ChRIS Execution Logic Layer) is an interactive shell for the ChRIS platform. This document provides a comprehensive reference for all commands available in the ChELL environment.
+
+ChELL operates on the ChRIS filesystem and provides both native builtins and seamless integration with the underlying `chili` CLI. Commands are designed to feel familiar to users of Unix-like shells while operating on remote ChRIS resources.
+
+== Command Categories
+
+ChELL commands fall into several categories:
+
+* **Connection Management** - Connecting to and authenticating with ChRIS servers
+* **Navigation** - Moving through the ChRIS filesystem
+* **File Operations** - Working with files, directories, and links
+* **Resource Management** - Managing ChRIS-specific resources (plugins, feeds)
+* **ChEFS Commands** - ChRIS Experimental File System primitives
+* **System Commands** - Shell control and configuration
+
+== Wildcard Expansion
+
+ChELL supports glob-style wildcard patterns for applicable commands (currently `rm` and `cat`). Wildcards are expanded against the current ChRIS directory.
+
+**Supported patterns:**
+
+* `*` - Match any characters
+* `?` - Match single character
+* `[abc]` - Match any character in brackets
+* `[a-z]` - Match any character in range
+
+**Examples:**
+```bash
+rm *.json                # Remove all JSON files
+cat test*.txt            # Display all files starting with "test"
+rm data/*.csv            # Remove CSV files in data/ subdirectory
+```
+
+== Connection Management
+
+=== connect
+
+Establishes an authenticated connection to a ChRIS server.
+
+**Syntax:**
+```bash
+connect <username> <url> [password]
+```
+
+**Parameters:**
+
+* `username` - ChRIS username
+* `url` - ChRIS server URL (e.g., `https://cube.chrisproject.org/api/v1/`)
+* `password` - (Optional) User password. If omitted, you will be prompted securely.
+
+**Examples:**
+```bash
+connect alice https://cube.chrisproject.org/api/v1/
+connect bob http://localhost:8000/api/v1/ mypassword
+```
+
+**Notes:**
+
+* Password prompt does not echo characters for security
+* Connection state persists for the duration of the shell session
+* Must be connected before accessing ChRIS resources
+
+=== logout
+
+Disconnects from the current ChRIS server and clears authentication credentials.
+
+**Syntax:**
+```bash
+logout
+```
+
+**Examples:**
+```bash
+logout
+```
+
+**Notes:**
+
+* Clears stored credentials and session state
+* Returns shell to disconnected mode
+* Does not exit the shell (use `exit` for that)
+
+== Navigation Commands
+
+=== cd
+
+Changes the current working directory within the ChRIS filesystem.
+
+**Syntax:**
+```bash
+cd [path]
+```
+
+**Parameters:**
+
+* `path` - (Optional) Target directory path. Omit to display current directory.
+
+**Path Resolution:**
+
+* Absolute paths: `/home/username/data`
+* Relative paths: `../projects` or `subdir/`
+* Home directory: `~` expands to `/home/<username>`
+* Special directory: `/bin` - virtual directory containing plugins
+
+**Examples:**
+```bash
+cd /home/alice/experiments     # Absolute path
+cd data                        # Relative path
+cd ..                          # Parent directory
+cd ~                           # Home directory
+cd                             # Show current directory
+cd /bin                        # Access plugin virtual filesystem
+```
+
+**Error Handling:**
+
+* Validates directory exists before changing
+* Returns error for non-existent paths
+* Requires active connection (except for `/bin`)
+
+=== pwd
+
+Prints the current working directory path.
+
+**Syntax:**
+```bash
+pwd
+```
+
+**Examples:**
+```bash
+pwd
+# Output: /home/alice/experiments
+```
+
+=== ls
+
+Lists the contents of a directory in the ChRIS filesystem.
+
+**Syntax:**
+```bash
+ls [options] [path]
+```
+
+**Options:**
+
+* `-l` - Long format listing (detailed information)
+* `-h` - Human-readable file sizes (with `-l`)
+
+**Parameters:**
+
+* `path` - (Optional) Directory to list. Defaults to current directory.
+
+**Output Formats:**
+
+**Grid format (default):**
+```
+bin/  data/  experiments/  results/
+file1.txt  file2.json  report.pdf
+```
+
+**Long format (`-l`):**
+```
+drwxr-xr-x  alice    2024-11-29  experiments
+-rw-r--r--  alice    2024-11-29  1234567  file1.txt
+lrwxrwxrwx  alice    2024-11-29  0        link1 -> /target/path
+prwxr-xr-x  alice    2024-11-29  0        pl-dircopy v2.1.0
+vrwxr-xr-x  root     2024-11-29  0        bin
+```
+
+**Type indicators:**
+
+* `d` - Directory
+* `-` - Regular file
+* `l` - Symbolic link
+* `p` - Plugin
+* `v` - Virtual directory
+
+**Examples:**
+```bash
+ls                             # List current directory
+ls -l                          # Long format
+ls -lh                         # Long format with human sizes
+ls /home/alice/data            # List specific directory
+ls ~/experiments               # List using ~ expansion
+ls /bin                        # List available plugins
+ls *.ts                        # List all TypeScript files (wildcard)
+```
+
+**Wildcard Support:**
+
+When multiple files are specified (e.g., from wildcard expansion), `ls` displays them as individual files:
+```bash
+ls *.json
+# Output: file1.json  file2.json  config.json
+```
+
+**Color Coding:**
+
+* Directories: cyan
+* Files: white
+* Links: magenta
+* Plugins: green
+* Virtual directories: bright cyan
+
+== File Operations
+
+=== cat
+
+Displays the contents of one or more files.
+
+**Syntax:**
+```bash
+cat <file> [file...]
+```
+
+**Parameters:**
+
+* `file` - Path to file(s) to display. Supports wildcards.
+
+**Examples:**
+```bash
+cat readme.txt                 # Display single file
+cat file1.txt file2.txt        # Display multiple files
+cat *.json                     # Display all JSON files (wildcard)
+cat ~/data/log.txt             # Display with path expansion
+```
+
+**Notes:**
+
+* Concatenates multiple files to output
+* Cannot cat virtual `/bin` directory contents
+* Wildcards are expanded before execution
+* Large files are displayed without pagination
+
+=== rm
+
+Removes (deletes) one or more files or directories from the ChRIS filesystem.
+
+**Syntax:**
+```bash
+rm [options] <path> [path...]
+```
+
+**Options:**
+
+* `-r`, `-R` - Remove directories and their contents recursively
+* `-f` - Force removal (currently informational)
+* `-i` - Interactive mode: prompt before each removal
+* `-rf`, `-fr`, `-Rf`, `-fR` - Combine recursive and force
+* `-ri`, `-ir`, `-Ri`, `-iR` - Combine recursive and interactive
+
+**Parameters:**
+
+* `path` - Path(s) to remove. Supports wildcards.
+
+**Examples:**
+```bash
+rm file.txt                    # Remove single file
+rm file1.txt file2.txt         # Remove multiple files
+rm *.log                       # Remove all .log files (wildcard)
+rm -i *.json                   # Prompt before removing each .json file
+rm -r old_data/                # Remove directory recursively
+rm -rf temp_*                  # Force-remove all temp_* directories
+rm -ri backup/                 # Recursively remove with confirmation
+```
+
+**Behavior:**
+
+* **Single file:** Displays individual result
+* **Multiple files:** Shows each file removed, then summary
+* **Interactive mode (`-i`):** Prompts for confirmation before each removal
+* **Directories:** Requires `-r` flag, otherwise fails with error
+* **Wildcards:** Expanded before processing, each match removed individually
+
+**Output Examples:**
+```bash
+# Single file
+rm test.txt
+# Output: Removed file: /home/alice/test.txt
+
+# Multiple files
+rm *.json
+# Output:
+# removed 'file1.json'
+# removed 'file2.json'
+# removed 'config.json'
+#
+# Successfully removed 3 items
+
+# Interactive mode
+rm -i *.log
+# Output:
+# rm: remove 'error.log'? (y/n): y
+# removed 'error.log'
+# rm: remove 'debug.log'? (y/n): n
+# skipped 'debug.log'
+# rm: remove 'access.log'? (y/n): y
+# removed 'access.log'
+#
+# Successfully removed 2 items
+
+# Mixed success/failure
+rm *.txt
+# Output:
+# removed 'file1.txt'
+# removed 'file2.txt'
+# rm: cannot remove 'results': is a directory (use -r for recursive delete)
+#
+# Removed 2 items, failed 1
+
+# Directory without -r flag
+rm mydir
+# Output: rm: cannot remove 'mydir': is a directory (use -r for recursive delete)
+```
+
+**Safety Features:**
+
+* Cannot remove `/bin` virtual directory
+* Requires explicit `-r` for directories
+* Interactive mode (`-i`) prompts before each removal
+* Reports errors for non-existent files
+* Shows each file removed in batch operations
+* Clear error messages with context
+
+=== upload
+
+Uploads files or directories from the local filesystem to ChRIS.
+
+**Syntax:**
+```bash
+upload <local_path> <chris_path>
+```
+
+**Parameters:**
+
+* `local_path` - Path on local filesystem (supports `~` expansion)
+* `chris_path` - Target path in ChRIS filesystem
+
+**Examples:**
+```bash
+upload ~/data/results.csv /home/alice/experiments/
+upload ./local_dir/ ~/uploads/
+upload /tmp/output.json .
+```
+
+**Notes:**
+
+* Recursively uploads directories
+* Preserves directory structure
+* Shows progress for large uploads
+* Uses current context if relative paths provided
+
+== ChEFS Commands
+
+ChEFS (ChRIS Experimental File System) provides Unix-like primitives for the ChRIS filesystem. These commands can be invoked via the `chefs` prefix or, for some operations, as direct builtins.
+
+=== chefs ls
+
+Lists directory contents (same as standalone `ls`).
+
+**Syntax:**
+```bash
+chefs ls [options] [path]
+```
+
+See <<ls>> for full documentation.
+
+=== chefs cat
+
+Displays file contents (same as standalone `cat`).
+
+**Syntax:**
+```bash
+chefs cat <file>
+```
+
+See <<cat>> for full documentation.
+
+=== chefs rm
+
+Removes files or directories (same as standalone `rm`).
+
+**Syntax:**
+```bash
+chefs rm [options] <path> [path...]
+```
+
+See <<rm>> for full documentation.
+
+=== chefs mkdir
+
+Creates a new directory in the ChRIS filesystem.
+
+**Syntax:**
+```bash
+chefs mkdir <path>
+```
+
+**Parameters:**
+
+* `path` - Path of directory to create
+
+**Examples:**
+```bash
+chefs mkdir experiments
+chefs mkdir /home/alice/data/2024
+chefs mkdir ~/projects/new_study
+```
+
+**Notes:**
+
+* Creates single directory (not recursive)
+* Parent directory must exist
+* Returns error if directory already exists
+
+=== chefs touch
+
+Creates an empty file in the ChRIS filesystem.
+
+**Syntax:**
+```bash
+chefs touch <path>
+```
+
+**Parameters:**
+
+* `path` - Path of file to create
+
+**Examples:**
+```bash
+chefs touch readme.txt
+chefs touch /home/alice/data/placeholder.json
+chefs touch ~/notes.md
+```
+
+**Notes:**
+
+* Creates zero-byte file
+* Parent directory must exist
+* Does not modify existing files (unlike Unix touch)
+
+=== chefs cd
+
+Changes current directory (same as standalone `cd`).
+
+**Syntax:**
+```bash
+chefs cd [path]
+```
+
+See <<cd>> for full documentation.
+
+=== chefs pwd
+
+Prints working directory (same as standalone `pwd`).
+
+**Syntax:**
+```bash
+chefs pwd
+```
+
+See <<pwd>> for full documentation.
+
+=== chefs upload
+
+Uploads local files to ChRIS.
+
+**Syntax:**
+```bash
+chefs upload <local_path> <chris_path>
+```
+
+**Parameters:**
+
+* `local_path` - Local filesystem path
+* `chris_path` - ChRIS filesystem target path
+
+**Examples:**
+```bash
+chefs upload ~/data/experiment1.csv /home/alice/uploads/
+chefs upload ./results/ ~/data/2024-11-29/
+```
+
+**Notes:**
+
+* Supports recursive directory upload
+* Shows progress bar for large transfers
+* Preserves directory structure
+
+== Resource Management
+
+ChELL provides native support for managing ChRIS resources (plugins, feeds, files, links, directories) with `list` and `fieldslist` operations handled directly. Other operations delegate to the underlying `chili` implementation.
+
+=== plugin / plugins
+
+Manages ChRIS plugin resources and instances.
+
+**Syntax:**
+```bash
+plugin <subcommand> [options] [args]
+plugins <subcommand> [options] [args]
+```
+
+**Native Subcommands:**
+
+==== plugins list
+
+Lists available plugins with optional filtering.
+
+**Syntax:**
+```bash
+plugins list [options]
+```
+
+**Options:**
+
+* `--search <key:value>` - Filter by key-value pairs (e.g., `name:dircopy`)
+* `--fields <field1,field2>` - Show only specified fields
+* `--limit <n>` - Limit results to n items
+* `--offset <n>` - Skip first n items
+
+**Examples:**
+```bash
+plugins list
+plugins list --search name:dircopy
+plugins list --fields name,version,type
+```
+
+==== plugin fieldslist
+
+Lists available fields for plugin resources.
+
+**Syntax:**
+```bash
+plugin fieldslist
+```
+
+**Examples:**
+```bash
+plugin fieldslist
+# Output: id, name, version, type, category, ...
+```
+
+**Delegated Subcommands:**
+
+* `plugin run` - Execute a plugin (delegates to `chili`)
+* `plugin delete` - Remove a plugin instance
+* `plugin share` - Share plugin access
+
+=== feed / feeds
+
+Manages ChRIS feed resources.
+
+**Syntax:**
+```bash
+feed <subcommand> [options] [args]
+feeds <subcommand> [options] [args]
+```
+
+**Native Subcommands:**
+
+==== feeds list
+
+Lists feeds with optional filtering.
+
+**Syntax:**
+```bash
+feeds list [options]
+```
+
+**Options:**
+
+* `--search <key:value>` - Filter feeds
+* `--fields <field1,field2>` - Select fields
+* `--limit <n>` - Limit results
+* `--offset <n>` - Pagination offset
+
+**Examples:**
+```bash
+feeds list
+feeds list --search name:experiment
+feeds list --fields id,name,creation_date
+```
+
+==== feed fieldslist
+
+Lists available fields for feed resources.
+
+**Syntax:**
+```bash
+feed fieldslist
+```
+
+**Delegated Subcommands:**
+
+* `feed create` - Create a new feed
+* `feed delete` - Remove a feed
+* `feed share` - Share feed access
+
+=== files
+
+Manages file resources in the ChRIS filesystem.
+
+**Syntax:**
+```bash
+files <subcommand> [options] [args]
+```
+
+**Native Subcommands:**
+
+==== files list
+
+Lists file resources with filtering.
+
+**Syntax:**
+```bash
+files list [path] [options]
+```
+
+**Parameters:**
+
+* `path` - (Optional) Directory path to list
+
+**Options:**
+
+* `--search <key:value>` - Filter files
+* `--fields <field1,field2>` - Select fields
+* `--limit <n>` - Limit results
+
+**Examples:**
+```bash
+files list
+files list /home/alice/data
+files list --search fname:*.json
+```
+
+==== files fieldslist
+
+Lists available fields for file resources.
+
+**Syntax:**
+```bash
+files fieldslist
+```
+
+**Delegated Subcommands:**
+
+* `files delete` - Remove file resources
+* `files share` - Share file access
+
+=== links
+
+Manages symbolic link resources.
+
+**Syntax:**
+```bash
+links <subcommand> [options] [args]
+```
+
+**Subcommands:**
+
+* `links list [path] [options]` - List links (native)
+* `links fieldslist` - List link fields (native)
+* `links delete` - Remove links (delegated)
+* `links share` - Share link access (delegated)
+
+=== dirs
+
+Manages directory resources.
+
+**Syntax:**
+```bash
+dirs <subcommand> [options] [args]
+```
+
+**Subcommands:**
+
+* `dirs list [path] [options]` - List directories (native)
+* `dirs fieldslist` - List directory fields (native)
+* `dirs delete` - Remove directories (delegated)
+* `dirs share` - Share directory access (delegated)
+
+== System Commands
+
+=== exit
+
+Exits the ChELL shell.
+
+**Syntax:**
+```bash
+exit
+```
+
+**Examples:**
+```bash
+exit
+```
+
+**Notes:**
+
+* Terminates the shell session
+* Does not automatically logout (connection state may persist)
+* Use `logout` before `exit` to clear credentials
+
+== Command Delegation
+
+Commands not handled natively by ChELL are automatically delegated to a spawned `chili` instance. This provides seamless access to the full `chili` command set.
+
+**Delegation behavior:**
+
+* Shell displays: "Unknown chell command '<cmd>' -- delegating to a spawned chili instance (slight delay expected)"
+* Command is executed via `chili -s <command> <args>`
+* The `-s` flag suppresses the chili splash screen
+* Results are displayed as if running `chili` directly
+
+**Example:**
+```bash
+# User types unknown command
+context set feed:42
+
+# ChELL responds
+Unknown chell command 'context' -- delegating to a spawned chili instance (slight delay expected)
+# ... executes: chili -s context set feed:42
+```
+
+This allows ChELL to provide optimized implementations for common commands while maintaining full compatibility with the `chili` ecosystem.
+
+== Virtual File System
+
+ChELL provides a special virtual directory `/bin` that contains ChRIS plugins as executable entries.
+
+**Features:**
+
+* Accessed via `cd /bin`
+* Lists all available plugins as if they were files
+* Plugins shown with `p` type indicator in `ls -l`
+* Cannot execute plugins directly from `/bin` (use `plugin run` instead)
+* Cannot remove or modify `/bin` contents
+
+**Examples:**
+```bash
+cd /bin
+ls
+# Output: pl-dircopy  pl-mri_convert  pl-freesurfer  ...
+
+ls -l
+# Output:
+# prwxr-xr-x  alice  2024-11-29  0  pl-dircopy v2.1.0
+# prwxr-xr-x  alice  2024-11-29  0  pl-mri_convert v1.0.5
+```
+
+== Path Resolution
+
+ChELL resolves paths using the following rules:
+
+. **Absolute paths** - Start with `/`, used as-is
+. **Home expansion** - `~` expands to `/home/<username>`
+. **Relative paths** - Resolved against current working directory
+. **Parent directory** - `..` moves up one level
+. **Current directory** - `.` refers to current directory
+
+**Resolution examples:**
+
+|===
+| Input | Current Directory | Resolved Path
+
+| `data`
+| `/home/alice`
+| `/home/alice/data`
+
+| `./file.txt`
+| `/home/alice/exp`
+| `/home/alice/exp/file.txt`
+
+| `../results`
+| `/home/alice/exp`
+| `/home/alice/results`
+
+| `~`
+| (anywhere)
+| `/home/alice`
+
+| `~/data`
+| (anywhere)
+| `/home/alice/data`
+
+| `/tmp/test`
+| (anywhere)
+| `/tmp/test`
+|===
+
+== Examples and Workflows
+
+=== Basic Session
+
+```bash
+# Connect to ChRIS
+connect alice https://cube.chrisproject.org/api/v1/
+
+# Navigate to workspace
+cd ~/experiments
+
+# List contents
+ls -lh
+
+# Create directory structure
+chefs mkdir 2024-11-29
+cd 2024-11-29
+
+# Upload data
+upload ~/local_data/results.csv .
+
+# Verify upload
+ls -l
+
+# View file
+cat results.csv
+
+# Cleanup
+cd ..
+rm -r 2024-11-29
+
+# Disconnect
+logout
+exit
+```
+
+=== Working with Plugins
+
+```bash
+# List available plugins
+plugins list
+
+# Filter plugins
+plugins list --search name:dircopy
+
+# Browse virtual /bin
+cd /bin
+ls -l
+
+# Execute plugin (delegated to chili)
+cd ~
+plugin run pl-dircopy --inputdir /incoming --outputdir /results
+```
+
+=== Batch File Operations
+
+```bash
+# Remove all JSON files
+rm *.json
+
+# Display all log files
+cat *.log
+
+# Remove old test directories
+rm -rf test_*
+
+# Upload multiple datasets
+upload ~/data/set1/ ~/uploads/
+upload ~/data/set2/ ~/uploads/
+upload ~/data/set3/ ~/uploads/
+```
+
+=== Resource Management
+
+```bash
+# List all feeds
+feeds list
+
+# Get feed details
+feeds list --search name:experiment --fields id,name,created
+
+# List files in feed context
+files list /home/alice/feed_123/data
+
+# Check available file fields
+files fieldslist
+```
+
+== Tips and Best Practices
+
+. **Use tab completion** - ChELL supports command and path completion (if configured)
+. **Leverage wildcards** - Use `*.ext` patterns for batch operations
+. **Check with ls** - Always verify paths before destructive operations
+. **Use -l for details** - Long format shows sizes, dates, and types
+. **Relative paths are safe** - Stay in your workspace with relative navigation
+. **Virtual /bin for discovery** - Browse `/bin` to see available plugins
+. **Logout when done** - Clear credentials with `logout` before exiting
+
+== Troubleshooting
+
+=== Command Not Found
+
+If a command is not recognized and delegation fails:
+
+* Verify you're connected (`pwd` should show ChRIS path)
+* Check command spelling
+* Ensure `chili` is properly installed and accessible
+
+=== Path Resolution Issues
+
+If paths don't resolve as expected:
+
+* Check current directory with `pwd`
+* Use absolute paths to be explicit
+* Remember `~` expands to `/home/<username>`
+
+=== Wildcard Not Expanding
+
+Wildcards only expand for supported commands (`rm`, `cat`):
+
+* Other commands see the literal `*` character
+* Use `files list` with search filters for pattern matching
+
+=== Permission Denied
+
+If operations fail with permission errors:
+
+* Verify you're authenticated (`logout` then `connect`)
+* Check resource ownership (some resources may be read-only)
+* Ensure target directories exist
+
+== See Also
+
+* **chili Documentation** - Full CLI reference for delegated commands
+* **ChRIS API Documentation** - Understanding the underlying platform
+* **salsa Library** - Business logic layer documentation
+* **cumin Library** - Infrastructure layer documentation

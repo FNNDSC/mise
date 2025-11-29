@@ -1,6 +1,6 @@
 {
   "name": "chell",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Interactive ChRIS REPL Shell",
   "main": "dist/index.js",
   "type": "module",
@@ -22,11 +22,13 @@
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "figlet": "^1.7.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "minimatch": "^10.1.1"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.5",
+    "@types/minimatch": "^5.1.2",
     "@types/node": "^20.11.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",

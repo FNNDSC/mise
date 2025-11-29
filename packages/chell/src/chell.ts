@@ -24,12 +24,15 @@ import {
   builtin_chefs,
   builtin_cat,
   builtin_upload,
+  builtin_rm,
   builtin_plugin,
   builtin_feed,
   builtin_files,
   builtin_links,
   builtin_dirs
 } from './builtins/index.js';
+import { wildcards_expandAll } from './builtins/wildcard.js';
+import { help_show, hasHelpFlag } from './builtins/help.js';
 
 /**
  * Interface for package.json structure.
@@ -68,6 +71,18 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
 }
 
 /**
+ * Determines if a command should have its arguments expanded for wildcards.
+ *
+ * @param command - The command name.
+ * @returns True if wildcards should be expanded.
+ */
+function shouldExpandWildcards(command: string): boolean {
+  // Commands that benefit from wildcard expansion
+  const expandCommands: string[] = ['ls', 'rm', 'cat'];
+  return expandCommands.includes(command);
+}
+
+/**
  * Handles a command entered by the user.
  *
  * @param line - The input line.
@@ -77,7 +92,18 @@ async function command_handle(line: string): Promise<void> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return;
 
-  const [command, ...args]: string[] = trimmedLine.split(/\s+/);
+  let [command, ...args]: string[] = trimmedLine.split(/\s+/);
+
+  // Check for --help flag before any processing
+  if (hasHelpFlag(args)) {
+    help_show(command);
+    return;
+  }
+
+  // Expand wildcards for commands that support it
+  if (shouldExpandWildcards(command)) {
+    args = await wildcards_expandAll(args);
+  }
 
   switch (command) {
     case 'connect': await builtin_connect(args); break;
@@ -86,6 +112,7 @@ async function command_handle(line: string): Promise<void> {
     case 'ls': await builtin_ls(args); break;
     case 'pwd': await builtin_pwd(); break;
     case 'cat': await builtin_cat(args); break;
+    case 'rm': await builtin_rm(args); break;
     case 'chefs': await builtin_chefs(args); break;
     case 'upload': await builtin_upload(args); break;
     case 'plugin': 

@@ -10,3 +10,6 @@ yarn-error.log*
 # IDE
 .idea/
 .vscode/
+
+# ChELL history
+.chell_history

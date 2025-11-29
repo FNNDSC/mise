@@ -11,4 +11,13 @@ module.exports = {
   moduleNameMapper: {
     '^(\.{1,2}/.*)\.js$': '$1', // Handle ESM imports in tests
   },
+  collectCoverageFrom: [
+    '<rootDir>/src/**/*.ts',
+    '!<rootDir>/src/index.ts',
+    '!<rootDir>/src/**/*.d.ts'
+  ],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/'
+  ],
 };

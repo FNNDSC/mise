@@ -140,10 +140,13 @@ describe('VFS', () => {
       await vfs.list('/bin');
 
       expect(mockPlugins_listAll).toHaveBeenCalledWith({});
-      expect(mockGrid_render).toHaveBeenCalledWith([
+      // Note: Items are now sorted at command layer, view layer receives sorted items
+      expect(mockGrid_render).toHaveBeenCalled();
+      const callArgs = mockGrid_render.mock.calls[0];
+      expect(callArgs[0]).toEqual([
         { name: 'pl-dircopy-v2.1.0', type: 'plugin', size: 0, owner: 'system', date: '2025-01-01' },
         { name: 'pl-simpledsapp-v1.0.0', type: 'plugin', size: 0, owner: 'system', date: '2025-01-02' }
-      ], { sort: undefined, reverse: undefined });
+      ]);
     });
 
     it('should handle plugin without version', async () => {
@@ -156,9 +159,12 @@ describe('VFS', () => {
 
       await vfs.list('/bin');
 
-      expect(mockGrid_render).toHaveBeenCalledWith([
+      // Note: Items are now sorted at command layer, view layer receives sorted items
+      expect(mockGrid_render).toHaveBeenCalled();
+      const callArgs = mockGrid_render.mock.calls[0];
+      expect(callArgs[0]).toEqual([
         { name: 'pl-test', type: 'plugin', size: 0, owner: 'system', date: '2025-01-01' }
-      ], { sort: undefined, reverse: undefined });
+      ]);
     });
 
     it('should handle no plugins found', async () => {

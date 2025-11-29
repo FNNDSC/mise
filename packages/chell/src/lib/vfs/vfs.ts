@@ -13,6 +13,7 @@ import * as path from 'path';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
+import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 
 /**
  * Virtual File System Router.
@@ -67,11 +68,15 @@ export class VFS {
         return;
       }
 
-      // Use shared view
+      // Apply sorting (default to name if not specified)
+      const sortField = options.sort || 'name';
+      const sortedItems = list_applySort(items, sortField, options.reverse);
+
+      // Use shared view (sorting is handled by the data layer, not view layer)
       if (options.long) {
-        console.log(long_render(items, { human: !!options.human, sort: options.sort, reverse: options.reverse }));
+        console.log(long_render(sortedItems, { human: !!options.human }));
       } else {
-        console.log(grid_render(items, { sort: options.sort, reverse: options.reverse }));
+        console.log(grid_render(sortedItems));
       }
 
     } catch (error: unknown) {
@@ -87,8 +92,12 @@ export class VFS {
    */
   private async listNative(target: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean }): Promise<void> {
     try {
-      // Fetch from shared logic
-      const items: ListingItem[] = await files_list({ path: target }, target);
+      // Fetch from shared logic - pass sort options to command layer
+      const items: ListingItem[] = await files_list({
+        path: target,
+        sort: options.sort,
+        reverse: options.reverse
+      }, target);
 
       // Inject 'bin' virtual directory if listing root
       if (target === '/' || target === '') {
@@ -105,10 +114,11 @@ export class VFS {
 
       if (items.length === 0) return;
 
+      // Use shared view (sorting is handled by the data layer, not view layer)
       if (options.long) {
-        console.log(long_render(items, { human: !!options.human, sort: options.sort, reverse: options.reverse }));
+        console.log(long_render(items, { human: !!options.human }));
       } else {
-        console.log(grid_render(items, { sort: options.sort, reverse: options.reverse }));
+        console.log(grid_render(items));
       }
 
     } catch (error: unknown) {

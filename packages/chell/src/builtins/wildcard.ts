@@ -9,6 +9,7 @@ import { minimatch } from 'minimatch';
 import { session } from '../session/index.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import { vfs } from '../lib/vfs/vfs.js';
 
 /**
  * Checks if a string contains wildcard characters.
@@ -59,8 +60,13 @@ export async function wildcard_expand(pattern: string): Promise<string[]> {
       matchPattern = lastPart;
     }
 
-    // List files in the directory
-    const items: ListingItem[] = await files_list({}, searchDir);
+    // List files in the directory (handle virtual /bin separately)
+    let items: ListingItem[] = [];
+    if (searchDir === '/bin') {
+      items = await vfs.getVirtualBinItems();
+    } else {
+      items = await files_list({}, searchDir);
+    }
 
     // Filter items by pattern
     const matches: string[] = items

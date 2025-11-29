@@ -39,9 +39,10 @@ export class VFS {
   }
 
   /**
-   * Lists the contents of the virtual `/bin` directory (plugins).
+   * Gets the contents of the virtual `/bin` directory (plugins) as ListingItems.
+   * @returns A Promise resolving to an array of ListingItems.
    */
-  private async listVirtualBin(options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
+  async getVirtualBinItems(): Promise<ListingItem[]> {
     try {
       const plugins = await plugins_listAll({});
       const items: ListingItem[] = [];
@@ -63,25 +64,34 @@ export class VFS {
         });
       }
 
-      if (items.length === 0) {
-        console.log(chalk.gray('No plugins found.'));
-        return;
-      }
-
-      // Apply sorting (default to name if not specified)
-      const sortField = options.sort || 'name';
-      const sortedItems = list_applySort(items, sortField, options.reverse);
-
-      // Use shared view (sorting is handled by the data layer, not view layer)
-      if (options.long) {
-        console.log(long_render(sortedItems, { human: !!options.human }));
-      } else {
-        console.log(grid_render(sortedItems));
-      }
-
+      return items;
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
       console.error(chalk.red(`Failed to list plugins: ${msg}`));
+      return [];
+    }
+  }
+
+  /**
+   * Lists the contents of the virtual `/bin` directory (plugins).
+   */
+  private async listVirtualBin(options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
+    const items = await this.getVirtualBinItems();
+
+    if (items.length === 0) {
+      console.log(chalk.gray('No plugins found.'));
+      return;
+    }
+
+    // Apply sorting (default to name if not specified)
+    const sortField = options.sort || 'name';
+    const sortedItems = list_applySort(items, sortField, options.reverse);
+
+    // Use shared view (sorting is handled by the data layer, not view layer)
+    if (options.long) {
+      console.log(long_render(sortedItems, { human: !!options.human }));
+    } else {
+      console.log(grid_render(sortedItems));
     }
   }
 

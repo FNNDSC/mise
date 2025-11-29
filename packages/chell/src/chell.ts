@@ -322,11 +322,11 @@ async function pipe_execute(segments: string[]): Promise<void> {
 
   for (let i = 1; i < segments.length; i++) {
     const segment: string = segments[i];
-    const [cmd, ...cmdArgs]: string[] = segment.split(/\s+/);
 
     currentInput = await new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      const child: ChildProcess = spawn(cmd, cmdArgs, {
+      // When using shell: true, pass the entire command as a single string
+      const child: ChildProcess = spawn(segment, {
         stdio: ['pipe', 'pipe', 'inherit'],
         shell: true
       });
@@ -337,7 +337,7 @@ async function pipe_execute(segments: string[]): Promise<void> {
 
       child.on('close', (code: number | null) => {
         if (code !== 0 && code !== null) {
-          reject(new Error(`Command '${cmd}' exited with code ${code}`));
+          reject(new Error(`Command '${segment}' exited with code ${code}`));
         } else {
           resolve(Buffer.concat(chunks));
         }

@@ -14,15 +14,15 @@ import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
 import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
-import { renderMkdir, renderTouch, renderUpload, renderCat, renderRm } from '@fnndsc/chili/views/fs.js';
-import { renderLogin, renderLogout } from '@fnndsc/chili/views/connect.js';
+import { mkdir_render, touch_render, upload_render, cat_render, rm_render } from '@fnndsc/chili/views/fs.js';
+import { login_render, logout_render } from '@fnndsc/chili/views/connect.js';
 import { plugins_fetchList, PluginListResult } from '@fnndsc/chili/commands/plugins/list.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
-import { renderPluginList, renderPluginRun } from '@fnndsc/chili/views/plugin.js';
+import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.js';
 import { Plugin, PluginInstance } from '@fnndsc/chili/models/plugin.js';
 import { feeds_fetchList } from '@fnndsc/chili/commands/feeds/list.js';
 import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
-import { renderFeedList, renderFeedCreate } from '@fnndsc/chili/views/feed.js';
+import { feedList_render, feedCreate_render } from '@fnndsc/chili/views/feed.js';
 import { Feed } from '@fnndsc/chili/models/feed.js';
 import { FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import { files_fetchList } from '@fnndsc/chili/commands/files/list.js';
@@ -198,7 +198,7 @@ export async function builtin_upload(args: string[]): Promise<void> {
   console.log(`Uploading ${localPath} to ${targetRemote}...`);
   try {
     const success: boolean = await chefs_upload_cmd(localPath, targetRemote);
-    console.log(renderUpload(localPath, targetRemote, success));
+    console.log(upload_render(localPath, targetRemote, success));
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     console.error(chalk.red(`Upload error: ${msg}`));
@@ -220,10 +220,10 @@ export async function builtin_connect(args: string[]): Promise<void> {
   if (user && password && url) {
     try {
       const success: boolean = await connect_login({ user, password, url, debug: false });
-      console.log(renderLogin(success, url, user));
+      console.log(login_render(success, url, user));
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
-      console.log(renderLogin(false, url, user));
+      console.log(login_render(false, url, user));
       console.error(chalk.red(`Connection failed: ${msg}`));
     }
   } else {
@@ -239,9 +239,9 @@ export async function builtin_connect(args: string[]): Promise<void> {
 export async function builtin_logout(): Promise<void> {
   try {
     await connect_logout();
-    console.log(renderLogout(true));
+    console.log(logout_render(true));
   } catch (error: unknown) {
-    console.log(renderLogout(false));
+    console.log(logout_render(false));
     const msg: string = error instanceof Error ? error.message : String(error);
     console.error(chalk.red(`Logout failed: ${msg}`));
   }
@@ -264,7 +264,7 @@ export async function builtin_plugin(args: string[]): Promise<void> {
   try {
     if (subcommand === 'list') {
        const { plugins, selectedFields } = await plugins_fetchList(parsed as any);
-       console.log(renderPluginList(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
+       console.log(pluginList_render(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
     } else if (subcommand === 'run') {
        const searchable = parsed._[1];
        if (!searchable) {
@@ -274,7 +274,7 @@ export async function builtin_plugin(args: string[]): Promise<void> {
        const params = args.slice(2).join(' ');
        const instance: PluginInstance | null = await plugin_execute(searchable, params);
        if (instance) {
-          console.log(renderPluginRun(instance));
+          console.log(pluginRun_render(instance));
        } else {
           console.error(chalk.red("Plugin execution failed."));
        }
@@ -305,13 +305,13 @@ export async function builtin_feed(args: string[]): Promise<void> {
   try {
     if (subcommand === 'list') {
        const { feeds, selectedFields }: FeedListResult = await feeds_fetchList(parsed as any);
-       console.log(renderFeedList(feeds, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
+       console.log(feedList_render(feeds, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
     } else if (subcommand === 'create') {
        // Requires --dirs and --params flag handling which parsed already has.
        // feed create --dirs ...
        const feed: Feed | null = await feed_create(parsed as any);
        if (feed) {
-          console.log(renderFeedCreate(feed));
+          console.log(feedCreate_render(feed));
        }
     } else {
        console.log(chalk.yellow('Directive not handled by chell... spawning chili directly'));
@@ -425,7 +425,7 @@ export async function builtin_chefs(args: string[]): Promise<void> {
             ? subArgs[0]
             : await path_resolve(subArgs[0]);
           const success: boolean = await chefs_mkdir_cmd(targetPath);
-          console.log(renderMkdir(targetPath, success));
+          console.log(mkdir_render(targetPath, success));
         } else {
           console.log(chalk.red('Usage: chefs mkdir <path>'));
         }
@@ -436,7 +436,7 @@ export async function builtin_chefs(args: string[]): Promise<void> {
             ? subArgs[0]
             : await path_resolve(subArgs[0]);
           const success: boolean = await chefs_touch_cmd(targetPath);
-          console.log(renderTouch(targetPath, success));
+          console.log(touch_render(targetPath, success));
         } else {
           console.log(chalk.red('Usage: chefs touch <path>'));
         }
@@ -475,7 +475,7 @@ export async function builtin_cat(args: string[]): Promise<void> {
 
   try {
      const content: string | null = await chefs_cat_cmd(target);
-     console.log(renderCat(content, pathArg));
+     console.log(cat_render(content, pathArg));
   } catch (e: unknown) {
      const msg: string = e instanceof Error ? e.message : String(e);
      console.error(chalk.red(`cat: ${msg}`));
@@ -555,7 +555,7 @@ export async function builtin_rm(args: string[]): Promise<void> {
         if (pathArgs.length > 1) {
           console.log(chalk.gray(`removed '${pathArg}'`));
         } else {
-          console.log(renderRm(result));
+          console.log(rm_render(result));
         }
         successCount++;
       } else {

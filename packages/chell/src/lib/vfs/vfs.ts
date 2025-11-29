@@ -12,7 +12,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { renderGrid, renderLong } from '@fnndsc/chili/views/ls.js';
+import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 
 /**
  * Virtual File System Router.
@@ -69,9 +69,9 @@ export class VFS {
 
       // Use shared view
       if (options.long) {
-        console.log(renderLong(items, { human: !!options.human }));
+        console.log(long_render(items, { human: !!options.human }));
       } else {
-        console.log(renderGrid(items));
+        console.log(grid_render(items));
       }
 
     } catch (error: unknown) {
@@ -106,9 +106,9 @@ export class VFS {
       if (items.length === 0) return;
 
       if (options.long) {
-        console.log(renderLong(items, { human: !!options.human }));
+        console.log(long_render(items, { human: !!options.human }));
       } else {
-        console.log(renderGrid(items));
+        console.log(grid_render(items));
       }
 
     } catch (error: unknown) {

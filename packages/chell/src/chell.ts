@@ -93,6 +93,19 @@ async function command_handle(line: string): Promise<void> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return;
 
+  // Check for pipe operators
+  const segments: string[] = pipes_parse(trimmedLine);
+  if (segments.length > 1) {
+    // Execute pipe chain
+    try {
+      await pipe_execute(segments);
+    } catch (error: unknown) {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`Pipe error: ${msg}`));
+    }
+    return;
+  }
+
   let [command, ...args]: string[] = trimmedLine.split(/\s+/);
 
   // Check for --help flag before any processing
@@ -149,6 +162,201 @@ import { Writable } from 'stream';
  */
 interface MutableWritable extends Writable {
   muted?: boolean;
+}
+
+/**
+ * Parses a command line for pipe operators and returns segments.
+ *
+ * @param line - The full command line.
+ * @returns An array of command segments.
+ */
+function pipes_parse(line: string): string[] {
+  const segments: string[] = [];
+  let currentSegment: string = '';
+  let inSingleQuote: boolean = false;
+  let inDoubleQuote: boolean = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char: string = line[i];
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      currentSegment += char;
+    } else if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      currentSegment += char;
+    } else if (char === '|' && !inSingleQuote && !inDoubleQuote) {
+      segments.push(currentSegment.trim());
+      currentSegment = '';
+    } else {
+      currentSegment += char;
+    }
+  }
+
+  if (currentSegment.trim()) {
+    segments.push(currentSegment.trim());
+  }
+
+  return segments;
+}
+
+/**
+ * Captures console output during command execution.
+ *
+ * @param fn - The function to execute while capturing output.
+ * @returns The captured output as a string and buffer.
+ */
+async function output_capture(fn: () => Promise<void>): Promise<{ text: string; buffer: Buffer }> {
+  const chunks: Buffer[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+
+  // Override console.log and console.error
+  console.log = (...args: unknown[]): void => {
+    const text: string = args.map(arg =>
+      typeof arg === 'string' ? arg : JSON.stringify(arg)
+    ).join(' ') + '\n';
+    chunks.push(Buffer.from(text, 'utf-8'));
+  };
+
+  console.error = (...args: unknown[]): void => {
+    const text: string = args.map(arg =>
+      typeof arg === 'string' ? arg : JSON.stringify(arg)
+    ).join(' ') + '\n';
+    chunks.push(Buffer.from(text, 'utf-8'));
+  };
+
+  try {
+    await fn();
+  } finally {
+    // Restore original console methods
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  const buffer: Buffer = Buffer.concat(chunks);
+  const text: string = buffer.toString('utf-8');
+
+  return { text, buffer };
+}
+
+/**
+ * Executes a chell command and captures its output.
+ *
+ * @param commandLine - The command line to execute.
+ * @returns The captured output.
+ */
+async function chellCommand_executeAndCapture(commandLine: string): Promise<{ text: string; buffer: Buffer }> {
+  const trimmedLine: string = commandLine.trim();
+  if (!trimmedLine) return { text: '', buffer: Buffer.alloc(0) };
+
+  let [command, ...args]: string[] = trimmedLine.split(/\s+/);
+
+  // Expand wildcards for commands that support it
+  if (shouldExpandWildcards(command)) {
+    args = await wildcards_expandAll(args);
+  }
+
+  return output_capture(async () => {
+    switch (command) {
+      case 'connect': await builtin_connect(args); break;
+      case 'logout': await builtin_logout(); break;
+      case 'cd': await builtin_cd(args); break;
+      case 'ls': await builtin_ls(args); break;
+      case 'pwd': await builtin_pwd(); break;
+      case 'cat': await builtin_cat(args); break;
+      case 'rm': await builtin_rm(args); break;
+      case 'chefs': await builtin_chefs(args); break;
+      case 'upload': await builtin_upload(args); break;
+      case 'context': await builtin_context(args); break;
+      case 'plugin':
+      case 'plugins':
+        await builtin_plugin(args);
+        break;
+      case 'feed':
+      case 'feeds':
+        await builtin_feed(args);
+        break;
+      case 'files':
+        await builtin_files(args);
+        break;
+      case 'links':
+        await builtin_links(args);
+        break;
+      case 'dirs':
+        await builtin_dirs(args);
+        break;
+      case 'exit':
+        process.exit(0);
+        break;
+      default:
+        console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
+        await chiliCommand_run(command, ['-s', ...args]);
+        break;
+    }
+  });
+}
+
+/**
+ * Executes a pipe chain by running the first command in chell and piping through local tools.
+ *
+ * @param segments - Array of command segments separated by pipes.
+ * @returns A Promise that resolves when the pipe chain completes.
+ */
+async function pipe_execute(segments: string[]): Promise<void> {
+  if (segments.length === 0) return;
+
+  // Execute first segment in chell and capture output
+  const firstCommand: string = segments[0];
+  const { buffer } = await chellCommand_executeAndCapture(firstCommand);
+
+  if (segments.length === 1) {
+    // No pipes, just output the result
+    process.stdout.write(buffer);
+    return;
+  }
+
+  // Chain remaining segments as spawned processes
+  let currentInput: Buffer = buffer;
+
+  for (let i = 1; i < segments.length; i++) {
+    const segment: string = segments[i];
+    const [cmd, ...cmdArgs]: string[] = segment.split(/\s+/);
+
+    currentInput = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      const child: ChildProcess = spawn(cmd, cmdArgs, {
+        stdio: ['pipe', 'pipe', 'inherit'],
+        shell: true
+      });
+
+      child.stdout!.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      child.on('close', (code: number | null) => {
+        if (code !== 0 && code !== null) {
+          reject(new Error(`Command '${cmd}' exited with code ${code}`));
+        } else {
+          resolve(Buffer.concat(chunks));
+        }
+      });
+
+      child.on('error', (err: Error) => {
+        reject(err);
+      });
+
+      // Write input to child process
+      if (currentInput.length > 0) {
+        child.stdin!.write(currentInput);
+      }
+      child.stdin!.end();
+    });
+  }
+
+  // Output final result
+  process.stdout.write(currentInput);
 }
 
 /**

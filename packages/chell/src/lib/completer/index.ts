@@ -35,15 +35,19 @@ const BUILTINS: string[] = [
 ];
 
 /**
- * Fetches available plugin names from /bin.
- * @returns Array of plugin names.
+ * Fetches available plugin names from /bin in the format: name-vVersion.
+ * This matches the display format used in /bin listings.
+ * @returns Array of plugin names with version suffixes.
  */
 async function plugins_getNames(): Promise<string[]> {
   try {
     const plugins = await plugins_listAll({});
     if (plugins && plugins.tableData) {
       return plugins.tableData.map((p: Record<string, unknown>) => {
-        return typeof p.name === 'string' ? p.name : String(p.name ?? '');
+        const name: string = typeof p.name === 'string' ? p.name : String(p.name ?? '');
+        const version: string = typeof p.version === 'string' ? p.version : String(p.version ?? '');
+        // Format as name-vVersion to match /bin display format
+        return version ? `${name}-v${version}` : name;
       });
     }
   } catch (e) {

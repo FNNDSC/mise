@@ -53,12 +53,13 @@ describe('Tab Completion', () => {
       });
     });
 
-    it('should complete plugin names from /bin', (done) => {
+    it('should complete plugin names from /bin with version suffixes', (done) => {
       mockPlugins_listAll.mockResolvedValue({
         tableData: [
-          { name: 'pl-dircopy' },
-          { name: 'pl-topologicalcopy' },
-          { name: 'pl-mri_convert' }
+          { name: 'pl-dircopy', version: '1.0.0' },
+          { name: 'pl-dircopy', version: '2.0.0' },
+          { name: 'pl-topologicalcopy', version: '1.5.2' },
+          { name: 'pl-mri_convert', version: '3.1.0' }
         ]
       });
 
@@ -66,9 +67,10 @@ describe('Tab Completion', () => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('pl-');
-        expect(hits).toContain('pl-dircopy');
-        expect(hits).toContain('pl-topologicalcopy');
-        expect(hits).toContain('pl-mri_convert');
+        expect(hits).toContain('pl-dircopy-v1.0.0');
+        expect(hits).toContain('pl-dircopy-v2.0.0');
+        expect(hits).toContain('pl-topologicalcopy-v1.5.2');
+        expect(hits).toContain('pl-mri_convert-v3.1.0');
         done();
       });
     });
@@ -76,8 +78,8 @@ describe('Tab Completion', () => {
     it('should combine builtins and plugins for completion', (done) => {
       mockPlugins_listAll.mockResolvedValue({
         tableData: [
-          { name: 'custom-app' },
-          { name: 'another-plugin' }
+          { name: 'custom-app', version: '1.0.0' },
+          { name: 'another-plugin', version: '2.0.0' }
         ]
       });
 
@@ -90,9 +92,33 @@ describe('Tab Completion', () => {
         expect(hits).toContain('connect');
         expect(hits).toContain('chefs');
         // Should include plugin starting with 'c'
-        expect(hits).toContain('custom-app');
+        expect(hits).toContain('custom-app-v1.0.0');
         // Should NOT include plugin not starting with 'c'
-        expect(hits).not.toContain('another-plugin');
+        expect(hits).not.toContain('another-plugin-v2.0.0');
+        done();
+      });
+    });
+
+    it('should complete multiple versions of same plugin', (done) => {
+      mockPlugins_listAll.mockResolvedValue({
+        tableData: [
+          { name: 'pl-dircopy', version: '1.0.0' },
+          { name: 'pl-dircopy', version: '1.5.0' },
+          { name: 'pl-dircopy', version: '2.0.0' },
+          { name: 'pl-dircopy', version: '2.1.0' }
+        ]
+      });
+
+      completer('pl-dircopy', (err, result) => {
+        expect(err).toBeNull();
+        const [hits, original] = result;
+        expect(original).toBe('pl-dircopy');
+        // All versions should be available for completion
+        expect(hits).toContain('pl-dircopy-v1.0.0');
+        expect(hits).toContain('pl-dircopy-v1.5.0');
+        expect(hits).toContain('pl-dircopy-v2.0.0');
+        expect(hits).toContain('pl-dircopy-v2.1.0');
+        expect(hits).toHaveLength(4);
         done();
       });
     });

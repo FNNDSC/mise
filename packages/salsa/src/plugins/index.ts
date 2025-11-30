@@ -11,6 +11,7 @@ import {
   ChRISPluginGroup,
   FilteredResourceData,
   ListOptions,
+  Searchable,
   objContext_create
 } from '@fnndsc/cumin';
 import axios from 'axios';
@@ -93,10 +94,10 @@ export async function plugin_run(searchable: string, parameters: Dictionary): Pr
 /**
  * Resolve a searchable plugin string to a list of plugin IDs.
  *
- * @param searchable - A string that identifies the plugin (e.g., name, ID, or a partial match).
+ * @param searchable - A string or Searchable object that identifies the plugin (e.g., name, ID, or a partial match).
  * @returns A Promise resolving to an array of plugin IDs, or null if no plugins match.
  */
-export async function plugins_searchableToIDs(searchable: string): Promise<string[] | null> {
+export async function plugins_searchableToIDs(searchable: string | Searchable): Promise<string[] | null> {
   const chrisPlugin = new ChRISPlugin();
   const queryHits: QueryHits | null = await chrisPlugin.pluginIDs_resolve(searchable);
   if (!queryHits) {

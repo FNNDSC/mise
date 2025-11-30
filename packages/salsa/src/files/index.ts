@@ -34,12 +34,11 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
     const dir = path.dirname(pathStr);
     const name = path.basename(pathStr);
     
-    const result = await chrisIO.file_upload(uploadContent, dir, name);
-    if (!result.ok) {
+    const success = await chrisIO.file_upload(uploadContent, dir, name);
+    if (!success) {
       errorStack.stack_push("error", `File upload failed for ${pathStr}.`);
-      return false;
     }
-    return true;
+    return success;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `File creation failed for ${pathStr}: ${msg}`);
@@ -66,8 +65,7 @@ export async function files_touch(path: string): Promise<boolean> {
  * @returns Promise<boolean> success.
  */
 export async function files_uploadPath(localPath: string, remotePath: string): Promise<boolean> {
-  const result = await chrisIO.uploadLocalPath(localPath, remotePath);
-  return result.ok;
+  return await chrisIO.uploadLocalPath(localPath, remotePath);
 }
 
 /**
@@ -96,12 +94,30 @@ export async function files_mkdir(folderPath: string): Promise<boolean> {
       errorStack.stack_push("error", `Failed to create folder: ${folderPath}. No data in response.`);
       return false;
     }
-  } catch (error: any) {
-    if (error.response && error.response.status === 400 && error.response.data.path && error.response.data.path[0].includes('already exists')) {
+  } catch (error: unknown) {
+    // Type guard for axios error with response
+    if (
+      error &&
+      typeof error === 'object' &&
+      'response' in error &&
+      error.response &&
+      typeof error.response === 'object' &&
+      'status' in error.response &&
+      error.response.status === 400 &&
+      'data' in error.response &&
+      error.response.data &&
+      typeof error.response.data === 'object' &&
+      'path' in error.response.data &&
+      Array.isArray(error.response.data.path) &&
+      error.response.data.path[0] &&
+      typeof error.response.data.path[0] === 'string' &&
+      error.response.data.path[0].includes('already exists')
+    ) {
       errorStack.stack_push("warning", `Folder '${folderPath}' already exists.`);
       return true; // Consider it a success if it already exists
     }
-    errorStack.stack_push("error", `Error creating folder '${folderPath}': ${error.message}`);
+    const errorMessage: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Error creating folder '${folderPath}': ${errorMessage}`);
     return false;
   }
 }
@@ -114,7 +130,7 @@ export interface FileShareOptions {
   is_public?: boolean;
   // Define options for sharing files
   // e.g., userId: number, permission: 'read' | 'write'
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -286,11 +302,7 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
  * @returns A Promise resolving to the file content as a Buffer, or null on failure.
  */
 export async function files_view(fileId: number): Promise<Buffer | null> {
-  const result = await chrisIO.file_download(fileId);
-  if (result.ok) {
-    return result.value;
-  }
-  return null;
+  return await chrisIO.file_download(fileId);
 }
 
 /**

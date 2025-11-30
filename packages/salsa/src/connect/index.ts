@@ -1,4 +1,4 @@
-import { chrisConnection, chrisContext } from "@fnndsc/cumin";
+import { chrisConnection } from "@fnndsc/cumin";
 
 export interface ConnectOptions {
   user: string;
@@ -14,7 +14,4 @@ export async function connect_do(options: ConnectOptions): Promise<boolean> {
 
 export async function logout_do(): Promise<void> {
   await chrisConnection.connection_logout();
-  // Clear context to show disconnected prompt
-  chrisContext.singleContext.user = null;
-  chrisContext.singleContext.URL = null;
 }

@@ -1,4 +1,11 @@
-# ChELL - The ChRIS Interactive Shell
+```
+  ____ _     _____ _     _
+ / ___| |__ | ____| |   | |
+| |   | '_ \|  _| | |   | |
+| |___| | | | |___| |___| |___
+ \____|_| |_|_____|_____|_____|
+```
+**ChRIS Interactive Shell**
 
 `chell` (ChELL Execution Logic Layer) is an interactive command-line interface (CLI) designed to provide a shell-like experience for interacting with a ChRIS instance. It acts as a sophisticated consumer of the `chili` library, providing a persistent REPL environment for the core ChRIS operations.
 

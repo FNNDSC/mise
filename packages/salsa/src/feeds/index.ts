@@ -3,7 +3,7 @@
  * @module
  */
 
-import { ChRISFeed, SimpleRecord, ChRISObjectParams, ChRISFeedGroup, FilteredResourceData, ListOptions, chrisConnection, errorStack } from '@fnndsc/cumin';
+import { ChRISFeed, SimpleRecord, ChRISObjectParams, ChRISFeedGroup, FilteredResourceData, ListOptions, chrisConnection, errorStack, Result } from '@fnndsc/cumin';
 import { Feed } from "@fnndsc/chrisapi";
 
 /**
@@ -53,7 +53,11 @@ export async function feed_create(dirs: string[], params: ChRISObjectParams = {}
     // For now, assuming dirs is passed as is or joined.
     const dirsArg = Array.isArray(dirs) ? dirs.join(',') : dirs;
 
-    return await chrisFeed.createFromDirs(dirsArg, params);
+    const result = await chrisFeed.createFromDirs(dirsArg, params);
+    if (!result.ok) {
+        return null;
+    }
+    return result.value;
 }
 
 /**

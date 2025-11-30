@@ -87,8 +87,12 @@ export async function plugin_run(searchable: string, parameters: Dictionary): Pr
   const chrisPlugin = new ChRISPlugin();
   // Ensure parameters are stringified if cumin expects a string, otherwise pass as object
   // Looking at cumin's plugin_run, it expects string for parameters.
-  const paramsString = JSON.stringify(parameters); 
-  return await chrisPlugin.plugin_run(searchable, paramsString);
+  const paramsString = JSON.stringify(parameters);
+  const result = await chrisPlugin.plugin_run(searchable, paramsString);
+  if (!result.ok) {
+    return null;
+  }
+  return result.value;
 }
 
 /**
@@ -99,11 +103,11 @@ export async function plugin_run(searchable: string, parameters: Dictionary): Pr
  */
 export async function plugins_searchableToIDs(searchable: string | Searchable): Promise<string[] | null> {
   const chrisPlugin = new ChRISPlugin();
-  const queryHits: QueryHits | null = await chrisPlugin.pluginIDs_resolve(searchable);
-  if (!queryHits) {
+  const result = await chrisPlugin.pluginIDs_resolve(searchable);
+  if (!result.ok) {
     return null;
   }
-  return queryHits.hits as string[];
+  return result.value.hits as string[];
 }
 
 /**
@@ -144,14 +148,14 @@ export async function pluginMeta_readmeContentFetch(repoUrl: string): Promise<st
  */
 export async function pluginMeta_documentationUrlGet(pluginId: string): Promise<string | null> {
   const chrisPlugin = new ChRISPlugin(); // Re-instantiate as it might not be shared
-  const query: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(
+  const result = await chrisPlugin.pluginData_getFromSearch(
     { search: `id: ${pluginId}` }, // Assuming cumin can parse this search string
     'documentation'
   );
-  if (!query || !query.hits.length) {
+  if (!result.ok || !result.value.hits.length) {
     return null;
   }
-  return query.hits[0] as string;
+  return result.value.hits[0] as string;
 }
 
 /**
@@ -165,10 +169,10 @@ export async function pluginMeta_documentationUrlGet(pluginId: string): Promise<
  */
 export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions): Promise<string | null> {
   const chrisPlugin = new ChRISPlugin(); // Re-instantiate
-  const queryHits: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(options, 'id');
-  if (queryHits && queryHits.hits.length === 1) { // Assuming we want a single, unambiguous result
-    return queryHits.hits[0] as string;
-  } else if (queryHits && queryHits.hits.length > 1) {
+  const result = await chrisPlugin.pluginData_getFromSearch(options, 'id');
+  if (result.ok && result.value.hits.length === 1) { // Assuming we want a single, unambiguous result
+    return result.value.hits[0] as string;
+  } else if (result.ok && result.value.hits.length > 1) {
     // Optionally log a warning about ambiguity, but for library, just return null or throw.
     return null; // Return null for ambiguous search results
   }

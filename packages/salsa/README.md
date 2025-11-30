@@ -6,7 +6,7 @@
 |____/ \__,_|_|___/\__,_|
 ```
 
-**Shared Application Logic and Service Assets**
+**Salsa Abstracts Logic Service Assets**
 
 `salsa` is the logic layer of the ChRIS interface ecosystem. It is a TypeScript library that encapsulates high-level business intents and operational logic, serving as the bridge between user-facing interfaces (like the `chili` CLI) and the underlying infrastructure (`cumin` and `chrisapi`).
 

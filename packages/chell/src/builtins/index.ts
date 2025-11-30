@@ -236,6 +236,9 @@ export async function builtin_connect(args: string[]): Promise<void> {
   if (user && password && url) {
     try {
       const success: boolean = await connect_login({ user, password, url, debug: false });
+      if (success) {
+        session.offline = false;
+      }
       console.log(login_render(success, url, user));
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);

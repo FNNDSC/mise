@@ -68,9 +68,18 @@ export class REPL {
     const context = context_getSingle();
     const cwd: string = await session.getCWD();
 
-    const promptUser: string = context.user || 'disconnected';
-    const promptUri: string = context.URL || 'no-cube';
-    const promptPath: string = cwd;
+    let promptUser: string = context.user || 'disconnected';
+    let promptUri: string = context.URL || 'no-cube';
+    
+    if (session.offline) {
+      promptUser = 'disconnected';
+      promptUri = 'no-cube';
+    }
+    
+    let promptPath: string = cwd;
+    if (session.offline) {
+      promptPath = '/';
+    }
 
     this.rl.setPrompt(`${chalk.green(promptUser)}@${chalk.cyan(promptUri)}:${chalk.yellow(promptPath)}$ `);
     try {

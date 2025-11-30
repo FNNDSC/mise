@@ -457,6 +457,7 @@ export async function chell_start(): Promise<void> {
         } else {
           console.log(chalk.yellow('[!] Failed to create client'));
           console.log(chalk.yellow('[!] Running in disconnected mode'));
+          session.offline = true;
           console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
         }
       } catch (error: unknown) {
@@ -464,11 +465,13 @@ export async function chell_start(): Promise<void> {
         console.log(chalk.yellow('[!] Token expired or invalid'));
         console.log(chalk.gray(`    Error: ${msg}`));
         console.log(chalk.yellow('[!] Running in disconnected mode'));
+        session.offline = true;
         console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
       }
     } else {
       console.log(chalk.yellow('[!] No token found'));
       console.log(chalk.yellow('[!] Running in disconnected mode'));
+      session.offline = true;
       console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
     }
   } else {
@@ -502,9 +505,11 @@ export async function chell_start(): Promise<void> {
         process.exit(1);
       }
     }
-  } else if (!currentContext.user || !currentContext.URL) {
+  } else if ((!currentContext.user || !currentContext.URL) && !session.offline) {
     // Only show "disconnected mode" if there's truly no saved session
+    // and we haven't already reported it.
     console.log(chalk.yellow('[!] Running in disconnected mode.'));
+    session.offline = true;
   }
 
   console.log(border);

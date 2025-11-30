@@ -13,6 +13,7 @@ import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContex
 export class Session {
   private static instance: Session;
   private _connection: typeof chrisConnection | undefined;
+  private _offline: boolean = false;
   
   /**
    * Private constructor for Singleton.
@@ -57,6 +58,20 @@ export class Session {
    */
   get connection() {
     return this._connection || chrisConnection;
+  }
+
+  /**
+   * Get offline status.
+   */
+  get offline(): boolean {
+    return this._offline;
+  }
+
+  /**
+   * Set offline status.
+   */
+  set offline(value: boolean) {
+    this._offline = value;
   }
 }
 

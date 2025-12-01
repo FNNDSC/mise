@@ -142,6 +142,11 @@ jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_display: mockTableDisplay
 }));
 
+// Mock chell builtins
+jest.unstable_mockModule('../src/builtins/parametersofplugin.js', () => ({
+  builtin_parametersofplugin: jest.fn()
+}));
+
 // Mock chell
 jest.unstable_mockModule('../src/chell.js', () => ({
   chiliCommand_run: mockChiliCommandRun

@@ -1,9 +1,7 @@
 import chalk from 'chalk';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { commandArgs_process } from './utils.js';
-import { PluginContextController } from '@fnndsc/chili/controllers/pluginContextController.js';
-import { BaseGroupHandler } from '@fnndsc/chili/handlers/baseGroupHandler.js';
-import { ListOptions } from '@fnndsc/cumin'; // Import ListOptions for parsing search
+import { PluginContextGroupHandler } from '@fnndsc/chili/plugins/pluginGroupHandler.js';
 
 /**
  * Handles the 'parametersofplugin' builtin command.
@@ -23,18 +21,17 @@ export async function builtin_parametersofplugin(args: string[]): Promise<void> 
     }
 
     try {
-        // Instantiate the controller with the explicit plugin ID from args, or let it default
-        const controller = await PluginContextController.controller_create(
+        // Instantiate the specialized handler
+        const handler = await PluginContextGroupHandler.handler_create(
             'parametersofplugin',
-            pluginIdFromArgs ? Number(pluginIdFromArgs) : undefined // Pass resolved ID or undefined
+            pluginIdFromArgs ? Number(pluginIdFromArgs) : undefined
         );
-        const handler = new BaseGroupHandler('parametersofplugin', controller.chrisObject as any); // 'as any' due to type complexity
 
         if (subcommand === 'list') {
-            // Pass parsed CLI options to the generic list method
-            await handler.resources_list(parsedArgs);
+            // Use the specialized man-page style listing for parameters
+            await handler.parameters_listMan(parsedArgs);
         } else if (subcommand === 'fieldslist') {
-            await handler.resourceFields_list();
+            await handler.parameters_fieldsList();
         } else {
             console.log(chalk.yellow(`Unknown parametersofplugin subcommand: ${subcommand}`));
         }

@@ -67,7 +67,10 @@ describe('files', () => {
       })
     });
     // Mock chrisIO.file_upload for files_create and files_touch
-    (chrisIO.file_upload as jest.Mock).mockResolvedValue(true);
+    (chrisIO.file_upload as jest.Mock).mockImplementation((content: Blob, dir: string, name: string) => {
+      // For now, simply resolve to true. If content or path validation is needed, it can be added here.
+      return Promise.resolve(true);
+    });
     // Mock chrisIO.file_download for files_view
     (chrisIO.file_download as jest.Mock).mockResolvedValue(Buffer.from('Content of file 456'));
   });
@@ -207,7 +210,7 @@ describe('files', () => {
       const content = 'hello world';
       const result = await files_create(content, path);
 
-      expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), path);
+      expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/new', 'file.txt');
       // Verify Blob content (jest doesn't easily let us inspect Blob content directly for expect)
       // We can rely on file_upload's mock for now.
       expect(result).toBe(true);
@@ -219,7 +222,7 @@ describe('files', () => {
       const content = Buffer.from([0x01, 0x02, 0x03]);
       const result = await files_create(content, path);
 
-      expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), path);
+      expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/new', 'buffer_file.bin');
       expect(result).toBe(true);
       expect(errorStack.stack_push).not.toHaveBeenCalled();
     });
@@ -229,7 +232,7 @@ describe('files', () => {
       const content = new Blob(['blob data']);
       const result = await files_create(content, path);
 
-      expect(chrisIO.file_upload).toHaveBeenCalledWith(content, path);
+      expect(chrisIO.file_upload).toHaveBeenCalledWith(content, '/new', 'blob_file.dat');
       expect(result).toBe(true);
       expect(errorStack.stack_push).not.toHaveBeenCalled();
     });
@@ -246,7 +249,7 @@ describe('files', () => {
       (chrisIO.file_upload as jest.Mock).mockRejectedValue(new Error('Upload error'));
       const result = await files_create('exception content', '/exception.txt');
       expect(result).toBe(false);
-      expect(errorStack.stack_push).toHaveBeenCalledWith('error', expect.stringContaining('File creation failed for /exception.txt: Error: Upload error'));
+      expect(errorStack.stack_push).toHaveBeenCalledWith('error', expect.stringContaining('File creation failed for /exception.txt: Upload error'));
     });
   });
 
@@ -255,7 +258,7 @@ describe('files', () => {
       const path = '/empty.txt';
       const result = await files_touch(path);
 
-      expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), path);
+      expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/', 'empty.txt');
       // Can't directly check Blob content here, but we know it should be empty based on implementation
       expect(result).toBe(true);
       expect(errorStack.stack_push).not.toHaveBeenCalled();

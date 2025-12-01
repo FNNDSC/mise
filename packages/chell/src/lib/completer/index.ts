@@ -157,7 +157,9 @@ async function path_complete(partial: string): Promise<string[]> {
      const plugins = await plugins_listAll({});
      if (plugins && plugins.tableData) {
        items = plugins.tableData.map((p: Record<string, unknown>) => {
-         return typeof p.name === 'string' ? p.name : String(p.name ?? '');
+         const name = typeof p.name === 'string' ? p.name : String(p.name ?? '');
+         const version = typeof p.version === 'string' ? p.version : String(p.version ?? '');
+         return version ? `${name}-v${version}` : name;
        });
      }
   } else {

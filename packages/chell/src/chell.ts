@@ -30,10 +30,12 @@ import {
   builtin_files,
   builtin_links,
   builtin_dirs,
-  builtin_context
+  builtin_context,
+  builtin_parametersofplugin
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
+import { pluginExecutable_handle } from './builtins/executable.js';
 
 /**
  * Interface for package.json structure.
@@ -119,6 +121,11 @@ async function command_handle(line: string): Promise<void> {
     args = await wildcards_expandAll(args);
   }
 
+  // Attempt to handle as a simulated plugin execution
+  if (await pluginExecutable_handle(command, args)) {
+    return;
+  }
+
   switch (command) {
     case 'connect': await builtin_connect(args); break;
     case 'logout': await builtin_logout(); break;
@@ -130,6 +137,7 @@ async function command_handle(line: string): Promise<void> {
     case 'chefs': await builtin_chefs(args); break;
     case 'upload': await builtin_upload(args); break;
     case 'context': await builtin_context(args); break;
+    case 'parametersofplugin': await builtin_parametersofplugin(args); break;
     case 'plugin':
     case 'plugins':
       await builtin_plugin(args);

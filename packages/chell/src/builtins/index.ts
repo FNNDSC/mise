@@ -34,8 +34,26 @@ import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 import { chiliCommand_run } from '../chell.js';
 import * as readline from 'readline';
+import { builtin_parametersofplugin } from './parametersofplugin.js';
 
-export { commandArgs_process };
+export {
+  builtin_cd,
+  builtin_pwd,
+  builtin_ls,
+  builtin_upload,
+  builtin_connect,
+  builtin_logout,
+  builtin_chefs,
+  builtin_cat,
+  builtin_rm,
+  builtin_plugin,
+  builtin_feed,
+  builtin_files,
+  builtin_links,
+  builtin_dirs,
+  builtin_context,
+  builtin_parametersofplugin,
+};
 export type { ParsedArgs };
 
 /**
@@ -78,7 +96,7 @@ export async function path_resolve(inputPath: string): Promise<string> {
  * @param args - An array containing the target path as the first element.
  * @returns A Promise that resolves when the operation is complete.
  */
-export async function builtin_cd(args: string[]): Promise<void> {
+async function builtin_cd(args: string[]): Promise<void> {
   const pathArg: string | undefined = args[0];
   
   // 'cd' with no args goes to home
@@ -127,7 +145,7 @@ export async function builtin_cd(args: string[]): Promise<void> {
  *
  * @returns A Promise that resolves when the directory is printed.
  */
-export async function builtin_pwd(): Promise<void> {
+async function builtin_pwd(): Promise<void> {
   console.log(await session.getCWD());
 }
 
@@ -138,7 +156,7 @@ export async function builtin_pwd(): Promise<void> {
  * @param args - An array containing target paths (optional).
  * @returns A Promise that resolves when the directory contents are listed.
  */
-export async function builtin_ls(args: string[]): Promise<void> {
+async function builtin_ls(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
 
@@ -201,7 +219,7 @@ export async function builtin_ls(args: string[]): Promise<void> {
  *
  * @param args - [localPath, remotePath]
  */
-export async function builtin_upload(args: string[]): Promise<void> {
+async function builtin_upload(args: string[]): Promise<void> {
   if (args.length < 2) {
     console.log(chalk.red('Usage: upload <local_path> <remote_path>'));
     return;
@@ -227,7 +245,7 @@ export async function builtin_upload(args: string[]): Promise<void> {
  * @param args - An array of arguments containing user, password, and URL.
  * @returns A Promise that resolves when the connection attempt is complete.
  */
-export async function builtin_connect(args: string[]): Promise<void> {
+async function builtin_connect(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const user: string = parsed.user as string;
   const password: string = parsed.password as string;
@@ -255,7 +273,7 @@ export async function builtin_connect(args: string[]): Promise<void> {
  *
  * @returns A Promise that resolves when the logout operation is complete.
  */
-export async function builtin_logout(): Promise<void> {
+async function builtin_logout(): Promise<void> {
   try {
     await connect_logout();
     console.log(logout_render(true));
@@ -271,7 +289,7 @@ export async function builtin_logout(): Promise<void> {
  *
  * @param args - command arguments.
  */
-export async function builtin_plugin(args: string[]): Promise<void> {
+async function builtin_plugin(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand = parsed._[0];
   
@@ -312,7 +330,7 @@ export async function builtin_plugin(args: string[]): Promise<void> {
  *
  * @param args - command arguments.
  */
-export async function builtin_feed(args: string[]): Promise<void> {
+async function builtin_feed(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand = parsed._[0];
   
@@ -398,7 +416,7 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
  *
  * @param args - command arguments.
  */
-export async function builtin_files(args: string[]): Promise<void> {
+async function builtin_files(args: string[]): Promise<void> {
   await builtin_fileGroup(args, 'files');
 }
 
@@ -407,7 +425,7 @@ export async function builtin_files(args: string[]): Promise<void> {
  *
  * @param args - command arguments.
  */
-export async function builtin_links(args: string[]): Promise<void> {
+async function builtin_links(args: string[]): Promise<void> {
   await builtin_fileGroup(args, 'links');
 }
 
@@ -416,7 +434,7 @@ export async function builtin_links(args: string[]): Promise<void> {
  *
  * @param args - command arguments.
  */
-export async function builtin_dirs(args: string[]): Promise<void> {
+async function builtin_dirs(args: string[]): Promise<void> {
   await builtin_fileGroup(args, 'dirs');
 }
 
@@ -426,7 +444,7 @@ export async function builtin_dirs(args: string[]): Promise<void> {
  * @param args - An array containing the subcommand and its arguments.
  * @returns A Promise that resolves when the `chefs` command processing is complete.
  */
-export async function builtin_chefs(args: string[]): Promise<void> {
+async function builtin_chefs(args: string[]): Promise<void> {
   const [subcommand, ...subArgs]: string[] = args;
   const currentChrisFolder: string = await session.getCWD();
 
@@ -478,7 +496,7 @@ export async function builtin_chefs(args: string[]): Promise<void> {
  *
  * @param args - Command line arguments (file path).
  */
-export async function builtin_cat(args: string[]): Promise<void> {
+async function builtin_cat(args: string[]): Promise<void> {
   const pathArg: string | undefined = args[0];
   if (!pathArg) {
      console.error(chalk.red('Usage: cat <file>'));
@@ -506,7 +524,7 @@ export async function builtin_cat(args: string[]): Promise<void> {
  *
  * @param args - Command line arguments (flags and paths).
  */
-export async function builtin_rm(args: string[]): Promise<void> {
+async function builtin_rm(args: string[]): Promise<void> {
   // Parse flags and paths
   let recursive: boolean = false;
   let force: boolean = false;
@@ -607,7 +625,7 @@ export async function builtin_rm(args: string[]): Promise<void> {
  *
  * @param args - Command line arguments (optional flags).
  */
-export async function builtin_context(args: string[]): Promise<void> {
+async function builtin_context(args: string[]): Promise<void> {
   const context: SingleContext = context_getSingle();
 
   const tableData = [

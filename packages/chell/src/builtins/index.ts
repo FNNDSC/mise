@@ -107,10 +107,10 @@ async function builtin_cd(args: string[]): Promise<void> {
   }
 
   try {
-    const targetPath: string = await path_resolve(pathArg);
+    const logicalPath: string = await path_resolve(pathArg);
 
     // Handle virtual directories
-    if (targetPath === '/bin') {
+    if (logicalPath === '/bin') {
       await session.setCWD('/bin');
       return;
     }
@@ -121,12 +121,24 @@ async function builtin_cd(args: string[]): Promise<void> {
       return;
     }
 
+    // Resolve logical path to physical path for validation
+    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
+    const physicalResult = await logical_toPhysical(logicalPath);
+
+    if (!physicalResult.ok) {
+      console.error(chalk.red(`cd: ${pathArg}: Invalid path`));
+      return;
+    }
+
+    const physicalPath: string = physicalResult.value;
+
     try {
-      // Note: getFileBrowserFolderByPath returns generic object or null.
-      // We treat it as unknown here as we only check existence.
-      const folder: unknown = await client.getFileBrowserFolderByPath(targetPath);
+      // Validate that the physical target exists
+      const folder: unknown = await client.getFileBrowserFolderByPath(physicalPath);
       if (folder) {
-        await session.setCWD(targetPath);
+        // Set CWD to the logical path (not the physical target)
+        // This preserves *nix behavior where cd into a symlink keeps the logical path
+        await session.setCWD(logicalPath);
       } else {
         console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
       }

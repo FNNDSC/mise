@@ -13,6 +13,110 @@ import {
 import { FileBrowserFolder } from "@fnndsc/chrisapi";
 
 /**
+ * Represents a file or directory item in a recursive listing.
+ */
+export interface FsItem {
+  path: string;
+  type: 'file' | 'dir';
+  size?: number;
+}
+
+/**
+ * Recursively lists all files and directories under a given ChRIS path.
+ *
+ * @param rootPath - The starting directory path.
+ * @returns A Promise resolving to an array of FsItem objects.
+ */
+export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
+  let items: FsItem[] = [];
+
+  // 1. List files in current directory
+  const filesGroup = await files_getGroup('files', rootPath);
+  if (filesGroup) {
+    const fileResults = await filesGroup.asset.resources_getAll();
+    if (fileResults && fileResults.tableData) {
+      fileResults.tableData.forEach((f: any) => {
+        items.push({
+          path: f.fname, // fname is the full path
+          type: 'file',
+          size: f.fsize
+        });
+      });
+    }
+  }
+
+  // 2. List subdirectories
+  const dirsGroup = await files_getGroup('dirs', rootPath);
+  if (dirsGroup) {
+    const dirResults = await dirsGroup.asset.resources_getAll();
+    if (dirResults && dirResults.tableData) {
+      for (const d of dirResults.tableData) {
+        const dirPath = d.path;
+        // Add the directory itself
+        items.push({ path: dirPath, type: 'dir' });
+        
+        // Recurse
+        const subItems = await files_listRecursive(dirPath);
+        items = items.concat(subItems);
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Recursively copies a directory from source to destination within ChRIS.
+ *
+ * @param srcPath - The source directory path.
+ * @param destPath - The destination directory path (the parent + new dir name).
+ * @returns A Promise resolving to true on success, false on failure.
+ */
+export async function files_copyRecursively(srcPath: string, destPath: string): Promise<boolean> {
+  try {
+    // Ensure destination directory exists (mkdir -p behavior ideally, but files_mkdir is shallow?)
+    // Actually files_mkdir assumes parent exists. 
+    // For a copy, we create the target root first.
+    await files_mkdir(destPath);
+
+    const items = await files_listRecursive(srcPath);
+    
+    for (const item of items) {
+      // Calculate new path
+      // item.path: /home/user/src/subdir/file.txt
+      // srcPath:   /home/user/src
+      // relative:  subdir/file.txt
+      // destPath:  /home/user/dest
+      // target:    /home/user/dest/subdir/file.txt
+      
+      // Note: ChRIS paths usually don't have trailing slash for dirname logic, but we should be careful.
+      const relativePath = item.path.substring(srcPath.length).replace(/^\//, '');
+      const targetPath = path.join(destPath, relativePath); // Uses node path, handles slashes
+
+      if (item.type === 'dir') {
+        const created = await files_mkdir(targetPath);
+        if (!created) {
+             console.warn(`Warning: Failed to create directory ${targetPath}`);
+        }
+      } else if (item.type === 'file') {
+        const copied = await files_copy(item.path, targetPath);
+        if (!copied) {
+             console.warn(`Warning: Failed to copy file ${item.path}`);
+             // Should we abort? cp -r usually continues or errors out.
+             // For now, log and continue to try copying the rest.
+             return false; 
+        }
+      }
+    }
+    return true;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Recursive copy failed: ${msg}`);
+    return false;
+  }
+}
+
+/**
  * Uploads content to a specified ChRIS path, effectively creating or overwriting a file.
  *
  * @param content - The content to upload (string, Buffer, or Blob).
@@ -55,6 +159,62 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
 export async function files_touch(path: string): Promise<boolean> {
   // Use files_create with an empty Blob
   return await files_create(new Blob([""]), path);
+}
+
+/**
+ * Copies a single file from one ChRIS path to another.
+ *
+ * @param srcPath - The full path to the source file.
+ * @param destPath - The full path to the destination file (including filename).
+ * @returns A Promise resolving to true on success, false on failure.
+ */
+export async function files_copy(srcPath: string, destPath: string): Promise<boolean> {
+  try {
+    // 1. Resolve source file to get ID (needed for download)
+    // We can use files_getGroup to list files in parent dir and find the file
+    const srcDir = path.dirname(srcPath);
+    const srcName = path.basename(srcPath);
+    
+    const group = await files_getGroup('files', srcDir);
+    if (!group) {
+        errorStack.stack_push("error", `Could not access source directory: ${srcDir}`);
+        return false;
+    }
+
+    // Fetch all files in dir to find the match. 
+    // TODO: Optimize this with search parameters if possible to avoid listing huge dirs.
+    // For now, using search params on listAll if supported, or just filtering.
+    const results = await group.asset.resources_getAll({ fname: srcName });
+    
+    let fileId: number | undefined;
+    if (results && results.tableData) {
+        const match = results.tableData.find((f: any) => path.basename(f.fname || '') === srcName);
+        if (match) {
+            fileId = Number(match.id);
+        }
+    }
+
+    if (fileId === undefined) {
+        errorStack.stack_push("error", `Source file not found: ${srcPath}`);
+        return false;
+    }
+
+    // 2. Download content
+    const content = await chrisIO.file_download(fileId);
+    if (content === null) {
+        errorStack.stack_push("error", `Failed to download source file: ${srcPath}`);
+        return false;
+    }
+
+    // 3. Upload to destination
+    // files_create handles Blob/Buffer conversion and path splitting
+    return await files_create(content, destPath);
+
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Copy failed from ${srcPath} to ${destPath}: ${msg}`);
+    return false;
+  }
 }
 
 /**

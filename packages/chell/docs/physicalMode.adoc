@@ -24,7 +24,7 @@ While the PathMapper singleton optimizes this with hierarchical prefix caching, 
 
 === The Solution
 
-Physical mode bypasses the logical-to-physical mapping entirely, treating all paths as physical locations.
+Physical mode bypasses the PathMapper's hierarchical caching system, using direct link resolution instead. Links are still followed, but without the caching overhead. This provides a simpler, faster path resolution for scenarios where caching isn't beneficial.
 
 == Usage
 
@@ -95,13 +95,14 @@ cd /home/user/public/data
 
 [source,bash]
 ----
-# User navigates to physical path
-cd /SHARED/data
+# User navigates using links or physical paths
+cd /home/user/public/data
 
-# ChELL uses path directly
-# No link resolution
-# Validation checks: /SHARED/data
-# CWD stored as: /SHARED/data (physical)
+# ChELL resolves links directly
+# Resolves: /home/user/public -> /PUBLIC (link)
+# Validation checks: /PUBLIC/data
+# CWD stored as: /PUBLIC/data (resolved physical path)
+# Note: No PathMapper caching, just direct link resolution
 ----
 
 == Use Cases
@@ -294,21 +295,24 @@ this.rl.setPrompt(`${modeIndicator}${chalk.green(promptUser)}@...`);
 
 == Caveats and Limitations
 
-=== 1. No Link Following
+=== 1. No PathMapper Caching
 
-Physical mode does *not* follow ChRIS links:
+Physical mode *does* follow links, but *does not* use PathMapper's hierarchical caching:
 
 [source,bash]
 ----
-# Logical mode
-cd /home/user/public/feed_4
-# Automatically resolves: /home/user/public -> /SHARED
-# Result: /SHARED/feed_4 ✓
+# Both modes resolve links:
+cd /home/user/public
+# Resolves: public -> /PUBLIC ✓ (works in both modes)
 
-# Physical mode
+# Difference is in how they resolve:
+# Logical mode: Uses PathMapper with hierarchical prefix caching
+# Physical mode: Direct link resolution without caching overhead
+
+# Example with nested paths:
 cd /home/user/public/feed_4
-# Error: /home/user/public/feed_4 does not exist ✗
-# Must use: cd /SHARED/feed_4
+# Logical: PathMapper caches /home/user/public -> /PUBLIC for future reuse
+# Physical: Resolves public -> /PUBLIC but doesn't cache the mapping
 ----
 
 === 2. Path Portability

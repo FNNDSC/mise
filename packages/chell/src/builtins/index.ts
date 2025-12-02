@@ -30,6 +30,7 @@ import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { FilteredResourceData, SingleContext } from '@fnndsc/cumin';
 import { context_getSingle } from '@fnndsc/salsa';
+import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 import { chiliCommand_run } from '../chell.js';
@@ -91,6 +92,49 @@ export async function path_resolve(inputPath: string): Promise<string> {
 }
 
 /**
+ * Resolves links in a path without using PathMapper (for physical mode).
+ * Checks each component to see if it's a link and follows it.
+ *
+ * @param targetPath - The path to resolve.
+ * @returns The resolved path with links followed.
+ */
+async function path_resolveLinks(targetPath: string): Promise<string> {
+  const { files_list } = await import('@fnndsc/chili/commands/fs/ls.js');
+
+  const components: string[] = targetPath.split('/').filter(c => c);
+  let currentPath: string = '';
+
+  for (const component of components) {
+    const parentPath: string = currentPath || '/';
+    currentPath = `${currentPath}/${component}`;
+
+    try {
+      // List parent directory to check if component is a link
+      const items: ListingItem[] = await files_list({ path: parentPath }, parentPath);
+
+      // Find the component in the listing
+      const item = items.find((i: ListingItem) => i.name === component);
+
+      if (item && item.type === 'link' && item.target) {
+        // Component is a link - resolve it
+        if (item.target.startsWith('/')) {
+          // Absolute link target
+          currentPath = item.target;
+        } else {
+          // Relative link target
+          currentPath = `${parentPath}/${item.target}`.replace('//', '/');
+        }
+      }
+    } catch (error) {
+      // If we can't list the directory, continue with the current path
+      continue;
+    }
+  }
+
+  return currentPath || '/';
+}
+
+/**
  * Changes the current working directory in the ChRIS filesystem context.
  * Validates the existence of the target path before setting it.
  *
@@ -126,8 +170,8 @@ async function builtin_cd(args: string[]): Promise<void> {
     let validationPath: string;
 
     if (session.physicalMode_get()) {
-      // Physical mode: use the path directly (already physical)
-      validationPath = logicalPath;
+      // Physical mode: resolve links but don't use PathMapper
+      validationPath = await path_resolveLinks(logicalPath);
     } else {
       // Logical mode: resolve logical path to physical path for validation
       const { logical_toPhysical } = await import('@fnndsc/chili/utils');
@@ -145,10 +189,11 @@ async function builtin_cd(args: string[]): Promise<void> {
       // Validate that the target exists
       const folder: unknown = await client.getFileBrowserFolderByPath(validationPath);
       if (folder) {
-        // Set CWD to the path provided by the user
-        // In logical mode: preserves *nix behavior where cd into a symlink keeps the logical path
-        // In physical mode: uses the physical path directly
-        await session.setCWD(logicalPath);
+        // Set CWD based on mode:
+        // - Logical mode: preserves *nix behavior where cd into a symlink keeps the logical path
+        // - Physical mode: uses the resolved physical path (follows links)
+        const cwdPath: string = session.physicalMode_get() ? validationPath : logicalPath;
+        await session.setCWD(cwdPath);
       } else {
         console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
       }

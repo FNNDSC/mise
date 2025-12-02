@@ -6,7 +6,6 @@
  * @module
  */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
-import { listCache_get } from '../lib/listCache/index.js';
 
 /**
  * Manages the shell session state (Connection, Context).
@@ -50,14 +49,10 @@ export class Session {
 
   /**
    * Set Current Working Directory.
-   * Invalidates the listing cache when navigating to a different directory.
+   * Cache invalidation is handled automatically by cumin's chrisContext.
    */
   async setCWD(path: string): Promise<void> {
     await chrisContext.current_set(Context.ChRISfolder, path);
-
-    // Invalidate listing cache on directory change
-    const listCache = listCache_get();
-    listCache.cwd_update(path);
   }
   
   /**

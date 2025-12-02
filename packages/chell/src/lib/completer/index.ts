@@ -11,7 +11,7 @@ import { plugins_listAll } from '@fnndsc/salsa';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { listCache_get } from '../listCache/index.js';
+import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
 
 /**

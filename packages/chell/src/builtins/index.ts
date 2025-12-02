@@ -7,7 +7,7 @@
  */
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
-import { listCache_get } from '../lib/listCache/index.js';
+import { listCache_get } from '@fnndsc/cumin';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_upload as chefs_upload_cmd } from '@fnndsc/chili/commands/fs/upload.js';

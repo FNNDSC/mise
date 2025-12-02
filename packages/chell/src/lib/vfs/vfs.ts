@@ -14,7 +14,7 @@ import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
-import { listCache_get } from '../listCache/index.js';
+import { listCache_get } from '@fnndsc/cumin';
 
 /**
  * Virtual File System Router.

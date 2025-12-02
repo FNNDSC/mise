@@ -13,9 +13,10 @@ import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.
 import { files_upload as chefs_upload_cmd } from '@fnndsc/chili/commands/fs/upload.js';
 import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
+import { files_cp as chefs_cp_cmd, CpOptions } from '@fnndsc/chili/commands/fs/cp.js';
 import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
 import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
-import { mkdir_render, touch_render, upload_render, cat_render, rm_render } from '@fnndsc/chili/views/fs.js';
+import { mkdir_render, touch_render, upload_render, cat_render, rm_render, cp_render } from '@fnndsc/chili/views/fs.js';
 import { login_render, logout_render } from '@fnndsc/chili/views/connect.js';
 import { plugins_fetchList, PluginListResult } from '@fnndsc/chili/commands/plugins/list.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
@@ -44,6 +45,7 @@ export {
   builtin_cd,
   builtin_pwd,
   builtin_ls,
+  builtin_cp,
   builtin_upload,
   builtin_connect,
   builtin_logout,
@@ -288,6 +290,48 @@ async function builtin_ls(args: string[]): Promise<void> {
       return parts[parts.length - 1] || p;
     });
     console.log(basenames.join('  '));
+  }
+}
+
+/**
+ * Copies a file or directory.
+ *
+ * @param args - [flags, src, dest]
+ */
+async function builtin_cp(args: string[]): Promise<void> {
+  const parsed = commandArgs_process(args);
+  const pathArgs = parsed._ as string[];
+  
+  if (pathArgs.length < 2) {
+    console.log(chalk.red('Usage: cp [-r] <source> <dest>'));
+    return;
+  }
+
+  const src = pathArgs[0];
+  const dest = pathArgs[1];
+  const recursive = !!parsed['r'] || !!parsed['recursive'];
+
+  const srcPath = await path_resolve(src);
+  const destPath = await path_resolve(dest);
+
+  // TODO: Handle wildcard expansion if src contains *
+  // Note: The shell might already expand it if we implemented globbing in parsing, 
+  // but currently we manually expand. cp only takes one src usually unless we implement multi-copy.
+  // For now, assume 1:1 copy.
+
+  console.log(`Copying ${srcPath} to ${destPath}...`);
+  try {
+    const success = await chefs_cp_cmd(srcPath, destPath, { recursive });
+    console.log(cp_render(srcPath, destPath, success));
+    
+    if (success) {
+       const destDir = destPath.substring(0, destPath.lastIndexOf('/')) || '/';
+       const listCache = listCache_get();
+       listCache.cache_invalidate(destDir);
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(chalk.red(`cp error: ${msg}`));
   }
 }
 

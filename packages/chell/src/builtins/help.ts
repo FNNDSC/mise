@@ -74,6 +74,17 @@ const helpText: Record<string, CommandHelp> = {
       'rm -rf temp_*         # Force remove all temp_* dirs',
     ],
   },
+  cp: {
+    usage: 'cp [options] <source> <dest>',
+    description: 'Copy files or directories',
+    options: [
+      '-r, --recursive    Recursive copy (for directories)',
+    ],
+    examples: [
+      'cp file.txt copy.txt  # Copy single file',
+      'cp -r dir1/ dir2/     # Copy directory recursively',
+    ],
+  },
   touch: {
     usage: 'touch <file> [file...]',
     description: 'Create empty files or update timestamps',
@@ -316,7 +327,7 @@ export async function builtin_help(args: string[]): Promise<void> {
   // Group commands by category
   const categories: Record<string, string[]> = {
     'Navigation': ['cd', 'pwd', 'ls'],
-    'File Operations': ['cat', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
+    'File Operations': ['cat', 'cp', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
     'Connection': ['connect', 'logout', 'context'],
     'Resources': ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
     'Shell Settings': ['physicalmode', 'timing', 'debug'],

@@ -1,0 +1,977 @@
+= VFS: Virtual File System Router
+:toc:
+:toc-placement: preamble
+:toclevels: 3
+:sectnums:
+
+== Overview
+
+The Virtual File System (VFS) Router is chell's abstraction layer that presents a unified filesystem view combining native ChRIS paths with virtual directories. It implements proper separation of concerns between data fetching and presentation, using cumin's Result<T> pattern for robust error handling.
+
+=== The Problem
+
+ChRIS has a complex architecture where:
+
+* **Native paths** exist on the CUBE server (`/home/user/feeds/...`)
+* **Virtual paths** provide utility abstractions (e.g., `/bin` for plugins)
+* **API operations** can fail in various ways
+* **Users** need consistent, filesystem-like navigation
+
+Early implementations mixed concerns:
+
+[source,typescript]
+----
+// Old approach - mixed concerns
+async function listDirectory(path: string): Promise<void> {
+  try {
+    const items = await fetchItems(path); // Data fetching
+    console.log(formatItems(items));      // Presentation
+  } catch (error) {
+    console.error(error);                 // Error handling
+  }
+}
+----
+
+**Problems:**
+
+* Can't get data without side effects (console output)
+* Error handling tied to presentation layer
+* Hard to test data operations independently
+* Can't compose operations (pipe, filter, etc.)
+
+=== The Solution
+
+VFS separates **data layer** (returns `Result<T>`) from **presentation layer** (renders output):
+
+[source,typescript]
+----
+// New approach - separated concerns
+
+// Data layer: returns Result<ListingItem[]>
+async getData(path?: string): Promise<Result<ListingItem[]>> {
+  try {
+    const items = await fetchItems(path);
+    return Ok(items);
+  } catch (error) {
+    errorStack.stack_push("error", `Failed to list ${path}: ${error}`);
+    return Err();
+  }
+}
+
+// Presentation layer: renders data, handles errors
+async list(path?: string): Promise<void> {
+  const result = await this.getData(path);
+
+  if (!result.ok) {
+    const lastError = errorStack.stack_pop();
+    console.error(chalk.red(lastError?.message));
+    return;
+  }
+
+  console.log(grid_render(result.value));
+}
+----
+
+**Benefits:**
+
+* ✅ Data operations testable without console output
+* ✅ Errors handled with Result<T> + errorStack pattern
+* ✅ Composable: getData() output feeds other operations
+* ✅ Type-safe: TypeScript enforces error checking
+
+== Architecture
+
+=== Layer Separation
+
+The VFS implements a clean separation between data and presentation:
+
+[source]
+----
+┌─────────────────────────────────────────────┐
+│  Presentation Layer (void returns)          │
+│  - list(): renders directory listings       │
+│  - Pops errors from errorStack              │
+│  - Displays with console.log/console.error  │
+└─────────────────────────────────────────────┘
+                    ↓ calls
+┌─────────────────────────────────────────────┐
+│  Data Layer (Result<T> returns)             │
+│  - getData(): fetches and returns data      │
+│  - getDataVirtualBin(): /bin plugin listing │
+│  - getDataNative(): native ChRIS paths      │
+│  - Pushes errors to errorStack              │
+│  - Uses ListCache for performance           │
+└─────────────────────────────────────────────┘
+                    ↓ calls
+┌─────────────────────────────────────────────┐
+│  External APIs                              │
+│  - chili: files_list(), plugins_listAll()  │
+│  - cumin: session, cache, errorStack        │
+└─────────────────────────────────────────────┘
+----
+
+=== Path Routing
+
+The VFS routes paths to appropriate handlers:
+
+[source,typescript]
+----
+async getData(targetPath?: string, options: {...}): Promise<Result<ListingItem[]>> {
+  const cwd = await session.getCWD();
+  const effectivePath = targetPath
+    ? path.posix.resolve(cwd, targetPath)
+    : cwd;
+
+  // Route to appropriate handler
+  if (effectivePath === '/bin') {
+    return await this.getDataVirtualBin(options);  // Virtual directory
+  } else {
+    return await this.getDataNative(effectivePath, options); // Native path
+  }
+}
+----
+
+**Routing logic:**
+
+. Resolve relative paths to absolute
+. Check against virtual mount points (currently just `/bin`)
+. Delegate to virtual or native handler
+. Return Result<T> for consistent error handling
+
+=== Virtual Directories
+
+Virtual directories don't exist on the ChRIS server but provide utility:
+
+==== `/bin` - Plugin Directory
+
+The `/bin` directory lists all available ChRIS plugins as executable files:
+
+[source,typescript]
+----
+private async getDataVirtualBin(options): Promise<Result<ListingItem[]>> {
+  try {
+    const plugins = await plugins_listAll({});
+    const items: ListingItem[] = [];
+
+    plugins.tableData.forEach((plugin) => {
+      const displayName = `${plugin.name}-v${plugin.version}`;
+      items.push({
+        name: displayName,
+        type: 'plugin',
+        size: 0,
+        owner: 'system',
+        date: plugin.creation_date || '',
+      });
+    });
+
+    // Apply sorting and cache
+    const sorted = list_applySort(items, options.sort || 'name', options.reverse);
+    listCache_get().cache_set('/bin', sorted);
+
+    return Ok(sorted);
+  } catch (error) {
+    errorStack.stack_push("error", `Failed to list plugins: ${error.message}`);
+    return Err();
+  }
+}
+----
+
+**Characteristics:**
+
+* Listed via ChRIS plugin API, not filesystem
+* Names formatted as `pl-name-v1.2.3`
+* Type marked as `'plugin'` for special rendering
+* Cached like native directories for tab completion
+
+==== Future Virtual Directories
+
+Potential future additions:
+
+* `/proc` - ChRIS instance metadata, statistics
+* `/etc` - Configuration, environment variables
+* `/tmp` - Temporary uploads before placement
+
+=== Native Directories
+
+Native directories are ChRIS paths backed by the CUBE server:
+
+[source,typescript]
+----
+private async getDataNative(target: string, options): Promise<Result<ListingItem[]>> {
+  try {
+    // Special handling for -d flag (show directory info, not contents)
+    if (options.directory) {
+      const parentPath = target.substring(0, target.lastIndexOf('/')) || '/';
+      const itemName = target.substring(target.lastIndexOf('/') + 1);
+
+      // Check cache, fetch if needed
+      let parentItems = listCache.cache_get(parentPath);
+      if (!parentItems) {
+        parentItems = await files_list({}, parentPath);
+        listCache.cache_set(parentPath, parentItems);
+      }
+
+      const item = parentItems.find(i => i.name === itemName);
+      if (item) {
+        return Ok([item]); // Single item array
+      } else {
+        errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
+        return Err();
+      }
+    }
+
+    // Normal listing: fetch directory contents
+    const items = await files_list({
+      path: target,
+      sort: options.sort,
+      reverse: options.reverse
+    }, target);
+
+    // Inject virtual /bin at root
+    if (target === '/' || target === '') {
+      items.push({
+        name: 'bin',
+        type: 'vfs',
+        size: 0,
+        owner: 'root',
+        date: new Date().toISOString(),
+      });
+      items.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Cache and return
+    listCache_get().cache_set(target, items);
+    return Ok(items);
+
+  } catch (error) {
+    errorStack.stack_push("error", `Failed to list ${target}: ${error.message}`);
+    return Err();
+  }
+}
+----
+
+**Features:**
+
+* Fetches from ChRIS API via `files_list()` from chili
+* Handles `-d` flag (show item info, not contents)
+* Injects virtual directories at appropriate paths
+* Caches results for performance
+* Returns Result<T> for error handling
+
+== Result<T> Pattern Integration
+
+=== Data Layer Returns Result<T>
+
+All data-fetching methods return `Result<ListingItem[]>`:
+
+[source,typescript]
+----
+async getData(path?: string): Promise<Result<ListingItem[]>>
+async getDataVirtualBin(options): Promise<Result<ListingItem[]>>
+async getDataNative(path: string, options): Promise<Result<ListingItem[]>>
+----
+
+**On success:**
+[source,typescript]
+----
+return Ok(items); // Wraps ListingItem[] in Ok()
+----
+
+**On failure:**
+[source,typescript]
+----
+errorStack.stack_push("error", "Failed to list directory: Network error");
+return Err(); // Signals failure, error details in errorStack
+----
+
+=== Presentation Layer Handles Errors
+
+The `list()` method handles Result<T> and displays output:
+
+[source,typescript]
+----
+async list(path?: string, options): Promise<void> {
+  const result = await this.getData(path, options);
+
+  // Handle failure
+  if (!result.ok) {
+    const lastError = errorStack.stack_pop();
+    if (lastError) {
+      console.error(chalk.red(lastError.message));
+    }
+    return;
+  }
+
+  // Handle empty results
+  if (result.value.length === 0) {
+    return;
+  }
+
+  // Render based on options
+  if (options.long) {
+    console.log(long_render(result.value, { human: !!options.human }));
+  } else {
+    console.log(grid_render(result.value));
+  }
+}
+----
+
+**Error handling flow:**
+
+. Check `result.ok`
+. Pop error from errorStack (pushed by data layer)
+. Display error message to user
+. Return early (no rendering)
+
+=== Type Safety
+
+TypeScript enforces proper error checking:
+
+[source,typescript]
+----
+const result = await vfs.getData('/home/user');
+
+// ❌ TypeScript error - must check .ok first
+console.log(result.value);
+
+// ✅ Correct - check before access
+if (!result.ok) {
+  // Handle error
+  return;
+}
+// TypeScript knows result.value exists here
+const items = result.value;
+----
+
+This prevents accessing data that doesn't exist due to errors.
+
+== API Reference
+
+=== Public Methods
+
+==== `getData(targetPath?: string, options?): Promise<Result<ListingItem[]>>`
+
+Fetches directory data without rendering.
+
+**Parameters:**
+[cols="2,1,4"]
+|===
+|Parameter |Type |Description
+
+|`targetPath`
+|(optional) string
+|Path to get data for. If omitted, uses CWD.
+
+|`options.sort`
+|(optional) enum
+|Sort field: `'name'`, `'size'`, `'date'`, `'owner'`. Default: `'name'`.
+
+|`options.reverse`
+|(optional) boolean
+|Reverse sort order. Default: false.
+
+|`options.directory`
+|(optional) boolean
+|Show directory info, not contents (like `ls -d`). Default: false.
+|===
+
+**Returns:** `Result<ListingItem[]>`
+
+* `Ok(items)` - Success, items is an array of ListingItem
+* `Err()` - Failure, error details in errorStack
+
+**Example:**
+[source,typescript]
+----
+import { vfs } from './lib/vfs/vfs.js';
+import { errorStack } from '@fnndsc/cumin';
+
+const result = await vfs.getData('/home/user', { sort: 'date', reverse: true });
+if (!result.ok) {
+  const error = errorStack.stack_pop();
+  console.error(`Failed: ${error?.message}`);
+  return;
+}
+
+// Use result.value - array of ListingItem
+for (const item of result.value) {
+  console.log(item.name);
+}
+----
+
+==== `list(targetPath?: string, options?): Promise<void>`
+
+Lists directory contents with rendering (convenience method).
+
+**Parameters:**
+[cols="2,1,4"]
+|===
+|Parameter |Type |Description
+
+|`targetPath`
+|(optional) string
+|Path to list. If omitted, uses CWD.
+
+|`options.long`
+|(optional) boolean
+|Long format with details. Default: false.
+
+|`options.human`
+|(optional) boolean
+|Human-readable sizes (requires `long`). Default: false.
+
+|`options.sort`
+|(optional) enum
+|Sort field: `'name'`, `'size'`, `'date'`, `'owner'`. Default: `'name'`.
+
+|`options.reverse`
+|(optional) boolean
+|Reverse sort order. Default: false.
+
+|`options.directory`
+|(optional) boolean
+|Show directory info, not contents. Default: false.
+|===
+
+**Returns:** `Promise<void>` - Outputs to console, returns nothing
+
+**Example:**
+[source,typescript]
+----
+// Simple listing
+await vfs.list();
+
+// Long format with human-readable sizes
+await vfs.list('/home/user', { long: true, human: true });
+
+// Show directory info only
+await vfs.list('/home/user/feeds/feed_123', { directory: true, long: true });
+
+// Sort by date, newest first
+await vfs.list('/bin', { sort: 'date', reverse: true });
+----
+
+==== `getVirtualBinItems(): Promise<ListingItem[]>`
+
+Legacy method for backward compatibility. Returns `/bin` items directly.
+
+**Deprecated:** Use `getData('/bin')` instead for Result<T> pattern.
+
+**Returns:** `ListingItem[]` - Empty array on error
+
+**Example:**
+[source,typescript]
+----
+const plugins = await vfs.getVirtualBinItems();
+// No error handling - returns [] on failure
+----
+
+=== Private Methods
+
+These are implementation details, not part of public API:
+
+* `getDataVirtualBin(options): Promise<Result<ListingItem[]>>` - Handles `/bin`
+* `getDataNative(target, options): Promise<Result<ListingItem[]>>` - Handles native paths
+
+== Usage Patterns
+
+=== Pattern 1: Simple Listing (Presentation)
+
+Use `list()` when you just want to display output:
+
+[source,typescript]
+----
+// In builtins/index.ts
+async function builtin_ls(args: string[]): Promise<void> {
+  const parsed = parseArgs(args);
+  await vfs.list(parsed._[0], {
+    long: !!parsed.l,
+    human: !!parsed.h,
+    sort: parsed.sort || 'name',
+    reverse: !!parsed.r,
+    directory: !!parsed.d
+  });
+}
+----
+
+=== Pattern 2: Data Processing (Fetch Then Transform)
+
+Use `getData()` when you need to process data:
+
+[source,typescript]
+----
+async function countTextFiles(dir: string): Promise<number> {
+  const result = await vfs.getData(dir);
+
+  if (!result.ok) {
+    return 0; // Or handle error differently
+  }
+
+  return result.value.filter(item => item.name.endsWith('.txt')).length;
+}
+----
+
+=== Pattern 3: Wildcard Expansion
+
+Combine with cache for efficient wildcard matching:
+
+[source,typescript]
+----
+async function wildcard_expand(pattern: string): Promise<Result<string[]>> {
+  const cwd = await session.getCWD();
+  const listCache = listCache_get();
+
+  // Check cache first
+  let items = listCache.cache_get(cwd);
+  if (!items) {
+    // Use VFS to get fresh data
+    const result = await vfs.getData(cwd);
+    if (!result.ok) {
+      return result; // Propagate error
+    }
+    items = result.value;
+    listCache.cache_set(cwd, items);
+  }
+
+  // Filter matches locally
+  const matches = items
+    .filter(item => minimatch(item.name, pattern))
+    .map(item => item.name);
+
+  return Ok(matches);
+}
+----
+
+=== Pattern 4: Tab Completion
+
+Prefetch directory data for immediate tab completion:
+
+[source,typescript]
+----
+async function completer_prefetch(dir: string): Promise<void> {
+  const result = await vfs.getData(dir);
+
+  if (result.ok) {
+    // Cache populated by getData() - ready for tab completion
+    const listCache = listCache_get();
+    const cached = listCache.cache_get(dir);
+    // cached is now available for fast lookups
+  }
+}
+----
+
+=== Pattern 5: Composing Operations
+
+Chain multiple data operations:
+
+[source,typescript]
+----
+async function findLargestFile(dir: string): Promise<string | null> {
+  const result = await vfs.getData(dir);
+  if (!result.ok) return null;
+
+  const files = result.value.filter(item => item.type === 'file');
+  if (files.length === 0) return null;
+
+  const largest = files.reduce((max, item) =>
+    item.size > max.size ? item : max
+  );
+
+  return largest.name;
+}
+----
+
+== Options
+
+=== Sort Options
+
+Control how results are sorted:
+
+[cols="1,3"]
+|===
+|Value |Description
+
+|`'name'`
+|Alphabetical by name (default)
+
+|`'size'`
+|By file size, largest first
+
+|`'date'`
+|By modification date, newest first
+
+|`'owner'`
+|Alphabetical by owner name
+|===
+
+**Note:** Use `reverse: true` to invert sort order.
+
+=== Directory Flag (`-d`)
+
+The `-d` flag shows information about the directory/file itself, not its contents:
+
+[source,bash]
+----
+# Without -d: shows contents
+ls /home/user/feeds/feed_123
+# Output: file1.txt, file2.txt, ...
+
+# With -d: shows feed info
+ls -ld /home/user/feeds/feed_123
+# Output: drwxr-xr-x  user  2025-01-15  feed_123
+----
+
+**Implementation:**
+
+. Extract parent directory and item name
+. Fetch parent directory listing
+. Find item by name in parent listing
+. Return single-item array: `Ok([item])`
+
+This is particularly useful for:
+
+* Checking if a path exists
+* Getting link target information
+* Showing directory metadata without listing contents
+
+== Caching Strategy
+
+VFS integrates with cumin's ListCache for performance:
+
+=== Cache on Fetch
+
+Every successful data fetch populates the cache:
+
+[source,typescript]
+----
+const items = await files_list({}, target);
+listCache_get().cache_set(target, items); // Cache for next time
+return Ok(items);
+----
+
+=== Cache Check Before Fetch
+
+For operations that may hit cache elsewhere (like `-d` flag):
+
+[source,typescript]
+----
+let parentItems = listCache.cache_get(parentPath);
+if (!parentItems) {
+  // Cache miss - fetch and populate
+  parentItems = await files_list({}, parentPath);
+  listCache.cache_set(parentPath, parentItems);
+}
+----
+
+=== Automatic Invalidation
+
+Cache automatically clears on CWD change (handled by cumin):
+
+[source,typescript]
+----
+// In chrisContext (cumin)
+await session.setCWD('/new/path');
+// Automatically triggers: listCache.cwd_update('/new/path')
+// Which clears cache if path changed
+----
+
+=== Performance Impact
+
+See cumin's link:../../cumin/docs/listcache.adoc[ListCache documentation] for performance measurements.
+
+== Error Handling
+
+=== Error Flow
+
+. **Data layer** encounters error (API failure, invalid path, etc.)
+. **Push to errorStack** with descriptive message
+. **Return Err()** to signal failure
+. **Presentation layer** checks `result.ok`
+. **Pop from errorStack** to get error details
+. **Display to user** with appropriate formatting
+
+=== Error Messages
+
+VFS pushes user-friendly error messages:
+
+[source,typescript]
+----
+// Not found
+errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
+
+// API failure
+errorStack.stack_push("error", `Failed to list ${target}: Network timeout`);
+
+// Plugin listing failure
+errorStack.stack_push("error", `Failed to list plugins: ${error.message}`);
+----
+
+=== Error Propagation
+
+Callers propagate errors by checking and returning:
+
+[source,typescript]
+----
+const result = await vfs.getData(path);
+if (!result.ok) {
+  // Error already in errorStack, just propagate failure
+  return Err();
+}
+// Continue with result.value
+----
+
+=== Testing Error Handling
+
+[source,typescript]
+----
+describe('VFS error handling', () => {
+  it('should return Err for nonexistent path', async () => {
+    const result = await vfs.getData('/nonexistent');
+
+    expect(result.ok).toBe(false);
+
+    const errors = errorStack.stack_search("cannot access");
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('should handle API failures gracefully', async () => {
+    jest.spyOn(files, 'list').mockRejectedValue(new Error('Network error'));
+
+    const result = await vfs.getData('/path');
+
+    expect(result.ok).toBe(false);
+    const errors = errorStack.stack_search("Network error");
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+----
+
+== Migration from Old API
+
+=== Before: Mixed Concerns
+
+Old VFS mixed data fetching with rendering:
+
+[source,typescript]
+----
+// Old API
+class VFS {
+  async listVirtualBin(options): Promise<void> {
+    const items = await fetchItems();
+    if (items.length === 0) {
+      console.log(chalk.gray('No plugins found.'));
+      return;
+    }
+    console.log(grid_render(items));
+  }
+}
+
+// Usage - can't get data without console output
+await vfs.listVirtualBin({ long: true });
+----
+
+=== After: Separated Concerns
+
+New VFS separates data from presentation:
+
+[source,typescript]
+----
+// New API
+class VFS {
+  // Data layer
+  async getDataVirtualBin(options): Promise<Result<ListingItem[]>> {
+    const items = await fetchItems();
+    return Ok(items); // No console output
+  }
+
+  // Presentation layer
+  async list(path?: string, options?): Promise<void> {
+    const result = await this.getData(path, options);
+    if (!result.ok) {
+      const error = errorStack.stack_pop();
+      console.error(chalk.red(error?.message));
+      return;
+    }
+    console.log(grid_render(result.value));
+  }
+}
+
+// Usage - choose data or presentation
+const items = await vfs.getData('/bin'); // Just data
+await vfs.list('/bin'); // Rendered output
+----
+
+=== Migration Steps
+
+. **Replace direct method calls** with `getData()` + `list()`
+. **Add Result<T> handling** with `.ok` checks
+. **Pop errors from errorStack** for display
+. **Update tests** to check Result<T> returns
+
+== Design Decisions
+
+=== Why Separate getData() from list()?
+
+**Benefits:**
+
+* **Testability**: Test data fetching without console output
+* **Composability**: Feed data into other operations
+* **Flexibility**: Caller decides how to render
+* **Type safety**: Result<T> forces error handling
+
+**Trade-off:** Slight API complexity (two methods instead of one)
+
+**Verdict:** Separation is worth it for architectural cleanliness and Result<T> pattern.
+
+=== Why Result<T> + errorStack, Not Exceptions?
+
+See cumin's link:../../cumin/docs/error_handling.adoc[Error Handling documentation] for full rationale.
+
+**Summary:**
+
+* Result<T> makes errors explicit in signatures
+* errorStack accumulates user-friendly messages
+* TypeScript enforces error checking
+* Composable error handling
+
+=== Why Inject /bin at Root, Not Mount System?
+
+Current approach injects `/bin` when listing `/`:
+
+[source,typescript]
+----
+if (target === '/' || target === '') {
+  items.push({
+    name: 'bin',
+    type: 'vfs',
+    // ...
+  });
+}
+----
+
+**Pros:**
+
+* Simple implementation
+* No mount registry needed
+* Clear that /bin is special
+
+**Cons:**
+
+* Hard to add more virtual directories
+* Injection logic scattered
+
+**Future:** Consider mount registry for multiple virtual directories.
+
+=== Why Cache in Data Layer, Not Presentation?
+
+Caching happens in `getDataVirtualBin()` and `getDataNative()`, not in `list()`:
+
+**Pros:**
+
+* Cache shared across all callers (wildcard, tab completion, list)
+* getData() returns cached data for any use case
+* Single source of truth
+
+**Cons:**
+
+* Data layer has side effects (cache writes)
+
+**Verdict:** Pragmatic - caching is fundamental to data fetching, not presentation.
+
+== Future Enhancements
+
+=== Mount Registry
+
+Replace hardcoded `/bin` check with mount registry:
+
+[source,typescript]
+----
+interface VirtualMount {
+  path: string;
+  handler: (options) => Promise<Result<ListingItem[]>>;
+}
+
+const mounts: VirtualMount[] = [
+  { path: '/bin', handler: this.getDataVirtualBin },
+  { path: '/proc', handler: this.getDataVirtualProc },
+  { path: '/etc', handler: this.getDataVirtualEtc },
+];
+
+// In getData()
+const mount = mounts.find(m => effectivePath.startsWith(m.path));
+if (mount) {
+  return await mount.handler(options);
+}
+----
+
+=== Streaming for Large Directories
+
+Currently loads entire directory into memory. For huge directories:
+
+[source,typescript]
+----
+async *getDataStream(path: string): AsyncGenerator<Result<ListingItem>> {
+  for await (const chunk of fetchChunked(path)) {
+    for (const item of chunk) {
+      yield Ok(item);
+    }
+  }
+}
+----
+
+=== Recursive Operations
+
+Support recursive directory traversal:
+
+[source,typescript]
+----
+async *walk(path: string, options): AsyncGenerator<Result<ListingItem>> {
+  const result = await this.getData(path, options);
+  if (!result.ok) {
+    yield result;
+    return;
+  }
+
+  for (const item of result.value) {
+    yield Ok(item);
+    if (item.type === 'dir') {
+      yield* this.walk(`${path}/${item.name}`, options);
+    }
+  }
+}
+----
+
+=== Watch Mode
+
+Detect external changes and invalidate cache:
+
+[source,typescript]
+----
+async watch(path: string, callback: (result: Result<ListingItem[]>) => void) {
+  // Poll or WebSocket for changes
+  const changes = await detectChanges(path);
+  if (changes) {
+    listCache.cache_invalidate(path);
+    const fresh = await this.getData(path);
+    callback(fresh);
+  }
+}
+----
+
+== References
+
+=== Related Documentation
+
+* link:architecture.adoc[ChELL Architecture] - Overall architecture context
+* link:../../cumin/docs/error_handling.adoc[Error Handling in Cumin] - Result<T> pattern details
+* link:../../cumin/docs/listcache.adoc[ListCache] - Caching strategy
+
+=== Related Files
+
+* `src/lib/vfs/vfs.ts` - VFS implementation
+* `src/builtins/index.ts` - Command wrappers using VFS
+* `src/builtins/wildcard.ts` - Wildcard expansion using VFS + cache
+
+---
+
+_Last updated: 2025-12-02_

@@ -11,6 +11,7 @@ import { plugins_listAll } from '@fnndsc/salsa';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import { listCache_get } from '../listCache/index.js';
 import * as path from 'path';
 
 /**
@@ -149,30 +150,61 @@ async function path_complete(partial: string): Promise<string[]> {
     absDirToList = dirToList ? path.posix.resolve(cwd, dirToList) : cwd;
   }
 
-  // 3. Fetch contents
+  // 3. Fetch contents (check cache first)
   let items: string[] = [];
-  
+  const listCache = listCache_get();
+
   if (absDirToList === '/bin') {
      // Virtual bin - plugins
-     const plugins = await plugins_listAll({});
-     if (plugins && plugins.tableData) {
-       items = plugins.tableData.map((p: Record<string, unknown>) => {
-         const name = typeof p.name === 'string' ? p.name : String(p.name ?? '');
-         const version = typeof p.version === 'string' ? p.version : String(p.version ?? '');
-         return version ? `${name}-v${version}` : name;
-       });
+     // Check cache first
+     let lsItems = listCache.cache_get('/bin');
+     if (!lsItems) {
+       // Cache miss - fetch from API
+       const plugins = await plugins_listAll({});
+       if (plugins && plugins.tableData) {
+         lsItems = plugins.tableData.map((p: Record<string, unknown>) => {
+           const name = typeof p.name === 'string' ? p.name : String(p.name ?? '');
+           const version = typeof p.version === 'string' ? p.version : String(p.version ?? '');
+           return {
+             name: version ? `${name}-v${version}` : name,
+             type: 'plugin' as const,
+             size: 0,
+             owner: 'system',
+             date: p.creation_date ? String(p.creation_date) : '',
+           };
+         });
+         // Cache the results
+         listCache.cache_set('/bin', lsItems);
+       }
+     }
+     if (lsItems) {
+       items = lsItems.map((i: ListingItem) => i.name);
      }
   } else {
      // Native ChRIS
      try {
-       const lsItems: ListingItem[] | null = await files_list({} as CLIoptions, absDirToList);
-       if (lsItems) {
-           items = lsItems.map((i: ListingItem) => i.name);
+       // Check cache first
+       let lsItems = listCache.cache_get(absDirToList);
+       if (!lsItems) {
+         // Cache miss - fetch from API
+         lsItems = await files_list({} as CLIoptions, absDirToList);
+         if (lsItems) {
+           // Inject 'bin' if at root
+           if (absDirToList === '/') {
+             lsItems.push({
+               name: 'bin',
+               type: 'vfs',
+               size: 0,
+               owner: 'root',
+               date: new Date().toISOString(),
+             });
+           }
+           // Cache the results
+           listCache.cache_set(absDirToList, lsItems);
+         }
        }
-       
-       // Inject 'bin' if at root
-       if (absDirToList === '/') {
-         items.push('bin');
+       if (lsItems) {
+         items = lsItems.map((i: ListingItem) => i.name);
        }
      } catch (e) {
        // Ignore errors (e.g., perms, not a dir)

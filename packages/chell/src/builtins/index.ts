@@ -7,6 +7,7 @@
  */
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
+import { listCache_get } from '../lib/listCache/index.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_upload as chefs_upload_cmd } from '@fnndsc/chili/commands/fs/upload.js';
@@ -293,13 +294,19 @@ async function builtin_upload(args: string[]): Promise<void> {
   }
   const localPath: string = args[0];
   const remotePath: string = args[1];
-  
+
   const targetRemote: string = await path_resolve(remotePath);
-  
+
   console.log(`Uploading ${localPath} to ${targetRemote}...`);
   try {
     const success: boolean = await chefs_upload_cmd(localPath, targetRemote);
     console.log(upload_render(localPath, targetRemote, success));
+
+    // Invalidate cache for target directory
+    if (success) {
+      const listCache = listCache_get();
+      listCache.cache_invalidate(targetRemote);
+    }
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     console.error(chalk.red(`Upload error: ${msg}`));
@@ -530,6 +537,13 @@ async function builtin_chefs(args: string[]): Promise<void> {
             : await path_resolve(subArgs[0]);
           const success: boolean = await chefs_mkdir_cmd(targetPath);
           console.log(mkdir_render(targetPath, success));
+
+          // Invalidate cache for parent directory
+          if (success) {
+            const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
+            const listCache = listCache_get();
+            listCache.cache_invalidate(parentDir);
+          }
         } else {
           console.log(chalk.red('Usage: chefs mkdir <path>'));
         }
@@ -541,6 +555,13 @@ async function builtin_chefs(args: string[]): Promise<void> {
             : await path_resolve(subArgs[0]);
           const success: boolean = await chefs_touch_cmd(targetPath);
           console.log(touch_render(targetPath, success));
+
+          // Invalidate cache for parent directory
+          if (success) {
+            const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
+            const listCache = listCache_get();
+            listCache.cache_invalidate(parentDir);
+          }
         } else {
           console.log(chalk.red('Usage: chefs touch <path>'));
         }
@@ -662,6 +683,11 @@ async function builtin_rm(args: string[]): Promise<void> {
           console.log(rm_render(result));
         }
         successCount++;
+
+        // Invalidate cache for parent directory
+        const parentDir: string = target.substring(0, target.lastIndexOf('/')) || '/';
+        const listCache = listCache_get();
+        listCache.cache_invalidate(parentDir);
       } else {
         // Always show errors
         console.error(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));

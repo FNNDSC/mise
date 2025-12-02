@@ -14,6 +14,7 @@ import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
+import { listCache_get } from '../listCache/index.js';
 
 /**
  * Virtual File System Router.
@@ -78,6 +79,10 @@ export class VFS {
   private async listVirtualBin(options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
     const items = await this.getVirtualBinItems();
 
+    // Cache the results
+    const listCache = listCache_get();
+    listCache.cache_set('/bin', items);
+
     if (items.length === 0) {
       console.log(chalk.gray('No plugins found.'));
       return;
@@ -121,6 +126,10 @@ export class VFS {
         // Re-sort to ensure bin appears in correct place
         items.sort((a: ListingItem, b: ListingItem) => a.name.localeCompare(b.name));
       }
+
+      // Cache the results
+      const listCache = listCache_get();
+      listCache.cache_set(target, items);
 
       if (items.length === 0) return;
 

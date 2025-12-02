@@ -242,11 +242,13 @@ async function builtin_ls(args: string[]): Promise<void> {
     human: boolean;
     sort: 'name' | 'size' | 'date' | 'owner';
     reverse: boolean;
+    directory: boolean;
   } = {
     long: !!parsed['l'],
     human: !!parsed['h'],
     sort: sortBy,
-    reverse: !!parsed['reverse'] || !!parsed['r']
+    reverse: !!parsed['reverse'] || !!parsed['r'],
+    directory: !!parsed['d']
   };
 
   // If no paths specified, list current directory

@@ -24,12 +24,12 @@ export class VFS {
   /**
    * List contents of a directory (Virtual or Native).
    * @param targetPath - The path to list. If empty, uses CWD.
-   * @param options - Listing options (long, human, sort, reverse).
+   * @param options - Listing options (long, human, sort, reverse, directory).
    */
-  async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
+  async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
     const cwd: string = await session.getCWD();
-    const effectivePath: string = targetPath 
-      ? path.posix.resolve(cwd, targetPath) 
+    const effectivePath: string = targetPath
+      ? path.posix.resolve(cwd, targetPath)
       : cwd;
 
     if (effectivePath === '/bin') {
@@ -105,8 +105,37 @@ export class VFS {
    *
    * @param target - The path to list.
    */
-  private async listNative(target: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean }): Promise<void> {
+  private async listNative(target: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean }): Promise<void> {
     try {
+      // Handle -d flag: show directory itself, not contents
+      if (options.directory) {
+        // Get parent directory and find this item in it
+        const parentPath: string = target.substring(0, target.lastIndexOf('/')) || '/';
+        const itemName: string = target.substring(target.lastIndexOf('/') + 1);
+
+        // Check cache first
+        const listCache = listCache_get();
+        let parentItems = listCache.cache_get(parentPath);
+        if (!parentItems) {
+          parentItems = await files_list({}, parentPath);
+          listCache.cache_set(parentPath, parentItems);
+        }
+
+        const item = parentItems.find((i: ListingItem) => i.name === itemName);
+
+        if (item) {
+          if (options.long) {
+            console.log(long_render([item], { human: !!options.human }));
+          } else {
+            console.log(item.name);
+          }
+        } else {
+          console.error(chalk.red(`ls: cannot access '${target}': No such file or directory`));
+        }
+        return;
+      }
+
+      // Normal listing: show directory contents
       // Fetch from shared logic - pass sort options to command layer
       const items: ListingItem[] = await files_list({
         path: target,

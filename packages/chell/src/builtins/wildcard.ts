@@ -10,6 +10,7 @@ import { session } from '../session/index.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { vfs } from '../lib/vfs/vfs.js';
+import { listCache_get } from '@fnndsc/cumin';
 
 /**
  * Checks if a string contains wildcard characters.
@@ -60,12 +61,28 @@ export async function wildcard_expand(pattern: string): Promise<string[]> {
       matchPattern = lastPart;
     }
 
-    // List files in the directory (handle virtual /bin separately)
+    // List files in the directory (check cache first)
     let items: ListingItem[] = [];
+    const listCache = listCache_get();
+
     if (searchDir === '/bin') {
-      items = await vfs.getVirtualBinItems();
+      // Check cache for /bin
+      const cached = listCache.cache_get('/bin');
+      if (cached) {
+        items = cached;
+      } else {
+        items = await vfs.getVirtualBinItems();
+        listCache.cache_set('/bin', items);
+      }
     } else {
-      items = await files_list({}, searchDir);
+      // Check cache for native path
+      const cached = listCache.cache_get(searchDir);
+      if (cached) {
+        items = cached;
+      } else {
+        items = await files_list({}, searchDir);
+        listCache.cache_set(searchDir, items);
+      }
     }
 
     // Filter items by pattern

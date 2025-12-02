@@ -15,6 +15,7 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { spinner } from '../spinner.js';
 
 /**
  * Virtual File System Router.
@@ -72,13 +73,13 @@ export class VFS {
     const isCacheMiss = !cached;
 
     // For cache miss, show loading indicator after 500ms timeout
-    let loadingShown = false;
-    let loadingTimeout: NodeJS.Timeout | null = null;
+    let spinnerStarted = false; // Flag to track if spinner was actually started
+    let spinnerDelayTimeout: NodeJS.Timeout | null = null;
 
     if (isCacheMiss) {
-      loadingTimeout = setTimeout(() => {
-        process.stdout.write(chalk.gray('Fetching...'));
-        loadingShown = true;
+      spinnerDelayTimeout = setTimeout(() => {
+        spinner.start('Fetching directory from remote'); // The spinner message
+        spinnerStarted = true;
       }, 500);
     }
 
@@ -86,12 +87,11 @@ export class VFS {
     const result: Result<ListingItem[]> = await this.data_get(targetPath, options);
 
     // Clear loading timeout and indicator
-    if (loadingTimeout) {
-      clearTimeout(loadingTimeout);
-      if (loadingShown) {
-        // Clear the "Fetching..." line by overwriting with spaces and carriage return
-        process.stdout.write('\r\x1b[K');
-      }
+    if (spinnerDelayTimeout) {
+      clearTimeout(spinnerDelayTimeout);
+    }
+    if (spinnerStarted) {
+      spinner.stop();
     }
 
     if (!result.ok) {

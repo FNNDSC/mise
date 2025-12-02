@@ -42,6 +42,7 @@ import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
 import { Result, errorStack } from '@fnndsc/cumin';
+import { spinner } from './lib/spinner.js';
 
 /**
  * Interface for package.json structure.
@@ -478,15 +479,16 @@ export async function chell_start(): Promise<void> {
 
   const border = chalk.gray('----------------------------------------------------------------');
   console.log(border);
-  console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Logic Layers`);
+  console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Layered Logic`);
   console.log(` ${chalk.gray('Version:')} ${chalk.yellow(packageJson.version)}`);
   console.log(` ${chalk.gray('System :')} ${os.platform()} ${os.release()} (${os.arch()})`);
   console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);
   console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
   console.log(border);
 
-  console.log(chalk.cyan('[-] Initializing session components...'));
+  spinner.start('Initializing session components');
   await session.init();
+  spinner.stop();
   console.log(chalk.green('[+] Session initialized.'));
 
   // Set physical filesystem mode if requested
@@ -496,8 +498,9 @@ export async function chell_start(): Promise<void> {
   }
 
   // Check if we have a saved session from a previous run
-  console.log(chalk.cyan('[-] Checking for previous context...'));
+  spinner.start('Checking for previous context');
   await chrisContext.currentContext_update();
+  spinner.stop();
   const currentContext = context_getSingle();
 
   if (currentContext.user && currentContext.URL) {
@@ -506,25 +509,29 @@ export async function chell_start(): Promise<void> {
     console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
 
     // Check for existing token
-    console.log(chalk.cyan('[-] Validating existing token...'));
+    spinner.start('Validating existing token');
     const token = await session.connection.authToken_get(true);
+    spinner.stop();
     if (token) {
       // Token exists on disk, now validate it with the server
-      console.log(chalk.cyan(`[-] Testing connection to ${currentContext.URL}`));
+      spinner.start(`Testing connection to ${currentContext.URL}`);
       try {
         const client = await session.connection.client_get();
         if (client) {
           // Make a simple API call to validate the token
           await client.getUser();
+          spinner.stop();
           console.log(chalk.green('[+] Token validated with server'));
           console.log(chalk.green('[+] Session restored'));
         } else {
+          spinner.stop();
           console.log(chalk.yellow('[!] Failed to create client'));
           console.log(chalk.yellow('[!] Running in disconnected mode'));
           session.offline = true;
           console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
         }
       } catch (error: unknown) {
+        spinner.stop();
         const msg: string = error instanceof Error ? error.message : String(error);
         console.log(chalk.yellow('[!] Token expired or invalid'));
         console.log(chalk.gray(`    Error: ${msg}`));
@@ -554,7 +561,7 @@ export async function chell_start(): Promise<void> {
     }
 
     if (url && password) {
-      console.log(chalk.cyan(`[-] Establishing uplink to ${url}...`));
+      spinner.start(`Establishing uplink to ${url}`);
       try {
         await session.connection.connection_connect({
           user: user!,
@@ -562,8 +569,10 @@ export async function chell_start(): Promise<void> {
           url: url,
           debug: false
         });
+        spinner.stop();
         console.log(chalk.green('[+] Connection established.'));
       } catch (error: unknown) {
+        spinner.stop();
         const errorMessage: string = error instanceof Error ? error.message : String(error);
         console.error(chalk.red(`[!] Connection failed: ${errorMessage}`));
         process.exit(1);
@@ -577,7 +586,7 @@ export async function chell_start(): Promise<void> {
   }
 
   console.log(border);
-  console.log(chalk.yellow('Your Taco Chell, filled with chili, salsa, and cumin goodness is READY! 🌮'));
+  console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));
   console.log('');
 
   const repl: REPL = new REPL();

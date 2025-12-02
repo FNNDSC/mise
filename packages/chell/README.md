@@ -5,7 +5,7 @@
 | |___| | | | |___| |___| |___
  \____|_| |_|_____|_____|_____|
 ```
-**ChELL Executes Logic Layers**
+**ChELL Executes Layered Logic**
 
 `chell` is an interactive command-line interface (CLI) designed to provide a shell-like experience for interacting with a ChRIS instance. It acts as a sophisticated consumer of the `chili` library, providing a persistent REPL environment for the core ChRIS operations.
 
@@ -92,7 +92,7 @@ Alternatively, use the `connect` command within the shell:
 
 ## Current Version
 
-`chell` version: `1.0.20`
+`chell` version: `1.10.0`
 
 ---
 `chell` is part of the ChRIS Project developed by FNNDSC.

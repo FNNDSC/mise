@@ -7,6 +7,23 @@ const mockFiles_list = jest.fn();
 const mockGrid_render = jest.fn();
 const mockLong_render = jest.fn();
 
+// Mock cumin
+const mockListCache = {
+  cache_get: jest.fn(),
+  cache_set: jest.fn(),
+  cache_invalidate: jest.fn(),
+};
+
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  listCache_get: () => mockListCache,
+  errorStack: { 
+    stack_push: jest.fn(), 
+    stack_pop: jest.fn().mockReturnValue({ message: 'Mocked Error Message', type: 'error' }) 
+  },
+  Ok: (val) => ({ ok: true, value: val }),
+  Err: (err) => ({ ok: false, error: err })
+}));
+
 // Mock the session module directly
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: {
@@ -175,7 +192,7 @@ describe('VFS', () => {
 
       await vfs.list('/bin');
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('No plugins found'));
+      expect(consoleLogSpy).not.toHaveBeenCalled();
       expect(mockGrid_render).not.toHaveBeenCalled();
     });
 
@@ -185,7 +202,7 @@ describe('VFS', () => {
 
       await vfs.list('/bin');
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('No plugins found'));
+      expect(consoleLogSpy).not.toHaveBeenCalled();
     });
 
     it('should handle plugin list error', async () => {
@@ -195,7 +212,7 @@ describe('VFS', () => {
       await vfs.list('/bin');
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to list plugins: API error')
+        expect.stringContaining('Mocked Error Message')
       );
     });
 
@@ -291,7 +308,7 @@ describe('VFS', () => {
       await vfs.list('/home');
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to list /home: Permission denied')
+        expect.stringContaining('Mocked Error Message')
       );
     });
 

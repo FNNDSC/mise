@@ -26,6 +26,20 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   }
 }));
 
+// Mock cumin
+const mockListCache = {
+  cache_get: jest.fn(),
+  cache_set: jest.fn(),
+  cache_invalidate: jest.fn(),
+};
+
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  listCache_get: () => mockListCache,
+  errorStack: { stack_push: jest.fn(), stack_pop: jest.fn() },
+  Ok: (val) => ({ ok: true, value: val }),
+  Err: (err) => ({ ok: false, error: err })
+}));
+
 // Mock chili files_list
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/ls.js', () => ({
   files_list: jest.fn().mockResolvedValue([])

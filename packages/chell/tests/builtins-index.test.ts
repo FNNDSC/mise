@@ -35,11 +35,38 @@ const mockCatRender = jest.fn();
 const mockRmRender = jest.fn();
 const mockChiliCommandRun = jest.fn();
 
+// Mock chili utils to prevent circular dependency via pathMapper -> cumin
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
+  logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
+  pathMapper_get: jest.fn()
+}));
+
+// Mock cumin to prevent loading real cache and circular deps
+const mockListCache = {
+  cache_get: jest.fn(),
+  cache_set: jest.fn(),
+  cache_invalidate: jest.fn(),
+  cache_markDirty: jest.fn(),
+};
+
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  listCache_get: () => mockListCache,
+  errorStack: { 
+    stack_push: jest.fn(), 
+    stack_pop: jest.fn() 
+  },
+  Result: {},
+  Ok: (val) => ({ ok: true, value: val }),
+  Err: (err) => ({ ok: false, error: err })
+}));
+
 // Mock session module
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: {
     getCWD: mockGetCWD,
     setCWD: mockSetCWD,
+    physicalMode_get: jest.fn().mockReturnValue(false),
+    timingEnabled_get: jest.fn().mockReturnValue(false),
     connection: {
       user_get: mockUserGet,
       client_get: mockClientGet
@@ -270,7 +297,7 @@ describe('Builtins - Core Functions', () => {
     it('should list current directory when no args', async () => {
       await builtin_ls([]);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: false, directory: false });
     });
 
     it('should list specified path', async () => {
@@ -278,19 +305,19 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_ls(['/tmp']);
 
-      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false, directory: false });
     });
 
     it('should handle -l flag for long format', async () => {
       await builtin_ls(['-l']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false });
     });
 
     it('should handle -h flag for human-readable sizes', async () => {
       await builtin_ls(['-l', '-h']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true, sort: 'name', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true, sort: 'name', reverse: false, directory: false });
     });
 
     it('should handle multiple paths by showing basenames', async () => {
@@ -302,43 +329,43 @@ describe('Builtins - Core Functions', () => {
     it('should handle --sort flag with size option', async () => {
       await builtin_ls(['--sort', 'size']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: false, directory: false });
     });
 
     it('should handle --sort flag with date option', async () => {
       await builtin_ls(['--sort', 'date']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'date', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'date', reverse: false, directory: false });
     });
 
     it('should handle --sort flag with owner option', async () => {
       await builtin_ls(['--sort', 'owner']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'owner', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'owner', reverse: false, directory: false });
     });
 
     it('should handle --reverse flag', async () => {
       await builtin_ls(['--reverse']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true, directory: false });
     });
 
     it('should handle -r flag for reverse', async () => {
       await builtin_ls(['-r']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true, directory: false });
     });
 
     it('should handle combined --sort and --reverse flags', async () => {
       await builtin_ls(['--sort', 'size', '--reverse']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true, directory: false });
     });
 
     it('should handle combined -l, --sort, and --reverse flags', async () => {
       await builtin_ls(['-l', '--sort', 'date', '--reverse']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'date', reverse: true });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'date', reverse: true, directory: false });
     });
   });
 
@@ -548,7 +575,7 @@ describe('Builtins - Core Functions', () => {
     it('should handle ls subcommand', async () => {
       await builtin_chefs(['ls', '-l']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false });
     });
 
     it('should handle mkdir subcommand', async () => {

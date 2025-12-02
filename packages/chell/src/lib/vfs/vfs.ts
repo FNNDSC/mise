@@ -14,7 +14,7 @@ import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 
 /**
  * Virtual File System Router.
@@ -22,90 +22,130 @@ import { listCache_get } from '@fnndsc/cumin';
  */
 export class VFS {
   /**
-   * List contents of a directory (Virtual or Native).
-   * @param targetPath - The path to list. If empty, uses CWD.
-   * @param options - Listing options (long, human, sort, reverse, directory).
+   * Gets data for a directory (Virtual or Native).
+   * Separated from rendering to allow Result<T> pattern.
+   *
+   * @param targetPath - The path to get data for. If empty, uses CWD.
+   * @param options - Options including directory flag and sort.
+   * @returns Result<ListingItem[]> - Ok with items or Err with error message.
    */
-  async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
-    const cwd: string = await session.getCWD();
-    const effectivePath: string = targetPath
-      ? path.posix.resolve(cwd, targetPath)
-      : cwd;
+  async getData(targetPath?: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
+    try {
+      const cwd: string = await session.getCWD();
+      const effectivePath: string = targetPath
+        ? path.posix.resolve(cwd, targetPath)
+        : cwd;
 
-    if (effectivePath === '/bin') {
-      await this.listVirtualBin(options);
-    } else {
-      await this.listNative(effectivePath, options);
+      if (effectivePath === '/bin') {
+        return await this.getDataVirtualBin(options);
+      } else {
+        return await this.getDataNative(effectivePath, options);
+      }
+    } catch (error: unknown) {
+      const errorMsg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to get directory data: ${errorMsg}`);
+      return Err();
     }
   }
 
   /**
-   * Gets the contents of the virtual `/bin` directory (plugins) as ListingItems.
-   * @returns A Promise resolving to an array of ListingItems.
+   * List contents of a directory (Virtual or Native).
+   * Convenience method that fetches data and renders it.
+   *
+   * @param targetPath - The path to list. If empty, uses CWD.
+   * @param options - Listing options (long, human, sort, reverse, directory).
    */
-  async getVirtualBinItems(): Promise<ListingItem[]> {
+  async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
+    const result: Result<ListingItem[]> = await this.getData(targetPath, options);
+
+    if (!result.ok) {
+      const lastError = errorStack.stack_pop();
+      if (lastError) {
+        console.error(chalk.red(lastError.message));
+      }
+      return;
+    }
+
+    if (result.value.length === 0) {
+      return;
+    }
+
+    // Render based on options
+    if (options.long) {
+      console.log(long_render(result.value, { human: !!options.human }));
+    } else {
+      console.log(grid_render(result.value));
+    }
+  }
+
+  /**
+   * Gets data for the virtual `/bin` directory (plugins).
+   * Returns Result<ListingItem[]> for proper error handling.
+   *
+   * @param options - Options including sort and reverse.
+   * @returns Result<ListingItem[]>.
+   */
+  private async getDataVirtualBin(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
       const plugins = await plugins_listAll({});
       const items: ListingItem[] = [];
 
       if (plugins && plugins.tableData) {
-        plugins.tableData.forEach((plugin: Record<string, any>) => {
+        plugins.tableData.forEach((plugin: Record<string, unknown>) => {
           // Format as single string: pl-name-v1.0.5
-          const displayName: string = plugin.version
-            ? `${plugin.name}-v${plugin.version}`
-            : plugin.name;
+          const pluginName: string = typeof plugin.name === 'string' ? plugin.name : String(plugin.name);
+          const pluginVersion: string = typeof plugin.version === 'string' ? plugin.version : String(plugin.version || '');
+          const displayName: string = pluginVersion
+            ? `${pluginName}-v${pluginVersion}`
+            : pluginName;
 
           items.push({
             name: displayName,
             type: 'plugin',
             size: 0,
             owner: 'system',
-            date: plugin.creation_date || '',
+            date: typeof plugin.creation_date === 'string' ? plugin.creation_date : '',
           });
         });
       }
 
-      return items;
+      // Apply sorting
+      const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
+      const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
+
+      // Cache the results
+      const listCache = listCache_get();
+      listCache.cache_set('/bin', sortedItems);
+
+      return Ok(sortedItems);
     } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Failed to list plugins: ${msg}`));
-      return [];
+      const errorMsg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to list plugins: ${errorMsg}`);
+      return Err();
     }
   }
 
   /**
-   * Lists the contents of the virtual `/bin` directory (plugins).
-   */
-  private async listVirtualBin(options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<void> {
-    const items = await this.getVirtualBinItems();
-
-    // Cache the results
-    const listCache = listCache_get();
-    listCache.cache_set('/bin', items);
-
-    if (items.length === 0) {
-      console.log(chalk.gray('No plugins found.'));
-      return;
-    }
-
-    // Apply sorting (default to name if not specified)
-    const sortField = options.sort || 'name';
-    const sortedItems = list_applySort(items, sortField, options.reverse);
-
-    // Use shared view (sorting is handled by the data layer, not view layer)
-    if (options.long) {
-      console.log(long_render(sortedItems, { human: !!options.human }));
-    } else {
-      console.log(grid_render(sortedItems));
-    }
-  }
-
-  /**
-   * Lists the contents of a native ChRIS directory.
+   * Gets the contents of the virtual `/bin` directory (plugins) as ListingItems.
+   * Legacy method for backward compatibility. Consider using getDataVirtualBin() instead.
    *
-   * @param target - The path to list.
+   * @returns A Promise resolving to an array of ListingItems.
    */
-  private async listNative(target: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean }): Promise<void> {
+  async getVirtualBinItems(): Promise<ListingItem[]> {
+    const result: Result<ListingItem[]> = await this.getDataVirtualBin();
+    return result.ok ? result.value : [];
+  }
+
+
+  /**
+   * Gets data for a native ChRIS directory.
+   * Returns Result<ListingItem[]> for proper error handling.
+   *
+   * @param target - The path to get data for.
+   * @param options - Options including directory flag and sort.
+   * @returns Result<ListingItem[]>.
+   */
+  private async getDataNative(target: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
       // Handle -d flag: show directory itself, not contents
       if (options.directory) {
@@ -115,24 +155,20 @@ export class VFS {
 
         // Check cache first
         const listCache = listCache_get();
-        let parentItems = listCache.cache_get(parentPath);
+        let parentItems: ListingItem[] | null = listCache.cache_get(parentPath);
         if (!parentItems) {
           parentItems = await files_list({}, parentPath);
           listCache.cache_set(parentPath, parentItems);
         }
 
-        const item = parentItems.find((i: ListingItem) => i.name === itemName);
+        const item: ListingItem | undefined = parentItems.find((i: ListingItem) => i.name === itemName);
 
         if (item) {
-          if (options.long) {
-            console.log(long_render([item], { human: !!options.human }));
-          } else {
-            console.log(item.name);
-          }
+          return Ok([item]);
         } else {
-          console.error(chalk.red(`ls: cannot access '${target}': No such file or directory`));
+          errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
+          return Err();
         }
-        return;
       }
 
       // Normal listing: show directory contents
@@ -160,18 +196,12 @@ export class VFS {
       const listCache = listCache_get();
       listCache.cache_set(target, items);
 
-      if (items.length === 0) return;
-
-      // Use shared view (sorting is handled by the data layer, not view layer)
-      if (options.long) {
-        console.log(long_render(items, { human: !!options.human }));
-      } else {
-        console.log(grid_render(items));
-      }
+      return Ok(items);
 
     } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Failed to list ${target}: ${msg}`));
+      const errorMsg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to list ${target}: ${errorMsg}`);
+      return Err();
     }
   }
 }

@@ -37,6 +37,7 @@ import {
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
+import { Result, errorStack } from '@fnndsc/cumin';
 
 /**
  * Interface for package.json structure.
@@ -119,7 +120,15 @@ async function command_handle(line: string): Promise<void> {
 
   // Expand wildcards for commands that support it
   if (shouldExpandWildcards(command)) {
-    args = await wildcards_expandAll(args);
+    const expandResult: Result<string[]> = await wildcards_expandAll(args);
+    if (!expandResult.ok) {
+      const lastError = errorStack.stack_pop();
+      if (lastError) {
+        console.error(chalk.red(lastError.message));
+      }
+      return;
+    }
+    args = expandResult.value;
   }
 
   // Attempt to handle as a simulated plugin execution
@@ -264,7 +273,13 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
 
   // Expand wildcards for commands that support it
   if (shouldExpandWildcards(command)) {
-    args = await wildcards_expandAll(args);
+    const expandResult: Result<string[]> = await wildcards_expandAll(args);
+    if (!expandResult.ok) {
+      const lastError = errorStack.stack_pop();
+      const errorMsg: string = lastError ? lastError.message : 'Unknown error';
+      return { text: chalk.red(`${errorMsg}\n`), buffer: Buffer.from('') };
+    }
+    args = expandResult.value;
   }
 
   return output_capture(async () => {

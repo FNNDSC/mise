@@ -10,7 +10,7 @@ import { session } from '../session/index.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { vfs } from '../lib/vfs/vfs.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 
 /**
  * Checks if a string contains wildcard characters.
@@ -26,12 +26,14 @@ export function hasWildcard(arg: string): boolean {
  * Expands a wildcard pattern against the current directory.
  *
  * @param pattern - The glob pattern (e.g., "*.ts", "test*.json").
- * @returns A Promise resolving to an array of matching paths.
+ * @returns A Promise resolving to Result<string[]>.
+ *          Ok([]) = no matches (not an error).
+ *          Err(...) = couldn't expand (API failure, permission denied, etc.).
  */
-export async function wildcard_expand(pattern: string): Promise<string[]> {
+export async function wildcard_expand(pattern: string): Promise<Result<string[]>> {
   // If no wildcard, return as-is
   if (!hasWildcard(pattern)) {
-    return [pattern];
+    return Ok([pattern]);
   }
 
   try {
@@ -67,7 +69,7 @@ export async function wildcard_expand(pattern: string): Promise<string[]> {
 
     if (searchDir === '/bin') {
       // Check cache for /bin
-      const cached = listCache.cache_get('/bin');
+      const cached: ListingItem[] | null = listCache.cache_get('/bin');
       if (cached) {
         items = cached;
       } else {
@@ -76,7 +78,7 @@ export async function wildcard_expand(pattern: string): Promise<string[]> {
       }
     } else {
       // Check cache for native path
-      const cached = listCache.cache_get(searchDir);
+      const cached: ListingItem[] | null = listCache.cache_get(searchDir);
       if (cached) {
         items = cached;
       } else {
@@ -96,12 +98,13 @@ export async function wildcard_expand(pattern: string): Promise<string[]> {
         return item.name;
       });
 
-    // If no matches, return original pattern (let the command handle the error)
-    return matches.length > 0 ? matches : [pattern];
+    // Ok([]) for no matches (not an error)
+    return Ok(matches);
 
   } catch (error: unknown) {
-    // On error, return original pattern
-    return [pattern];
+    const errorMsg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Failed to expand wildcard '${pattern}': ${errorMsg}`);
+    return Err();
   }
 }
 
@@ -109,15 +112,28 @@ export async function wildcard_expand(pattern: string): Promise<string[]> {
  * Expands all wildcards in an argument list.
  *
  * @param args - The argument list potentially containing wildcards.
- * @returns A Promise resolving to an array with wildcards expanded.
+ * @returns A Promise resolving to Result<string[]>.
+ *          On error expanding any pattern, returns the error.
+ *          Empty matches return the original pattern.
  */
-export async function wildcards_expandAll(args: string[]): Promise<string[]> {
+export async function wildcards_expandAll(args: string[]): Promise<Result<string[]>> {
   const expanded: string[] = [];
 
   for (const arg of args) {
-    const matches: string[] = await wildcard_expand(arg);
-    expanded.push(...matches);
+    const result: Result<string[]> = await wildcard_expand(arg);
+
+    if (!result.ok) {
+      // Propagate error up
+      return result;
+    }
+
+    // If no matches, use original pattern (let command handle "not found")
+    if (result.value.length === 0) {
+      expanded.push(arg);
+    } else {
+      expanded.push(...result.value);
+    }
   }
 
-  return expanded;
+  return Ok(expanded);
 }

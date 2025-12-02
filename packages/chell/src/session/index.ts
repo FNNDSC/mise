@@ -14,7 +14,8 @@ export class Session {
   private static instance: Session;
   private _connection: typeof chrisConnection | undefined;
   private _offline: boolean = false;
-  
+  private _physicalMode: boolean = false;
+
   /**
    * Private constructor for Singleton.
    */
@@ -72,6 +73,27 @@ export class Session {
    */
   set offline(value: boolean) {
     this._offline = value;
+  }
+
+  /**
+   * Gets physical filesystem mode status.
+   *
+   * When true, path operations work directly with physical paths
+   * without logical-to-physical mapping.
+   *
+   * @returns True if in physical mode, false if using logical paths.
+   */
+  physicalMode_get(): boolean {
+    return this._physicalMode;
+  }
+
+  /**
+   * Sets physical filesystem mode.
+   *
+   * @param enabled - True to enable physical mode, false for logical mode.
+   */
+  physicalMode_set(enabled: boolean): void {
+    this._physicalMode = enabled;
   }
 }
 

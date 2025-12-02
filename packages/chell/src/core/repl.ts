@@ -70,18 +70,23 @@ export class REPL {
 
     let promptUser: string = context.user || 'disconnected';
     let promptUri: string = context.URL || 'no-cube';
-    
+
     if (session.offline) {
       promptUser = 'disconnected';
       promptUri = 'no-cube';
     }
-    
+
     let promptPath: string = cwd;
     if (session.offline) {
       promptPath = '/';
     }
 
-    this.rl.setPrompt(`${chalk.green(promptUser)}@${chalk.cyan(promptUri)}:${chalk.yellow(promptPath)}$ `);
+    // Add physical mode indicator
+    const modeIndicator: string = session.physicalMode_get()
+      ? chalk.magenta('[PHYSICAL]') + ' '
+      : '';
+
+    this.rl.setPrompt(`${modeIndicator}${chalk.green(promptUser)}@${chalk.cyan(promptUri)}:${chalk.yellow(promptPath)}$ `);
     try {
       this.rl.prompt();
     } catch (e) {

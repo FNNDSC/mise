@@ -31,7 +31,8 @@ import {
   builtin_links,
   builtin_dirs,
   builtin_context,
-  builtin_parametersofplugin
+  builtin_parametersofplugin,
+  builtin_physicalmode
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
@@ -295,6 +296,9 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       case 'dirs':
         await builtin_dirs(args);
         break;
+      case 'physicalmode':
+        await builtin_physicalmode(args);
+        break;
       case 'exit':
         process.exit(0);
         break;
@@ -438,6 +442,12 @@ export async function chell_start(): Promise<void> {
   console.log(chalk.cyan('[-] Initializing session components...'));
   await session.init();
   console.log(chalk.green('[+] Session initialized.'));
+
+  // Set physical filesystem mode if requested
+  if (config.physicalFS) {
+    session.physicalMode_set(true);
+    console.log(chalk.yellow('[!] Physical filesystem mode enabled - logical-to-physical mapping disabled'));
+  }
 
   // Check if we have a saved session from a previous run
   console.log(chalk.cyan('[-] Checking for previous context...'));

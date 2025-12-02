@@ -10,6 +10,7 @@ import { Command } from 'commander';
 
 export interface ChellCLIConfig {
   mode: 'interactive' | 'connect' | 'help' | 'version';
+  physicalFS?: boolean;
   connectConfig?: {
     user?: string;
     password?: string;
@@ -30,6 +31,7 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
       .argument('[target]', 'Target CUBE (user@url or url)')
       .option('-u, --user <user>', 'Username')
       .option('-p, --password <password>', 'Password')
+      .option('--physicalFS', 'Use physical filesystem paths (skip logical-to-physical mapping)')
       .addHelpText('after', `
 Interactive Commands:
   connect    Connect to a ChRIS CUBE
@@ -41,8 +43,12 @@ Interactive Commands:
   chefs      Access ChRIS Experimental File System commands
   exit       Exit the shell
   <other>    Any other command is passed to chili
+
+Options:
+  --physicalFS    Operate directly on physical paths without logical-to-physical mapping.
+                  Use this for debugging or when working with physical ChRIS storage paths.
       `)
-      .action((target: string | undefined, options: { user?: string, password?: string }) => {
+      .action((target: string | undefined, options: { user?: string, password?: string, physicalFS?: boolean }) => {
           let user: string | undefined = options.user;
           let url: string | undefined = target;
           let password: string | undefined = options.password;
@@ -57,15 +63,21 @@ Interactive Commands:
               if (!url.startsWith('http://') && !url.startsWith('https://')) {
                   url = 'http://' + url;
               }
-              
+
               // Note: password prompt logic is side-effect heavy and should be handled by the caller
               // if password is missing but required.
               // The parser just reports what it found.
-              
+
               config = {
                   mode: 'connect',
+                  physicalFS: options.physicalFS,
                   connectConfig: { user, password, url }
               };
+          } else {
+              // No URL provided, but physicalFS flag might be set
+              if (options.physicalFS) {
+                  config.physicalFS = true;
+              }
           }
       });
 

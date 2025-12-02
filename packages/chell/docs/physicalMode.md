@@ -1,0 +1,373 @@
+# Physical Filesystem Mode
+
+## Overview
+
+ChELL's **Physical Filesystem Mode** (`--physicalFS`) provides a fallback mode that operates directly on physical ChRIS storage paths without logical-to-physical path mapping. This is useful for debugging, direct storage access, and performance optimization when link resolution is not needed.
+
+## Motivation
+
+### The Problem
+
+ChRIS uses a logical-to-physical path mapping system where:
+- **Logical paths** are what users see and navigate (e.g., `/home/user/public/data`)
+- **Physical paths** are where data actually resides (e.g., `/SHARED/data` if `public` is a link)
+
+While the PathMapper singleton optimizes this with hierarchical prefix caching, there are scenarios where:
+1. **Direct access is needed** - Working directly with physical storage paths
+2. **Debugging is required** - Seeing actual storage structure without abstraction
+3. **Links don't exist** - No symbolic links in the filesystem to resolve
+4. **Performance is critical** - Eliminating even optimized mapping overhead
+
+### The Solution
+
+Physical mode bypasses the logical-to-physical mapping entirely, treating all paths as physical locations.
+
+## Usage
+
+### Command-Line Flag
+
+Start chell with physical mode enabled:
+
+```bash
+chell --physicalFS
+```
+
+Or with connection parameters:
+
+```bash
+chell --physicalFS --user alice --password pass123 http://cube.example.com/api/v1/
+```
+
+### Runtime Commands
+
+Toggle physical mode during a session:
+
+```bash
+# Check current status
+physicalmode
+
+# Enable physical mode
+physicalmode on
+
+# Disable physical mode
+physicalmode off
+```
+
+### Visual Indicator
+
+When physical mode is enabled, the prompt shows a `[PHYSICAL]` indicator:
+
+```
+[PHYSICAL] rudolphpienaar@http://cube.example.com:32223/api/v1/:/SHARED/data$
+```
+
+Normal mode (logical paths):
+
+```
+rudolphpienaar@http://cube.example.com:32223/api/v1/:/home/user/public/data$
+```
+
+## Behavior Differences
+
+### Logical Mode (Default)
+
+```bash
+# User navigates to logical path
+cd /home/user/public/data
+
+# ChELL resolves to physical location
+# Internal: /home/user/public -> /SHARED (link)
+# Validation checks: /SHARED/data
+# CWD stored as: /home/user/public/data (logical)
+```
+
+### Physical Mode (`--physicalFS`)
+
+```bash
+# User navigates to physical path
+cd /SHARED/data
+
+# ChELL uses path directly
+# No link resolution
+# Validation checks: /SHARED/data
+# CWD stored as: /SHARED/data (physical)
+```
+
+## Use Cases
+
+### 1. Debugging Link Issues
+
+When logical paths aren't resolving correctly:
+
+```bash
+# Start in physical mode
+chell --physicalFS
+
+# Navigate directly to physical storage
+cd /SHARED
+
+# See actual directory structure
+ls
+
+# Check if data exists at physical location
+cat /SHARED/important-file.txt
+```
+
+### 2. Direct Storage Access
+
+Working with physical storage paths from documentation or logs:
+
+```bash
+# Physical path from log file: /STORAGE/uploads/batch_123/data.csv
+chell --physicalFS
+
+cd /STORAGE/uploads/batch_123
+ls
+cat data.csv
+```
+
+### 3. Performance-Critical Operations
+
+When processing thousands of files without links:
+
+```bash
+# No links exist, skip mapping overhead
+chell --physicalFS
+
+cd /raw_data/experiment_2025
+# Process many files without path resolution overhead
+```
+
+### 4. Link Debugging
+
+Compare logical vs physical paths side-by-side:
+
+```bash
+# Terminal 1: Logical mode
+chell
+cd /home/user/public
+pwd  # Shows: /home/user/public
+
+# Terminal 2: Physical mode
+chell --physicalFS
+cd /SHARED
+pwd  # Shows: /SHARED
+
+# Verify link is working by comparing contents
+```
+
+## Context Display
+
+The `context` command shows the current physical mode status:
+
+```bash
+context
+```
+
+Output:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     ChRIS Context                       │
+├───────────────┬─────────────────────────────────────────┤
+│ Context       │ Value                                   │
+├───────────────┼─────────────────────────────────────────┤
+│ ChRIS User    │ rudolphpienaar                          │
+│ ChRIS URL     │ http://cube.example.com/api/v1/         │
+│ ChRIS Folder  │ /SHARED/data                            │
+│ ChRIS Feed    │ Not set                                 │
+│ ChRIS Plugin  │ Not set                                 │
+│ Physical Mode │ Enabled                                 │  ← Status shown
+└───────────────┴─────────────────────────────────────────┘
+```
+
+## Implementation Details
+
+### Architecture
+
+Physical mode is controlled by a boolean flag in the `Session` singleton:
+
+```typescript
+// Session class
+class Session {
+  private _physicalMode: boolean = false;
+
+  physicalMode_get(): boolean {
+    return this._physicalMode;
+  }
+
+  physicalMode_set(enabled: boolean): void {
+    this._physicalMode = enabled;
+  }
+}
+```
+
+### Path Resolution Bypass
+
+In `builtin_cd()`:
+
+```typescript
+let validationPath: string;
+
+if (session.physicalMode_get()) {
+  // Physical mode: use path directly
+  validationPath = logicalPath;
+} else {
+  // Logical mode: resolve logical → physical
+  const { logical_toPhysical } = await import('@fnndsc/chili/utils');
+  const physicalResult = await logical_toPhysical(logicalPath);
+  validationPath = physicalResult.value;
+}
+
+// Validate path exists
+await client.getFileBrowserFolderByPath(validationPath);
+```
+
+### Prompt Modification
+
+The REPL prompt dynamically shows physical mode status:
+
+```typescript
+const modeIndicator: string = session.physicalMode_get()
+  ? chalk.magenta('[PHYSICAL]') + ' '
+  : '';
+
+this.rl.setPrompt(`${modeIndicator}${chalk.green(promptUser)}@...`);
+```
+
+## Performance Comparison
+
+### Logical Mode (With PathMapper Optimization)
+
+| Operation | API Calls |
+|-----------|-----------|
+| First path resolution | O(depth) |
+| Repeated exact path | 0 (cache hit) |
+| Path with cached prefix | O(new components) |
+
+### Physical Mode
+
+| Operation | API Calls |
+|-----------|-----------|
+| Any path resolution | 0 (no resolution) |
+| Directory validation | 1 (existence check only) |
+
+**When to use Physical Mode:**
+- **No performance benefit** if links exist and PathMapper is warm
+- **Small benefit** if links exist but cache is cold
+- **Significant benefit** if no links exist (avoids all resolution overhead)
+
+## Caveats and Limitations
+
+### 1. No Link Following
+
+Physical mode does **not** follow ChRIS links:
+
+```bash
+# Logical mode
+cd /home/user/public/feed_4
+# Automatically resolves: /home/user/public -> /SHARED
+# Result: /SHARED/feed_4 ✓
+
+# Physical mode
+cd /home/user/public/feed_4
+# Error: /home/user/public/feed_4 does not exist ✗
+# Must use: cd /SHARED/feed_4
+```
+
+### 2. Path Portability
+
+Paths in physical mode are **not portable** across environments with different storage layouts:
+
+```bash
+# Environment A physical path
+cd /STORAGE/shared/data
+
+# Environment B might use different physical structure
+cd /mnt/nfs/shared/data  # Different path!
+```
+
+### 3. User Experience
+
+Physical paths are **less intuitive** for end users:
+
+- Logical: `/home/alice/public/data` ✓ (clear, user-centric)
+- Physical: `/STORAGE/UUID-1234/uploads/data` ✗ (opaque, system-centric)
+
+### 4. Loss of Abstraction
+
+Physical mode **bypasses the abstraction layer**, exposing implementation details:
+
+- Users must know actual storage structure
+- Changes to physical layout break user workflows
+- No benefit from future mapping optimizations
+
+## Best Practices
+
+### ✅ **Good Use Cases**
+
+- **Debugging**: "Why isn't this path resolving?"
+- **System administration**: Direct storage management
+- **Performance testing**: Benchmarking without mapper overhead
+- **Emergency access**: When mapping system has issues
+
+### ❌ **Poor Use Cases**
+
+- **Normal user workflows**: Use logical mode (default)
+- **Scripts and automation**: Logical paths are more portable
+- **Production operations**: Abstraction provides stability
+
+## Troubleshooting
+
+### Issue: "Path not found" in physical mode
+
+**Cause**: Using logical path in physical mode.
+
+**Solution**:
+```bash
+# Option 1: Switch to logical mode
+physicalmode off
+cd /home/user/public/data  # Works with links
+
+# Option 2: Use physical path
+physicalmode on
+cd /SHARED/data  # Direct physical path
+```
+
+### Issue: Prompt doesn't show `[PHYSICAL]`
+
+**Cause**: Mode was set via CLI flag before session initialization.
+
+**Solution**: Toggle mode to refresh prompt:
+```bash
+physicalmode off
+physicalmode on
+```
+
+### Issue: Path works in logical mode but not physical mode
+
+**Cause**: Logical path includes unresolved links.
+
+**Solution**: Find physical path first:
+```bash
+# In logical mode session
+physicalmode off
+cd /home/user/public/data
+pwd  # Note this path
+
+# Check context to see actual folder
+context
+# Physical path shown in "ChRIS Folder"
+```
+
+## Related Documentation
+
+- [PathMapper Implementation](../../chili/docs/pathMapper.md) - Logical-to-physical mapping optimization
+- [ChELL Architecture](architecture.adoc) - Overall system design
+- [ChELL Login and Session Management](login.adoc) - Session state management
+
+---
+
+**Added:** 2025-01-31
+**Author:** Claude + User collaboration
+**Status:** ✅ Implemented and documented

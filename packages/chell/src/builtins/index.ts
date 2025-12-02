@@ -53,6 +53,7 @@ export {
   builtin_dirs,
   builtin_context,
   builtin_parametersofplugin,
+  builtin_physicalmode,
 };
 export type { ParsedArgs };
 
@@ -121,23 +122,32 @@ async function builtin_cd(args: string[]): Promise<void> {
       return;
     }
 
-    // Resolve logical path to physical path for validation
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const physicalResult = await logical_toPhysical(logicalPath);
+    // Determine path for validation
+    let validationPath: string;
 
-    if (!physicalResult.ok) {
-      console.error(chalk.red(`cd: ${pathArg}: Invalid path`));
-      return;
+    if (session.physicalMode_get()) {
+      // Physical mode: use the path directly (already physical)
+      validationPath = logicalPath;
+    } else {
+      // Logical mode: resolve logical path to physical path for validation
+      const { logical_toPhysical } = await import('@fnndsc/chili/utils');
+      const physicalResult = await logical_toPhysical(logicalPath);
+
+      if (!physicalResult.ok) {
+        console.error(chalk.red(`cd: ${pathArg}: Invalid path`));
+        return;
+      }
+
+      validationPath = physicalResult.value;
     }
 
-    const physicalPath: string = physicalResult.value;
-
     try {
-      // Validate that the physical target exists
-      const folder: unknown = await client.getFileBrowserFolderByPath(physicalPath);
+      // Validate that the target exists
+      const folder: unknown = await client.getFileBrowserFolderByPath(validationPath);
       if (folder) {
-        // Set CWD to the logical path (not the physical target)
-        // This preserves *nix behavior where cd into a symlink keeps the logical path
+        // Set CWD to the path provided by the user
+        // In logical mode: preserves *nix behavior where cd into a symlink keeps the logical path
+        // In physical mode: uses the physical path directly
         await session.setCWD(logicalPath);
       } else {
         console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
@@ -661,6 +671,10 @@ async function builtin_context(args: string[]): Promise<void> {
       Context: 'ChRIS Plugin',
       Value: context.plugin || chalk.gray('Not set'),
     },
+    {
+      Context: 'Physical Mode',
+      Value: session.physicalMode_get() ? chalk.magenta('Enabled') : chalk.gray('Disabled'),
+    },
   ];
 
   table_display(
@@ -670,4 +684,39 @@ async function builtin_context(args: string[]): Promise<void> {
       title: { title: 'ChRIS Context', justification: 'center' },
     }
   );
+}
+
+/**
+ * Toggles or displays physical filesystem mode.
+ *
+ * @param args - Command line arguments: 'on', 'off', or empty to display status.
+ */
+async function builtin_physicalmode(args: string[]): Promise<void> {
+  const subcommand: string | undefined = args[0];
+
+  if (!subcommand) {
+    // Display current status
+    const status: string = session.physicalMode_get() ? 'enabled' : 'disabled';
+    console.log(`Physical filesystem mode: ${chalk.yellow(status)}`);
+    if (session.physicalMode_get()) {
+      console.log(chalk.gray('  Paths are used directly without logical-to-physical mapping.'));
+    } else {
+      console.log(chalk.gray('  Paths are resolved through logical-to-physical mapping.'));
+    }
+    console.log(chalk.gray('\nUsage: physicalmode [on|off]'));
+    return;
+  }
+
+  if (subcommand === 'on') {
+    session.physicalMode_set(true);
+    console.log(chalk.yellow('[!] Physical filesystem mode enabled'));
+    console.log(chalk.gray('    Paths will be used directly without logical-to-physical mapping.'));
+  } else if (subcommand === 'off') {
+    session.physicalMode_set(false);
+    console.log(chalk.green('[+] Physical filesystem mode disabled'));
+    console.log(chalk.gray('    Paths will be resolved through logical-to-physical mapping.'));
+  } else {
+    console.log(chalk.red(`Unknown argument: ${subcommand}`));
+    console.log(chalk.gray('Usage: physicalmode [on|off]'));
+  }
 }

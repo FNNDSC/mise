@@ -36,6 +36,7 @@ import {
   builtin_parametersofplugin,
   builtin_physicalmode,
   builtin_timing,
+  builtin_debug,
   builtin_help
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
@@ -170,6 +171,7 @@ async function command_handle(line: string): Promise<void> {
     case 'parametersofplugin': await builtin_parametersofplugin(args); break;
     case 'physicalmode': await builtin_physicalmode(args); break;
     case 'timing': await builtin_timing(args); break;
+    case 'debug': await builtin_debug(args); break;
     case 'help': await builtin_help(args); break;
     case 'plugin':
     case 'plugins':

@@ -208,6 +208,19 @@ const helpText: Record<string, CommandHelp> = {
       'timing off            # Disable timing display',
     ],
   },
+  debug: {
+    usage: 'debug [on|off]',
+    description: 'Toggle or display debug mode (verbose logging)',
+    options: [
+      'on          Enable debug logging',
+      'off         Disable debug logging',
+    ],
+    examples: [
+      'debug                 # Show current status',
+      'debug on              # Enable debug mode',
+      'debug off             # Disable debug mode',
+    ],
+  },
   parametersofplugin: {
     usage: 'parametersofplugin <plugin_name>',
     description: 'Display parameters for a specific plugin',
@@ -306,7 +319,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     'File Operations': ['cat', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
     'Connection': ['connect', 'logout', 'context'],
     'Resources': ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
-    'Shell Settings': ['physicalmode', 'timing'],
+    'Shell Settings': ['physicalmode', 'timing', 'debug'],
     'General': ['help', 'exit'],
   };
 

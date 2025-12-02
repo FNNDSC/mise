@@ -51,6 +51,7 @@ const mockListCache = {
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   listCache_get: () => mockListCache,
+  connectionConfig: { debug: false },
   errorStack: { 
     stack_push: jest.fn(), 
     stack_pop: jest.fn() 

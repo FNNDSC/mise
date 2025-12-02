@@ -38,6 +38,7 @@ import { chiliCommand_run } from '../chell.js';
 import * as readline from 'readline';
 import { builtin_parametersofplugin } from './parametersofplugin.js';
 import { builtin_help } from './help.js';
+import { builtin_debug } from './debug.js';
 
 export {
   builtin_cd,
@@ -60,6 +61,7 @@ export {
   builtin_parametersofplugin,
   builtin_physicalmode,
   builtin_timing,
+  builtin_debug,
   builtin_help,
 };
 export type { ParsedArgs };

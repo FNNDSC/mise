@@ -73,7 +73,7 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
       if (cached) {
         items = cached;
       } else {
-        items = await vfs.getVirtualBinItems();
+        items = await vfs.virtualBinItems_get();
         listCache.cache_set('/bin', items);
       }
     } else {

@@ -48,7 +48,7 @@ VFS separates **data layer** (returns `Result<T>`) from **presentation layer** (
 // New approach - separated concerns
 
 // Data layer: returns Result<ListingItem[]>
-async getData(path?: string): Promise<Result<ListingItem[]>> {
+async data_get(path?: string): Promise<Result<ListingItem[]>> {
   try {
     const items = await fetchItems(path);
     return Ok(items);
@@ -60,7 +60,7 @@ async getData(path?: string): Promise<Result<ListingItem[]>> {
 
 // Presentation layer: renders data, handles errors
 async list(path?: string): Promise<void> {
-  const result = await this.getData(path);
+  const result = await this.data_get(path);
 
   if (!result.ok) {
     const lastError = errorStack.stack_pop();
@@ -76,7 +76,7 @@ async list(path?: string): Promise<void> {
 
 * ✅ Data operations testable without console output
 * ✅ Errors handled with Result<T> + errorStack pattern
-* ✅ Composable: getData() output feeds other operations
+* ✅ Composable: data_get() output feeds other operations
 * ✅ Type-safe: TypeScript enforces error checking
 
 == Architecture
@@ -96,9 +96,9 @@ The VFS implements a clean separation between data and presentation:
                     ↓ calls
 ┌─────────────────────────────────────────────┐
 │  Data Layer (Result<T> returns)             │
-│  - getData(): fetches and returns data      │
-│  - getDataVirtualBin(): /bin plugin listing │
-│  - getDataNative(): native ChRIS paths      │
+│  - data_get(): fetches and returns data      │
+│  - dataVirtualBin_get(): /bin plugin listing │
+│  - dataNative_get(): native ChRIS paths      │
 │  - Pushes errors to errorStack              │
 │  - Uses ListCache for performance           │
 └─────────────────────────────────────────────┘
@@ -116,7 +116,7 @@ The VFS routes paths to appropriate handlers:
 
 [source,typescript]
 ----
-async getData(targetPath?: string, options: {...}): Promise<Result<ListingItem[]>> {
+async data_get(targetPath?: string, options: {...}): Promise<Result<ListingItem[]>> {
   const cwd = await session.getCWD();
   const effectivePath = targetPath
     ? path.posix.resolve(cwd, targetPath)
@@ -124,9 +124,9 @@ async getData(targetPath?: string, options: {...}): Promise<Result<ListingItem[]
 
   // Route to appropriate handler
   if (effectivePath === '/bin') {
-    return await this.getDataVirtualBin(options);  // Virtual directory
+    return await this.dataVirtualBin_get(options);  // Virtual directory
   } else {
-    return await this.getDataNative(effectivePath, options); // Native path
+    return await this.dataNative_get(effectivePath, options); // Native path
   }
 }
 ----
@@ -148,7 +148,7 @@ The `/bin` directory lists all available ChRIS plugins as executable files:
 
 [source,typescript]
 ----
-private async getDataVirtualBin(options): Promise<Result<ListingItem[]>> {
+private async dataVirtualBin_get(options): Promise<Result<ListingItem[]>> {
   try {
     const plugins = await plugins_listAll({});
     const items: ListingItem[] = [];
@@ -197,7 +197,7 @@ Native directories are ChRIS paths backed by the CUBE server:
 
 [source,typescript]
 ----
-private async getDataNative(target: string, options): Promise<Result<ListingItem[]>> {
+private async dataNative_get(target: string, options): Promise<Result<ListingItem[]>> {
   try {
     // Special handling for -d flag (show directory info, not contents)
     if (options.directory) {
@@ -266,9 +266,9 @@ All data-fetching methods return `Result<ListingItem[]>`:
 
 [source,typescript]
 ----
-async getData(path?: string): Promise<Result<ListingItem[]>>
-async getDataVirtualBin(options): Promise<Result<ListingItem[]>>
-async getDataNative(path: string, options): Promise<Result<ListingItem[]>>
+async data_get(path?: string): Promise<Result<ListingItem[]>>
+async dataVirtualBin_get(options): Promise<Result<ListingItem[]>>
+async dataNative_get(path: string, options): Promise<Result<ListingItem[]>>
 ----
 
 **On success:**
@@ -291,7 +291,7 @@ The `list()` method handles Result<T> and displays output:
 [source,typescript]
 ----
 async list(path?: string, options): Promise<void> {
-  const result = await this.getData(path, options);
+  const result = await this.data_get(path, options);
 
   // Handle failure
   if (!result.ok) {
@@ -329,7 +329,7 @@ TypeScript enforces proper error checking:
 
 [source,typescript]
 ----
-const result = await vfs.getData('/home/user');
+const result = await vfs.data_get('/home/user');
 
 // ❌ TypeScript error - must check .ok first
 console.log(result.value);
@@ -349,7 +349,7 @@ This prevents accessing data that doesn't exist due to errors.
 
 === Public Methods
 
-==== `getData(targetPath?: string, options?): Promise<Result<ListingItem[]>>`
+==== `data_get(targetPath?: string, options?): Promise<Result<ListingItem[]>>`
 
 Fetches directory data without rendering.
 
@@ -386,7 +386,7 @@ Fetches directory data without rendering.
 import { vfs } from './lib/vfs/vfs.js';
 import { errorStack } from '@fnndsc/cumin';
 
-const result = await vfs.getData('/home/user', { sort: 'date', reverse: true });
+const result = await vfs.data_get('/home/user', { sort: 'date', reverse: true });
 if (!result.ok) {
   const error = errorStack.stack_pop();
   console.error(`Failed: ${error?.message}`);
@@ -451,18 +451,18 @@ await vfs.list('/home/user/feeds/feed_123', { directory: true, long: true });
 await vfs.list('/bin', { sort: 'date', reverse: true });
 ----
 
-==== `getVirtualBinItems(): Promise<ListingItem[]>`
+==== `virtualBinItems_get(): Promise<ListingItem[]>`
 
 Legacy method for backward compatibility. Returns `/bin` items directly.
 
-**Deprecated:** Use `getData('/bin')` instead for Result<T> pattern.
+**Deprecated:** Use `data_get('/bin')` instead for Result<T> pattern.
 
 **Returns:** `ListingItem[]` - Empty array on error
 
 **Example:**
 [source,typescript]
 ----
-const plugins = await vfs.getVirtualBinItems();
+const plugins = await vfs.virtualBinItems_get();
 // No error handling - returns [] on failure
 ----
 
@@ -470,8 +470,8 @@ const plugins = await vfs.getVirtualBinItems();
 
 These are implementation details, not part of public API:
 
-* `getDataVirtualBin(options): Promise<Result<ListingItem[]>>` - Handles `/bin`
-* `getDataNative(target, options): Promise<Result<ListingItem[]>>` - Handles native paths
+* `dataVirtualBin_get(options): Promise<Result<ListingItem[]>>` - Handles `/bin`
+* `dataNative_get(target, options): Promise<Result<ListingItem[]>>` - Handles native paths
 
 == Usage Patterns
 
@@ -496,12 +496,12 @@ async function builtin_ls(args: string[]): Promise<void> {
 
 === Pattern 2: Data Processing (Fetch Then Transform)
 
-Use `getData()` when you need to process data:
+Use `data_get()` when you need to process data:
 
 [source,typescript]
 ----
 async function countTextFiles(dir: string): Promise<number> {
-  const result = await vfs.getData(dir);
+  const result = await vfs.data_get(dir);
 
   if (!result.ok) {
     return 0; // Or handle error differently
@@ -525,7 +525,7 @@ async function wildcard_expand(pattern: string): Promise<Result<string[]>> {
   let items = listCache.cache_get(cwd);
   if (!items) {
     // Use VFS to get fresh data
-    const result = await vfs.getData(cwd);
+    const result = await vfs.data_get(cwd);
     if (!result.ok) {
       return result; // Propagate error
     }
@@ -549,10 +549,10 @@ Prefetch directory data for immediate tab completion:
 [source,typescript]
 ----
 async function completer_prefetch(dir: string): Promise<void> {
-  const result = await vfs.getData(dir);
+  const result = await vfs.data_get(dir);
 
   if (result.ok) {
-    // Cache populated by getData() - ready for tab completion
+    // Cache populated by data_get() - ready for tab completion
     const listCache = listCache_get();
     const cached = listCache.cache_get(dir);
     // cached is now available for fast lookups
@@ -567,7 +567,7 @@ Chain multiple data operations:
 [source,typescript]
 ----
 async function findLargestFile(dir: string): Promise<string | null> {
-  const result = await vfs.getData(dir);
+  const result = await vfs.data_get(dir);
   if (!result.ok) return null;
 
   const files = result.value.filter(item => item.type === 'file');
@@ -712,7 +712,7 @@ Callers propagate errors by checking and returning:
 
 [source,typescript]
 ----
-const result = await vfs.getData(path);
+const result = await vfs.data_get(path);
 if (!result.ok) {
   // Error already in errorStack, just propagate failure
   return Err();
@@ -726,7 +726,7 @@ if (!result.ok) {
 ----
 describe('VFS error handling', () => {
   it('should return Err for nonexistent path', async () => {
-    const result = await vfs.getData('/nonexistent');
+    const result = await vfs.data_get('/nonexistent');
 
     expect(result.ok).toBe(false);
 
@@ -737,7 +737,7 @@ describe('VFS error handling', () => {
   it('should handle API failures gracefully', async () => {
     jest.spyOn(files, 'list').mockRejectedValue(new Error('Network error'));
 
-    const result = await vfs.getData('/path');
+    const result = await vfs.data_get('/path');
 
     expect(result.ok).toBe(false);
     const errors = errorStack.stack_search("Network error");
@@ -779,14 +779,14 @@ New VFS separates data from presentation:
 // New API
 class VFS {
   // Data layer
-  async getDataVirtualBin(options): Promise<Result<ListingItem[]>> {
+  async dataVirtualBin_get(options): Promise<Result<ListingItem[]>> {
     const items = await fetchItems();
     return Ok(items); // No console output
   }
 
   // Presentation layer
   async list(path?: string, options?): Promise<void> {
-    const result = await this.getData(path, options);
+    const result = await this.data_get(path, options);
     if (!result.ok) {
       const error = errorStack.stack_pop();
       console.error(chalk.red(error?.message));
@@ -797,20 +797,20 @@ class VFS {
 }
 
 // Usage - choose data or presentation
-const items = await vfs.getData('/bin'); // Just data
+const items = await vfs.data_get('/bin'); // Just data
 await vfs.list('/bin'); // Rendered output
 ----
 
 === Migration Steps
 
-. **Replace direct method calls** with `getData()` + `list()`
+. **Replace direct method calls** with `data_get()` + `list()`
 . **Add Result<T> handling** with `.ok` checks
 . **Pop errors from errorStack** for display
 . **Update tests** to check Result<T> returns
 
 == Design Decisions
 
-=== Why Separate getData() from list()?
+=== Why Separate data_get() from list()?
 
 **Benefits:**
 
@@ -864,12 +864,12 @@ if (target === '/' || target === '') {
 
 === Why Cache in Data Layer, Not Presentation?
 
-Caching happens in `getDataVirtualBin()` and `getDataNative()`, not in `list()`:
+Caching happens in `dataVirtualBin_get()` and `dataNative_get()`, not in `list()`:
 
 **Pros:**
 
 * Cache shared across all callers (wildcard, tab completion, list)
-* getData() returns cached data for any use case
+* data_get() returns cached data for any use case
 * Single source of truth
 
 **Cons:**
@@ -897,7 +897,7 @@ const mounts: VirtualMount[] = [
   { path: '/etc', handler: this.getDataVirtualEtc },
 ];
 
-// In getData()
+// In data_get()
 const mount = mounts.find(m => effectivePath.startsWith(m.path));
 if (mount) {
   return await mount.handler(options);
@@ -926,7 +926,7 @@ Support recursive directory traversal:
 [source,typescript]
 ----
 async *walk(path: string, options): AsyncGenerator<Result<ListingItem>> {
-  const result = await this.getData(path, options);
+  const result = await this.data_get(path, options);
   if (!result.ok) {
     yield result;
     return;
@@ -952,7 +952,7 @@ async watch(path: string, callback: (result: Result<ListingItem[]>) => void) {
   const changes = await detectChanges(path);
   if (changes) {
     listCache.cache_invalidate(path);
-    const fresh = await this.getData(path);
+    const fresh = await this.data_get(path);
     callback(fresh);
   }
 }

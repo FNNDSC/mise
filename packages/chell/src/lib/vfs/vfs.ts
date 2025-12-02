@@ -29,7 +29,7 @@ export class VFS {
    * @param options - Options including directory flag and sort.
    * @returns Result<ListingItem[]> - Ok with items or Err with error message.
    */
-  async getData(targetPath?: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
+  async data_get(targetPath?: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
       const cwd: string = await session.getCWD();
       const effectivePath: string = targetPath
@@ -37,9 +37,9 @@ export class VFS {
         : cwd;
 
       if (effectivePath === '/bin') {
-        return await this.getDataVirtualBin(options);
+        return await this.dataVirtualBin_get(options);
       } else {
-        return await this.getDataNative(effectivePath, options);
+        return await this.dataNative_get(effectivePath, options);
       }
     } catch (error: unknown) {
       const errorMsg: string = error instanceof Error ? error.message : String(error);
@@ -56,7 +56,7 @@ export class VFS {
    * @param options - Listing options (long, human, sort, reverse, directory).
    */
   async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
-    const result: Result<ListingItem[]> = await this.getData(targetPath, options);
+    const result: Result<ListingItem[]> = await this.data_get(targetPath, options);
 
     if (!result.ok) {
       const lastError = errorStack.stack_pop();
@@ -85,7 +85,7 @@ export class VFS {
    * @param options - Options including sort and reverse.
    * @returns Result<ListingItem[]>.
    */
-  private async getDataVirtualBin(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
+  private async dataVirtualBin_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
       const plugins = await plugins_listAll({});
       const items: ListingItem[] = [];
@@ -127,12 +127,12 @@ export class VFS {
 
   /**
    * Gets the contents of the virtual `/bin` directory (plugins) as ListingItems.
-   * Legacy method for backward compatibility. Consider using getDataVirtualBin() instead.
+   * Legacy method for backward compatibility. Consider using dataVirtualBin_get() instead.
    *
    * @returns A Promise resolving to an array of ListingItems.
    */
-  async getVirtualBinItems(): Promise<ListingItem[]> {
-    const result: Result<ListingItem[]> = await this.getDataVirtualBin();
+  async virtualBinItems_get(): Promise<ListingItem[]> {
+    const result: Result<ListingItem[]> = await this.dataVirtualBin_get();
     return result.ok ? result.value : [];
   }
 
@@ -145,7 +145,7 @@ export class VFS {
    * @param options - Options including directory flag and sort.
    * @returns Result<ListingItem[]>.
    */
-  private async getDataNative(target: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
+  private async dataNative_get(target: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
       // Handle -d flag: show directory itself, not contents
       if (options.directory) {

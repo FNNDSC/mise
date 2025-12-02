@@ -51,12 +51,48 @@ export class VFS {
   /**
    * List contents of a directory (Virtual or Native).
    * Convenience method that fetches data and renders it.
+   * Implements optimistic rendering with progress feedback:
+   * - Stale cache: serve immediately with "(cached, refreshing...)" indicator
+   * - Cache miss: show "Fetching..." after 500ms if still loading
    *
    * @param targetPath - The path to list. If empty, uses CWD.
    * @param options - Listing options (long, human, sort, reverse, directory).
    */
   async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
+    // Resolve effective path for cache checking
+    const cwd: string = await session.getCWD();
+    const effectivePath: string = targetPath
+      ? path.posix.resolve(cwd, targetPath)
+      : cwd;
+
+    // Check if we're serving from stale cache BEFORE fetching
+    const listCache = listCache_get();
+    const cached = listCache.cache_get(effectivePath);
+    const wasStale = cached && !cached.fresh;
+    const isCacheMiss = !cached;
+
+    // For cache miss, show loading indicator after 500ms timeout
+    let loadingShown = false;
+    let loadingTimeout: NodeJS.Timeout | null = null;
+
+    if (isCacheMiss) {
+      loadingTimeout = setTimeout(() => {
+        process.stdout.write(chalk.gray('Fetching...'));
+        loadingShown = true;
+      }, 500);
+    }
+
+    // Fetch data (may be from cache)
     const result: Result<ListingItem[]> = await this.data_get(targetPath, options);
+
+    // Clear loading timeout and indicator
+    if (loadingTimeout) {
+      clearTimeout(loadingTimeout);
+      if (loadingShown) {
+        // Clear the "Fetching..." line by overwriting with spaces and carriage return
+        process.stdout.write('\r\x1b[K');
+      }
+    }
 
     if (!result.ok) {
       const lastError = errorStack.stack_pop();
@@ -76,6 +112,38 @@ export class VFS {
     } else {
       console.log(grid_render(result.value));
     }
+
+    // If we served stale cache, show indicator and refresh in background
+    if (wasStale) {
+      console.log(chalk.gray('(cached, refreshing...)'));
+      // Trigger background refresh - don't await
+      this.refreshInBackground(effectivePath, options).catch(() => {
+        // Silently ignore refresh errors - user has moved on
+      });
+    }
+  }
+
+  /**
+   * Refreshes cache in the background without blocking or updating display.
+   * Used for optimistic rendering - fetch fresh data after serving stale cache.
+   *
+   * @param targetPath - The path to refresh.
+   * @param options - Options including sort and reverse.
+   */
+  private async refreshInBackground(targetPath: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean }): Promise<void> {
+    try {
+      // Invalidate cache to force fresh fetch
+      const listCache = listCache_get();
+      listCache.cache_invalidate(targetPath);
+
+      // Fetch fresh data - this will repopulate cache
+      await this.data_get(targetPath, options);
+
+      // Don't update display - user has moved on
+      // Fresh data is now cached for next access
+    } catch (error) {
+      // Silently fail - background refresh is best-effort
+    }
   }
 
   /**
@@ -87,6 +155,19 @@ export class VFS {
    */
   private async dataVirtualBin_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
+      // Check cache first
+      const listCache = listCache_get();
+      const cached = listCache.cache_get('/bin');
+
+      if (cached) {
+        // Cache hit - return cached data
+        // Note: Cache already has sorted data, but respect current sort options
+        const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
+        const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
+        return Ok(sortedItems);
+      }
+
+      // Cache miss - fetch from API
       const plugins = await plugins_listAll({});
       const items: ListingItem[] = [];
 
@@ -114,7 +195,6 @@ export class VFS {
       const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
 
       // Cache the results
-      const listCache = listCache_get();
       listCache.cache_set('/bin', sortedItems);
 
       return Ok(sortedItems);
@@ -155,8 +235,12 @@ export class VFS {
 
         // Check cache first
         const listCache = listCache_get();
-        let parentItems: ListingItem[] | null = listCache.cache_get(parentPath);
-        if (!parentItems) {
+        const cached = listCache.cache_get(parentPath);
+        let parentItems: ListingItem[];
+
+        if (cached) {
+          parentItems = cached.data;
+        } else {
           parentItems = await files_list({}, parentPath);
           listCache.cache_set(parentPath, parentItems);
         }
@@ -172,29 +256,37 @@ export class VFS {
       }
 
       // Normal listing: show directory contents
-      // Fetch from shared logic - pass sort options to command layer
-      const items: ListingItem[] = await files_list({
-        path: target,
-        sort: options.sort,
-        reverse: options.reverse
-      }, target);
-
-      // Inject 'bin' virtual directory if listing root
-      if (target === '/' || target === '') {
-        items.push({
-          name: 'bin',
-          type: 'vfs', // Mark as virtual file system
-          size: 0,
-          owner: 'root',
-          date: new Date().toISOString(),
-        });
-        // Re-sort to ensure bin appears in correct place
-        items.sort((a: ListingItem, b: ListingItem) => a.name.localeCompare(b.name));
-      }
-
-      // Cache the results
+      // Check cache first
       const listCache = listCache_get();
-      listCache.cache_set(target, items);
+      const cached = listCache.cache_get(target);
+      let items: ListingItem[];
+
+      if (cached) {
+        items = cached.data;
+      } else {
+        // Cache miss - fetch from API
+        items = await files_list({
+          path: target,
+          sort: options.sort,
+          reverse: options.reverse
+        }, target);
+
+        // Inject 'bin' virtual directory if listing root
+        if (target === '/' || target === '') {
+          items.push({
+            name: 'bin',
+            type: 'vfs', // Mark as virtual file system
+            size: 0,
+            owner: 'root',
+            date: new Date().toISOString(),
+          });
+          // Re-sort to ensure bin appears in correct place
+          items.sort((a: ListingItem, b: ListingItem) => a.name.localeCompare(b.name));
+        }
+
+        // Cache the results
+        listCache.cache_set(target, items);
+      }
 
       return Ok(items);
 

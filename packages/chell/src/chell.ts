@@ -1,5 +1,5 @@
 /**
- * @file ChELL - ChRIS Execution Logic Layer
+ * @file ChELL - ChELL Executes Logic Layers
  *
  * This contains the core logic for the interactive shell.
  *
@@ -25,6 +25,8 @@ import {
   builtin_cat,
   builtin_upload,
   builtin_rm,
+  builtin_touch,
+  builtin_mkdir,
   builtin_plugin,
   builtin_feed,
   builtin_files,
@@ -32,7 +34,9 @@ import {
   builtin_dirs,
   builtin_context,
   builtin_parametersofplugin,
-  builtin_physicalmode
+  builtin_physicalmode,
+  builtin_timing,
+  builtin_help
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
@@ -97,6 +101,9 @@ async function command_handle(line: string): Promise<void> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return;
 
+  // Start timing if enabled
+  const startTime: number = session.timingEnabled_get() ? performance.now() : 0;
+
   // Check for pipe operators
   const segments: string[] = pipes_parse(trimmedLine);
   if (segments.length > 1) {
@@ -106,6 +113,11 @@ async function command_handle(line: string): Promise<void> {
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
       console.error(chalk.red(`Pipe error: ${msg}`));
+    }
+    // Display timing if enabled
+    if (session.timingEnabled_get()) {
+      const elapsed: number = performance.now() - startTime;
+      console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
     }
     return;
   }
@@ -133,6 +145,11 @@ async function command_handle(line: string): Promise<void> {
 
   // Attempt to handle as a simulated plugin execution
   if (await pluginExecutable_handle(command, args)) {
+    // Display timing if enabled
+    if (session.timingEnabled_get()) {
+      const elapsed: number = performance.now() - startTime;
+      console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
+    }
     return;
   }
 
@@ -144,10 +161,15 @@ async function command_handle(line: string): Promise<void> {
     case 'pwd': await builtin_pwd(); break;
     case 'cat': await builtin_cat(args); break;
     case 'rm': await builtin_rm(args); break;
+    case 'touch': await builtin_touch(args); break;
+    case 'mkdir': await builtin_mkdir(args); break;
     case 'chefs': await builtin_chefs(args); break;
     case 'upload': await builtin_upload(args); break;
     case 'context': await builtin_context(args); break;
     case 'parametersofplugin': await builtin_parametersofplugin(args); break;
+    case 'physicalmode': await builtin_physicalmode(args); break;
+    case 'timing': await builtin_timing(args); break;
+    case 'help': await builtin_help(args); break;
     case 'plugin':
     case 'plugins':
       await builtin_plugin(args);
@@ -170,6 +192,12 @@ async function command_handle(line: string): Promise<void> {
       console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
       await chiliCommand_run(command, ['-s', ...args]);
       break;
+  }
+
+  // Display timing if enabled
+  if (session.timingEnabled_get()) {
+    const elapsed: number = performance.now() - startTime;
+    console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
   }
 }
 
@@ -291,9 +319,15 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       case 'pwd': await builtin_pwd(); break;
       case 'cat': await builtin_cat(args); break;
       case 'rm': await builtin_rm(args); break;
+      case 'touch': await builtin_touch(args); break;
+      case 'mkdir': await builtin_mkdir(args); break;
       case 'chefs': await builtin_chefs(args); break;
       case 'upload': await builtin_upload(args); break;
       case 'context': await builtin_context(args); break;
+      case 'parametersofplugin': await builtin_parametersofplugin(args); break;
+      case 'physicalmode': await builtin_physicalmode(args); break;
+      case 'timing': await builtin_timing(args); break;
+      case 'help': await builtin_help(args); break;
       case 'plugin':
       case 'plugins':
         await builtin_plugin(args);
@@ -310,9 +344,6 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
         break;
       case 'dirs':
         await builtin_dirs(args);
-        break;
-      case 'physicalmode':
-        await builtin_physicalmode(args);
         break;
       case 'exit':
         process.exit(0);
@@ -447,7 +478,7 @@ export async function chell_start(): Promise<void> {
 
   const border = chalk.gray('----------------------------------------------------------------');
   console.log(border);
-  console.log(` ${chalk.cyan.bold('ChELL')} - ChRIS Execution Logic Layer`);
+  console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Logic Layers`);
   console.log(` ${chalk.gray('Version:')} ${chalk.yellow(packageJson.version)}`);
   console.log(` ${chalk.gray('System :')} ${os.platform()} ${os.release()} (${os.arch()})`);
   console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);

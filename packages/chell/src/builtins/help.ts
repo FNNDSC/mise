@@ -74,6 +74,24 @@ const helpText: Record<string, CommandHelp> = {
       'rm -rf temp_*         # Force remove all temp_* dirs',
     ],
   },
+  touch: {
+    usage: 'touch <file> [file...]',
+    description: 'Create empty files or update timestamps',
+    examples: [
+      'touch file.txt        # Create empty file',
+      'touch file1 file2     # Create multiple files',
+      'touch data/*.log      # Create files matching pattern',
+    ],
+  },
+  mkdir: {
+    usage: 'mkdir <directory> [directory...]',
+    description: 'Create directories',
+    examples: [
+      'mkdir newdir          # Create single directory',
+      'mkdir dir1 dir2       # Create multiple directories',
+      'mkdir experiments/run1  # Create nested directory',
+    ],
+  },
   upload: {
     usage: 'upload <local_path> <chris_path>',
     description: 'Upload files from local filesystem to ChRIS',
@@ -159,6 +177,54 @@ const helpText: Record<string, CommandHelp> = {
     description: 'Exit the shell',
     examples: ['exit'],
   },
+  context: {
+    usage: 'context',
+    description: 'Display current ChRIS context information',
+    examples: ['context'],
+  },
+  physicalmode: {
+    usage: 'physicalmode [on|off]',
+    description: 'Toggle or display physical filesystem mode',
+    options: [
+      'on          Enable physical mode (paths used directly)',
+      'off         Disable physical mode (use logical-to-physical mapping)',
+    ],
+    examples: [
+      'physicalmode          # Show current status',
+      'physicalmode on       # Enable physical mode',
+      'physicalmode off      # Disable physical mode',
+    ],
+  },
+  timing: {
+    usage: 'timing [on|off]',
+    description: 'Toggle or display command timing mode',
+    options: [
+      'on          Enable timing display',
+      'off         Disable timing display',
+    ],
+    examples: [
+      'timing                # Show current status',
+      'timing on             # Enable timing display',
+      'timing off            # Disable timing display',
+    ],
+  },
+  parametersofplugin: {
+    usage: 'parametersofplugin <plugin_name>',
+    description: 'Display parameters for a specific plugin',
+    examples: [
+      'parametersofplugin pl-dircopy',
+      'parametersofplugin pl-simpledsapp',
+    ],
+  },
+  help: {
+    usage: 'help [command]',
+    description: 'Display help information',
+    examples: [
+      'help                  # List all commands',
+      'help ls               # Show help for ls',
+      'help timing           # Show help for timing',
+    ],
+  },
 };
 
 /**
@@ -171,7 +237,7 @@ export function help_show(command: string): void {
 
   if (!help) {
     console.log(chalk.yellow(`No help available for '${command}'`));
-    console.log(chalk.gray('Try: connect, ls, cd, pwd, cat, rm, upload, plugin, feed, files, links, dirs, exit'));
+    console.log(chalk.gray('Type "help" to see all available commands.'));
     return;
   }
 
@@ -212,4 +278,51 @@ export function help_show(command: string): void {
  */
 export function hasHelpFlag(args: string[]): boolean {
   return args.includes('--help') || args.includes('-h');
+}
+
+/**
+ * Builtin help command - displays command list or specific command help.
+ *
+ * @param args - Command arguments (optional command name).
+ */
+export async function builtin_help(args: string[]): Promise<void> {
+  const commandName: string | undefined = args[0];
+
+  // If a specific command is requested, show its help
+  if (commandName) {
+    help_show(commandName);
+    return;
+  }
+
+  // Otherwise, list all available commands
+  console.log('');
+  console.log(chalk.bold.cyan('ChELL - Available Commands'));
+  console.log(chalk.gray('─'.repeat(60)));
+  console.log('');
+
+  // Group commands by category
+  const categories: Record<string, string[]> = {
+    'Navigation': ['cd', 'pwd', 'ls'],
+    'File Operations': ['cat', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
+    'Connection': ['connect', 'logout', 'context'],
+    'Resources': ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
+    'Shell Settings': ['physicalmode', 'timing'],
+    'General': ['help', 'exit'],
+  };
+
+  // Display commands by category
+  for (const [category, commands] of Object.entries(categories)) {
+    console.log(chalk.bold.yellow(category));
+    commands.forEach((cmd: string) => {
+      const help: CommandHelp | undefined = helpText[cmd];
+      if (help) {
+        console.log(`  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.description)}`);
+      }
+    });
+    console.log('');
+  }
+
+  console.log(chalk.gray('Type "help <command>" for detailed information about a command.'));
+  console.log(chalk.gray('Type "<command> --help" for quick help on any command.'));
+  console.log('');
 }

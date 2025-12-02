@@ -69,18 +69,18 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
 
     if (searchDir === '/bin') {
       // Check cache for /bin
-      const cached: ListingItem[] | null = listCache.cache_get('/bin');
+      const cached = listCache.cache_get('/bin');
       if (cached) {
-        items = cached;
+        items = cached.data;
       } else {
         items = await vfs.virtualBinItems_get();
         listCache.cache_set('/bin', items);
       }
     } else {
       // Check cache for native path
-      const cached: ListingItem[] | null = listCache.cache_get(searchDir);
+      const cached = listCache.cache_get(searchDir);
       if (cached) {
-        items = cached;
+        items = cached.data;
       } else {
         items = await files_list({}, searchDir);
         listCache.cache_set(searchDir, items);

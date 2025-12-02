@@ -32,7 +32,8 @@ const BUILTINS: string[] = [
   'touch',
   'help',
   'exit',
-  'quit'
+  'quit',
+  'timing'
 ];
 
 /**
@@ -157,8 +158,12 @@ async function path_complete(partial: string): Promise<string[]> {
   if (absDirToList === '/bin') {
      // Virtual bin - plugins
      // Check cache first
-     let lsItems = listCache.cache_get('/bin');
-     if (!lsItems) {
+     const cached = listCache.cache_get('/bin');
+     let lsItems: ListingItem[] | undefined;
+
+     if (cached) {
+       lsItems = cached.data;
+     } else {
        // Cache miss - fetch from API
        const plugins = await plugins_listAll({});
        if (plugins && plugins.tableData) {
@@ -184,8 +189,12 @@ async function path_complete(partial: string): Promise<string[]> {
      // Native ChRIS
      try {
        // Check cache first
-       let lsItems = listCache.cache_get(absDirToList);
-       if (!lsItems) {
+       const cached = listCache.cache_get(absDirToList);
+       let lsItems: ListingItem[] | undefined;
+
+       if (cached) {
+         lsItems = cached.data;
+       } else {
          // Cache miss - fetch from API
          lsItems = await files_list({} as CLIoptions, absDirToList);
          if (lsItems) {

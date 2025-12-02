@@ -37,6 +37,7 @@ import { commandArgs_process, ParsedArgs, path_resolve_pure } from './utils.js';
 import { chiliCommand_run } from '../chell.js';
 import * as readline from 'readline';
 import { builtin_parametersofplugin } from './parametersofplugin.js';
+import { builtin_help } from './help.js';
 
 export {
   builtin_cd,
@@ -48,6 +49,8 @@ export {
   builtin_chefs,
   builtin_cat,
   builtin_rm,
+  builtin_touch,
+  builtin_mkdir,
   builtin_plugin,
   builtin_feed,
   builtin_files,
@@ -56,6 +59,8 @@ export {
   builtin_context,
   builtin_parametersofplugin,
   builtin_physicalmode,
+  builtin_timing,
+  builtin_help,
 };
 export type { ParsedArgs };
 
@@ -582,6 +587,66 @@ async function builtin_chefs(args: string[]): Promise<void> {
 }
 
 /**
+ * Creates empty files or updates timestamps.
+ *
+ * @param args - Command line arguments (file paths).
+ */
+async function builtin_touch(args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.error(chalk.red('Usage: touch <file> [file...]'));
+    return;
+  }
+
+  for (const pathArg of args) {
+    try {
+      const targetPath: string = await path_resolve(pathArg);
+      const success: boolean = await chefs_touch_cmd(targetPath);
+      console.log(touch_render(targetPath, success));
+
+      // Invalidate cache for parent directory
+      if (success) {
+        const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
+        const listCache = listCache_get();
+        listCache.cache_invalidate(parentDir);
+      }
+    } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      console.error(chalk.red(`touch: ${pathArg}: ${msg}`));
+    }
+  }
+}
+
+/**
+ * Creates directories.
+ *
+ * @param args - Command line arguments (directory paths).
+ */
+async function builtin_mkdir(args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.error(chalk.red('Usage: mkdir <directory> [directory...]'));
+    return;
+  }
+
+  for (const pathArg of args) {
+    try {
+      const targetPath: string = await path_resolve(pathArg);
+      const success: boolean = await chefs_mkdir_cmd(targetPath);
+      console.log(mkdir_render(targetPath, success));
+
+      // Invalidate cache for parent directory
+      if (success) {
+        const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
+        const listCache = listCache_get();
+        listCache.cache_invalidate(parentDir);
+      }
+    } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      console.error(chalk.red(`mkdir: ${pathArg}: ${msg}`));
+    }
+  }
+}
+
+/**
  * Displays the content of a file.
  *
  * @param args - Command line arguments (file path).
@@ -791,5 +856,40 @@ async function builtin_physicalmode(args: string[]): Promise<void> {
   } else {
     console.log(chalk.red(`Unknown argument: ${subcommand}`));
     console.log(chalk.gray('Usage: physicalmode [on|off]'));
+  }
+}
+
+/**
+ * Toggles or displays command timing mode.
+ *
+ * @param args - Command line arguments: 'on', 'off', or empty to display status.
+ */
+async function builtin_timing(args: string[]): Promise<void> {
+  const subcommand: string | undefined = args[0];
+
+  if (!subcommand) {
+    // Display current status
+    const status: string = session.timingEnabled_get() ? 'enabled' : 'disabled';
+    console.log(`Command timing: ${chalk.yellow(status)}`);
+    if (session.timingEnabled_get()) {
+      console.log(chalk.gray('  Execution times will be displayed after each command.'));
+    } else {
+      console.log(chalk.gray('  Execution times are hidden.'));
+    }
+    console.log(chalk.gray('\nUsage: timing [on|off]'));
+    return;
+  }
+
+  if (subcommand === 'on') {
+    session.timingEnabled_set(true);
+    console.log(chalk.green('[+] Command timing enabled'));
+    console.log(chalk.gray('    Execution times will be displayed after each command.'));
+  } else if (subcommand === 'off') {
+    session.timingEnabled_set(false);
+    console.log(chalk.gray('[-] Command timing disabled'));
+    console.log(chalk.gray('    Execution times will no longer be displayed.'));
+  } else {
+    console.log(chalk.red(`Unknown argument: ${subcommand}`));
+    console.log(chalk.gray('Usage: timing [on|off]'));
   }
 }

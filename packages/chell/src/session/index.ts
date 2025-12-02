@@ -15,6 +15,7 @@ export class Session {
   private _connection: typeof chrisConnection | undefined;
   private _offline: boolean = false;
   private _physicalMode: boolean = false;
+  private _timingEnabled: boolean = false;
 
   /**
    * Private constructor for Singleton.
@@ -95,6 +96,26 @@ export class Session {
    */
   physicalMode_set(enabled: boolean): void {
     this._physicalMode = enabled;
+  }
+
+  /**
+   * Gets timing mode status.
+   *
+   * When true, command execution times are displayed after each command.
+   *
+   * @returns True if timing is enabled, false otherwise.
+   */
+  timingEnabled_get(): boolean {
+    return this._timingEnabled;
+  }
+
+  /**
+   * Sets timing mode.
+   *
+   * @param enabled - True to enable timing display, false to disable.
+   */
+  timingEnabled_set(enabled: boolean): void {
+    this._timingEnabled = enabled;
   }
 }
 

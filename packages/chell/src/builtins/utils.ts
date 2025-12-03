@@ -14,11 +14,27 @@ export interface ParsedArgs {
 
 /**
  * Parses raw argument strings into a structured object.
+ * Supports `--` as an end-of-options marker (everything after is treated as positional args).
  */
 export function commandArgs_process(args: string[]): ParsedArgs {
   const result: ParsedArgs = { _: [] };
+  let endOfOptions: boolean = false;
+
   for (let i = 0; i < args.length; i++) {
     const arg: string = args[i];
+
+    // Check for -- (end of options marker)
+    if (arg === '--') {
+      endOfOptions = true;
+      continue; // Skip the -- itself
+    }
+
+    // After --, everything is a positional argument
+    if (endOfOptions) {
+      (result._ as string[]).push(arg);
+      continue;
+    }
+
     if (arg.startsWith('--')) {
       const key: string = arg.substring(2);
       if (args[i + 1] && !args[i + 1].startsWith('-')) {

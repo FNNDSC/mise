@@ -9,7 +9,7 @@ import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { listCache_get, errorStack } from '@fnndsc/cumin';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
-import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
+import { files_touch as chefs_touch_cmd, TouchOptions } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
@@ -42,6 +42,7 @@ import { builtin_parametersofplugin } from './parametersofplugin.js';
 import { builtin_help } from './help.js';
 import { builtin_debug } from './debug.js';
 import { spinner } from '../lib/spinner.js';
+import path from 'path';
 
 export {
   builtin_cd,
@@ -370,11 +371,13 @@ async function builtin_cp(args: string[]): Promise<void> {
   try {
     const success = await chefs_cp_cmd(srcPath, destPath, { recursive });
     console.log(cp_render(srcPath, destPath, success));
-    
+
     if (success) {
-       const destDir = destPath.substring(0, destPath.lastIndexOf('/')) || '/';
        const listCache = listCache_get();
-       listCache.cache_invalidate(destDir);
+       // Invalidate both destPath and its parent to handle both directory and file destinations
+       listCache.cache_invalidate(destPath);  // In case destPath is the directory that received the item
+       const destParent: string = path.posix.dirname(destPath);
+       listCache.cache_invalidate(destParent);  // In case destPath is a file, invalidate its parent
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -409,9 +412,17 @@ async function builtin_mv(args: string[]): Promise<void> {
 
     if (success) {
       const listCache = listCache_get();
-      listCache.cache_invalidate(srcPath);
-      const destDir: string = destPath.substring(0, destPath.lastIndexOf('/')) || '/';
-      listCache.cache_invalidate(destDir);
+      // Invalidate source directory
+      const srcDir: string = path.posix.dirname(srcPath);
+      listCache.cache_invalidate(srcDir);
+
+      // Invalidate destination directory
+      // Since destPath could be either a directory (item moved INTO it) or
+      // a file path (rename), we invalidate both destPath itself and its parent.
+      // This matches the pattern used in builtin_upload.
+      listCache.cache_invalidate(destPath);  // In case destPath is the directory that received the item
+      const destParent: string = path.posix.dirname(destPath);
+      listCache.cache_invalidate(destParent);  // In case destPath is a file, invalidate its parent
     }
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
@@ -685,32 +696,46 @@ async function builtin_chefs(args: string[]): Promise<void> {
 
           // Invalidate cache for parent directory
           if (success) {
-            const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
             const listCache = listCache_get();
+            const parentDir: string = path.posix.dirname(targetPath);
             listCache.cache_invalidate(parentDir);
           }
         } else {
           console.log(chalk.red('Usage: chefs mkdir <path>'));
         }
         break;
-      case 'touch':
-        if (subArgs[0]) {
-          const targetPath: string = subArgs[0].startsWith('/')
-            ? subArgs[0]
-            : await path_resolve(subArgs[0]);
-          const success: boolean = await chefs_touch_cmd(targetPath);
-          console.log(touch_render(targetPath, success));
+      case 'touch': {
+        const parsed = commandArgs_process(subArgs);
+        const pathArgs = parsed._ as string[];
 
-          // Invalidate cache for parent directory
-          if (success) {
-            const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
-            const listCache = listCache_get();
-            listCache.cache_invalidate(parentDir);
-          }
-        } else {
-          console.log(chalk.red('Usage: chefs touch <path>'));
+        if (pathArgs.length === 0) {
+          console.log(chalk.red('Usage: chefs touch [--withContents <string>] [--withContentsFromFile <file>] <path>'));
+          break;
+        }
+
+        const targetPath: string = pathArgs[0].startsWith('/')
+          ? pathArgs[0]
+          : await path_resolve(pathArgs[0]);
+
+        const options: TouchOptions = {};
+        if (parsed['withContents']) {
+          options.withContents = String(parsed['withContents']);
+        }
+        if (parsed['withContentsFromFile']) {
+          options.withContentsFromFile = String(parsed['withContentsFromFile']);
+        }
+
+        const success: boolean = await chefs_touch_cmd(targetPath, options);
+        console.log(touch_render(targetPath, success));
+
+        // Invalidate cache for parent directory
+        if (success) {
+          const listCache = listCache_get();
+          const parentDir: string = path.posix.dirname(targetPath);
+          listCache.cache_invalidate(parentDir);
         }
         break;
+      }
       case 'upload':
         await builtin_upload(subArgs);
         break;
@@ -730,21 +755,38 @@ async function builtin_chefs(args: string[]): Promise<void> {
  * @param args - Command line arguments (file paths).
  */
 async function builtin_touch(args: string[]): Promise<void> {
-  if (args.length === 0) {
-    console.error(chalk.red('Usage: touch <file> [file...]'));
+  const parsed = commandArgs_process(args);
+  const pathArgs = parsed._ as string[];
+
+  if (pathArgs.length === 0) {
+    console.error(chalk.red('Usage: touch [--withContents <string>] [--withContentsFromFile <file>] <file>'));
     return;
   }
 
-  for (const pathArg of args) {
+  // Build options from parsed flags
+  const options: TouchOptions = {};
+  if (parsed['withContents']) {
+    options.withContents = String(parsed['withContents']);
+  }
+  if (parsed['withContentsFromFile']) {
+    options.withContentsFromFile = String(parsed['withContentsFromFile']);
+  }
+
+  // Only process the first file argument when using content options
+  const filesToTouch: string[] = (options.withContents || options.withContentsFromFile)
+    ? [pathArgs[0]]  // Only one file when injecting content
+    : pathArgs;      // Multiple files allowed for empty touch
+
+  for (const pathArg of filesToTouch) {
     try {
       const targetPath: string = await path_resolve(pathArg);
-      const success: boolean = await chefs_touch_cmd(targetPath);
+      const success: boolean = await chefs_touch_cmd(targetPath, options);
       console.log(touch_render(targetPath, success));
 
       // Invalidate cache for parent directory
       if (success) {
-        const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
         const listCache = listCache_get();
+        const parentDir: string = path.posix.dirname(targetPath);
         listCache.cache_invalidate(parentDir);
       }
     } catch (e: unknown) {
@@ -823,8 +865,22 @@ async function builtin_rm(args: string[]): Promise<void> {
   let force: boolean = false;
   let interactive: boolean = false;
   const pathArgs: string[] = [];
+  let endOfOptions: boolean = false;
 
   for (const arg of args) {
+    // Handle -- (end of options)
+    if (arg === '--') {
+      endOfOptions = true;
+      continue;
+    }
+
+    // After --, everything is a path
+    if (endOfOptions) {
+      pathArgs.push(arg);
+      continue;
+    }
+
+    // Parse flags
     if (arg === '-r' || arg === '-R') {
       recursive = true;
     } else if (arg === '-f') {
@@ -890,8 +946,8 @@ async function builtin_rm(args: string[]): Promise<void> {
         successCount++;
 
         // Invalidate cache for parent directory
-        const parentDir: string = target.substring(0, target.lastIndexOf('/')) || '/';
         const listCache = listCache_get();
+        const parentDir: string = path.posix.dirname(target);
         listCache.cache_invalidate(parentDir);
       } else {
         // Always show errors

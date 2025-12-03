@@ -97,6 +97,34 @@ function shouldExpandWildcards(command: string): boolean {
 }
 
 /**
+ * Executes a shell command on the host system (shell escape with ! prefix).
+ *
+ * @param shellCommand - The command to execute on the host shell.
+ * @returns A Promise that resolves when the command completes.
+ */
+async function shellCommand_execute(shellCommand: string): Promise<void> {
+  return new Promise((resolve) => {
+    const child: ChildProcess = spawn(shellCommand, {
+      shell: true,
+      stdio: 'inherit',
+      env: process.env
+    });
+
+    child.on('close', (code: number | null) => {
+      if (code !== null && code !== 0) {
+        console.error(chalk.red(`Shell command exited with code ${code}`));
+      }
+      resolve();
+    });
+
+    child.on('error', (err: Error) => {
+      console.error(chalk.red(`Failed to execute shell command: ${err.message}`));
+      resolve();
+    });
+  });
+}
+
+/**
  * Handles a command entered by the user.
  *
  * @param line - The input line.
@@ -108,6 +136,20 @@ async function command_handle(line: string): Promise<void> {
 
   // Start timing if enabled
   const startTime: number = session.timingEnabled_get() ? performance.now() : 0;
+
+  // Check for shell escape (! prefix)
+  if (trimmedLine.startsWith('!')) {
+    const shellCommand: string = trimmedLine.substring(1).trim();
+    if (shellCommand) {
+      await shellCommand_execute(shellCommand);
+      // Display timing if enabled
+      if (session.timingEnabled_get()) {
+        const elapsed: number = performance.now() - startTime;
+        console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
+      }
+    }
+    return;
+  }
 
   // Check for pipe operators
   const segments: string[] = pipes_parse(trimmedLine);

@@ -70,6 +70,7 @@ const helpText: Record<string, CommandHelp> = {
       '-i          Prompt before every removal (interactive)',
       '-rf, -fr    Recursive and force combined',
       '-ri, -ir    Recursive and interactive combined',
+      '--          End of options (treat remaining args as filenames)',
     ],
     examples: [
       'rm file.txt           # Remove single file',
@@ -78,6 +79,8 @@ const helpText: Record<string, CommandHelp> = {
       'rm -i *.log           # Prompt before removing each .log file',
       'rm -r directory/      # Remove directory recursively',
       'rm -rf temp_*         # Force remove all temp_* dirs',
+      'rm -- --weird-name    # Remove file starting with --',
+      'rm -- -dash-file      # Remove file starting with -',
     ],
   },
   cp: {
@@ -101,12 +104,16 @@ const helpText: Record<string, CommandHelp> = {
     ],
   },
   touch: {
-    usage: 'touch <file> [file...]',
-    description: 'Create empty files or update timestamps',
+    usage: 'touch [options] <file>',
+    description: 'Create empty files or files with content',
+    options: [
+      '--withContents <string>          Create file with inline string content',
+      '--withContentsFromFile <file>    Create file with content from local host file',
+    ],
     examples: [
-      'touch file.txt        # Create empty file',
-      'touch file1 file2     # Create multiple files',
-      'touch data/*.log      # Create files matching pattern',
+      'touch file.txt                                   # Create empty file',
+      'touch --withContents "Hello!" greeting.txt       # Create file with string',
+      'touch --withContentsFromFile template.json config.json  # Create from local file',
     ],
   },
   mkdir: {
@@ -200,10 +207,12 @@ const helpText: Record<string, CommandHelp> = {
     usage: 'chefs <subcommand> [args]',
     description: 'ChRIS Experimental File System commands',
     examples: [
-      'chefs ls -l           # List directory',
-      'chefs mkdir newdir    # Create directory',
-      'chefs touch file.txt  # Create empty file',
-      'chefs rm file         # Remove file',
+      'chefs ls -l                                         # List directory',
+      'chefs mkdir newdir                                  # Create directory',
+      'chefs touch file.txt                                # Create empty file',
+      'chefs touch --withContents "data" file.txt          # Create file with content',
+      'chefs touch --withContentsFromFile local.txt remote.txt  # Create from local file',
+      'chefs rm file                                       # Remove file',
     ],
   },
   exit: {
@@ -270,6 +279,17 @@ const helpText: Record<string, CommandHelp> = {
       'help                  # List all commands',
       'help ls               # Show help for ls',
       'help timing           # Show help for timing',
+    ],
+  },
+  '!': {
+    usage: '! <shell_command>',
+    description: 'Execute command on host shell (shell escape)',
+    examples: [
+      '! ls                  # List files on host system',
+      '! pwd                 # Print host working directory',
+      '! cat /etc/hostname   # Read host file',
+      '! df -h               # Check host disk usage',
+      '! echo "test" > /tmp/file.txt  # Write to host file',
     ],
   },
 };
@@ -354,7 +374,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     Connection: ['connect', 'logout', 'context'],
     Resources: ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
     'Shell Settings': ['physicalmode', 'timing', 'debug'],
-    General: ['help', 'exit'],
+    General: ['help', 'exit', '!'],
   };
 
   // Display commands by category

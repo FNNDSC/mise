@@ -77,11 +77,7 @@ $ mv uploads/* backup/
 $ rm -rf uploads
 ----
 
-==== Option 2: Use ChRIS Web UI
-
-The ChRIS web interface may handle directory operations differently and avoid this issue.
-
-==== Option 3: Copy Instead of Move
+==== Option 2: Copy Instead of Move
 
 [source,bash]
 ----
@@ -216,7 +212,7 @@ $ ls -f
 
 Cache is automatically invalidated:
 
-1. When you `cd` to a different directory
+1. When directory TTL is exceeded
 2. After successful `mv`, `cp`, `rm`, `touch`, `mkdir`, `upload`
 3. When explicitly using `-f` flag with `ls`
 
@@ -257,6 +253,9 @@ Directories with thousands of files may be slow:
 $ ls huge_directory/  # 2-5 seconds
 
 # Subsequent ls is fast (cached)
+# cache will invalidate after timeout
+# and after any fs operations that change
+# files (cp/mv/etc)
 $ ls huge_directory/  # < 100ms
 ----
 
@@ -267,7 +266,7 @@ Wildcards require fetching directory listings:
 [source,bash]
 ----
 # Must fetch and filter
-$ rm uploads/*  # Slower for large directories
+$ rm uploads/*  # Slower for large directories if not cached
 ----
 
 == Error Messages
@@ -298,6 +297,7 @@ If paths fail to resolve, check:
 
 [source,bash]
 ----
+# Best practice of all is just don't put spaces in file or dir names
 mv "source with spaces" "dest with spaces"
 ----
 

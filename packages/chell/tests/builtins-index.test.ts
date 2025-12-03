@@ -158,7 +158,9 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({
-  files_upload: mockChefsUpload
+  files_upload: mockChefsUpload,
+  files_uploadWithProgress: mockChefsUpload,
+  bytes_format: (n: number) => `${n} B`
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({
@@ -403,13 +405,22 @@ describe('Builtins - Core Functions', () => {
   describe('builtin_upload()', () => {
     it('should upload file to remote path', async () => {
       mockGetCWD.mockResolvedValue('/home/user');
-      mockChefsUpload.mockResolvedValue(true);
-      mockUploadRender.mockReturnValue('Upload successful');
+      mockChefsUpload.mockResolvedValue({
+        startTime: 0,
+        endTime: 1,
+        totalFiles: 1,
+        transferredCount: 1,
+        failedCount: 0,
+        transferSize: 1024,
+        duration: 1,
+        speed: 1024,
+        actualTargetPath: '/home/user/remote.txt',
+      });
 
       await builtin_upload(['./local.txt', 'remote.txt']);
 
       expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt');
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Upload successful'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Successfully uploaded 1 file'));
     });
 
     it('should error with insufficient args', async () => {
@@ -423,7 +434,7 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_upload(['local.txt', 'remote.txt']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Network error'));
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Upload error: Network error'));
     });
   });
 

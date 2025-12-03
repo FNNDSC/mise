@@ -39,7 +39,9 @@ import {
   builtin_physicalmode,
   builtin_timing,
   builtin_debug,
-  builtin_help
+  builtin_help,
+  builtin_tree,
+  builtin_du
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
@@ -222,6 +224,8 @@ async function command_handle(line: string): Promise<void> {
     case 'timing': await builtin_timing(args); break;
     case 'debug': await builtin_debug(args); break;
     case 'help': await builtin_help(args); break;
+    case 'tree': await builtin_tree(args); break;
+    case 'du': await builtin_du(args); break;
     case 'plugin':
     case 'plugins':
       await builtin_plugin(args);

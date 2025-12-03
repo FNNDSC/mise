@@ -43,6 +43,7 @@ import { builtin_help } from './help.js';
 import { builtin_debug } from './debug.js';
 import { spinner } from '../lib/spinner.js';
 import path from 'path';
+import { scan_do, archyTree_create, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 
 export {
   builtin_cd,
@@ -69,6 +70,8 @@ export {
   builtin_timing,
   builtin_debug,
   builtin_help,
+  builtin_tree,
+  builtin_du,
 };
 export type { ParsedArgs };
 
@@ -777,14 +780,26 @@ async function builtin_chefs(args: string[]): Promise<void> {
           options.withContentsFromFile = String(parsed['withContentsFromFile']);
         }
 
-        const success: boolean = await chefs_touch_cmd(targetPath, options);
-        console.log(touch_render(targetPath, success));
+        const success: boolean = Object.keys(options).length > 0
+          ? await chefs_touch_cmd(targetPath, options)
+          : await chefs_touch_cmd(targetPath);
 
-        // Invalidate cache for parent directory
         if (success) {
+          console.log(touch_render(targetPath, success));
+
+          // Invalidate cache for parent directory
           const listCache = listCache_get();
           const parentDir: string = path.posix.dirname(targetPath);
           listCache.cache_invalidate(parentDir);
+        } else {
+          // Touch failed, display error from errorStack
+          const lastError = errorStack.stack_pop();
+          if (lastError) {
+            console.error(chalk.red(`Failed to create file: ${targetPath}`));
+            console.error(chalk.gray(`  ${lastError.message}`));
+          } else {
+            console.error(chalk.red(`Failed to create file: ${targetPath}`));
+          }
         }
         break;
       }
@@ -833,13 +848,23 @@ async function builtin_touch(args: string[]): Promise<void> {
     try {
       const targetPath: string = await path_resolve(pathArg);
       const success: boolean = await chefs_touch_cmd(targetPath, options);
-      console.log(touch_render(targetPath, success));
 
-      // Invalidate cache for parent directory
       if (success) {
+        console.log(touch_render(targetPath, success));
+
+        // Invalidate cache for parent directory
         const listCache = listCache_get();
         const parentDir: string = path.posix.dirname(targetPath);
         listCache.cache_invalidate(parentDir);
+      } else {
+        // Touch failed, display error from errorStack
+        const lastError = errorStack.stack_pop();
+        if (lastError) {
+          console.error(chalk.red(`Failed to create file: ${targetPath}`));
+          console.error(chalk.gray(`  ${lastError.message}`));
+        } else {
+          console.error(chalk.red(`Failed to create file: ${targetPath}`));
+        }
       }
     } catch (e: unknown) {
       const msg: string = e instanceof Error ? e.message : String(e);
@@ -1137,5 +1162,234 @@ async function builtin_timing(args: string[]): Promise<void> {
   } else {
     console.log(chalk.red(`Unknown argument: ${subcommand}`));
     console.log(chalk.gray('Usage: timing [on|off]'));
+  }
+}
+
+/**
+ * Displays a directory tree of the ChRIS filesystem.
+ * Uses chili's scan_do machinery for recursive filesystem traversal.
+ *
+ * @param args - Command line arguments (optional path and flags).
+ * @returns A Promise that resolves when the tree is displayed.
+ *
+ * @example
+ * ```
+ * tree                    # Tree of current directory
+ * tree /home/user/data    # Tree of specific path
+ * tree --follow           # Follow symbolic links
+ * ```
+ */
+async function builtin_tree(args: string[]): Promise<void> {
+  const parsed: ParsedArgs = commandArgs_process(args);
+  const pathArgs: string[] = parsed._ as string[];
+
+  // Determine target path
+  let targetPath: string | undefined;
+  if (pathArgs.length > 0) {
+    targetPath = await path_resolve(pathArgs[0]);
+  }
+
+  // Build scan options
+  const scanOptions: CLIscan = {
+    silent: true,
+    tree: false,  // We'll format it ourselves
+    follow: !!parsed['follow'],
+    dirsOnly: false,
+  };
+
+  // If path specified, temporarily set context
+  const originalFolder: string = await session.getCWD();
+  if (targetPath) {
+    await session.setCWD(targetPath);
+  }
+
+  try {
+    const scanResult: ScanRecord | null = await scan_do(scanOptions);
+
+    if (!scanResult) {
+      const lastError = errorStack.stack_pop();
+      if (lastError) {
+        console.error(chalk.red(lastError.message));
+      } else {
+        console.error(chalk.red('Failed to scan directory tree.'));
+      }
+      return;
+    }
+
+    // Display the tree
+    const treeOutput: string = archyTree_create(scanResult.fileInfo);
+    console.log(treeOutput);
+
+    // Display summary
+    console.log(chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`));
+    console.log(chalk.gray(`${scanResult.fileInfo.length} items`));
+
+  } finally {
+    // Restore original path
+    if (targetPath) {
+      await session.setCWD(originalFolder);
+    }
+  }
+}
+
+/**
+ * Displays disk usage statistics for ChRIS filesystem directories.
+ * Mimics standard Linux du command behavior and flags.
+ * Uses chili's scan_do machinery for recursive filesystem traversal.
+ *
+ * @param args - Command line arguments (optional path and flags).
+ * @returns A Promise that resolves when disk usage is displayed.
+ *
+ * @example
+ * ```
+ * du                      # Disk usage of current directory
+ * du -h                   # Human-readable sizes
+ * du -s /home/user/data   # Summary only
+ * du -a                   # Show all files, not just directories
+ * du -c                   # Show grand total
+ * du -d 2                 # Max depth of 2 levels
+ * ```
+ */
+async function builtin_du(args: string[]): Promise<void> {
+  const parsed: ParsedArgs = commandArgs_process(args);
+  const pathArgs: string[] = parsed._ as string[];
+
+  // Parse flags
+  const humanReadable: boolean = !!parsed['h'] || !!parsed['human-readable'];
+  const summarize: boolean = !!parsed['s'] || !!parsed['summarize'];
+  const showAll: boolean = !!parsed['a'] || !!parsed['all'];
+  const showTotal: boolean = !!parsed['c'] || !!parsed['total'];
+  const separateDirs: boolean = !!parsed['S'] || !!parsed['separate-dirs'];
+  const maxDepth: number | undefined = parsed['d'] ? parseInt(String(parsed['d']), 10) :
+                                        parsed['max-depth'] ? parseInt(String(parsed['max-depth']), 10) : undefined;
+
+  // Determine target path
+  let targetPath: string | undefined;
+  if (pathArgs.length > 0) {
+    targetPath = await path_resolve(pathArgs[0]);
+  }
+
+  // Build scan options
+  const scanOptions: CLIscan = {
+    silent: true,
+    tree: false,
+    follow: false,
+    dirsOnly: false,
+  };
+
+  // If path specified, temporarily set context
+  const originalFolder: string = await session.getCWD();
+  const basePath: string = targetPath || originalFolder;
+  if (targetPath) {
+    await session.setCWD(targetPath);
+  }
+
+  try {
+    const scanResult: ScanRecord | null = await scan_do(scanOptions);
+
+    if (!scanResult) {
+      const lastError = errorStack.stack_pop();
+      if (lastError) {
+        console.error(chalk.red(lastError.message));
+      } else {
+        console.error(chalk.red('Failed to scan directory for disk usage.'));
+      }
+      return;
+    }
+
+    // Build directory size map
+    const dirSizes: Map<string, number> = new Map<string, number>();
+
+    // Calculate depth of each path relative to base
+    const depth_calculate = (filePath: string): number => {
+      const relativePath: string = path.posix.relative(basePath, filePath);
+      if (!relativePath || relativePath === '.') return 0;
+      return relativePath.split('/').filter((part: string) => part.length > 0).length;
+    };
+
+    // Aggregate sizes
+    scanResult.fileInfo.forEach((fileInfo) => {
+      const filePath: string = fileInfo.chrisPath;
+      const fileSize: number = fileInfo.size;
+
+      if (fileInfo.isDirectory) {
+        // Initialize directory if not exists
+        if (!dirSizes.has(filePath)) {
+          dirSizes.set(filePath, 0);
+        }
+      } else {
+        // File: add to its parent directory and all ancestor directories
+        let currentPath: string = path.posix.dirname(filePath);
+
+        while (currentPath && currentPath !== '/' && currentPath.startsWith(basePath)) {
+          const currentSize: number = dirSizes.get(currentPath) || 0;
+          dirSizes.set(currentPath, currentSize + fileSize);
+
+          if (separateDirs) break; // Don't propagate to parent dirs
+          currentPath = path.posix.dirname(currentPath);
+        }
+      }
+    });
+
+    // Add base path if not present
+    if (!dirSizes.has(basePath)) {
+      dirSizes.set(basePath, 0);
+    }
+
+    // Format size for display
+    const size_format = (bytes: number): string => {
+      if (humanReadable) {
+        return bytes_format(bytes);
+      } else {
+        // KB (1024 bytes per block, like du)
+        return Math.ceil(bytes / 1024).toString();
+      }
+    };
+
+    // Filter and sort entries
+    let entries: Array<[string, number]> = Array.from(dirSizes.entries());
+
+    // Apply max depth filter
+    if (maxDepth !== undefined) {
+      entries = entries.filter(([dirPath]) => {
+        const depth: number = depth_calculate(dirPath);
+        return depth <= maxDepth;
+      });
+    }
+
+    // Sort by path
+    entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+    // Display results
+    if (summarize) {
+      // Only show the base path total
+      const totalSize: number = dirSizes.get(basePath) || 0;
+      console.log(`${size_format(totalSize)}\t${basePath}`);
+    } else {
+      // Show all directories (and files if -a)
+      for (const [dirPath, dirSize] of entries) {
+        // Skip if showing only directories and this is a file
+        if (!showAll && dirPath !== basePath) {
+          const isDir: boolean = scanResult.fileInfo.some(
+            (fi) => fi.isDirectory && fi.chrisPath === dirPath
+          );
+          if (!isDir) continue;
+        }
+
+        console.log(`${size_format(dirSize)}\t${dirPath}`);
+      }
+    }
+
+    // Show grand total if requested
+    if (showTotal) {
+      const grandTotal: number = dirSizes.get(basePath) || 0;
+      console.log(`${size_format(grandTotal)}\ttotal`);
+    }
+
+  } finally {
+    // Restore original path
+    if (targetPath) {
+      await session.setCWD(originalFolder);
+    }
   }
 }

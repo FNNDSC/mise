@@ -41,6 +41,18 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   pathMapper_get: jest.fn()
 }));
 
+// Mock chili screen module
+jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
+  table_display: mockTableDisplay,
+  border_draw: jest.fn(),
+}));
+
+// Mock chili path module for tree and du commands
+jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
+  scan_do: jest.fn().mockResolvedValue({ fileInfo: [], totalSize: 0 }),
+  archyTree_create: jest.fn().mockReturnValue('mock tree output'),
+}));
+
 // Mock cumin to prevent loading real cache and circular deps
 const mockListCache = {
   cache_get: jest.fn(),

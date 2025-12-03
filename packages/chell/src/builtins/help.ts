@@ -278,6 +278,39 @@ const helpText: Record<string, CommandHelp> = {
       'parametersofplugin pl-simpledsapp',
     ],
   },
+  tree: {
+    usage: 'tree [options] [path]',
+    description: 'Display directory tree structure',
+    options: [
+      '--follow    Follow symbolic links when traversing',
+    ],
+    examples: [
+      'tree                  # Tree of current directory',
+      'tree /home/user/data  # Tree of specific path',
+      'tree --follow         # Follow symbolic links',
+    ],
+  },
+  du: {
+    usage: 'du [options] [path]',
+    description: 'Display disk usage statistics (mimics Linux du)',
+    options: [
+      '-h, --human-readable  Print sizes in human readable format',
+      '-s, --summarize       Display only total for each argument',
+      '-a, --all             Show counts for all files, not just directories',
+      '-c, --total           Produce a grand total',
+      '-d N, --max-depth=N   Print total only if N or fewer levels below',
+      '-S, --separate-dirs   Do not include size of subdirectories',
+    ],
+    examples: [
+      'du                    # Disk usage of current directory',
+      'du -h                 # Human-readable sizes (1K, 234M, 2G)',
+      'du -s /home/user/data # Summary only for specified path',
+      'du -a                 # Show all files, not just directories',
+      'du -c                 # Show grand total at end',
+      'du -d 2               # Max depth of 2 levels',
+      'du -sh                # Human-readable summary',
+    ],
+  },
   help: {
     usage: 'help [command]',
     description: 'Display help information',
@@ -375,7 +408,7 @@ export async function builtin_help(args: string[]): Promise<void> {
 
   // Group commands by category
   const categories: Record<string, string[]> = {
-    Navigation: ['cd', 'pwd', 'ls'],
+    Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
     Connection: ['connect', 'logout', 'context'],
     Resources: ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],

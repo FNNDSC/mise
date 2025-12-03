@@ -230,13 +230,19 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
 
 /**
  * Creates a new empty file at the specified path (like Unix touch).
+ * Optionally creates the file with specified content.
  *
  * @param path - The ChRIS path for the new file.
+ * @param content - Optional content to write to the file (string, Buffer, or Blob).
  * @returns A Promise resolving to true on success, false on failure.
  */
-export async function files_touch(path: string): Promise<boolean> {
-  // Use files_create with an empty Blob
-  return await files_create(new Blob([""]), path);
+export async function files_touch(
+  path: string,
+  content?: string | Buffer | Blob
+): Promise<boolean> {
+  // Use files_create with provided content or empty Blob
+  const fileContent: string | Buffer | Blob = content ?? new Blob([""]);
+  return await files_create(fileContent, path);
 }
 
 /**

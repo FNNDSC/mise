@@ -1,6 +1,6 @@
 {
   "name": "chell",
-  "version": "1.11.16",
+  "version": "1.11.17",
   "description": "ChELL Executes Layered Logic - Interactive ChRIS REPL Shell",
   "main": "dist/index.js",
   "type": "module",

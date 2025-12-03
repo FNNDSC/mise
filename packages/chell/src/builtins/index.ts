@@ -264,17 +264,23 @@ async function builtin_ls(args: string[]): Promise<void> {
     directory: !!parsed['d']
   };
 
-  // If refresh flag is set, invalidate cache for the target path(s)
+  // If refresh flag is set, aggressively invalidate cache for the target path(s)
   if (shouldRefresh) {
     const listCache = listCache_get();
     if (pathArgs.length === 0) {
       const cwd = await session.getCWD();
+      console.log(chalk.gray(`[Cache] Invalidating: ${cwd}`));
       listCache.cache_invalidate(cwd);
+      // Also clear entire cache to be extra sure
+      listCache.cache_invalidate();
     } else {
       for (const pathArg of pathArgs) {
         const resolvedPath = await path_resolve(pathArg);
+        console.log(chalk.gray(`[Cache] Invalidating: ${resolvedPath}`));
         listCache.cache_invalidate(resolvedPath);
       }
+      // Also clear entire cache when using -f on specific paths
+      listCache.cache_invalidate();
     }
   }
 
@@ -379,9 +385,11 @@ async function builtin_upload(args: string[]): Promise<void> {
     }
     console.log(chalk.gray(`  Total: ${bytes_format(summary.transferSize)} in ${summary.duration.toFixed(1)}s (${bytes_format(summary.speed)}/s)`));
 
-    // Invalidate cache for target directory
+    // Invalidate cache for actual target directory where files were uploaded
     if (summary.transferredCount > 0) {
       const listCache = listCache_get();
+      listCache.cache_invalidate(summary.actualTargetPath);
+      // Also invalidate parent to refresh its listing
       listCache.cache_invalidate(targetRemote);
     }
   } catch (e: unknown) {

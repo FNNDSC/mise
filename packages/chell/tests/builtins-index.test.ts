@@ -113,6 +113,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_uploadPath: jest.fn().mockResolvedValue(true),
   files_delete: jest.fn().mockResolvedValue(true),
   files_content: jest.fn().mockResolvedValue(''),
+  files_move: jest.fn().mockResolvedValue(true),
   files_list: jest.fn().mockResolvedValue(null)
 }));
 
@@ -195,7 +196,8 @@ jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   upload_render: mockUploadRender,
   cat_render: mockCatRender,
   rm_render: mockRmRender,
-  cp_render: mockRmRender // Reuse mock or create new one
+  cp_render: mockRmRender, // Reuse mock or create new one
+  mv_render: mockRmRender
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({

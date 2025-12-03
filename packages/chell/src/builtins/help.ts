@@ -91,6 +91,15 @@ const helpText: Record<string, CommandHelp> = {
       'cp -r dir1/ dir2/     # Copy directory recursively',
     ],
   },
+  mv: {
+    usage: 'mv <source> <dest>',
+    description: 'Move or rename files or directories (server-side)',
+    examples: [
+      'mv old.txt new.txt    # Rename file',
+      'mv dir1/ dir2/        # Move directory into dir2',
+      'mv file.txt /home/user/archive/  # Move into existing directory'
+    ],
+  },
   touch: {
     usage: 'touch <file> [file...]',
     description: 'Create empty files or update timestamps',
@@ -340,12 +349,12 @@ export async function builtin_help(args: string[]): Promise<void> {
 
   // Group commands by category
   const categories: Record<string, string[]> = {
-    'Navigation': ['cd', 'pwd', 'ls'],
-    'File Operations': ['cat', 'cp', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
-    'Connection': ['connect', 'logout', 'context'],
-    'Resources': ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
+    Navigation: ['cd', 'pwd', 'ls'],
+    'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
+    Connection: ['connect', 'logout', 'context'],
+    Resources: ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
     'Shell Settings': ['physicalmode', 'timing', 'debug'],
-    'General': ['help', 'exit'],
+    General: ['help', 'exit'],
   };
 
   // Display commands by category

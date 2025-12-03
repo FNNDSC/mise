@@ -14,9 +14,10 @@ import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_form
 import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { files_cp as chefs_cp_cmd, CpOptions } from '@fnndsc/chili/commands/fs/cp.js';
+import { files_mv as chefs_mv_cmd } from '@fnndsc/chili/commands/fs/mv.js';
 import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
 import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
-import { mkdir_render, touch_render, upload_render, cat_render, rm_render, cp_render } from '@fnndsc/chili/views/fs.js';
+import { mkdir_render, touch_render, upload_render, cat_render, rm_render, cp_render, mv_render } from '@fnndsc/chili/views/fs.js';
 import { login_render, logout_render } from '@fnndsc/chili/views/connect.js';
 import { plugins_fetchList, PluginListResult } from '@fnndsc/chili/commands/plugins/list.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
@@ -53,6 +54,7 @@ export {
   builtin_chefs,
   builtin_cat,
   builtin_rm,
+  builtin_mv,
   builtin_touch,
   builtin_mkdir,
   builtin_plugin,
@@ -356,6 +358,43 @@ async function builtin_cp(args: string[]): Promise<void> {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(chalk.red(`cp error: ${msg}`));
+  }
+}
+
+/**
+ * Moves or renames a file or directory.
+ *
+ * @param args - [src, dest]
+ */
+async function builtin_mv(args: string[]): Promise<void> {
+  const parsed = commandArgs_process(args);
+  const pathArgs = parsed._ as string[];
+
+  if (pathArgs.length < 2) {
+    console.log(chalk.red('Usage: mv <source> <dest>'));
+    return;
+  }
+
+  const src: string = pathArgs[0];
+  const dest: string = pathArgs[1];
+
+  const srcPath: string = await path_resolve(src);
+  const destPath: string = await path_resolve(dest);
+
+  console.log(`Moving ${srcPath} to ${destPath}...`);
+  try {
+    const success: boolean = await chefs_mv_cmd(srcPath, destPath);
+    console.log(mv_render(srcPath, destPath, success));
+
+    if (success) {
+      const listCache = listCache_get();
+      listCache.cache_invalidate(srcPath);
+      const destDir: string = destPath.substring(0, destPath.lastIndexOf('/')) || '/';
+      listCache.cache_invalidate(destDir);
+    }
+  } catch (e: unknown) {
+    const msg: string = e instanceof Error ? e.message : String(e);
+    console.error(chalk.red(`mv error: ${msg}`));
   }
 }
 

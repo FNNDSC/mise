@@ -24,6 +24,7 @@ import {
   builtin_chefs,
   builtin_cat,
   builtin_cp,
+  builtin_mv,
   builtin_upload,
   builtin_rm,
   builtin_touch,
@@ -165,6 +166,7 @@ async function command_handle(line: string): Promise<void> {
     case 'cat': await builtin_cat(args); break;
     case 'rm': await builtin_rm(args); break;
     case 'cp': await builtin_cp(args); break;
+    case 'mv': await builtin_mv(args); break;
     case 'touch': await builtin_touch(args); break;
     case 'mkdir': await builtin_mkdir(args); break;
     case 'chefs': await builtin_chefs(args); break;

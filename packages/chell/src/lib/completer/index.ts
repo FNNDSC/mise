@@ -28,6 +28,7 @@ const BUILTINS: string[] = [
   'connect',
   'context',
   'cp',
+  'mv',
   'debug',
   'dirs',
   'exit',
@@ -107,7 +108,7 @@ export function completer(line: string, callback: CompleterCallback): void {
   
   // Case 2: Path Completion (Argument to specific commands)
   const cmd = args[0];
-  if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'cp', 'rm', 'upload'].includes(cmd)) {
+  if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'cp', 'mv', 'rm', 'upload'].includes(cmd)) {
     // The partial path is the last argument being typed
     // If the line ends with space, we are starting a new argument (empty prefix)
     const partialPath = line.endsWith(' ') ? '' : args[args.length - 1];

@@ -1,0 +1,380 @@
+= ChELL Gotchas and Known Issues
+:toc:
+:toc-placement: preamble
+:toclevels: 3
+:sectnums:
+
+== Overview
+
+This document describes known limitations, edge cases, and potential pitfalls when using chell. These are important for users and developers to understand to avoid data loss or unexpected behavior.
+
+== Critical: Directory Rename Orphans Files
+
+=== The Problem
+
+**CRITICAL:** Renaming a directory that contains files will orphan those files in the ChRIS backend.
+
+When you rename a directory using `mv`, the directory path is updated in the ChRIS database, but the paths of all files and subdirectories inside it are *not* automatically updated. This causes the contents to become inaccessible.
+
+=== Example Scenario
+
+[source,bash]
+----
+# Initial state: directory with files
+$ ls uploads/
+file1.txt  file2.txt  subdir/
+
+# Move/rename the directory
+$ mv uploads backup
+
+# Contents are now orphaned!
+$ cd backup
+$ ls
+# Shows nothing - files still have path /home/user/uploads/file1.txt
+# but directory is now /home/user/backup
+----
+
+=== Root Cause
+
+This is a **ChRIS backend limitation**, not a chell bug. The ChRIS filesystem stores absolute paths for all resources. When a directory is renamed:
+
+1. The directory resource path is updated: `/home/user/uploads` → `/home/user/backup`
+2. File resources inside still reference old path: `/home/user/uploads/file1.txt`
+3. Files become orphaned because their parent path no longer exists
+
+=== Recovery
+
+If you accidentally rename a directory with contents:
+
+[source,bash]
+----
+# Rename back to original name
+$ mv backup uploads
+
+# Files should reappear
+$ cd uploads
+$ ls -f  # Force cache refresh
+file1.txt  file2.txt  subdir/
+----
+
+**Important:** Recovery only works if you remember the exact original name.
+
+=== Workarounds
+
+==== Option 1: Move Files Individually
+
+Instead of renaming the directory, move the files inside:
+
+[source,bash]
+----
+# Create new directory
+$ mkdir backup
+
+# Move files (not the directory)
+$ mv uploads/* backup/
+
+# Remove empty directory
+$ rm -rf uploads
+----
+
+==== Option 2: Use ChRIS Web UI
+
+The ChRIS web interface may handle directory operations differently and avoid this issue.
+
+==== Option 3: Copy Instead of Move
+
+[source,bash]
+----
+# Copy preserves originals
+$ cp -r uploads/ backup/
+
+# Verify contents
+$ ls backup/
+
+# Only then remove original
+$ rm -rf uploads/
+----
+
+=== Future Improvements
+
+**Potential solutions:**
+
+1. **Detect and warn:** Make `mv` check if source directory has contents and warn before renaming
+2. **Prevent operation:** Disallow renaming non-empty directories
+3. **Backend fix:** Update ChRIS backend to cascade path updates (requires backend changes)
+
+== Spaces in Filenames
+
+=== The Problem
+
+Files and directories with spaces in their names require special handling in chell, just like Unix shells.
+
+=== Solution: Use Quotes
+
+[source,bash]
+----
+# Wrong - treats as multiple arguments
+$ mv uploads/Feed for file.dcm backup/
+
+# Correct - use quotes
+$ mv "uploads/Feed for file.dcm" backup/
+
+# Also correct - use single quotes
+$ mv 'uploads/Feed for file.dcm' backup/
+
+# Also correct - escape spaces
+$ mv uploads/Feed\ for\ file.dcm backup/
+----
+
+=== Special Case: cd Command
+
+The `cd` command has a special workaround - it joins all arguments with spaces:
+
+[source,bash]
+----
+# This works without quotes for cd
+$ cd Feed for file directory
+
+# But other commands still need quotes
+$ rm "Feed for file directory"
+----
+
+**Recommendation:** Always use quotes for paths with spaces to be consistent.
+
+== Files Starting with Dashes
+
+=== The Problem
+
+Files starting with `-` or `--` are interpreted as flags by command parsers.
+
+=== Solution: Use `--` End of Options
+
+[source,bash]
+----
+# This fails - thinks --file is a flag
+$ rm --filename
+
+# Correct - use -- to mark end of options
+$ rm -- --filename
+
+# Also works with paths
+$ rm ./--filename
+$ rm /full/path/--filename
+----
+
+=== Affected Commands
+
+All commands that parse flags need `--`:
+
+- `rm`
+- `mv`
+- `cp`
+- `cat`
+- `touch`
+
+== Wildcard Limitations
+
+=== Supported Commands
+
+Wildcards (`*`, `?`, `[...]`) are only expanded for certain commands:
+
+- `ls`
+- `rm`
+- `cat`
+- `mv`
+- `cp`
+
+=== Not Expanded Elsewhere
+
+[source,bash]
+----
+# Wildcards work here
+$ ls uploads/*.txt
+
+# Wildcards NOT expanded in arguments to other commands
+$ touch uploads/*.txt  # Creates file literally named "*.txt"
+----
+
+== Cache Invalidation Edge Cases
+
+=== Manual Refresh Required
+
+If files are modified outside chell (web UI, API, another chell session), you may see stale data:
+
+[source,bash]
+----
+# Another user/session adds files...
+
+# You see old data
+$ ls
+
+# Force refresh
+$ ls -f
+----
+
+=== When Cache is Invalidated
+
+Cache is automatically invalidated:
+
+1. When you `cd` to a different directory
+2. After successful `mv`, `cp`, `rm`, `touch`, `mkdir`, `upload`
+3. When explicitly using `-f` flag with `ls`
+
+== Shell Escape Limitations
+
+=== Host Commands Only
+
+The `!` shell escape executes on the **host system**, not ChRIS:
+
+[source,bash]
+----
+# This lists host files
+$ ! ls
+
+# This lists ChRIS files
+$ ls
+----
+
+=== No Tab Completion
+
+Tab completion does not work for commands after `!`:
+
+[source,bash]
+----
+# No completion for host paths
+$ ! cat /etc/hos<tab>  # Does not complete
+----
+
+== Performance Considerations
+
+=== Large Directory Listings
+
+Directories with thousands of files may be slow:
+
+[source,bash]
+----
+# First ls is slow (API call)
+$ ls huge_directory/  # 2-5 seconds
+
+# Subsequent ls is fast (cached)
+$ ls huge_directory/  # < 100ms
+----
+
+=== Wildcard Expansion Cost
+
+Wildcards require fetching directory listings:
+
+[source,bash]
+----
+# Must fetch and filter
+$ rm uploads/*  # Slower for large directories
+----
+
+== Error Messages
+
+=== Internal Server Error
+
+Generic "Internal server error" from ChRIS backend can mean:
+
+1. Invalid path
+2. Permission denied
+3. Directory doesn't exist
+4. File already exists
+5. Backend bug
+
+**Workaround:** Check operation carefully and retry. Use `ls -f` to refresh state.
+
+=== Path Resolution Failures
+
+If paths fail to resolve, check:
+
+1. Current working directory: `pwd`
+2. Path exists: `ls /full/path`
+3. Permissions (ChRIS access control)
+
+== Best Practices
+
+=== Always Use Quotes for Spaces
+
+[source,bash]
+----
+mv "source with spaces" "dest with spaces"
+----
+
+=== Test Dangerous Operations
+
+[source,bash]
+----
+# Test with ls first
+$ ls uploads/*
+
+# Then execute
+$ rm uploads/*
+----
+
+=== Never Rename Non-Empty Directories
+
+[source,bash]
+----
+# BAD - will orphan files
+$ mv uploads backup
+
+# GOOD - move contents first
+$ mkdir backup
+$ mv uploads/* backup/
+$ rm -rf uploads
+----
+
+=== Use -f to Force Refresh
+
+[source,bash]
+----
+# After external changes
+$ ls -f
+----
+
+=== Verify Before Removing
+
+[source,bash]
+----
+# Use -i for interactive
+$ rm -i important_file.txt
+rm: remove 'important_file.txt'? (y/n):
+----
+
+== Getting Help
+
+=== Report Issues
+
+If you encounter bugs or unexpected behavior:
+
+1. Note exact command sequence
+2. Check current directory with `pwd`
+3. Try `ls -f` to refresh cache
+4. Report to: https://github.com/FNNDSC/chell/issues
+
+=== Debug Mode
+
+Enable debug output:
+
+[source,bash]
+----
+$ debug on
+$ # Run problematic command
+$ debug off
+----
+
+=== Timing Mode
+
+See command performance:
+
+[source,bash]
+----
+$ timing on
+$ ls large_directory/
+[1250.45ms]
+----
+
+---
+
+*Last updated: 2025-12-03*

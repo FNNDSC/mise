@@ -92,7 +92,7 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
  */
 function shouldExpandWildcards(command: string): boolean {
   // Commands that benefit from wildcard expansion
-  const expandCommands: string[] = ['ls', 'rm', 'cat'];
+  const expandCommands: string[] = ['ls', 'rm', 'cat', 'mv', 'cp'];
   return expandCommands.includes(command);
 }
 

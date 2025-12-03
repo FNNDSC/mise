@@ -343,90 +343,142 @@ async function builtin_ls(args: string[]): Promise<void> {
 
 /**
  * Copies a file or directory.
+ * Supports multiple sources when destination is a directory.
  *
- * @param args - [flags, src, dest]
+ * @param args - [flags, src1, src2, ..., dest]
  */
 async function builtin_cp(args: string[]): Promise<void> {
   const parsed = commandArgs_process(args);
   const pathArgs = parsed._ as string[];
-  
+
   if (pathArgs.length < 2) {
-    console.log(chalk.red('Usage: cp [-r] <source> <dest>'));
+    console.log(chalk.red('Usage: cp [-r] <source...> <dest>'));
     return;
   }
 
-  const src = pathArgs[0];
-  const dest = pathArgs[1];
-  const recursive = !!parsed['r'] || !!parsed['recursive'];
+  const recursive: boolean = !!parsed['r'] || !!parsed['recursive'];
 
-  const srcPath = await path_resolve(src);
-  const destPath = await path_resolve(dest);
+  // Last arg is destination, all others are sources
+  const dest: string = pathArgs[pathArgs.length - 1];
+  const sources: string[] = pathArgs.slice(0, -1);
 
-  // TODO: Handle wildcard expansion if src contains *
-  // Note: The shell might already expand it if we implemented globbing in parsing, 
-  // but currently we manually expand. cp only takes one src usually unless we implement multi-copy.
-  // For now, assume 1:1 copy.
+  const destPath: string = await path_resolve(dest);
+  const listCache = listCache_get();
+  let successCount: number = 0;
+  let failCount: number = 0;
 
-  console.log(`Copying ${srcPath} to ${destPath}...`);
-  try {
-    const success = await chefs_cp_cmd(srcPath, destPath, { recursive });
-    console.log(cp_render(srcPath, destPath, success));
+  for (const src of sources) {
+    try {
+      const srcPath: string = await path_resolve(src);
 
-    if (success) {
-       const listCache = listCache_get();
-       // Invalidate both destPath and its parent to handle both directory and file destinations
-       listCache.cache_invalidate(destPath);  // In case destPath is the directory that received the item
-       const destParent: string = path.posix.dirname(destPath);
-       listCache.cache_invalidate(destParent);  // In case destPath is a file, invalidate its parent
+      // For multiple sources, show which file we're copying
+      if (sources.length > 1) {
+        console.log(chalk.gray(`Copying ${srcPath}...`));
+      } else {
+        console.log(`Copying ${srcPath} to ${destPath}...`);
+      }
+
+      const success: boolean = await chefs_cp_cmd(srcPath, destPath, { recursive });
+
+      if (sources.length === 1) {
+        console.log(cp_render(srcPath, destPath, success));
+      }
+
+      if (success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      console.error(chalk.red(`cp: ${src}: ${msg}`));
+      failCount++;
     }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(chalk.red(`cp error: ${msg}`));
+  }
+
+  // Invalidate destination directory (always, since files copied into it)
+  listCache.cache_invalidate(destPath);
+  const destParent: string = path.posix.dirname(destPath);
+  listCache.cache_invalidate(destParent);
+
+  // Summary for multiple files
+  if (sources.length > 1) {
+    if (failCount === 0) {
+      console.log(chalk.green(`✓ Copied ${successCount} file(s) to ${destPath}`));
+    } else {
+      console.log(chalk.yellow(`⚠ Copied ${successCount} file(s), ${failCount} failed`));
+    }
   }
 }
 
 /**
  * Moves or renames a file or directory.
+ * Supports multiple sources when destination is a directory.
  *
- * @param args - [src, dest]
+ * @param args - [src1, src2, ..., dest] or [src, dest]
  */
 async function builtin_mv(args: string[]): Promise<void> {
   const parsed = commandArgs_process(args);
   const pathArgs = parsed._ as string[];
 
   if (pathArgs.length < 2) {
-    console.log(chalk.red('Usage: mv <source> <dest>'));
+    console.log(chalk.red('Usage: mv <source...> <dest>'));
     return;
   }
 
-  const src: string = pathArgs[0];
-  const dest: string = pathArgs[1];
+  // Last arg is destination, all others are sources
+  const dest: string = pathArgs[pathArgs.length - 1];
+  const sources: string[] = pathArgs.slice(0, -1);
 
-  const srcPath: string = await path_resolve(src);
   const destPath: string = await path_resolve(dest);
+  const listCache = listCache_get();
+  let successCount: number = 0;
+  let failCount: number = 0;
 
-  console.log(`Moving ${srcPath} to ${destPath}...`);
-  try {
-    const success: boolean = await chefs_mv_cmd(srcPath, destPath);
-    console.log(mv_render(srcPath, destPath, success));
+  for (const src of sources) {
+    try {
+      const srcPath: string = await path_resolve(src);
 
-    if (success) {
-      const listCache = listCache_get();
-      // Invalidate source directory
-      const srcDir: string = path.posix.dirname(srcPath);
-      listCache.cache_invalidate(srcDir);
+      // For multiple sources, show which file we're moving
+      if (sources.length > 1) {
+        console.log(chalk.gray(`Moving ${srcPath}...`));
+      } else {
+        console.log(`Moving ${srcPath} to ${destPath}...`);
+      }
 
-      // Invalidate destination directory
-      // Since destPath could be either a directory (item moved INTO it) or
-      // a file path (rename), we invalidate both destPath itself and its parent.
-      // This matches the pattern used in builtin_upload.
-      listCache.cache_invalidate(destPath);  // In case destPath is the directory that received the item
-      const destParent: string = path.posix.dirname(destPath);
-      listCache.cache_invalidate(destParent);  // In case destPath is a file, invalidate its parent
+      const success: boolean = await chefs_mv_cmd(srcPath, destPath);
+
+      if (sources.length === 1) {
+        console.log(mv_render(srcPath, destPath, success));
+      }
+
+      if (success) {
+        successCount++;
+        // Invalidate source directory
+        const srcDir: string = path.posix.dirname(srcPath);
+        listCache.cache_invalidate(srcDir);
+      } else {
+        failCount++;
+      }
+    } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      console.error(chalk.red(`mv: ${src}: ${msg}`));
+      failCount++;
     }
-  } catch (e: unknown) {
-    const msg: string = e instanceof Error ? e.message : String(e);
-    console.error(chalk.red(`mv error: ${msg}`));
+  }
+
+  // Invalidate destination directory (always, since files moved into it)
+  listCache.cache_invalidate(destPath);
+  const destParent: string = path.posix.dirname(destPath);
+  listCache.cache_invalidate(destParent);
+
+  // Summary for multiple files
+  if (sources.length > 1) {
+    if (failCount === 0) {
+      console.log(chalk.green(`✓ Moved ${successCount} file(s) to ${destPath}`));
+    } else {
+      console.log(chalk.yellow(`⚠ Moved ${successCount} file(s), ${failCount} failed`));
+    }
   }
 }
 

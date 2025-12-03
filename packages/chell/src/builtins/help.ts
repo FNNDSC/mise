@@ -84,23 +84,29 @@ const helpText: Record<string, CommandHelp> = {
     ],
   },
   cp: {
-    usage: 'cp [options] <source> <dest>',
-    description: 'Copy files or directories',
+    usage: 'cp [options] <source...> <dest>',
+    description: 'Copy files or directories (supports wildcards and multiple sources)',
     options: [
       '-r, --recursive    Recursive copy (for directories)',
     ],
     examples: [
-      'cp file.txt copy.txt  # Copy single file',
-      'cp -r dir1/ dir2/     # Copy directory recursively',
+      'cp file.txt copy.txt              # Copy single file',
+      'cp -r dir1/ dir2/                 # Copy directory recursively',
+      'cp file1 file2 file3 dest/        # Copy multiple files',
+      'cp uploads/*.txt backup/          # Copy with wildcard',
+      'cp "file with spaces.txt" dest/   # Use quotes for spaces',
     ],
   },
   mv: {
-    usage: 'mv <source> <dest>',
-    description: 'Move or rename files or directories (server-side)',
+    usage: 'mv <source...> <dest>',
+    description: 'Move or rename files or directories (supports wildcards and multiple sources)',
     examples: [
-      'mv old.txt new.txt    # Rename file',
-      'mv dir1/ dir2/        # Move directory into dir2',
-      'mv file.txt /home/user/archive/  # Move into existing directory'
+      'mv old.txt new.txt                # Rename file',
+      'mv dir1/ dir2/                    # Move directory into dir2',
+      'mv file.txt /home/user/archive/   # Move into existing directory',
+      'mv file1 file2 file3 dest/        # Move multiple files',
+      'mv uploads/* backup/              # Move with wildcard',
+      'mv "file with spaces.txt" dest/   # Use quotes for spaces',
     ],
   },
   touch: {

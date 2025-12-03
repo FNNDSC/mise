@@ -46,6 +46,7 @@ import { help_show, hasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
 import { Result, errorStack } from '@fnndsc/cumin';
 import { spinner } from './lib/spinner.js';
+import { args_tokenize } from './lib/parser.js';
 
 /**
  * Interface for package.json structure.
@@ -126,7 +127,9 @@ async function command_handle(line: string): Promise<void> {
     return;
   }
 
-  let [command, ...args]: string[] = trimmedLine.split(/\s+/);
+  const tokens: string[] = args_tokenize(trimmedLine);
+  if (tokens.length === 0) return;
+  let [command, ...args]: string[] = tokens;
 
   // Check for --help flag before any processing
   if (hasHelpFlag(args)) {
@@ -304,7 +307,11 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   const trimmedLine: string = commandLine.trim();
   if (!trimmedLine) return { text: '', buffer: Buffer.alloc(0) };
 
-  let [command, ...args]: string[] = trimmedLine.split(/\s+/);
+  const tokens: string[] = args_tokenize(trimmedLine);
+  if (tokens.length === 0) {
+    return { text: '', buffer: Buffer.alloc(0) };
+  }
+  let [command, ...args]: string[] = tokens;
 
   // Expand wildcards for commands that support it
   if (shouldExpandWildcards(command)) {

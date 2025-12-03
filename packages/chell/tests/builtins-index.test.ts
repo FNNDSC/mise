@@ -52,13 +52,33 @@ const mockListCache = {
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   listCache_get: () => mockListCache,
   connectionConfig: { debug: false },
-  errorStack: { 
-    stack_push: jest.fn(), 
-    stack_pop: jest.fn() 
+  errorStack: {
+    stack_push: jest.fn(),
+    stack_pop: jest.fn()
   },
   Result: {},
   Ok: (val) => ({ ok: true, value: val }),
-  Err: (err) => ({ ok: false, error: err })
+  Err: (err) => ({ ok: false, error: err }),
+  Context: {
+    ChRISuser: 'ChRISuser',
+    ChRISurl: 'ChRISurl',
+    ChRISfolder: 'ChRISfolder',
+    ChRISfeed: 'ChRISfeed',
+    ChRISplugin: 'ChRISplugin'
+  },
+  FilteredResourceData: {},
+  SingleContext: {},
+  chrisContext: {
+    current_get: jest.fn(),
+    current_set: jest.fn()
+  },
+  keyPairParams_apply: jest.fn((baseParams, keyPair) => baseParams),
+  logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
+  pathMapper_get: jest.fn(),
+  chrisConnection: {
+    client_get: jest.fn(),
+    user_get: jest.fn()
+  }
 }));
 
 // Mock session module
@@ -84,7 +104,16 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
-  context_getSingle: mockContextGetSingle
+  context_getSingle: mockContextGetSingle,
+  files_listAll: jest.fn().mockResolvedValue(null),
+  files_copy: jest.fn().mockResolvedValue(true),
+  files_copyRecursively: jest.fn().mockResolvedValue(true),
+  files_mkdir: jest.fn().mockResolvedValue(true),
+  files_touch: jest.fn().mockResolvedValue(true),
+  files_uploadPath: jest.fn().mockResolvedValue(true),
+  files_delete: jest.fn().mockResolvedValue(true),
+  files_content: jest.fn().mockResolvedValue(''),
+  files_list: jest.fn().mockResolvedValue(null)
 }));
 
 // Mock chili commands
@@ -163,7 +192,8 @@ jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   touch_render: mockTouchRender,
   upload_render: mockUploadRender,
   cat_render: mockCatRender,
-  rm_render: mockRmRender
+  rm_render: mockRmRender,
+  cp_render: mockRmRender // Reuse mock or create new one
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({

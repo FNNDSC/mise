@@ -10,7 +10,7 @@ import { vfs } from '../lib/vfs/vfs.js';
 import { listCache_get } from '@fnndsc/cumin';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
-import { files_upload as chefs_upload_cmd } from '@fnndsc/chili/commands/fs/upload.js';
+import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { files_cp as chefs_cp_cmd, CpOptions } from '@fnndsc/chili/commands/fs/cp.js';
@@ -40,6 +40,7 @@ import * as readline from 'readline';
 import { builtin_parametersofplugin } from './parametersofplugin.js';
 import { builtin_help } from './help.js';
 import { builtin_debug } from './debug.js';
+import { spinner } from '../lib/spinner.js';
 
 export {
   builtin_cd,
@@ -246,6 +247,9 @@ async function builtin_ls(args: string[]): Promise<void> {
     }
   }
 
+  // Check for refresh flag to invalidate cache
+  const shouldRefresh = !!parsed['refresh'] || !!parsed['f'];
+
   const options: {
     long: boolean;
     human: boolean;
@@ -259,6 +263,20 @@ async function builtin_ls(args: string[]): Promise<void> {
     reverse: !!parsed['reverse'] || !!parsed['r'],
     directory: !!parsed['d']
   };
+
+  // If refresh flag is set, invalidate cache for the target path(s)
+  if (shouldRefresh) {
+    const listCache = listCache_get();
+    if (pathArgs.length === 0) {
+      const cwd = await session.getCWD();
+      listCache.cache_invalidate(cwd);
+    } else {
+      for (const pathArg of pathArgs) {
+        const resolvedPath = await path_resolve(pathArg);
+        listCache.cache_invalidate(resolvedPath);
+      }
+    }
+  }
 
   // If no paths specified, list current directory
   if (pathArgs.length === 0) {
@@ -350,13 +368,19 @@ async function builtin_upload(args: string[]): Promise<void> {
 
   const targetRemote: string = await path_resolve(remotePath);
 
-  console.log(`Uploading ${localPath} to ${targetRemote}...`);
   try {
-    const success: boolean = await chefs_upload_cmd(localPath, targetRemote);
-    console.log(upload_render(localPath, targetRemote, success));
+    const summary: UploadSummary = await chefs_upload_cmd(localPath, targetRemote);
+
+    console.log('');
+    if (summary.failedCount === 0) {
+      console.log(chalk.green(`✓ Successfully uploaded ${summary.transferredCount} file(s)`));
+    } else {
+      console.log(chalk.yellow(`⚠ Uploaded ${summary.transferredCount} file(s), ${summary.failedCount} failed`));
+    }
+    console.log(chalk.gray(`  Total: ${bytes_format(summary.transferSize)} in ${summary.duration.toFixed(1)}s (${bytes_format(summary.speed)}/s)`));
 
     // Invalidate cache for target directory
-    if (success) {
+    if (summary.transferredCount > 0) {
       const listCache = listCache_get();
       listCache.cache_invalidate(targetRemote);
     }

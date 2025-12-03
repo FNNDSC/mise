@@ -190,5 +190,42 @@ describe('Tab Completion', () => {
         done();
       });
     });
+
+    it('should provide path completion for cp command', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [] });
+
+      completer('cp ', (err, result) => {
+        expect(err).toBeNull();
+        const [hits, original] = result;
+        // Should return path completions (empty in this case due to mock)
+        expect(hits).toEqual([]);
+        expect(original).toBe('');
+        done();
+      });
+    });
+
+    it('should provide path completion for rm command', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [] });
+
+      completer('rm ', (err, result) => {
+        expect(err).toBeNull();
+        const [hits, original] = result;
+        expect(hits).toEqual([]);
+        expect(original).toBe('');
+        done();
+      });
+    });
+
+    it('should provide path completion for upload command', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [] });
+
+      completer('upload ', (err, result) => {
+        expect(err).toBeNull();
+        const [hits, original] = result;
+        expect(hits).toEqual([]);
+        expect(original).toBe('');
+        done();
+      });
+    });
   });
 });

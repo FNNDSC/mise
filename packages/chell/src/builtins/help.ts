@@ -21,13 +21,19 @@ const helpText: Record<string, CommandHelp> = {
     options: [
       '-l          Long format (detailed information)',
       '-h          Human-readable sizes (use with -l)',
+      '-f, --refresh  Force refresh (ignore cache)',
+      '-r, --reverse  Reverse sort order',
+      '-d          List directory itself, not contents',
+      '--sort=<field>  Sort by: name, size, date, owner',
     ],
     examples: [
       'ls                    # List current directory',
       'ls -l                 # Long format',
       'ls -lh                # Long format with human sizes',
+      'ls -f                 # Force refresh from server',
       'ls /home/user/data    # List specific directory',
       'ls *.txt              # List matching files (wildcard)',
+      'ls --sort=size -r     # Sort by size, reversed',
     ],
   },
   cd: {
@@ -105,10 +111,18 @@ const helpText: Record<string, CommandHelp> = {
   },
   upload: {
     usage: 'upload <local_path> <chris_path>',
-    description: 'Upload files from local filesystem to ChRIS',
+    description: 'Upload files from local filesystem to ChRIS with progress tracking',
+    options: [
+      'Displays progress bar showing:',
+      '  - File count and percentage complete',
+      '  - Estimated time remaining (ETA)',
+      '  - Data transfer progress',
+      'Shows summary statistics after upload',
+    ],
     examples: [
       'upload ~/data/file.csv /home/user/uploads/',
       'upload ./results/ ~/data/',
+      'upload ~/experiment/data /home/user/projects/',
     ],
   },
   connect: {

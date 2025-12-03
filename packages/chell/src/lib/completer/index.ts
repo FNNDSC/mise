@@ -22,18 +22,33 @@ import * as path from 'path';
 type CompleterCallback = (err: Error | null, result: [string[], string]) => void;
 
 const BUILTINS: string[] = [
+  'cat',
   'cd',
-  'pwd',
-  'ls',
-  'connect',
-  'logout',
   'chefs',
-  'mkdir',
-  'touch',
-  'help',
+  'connect',
+  'context',
+  'cp',
+  'debug',
+  'dirs',
   'exit',
+  'feed',
+  'feeds',
+  'files',
+  'help',
+  'links',
+  'logout',
+  'ls',
+  'mkdir',
+  'parametersofplugin',
+  'physicalmode',
+  'plugin',
+  'plugins',
+  'pwd',
   'quit',
-  'timing'
+  'rm',
+  'timing',
+  'touch',
+  'upload'
 ];
 
 /**
@@ -92,7 +107,7 @@ export function completer(line: string, callback: CompleterCallback): void {
   
   // Case 2: Path Completion (Argument to specific commands)
   const cmd = args[0];
-  if (['cd', 'ls', 'mkdir', 'touch', 'cat'].includes(cmd)) {
+  if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'cp', 'rm', 'upload'].includes(cmd)) {
     // The partial path is the last argument being typed
     // If the line ends with space, we are starting a new argument (empty prefix)
     const partialPath = line.endsWith(' ') ? '' : args[args.length - 1];

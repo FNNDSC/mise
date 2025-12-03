@@ -78,7 +78,7 @@ export class VFS {
 
     if (isCacheMiss) {
       spinnerDelayTimeout = setTimeout(() => {
-        spinner.start('Fetching directory from remote'); // The spinner message
+        spinner.start('Fetching directory from remote', true); // The spinner message with timing
         spinnerStarted = true;
       }, 500);
     }

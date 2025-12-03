@@ -75,40 +75,52 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
 export async function files_copyRecursively(srcPath: string, destPath: string): Promise<boolean> {
   try {
     // Ensure destination directory exists (mkdir -p behavior ideally, but files_mkdir is shallow?)
-    // Actually files_mkdir assumes parent exists. 
+    // Actually files_mkdir assumes parent exists.
     // For a copy, we create the target root first.
     await files_mkdir(destPath);
 
     const items = await files_listRecursive(srcPath);
-    
+    let successCount = 0;
+    let failCount = 0;
+
     for (const item of items) {
+      // Normalize item.path to ensure it has a leading slash
+      const normalizedItemPath = item.path.startsWith('/') ? item.path : '/' + item.path;
+
       // Calculate new path
-      // item.path: /home/user/src/subdir/file.txt
-      // srcPath:   /home/user/src
-      // relative:  subdir/file.txt
-      // destPath:  /home/user/dest
-      // target:    /home/user/dest/subdir/file.txt
-      
-      // Note: ChRIS paths usually don't have trailing slash for dirname logic, but we should be careful.
-      const relativePath = item.path.substring(srcPath.length).replace(/^\//, '');
-      const targetPath = path.join(destPath, relativePath); // Uses node path, handles slashes
+      // normalizedItemPath: /home/user/src/subdir/file.txt
+      // srcPath:            /home/user/src
+      // relative:           subdir/file.txt
+      // destPath:           /home/user/dest
+      // target:             /home/user/dest/subdir/file.txt
+
+      const relativePath = normalizedItemPath.substring(srcPath.length).replace(/^\//, '');
+      const targetPath = path.posix.join(destPath, relativePath); // Use posix for ChRIS paths
 
       if (item.type === 'dir') {
+        console.log(`  Creating directory: ${targetPath}`);
         const created = await files_mkdir(targetPath);
         if (!created) {
-             console.warn(`Warning: Failed to create directory ${targetPath}`);
+          console.warn(`  Warning: Failed to create directory ${targetPath}`);
+          failCount++;
+        } else {
+          successCount++;
         }
       } else if (item.type === 'file') {
-        const copied = await files_copy(item.path, targetPath);
+        console.log(`  Copying file: ${path.posix.basename(normalizedItemPath)}`);
+        const copied = await files_copy(normalizedItemPath, targetPath);
         if (!copied) {
-             console.warn(`Warning: Failed to copy file ${item.path}`);
-             // Should we abort? cp -r usually continues or errors out.
-             // For now, log and continue to try copying the rest.
-             return false; 
+          console.warn(`  Warning: Failed to copy file ${normalizedItemPath}`);
+          failCount++;
+          // Continue trying to copy other files instead of aborting
+        } else {
+          successCount++;
         }
       }
     }
-    return true;
+
+    console.log(`Copied ${successCount} items, ${failCount} failed`);
+    return failCount === 0;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Recursive copy failed: ${msg}`);
@@ -135,8 +147,8 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
     }
     
     // Split path into directory and filename
-    const dir = path.dirname(pathStr);
-    const name = path.basename(pathStr);
+    const dir = path.posix.dirname(pathStr);
+    const name = path.posix.basename(pathStr);
     
     const success = await chrisIO.file_upload(uploadContent, dir, name);
     if (!success) {
@@ -172,23 +184,26 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
   try {
     // 1. Resolve source file to get ID (needed for download)
     // We can use files_getGroup to list files in parent dir and find the file
-    const srcDir = path.dirname(srcPath);
-    const srcName = path.basename(srcPath);
-    
+    const srcDir = path.posix.dirname(srcPath);
+    const srcName = path.posix.basename(srcPath);
+
     const group = await files_getGroup('files', srcDir);
     if (!group) {
         errorStack.stack_push("error", `Could not access source directory: ${srcDir}`);
         return false;
     }
 
-    // Fetch all files in dir to find the match. 
-    // TODO: Optimize this with search parameters if possible to avoid listing huge dirs.
-    // For now, using search params on listAll if supported, or just filtering.
-    const results = await group.asset.resources_getAll({ fname: srcName });
-    
+    // Fetch all files in dir to find the match
+    // Don't use search params - fname expects full path, not basename
+    const results = await group.asset.resources_getAll();
+
     let fileId: number | undefined;
     if (results && results.tableData) {
-        const match = results.tableData.find((f: any) => path.basename(f.fname || '') === srcName);
+        // Match by full path or by basename
+        const match = results.tableData.find((f: any) => {
+            const fname = f.fname || '';
+            return fname === srcPath || path.posix.basename(fname) === srcName;
+        });
         if (match) {
             fileId = Number(match.id);
         }
@@ -202,13 +217,20 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
     // 2. Download content
     const content = await chrisIO.file_download(fileId);
     if (content === null) {
-        errorStack.stack_push("error", `Failed to download source file: ${srcPath}`);
+        errorStack.stack_push("error", `Failed to download source file (ID: ${fileId}): ${srcPath}`);
         return false;
     }
 
     // 3. Upload to destination
     // files_create handles Blob/Buffer conversion and path splitting
-    return await files_create(content, destPath);
+    const uploadSuccess = await files_create(content, destPath);
+    if (!uploadSuccess) {
+        const lastError = errorStack.stack_pop();
+        if (lastError) {
+            console.error(`    Error: ${lastError.message}`);
+        }
+    }
+    return uploadSuccess;
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -472,8 +494,8 @@ export async function files_view(fileId: number): Promise<Buffer | null> {
  * @returns A Promise resolving to the content string or null.
  */
 export async function files_content(filePath: string): Promise<string | null> {
-  const dir = path.dirname(filePath);
-  const name = path.basename(filePath);
+  const dir = path.posix.dirname(filePath);
+  const name = path.posix.basename(filePath);
   
   const group = await files_getGroup('files', dir);
   if (!group) return null;
@@ -483,7 +505,7 @@ export async function files_content(filePath: string): Promise<string | null> {
      const file = results.tableData.find((f: Record<string, any>) => {
          const fname = f.fname || '';
          // Compare basenames to find the file in this directory
-         return path.basename(fname) === name;
+         return path.posix.basename(fname) === name;
      });
      
      if (file && file.id) {

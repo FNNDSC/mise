@@ -1308,7 +1308,7 @@ async function builtin_du(args: string[]): Promise<void> {
     };
 
     // Aggregate sizes
-    scanResult.fileInfo.forEach((fileInfo) => {
+    scanResult.fileInfo.forEach((fileInfo: any) => {
       const filePath: string = fileInfo.chrisPath;
       const fileSize: number = fileInfo.size;
 
@@ -1371,7 +1371,7 @@ async function builtin_du(args: string[]): Promise<void> {
         // Skip if showing only directories and this is a file
         if (!showAll && dirPath !== basePath) {
           const isDir: boolean = scanResult.fileInfo.some(
-            (fi) => fi.isDirectory && fi.chrisPath === dirPath
+            (fi: any) => fi.isDirectory && fi.chrisPath === dirPath
           );
           if (!isDir) continue;
         }

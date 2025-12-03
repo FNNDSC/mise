@@ -9,6 +9,9 @@ import {
   chrisConnection,
   ListOptions, 
   FilteredResourceData,
+  Result,
+  Ok,
+  Err,
 } from "@fnndsc/cumin";
 import { FileBrowserFolder } from "@fnndsc/chrisapi";
 
@@ -129,6 +132,69 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
 }
 
 /**
+ * Resolves a file ID from a ChRIS path.
+ *
+ * @param srcPath - The absolute ChRIS file path.
+ * @returns Result containing the file ID or Err on failure.
+ */
+async function fileId_resolve(srcPath: string): Promise<Result<number>> {
+  const srcDir: string = path.posix.dirname(srcPath);
+  const srcName: string = path.posix.basename(srcPath);
+
+  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', srcDir);
+  if (!group) {
+      errorStack.stack_push("error", `Could not access source directory: ${srcDir}`);
+      return Err<number>();
+  }
+
+  const results: FilteredResourceData | null = await group.asset.resources_getAll();
+
+  let fileId: number | undefined;
+  if (results && results.tableData) {
+      const match: Record<string, unknown> | undefined = results.tableData.find((f: Record<string, unknown>) => {
+          const fname: string = typeof f.fname === 'string' ? f.fname : '';
+          return fname === srcPath || path.posix.basename(fname) === srcName;
+      });
+      if (match && match.id !== undefined) {
+          fileId = Number(match.id);
+      }
+  }
+
+  if (fileId === undefined) {
+      errorStack.stack_push("error", `Source file not found: ${srcPath}`);
+      return Err<number>();
+  }
+
+  return Ok(fileId);
+}
+
+/**
+ * Determines whether a given ChRIS path refers to a directory.
+ *
+ * @param targetPath - The absolute ChRIS path to check.
+ * @returns Promise resolving to true if the path is a directory, false otherwise.
+ */
+async function path_isDir(targetPath: string): Promise<boolean> {
+  const parent: string = path.posix.dirname(targetPath);
+  const name: string = path.posix.basename(targetPath);
+  const results: FilteredResourceData | null = await files_listAll({ limit: 1000, offset: 0 }, "dirs", parent);
+
+  if (!results || !results.tableData) {
+    return false;
+  }
+
+  return results.tableData.some((entry: Record<string, unknown>) => {
+    const candidate: string = typeof entry.path === "string" && entry.path.length > 0
+      ? entry.path
+      : typeof entry.fname === "string"
+        ? entry.fname
+        : "";
+
+    return candidate === targetPath || path.posix.basename(candidate) === name;
+  });
+}
+
+/**
  * Uploads content to a specified ChRIS path, effectively creating or overwriting a file.
  *
  * @param content - The content to upload (string, Buffer, or Blob).
@@ -183,36 +249,11 @@ export async function files_touch(path: string): Promise<boolean> {
 export async function files_copy(srcPath: string, destPath: string): Promise<boolean> {
   try {
     // 1. Resolve source file to get ID (needed for download)
-    // We can use files_getGroup to list files in parent dir and find the file
-    const srcDir = path.posix.dirname(srcPath);
-    const srcName = path.posix.basename(srcPath);
-
-    const group = await files_getGroup('files', srcDir);
-    if (!group) {
-        errorStack.stack_push("error", `Could not access source directory: ${srcDir}`);
-        return false;
+    const fileIdResult: Result<number> = await fileId_resolve(srcPath);
+    if (!fileIdResult.ok) {
+      return false;
     }
-
-    // Fetch all files in dir to find the match
-    // Don't use search params - fname expects full path, not basename
-    const results = await group.asset.resources_getAll();
-
-    let fileId: number | undefined;
-    if (results && results.tableData) {
-        // Match by full path or by basename
-        const match = results.tableData.find((f: any) => {
-            const fname = f.fname || '';
-            return fname === srcPath || path.posix.basename(fname) === srcName;
-        });
-        if (match) {
-            fileId = Number(match.id);
-        }
-    }
-
-    if (fileId === undefined) {
-        errorStack.stack_push("error", `Source file not found: ${srcPath}`);
-        return false;
-    }
+    const fileId: number = fileIdResult.value;
 
     // 2. Download content
     const content = await chrisIO.file_download(fileId);
@@ -235,6 +276,45 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Copy failed from ${srcPath} to ${destPath}: ${msg}`);
+    return false;
+  }
+}
+
+/**
+ * Moves a file or directory by updating its path on the server.
+ *
+ * For directories, this performs a server-side rename without data transfer.
+ * For files, the file ID is resolved and the path is updated.
+ *
+ * @param srcPath - The source file or directory path.
+ * @param destPath - The target path. If an existing directory or trailing slash is provided,
+ *                   the source basename is appended.
+ * @returns Promise resolving to true on success, false on failure.
+ */
+export async function files_move(srcPath: string, destPath: string): Promise<boolean> {
+  try {
+    const srcIsDir: boolean = await path_isDir(srcPath);
+    const destIsDir: boolean = await path_isDir(destPath);
+    const destLooksDir: boolean = destPath.endsWith("/");
+    const finalDest: string = (destIsDir || destLooksDir)
+      ? path.posix.join(destPath, path.posix.basename(srcPath))
+      : destPath;
+
+    if (srcIsDir) {
+      const moveResult: Result<boolean> = await chrisIO.folder_moveByPath(srcPath, finalDest);
+      return moveResult.ok && moveResult.value;
+    }
+
+    const fileIdResult: Result<number> = await fileId_resolve(srcPath);
+    if (!fileIdResult.ok) {
+      return false;
+    }
+
+    const moveResult: Result<boolean> = await chrisIO.file_moveById(fileIdResult.value, finalDest);
+    return moveResult.ok && moveResult.value;
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Move failed from ${srcPath} to ${destPath}: ${msg}`);
     return false;
   }
 }

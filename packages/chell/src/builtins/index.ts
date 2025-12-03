@@ -7,7 +7,7 @@
  */
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { listCache_get, errorStack } from '@fnndsc/cumin';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
@@ -155,7 +155,7 @@ async function path_resolveLinks(targetPath: string): Promise<string> {
  * @returns A Promise that resolves when the operation is complete.
  */
 async function builtin_cd(args: string[]): Promise<void> {
-  const pathArg: string | undefined = args[0];
+  const pathArg: string | undefined = args.length > 0 ? args.join(' ') : undefined;
   
   // 'cd' with no args goes to home
   if (!pathArg) {
@@ -238,7 +238,7 @@ async function builtin_pwd(): Promise<void> {
  */
 async function builtin_ls(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
-  const pathArgs: string[] = parsed._ as string[];
+  const pathArgsRaw: string[] = parsed._ as string[];
 
   // Parse sort option
   let sortBy: 'name' | 'size' | 'date' | 'owner' = 'name';
@@ -248,6 +248,8 @@ async function builtin_ls(args: string[]): Promise<void> {
       sortBy = sortValue as 'name' | 'size' | 'date' | 'owner';
     }
   }
+
+  let pathArgs: string[] = pathArgsRaw;
 
   // Check for refresh flag to invalidate cache
   const shouldRefresh = !!parsed['refresh'] || !!parsed['f'];
@@ -265,6 +267,25 @@ async function builtin_ls(args: string[]): Promise<void> {
     reverse: !!parsed['reverse'] || !!parsed['r'],
     directory: !!parsed['d']
   };
+
+  // If user provided multiple tokens without options or wildcards, try treating them as a single path first.
+  const hasOptions: boolean = Object.keys(parsed).some((key: string) => key !== '_');
+  const hasWildcard: boolean = pathArgsRaw.some((p: string) => p.includes('*'));
+  if (!hasOptions && !hasWildcard && pathArgsRaw.length > 1 && typeof (vfs as any).data_get === 'function') {
+    const joinedPath: string = pathArgsRaw.join(' ');
+    const probe = await vfs.data_get(joinedPath, {
+      sort: sortBy,
+      reverse: options.reverse,
+      directory: options.directory
+    });
+    if (probe.ok) {
+      await vfs.list(joinedPath, options);
+      return;
+    } else {
+      // Suppress the probe error to avoid leaking to the user when we fallback
+      errorStack.stack_pop();
+    }
+  }
 
   // If refresh flag is set, aggressively invalidate cache for the target path(s)
   if (shouldRefresh) {

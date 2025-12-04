@@ -49,27 +49,50 @@ export async function builtin_cd(args: string[]): Promise<void> {
       const physicalResult = await logical_toPhysical(logicalPath);
 
       if (!physicalResult.ok) {
-        console.error(chalk.red(`cd: ${pathArg}: Invalid path`));
+        console.error(chalk.red(`cd: ${pathArg}: Invalid path (logical-to-physical failed)`));
+        if (session.connection.config?.debug) {
+          console.error(chalk.gray(`  Logical path: ${logicalPath}`));
+        }
         return;
       }
 
       validationPath = physicalResult.value;
     }
 
+    if (session.connection.config?.debug) {
+      console.log(chalk.gray(`cd: ${pathArg} → logical: ${logicalPath} → validation: ${validationPath}`));
+    }
+
+    // Determine the target CWD path
+    const cwdPath: string = session.physicalMode_get() ? validationPath : logicalPath;
+    const currentCwd: string = await session.getCWD();
+
+    // Skip validation if we're already in the target directory
+    if (currentCwd === cwdPath) {
+      if (session.connection.config?.debug) {
+        console.log(chalk.gray(`  Already in target directory, skipping validation`));
+      }
+      // Already there, nothing to do
+      return;
+    }
+
     try {
       // Validate that the target exists
       const folder: unknown = await client.getFileBrowserFolderByPath(validationPath);
       if (folder) {
-        // Set CWD based on mode:
-        // - Logical mode: preserves *nix behavior where cd into a symlink keeps the logical path
-        // - Physical mode: uses the resolved physical path (follows links)
-        const cwdPath: string = session.physicalMode_get() ? validationPath : logicalPath;
         await session.setCWD(cwdPath);
       } else {
         console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
+        if (session.connection.config?.debug) {
+          console.error(chalk.gray(`  API returned null for path: ${validationPath}`));
+        }
       }
     } catch (apiError: unknown) {
       console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
+      if (session.connection.config?.debug) {
+        const msg = apiError instanceof Error ? apiError.message : String(apiError);
+        console.error(chalk.gray(`  API error: ${msg}`));
+      }
     }
 
   } catch (error: unknown) {

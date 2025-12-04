@@ -5,6 +5,7 @@
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
 import { session } from '../../session/index.js';
+import { spinner } from '../../lib/spinner.js';
 import { errorStack } from '@fnndsc/cumin';
 import { scan_do, archyTree_create, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
@@ -48,9 +49,11 @@ export async function builtin_tree(args: string[]): Promise<void> {
   }
 
   try {
+    spinner.start(`Scanning ${targetPath || 'current directory'}...`);
     const scanResult: ScanRecord | null = await scan_do(scanOptions);
 
     if (!scanResult) {
+      spinner.stop();
       const lastError = errorStack.stack_pop();
       if (lastError) {
         console.error(chalk.red(lastError.message));
@@ -59,6 +62,8 @@ export async function builtin_tree(args: string[]): Promise<void> {
       }
       return;
     }
+
+    spinner.stop();
 
     // Display the tree
     const treeOutput: string = archyTree_create(scanResult.fileInfo);

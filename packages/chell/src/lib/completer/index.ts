@@ -10,6 +10,7 @@ import { session } from '../../session/index.js';
 import { plugins_listAll } from '@fnndsc/salsa';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
+import { context_getSingle } from '@fnndsc/salsa';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
@@ -139,9 +140,10 @@ async function path_complete(partial: string): Promise<string[]> {
   
   // Handle ~ expansion for the partial path base
   let effectivePartial = partial;
-  /*
+  
   if (partial.startsWith('~')) {
-    const user = await session.connection.user_get();
+    const context = context_getSingle();
+    const user: string | null = context.user;
     const home = user ? `/home/${user}` : '/';
     if (partial === '~' || partial === '~/') {
       effectivePartial = home + (partial.endsWith('/') ? '/' : '');
@@ -149,7 +151,6 @@ async function path_complete(partial: string): Promise<string[]> {
       effectivePartial = path.posix.join(home, partial.substring(2));
     }
   }
-  */
 
   if (effectivePartial.endsWith('/')) {
      dirToList = effectivePartial;
@@ -213,9 +214,8 @@ async function path_complete(partial: string): Promise<string[]> {
        if (cached) {
          lsItems = cached.data;
        } else {
-         // Cache miss - fetch from API
-         lsItems = await files_list({} as CLIoptions, absDirToList);
-         if (lsItems) {
+                // Cache miss - fetch from API
+                lsItems = await files_list({} as CLIoptions, absDirToList);         if (lsItems) {
            // Inject 'bin' if at root
            if (absDirToList === '/') {
              lsItems.push({
@@ -239,16 +239,21 @@ async function path_complete(partial: string): Promise<string[]> {
   }
   
   // 4. Filter and format matches
-  const matches = items.filter(i => i.startsWith(prefix));
+  const hits = items.filter(i => i.startsWith(prefix));
   
-  // Prepend the directory part from the *original* partial input to preserve user's input style (relative/absolute/tilde)
-  // If partial was '~/doc', dirPart is '~/'. Match 'docs' -> '~/docs'
-  // If partial was 'foo', dirPart is ''. Match 'foobar' -> 'foobar'
-  const dirPart = partial.endsWith('/') ? partial : (partial.includes('/') ? partial.substring(0, partial.lastIndexOf('/') + 1) : '');
-  
-  // Add trailing slash for directories? 
-  // Ideally yes, but we don't easily know which are directories without checking types.
-  // For now, just return names.
-  
-  return matches.map(m => dirPart + m);
+  // Reconstruct the full path for each match, preserving the original partial's style (tilde/relative)
+  const completions = hits.map(hit => {
+    // This is the segment that was *not* yet typed, but matched.
+    // Example: partial = "~/P", prefix = "P", hit = "PIPELINES", remainingSegment = "IPELINES"
+    // Example: partial = "~/", prefix = "", hit = "home", remainingSegment = "home"
+    const remainingSegment = hit.substring(prefix.length); 
+
+    // We want to return the original partial + remainingSegment
+    // Example: "~/P" + "IPELINES" = "~/PIPELINES"
+    // Example: "~/" + "home" = "~/home"
+    // Example: "fo" + "obar" = "foobar"
+    return partial + remainingSegment;
+  });
+
+  return completions;
 }

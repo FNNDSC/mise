@@ -35,42 +35,40 @@ const mockCatRender = jest.fn();
 const mockRmRender = jest.fn();
 const mockChiliCommandRun = jest.fn();
 
-// Mock chili utils to prevent circular dependency via pathMapper -> cumin
+// Mock chili utils
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
   pathMapper_get: jest.fn()
 }));
 
-// Mock chili screen module
+// Mock chili screen
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_display: mockTableDisplay,
   border_draw: jest.fn(),
 }));
 
-// Mock chili path module for tree and du commands
+// Mock chili path module
 jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
   scan_do: jest.fn().mockResolvedValue({ fileInfo: [], totalSize: 0 }),
   archyTree_create: jest.fn().mockReturnValue('mock tree output'),
 }));
 
-// Mock cumin to prevent loading real cache and circular deps
-const mockListCache = {
-  cache_get: jest.fn(),
-  cache_set: jest.fn(),
-  cache_invalidate: jest.fn(),
-  cache_markDirty: jest.fn(),
-};
-
+// Mock cumin
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  listCache_get: () => mockListCache,
+  listCache_get: () => ({
+    cache_get: jest.fn(),
+    cache_set: jest.fn(),
+    cache_invalidate: jest.fn(),
+    cache_markDirty: jest.fn(),
+  }),
   connectionConfig: { debug: false },
   errorStack: {
     stack_push: jest.fn(),
     stack_pop: jest.fn()
   },
   Result: {},
-  Ok: (val) => ({ ok: true, value: val }),
-  Err: (err) => ({ ok: false, error: err }),
+  Ok: (val: any) => ({ ok: true, value: val }),
+  Err: (err: any) => ({ ok: false, error: err }),
   Context: {
     ChRISuser: 'ChRISuser',
     ChRISurl: 'ChRISurl',
@@ -82,7 +80,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   SingleContext: {},
   chrisContext: {
     current_get: jest.fn(),
-    current_set: jest.fn()
+    current_set: jest.fn(),
+    currentContext_update: jest.fn()
   },
   keyPairParams_apply: jest.fn((baseParams, keyPair) => baseParams),
   logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
@@ -93,7 +92,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   }
 }));
 
-// Mock session module
+// Mock session
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: {
     getCWD: mockGetCWD,
@@ -130,93 +129,41 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 
 // Mock chili commands
-jest.unstable_mockModule('@fnndsc/chili/commands/connect/login.js', () => ({
-  connect_login: mockConnectLogin
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/connect/logout.js', () => ({
-  connect_logout: mockConnectLogout
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/plugins/list.js', () => ({
-  plugins_fetchList: mockPluginsFetchList
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/plugin/run.js', () => ({
-  plugin_execute: mockPluginExecute
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/feeds/list.js', () => ({
-  feeds_fetchList: mockFeedsFetchList
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/feed/create.js', () => ({
-  feed_create: mockFeedCreate
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/files/list.js', () => ({
-  files_fetchList: mockFilesFetchList
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/files/fields.js', () => ({
-  fileFields_fetch: mockFileFieldsFetch
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({
-  files_mkdir: mockChefsMkdir
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({
-  files_touch: mockChefsTouch
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({
-  files_upload: mockChefsUpload,
+jest.unstable_mockModule('@fnndsc/chili/commands/connect/login.js', () => ({ connect_login: mockConnectLogin }));
+jest.unstable_mockModule('@fnndsc/chili/commands/connect/logout.js', () => ({ connect_logout: mockConnectLogout }));
+jest.unstable_mockModule('@fnndsc/chili/commands/plugins/list.js', () => ({ plugins_fetchList: mockPluginsFetchList }));
+jest.unstable_mockModule('@fnndsc/chili/commands/plugin/run.js', () => ({ plugin_execute: mockPluginExecute }));
+jest.unstable_mockModule('@fnndsc/chili/commands/feeds/list.js', () => ({ feeds_fetchList: mockFeedsFetchList }));
+jest.unstable_mockModule('@fnndsc/chili/commands/feed/create.js', () => ({ feed_create: mockFeedCreate }));
+jest.unstable_mockModule('@fnndsc/chili/commands/files/list.js', () => ({ files_fetchList: mockFilesFetchList }));
+jest.unstable_mockModule('@fnndsc/chili/commands/files/fields.js', () => ({ fileFields_fetch: mockFileFieldsFetch }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mkdir: mockChefsMkdir }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({ files_touch: mockChefsTouch }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({ 
+  files_upload: mockChefsUpload, 
   files_uploadWithProgress: mockChefsUpload,
   bytes_format: (n: number) => `${n} B`
 }));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({
-  files_cat: mockChefsCat
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({
-  files_rm: mockChefsRm,
-  RmOptions: {},
-  RmResult: {}
-}));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_cat: mockChefsCat }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: mockChefsRm, RmOptions: {}, RmResult: {} }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cp.js', () => ({ files_cp: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/mv.js', () => ({ files_mv: jest.fn() }));
 
 // Mock chili views
-jest.unstable_mockModule('@fnndsc/chili/views/plugin.js', () => ({
-  pluginList_render: mockPluginListRender,
-  pluginRun_render: mockPluginRunRender
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/views/feed.js', () => ({
-  feedList_render: mockFeedListRender,
-  feedCreate_render: mockFeedCreateRender
-}));
-
-jest.unstable_mockModule('@fnndsc/chili/views/connect.js', () => ({
-  login_render: mockLoginRender,
-  logout_render: mockLogoutRender
-}));
-
+jest.unstable_mockModule('@fnndsc/chili/views/plugin.js', () => ({ pluginList_render: mockPluginListRender, pluginRun_render: mockPluginRunRender }));
+jest.unstable_mockModule('@fnndsc/chili/views/feed.js', () => ({ feedList_render: mockFeedListRender, feedCreate_render: mockFeedCreateRender }));
+jest.unstable_mockModule('@fnndsc/chili/views/connect.js', () => ({ login_render: mockLoginRender, logout_render: mockLogoutRender }));
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   mkdir_render: mockMkdirRender,
   touch_render: mockTouchRender,
   upload_render: mockUploadRender,
   cat_render: mockCatRender,
   rm_render: mockRmRender,
-  cp_render: mockRmRender, // Reuse mock or create new one
+  cp_render: mockRmRender,
   mv_render: mockRmRender
 }));
 
-jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
-  table_display: mockTableDisplay
-}));
-
-// Mock chell builtins
+// Mock parametersofplugin
 jest.unstable_mockModule('../src/builtins/parametersofplugin.js', () => ({
   builtin_parametersofplugin: jest.fn()
 }));
@@ -226,11 +173,11 @@ jest.unstable_mockModule('../src/chell.js', () => ({
   chiliCommand_run: mockChiliCommandRun
 }));
 
-// Mock console methods
+// Mock console
 const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-// Now import the module to test
+// Import module under test
 const {
   path_resolve,
   builtin_cd,

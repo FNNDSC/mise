@@ -1,5 +1,20 @@
-import { describe, it, expect } from '@jest/globals';
-import { commandArgs_process, path_resolve_pure } from '../src/builtins/utils.js';
+import { describe, it, expect, jest } from '@jest/globals';
+
+// Mock external dependencies before importing module under test
+jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  context_getSingle: jest.fn()
+}));
+
+jest.unstable_mockModule('../src/session/index.js', () => ({
+  session: {}
+}));
+
+jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({
+  ListingItem: {}
+}));
+
+// Import directly from utils.js to avoid potential circular dependencies in index.js
+const { commandArgs_process, path_resolve_pure } = await import('../src/builtins/utils.js');
 
 describe('commandArgs_process', () => {
   it('should parse positional arguments', () => {

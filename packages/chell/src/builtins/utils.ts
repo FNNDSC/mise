@@ -3,6 +3,8 @@
  * Pure functions for argument parsing and path resolution logic.
  */
 import * as path from 'path';
+import { context_getSingle } from '@fnndsc/salsa';
+import { session } from '../session/index.js';
 
 /**
  * Structure for parsed command line arguments.
@@ -92,4 +94,61 @@ export function path_resolve_pure(inputPath: string, context: PathContext): stri
   }
   
   return resolved;
+}
+
+/**
+ * Resolves a path argument, handling `~` expansion and relative paths.
+ * @param inputPath - The path to resolve.
+ * @returns The absolute path.
+ */
+export async function path_resolve(inputPath: string): Promise<string> {
+  const context = context_getSingle();
+  const user: string | null = context.user;
+  const cwd: string = await session.getCWD();
+  return path_resolve_pure(inputPath, { user, cwd });
+}
+
+/**
+ * Resolves links in a path without using PathMapper (for physical mode).
+ * Checks each component to see if it's a link and follows it.
+ *
+ * @param targetPath - The path to resolve.
+ * @returns The resolved path with links followed.
+ */
+export async function path_resolveLinks(targetPath: string): Promise<string> {
+  // We need to dynamically import files_list to avoid circular dependency
+  // because builtins/fs/ls.ts imports path_resolve from here
+  const { files_list } = await import('@fnndsc/chili/commands/fs/ls.js');
+
+  const components: string[] = targetPath.split('/').filter(c => c);
+  let currentPath: string = '';
+
+  for (const component of components) {
+    const parentPath: string = currentPath || '/';
+    currentPath = `${currentPath}/${component}`;
+
+    try {
+      // List parent directory to check if component is a link
+      const items: any[] = await files_list({ path: parentPath }, parentPath);
+
+      // Find the component in the listing
+      const item = items.find((i: any) => i.name === component);
+
+      if (item && item.type === 'link' && item.target) {
+        // Component is a link - resolve it
+        if (item.target.startsWith('/')) {
+          // Absolute link target
+          currentPath = item.target;
+        } else {
+          // Relative link target
+          currentPath = `${parentPath}/${item.target}`.replace('//', '/');
+        }
+      }
+    } catch (error) {
+      // If we can't list the directory, continue with the current path
+      continue;
+    }
+  }
+
+  return currentPath || '/';
 }

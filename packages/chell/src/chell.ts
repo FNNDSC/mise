@@ -94,7 +94,7 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
  */
 function shouldExpandWildcards(command: string): boolean {
   // Commands that benefit from wildcard expansion
-  const expandCommands: string[] = ['ls', 'rm', 'cat', 'mv', 'cp'];
+  const expandCommands: string[] = ['ls', 'rm', 'cat', 'mv', 'cp', 'du', 'tree'];
   return expandCommands.includes(command);
 }
 
@@ -176,7 +176,7 @@ async function command_handle(line: string): Promise<void> {
   let [command, ...args]: string[] = tokens;
 
   // Check for --help flag before any processing
-  if (hasHelpFlag(args)) {
+  if (hasHelpFlag(args, command)) {
     help_show(command);
     return;
   }

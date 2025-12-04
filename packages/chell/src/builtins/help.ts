@@ -378,12 +378,23 @@ export function help_show(command: string): void {
 
 /**
  * Checks if arguments contain --help flag.
+ * -h is treated as help unless the command uses it for "human-readable" (ls, du).
  *
  * @param args - Command arguments.
- * @returns True if --help is present.
+ * @param command - The command name (optional).
+ * @returns True if help is requested.
  */
-export function hasHelpFlag(args: string[]): boolean {
-  return args.includes('--help') || args.includes('-h');
+export function hasHelpFlag(args: string[], command?: string): boolean {
+  if (args.includes('--help')) return true;
+
+  // Commands where -h means human-readable sizes, not help
+  const humanReadableCommands = ['ls', 'du'];
+  
+  if (command && humanReadableCommands.includes(command)) {
+    return false;
+  }
+  
+  return args.includes('-h');
 }
 
 /**

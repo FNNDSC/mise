@@ -217,3 +217,5 @@ export async function plugin_readme(pluginId: string): Promise<string | null> {
 
 // Re-export other utility functions or classes if needed, following the RPN style.
 export * from './plugin_register.js';
+export * from './peer_search.js';
+export * from './store_import.js';

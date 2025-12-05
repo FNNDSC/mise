@@ -81,7 +81,7 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   // Clear error stack before starting
   errorStack.stack_clear();
 
-  console.log(chalk.cyan(`\n🔌 Adding plugin: ${pluginInput}\n`));
+  console.log(chalk.cyan(`\nAdding plugin: ${pluginInput}\n`));
 
   // Wrap the plugin_add function with spinner for long operations
   const success = await plugin_add(pluginInput, options);
@@ -89,9 +89,9 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   spinner.stop();
 
   if (success) {
-    console.log(chalk.green('\n✓ Plugin added successfully!\n'));
+    console.log(chalk.green('\n[SUCCESS] Plugin added successfully!\n'));
   } else {
-    console.log(chalk.red('\n✗ Failed to add plugin.\n'));
+    console.log(chalk.red('\n[FAILED] Failed to add plugin.\n'));
 
     // Display errors from errorStack
     const errors = errorStack.allOfType_get('error');
@@ -100,7 +100,7 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
       errors.forEach((error: string) => {
         // Remove function name prefix for cleaner display
         const cleanError = error.replace(/^\[.*?\]\s+\|\s+/, '');
-        console.log(chalk.red(`  • ${cleanError}`));
+        console.log(chalk.red(`  - ${cleanError}`));
       });
       console.log('');
     }
@@ -111,7 +111,7 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
       console.log(chalk.yellow('Warnings:'));
       warnings.forEach((warning: string) => {
         const cleanWarning = warning.replace(/^\[.*?\]\s+\|\s+/, '');
-        console.log(chalk.yellow(`  ⚠ ${cleanWarning}`));
+        console.log(chalk.yellow(`  [WARNING] ${cleanWarning}`));
       });
       console.log('');
     }

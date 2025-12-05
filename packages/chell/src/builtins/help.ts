@@ -351,6 +351,19 @@ const helpText: Record<string, CommandHelp> = {
       'du -sh                # Human-readable summary',
     ],
   },
+  store: {
+    usage: 'store <subcommand> [options]',
+    description: 'Browse and search the ChRIS peer store',
+    options: [
+      '--store <url>         Use specific store URL',
+      '-l                    Long listing format',
+    ],
+    examples: [
+      'store list            # List all plugins in store',
+      'store search dicom    # Search plugins matching "dicom"',
+      'store list -l         # List with details',
+    ],
+  },
   help: {
     usage: 'help [command]',
     description: 'Display help information',
@@ -388,28 +401,66 @@ export function help_show(command: string): void {
   }
 
   console.log('');
-  console.log(chalk.bold.cyan(command.toUpperCase()));
+  console.log(chalk.bold.magenta(command.toUpperCase()));
   console.log(chalk.gray('─'.repeat(60)));
   console.log('');
-  console.log(chalk.bold('USAGE'));
-  console.log(`  ${help.usage}`);
+  
+  console.log(chalk.bold.blue('USAGE'));
+  const usageParts = help.usage.split(' ');
+  const cmdName = usageParts[0];
+  const args = usageParts.slice(1).join(' ');
+  console.log(`  ${chalk.green(cmdName)} ${chalk.cyan(args)}`);
+  
   console.log('');
-  console.log(chalk.bold('DESCRIPTION'));
+  console.log(chalk.bold.blue('DESCRIPTION'));
   console.log(`  ${help.description}`);
 
   if (help.options && help.options.length > 0) {
     console.log('');
-    console.log(chalk.bold('OPTIONS'));
+    console.log(chalk.bold.blue('OPTIONS'));
     help.options.forEach((opt: string) => {
-      console.log(`  ${opt}`);
+      const trimmed = opt.trim();
+      if (!trimmed) {
+        console.log('');
+        return;
+      }
+      
+      // Check if it's a header (ends with :)
+      if (trimmed.endsWith(':')) {
+        console.log(`  ${chalk.bold.white(trimmed)}`);
+        return;
+      }
+
+      // Try to split by double space (common separator in help definitions)
+      // Regex: Start, (indent), (content), (2+ spaces), (rest)
+      const splitMatch = opt.match(/^(\s*)(.*?)(\s{2,})(.*)$/);
+      
+      if (splitMatch) {
+        const [, indent, content, separator, description] = splitMatch;
+        console.log(`  ${indent}${chalk.yellow(content)}${separator}${description}`);
+      } else {
+        // Fallback: check if it starts with - (simple flag without aligned description)
+        if (trimmed.startsWith('-')) {
+             console.log(`  ${chalk.yellow(opt)}`);
+        } else {
+             console.log(`  ${opt}`);
+        }
+      }
     });
   }
 
   if (help.examples && help.examples.length > 0) {
     console.log('');
-    console.log(chalk.bold('EXAMPLES'));
+    console.log(chalk.bold.blue('EXAMPLES'));
     help.examples.forEach((ex: string) => {
-      console.log(`  ${ex}`);
+      const commentIdx = ex.indexOf('#');
+      if (commentIdx !== -1) {
+        const cmdPart = ex.substring(0, commentIdx);
+        const commentPart = ex.substring(commentIdx);
+        console.log(`  ${chalk.white(cmdPart)}${chalk.gray(commentPart)}`);
+      } else {
+        console.log(`  ${chalk.white(ex)}`);
+      }
     });
   }
 
@@ -462,7 +513,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
     Connection: ['connect', 'logout', 'context'],
-    Resources: ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'parametersofplugin'],
+    Resources: ['plugin', 'plugins', 'feed', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],
     'Shell Settings': ['physicalmode', 'timing', 'debug'],
     General: ['help', 'exit', '!'],
   };

@@ -9,8 +9,9 @@
 import { Command } from 'commander';
 
 export interface ChellCLIConfig {
-  mode: 'interactive' | 'connect' | 'help' | 'version';
+  mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute';
   physicalFS?: boolean;
+  commandToExecute?: string;
   connectConfig?: {
     user?: string;
     password?: string;
@@ -31,6 +32,7 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
       .argument('[target]', 'Target CUBE (user@url or url)')
       .option('-u, --user <user>', 'Username')
       .option('-p, --password <password>', 'Password')
+      .option('-c, --command <command>', 'Execute a single command and exit')
       .option('--physicalFS', 'Use physical filesystem paths (skip logical-to-physical mapping)')
       .addHelpText('after', `
 Interactive Commands:
@@ -47,11 +49,15 @@ Interactive Commands:
 Options:
   --physicalFS    Operate directly on physical paths without logical-to-physical mapping.
                   Use this for debugging or when working with physical ChRIS storage paths.
+  -c, --command   Run a specific command and exit immediately (non-interactive mode).
       `)
-      .action((target: string | undefined, options: { user?: string, password?: string, physicalFS?: boolean }) => {
+      .action((target: string | undefined, options: { user?: string, password?: string, command?: string, physicalFS?: boolean }) => {
           let user: string | undefined = options.user;
           let url: string | undefined = target;
           let password: string | undefined = options.password;
+
+          // Initialize connectConfig if connection args are present
+          let connectConfig: { user?: string, password?: string, url?: string } | undefined;
 
           if (url && url.includes('@')) {
               const parts: string[] = url.split('@');
@@ -63,21 +69,28 @@ Options:
               if (!url.startsWith('http://') && !url.startsWith('https://')) {
                   url = 'http://' + url;
               }
+              connectConfig = { user, password, url };
+          }
 
-              // Note: password prompt logic is side-effect heavy and should be handled by the caller
-              // if password is missing but required.
-              // The parser just reports what it found.
-
+          // Determine mode
+          if (options.command) {
+              config = {
+                  mode: 'execute',
+                  commandToExecute: options.command,
+                  physicalFS: options.physicalFS,
+                  connectConfig: connectConfig
+              };
+          } else if (connectConfig) {
               config = {
                   mode: 'connect',
                   physicalFS: options.physicalFS,
-                  connectConfig: { user, password, url }
+                  connectConfig: connectConfig
               };
           } else {
-              // No URL provided, but physicalFS flag might be set
-              if (options.physicalFS) {
-                  config.physicalFS = true;
-              }
+              config = {
+                  mode: 'interactive',
+                  physicalFS: options.physicalFS
+              };
           }
       });
 

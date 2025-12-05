@@ -41,7 +41,8 @@ import {
   builtin_debug,
   builtin_help,
   builtin_tree,
-  builtin_du
+  builtin_du,
+  builtin_store
 } from './builtins/index.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
@@ -226,6 +227,7 @@ async function command_handle(line: string): Promise<void> {
     case 'help': await builtin_help(args); break;
     case 'tree': await builtin_tree(args); break;
     case 'du': await builtin_du(args); break;
+    case 'store': await builtin_store(args); break;
     case 'plugin':
     case 'plugins':
       await builtin_plugin(args);
@@ -387,7 +389,8 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       case 'parametersofplugin': await builtin_parametersofplugin(args); break;
       case 'physicalmode': await builtin_physicalmode(args); break;
       case 'timing': await builtin_timing(args); break;
-      case 'help': await builtin_help(args); break;
+      case 'du': await builtin_du(args); break;
+      case 'store': await builtin_store(args); break;
       case 'plugin':
       case 'plugins':
         await builtin_plugin(args);
@@ -533,27 +536,35 @@ export async function chell_start(): Promise<void> {
     return;
   }
 
-  // If we are still here, start the shell interface
-  console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
-
   const border = chalk.gray('----------------------------------------------------------------');
-  console.log(border);
-  console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Layered Logic`);
-  console.log(` ${chalk.gray('Version:')} ${chalk.yellow(packageJson.version)}`);
-  console.log(` ${chalk.gray('System :')} ${os.platform()} ${os.release()} (${os.arch()})`);
-  console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);
-  console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
-  console.log(border);
+
+  // Show startup banner only in interactive mode
+  if (config.mode !== 'execute') {
+    console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
+    console.log(border);
+    console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Layered Logic`);
+    console.log(` ${chalk.gray('Version:')} ${chalk.yellow(packageJson.version)}`);
+    console.log(` ${chalk.gray('System :')} ${os.platform()} ${os.release()} (${os.arch()})`);
+    console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);
+    console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
+    console.log(border);
+  }
+
+  // --- Common Initialization ---
 
   spinner.start('Initializing session components');
   await session.init();
   spinner.stop();
-  console.log(chalk.green('[+] Session initialized.'));
+  if (config.mode !== 'execute') {
+    console.log(chalk.green('[+] Session initialized.'));
+  }
 
   // Set physical filesystem mode if requested
   if (config.physicalFS) {
     session.physicalMode_set(true);
-    console.log(chalk.yellow('[!] Physical filesystem mode enabled - logical-to-physical mapping disabled'));
+    if (config.mode !== 'execute') {
+      console.log(chalk.yellow('[!] Physical filesystem mode enabled - logical-to-physical mapping disabled'));
+    }
   }
 
   // Check if we have a saved session from a previous run
@@ -563,9 +574,11 @@ export async function chell_start(): Promise<void> {
   const currentContext = context_getSingle();
 
   if (currentContext.user && currentContext.URL) {
-    console.log(chalk.green('[+] Previous context detected'));
-    console.log(chalk.gray(`    User: ${chalk.cyan(currentContext.user)}`));
-    console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
+    if (config.mode !== 'execute') {
+      console.log(chalk.green('[+] Previous context detected'));
+      console.log(chalk.gray(`    User: ${chalk.cyan(currentContext.user)}`));
+      console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
+    }
 
     // Check for existing token
     spinner.start('Validating existing token');
@@ -580,8 +593,10 @@ export async function chell_start(): Promise<void> {
           // Make a simple API call to validate the token
           await client.getUser();
           spinner.stop();
-          console.log(chalk.green('[+] Token validated with server'));
-          console.log(chalk.green('[+] Session restored'));
+          if (config.mode !== 'execute') {
+            console.log(chalk.green('[+] Token validated with server'));
+            console.log(chalk.green('[+] Session restored'));
+          }
         } else {
           spinner.stop();
           console.log(chalk.yellow('[!] Failed to create client'));
@@ -605,18 +620,25 @@ export async function chell_start(): Promise<void> {
       console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
     }
   } else {
-    console.log(chalk.yellow('[!] No previous context found'));
+    if (config.mode !== 'execute') {
+      console.log(chalk.yellow('[!] No previous context found'));
+    }
   }
 
-  if (config.mode === 'connect' && config.connectConfig) {
+  // Handle explicit connection arguments (valid for both modes)
+  if (config.connectConfig) {
     let { user, password, url } = config.connectConfig;
 
     if (!user) {
       console.error(chalk.red('Error: Username required when connecting via CLI args.'));
       process.exit(1);
     }
-    if (!password && url) {
+    if (!password && url && config.mode !== 'execute') {
+      // Only prompt for password in interactive modes
       password = await password_prompt(user, url);
+    } else if (!password && config.mode === 'execute') {
+       console.error(chalk.red('Error: Password required for connection in execute mode.'));
+       process.exit(1);
     }
 
     if (url && password) {
@@ -629,7 +651,9 @@ export async function chell_start(): Promise<void> {
           debug: false
         });
         spinner.stop();
-        console.log(chalk.green('[+] Connection established.'));
+        if (config.mode !== 'execute') {
+          console.log(chalk.green('[+] Connection established.'));
+        }
       } catch (error: unknown) {
         spinner.stop();
         const errorMessage: string = error instanceof Error ? error.message : String(error);
@@ -643,6 +667,15 @@ export async function chell_start(): Promise<void> {
     console.log(chalk.yellow('[!] Running in disconnected mode.'));
     session.offline = true;
   }
+
+  // --- Execution Mode ---
+
+  if (config.mode === 'execute' && config.commandToExecute) {
+    await command_handle(config.commandToExecute);
+    process.exit(0);
+  }
+
+  // --- Interactive Mode ---
 
   console.log(border);
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));

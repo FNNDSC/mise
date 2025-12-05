@@ -14,6 +14,11 @@ export class Spinner {
   }
 
   public start(message?: string, showTiming: boolean = false): void {
+    // Do not start spinner if not in a TTY (e.g. piped output)
+    if (!process.stdout.isTTY) {
+      return;
+    }
+
     if (this.spinnerActive) {
       this.stop(); // Stop any existing spinner
     }
@@ -46,12 +51,14 @@ export class Spinner {
       clearInterval(this.interval);
       this.interval = null;
     }
-    if (this.spinnerActive && clearLine) {
-      process.stdout.write('\r\x1b[K'); // Clear line
+    if (this.spinnerActive) {
+      if (clearLine) {
+        process.stdout.write('\r\x1b[K'); // Clear line
+      }
+      // Show cursor
+      process.stdout.write('\x1B[?25h');
+      this.spinnerActive = false;
     }
-    // Show cursor
-    process.stdout.write('\x1B[?25h');
-    this.spinnerActive = false;
   }
 
   public updateMessage(newMessage: string): void {

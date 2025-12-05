@@ -1,98 +1,128 @@
-```
-  ____ _     _____ _     _
- / ___| |__ | ____| |   | |
-| |   | '_ \|  _| | |   | |
-| |___| | | | |___| |___| |___
- \____|_| |_|_____|_____|_____|
-```
-**ChELL Executes Layered Logic**
+# ChELL: ChELL Executes Layered Logic
 
-`chell` is an interactive command-line interface (CLI) designed to provide a shell-like experience for interacting with a ChRIS instance. It acts as a sophisticated consumer of the `chili` library, providing a persistent REPL environment for the core ChRIS operations.
+**The Interactive Shell for ChRIS**
 
-## Features
+ChELL is a sophisticated command-line interface that transforms the ChRIS distributed computing platform into a familiar, local filesystem experience. It bridges the gap between complex web APIs and the intuitive, muscle-memory efficiency of Unix-like shells.
 
-`chell` offers a robust set of features to make ChRIS interaction intuitive and efficient:
+If you are comfortable with `bash`, `zsh`, or even the macOS Terminal, you already know how to use ChELL.
 
-*   **Interactive REPL:** A Read-Eval-Print Loop for continuous interaction.
-*   **Enhanced Startup Splash:** A "techy" boot sequence displaying version, system diagnostics (OS, User, Time), and initialization status.
-*   **ChRIS Connection Management:**
-    *   Connect/logout from ChRIS CUBE instances.
-    *   Initial connection via CLI arguments (`chell user@url -p password`).
-    *   Secure password input with hidden characters.
-*   **Virtual File System (VFS):** Navigate ChRIS resources as if they were a local filesystem.
-    *   **`/bin` Directory:** A virtual directory listing all available ChRIS plugins.
-    *   **Standard Navigation:** `cd`, `ls`, `pwd` commands behave like their Unix counterparts.
-    *   **Path Resolution:** Supports `~` (home directory) expansion.
-*   **Advanced `ls` Functionality:**
-    *   `ls -l`: Provides a "long listing" format, displaying type, owner, size, creation date, and name.
-    *   `ls -lh`: Displays sizes in human-readable formats.
-    *   **Color Coding:** Directories (blue), links (cyan), and plugins (green) are distinct.
-*   **`cat` Command:** Display the contents of text files stored on the ChRIS filesystem.
-*   **`upload` Command:** Recursively upload local files and directories to ChRIS.
-*   **Plugin & Feed Management:**
-    *   `plugin list` / `plugin run`
-    *   `feed list` / `feed create`
-*   **Command History:** Persists command history across sessions.
-*   **Tab Completion:** Auto-completes built-in commands, plugin/app names from `/bin` (including all versions), and paths.
-*   **Piping Support:** Pipe chell command output to local system tools (e.g., `cat file.json | jq`).
+## The Concept
 
-## Architecture & Design Principles
+ChRIS is a powerful platform for medical analytics, but interacting with it often involves navigating complex web UIs or verbose REST APIs. ChELL abstracts this complexity behind the universal metaphor of a filesystem.
 
-`chell` is the interactive top layer of the "Sandwich Model" architecture:
+*   **Feeds and Folders:** Navigate remote ChRIS data directories as if they were on your local drive.
+*   **Plugins as Executables:** Discover and manage analysis tools in a virtual `/bin` directory, treating remote algorithms like local binaries.
+*   **The Store as a Package Manager:** Search and install new capabilities using a workflow analogous to `apt`, `brew`, or `yay`.
 
-1.  **`chell` (Shell):** The interactive REPL. It parses user input and invokes commands directly from the `chili` library. It does **not** spawn external processes for core commands, ensuring a fast, integrated experience.
-2.  **`chili` (Library & CLI):** The single source of truth for command logic (Controllers) and output formatting (Views). It provides strongly-typed APIs for `chell` to consume.
-3.  **`salsa` (Business Logic):** The pure business logic layer, defining resource models and operations.
-4.  **`cumin` (Infrastructure):** Handles state, connection, and raw IO.
+## Key Features
 
-## Installation & Setup
+### 1. A True Shell Experience
+ChELL provides a persistent Read-Eval-Print Loop (REPL) with all the creature comforts of a modern terminal:
+*   **Tab Autocompletion:** Instantly complete paths, commands, and plugin names.
+*   **Command History:** Cycle through your previous operations.
+*   **Shell Escapes:** Execute local system commands without leaving ChELL using the `!` prefix.
+*   **Rich Output:** Color-coded listings distinguish between directories, files, links, and plugins at a glance.
 
-1.  **Prerequisites:**
-    *   [Node.js](https://nodejs.org/) (LTS recommended)
-    *   [npm](https://www.npmjs.com/) (usually comes with Node.js)
-    *   [NVM (Node Version Manager)](https://github.com/nvm-sh/nvm) is recommended.
+### 2. Seamless Filesystem Navigation
+Use standard commands to explore the ChRIS environment. The learning curve is non-existent.
+*   **Navigation:** `cd`, `pwd`
+*   **Inspection:** `ls` (with `-l`, `-h` support), `tree`, `du`
+*   **File Ops:** `cat`, `cp`, `mv`, `rm`, `mkdir`, `touch`
+*   **Transfer:** `upload` (with robust progress bars and recursion)
 
-2.  **Clone `chell`:**
-    ```bash
-    git clone https://github.com/FNNDSC/chell.git
-    cd chell
-    ```
+### 3. The Virtual /bin
+ChELL mounts a special virtual directory at `/bin`. This directory populates dynamically with every plugin available in your ChRIS environment. It allows you to "browse" your available tools just as you would browse `/usr/bin` on Linux.
 
-3.  **Build the Ecosystem:**
-    The `Makefile` sets up the entire stack (`cumin`, `salsa`, `chili`, `chell`):
-    ```bash
-    make taco
-    ```
-    This command clones dependencies, installs packages, and builds everything in the correct order.
-
-### Connecting to ChRIS
-
-You can connect upon startup:
 ```bash
-chell <user>@<chris-url> --password <your-password>
+cd /bin
+ls -l
+# Output:
+# prwxr-xr-x  chris  2024-12-05  0  pl-dircopy-v2.1.1
+# prwxr-xr-x  chris  2024-12-05  0  pl-fshack-v1.2.0
 ```
-Alternatively, use the `connect` command within the shell:
+
+### 4. The Store: Your Package Manager
+ChELL treats the public ChRIS store as an upstream repository. The `store` and `plugin` commands function as your package manager, allowing you to discover and install new algorithms directly from the shell.
+
+*   **Search:** `store search <query>` (like `apt search`)
+*   **List:** `store list` (browse the catalog)
+*   **Install:** `plugin add <name>` (like `apt install`)
+
+This integration supports:
+*   **Peer Store Search:** Automatically finds plugins in the public ecosystem.
+*   **Docker Integration:** Can pull and register plugins directly from Docker Hub.
+*   **Smart Resolution:** Handles versioning and dependency checking automatically.
+
+### 5. Scripting and Automation
+ChELL is not just for interactive use. The `-c` (or `--command`) flag allows you to pipe commands into ChELL or use it in shell scripts, making it a powerful component in larger automation pipelines.
+
 ```bash
+# Pipe a listing to a local file
+chell -c "ls -l /home/user/study" > study_contents.txt
+
+# Automate plugin registration
+chell -c "plugin add fnndsc/pl-dircopy:latest --adminUser admin --adminPassword secret"
+```
+
+## Getting Started
+
+### Installation
+
+ChELL is part of the ChRIS TUI ecosystem. It is typically built and installed via the project's Makefile:
+
+```bash
+make taco
+```
+
+### Connecting
+
+Start the shell and connect to your ChRIS CUBE instance:
+
+```bash
+chell
 > connect --user chris --password chris1234 http://localhost:8000/api/v1/
 ```
 
-### Basic Commands
+Or connect instantly from the command line:
 
-*   **`ls`**: List contents. Supports `-l` (long), `-h` (human-readable), `--sort <field>` (sort by name/size/date/owner), and `-r`/`--reverse` (reverse order).
-*   **`cd <path>`**: Change directory.
-*   **`pwd`**: Print working directory.
-*   **`cat <file>`**: Display file content.
-*   **`upload <local> <remote>`**: Upload files/folders to ChRIS.
-*   **`plugin list`**: List available plugins.
-*   **`plugin run <name> <params>`**: Run a plugin.
-*   **`feed list`**: List feeds.
-*   **`feed create --dirs <paths>`**: Create a new feed.
-*   **`logout`**: Disconnect.
-*   **`exit`**: Exit the shell.
+```bash
+chell -u chris -p chris1234 http://localhost:8000/api/v1/
+```
 
-## Current Version
+### A Typical Workflow
 
-`chell` version: `1.10.0`
+```bash
+# 1. Explore the environment
+ls -lh
+cd /home/chris/uploads
+
+# 2. Upload local data
+upload ~/local_mri_data/ .
+
+# 3. Check available tools
+cd /bin
+ls pl-mri*
+
+# 4. Find a new tool in the store
+store search simplefs
+
+# 5. Install the tool
+# Best practice: Use the full Docker image name to ensure robustness
+plugin add fnndsc/pl-simplefsapp:latest
+
+# 6. Run the analysis
+cd ~/uploads
+plugin run pl-simplefsapp --inputdir . --outputdir ../results
+```
+
+## Architecture
+
+ChELL acts as the presentation layer in the "Sandwich Model" architecture:
+
+1.  **ChELL:** The interactive shell and user experience layer.
+2.  **ChILI:** The Command Line Interface library (controllers and views).
+3.  **Salsa:** The business logic and intent layer.
+4.  **Cumin:** The infrastructure, state, and connection layer.
 
 ---
-`chell` is part of the ChRIS Project developed by FNNDSC.
+*ChELL is part of the ChRIS Project.*

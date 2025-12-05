@@ -688,6 +688,22 @@ dirs <subcommand> [options] [args]
 * `dirs delete` - Remove directories (delegated)
 * `dirs share` - Share directory access (delegated)
 
+=== store
+
+Browses and searches the ChRIS peer store for available plugins.
+
+**Syntax:**
+```bash
+store <subcommand> [options]
+```
+
+**Subcommands:**
+
+* `store list` - List all plugins in the store
+* `store search <query>` - Search for plugins by name
+
+See link:store.adoc[store command documentation] for full details.
+
 == System Commands
 
 === exit

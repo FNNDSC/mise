@@ -67,6 +67,7 @@ describe('Peer Search', () => {
     expect(result).not.toBeNull();
     expect(mockPlugin_searchPeerStore).toHaveBeenCalledWith(
       'pl-dircopy',
+      undefined,
       expect.any(String)
     );
   });

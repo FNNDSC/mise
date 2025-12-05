@@ -14,6 +14,7 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
+import { builtinCommands_list } from '../../builtins/help.js';
 
 /**
  * Callback function type for autocomplete results.
@@ -58,18 +59,45 @@ const BUILTINS: string[] = [
 /**
  * Fetches available plugin names from /bin in the format: name-vVersion.
  * This matches the display format used in /bin listings.
+ * Uses cache first for fast completion.
  * @returns Array of plugin names with version suffixes.
  */
 async function plugins_getNames(): Promise<string[]> {
   try {
+    // Check cache first for /bin
+    const listCache = listCache_get();
+    const cached = listCache.cache_get('/bin');
+
+    if (cached && cached.data) {
+      // Return cached plugin names immediately
+      return cached.data.map((item: ListingItem) => item.name);
+    }
+
+    // Cache miss - fetch from API (only on first tab completion)
     const plugins = await plugins_listAll({});
     if (plugins && plugins.tableData) {
-      return plugins.tableData.map((p: Record<string, unknown>) => {
+      const pluginNames: string[] = plugins.tableData.map((p: Record<string, unknown>) => {
         const name: string = typeof p.name === 'string' ? p.name : String(p.name ?? '');
         const version: string = typeof p.version === 'string' ? p.version : String(p.version ?? '');
         // Format as name-vVersion to match /bin display format
         return version ? `${name}-v${version}` : name;
       });
+
+      // Cache it for next time
+      const lsItems: ListingItem[] = plugins.tableData.map((p: Record<string, unknown>) => {
+        const name: string = typeof p.name === 'string' ? p.name : String(p.name ?? '');
+        const version: string = typeof p.version === 'string' ? p.version : String(p.version ?? '');
+        return {
+          name: version ? `${name}-v${version}` : name,
+          type: 'plugin' as const,
+          size: 0,
+          owner: 'system',
+          date: p.creation_date ? String(p.creation_date) : '',
+        };
+      });
+      listCache.cache_set('/bin', lsItems);
+
+      return pluginNames;
     }
   } catch (e) {
     // Silently fail if plugins cannot be fetched
@@ -96,15 +124,22 @@ export function completer(line: string, callback: CompleterCallback): void {
   const isCommandCompletion = args.length === 1 && !line.endsWith(' ');
 
   if (isCommandCompletion) {
-    // Fetch plugin names and combine with builtins
+    // Check builtins first (instant, no async)
+    const builtinHits: string[] = BUILTINS.filter((c) => c.startsWith(trimmed));
+
+    // If we have builtin matches, return them immediately
+    if (builtinHits.length > 0) {
+      callback(null, [builtinHits, trimmed]);
+      return;
+    }
+
+    // No builtin matches - check plugins (from cache if available)
     plugins_getNames().then((pluginNames) => {
-      const allCommands = [...BUILTINS, ...pluginNames];
-      const hits = allCommands.filter((c) => c.startsWith(trimmed));
-      callback(null, [hits, trimmed]);
+      const pluginHits: string[] = pluginNames.filter((c) => c.startsWith(trimmed));
+      callback(null, [pluginHits, trimmed]);
     }).catch(() => {
-      // On error, fall back to just builtins
-      const hits = BUILTINS.filter((c) => c.startsWith(trimmed));
-      callback(null, [hits, trimmed]);
+      // On error, return no matches
+      callback(null, [[], trimmed]);
     });
     return;
   }
@@ -204,6 +239,12 @@ async function path_complete(partial: string): Promise<string[]> {
      if (lsItems) {
        items = lsItems.map((i: ListingItem) => i.name);
      }
+  } else if (absDirToList === '/usr') {
+     // Virtual /usr - contains 'bin' subdirectory
+     items = ['bin'];
+  } else if (absDirToList === '/usr/bin') {
+     // Virtual /usr/bin - builtin commands
+     items = builtinCommands_list();
   } else {
      // Native ChRIS
      try {
@@ -216,10 +257,17 @@ async function path_complete(partial: string): Promise<string[]> {
        } else {
                 // Cache miss - fetch from API
                 lsItems = await files_list({} as CLIoptions, absDirToList);         if (lsItems) {
-           // Inject 'bin' if at root
+           // Inject virtual directories if at root
            if (absDirToList === '/') {
              lsItems.push({
                name: 'bin',
+               type: 'vfs',
+               size: 0,
+               owner: 'root',
+               date: new Date().toISOString(),
+             });
+             lsItems.push({
+               name: 'usr',
                type: 'vfs',
                size: 0,
                owner: 'root',

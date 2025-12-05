@@ -16,6 +16,7 @@ import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
+import { builtinCommands_list, builtinCommand_description } from '../../builtins/help.js';
 
 /**
  * Virtual File System Router.
@@ -39,6 +40,10 @@ export class VFS {
 
       if (effectivePath === '/bin') {
         return await this.dataVirtualBin_get(options);
+      } else if (effectivePath === '/usr/bin') {
+        return await this.dataVirtualUsrBin_get(options);
+      } else if (effectivePath === '/usr') {
+        return await this.dataVirtualUsr_get(options);
       } else {
         return await this.dataNative_get(effectivePath, options);
       }
@@ -216,6 +221,74 @@ export class VFS {
     return result.ok ? result.value : [];
   }
 
+  /**
+   * Gets data for the virtual `/usr` directory.
+   * Returns Result<ListingItem[]> containing the 'bin' subdirectory.
+   *
+   * @param options - Options including sort and reverse.
+   * @returns Result<ListingItem[]>.
+   */
+  private async dataVirtualUsr_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
+    try {
+      const items: ListingItem[] = [
+        {
+          name: 'bin',
+          type: 'vfs',
+          size: 0,
+          owner: 'root',
+          date: new Date().toISOString(),
+        }
+      ];
+
+      // Apply sorting (though only one item for now)
+      const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
+      const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
+
+      return Ok(sortedItems);
+    } catch (error: unknown) {
+      const errorMsg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to list /usr: ${errorMsg}`);
+      return Err();
+    }
+  }
+
+  /**
+   * Gets data for the virtual `/usr/bin` directory (builtin commands).
+   * Returns Result<ListingItem[]> for proper error handling.
+   *
+   * @param options - Options including sort and reverse.
+   * @returns Result<ListingItem[]>.
+   */
+  private async dataVirtualUsrBin_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
+    try {
+      // Get all builtin command names
+      const builtinNames: string[] = builtinCommands_list();
+      const items: ListingItem[] = [];
+
+      // Create a ListingItem for each builtin
+      builtinNames.forEach((name: string) => {
+        const description: string | undefined = builtinCommand_description(name);
+        items.push({
+          name: name,
+          type: 'plugin', // Mark as executable like plugins
+          size: 0,
+          owner: 'system',
+          date: new Date().toISOString(),
+        });
+      });
+
+      // Apply sorting
+      const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
+      const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
+
+      return Ok(sortedItems);
+    } catch (error: unknown) {
+      const errorMsg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to list builtins: ${errorMsg}`);
+      return Err();
+    }
+  }
+
 
   /**
    * Gets data for a native ChRIS directory.
@@ -271,7 +344,7 @@ export class VFS {
           reverse: options.reverse
         }, target);
 
-        // Inject 'bin' virtual directory if listing root
+        // Inject virtual directories if listing root
         if (target === '/' || target === '') {
           items.push({
             name: 'bin',
@@ -280,7 +353,14 @@ export class VFS {
             owner: 'root',
             date: new Date().toISOString(),
           });
-          // Re-sort to ensure bin appears in correct place
+          items.push({
+            name: 'usr',
+            type: 'vfs',
+            size: 0,
+            owner: 'root',
+            date: new Date().toISOString(),
+          });
+          // Re-sort to ensure virtual dirs appear in correct place
           items.sort((a: ListingItem, b: ListingItem) => a.name.localeCompare(b.name));
         }
 

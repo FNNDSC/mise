@@ -44,10 +44,12 @@ import {
   builtin_du,
   builtin_store
 } from './builtins/index.js';
+import { builtin_executePlugin } from './builtins/pluginExecute.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
 import { Result, errorStack } from '@fnndsc/cumin';
+import { vfs } from './lib/vfs/vfs.js';
 import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
 
@@ -247,6 +249,18 @@ async function command_handle(line: string): Promise<void> {
       break;
     case 'exit': process.exit(0); break;
     default:
+      // Check if command is a plugin name in /bin
+      const binResult = await vfs.data_get('/bin');
+      if (binResult.ok) {
+        const pluginNames = binResult.value.map(item => item.name);
+        if (pluginNames.includes(command)) {
+          // Execute plugin in place
+          await builtin_executePlugin(command, args);
+          break;
+        }
+      }
+
+      // Fall through to chili delegation
       console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
       await chiliCommand_run(command, ['-s', ...args]);
       break;
@@ -691,6 +705,19 @@ export async function chell_start(): Promise<void> {
   // --- Interactive Mode ---
 
   console.log(border);
+
+  // Pre-cache /bin for fast tab completion
+  if (!session.offline) {
+    spinner.start('Populating plugin cache');
+    try {
+      await vfs.data_get('/bin');
+      spinner.stop();
+    } catch (e) {
+      spinner.stop();
+      // Silently fail - tab completion will populate on first use
+    }
+  }
+
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));
   console.log('');
 

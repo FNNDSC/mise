@@ -30,6 +30,14 @@ export async function builtin_cd(args: string[]): Promise<void> {
       await session.setCWD('/bin');
       return;
     }
+    if (logicalPath === '/usr') {
+      await session.setCWD('/usr');
+      return;
+    }
+    if (logicalPath === '/usr/bin') {
+      await session.setCWD('/usr/bin');
+      return;
+    }
 
     const client = await session.connection.client_get();
     if (!client) {

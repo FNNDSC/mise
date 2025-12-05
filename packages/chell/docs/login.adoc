@@ -6,6 +6,8 @@
 
 ChELL manages user authentication and session persistence through integration with the underlying `cumin` library. Sessions are automatically saved to disk and restored on subsequent launches, providing a seamless experience across shell invocations.
 
+**CLI args take priority:** If you start ChELL with explicit credentials/URL (`chell user@https://... --password ...` or `--user/--password <url>`), that new context is applied **before** any saved session is restored. The old context is ignored and replaced with the CLI-provided user/URL (cwd/feed/plugin reset), and the new token is persisted.
+
 == Session State Management
 
 === State Storage
@@ -104,6 +106,20 @@ The shell starts in disconnected mode:
 ----
 disconnected@no-cube:/$
 ----
+
+==== Case 4: CLI-specified context (highest priority)
+
+If you start ChELL with a user/URL via CLI args, that context wins over any saved session:
+
+[source]
+----
+chell chris@http://localhost:8000/api/v1/ --password chris1234
+[+] Session initialized.
+⣻ Establishing uplink to http://localhost:8000/api/v1/
+[+] Connection established.
+----
+
+In this flow the previous saved context is **not** restored; the new user/URL (and fresh token) overwrite persisted state, and cwd/feed/plugin are reset.
 
 === Token Validation
 

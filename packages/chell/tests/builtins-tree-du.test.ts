@@ -38,6 +38,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     stack_push: jest.fn(),
     stack_pop: jest.fn()
   },
+  computeResourceNames_parse: jest.fn(),
+  computeResources_validate: jest.fn(),
   chrisContext: {
     current_get: jest.fn(),
   },
@@ -65,6 +67,13 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: mockContextGetSingle,
+  plugin_assignToComputeResources: jest.fn(),
+  plugin_checkExists: jest.fn(),
+  plugin_importFromStore: jest.fn(),
+  plugin_registerWithAdmin: jest.fn(),
+  plugins_searchPeers: jest.fn(),
+  store_list: jest.fn(),
+  store_search: jest.fn(),
 }));
 
 // Mock chili commands (needed for index.ts imports)

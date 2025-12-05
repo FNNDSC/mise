@@ -89,7 +89,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   chrisConnection: {
     client_get: jest.fn(),
     user_get: jest.fn()
-  }
+  },
+  computeResourceNames_parse: jest.fn(),
+  computeResources_validate: jest.fn()
 }));
 
 // Mock session
@@ -125,7 +127,14 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_delete: jest.fn().mockResolvedValue(true),
   files_content: jest.fn().mockResolvedValue(''),
   files_move: jest.fn().mockResolvedValue(true),
-  files_list: jest.fn().mockResolvedValue(null)
+  files_list: jest.fn().mockResolvedValue(null),
+  plugin_assignToComputeResources: jest.fn(),
+  plugin_checkExists: jest.fn(),
+  plugin_importFromStore: jest.fn(),
+  plugin_registerWithAdmin: jest.fn(),
+  plugins_searchPeers: jest.fn(),
+  store_list: jest.fn(),
+  store_search: jest.fn()
 }));
 
 // Mock chili commands

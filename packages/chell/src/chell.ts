@@ -518,7 +518,7 @@ async function password_prompt(user: string, url: string): Promise<string> {
 import * as os from 'os';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import { chrisContext } from '@fnndsc/cumin';
+import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 
 // ... (imports remain the same)
 
@@ -567,65 +567,9 @@ export async function chell_start(): Promise<void> {
     }
   }
 
-  // Check if we have a saved session from a previous run
-  spinner.start('Checking for previous context');
-  await chrisContext.currentContext_update();
-  spinner.stop();
-  const currentContext = context_getSingle();
+  let currentContext: SingleContext = context_getSingle();
 
-  if (currentContext.user && currentContext.URL) {
-    if (config.mode !== 'execute') {
-      console.log(chalk.green('[+] Previous context detected'));
-      console.log(chalk.gray(`    User: ${chalk.cyan(currentContext.user)}`));
-      console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
-    }
-
-    // Check for existing token
-    spinner.start('Validating existing token');
-    const token = await session.connection.authToken_get(true);
-    spinner.stop();
-    if (token) {
-      // Token exists on disk, now validate it with the server
-      spinner.start(`Testing connection to ${currentContext.URL}`);
-      try {
-        const client = await session.connection.client_get();
-        if (client) {
-          // Make a simple API call to validate the token
-          await client.getUser();
-          spinner.stop();
-          if (config.mode !== 'execute') {
-            console.log(chalk.green('[+] Token validated with server'));
-            console.log(chalk.green('[+] Session restored'));
-          }
-        } else {
-          spinner.stop();
-          console.log(chalk.yellow('[!] Failed to create client'));
-          console.log(chalk.yellow('[!] Running in disconnected mode'));
-          session.offline = true;
-          console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
-        }
-      } catch (error: unknown) {
-        spinner.stop();
-        const msg: string = error instanceof Error ? error.message : String(error);
-        console.log(chalk.yellow('[!] Token expired or invalid'));
-        console.log(chalk.gray(`    Error: ${msg}`));
-        console.log(chalk.yellow('[!] Running in disconnected mode'));
-        session.offline = true;
-        console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
-      }
-    } else {
-      console.log(chalk.yellow('[!] No token found'));
-      console.log(chalk.yellow('[!] Running in disconnected mode'));
-      session.offline = true;
-      console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
-    }
-  } else {
-    if (config.mode !== 'execute') {
-      console.log(chalk.yellow('[!] No previous context found'));
-    }
-  }
-
-  // Handle explicit connection arguments (valid for both modes)
+  // Handle explicit connection arguments (valid for both modes) BEFORE restoring saved context
   if (config.connectConfig) {
     let { user, password, url } = config.connectConfig;
 
@@ -650,6 +594,15 @@ export async function chell_start(): Promise<void> {
           url: url,
           debug: false
         });
+        session.offline = false;
+        // Explicit CLI args take precedence over any saved context.
+        await chrisContext.current_set(Context.ChRISuser, user!);
+        await chrisContext.current_set(Context.ChRISURL, url);
+        await chrisContext.current_set(Context.ChRISfolder, '/');
+        await chrisContext.current_set(Context.ChRISfeed, '');
+        await chrisContext.current_set(Context.ChRISplugin, '');
+        await chrisContext.currentContext_update();
+        currentContext = context_getSingle();
         spinner.stop();
         if (config.mode !== 'execute') {
           console.log(chalk.green('[+] Connection established.'));
@@ -661,7 +614,67 @@ export async function chell_start(): Promise<void> {
         process.exit(1);
       }
     }
-  } else if ((!currentContext.user || !currentContext.URL) && !session.offline) {
+  } else {
+    // Check if we have a saved session from a previous run
+    spinner.start('Checking for previous context');
+    await chrisContext.currentContext_update();
+    spinner.stop();
+    currentContext = context_getSingle();
+
+    if (currentContext.user && currentContext.URL) {
+      if (config.mode !== 'execute') {
+        console.log(chalk.green('[+] Previous context detected'));
+        console.log(chalk.gray(`    User: ${chalk.cyan(currentContext.user)}`));
+        console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
+      }
+
+      // Check for existing token
+      spinner.start('Validating existing token');
+      const token = await session.connection.authToken_get(true);
+      spinner.stop();
+      if (token) {
+        // Token exists on disk, now validate it with the server
+        spinner.start(`Testing connection to ${currentContext.URL}`);
+        try {
+          const client = await session.connection.client_get();
+          if (client) {
+            // Make a simple API call to validate the token
+            await client.getUser();
+            spinner.stop();
+            if (config.mode !== 'execute') {
+              console.log(chalk.green('[+] Token validated with server'));
+              console.log(chalk.green('[+] Session restored'));
+            }
+          } else {
+            spinner.stop();
+            console.log(chalk.yellow('[!] Failed to create client'));
+            console.log(chalk.yellow('[!] Running in disconnected mode'));
+            session.offline = true;
+            console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
+          }
+        } catch (error: unknown) {
+          spinner.stop();
+          const msg: string = error instanceof Error ? error.message : String(error);
+          console.log(chalk.yellow('[!] Token expired or invalid'));
+          console.log(chalk.gray(`    Error: ${msg}`));
+          console.log(chalk.yellow('[!] Running in disconnected mode'));
+          session.offline = true;
+          console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
+        }
+      } else {
+        console.log(chalk.yellow('[!] No token found'));
+        console.log(chalk.yellow('[!] Running in disconnected mode'));
+        session.offline = true;
+        console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
+      }
+    } else {
+      if (config.mode !== 'execute') {
+        console.log(chalk.yellow('[!] No previous context found'));
+      }
+    }
+  }
+
+  if ((!currentContext.user || !currentContext.URL) && !session.offline) {
     // Only show "disconnected mode" if there's truly no saved session
     // and we haven't already reported it.
     console.log(chalk.yellow('[!] Running in disconnected mode.'));

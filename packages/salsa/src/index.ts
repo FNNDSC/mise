@@ -8,3 +8,4 @@ export * from './plugins/index.js';
 export * from './files/index.js';
 export * from './connect/index.js';
 export * from './context/index.js';
+export * from './store/index.js';

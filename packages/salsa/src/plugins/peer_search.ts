@@ -26,6 +26,7 @@ export interface PeerStorePlugin {
  * matching plugin along with its store URL.
  *
  * @param pluginName - Name of the plugin to search for.
+ * @param version - Optional version of the plugin to search for.
  * @param peerStoreUrls - Array of peer store URLs to search (default: cube.chrisproject.org).
  * @returns Promise resolving to plugin data and store URL, or null if not found.
  *
@@ -39,12 +40,13 @@ export interface PeerStorePlugin {
  */
 export async function plugins_searchPeers(
   pluginName: string,
+  version?: string,
   peerStoreUrls: string[] = ['https://cube.chrisproject.org/api/v1/']
 ): Promise<PeerStorePlugin | null> {
   const chrisPlugin = new ChRISPlugin();
 
   for (const peerStoreUrl of peerStoreUrls) {
-    const result = await chrisPlugin.plugin_searchPeerStore(pluginName, peerStoreUrl);
+    const result = await chrisPlugin.plugin_searchPeerStore(pluginName, version, peerStoreUrl);
     if (result) {
       return {
         plugin: result.plugin,
@@ -71,7 +73,7 @@ export async function plugins_searchPeers(
  */
 function storeName_extractFromUrl(url: string): string {
   try {
-    const urlObj = new URL(url);
+    const urlObj: URL = new URL(url);
     return urlObj.hostname;
   } catch {
     return url;
@@ -105,5 +107,5 @@ export async function plugin_searchPeersByImage(
   const lastPart: string = imageParts[imageParts.length - 1];
   const pluginName: string = lastPart.split(':')[0];
 
-  return await plugins_searchPeers(pluginName, peerStoreUrls);
+  return await plugins_searchPeers(pluginName, undefined, peerStoreUrls);
 }

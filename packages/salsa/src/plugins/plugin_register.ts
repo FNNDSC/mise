@@ -1,5 +1,6 @@
-import { chrisConnection, ChRISPlugin, errorStack } from '@fnndsc/cumin';
+import { chrisConnection, ChRISPlugin, errorStack, Client } from '@fnndsc/cumin';
 import { PluginList } from '@fnndsc/chrisapi';
+import { AdminCredentials } from './store_import.js';
 
 /**
  * Interface for plugin registration data.
@@ -27,14 +28,42 @@ export interface PluginRegistrationResponse {
  *
  * @param pluginData - The JSON payload representing the plugin's descriptor.
  * @param computeResources - Optional array of compute resource names to assign the plugin to.
+ * @param adminCreds - Optional admin credentials for registration.
  * @returns A Promise resolving to the registered plugin's data, or null on failure.
  */
 export async function plugin_registerWithAdmin(
   pluginData: PluginRegistrationData,
-  computeResources: string[] = ['host']
+  computeResources: string[] = ['host'],
+  adminCreds?: AdminCredentials
 ): Promise<PluginRegistrationResponse | null> {
   const chrisPlugin = new ChRISPlugin();
-  const result = await chrisPlugin.plugin_registerWithAdmin(pluginData, computeResources);
+  let adminToken: string | undefined;
+
+  if (adminCreds && adminCreds.username && adminCreds.password) {
+    const client = await chrisPlugin.client_get();
+    if (client) {
+      const authUrl = client.url + 'auth-token/';
+      try {
+        const token = await Client.getAuthToken(
+          authUrl,
+          adminCreds.username,
+          adminCreds.password
+        );
+        if (token) {
+          adminToken = token;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        errorStack.stack_push('warning', `Failed to get admin token: ${msg}`);
+      }
+    }
+  }
+
+  const result = await chrisPlugin.plugin_registerWithAdmin(
+    pluginData,
+    computeResources,
+    adminToken
+  );
 
   if (result) {
     console.log(`Plugin '${result.name}' registered successfully.`);

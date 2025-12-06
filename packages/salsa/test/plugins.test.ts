@@ -5,9 +5,10 @@ import {
   pluginMeta_documentationUrlGet,
   pluginMeta_pluginIDFromSearch,
   plugin_register,
+  pluginInstances_list,
   PluginSearchOptions
 } from '../src/plugins/index';
-import { ChRISPlugin, QueryHits, chrisConnection } from '@fnndsc/cumin';
+import { ChRISPlugin, QueryHits, chrisConnection, ChRISPluginInstanceGroup } from '@fnndsc/cumin';
 import axios from 'axios';
 
 jest.mock('@fnndsc/cumin', () => {
@@ -16,6 +17,7 @@ jest.mock('@fnndsc/cumin', () => {
       client_get: jest.fn()
     },
     ChRISPlugin: jest.fn(),
+    ChRISPluginInstanceGroup: jest.fn(),
     QueryHits: jest.fn()
   };
 });
@@ -39,7 +41,7 @@ describe('plugins', () => {
     const result = await plugin_run(searchable, parameters);
 
     expect(ChRISPlugin).toHaveBeenCalledTimes(1);
-    expect(mockPluginRun).toHaveBeenCalledWith(searchable, JSON.stringify(parameters));
+    expect(mockPluginRun).toHaveBeenCalledWith(searchable, '--someKey someValue');
     expect(result).toEqual({ id: 'plugin-instance-1' });
   });
 
@@ -170,5 +172,70 @@ describe('plugins', () => {
 
     expect(mockGetData).toHaveBeenCalledWith(options, 'id');
     expect(result).toBeNull();
+  });
+
+  it('pluginInstances_list should call ChRISPluginInstanceGroup.resources_listAndFilterByOptions', async () => {
+    const mockFilteredData = {
+      tableData: [
+        { id: 123, plugin_name: 'pl-dircopy', plugin_version: '2.1.2', status: 'finishedSuccessfully' }
+      ],
+      count: 1,
+      limit: 1,
+      offset: 0
+    };
+    const mockListAndFilter = jest.fn().mockResolvedValue(mockFilteredData);
+
+    (ChRISPluginInstanceGroup as jest.Mock).mockImplementation(() => ({
+      asset: {
+        resources_listAndFilterByOptions: mockListAndFilter
+      }
+    }));
+
+    const options = { id: 123, limit: 1 };
+    const result = await pluginInstances_list(options);
+
+    expect(ChRISPluginInstanceGroup).toHaveBeenCalledTimes(1);
+    expect(mockListAndFilter).toHaveBeenCalledWith(options);
+    expect(result).toEqual(mockFilteredData);
+  });
+
+  it('pluginInstances_list should return null when no instances found', async () => {
+    const mockListAndFilter = jest.fn().mockResolvedValue(null);
+
+    (ChRISPluginInstanceGroup as jest.Mock).mockImplementation(() => ({
+      asset: {
+        resources_listAndFilterByOptions: mockListAndFilter
+      }
+    }));
+
+    const result = await pluginInstances_list({ id: 999 });
+
+    expect(mockListAndFilter).toHaveBeenCalledWith({ id: 999 });
+    expect(result).toBeNull();
+  });
+
+  it('pluginInstances_list should handle multiple instances', async () => {
+    const mockFilteredData = {
+      tableData: [
+        { id: 123, plugin_name: 'pl-dircopy', plugin_version: '2.1.2' },
+        { id: 124, plugin_name: 'pl-dircopy', plugin_version: '2.1.2' }
+      ],
+      count: 2,
+      limit: 10,
+      offset: 0
+    };
+    const mockListAndFilter = jest.fn().mockResolvedValue(mockFilteredData);
+
+    (ChRISPluginInstanceGroup as jest.Mock).mockImplementation(() => ({
+      asset: {
+        resources_listAndFilterByOptions: mockListAndFilter
+      }
+    }));
+
+    const options = { plugin_name: 'pl-dircopy', limit: 10 };
+    const result = await pluginInstances_list(options);
+
+    expect(mockListAndFilter).toHaveBeenCalledWith(options);
+    expect(result?.tableData).toHaveLength(2);
   });
 });

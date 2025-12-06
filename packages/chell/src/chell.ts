@@ -212,7 +212,7 @@ async function command_handle(line: string): Promise<void> {
     case 'logout': await builtin_logout(); break;
     case 'cd': await builtin_cd(args); break;
     case 'ls': await builtin_ls(args); break;
-    case 'pwd': await builtin_pwd(); break;
+    case 'pwd': await builtin_pwd(args); break;
     case 'cat': await builtin_cat(args); break;
     case 'rm': await builtin_rm(args); break;
     case 'cp': await builtin_cp(args); break;
@@ -392,7 +392,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       case 'logout': await builtin_logout(); break;
       case 'cd': await builtin_cd(args); break;
       case 'ls': await builtin_ls(args); break;
-      case 'pwd': await builtin_pwd(); break;
+      case 'pwd': await builtin_pwd(args); break;
       case 'cat': await builtin_cat(args); break;
       case 'rm': await builtin_rm(args); break;
       case 'touch': await builtin_touch(args); break;

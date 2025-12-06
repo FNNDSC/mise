@@ -48,9 +48,22 @@ const helpText: Record<string, CommandHelp> = {
     ],
   },
   pwd: {
-    usage: 'pwd',
+    usage: 'pwd [options]',
     description: 'Print current working directory',
-    examples: ['pwd'],
+    options: [
+      '--title    Replace feed_XXXX and pl-<name>_XXXX with titles in path',
+    ],
+    examples: [
+      'pwd                  # Show actual path',
+      'pwd --title          # Show path with feed/plugin titles',
+      '',
+      '# Example output:',
+      '# pwd',
+      '# /home/chris/feeds/feed_2326/pl-dircopy_176660/data',
+      '',
+      '# pwd --title',
+      '# /home/chris/feeds/Brain MRI Analysis/dircopy v2.1.1/data',
+    ],
   },
   cat: {
     usage: 'cat <file> [file...]',

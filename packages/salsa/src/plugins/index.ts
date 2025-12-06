@@ -9,6 +9,7 @@ import {
   Dictionary,
   ChRISPluginMetaPluginGroup, // Not directly used in functions yet, but for potential future logic
   ChRISPluginGroup,
+  ChRISPluginInstanceGroup,
   FilteredResourceData,
   ListOptions,
   Searchable,
@@ -60,6 +61,22 @@ export async function pluginFields_get(): Promise<string[] | null> {
 
   const results = await pluginGroup.asset.resourceFields_get();
   return results ? results.fields : null;
+}
+
+/**
+ * List plugin instances based on options.
+ *
+ * @param options - Search and pagination options (e.g., { id: 123 }).
+ * @returns A Promise resolving to FilteredResourceData or null.
+ */
+export async function pluginInstances_list(options: ListOptions): Promise<FilteredResourceData | null> {
+  const pluginInstanceGroup = new ChRISPluginInstanceGroup();
+
+  if (!pluginInstanceGroup) {
+    return null;
+  }
+
+  return await pluginInstanceGroup.asset.resources_listAndFilterByOptions(options);
 }
 
 /**

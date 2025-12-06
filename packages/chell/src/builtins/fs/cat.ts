@@ -7,6 +7,7 @@ import { path_resolve } from '../utils.js';
 import { files_cat as chefs_cat_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { cat_render } from '@fnndsc/chili/views/fs.js';
 import { help_show } from '../help.js';
+import { errorStack, Result, StackMessage } from '@fnndsc/cumin';
 
 /**
  * Displays the content of a file.
@@ -34,11 +35,13 @@ export async function builtin_cat(args: string[]): Promise<void> {
      return;
   }
 
-  try {
-     const content: string | null = await chefs_cat_cmd(target);
-     console.log(cat_render(content, pathArg));
-  } catch (e: unknown) {
-     const msg: string = e instanceof Error ? e.message : String(e);
-     console.error(chalk.red(`cat: ${msg}`));
+  const result: Result<string> = await chefs_cat_cmd(target);
+
+  if (!result.ok) {
+     const error: StackMessage | undefined = errorStack.stack_pop();
+     console.error(chalk.red(`cat: ${error?.message || 'Unknown error'}`));
+     return;
   }
+
+  console.log(cat_render(result.value, pathArg));
 }

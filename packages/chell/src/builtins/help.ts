@@ -19,7 +19,7 @@ const helpText: Record<string, CommandHelp> = {
     usage: 'ls [options] [path]',
     description: 'List directory contents',
     options: [
-      '-l          Long format (detailed information)',
+      '-l          Long format (detailed information, shows feed/plugin titles)',
       '-h          Human-readable sizes (use with -l)',
       '-f, --refresh  Force refresh (ignore cache)',
       '-r, --reverse  Reverse sort order',
@@ -28,12 +28,16 @@ const helpText: Record<string, CommandHelp> = {
     ],
     examples: [
       'ls                    # List current directory',
-      'ls -l                 # Long format',
+      'ls -l                 # Long format with titles',
       'ls -lh                # Long format with human sizes',
       'ls -f                 # Force refresh from server',
       'ls /home/user/data    # List specific directory',
       'ls *.txt              # List matching files (wildcard)',
       'ls --sort=size -r     # Sort by size, reversed',
+      '',
+      '# Long format shows feed and plugin instance titles:',
+      '# d user 0  2025-05-18  feed_875           Brain MRI Analysis',
+      '# d user 0  2025-05-18  pl-dircopy_33314   pl-dircopy v2.1.2',
     ],
   },
   cd: {

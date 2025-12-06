@@ -4,7 +4,7 @@
  */
 import { session } from '../../session/index.js';
 import { chrisConnection } from '@fnndsc/cumin';
-import { feeds_list } from '@fnndsc/salsa';
+import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
 
 /**
  * Prints the current working directory in the ChRIS filesystem context.
@@ -59,12 +59,12 @@ async function path_withTitles(path: string): Promise<string> {
       if (pluginMatch) {
         const pluginInstanceId: number = parseInt(pluginMatch[2], 10);
         try {
-          const client: any = await chrisConnection.client_get();
-          if (client) {
-            const instance: any = await client.getPluginInstance(pluginInstanceId);
-            if (instance && instance.data) {
-              const pluginName: string = instance.data.plugin_name || '';
-              const pluginVersion: string = instance.data.plugin_version || '';
+          const instanceData: any = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
+          if (instanceData && instanceData.tableData && instanceData.tableData.length > 0) {
+            const instance: any = instanceData.tableData[0];
+            if (instance) {
+              const pluginName: string = instance.plugin_name || '';
+              const pluginVersion: string = instance.plugin_version || '';
               return pluginVersion ? `${pluginName} v${pluginVersion}` : pluginName;
             }
           }

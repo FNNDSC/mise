@@ -129,6 +129,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_move: jest.fn().mockResolvedValue(true),
   files_list: jest.fn().mockResolvedValue(null),
   feeds_list: jest.fn().mockResolvedValue(null),
+  pluginInstances_list: jest.fn().mockResolvedValue(null),
   plugin_assignToComputeResources: jest.fn(),
   plugin_checkExists: jest.fn(),
   plugin_importFromStore: jest.fn(),

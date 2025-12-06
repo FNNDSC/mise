@@ -569,8 +569,19 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
  * @param fileId - The ID of the file to view.
  * @returns A Promise resolving to the file content as a Buffer, or null on failure.
  */
-export async function files_view(fileId: number): Promise<Buffer | null> {
-  return await chrisIO.file_download(fileId);
+/**
+ * Views content of a file in ChRIS.
+ *
+ * @param fileId - The ID of the file to view.
+ * @returns A Promise resolving to a Result containing the file content as a Buffer, or Err on failure.
+ */
+export async function files_view(fileId: number): Promise<Result<Buffer>> {
+  const buffer: Buffer | null = await chrisIO.file_download(fileId);
+  if (buffer === null) {
+      // chrisIO.file_download should have already pushed an error
+      return Err();
+  }
+  return Ok(buffer);
 }
 
 /**
@@ -579,25 +590,47 @@ export async function files_view(fileId: number): Promise<Buffer | null> {
  * @param filePath - The full ChRIS path to the file.
  * @returns A Promise resolving to the content string or null.
  */
-export async function files_content(filePath: string): Promise<string | null> {
-  const dir = path.posix.dirname(filePath);
-  const name = path.posix.basename(filePath);
+/**
+ * Retrieves the content of a file by its path.
+ *
+ * @param filePath - The full ChRIS path to the file.
+ * @returns A Result containing the content string or error.
+ */
+export async function files_content(filePath: string): Promise<Result<string>> {
+  const dir: string = path.posix.dirname(filePath);
+  const name: string = path.posix.basename(filePath);
   
-  const group = await files_getGroup('files', dir);
-  if (!group) return null;
-  
-  const results = await group.asset.resources_getAll();
-  if (results && results.tableData) {
-     const file = results.tableData.find((f: Record<string, any>) => {
-         const fname = f.fname || '';
-         // Compare basenames to find the file in this directory
-         return path.posix.basename(fname) === name;
-     });
-     
-     if (file && file.id) {
-         const buffer = await files_view(Number(file.id));
-         return buffer ? buffer.toString('utf-8') : null;
-     }
+  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', dir);
+  if (!group) {
+     return Err();
   }
-  return null;
+  
+  const results: FilteredResourceData | null = await group.asset.resources_getAll();
+  if (!results || !results.tableData) {
+     errorStack.stack_push("error", `No files found in directory: ${dir}`);
+     return Err();
+  }
+
+  const file: Record<string, unknown> | undefined = results.tableData.find((f: Record<string, unknown>) => {
+      const fname: string = typeof f.fname === 'string' ? f.fname : '';
+      return path.posix.basename(fname) === name;
+  });
+  
+  if (!file) {
+      errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
+      return Err();
+  }
+
+  if (!file.id) {
+      errorStack.stack_push("error", `File has no ID: ${name}`);
+      return Err();
+  }
+
+  const filesViewResult: Result<Buffer> = await files_view(Number(file.id));
+  if (!filesViewResult.ok) {
+      // The error is already pushed by files_view or chrisIO.file_download
+      return Err();
+  }
+
+  return Ok(filesViewResult.value.toString('utf-8'));
 }

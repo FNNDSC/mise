@@ -49,11 +49,11 @@ export async function feedFields_get(): Promise<string[] | null> {
  * @returns A Promise resolving to the created feed record, or null if creation failed.
  */
 export async function feed_create(dirs: string[], params: ChRISObjectParams = {}): Promise<SimpleRecord | null> {
-    const chrisFeed = new ChRISFeed();
-    // For now, assuming dirs is passed as is or joined.
-    const dirsArg = Array.isArray(dirs) ? dirs.join(',') : dirs;
+  const chrisFeed = new ChRISFeed();
+  // For now, assuming dirs is passed as is or joined.
+  const dirsArg = Array.isArray(dirs) ? dirs.join(',') : dirs;
 
-    return await chrisFeed.createFromDirs(dirsArg, params);
+  return await chrisFeed.createFromDirs(dirsArg, params);
 }
 
 /**

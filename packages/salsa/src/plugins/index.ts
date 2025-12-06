@@ -75,6 +75,22 @@ export interface PluginSearchOptions {
 }
 
 /**
+ * Converts a Dictionary to CLI-style parameter string.
+ *
+ * @param params - Dictionary of parameters.
+ * @returns CLI-style string (e.g., "--key1 value1 --key2 value2").
+ */
+function dictionary_toCLI(params: Dictionary): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      parts.push(`--${key} ${value}`);
+    }
+  }
+  return parts.join(' ');
+}
+
+/**
  * Run a plugin instance.
  *
  * This function orchestrates the execution of a ChRIS plugin with specified parameters.
@@ -85,9 +101,8 @@ export interface PluginSearchOptions {
  */
 export async function plugin_run(searchable: string, parameters: Dictionary): Promise<Dictionary | null> {
   const chrisPlugin = new ChRISPlugin();
-  // Ensure parameters are stringified if cumin expects a string, otherwise pass as object
-  // Looking at cumin's plugin_run, it expects string for parameters.
-  const paramsString = JSON.stringify(parameters); 
+  // Convert Dictionary to CLI-style string format expected by cumin
+  const paramsString: string = dictionary_toCLI(parameters);
   return await chrisPlugin.plugin_run(searchable, paramsString);
 }
 
@@ -219,3 +234,4 @@ export async function plugin_readme(pluginId: string): Promise<string | null> {
 export * from './plugin_register.js';
 export * from './peer_search.js';
 export * from './store_import.js';
+export * from './plugin_executeInPlace.js';

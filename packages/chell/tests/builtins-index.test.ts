@@ -35,6 +35,11 @@ const mockCatRender = jest.fn();
 const mockRmRender = jest.fn();
 const mockChiliCommandRun = jest.fn();
 
+// Define local Ok, Err, and errorStack for consistent use across mocks and tests
+const Ok = (val: any) => ({ ok: true, value: val });
+const Err = (err: any) => ({ ok: false, error: err });
+const errorStack = { stack_push: jest.fn(), stack_pop: jest.fn() };
+
 // Mock chili utils
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
@@ -62,13 +67,10 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     cache_markDirty: jest.fn(),
   }),
   connectionConfig: { debug: false },
-  errorStack: {
-    stack_push: jest.fn(),
-    stack_pop: jest.fn()
-  },
+  errorStack: errorStack,
   Result: {},
-  Ok: (val: any) => ({ ok: true, value: val }),
-  Err: (err: any) => ({ ok: false, error: err }),
+  Ok: Ok,
+  Err: Err,
   Context: {
     ChRISuser: 'ChRISuser',
     ChRISurl: 'ChRISurl',
@@ -629,7 +631,7 @@ describe('Builtins - Core Functions', () => {
 
   describe('builtin_cat()', () => {
     it('should display file content', async () => {
-      mockChefsCat.mockResolvedValue('file content here');
+      mockChefsCat.mockResolvedValue(Ok('file content here'));
       mockCatRender.mockReturnValue('rendered content');
 
       await builtin_cat(['/home/user/test.txt']);
@@ -651,7 +653,8 @@ describe('Builtins - Core Functions', () => {
     });
 
     it('should handle cat errors', async () => {
-      mockChefsCat.mockRejectedValue(new Error('File not found'));
+      mockChefsCat.mockResolvedValue(Err(new Error('File not found')));
+      errorStack.stack_pop.mockReturnValueOnce({ type: 'error', message: 'File not found' });
 
       await builtin_cat(['/tmp/missing.txt']);
 

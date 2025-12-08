@@ -9,3 +9,4 @@ export * from './files/index.js';
 export * from './connect/index.js';
 export * from './context/index.js';
 export * from './store/index.js';
+export * from './pipelines/index.js';

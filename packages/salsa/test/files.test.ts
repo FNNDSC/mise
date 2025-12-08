@@ -20,6 +20,8 @@ import {
 import { FileBrowserFolder } from '@fnndsc/chrisapi';
 
 jest.mock('@fnndsc/cumin', () => {
+  const Ok = (val: any) => ({ ok: true, value: val });
+  const Err = (err?: any) => ({ ok: false, error: err });
   return {
     chrisConnection: {
       client_get: jest.fn()
@@ -37,7 +39,9 @@ jest.mock('@fnndsc/cumin', () => {
     },
     Context: {
       ChRISfolder: 'folder'
-    }
+    },
+    Ok,
+    Err,
   };
 });
 jest.mock('@fnndsc/chrisapi');
@@ -288,7 +292,10 @@ describe('files', () => {
     it('should call chrisIO.file_download and return content', async () => {
       const result = await files_view(456);
       expect(chrisIO.file_download).toHaveBeenCalledWith(456);
-      expect(result).toEqual(Buffer.from('Content of file 456'));
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual(Buffer.from('Content of file 456'));
+      }
     });
   });
 });

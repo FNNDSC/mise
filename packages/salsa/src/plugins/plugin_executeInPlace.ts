@@ -9,15 +9,10 @@
 
 import {
   path_isInFeed,
-  path_extractPluginInstanceID,
-  path_extractFeedID,
-  path_findLatestDircopy,
   Dictionary,
-  errorStack,
 } from '@fnndsc/cumin';
-import { feed_create } from '../feeds/index.js';
-import { plugin_run } from './index.js';
-import * as path from 'path';
+import { plugin_executeNewFeed } from './internal/plugin_executeNewFeed.js';
+import { plugin_executeContinueFeed } from './internal/plugin_executeContinueFeed.js';
 
 /**
  * Result of plugin execution in place.
@@ -84,143 +79,22 @@ export async function plugin_executeInPlace(
   cwd: string,
   binListing: string[]
 ): Promise<PluginExecutionResult | null> {
-  // Analyze path context
   const isInFeed: boolean = path_isInFeed(cwd);
 
   if (!isInFeed) {
-    // ===================================================================
-    // NEW FEED CREATION PATH
-    // ===================================================================
-
-    // Get feed title (from params or use current directory name)
-    const feedTitle: string = (contextParams.feed_title as string) || path.basename(cwd);
-
-    // Find latest pl-dircopy
-    const dircopyPlugin: string | null = path_findLatestDircopy(binListing);
-    if (!dircopyPlugin) {
-      errorStack.stack_push('error', 'pl-dircopy not found. Cannot create feeds.');
-      return null;
-    }
-
-    // Create feed via pl-dircopy
-    const feedResult: Dictionary | null = await feed_create([cwd], {
-      params: `title:${feedTitle}`,
-    });
-
-    if (!feedResult) {
-      errorStack.stack_push('error', 'Failed to create feed');
-      return null;
-    }
-
-    const feedID: number = feedResult.id as number;
-    const dircopyInstanceID: number = (feedResult.pluginInstance as any).data.id as number;
-
-    // Run user's plugin with dircopy as previous_id
-    const combinedParams: Dictionary = {
-      ...pluginParams,
-      previous_id: dircopyInstanceID,
-    };
-
-    // Add instance_title if provided
-    if (contextParams.instance_title) {
-      combinedParams.title = contextParams.instance_title;
-    }
-
-    const pluginResult: Dictionary | null = await plugin_run(pluginName, combinedParams);
-
-    if (!pluginResult) {
-      errorStack.stack_push('error', 'Failed to run plugin');
-      return null;
-    }
-
-    const pluginInstanceID: number = pluginResult.id as number;
-
-    // Extract actual plugin name from result (not the search string)
-    const actualPluginName: string = pluginResult.plugin_name as string;
-
-    // Construct output path
-    // Pattern: /home/<user>/feeds/feed_<feedID>/pl-dircopy_<dircopyID>/<pluginName>_<instanceID>/data/
-    const username: string = cwd.split('/')[2]; // Extract from /home/<user>/...
-    const outputPath: string = `/home/${username}/feeds/feed_${feedID}/pl-dircopy_${dircopyInstanceID}/${actualPluginName}_${pluginInstanceID}/data/`;
-
-    return {
-      feedID,
-      dircopyInstanceID,
-      pluginInstanceID,
-      pluginName: actualPluginName,
-      outputPath,
-    };
+    return plugin_executeNewFeed(
+      pluginName,
+      pluginParams,
+      contextParams,
+      cwd,
+      binListing
+    );
   } else {
-    // ===================================================================
-    // EXISTING FEED PATH
-    // ===================================================================
-
-    // Extract plugin instance ID from path
-    const previousID: number | null = path_extractPluginInstanceID(cwd);
-    if (previousID === null) {
-      errorStack.stack_push(
-        'error',
-        'Could not extract plugin instance ID from current directory path'
-      );
-      return null;
-    }
-
-    const feedID: number | null = path_extractFeedID(cwd);
-    if (feedID === null) {
-      errorStack.stack_push('error', 'Could not extract feed ID from current directory path');
-      return null;
-    }
-
-    // Run plugin with extracted previous_id
-    const combinedParams: Dictionary = {
-      ...pluginParams,
-      previous_id: previousID,
-    };
-
-    // Add instance_title if provided (for DAG naming)
-    if (contextParams.instance_title) {
-      combinedParams.title = contextParams.instance_title;
-    }
-
-    const pluginResult: Dictionary | null = await plugin_run(pluginName, combinedParams);
-
-    if (!pluginResult) {
-      errorStack.stack_push('error', 'Failed to run plugin');
-      return null;
-    }
-
-    const pluginInstanceID: number = pluginResult.id as number;
-
-    // Extract actual plugin name from result (not the search string)
-    const actualPluginName: string = pluginResult.plugin_name as string;
-
-    // Find the previous plugin instance directory in the current path
-    // Walk up the path to find the directory matching pattern: <name>_<previousID>
-    const pathParts: string[] = cwd.split('/');
-    let previousPluginPath: string = '';
-
-    // Find the directory that ends with _<previousID>
-    for (let i: number = 0; i < pathParts.length; i++) {
-      if (pathParts[i].endsWith(`_${previousID}`)) {
-        // Found it - construct path up to and including this directory
-        previousPluginPath = pathParts.slice(0, i + 1).join('/');
-        break;
-      }
-    }
-
-    // Fallback: if we couldn't find it, use the feed directory + guess
-    if (!previousPluginPath) {
-      const username: string = cwd.split('/')[2];
-      previousPluginPath = `/home/${username}/feeds/feed_${feedID}/previous_${previousID}`;
-    }
-
-    // Construct output path: previous plugin path + new plugin + data
-    const outputPath: string = `${previousPluginPath}/${actualPluginName}_${pluginInstanceID}/data/`;
-
-    return {
-      pluginInstanceID,
-      pluginName: actualPluginName,
-      outputPath,
-    };
+    return plugin_executeContinueFeed(
+      pluginName,
+      pluginParams,
+      contextParams,
+      cwd
+    );
   }
 }

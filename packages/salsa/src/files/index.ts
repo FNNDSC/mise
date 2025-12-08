@@ -613,7 +613,8 @@ export async function files_content(filePath: string): Promise<Result<string>> {
 
   const file: Record<string, unknown> | undefined = results.tableData.find((f: Record<string, unknown>) => {
       const fname: string = typeof f.fname === 'string' ? f.fname : '';
-      return path.posix.basename(fname) === name;
+      const basename = path.posix.basename(fname);
+      return basename === name || basename === `? ${name}`;
   });
   
   if (!file) {
@@ -625,6 +626,7 @@ export async function files_content(filePath: string): Promise<Result<string>> {
       errorStack.stack_push("error", `File has no ID: ${name}`);
       return Err();
   }
+  console.log(`Debug: Extracted file.id=${file.id} for filePath=${filePath}`);
 
   const filesViewResult: Result<Buffer> = await files_view(Number(file.id));
   if (!filesViewResult.ok) {

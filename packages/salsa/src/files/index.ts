@@ -16,6 +16,7 @@ import {
 import Client, { FileBrowserFolder } from "@fnndsc/chrisapi";
 import { fileContent_getPipeline } from './pipeline_content';
 import { fileContent_getRegular } from './regular_content';
+import { fileContent_getPACS } from './pacs_content';
 
 /**
  * Represents a file or directory item in a recursive listing.
@@ -556,12 +557,17 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
 /**
  * Retrieves the content of a file by its path.
  *
+ * Router function that delegates to specialized handlers based on path type.
+ *
  * @param filePath - The full ChRIS path to the file.
  * @returns A Result containing the content string or error.
  */
 export async function fileContent_get(filePath: string): Promise<Result<string>> {
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipeline(filePath);
+  }
+  if (filePath.startsWith('/SERVICES/PACS/')) {
+    return fileContent_getPACS(filePath);
   }
   return fileContent_getRegular(filePath);
 }

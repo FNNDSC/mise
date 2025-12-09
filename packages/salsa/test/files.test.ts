@@ -215,8 +215,6 @@ describe('files', () => {
       const result = await files_create(content, path);
 
       expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/new', 'file.txt');
-      // Verify Blob content (jest doesn't easily let us inspect Blob content directly for expect)
-      // We can rely on file_upload's mock for now.
       expect(result).toBe(true);
       expect(errorStack.stack_push).not.toHaveBeenCalled();
     });
@@ -263,7 +261,6 @@ describe('files', () => {
       const result = await files_touch(path);
 
       expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/', 'empty.txt');
-      // Can't directly check Blob content here, but we know it should be empty based on implementation
       expect(result).toBe(true);
       expect(errorStack.stack_push).not.toHaveBeenCalled();
     });
@@ -273,7 +270,6 @@ describe('files', () => {
       const path = '/fail_touch.txt';
       const result = await files_touch(path);
       expect(result).toBe(false);
-      // Now, only the error from files_create should be pushed
       expect(errorStack.stack_push).toHaveBeenCalledWith('error', `File upload failed for ${path}.`);
     });
   });

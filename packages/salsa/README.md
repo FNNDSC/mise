@@ -39,7 +39,7 @@
 -   **`plugins`**: Logic for searching, resolving, running, and registering plugins. `plugins_listAll` fetches complete lists.
 -   **`files`**: File system interactions:
     -   `files_listAll`: Fetch complete directory listings (pagination handling).
-    -   `files_content`: Read remote file content.
+    -   `fileContent_get`: Read remote file content.
     -   `files_uploadPath`: Recursively upload local files or directories to ChRIS.
     -   `files_touch`, `files_mkdir`.
 

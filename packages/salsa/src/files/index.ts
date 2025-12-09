@@ -13,7 +13,9 @@ import {
   Ok,
   Err,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/chrisapi";
+import Client, { FileBrowserFolder } from "@fnndsc/chrisapi";
+import { fileContent_getPipeline } from './pipeline_content';
+import { fileContent_getRegular } from './regular_content';
 
 /**
  * Represents a file or directory item in a recursive listing.
@@ -36,13 +38,13 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
   // 1. List files in current directory
   const filesGroup = await files_getGroup('files', rootPath);
   if (filesGroup) {
-    const fileResults = await filesGroup.asset.resources_getAll();
+    const fileResults: FilteredResourceData | null = await filesGroup.asset.resources_getAll();
     if (fileResults && fileResults.tableData) {
-      fileResults.tableData.forEach((f: any) => {
+      fileResults.tableData.forEach((f: Record<string, any>) => {
         items.push({
-          path: f.fname, // fname is the full path
+          path: f.fname || '', // fname is the full path
           type: 'file',
-          size: f.fsize
+          size: f.fsize || 0
         });
       });
     }
@@ -51,15 +53,15 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
   // 2. List subdirectories
   const dirsGroup = await files_getGroup('dirs', rootPath);
   if (dirsGroup) {
-    const dirResults = await dirsGroup.asset.resources_getAll();
+    const dirResults: FilteredResourceData | null = await dirsGroup.asset.resources_getAll();
     if (dirResults && dirResults.tableData) {
       for (const d of dirResults.tableData) {
-        const dirPath = d.path;
+        const dirPath: string = d.path;
         // Add the directory itself
         items.push({ path: dirPath, type: 'dir' });
         
         // Recurse
-        const subItems = await files_listRecursive(dirPath);
+        const subItems: FsItem[] = await files_listRecursive(dirPath);
         items = items.concat(subItems);
       }
     }
@@ -82,27 +84,20 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
     // For a copy, we create the target root first.
     await files_mkdir(destPath);
 
-    const items = await files_listRecursive(srcPath);
+    const items: FsItem[] = await files_listRecursive(srcPath);
     let successCount = 0;
     let failCount = 0;
 
     for (const item of items) {
       // Normalize item.path to ensure it has a leading slash
-      const normalizedItemPath = item.path.startsWith('/') ? item.path : '/' + item.path;
+      const normalizedItemPath: string = item.path.startsWith('/') ? item.path : '/' + item.path;
 
-      // Calculate new path
-      // normalizedItemPath: /home/user/src/subdir/file.txt
-      // srcPath:            /home/user/src
-      // relative:           subdir/file.txt
-      // destPath:           /home/user/dest
-      // target:             /home/user/dest/subdir/file.txt
-
-      const relativePath = normalizedItemPath.substring(srcPath.length).replace(/^\//, '');
-      const targetPath = path.posix.join(destPath, relativePath); // Use posix for ChRIS paths
+      const relativePath: string = normalizedItemPath.substring(srcPath.length).replace(/^\//, '');
+      const targetPath: string = path.posix.join(destPath, relativePath); // Use posix for ChRIS paths
 
       if (item.type === 'dir') {
         console.log(`  Creating directory: ${targetPath}`);
-        const created = await files_mkdir(targetPath);
+        const created: boolean = await files_mkdir(targetPath);
         if (!created) {
           console.warn(`  Warning: Failed to create directory ${targetPath}`);
           failCount++;
@@ -111,7 +106,7 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
         }
       } else if (item.type === 'file') {
         console.log(`  Copying file: ${path.posix.basename(normalizedItemPath)}`);
-        const copied = await files_copy(normalizedItemPath, targetPath);
+        const copied: boolean = await files_copy(normalizedItemPath, targetPath);
         if (!copied) {
           console.warn(`  Warning: Failed to copy file ${normalizedItemPath}`);
           failCount++;
@@ -151,8 +146,8 @@ async function fileId_resolve(srcPath: string): Promise<Result<number>> {
 
   let fileId: number | undefined;
   if (results && results.tableData) {
-      const match: Record<string, unknown> | undefined = results.tableData.find((f: Record<string, unknown>) => {
-          const fname: string = typeof f.fname === 'string' ? f.fname : '';
+      const match: { id?: number, fname?: string } | undefined = results.tableData.find((f: { fname?: string }) => {
+          const fname: string = f.fname || '';
           return fname === srcPath || path.posix.basename(fname) === srcName;
       });
       if (match && match.id !== undefined) {
@@ -183,13 +178,8 @@ async function path_isDir(targetPath: string): Promise<boolean> {
     return false;
   }
 
-  return results.tableData.some((entry: Record<string, unknown>) => {
-    const candidate: string = typeof entry.path === "string" && entry.path.length > 0
-      ? entry.path
-      : typeof entry.fname === "string"
-        ? entry.fname
-        : "";
-
+  return results.tableData.some((entry: { path?: string, fname?: string }) => {
+    const candidate: string = entry.path || entry.fname || "";
     return candidate === targetPath || path.posix.basename(candidate) === name;
   });
 }
@@ -216,7 +206,7 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
     const dir = path.posix.dirname(pathStr);
     const name = path.posix.basename(pathStr);
     
-    const success = await chrisIO.file_upload(uploadContent, dir, name);
+    const success: boolean = await chrisIO.file_upload(uploadContent, dir, name);
     if (!success) {
       errorStack.stack_push("error", `File upload failed for ${pathStr}.`);
     }
@@ -262,7 +252,7 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
     const fileId: number = fileIdResult.value;
 
     // 2. Download content
-    const content = await chrisIO.file_download(fileId);
+    const content: Buffer | null = await chrisIO.file_download(fileId);
     if (content === null) {
         errorStack.stack_push("error", `Failed to download source file (ID: ${fileId}): ${srcPath}`);
         return false;
@@ -270,7 +260,7 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
 
     // 3. Upload to destination
     // files_create handles Blob/Buffer conversion and path splitting
-    const uploadSuccess = await files_create(content, destPath);
+    const uploadSuccess: boolean = await files_create(content, destPath);
     if (!uploadSuccess) {
         const lastError = errorStack.stack_pop();
         if (lastError) {
@@ -344,7 +334,7 @@ export async function files_uploadPath(localPath: string, remotePath: string): P
  */
 export async function files_mkdir(folderPath: string): Promise<boolean> {
   try {
-    const client = await chrisConnection.client_get();
+    const client: Client | null = await chrisConnection.client_get();
     if (!client) {
       errorStack.stack_push("error", "Not connected to ChRIS. Cannot create folder.");
       return false;
@@ -564,75 +554,14 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
 }
 
 /**
- * Views content of a file in ChRIS.
- *
- * @param fileId - The ID of the file to view.
- * @returns A Promise resolving to the file content as a Buffer, or null on failure.
- */
-/**
- * Views content of a file in ChRIS.
- *
- * @param fileId - The ID of the file to view.
- * @returns A Promise resolving to a Result containing the file content as a Buffer, or Err on failure.
- */
-export async function files_view(fileId: number): Promise<Result<Buffer>> {
-  const buffer: Buffer | null = await chrisIO.file_download(fileId);
-  if (buffer === null) {
-      // chrisIO.file_download should have already pushed an error
-      return Err();
-  }
-  return Ok(buffer);
-}
-
-/**
- * Retrieves the content of a file by its path.
- *
- * @param filePath - The full ChRIS path to the file.
- * @returns A Promise resolving to the content string or null.
- */
-/**
  * Retrieves the content of a file by its path.
  *
  * @param filePath - The full ChRIS path to the file.
  * @returns A Result containing the content string or error.
  */
-export async function files_content(filePath: string): Promise<Result<string>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-  
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', dir);
-  if (!group) {
-     return Err();
+export async function fileContent_get(filePath: string): Promise<Result<string>> {
+  if (filePath.startsWith('/PIPELINES/')) {
+    return fileContent_getPipeline(filePath);
   }
-  
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-     errorStack.stack_push("error", `No files found in directory: ${dir}`);
-     return Err();
-  }
-
-  const file: Record<string, unknown> | undefined = results.tableData.find((f: Record<string, unknown>) => {
-      const fname: string = typeof f.fname === 'string' ? f.fname : '';
-      const basename = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-  });
-  
-  if (!file) {
-      errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
-      return Err();
-  }
-
-  if (!file.id) {
-      errorStack.stack_push("error", `File has no ID: ${name}`);
-      return Err();
-  }
-  console.log(`Debug: Extracted file.id=${file.id} for filePath=${filePath}`);
-
-  const filesViewResult: Result<Buffer> = await files_view(Number(file.id));
-  if (!filesViewResult.ok) {
-      // The error is already pushed by files_view or chrisIO.file_download
-      return Err();
-  }
-
-  return Ok(filesViewResult.value.toString('utf-8'));
+  return fileContent_getRegular(filePath);
 }

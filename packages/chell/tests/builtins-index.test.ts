@@ -127,7 +127,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_touch: jest.fn().mockResolvedValue(true),
   files_uploadPath: jest.fn().mockResolvedValue(true),
   files_delete: jest.fn().mockResolvedValue(true),
-  files_content: jest.fn().mockResolvedValue(''),
+  fileContent_get: jest.fn().mockResolvedValue(''),
   files_move: jest.fn().mockResolvedValue(true),
   files_list: jest.fn().mockResolvedValue(null),
   feeds_list: jest.fn().mockResolvedValue(null),

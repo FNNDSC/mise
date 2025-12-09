@@ -46,6 +46,11 @@ Interactive Commands:
   exit       Exit the shell
   <other>    Any other command is passed to chili
 
+Shell Features:
+  Pipes              Use | to chain commands: cat file.txt | wc -l
+  Output Redirection Use > to write to file: cat file.txt > output.txt
+                     Use >> to append to file: cat file.txt >> output.txt
+
 Options:
   --physicalFS    Operate directly on physical paths without logical-to-physical mapping.
                   Use this for debugging or when working with physical ChRIS storage paths.

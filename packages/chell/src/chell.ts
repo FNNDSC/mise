@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import figlet from 'figlet';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { Command } from 'commander';
 import { REPL } from './core/repl.js';
@@ -152,6 +152,31 @@ async function command_handle(line: string): Promise<void> {
         const elapsed: number = performance.now() - startTime;
         console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
       }
+    }
+    return;
+  }
+
+  // Check for output redirection (> or >>)
+  const redirectInfo = redirect_parse(trimmedLine);
+  if (redirectInfo) {
+    try {
+      // Execute command and capture output
+      const { buffer } = await chellCommand_executeAndCapture(redirectInfo.command);
+
+      // Write to file
+      if (redirectInfo.operator === '>') {
+        writeFileSync(redirectInfo.filePath, buffer);
+      } else {
+        appendFileSync(redirectInfo.filePath, buffer);
+      }
+    } catch (error: unknown) {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`Redirect error: ${msg}`));
+    }
+    // Display timing if enabled
+    if (session.timingEnabled_get()) {
+      const elapsed: number = performance.now() - startTime;
+      console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
     }
     return;
   }
@@ -316,6 +341,42 @@ function pipes_parse(line: string): string[] {
   }
 
   return segments;
+}
+
+/**
+ * Parses a command line for output redirection operators (> or >>).
+ *
+ * @param line - The full command line.
+ * @returns An object with the command and redirect info, or null if no redirection.
+ */
+function redirect_parse(line: string): { command: string; operator: '>' | '>>'; filePath: string } | null {
+  let inSingleQuote: boolean = false;
+  let inDoubleQuote: boolean = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char: string = line[i];
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+    } else if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+    } else if (!inSingleQuote && !inDoubleQuote) {
+      // Check for >>
+      if (i < line.length - 1 && line[i] === '>' && line[i + 1] === '>') {
+        const command = line.substring(0, i).trim();
+        const filePath = line.substring(i + 2).trim();
+        return { command, operator: '>>', filePath };
+      }
+      // Check for >
+      else if (line[i] === '>') {
+        const command = line.substring(0, i).trim();
+        const filePath = line.substring(i + 1).trim();
+        return { command, operator: '>', filePath };
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

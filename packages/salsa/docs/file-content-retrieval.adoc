@@ -8,6 +8,9 @@
 
 This document describes the architecture for retrieving file content from ChRIS, with a focus on handling different file types that require specialized API endpoints. The design implements a **router pattern** that abstracts file type detection and delegates to specialized handlers.
 
+**Version:** 1.1 (Updated for maintenance best practices)
+**Note:** This document describes architecture and patterns. For implementation details, see linked source files.
+
 === The Problem
 
 ChRIS exposes different file types through different API resources:
@@ -27,17 +30,19 @@ A **router pattern** that:
 3. Returns a consistent `Result<string>` interface
 4. Maintains RPN naming convention throughout
 
+**Conceptual Router:**
 [source,typescript]
 ----
-// Router function
-export async function fileContent_get(filePath: string): Promise<Result<string>> {
+function fileContent_get(filePath: string): Promise<Result<string>> {
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipeline(filePath);
   }
-  // Future: if (filePath.startsWith('/PACS/')) { ... }
+  // Future: if (filePath.startsWith('/PACS/')) { return fileContent_getPACS(filePath); }
   return fileContent_getRegular(filePath);
 }
 ----
+
+**Implementation:** link:../src/files/index.ts[`src/files/index.ts`] (lines ~562-567)
 
 == Architecture
 
@@ -97,13 +102,13 @@ salsa/src/files/
 |===
 | Module | Responsibility
 
-| `index.ts`
+| link:../src/files/index.ts[`index.ts`]
 | Exports router (`fileContent_get`), general file operations (`files_list`, `files_mkdir`, etc.)
 
-| `pipeline_content.ts`
+| link:../src/files/pipeline_content.ts[`pipeline_content.ts`]
 | Knows how to query `PipelineSourceFileList` and extract blobs from `PipelineSourceFile`
 
-| `regular_content.ts`
+| link:../src/files/regular_content.ts[`regular_content.ts`]
 | Knows how to query `FileBrowserFolder` and download via `chrisIO.file_download()`
 |===
 
@@ -111,29 +116,20 @@ salsa/src/files/
 
 === Router: `fileContent_get()`
 
-**File:** `salsa/src/files/index.ts`
+**Location:** link:../src/files/index.ts[`src/files/index.ts`]
 
+**Signature:**
 [source,typescript]
 ----
-/**
- * Retrieves the content of a file by its path.
- *
- * @param filePath - The full ChRIS path to the file.
- * @returns A Result containing the content string or error.
- */
-export async function fileContent_get(filePath: string): Promise<Result<string>> {
-  if (filePath.startsWith('/PIPELINES/')) {
-    return fileContent_getPipeline(filePath);
-  }
-  return fileContent_getRegular(filePath);
-}
+function fileContent_get(filePath: string): Promise<Result<string>>
 ----
 
-**Logic:**
+**Algorithm:**
 
-1. **Path inspection**: Check path prefix to determine file type
-2. **Delegation**: Route to specialized handler
-3. **Return**: Pass through `Result<string>` from handler
+1. Check if path starts with `/PIPELINES/` → delegate to `fileContent_getPipeline()`
+2. Check if path starts with `/PACS/` → delegate to `fileContent_getPACS()` (future)
+3. Otherwise → delegate to `fileContent_getRegular()`
+4. Return `Result<string>` from delegated handler
 
 **Design Decision:** Path-based routing is simple and explicit. Alternative approaches (file metadata lookup) would add unnecessary API calls.
 
@@ -141,94 +137,51 @@ export async function fileContent_get(filePath: string): Promise<Result<string>>
 
 === Pipeline Handler: `fileContent_getPipeline()`
 
-**File:** `salsa/src/files/pipeline_content.ts`
+**Location:** link:../src/files/pipeline_content.ts[`src/files/pipeline_content.ts`]
+
+**Signature:**
+[source,typescript]
+----
+function fileContent_getPipeline(filePath: string): Promise<Result<string>>
+----
 
 ==== API Discovery Process
 
-During implementation, we discovered:
-
-1. **Initial assumption (WRONG):**
-   * Query by filename: `client.getPipelineSourceFiles({ fname: 'file.yml' })`
-   * Filter by owner_username from path: `/PIPELINES/user/file.yml`
-
-2. **Actual API behavior:**
-   * Filename queries return 0 results
-   * API stores full path: `"PIPELINES/user/file.yml"` (no leading slash)
-   * Owner field is uploader (`chris`), not directory path username
-
-==== Correct Implementation
+During implementation, we discovered critical API behavior:
 
 [source,typescript]
 ----
-export async function fileContent_getPipeline(filePath: string): Promise<Result<string>> {
-  const client: Client | null = await chrisConnection.client_get();
-  if (!client) {
-    errorStack.stack_push("error", "Not connected to ChRIS.");
-    return Err();
-  }
+// ❌ WRONG: This returns 0 results
+await client.getPipelineSourceFiles({ fname: 'file.yml' })
 
-  // API stores paths without leading slash
-  const expectedFname: string = filePath.startsWith('/')
-    ? filePath.substring(1)
-    : filePath;
-
-  try {
-    // Query ALL pipeline source files (no filter)
-    const pipelineList: PipelineSourceFileList | null =
-      await client.getPipelineSourceFiles();
-
-    if (!pipelineList) {
-      errorStack.stack_push("error", "Failed to retrieve pipeline file list.");
-      return Err();
-    }
-
-    // Filter client-side by full path
-    const allItems: PipelineSourceFile[] = pipelineList.getItems();
-    const matchingFiles: PipelineSourceFile[] = allItems.filter(
-      (item: PipelineSourceFile) => {
-        const itemData = item.data as { fname: string };
-        return itemData.fname === expectedFname;
-      }
-    );
-
-    if (matchingFiles.length === 0) {
-      errorStack.stack_push("error", `Pipeline file not found: ${filePath}`);
-      return Err();
-    }
-
-    // Extract blob
-    const pipelineFile: PipelineSourceFile = matchingFiles[0];
-    const blob: unknown = await pipelineFile.getFileBlob();
-
-    if (!blob) {
-      errorStack.stack_push("error", "File returned no content.");
-      return Err();
-    }
-
-    // Convert blob to string
-    let buffer: Buffer;
-    if (typeof blob === "string") {
-      buffer = Buffer.from(blob);
-    } else if (blob instanceof ArrayBuffer) {
-      buffer = Buffer.from(blob);
-    } else if (blob instanceof Blob) {
-      const arrayBuffer: ArrayBuffer = await blob.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-    } else {
-      throw new Error(`Unexpected blob type: ${typeof blob}`);
-    }
-
-    return Ok(buffer.toString('utf-8'));
-
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    errorStack.stack_push("error", `Failed to fetch pipeline file: ${msg}`);
-    return Err();
-  }
-}
+// ✅ CORRECT: Query all, filter client-side
+const allFiles = await client.getPipelineSourceFiles();
+const matches = allFiles.getItems().filter(item =>
+  item.data.fname === 'PIPELINES/user/file.yml'  // No leading slash!
+);
 ----
 
-==== Key Implementation Details
+**Key Insights:**
+
+* **Filename queries don't work**: The `fname` parameter returns no results
+* **Path format**: API stores full paths as `"PIPELINES/user/file.yml"` (no leading `/`)
+* **Owner field quirk**: Contains uploader username (`chris`), not directory path username
+* **Client-side filtering required**: Must fetch all items and filter by exact path match
+
+==== Implementation Algorithm
+
+1. **Normalize path**: Remove leading `/` to match API format
+2. **Query all pipeline files**: `client.getPipelineSourceFiles()` (no parameters)
+3. **Filter by exact match**: Compare `item.data.fname === normalizedPath`
+4. **Extract blob**: `pipelineFile.getFileBlob()`
+5. **Convert blob**: Handle string, ArrayBuffer, or Blob types → UTF-8 string
+6. **Return result**: `Ok(content)` or `Err()` with errorStack
+
+**Full implementation:** link:../src/files/pipeline_content.ts[`pipeline_content.ts` lines 16-79]
+
+**Critical code for blob conversion:** See source for handling multiple blob types (string, ArrayBuffer, Blob).
+
+==== Implementation Details
 
 [cols="1,3"]
 |===
@@ -244,7 +197,7 @@ export async function fileContent_getPipeline(filePath: string): Promise<Result<
 | Direct string comparison on full path
 
 | **Blob handling**
-| Support string, ArrayBuffer, and Blob types
+| Support string, ArrayBuffer, and Blob types (see source for conversion logic)
 
 | **Error handling**
 | Push detailed errors to `errorStack`, return `Err()`
@@ -254,59 +207,37 @@ export async function fileContent_getPipeline(filePath: string): Promise<Result<
 
 === Regular File Handler: `fileContent_getRegular()`
 
-**File:** `salsa/src/files/regular_content.ts`
+**Location:** link:../src/files/regular_content.ts[`src/files/regular_content.ts`]
 
+**Signature:**
 [source,typescript]
 ----
-export async function fileContent_getRegular(filePath: string): Promise<Result<string>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-
-  // Get FileBrowserFolder for directory
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null =
-    await files_getGroup('files', dir);
-  if (!group) {
-     return Err();
-  }
-
-  // List files in directory
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-     errorStack.stack_push("error", `No files found in directory: ${dir}`);
-     return Err();
-  }
-
-  // Find file by basename
-  const file: { id?: number, fname?: string } | undefined =
-    results.tableData.find((f: { fname?: string }) => {
-      const fname: string = f.fname || '';
-      const basename = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-    });
-
-  if (!file || typeof file.id !== 'number') {
-      errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
-      return Err();
-  }
-
-  // Download via chrisIO
-  const filesViewResult: Result<Buffer> = await files_view(file.id);
-  if (!filesViewResult.ok) {
-      return Err();
-  }
-
-  return Ok(filesViewResult.value.toString('utf-8'));
-}
+function fileContent_getRegular(filePath: string): Promise<Result<string>>
 ----
 
-==== Key Implementation Details
+**Algorithm:**
+
+1. **Split path**: Extract directory and filename using `path.posix.dirname/basename`
+2. **Get directory context**: Query `files_getGroup('files', dir)`
+3. **List directory files**: Call `resources_getAll()` on group
+4. **Find file by name**: Match basename in results (handle `? filename` prefix)
+5. **Resolve file ID**: Extract numeric ID from matched file
+6. **Download content**: Use `chrisIO.file_download(fileId)` → Buffer
+7. **Convert to string**: `buffer.toString('utf-8')`
+8. **Return result**: `Ok(content)` or `Err()`
+
+**Full implementation:** link:../src/files/regular_content.ts[`regular_content.ts` lines 36-74]
+
+**Helper function:** `files_view(fileId)` - see source for Buffer→Result conversion
+
+==== Implementation Details
 
 [cols="1,3"]
 |===
 | Aspect | Detail
 
 | **Directory navigation**
-| Split path into directory + filename
+| Split path into directory + filename components
 
 | **File lookup**
 | Query directory, find file by basename match
@@ -315,43 +246,34 @@ export async function fileContent_getRegular(filePath: string): Promise<Result<s
 | Use `chrisIO.file_download(fileId)` infrastructure method
 
 | **File ID resolution**
-| Critical: Must resolve filename → ID before download
+| Critical step: Must resolve filename → ID before download
 
 | **Basename quirk**
 | Handle `? filename` prefix (ChRIS metadata indicator)
 |===
 
-==== Helper Function: `files_view()`
-
-[source,typescript]
-----
-async function files_view(fileId: number): Promise<Result<Buffer>> {
-  const buffer: Buffer | null = await chrisIO.file_download(fileId);
-  if (buffer === null) {
-      // chrisIO already pushed error
-      return Err();
-  }
-  return Ok(buffer);
-}
-----
-
 == Adding New File Type Handlers
 
-This section provides a step-by-step guide for adding support for new file types (e.g., PACS files at `/PACS/*`).
+This section provides a pattern for adding support for new file types (e.g., PACS files at `/PACS/*`).
+
+=== Reference Implementation
+
+**Study the pipeline handler** as a reference: link:../src/files/pipeline_content.ts[`pipeline_content.ts`]
+
+The pattern is consistent:
+1. Query API for file resources
+2. Filter/match to find specific file
+3. Extract blob
+4. Convert to string
+5. Return `Result<string>`
 
 === Step 1: Create Handler Module
 
-Create `salsa/src/files/pacs_content.ts`:
+Create `salsa/src/files/pacs_content.ts` following this **conceptual template**:
 
 [source,typescript]
 ----
-import {
-  chrisConnection,
-  errorStack,
-  Result,
-  Ok,
-  Err,
-} from "@fnndsc/cumin";
+import { chrisConnection, errorStack, Result, Ok, Err } from "@fnndsc/cumin";
 import Client, { PACSFile, PACSFileList } from "@fnndsc/chrisapi";
 
 /**
@@ -361,33 +283,30 @@ import Client, { PACSFile, PACSFileList } from "@fnndsc/chrisapi";
  * @returns A Result containing the file content as a string, or an error.
  */
 export async function fileContent_getPACS(filePath: string): Promise<Result<string>> {
-  const client: Client | null = await chrisConnection.client_get();
+  // 1. Get client
+  const client = await chrisConnection.client_get();
   if (!client) {
-    errorStack.stack_push("error", "Not connected to ChRIS. Cannot fetch PACS file.");
+    errorStack.stack_push("error", "Not connected to ChRIS.");
     return Err();
   }
 
-  // TODO: Determine how the PACS API structures paths
-  // Example: Remove leading slash like pipeline handler
-  const expectedPath: string = filePath.startsWith('/')
-    ? filePath.substring(1)
-    : filePath;
+  // 2. Normalize path (investigate API path format first!)
+  const normalizedPath = /* TODO: Determine normalization */;
 
   try {
-    // TODO: Query PACS file list
-    // const pacsList: PACSFileList | null = await client.getPACSFiles();
+    // 3. Query PACS files (investigate API method)
+    // const pacsList = await client.getPACSFiles(/* params? */);
 
-    // TODO: Filter by path/identifier
-    // const matchingFiles = pacsList.getItems().filter(...)
+    // 4. Filter to find matching file
+    // const matches = pacsList.getItems().filter(/* match logic */);
 
-    // TODO: Extract blob
-    // const pacsFile: PACSFile = matchingFiles[0];
-    // const blob: unknown = await pacsFile.getFileBlob();
+    // 5. Extract blob
+    // const blob = await pacsFile.getFileBlob();
 
-    // TODO: Convert blob to string (copy from pipeline handler)
+    // 6. Convert blob to string (copy pattern from pipeline_content.ts)
+    // return Ok(content);
 
-    return Err(); // Placeholder
-
+    return Err(); // Placeholder until implementation
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Failed to fetch PACS file: ${msg}`);
@@ -396,38 +315,31 @@ export async function fileContent_getPACS(filePath: string): Promise<Result<stri
 }
 ----
 
+**Note:** This is a conceptual template. Actual implementation depends on ChRIS API structure for PACS files. See pipeline handler for blob conversion pattern.
+
 === Step 2: Update Router
 
-Edit `salsa/src/files/index.ts`:
+Edit link:../src/files/index.ts[`src/files/index.ts`]:
 
 [source,typescript]
 ----
-import { fileContent_getPipeline } from './pipeline_content';
-import { fileContent_getRegular } from './regular_content';
-import { fileContent_getPACS } from './pacs_content';  // NEW
+import { fileContent_getPACS } from './pacs_content';  // Add import
 
 export async function fileContent_get(filePath: string): Promise<Result<string>> {
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipeline(filePath);
   }
-  if (filePath.startsWith('/PACS/')) {             // NEW
-    return fileContent_getPACS(filePath);          // NEW
+  if (filePath.startsWith('/PACS/')) {             // Add route
+    return fileContent_getPACS(filePath);
   }
   return fileContent_getRegular(filePath);
 }
-----
 
-=== Step 3: Export from Index
-
-Ensure the new function is exported:
-
-[source,typescript]
-----
-// In salsa/src/files/index.ts
+// Add to exports
 export { fileContent_getPACS } from './pacs_content';
 ----
 
-=== Step 4: Investigation Checklist
+=== Step 3: Investigation Checklist
 
 Before implementing, investigate the ChRIS API:
 
@@ -439,8 +351,9 @@ Before implementing, investigate the ChRIS API:
 * [ ] What is the actual field name for paths/identifiers?
 * [ ] Is owner/uploader information relevant?
 * [ ] What blob types are returned? (string, ArrayBuffer, Blob?)
+* [ ] Does path need normalization? (leading slash handling)
 
-=== Step 5: Debug Pattern
+=== Step 4: Debug Pattern
 
 Use temporary debug logging during development:
 
@@ -450,14 +363,13 @@ const allItems = await client.getPACSFiles();
 console.error(`[DEBUG] Query returned ${allItems.length} items`);
 
 allItems.slice(0, 5).forEach((item, idx) => {
-  const itemData = item.data as any;
-  console.error(`[DEBUG] Item ${idx}:`, JSON.stringify(itemData, null, 2));
+  console.error(`[DEBUG] Item ${idx}:`, JSON.stringify(item.data, null, 2));
 });
 ----
 
-**Remove debug statements before committing.**
+**Important:** Remove debug statements before committing.
 
-=== Step 6: Testing Strategy
+=== Step 5: Testing Strategy
 
 1. **Manual testing:**
    ```bash
@@ -472,7 +384,7 @@ allItems.slice(0, 5).forEach((item, idx) => {
    * Empty blob
 
 3. **Unit tests:**
-   * Add to `salsa/test/files.test.ts`
+   * Add to link:../test/files.test.ts[`test/files.test.ts`]
    * Mock `chrisConnection.client_get()`
    * Test path normalization
    * Test error handling
@@ -500,10 +412,12 @@ allItems.slice(0, 5).forEach((item, idx) => {
 * `Ok(content)` - File content as UTF-8 string
 * `Err()` - Error pushed to `errorStack`
 
+**Implementation:** link:../src/files/index.ts[`src/files/index.ts`]
+
 **Example:**
 [source,typescript]
 ----
-const result: Result<string> = await fileContent_get('/PIPELINES/user/demo.yml');
+const result = await fileContent_get('/PIPELINES/user/demo.yml');
 if (result.ok) {
   console.log(result.value);
 } else {
@@ -531,6 +445,8 @@ if (result.ok) {
 **Returns:** `Promise<Result<string>>`
 
 **Path Structure:** `/PIPELINES/<owner_username>/<filename>.yml`
+
+**Implementation:** link:../src/files/pipeline_content.ts[`src/files/pipeline_content.ts`]
 
 **API Details:**
 
@@ -564,7 +480,9 @@ if (result.ok) {
 
 **Returns:** `Promise<Result<string>>`
 
-**Implementation:**
+**Implementation:** link:../src/files/regular_content.ts[`src/files/regular_content.ts`]
+
+**Process:**
 
 1. Split path into directory + filename
 2. Query `files_getGroup('files', dir)`
@@ -743,8 +661,9 @@ if (!result.ok) {
 
 === Unit Test Structure
 
-**File:** `salsa/test/files.test.ts`
+**File:** link:../test/files.test.ts[`test/files.test.ts`]
 
+**Pattern:**
 [source,typescript]
 ----
 describe('fileContent_get', () => {
@@ -759,23 +678,9 @@ describe('fileContent_get', () => {
     // Assert regular handler was called
   });
 });
-
-describe('fileContent_getPipeline', () => {
-  it('should fetch pipeline file content', async () => {
-    // Mock client.getPipelineSourceFiles()
-    // Mock pipelineFile.getFileBlob()
-    const result = await fileContent_getPipeline('/PIPELINES/user/demo.yml');
-    expect(result.ok).toBe(true);
-    expect(result.value).toContain('pipeline content');
-  });
-
-  it('should handle file not found', async () => {
-    // Mock empty results
-    const result = await fileContent_getPipeline('/PIPELINES/user/missing.yml');
-    expect(result.ok).toBe(false);
-  });
-});
 ----
+
+See test file for complete examples.
 
 === Integration Testing
 
@@ -796,34 +701,18 @@ chell -c 'cat /PIPELINES/user/nonexistent.yml'
 # Expected: Error message
 ----
 
-== Appendix: Complete Function Signatures
+== Implementation Reference
 
-[source,typescript]
-----
-// Router
-export async function fileContent_get(
-  filePath: string
-): Promise<Result<string>>;
+For current implementation details, see:
 
-// Pipeline handler
-export async function fileContent_getPipeline(
-  filePath: string
-): Promise<Result<string>>;
+* **Router:** link:../src/files/index.ts[`src/files/index.ts`] (~562-567)
+* **Pipeline handler:** link:../src/files/pipeline_content.ts[`src/files/pipeline_content.ts`] (16-79)
+* **Regular handler:** link:../src/files/regular_content.ts[`src/files/regular_content.ts`] (36-74)
+* **Tests:** link:../test/files.test.ts[`test/files.test.ts`]
 
-// Regular file handler
-export async function fileContent_getRegular(
-  filePath: string
-): Promise<Result<string>>;
+== Related Documentation
 
-// Internal helper
-async function files_view(
-  fileId: number
-): Promise<Result<Buffer>>;
-----
-
-== Appendix: Related Documentation
-
-* **RPN Naming Convention:** `TYPESCRIPT-STYLE-GUIDE.md`
+* **RPN Naming Convention:** link:../TYPESCRIPT-STYLE-GUIDE.md[`TYPESCRIPT-STYLE-GUIDE.md`]
 * **Error Handling:** `cumin/docs/error_handling.adoc`
 * **Result<T> Pattern:** `cumin/docs/error_handling.adoc`
 * **VFS Architecture:** `chell/docs/vfs.adoc`
@@ -834,6 +723,10 @@ async function files_view(
 [cols="1,2,4"]
 |===
 | Version | Date | Changes
+
+| 1.1.0
+| 2025-12-09
+| Refactored to use links and pseudocode instead of literal code blocks to prevent documentation drift
 
 | 1.0.0
 | 2025-12-09

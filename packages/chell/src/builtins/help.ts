@@ -646,6 +646,13 @@ export async function builtin_help(args: string[]): Promise<void> {
     console.log('');
   }
 
+  // Display Shell Features
+  console.log(chalk.bold.yellow('Shell Features'));
+  console.log(`  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l')}`);
+  console.log(`  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}`);
+  console.log(`  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}`);
+  console.log('');
+
   console.log(chalk.gray('Type "help <command>" for detailed information about a command.'));
   console.log(chalk.gray('Type "<command> --help" for quick help on any command.'));
   console.log('');

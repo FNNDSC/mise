@@ -2,7 +2,6 @@ import {
   files_getGroup,
   files_getSingle,
   files_share,
-  files_view,
   files_mkdir,
   files_create, // Import the new function
   files_touch, // Re-import to test its new implementation
@@ -28,7 +27,8 @@ jest.mock('@fnndsc/cumin', () => {
     },
     chrisIO: {
       file_upload: jest.fn(),
-      file_download: jest.fn()
+      file_download: jest.fn(),
+      folder_create: jest.fn()
     },
     chrisContext: {
       current_get: jest.fn()
@@ -64,19 +64,13 @@ describe('files', () => {
     });
     // Mock errorStack
     (errorStack.stack_push as jest.Mock).mockImplementation(jest.fn());
-    // Mock chrisConnection.client_get for files_mkdir
-    (chrisConnection.client_get as jest.Mock).mockResolvedValue({
-      getFileBrowserFolders: jest.fn().mockResolvedValue({
-        post: jest.fn().mockResolvedValue({ data: { path: '/new/folder' } })
-      })
-    });
+    // Mock chrisIO.folder_create for files_mkdir
+    (chrisIO.folder_create as jest.Mock).mockResolvedValue({ ok: true, value: true });
     // Mock chrisIO.file_upload for files_create and files_touch
     (chrisIO.file_upload as jest.Mock).mockImplementation((content: Blob, dir: string, name: string) => {
       // For now, simply resolve to true. If content or path validation is needed, it can be added here.
       return Promise.resolve(true);
     });
-    // Mock chrisIO.file_download for files_view
-    (chrisIO.file_download as jest.Mock).mockResolvedValue(Buffer.from('Content of file 456'));
   });
 
   // ... (existing tests for getGroup, getSingle, mkdir, create, touch)
@@ -153,58 +147,34 @@ describe('files', () => {
 
   describe('files_mkdir', () => {
     it('should successfully create a new folder', async () => {
-      const mockPost = jest.fn().mockResolvedValue({ data: { path: '/test/folder' } });
-      const mockGetFileBrowserFolders = jest.fn().mockResolvedValue({ post: mockPost });
-      (chrisConnection.client_get as jest.Mock).mockResolvedValue({
-        getFileBrowserFolders: mockGetFileBrowserFolders
-      });
+      (chrisIO.folder_create as jest.Mock).mockResolvedValue({ ok: true, value: true });
 
       const folderPath = '/test/folder';
       const result = await files_mkdir(folderPath);
 
-      expect(chrisConnection.client_get).toHaveBeenCalled();
-      expect(mockGetFileBrowserFolders).toHaveBeenCalled();
-      expect(mockPost).toHaveBeenCalledWith({ path: folderPath });
+      expect(chrisIO.folder_create).toHaveBeenCalledWith(folderPath);
       expect(result).toBe(true);
       expect(errorStack.stack_push).not.toHaveBeenCalled();
     });
 
-    it('should return false and push error if not connected to ChRIS', async () => {
-      (chrisConnection.client_get as jest.Mock).mockResolvedValue(null);
-      const result = await files_mkdir('/test/folder');
-      expect(result).toBe(false);
-      expect(errorStack.stack_push).toHaveBeenCalledWith('error', 'Not connected to ChRIS. Cannot create folder.');
-    });
-
-    it('should return true and push warning if folder already exists', async () => {
-      const mockPost = jest.fn().mockRejectedValue({
-        response: {
-          status: 400,
-          data: { path: ['Folder with this path already exists.'] }
-        }
-      });
-      const mockGetFileBrowserFolders = jest.fn().mockResolvedValue({ post: mockPost });
-      (chrisConnection.client_get as jest.Mock).mockResolvedValue({
-        getFileBrowserFolders: mockGetFileBrowserFolders
-      });
+    it('should return true if folder already exists', async () => {
+      // folder_create returns Ok(false) when folder already exists
+      (chrisIO.folder_create as jest.Mock).mockResolvedValue({ ok: true, value: false });
 
       const folderPath = '/existing/folder';
       const result = await files_mkdir(folderPath);
+      expect(chrisIO.folder_create).toHaveBeenCalledWith(folderPath);
       expect(result).toBe(true); // Should return true as it's not a real failure
-      expect(errorStack.stack_push).toHaveBeenCalledWith('warning', `Folder '${folderPath}' already exists.`);
     });
 
-    it('should return false and push error for other API errors', async () => {
-      const mockPost = jest.fn().mockRejectedValue(new Error('API error'));
-      const mockGetFileBrowserFolders = jest.fn().mockResolvedValue({ post: mockPost });
-      (chrisConnection.client_get as jest.Mock).mockResolvedValue({
-        getFileBrowserFolders: mockGetFileBrowserFolders
-      });
+    it('should return false on error', async () => {
+      // folder_create returns Err() on error
+      (chrisIO.folder_create as jest.Mock).mockResolvedValue({ ok: false, error: 'API error' });
 
       const folderPath = '/error/folder';
       const result = await files_mkdir(folderPath);
+      expect(chrisIO.folder_create).toHaveBeenCalledWith(folderPath);
       expect(result).toBe(false);
-      expect(errorStack.stack_push).toHaveBeenCalledWith('error', `Error creating folder '${folderPath}': API error`);
     });
   });
 
@@ -281,17 +251,6 @@ describe('files', () => {
       await files_share(123, options);
       expect(consoleSpy).toHaveBeenCalledWith('Sharing file 123 with options:', options);
       consoleSpy.mockRestore();
-    });
-  });
-
-  describe('files_view', () => {
-    it('should call chrisIO.file_download and return content', async () => {
-      const result = await files_view(456);
-      expect(chrisIO.file_download).toHaveBeenCalledWith(456);
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toEqual(Buffer.from('Content of file 456'));
-      }
     });
   });
 });

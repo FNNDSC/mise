@@ -1,5 +1,4 @@
-import { chrisConnection, ChRISPlugin, errorStack, Client } from '@fnndsc/cumin';
-import { PluginList } from '@fnndsc/chrisapi';
+import { ChRISPlugin, errorStack, Client, plugin_registerDirect, Result } from '@fnndsc/cumin';
 import { AdminCredentials } from './store_import.js';
 
 /**
@@ -89,42 +88,19 @@ export async function plugin_register(
   pluginData: PluginRegistrationData,
   computeResources?: string[]
 ): Promise<PluginRegistrationResponse | null> {
-  try {
-    const client = await chrisConnection.client_get();
-    if (!client) {
-      console.error('Error: Not connected to ChRIS. Please log in.');
-      return null;
-    }
+  // Use cumin's plugin_registerDirect function
+  const result: Result<Record<string, unknown>> = await plugin_registerDirect(
+    pluginData,
+    computeResources
+  );
 
-    const pluginList: PluginList = await client.getPlugins();
-
-    // Prepare data for POST request
-    const data: Record<string, unknown> = {
-      ...pluginData,
-    };
-
-    if (computeResources && computeResources.length > 0) {
-      data.compute_resources = computeResources;
-    }
-
-    // Call the internal _post method directly.
-    // The chrisapi library does not expose a public 'create' method on PluginList
-    // but ListResource (its base class) provides _post.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await (pluginList as any)._post(data);
-
-    if (response && response.data) {
-      console.log(`Plugin '${response.data.name}' registered successfully.`);
-      return response.data;
-    } else {
-      console.error('Error: Failed to register plugin. No data in response.');
-      return null;
-    }
-  } catch (error: unknown) {
-    const errorMessage: string = error instanceof Error ? error.message : String(error);
-    console.error(`Error registering plugin: ${errorMessage}`);
-    return null;
+  if (result.ok) {
+    console.log(`Plugin '${result.value.name}' registered successfully.`);
+    return result.value as PluginRegistrationResponse;
   }
+
+  // Error already pushed to errorStack by cumin
+  return null;
 }
 
 /**

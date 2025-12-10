@@ -3,8 +3,19 @@
  * @module
  */
 
-import { ChRISFeed, SimpleRecord, ChRISObjectParams, ChRISFeedGroup, FilteredResourceData, ListOptions, chrisConnection, errorStack } from '@fnndsc/cumin';
-import { Feed } from "@fnndsc/chrisapi";
+import {
+  ChRISFeed,
+  SimpleRecord,
+  ChRISObjectParams,
+  ChRISFeedGroup,
+  FilteredResourceData,
+  ListOptions,
+  errorStack,
+  feed_makePublic,
+  feed_makePrivate,
+  feed_delete as cumin_feed_delete,
+  Result,
+} from '@fnndsc/cumin';
 
 /**
  * List feeds based on options.
@@ -73,35 +84,18 @@ export interface FeedShareOptions {
  * @returns A Promise resolving to true on successful sharing, false otherwise.
  */
 export async function feeds_share(feedId: number, options: FeedShareOptions): Promise<boolean> {
-  const client = await chrisConnection.client_get();
-  if (!client) {
-    errorStack.stack_push("error", "Not connected to ChRIS. Cannot share feed.");
-    return false;
+  // Use cumin's feed functions
+  if (options.is_public === true) {
+    const result: Result<boolean> = await feed_makePublic(feedId);
+    return result.ok && result.value;
+  } else if (options.is_public === false) {
+    const result: Result<boolean> = await feed_makePrivate(feedId);
+    return result.ok && result.value;
   }
 
-  try {
-    const feed: Feed | null = await client.getFeed(feedId);
-    if (!feed) {
-      errorStack.stack_push("error", `Feed with ID ${feedId} not found.`);
-      return false;
-    }
-
-    if (options.is_public === true) {
-      await feed.makePublic();
-      return true;
-    } else if (options.is_public === false) {
-      await feed.makeUnpublic();
-      return true;
-    }
-    // Implement other sharing mechanisms (user/group) if needed based on options
-    errorStack.stack_push("error", "No valid sharing option specified (e.g., --is_public).");
-    return false;
-
-  } catch (error: unknown) {
-    const errorMessage: string = error instanceof Error ? error.message : String(error);
-    errorStack.stack_push("error", `Error sharing feed ID ${feedId}: ${errorMessage}`);
-    return false;
-  }
+  // Implement other sharing mechanisms (user/group) if needed based on options
+  errorStack.stack_push("error", "No valid sharing option specified (e.g., --is_public).");
+  return false;
 }
 
 /**
@@ -111,23 +105,7 @@ export async function feeds_share(feedId: number, options: FeedShareOptions): Pr
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function feed_delete(id: number): Promise<boolean> {
-  const client = await chrisConnection.client_get();
-  if (!client) {
-    errorStack.stack_push("error", "Not connected to ChRIS. Cannot delete feed.");
-    return false;
-  }
-
-  try {
-    const feed: Feed | null = await client.getFeed(id);
-    if (!feed) {
-      errorStack.stack_push("error", `Feed with ID ${id} not found.`);
-      return false;
-    }
-    await feed.delete();
-    return true;
-  } catch (error: unknown) {
-    const errorMessage: string = error instanceof Error ? error.message : String(error);
-    errorStack.stack_push("error", `Error deleting feed ID ${id}: ${errorMessage}`);
-    return false;
-  }
+  // Use cumin's feed_delete function
+  const result: Result<boolean> = await cumin_feed_delete(id);
+  return result.ok && result.value;
 }

@@ -10,4 +10,13 @@ module.exports = {
   moduleNameMapper: {
     '^(\.\.?/.*)\.js$': '$1',
   },
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.d.ts',
+    '!src/index.ts',
+  ],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+  ],
 };

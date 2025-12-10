@@ -9,16 +9,22 @@ import {
   PluginSearchOptions
 } from '../src/plugins/index';
 import { ChRISPlugin, QueryHits, chrisConnection, ChRISPluginInstanceGroup } from '@fnndsc/cumin';
+import * as cumin from '@fnndsc/cumin';
 import axios from 'axios';
 
 jest.mock('@fnndsc/cumin', () => {
+  const Ok = (val: any) => ({ ok: true, value: val });
+  const Err = (err?: any) => ({ ok: false, error: err });
   return {
     chrisConnection: {
       client_get: jest.fn()
     },
     ChRISPlugin: jest.fn(),
     ChRISPluginInstanceGroup: jest.fn(),
-    QueryHits: jest.fn()
+    QueryHits: jest.fn(),
+    plugin_registerDirect: jest.fn(),
+    Ok,
+    Err
   };
 });
 jest.mock('axios');
@@ -46,29 +52,34 @@ describe('plugins', () => {
   });
 
   it('plugin_register should register a plugin', async () => {
-    const mockPost = jest.fn().mockResolvedValue({ data: { name: 'test-plugin', id: 1 } });
-    const mockGetPlugins = jest.fn().mockResolvedValue({
-      _post: mockPost
-    });
-    const mockClient = {
-      getPlugins: mockGetPlugins
-    };
-
-    // Ensure chrisConnection.client_get resolves to our mockClient
-    (chrisConnection.client_get as jest.Mock).mockResolvedValue(mockClient);
-
     const pluginData = { name: 'test-plugin', dock_image: 'test/image' };
     const computeResources = ['host1'];
 
+    // Mock plugin_registerDirect to return success
+    (cumin.plugin_registerDirect as jest.Mock).mockResolvedValue({
+      ok: true,
+      value: { name: 'test-plugin', id: 1 }
+    });
+
     const result = await plugin_register(pluginData, computeResources);
 
-    expect(chrisConnection.client_get).toHaveBeenCalled();
-    expect(mockGetPlugins).toHaveBeenCalled();
-    expect(mockPost).toHaveBeenCalledWith({
-      ...pluginData,
-      compute_resources: computeResources
-    });
+    expect(cumin.plugin_registerDirect).toHaveBeenCalledWith(pluginData, computeResources);
     expect(result).toEqual({ name: 'test-plugin', id: 1 });
+  });
+
+  it('plugin_register should return null on error', async () => {
+    const pluginData = { name: 'test-plugin', dock_image: 'test/image' };
+
+    // Mock plugin_registerDirect to return error
+    (cumin.plugin_registerDirect as jest.Mock).mockResolvedValue({
+      ok: false,
+      error: 'Registration failed'
+    });
+
+    const result = await plugin_register(pluginData);
+
+    expect(cumin.plugin_registerDirect).toHaveBeenCalledWith(pluginData, undefined);
+    expect(result).toBeNull();
   });
 
   it('plugins_searchableToIDs should call ChRISPlugin.pluginIDs_resolve', async () => {

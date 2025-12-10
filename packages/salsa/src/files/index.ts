@@ -6,17 +6,16 @@ import {
   Context,
   errorStack,
   chrisIO,
-  chrisConnection,
-  ListOptions, 
+  ListOptions,
   FilteredResourceData,
   Result,
   Ok,
   Err,
 } from "@fnndsc/cumin";
-import Client, { FileBrowserFolder } from "@fnndsc/chrisapi";
-import { fileContent_getPipeline } from './pipeline_content';
-import { fileContent_getRegular } from './regular_content';
-import { fileContent_getPACS } from './pacs_content';
+import { FileBrowserFolder } from "@fnndsc/chrisapi";
+import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
+import { fileContent_getRegular, fileContent_getRegularBinary } from './regular_content';
+import { fileContent_getPACS, fileContent_getPACSBinary } from './pacs_content';
 
 /**
  * Represents a file or directory item in a recursive listing.
@@ -334,51 +333,16 @@ export async function files_uploadPath(localPath: string, remotePath: string): P
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function files_mkdir(folderPath: string): Promise<boolean> {
-  try {
-    const client: Client | null = await chrisConnection.client_get();
-    if (!client) {
-      errorStack.stack_push("error", "Not connected to ChRIS. Cannot create folder.");
-      return false;
-    }
+  // Use cumin's folder_create method
+  const result: Result<boolean> = await chrisIO.folder_create(folderPath);
 
-    // Get the FileBrowserFolderList resource
-    const folderList = await client.getFileBrowserFolders();
-
-    // Use the post method to create the new folder
-    const response = await folderList.post({ path: folderPath });
-
-    if (response && response.data) {
-      return true; // Folder created successfully
-    } else {
-      errorStack.stack_push("error", `Failed to create folder: ${folderPath}. No data in response.`);
-      return false;
-    }
-  } catch (error: unknown) {
-    // Type guard for axios error with response
-    if (
-      error &&
-      typeof error === 'object' &&
-      'response' in error &&
-      error.response &&
-      typeof error.response === 'object' &&
-      'status' in error.response &&
-      error.response.status === 400 &&
-      'data' in error.response &&
-      error.response.data &&
-      typeof error.response.data === 'object' &&
-      'path' in error.response.data &&
-      Array.isArray(error.response.data.path) &&
-      error.response.data.path[0] &&
-      typeof error.response.data.path[0] === 'string' &&
-      error.response.data.path[0].includes('already exists')
-    ) {
-      errorStack.stack_push("warning", `Folder '${folderPath}' already exists.`);
-      return true; // Consider it a success if it already exists
-    }
-    const errorMessage: string = error instanceof Error ? error.message : String(error);
-    errorStack.stack_push("error", `Error creating folder '${folderPath}': ${errorMessage}`);
+  if (!result.ok) {
     return false;
   }
+
+  // result.value is true if created, false if already exists
+  // Both cases are considered success
+  return true;
 }
 
 
@@ -570,4 +534,23 @@ export async function fileContent_get(filePath: string): Promise<Result<string>>
     return fileContent_getPACS(filePath);
   }
   return fileContent_getRegular(filePath);
+}
+
+/**
+ * Retrieves the binary content of a file by its path.
+ *
+ * Router function that delegates to specialized handlers based on path type.
+ * Returns raw Buffer instead of converting to UTF-8 string.
+ *
+ * @param filePath - The full ChRIS path to the file.
+ * @returns A Result containing the content Buffer or error.
+ */
+export async function fileContent_getBinary(filePath: string): Promise<Result<Buffer>> {
+  if (filePath.startsWith('/PIPELINES/')) {
+    return fileContent_getPipelineBinary(filePath);
+  }
+  if (filePath.startsWith('/SERVICES/PACS/')) {
+    return fileContent_getPACSBinary(filePath);
+  }
+  return fileContent_getRegularBinary(filePath);
 }

@@ -127,19 +127,16 @@ export function completer(line: string, callback: CompleterCallback): void {
     // Check builtins first (instant, no async)
     const builtinHits: string[] = BUILTINS.filter((c) => c.startsWith(trimmed));
 
-    // If we have builtin matches, return them immediately
-    if (builtinHits.length > 0) {
-      callback(null, [builtinHits, trimmed]);
-      return;
-    }
-
-    // No builtin matches - check plugins (from cache if available)
+    // Always check plugins and combine results
     plugins_getNames().then((pluginNames) => {
       const pluginHits: string[] = pluginNames.filter((c) => c.startsWith(trimmed));
-      callback(null, [pluginHits, trimmed]);
+      
+      // Combine both builtins and plugins
+      const allHits = [...builtinHits, ...pluginHits];
+      callback(null, [allHits, trimmed]);
     }).catch(() => {
-      // On error, return no matches
-      callback(null, [[], trimmed]);
+      // On error, return only builtin matches
+      callback(null, [builtinHits, trimmed]);
     });
     return;
   }

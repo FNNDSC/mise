@@ -157,7 +157,10 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({
   files_uploadWithProgress: mockChefsUpload,
   bytes_format: (n: number) => `${n} B`
 }));
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_cat: mockChefsCat }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({
+  files_cat: mockChefsCat,
+  files_catBinary: jest.fn()
+}));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: mockChefsRm, RmOptions: {}, RmResult: {} }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cp.js', () => ({ files_cp: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/mv.js', () => ({ files_mv: jest.fn() }));

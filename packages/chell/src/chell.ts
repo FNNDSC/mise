@@ -406,12 +406,25 @@ async function output_capture(fn: () => Promise<void>): Promise<{ text: string; 
     chunks.push(Buffer.from(text, 'utf-8'));
   };
 
+  // Override process.stdout.write to capture binary data
+  process.stdout.write = ((chunk: unknown): boolean => {
+    if (typeof chunk === 'string') {
+      chunks.push(Buffer.from(chunk, 'utf-8'));
+    } else if (Buffer.isBuffer(chunk)) {
+      chunks.push(chunk);
+    } else if (chunk instanceof Uint8Array) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return true;
+  }) as typeof process.stdout.write;
+
   try {
     await fn();
   } finally {
-    // Restore original console methods
+    // Restore original console methods and stdout.write
     console.log = originalLog;
     console.error = originalError;
+    process.stdout.write = originalStdoutWrite;
   }
 
   const buffer: Buffer = Buffer.concat(chunks);

@@ -1,0 +1,858 @@
+= ChELL Execution Modes: Interactive, Command, and Script
+:toc:
+:toc-placement: preamble
+:sectnums:
+
+== Overview
+
+ChELL supports three distinct execution modes for maximum flexibility:
+
+1. **Interactive Mode** - Traditional REPL shell
+2. **Command Mode** (`-c`) - Execute single or multiple commands and exit
+3. **Script Mode** (`-f`) - Run script files with full automation support
+
+**Key Features:**
+
+* **Semicolon support** - Run multiple commands sequentially in a single invocation
+* **Script files** - Create reusable .chell scripts with shebang support
+* **Error handling** - Choose between continue-on-error (default) or stop-on-error (`-e`)
+* **Auto-detection** - Automatically recognize script files vs connection targets
+* **Session persistence** - CWD and context maintained across commands
+
+== Interactive Mode
+
+Standard REPL mode with full command history, tab completion, and prompt.
+
+**Invocation:**
+```bash
+chell                    # Start interactive shell
+chell user@cube.url      # Connect and start interactive shell
+```
+
+**Use cases:**
+- Manual exploration and debugging
+- Ad-hoc data analysis
+- Learning ChRIS commands
+
+== Command Mode (`-c`)
+
+Execute one or more commands non-interactively and exit immediately. Perfect for automation, scripts, and CI/CD pipelines.
+
+=== Basic Command Execution
+
+**Syntax:**
+```bash
+chell -c "<command>"
+```
+
+**Examples:**
+```bash
+# Single command
+chell -c "ls /PIPELINES"
+
+# With connection
+chell -c "ls /home" user@cube.example.org
+
+# Complex command
+chell -c "cat /PIPELINES/analysis/pipeline.yml"
+```
+
+=== Semicolon-Separated Commands
+
+Run multiple commands sequentially in the same session. Commands share the same connection, authentication, and working directory.
+
+**Syntax:**
+```bash
+chell -c "command1; command2; command3"
+```
+
+**Examples:**
+
+```bash
+# Basic sequence
+chell -c "pwd; ls /home; pwd"
+
+# Change directory persists
+chell -c "cd /PIPELINES/user; ls; cat analysis.yml"
+
+# DICOM workflow
+chell -c "cd /SERVICES/PACS/patient123; ls *.dcm; cat study_001.dcm | dcmdump -"
+
+# File operations
+chell -c "mkdir /home/user/results; cd /home/user/results; touch output.txt"
+```
+
+=== Quote Handling
+
+Semicolons inside quotes are preserved, not treated as separators.
+
+**Examples:**
+```bash
+# Semicolon in string is preserved
+chell -c "echo 'Line1;Line2'; pwd"
+# Output:
+# Line1;Line2
+# /home/user
+
+# Mixed quotes
+chell -c "echo \"hello;world\"; ls; echo 'foo;bar'"
+```
+
+=== Advantages Over Multiple Invocations
+
+**Traditional approach (slow):**
+```bash
+chell -c "cd /PIPELINES"      # 2-3s connection/auth
+chell -c "ls"                 # 2-3s connection/auth
+chell -c "cat pipeline.yml"   # 2-3s connection/auth
+# Total: 6-9 seconds
+```
+
+**Semicolon approach (fast):**
+```bash
+chell -c "cd /PIPELINES; ls; cat pipeline.yml"
+# Total: 2-3 seconds (single connection)
+```
+
+== Script Mode (`-f`)
+
+Execute commands from a file, enabling complex workflows, automation, and reusable procedures.
+
+=== Creating Script Files
+
+**File structure:**
+```bash
+#!/usr/bin/env chell
+# Comments start with #
+# Blank lines are ignored
+
+# Commands (one per line)
+pwd
+ls /home
+
+# Semicolons work within lines too
+cd /PIPELINES; ls
+
+# More commands
+cat pipeline.yml
+```
+
+=== Script Execution Methods
+
+**Method 1: Explicit flag**
+```bash
+chell -f script.chell
+```
+
+**Method 2: Auto-detection**
+```bash
+chell script.chell           # Auto-detects file exists
+```
+
+**Method 3: Shebang execution**
+```bash
+chmod +x script.chell
+./script.chell               # Direct execution
+```
+
+=== Shebang Support
+
+Add `#!/usr/bin/env chell` to the first line to make scripts directly executable.
+
+**Example script:**
+```bash
+#!/usr/bin/env chell
+# DICOM batch processing script
+
+# Navigate to patient directory
+cd /SERVICES/PACS/PACSDCM/patient123/study
+
+# List all DICOM files
+ls *.dcm
+
+# Process each file
+cat image_001.dcm | dcmdump - > /tmp/metadata_001.txt
+cat image_002.dcm | dcmdump - > /tmp/metadata_002.txt
+
+# Verify output
+ls /tmp/metadata_*.txt
+```
+
+**Make executable and run:**
+```bash
+chmod +x dicom_batch.chell
+./dicom_batch.chell
+```
+
+=== Comment Syntax
+
+**Full-line comments:**
+```bash
+# This is a comment
+pwd                          # This is NOT a comment (inline not supported)
+```
+
+**Special cases:**
+```bash
+#!/usr/bin/env chell        # Shebang - ignored on line 1
+# Comment
+  # Indented comment         # Leading whitespace allowed
+#Comment                     # Works without space after #
+```
+
+=== Script Features
+
+**Semicolons within lines:**
+```bash
+#!/usr/bin/env chell
+# Each line can have semicolons
+cd /tmp; ls; pwd
+```
+
+**Blank lines for readability:**
+```bash
+#!/usr/bin/env chell
+# Section 1: Setup
+mkdir /tmp/work
+cd /tmp/work
+
+# Section 2: Processing
+ls /PIPELINES
+cat pipeline.yml
+```
+
+**Session state persistence:**
+```bash
+#!/usr/bin/env chell
+# Directory changes persist across lines
+cd /PIPELINES
+ls                           # Lists /PIPELINES
+pwd                          # Shows /PIPELINES
+```
+
+== Error Handling
+
+ChELL provides two error handling modes: **continue-on-error** (default, like bash) and **stop-on-error** (like bash `set -e`).
+
+=== Default: Continue on Error
+
+By default, errors don't stop execution. This matches standard bash behavior with `;`.
+
+**Example:**
+```bash
+#!/usr/bin/env chell
+pwd                          # Succeeds
+ls /nonexistent             # Fails - error printed
+pwd                          # Still executes!
+```
+
+**Output:**
+```
+/home/user
+ls: /nonexistent: No such file or directory
+/home/user
+```
+
+**Command line:**
+```bash
+chell -c "pwd; ls /nonexistent; pwd"
+# All three commands execute
+```
+
+=== Stop-on-Error Mode (`-e`)
+
+Use the `-e` flag to stop execution on the first error. Similar to bash `set -e`.
+
+**Syntax:**
+```bash
+chell -e script.chell                    # Script mode
+chell -c -e "cmd1; cmd2; cmd3"           # Command mode
+chell -f -e script.chell                 # Explicit -f with -e
+```
+
+**Example:**
+```bash
+#!/usr/bin/env chell
+pwd                          # Succeeds
+ls /nonexistent             # Fails - STOPS HERE
+pwd                          # Never executes
+```
+
+**Run with `-e`:**
+```bash
+chell -e script.chell
+# Output:
+# /home/user
+# ls: /nonexistent: No such file or directory
+# Error on line 3: ...
+# Stopping execution due to error (use without -e to continue on error)
+# (exits with code 1)
+```
+
+=== When to Use Each Mode
+
+**Continue-on-error (default) - Use when:**
+- Running exploratory commands
+- Processing batches where some failures are acceptable
+- Testing/debugging scripts
+- Want to see all errors, not just the first
+
+**Stop-on-error (`-e`) - Use when:**
+- Strict automation requirements
+- CI/CD pipelines that must be reliable
+- Subsequent commands depend on previous success
+- Want fast-fail behavior for critical scripts
+
+== Auto-Detection Logic
+
+ChELL automatically determines whether a positional argument is a script file or connection target.
+
+**Detection algorithm:**
+1. If argument is an existing file → **Script mode**
+2. Otherwise → **Connection target**
+
+**Examples:**
+```bash
+chell script.chell           # File exists → Script mode
+chell cube.example.org       # Not a file → Connection mode
+chell user@cube.org          # Not a file → Connection mode
+chell /tmp/test.chell        # File exists → Script mode
+chell http://cube.org        # Not a file → Connection mode
+```
+
+**Explicit flag overrides:**
+```bash
+chell -f script.chell        # Always script mode
+chell -c "pwd"               # Always command mode
+```
+
+== Real-World Examples
+
+=== DICOM Batch Processing
+
+**Goal:** Extract metadata from all DICOM files in a series.
+
+**Script: `dicom_metadata.chell`**
+```bash
+#!/usr/bin/env chell
+# Extract DICOM metadata for all files in a series
+
+# Navigate to series directory
+cd /SERVICES/PACS/PACSDCM/patient123/study/series001
+
+# Create output directory
+mkdir /tmp/metadata
+
+# Process each DICOM file
+cat 0001.dcm | dcmdump - > /tmp/metadata/0001.txt
+cat 0002.dcm | dcmdump - > /tmp/metadata/0002.txt
+cat 0003.dcm | dcmdump - > /tmp/metadata/0003.txt
+
+# Verify output
+ls /tmp/metadata
+```
+
+**Run:**
+```bash
+chmod +x dicom_metadata.chell
+./dicom_metadata.chell
+```
+
+=== Pipeline Validation
+
+**Goal:** Verify pipeline specifications across multiple users.
+
+**Script: `validate_pipelines.chell`**
+```bash
+#!/usr/bin/env chell
+# Validate all pipeline specifications
+
+# Check user1 pipelines
+cd /PIPELINES/user1
+ls *.yml
+cat analysis.yml
+
+# Check user2 pipelines
+cd /PIPELINES/user2
+ls *.yml
+cat processing.yml
+
+# Summary
+pwd
+```
+
+**Run with stop-on-error:**
+```bash
+chell -e validate_pipelines.chell
+# Stops if any file is missing or invalid
+```
+
+=== CI/CD Integration
+
+**Goal:** Automated testing in GitHub Actions.
+
+**.github/workflows/test.yml:**
+```yaml
+name: ChRIS Integration Test
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install ChELL
+        run: npm install -g chell
+
+      - name: Run tests
+        env:
+          CHRIS_URL: ${{ secrets.CHRIS_URL }}
+          CHRIS_USER: ${{ secrets.CHRIS_USER }}
+          CHRIS_PASS: ${{ secrets.CHRIS_PASS }}
+        run: |
+          chell -c -e "connect $CHRIS_USER@$CHRIS_URL; ls /PIPELINES; pwd"
+```
+
+=== Nightly DICOM Archive
+
+**Goal:** Daily backup of DICOM studies.
+
+**Script: `nightly_backup.chell`**
+```bash
+#!/usr/bin/env chell
+# Nightly DICOM backup script
+
+# Create date-stamped directory
+mkdir /backup/$(date +%Y%m%d)
+
+# Archive patient data
+cd /SERVICES/PACS/PACSDCM/patient001
+cat study_*.dcm > /backup/$(date +%Y%m%d)/patient001.tar
+
+cd /SERVICES/PACS/PACSDCM/patient002
+cat study_*.dcm > /backup/$(date +%Y%m%d)/patient002.tar
+
+# Verify backups
+ls /backup/$(date +%Y%m%d)
+```
+
+**Crontab entry:**
+```bash
+0 2 * * * /path/to/nightly_backup.chell
+```
+
+=== Multi-Step Analysis
+
+**Goal:** Complete analysis pipeline from data retrieval to result storage.
+
+**Command line:**
+```bash
+chell -c "
+  cd /SERVICES/PACS/patient123;
+  cat ct_scan.dcm > /tmp/scan.dcm;
+  cd /PIPELINES/analysis;
+  cat pipeline.yml;
+  mkdir /home/user/results/$(date +%Y%m%d);
+  cd /home/user/results/$(date +%Y%m%d);
+  touch analysis_complete.txt
+"
+```
+
+== Advanced Patterns
+
+=== Conditional Execution with `-e`
+
+Stop processing if prerequisite fails:
+
+```bash
+#!/usr/bin/env chell
+# Requires -e flag to work correctly
+
+# Check if pipeline exists (stops if not)
+ls /PIPELINES/user/analysis.yml
+
+# Only runs if above succeeds
+cat /PIPELINES/user/analysis.yml
+
+# Only runs if all above succeed
+cd /SERVICES/PACS
+ls *.dcm
+```
+
+**Run:**
+```bash
+chell -e conditional.chell
+```
+
+=== Mixing Command and Script Modes
+
+**From command line:**
+```bash
+# Run script with custom connection
+chell -f process.chell user@cube.org
+
+# Run script with physical filesystem mode
+chell -f --physicalFS debug.chell
+
+# Run script with stop-on-error
+chell -e script.chell
+```
+
+=== Piping Script Output
+
+**Capture script output:**
+```bash
+chell script.chell > output.log 2>&1
+```
+
+**Filter script output:**
+```bash
+chell script.chell | grep "ERROR"
+```
+
+**Chain with other tools:**
+```bash
+chell -c "cat pipeline.yml" | python validate_pipeline.py
+```
+
+=== Environment Variable Integration
+
+**In scripts:**
+```bash
+#!/usr/bin/env chell
+# Use environment variables (expanded by shell before chell sees them)
+
+cd /PIPELINES/$USER
+cat $PIPELINE_NAME.yml
+```
+
+**From command line:**
+```bash
+export PATIENT_ID=patient123
+chell -c "cd /SERVICES/PACS/$PATIENT_ID; ls"
+```
+
+== Performance Considerations
+
+=== Connection Overhead
+
+**Problem:** Each `chell` invocation has 2-3s connection/authentication overhead.
+
+**Solution:** Use semicolons or scripts to batch operations.
+
+**Slow (3 invocations × 2.5s = 7.5s):**
+```bash
+chell -c "pwd"
+chell -c "ls"
+chell -c "cat file.yml"
+```
+
+**Fast (1 invocation = 2.5s):**
+```bash
+chell -c "pwd; ls; cat file.yml"
+```
+
+=== Script Optimization
+
+**Use semicolons sparingly within scripts:**
+
+```bash
+#!/usr/bin/env chell
+# Good - one command per line (readable)
+cd /PIPELINES
+ls
+cat pipeline.yml
+
+# Also good - related commands grouped
+cd /tmp; mkdir work; cd work
+```
+
+**Avoid excessive scripting for simple tasks:**
+```bash
+# Overkill - just use command mode
+#!/usr/bin/env chell
+pwd
+
+# Better
+chell -c "pwd"
+```
+
+== Troubleshooting
+
+=== Script Not Found
+
+**Problem:**
+```bash
+$ chell myscript.chell
+Error: Script file not found: myscript.chell
+```
+
+**Solutions:**
+- Use absolute path: `chell /path/to/myscript.chell`
+- Use relative path: `chell ./myscript.chell`
+- Check file exists: `ls myscript.chell`
+
+=== Shebang Not Working
+
+**Problem:**
+```bash
+$ ./script.chell
+bash: ./script.chell: Permission denied
+```
+
+**Solutions:**
+```bash
+chmod +x script.chell    # Make executable
+./script.chell           # Try again
+```
+
+**Problem:**
+```bash
+$ ./script.chell
+/usr/bin/env: 'chell': No such file or directory
+```
+
+**Solutions:**
+```bash
+# Check chell is installed globally
+which chell
+
+# Install globally if needed
+npm install -g chell
+
+# Or use absolute path in shebang
+#!/usr/bin/node /path/to/chell/dist/index.js
+```
+
+=== Semicolon in String
+
+**Problem:** Semicolon in echo command splits incorrectly.
+
+**Wrong:**
+```bash
+chell -c "echo hello;world; pwd"
+# Runs: echo hello
+#       world (command not found)
+#       pwd
+```
+
+**Right:**
+```bash
+chell -c "echo 'hello;world'; pwd"
+# Runs: echo 'hello;world'
+#       pwd
+```
+
+=== Script Errors Not Stopping
+
+**Problem:** Script continues despite errors.
+
+**Solution:** Use `-e` flag:
+```bash
+chell -e script.chell    # Stops on first error
+```
+
+=== Connection Arguments with Scripts
+
+**Providing credentials to scripts:**
+```bash
+# Method 1: Connection args before script
+chell user@cube.org script.chell
+
+# Method 2: Environment variables (if script supports)
+export CHRIS_URL=http://cube.org
+export CHRIS_USER=myuser
+chell script.chell
+```
+
+== Command Reference
+
+=== Command Mode
+
+```bash
+# Basic
+chell -c "<command>"
+
+# Multiple commands
+chell -c "cmd1; cmd2; cmd3"
+
+# Stop on error
+chell -c -e "cmd1; cmd2"
+
+# With connection
+chell -c "pwd" user@cube.org
+
+# Physical filesystem
+chell -c --physicalFS "ls /actual/path"
+```
+
+=== Script Mode
+
+```bash
+# Explicit flag
+chell -f script.chell
+
+# Auto-detect
+chell script.chell
+
+# Stop on error
+chell -e script.chell
+chell -f -e script.chell
+
+# Shebang execution
+chmod +x script.chell
+./script.chell
+
+# With connection
+chell -f script.chell user@cube.org
+```
+
+=== Flags
+
+| Flag | Description | Works With |
+|------|-------------|------------|
+| `-c <command>` | Execute command and exit | All modes |
+| `-f <file>` | Execute script file | Script mode |
+| `-e` | Stop on first error | `-c`, `-f` |
+| `--physicalFS` | Use physical paths | All modes |
+| `-u <user>` | Username | Connection |
+| `-p <password>` | Password | Connection |
+
+== Best Practices
+
+=== Script Organization
+
+**Use descriptive filenames:**
+```bash
+✓ dicom_batch_export.chell
+✓ pipeline_validation.chell
+✗ script1.chell
+✗ test.chell
+```
+
+**Add header comments:**
+```bash
+#!/usr/bin/env chell
+#
+# DICOM Batch Export Script
+# Purpose: Export all DICOM files for patient backup
+# Author: Medical Imaging Team
+# Date: 2025-01-15
+#
+# Usage: ./dicom_batch_export.chell
+# Requires: Access to PACS server
+```
+
+**Group related operations:**
+```bash
+#!/usr/bin/env chell
+
+# === SETUP ===
+mkdir /tmp/work
+cd /tmp/work
+
+# === DATA RETRIEVAL ===
+cat /SERVICES/PACS/patient/study.dcm > study.dcm
+
+# === PROCESSING ===
+cat study.dcm | dcmdump - > metadata.txt
+
+# === CLEANUP ===
+cd /tmp
+```
+
+=== Error Handling Strategy
+
+**For production scripts:**
+- Always use `-e` flag for critical workflows
+- Test without `-e` first to see all potential errors
+- Add comments explaining expected failures
+
+**For exploratory scripts:**
+- Use default continue-on-error
+- Manually check for errors you care about
+
+=== Security
+
+**Never hardcode credentials:**
+```bash
+#!/usr/bin/env chell
+# ✗ BAD
+connect myuser mypassword http://cube.org
+
+# ✓ GOOD
+# Use: chell -u $USER -p $PASS script.chell
+# Or provide interactively
+```
+
+**Validate inputs:**
+```bash
+#!/usr/bin/env chell
+# Check required directories exist
+ls /PIPELINES/required
+ls /SERVICES/PACS
+# Script will fail early if directories missing (with -e)
+```
+
+=== Documentation
+
+**Document prerequisites:**
+```bash
+#!/usr/bin/env chell
+# Prerequisites:
+# - Authenticated ChRIS session
+# - Access to /SERVICES/PACS
+# - dcmdump tool installed
+```
+
+**Add examples:**
+```bash
+#!/usr/bin/env chell
+# Examples:
+#   ./script.chell                    # Use saved credentials
+#   chell -f script.chell user@url   # Explicit connection
+#   chell -e script.chell             # Stop on errors
+```
+
+== See Also
+
+* `chell/docs/commands.adoc` - Complete command reference
+* `chell/docs/cat.adoc` - Binary file handling and DICOM workflows
+* `chili/docs/cli.adoc` - ChILI command-line interface
+* Bash manual - Semicolon and error handling behavior
+
+== Quick Reference
+
+**Run multiple commands:**
+```bash
+chell -c "pwd; ls; cat file.txt"
+```
+
+**Create script file:**
+```bash
+cat > script.chell <<'EOF'
+#!/usr/bin/env chell
+pwd
+ls
+EOF
+```
+
+**Run script:**
+```bash
+chell script.chell              # Auto-detect
+chell -f script.chell           # Explicit
+chmod +x script.chell; ./script.chell  # Shebang
+```
+
+**Stop on error:**
+```bash
+chell -e script.chell
+chell -c -e "cmd1; cmd2"
+```
+
+**Quote handling:**
+```bash
+chell -c "echo 'has;semicolon'; pwd"   # Single quotes
+chell -c "echo \"has;semicolon\"; pwd" # Double quotes
+```

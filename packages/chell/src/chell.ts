@@ -52,6 +52,7 @@ import { Result, errorStack } from '@fnndsc/cumin';
 import { vfs } from './lib/vfs/vfs.js';
 import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
+import { semicolons_parse } from './lib/semicolonParser.js';
 
 /**
  * Interface for package.json structure.
@@ -152,6 +153,31 @@ async function command_handle(line: string): Promise<void> {
         const elapsed: number = performance.now() - startTime;
         console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
       }
+    }
+    return;
+  }
+
+  // Check for semicolon-separated commands (execute sequentially)
+  const commands: string[] = semicolons_parse(trimmedLine);
+  if (commands.length > 1) {
+    // Execute each command in sequence
+    for (const cmd of commands) {
+      try {
+        await command_handle(cmd);
+      } catch (error: unknown) {
+        const msg: string = error instanceof Error ? error.message : String(error);
+        console.error(chalk.red(`Command error: ${msg}`));
+
+        // Stop on error if flag is set, otherwise continue (bash ; behavior)
+        if (g_stopOnError) {
+          throw error;
+        }
+      }
+    }
+    // Display total timing if enabled
+    if (session.timingEnabled_get()) {
+      const elapsed: number = performance.now() - startTime;
+      console.log(chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`));
     }
     return;
   }
@@ -661,8 +687,68 @@ import * as os from 'os';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
+import { existsSync } from 'fs';
 
-// ... (imports remain the same)
+// Global flag to control stop-on-error behavior
+let g_stopOnError: boolean = false;
+
+/**
+ * Executes a chell script file.
+ * Reads the file line by line, ignoring comments and blank lines.
+ * Supports shebang (#!) on first line.
+ *
+ * @param scriptPath - Path to the script file.
+ * @param stopOnError - Whether to stop execution on first error (default: false).
+ * @returns A Promise that resolves when script execution completes.
+ *
+ * @example
+ * ```typescript
+ * await script_execute('/path/to/script.chell', false);
+ * ```
+ */
+async function script_execute(scriptPath: string, stopOnError: boolean = false): Promise<void> {
+  if (!existsSync(scriptPath)) {
+    console.error(chalk.red(`Error: Script file not found: ${scriptPath}`));
+    process.exit(1);
+  }
+
+  // Set global stop-on-error flag
+  g_stopOnError = stopOnError;
+
+  const scriptContent: string = readFileSync(scriptPath, 'utf8');
+  const lines: string[] = scriptContent.split('\n');
+
+  for (let i: number = 0; i < lines.length; i++) {
+    let line: string = lines[i].trim();
+
+    // Skip shebang on first line
+    if (i === 0 && line.startsWith('#!')) {
+      continue;
+    }
+
+    // Skip comment lines and blank lines
+    if (line.startsWith('#') || line === '') {
+      continue;
+    }
+
+    // Execute the line
+    try {
+      await command_handle(line);
+    } catch (error: unknown) {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`Error on line ${i + 1}: ${msg}`));
+
+      if (stopOnError) {
+        console.error(chalk.red('Stopping execution due to error (use without -e to continue on error)'));
+        process.exit(1);
+      }
+      // Otherwise continue to next line
+    }
+  }
+
+  // Reset flag
+  g_stopOnError = false;
+}
 
 /**
  * Starts the ChELL REPL.
@@ -681,7 +767,7 @@ export async function chell_start(): Promise<void> {
   const border = chalk.gray('----------------------------------------------------------------');
 
   // Show startup banner only in interactive mode
-  if (config.mode !== 'execute') {
+  if (config.mode !== 'execute' && config.mode !== 'script') {
     console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
     console.log(border);
     console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Layered Logic`);
@@ -697,14 +783,14 @@ export async function chell_start(): Promise<void> {
   spinner.start('Initializing session components');
   await session.init();
   spinner.stop();
-  if (config.mode !== 'execute') {
+  if (config.mode !== 'execute' && config.mode !== 'script') {
     console.log(chalk.green('[+] Session initialized.'));
   }
 
   // Set physical filesystem mode if requested
   if (config.physicalFS) {
     session.physicalMode_set(true);
-    if (config.mode !== 'execute') {
+    if (config.mode !== 'execute' && config.mode !== 'script') {
       console.log(chalk.yellow('[!] Physical filesystem mode enabled - logical-to-physical mapping disabled'));
     }
   }
@@ -719,7 +805,7 @@ export async function chell_start(): Promise<void> {
       console.error(chalk.red('Error: Username required when connecting via CLI args.'));
       process.exit(1);
     }
-    if (!password && url && config.mode !== 'execute') {
+    if (!password && url && config.mode !== 'execute' && config.mode !== 'script') {
       // Only prompt for password in interactive modes
       password = await password_prompt(user, url);
     } else if (!password && config.mode === 'execute') {
@@ -746,7 +832,7 @@ export async function chell_start(): Promise<void> {
         await chrisContext.currentContext_update();
         currentContext = context_getSingle();
         spinner.stop();
-        if (config.mode !== 'execute') {
+        if (config.mode !== 'execute' && config.mode !== 'script') {
           console.log(chalk.green('[+] Connection established.'));
         }
       } catch (error: unknown) {
@@ -764,7 +850,7 @@ export async function chell_start(): Promise<void> {
     currentContext = context_getSingle();
 
     if (currentContext.user && currentContext.URL) {
-      if (config.mode !== 'execute') {
+      if (config.mode !== 'execute' && config.mode !== 'script') {
         console.log(chalk.green('[+] Previous context detected'));
         console.log(chalk.gray(`    User: ${chalk.cyan(currentContext.user)}`));
         console.log(chalk.gray(`    URL:  ${chalk.cyan(currentContext.URL)}`));
@@ -783,7 +869,7 @@ export async function chell_start(): Promise<void> {
             // Make a simple API call to validate the token
             await client.getUser();
             spinner.stop();
-            if (config.mode !== 'execute') {
+            if (config.mode !== 'execute' && config.mode !== 'script') {
               console.log(chalk.green('[+] Token validated with server'));
               console.log(chalk.green('[+] Session restored'));
             }
@@ -810,7 +896,7 @@ export async function chell_start(): Promise<void> {
         console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
       }
     } else {
-      if (config.mode !== 'execute') {
+      if (config.mode !== 'execute' && config.mode !== 'script') {
         console.log(chalk.yellow('[!] No previous context found'));
       }
     }
@@ -826,7 +912,18 @@ export async function chell_start(): Promise<void> {
   // --- Execution Mode ---
 
   if (config.mode === 'execute' && config.commandToExecute) {
+    // Set stop-on-error flag if requested
+    if (config.stopOnError) {
+      g_stopOnError = true;
+    }
     await command_handle(config.commandToExecute);
+    process.exit(0);
+  }
+
+  // --- Script Mode ---
+
+  if (config.mode === 'script' && config.scriptFile) {
+    await script_execute(config.scriptFile, config.stopOnError || false);
     process.exit(0);
   }
 

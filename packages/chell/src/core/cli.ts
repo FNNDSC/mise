@@ -7,11 +7,14 @@
  * @module
  */
 import { Command } from 'commander';
+import { existsSync } from 'fs';
 
 export interface ChellCLIConfig {
-  mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute';
+  mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute' | 'script';
   physicalFS?: boolean;
   commandToExecute?: string;
+  scriptFile?: string;
+  stopOnError?: boolean;
   connectConfig?: {
     user?: string;
     password?: string;
@@ -32,7 +35,9 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
       .argument('[target]', 'Target CUBE (user@url or url)')
       .option('-u, --user <user>', 'Username')
       .option('-p, --password <password>', 'Password')
-      .option('-c, --command <command>', 'Execute a single command and exit')
+      .option('-c, --command <command>', 'Execute command(s) and exit (use ; to separate multiple commands)')
+      .option('-f, --file <path>', 'Execute commands from script file')
+      .option('-e', 'Stop on first error (like bash set -e). Default: continue on error')
       .option('--physicalFS', 'Use physical filesystem paths (skip logical-to-physical mapping)')
       .addHelpText('after', `
 Interactive Commands:
@@ -50,13 +55,29 @@ Shell Features:
   Pipes              Use | to chain commands: cat file.txt | wc -l
   Output Redirection Use > to write to file: cat file.txt > output.txt
                      Use >> to append to file: cat file.txt >> output.txt
+  Semicolons         Use ; to run commands sequentially: cd /tmp; ls; pwd
+
+Script Files:
+  Shebang            Add #!/usr/bin/env chell to make scripts executable
+  Comments           Lines starting with # are ignored (except shebang)
+  Error Handling     By default continues on error, use -e to stop on first error
 
 Options:
   --physicalFS    Operate directly on physical paths without logical-to-physical mapping.
                   Use this for debugging or when working with physical ChRIS storage paths.
-  -c, --command   Run a specific command and exit immediately (non-interactive mode).
+  -c, --command   Run command(s) and exit. Supports semicolons: chell -c "ls; pwd"
+  -f, --file      Execute script file: chell -f script.chell
+  -e              Stop on first error in script mode (default: continue on error)
+
+Examples:
+  chell -c "ls /PIPELINES"                          # Single command
+  chell -c "cd /PIPELINES; ls; cat pipeline.yml"    # Multiple commands
+  chell script.chell                                # Run script file (auto-detect)
+  chell -f script.chell                             # Run script file (explicit)
+  chell -e script.chell                             # Run script, stop on error
+  ./script.chell                                    # Direct execution (with shebang)
       `)
-      .action((target: string | undefined, options: { user?: string, password?: string, command?: string, physicalFS?: boolean }) => {
+      .action((target: string | undefined, options: { user?: string, password?: string, command?: string, file?: string, e?: boolean, physicalFS?: boolean }) => {
           let user: string | undefined = options.user;
           let url: string | undefined = target;
           let password: string | undefined = options.password;
@@ -78,12 +99,29 @@ Options:
           }
 
           // Determine mode
-          if (options.command) {
+          if (options.file) {
+              config = {
+                  mode: 'script',
+                  scriptFile: options.file,
+                  stopOnError: options.e || false,
+                  physicalFS: options.physicalFS,
+                  connectConfig: connectConfig
+              };
+          } else if (options.command) {
               config = {
                   mode: 'execute',
                   commandToExecute: options.command,
+                  stopOnError: options.e || false,
                   physicalFS: options.physicalFS,
                   connectConfig: connectConfig
+              };
+          } else if (target && existsSync(target)) {
+              // Auto-detect script file: if target exists as a file, treat as script
+              config = {
+                  mode: 'script',
+                  scriptFile: target,
+                  stopOnError: options.e || false,
+                  physicalFS: options.physicalFS
               };
           } else if (connectConfig) {
               config = {

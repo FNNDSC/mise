@@ -9,6 +9,39 @@ ChELL (ChRIS Execution Logic Layer) is an interactive shell for the ChRIS platfo
 
 ChELL operates on the ChRIS filesystem and provides both native builtins and seamless integration with the underlying `chili` CLI. Commands are designed to feel familiar to users of Unix-like shells while operating on remote ChRIS resources.
 
+== Execution Modes
+
+ChELL supports three execution modes for different use cases:
+
+* **Interactive Mode** - Traditional REPL shell with command history and tab completion
+* **Command Mode** (`-c`) - Execute single or multiple commands and exit
+* **Script Mode** (`-f`) - Run .chell script files with full automation support
+
+**Quick examples:**
+```bash
+# Interactive mode
+chell
+
+# Command mode - single command
+chell -c "ls /PIPELINES"
+
+# Command mode - multiple commands with semicolons
+chell -c "cd /PIPELINES; ls; cat pipeline.yml"
+
+# Script mode - explicit
+chell -f script.chell
+
+# Script mode - auto-detect
+chell script.chell
+
+# Shebang execution
+chmod +x script.chell && ./script.chell
+```
+
+For complete documentation on semicolon support, script files, shebang execution, error handling modes, and automation patterns, see:
+
+**→ link:execution.adoc[ChELL Execution Modes Documentation]**
+
 == Command Categories
 
 ChELL commands fall into several categories:

@@ -556,11 +556,65 @@ async function pipe_execute(segments: string[]): Promise<void> {
         reject(err);
       });
 
-      // Write input to child process
-      if (currentInput.length > 0) {
-        child.stdin!.write(currentInput);
-      }
-      child.stdin!.end();
+      // Handle EPIPE errors when child closes stdin early
+      child.stdin!.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EPIPE') {
+          // Child closed stdin, this is normal if it exits early
+          // Don't reject, just ignore - we'll handle exit code in 'close' event
+        } else {
+          reject(err);
+        }
+      });
+
+      // Write input to child process with proper backpressure handling
+      /**
+       * Writes all buffered data to child process stdin with backpressure handling.
+       * Splits large buffers into chunks and waits for drain events when needed.
+       */
+      const data_writeAll = async (): Promise<void> => {
+        if (currentInput.length === 0) {
+          child.stdin!.end();
+          return;
+        }
+
+        return new Promise<void>((resolveWrite: (value: void) => void, rejectWrite: (reason: Error) => void) => {
+          let offset: number = 0;
+          const chunkSize: number = 64 * 1024; // 64KB chunks
+
+          /**
+           * Recursively writes the next chunk of data to stdin.
+           * Handles backpressure by waiting for drain events when buffer is full.
+           */
+          const chunk_writeNext = (): void => {
+            try {
+              while (offset < currentInput.length) {
+                const end: number = Math.min(offset + chunkSize, currentInput.length);
+                const chunk: Buffer = currentInput.subarray(offset, end);
+                offset = end;
+
+                const canContinue: boolean = child.stdin!.write(chunk);
+                if (!canContinue) {
+                  // Buffer is full, wait for drain event
+                  child.stdin!.once('drain', chunk_writeNext);
+                  return;
+                }
+              }
+              // All data written, close stdin
+              child.stdin!.end();
+              resolveWrite();
+            } catch (err: unknown) {
+              rejectWrite(err as Error);
+            }
+          };
+
+          chunk_writeNext();
+        });
+      };
+
+      // Start writing data (don't await - let it happen in parallel with reading output)
+      data_writeAll().catch((err: unknown) => {
+        // Ignore write errors if child already closed (EPIPE will be caught by stdin error handler)
+      });
     });
   }
 

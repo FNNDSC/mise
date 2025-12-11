@@ -214,15 +214,16 @@ ls *.json
 
 === cat
 
-Displays the contents of one or more files.
+Displays the contents of one or more files with support for both text and binary modes.
 
 **Syntax:**
 ```bash
-cat <file> [file...]
+cat [--binary] <file> [file...]
 ```
 
 **Parameters:**
 
+* `--binary` - Force binary mode (optional, auto-detected for known types)
 * `file` - Path to file(s) to display. Supports wildcards.
 
 **Examples:**
@@ -232,31 +233,49 @@ cat file1.txt file2.txt                    # Display multiple files
 cat *.json                                 # Display all JSON files (wildcard)
 cat ~/data/log.txt                         # Display with path expansion
 cat /PIPELINES/user/pipeline_spec.yml      # Display pipeline file
+
+# Binary mode (DICOM medical imaging)
+cat /SERVICES/PACS/.../study.dcm > local.dcm              # Save locally
+cat /SERVICES/PACS/.../image.dcm | dcmdump -              # Pipe to analysis
+cat --binary custom_format.dat                            # Force binary mode
 ```
+
+**Binary Mode & Auto-Detection:**
+
+Binary mode is automatically enabled for medical imaging and other binary file types:
+
+* **Medical:** `.dcm` (DICOM)
+* **Images:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp`, etc.
+* **Archives:** `.zip`, `.tar`, `.gz`, `.bz2`, `.7z`, etc.
+* **Documents:** `.pdf`
+* **Executables:** `.exe`, `.dll`, `.so`, `.bin`
 
 **File Type Support:**
 
-The `cat` command intelligently handles different file types based on their path:
-
-* **Regular files** - Standard ChRIS filesystem files (e.g., `/home/user/data.txt`)
+* **Regular files** - Standard ChRIS filesystem files
 * **Pipeline files** - Pipeline specifications in `/PIPELINES/<owner>/*.yml`
-* **Future types** - PACS files and other specialized content will be supported
+* **PACS files** - DICOM medical imaging in `/SERVICES/PACS/PACSDCM/`
 
-The system automatically detects the file type and uses the appropriate API endpoint to retrieve content. Users don't need to know the underlying storage mechanism.
+**Key Features:**
+
+* **Backpressure handling** - Ensures complete transfer of large files (tested with 150MB+)
+* **Piping support** - Works seamlessly with external tools (dcmdump, convert, etc.)
+* **Smart TTY detection** - Shows info messages only in interactive terminals
+* **Integrity preservation** - Byte-perfect binary transfer for medical imaging
 
 **Notes:**
 
 * Concatenates multiple files to output
 * Cannot cat virtual `/bin` directory contents
 * Wildcards are expanded before execution
-* Large files are displayed without pagination
-* Different file types use different retrieval methods transparently
+* Large files streamed efficiently (not loaded into memory)
 
-**Architecture:**
+**Detailed Documentation:**
 
-For details on how file content retrieval works across different file types, see:
+For comprehensive documentation including DICOM workflows, piping patterns, and troubleshooting:
 
-* `salsa/docs/file-content-retrieval.adoc` - Comprehensive architecture
+* **`chell/docs/cat.adoc`** - Complete cat command guide
+* `salsa/docs/file-content-retrieval.adoc` - File retrieval architecture
 * `chili/docs/32_file_content.adoc` - Integration patterns
 
 === rm

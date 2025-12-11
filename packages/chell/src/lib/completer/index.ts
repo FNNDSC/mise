@@ -203,7 +203,7 @@ async function path_complete(partial: string): Promise<string[]> {
   }
 
   // 3. Fetch contents (check cache first)
-  let items: string[] = [];
+  let items: ListingItem[] = [];
   const listCache = listCache_get();
 
   if (absDirToList === '/bin') {
@@ -234,14 +234,27 @@ async function path_complete(partial: string): Promise<string[]> {
        }
      }
      if (lsItems) {
-       items = lsItems.map((i: ListingItem) => i.name);
+       items = lsItems;
      }
   } else if (absDirToList === '/usr') {
      // Virtual /usr - contains 'bin' subdirectory
-     items = ['bin'];
+     items = [{
+       name: 'bin',
+       type: 'vfs',
+       size: 0,
+       owner: 'root',
+       date: new Date().toISOString(),
+     }];
   } else if (absDirToList === '/usr/bin') {
      // Virtual /usr/bin - builtin commands
-     items = builtinCommands_list();
+     const builtinNames: string[] = builtinCommands_list();
+     items = builtinNames.map((name: string) => ({
+       name,
+       type: 'file' as const,
+       size: 0,
+       owner: 'system',
+       date: new Date().toISOString(),
+     }));
   } else {
      // Native ChRIS
      try {
@@ -276,28 +289,36 @@ async function path_complete(partial: string): Promise<string[]> {
          }
        }
        if (lsItems) {
-         items = lsItems.map((i: ListingItem) => i.name);
+         items = lsItems;
        }
      } catch (e) {
        // Ignore errors (e.g., perms, not a dir)
      }
   }
-  
+
   // 4. Filter and format matches
-  const hits = items.filter(i => i.startsWith(prefix));
-  
+  const hits: ListingItem[] = items.filter((i: ListingItem) => i.name.startsWith(prefix));
+
   // Reconstruct the full path for each match, preserving the original partial's style (tilde/relative)
-  const completions = hits.map(hit => {
+  // Append "/" for directories and virtual filesystems
+  const completions: string[] = hits.map((hit: ListingItem) => {
     // This is the segment that was *not* yet typed, but matched.
-    // Example: partial = "~/P", prefix = "P", hit = "PIPELINES", remainingSegment = "IPELINES"
-    // Example: partial = "~/", prefix = "", hit = "home", remainingSegment = "home"
-    const remainingSegment = hit.substring(prefix.length); 
+    // Example: partial = "~/P", prefix = "P", hit.name = "PIPELINES", remainingSegment = "IPELINES"
+    // Example: partial = "~/", prefix = "", hit.name = "home", remainingSegment = "home"
+    const remainingSegment: string = hit.name.substring(prefix.length);
 
     // We want to return the original partial + remainingSegment
     // Example: "~/P" + "IPELINES" = "~/PIPELINES"
     // Example: "~/" + "home" = "~/home"
     // Example: "fo" + "obar" = "foobar"
-    return partial + remainingSegment;
+    let completion: string = partial + remainingSegment;
+
+    // Append "/" for directories, virtual filesystems, and links (which may point to directories)
+    if (hit.type === 'dir' || hit.type === 'vfs' || hit.type === 'link') {
+      completion += '/';
+    }
+
+    return completion;
   });
 
   return completions;

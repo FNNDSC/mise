@@ -13,7 +13,8 @@ import {
   FilteredResourceData,
   ListOptions,
   Searchable,
-  objContext_create
+  objContext_create,
+  errorStack
 } from '@fnndsc/cumin';
 import axios from 'axios';
 
@@ -197,11 +198,18 @@ export async function pluginMeta_documentationUrlGet(pluginId: string): Promise<
  */
 export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions): Promise<string | null> {
   const chrisPlugin = new ChRISPlugin(); // Re-instantiate
-  const queryHits: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(options, 'id');
+  const queryHits: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(options, ['id', 'name', 'version']);
   if (queryHits && queryHits.hits.length === 1) { // Assuming we want a single, unambiguous result
-    return queryHits.hits[0] as string;
+    return (queryHits.hits[0] as Dictionary).id as string;
   } else if (queryHits && queryHits.hits.length > 1) {
     // Optionally log a warning about ambiguity, but for library, just return null or throw.
+    const found = queryHits.hits.map(h => {
+      const plugin = h as Dictionary;
+      const byId = `"id:${plugin.id}"`;
+      const byNameAndVersion = `"name_exact:${plugin.name},version:${plugin.version}"`;
+      return `- ${byNameAndVersion} -OR- ${byId}`;
+    }).join('\n');
+    errorStack.stack_push('warning', `Multiple plugins found for search "${options.search}" -- try:\n${found}\nPlease be more specific.`);
     return null; // Return null for ambiguous search results
   }
   return null;

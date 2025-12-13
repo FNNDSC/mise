@@ -23,6 +23,9 @@ jest.mock('@fnndsc/cumin', () => {
     ChRISPluginInstanceGroup: jest.fn(),
     QueryHits: jest.fn(),
     plugin_registerDirect: jest.fn(),
+    errorStack: {
+      stack_push: jest.fn(),
+    },
     Ok,
     Err
   };
@@ -141,7 +144,7 @@ describe('plugins', () => {
   });
 
   it('pluginMeta_pluginIDFromSearch should return ID for single match', async () => {
-    const mockGetData = jest.fn().mockResolvedValue({ hits: ['single-id'] } as QueryHits);
+    const mockGetData = jest.fn().mockResolvedValue({ hits: [{id: 'single-id', name: 'unique-plugin', version: '1.0.0'}] } as QueryHits);
     (ChRISPlugin as jest.Mock).mockImplementation(() => ({
       pluginData_getFromSearch: mockGetData,
       plugin_run: jest.fn(),
@@ -151,12 +154,15 @@ describe('plugins', () => {
     const options: PluginSearchOptions = { name: 'unique-plugin' };
     const result = await pluginMeta_pluginIDFromSearch(options);
 
-    expect(mockGetData).toHaveBeenCalledWith(options, 'id');
+    expect(mockGetData).toHaveBeenCalledWith(options, ['id', 'name', 'version']);
     expect(result).toBe('single-id');
   });
 
   it('pluginMeta_pluginIDFromSearch should return null for multiple matches', async () => {
-    const mockGetData = jest.fn().mockResolvedValue({ hits: ['id-1', 'id-2'] } as QueryHits);
+    const mockGetData = jest.fn().mockResolvedValue({ hits: [
+      { id: 'id-1', name: 'ambiguous-plugin', version: '1.0.0' },
+      { id: 'id-2', name: 'ambiguous-plugin', version: '1.0.1' }
+    ] } as QueryHits);
     (ChRISPlugin as jest.Mock).mockImplementation(() => ({
       pluginData_getFromSearch: mockGetData,
       plugin_run: jest.fn(),
@@ -166,7 +172,7 @@ describe('plugins', () => {
     const options: PluginSearchOptions = { name: 'ambiguous-plugin' };
     const result = await pluginMeta_pluginIDFromSearch(options);
 
-    expect(mockGetData).toHaveBeenCalledWith(options, 'id');
+    expect(mockGetData).toHaveBeenCalledWith(options, ['id', 'name', 'version']);
     expect(result).toBeNull();
   });
 
@@ -181,7 +187,7 @@ describe('plugins', () => {
     const options: PluginSearchOptions = { name: 'nonexistent-plugin' };
     const result = await pluginMeta_pluginIDFromSearch(options);
 
-    expect(mockGetData).toHaveBeenCalledWith(options, 'id');
+    expect(mockGetData).toHaveBeenCalledWith(options, ['id', 'name', 'version']);
     expect(result).toBeNull();
   });
 

@@ -14,9 +14,9 @@ import {
   errorStack,
   ChRISEmbeddedResourceGroup,
   chrisConnection,
-  chrisIO // Import chrisIO
+  chrisIO, // Import chrisIO
+  ChrisPathNode
 } from '@fnndsc/cumin';
-import { FileBrowserFolder } from '@fnndsc/cumin';
 
 jest.mock('@fnndsc/cumin', () => {
   const Ok = (val: any) => ({ ok: true, value: val });
@@ -59,7 +59,7 @@ describe('files', () => {
         asset: {
             // Mock asset properties if needed for deeper testing
         }
-      } as unknown as ChRISEmbeddedResourceGroup<FileBrowserFolder>);
+      } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
     });
     // Mock errorStack
     (errorStack.stack_push as jest.Mock).mockImplementation(jest.fn());

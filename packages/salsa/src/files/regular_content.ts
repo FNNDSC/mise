@@ -8,7 +8,7 @@ import {
   Err,
   chrisIO,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/cumin";
+import { ChrisPathNode } from "@fnndsc/cumin";
 import { files_getGroup } from './index';
 
 /**
@@ -37,7 +37,7 @@ export async function fileContent_getRegular(filePath: string): Promise<Result<s
   const dir: string = path.posix.dirname(filePath);
   const name: string = path.posix.basename(filePath);
   
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', dir);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
   if (!group) {
      return Err();
   }
@@ -85,7 +85,7 @@ export async function fileContent_getRegularBinary(filePath: string): Promise<Re
   const dir: string = path.posix.dirname(filePath);
   const name: string = path.posix.basename(filePath);
 
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', dir);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
   if (!group) {
      return Err();
   }

@@ -9,7 +9,7 @@ import {
   pacsFile_getBlob,
   pacsFile_getText,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/cumin";
+import { ChrisPathNode } from "@fnndsc/cumin";
 import { files_getGroup } from './index';
 
 /**
@@ -29,7 +29,7 @@ export async function fileContent_getPACS(filePath: string): Promise<Result<stri
   const name: string = path.posix.basename(filePath);
 
   // Get the directory listing to find the file ID
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', dir);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
   if (!group) {
      return Err();
   }
@@ -74,7 +74,7 @@ export async function fileContent_getPACSBinary(filePath: string): Promise<Resul
   const name: string = path.posix.basename(filePath);
 
   // Get the directory listing to find the file ID
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', dir);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
   if (!group) {
      return Err();
   }

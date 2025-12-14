@@ -12,7 +12,7 @@ import {
   Ok,
   Err,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/cumin";
+import { ChrisPathNode } from "@fnndsc/cumin";
 import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
 import { fileContent_getRegular, fileContent_getRegularBinary } from './regular_content';
 import { fileContent_getPACS, fileContent_getPACSBinary } from './pacs_content';
@@ -136,7 +136,7 @@ async function fileId_resolve(srcPath: string): Promise<Result<number>> {
   const srcDir: string = path.posix.dirname(srcPath);
   const srcName: string = path.posix.basename(srcPath);
 
-  const group: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = await files_getGroup('files', srcDir);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', srcDir);
   if (!group) {
       errorStack.stack_push("error", `Could not access source directory: ${srcDir}`);
       return Err<number>();
@@ -367,7 +367,7 @@ export interface FileShareOptions {
 export async function files_getGroup(
   assetName: string,
   path?: string
-): Promise<ChRISEmbeddedResourceGroup<FileBrowserFolder> | null> {
+): Promise<ChRISEmbeddedResourceGroup<ChrisPathNode> | null> {
   if (!path) {
     const fileContext: string | null = await chrisContext.current_get(
       Context.ChRISfolder
@@ -375,7 +375,7 @@ export async function files_getGroup(
     path = fileContext ? fileContext : "/";
   }
 
-  let chrisFileSystemGroup: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = null;
+  let chrisFileSystemGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = null;
 
   try {
     switch (assetName) {
@@ -383,19 +383,19 @@ export async function files_getGroup(
         chrisFileSystemGroup = (await objContext_create(
           "ChRISFilesContext",
           `folder:${path}`
-        )) as ChRISEmbeddedResourceGroup<FileBrowserFolder>;
+        )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
         break;
       case "links":
         chrisFileSystemGroup = (await objContext_create(
           "ChRISLinksContext",
           `folder:${path}`
-        )) as ChRISEmbeddedResourceGroup<FileBrowserFolder>;
+        )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
         break;
       case "dirs":
         chrisFileSystemGroup = (await objContext_create(
           "ChRISDirsContext",
           `folder:${path}`
-        )) as ChRISEmbeddedResourceGroup<FileBrowserFolder>;
+        )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
         break;
       default:
         errorStack.stack_push("error", `Unsupported asset type: ${assetName}`);
@@ -485,13 +485,13 @@ export async function files_delete(id: number, assetName: string = "files"): Pro
  */
 export async function files_getSingle(
   path: string
-): Promise<ChRISEmbeddedResourceGroup<FileBrowserFolder> | null> {
-  let chrisFilesGroup: ChRISEmbeddedResourceGroup<FileBrowserFolder> | null = null;
+): Promise<ChRISEmbeddedResourceGroup<ChrisPathNode> | null> {
+  let chrisFilesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = null;
   try {
     chrisFilesGroup = (await objContext_create(
       "ChRISFilesContext",
       `folder:${path}`
-    )) as ChRISEmbeddedResourceGroup<FileBrowserFolder>;
+    )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
 
     if (!chrisFilesGroup) {
       errorStack.stack_push("error", `Failed to create ChRISFilesContext for path: ${path}`);

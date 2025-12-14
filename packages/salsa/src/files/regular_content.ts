@@ -8,7 +8,7 @@ import {
   Err,
   chrisIO,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/chrisapi";
+import { FileBrowserFolder } from "@fnndsc/cumin";
 import { files_getGroup } from './index';
 
 /**

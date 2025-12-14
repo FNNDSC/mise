@@ -16,7 +16,7 @@ import {
   chrisConnection,
   chrisIO // Import chrisIO
 } from '@fnndsc/cumin';
-import { FileBrowserFolder } from '@fnndsc/chrisapi';
+import { FileBrowserFolder } from '@fnndsc/cumin';
 
 jest.mock('@fnndsc/cumin', () => {
   const Ok = (val: any) => ({ ok: true, value: val });
@@ -44,7 +44,6 @@ jest.mock('@fnndsc/cumin', () => {
     Err,
   };
 });
-jest.mock('@fnndsc/chrisapi');
 
 describe('files', () => {
   beforeEach(() => {

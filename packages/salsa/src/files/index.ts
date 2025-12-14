@@ -12,7 +12,7 @@ import {
   Ok,
   Err,
 } from "@fnndsc/cumin";
-import { FileBrowserFolder } from "@fnndsc/chrisapi";
+import { FileBrowserFolder } from "@fnndsc/cumin";
 import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
 import { fileContent_getRegular, fileContent_getRegularBinary } from './regular_content';
 import { fileContent_getPACS, fileContent_getPACSBinary } from './pacs_content';

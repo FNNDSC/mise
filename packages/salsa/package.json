@@ -36,7 +36,5 @@
     "@fnndsc/cumin": "file:../cumin",
     "axios": "^1.6.8"
   },
-  "peerDependencies": {
-    "@fnndsc/chrisapi": "^1.22.0"
-  }
+  "peerDependencies": {}
 }

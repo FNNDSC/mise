@@ -15,8 +15,10 @@ import {
   ChRISEmbeddedResourceGroup,
   chrisConnection,
   chrisIO, // Import chrisIO
-  ChrisPathNode
+  ChrisPathNode,
+  FilteredResourceData
 } from '@fnndsc/cumin';
+import * as filesModule from '../src/files/index';
 
 jest.mock('@fnndsc/cumin', () => {
   const Ok = (val: any) => ({ ok: true, value: val });
@@ -28,7 +30,10 @@ jest.mock('@fnndsc/cumin', () => {
     chrisIO: {
       file_upload: jest.fn(),
       file_download: jest.fn(),
-      folder_create: jest.fn()
+      folder_create: jest.fn(),
+      folder_moveByPath: jest.fn(),
+      file_moveById: jest.fn(),
+      uploadLocalPath: jest.fn()
     },
     chrisContext: {
       current_get: jest.fn()
@@ -52,12 +57,12 @@ describe('files', () => {
     (chrisContext.current_get as jest.Mock).mockResolvedValue('/default/chris/folder');
     // Mock objContext_create to return a mock ChRISEmbeddedResourceGroup
     (objContext_create as jest.Mock).mockImplementation((contextName: string, folder: string) => {
-      // Return a simple mock object that matches the expected type structure enough to pass checks
       return Promise.resolve({
         contextName,
         folder,
         asset: {
-            // Mock asset properties if needed for deeper testing
+          resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+          resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
         }
       } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
     });
@@ -65,11 +70,17 @@ describe('files', () => {
     (errorStack.stack_push as jest.Mock).mockImplementation(jest.fn());
     // Mock chrisIO.folder_create for files_mkdir
     (chrisIO.folder_create as jest.Mock).mockResolvedValue({ ok: true, value: true });
+    (chrisIO.folder_moveByPath as jest.Mock).mockResolvedValue({ ok: true, value: true });
+    (chrisIO.file_moveById as jest.Mock).mockResolvedValue({ ok: true, value: true });
+    (chrisIO.uploadLocalPath as jest.Mock).mockResolvedValue(true);
     // Mock chrisIO.file_upload for files_create and files_touch
     (chrisIO.file_upload as jest.Mock).mockImplementation((content: Blob, dir: string, name: string) => {
       // For now, simply resolve to true. If content or path validation is needed, it can be added here.
       return Promise.resolve(true);
     });
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   // ... (existing tests for getGroup, getSingle, mkdir, create, touch)
@@ -250,6 +261,138 @@ describe('files', () => {
       await files_share(123, options);
       expect(consoleSpy).toHaveBeenCalledWith('Sharing file 123 with options:', options);
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('files_copy', () => {
+    it('returns false and reports error when source file is not found', async () => {
+      const group = {
+        asset: {
+          resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+          resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+        }
+      } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>;
+      (objContext_create as jest.Mock).mockResolvedValue(group);
+
+      const result = await filesModule.files_copy('/missing.txt', '/dest.txt');
+
+      expect(result).toBe(false);
+      expect(chrisIO.file_download).not.toHaveBeenCalled();
+      expect(errorStack.stack_push).toHaveBeenCalledWith('error', expect.stringContaining('Source file not found'));
+    });
+
+    it('copies when download and upload succeed', async () => {
+      (objContext_create as jest.Mock).mockImplementation((_contextName: string, folder: string) => {
+        if (folder === 'folder:/src') {
+          return Promise.resolve({
+            asset: {
+              resources_getAll: jest.fn().mockResolvedValue({
+                tableData: [{ id: 7, fname: '/src/file.txt' }],
+                selectedFields: []
+              }),
+              resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+            }
+          } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+        }
+        return Promise.resolve({
+          asset: {
+            resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+            resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+          }
+        } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+      });
+      (chrisIO.file_download as jest.Mock).mockResolvedValue(Buffer.from('ok'));
+      (chrisIO.file_upload as jest.Mock).mockResolvedValue(true);
+
+      const result = await filesModule.files_copy('/src/file.txt', '/dest/file.txt');
+
+      expect(result).toBe(true);
+      expect(chrisIO.file_download).toHaveBeenCalledWith(7);
+    });
+  });
+
+  describe('files_move', () => {
+    it('moves directories via folder_moveByPath when source is a directory', async () => {
+      (objContext_create as jest.Mock).mockImplementation((contextName: string, folder: string) => {
+        if (contextName === 'ChRISDirsContext' && folder === 'folder:/src') {
+          return Promise.resolve({
+            asset: {
+              resources_getAll: jest.fn().mockResolvedValue({
+                tableData: [{ path: '/src/dir' }],
+                selectedFields: []
+              }),
+              resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [{ path: '/src/dir' }], selectedFields: [] })
+            }
+              } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+        }
+        if (contextName === 'ChRISDirsContext' && folder === 'folder:/dest') {
+          return Promise.resolve({
+            asset: {
+              resources_getAll: jest.fn().mockResolvedValue({
+                tableData: [{ path: '/dest/' }],
+                selectedFields: []
+              }),
+              resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [{ path: '/dest/' }], selectedFields: [] })
+            }
+          } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+        }
+        if (contextName === 'ChRISFilesContext') {
+          return Promise.resolve({
+            asset: {
+              resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+              resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+            }
+          } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+        }
+        return Promise.resolve({
+          asset: {
+            resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+            resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+          }
+        } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+      });
+
+      const result = await filesModule.files_move('/src/dir', '/dest/');
+
+      expect(result).toBe(true);
+      expect(chrisIO.folder_moveByPath).toHaveBeenCalledWith('/src/dir', '/dest/dir');
+      expect(chrisIO.file_moveById).not.toHaveBeenCalled();
+    });
+
+    it('moves files via file_moveById when source is a file', async () => {
+      (objContext_create as jest.Mock).mockImplementation((contextName: string, folder: string) => {
+        if (contextName === 'ChRISDirsContext') {
+          return Promise.resolve({
+            asset: {
+              resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+              resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+            }
+          } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+        }
+        if (contextName === 'ChRISFilesContext' && folder === 'folder:/src') {
+          return Promise.resolve({
+            asset: {
+              resources_getAll: jest.fn().mockResolvedValue({
+                tableData: [{ id: 9, fname: '/src/file.txt' }],
+                selectedFields: []
+              }),
+              resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+            }
+          } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+        }
+        return Promise.resolve({
+          asset: {
+            resources_getAll: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] }),
+            resources_listAndFilterByOptions: jest.fn().mockResolvedValue({ tableData: [], selectedFields: [] })
+          }
+        } as unknown as ChRISEmbeddedResourceGroup<ChrisPathNode>);
+      });
+
+      const result = await filesModule.files_move('/src/file.txt', '/dest/');
+
+      expect(result).toBe(true);
+      expect(chrisIO.file_moveById).toHaveBeenCalledWith(9, '/dest/file.txt');
+      expect(chrisIO.folder_moveByPath).not.toHaveBeenCalled();
     });
   });
 });

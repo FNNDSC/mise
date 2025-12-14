@@ -12,7 +12,7 @@ CUMIN_REPO := https://github.com/FNNDSC/cumin.git
 SALSA_REPO := https://github.com/FNNDSC/salsa.git
 CHILI_REPO := https://github.com/FNNDSC/chili.git
 
-.PHONY: help shop prep cook taste serve scrub taco install build test clean link all
+.PHONY: help shop prep cook taste taste-flight serve scrub taco install build test clean link all
 
 help:
 	@echo "Chell Makefile 🐚"
@@ -22,6 +22,7 @@ help:
 	@echo "  make prep    - Install dependencies"
 	@echo "  make cook    - Build dependencies (cumin, salsa, chili) and chell"
 	@echo "  make taste   - Run tests"
+	@echo "  make taste-flight - Run tests with coverage (v8 provider)"
 	@echo "  make serve   - Link globally"
 	@echo "  make scrub   - Clean artifacts"
 	@echo "  make taco    - Full build (scrub, shop, prep, cook)"
@@ -72,6 +73,11 @@ cook:
 taste:
 	@echo "👅 Tasting chell..."
 	cd $(CHELL_DIR) && npm test
+
+# Coverage (not part of taco)
+taste-flight:
+	@echo "👅 Tasting flight (with coverage) chell..."
+	cd $(CHELL_DIR) && npm test -- --coverage --coverageProvider=v8
 
 serve:
 	@echo "🍽️ Serving chell..."

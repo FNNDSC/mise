@@ -17,12 +17,17 @@ The Router intercepts all filesystem operations (`ls`, `cd`, `pwd`).
 *   If a path does not match, it delegates to the **Chris Provider** (Native FS).
 
 === 3. Execution Model ("The Sandwich")
-ChELL is a consumer of the **ChILI Library**. It strictly adheres to the "Sandwich Model" architecture:
+ChELL is a consumer of the **ChILI Library**. It strictly adheres to the "Sandwich Model" architecture with a hardened API boundary:
 
 *   **Presentation (Shell):** `chell` handles the REPL loop, history, and tab completion.
 *   **Controllers (ChILI):** `chell` imports command logic directly from `@fnndsc/chili`. It does not spawn external processes for core commands. This ensures shared state and high performance.
 *   **Logic (Salsa):** Pure business logic and resource models.
 *   **Infrastructure (Cumin):** State and API connectivity.
+
+==== API Compartmentalization
+*   Only **cumin** talks to `@fnndsc/chrisapi`. It owns the client, shapes, and conversions.
+*   **salsa** and **chili** consume cumin-owned types (e.g., `ChrisPathNode`, `ChrisPluginSummary`) and never import `@fnndsc/chrisapi` directly.
+*   This keeps external API surface centralized, reduces churn from upstream changes, and clarifies responsibility boundaries.
 
 == Directory Structure
 

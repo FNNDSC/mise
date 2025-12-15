@@ -31,6 +31,7 @@ import {
   builtin_mkdir,
   builtin_plugin,
   builtin_feed,
+  builtin_download,
   builtin_files,
   builtin_links,
   builtin_dirs,
@@ -273,6 +274,7 @@ async function command_handle(line: string): Promise<void> {
     case 'mkdir': await builtin_mkdir(args); break;
     case 'chefs': await builtin_chefs(args); break;
     case 'upload': await builtin_upload(args); break;
+    case 'download': await builtin_download(args); break;
     case 'context': await builtin_context(args); break;
     case 'parametersofplugin': await builtin_parametersofplugin(args); break;
     case 'physicalmode': await builtin_physicalmode(args); break;

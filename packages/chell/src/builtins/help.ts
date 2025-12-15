@@ -14,7 +14,7 @@ interface CommandHelp {
   examples?: string[];
 }
 
-const helpText: Record<string, CommandHelp> = {
+export const helpText: Record<string, CommandHelp> = {
   ls: {
     usage: 'ls [options] [path]',
     description: 'List directory contents',
@@ -162,6 +162,18 @@ const helpText: Record<string, CommandHelp> = {
       'upload ~/data/file.csv /home/user/uploads/',
       'upload ./results/ ~/data/',
       'upload ~/experiment/data /home/user/projects/',
+    ],
+  },
+  download: {
+    usage: 'download <chris_path> <local_path> [-f|--force]',
+    description: 'Download a ChRIS file or directory to the local filesystem with progress tracking',
+    options: [
+      '-f, --force   Overwrite existing local paths',
+      'Progress bar shows files, ETA, bytes transferred',
+    ],
+    examples: [
+      'download /home/user/data ./data',
+      'download /feeds/feed_123 ./downloads -f',
     ],
   },
   connect: {
@@ -626,7 +638,7 @@ export async function builtin_help(args: string[]): Promise<void> {
   // Group commands by category
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
-    'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'chefs'],
+    'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
     Connection: ['connect', 'logout', 'context'],
     'Single Resource': ['plugin', 'feed'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],

@@ -164,6 +164,19 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: mockChefsRm, RmOptions: {}, RmResult: {} }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cp.js', () => ({ files_cp: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/mv.js', () => ({ files_mv: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/download.js', () => ({
+  files_downloadWithProgress: jest.fn().mockResolvedValue({
+    transferredCount: 1,
+    failedCount: 0,
+    transferSize: 1024,
+    duration: 1,
+    speed: 1024,
+    totalFiles: 1,
+    endTime: Date.now(),
+    startTime: Date.now(),
+  }),
+  bytes_format: (n: number) => `${n} B`,
+}));
 
 // Mock chili views
 jest.unstable_mockModule('@fnndsc/chili/views/plugin.js', () => ({ pluginList_render: mockPluginListRender, pluginRun_render: mockPluginRunRender }));
@@ -200,6 +213,7 @@ const {
   builtin_pwd,
   builtin_ls,
   builtin_upload,
+  builtin_download,
   builtin_connect,
   builtin_logout,
   builtin_plugin,
@@ -412,6 +426,23 @@ describe('Builtins - Core Functions', () => {
       await builtin_upload(['local.txt', 'remote.txt']);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Upload error: Network error'));
+    });
+  });
+
+  describe('builtin_download()', () => {
+    it('should show usage with insufficient args', async () => {
+      await builtin_download(['remote.txt']);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: download'));
+    });
+
+    it('should invoke chili download helper', async () => {
+      const downloadModule = await import('@fnndsc/chili/commands/fs/download.js');
+      const mockDownload = downloadModule.files_downloadWithProgress as jest.Mock;
+
+      await builtin_download(['/remote/file.txt', './local.txt']);
+
+      expect(mockDownload).toHaveBeenCalled();
     });
   });
 

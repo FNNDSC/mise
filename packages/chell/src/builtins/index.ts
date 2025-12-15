@@ -13,6 +13,7 @@ export * from './fs/cat.js';
 export * from './fs/mkdir.js';
 export * from './fs/touch.js';
 export * from './fs/upload.js';
+export * from './fs/download.js';
 export * from './fs/chefs.js';
 export * from './fs/tree.js';
 export * from './fs/du.js';

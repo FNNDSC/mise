@@ -12,6 +12,10 @@ import { existsSync } from 'fs';
 export interface ChellCLIConfig {
   mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute' | 'script';
   physicalFS?: boolean;
+  prefetchPlugins?: boolean;
+  prefetchFeeds?: boolean;
+  prefetchPublicFeeds?: boolean;
+  asciiBoot?: boolean;
   commandToExecute?: string;
   scriptFile?: string;
   stopOnError?: boolean;
@@ -39,6 +43,11 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
       .option('-f, --file <path>', 'Execute commands from script file')
       .option('-e', 'Stop on first error (like bash set -e). Default: continue on error')
       .option('--physicalFS', 'Use physical filesystem paths (skip logical-to-physical mapping)')
+      .option('--prefetch-feeds', 'Prefetch user feeds at startup (interactive mode)')
+      .option('--no-prefetch-feeds', 'Disable feed prefetch at startup')
+      .option('--prefetch-public-feeds', 'Prefetch public feeds at startup (interactive mode)')
+      .option('--no-prefetch-plugins', 'Skip plugin cache prefetch at startup')
+      .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
       .addHelpText('after', `
 Interactive Commands:
   connect    Connect to a ChRIS CUBE
@@ -77,7 +86,18 @@ Examples:
   chell -e script.chell                             # Run script, stop on error
   ./script.chell                                    # Direct execution (with shebang)
       `)
-      .action((target: string | undefined, options: { user?: string, password?: string, command?: string, file?: string, e?: boolean, physicalFS?: boolean }) => {
+      .action((target: string | undefined, options: {
+        user?: string;
+        password?: string;
+        command?: string;
+        file?: string;
+        e?: boolean;
+        physicalFS?: boolean;
+        prefetchFeeds?: boolean;
+        prefetchPublicFeeds?: boolean;
+        prefetchPlugins?: boolean;
+        asciiBoot?: boolean;
+      }) => {
           let user: string | undefined = options.user;
           let url: string | undefined = target;
           let password: string | undefined = options.password;
@@ -134,6 +154,20 @@ Examples:
                   mode: 'interactive',
                   physicalFS: options.physicalFS
               };
+          }
+
+          // Apply startup preference toggles when provided
+          if (typeof options.prefetchFeeds === 'boolean') {
+            config.prefetchFeeds = options.prefetchFeeds;
+          }
+          if (typeof options.prefetchPublicFeeds === 'boolean') {
+            config.prefetchPublicFeeds = options.prefetchPublicFeeds;
+          }
+          if (typeof options.prefetchPlugins === 'boolean') {
+            config.prefetchPlugins = options.prefetchPlugins;
+          }
+          if (typeof options.asciiBoot === 'boolean') {
+            config.asciiBoot = options.asciiBoot;
           }
       });
 

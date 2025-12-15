@@ -69,6 +69,50 @@ const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = path.dirname(__filename);
 const packageJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
 
+type BootStatus = 'ok' | 'skip' | 'fail' | 'info';
+
+/**
+ * Creates a simple boot logger with optional ASCII-only output.
+ */
+function bootLogger_create(title: string, useAscii: boolean) {
+  const horiz: string = useAscii ? '-' : '─';
+  const cornerTL: string = useAscii ? '+' : '┌';
+  const cornerTR: string = useAscii ? '+' : '┐';
+  const cornerBL: string = useAscii ? '+' : '└';
+  const cornerBR: string = useAscii ? '+' : '┘';
+  const bar: string = horiz.repeat(Math.max(title.length + 8, 30));
+
+  const lineTop: string = `${cornerTL}${bar}${cornerTR}`;
+  const lineBot: string = `${cornerBL}${bar}${cornerBR}`;
+  const statusPad = (label: string): string => label.padEnd(12);
+
+  const statusTag = (status: BootStatus): string => {
+    switch (status) {
+      case 'ok': return chalk.green('[ OK ]');
+      case 'skip': return chalk.yellow('[SKIP]');
+      case 'fail': return chalk.red('[FAIL]');
+      default: return chalk.cyan('[ .. ]');
+    }
+  };
+
+  return {
+    header_print(): void {
+      console.log(lineTop);
+      const paddedTitle = ` ${title} `;
+      const padLen = bar.length - paddedTitle.length;
+      const leftPad = Math.floor(padLen / 2);
+      const rightPad = padLen - leftPad;
+      console.log(`${useAscii ? '|' : '│'}${' '.repeat(leftPad)}${chalk.bold(paddedTitle)}${' '.repeat(rightPad)}${useAscii ? '|' : '│'}`);
+    },
+    footer_print(): void {
+      console.log(lineBot);
+    },
+    log(status: BootStatus, label: string, message: string): void {
+      console.log(`${statusTag(status)} ${statusPad(label)} ${message}`);
+    }
+  };
+}
+
 /**
  * Spawns the `chili` CLI as a child process.
  *
@@ -793,6 +837,12 @@ async function script_execute(scriptPath: string, stopOnError: boolean = false):
  */
 export async function chell_start(): Promise<void> {
   const config: ChellCLIConfig = await cli_parse(process.argv, packageJson.version);
+  const isInteractiveSession: boolean = config.mode !== 'execute' && config.mode !== 'script';
+  const useAsciiBoot: boolean = (config.asciiBoot ?? false) || !process.stdout.isTTY;
+  const prefetchPlugins: boolean = isInteractiveSession && (config.prefetchPlugins ?? true);
+  const prefetchFeeds: boolean = isInteractiveSession && (config.prefetchFeeds ?? true);
+  const prefetchPublicFeeds: boolean = prefetchFeeds && (config.prefetchPublicFeeds ?? false);
+  const boot = isInteractiveSession ? bootLogger_create('ChELL Boot', useAsciiBoot) : null;
 
   if (config.mode === 'help' || config.mode === 'version') {
     if (config.output) console.log(config.output);
@@ -802,7 +852,7 @@ export async function chell_start(): Promise<void> {
   const border = chalk.gray('----------------------------------------------------------------');
 
   // Show startup banner only in interactive mode
-  if (config.mode !== 'execute' && config.mode !== 'script') {
+  if (isInteractiveSession) {
     console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
     console.log(border);
     console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Layered Logic`);
@@ -811,6 +861,7 @@ export async function chell_start(): Promise<void> {
     console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);
     console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
     console.log(border);
+    boot?.header_print();
   }
 
   // --- Common Initialization ---
@@ -818,8 +869,9 @@ export async function chell_start(): Promise<void> {
   spinner.start('Initializing session components');
   await session.init();
   spinner.stop();
-  if (config.mode !== 'execute' && config.mode !== 'script') {
+  if (isInteractiveSession) {
     console.log(chalk.green('[+] Session initialized.'));
+    boot?.log('ok', 'Session', 'Components initialized');
   }
 
   // Set physical filesystem mode if requested
@@ -870,10 +922,12 @@ export async function chell_start(): Promise<void> {
         if (config.mode !== 'execute' && config.mode !== 'script') {
           console.log(chalk.green('[+] Connection established.'));
         }
+        boot?.log('ok', 'Connect', `Connected to ${url}`);
       } catch (error: unknown) {
         spinner.stop();
         const errorMessage: string = error instanceof Error ? error.message : String(error);
         console.error(chalk.red(`[!] Connection failed: ${errorMessage}`));
+        boot?.log('fail', 'Connect', errorMessage);
         process.exit(1);
       }
     }
@@ -907,6 +961,7 @@ export async function chell_start(): Promise<void> {
             if (config.mode !== 'execute' && config.mode !== 'script') {
               console.log(chalk.green('[+] Token validated with server'));
               console.log(chalk.green('[+] Session restored'));
+              boot?.log('ok', 'Session', `Restored ${currentContext.user}@${currentContext.URL}`);
             }
           } else {
             spinner.stop();
@@ -929,6 +984,7 @@ export async function chell_start(): Promise<void> {
         console.log(chalk.yellow('[!] Running in disconnected mode'));
         session.offline = true;
         console.log(chalk.gray(`    Use: connect --user ${currentContext.user} --password <pwd> ${currentContext.URL}`));
+        boot?.log('skip', 'Session', 'No saved token; offline');
       }
     } else {
       if (config.mode !== 'execute' && config.mode !== 'script') {
@@ -943,6 +999,21 @@ export async function chell_start(): Promise<void> {
     console.log(chalk.yellow('[!] Running in disconnected mode.'));
     session.offline = true;
   }
+
+  const prefetch_path = async (label: string, target: string): Promise<void> => {
+    try {
+      const result = await vfs.data_get(target);
+      if (result.ok) {
+        boot?.log('ok', label, `Cached ${result.value.length} item(s) from ${target}`);
+      } else {
+        const err = errorStack.stack_pop();
+        boot?.log('fail', label, err?.message || `Prefetch failed for ${target}`);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      boot?.log('fail', label, msg);
+    }
+  };
 
   // --- Execution Mode ---
 
@@ -967,16 +1038,41 @@ export async function chell_start(): Promise<void> {
   console.log(border);
 
   // Pre-cache /bin for fast tab completion
-  if (!session.offline) {
+  if (!session.offline && prefetchPlugins) {
+    boot?.log('info', 'Plugins', 'Prefetching /bin for completions');
     spinner.start('Populating plugin cache');
     try {
-      await vfs.data_get('/bin');
+      const result = await vfs.data_get('/bin');
       spinner.stop();
-    } catch (e) {
+      if (result.ok) {
+        boot?.log('ok', 'Plugins', `Cached ${result.value.length} plugin(s)`);
+      }
+    } catch (e: unknown) {
       spinner.stop();
-      // Silently fail - tab completion will populate on first use
+      const msg: string = e instanceof Error ? e.message : String(e);
+      boot?.log('fail', 'Plugins', msg);
     }
+  } else if (!session.offline) {
+    boot?.log('skip', 'Plugins', 'Prefetch disabled');
+  } else {
+    boot?.log('skip', 'Plugins', 'Offline mode');
   }
+
+  if (!session.offline && prefetchFeeds) {
+    boot?.log('info', 'Feeds', 'Prefetching user feeds');
+    await prefetch_path('Feeds', '/feeds');
+    if (prefetchPublicFeeds) {
+      boot?.log('info', 'Public', 'Prefetching public feeds');
+      await prefetch_path('Public', '/PUBLIC');
+    }
+  } else if (!session.offline) {
+    boot?.log('skip', 'Feeds', 'Prefetch disabled');
+  } else {
+    boot?.log('skip', 'Feeds', 'Offline mode');
+  }
+
+  console.log(border);
+  boot?.footer_print();
 
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));
   console.log('');

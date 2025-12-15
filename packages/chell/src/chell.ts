@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import figlet from 'figlet';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
-import { readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync, statSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { Command } from 'commander';
 import { REPL } from './core/repl.js';
@@ -188,12 +188,13 @@ async function command_handle(line: string): Promise<void> {
     try {
       // Execute command and capture output
       const { buffer } = await chellCommand_executeAndCapture(redirectInfo.command);
+      const targetPath: string = redirect_target_resolve(redirectInfo.filePath, redirectInfo.command);
 
       // Write to file
       if (redirectInfo.operator === '>') {
-        writeFileSync(redirectInfo.filePath, buffer);
+        writeFileSync(targetPath, buffer);
       } else {
-        appendFileSync(redirectInfo.filePath, buffer);
+        appendFileSync(targetPath, buffer);
       }
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
@@ -406,6 +407,49 @@ function redirect_parse(line: string): { command: string; operator: '>' | '>>'; 
 }
 
 /**
+ * Resolves the final redirect target. If the target is an existing directory,
+ * and the source command is `cat <file>`, write into that directory using the
+ * source file's basename. Errors when the filename can't be determined.
+ */
+function redirect_target_resolve(filePath: string, commandLine: string): string {
+  try {
+    const stats = statSync(filePath);
+    if (!stats.isDirectory()) {
+      return filePath;
+    }
+  } catch (err: unknown) {
+    // Path doesn't exist; treat as a normal file path.
+    const nodeErr = err as NodeJS.ErrnoException;
+    if (nodeErr.code === 'ENOENT') {
+      return filePath;
+    }
+    throw err;
+  }
+
+  const tokens: string[] = args_tokenize(commandLine);
+  if (tokens.length === 0) {
+    throw new Error(`Redirect target '${filePath}' is a directory and no source command was provided.`);
+  }
+
+  const [command, ...args] = tokens;
+  if (command !== 'cat') {
+    throw new Error(`Redirect target '${filePath}' is a directory; cannot infer filename for command '${command}'.`);
+  }
+
+  const sourceArgs: string[] = args.filter(arg => arg !== '--binary');
+  if (sourceArgs.length === 0) {
+    throw new Error(`Redirect target '${filePath}' is a directory; no source file provided to 'cat'.`);
+  }
+
+  if (sourceArgs.length > 1) {
+    throw new Error(`Redirect target '${filePath}' is a directory; 'cat' with multiple files cannot choose a single output name.`);
+  }
+
+  const sourceName: string = path.basename(sourceArgs[0]);
+  return path.join(filePath, sourceName);
+}
+
+/**
  * Captures console output during command execution.
  *
  * @param fn - The function to execute while capturing output.
@@ -414,18 +458,10 @@ function redirect_parse(line: string): { command: string; operator: '>' | '>>'; 
 async function output_capture(fn: () => Promise<void>): Promise<{ text: string; buffer: Buffer }> {
   const chunks: Buffer[] = [];
   const originalLog = console.log;
-  const originalError = console.error;
   const originalStdoutWrite = process.stdout.write.bind(process.stdout);
 
   // Override console.log and console.error
   console.log = (...args: unknown[]): void => {
-    const text: string = args.map(arg =>
-      typeof arg === 'string' ? arg : JSON.stringify(arg)
-    ).join(' ') + '\n';
-    chunks.push(Buffer.from(text, 'utf-8'));
-  };
-
-  console.error = (...args: unknown[]): void => {
     const text: string = args.map(arg =>
       typeof arg === 'string' ? arg : JSON.stringify(arg)
     ).join(' ') + '\n';
@@ -449,7 +485,6 @@ async function output_capture(fn: () => Promise<void>): Promise<{ text: string; 
   } finally {
     // Restore original console methods and stdout.write
     console.log = originalLog;
-    console.error = originalError;
     process.stdout.write = originalStdoutWrite;
   }
 
@@ -687,8 +722,6 @@ import * as os from 'os';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
-import { existsSync } from 'fs';
-
 // Global flag to control stop-on-error behavior
 let g_stopOnError: boolean = false;
 

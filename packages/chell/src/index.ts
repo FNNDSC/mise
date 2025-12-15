@@ -5,6 +5,22 @@
  *
  * @module
  */
+
+// Suppress DEP0169 warning from axios/proxy-from-env dependency.
+// proxy-from-env 1.1.0 (pulled via axios) still uses url.parse(), which triggers
+// a deprecation warning in Node. This suppression is safe to remove once that
+// dependency migrates to the WHATWG URL API or axios drops it.
+const originalEmitWarning = process.emitWarning;
+process.emitWarning = function (warning: string | Error, ...args: any[]): void {
+  if (
+    typeof warning === 'string' &&
+    (warning.includes('DEP0169') || warning.includes('url.parse()'))
+  ) {
+    return;
+  }
+  return originalEmitWarning.call(process, warning, ...args);
+};
+
 import { fileURLToPath } from 'url';
 import { realpathSync } from 'fs';
 import { chell_start } from './chell.js';

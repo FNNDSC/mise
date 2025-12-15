@@ -1061,11 +1061,8 @@ export async function chell_start(): Promise<void> {
 
   // --- Interactive Mode ---
 
-  console.log(border);
-
   // Pre-cache /bin for fast tab completion
   if (!session.offline && prefetchPlugins) {
-    boot?.log('info', 'Plugins', 'Prefetching /bin for completions');
     spinner.start('Populating plugin cache');
     try {
       const result = await vfs.data_get('/bin');
@@ -1085,10 +1082,15 @@ export async function chell_start(): Promise<void> {
   }
 
   if (!session.offline && prefetchFeeds) {
-    boot?.log('info', 'Feeds', 'Prefetching user feeds');
-    await prefetch_path('Feeds', '/feeds');
+    const userFeedPath: string | undefined = currentContext.user
+      ? `/home/${currentContext.user}/feeds`
+      : undefined;
+    if (userFeedPath) {
+      await prefetch_path('Feeds', userFeedPath);
+    } else {
+      boot?.log('skip', 'Feeds', 'No user context');
+    }
     if (prefetchPublicFeeds) {
-      boot?.log('info', 'Public', 'Prefetching public feeds');
       await prefetch_path('Public', '/PUBLIC');
     }
   } else if (!session.offline) {
@@ -1097,7 +1099,6 @@ export async function chell_start(): Promise<void> {
     boot?.log('skip', 'Feeds', 'Offline mode');
   }
 
-  console.log(border);
   boot?.footer_print();
 
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));

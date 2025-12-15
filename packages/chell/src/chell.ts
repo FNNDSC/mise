@@ -641,8 +641,8 @@ async function pipe_execute(segments: string[]): Promise<void> {
 
     currentInput = await new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      // When using shell: true, pass the entire command as a single string
-      const child: ChildProcess = spawn(segment, {
+    // When using shell: true, pass the entire command as a single string
+    const child: ChildProcess = spawn(segment, {
         stdio: ['pipe', 'pipe', 'inherit'],
         shell: true
       });
@@ -772,6 +772,31 @@ import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 let g_stopOnError: boolean = false;
 
 /**
+ * Renders a simple key/value info box.
+ */
+function infoBox_print(rows: Array<{ label: string; value: string }>, useAscii: boolean): void {
+  const horiz: string = useAscii ? '-' : '─';
+  const vert: string = useAscii ? '|' : '│';
+  const cornerTL: string = useAscii ? '+' : '┌';
+  const cornerTR: string = useAscii ? '+' : '┐';
+  const cornerBL: string = useAscii ? '+' : '└';
+  const cornerBR: string = useAscii ? '+' : '┘';
+
+  const labelWidth: number = Math.max(...rows.map(r => r.label.length), 8);
+  const valueWidth: number = Math.max(...rows.map(r => r.value.length), 20);
+  const innerWidth: number = Math.max(labelWidth + valueWidth + 3, 40);
+  const line: string = horiz.repeat(innerWidth);
+
+  console.log(`${cornerTL}${line}${cornerTR}`);
+  rows.forEach(({ label, value }) => {
+    const paddedLabel: string = label.padEnd(labelWidth);
+    const paddedValue: string = value.padEnd(innerWidth - labelWidth - 2);
+    console.log(`${vert} ${chalk.gray(paddedLabel)} ${chalk.white(paddedValue)}${vert}`);
+  });
+  console.log(`${cornerBL}${line}${cornerBR}`);
+}
+
+/**
  * Executes a chell script file.
  * Reads the file line by line, ignoring comments and blank lines.
  * Supports shebang (#!) on first line.
@@ -854,13 +879,14 @@ export async function chell_start(): Promise<void> {
   // Show startup banner only in interactive mode
   if (isInteractiveSession) {
     console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
-    console.log(border);
-    console.log(` ${chalk.cyan.bold('ChELL')} - ChELL Executes Layered Logic`);
-    console.log(` ${chalk.gray('Version:')} ${chalk.yellow(packageJson.version)}`);
-    console.log(` ${chalk.gray('System :')} ${os.platform()} ${os.release()} (${os.arch()})`);
-    console.log(` ${chalk.gray('User   :')} ${os.userInfo().username}`);
-    console.log(` ${chalk.gray('Time   :')} ${new Date().toISOString()}`);
-    console.log(border);
+    const rows = [
+      { label: 'ChELL', value: 'ChELL Executes Layered Logic' },
+      { label: 'Version', value: packageJson.version },
+      { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },
+      { label: 'User', value: os.userInfo().username },
+      { label: 'Time', value: new Date().toISOString() },
+    ];
+    infoBox_print(rows, useAsciiBoot);
     boot?.header_print();
   }
 

@@ -69,7 +69,7 @@ const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = path.dirname(__filename);
 const packageJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
 
-type BootStatus = 'ok' | 'skip' | 'fail' | 'info';
+type BootStatus = 'ok' | 'skip' | 'fail';
 
 /**
  * Creates a simple boot logger with optional ASCII-only output.
@@ -91,22 +91,12 @@ function bootLogger_create(title: string, useAscii: boolean) {
       case 'ok': return chalk.green('[ OK ]');
       case 'skip': return chalk.yellow('[SKIP]');
       case 'fail': return chalk.red('[FAIL]');
-      default: return chalk.cyan('[ .. ]');
     }
   };
 
   return {
-    header_print(): void {
-      console.log(lineTop);
-      const paddedTitle = ` ${title} `;
-      const padLen = bar.length - paddedTitle.length;
-      const leftPad = Math.floor(padLen / 2);
-      const rightPad = padLen - leftPad;
-      console.log(`${useAscii ? '|' : '│'}${' '.repeat(leftPad)}${chalk.bold(paddedTitle)}${' '.repeat(rightPad)}${useAscii ? '|' : '│'}`);
-    },
-    footer_print(): void {
-      console.log(lineBot);
-    },
+    header_print(): void { console.log(lineTop); },
+    footer_print(): void { console.log(lineBot); },
     log(status: BootStatus, label: string, message: string): void {
       console.log(`${statusTag(status)} ${statusPad(label)} ${message}`);
     }
@@ -866,7 +856,7 @@ export async function chell_start(): Promise<void> {
   const useAsciiBoot: boolean = (config.asciiBoot ?? false) || !process.stdout.isTTY;
   const prefetchPlugins: boolean = isInteractiveSession && (config.prefetchPlugins ?? true);
   const prefetchFeeds: boolean = isInteractiveSession && (config.prefetchFeeds ?? true);
-  const prefetchPublicFeeds: boolean = prefetchFeeds && (config.prefetchPublicFeeds ?? false);
+  const prefetchPublicFeeds: boolean = isInteractiveSession && prefetchFeeds && (config.prefetchPublicFeeds ?? true);
   const boot = isInteractiveSession ? bootLogger_create('ChELL Boot', useAsciiBoot) : null;
 
   if (config.mode === 'help' || config.mode === 'version') {
@@ -879,15 +869,27 @@ export async function chell_start(): Promise<void> {
   // Show startup banner only in interactive mode
   if (isInteractiveSession) {
     console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
-    const rows = [
-      { label: 'ChELL', value: 'ChELL Executes Layered Logic' },
-      { label: 'Version', value: packageJson.version },
-      { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },
-      { label: 'User', value: os.userInfo().username },
-      { label: 'Time', value: new Date().toISOString() },
+    const boxHoriz: string = useAsciiBoot ? '-' : '─';
+    const boxVert: string = useAsciiBoot ? '|' : '│';
+    const boxTL: string = useAsciiBoot ? '+' : '┌';
+    const boxTR: string = useAsciiBoot ? '+' : '┐';
+    const boxBL: string = useAsciiBoot ? '+' : '└';
+    const boxBR: string = useAsciiBoot ? '+' : '┘';
+    const lines: string[] = [
+      ` ChELL    ChELL Executes Layered Logic`,
+      ` Version  ${packageJson.version}`,
+      ` System   ${os.platform()} ${os.release()} (${os.arch()})`,
+      ` User     ${os.userInfo().username}`,
+      ` Time     ${new Date().toISOString()}`,
     ];
-    infoBox_print(rows, useAsciiBoot);
-    boot?.header_print();
+    const contentWidth: number = Math.max(...lines.map(l => l.length)) + 2;
+    const horiz: string = boxHoriz.repeat(contentWidth);
+    console.log(`${boxTL}${horiz}${boxTR}`);
+    lines.forEach(line => {
+      const padded: string = line.padEnd(contentWidth);
+      console.log(`${boxVert}${padded}${boxVert}`);
+    });
+    console.log(`${boxBL}${horiz}${boxBR}`);
   }
 
   // --- Common Initialization ---
@@ -1026,18 +1028,45 @@ export async function chell_start(): Promise<void> {
     session.offline = true;
   }
 
-  const prefetch_path = async (label: string, target: string): Promise<void> => {
+  const prefetch_path = async (label: string, target: string): Promise<{ ok: boolean; count?: number; message?: string }> => {
     try {
       const result = await vfs.data_get(target);
       if (result.ok) {
-        boot?.log('ok', label, `Cached ${result.value.length} item(s) from ${target}`);
-      } else {
-        const err = errorStack.stack_pop();
-        boot?.log('fail', label, err?.message || `Prefetch failed for ${target}`);
+        return { ok: true, count: result.value.length };
       }
+      const err = errorStack.stack_pop();
+      return { ok: false, message: err?.message || `Prefetch failed for ${target}` };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      boot?.log('fail', label, msg);
+      return { ok: false, message: msg };
+    }
+  };
+
+  const prefetch_withSpinner = async (
+    label: string,
+    message: string,
+    action: () => Promise<{ ok: boolean; count?: number; message?: string }>
+  ): Promise<{ ok: boolean; count?: number; message?: string }> => {
+    const paddedLabel: string = label.padEnd(12);
+    // Spinner adds its own glyph and a following space. Pad so the label column
+    // aligns with the fixed-width status logs (e.g., "[ OK ] " = 7 chars).
+    const spinnerPrefix: string = ' '.repeat(5); // 1 glyph + 1 space + 5 = 7
+    const spinnerMessage: string = `${spinnerPrefix}${paddedLabel} ${message}`;
+    const showSpinner: boolean = isInteractiveSession && process.stdout.isTTY;
+
+    if (showSpinner) {
+      spinner.start(spinnerMessage, true);
+    } else {
+      console.log(spinnerMessage);
+    }
+
+    try {
+      return await action();
+    } finally {
+      if (showSpinner) {
+        spinner.stop();
+        process.stdout.write('\r\x1b[K');
+      }
     }
   };
 
@@ -1063,17 +1092,18 @@ export async function chell_start(): Promise<void> {
 
   // Pre-cache /bin for fast tab completion
   if (!session.offline && prefetchPlugins) {
-    spinner.start('Populating plugin cache');
-    try {
+    const pluginResult = await prefetch_withSpinner('Plugins', 'Prefetching /bin for completions', async () => {
       const result = await vfs.data_get('/bin');
-      spinner.stop();
       if (result.ok) {
-        boot?.log('ok', 'Plugins', `Cached ${result.value.length} plugin(s)`);
+        return { ok: true, count: result.value.length };
       }
-    } catch (e: unknown) {
-      spinner.stop();
-      const msg: string = e instanceof Error ? e.message : String(e);
-      boot?.log('fail', 'Plugins', msg);
+      const err = errorStack.stack_pop();
+      return { ok: false, message: err?.message || 'Failed to prefetch plugins' };
+    });
+    if (pluginResult.ok) {
+      boot?.log('ok', 'Plugins', `Cached ${pluginResult.count ?? 0} plugin(s)`);
+    } else {
+      boot?.log('fail', 'Plugins', pluginResult.message || 'Failed to prefetch plugins');
     }
   } else if (!session.offline) {
     boot?.log('skip', 'Plugins', 'Prefetch disabled');
@@ -1086,12 +1116,26 @@ export async function chell_start(): Promise<void> {
       ? `/home/${currentContext.user}/feeds`
       : undefined;
     if (userFeedPath) {
-      await prefetch_path('Feeds', userFeedPath);
+      const feedResult = await prefetch_withSpinner('Feeds', 'Prefetching user feeds', async () => {
+        return await prefetch_path('Feeds', userFeedPath);
+      });
+      if (feedResult.ok) {
+        boot?.log('ok', 'Feeds', `Cached ${feedResult.count ?? 0} item(s) from ${userFeedPath}`);
+      } else {
+        boot?.log('fail', 'Feeds', feedResult.message || `Prefetch failed for ${userFeedPath}`);
+      }
     } else {
       boot?.log('skip', 'Feeds', 'No user context');
     }
     if (prefetchPublicFeeds) {
-      await prefetch_path('Public', '/PUBLIC');
+      const publicResult = await prefetch_withSpinner('Public', 'Prefetching public feeds', async () => {
+        return await prefetch_path('Public', '/PUBLIC');
+      });
+      if (publicResult.ok) {
+        boot?.log('ok', 'Public', `Cached ${publicResult.count ?? 0} item(s) from /PUBLIC`);
+      } else {
+        boot?.log('fail', 'Public', publicResult.message || 'Prefetch failed for /PUBLIC');
+      }
     }
   } else if (!session.offline) {
     boot?.log('skip', 'Feeds', 'Prefetch disabled');
@@ -1099,7 +1143,7 @@ export async function chell_start(): Promise<void> {
     boot?.log('skip', 'Feeds', 'Offline mode');
   }
 
-  boot?.footer_print();
+  // No footer box for boot log
 
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));
   console.log('');

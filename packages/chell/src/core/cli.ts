@@ -16,6 +16,7 @@ export interface ChellCLIConfig {
   prefetchFeeds?: boolean;
   prefetchPublicFeeds?: boolean;
   asciiBoot?: boolean;
+  showLogo?: boolean;
   commandToExecute?: string;
   scriptFile?: string;
   stopOnError?: boolean;
@@ -48,6 +49,7 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
       .option('--prefetch-public-feeds', 'Prefetch public feeds at startup (interactive mode)')
       .option('--no-prefetch-plugins', 'Skip plugin cache prefetch at startup')
       .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
+      .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
       .addHelpText('after', `
 Interactive Commands:
   connect    Connect to a ChRIS CUBE
@@ -97,6 +99,7 @@ Examples:
         prefetchPublicFeeds?: boolean;
         prefetchPlugins?: boolean;
         asciiBoot?: boolean;
+        logo?: boolean;
       }) => {
           let user: string | undefined = options.user;
           let url: string | undefined = target;
@@ -168,6 +171,9 @@ Examples:
           }
           if (typeof options.asciiBoot === 'boolean') {
             config.asciiBoot = options.asciiBoot;
+          }
+          if (typeof options.logo === 'boolean') {
+            config.showLogo = options.logo;
           }
       });
 

@@ -7,7 +7,6 @@
  */
 import * as readline from 'readline';
 import chalk from 'chalk';
-import figlet from 'figlet';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { readFileSync, writeFileSync, appendFileSync, statSync, existsSync } from 'fs';
@@ -54,6 +53,8 @@ import { vfs } from './lib/vfs/vfs.js';
 import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
 import { semicolons_parse } from './lib/semicolonParser.js';
+import { logo_linesRender } from './lib/logo.js';
+import { BootInfoItem, BootPanels, bootLogger_create, bootsequence_printIntroPanels } from './lib/bootsequence.js';
 
 /**
  * Interface for package.json structure.
@@ -68,40 +69,6 @@ interface PackageJson {
 const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = path.dirname(__filename);
 const packageJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
-
-type BootStatus = 'ok' | 'skip' | 'fail';
-
-/**
- * Creates a simple boot logger with optional ASCII-only output.
- */
-function bootLogger_create(title: string, useAscii: boolean) {
-  const horiz: string = useAscii ? '-' : '─';
-  const cornerTL: string = useAscii ? '+' : '┌';
-  const cornerTR: string = useAscii ? '+' : '┐';
-  const cornerBL: string = useAscii ? '+' : '└';
-  const cornerBR: string = useAscii ? '+' : '┘';
-  const bar: string = horiz.repeat(Math.max(title.length + 8, 30));
-
-  const lineTop: string = `${cornerTL}${bar}${cornerTR}`;
-  const lineBot: string = `${cornerBL}${bar}${cornerBR}`;
-  const statusPad = (label: string): string => label.padEnd(12);
-
-  const statusTag = (status: BootStatus): string => {
-    switch (status) {
-      case 'ok': return chalk.green('[ OK ]');
-      case 'skip': return chalk.yellow('[SKIP]');
-      case 'fail': return chalk.red('[FAIL]');
-    }
-  };
-
-  return {
-    header_print(): void { console.log(lineTop); },
-    footer_print(): void { console.log(lineBot); },
-    log(status: BootStatus, label: string, message: string): void {
-      console.log(`${statusTag(status)} ${statusPad(label)} ${message}`);
-    }
-  };
-}
 
 /**
  * Spawns the `chili` CLI as a child process.
@@ -764,29 +731,32 @@ import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 // Global flag to control stop-on-error behavior
 let g_stopOnError: boolean = false;
 
-/**
- * Renders a simple key/value info box.
- */
-function infoBox_print(rows: Array<{ label: string; value: string }>, useAscii: boolean): void {
-  const horiz: string = useAscii ? '-' : '─';
-  const vert: string = useAscii ? '|' : '│';
-  const cornerTL: string = useAscii ? '+' : '┌';
-  const cornerTR: string = useAscii ? '+' : '┐';
-  const cornerBL: string = useAscii ? '+' : '└';
-  const cornerBR: string = useAscii ? '+' : '┘';
+function localIPv4_get(): string | null {
+  const interfaces = os.networkInterfaces();
+  for (const key of Object.keys(interfaces)) {
+    const iface = interfaces[key];
+    if (!iface) continue;
+    for (const entry of iface) {
+      if (entry.family === 'IPv4' && !entry.internal && entry.address) {
+        return entry.address;
+      }
+    }
+  }
+  return null;
+}
 
-  const labelWidth: number = Math.max(...rows.map(r => r.label.length), 8);
-  const valueWidth: number = Math.max(...rows.map(r => r.value.length), 20);
-  const innerWidth: number = Math.max(labelWidth + valueWidth + 3, 40);
-  const line: string = horiz.repeat(innerWidth);
-
-  console.log(`${cornerTL}${line}${cornerTR}`);
-  rows.forEach(({ label, value }) => {
-    const paddedLabel: string = label.padEnd(labelWidth);
-    const paddedValue: string = value.padEnd(innerWidth - labelWidth - 2);
-    console.log(`${vert} ${chalk.gray(paddedLabel)} ${chalk.white(paddedValue)}${vert}`);
-  });
-  console.log(`${cornerBL}${line}${cornerBR}`);
+function localTime_withOffset(): string {
+  const now: Date = new Date();
+  const offsetMinutes: number = now.getTimezoneOffset();
+  const sign: string = offsetMinutes <= 0 ? '+' : '-';
+  const absMinutes: number = Math.abs(offsetMinutes);
+  const hours: number = Math.floor(absMinutes / 60);
+  const minutes: number = absMinutes % 60;
+  const pad = (n: number): string => n.toString().padStart(2, '0');
+  const offsetStr: string = `${sign}${pad(hours)}:${pad(minutes)}`;
+  const dateStr: string = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const timeStr: string = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  return `${dateStr} ${timeStr} ${offsetStr}`;
 }
 
 /**
@@ -860,39 +830,12 @@ export async function chell_start(): Promise<void> {
   const prefetchPlugins: boolean = isInteractiveSession && (config.prefetchPlugins ?? true);
   const prefetchFeeds: boolean = isInteractiveSession && (config.prefetchFeeds ?? true);
   const prefetchPublicFeeds: boolean = isInteractiveSession && prefetchFeeds && (config.prefetchPublicFeeds ?? true);
+  const showLogo: boolean = isInteractiveSession && process.stdout.isTTY && (config.showLogo ?? true);
   const boot = isInteractiveSession ? bootLogger_create('ChELL Boot', useAsciiBoot) : null;
 
   if (config.mode === 'help' || config.mode === 'version') {
     if (config.output) console.log(config.output);
     return;
-  }
-
-  const border = chalk.gray('----------------------------------------------------------------');
-
-  // Show startup banner only in interactive mode
-  if (isInteractiveSession) {
-    console.log(figlet.textSync('ChELL', { horizontalLayout: 'full' }));
-    const boxHoriz: string = useAsciiBoot ? '-' : '─';
-    const boxVert: string = useAsciiBoot ? '|' : '│';
-    const boxTL: string = useAsciiBoot ? '+' : '┌';
-    const boxTR: string = useAsciiBoot ? '+' : '┐';
-    const boxBL: string = useAsciiBoot ? '+' : '└';
-    const boxBR: string = useAsciiBoot ? '+' : '┘';
-    const lines: string[] = [
-      ` ChELL    ChELL Executes Layered Logic`,
-      ` Version  ${packageJson.version}`,
-      ` System   ${os.platform()} ${os.release()} (${os.arch()})`,
-      ` User     ${os.userInfo().username}`,
-      ` Time     ${new Date().toISOString()}`,
-    ];
-    const contentWidth: number = Math.max(...lines.map(l => l.length)) + 2;
-    const horiz: string = boxHoriz.repeat(contentWidth);
-    console.log(`${boxTL}${horiz}${boxTR}`);
-    lines.forEach(line => {
-      const padded: string = line.padEnd(contentWidth);
-      console.log(`${boxVert}${padded}${boxVert}`);
-    });
-    console.log(`${boxBL}${horiz}${boxBR}`);
   }
 
   // --- Common Initialization ---
@@ -1093,6 +1036,10 @@ export async function chell_start(): Promise<void> {
 
   // --- Interactive Mode ---
 
+  let cachedPlugins: number | undefined;
+  let cachedFeeds: number | undefined;
+  let cachedPublic: number | undefined;
+
   // Pre-cache /bin for fast tab completion
   if (!session.offline && prefetchPlugins) {
     const pluginResult = await prefetch_withSpinner('Plugins', 'Prefetching /bin for completions', async () => {
@@ -1104,6 +1051,7 @@ export async function chell_start(): Promise<void> {
       return { ok: false, message: err?.message || 'Failed to prefetch plugins' };
     });
     if (pluginResult.ok) {
+      cachedPlugins = pluginResult.count;
       boot?.log('ok', 'Plugins', `Cached ${pluginResult.count ?? 0} plugin(s)`);
     } else {
       boot?.log('fail', 'Plugins', pluginResult.message || 'Failed to prefetch plugins');
@@ -1123,6 +1071,7 @@ export async function chell_start(): Promise<void> {
         return await prefetch_path('Feeds', userFeedPath);
       });
       if (feedResult.ok) {
+        cachedFeeds = feedResult.count;
         boot?.log('ok', 'Feeds', `Cached ${feedResult.count ?? 0} item(s) from ${userFeedPath}`);
       } else {
         boot?.log('fail', 'Feeds', feedResult.message || `Prefetch failed for ${userFeedPath}`);
@@ -1135,6 +1084,7 @@ export async function chell_start(): Promise<void> {
         return await prefetch_path('Public', '/PUBLIC');
       });
       if (publicResult.ok) {
+        cachedPublic = publicResult.count;
         boot?.log('ok', 'Public', `Cached ${publicResult.count ?? 0} item(s) from /PUBLIC`);
       } else {
         boot?.log('fail', 'Public', publicResult.message || 'Prefetch failed for /PUBLIC');
@@ -1146,10 +1096,51 @@ export async function chell_start(): Promise<void> {
     boot?.log('skip', 'Feeds', 'Offline mode');
   }
 
-  // No footer box for boot log
+  if (isInteractiveSession) {
+    const headerItems: BootInfoItem[] = [
+      { label: 'Title', value: 'ChELL Executes Layered Logic' },
+      { label: 'Version', value: packageJson.version }
+    ];
+    const localItems: BootInfoItem[] = [
+      { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },
+      { label: 'User', value: `${os.userInfo().username}@${os.hostname()}` },
+      ...(localIPv4_get() ? [{ label: 'Local', value: localIPv4_get() as string }] : []),
+      { label: 'Time', value: localTime_withOffset() },
+    ];
+    const chrisItems: BootInfoItem[] = [
+      { label: 'ChRIS', value: currentContext.user || 'offline' },
+      { label: 'URL', value: currentContext.URL || 'offline' },
+      { label: 'Mode', value: config.mode },
+      { label: 'Path', value: currentContext.folder || '/' },
+    ];
+    if (typeof cachedPlugins === 'number') {
+      chrisItems.push({ label: 'Plugins', value: `${cachedPlugins}` });
+    }
+    if (typeof cachedFeeds === 'number') {
+      chrisItems.push({ label: 'Feeds', value: `${cachedFeeds}` });
+    }
+    if (typeof cachedPublic === 'number') {
+      chrisItems.push({ label: 'Public', value: `${cachedPublic}` });
+    }
+
+    const panels: BootPanels = {
+      header: headerItems,
+      local: localItems,
+      chris: chrisItems
+    };
+    const logoLines: string[] = showLogo ? logo_linesRender(!useAsciiBoot) : [];
+    bootsequence_printIntroPanels(logoLines, panels, !useAsciiBoot, useAsciiBoot);
+  }
 
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));
   console.log('');
+  if (isInteractiveSession) {
+    if (session.offline) {
+      console.log(chalk.yellow('You are currently disconnected. Use: connect --user <user> --password <pwd> <url>'));
+    }
+    console.log(chalk.gray("Tip: type 'help' for available commands."));
+    console.log('');
+  }
 
   const repl: REPL = new REPL();
   await repl.start(command_handle);

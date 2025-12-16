@@ -603,7 +603,8 @@ export function help_show(command: string): void {
  * @returns True if help is requested.
  */
 export function hasHelpFlag(args: string[], command?: string): boolean {
-  if (args.includes('--help')) return true;
+  const isPluginExecutable: boolean = !!command && /-v.+$/.test(command);
+  if (!isPluginExecutable && args.includes('--help')) return true;
 
   // Commands where -h means human-readable sizes, not help
   const humanReadableCommands = ['ls', 'du'];
@@ -612,6 +613,10 @@ export function hasHelpFlag(args: string[], command?: string): boolean {
     return false;
   }
   
+  if (isPluginExecutable) {
+    return false;
+  }
+
   return args.includes('-h');
 }
 

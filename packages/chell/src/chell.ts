@@ -558,6 +558,9 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   }
 
   return output_capture(async () => {
+    if (await pluginExecutable_handle(command, args, { piped: true })) {
+      return;
+    }
     switch (command) {
       case 'connect': await builtin_connect(args); break;
       case 'logout': await builtin_logout(); break;

@@ -28,6 +28,57 @@ async function files_view(fileId: number): Promise<Result<Buffer>> {
 }
 
 /**
+ * Fetches the binary content of a regular ChRIS file as a stream/blob.
+ *
+ * @param filePath - The full path to the file.
+ * @returns A Result containing the stream/blob and optional size metadata.
+ */
+export async function fileContent_getRegularStream(
+  filePath: string
+): Promise<Result<{ stream: any; size?: number; filename?: string }>> {
+  const dir: string = path.posix.dirname(filePath);
+  const name: string = path.posix.basename(filePath);
+
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null =
+    await files_getGroup("files", dir);
+  if (!group) {
+    return Err();
+  }
+
+  const results: FilteredResourceData | null = await group.asset.resources_getAll();
+  if (!results || !results.tableData) {
+    errorStack.stack_push("error", `No files found in directory: ${dir}`);
+    return Err();
+  }
+
+  const file: { id?: number; fname?: string } | undefined = results.tableData.find(
+    (f: { fname?: string }) => {
+      const fname: string = f.fname || "";
+      const basename: string = path.posix.basename(fname);
+      return basename === name || basename === `? ${name}`;
+    }
+  );
+
+  if (!file) {
+    errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
+    return Err();
+  }
+
+  if (typeof file.id !== "number") {
+    errorStack.stack_push("error", `File has no valid ID: ${name}`);
+    return Err();
+  }
+
+  const streamResult: Result<{ stream: unknown; size?: number; filename?: string }> =
+    await chrisIO.file_downloadStream(file.id);
+  if (!streamResult.ok) {
+    return Err();
+  }
+
+  return Ok(streamResult.value);
+}
+
+/**
  * Fetches the content of a regular ChRIS file.
  *
  * @param filePath - The full path to the file.

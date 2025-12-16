@@ -14,7 +14,7 @@ import {
 } from "@fnndsc/cumin";
 import { ChrisPathNode } from "@fnndsc/cumin";
 import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
-import { fileContent_getRegular, fileContent_getRegularBinary } from './regular_content';
+import { fileContent_getRegular, fileContent_getRegularBinary, fileContent_getRegularStream } from './regular_content';
 import { fileContent_getPACS, fileContent_getPACSBinary } from './pacs_content';
 
 /**
@@ -553,4 +553,34 @@ export async function fileContent_getBinary(filePath: string): Promise<Result<Bu
     return fileContent_getPACSBinary(filePath);
   }
   return fileContent_getRegularBinary(filePath);
+}
+
+/**
+ * Retrieves the binary content of a file by its path as a stream/blob.
+ *
+ * Router function that delegates to specialized handlers based on path type.
+ *
+ * @param filePath - The full ChRIS path to the file.
+ * @returns A Result containing the stream/blob and metadata or error.
+ */
+export async function fileContent_getBinaryStream(
+  filePath: string
+): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
+  if (filePath.startsWith('/PIPELINES/')) {
+    return fileContent_getPipelineBinary(filePath).then((res: Result<Buffer>) => {
+      if (res.ok) {
+        return Ok({ stream: res.value, size: res.value.length });
+      }
+      return Err();
+    });
+  }
+  if (filePath.startsWith('/SERVICES/PACS/')) {
+    return fileContent_getPACSBinary(filePath).then((res: Result<Buffer>) => {
+      if (res.ok) {
+        return Ok({ stream: res.value, size: res.value.length });
+      }
+      return Err();
+    });
+  }
+  return fileContent_getRegularStream(filePath);
 }

@@ -1,0 +1,51 @@
+= PACS Support in Salsa
+:toc:
+:toclevels: 2
+:sectnums:
+
+== Overview
+
+`salsa` is the logic layer. Its PACS intents are deliberately thin so they can be reused across CLIs or UIs without side effects. They delegate directly to `cumin`, returning `Result<T>` and relying on `errorStack` for messaging. Nothing is printed here; consumers render or log as they see fit.
+
+== Available Intents
+
+- **List PACS servers**: `pacsServers_list(options?)` → `Result<PACSServer[]>`
+- **List PACS queries**: `pacsQueries_list(options?)` → `Result<FilteredResourceData | null>`
+- **Create PACS query**: `pacsQueries_create(pacsserver, data)` → `Result<PACSQueryRecord>`
+- **Decode PACS query result**: `pacsQuery_resultDecode(queryId)` → `Result<PACSQueryDecodedResult>`
+
+== Parameters (delegated to cumin)
+
+- `pacsserver`: identifier or numeric id; resolution/validation handled in `cumin`.
+- `PACSQueryCreateData`: `{ title: string; query: string; description?: string }` where `query` is a JSON string of DICOM tag filters (e.g., `{"PatientID":"4456554"}`).
+- `PACSQueryListOptions`: includes `pacs_id`, `pacs_identifier`, plus standard list options.
+
+== Usage Example
+
+```typescript
+import {
+  pacsServers_list,
+  pacsQueries_create,
+  pacsQuery_resultDecode,
+} from "@fnndsc/salsa";
+
+const servers = await pacsServers_list();
+if (!servers.ok) return;
+
+const created = await pacsQueries_create("PACSDCM", {
+  title: "PID 4456554",
+  query: JSON.stringify({ PatientID: "4456554" }),
+});
+if (!created.ok) return;
+
+const decoded = await pacsQuery_resultDecode(created.value.id);
+if (decoded.ok && decoded.value.json) {
+  // consume decoded.value.json / text
+}
+```
+
+== Notes
+
+- Network/authentication is handled in `cumin`; ensure a valid CUBE session before invoking these intents.
+- Result decoding attempts base64 → zlib/gzip → text/JSON. Failures are reported via `Result` and `errorStack`, never stdout.
+- Because intents are pass-through, any new PACS surface added to `cumin` can be exposed here with minimal code.

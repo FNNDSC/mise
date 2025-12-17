@@ -12,6 +12,7 @@ export interface ContextOptions {
   ChRISfolder?: string;
   ChRISfeed?: string;
   ChRISplugin?: string;
+  pacsserver?: string;
   full?: boolean;
   all?: boolean;
 }
@@ -34,6 +35,7 @@ export async function context_set(options: ContextOptions): Promise<string[]> {
     { key: 'ChRISfolder', context: Context.ChRISfolder },
     { key: 'ChRISfeed', context: Context.ChRISfeed },
     { key: 'ChRISplugin', context: Context.ChRISplugin },
+    { key: 'pacsserver', context: Context.PACSserver },
   ];
 
   for (const { key, context } of setters) {

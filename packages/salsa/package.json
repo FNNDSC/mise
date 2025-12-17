@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/salsa",
-  "version": "1.4.1",
+  "version": "2.0.0",
   "description": "Shared Application Logic and Service Assets for ChRIS",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -35,6 +35,5 @@
   "dependencies": {
     "@fnndsc/cumin": "file:../cumin",
     "axios": "^1.6.8"
-  },
-  "peerDependencies": {}
+  }
 }

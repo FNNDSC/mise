@@ -114,6 +114,7 @@ export function bootsequence_printIntroPanels(
   useColor: boolean,
   useAscii: boolean
 ): void {
+  const leftPad: string = '  ';
   const minInner: number = Math.max(
     box_minWidth('ChELL', panels.header),
     box_minWidth('Local', panels.local),
@@ -141,12 +142,60 @@ export function bootsequence_printIntroPanels(
   const logoWidth: number = logoLines.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
   const paddingBetween: number = 3;
   const logoBlock: string[] = ['', ...logoLines, ''].map((l: string) => l.padEnd(logoWidth, ' '));
+  const totalWidth: number = logoWidth + paddingBetween + rightWidth;
+  const lineChar: string = useAscii ? '-' : '─';
+  const titleText: string = useColor ? chalk.bold.cyan('ChELL neofetch') : 'ChELL neofetch';
+  const titleLine: string = `${leftPad}${titleText} ${lineChar.repeat(Math.max(0, totalWidth - visibleLength(titleText) - 1))}`;
   const rows: number = Math.max(logoBlock.length, rightLines.length);
 
+  console.log(titleLine);
   for (let i = 0; i < rows; i++) {
     const logoSegment: string = logoBlock[i] ?? ''.padEnd(logoWidth, ' ');
     const rightSegment: string = rightLines[i] ?? '';
     const line: string = `${logoSegment}${' '.repeat(paddingBetween)}${rightSegment}`.trimEnd();
-    console.log(line);
+    console.log(`${leftPad}${line}`);
+  }
+}
+
+export function bootsequence_printIntroPanelsStacked(
+  logoLines: string[],
+  panels: BootPanels,
+  useColor: boolean,
+  useAscii: boolean
+): void {
+  const leftPad: string = '  ';
+  const minInner: number = Math.max(
+    box_minWidth('ChELL', panels.header),
+    box_minWidth('Local', panels.local),
+    box_minWidth('ChRIS', panels.chris)
+  );
+
+  const headerBox: string[] = box_render_withMin('ChELL', panels.header, useColor, useAscii, minInner);
+  const localBox: string[] = box_render_withMin('Local', panels.local, useColor, useAscii, minInner);
+  const chrisBox: string[] = box_render_withMin('ChRIS', panels.chris, useColor, useAscii, minInner);
+
+  const stackLines: string[] = [...headerBox, '', ...localBox, '', ...chrisBox];
+  const boxesWidth: number = stackLines.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
+  const logoWidth: number = logoLines.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
+  const contentWidth: number = Math.max(boxesWidth, logoWidth);
+
+  const lineChar: string = useAscii ? '-' : '─';
+  const titleText: string = useColor ? chalk.bold.cyan('ChELL neofetch') : 'ChELL neofetch';
+  const titleLine: string = `${leftPad}${titleText} ${lineChar.repeat(Math.max(0, contentWidth - visibleLength(titleText) - 1))}`;
+
+  const padVisible = (line: string): string => {
+    const diff: number = contentWidth - visibleLength(line);
+    return diff > 0 ? `${line}${' '.repeat(diff)}` : line;
+  };
+
+  console.log(titleLine);
+  stackLines.forEach((line: string) => {
+    console.log(line === '' ? '' : `${leftPad}${padVisible(line)}`);
+  });
+  if (logoLines.length > 0) {
+    console.log('');
+    logoLines.forEach((line: string) => {
+      console.log(`${leftPad}${padVisible(line)}`);
+    });
   }
 }

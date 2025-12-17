@@ -54,7 +54,13 @@ import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
 import { semicolons_parse } from './lib/semicolonParser.js';
 import { logo_linesRender } from './lib/logo.js';
-import { BootInfoItem, BootPanels, bootLogger_create, bootsequence_printIntroPanels } from './lib/bootsequence.js';
+import {
+  BootInfoItem,
+  BootPanels,
+  bootLogger_create,
+  bootsequence_printIntroPanels,
+  bootsequence_printIntroPanelsStacked
+} from './lib/bootsequence.js';
 
 /**
  * Interface for package.json structure.
@@ -1128,8 +1134,15 @@ export async function chell_start(): Promise<void> {
       local: localItems,
       chris: chrisItems
     };
-    const logoLines: string[] = showLogo ? logo_linesRender(!useAsciiBoot) : [];
-    bootsequence_printIntroPanels(logoLines, panels, !useAsciiBoot, useAsciiBoot);
+    const reverseLogo: boolean = process.env.CHELL_LOGO_REVERSE === '1';
+    const logoLines: string[] = showLogo ? logo_linesRender(!useAsciiBoot, reverseLogo) : [];
+    const termWidth: number = typeof process.stdout.columns === 'number' ? process.stdout.columns : 120;
+    const narrowIntro: boolean = termWidth < 80;
+    if (narrowIntro) {
+      bootsequence_printIntroPanelsStacked(logoLines, panels, !useAsciiBoot, useAsciiBoot);
+    } else {
+      bootsequence_printIntroPanels(logoLines, panels, !useAsciiBoot, useAsciiBoot);
+    }
   }
 
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));

@@ -149,7 +149,8 @@ async function command_handle(line: string): Promise<void> {
   if (!trimmedLine) return;
 
   // Start timing if enabled
-  const startTime: number = session.timingEnabled_get() ? performance.now() : 0;
+  const timingEnabled: boolean = session.timingEnabled_get();
+  const startTime: number = timingEnabled ? performance.now() : 0;
 
   // Check for shell escape (! prefix)
   if (trimmedLine.startsWith('!')) {
@@ -157,10 +158,7 @@ async function command_handle(line: string): Promise<void> {
     if (shellCommand) {
       await shellCommand_execute(shellCommand);
       // Display timing if enabled
-      if (session.timingEnabled_get()) {
-        const elapsed: number = performance.now() - startTime;
-        console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
-      }
+      command_timingMaybePrint(startTime, timingEnabled);
     }
     return;
   }
@@ -183,7 +181,7 @@ async function command_handle(line: string): Promise<void> {
       }
     }
     // Display total timing if enabled
-    if (session.timingEnabled_get()) {
+    if (timingEnabled) {
       const elapsed: number = performance.now() - startTime;
       console.log(chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`));
     }
@@ -209,10 +207,7 @@ async function command_handle(line: string): Promise<void> {
       console.error(chalk.red(`Redirect error: ${msg}`));
     }
     // Display timing if enabled
-    if (session.timingEnabled_get()) {
-      const elapsed: number = performance.now() - startTime;
-      console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
-    }
+    command_timingMaybePrint(startTime, timingEnabled);
     return;
   }
 
@@ -227,10 +222,7 @@ async function command_handle(line: string): Promise<void> {
       console.error(chalk.red(`Pipe error: ${msg}`));
     }
     // Display timing if enabled
-    if (session.timingEnabled_get()) {
-      const elapsed: number = performance.now() - startTime;
-      console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
-    }
+    command_timingMaybePrint(startTime, timingEnabled);
     return;
   }
 
@@ -260,78 +252,14 @@ async function command_handle(line: string): Promise<void> {
   // Attempt to handle as a simulated plugin execution
   if (await pluginExecutable_handle(command, args)) {
     // Display timing if enabled
-    if (session.timingEnabled_get()) {
-      const elapsed: number = performance.now() - startTime;
-      console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
-    }
+    command_timingMaybePrint(startTime, timingEnabled);
     return;
   }
 
-  switch (command) {
-    case 'connect': await builtin_connect(args); break;
-    case 'logout': await builtin_logout(); break;
-    case 'cd': await builtin_cd(args); break;
-    case 'ls': await builtin_ls(args); break;
-    case 'pwd': await builtin_pwd(args); break;
-    case 'cat': await builtin_cat(args); break;
-    case 'rm': await builtin_rm(args); break;
-    case 'cp': await builtin_cp(args); break;
-    case 'mv': await builtin_mv(args); break;
-    case 'touch': await builtin_touch(args); break;
-    case 'mkdir': await builtin_mkdir(args); break;
-    case 'chefs': await builtin_chefs(args); break;
-    case 'upload': await builtin_upload(args); break;
-    case 'download': await builtin_download(args); break;
-    case 'context': await builtin_context(args); break;
-    case 'parametersofplugin': await builtin_parametersofplugin(args); break;
-    case 'physicalmode': await builtin_physicalmode(args); break;
-    case 'timing': await builtin_timing(args); break;
-    case 'debug': await builtin_debug(args); break;
-    case 'help': await builtin_help(args); break;
-    case 'tree': await builtin_tree(args); break;
-    case 'du': await builtin_du(args); break;
-    case 'store': await builtin_store(args); break;
-    case 'plugin':
-    case 'plugins':
-      await builtin_plugin(args);
-      break;
-    case 'feed':
-    case 'feeds':
-      await builtin_feed(args);
-      break;
-    case 'files':
-      await builtin_files(args);
-      break;
-    case 'links':
-      await builtin_links(args);
-      break;
-    case 'dirs':
-      await builtin_dirs(args);
-      break;
-    case 'exit': process.exit(0); break;
-    default:
-      // Check if command is a plugin name in /bin
-      const binResult = await vfs.data_get('/bin');
-      if (binResult.ok) {
-        const pluginNames = binResult.value.map(item => item.name);
-        if (pluginNames.includes(command)) {
-          // Execute plugin in place
-          await builtin_executePlugin(command, args);
-          break;
-        }
-      }
-
-      // Fall through to chili delegation
-      console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
-      await chiliCommand_run(command, ['-s', ...args]);
-      break;
-  }
+  await command_dispatch(command, args);
 
   // Display timing if enabled
-  if (session.timingEnabled_get()) {
-    const elapsed: number = performance.now() - startTime;
-    console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
-  }
+  command_timingMaybePrint(startTime, timingEnabled);
 }
 
 import { Writable } from 'stream';
@@ -501,6 +429,71 @@ async function output_capture(fn: () => Promise<void>): Promise<{ text: string; 
   const text: string = buffer.toString('utf-8');
 
   return { text, buffer };
+}
+
+type CommandHandler = (args: string[]) => Promise<void>;
+
+const COMMAND_HANDLERS: Record<string, CommandHandler> = {
+  connect: builtin_connect,
+  logout: builtin_logout,
+  cd: builtin_cd,
+  ls: builtin_ls,
+  pwd: builtin_pwd,
+  cat: builtin_cat,
+  rm: builtin_rm,
+  cp: builtin_cp,
+  mv: builtin_mv,
+  touch: builtin_touch,
+  mkdir: builtin_mkdir,
+  chefs: builtin_chefs,
+  upload: builtin_upload,
+  download: builtin_download,
+  context: builtin_context,
+  parametersofplugin: builtin_parametersofplugin,
+  physicalmode: builtin_physicalmode,
+  timing: builtin_timing,
+  debug: builtin_debug,
+  help: builtin_help,
+  tree: builtin_tree,
+  du: builtin_du,
+  store: builtin_store,
+  plugin: builtin_plugin,
+  plugins: builtin_plugin,
+  feed: builtin_feed,
+  feeds: builtin_feed,
+  files: builtin_files,
+  links: builtin_links,
+  dirs: builtin_dirs
+};
+
+function command_timingMaybePrint(startTime: number, enabled: boolean): void {
+  if (!enabled) return;
+  const elapsed: number = performance.now() - startTime;
+  console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
+}
+
+async function command_dispatch(command: string, args: string[]): Promise<void> {
+  if (command === 'exit') {
+    process.exit(0);
+  }
+
+  const handler: CommandHandler | undefined = COMMAND_HANDLERS[command];
+  if (handler) {
+    await handler(args);
+    return;
+  }
+
+  const binResult = await vfs.data_get('/bin');
+  if (binResult.ok) {
+    const pluginNames: string[] = binResult.value.map(item => item.name);
+    if (pluginNames.includes(command)) {
+      await builtin_executePlugin(command, args);
+      return;
+    }
+  }
+
+  console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
+  await chiliCommand_run(command, ['-s', ...args]);
 }
 
 /**
@@ -863,6 +856,9 @@ export async function chell_start(): Promise<void> {
   }
 
   let currentContext: SingleContext = context_getSingle();
+  if (!currentContext.folder) {
+    currentContext = { ...currentContext, folder: '/' };
+  }
 
   // Handle explicit connection arguments (valid for both modes) BEFORE restoring saved context
   if (config.connectConfig) {
@@ -1113,21 +1109,31 @@ export async function chell_start(): Promise<void> {
       ...(localIPv4_get() ? [{ label: 'Local', value: localIPv4_get() as string }] : []),
       { label: 'Time', value: localTime_withOffset() },
     ];
-    const chrisItems: BootInfoItem[] = [
-      { label: 'ChRIS', value: currentContext.user || 'offline' },
-      { label: 'URL', value: currentContext.URL || 'offline' },
-      { label: 'Mode', value: config.mode },
-      { label: 'Path', value: currentContext.folder || '/' },
-    ];
+    const chrisItems: BootInfoItem[] = [];
+    chrisItems.push({ label: 'ChRIS', value: currentContext.URL || 'offline' });
+    chrisItems.push({ label: 'User', value: currentContext.user || 'offline' });
+    chrisItems.push({ label: 'Mode', value: config.mode });
     if (typeof cachedPlugins === 'number') {
       chrisItems.push({ label: 'Plugins', value: `${cachedPlugins}` });
     }
+    if (currentContext.plugin) {
+      chrisItems.push({ label: 'Active Plugin', value: currentContext.plugin });
+    }
     if (typeof cachedFeeds === 'number') {
-      chrisItems.push({ label: 'Feeds', value: `${cachedFeeds}` });
+      chrisItems.push({ label: 'User Feeds', value: `${cachedFeeds}` });
+    }
+    if (currentContext.feed) {
+      const feedLabel: string = `${currentContext.feed}`;
+      chrisItems.push({ label: 'Active Feed', value: feedLabel });
     }
     if (typeof cachedPublic === 'number') {
-      chrisItems.push({ label: 'Public', value: `${cachedPublic}` });
+      chrisItems.push({ label: 'Public Feeds', value: `${cachedPublic}` });
     }
+    if (currentContext.pacsserver) {
+      chrisItems.push({ label: 'PACS Server', value: currentContext.pacsserver });
+    }
+    const folderDisplay: string = currentContext.folder ?? '/';
+    chrisItems.push({ label: 'Path', value: folderDisplay });
 
     const panels: BootPanels = {
       header: headerItems,

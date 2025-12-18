@@ -48,7 +48,7 @@ import { builtin_executePlugin } from './builtins/pluginExecute.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, hasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
-import { Result, errorStack } from '@fnndsc/cumin';
+import { Result, errorStack, Ok, Err } from '@fnndsc/cumin';
 import { vfs } from './lib/vfs/vfs.js';
 import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
@@ -152,102 +152,45 @@ async function command_handle(line: string): Promise<void> {
   const timingEnabled: boolean = session.timingEnabled_get();
   const startTime: number = timingEnabled ? performance.now() : 0;
 
-  // Check for shell escape (! prefix)
-  if (trimmedLine.startsWith('!')) {
-    const shellCommand: string = trimmedLine.substring(1).trim();
-    if (shellCommand) {
-      await shellCommand_execute(shellCommand);
-      // Display timing if enabled
-      command_timingMaybePrint(startTime, timingEnabled);
-    }
+  if (command_shellEscape_detect(trimmedLine)) {
+    await command_shellEscape_handle(trimmedLine, startTime, timingEnabled);
     return;
   }
 
-  // Check for semicolon-separated commands (execute sequentially)
-  const commands: string[] = semicolons_parse(trimmedLine);
-  if (commands.length > 1) {
-    // Execute each command in sequence
-    for (const cmd of commands) {
-      try {
-        await command_handle(cmd);
-      } catch (error: unknown) {
-        const msg: string = error instanceof Error ? error.message : String(error);
-        console.error(chalk.red(`Command error: ${msg}`));
-
-        // Stop on error if flag is set, otherwise continue (bash ; behavior)
-        if (g_stopOnError) {
-          throw error;
-        }
-      }
-    }
-    // Display total timing if enabled
-    if (timingEnabled) {
-      const elapsed: number = performance.now() - startTime;
-      console.log(chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`));
-    }
+  const semicolonResult: Result<boolean> = await command_semicolons_handle(trimmedLine, startTime, timingEnabled);
+  if (!semicolonResult.ok) {
     return;
   }
+  if (semicolonResult.value) return;
 
-  // Check for output redirection (> or >>)
-  const redirectInfo = redirect_parse(trimmedLine);
-  if (redirectInfo) {
-    try {
-      // Execute command and capture output
-      const { buffer } = await chellCommand_executeAndCapture(redirectInfo.command);
-      const targetPath: string = redirect_target_resolve(redirectInfo.filePath, redirectInfo.command);
-
-      // Write to file
-      if (redirectInfo.operator === '>') {
-        writeFileSync(targetPath, buffer);
-      } else {
-        appendFileSync(targetPath, buffer);
-      }
-    } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Redirect error: ${msg}`));
-    }
-    // Display timing if enabled
-    command_timingMaybePrint(startTime, timingEnabled);
+  const redirectResult: Result<boolean> = await command_redirect_handle(trimmedLine, startTime, timingEnabled);
+  if (!redirectResult.ok) {
     return;
   }
+  if (redirectResult.value) return;
 
-  // Check for pipe operators
-  const segments: string[] = pipes_parse(trimmedLine);
-  if (segments.length > 1) {
-    // Execute pipe chain
-    try {
-      await pipe_execute(segments);
-    } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Pipe error: ${msg}`));
-    }
-    // Display timing if enabled
-    command_timingMaybePrint(startTime, timingEnabled);
+  const pipeResult: Result<boolean> = await command_pipe_handle(trimmedLine, startTime, timingEnabled);
+  if (!pipeResult.ok) {
     return;
   }
+  if (pipeResult.value) return;
 
   const tokens: string[] = args_tokenize(trimmedLine);
   if (tokens.length === 0) return;
   let [command, ...args]: string[] = tokens;
 
   // Check for --help flag before any processing
-  if (hasHelpFlag(args, command)) {
-    help_show(command);
+  const helpResult: Result<boolean> = command_helpMaybeShow(command, args);
+  if (helpResult.ok && helpResult.value) {
     return;
   }
 
   // Expand wildcards for commands that support it
-  if (shouldExpandWildcards(command)) {
-    const expandResult: Result<string[]> = await wildcards_expandAll(args);
-    if (!expandResult.ok) {
-      const lastError = errorStack.stack_pop();
-      if (lastError) {
-        console.error(chalk.red(lastError.message));
-      }
-      return;
-    }
-    args = expandResult.value;
+  const expandResult: Result<string[]> = await command_wildcards_expand(command, args);
+  if (!expandResult.ok) {
+    return;
   }
+  args = expandResult.value;
 
   // Attempt to handle as a simulated plugin execution
   if (await pluginExecutable_handle(command, args)) {
@@ -494,6 +437,101 @@ async function command_dispatch(command: string, args: string[]): Promise<void> 
 
   console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
   await chiliCommand_run(command, ['-s', ...args]);
+}
+
+function command_shellEscape_detect(line: string): boolean {
+  return line.startsWith('!');
+}
+
+async function command_shellEscape_handle(line: string, startTime: number, timingEnabled: boolean): Promise<void> {
+  const shellCommand: string = line.substring(1).trim();
+  if (!shellCommand) return;
+  await shellCommand_execute(shellCommand);
+  command_timingMaybePrint(startTime, timingEnabled);
+}
+
+async function command_semicolons_handle(line: string, startTime: number, timingEnabled: boolean): Promise<Result<boolean>> {
+  const commands: string[] = semicolons_parse(line);
+  if (commands.length <= 1) {
+    return Ok(false);
+  }
+  for (const cmd of commands) {
+    try {
+      await command_handle(cmd);
+    } catch (error: unknown) {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`Command error: ${msg}`));
+      if (g_stopOnError) {
+        return Err();
+      }
+    }
+  }
+  if (timingEnabled) {
+    const elapsed: number = performance.now() - startTime;
+    console.log(chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`));
+  }
+  return Ok(true);
+}
+
+async function command_redirect_handle(line: string, startTime: number, timingEnabled: boolean): Promise<Result<boolean>> {
+  const redirectInfo = redirect_parse(line);
+  if (!redirectInfo) {
+    return Ok(false);
+  }
+  try {
+    const { buffer } = await chellCommand_executeAndCapture(redirectInfo.command);
+    const targetPath: string = redirect_target_resolve(redirectInfo.filePath, redirectInfo.command);
+    if (redirectInfo.operator === '>') {
+      writeFileSync(targetPath, buffer);
+    } else {
+      appendFileSync(targetPath, buffer);
+    }
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`Redirect error: ${msg}`));
+    return Err();
+  }
+  command_timingMaybePrint(startTime, timingEnabled);
+  return Ok(true);
+}
+
+async function command_pipe_handle(line: string, startTime: number, timingEnabled: boolean): Promise<Result<boolean>> {
+  const segments: string[] = pipes_parse(line);
+  if (segments.length <= 1) {
+    return Ok(false);
+  }
+  try {
+    await pipe_execute(segments);
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`Pipe error: ${msg}`));
+    return Err();
+  }
+  command_timingMaybePrint(startTime, timingEnabled);
+  return Ok(true);
+}
+
+function command_helpMaybeShow(command: string, args: string[]): Result<boolean> {
+  if (hasHelpFlag(args, command)) {
+    help_show(command);
+    return Ok(true);
+  }
+  return Ok(false);
+}
+
+async function command_wildcards_expand(command: string, args: string[]): Promise<Result<string[]>> {
+  if (!shouldExpandWildcards(command)) {
+    return Ok(args);
+  }
+  const expandResult: Result<string[]> = await wildcards_expandAll(args);
+  if (!expandResult.ok) {
+    const lastError = errorStack.stack_pop();
+    if (lastError) {
+      console.error(chalk.red(lastError.message));
+    }
+    return Err();
+  }
+  return Ok(expandResult.value);
 }
 
 /**

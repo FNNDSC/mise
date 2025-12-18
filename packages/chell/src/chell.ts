@@ -1,7 +1,17 @@
 /**
  * @file ChELL - ChELL Executes Logic Layers
  *
- * This contains the core logic for the interactive shell.
+ * Core entrypoint for the CheLL interactive shell. Responsibilities:
+ * - Initialize session/context and render the boot splash (logo + system/ChRIS panels).
+ * - Parse and execute user input with support for wildcards, pipes, redirects, and inline shell escapes.
+ * - Dispatch built-in commands, simulated plugin exec, and fallback delegation to `chili`.
+ * - Provide REPL loop with timing, debug toggles, and logical/physical FS modes.
+ *
+ * The code is organized into:
+ * - Session/bootstrap helpers (init, prefetch, intro rendering)
+ * - Command preprocessing helpers (semicolon batching, pipes, redirects, wildcards, help)
+ * - Command dispatch table for built-ins and plugin/bin execution
+ * - REPL wiring and prompt startup
  *
  * @module
  */

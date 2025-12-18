@@ -416,7 +416,13 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   feeds: builtin_feed,
   files: builtin_files,
   links: builtin_links,
-  dirs: builtin_dirs
+  dirs: builtin_dirs,
+  pacsservers: async (args: string[]): Promise<void> => {
+    await chiliCommand_run('pacsservers', ['-s', ...args]);
+  },
+  pacsqueries: async (args: string[]): Promise<void> => {
+    await chiliCommand_run('pacsqueries', ['-s', ...args]);
+  }
 };
 
 function command_timingMaybePrint(startTime: number, enabled: boolean): void {

@@ -38,6 +38,10 @@ export async function builtin_context(args: string[]): Promise<void> {
       Value: context.plugin || chalk.gray('Not set'),
     },
     {
+      Context: 'PACS Server',
+      Value: context.pacsserver || chalk.gray('Not set'),
+    },
+    {
       Context: 'Physical Mode',
       Value: session.physicalMode_get() ? chalk.magenta('Enabled') : chalk.gray('Disabled'),
     },

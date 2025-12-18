@@ -376,6 +376,30 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Manage directory resources',
     examples: ['dirs list', 'dirs fieldslist'],
   },
+  pacsservers: {
+    usage: 'pacsservers <subcommand> [options]',
+    description: 'List or inspect available PACS servers (context-aware)',
+    examples: [
+      'pacsservers list         # List PACS servers',
+      'pacsservers list --table # Table view',
+      'pacsservers fieldslist   # Show fields',
+    ],
+  },
+  pacsqueries: {
+    usage: 'pacsqueries <subcommand> [options]',
+    description: 'Create or list PACS queries (uses current pacsserver context unless overridden)',
+    options: [
+      '--pacsserver <id|name>  Use specific PACS server for this call',
+      '--title <string>        Title for created query',
+      '--search <filters>      Filters for list (supports comma-separated key:value)',
+    ],
+    examples: [
+      'pacsqueries list                          # List for current pacsserver',
+      'pacsqueries list --pacsserver PACSDCM     # Override server',
+      'pacsqueries create "PatientID:1234" --title "PID 1234"',
+      'pacsqueries decode <id>                   # Decode a query result',
+    ],
+  },
   chefs: {
     usage: 'chefs <subcommand> [args]',
     description: 'ChRIS Experimental File System commands',

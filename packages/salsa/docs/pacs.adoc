@@ -34,43 +34,61 @@
 === Basic Query
 
 ```typescript
+import type {
+  Result,
+  PACSServer,
+  PACSQueryRecord,
+  PACSQueryDecodedResult,
+} from "@fnndsc/cumin";
 import {
   pacsServers_list,
   pacsQueries_create,
   pacsQuery_resultDecode,
 } from "@fnndsc/salsa";
 
-const servers = await pacsServers_list();
-if (!servers.ok) return;
+const serversResult: Result<PACSServer[]> = await pacsServers_list();
+if (!serversResult.ok) return;
+const servers: PACSServer[] = serversResult.value;
 
-const created = await pacsQueries_create("PACSDCM", {
+const createdQuery: Result<PACSQueryRecord> = await pacsQueries_create("PACSDCM", {
   title: "PID 4456554",
   query: JSON.stringify({ PatientID: "4456554" }),
 });
-if (!created.ok) return;
+if (!createdQuery.ok) return;
+const queryId: number = createdQuery.value.id;
 
-const decoded = await pacsQuery_resultDecode(created.value.id);
-if (decoded.ok && decoded.value.json) {
-  // consume decoded.value.json / text
+const decodedResult: Result<PACSQueryDecodedResult> = await pacsQuery_resultDecode(
+  queryId
+);
+if (decodedResult.ok && decodedResult.value.json) {
+  const decodedJson: unknown = decodedResult.value.json;
+  // consume decodedJson / text
 }
 ```
 
 === Retrieve with Progress Monitoring
 
 ```typescript
+import type { Result, PACSRetrieveRecord, PACSQueryStatusReport } from "@fnndsc/cumin";
 import {
   pacsRetrieve_create,
   pacsRetrieve_statusForQuery,
 } from "@fnndsc/salsa";
 
+const queryId: number = 123; // existing PACS query id
+
 // Trigger retrieve
-const retrieve = await pacsRetrieve_create(queryId);
-if (!retrieve.ok) return;
+const retrieveResult: Result<PACSRetrieveRecord> = await pacsRetrieve_create(queryId);
+if (!retrieveResult.ok) return;
+const retrieveId: number = retrieveResult.value.id;
 
 // Monitor progress
-const status = await pacsRetrieve_statusForQuery(queryId);
-if (status.ok) {
-  // status.value contains studies with series-level progress
+const statusResult: Result<PACSQueryStatusReport> = await pacsRetrieve_statusForQuery(
+  queryId
+);
+if (statusResult.ok) {
+  const statusReport: PACSQueryStatusReport = statusResult.value;
+  // statusReport contains studies with series-level progress
   // Each series shows expectedFiles, actualFiles, and status
 }
 ```

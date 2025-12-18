@@ -9,10 +9,19 @@
 
 == Available Intents
 
+=== Query Operations
+
 - **List PACS servers**: `pacsServers_list(options?)` → `Result<PACSServer[]>`
 - **List PACS queries**: `pacsQueries_list(options?)` → `Result<FilteredResourceData | null>`
 - **Create PACS query**: `pacsQueries_create(pacsserver, data)` → `Result<PACSQueryRecord>`
 - **Decode PACS query result**: `pacsQuery_resultDecode(queryId)` → `Result<PACSQueryDecodedResult>`
+
+=== Retrieve Operations
+
+- **Create PACS retrieve**: `pacsRetrieve_create(queryId)` → `Result<PACSRetrieveRecord>`
+- **List PACS retrieves**: `pacsRetrieves_list(queryId, options?)` → `Result<PACSRetrieveRecord[]>`
+- **Delete PACS retrieve**: `pacsRetrieve_delete(retrieveId)` → `Result<void>`
+- **Generate status report**: `pacsRetrieve_statusForQuery(queryId)` → `Result<PACSQueryStatusReport>`
 
 == Parameters (delegated to cumin)
 
@@ -21,6 +30,8 @@
 - `PACSQueryListOptions`: includes `pacs_id`, `pacs_identifier`, plus standard list options.
 
 == Usage Example
+
+=== Basic Query
 
 ```typescript
 import {
@@ -41,6 +52,26 @@ if (!created.ok) return;
 const decoded = await pacsQuery_resultDecode(created.value.id);
 if (decoded.ok && decoded.value.json) {
   // consume decoded.value.json / text
+}
+```
+
+=== Retrieve with Progress Monitoring
+
+```typescript
+import {
+  pacsRetrieve_create,
+  pacsRetrieve_statusForQuery,
+} from "@fnndsc/salsa";
+
+// Trigger retrieve
+const retrieve = await pacsRetrieve_create(queryId);
+if (!retrieve.ok) return;
+
+// Monitor progress
+const status = await pacsRetrieve_statusForQuery(queryId);
+if (status.ok) {
+  // status.value contains studies with series-level progress
+  // Each series shows expectedFiles, actualFiles, and status
 }
 ```
 

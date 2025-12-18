@@ -8,14 +8,21 @@ import {
   pacsQueries_list as cumin_pacsQueries_list,
   pacsQueries_create as cumin_pacsQueries_create,
   pacsQuery_resultDecode as cumin_pacsQuery_resultDecode,
+  pacsRetrieve_create as cumin_pacsRetrieve_create,
+  pacsRetrieves_list as cumin_pacsRetrieves_list,
+  pacsRetrieve_delete as cumin_pacsRetrieve_delete,
+  pacsRetrieve_statusForQuery as cumin_pacsRetrieve_statusForQuery,
   PACSServer,
   PACSServerListOptions,
   PACSQueryListOptions,
   PACSQueryCreateData,
+  PACSRetrieveRecord,
+  PACSQueryStatusReport,
   Result,
   FilteredResourceData,
   PACSQueryRecord,
   PACSQueryDecodedResult,
+  ListOptions,
 } from "@fnndsc/cumin";
 
 /**
@@ -66,4 +73,55 @@ export async function pacsQuery_resultDecode(
   queryId: number
 ): Promise<Result<PACSQueryDecodedResult>> {
   return cumin_pacsQuery_resultDecode(queryId);
+}
+
+/**
+ * Create a PACS retrieve to pull DICOM data from PACS to ChRIS.
+ *
+ * @param queryId - PACS query ID to retrieve data for.
+ * @returns Result containing PACSRetrieveRecord.
+ */
+export async function pacsRetrieve_create(
+  queryId: number
+): Promise<Result<PACSRetrieveRecord>> {
+  return cumin_pacsRetrieve_create(queryId);
+}
+
+/**
+ * List all retrieves for a given PACS query.
+ *
+ * @param queryId - PACS query ID.
+ * @param options - Optional list options.
+ * @returns Result containing array of PACSRetrieveRecord.
+ */
+export async function pacsRetrieves_list(
+  queryId: number,
+  options?: ListOptions
+): Promise<Result<PACSRetrieveRecord[]>> {
+  return cumin_pacsRetrieves_list(queryId, options);
+}
+
+/**
+ * Delete (cancel) a PACS retrieve.
+ *
+ * @param retrieveId - PACS retrieve ID to delete.
+ * @returns Result containing void.
+ */
+export async function pacsRetrieve_delete(
+  retrieveId: number
+): Promise<Result<void>> {
+  return cumin_pacsRetrieve_delete(retrieveId);
+}
+
+/**
+ * Generate a complete status report for a PACS query retrieve.
+ * Combines query decode results with actual file counts to show progress.
+ *
+ * @param queryId - PACS query ID.
+ * @returns Result containing PACSQueryStatusReport with series-level status.
+ */
+export async function pacsRetrieve_statusForQuery(
+  queryId: number
+): Promise<Result<PACSQueryStatusReport>> {
+  return cumin_pacsRetrieve_statusForQuery(queryId);
 }

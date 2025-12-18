@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/salsa",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Shared Application Logic and Service Assets for ChRIS",
   "main": "dist/index.js",
   "module": "dist/index.js",

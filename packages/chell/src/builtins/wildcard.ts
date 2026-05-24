@@ -18,7 +18,7 @@ import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
  * @param arg - The argument to check.
  * @returns True if the argument contains wildcards.
  */
-export function hasWildcard(arg: string): boolean {
+export function string_checkHasWildcard(arg: string): boolean {
   return /[*?[\]]/.test(arg);
 }
 
@@ -32,7 +32,7 @@ export function hasWildcard(arg: string): boolean {
  */
 export async function wildcard_expand(pattern: string): Promise<Result<string[]>> {
   // If no wildcard, return as-is
-  if (!hasWildcard(pattern)) {
+  if (!string_checkHasWildcard(pattern)) {
     return Ok([pattern]);
   }
 
@@ -69,7 +69,7 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
 
     if (searchDir === '/bin') {
       // Check cache for /bin
-      const cached = listCache.cache_get('/bin');
+      const cached = listCache.cache_get<ListingItem[]>('/bin');
       if (cached) {
         items = cached.data;
       } else {
@@ -78,7 +78,7 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
       }
     } else {
       // Check cache for native path
-      const cached = listCache.cache_get(searchDir);
+      const cached = listCache.cache_get<ListingItem[]>(searchDir);
       if (cached) {
         items = cached.data;
       } else {

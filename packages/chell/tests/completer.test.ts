@@ -45,7 +45,7 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/ls.js', () => ({
   files_list: jest.fn().mockResolvedValue([])
 }));
 
-const { completer } = await import('../src/lib/completer/index.js');
+const { input_complete } = await import('../src/lib/completer/index.js');
 
 describe('Tab Completion', () => {
   beforeEach(() => {
@@ -56,7 +56,7 @@ describe('Tab Completion', () => {
     it('should complete builtin commands', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 
-      completer('c', (err, result) => {
+      input_complete('c', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('c');
@@ -77,7 +77,7 @@ describe('Tab Completion', () => {
         ]
       });
 
-      completer('pl-', (err, result) => {
+      input_complete('pl-', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('pl-');
@@ -97,7 +97,7 @@ describe('Tab Completion', () => {
         ]
       });
 
-      completer('c', (err, result) => {
+      input_complete('c', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('c');
@@ -123,7 +123,7 @@ describe('Tab Completion', () => {
         ]
       });
 
-      completer('pl-dircopy', (err, result) => {
+      input_complete('pl-dircopy', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('pl-dircopy');
@@ -140,7 +140,7 @@ describe('Tab Completion', () => {
     it('should handle plugin fetch errors gracefully', (done) => {
       mockPlugins_listAll.mockRejectedValue(new Error('Network error'));
 
-      completer('c', (err, result) => {
+      input_complete('c', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('c');
@@ -154,7 +154,7 @@ describe('Tab Completion', () => {
     it('should return empty array when no matches', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 
-      completer('xyz', (err, result) => {
+      input_complete('xyz', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('xyz');
@@ -166,7 +166,7 @@ describe('Tab Completion', () => {
     it('should handle empty plugin list', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: null });
 
-      completer('p', (err, result) => {
+      input_complete('p', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(original).toBe('p');
@@ -181,7 +181,7 @@ describe('Tab Completion', () => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 
       // When we have a space after the command, we're in argument mode
-      completer('cd ', (err, result) => {
+      input_complete('cd ', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         // Should return path completions, not command completions
@@ -194,7 +194,7 @@ describe('Tab Completion', () => {
     it('should provide path completion for cp command', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 
-      completer('cp ', (err, result) => {
+      input_complete('cp ', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         // Should return path completions (empty in this case due to mock)
@@ -207,7 +207,7 @@ describe('Tab Completion', () => {
     it('should provide path completion for rm command', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 
-      completer('rm ', (err, result) => {
+      input_complete('rm ', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(hits).toEqual([]);
@@ -219,7 +219,7 @@ describe('Tab Completion', () => {
     it('should provide path completion for upload command', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 
-      completer('upload ', (err, result) => {
+      input_complete('upload ', (err, result) => {
         expect(err).toBeNull();
         const [hits, original] = result;
         expect(hits).toEqual([]);

@@ -5,6 +5,7 @@
 import * as path from 'path';
 import { context_getSingle } from '@fnndsc/salsa';
 import { session } from '../session/index.js';
+import { ListingItem } from '@fnndsc/chili/models/listing.js';
 
 /**
  * Structure for parsed command line arguments.
@@ -13,6 +14,8 @@ export interface ParsedArgs {
   _: string[];
   [key: string]: string | boolean | string[];
 }
+
+
 
 /**
  * Parses raw argument strings into a structured object.
@@ -129,10 +132,10 @@ export async function path_resolveLinks(targetPath: string): Promise<string> {
 
     try {
       // List parent directory to check if component is a link
-      const items: any[] = await files_list({ path: parentPath }, parentPath);
+      const items: ListingItem[] = await files_list({ path: parentPath }, parentPath);
 
       // Find the component in the listing
-      const item = items.find((i: any) => i.name === component);
+      const item = items.find((i: ListingItem) => i.name === component);
 
       if (item && item.type === 'link' && item.target) {
         // Component is a link - resolve it

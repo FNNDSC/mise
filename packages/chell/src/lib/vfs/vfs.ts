@@ -162,7 +162,7 @@ export class VFS {
     try {
       // Check cache first
       const listCache = listCache_get();
-      const cached = listCache.cache_get('/bin');
+      const cached = listCache.cache_get<ListingItem[]>('/bin');
 
       if (cached) {
         // Cache hit - return cached data
@@ -308,7 +308,7 @@ export class VFS {
 
         // Check cache first
         const listCache = listCache_get();
-        const cached = listCache.cache_get(parentPath);
+        const cached = listCache.cache_get<ListingItem[]>(parentPath);
         let parentItems: ListingItem[];
 
         if (cached) {
@@ -331,7 +331,7 @@ export class VFS {
       // Normal listing: show directory contents
       // Check cache first
       const listCache = listCache_get();
-      const cached = listCache.cache_get(target);
+      const cached = listCache.cache_get<ListingItem[]>(target);
       let items: ListingItem[];
 
       if (cached) {

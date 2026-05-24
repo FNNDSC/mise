@@ -9,7 +9,7 @@
 import { session } from '../../session/index.js';
 import { plugins_listAll } from '@fnndsc/salsa';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
-import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
+import { files_list, LsOptions } from '@fnndsc/chili/commands/fs/ls.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { listCache_get } from '@fnndsc/cumin';
@@ -67,7 +67,7 @@ async function plugins_getNames(): Promise<string[]> {
   try {
     // Check cache first for /bin
     const listCache = listCache_get();
-    const cached = listCache.cache_get('/bin');
+    const cached = listCache.cache_get<ListingItem[]>('/bin');
 
     if (cached && cached.data) {
       // Return cached plugin names immediately
@@ -113,7 +113,7 @@ async function plugins_getNames(): Promise<string[]> {
  * @param line - The current input line.
  * @param callback - The callback function to return results.
  */
-export function completer(line: string, callback: CompleterCallback): void {
+export function input_complete(line: string, callback: CompleterCallback): void {
   const trimmed = line.trimStart();
   // Check if we are completing the first word (command) or subsequent args
   // A simple split by space might be enough for now, assuming no quoted args with spaces for MVP
@@ -210,7 +210,7 @@ async function path_complete(partial: string): Promise<string[]> {
   if (absDirToList === '/bin') {
      // Virtual bin - plugins
      // Check cache first
-     const cached = listCache.cache_get('/bin');
+     const cached = listCache.cache_get<ListingItem[]>('/bin');
      let lsItems: ListingItem[] | undefined;
 
      if (cached) {
@@ -260,14 +260,14 @@ async function path_complete(partial: string): Promise<string[]> {
      // Native ChRIS
      try {
        // Check cache first
-       const cached = listCache.cache_get(absDirToList);
+        const cached = listCache.cache_get<ListingItem[]>(absDirToList);
        let lsItems: ListingItem[] | undefined;
 
        if (cached) {
          lsItems = cached.data;
        } else {
                 // Cache miss - fetch from API
-                lsItems = await files_list({} as CLIoptions, absDirToList);         if (lsItems) {
+                lsItems = await files_list({} as LsOptions, absDirToList);         if (lsItems) {
            // Inject virtual directories if at root
            if (absDirToList === '/') {
              lsItems.push({

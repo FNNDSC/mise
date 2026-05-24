@@ -12,7 +12,7 @@ import { PluginContextGroupHandler } from '@fnndsc/chili/plugins/pluginGroupHand
  */
 export async function builtin_parametersofplugin(args: string[]): Promise<void> {
     const parsedArgs: CLIoptions = commandArgs_process(args);
-    const subcommand = parsedArgs._[0]; // e.g., 'list', 'fieldslist'
+    const subcommand = (parsedArgs._ as string[])[0]; // e.g., 'list', 'fieldslist'
     const pluginIdFromArgs: string | undefined = parsedArgs['plugin-id'] as string;
 
     if (!subcommand) {

@@ -16,7 +16,7 @@ describe('CLI Parser', () => {
   it('should handle --help', async () => {
     const config = await cli_parse(['node', 'chell', '--help'], VERSION);
     expect(config.mode).toBe('help');
-    expect(config.output).toContain('Usage: chell');
+    expect(config.output).toContain('USAGE');
   });
 
   it('should handle --version', async () => {

@@ -56,7 +56,7 @@ import {
 } from './builtins/index.js';
 import { builtin_executePlugin } from './builtins/pluginExecute.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
-import { help_show, hasHelpFlag } from './builtins/help.js';
+import { help_show, args_checkHasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
 import { Result, errorStack, Ok, Err } from '@fnndsc/cumin';
 import { vfs } from './lib/vfs/vfs.js';
@@ -528,7 +528,7 @@ async function command_pipe_handle(line: string, startTime: number, timingEnable
 }
 
 function command_helpMaybeShow(command: string, args: string[]): Result<boolean> {
-  if (hasHelpFlag(args, command)) {
+  if (args_checkHasHelpFlag(args, command)) {
     help_show(command);
     return Ok(true);
   }

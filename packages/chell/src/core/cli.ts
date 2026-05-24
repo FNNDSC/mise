@@ -8,6 +8,7 @@
  */
 import { Command } from 'commander';
 import { existsSync } from 'fs';
+import chalk from 'chalk';
 
 export interface ChellCLIConfig {
   mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute' | 'script';
@@ -28,15 +29,41 @@ export interface ChellCLIConfig {
   output?: string; // For help/version text
 }
 
+/**
+ * Parses command line arguments and extracts configuration for the Chell interactive shell.
+ *
+ * @param argv - The command line arguments (typically process.argv).
+ * @param version - The version string of the package.
+ * @returns A Promise resolving to a ChellCLIConfig containing the parsed parameters.
+ */
 export function cli_parse(argv: string[], version: string): Promise<ChellCLIConfig> {
-  return new Promise((resolve, reject) => {
-    const program = new Command();
+  return new Promise((resolve) => {
+    const program: Command = new Command();
     let config: ChellCLIConfig = { mode: 'interactive' };
+    let capturedOutput = '';
 
     program
       .name('chell')
       .version(version)
-      .description('ChRIS Interactive Shell')
+      .description('ChRIS Interactive Shell (ChELL) - A powerful, terminal-based virtual file system (VFS) and interactive REPL for ChRIS.')
+      .addHelpText('before', `
+${chalk.bold.cyan('NAME')}
+    ${chalk.bold('chell')} - ChRIS Interactive Shell (ChELL Executes Layered Logic)
+
+${chalk.bold.cyan('DESCRIPTION')}
+    ${chalk.bold('ChELL')} is a terminal-based interface and Virtual File System (VFS)
+    router for the ChRIS medical image processing platform. It bridges the gap
+    between complex web APIs and terminal muscle-memory.
+
+    It maps remote ChRIS CUBE resources to an intuitive local folder experience:
+      - Feeds, pipelines, and files are structured as navigable directories.
+      - Registered CUBE plugins are mapped as executable binaries inside ${chalk.yellow('/bin')}.
+      - Standard utilities (${chalk.green('cd')}, ${chalk.green('ls')}, ${chalk.green('pwd')}, ${chalk.green('cat')}) run directly on remote storage.
+
+    Whether navigating data or running pipelines, ChELL leverages your current
+    working directory as execution context, letting you run containerized medical
+    image analyses using command-line muscle-memory.
+      `)
       .argument('[target]', 'Target CUBE (user@url or url)')
       .option('-u, --user <user>', 'Username')
       .option('-p, --password <password>', 'Password')
@@ -51,43 +78,95 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
       .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
       .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
       .addHelpText('after', `
-Interactive Commands:
-  connect    Connect to a ChRIS CUBE
-  logout     Log out from ChRIS
-  cd         Change directory
-  ls         List directory contents
-  pwd        Print working directory
-  cat        Display file content
-  chefs      Access ChRIS Experimental File System commands
-  exit       Exit the shell
-  <other>    Any other command is passed to chili
+${chalk.bold.cyan('INTERACTIVE COMMANDS')}
+  ${chalk.bold.green('connect')}     Connect to a ChRIS CUBE
+  ${chalk.bold.green('logout')}      Log out from the current CUBE session
+  ${chalk.bold.green('cd')}          Change the current virtual directory
+  ${chalk.bold.green('ls')}          List virtual directory contents
+  ${chalk.bold.green('pwd')}         Print the current virtual working directory
+  ${chalk.bold.green('cat')}         Display file contents
+  ${chalk.bold.green('chefs')}       Access ChRIS Experimental File System controls
+  ${chalk.bold.green('exit')}        Exit the interactive shell
+  ${chalk.bold.yellow('<other>')}     Any unrecognized command is passed directly to the chili CLI
 
-Shell Features:
-  Pipes              Use | to chain commands: cat file.txt | wc -l
-  Output Redirection Use > to write to file: cat file.txt > output.txt
-                     Use >> to append to file: cat file.txt >> output.txt
-  Semicolons         Use ; to run commands sequentially: cd /tmp; ls; pwd
+${chalk.bold.cyan('SHELL FEATURES')}
+  ${chalk.bold('Pipes')}              Chain command stdout: ${chalk.dim('cat file.txt | wc -l')}
+  ${chalk.bold('Output Redirection')} Write/append to virtual files: ${chalk.dim('ls -lh > output.txt')}
+  ${chalk.bold('Semicolons')}         Run sequentially: ${chalk.dim('cd /tmp; ls; pwd')}
+  ${chalk.bold('Shell Escape')}       Run host OS commands inside the REPL with ${chalk.bold.green('!')} prefix
 
-Script Files:
-  Shebang            Add #!/usr/bin/env chell to make scripts executable
-  Comments           Lines starting with # are ignored (except shebang)
-  Error Handling     By default continues on error, use -e to stop on first error
+${chalk.bold.cyan('AUTOMATION & SCRIPTING')}
+  ${chalk.bold('Shebang Support')}     Prepend ${chalk.yellow('#!/usr/bin/env chell')} to make scripts executable
+  ${chalk.bold('Comments')}            Lines beginning with ${chalk.bold('#')} are ignored
+  ${chalk.bold('Error Handling')}      Default: continue on error. Use ${chalk.bold.green('-e')} to stop on first failure
 
-Options:
-  --physicalFS    Operate directly on physical paths without logical-to-physical mapping.
-                  Use this for debugging or when working with physical ChRIS storage paths.
-  -c, --command   Run command(s) and exit. Supports semicolons: chell -c "ls; pwd"
-  -f, --file      Execute script file: chell -f script.chell
-  -e              Stop on first error in script mode (default: continue on error)
-
-Examples:
-  chell -c "ls /PIPELINES"                          # Single command
-  chell -c "cd /PIPELINES; ls; cat pipeline.yml"    # Multiple commands
-  chell script.chell                                # Run script file (auto-detect)
-  chell -f script.chell                             # Run script file (explicit)
-  chell -e script.chell                             # Run script, stop on error
-  ./script.chell                                    # Direct execution (with shebang)
+${chalk.bold.cyan('EXAMPLES')}
+  ${chalk.bold('chell')} ${chalk.bold.green('-c')} ${chalk.yellow('"ls /PIPELINES"')}                           # Execute single command and exit
+  ${chalk.bold('chell')} ${chalk.bold.green('-c')} ${chalk.yellow('"cd /PIPELINES; ls; cat main.yml"')}     # Sequential CLI command pipeline
+  ${chalk.bold('chell')} ${chalk.yellow('script.chell')}                                 # Run script file (auto-detect)
+  ${chalk.bold('chell')} ${chalk.bold.green('-e')} ${chalk.yellow('script.chell')}                               # Run script file, stopping on first error
+  ${chalk.bold('./script.chell')}                                     # Execute direct script via shebang
       `)
+      .configureHelp({
+        formatHelp: (cmd, helper) => {
+          const termWidth = helper.padWidth(cmd, helper);
+          const helpWidth = helper.helpWidth || 80;
+          const itemIndentWidth = 2;
+          const itemSeparatorWidth = 2; // between term and description
+          
+          function formatItem(term: string, description: string) {
+            if (description) {
+              const fullText = `${term.padEnd(termWidth + itemSeparatorWidth)}${description}`;
+              return helper.wrap(
+                fullText,
+                helpWidth - itemIndentWidth,
+                termWidth + itemSeparatorWidth,
+              );
+            }
+            return term;
+          }
+          
+          function formatList(textArray: string[]) {
+            return textArray.join('\n').replace(/^/gm, ' '.repeat(itemIndentWidth));
+          }
+
+          // Usage
+          let output: string[] = [`${chalk.bold.cyan('USAGE')}\n  ${helper.commandUsage(cmd)}`, ''];
+
+          // Description
+          const commandDescription = helper.commandDescription(cmd);
+          if (commandDescription.length > 0) {
+            output = output.concat([
+              '  ' + helper.wrap(commandDescription, helpWidth - 2, 0).replace(/\n/g, '\n  '),
+              '',
+            ]);
+          }
+
+          // Arguments
+          const argumentList = helper.visibleArguments(cmd).map((argument) => {
+            return formatItem(
+              helper.argumentTerm(argument),
+              helper.argumentDescription(argument),
+            );
+          });
+          if (argumentList.length > 0) {
+            output = output.concat([chalk.bold.cyan('ARGUMENTS'), formatList(argumentList), '']);
+          }
+
+          // Options
+          const optionList = helper.visibleOptions(cmd).map((option) => {
+            return formatItem(
+              helper.optionTerm(option),
+              helper.optionDescription(option),
+            );
+          });
+          if (optionList.length > 0) {
+            output = output.concat([chalk.bold.cyan('OPTIONS'), formatList(optionList), '']);
+          }
+
+          return output.join('\n');
+        }
+      })
       .action((target: string | undefined, options: {
         user?: string;
         password?: string;
@@ -179,15 +258,24 @@ Examples:
 
     // Capture help/version output instead of writing to stdout
     program.configureOutput({
-      writeOut: (str) => { config = { mode: 'help', output: str }; },
-      writeErr: (str) => { config = { mode: 'help', output: str }; },
-      outputError: (str, write) => { config = { mode: 'help', output: str }; } // Override default error handling
+      writeOut: (str: string) => {
+        capturedOutput += str;
+        config = { mode: 'help', output: capturedOutput };
+      },
+      writeErr: (str: string) => {
+        capturedOutput += str;
+        config = { mode: 'help', output: capturedOutput };
+      },
+      outputError: (str: string) => {
+        capturedOutput += str;
+        config = { mode: 'help', output: capturedOutput };
+      }
     });
     
     // We need to handle exit events to prevent process.exit() during tests
-    program.exitOverride((err) => {
+    program.exitOverride((err: Error & { code?: string }) => {
         if (err.code === 'commander.helpDisplayed') {
-            resolve({ mode: 'help', output: program.helpInformation() }); // Or capture from writeOut
+            resolve({ mode: 'help', output: capturedOutput || program.helpInformation() });
         } else if (err.code === 'commander.version') {
             resolve({ mode: 'version', output: version });
         } else {
@@ -203,23 +291,13 @@ Examples:
       .then(() => {
           resolve(config);
       })
-      .catch((err) => {
+      .catch((err: Error & { code?: string }) => {
           // If exitOverride threw, we handled it above mostly?
           // Actually exitOverride throws.
           if (err.code === 'commander.helpDisplayed' || err.code === 'commander.version') {
-             // config is already set via configureOutput hooks? 
-             // Or we resolved?
-             // If we resolve in exitOverride, the promise returned by parseAsync won't finish?
-             // Actually exitOverride throws, so parseAsync promise rejects.
-             // We catch here.
-             if (config.mode === 'interactive') { 
-                 // If mode wasn't set (e.g. version flag), set it.
-                 // But for version, writeOut is called.
-             }
              resolve(config);
           } else {
              // Real error
-             // console.error(err.message);
              // For now, treat as help/error output
              resolve({ mode: 'help', output: err.message });
           }

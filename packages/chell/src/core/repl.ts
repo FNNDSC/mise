@@ -9,7 +9,7 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
-import { completer } from '../lib/completer/index.js';
+import { input_complete } from '../lib/completer/index.js';
 import { settings } from '../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
 
@@ -28,7 +28,7 @@ export class REPL {
       input: process.stdin,
       output: process.stdout,
       prompt: '> ',
-      completer,
+      completer: input_complete,
     });
   }
 

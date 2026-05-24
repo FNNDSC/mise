@@ -11,6 +11,8 @@ import { spinner } from '../../lib/spinner.js';
 import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 
+
+
 /**
  * Displays disk usage statistics for ChRIS filesystem directories.
  * Mimics standard Linux du command behavior and flags.
@@ -132,7 +134,7 @@ export async function builtin_du(args: string[]): Promise<void> {
       // Aggregate sizes for this target
       const dirSizes: Map<string, number> = new Map<string, number>();
       
-      scanResult.fileInfo.forEach((fileInfo: any) => {
+      scanResult.fileInfo.forEach((fileInfo) => {
         const filePath: string = fileInfo.chrisPath;
         const fSize: number = fileInfo.size;
 

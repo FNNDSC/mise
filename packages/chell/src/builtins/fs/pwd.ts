@@ -3,7 +3,7 @@
  * Prints the current working directory.
  */
 import { session } from '../../session/index.js';
-import { chrisConnection } from '@fnndsc/cumin';
+import { chrisConnection, FilteredResourceData } from '@fnndsc/cumin';
 import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
 
 /**
@@ -41,10 +41,10 @@ async function path_withTitles(path: string): Promise<string> {
       if (feedMatch) {
         const feedId: number = parseInt(feedMatch[1], 10);
         try {
-          const feedData: any = await feeds_list({ id: feedId, limit: 1 });
+          const feedData: FilteredResourceData | null = await feeds_list({ id: feedId, limit: 1 });
           if (feedData && feedData.tableData && feedData.tableData.length > 0) {
-            const feed: any = feedData.tableData[0];
-            if (feed && feed.name) {
+            const feed = feedData.tableData[0];
+            if (feed && typeof feed.name === 'string') {
               return feed.name;
             }
           }
@@ -59,12 +59,12 @@ async function path_withTitles(path: string): Promise<string> {
       if (pluginMatch) {
         const pluginInstanceId: number = parseInt(pluginMatch[2], 10);
         try {
-          const instanceData: any = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
+          const instanceData: FilteredResourceData | null = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
           if (instanceData && instanceData.tableData && instanceData.tableData.length > 0) {
-            const instance: any = instanceData.tableData[0];
+            const instance = instanceData.tableData[0];
             if (instance) {
-              const pluginName: string = instance.plugin_name || '';
-              const pluginVersion: string = instance.plugin_version || '';
+              const pluginName: string = typeof instance.plugin_name === 'string' ? instance.plugin_name : '';
+              const pluginVersion: string = typeof instance.plugin_version === 'string' ? instance.plugin_version : '';
               return pluginVersion ? `${pluginName} v${pluginVersion}` : pluginName;
             }
           }

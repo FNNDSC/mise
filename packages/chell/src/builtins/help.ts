@@ -626,7 +626,7 @@ export function help_show(command: string): void {
  * @param command - The command name (optional).
  * @returns True if help is requested.
  */
-export function hasHelpFlag(args: string[], command?: string): boolean {
+export function args_checkHasHelpFlag(args: string[], command?: string): boolean {
   const isPluginExecutable: boolean = !!command && /-v.+$/.test(command);
   if (!isPluginExecutable && args.includes('--help')) return true;
 

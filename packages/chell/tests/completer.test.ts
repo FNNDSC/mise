@@ -41,8 +41,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 
 // Mock chili files_list
+const mockFilesList = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/ls.js', () => ({
-  files_list: jest.fn().mockResolvedValue([])
+  files_list: mockFilesList
 }));
 
 const { input_complete } = await import('../src/lib/completer/index.js');
@@ -50,6 +51,7 @@ const { input_complete } = await import('../src/lib/completer/index.js');
 describe('Tab Completion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFilesList.mockResolvedValue([]);
   });
 
   describe('Command Completion', () => {
@@ -174,6 +176,18 @@ describe('Tab Completion', () => {
         done();
       });
     });
+
+    it('should complete PACS commands exposed by builtin help', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [] });
+
+      input_complete('pacs', (err, result) => {
+        expect(err).toBeNull();
+        expect(result[0]).toContain('pacsqueries');
+        expect(result[0]).toContain('pacsretrieve');
+        expect(result[0]).toContain('pacsservers');
+        done();
+      });
+    });
   });
 
   describe('Path Completion', () => {
@@ -224,6 +238,42 @@ describe('Tab Completion', () => {
         const [hits, original] = result;
         expect(hits).toEqual([]);
         expect(original).toBe('');
+        done();
+      });
+    });
+
+    it('should append a slash when completing a directory for ls', (done) => {
+      mockFilesList.mockResolvedValue([
+        { name: 'data', type: 'dir', size: 0, owner: 'testuser', date: '' }
+      ]);
+
+      input_complete('ls da', (err, result) => {
+        expect(err).toBeNull();
+        expect(result).toEqual([['data/'], 'da']);
+        done();
+      });
+    });
+
+    it('should preserve escaped spaces while completing ls operands', (done) => {
+      mockFilesList.mockResolvedValue([
+        { name: 'Patient Data', type: 'dir', size: 0, owner: 'testuser', date: '' }
+      ]);
+
+      input_complete('ls Patient\\ D', (err, result) => {
+        expect(err).toBeNull();
+        expect(result).toEqual([['Patient\\ Data/'], 'Patient\\ D']);
+        done();
+      });
+    });
+
+    it('should preserve double quotes while completing ls operands', (done) => {
+      mockFilesList.mockResolvedValue([
+        { name: 'Patient Data', type: 'dir', size: 0, owner: 'testuser', date: '' }
+      ]);
+
+      input_complete('ls "Patient ', (err, result) => {
+        expect(err).toBeNull();
+        expect(result).toEqual([['"Patient Data/'], '"Patient ']);
         done();
       });
     });

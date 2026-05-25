@@ -15,6 +15,7 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
 import { builtinCommands_list } from '../../builtins/help.js';
+import { args_tokenize } from '../parser.js';
 
 /**
  * Callback function type for autocomplete results.
@@ -23,39 +24,53 @@ import { builtinCommands_list } from '../../builtins/help.js';
  */
 type CompleterCallback = (err: Error | null, result: [string[], string]) => void;
 
-const BUILTINS: string[] = [
-  'cat',
-  'cd',
-  'chefs',
-  'connect',
-  'context',
-  'cp',
-  'download',
-  'mv',
-  'debug',
-  'dirs',
-  'exit',
-  'feed',
-  'feeds',
-  'files',
-  'help',
-  'links',
-  'logout',
-  'ls',
-  'mkdir',
-  'parametersofplugin',
-  'physicalmode',
-  'plugin',
-  'plugins',
-  'pwd',
-  'quit',
-  'rm',
-  'timing',
-  'touch',
-  'tree',
-  'du',
-  'upload'
-];
+interface CompletionWord {
+  raw: string;
+  value: string;
+  quote: "'" | '"' | null;
+}
+
+function completionWord_get(line: string): CompletionWord {
+  let start: number = 0;
+  let quote: "'" | '"' | null = null;
+  let escapeNext: boolean = false;
+
+  for (let index: number = 0; index < line.length; index++) {
+    const char: string = line[index];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === '\\' && quote !== "'") {
+      escapeNext = true;
+      continue;
+    }
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? null : char;
+      continue;
+    }
+    if (!quote && /\s/.test(char)) {
+      start = index + 1;
+    }
+  }
+
+  const raw: string = line.substring(start);
+  const tokens: string[] = args_tokenize(raw);
+  const value: string = tokens.length > 0 ? tokens[0] : '';
+  const openingQuote: "'" | '"' | null =
+    raw.startsWith("'") ? "'" : raw.startsWith('"') ? '"' : null;
+  return { raw, value, quote: openingQuote };
+}
+
+function completion_format(completion: string, word: CompletionWord): string {
+  if (word.quote === "'") {
+    return `'${completion.replace(/'/g, `'\\''`)}`;
+  }
+  if (word.quote === '"') {
+    return `"${completion.replace(/(["\\])/g, '\\$1')}`;
+  }
+  return completion.replace(/([\\\s'"`])/g, '\\$1');
+}
 
 /**
  * Fetches available plugin names from /bin in the format: name-vVersion.
@@ -115,18 +130,16 @@ async function plugins_getNames(): Promise<string[]> {
  */
 export function input_complete(line: string, callback: CompleterCallback): void {
   const trimmed = line.trimStart();
-  // Check if we are completing the first word (command) or subsequent args
-  // A simple split by space might be enough for now, assuming no quoted args with spaces for MVP
-  const args = trimmed.split(/\s+/);
+  const args: string[] = args_tokenize(trimmed);
 
   // Case 1: Command Completion (First word)
   // If we have only one token and the line doesn't end with space, we are typing the command
   // Or if line is empty
-  const isCommandCompletion = args.length === 1 && !line.endsWith(' ');
+  const isCommandCompletion = args.length === 0 || (args.length === 1 && !line.endsWith(' '));
 
   if (isCommandCompletion) {
     // Check builtins first (instant, no async)
-    const builtinHits: string[] = BUILTINS.filter((c) => c.startsWith(trimmed));
+    const builtinHits: string[] = builtinCommands_list().filter((c: string) => c.startsWith(trimmed));
 
     // Always check plugins and combine results
     plugins_getNames().then((pluginNames) => {
@@ -145,15 +158,13 @@ export function input_complete(line: string, callback: CompleterCallback): void 
   // Case 2: Path Completion (Argument to specific commands)
   const cmd = args[0];
   if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'tree'].includes(cmd)) {
-    // The partial path is the last argument being typed
-    // If the line ends with space, we are starting a new argument (empty prefix)
-    const partialPath = line.endsWith(' ') ? '' : args[args.length - 1];
+    const word: CompletionWord = completionWord_get(line);
     
-    path_complete(partialPath).then((matches) => {
-        callback(null, [matches, partialPath]);
+    path_complete(word.value).then((matches) => {
+        callback(null, [matches.map((match: string) => completion_format(match, word)), word.raw]);
     }).catch((err) => {
         // On error, return no matches, don't crash REPL
-        callback(null, [[], partialPath]);
+        callback(null, [[], word.raw]);
     });
     return;
   }

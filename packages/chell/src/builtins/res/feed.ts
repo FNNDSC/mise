@@ -9,6 +9,7 @@ import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
 import { feedList_render, feedCreate_render } from '@fnndsc/chili/views/feed.js';
 import { Feed } from '@fnndsc/chili/models/feed.js';
 import { chiliCommand_run } from '../../chell.js';
+import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**
  * Handles feed commands.
@@ -26,12 +27,12 @@ export async function builtin_feed(args: string[]): Promise<void> {
 
   try {
     if (subcommand === 'list') {
-       const { feeds, selectedFields }: FeedListResult = await feeds_fetchList(parsed as any);
+       const { feeds, selectedFields }: FeedListResult = await feeds_fetchList(parsed as unknown as CLIoptions);
        console.log(feedList_render(feeds, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
     } else if (subcommand === 'create') {
        // Requires --dirs and --params flag handling which parsed already has.
        // feed create --dirs ...
-       const feed: Feed | null = await feed_create(parsed as any);
+       const feed: Feed | null = await feed_create(parsed as unknown as CLIoptions);
        if (feed) {
           console.log(feedCreate_render(feed));
        }

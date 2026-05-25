@@ -300,37 +300,33 @@ export class VFS {
    */
   private async dataNative_get(target: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
     try {
-      // Handle -d flag: show directory itself, not contents
-      if (options.directory) {
-        // Get parent directory and find this item in it
-        const parentPath: string = target.substring(0, target.lastIndexOf('/')) || '/';
-        const itemName: string = target.substring(target.lastIndexOf('/') + 1);
+      const listCache = listCache_get();
+      const parentPath: string = path.posix.dirname(target);
+      const itemName: string = path.posix.basename(target);
 
-        // Check cache first
-        const listCache = listCache_get();
-        const cached = listCache.cache_get<ListingItem[]>(parentPath);
+      const operandItem_get = async (): Promise<ListingItem | undefined> => {
+        const cachedParent = listCache.cache_get<ListingItem[]>(parentPath);
         let parentItems: ListingItem[];
-
-        if (cached) {
-          parentItems = cached.data;
+        if (cachedParent) {
+          parentItems = cachedParent.data;
         } else {
           parentItems = await files_list({}, parentPath);
           listCache.cache_set(parentPath, parentItems);
         }
+        return parentItems.find((item: ListingItem) => item.name === itemName);
+      };
 
-        const item: ListingItem | undefined = parentItems.find((i: ListingItem) => i.name === itemName);
-
+      // `ls -d path` renders the operand itself rather than directory contents.
+      if (options.directory && target !== '/') {
+        const item: ListingItem | undefined = await operandItem_get();
         if (item) {
           return Ok([item]);
-        } else {
-          errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
-          return Err();
         }
+        errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
+        return Err();
       }
 
-      // Normal listing: show directory contents
-      // Check cache first
-      const listCache = listCache_get();
+      // Normal listing first assumes a directory operand.
       const cached = listCache.cache_get<ListingItem[]>(target);
       let items: ListingItem[];
 
@@ -366,6 +362,19 @@ export class VFS {
 
         // Cache the results
         listCache.cache_set(target, items);
+      }
+
+      // An empty listing is either an empty directory or a non-directory operand.
+      // Inspect the parent so `ls file` renders file metadata/name like Unix ls.
+      if (items.length === 0 && target !== '/') {
+        const item: ListingItem | undefined = await operandItem_get();
+        if (item && item.type !== 'dir') {
+          return Ok([item]);
+        }
+        if (!item) {
+          errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
+          return Err();
+        }
       }
 
       return Ok(items);

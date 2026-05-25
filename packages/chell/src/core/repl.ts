@@ -104,9 +104,9 @@ export class REPL {
         const content: string = await fs.promises.readFile(file, 'utf-8');
         const lines: string[] = content.split('\n').filter((l) => l.trim()).reverse();
         const limit: number = settings.config.historySize;
-        // Force cast to any to access history property if strict types block it, 
+        // Force cast to history interface to access history property if strict types block it, 
         // though it is part of the public API in recent Node versions.
-        (this.rl as any).history = lines.slice(0, limit);
+        (this.rl as unknown as { history: string[] }).history = lines.slice(0, limit);
       } catch (e) {
         // Silently fail if history cannot be loaded
       }

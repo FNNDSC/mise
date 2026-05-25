@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
-import { listCache_get, errorStack } from '@fnndsc/cumin';
+import { listCache_get } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
 
@@ -47,25 +47,6 @@ export async function builtin_ls(args: string[]): Promise<void> {
     directory: !!parsed['d']
   };
 
-  // If user provided multiple tokens without options or wildcards, try treating them as a single path first.
-  const hasOptions: boolean = Object.keys(parsed).some((key: string) => key !== '_');
-  const hasWildcard: boolean = pathArgsRaw.some((p: string) => p.includes('*'));
-  if (!hasOptions && !hasWildcard && pathArgsRaw.length > 1 && typeof (vfs as any).data_get === 'function') {
-    const joinedPath: string = pathArgsRaw.join(' ');
-    const probe = await vfs.data_get(joinedPath, {
-      sort: sortBy,
-      reverse: options.reverse,
-      directory: options.directory
-    });
-    if (probe.ok) {
-      await vfs.list(joinedPath, options);
-      return;
-    } else {
-      // Suppress the probe error to avoid leaking to the user when we fallback
-      errorStack.stack_pop();
-    }
-  }
-
   // If refresh flag is set, aggressively invalidate cache for the target path(s)
   if (shouldRefresh) {
     const listCache = listCache_get();
@@ -99,22 +80,9 @@ export async function builtin_ls(args: string[]): Promise<void> {
     return;
   }
 
-  // Multiple paths - likely from wildcard expansion
-  // List them as individual files (not directory contents)
-  // This matches Unix behavior: ls *.txt shows the files themselves
-  if (options.long) {
-    // For -l, we'd need to fetch file metadata
-    // For now, just show paths (can enhance later)
-    for (const pathArg of pathArgs) {
-      const target: string = await path_resolve(pathArg);
-      console.log(target);
-    }
-  } else {
-    // Grid format - just show basenames
-    const basenames: string[] = pathArgs.map((p: string) => {
-      const parts: string[] = p.split('/');
-      return parts[parts.length - 1] || p;
-    });
-    console.log(basenames.join('  '));
+  // Multiple operands are independent paths, as in Unix ls.
+  for (const pathArg of pathArgs) {
+    const target: string = await path_resolve(pathArg);
+    await vfs.list(target, options);
   }
 }

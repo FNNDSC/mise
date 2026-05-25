@@ -422,6 +422,9 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   },
   pacsqueries: async (args: string[]): Promise<void> => {
     await chiliCommand_run('pacsqueries', ['-s', ...args]);
+  },
+  pacsretrieve: async (args: string[]): Promise<void> => {
+    await chiliCommand_run('pacsretrieve', ['-s', ...args]);
   }
 };
 

@@ -248,6 +248,19 @@ describe('VFS', () => {
       expect(mockGrid_render).toHaveBeenCalled();
     });
 
+    it('should render a file operand rather than list it as a directory', async () => {
+      const file = { name: 'scan.dcm', type: 'file', size: 1024, owner: 'user', date: '2025-01-02' };
+      mockFiles_list
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([file]);
+
+      await vfs.list('/home/user/scan.dcm');
+
+      expect(mockFiles_list).toHaveBeenNthCalledWith(1, { path: '/home/user/scan.dcm' }, '/home/user/scan.dcm');
+      expect(mockFiles_list).toHaveBeenNthCalledWith(2, {}, '/home/user');
+      expect(mockGrid_render).toHaveBeenCalledWith([file]);
+    });
+
     it('should inject virtual bin directory when listing root', async () => {
       mockGetCWD.mockResolvedValue('/');
       mockFiles_list.mockResolvedValue([

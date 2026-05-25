@@ -9,6 +9,7 @@ import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
 import { FilteredResourceData, errorStack } from '@fnndsc/cumin';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { chiliCommand_run } from '../../chell.js';
+import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**
  * Generic handler for file group commands (files, links, dirs).
@@ -28,7 +29,7 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
   try {
     if (subcommand === 'list') {
        const path = parsed._[1] as string | undefined;
-       const results: FilteredResourceData | null = await files_fetchList(parsed as any, assetName, path);
+       const results: FilteredResourceData | null = await files_fetchList(parsed as unknown as CLIoptions, assetName, path);
 
        if (!results) {
           console.error(`No ${assetName} resources found. Perhaps check your current context?`);

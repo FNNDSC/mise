@@ -344,10 +344,11 @@ describe('Builtins - Core Functions', () => {
       expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true, sort: 'name', reverse: false, directory: false });
     });
 
-    it('should handle multiple paths by showing basenames', async () => {
+    it('should list multiple operands independently', async () => {
       await builtin_ls(['file1.txt', 'file2.txt']);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('file1.txt  file2.txt');
+      expect(mockVfsList).toHaveBeenNthCalledWith(1, '/home/user/file1.txt', { long: false, human: false, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenNthCalledWith(2, '/home/user/file2.txt', { long: false, human: false, sort: 'name', reverse: false, directory: false });
     });
 
     it('should handle --sort flag with size option', async () => {

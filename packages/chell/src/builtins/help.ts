@@ -400,6 +400,15 @@ export const helpText: Record<string, CommandHelp> = {
       'pacsqueries decode <id>                   # Decode a query result',
     ],
   },
+  pacsretrieve: {
+    usage: 'pacsretrieve <subcommand> [options]',
+    description: 'Pull or inspect DICOM retrieves for PACS queries',
+    examples: [
+      'pacsretrieve pull <queryId>       # Pull data for a query',
+      'pacsretrieve report <queryId>     # Show retrieve status',
+      'pacsretrieve cancel <retrieveId> # Cancel a retrieve',
+    ],
+  },
   chefs: {
     usage: 'chefs <subcommand> [args]',
     description: 'ChRIS Experimental File System commands',
@@ -671,6 +680,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     Connection: ['connect', 'logout', 'context'],
     'Single Resource': ['plugin', 'feed'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],
+    PACS: ['pacsservers', 'pacsqueries', 'pacsretrieve'],
     'Shell Settings': ['physicalmode', 'timing', 'debug'],
     General: ['help', 'exit', '!'],
   };

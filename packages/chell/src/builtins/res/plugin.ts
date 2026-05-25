@@ -12,6 +12,7 @@ import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
 import { chiliCommand_run } from '../../chell.js';
 import { spinner } from '../../lib/spinner.js';
 import { errorStack } from '@fnndsc/cumin';
+import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**
  * Handles plugin commands.
@@ -29,7 +30,7 @@ export async function builtin_plugin(args: string[]): Promise<void> {
 
   try {
     if (subcommand === 'list') {
-       const { plugins, selectedFields } = await plugins_fetchList(parsed as any);
+       const { plugins, selectedFields } = await plugins_fetchList(parsed as unknown as CLIoptions);
        console.log(pluginList_render(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
     } else if (subcommand === 'run') {
        const searchable = parsed._[1];

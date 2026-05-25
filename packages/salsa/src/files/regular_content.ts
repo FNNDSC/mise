@@ -35,7 +35,7 @@ async function files_view(fileId: number): Promise<Result<Buffer>> {
  */
 export async function fileContent_getRegularStream(
   filePath: string
-): Promise<Result<{ stream: any; size?: number; filename?: string }>> {
+): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
   const dir: string = path.posix.dirname(filePath);
   const name: string = path.posix.basename(filePath);
 

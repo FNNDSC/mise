@@ -40,11 +40,11 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
   if (filesGroup) {
     const fileResults: FilteredResourceData | null = await filesGroup.asset.resources_getAll();
     if (fileResults && fileResults.tableData) {
-      fileResults.tableData.forEach((f: Record<string, any>) => {
+      fileResults.tableData.forEach((f: Record<string, unknown>) => {
         items.push({
-          path: f.fname || '', // fname is the full path
+          path: (f['fname'] as string) || '', // fname is the full path
           type: 'file',
-          size: f.fsize || 0
+          size: (f['fsize'] as number) || 0
         });
       });
     }
@@ -56,7 +56,7 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
     const dirResults: FilteredResourceData | null = await dirsGroup.asset.resources_getAll();
     if (dirResults && dirResults.tableData) {
       for (const d of dirResults.tableData) {
-        const dirPath: string = d.path;
+        const dirPath: string = d.path as string;
         // Add the directory itself
         items.push({ path: dirPath, type: 'dir' });
         

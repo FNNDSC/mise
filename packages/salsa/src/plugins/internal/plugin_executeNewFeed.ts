@@ -12,6 +12,18 @@ import { plugin_run } from '../index.js';
 import * as path from 'path';
 import { PluginExecutionResult } from '../plugin_executeInPlace.js';
 
+export interface FeedCreationResult {
+  id: number;
+  name: string;
+  owner_username: string;
+  pluginInstance: {
+    data: {
+      id: number;
+      [key: string]: unknown;
+    };
+  };
+}
+
 /**
  * Handles the "new feed" execution path.
  * Creates a feed, runs dircopy, then runs the target plugin.
@@ -38,17 +50,17 @@ export async function plugin_executeNewFeed(
     return null;
   }
 
-  const feedResult: Dictionary | null = await feed_create([cwd], {
+  const feedResult = (await feed_create([cwd], {
     params: `title:${feedTitle}`,
-  });
+  })) as FeedCreationResult | null;
 
   if (!feedResult) {
     errorStack.stack_push('error', 'Failed to create feed');
     return null;
   }
 
-  const feedID: number = feedResult.id as number;
-  const dircopyInstanceID: number = (feedResult.pluginInstance as any).data.id as number;
+  const feedID: number = feedResult.id;
+  const dircopyInstanceID: number = feedResult.pluginInstance.data.id;
 
   const combinedParams: Dictionary = {
     ...pluginParams,

@@ -24,7 +24,7 @@ export async function pipelines_list(
     const pipelines = await client.getPipelines(options);
     if (pipelines && pipelines.data) {
       return {
-        tableData: pipelines.data,
+        tableData: pipelines.data as unknown as Record<string, unknown>[],
         selectedFields: Object.keys(pipelines.data[0] || {}),
       };
     }

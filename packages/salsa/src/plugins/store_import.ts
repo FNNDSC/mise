@@ -265,7 +265,7 @@ function isCollectionJson(data: unknown): data is CollectionJson {
     typeof data === 'object' &&
     data !== null &&
     'collection' in data &&
-    typeof (data as any).collection === 'object'
+    typeof (data as CollectionJson).collection === 'object'
   );
 }
 

@@ -63,14 +63,6 @@ interface BloomState {
   brightness: number; // 0 = off, 1 = dim, 2 = medium, 3 = bright, 4 = peak
 }
 
-const BRIGHTNESS_SHADES: string[] = [
-  '\x1b[38;2;20;40;60m',    // 0: Off/very dim
-  '\x1b[38;2;40;80;115m',   // 1: Dim
-  '\x1b[38;2;60;120;160m',  // 2: Medium
-  '\x1b[38;2;0;200;255m',   // 3: Bright cyan
-  '\x1b[38;2;255;255;255m', // 4: Peak white
-];
-
 const BLOOM_STATES: BloomState[] = [
   { radius: -1, brightness: 0 },
   { radius: -1, brightness: 0 },
@@ -191,9 +183,22 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
               const currentRadius: number = Math.min(bloomState.radius, maxRadius);
 
               if (dist <= currentRadius) {
-                // Spatial brightness gradient (brighter at center, fading outwards)
+                // Calculate dynamic color wheel (rainbow shifting spectrum)
+                const frequency = (2 * Math.PI) / 32;
+                const step = frameIndex * 1.5 + block.mid + lineIdx * 2;
+                
+                let r: number = Math.floor(Math.sin(frequency * step + 0) * 127 + 128);
+                let g: number = Math.floor(Math.sin(frequency * step + (2 * Math.PI) / 3) * 127 + 128);
+                let b: number = Math.floor(Math.sin(frequency * step + (4 * Math.PI) / 3) * 127 + 128);
+
+                // Scale the RGB values based on brightness (center of bloom is brightest)
                 const charBrightness: number = Math.min(4, Math.max(1, bloomState.brightness - dist));
-                const shade = BRIGHTNESS_SHADES[charBrightness];
+                const scale: number = charBrightness / 4;
+                r = Math.floor(r * scale);
+                g = Math.floor(g * scale);
+                b = Math.floor(b * scale);
+
+                const shade = `\x1b[38;2;${r};${g};${b}m`;
                 rendered += `${shade}•${RESET}${lastAnsiCode}`;
               } else {
                 rendered += ' ';

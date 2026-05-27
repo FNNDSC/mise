@@ -58,26 +58,55 @@ export function logo_linesRender(colorize: boolean, reverse: boolean = false): s
  * @param frameIndex - The index of the animation frame.
  * @returns Array of rendered lines.
  */
+interface BloomState {
+  radius: number;
+  brightness: number; // 0 = off, 1 = dim, 2 = medium, 3 = bright, 4 = peak
+}
+
+const BRIGHTNESS_SHADES: string[] = [
+  '\x1b[38;2;20;40;60m',    // 0: Off/very dim
+  '\x1b[38;2;40;80;115m',   // 1: Dim
+  '\x1b[38;2;60;120;160m',  // 2: Medium
+  '\x1b[38;2;0;200;255m',   // 3: Bright cyan
+  '\x1b[38;2;255;255;255m', // 4: Peak white
+];
+
+const BLOOM_STATES: BloomState[] = [
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: 0,  brightness: 1 }, // grows to center, dim
+  { radius: 1,  brightness: 2 }, // grows to radius 1, medium
+  { radius: 2,  brightness: 3 }, // grows to radius 2, bright
+  { radius: 3,  brightness: 4 }, // grows to radius 3, peak
+  { radius: 3,  brightness: 4 }, // peak
+  { radius: 2,  brightness: 3 }, // shrinks to radius 2, bright
+  { radius: 1,  brightness: 2 }, // shrinks to radius 1, medium
+  { radius: 0,  brightness: 1 }, // shrinks to center, dim
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+  { radius: -1, brightness: 0 },
+];
+
+/**
+ * Renders a single frame of the brain activity animation, where the core brain
+ * structure retains its original hue'd color gradient, and only the inner spaces
+ * (stylized nodes) pulse, grow, and fade physically as spatial blooms.
+ *
+ * @param frameIndex - The index of the animation frame.
+ * @param isStaticEndState - If true, renders the final steady state where holes are blank.
+ * @returns Array of rendered lines with color codes.
+ */
 export function logo_frameRender(frameIndex: number, isStaticEndState: boolean = false): string[] {
   const RESET = '\x1b[0m';
-  const NODE_SHADES: string[] = [
-    '\x1b[38;2;20;40;60m',
-    '\x1b[38;2;40;80;110m',
-    '\x1b[38;2;60;120;160m',
-    '\x1b[38;2;80;160;210m',
-    '\x1b[38;2;0;200;255m',
-    '\x1b[38;2;0;255;255m',
-    '\x1b[38;2;150;255;255m',
-    '\x1b[38;2;255;255;255m',
-    '\x1b[38;2;150;255;255m',
-    '\x1b[38;2;0;255;255m',
-    '\x1b[38;2;0;200;255m',
-    '\x1b[38;2;80;160;210m',
-    '\x1b[38;2;60;120;160m',
-    '\x1b[38;2;40;80;110m',
-  ];
-
   const lines: string[] = [];
+
   for (let lineIdx = 0; lineIdx < colorLogoLines.length; lineIdx++) {
     const colorLine = colorLogoLines[lineIdx];
     const plainLine = plainLogoLines[lineIdx];
@@ -89,6 +118,41 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
         continue;
       }
       const last = plainLine.length - 1 - plainLine.split('').reverse().join('').search(/\S/);
+
+      // Identify contiguous space blocks inside the brain structure
+      const blocks: { start: number; end: number; length: number; mid: number }[] = [];
+      let inBlock = false;
+      let blockStart = -1;
+
+      for (let chIdx = first + 1; chIdx < last; chIdx++) {
+        const char = plainLine[chIdx];
+        if (char === ' ') {
+          if (!inBlock) {
+            inBlock = true;
+            blockStart = chIdx;
+          }
+        } else {
+          if (inBlock) {
+            inBlock = false;
+            const len: number = chIdx - blockStart;
+            blocks.push({
+              start: blockStart,
+              end: chIdx - 1,
+              length: len,
+              mid: blockStart + Math.floor(len / 2),
+            });
+          }
+        }
+      }
+      if (inBlock) {
+        const len: number = last - blockStart;
+        blocks.push({
+          start: blockStart,
+          end: last - 1,
+          length: len,
+          mid: blockStart + Math.floor(len / 2),
+        });
+      }
 
       let rendered = '';
       let chIdx = 0;
@@ -112,14 +176,28 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
           }
         } else {
           // Physical character
-          if (char === ' ' && chIdx > first && chIdx < last) {
+          const block = blocks.find((b) => chIdx >= b.start && chIdx <= b.end);
+          if (char === ' ' && block) {
             if (isStaticEndState) {
-              // Steady state: holes should be blank (space)
+              // Steady state: holes should be blank
               rendered += ' ';
             } else {
-              // Animation: holes pulse with bright color
-              const shadeIdx = (frameIndex + lineIdx + chIdx) % NODE_SHADES.length;
-              rendered += `${NODE_SHADES[shadeIdx]}•${RESET}${lastAnsiCode}`;
+              const dist: number = Math.abs(chIdx - block.mid);
+              // Shift the frame for each specific block to create flowing, organic firing patterns
+              const blockFrame: number = (frameIndex + block.mid + lineIdx * 3) % BLOOM_STATES.length;
+              const bloomState = BLOOM_STATES[blockFrame];
+
+              const maxRadius: number = Math.floor((block.length - 1) / 2);
+              const currentRadius: number = Math.min(bloomState.radius, maxRadius);
+
+              if (dist <= currentRadius) {
+                // Spatial brightness gradient (brighter at center, fading outwards)
+                const charBrightness: number = Math.min(4, Math.max(1, bloomState.brightness - dist));
+                const shade = BRIGHTNESS_SHADES[charBrightness];
+                rendered += `${shade}•${RESET}${lastAnsiCode}`;
+              } else {
+                rendered += ' ';
+              }
             }
           } else {
             rendered += char;

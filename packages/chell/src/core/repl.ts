@@ -86,7 +86,12 @@ export class REPL {
       ? chalk.magenta('[PHYSICAL]') + ' '
       : '';
 
-    this.rl.setPrompt(`${modeIndicator}${chalk.green(promptUser)}@${chalk.cyan(promptUri)}:${chalk.yellow(promptPath)}$ `);
+    // Two-line prompt: connection info on line 1, path + $ on line 2.
+    // readline only counts the last line's visual width for cursor positioning,
+    // so tab completion remains correctly aligned.
+    const line1: string = `${modeIndicator}${chalk.green(promptUser)}@${chalk.cyan(promptUri)}`;
+    const line2: string = `${chalk.yellow(':' + promptPath)}$ `;
+    this.rl.setPrompt(`${line1}\n${line2}`);
     try {
       this.rl.prompt();
     } catch (e) {

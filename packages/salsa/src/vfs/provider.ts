@@ -74,4 +74,21 @@ export interface VFSProvider {
    * @returns A Promise resolving to true on successful copy execution.
    */
   cp(src: string, dest: string, options: CpOptions): Promise<boolean>;
+
+  /**
+   * Reads the content of a virtual file under this provider as a string.
+   *
+   * @param path - The absolute virtual path of the file to read.
+   * @returns A Promise resolving to a Result containing the file contents as a string.
+   */
+  read?(path: string): Promise<Result<string>>;
+
+  /**
+   * Reads the content of a virtual file under this provider as a binary Buffer.
+   *
+   * @param path - The absolute virtual path of the file to read.
+   * @returns A Promise resolving to a Result containing the file contents as a Buffer.
+   */
+  readBinary?(path: string): Promise<Result<Buffer>>;
 }
+

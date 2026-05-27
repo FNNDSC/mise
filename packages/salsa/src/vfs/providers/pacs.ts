@@ -19,6 +19,7 @@ import {
 import { files_copyRecursively } from "../../files/index.js";
 import path from "path";
 import chalk from "chalk";
+import { pacsVfs_read, pacsVfs_readBinary } from "./pacs_content.js";
 
 /**
  * Standard sort utility for VFS items.
@@ -579,5 +580,25 @@ export class PacsVfsProvider implements VFSProvider {
       errorStack.stack_push("error", `PACS cp failed: ${msg}`);
       return false;
     }
+  }
+
+  /**
+   * Reads virtual file content under '/net/pacs'.
+   *
+   * @param pathStr - The absolute virtual path of the file to read.
+   * @returns Promise resolving to a Result containing the file contents as a string.
+   */
+  async read(pathStr: string): Promise<Result<string>> {
+    return pacsVfs_read(pathStr, (queryId: number) => this.queryResult_fetch(queryId));
+  }
+
+  /**
+   * Reads virtual file binary content under '/net/pacs'.
+   *
+   * @param pathStr - The absolute virtual path of the file to read.
+   * @returns Promise resolving to a Result containing the file contents as a Buffer.
+   */
+  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+    return pacsVfs_readBinary(pathStr, (queryId: number) => this.queryResult_fetch(queryId));
   }
 }

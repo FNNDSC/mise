@@ -16,6 +16,7 @@ import { ChrisPathNode } from "@fnndsc/cumin";
 import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
 import { fileContent_getRegular, fileContent_getRegularBinary, fileContent_getRegularStream } from './regular_content';
 import { fileContent_getPACS, fileContent_getPACSBinary } from './pacs_content';
+import { vfsDispatcher } from '../vfs/dispatcher.js';
 
 /**
  * Represents a file or directory item in a recursive listing.
@@ -527,6 +528,10 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
  * @returns A Result containing the content string or error.
  */
 export async function fileContent_get(filePath: string): Promise<Result<string>> {
+  const provider = vfsDispatcher.provider_get(filePath);
+  if (provider && provider.prefix !== '/') {
+    return vfsDispatcher.read(filePath);
+  }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipeline(filePath);
   }
@@ -546,6 +551,10 @@ export async function fileContent_get(filePath: string): Promise<Result<string>>
  * @returns A Result containing the content Buffer or error.
  */
 export async function fileContent_getBinary(filePath: string): Promise<Result<Buffer>> {
+  const provider = vfsDispatcher.provider_get(filePath);
+  if (provider && provider.prefix !== '/') {
+    return vfsDispatcher.readBinary(filePath);
+  }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipelineBinary(filePath);
   }
@@ -566,6 +575,15 @@ export async function fileContent_getBinary(filePath: string): Promise<Result<Bu
 export async function fileContent_getBinaryStream(
   filePath: string
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
+  const provider = vfsDispatcher.provider_get(filePath);
+  if (provider && provider.prefix !== '/') {
+    return vfsDispatcher.readBinary(filePath).then((res: Result<Buffer>) => {
+      if (res.ok) {
+        return Ok({ stream: res.value, size: res.value.length });
+      }
+      return Err();
+    });
+  }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipelineBinary(filePath).then((res: Result<Buffer>) => {
       if (res.ok) {

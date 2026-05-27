@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Result, Ok, Err } from "@fnndsc/cumin";
+import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "./provider.js";
 import { NativeVfsProvider } from "./providers/native.js";
 import { PacsVfsProvider } from "./providers/pacs.js";
@@ -161,6 +161,36 @@ export class VFSDispatcher {
       return provider.cp(resolvedSrc, resolvedDest, options);
     }
     return provider.cp(src, dest, options);
+  }
+
+  /**
+   * Dispatches file read operation to the matched provider.
+   *
+   * @param pathStr - The absolute virtual path of the file to read.
+   * @returns A Promise resolving to a Result containing the file contents as a string.
+   */
+  async read(pathStr: string): Promise<Result<string>> {
+    const provider = this.provider_get(pathStr);
+    if (provider !== this.defaultProvider && provider.read) {
+      return provider.read(pathStr);
+    }
+    errorStack.stack_push("error", `File read not supported for path: ${pathStr}`);
+    return Err();
+  }
+
+  /**
+   * Dispatches binary file read operation to the matched provider.
+   *
+   * @param pathStr - The absolute virtual path of the file to read.
+   * @returns A Promise resolving to a Result containing the file contents as a Buffer.
+   */
+  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+    const provider = this.provider_get(pathStr);
+    if (provider !== this.defaultProvider && provider.readBinary) {
+      return provider.readBinary(pathStr);
+    }
+    errorStack.stack_push("error", `Binary file read not supported for path: ${pathStr}`);
+    return Err();
   }
 }
 

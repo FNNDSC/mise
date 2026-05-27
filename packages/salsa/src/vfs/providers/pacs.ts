@@ -150,9 +150,9 @@ export class PacsVfsProvider implements VFSProvider {
         }
         const tableData = queriesResult.value.tableData;
         const items: VFSItem[] = tableData.map((row: Record<string, unknown>): VFSItem => {
-          const queryId = String(row.id);
-          const title = typeof row.title === "string" ? row.title : "query";
-          const queryStr = typeof row.query === "string" ? row.query : "";
+          const queryId: string = String(row.id);
+          const title: string = typeof row.title === "string" ? row.title : "query";
+          const queryStr: string = typeof row.query === "string" ? row.query : "";
 
           let queryObj: Record<string, unknown> = {};
           try {
@@ -170,19 +170,17 @@ export class PacsVfsProvider implements VFSProvider {
             }
           }
 
-          let queryDesc = queryParts.join("_");
+          let queryDesc: string = queryParts.join("_");
           if (!queryDesc) {
             queryDesc = title.replace(/^pacs_query_\d+_\d+$/, "query").replace(/^pacs_query_/, "");
           }
 
-          const hasResult = typeof row.result === "string" && row.result.trim().length > 0;
-          if (!hasResult) {
-            queryDesc += "-no-hits";
-          }
+          const hasResult: boolean = typeof row.result === "string" && row.result.trim().length > 0;
+          const noHitsSuffix: string = hasResult ? "" : "_no-hits";
 
-          const creationDate = typeof row.creation_date === "string" ? row.creation_date : new Date().toISOString();
+          const creationDate: string = typeof row.creation_date === "string" ? row.creation_date : new Date().toISOString();
           return {
-            name: `${queryId}_${queryDesc}`,
+            name: `${queryDesc}_qid:${queryId}${noHitsSuffix}`,
             type: "dir",
             size: 0,
             owner: typeof row.owner_username === "string" ? row.owner_username : "system",
@@ -205,11 +203,12 @@ export class PacsVfsProvider implements VFSProvider {
         return Err();
       }
 
-      const queryFolder = parts[3];
+      const queryFolder: string = parts[3];
       if (!queryFolder) {
         return Ok([]);
       }
-      const queryId = Number(queryFolder.split("_")[0]);
+      const qidMatch: RegExpExecArray | null = /_qid:(\d+)/.exec(queryFolder);
+      const queryId: number = qidMatch ? Number(qidMatch[1]) : NaN;
       if (Number.isNaN(queryId)) {
         errorStack.stack_push(
           "error",

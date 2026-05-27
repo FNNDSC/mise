@@ -29,9 +29,9 @@ import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
 
-const STALL_TIMEOUT_MS = 30_000;
-const SERIES_TIMEOUT_MS = 5 * 60 * 1_000;
-const CHECKER_INTERVAL_MS = 2_000;
+const STALL_TIMEOUT_MS: number = 30_000;
+const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
+const CHECKER_INTERVAL_MS: number = 2_000;
 
 type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error';
 

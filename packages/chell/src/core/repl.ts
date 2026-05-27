@@ -12,6 +12,7 @@ import { session } from '../session/index.js';
 import { input_complete } from '../lib/completer/index.js';
 import { settings } from '../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
+import { prompt_render, type PromptContext } from './prompt/index.js';
 
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
@@ -68,30 +69,18 @@ export class REPL {
     const context = context_getSingle();
     const cwd: string = await session.getCWD();
 
-    let promptUser: string = context.user || 'disconnected';
-    let promptUri: string = context.URL || 'no-cube';
+    const isOffline: boolean = session.offline;
 
-    if (session.offline) {
-      promptUser = 'disconnected';
-      promptUri = 'no-cube';
-    }
+    const ctx: PromptContext = {
+      user:         isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
+      uri:          isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
+      cwd:          isOffline ? '/'            : cwd,
+      pacsserver:   context.pacsserver ?? null,
+      physicalMode: session.physicalMode_get(),
+      terminalWidth: process.stdout.columns || 80,
+    };
 
-    let promptPath: string = cwd;
-    if (session.offline) {
-      promptPath = '/';
-    }
-
-    // Add physical mode indicator
-    const modeIndicator: string = session.physicalMode_get()
-      ? chalk.magenta('[PHYSICAL]') + ' '
-      : '';
-
-    // Two-line prompt: connection info on line 1, path + $ on line 2.
-    // readline only counts the last line's visual width for cursor positioning,
-    // so tab completion remains correctly aligned.
-    const line1: string = `${modeIndicator}${chalk.green(promptUser)}@${chalk.cyan(promptUri)}`;
-    const line2: string = `${chalk.yellow(':' + promptPath)}$ `;
-    this.rl.setPrompt(`${line1}\n${line2}`);
+    this.rl.setPrompt(prompt_render(settings.config.promptTheme, ctx));
     try {
       this.rl.prompt();
     } catch (e) {

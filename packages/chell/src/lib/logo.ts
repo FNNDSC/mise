@@ -52,11 +52,78 @@ export function logo_linesRender(colorize: boolean, reverse: boolean = false): s
 }
 
 /**
- * Starts the pulsing blue-to-cyan color logo animation on the console.
- * Falls back to static plain rendering if non-TTY or color is disabled.
+ * Renders a single frame of the brain activity animation, where inner spaces
+ * (stylized nodes) pulse/fade through bright colors while the brain structure is static.
  *
- * @param useColor - True to enable colored pulsing, false for static plain rendering.
+ * @param frameIndex - The index of the animation frame.
+ * @returns Array of rendered lines.
  */
+export function logo_frameRender(frameIndex: number): string[] {
+  const BRAIN_COLOR = '\x1b[38;2;70;100;140m'; // Cool slate blue
+  const TEXT_COLOR = '\x1b[38;2;0;255;255m\x1b[1m'; // Bold bright cyan
+  const RESET = '\x1b[0m';
+
+  const NODE_SHADES: string[] = [
+    '\x1b[38;2;20;40;60m',    // Very dark blue-gray (almost off)
+    '\x1b[38;2;40;80;110m',   // Dim blue
+    '\x1b[38;2;60;120;160m',  // Medium blue
+    '\x1b[38;2;80;160;210m',  // Light blue
+    '\x1b[38;2;0;200;255m',   // Bright cyan
+    '\x1b[38;2;0;255;255m',   // Neon cyan (peak brightness)
+    '\x1b[38;2;150;255;255m', // Blue-white highlight
+    '\x1b[38;2;255;255;255m', // Pure white (glowing center)
+    '\x1b[38;2;150;255;255m',
+    '\x1b[38;2;0;255;255m',
+    '\x1b[38;2;0;200;255m',
+    '\x1b[38;2;80;160;210m',
+    '\x1b[38;2;60;120;160m',
+    '\x1b[38;2;40;80;110m',
+  ];
+
+  const lines: string[] = [];
+  for (let lineIdx = 0; lineIdx < plainLogoLines.length; lineIdx++) {
+    const plainLine = plainLogoLines[lineIdx];
+    if (lineIdx < 19) {
+      // Brain structure line
+      const first = plainLine.search(/\S/);
+      if (first === -1) {
+        lines.push('  ' + plainLine);
+        continue;
+      }
+      const last = plainLine.length - 1 - plainLine.split('').reverse().join('').search(/\S/);
+
+      let rendered = '';
+      for (let chIdx = 0; chIdx < plainLine.length; chIdx++) {
+        const char = plainLine[chIdx];
+        if (char === ' ' && chIdx > first && chIdx < last) {
+          // It's a hole! Render as a pulsing node
+          const shadeIdx = (frameIndex + lineIdx + chIdx) % NODE_SHADES.length;
+          rendered += `${NODE_SHADES[shadeIdx]}•${RESET}`;
+        } else if (char === ' ') {
+          rendered += ' ';
+        } else {
+          // Brain structure character
+          rendered += `${BRAIN_COLOR}${char}${RESET}`;
+        }
+      }
+      lines.push('  ' + rendered);
+    } else {
+      // Text line under the brain
+      let rendered = '';
+      for (let chIdx = 0; chIdx < plainLine.length; chIdx++) {
+        const char = plainLine[chIdx];
+        if (char === ' ') {
+          rendered += ' ';
+        } else {
+          rendered += `${TEXT_COLOR}${char}${RESET}`;
+        }
+      }
+      lines.push('  ' + rendered);
+    }
+  }
+  return lines;
+}
+
 let originalWrite: ((chunk: any, ...args: any[]) => boolean) | null = null;
 let linesPrinted: number = 0;
 
@@ -89,30 +156,30 @@ function stdoutTrack_stop(): void {
 }
 
 /**
- * Starts the pulsing blue-to-cyan color logo animation on the console.
+ * Starts the brain activity pulsing node animation on the console.
  * Falls back to static plain rendering if non-TTY or color is disabled.
  *
  * @param useColor - True to enable colored pulsing, false for static plain rendering.
  */
 export function logo_animateStart(useColor: boolean): void {
   if (!useColor || !process.stdout.isTTY) {
-    const logoLines: string[] = logo_linesRender(false);
-    logoLines.forEach((line: string) => console.log('  ' + line));
+    const logoLines: string[] = logo_frameRender(0);
+    logoLines.forEach((line: string) => console.log(line));
     console.log('');
     return;
   }
 
-  const logoLines: string[] = logo_linesRender(false);
-  const totalLines: number = logoLines.length;
+  const totalLines: number = plainLogoLines.length;
 
-  // Print initial plain logo once
-  logoLines.forEach((line: string) => console.log('  ' + line));
+  // Print initial plain logo once with static base frame
+  const initialLines: string[] = logo_frameRender(0);
+  initialLines.forEach((line: string) => console.log(line));
   console.log('');
 
   // Start tracking stdout newlines printed after the initial logo
   stdoutTrack_start();
 
-  // Start interval to update in-place with a rolling color bloom
+  // Start interval to update in-place with the brain activity pulsing nodes
   logoInterval = setInterval(() => {
     logoFrameIndex++;
     
@@ -121,9 +188,9 @@ export function logo_animateStart(useColor: boolean): void {
     process.stdout.write('\x1b[s'); // Save cursor
     process.stdout.write(`\x1b[${upOffset}A\r`); // Move to top of logo
     
-    logoLines.forEach((line: string, i: number) => {
-      const shade: string = SHADES[(logoFrameIndex + i) % SHADES.length];
-      process.stdout.write(`\r  ${shade}${line}\x1b[0m\x1b[1B`);
+    const frameLines: string[] = logo_frameRender(logoFrameIndex);
+    frameLines.forEach((line: string) => {
+      process.stdout.write(`\r${line}\x1b[1B`);
     });
     
     process.stdout.write('\x1b[u'); // Restore cursor
@@ -131,23 +198,21 @@ export function logo_animateStart(useColor: boolean): void {
 }
 
 /**
- * Stops the pulsing color logo animation, rendering the final bright cyan logo.
+ * Stops the brain activity pulsing animation, rendering the final peak activity state.
  */
 export function logo_animateStop(): void {
   if (logoInterval) {
     clearInterval(logoInterval);
     logoInterval = null;
 
-    const logoLines: string[] = logo_linesRender(false);
-    const totalLines: number = logoLines.length;
-    const finalShade: string = '\x1b[38;2;0;255;255m\x1b[1m'; // Bold bright cyan
-    
+    const totalLines: number = plainLogoLines.length;
     const upOffset: number = totalLines + 1 + linesPrinted;
     process.stdout.write('\x1b[s');
     process.stdout.write(`\x1b[${upOffset}A\r`);
     
-    logoLines.forEach((line: string) => {
-      process.stdout.write(`\r  ${finalShade}${line}\x1b[0m\x1b[1B`);
+    const finalLines: string[] = logo_frameRender(5); // Static peak brightness state
+    finalLines.forEach((line: string) => {
+      process.stdout.write(`\r${line}\x1b[1B`);
     });
     
     process.stdout.write('\x1b[u');

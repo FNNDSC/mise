@@ -140,13 +140,14 @@ async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Pr
     return [];
   }
 
-  const queryFolder = parts[3];
-  const queryId = Number(queryFolder.split('_')[0]);
+  const queryFolder: string = parts[3];
+  const qidMatch: RegExpExecArray | null = /_qid:(\d+)/.exec(queryFolder);
+  const queryId: number = qidMatch ? Number(qidMatch[1]) : NaN;
   if (Number.isNaN(queryId)) {
     errorStack.stack_push('error', `pull: Cannot parse query ID from: ${queryFolder}`);
     return [];
   }
-  const queryLabel = queryFolder.slice(queryFolder.indexOf('_') + 1);
+  const queryLabel: string = queryFolder.replace(/_qid:\d+(?:_no-hits)?$/, '');
 
   const decodedResult = await pacsQuery_resultDecode(queryId);
   if (!decodedResult.ok || !decodedResult.value.json) {

@@ -18,6 +18,7 @@ import { PacsVfsProvider } from "./providers/pacs.js";
 export class VFSDispatcher {
   private providers: VFSProvider[] = [];
   private defaultProvider: VFSProvider;
+  private pathResolver?: (path: string) => Promise<string>;
 
   /**
    * Initializes dispatcher and registers standard providers.
@@ -25,6 +26,15 @@ export class VFSDispatcher {
   constructor() {
     this.defaultProvider = new NativeVfsProvider();
     this.provider_register(new PacsVfsProvider());
+  }
+
+  /**
+   * Registers a path resolution hook that maps logical paths to physical paths.
+   *
+   * @param resolver - The resolver function mapping a logical path to a physical path.
+   */
+  pathResolver_register(resolver: (path: string) => Promise<string>): void {
+    this.pathResolver = resolver;
   }
 
   /**
@@ -95,7 +105,15 @@ export class VFSDispatcher {
         }));
 
         // Query the default provider to see if there are any native items in this folder
-        const nativeResult = await this.defaultProvider.list(pathStr, options);
+        let resolvedPathStr: string = pathStr;
+        if (this.pathResolver) {
+          try {
+            resolvedPathStr = await this.pathResolver(pathStr);
+          } catch (e: unknown) {
+            // Fall back cleanly to the original path on failure
+          }
+        }
+        const nativeResult = await this.defaultProvider.list(resolvedPathStr, options);
         if (nativeResult.ok && nativeResult.value) {
           const nativeItems = nativeResult.value;
           for (const item of nativeItems) {
@@ -110,6 +128,14 @@ export class VFSDispatcher {
     }
 
     const provider = this.provider_get(pathStr);
+    if (provider === this.defaultProvider && this.pathResolver) {
+      try {
+        const resolvedPath: string = await this.pathResolver(pathStr);
+        return provider.list(resolvedPath, options);
+      } catch (e: unknown) {
+        // Fall back cleanly to the original path on failure
+      }
+    }
     return provider.list(pathStr, options);
   }
 
@@ -123,6 +149,17 @@ export class VFSDispatcher {
    */
   async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
     const provider = this.provider_get(src);
+    if (provider === this.defaultProvider && this.pathResolver) {
+      let resolvedSrc: string = src;
+      let resolvedDest: string = dest;
+      try {
+        resolvedSrc = await this.pathResolver(src);
+      } catch (e: unknown) {}
+      try {
+        resolvedDest = await this.pathResolver(dest);
+      } catch (e: unknown) {}
+      return provider.cp(resolvedSrc, resolvedDest, options);
+    }
     return provider.cp(src, dest, options);
   }
 }

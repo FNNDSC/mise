@@ -58,20 +58,17 @@ export function logo_linesRender(colorize: boolean, reverse: boolean = false): s
  * @param frameIndex - The index of the animation frame.
  * @returns Array of rendered lines.
  */
-export function logo_frameRender(frameIndex: number): string[] {
-  const BRAIN_COLOR = '\x1b[38;2;70;100;140m'; // Cool slate blue
-  const TEXT_COLOR = '\x1b[38;2;0;255;255m\x1b[1m'; // Bold bright cyan
+export function logo_frameRender(frameIndex: number, isStaticEndState: boolean = false): string[] {
   const RESET = '\x1b[0m';
-
   const NODE_SHADES: string[] = [
-    '\x1b[38;2;20;40;60m',    // Very dark blue-gray (almost off)
-    '\x1b[38;2;40;80;110m',   // Dim blue
-    '\x1b[38;2;60;120;160m',  // Medium blue
-    '\x1b[38;2;80;160;210m',  // Light blue
-    '\x1b[38;2;0;200;255m',   // Bright cyan
-    '\x1b[38;2;0;255;255m',   // Neon cyan (peak brightness)
-    '\x1b[38;2;150;255;255m', // Blue-white highlight
-    '\x1b[38;2;255;255;255m', // Pure white (glowing center)
+    '\x1b[38;2;20;40;60m',
+    '\x1b[38;2;40;80;110m',
+    '\x1b[38;2;60;120;160m',
+    '\x1b[38;2;80;160;210m',
+    '\x1b[38;2;0;200;255m',
+    '\x1b[38;2;0;255;255m',
+    '\x1b[38;2;150;255;255m',
+    '\x1b[38;2;255;255;255m',
     '\x1b[38;2;150;255;255m',
     '\x1b[38;2;0;255;255m',
     '\x1b[38;2;0;200;255m',
@@ -81,44 +78,59 @@ export function logo_frameRender(frameIndex: number): string[] {
   ];
 
   const lines: string[] = [];
-  for (let lineIdx = 0; lineIdx < plainLogoLines.length; lineIdx++) {
+  for (let lineIdx = 0; lineIdx < colorLogoLines.length; lineIdx++) {
+    const colorLine = colorLogoLines[lineIdx];
     const plainLine = plainLogoLines[lineIdx];
+
     if (lineIdx < 19) {
-      // Brain structure line
       const first = plainLine.search(/\S/);
       if (first === -1) {
-        lines.push('  ' + plainLine);
+        lines.push('  ' + colorLine);
         continue;
       }
       const last = plainLine.length - 1 - plainLine.split('').reverse().join('').search(/\S/);
 
       let rendered = '';
-      for (let chIdx = 0; chIdx < plainLine.length; chIdx++) {
-        const char = plainLine[chIdx];
-        if (char === ' ' && chIdx > first && chIdx < last) {
-          // It's a hole! Render as a pulsing node
-          const shadeIdx = (frameIndex + lineIdx + chIdx) % NODE_SHADES.length;
-          rendered += `${NODE_SHADES[shadeIdx]}•${RESET}`;
-        } else if (char === ' ') {
-          rendered += ' ';
+      let chIdx = 0;
+      let inAnsi = false;
+      let ansiBuffer = '';
+      let lastAnsiCode = '';
+
+      for (let i = 0; i < colorLine.length; i++) {
+        const char = colorLine[i];
+        if (char === '\x1b') {
+          inAnsi = true;
+          ansiBuffer = char;
+        } else if (inAnsi) {
+          ansiBuffer += char;
+          if (char === 'm') {
+            inAnsi = false;
+            rendered += ansiBuffer;
+            if (ansiBuffer !== RESET) {
+              lastAnsiCode = ansiBuffer;
+            }
+          }
         } else {
-          // Brain structure character
-          rendered += `${BRAIN_COLOR}${char}${RESET}`;
+          // Physical character
+          if (char === ' ' && chIdx > first && chIdx < last) {
+            if (isStaticEndState) {
+              // Steady state: holes should be blank (space)
+              rendered += ' ';
+            } else {
+              // Animation: holes pulse with bright color
+              const shadeIdx = (frameIndex + lineIdx + chIdx) % NODE_SHADES.length;
+              rendered += `${NODE_SHADES[shadeIdx]}•${RESET}${lastAnsiCode}`;
+            }
+          } else {
+            rendered += char;
+          }
+          chIdx++;
         }
       }
       lines.push('  ' + rendered);
     } else {
-      // Text line under the brain
-      let rendered = '';
-      for (let chIdx = 0; chIdx < plainLine.length; chIdx++) {
-        const char = plainLine[chIdx];
-        if (char === ' ') {
-          rendered += ' ';
-        } else {
-          rendered += `${TEXT_COLOR}${char}${RESET}`;
-        }
-      }
-      lines.push('  ' + rendered);
+      // Text line below brain - preserve original color/style
+      lines.push('  ' + colorLine);
     }
   }
   return lines;
@@ -163,7 +175,7 @@ function stdoutTrack_stop(): void {
  */
 export function logo_animateStart(useColor: boolean): void {
   if (!useColor || !process.stdout.isTTY) {
-    const logoLines: string[] = logo_frameRender(0);
+    const logoLines: string[] = logo_frameRender(0, true);
     logoLines.forEach((line: string) => console.log(line));
     console.log('');
     return;
@@ -171,8 +183,8 @@ export function logo_animateStart(useColor: boolean): void {
 
   const totalLines: number = plainLogoLines.length;
 
-  // Print initial plain logo once with static base frame
-  const initialLines: string[] = logo_frameRender(0);
+  // Print initial plain logo once with static base frame (holes blank)
+  const initialLines: string[] = logo_frameRender(0, true);
   initialLines.forEach((line: string) => console.log(line));
   console.log('');
 
@@ -188,7 +200,7 @@ export function logo_animateStart(useColor: boolean): void {
     process.stdout.write('\x1b[s'); // Save cursor
     process.stdout.write(`\x1b[${upOffset}A\r`); // Move to top of logo
     
-    const frameLines: string[] = logo_frameRender(logoFrameIndex);
+    const frameLines: string[] = logo_frameRender(logoFrameIndex, false);
     frameLines.forEach((line: string) => {
       process.stdout.write(`\r${line}\x1b[1B`);
     });
@@ -198,7 +210,7 @@ export function logo_animateStart(useColor: boolean): void {
 }
 
 /**
- * Stops the brain activity pulsing animation, rendering the final peak activity state.
+ * Stops the brain activity pulsing animation, rendering the final steady state.
  */
 export function logo_animateStop(): void {
   if (logoInterval) {
@@ -210,7 +222,7 @@ export function logo_animateStop(): void {
     process.stdout.write('\x1b[s');
     process.stdout.write(`\x1b[${upOffset}A\r`);
     
-    const finalLines: string[] = logo_frameRender(5); // Static peak brightness state
+    const finalLines: string[] = logo_frameRender(0, true); // Static steady state (holes blank)
     finalLines.forEach((line: string) => {
       process.stdout.write(`\r${line}\x1b[1B`);
     });

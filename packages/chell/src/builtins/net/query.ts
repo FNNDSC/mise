@@ -82,11 +82,11 @@ export function queryExpr_parse(expr: string): Record<string, string> | null {
  * @returns Absolute VFS path string.
  */
 export function queryVfsPath_build(queryId: number, queryObj: Record<string, string>): string {
-  const parts = Object.entries(queryObj)
+  const parts: string[] = Object.entries(queryObj)
     .filter(([, v]) => v.trim().length > 0)
     .map(([k, v]) => `${k}:${v}`);
-  const desc = parts.join('_') || 'query';
-  return `/net/pacs/queries/${queryId}_${desc}`;
+  const desc: string = parts.join('_') || 'query';
+  return `/net/pacs/queries/${desc}_qid:${queryId}`;
 }
 
 /**

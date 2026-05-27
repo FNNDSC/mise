@@ -26,8 +26,8 @@ import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
 import { args_checkHasHelpFlag, help_show } from '../help.js';
 
-const QUERY_POLL_INTERVAL_MS = 2_000;
-const QUERY_TIMEOUT_MS = 60_000;
+const QUERY_POLL_INTERVAL_MS: number = 2_000;
+const QUERY_TIMEOUT_MS: number = 60_000;
 
 /**
  * Result of a successful query-create-and-wait operation.

@@ -52,7 +52,8 @@ import {
   builtin_help,
   builtin_tree,
   builtin_du,
-  builtin_store
+  builtin_store,
+  error_stripDebugPrefix
 } from './builtins/index.js';
 import { builtin_executePlugin } from './builtins/pluginExecute.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
@@ -63,7 +64,7 @@ import { vfs } from './lib/vfs/vfs.js';
 import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
 import { semicolons_parse } from './lib/semicolonParser.js';
-import { logo_linesRender } from './lib/logo.js';
+import { logo_linesRender, logo_animateStart, logo_animateStop } from './lib/logo.js';
 import {
   BootInfoItem,
   BootPanels,
@@ -546,7 +547,7 @@ async function command_wildcards_expand(command: string, args: string[]): Promis
   if (!expandResult.ok) {
     const lastError = errorStack.stack_pop();
     if (lastError) {
-      console.error(chalk.red(lastError.message));
+      console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
     }
     return Err();
   }
@@ -574,7 +575,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
     const expandResult: Result<string[]> = await wildcards_expandAll(args);
     if (!expandResult.ok) {
       const lastError = errorStack.stack_pop();
-      const errorMsg: string = lastError ? lastError.message : 'Unknown error';
+      const errorMsg: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Unknown error';
       return { text: chalk.red(`${errorMsg}\n`), buffer: Buffer.from('') };
     }
     args = expandResult.value;
@@ -896,9 +897,21 @@ export async function chell_start(): Promise<void> {
 
   // --- Common Initialization ---
 
+  if (isInteractiveSession) {
+    logo_animateStart(showLogo && !useAsciiBoot);
+  }
+
   spinner.start('Initializing session components');
   await session.init();
   spinner.stop();
+
+  // Register static VFS providers under the unified salsa vfsDispatcher
+  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  const { StaticVfsProvider } = await import('./lib/vfs/providers/static.js');
+  vfsDispatcher.provider_register(new StaticVfsProvider('/bin'));
+  vfsDispatcher.provider_register(new StaticVfsProvider('/usr'));
+  vfsDispatcher.provider_register(new StaticVfsProvider('/usr/bin'));
+
   if (isInteractiveSession) {
     console.log(chalk.green('[+] Session initialized.'));
     boot?.log('ok', 'Session', 'Components initialized');
@@ -1040,7 +1053,7 @@ export async function chell_start(): Promise<void> {
         return { ok: true, count: result.value.length };
       }
       const err = errorStack.stack_pop();
-      return { ok: false, message: err?.message || `Prefetch failed for ${target}` };
+      return { ok: false, message: err ? error_stripDebugPrefix(err.message) : `Prefetch failed for ${target}` };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       return { ok: false, message: msg };
@@ -1107,7 +1120,7 @@ export async function chell_start(): Promise<void> {
         return { ok: true, count: result.value.length };
       }
       const err = errorStack.stack_pop();
-      return { ok: false, message: err?.message || 'Failed to prefetch plugins' };
+      return { ok: false, message: err ? error_stripDebugPrefix(err.message) : 'Failed to prefetch plugins' };
     });
     if (pluginResult.ok) {
       cachedPlugins = pluginResult.count;
@@ -1156,6 +1169,8 @@ export async function chell_start(): Promise<void> {
   }
 
   if (isInteractiveSession) {
+    logo_animateStop();
+
     const headerItems: BootInfoItem[] = [
       { label: 'Title', value: 'ChELL Executes Layered Logic' },
       { label: 'Version', value: packageJson.version }
@@ -1197,15 +1212,8 @@ export async function chell_start(): Promise<void> {
       local: localItems,
       chris: chrisItems
     };
-    const reverseLogo: boolean = process.env.CHELL_LOGO_REVERSE === '1';
-    const logoLines: string[] = showLogo ? logo_linesRender(!useAsciiBoot, reverseLogo) : [];
-    const termWidth: number = typeof process.stdout.columns === 'number' ? process.stdout.columns : 120;
-    const narrowIntro: boolean = termWidth < 80;
-    if (narrowIntro) {
-      bootsequence_printIntroPanelsStacked(logoLines, panels, !useAsciiBoot, useAsciiBoot);
-    } else {
-      bootsequence_printIntroPanels(logoLines, panels, !useAsciiBoot, useAsciiBoot);
-    }
+    // Render Neofetch informational boxes stacked under the boot messages (no duplicate logo rendering)
+    bootsequence_printIntroPanelsStacked([], panels, !useAsciiBoot, useAsciiBoot);
   }
 
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));

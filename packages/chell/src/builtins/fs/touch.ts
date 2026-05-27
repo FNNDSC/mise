@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { files_touch as chefs_touch_cmd, TouchOptions } from '@fnndsc/chili/commands/fs/touch.js';
 import { touch_render } from '@fnndsc/chili/views/fs.js';
 import { listCache_get, errorStack } from '@fnndsc/cumin';
@@ -54,7 +54,7 @@ export async function builtin_touch(args: string[]): Promise<void> {
         const lastError = errorStack.stack_pop();
         if (lastError) {
           console.error(chalk.red(`Failed to create file: ${targetPath}`));
-          console.error(chalk.gray(`  ${lastError.message}`));
+          console.error(chalk.gray(`  ${error_stripDebugPrefix(lastError.message)}`));
         } else {
           console.error(chalk.red(`Failed to create file: ${targetPath}`));
         }

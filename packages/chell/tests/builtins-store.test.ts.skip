@@ -1,4 +1,4 @@
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
 const mockSpinnerStart = jest.fn();
 const mockSpinnerStop = jest.fn();
@@ -24,14 +24,21 @@ jest.unstable_mockModule('@fnndsc/chili/views/ls.js', () => ({
   long_render: mockLongRender
 }));
 
-const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+let consoleLogSpy: any;
+let consoleErrorSpy: any;
 
 const { builtin_store } = await import('../src/builtins/store.js');
 
 describe('builtin_store', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   test('shows help when no subcommand provided', async () => {

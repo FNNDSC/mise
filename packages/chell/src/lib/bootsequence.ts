@@ -6,7 +6,8 @@ export interface BootInfoItem {
 }
 
 function visibleLength(text: string): number {
-  return text.replace(/\x1b\[[0-9;]*m/g, '').length;
+  // Strip all ANSI escape sequences robustly to calculate correct visible width
+  return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').length;
 }
 
 export interface BootPanels {
@@ -65,9 +66,13 @@ function box_render(title: string, rows: BootInfoItem[], useColor: boolean, useA
   lines.push(`${cornerTL}${line}${cornerTR}`);
   lines.push(`${vert}${useColor ? chalk.cyan(titlePadded) : titlePadded}${vert}`);
   rows.forEach((item: BootInfoItem) => {
+    const rawContent: string = `${item.label.padEnd(maxLabel)} ${item.value}`;
+    const visLen: number = visibleLength(rawContent);
+    const padCount: number = Math.max(0, innerWidth - visLen);
+    
     const label: string = useColor ? chalk.yellow(item.label.padEnd(maxLabel)) : item.label.padEnd(maxLabel);
     const value: string = useColor ? chalk.white(item.value) : item.value;
-    const paddedLine: string = `${label} ${value}`.padEnd(innerWidth);
+    const paddedLine: string = `${label} ${value}${' '.repeat(padCount)}`;
     lines.push(`${vert}${paddedLine}${vert}`);
   });
   lines.push(`${cornerBL}${line}${cornerBR}`);
@@ -99,9 +104,13 @@ function box_render_withMin(title: string, rows: BootInfoItem[], useColor: boole
   lines.push(`${cornerTL}${line}${cornerTR}`);
   lines.push(`${vert}${useColor ? chalk.cyan(titlePadded) : titlePadded}${vert}`);
   rows.forEach((item: BootInfoItem) => {
+    const rawContent: string = `${item.label.padEnd(maxLabel)} ${item.value}`;
+    const visLen: number = visibleLength(rawContent);
+    const padCount: number = Math.max(0, innerWidth - visLen);
+    
     const label: string = useColor ? chalk.yellow(item.label.padEnd(maxLabel)) : item.label.padEnd(maxLabel);
     const value: string = useColor ? chalk.white(item.value) : item.value;
-    const paddedLine: string = `${label} ${value}`.padEnd(innerWidth);
+    const paddedLine: string = `${label} ${value}${' '.repeat(padCount)}`;
     lines.push(`${vert}${paddedLine}${vert}`);
   });
   lines.push(`${cornerBL}${line}${cornerBR}`);

@@ -32,8 +32,88 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   }
 }));
 
+const mockVfsDispatcher = {
+  list: jest.fn().mockImplementation(async (searchPath: string, options?: any) => {
+    try {
+      if (searchPath === '/bin') {
+        const plugins = await mockPlugins_listAll({});
+        const items: any[] = [];
+        if (plugins && plugins.tableData) {
+          plugins.tableData.forEach((plugin: any) => {
+            const pluginName = plugin.name;
+            const pluginVersion = plugin.version || '';
+            const displayName = pluginVersion ? `${pluginName}-v${pluginVersion}` : pluginName;
+            items.push({
+              name: displayName,
+              type: 'plugin',
+              size: 0,
+              owner: 'system',
+              date: plugin.creation_date || '',
+            });
+          });
+        }
+        return { ok: true, value: items };
+      }
+      if (searchPath === '/usr') {
+        return {
+          ok: true,
+          value: [{
+            name: 'bin',
+            type: 'vfs',
+            size: 0,
+            owner: 'root',
+            date: new Date().toISOString(),
+          }]
+        };
+      }
+      if (searchPath === '/usr/bin') {
+        const builtinNames = ['ls', 'cd', 'pwd', 'cat', 'touch', 'rm', 'mkdir'];
+        const items = builtinNames.map((name) => ({
+          name,
+          type: 'plugin',
+          size: 0,
+          owner: 'system',
+          date: new Date().toISOString(),
+        }));
+        return { ok: true, value: items };
+      }
+      if (searchPath === '/' || searchPath === '') {
+        const items: any[] = [
+          { name: 'bin', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() },
+          { name: 'usr', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() },
+          { name: 'net', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() }
+        ];
+        const nativeItems = await mockFiles_list({ path: searchPath, ...options }, searchPath);
+        if (nativeItems && Array.isArray(nativeItems)) {
+          nativeItems.forEach((item: any) => {
+            if (item.name !== 'bin' && item.name !== 'usr' && item.name !== 'net') {
+              items.push(item);
+            }
+          });
+        }
+        items.sort((a, b) => a.name.localeCompare(b.name));
+        return { ok: true, value: items };
+      }
+
+      const mergedOptions = { path: searchPath, ...options };
+      const items = await mockFiles_list(mergedOptions, searchPath);
+      return { ok: true, value: items };
+    } catch (e) {
+      return { ok: false, error: e };
+    }
+  }),
+  cp: jest.fn().mockImplementation(() => Promise.resolve(true)),
+  provider_register: jest.fn(),
+  provider_get: jest.fn().mockReturnValue({ prefix: '/' })
+};
+
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
-  plugins_listAll: mockPlugins_listAll
+  plugins_listAll: mockPlugins_listAll,
+  vfsDispatcher: mockVfsDispatcher,
+  context_getSingle: jest.fn(() => ({
+    user: 'testuser',
+    URL: 'http://localhost:8000'
+  }))
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/ls.js', () => ({
@@ -250,14 +330,11 @@ describe('VFS', () => {
 
     it('should render a file operand rather than list it as a directory', async () => {
       const file = { name: 'scan.dcm', type: 'file', size: 1024, owner: 'user', date: '2025-01-02' };
-      mockFiles_list
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([file]);
+      mockFiles_list.mockResolvedValueOnce([file]);
 
       await vfs.list('/home/user/scan.dcm');
 
-      expect(mockFiles_list).toHaveBeenNthCalledWith(1, { path: '/home/user/scan.dcm' }, '/home/user/scan.dcm');
-      expect(mockFiles_list).toHaveBeenNthCalledWith(2, {}, '/home/user');
+      expect(mockFiles_list).toHaveBeenCalledWith({ path: '/home/user/scan.dcm' }, '/home/user/scan.dcm');
       expect(mockGrid_render).toHaveBeenCalledWith([file]);
     });
 

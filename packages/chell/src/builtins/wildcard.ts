@@ -7,9 +7,8 @@
  */
 import { minimatch } from 'minimatch';
 import { session } from '../session/index.js';
-import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { vfs } from '../lib/vfs/vfs.js';
+import { vfsDispatcher } from '@fnndsc/salsa';
 import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 
 /**
@@ -66,24 +65,17 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
     // List files in the directory (check cache first)
     let items: ListingItem[] = [];
     const listCache = listCache_get();
+    const cached = listCache.cache_get<ListingItem[]>(searchDir);
 
-    if (searchDir === '/bin') {
-      // Check cache for /bin
-      const cached = listCache.cache_get<ListingItem[]>('/bin');
-      if (cached) {
-        items = cached.data;
-      } else {
-        items = await vfs.virtualBinItems_get();
-        listCache.cache_set('/bin', items);
-      }
+    if (cached) {
+      items = cached.data;
     } else {
-      // Check cache for native path
-      const cached = listCache.cache_get<ListingItem[]>(searchDir);
-      if (cached) {
-        items = cached.data;
-      } else {
-        items = await files_list({}, searchDir);
+      const vfsResult = await vfsDispatcher.list(searchDir);
+      if (vfsResult.ok) {
+        items = vfsResult.value as unknown as ListingItem[];
         listCache.cache_set(searchDir, items);
+      } else {
+        return Err();
       }
     }
 

@@ -3,7 +3,7 @@
  * Displays file contents.
  */
 import chalk from 'chalk';
-import { path_resolve } from '../utils.js';
+import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { files_cat as chefs_cat_cmd, files_catBinary as chefs_catBinary_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { cat_render } from '@fnndsc/chili/views/fs.js';
 import { help_show } from '../help.js';
@@ -167,7 +167,7 @@ export async function builtin_cat(args: string[]): Promise<void> {
 
        if (!result.ok) {
           const error: StackMessage | undefined = errorStack.stack_pop();
-          console.error(chalk.red(`cat: ${pathArg}: ${error?.message || 'Unknown error'}`));
+          console.error(chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`));
           continue;
        }
 
@@ -178,7 +178,7 @@ export async function builtin_cat(args: string[]): Promise<void> {
 
        if (!result.ok) {
           const error: StackMessage | undefined = errorStack.stack_pop();
-          console.error(chalk.red(`cat: ${pathArg}: ${error?.message || 'Unknown error'}`));
+          console.error(chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`));
           continue;
        }
 

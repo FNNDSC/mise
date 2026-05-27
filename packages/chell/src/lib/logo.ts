@@ -22,8 +22,137 @@ function reverse_line(line: string): string {
   return `${ANSI_REVERSE}${reinforced}${ANSI_RESET}`;
 }
 
+/**
+ * Blue-to-cyan pulsing shade codes.
+ */
+const SHADES: string[] = [
+  '\x1b[38;2;0;30;120m',
+  '\x1b[38;2;0;50;150m',
+  '\x1b[38;2;0;75;180m',
+  '\x1b[38;2;0;100;200m',
+  '\x1b[38;2;0;130;220m',
+  '\x1b[38;2;0;160;240m',
+  '\x1b[38;2;0;200;255m',
+  '\x1b[38;2;0;255;255m',
+  '\x1b[38;2;0;200;255m',
+  '\x1b[38;2;0;160;240m',
+  '\x1b[38;2;0;130;220m',
+  '\x1b[38;2;0;100;200m',
+  '\x1b[38;2;0;75;180m',
+  '\x1b[38;2;0;50;150m',
+];
+
+let logoInterval: NodeJS.Timeout | null = null;
+let logoFrameIndex: number = 0;
+
 export function logo_linesRender(colorize: boolean, reverse: boolean = false): string[] {
   const baseLines: string[] = colorize ? colorLogoLines : plainLogoLines;
   if (!reverse) return baseLines;
   return baseLines.map(reverse_line);
+}
+
+/**
+ * Starts the pulsing blue-to-cyan color logo animation on the console.
+ * Falls back to static plain rendering if non-TTY or color is disabled.
+ *
+ * @param useColor - True to enable colored pulsing, false for static plain rendering.
+ */
+let originalWrite: ((chunk: any, ...args: any[]) => boolean) | null = null;
+let linesPrinted: number = 0;
+
+/**
+ * Starts hijacking process.stdout.write to dynamically count the number
+ * of newlines printed since the logo animation was launched.
+ */
+function stdoutTrack_start(): void {
+  if (originalWrite) return;
+  originalWrite = process.stdout.write.bind(process.stdout);
+  linesPrinted = 0;
+  process.stdout.write = (chunk: any, ...args: any[]): boolean => {
+    const str: string = typeof chunk === 'string'
+      ? chunk
+      : (chunk && chunk.toString ? chunk.toString() : '');
+    const newlines: number = (str.match(/\n/g) || []).length;
+    linesPrinted += newlines;
+    return originalWrite!(chunk, ...args);
+  };
+}
+
+/**
+ * Stops hijacking process.stdout.write, restoring the original function handler.
+ */
+function stdoutTrack_stop(): void {
+  if (originalWrite) {
+    process.stdout.write = originalWrite as any;
+    originalWrite = null;
+  }
+}
+
+/**
+ * Starts the pulsing blue-to-cyan color logo animation on the console.
+ * Falls back to static plain rendering if non-TTY or color is disabled.
+ *
+ * @param useColor - True to enable colored pulsing, false for static plain rendering.
+ */
+export function logo_animateStart(useColor: boolean): void {
+  if (!useColor || !process.stdout.isTTY) {
+    const logoLines: string[] = logo_linesRender(false);
+    logoLines.forEach((line: string) => console.log('  ' + line));
+    console.log('');
+    return;
+  }
+
+  const logoLines: string[] = logo_linesRender(false);
+  const totalLines: number = logoLines.length;
+
+  // Print initial plain logo once
+  logoLines.forEach((line: string) => console.log('  ' + line));
+  console.log('');
+
+  // Start tracking stdout newlines printed after the initial logo
+  stdoutTrack_start();
+
+  // Start interval to update in-place with a rolling color bloom
+  logoInterval = setInterval(() => {
+    logoFrameIndex++;
+    
+    // Save cursor position, move up, re-render, and restore cursor position
+    const upOffset: number = totalLines + 1 + linesPrinted;
+    process.stdout.write('\x1b[s'); // Save cursor
+    process.stdout.write(`\x1b[${upOffset}A\r`); // Move to top of logo
+    
+    logoLines.forEach((line: string, i: number) => {
+      const shade: string = SHADES[(logoFrameIndex + i) % SHADES.length];
+      process.stdout.write(`\r  ${shade}${line}\x1b[0m\x1b[1B`);
+    });
+    
+    process.stdout.write('\x1b[u'); // Restore cursor
+  }, 100);
+}
+
+/**
+ * Stops the pulsing color logo animation, rendering the final bright cyan logo.
+ */
+export function logo_animateStop(): void {
+  if (logoInterval) {
+    clearInterval(logoInterval);
+    logoInterval = null;
+
+    const logoLines: string[] = logo_linesRender(false);
+    const totalLines: number = logoLines.length;
+    const finalShade: string = '\x1b[38;2;0;255;255m\x1b[1m'; // Bold bright cyan
+    
+    const upOffset: number = totalLines + 1 + linesPrinted;
+    process.stdout.write('\x1b[s');
+    process.stdout.write(`\x1b[${upOffset}A\r`);
+    
+    logoLines.forEach((line: string) => {
+      process.stdout.write(`\r  ${finalShade}${line}\x1b[0m\x1b[1B`);
+    });
+    
+    process.stdout.write('\x1b[u');
+
+    // Restore stdout write hook
+    stdoutTrack_stop();
+  }
 }

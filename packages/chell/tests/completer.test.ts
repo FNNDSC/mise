@@ -4,10 +4,14 @@
 
 import { jest } from '@jest/globals';
 
-// Mock salsa plugins_listAll
+// Mock salsa plugins_listAll and vfsDispatcher
 const mockPlugins_listAll = jest.fn();
+const mockVfsDispatcherList = jest.fn().mockResolvedValue({ ok: true, value: [] });
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   plugins_listAll: mockPlugins_listAll,
+  vfsDispatcher: {
+    list: mockVfsDispatcherList,
+  },
   context_getSingle: jest.fn(() => ({
     user: 'testuser',
     URL: 'http://localhost:8000'
@@ -40,18 +44,13 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Err: (err) => ({ ok: false, error: err })
 }));
 
-// Mock chili files_list
-const mockFilesList = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/ls.js', () => ({
-  files_list: mockFilesList
-}));
 
 const { input_complete } = await import('../src/lib/completer/index.js');
 
 describe('Tab Completion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockFilesList.mockResolvedValue([]);
+    mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [] });
   });
 
   describe('Command Completion', () => {
@@ -243,9 +242,9 @@ describe('Tab Completion', () => {
     });
 
     it('should append a slash when completing a directory for ls', (done) => {
-      mockFilesList.mockResolvedValue([
+      mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [
         { name: 'data', type: 'dir', size: 0, owner: 'testuser', date: '' }
-      ]);
+      ]});
 
       input_complete('ls da', (err, result) => {
         expect(err).toBeNull();
@@ -255,9 +254,9 @@ describe('Tab Completion', () => {
     });
 
     it('should preserve escaped spaces while completing ls operands', (done) => {
-      mockFilesList.mockResolvedValue([
+      mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [
         { name: 'Patient Data', type: 'dir', size: 0, owner: 'testuser', date: '' }
-      ]);
+      ]});
 
       input_complete('ls Patient\\ D', (err, result) => {
         expect(err).toBeNull();
@@ -267,9 +266,9 @@ describe('Tab Completion', () => {
     });
 
     it('should preserve double quotes while completing ls operands', (done) => {
-      mockFilesList.mockResolvedValue([
+      mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [
         { name: 'Patient Data', type: 'dir', size: 0, owner: 'testuser', date: '' }
-      ]);
+      ]});
 
       input_complete('ls "Patient ', (err, result) => {
         expect(err).toBeNull();

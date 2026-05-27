@@ -7,10 +7,7 @@
  * @module
  */
 import { session } from '../../session/index.js';
-import { plugins_listAll } from '@fnndsc/salsa';
-import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
-import { files_list, LsOptions } from '@fnndsc/chili/commands/fs/ls.js';
-import { context_getSingle } from '@fnndsc/salsa';
+import { plugins_listAll, vfsDispatcher, context_getSingle } from '@fnndsc/salsa';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
@@ -218,94 +215,39 @@ async function path_complete(partial: string): Promise<string[]> {
   let items: ListingItem[] = [];
   const listCache = listCache_get();
 
-  if (absDirToList === '/bin') {
-     // Virtual bin - plugins
-     // Check cache first
-     const cached = listCache.cache_get<ListingItem[]>('/bin');
-     let lsItems: ListingItem[] | undefined;
-
-     if (cached) {
-       lsItems = cached.data;
-     } else {
-       // Cache miss - fetch from API
-       const plugins = await plugins_listAll({});
-       if (plugins && plugins.tableData) {
-         lsItems = plugins.tableData.map((p: Record<string, unknown>) => {
-           const name = typeof p.name === 'string' ? p.name : String(p.name ?? '');
-           const version = typeof p.version === 'string' ? p.version : String(p.version ?? '');
-           return {
-             name: version ? `${name}-v${version}` : name,
-             type: 'plugin' as const,
-             size: 0,
-             owner: 'system',
-             date: p.creation_date ? String(p.creation_date) : '',
-           };
-         });
-         // Cache the results
-         listCache.cache_set('/bin', lsItems);
-       }
-     }
-     if (lsItems) {
-       items = lsItems;
-     }
-  } else if (absDirToList === '/usr') {
-     // Virtual /usr - contains 'bin' subdirectory
-     items = [{
-       name: 'bin',
-       type: 'vfs',
-       size: 0,
-       owner: 'root',
-       date: new Date().toISOString(),
-     }];
-  } else if (absDirToList === '/usr/bin') {
-     // Virtual /usr/bin - builtin commands
-     const builtinNames: string[] = builtinCommands_list();
-     items = builtinNames.map((name: string) => ({
-       name,
-       type: 'file' as const,
-       size: 0,
-       owner: 'system',
-       date: new Date().toISOString(),
-     }));
+  // Check cache first
+  const cached = listCache.cache_get<ListingItem[]>(absDirToList);
+  if (cached) {
+    items = cached.data;
   } else {
-     // Native ChRIS
-     try {
-       // Check cache first
-        const cached = listCache.cache_get<ListingItem[]>(absDirToList);
-       let lsItems: ListingItem[] | undefined;
+    try {
+      // Use vfsDispatcher for all path types — handles /pacs, /bin, native, etc.
+      const vfsResult = await vfsDispatcher.list(absDirToList);
+      if (vfsResult.ok) {
+        items = vfsResult.value as unknown as ListingItem[];
+      }
 
-       if (cached) {
-         lsItems = cached.data;
-       } else {
-                // Cache miss - fetch from API
-                lsItems = await files_list({} as LsOptions, absDirToList);         if (lsItems) {
-           // Inject virtual directories if at root
-           if (absDirToList === '/') {
-             lsItems.push({
-               name: 'bin',
-               type: 'vfs',
-               size: 0,
-               owner: 'root',
-               date: new Date().toISOString(),
-             });
-             lsItems.push({
-               name: 'usr',
-               type: 'vfs',
-               size: 0,
-               owner: 'root',
-               date: new Date().toISOString(),
-             });
-           }
-           // Cache the results
-           listCache.cache_set(absDirToList, lsItems);
-         }
-       }
-       if (lsItems) {
-         items = lsItems;
-       }
-     } catch (e) {
-       // Ignore errors (e.g., perms, not a dir)
-     }
+      // Inject virtual directories at root if missing
+      if (absDirToList === '/' || absDirToList === '') {
+        const hasItem = (name: string) => items.some((i: ListingItem) => i.name === name);
+        if (!hasItem('bin')) {
+          items.push({ name: 'bin', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
+        }
+        if (!hasItem('usr')) {
+          items.push({ name: 'usr', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
+        }
+        if (!hasItem('pacs')) {
+          items.push({ name: 'pacs', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
+        }
+      }
+
+      // Cache the results
+      if (items.length > 0) {
+        listCache.cache_set(absDirToList, items);
+      }
+    } catch (e) {
+      // Ignore errors (e.g., perms, not a dir)
+    }
   }
 
   // 4. Filter and format matches

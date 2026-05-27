@@ -155,3 +155,22 @@ export async function path_resolveLinks(targetPath: string): Promise<string> {
 
   return currentPath || '/';
 }
+
+/**
+ * Strips the function name padding prefix from an error message if debug mode is disabled.
+ *
+ * @param message - The raw/enhanced error message from the ErrorStack.
+ * @returns The cleaned or original error message based on the debug configuration.
+ *
+ * @example
+ * ```
+ * const cleaned = error_stripDebugPrefix("[PacsVfsProvider.list                    ] | ls: error");
+ * // cleaned will be "ls: error" if debug mode is disabled
+ * ```
+ */
+export function error_stripDebugPrefix(message: string): string {
+  if (session.connection?.config?.debug) {
+    return message;
+  }
+  return message.replace(/^\[[^\]]+\]\s*\|\s*/, '');
+}

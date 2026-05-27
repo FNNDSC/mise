@@ -6,17 +6,17 @@
  *
  * @module
  */
-import { plugins_listAll } from '@fnndsc/salsa';
+import { plugins_listAll, vfsDispatcher } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
 import chalk from 'chalk';
 import * as path from 'path';
-import { files_list } from '@fnndsc/chili/commands/fs/ls.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
 import { builtinCommands_list, builtinCommand_description } from '../../builtins/help.js';
+import { error_stripDebugPrefix } from '../../builtins/utils.js';
 
 /**
  * Virtual File System Router.
@@ -38,15 +38,27 @@ export class VFS {
         ? path.posix.resolve(cwd, targetPath)
         : cwd;
 
-      if (effectivePath === '/bin') {
-        return await this.dataVirtualBin_get(options);
-      } else if (effectivePath === '/usr/bin') {
-        return await this.dataVirtualUsrBin_get(options);
-      } else if (effectivePath === '/usr') {
-        return await this.dataVirtualUsr_get(options);
-      } else {
-        return await this.dataNative_get(effectivePath, options);
+      // Check cache first
+      const listCache = listCache_get();
+      const cached = listCache.cache_get<ListingItem[]>(effectivePath);
+      if (cached) {
+        const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
+        const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
+        return Ok(sortedItems);
       }
+
+      // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
+      const vfsResult = await vfsDispatcher.list(effectivePath, options);
+      if (vfsResult.ok) {
+        const items = vfsResult.value as unknown as ListingItem[];
+
+        // Cache the results!
+        listCache.cache_set(effectivePath, items);
+
+        return Ok(items);
+      }
+
+      return Err();
     } catch (error: unknown) {
       const errorMsg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push("error", `Failed to get directory data: ${errorMsg}`);
@@ -102,7 +114,7 @@ export class VFS {
     if (!result.ok) {
       const lastError = errorStack.stack_pop();
       if (lastError) {
-        console.error(chalk.red(lastError.message));
+        console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
       }
       return;
     }
@@ -151,240 +163,7 @@ export class VFS {
     }
   }
 
-  /**
-   * Gets data for the virtual `/bin` directory (plugins).
-   * Returns Result<ListingItem[]> for proper error handling.
-   *
-   * @param options - Options including sort and reverse.
-   * @returns Result<ListingItem[]>.
-   */
-  private async dataVirtualBin_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
-    try {
-      // Check cache first
-      const listCache = listCache_get();
-      const cached = listCache.cache_get<ListingItem[]>('/bin');
-
-      if (cached) {
-        // Cache hit - return cached data
-        // Note: Cache already has sorted data, but respect current sort options
-        const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
-        const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
-        return Ok(sortedItems);
-      }
-
-      // Cache miss - fetch from API
-      const plugins = await plugins_listAll({});
-      const items: ListingItem[] = [];
-
-      if (plugins && plugins.tableData) {
-        plugins.tableData.forEach((plugin: Record<string, unknown>) => {
-          // Format as single string: pl-name-v1.0.5
-          const pluginName: string = typeof plugin.name === 'string' ? plugin.name : String(plugin.name);
-          const pluginVersion: string = typeof plugin.version === 'string' ? plugin.version : String(plugin.version || '');
-          const displayName: string = pluginVersion
-            ? `${pluginName}-v${pluginVersion}`
-            : pluginName;
-
-          items.push({
-            name: displayName,
-            type: 'plugin',
-            size: 0,
-            owner: 'system',
-            date: typeof plugin.creation_date === 'string' ? plugin.creation_date : '',
-          });
-        });
-      }
-
-      // Apply sorting
-      const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
-      const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
-
-      // Cache the results
-      listCache.cache_set('/bin', sortedItems);
-
-      return Ok(sortedItems);
-    } catch (error: unknown) {
-      const errorMsg: string = error instanceof Error ? error.message : String(error);
-      errorStack.stack_push("error", `Failed to list plugins: ${errorMsg}`);
-      return Err();
-    }
-  }
-
-  /**
-   * Gets the contents of the virtual `/bin` directory (plugins) as ListingItems.
-   * Legacy method for backward compatibility. Consider using dataVirtualBin_get() instead.
-   *
-   * @returns A Promise resolving to an array of ListingItems.
-   */
-  async virtualBinItems_get(): Promise<ListingItem[]> {
-    const result: Result<ListingItem[]> = await this.dataVirtualBin_get();
-    return result.ok ? result.value : [];
-  }
-
-  /**
-   * Gets data for the virtual `/usr` directory.
-   * Returns Result<ListingItem[]> containing the 'bin' subdirectory.
-   *
-   * @param options - Options including sort and reverse.
-   * @returns Result<ListingItem[]>.
-   */
-  private async dataVirtualUsr_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
-    try {
-      const items: ListingItem[] = [
-        {
-          name: 'bin',
-          type: 'vfs',
-          size: 0,
-          owner: 'root',
-          date: new Date().toISOString(),
-        }
-      ];
-
-      // Apply sorting (though only one item for now)
-      const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
-      const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
-
-      return Ok(sortedItems);
-    } catch (error: unknown) {
-      const errorMsg: string = error instanceof Error ? error.message : String(error);
-      errorStack.stack_push("error", `Failed to list /usr: ${errorMsg}`);
-      return Err();
-    }
-  }
-
-  /**
-   * Gets data for the virtual `/usr/bin` directory (builtin commands).
-   * Returns Result<ListingItem[]> for proper error handling.
-   *
-   * @param options - Options including sort and reverse.
-   * @returns Result<ListingItem[]>.
-   */
-  private async dataVirtualUsrBin_get(options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean } = {}): Promise<Result<ListingItem[]>> {
-    try {
-      // Get all builtin command names
-      const builtinNames: string[] = builtinCommands_list();
-      const items: ListingItem[] = [];
-
-      // Create a ListingItem for each builtin
-      builtinNames.forEach((name: string) => {
-        const description: string | undefined = builtinCommand_description(name);
-        items.push({
-          name: name,
-          type: 'plugin', // Mark as executable like plugins
-          size: 0,
-          owner: 'system',
-          date: new Date().toISOString(),
-        });
-      });
-
-      // Apply sorting
-      const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
-      const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
-
-      return Ok(sortedItems);
-    } catch (error: unknown) {
-      const errorMsg: string = error instanceof Error ? error.message : String(error);
-      errorStack.stack_push("error", `Failed to list builtins: ${errorMsg}`);
-      return Err();
-    }
-  }
-
-
-  /**
-   * Gets data for a native ChRIS directory.
-   * Returns Result<ListingItem[]> for proper error handling.
-   *
-   * @param target - The path to get data for.
-   * @param options - Options including directory flag and sort.
-   * @returns Result<ListingItem[]>.
-   */
-  private async dataNative_get(target: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
-    try {
-      const listCache = listCache_get();
-      const parentPath: string = path.posix.dirname(target);
-      const itemName: string = path.posix.basename(target);
-
-      const operandItem_get = async (): Promise<ListingItem | undefined> => {
-        const cachedParent = listCache.cache_get<ListingItem[]>(parentPath);
-        let parentItems: ListingItem[];
-        if (cachedParent) {
-          parentItems = cachedParent.data;
-        } else {
-          parentItems = await files_list({}, parentPath);
-          listCache.cache_set(parentPath, parentItems);
-        }
-        return parentItems.find((item: ListingItem) => item.name === itemName);
-      };
-
-      // `ls -d path` renders the operand itself rather than directory contents.
-      if (options.directory && target !== '/') {
-        const item: ListingItem | undefined = await operandItem_get();
-        if (item) {
-          return Ok([item]);
-        }
-        errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
-        return Err();
-      }
-
-      // Normal listing first assumes a directory operand.
-      const cached = listCache.cache_get<ListingItem[]>(target);
-      let items: ListingItem[];
-
-      if (cached) {
-        items = cached.data;
-      } else {
-        // Cache miss - fetch from API
-        items = await files_list({
-          path: target,
-          sort: options.sort,
-          reverse: options.reverse
-        }, target);
-
-        // Inject virtual directories if listing root
-        if (target === '/' || target === '') {
-          items.push({
-            name: 'bin',
-            type: 'vfs', // Mark as virtual file system
-            size: 0,
-            owner: 'root',
-            date: new Date().toISOString(),
-          });
-          items.push({
-            name: 'usr',
-            type: 'vfs',
-            size: 0,
-            owner: 'root',
-            date: new Date().toISOString(),
-          });
-          // Re-sort to ensure virtual dirs appear in correct place
-          items.sort((a: ListingItem, b: ListingItem) => a.name.localeCompare(b.name));
-        }
-
-        // Cache the results
-        listCache.cache_set(target, items);
-      }
-
-      // An empty listing is either an empty directory or a non-directory operand.
-      // Inspect the parent so `ls file` renders file metadata/name like Unix ls.
-      if (items.length === 0 && target !== '/') {
-        const item: ListingItem | undefined = await operandItem_get();
-        if (item && item.type !== 'dir') {
-          return Ok([item]);
-        }
-        if (!item) {
-          errorStack.stack_push("error", `ls: cannot access '${target}': No such file or directory`);
-          return Err();
-        }
-      }
-
-      return Ok(items);
-
-    } catch (error: unknown) {
-      const errorMsg: string = error instanceof Error ? error.message : String(error);
-      errorStack.stack_push("error", `Failed to list ${target}: ${errorMsg}`);
-      return Err();
-    }
-  }
+  // Removed legacy virtual directory list helpers (fully unified under StaticVfsProvider and VFSDispatcher)
 }
 
 export const vfs = new VFS();

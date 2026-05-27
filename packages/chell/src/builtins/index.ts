@@ -33,5 +33,5 @@ export * from './res/files.js';
 export * from './parametersofplugin.js';
 export * from './store.js';
 
-export { commandArgs_process, path_resolve, path_resolve_pure } from './utils.js';
+export { commandArgs_process, path_resolve, path_resolve_pure, error_stripDebugPrefix } from './utils.js';
 export type { ParsedArgs } from './utils.js';

@@ -4,7 +4,32 @@
  */
 import chalk from 'chalk';
 import { session } from '../../session/index.js';
-import { path_resolve, path_resolveLinks } from '../utils.js';
+import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
+
+/**
+ * Interface representing a FileBrowserFolder from ChRIS API.
+ */
+interface FileBrowserFolder {
+  path?: string;
+  data?: {
+    path?: string;
+  };
+}
+
+/**
+ * Verifies if a given FileBrowserFolder object exactly matches the validation path.
+ *
+ * @param folder - The FileBrowserFolder object to verify.
+ * @param validationPath - The path to match against.
+ * @returns True if the folder path exactly matches validationPath, false otherwise.
+ */
+function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefined, validationPath: string): boolean {
+  if (!folder) {
+    return false;
+  }
+  const folderPath = folder.data?.path || folder.path;
+  return folderPath === validationPath;
+}
 
 /**
  * Changes the current working directory in the ChRIS filesystem context.
@@ -25,17 +50,24 @@ export async function builtin_cd(args: string[]): Promise<void> {
   try {
     const logicalPath: string = await path_resolve(pathArg);
 
-    // Handle virtual directories
-    if (logicalPath === '/bin') {
-      await session.setCWD('/bin');
-      return;
-    }
-    if (logicalPath === '/usr') {
-      await session.setCWD('/usr');
-      return;
-    }
-    if (logicalPath === '/usr/bin') {
-      await session.setCWD('/usr/bin');
+    const { vfsDispatcher } = await import('@fnndsc/salsa');
+    const cleanPath = logicalPath.endsWith('/') && logicalPath.length > 1 ? logicalPath.slice(0, -1) : logicalPath;
+    const isVirtual =
+      cleanPath === '/' ||
+      cleanPath === '/net' ||
+      vfsDispatcher.provider_get(cleanPath).prefix !== '';
+
+    if (isVirtual) {
+      // Validate the virtual path exists before cd'ing
+      const listResult = await vfsDispatcher.list(cleanPath);
+      if (!listResult.ok) {
+        const { errorStack } = await import('@fnndsc/cumin');
+        const lastError = errorStack.stack_pop();
+        const detail = lastError ? error_stripDebugPrefix(lastError.message) : 'No such file or directory';
+        console.error(chalk.red(`cd: ${pathArg}: ${detail}`));
+        return;
+      }
+      await session.setCWD(cleanPath);
       return;
     }
 
@@ -57,7 +89,7 @@ export async function builtin_cd(args: string[]): Promise<void> {
       const physicalResult = await logical_toPhysical(logicalPath);
 
       if (!physicalResult.ok) {
-        console.error(chalk.red(`cd: ${pathArg}: Invalid path (logical-to-physical failed)`));
+        console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
         if (session.connection.config?.debug) {
           console.error(chalk.gray(`  Logical path: ${logicalPath}`));
         }
@@ -85,14 +117,19 @@ export async function builtin_cd(args: string[]): Promise<void> {
     }
 
     try {
-      // Validate that the target exists
-      const folder: unknown = await client.getFileBrowserFolderByPath(validationPath);
-      if (folder) {
+      // Validate that the target exists and matches the exact path queried (preventing partial API matches)
+      const folder = (await client.getFileBrowserFolderByPath(validationPath)) as FileBrowserFolder | null | undefined;
+      if (folder_verifyPathMatch(folder, validationPath)) {
         await session.setCWD(cwdPath);
       } else {
         console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
         if (session.connection.config?.debug) {
-          console.error(chalk.gray(`  API returned null for path: ${validationPath}`));
+          if (!folder) {
+            console.error(chalk.gray(`  API returned null for path: ${validationPath}`));
+          } else {
+            const folderPath = folder.data?.path || folder.path;
+            console.error(chalk.gray(`  API returned mismatched folder path: ${folderPath} (expected: ${validationPath})`));
+          }
         }
       }
     } catch (apiError: unknown) {

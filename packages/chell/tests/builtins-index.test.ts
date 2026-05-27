@@ -138,7 +138,13 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   plugin_registerWithAdmin: jest.fn(),
   plugins_searchPeers: jest.fn(),
   store_list: jest.fn(),
-  store_search: jest.fn()
+  store_search: jest.fn(),
+  vfsDispatcher: {
+    provider_get: jest.fn().mockImplementation((path: string) => ({
+      prefix: path.startsWith('/net') ? '/net/pacs' : (path.startsWith('/bin') || path.startsWith('/usr')) ? path : ''
+    })),
+    list: jest.fn().mockResolvedValue({ ok: true, value: [] })
+  }
 }));
 
 // Mock chili commands
@@ -276,7 +282,7 @@ describe('Builtins - Core Functions', () => {
     it('should change to home directory when no args', async () => {
       mockUserGet.mockResolvedValue('testuser');
       mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: mockGetFileBrowserFolderByPath });
-      mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/home/testuser' });
+      mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/resolved/path' });
 
       await builtin_cd([]);
 
@@ -291,7 +297,7 @@ describe('Builtins - Core Functions', () => {
 
     it('should change to valid ChRIS directory', async () => {
       mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: mockGetFileBrowserFolderByPath });
-      mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/home/user/data' });
+      mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/resolved/path' });
 
       await builtin_cd(['/home/user/data']);
 
@@ -303,6 +309,16 @@ describe('Builtins - Core Functions', () => {
       mockGetFileBrowserFolderByPath.mockResolvedValue(null);
 
       await builtin_cd(['/nonexistent']);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No such file or directory'));
+      expect(mockSetCWD).not.toHaveBeenCalled();
+    });
+
+    it('should error on mismatched directory path (prevent substring matches)', async () => {
+      mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: mockGetFileBrowserFolderByPath });
+      mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/SHARED/entry' });
+
+      await builtin_cd(['/ent']);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No such file or directory'));
       expect(mockSetCWD).not.toHaveBeenCalled();

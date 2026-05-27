@@ -3,7 +3,7 @@
  * Displays directory structure.
  */
 import chalk from 'chalk';
-import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { session } from '../../session/index.js';
 import { spinner } from '../../lib/spinner.js';
 import { errorStack } from '@fnndsc/cumin';
@@ -56,7 +56,7 @@ export async function builtin_tree(args: string[]): Promise<void> {
       spinner.stop();
       const lastError = errorStack.stack_pop();
       if (lastError) {
-        console.error(chalk.red(lastError.message));
+        console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
       } else {
         console.error(chalk.red('Failed to scan directory tree.'));
       }

@@ -38,6 +38,11 @@ export class VFS {
         ? path.posix.resolve(cwd, targetPath)
         : cwd;
 
+      // -d: show the target entry itself rather than descending into it
+      if (options.directory && targetPath) {
+        return this.directoryEntry_get(effectivePath, options);
+      }
+
       // Check cache first
       const listCache = listCache_get();
       const cached = listCache.cache_get<ListingItem[]>(effectivePath);
@@ -64,6 +69,48 @@ export class VFS {
       errorStack.stack_push("error", `Failed to get directory data: ${errorMsg}`);
       return Err();
     }
+  }
+
+  /**
+   * Returns the directory entry for `absolutePath` itself (not its contents).
+   * Looks up the entry in the parent's listing — used to implement `ls -d`.
+   *
+   * @param absolutePath - The fully resolved path of the target.
+   * @param options - Sort options forwarded to the parent listing.
+   */
+  private async directoryEntry_get(
+    absolutePath: string,
+    options: { sort?: 'name' | 'size' | 'date' | 'owner'; reverse?: boolean },
+  ): Promise<Result<ListingItem[]>> {
+    const baseName = path.posix.basename(absolutePath);
+    const parentPath = path.posix.dirname(absolutePath);
+
+    if (!baseName || absolutePath === '/') {
+      return Ok([{ name: '/', type: 'vfs', size: 0, owner: 'root', date: '' }]);
+    }
+
+    // Fetch parent listing (use cache when available)
+    const listCache = listCache_get();
+    let parentItems: ListingItem[] | null = null;
+
+    const cached = listCache.cache_get<ListingItem[]>(parentPath);
+    if (cached) {
+      parentItems = cached.data;
+    } else {
+      const parentResult = await vfsDispatcher.list(parentPath, options);
+      if (parentResult.ok) {
+        parentItems = parentResult.value as unknown as ListingItem[];
+        listCache.cache_set(parentPath, parentItems);
+      }
+    }
+
+    if (parentItems) {
+      const match = parentItems.find((item: ListingItem) => item.name === baseName);
+      if (match) return Ok([match]);
+    }
+
+    // Fallback: synthesize an entry from the path name
+    return Ok([{ name: baseName, type: 'dir', size: 0, owner: 'system', date: '' }]);
   }
 
   /**

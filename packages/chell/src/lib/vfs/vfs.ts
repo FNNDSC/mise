@@ -82,8 +82,8 @@ export class VFS {
     absolutePath: string,
     options: { sort?: 'name' | 'size' | 'date' | 'owner'; reverse?: boolean },
   ): Promise<Result<ListingItem[]>> {
-    const baseName = path.posix.basename(absolutePath);
-    const parentPath = path.posix.dirname(absolutePath);
+    const baseName: string = path.posix.basename(absolutePath);
+    const parentPath: string = path.posix.dirname(absolutePath);
 
     if (!baseName || absolutePath === '/') {
       return Ok([{ name: '/', type: 'vfs', size: 0, owner: 'root', date: '' }]);
@@ -97,15 +97,15 @@ export class VFS {
     if (cached) {
       parentItems = cached.data;
     } else {
-      const parentResult = await vfsDispatcher.list(parentPath, options);
+      const parentResult: Result<ListingItem[]> = await vfsDispatcher.list(parentPath, options) as Result<ListingItem[]>;
       if (parentResult.ok) {
-        parentItems = parentResult.value as unknown as ListingItem[];
+        parentItems = parentResult.value;
         listCache.cache_set(parentPath, parentItems);
       }
     }
 
     if (parentItems) {
-      const match = parentItems.find((item: ListingItem) => item.name === baseName);
+      const match: ListingItem | undefined = parentItems.find((item: ListingItem) => item.name === baseName);
       if (match) return Ok([match]);
     }
 

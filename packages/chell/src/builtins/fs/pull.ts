@@ -5,6 +5,8 @@
  * Accepts one or more `/net/pacs/queries/...` VFS paths (query, study, or series level)
  * and materialises the matching DICOM series into ChRIS storage.
  *
+ * Progress is driven by LONK WebSocket push notifications (api/v1/pacs/ws/).
+ *
  * @module
  */
 
@@ -13,12 +15,12 @@ import cliProgress from 'cli-progress';
 import {
   errorStack,
   chrisContext,
+  chrisConnection,
   Context,
   pacsQuery_resultDecode,
   pacsQueries_create,
   pacsRetrieve_create,
   pacsServers_list,
-  pacsRetrieve_statusForQuery,
   PACSQueryCreateData,
   PACSRetrieveRecord,
 } from '@fnndsc/cumin';
@@ -27,11 +29,22 @@ import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
 
-const POLL_INTERVAL_MS = 2_000;
 const STALL_TIMEOUT_MS = 30_000;
 const SERIES_TIMEOUT_MS = 5 * 60 * 1_000;
+const CHECKER_INTERVAL_MS = 2_000;
 
 type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error';
+
+// Node.js v22+ native WebSocket — declare minimal interface for type safety
+interface NativeWebSocket {
+  addEventListener(type: 'open', listener: () => void): void;
+  addEventListener(type: 'message', listener: (event: { data: string }) => void): void;
+  addEventListener(type: 'error', listener: () => void): void;
+  addEventListener(type: 'close', listener: () => void): void;
+  send(data: string): void;
+  close(): void;
+}
+declare const WebSocket: { new(url: string): NativeWebSocket };
 
 /**
  * Runtime state for a single series being pulled.
@@ -39,11 +52,12 @@ type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | '
  * @property label - Display label: `queryDesc|studyDesc|seriesDesc`
  * @property seriesUID - DICOM SeriesInstanceUID
  * @property studyUID - DICOM StudyInstanceUID
+ * @property pacsName - PACS identifier (pacs_name for LONK subscriptions)
  * @property expectedFiles - File count from original query decode
  * @property syntheticQueryId - ID of the per-series synthetic PACSQuery
  * @property retrieveId - ID of the PACSRetrieve created for syntheticQueryId
  * @property status - Current lifecycle status
- * @property actualFiles - Most recent file count from ChRIS storage
+ * @property actualFiles - Most recent file count from LONK progress updates
  * @property lastProgressFiles - `actualFiles` at last progress-update tick (stall detection)
  * @property lastProgressTime - Timestamp of last progress-update tick
  * @property startTime - Timestamp when retrieve was fired
@@ -52,6 +66,7 @@ interface SeriesPullTask {
   label: string;
   seriesUID: string;
   studyUID: string;
+  pacsName: string;
   expectedFiles: number;
   syntheticQueryId: number | null;
   retrieveId: number | null;
@@ -72,6 +87,7 @@ function pacs_tagValueExtract(val: unknown): string {
   if (val && typeof val === 'object') {
     const r = val as Record<string, unknown>;
     if ('value' in r) return String(r.value ?? '');
+    if ('Value' in r && Array.isArray(r.Value) && r.Value.length > 0) return String(r.Value[0] ?? '');
   }
   return String(val ?? '');
 }
@@ -107,9 +123,10 @@ function folderUID_get(folder: string, prefix: string): string {
  * Supports query-level, study-level, and series-level paths.
  *
  * @param pathStr - Absolute VFS path to a query, study, or series directory.
+ * @param fallbackPacsName - PACS identifier to use if RetrieveAETitle absent in study JSON.
  * @returns Array of SeriesPullTask (without syntheticQueryId/retrieveId — filled later).
  */
-async function path_seriesCollect(pathStr: string): Promise<SeriesPullTask[]> {
+async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Promise<SeriesPullTask[]> {
   const effective = pathStr.startsWith('/') ? pathStr : '/' + pathStr;
   const parts = effective.split('/').filter(Boolean);
 
@@ -168,6 +185,10 @@ async function path_seriesCollect(pathStr: string): Promise<SeriesPullTask[]> {
 
     const studyLabel = pacs_tagValueExtract(studyObj.StudyDescription ?? 'Study').replace(/[\s/]/g, '_');
 
+    // pacs_name for LONK = RetrieveAETitle from the DICOM C-FIND response
+    const retrieveAETitle = pacs_tagValueExtract(studyObj.RetrieveAETitle ?? '');
+    const pacsName = retrieveAETitle || fallbackPacsName;
+
     const seriesArr = (
       Array.isArray(studyObj.series) ? studyObj.series :
       Array.isArray(studyObj.Series) ? studyObj.Series :
@@ -189,6 +210,7 @@ async function path_seriesCollect(pathStr: string): Promise<SeriesPullTask[]> {
         label: `${queryLabel}|${studyLabel}|${seriesLabel}`,
         seriesUID,
         studyUID,
+        pacsName,
         expectedFiles,
         syntheticQueryId: null,
         retrieveId: null,
@@ -239,32 +261,23 @@ async function task_fire(task: SeriesPullTask, pacsserver: string): Promise<void
 }
 
 /**
- * Polls the retrieve status for a task and updates actualFiles.
+ * Constructs a LONK WebSocket URL from a download token response.
  *
- * @param task - Task to poll (mutated in place).
+ * @param tokenUrl - The download token resource URL (e.g. https://host/api/v1/downloadtokens/42/).
+ * @param token - The actual download token string.
+ * @returns WebSocket URL for the LONK endpoint.
  */
-async function task_poll(task: SeriesPullTask): Promise<void> {
-  if (task.syntheticQueryId === null) return;
-
-  const statusResult = await pacsRetrieve_statusForQuery(task.syntheticQueryId);
-  if (!statusResult.ok) return; // synthetic query result not yet populated — keep current count
-
-  for (const study of statusResult.value.studies) {
-    for (const series of study.series) {
-      if (series.seriesInstanceUID === task.seriesUID) {
-        task.actualFiles = series.actualFiles;
-        if (task.expectedFiles === 0 && series.expectedFiles > 0) {
-          task.expectedFiles = series.expectedFiles;
-        }
-      }
-    }
-  }
+function lonkWsUrl_build(tokenUrl: string, token: string): string {
+  return tokenUrl
+    .replace(/^http(s?):\/\//, (_m: string, s: string) => `ws${s}://`)
+    .replace(/v1\/downloadtokens\/\d+\//, `v1/pacs/ws/?token=${token}`);
 }
 
 /**
  * Pulls one or more `/net/pacs/queries/...` VFS paths into ChRIS storage.
  *
- * Blocking by default: shows per-series MultiBar progress, exits non-zero on partial failure.
+ * Blocking by default: shows per-series MultiBar progress via LONK WebSocket,
+ * exits non-zero on partial failure.
  * With `--nowait`: fires retrieves and prints `<seriesUID> <retrieveId>` per line, then returns.
  *
  * @param args - Command arguments (VFS paths, optional flags).
@@ -300,10 +313,19 @@ export async function builtin_pull(args: string[]): Promise<void> {
     }
   }
 
+  // Resolve PACS server identifier for LONK pacs_name fallback
+  let pacsIdentifier: string = pacsserver;
+  if (/^\d+$/.test(pacsserver)) {
+    const allServers = await pacsServers_list();
+    if (allServers.ok) {
+      const srv = allServers.value.find(s => s.id === Number(pacsserver));
+      if (srv?.identifier) pacsIdentifier = srv.identifier;
+    }
+  }
+
   // Resolve any non-VFS args (query expressions) to VFS paths first
   const resolvedPaths: string[] = [];
   for (const rawPath of paths) {
-    // Resolve relative paths against CWD first
     const p: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
     if (p.startsWith('/net/pacs')) {
       resolvedPaths.push(p);
@@ -330,7 +352,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
   // Collect all series across all resolved paths
   const allTasks: SeriesPullTask[] = [];
   for (const p of resolvedPaths) {
-    const tasks = await path_seriesCollect(p);
+    const tasks = await path_seriesCollect(p, pacsIdentifier);
     if (tasks.length === 0) {
       console.error(chalk.yellow(`pull: No series found under: ${p}`));
     }
@@ -387,65 +409,126 @@ export async function builtin_pull(args: string[]): Promise<void> {
     barMap.set(t, bar);
   }
 
-  const pollLoop = async (): Promise<void> => {
-    const pending = allTasks.filter(t =>
-      t.status !== 'pulled' && t.status !== 'timeout' && t.status !== 'stalled',
-    );
-
-    if (pending.length === 0) return;
-
-    await Promise.all(pending.map(t => task_poll(t)));
-
-    const now = Date.now();
-
-    for (const t of pending) {
-      const bar = barMap.get(t);
-      if (!bar) continue;
-
-      // Stall detection
-      if (t.actualFiles > t.lastProgressFiles) {
-        t.lastProgressFiles = t.actualFiles;
-        t.lastProgressTime = now;
-      } else if (t.actualFiles > 0 && now - t.lastProgressTime > STALL_TIMEOUT_MS) {
-        t.status = 'stalled';
-        bar.update(t.actualFiles, { label: `${t.label} [STALLED]` });
-        continue;
-      }
-
-      // Timeout detection
-      if (t.startTime > 0 && now - t.startTime > SERIES_TIMEOUT_MS) {
-        t.status = 'timeout';
-        bar.update(t.actualFiles, { label: `${t.label} [TIMEOUT]` });
-        continue;
-      }
-
-      // Completion check
-      if (t.expectedFiles > 0 && t.actualFiles >= t.expectedFiles) {
-        t.status = 'pulled';
-        bar.update(t.expectedFiles, { label: `${t.label} [DONE]` });
-        continue;
-      }
-
-      if (t.actualFiles > 0) t.status = 'pulling';
-      bar.update(t.actualFiles, {
-        label: t.label,
-      });
-    }
-  };
-
-  const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
-
-  // Polling loop
-  while (true) {
-    await pollLoop();
-
-    const remaining = allTasks.filter(
-      t => t.status !== 'pulled' && t.status !== 'timeout' && t.status !== 'stalled' && t.status !== 'error',
-    );
-
-    if (remaining.length === 0) break;
-    await sleep(POLL_INTERVAL_MS);
+  // --- LONK WebSocket progress tracking ---
+  const client = await chrisConnection.client_get();
+  if (!client) {
+    multiBar.stop();
+    console.error(chalk.red('pull: Not connected to ChRIS.'));
+    process.exitCode = 1;
+    return;
   }
+
+  const downloadToken = await client.createDownloadToken();
+  const tokenStr = String((downloadToken.data as unknown as Record<string, unknown>).token ?? '');
+  const wsUrl = lonkWsUrl_build(downloadToken.url as string, tokenStr);
+
+  await new Promise<void>((resolve) => {
+    const ws = new WebSocket(wsUrl);
+
+    const taskByUID = new Map<string, SeriesPullTask>(
+      fired.map(t => [t.seriesUID, t]),
+    );
+
+    let resolved = false;
+    const done = (): void => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(checker);
+      try { ws.close(); } catch { /* ignore */ }
+      resolve();
+    };
+
+    // Stall + timeout checker runs every CHECKER_INTERVAL_MS
+    const checker = setInterval(() => {
+      const now = Date.now();
+      let allTerminal = true;
+
+      for (const t of fired) {
+        if (t.status === 'pulled' || t.status === 'error' || t.status === 'stalled' || t.status === 'timeout') {
+          continue;
+        }
+        allTerminal = false;
+        const bar = barMap.get(t);
+
+        if (t.startTime > 0 && now - t.startTime > SERIES_TIMEOUT_MS) {
+          t.status = 'timeout';
+          bar?.update(t.actualFiles, { label: `${t.label} [TIMEOUT]` });
+          continue;
+        }
+
+        if (t.actualFiles > 0 && now - t.lastProgressTime > STALL_TIMEOUT_MS) {
+          t.status = 'stalled';
+          bar?.update(t.actualFiles, { label: `${t.label} [STALLED]` });
+          continue;
+        }
+      }
+
+      if (allTerminal) done();
+    }, CHECKER_INTERVAL_MS);
+
+    ws.addEventListener('open', () => {
+      for (const t of fired) {
+        ws.send(JSON.stringify({
+          SeriesInstanceUID: t.seriesUID,
+          pacs_name: t.pacsName,
+          action: 'subscribe',
+        }));
+      }
+    });
+
+    ws.addEventListener('message', (event: { data: string }) => {
+      try {
+        const outer = JSON.parse(event.data) as Record<string, unknown>;
+        const seriesUID = outer.SeriesInstanceUID as string | undefined;
+        const message = outer.message as Record<string, unknown> | undefined;
+
+        if (!seriesUID || !message) return;
+
+        const t = taskByUID.get(seriesUID);
+        if (!t) return;
+        const bar = barMap.get(t);
+
+        if ('ndicom' in message && typeof message.ndicom === 'number') {
+          // Progress update
+          const n = message.ndicom;
+          t.actualFiles = n;
+          t.lastProgressFiles = n;
+          t.lastProgressTime = Date.now();
+          if (t.status === 'pending') t.status = 'pulling';
+          const total = t.expectedFiles > 0 ? t.expectedFiles : Math.max(n, 1);
+          bar?.setTotal(total);
+          bar?.update(n);
+        } else if ('done' in message && message.done === true) {
+          // Done — series fully received
+          t.status = 'pulled';
+          const finalTotal = t.expectedFiles > 0 ? t.expectedFiles : t.actualFiles || 1;
+          bar?.setTotal(finalTotal);
+          bar?.update(finalTotal, { label: `${t.label} [DONE]` });
+        } else if ('error' in message && typeof message.error === 'string') {
+          t.status = 'error';
+          bar?.update(t.actualFiles, { label: `${t.label} [ERROR]` });
+        }
+        // 'subscribed' acknowledgement — no action needed
+      } catch {
+        // Malformed message — ignore
+      }
+    });
+
+    ws.addEventListener('error', () => {
+      // WS connection failed — mark pending tasks as error and exit
+      for (const t of fired) {
+        if (t.status === 'pending' || t.status === 'pulling') {
+          t.status = 'error';
+          barMap.get(t)?.update(t.actualFiles, { label: `${t.label} [WS ERROR]` });
+        }
+      }
+      done();
+    });
+
+    ws.addEventListener('close', () => {
+      done();
+    });
+  });
 
   multiBar.stop();
 

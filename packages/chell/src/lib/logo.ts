@@ -111,7 +111,7 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
     const colorLine = colorLogoLines[lineIdx];
     const plainLine = plainLogoLines[lineIdx];
 
-    if (lineIdx < 19) {
+    if (lineIdx < 25) {
       const first = plainLine.search(/\S/);
       if (first === -1) {
         lines.push('  ' + colorLine);

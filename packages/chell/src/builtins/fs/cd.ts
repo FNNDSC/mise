@@ -27,8 +27,13 @@ function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefined, va
   if (!folder) {
     return false;
   }
-  const folderPath = folder.data?.path || folder.path;
-  return folderPath === validationPath;
+  const folderPath = folder.data?.path || folder.path || '';
+  
+  // Normalize both by removing all leading and trailing slashes to be robust against API inconsistencies
+  const cleanFolder = folderPath.replace(/^\/+|\/+$/g, '');
+  const cleanValidation = validationPath.replace(/^\/+|\/+$/g, '');
+  
+  return cleanFolder === cleanValidation;
 }
 
 /**

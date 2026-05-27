@@ -8,6 +8,7 @@
 import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions, plugins_listAll } from '@fnndsc/salsa';
 import { builtinCommands_list } from '../../../builtins/help.js';
+import { staticVfs_read, staticVfs_readBinary } from './static_content.js';
 
 /**
  * Static virtual filesystem provider for command and builtin paths.
@@ -143,5 +144,25 @@ export class StaticVfsProvider implements VFSProvider {
       sorted.reverse();
     }
     return sorted;
+  }
+
+  /**
+   * Reads virtual file content under command and builtin static paths.
+   *
+   * @param pathStr - The absolute virtual path of the file to read.
+   * @returns Promise resolving to a Result containing the file contents.
+   */
+  async read(pathStr: string): Promise<Result<string>> {
+    return staticVfs_read(pathStr, this.prefix);
+  }
+
+  /**
+   * Reads virtual file binary content under command and builtin static paths.
+   *
+   * @param pathStr - The absolute virtual path of the file to read.
+   * @returns Promise resolving to a Result containing the file contents as a Buffer.
+   */
+  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+    return staticVfs_readBinary(pathStr, this.prefix);
   }
 }

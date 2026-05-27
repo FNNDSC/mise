@@ -13,6 +13,7 @@ export * from './fs/cat.js';
 export * from './fs/mkdir.js';
 export * from './fs/touch.js';
 export * from './fs/upload.js';
+export * from './fs/pull.js';
 export * from './fs/download.js';
 export * from './fs/chefs.js';
 export * from './fs/tree.js';
@@ -20,6 +21,7 @@ export * from './fs/du.js';
 
 export * from './net/connect.js';
 export * from './net/logout.js';
+export * from './net/query.js';
 
 export * from './sys/context.js';
 export * from './sys/physicalmode.js';

@@ -154,7 +154,7 @@ export function input_complete(line: string, callback: CompleterCallback): void 
   
   // Case 2: Path Completion (Argument to specific commands)
   const cmd = args[0];
-  if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'tree'].includes(cmd)) {
+  if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'tree', 'pull'].includes(cmd)) {
     const word: CompletionWord = completionWord_get(line);
     
     path_complete(word.value).then((matches) => {

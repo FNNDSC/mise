@@ -698,6 +698,9 @@ describe('Builtins - Core Functions', () => {
     });
 
     it('should error on /bin files', async () => {
+      mockChefsCat.mockResolvedValueOnce(Err(new Error('Cannot cat plugins')));
+      errorStack.stack_pop.mockReturnValueOnce({ type: 'error', message: 'Cannot cat plugins yet: pl-dircopy' });
+
       await builtin_cat(['/bin/pl-dircopy']);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Cannot cat plugins'));

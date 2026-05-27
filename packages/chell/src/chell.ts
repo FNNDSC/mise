@@ -912,6 +912,19 @@ export async function chell_start(): Promise<void> {
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/bin'));
 
+  // Register logical-to-physical path resolution hook on the unified salsa vfsDispatcher
+  vfsDispatcher.pathResolver_register(async (logicalPath: string): Promise<string> => {
+    if (session.physicalMode_get()) {
+      return logicalPath;
+    }
+    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
+    const res = await logical_toPhysical(logicalPath);
+    if (res.ok) {
+      return res.value;
+    }
+    throw new Error(`Logical-to-physical resolution failed for path: ${logicalPath}`);
+  });
+
   if (isInteractiveSession) {
     console.log(chalk.green('[+] Session initialized.'));
     boot?.log('ok', 'Session', 'Components initialized');

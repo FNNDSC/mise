@@ -137,18 +137,6 @@ export async function builtin_cat(args: string[]): Promise<void> {
     const pathArg: string = filePaths[i];
     const target: string = await path_resolve(pathArg);
 
-    if (target.startsWith('/bin/')) {
-       console.error(chalk.red(`cat: Cannot cat plugins yet: ${pathArg}`));
-       continue;
-    }
-
-    // Handle /usr/bin/<command> - show help text
-    if (target.startsWith('/usr/bin/')) {
-       const commandName: string = target.substring('/usr/bin/'.length);
-       help_show(commandName);
-       continue;
-    }
-
     // Auto-detect binary files
     const isBinaryFile: boolean = extension_isBinary(target);
 

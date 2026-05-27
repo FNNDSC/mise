@@ -544,6 +544,53 @@ export const helpText: Record<string, CommandHelp> = {
       '! echo "test" > /tmp/file.txt  # Write to host file',
     ],
   },
+  query: {
+    usage: 'query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>]',
+    description: 'Create a PACS query, wait for results, and print the VFS path',
+    options: [
+      '--title <title>      Title for the query record (default: Query <timestamp>)',
+      '--pacsserver <id>    Override PACS server (default: context PACSserver)',
+      '--table              Render results as a table instead of the default list',
+      '--help               Show this help',
+    ],
+    examples: [
+      'query PatientID:1234',
+      'query AccessionNumber:22548684 --title "Hip DDH workup"',
+      'query PatientID:1234,StudyDate:20240101',
+      '',
+      '# Use output path directly with pull',
+      'pull $(query PatientID:1234 | grep "VFS path" | awk \'{print $3}\')',
+    ],
+  },
+  pull: {
+    usage: 'pull [--nowait] <vfs-path|query-expr> [...]',
+    description: 'Pull PACS series into ChRIS storage; accepts VFS paths or query expressions (blocking)',
+    options: [
+      '--nowait    Fire retrieves and exit immediately; prints <seriesUID> <retrieveId> per line',
+      '--help      Show this help',
+    ],
+    examples: [
+      '# Pull all series in a query (blocking)',
+      'pull /net/pacs/queries/42_AccessionNumber:22548684',
+      '',
+      '# Pull a single study',
+      'pull /net/pacs/queries/42_AccessionNumber:22548684/Study_1.2.3_US-Hips_DDH',
+      '',
+      '# Pull a specific series',
+      'pull /net/pacs/queries/42_AccessionNumber:22548684/Study_1.2.3_US-Hips_DDH/Series_1.2.3.4_XR',
+      '',
+      '# Pull multiple paths in one blocking call',
+      'pull /net/pacs/queries/42_AccessionNumber:22548684 /net/pacs/queries/43_PatientID:P001',
+      '',
+      '# Pull directly from a query expression (creates query, waits, then pulls)',
+      'pull PatientID:1234',
+      'pull AccessionNumber:22548684',
+      '',
+      '# Fire-and-forget (scripted)',
+      'pull --nowait /net/pacs/queries/42_AccessionNumber:22548684',
+      '# Output: <seriesUID> <retrieveId>  (one per series, in tree-walk order)',
+    ],
+  },
 };
 
 /**
@@ -551,80 +598,101 @@ export const helpText: Record<string, CommandHelp> = {
  *
  * @param command - The command to display help for.
  */
-export function help_show(command: string): void {
+/**
+ * Formats and returns the detailed help text for a specific command as a string.
+ *
+ * @param command - The command name to retrieve help for.
+ * @returns The formatted help text string, or undefined if no help exists.
+ */
+export function commandHelp_get(command: string): string | undefined {
   const help: CommandHelp | undefined = helpText[command];
 
   if (!help) {
-    console.log(chalk.yellow(`No help available for '${command}'`));
-    console.log(chalk.gray('Type "help" to see all available commands.'));
-    return;
+    return undefined;
   }
 
-  console.log('');
-  console.log(chalk.bold.magenta(command.toUpperCase()));
-  console.log(chalk.gray('─'.repeat(60)));
-  console.log('');
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(chalk.bold.magenta(command.toUpperCase()));
+  lines.push(chalk.gray('─'.repeat(60)));
+  lines.push('');
   
-  console.log(chalk.bold.blue('USAGE'));
+  lines.push(chalk.bold.blue('USAGE'));
   const usageParts = help.usage.split(' ');
   const cmdName = usageParts[0];
   const args = usageParts.slice(1).join(' ');
-  console.log(`  ${chalk.green(cmdName)} ${chalk.cyan(args)}`);
+  lines.push(`  ${chalk.green(cmdName)} ${chalk.cyan(args)}`);
   
-  console.log('');
-  console.log(chalk.bold.blue('DESCRIPTION'));
-  console.log(`  ${help.description}`);
+  lines.push('');
+  lines.push(chalk.bold.blue('DESCRIPTION'));
+  lines.push(`  ${help.description}`);
 
   if (help.options && help.options.length > 0) {
-    console.log('');
-    console.log(chalk.bold.blue('OPTIONS'));
+    lines.push('');
+    lines.push(chalk.bold.blue('OPTIONS'));
     help.options.forEach((opt: string) => {
       const trimmed = opt.trim();
       if (!trimmed) {
-        console.log('');
+        lines.push('');
         return;
       }
       
       // Check if it's a header (ends with :)
       if (trimmed.endsWith(':')) {
-        console.log(`  ${chalk.bold.white(trimmed)}`);
+        lines.push(`  ${chalk.bold.white(trimmed)}`);
         return;
       }
 
       // Try to split by double space (common separator in help definitions)
-      // Regex: Start, (indent), (content), (2+ spaces), (rest)
       const splitMatch = opt.match(/^(\s*)(.*?)(\s{2,})(.*)$/);
       
       if (splitMatch) {
         const [, indent, content, separator, description] = splitMatch;
-        console.log(`  ${indent}${chalk.yellow(content)}${separator}${description}`);
+        lines.push(`  ${indent}${chalk.yellow(content)}${separator}${description}`);
       } else {
-        // Fallback: check if it starts with - (simple flag without aligned description)
+        // Fallback: check if it starts with -
         if (trimmed.startsWith('-')) {
-             console.log(`  ${chalk.yellow(opt)}`);
+          lines.push(`  ${chalk.yellow(opt)}`);
         } else {
-             console.log(`  ${opt}`);
+          lines.push(`  ${opt}`);
         }
       }
     });
   }
 
   if (help.examples && help.examples.length > 0) {
-    console.log('');
-    console.log(chalk.bold.blue('EXAMPLES'));
+    lines.push('');
+    lines.push(chalk.bold.blue('EXAMPLES'));
     help.examples.forEach((ex: string) => {
       const commentIdx = ex.indexOf('#');
       if (commentIdx !== -1) {
         const cmdPart = ex.substring(0, commentIdx);
         const commentPart = ex.substring(commentIdx);
-        console.log(`  ${chalk.white(cmdPart)}${chalk.gray(commentPart)}`);
+        lines.push(`  ${chalk.white(cmdPart)}${chalk.gray(commentPart)}`);
       } else {
-        console.log(`  ${chalk.white(ex)}`);
+        lines.push(`  ${chalk.white(ex)}`);
       }
     });
   }
 
-  console.log('');
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Displays help text for a command.
+ *
+ * @param command - The command to display help for.
+ */
+export function help_show(command: string): void {
+  const helpStr: string | undefined = commandHelp_get(command);
+
+  if (helpStr !== undefined) {
+    console.log(helpStr);
+  } else {
+    console.log(chalk.yellow(`No help available for '${command}'`));
+    console.log(chalk.gray('Type "help" to see all available commands.'));
+  }
 }
 
 /**
@@ -680,7 +748,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     Connection: ['connect', 'logout', 'context'],
     'Single Resource': ['plugin', 'feed'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],
-    PACS: ['pacsservers', 'pacsqueries', 'pacsretrieve'],
+    PACS: ['pacsservers', 'pacsqueries', 'pacsretrieve', 'query', 'pull'],
     'Shell Settings': ['physicalmode', 'timing', 'debug'],
     General: ['help', 'exit', '!'],
   };

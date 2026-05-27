@@ -39,6 +39,14 @@ export class Session {
     const nodeStorageProvider = new NodeStorageProvider();
     // Initialize the connection singleton which also initializes config
     this._connection = await chrisConnection_init(nodeStorageProvider);
+
+    try {
+      // Also initialize chili's duplicate copy of the connection singleton to align monorepo package boundaries
+      const { chrisConnection_init: chiliConnection_init } = await import('@fnndsc/chili/utils');
+      await chiliConnection_init(nodeStorageProvider);
+    } catch (e: unknown) {
+      // Fail silently if chili utilities connection initialization is not needed/available
+    }
   }
 
   /**

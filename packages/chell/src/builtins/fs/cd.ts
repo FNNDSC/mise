@@ -63,7 +63,16 @@ export async function builtin_cd(args: string[]): Promise<void> {
       vfsDispatcher.provider_get(cleanPath).prefix !== '';
 
     if (isVirtual) {
-      // Validate the virtual path exists before cd'ing
+      // Structural VFS container paths are always valid — skip the expensive list() call.
+      // These are virtual dirs that exist by definition, not via API query.
+      const structuralVfsPaths = ['/', '/net', '/net/pacs', '/net/pacs/queries'];
+      if (structuralVfsPaths.includes(cleanPath)) {
+        await session.setCWD(cleanPath);
+        return;
+      }
+
+      // For deeper VFS paths (e.g. /net/pacs/queries/<id>), validate and cache the result
+      // so a subsequent `ls` doesn't need to re-fetch.
       const listResult = await vfsDispatcher.list(cleanPath);
       if (!listResult.ok) {
         const { errorStack } = await import('@fnndsc/cumin');
@@ -72,6 +81,11 @@ export async function builtin_cd(args: string[]): Promise<void> {
         console.error(chalk.red(`cd: ${pathArg}: ${detail}`));
         return;
       }
+
+      // Cache the listing so `ls` is instant after `cd`
+      const { listCache_get } = await import('@fnndsc/cumin');
+      listCache_get().cache_set(cleanPath, listResult.value);
+
       await session.setCWD(cleanPath);
       return;
     }

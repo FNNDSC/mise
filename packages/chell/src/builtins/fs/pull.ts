@@ -422,8 +422,8 @@ export async function builtin_pull(args: string[]): Promise<void> {
     process.exitCode = 1;
   }
 
-  // Report CUBE paths via cubepath
-  await builtin_cubepath(resolvedPaths);
+  // Report CUBE paths via cubepath; --retry handles pacsseries DB lag post-pull
+  await builtin_cubepath([...resolvedPaths, '--retry']);
 
   console.log(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
 }

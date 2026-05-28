@@ -20,6 +20,7 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'List directory contents',
     options: [
       '-l          Long format (detailed information, shows feed/plugin titles)',
+      '-1          One entry per line (single-column)',
       '-h          Human-readable sizes (use with -l)',
       '-f, --refresh  Force refresh (ignore cache)',
       '-r, --reverse  Reverse sort order',

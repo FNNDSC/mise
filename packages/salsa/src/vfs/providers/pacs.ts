@@ -177,13 +177,15 @@ export class PacsVfsProvider implements VFSProvider {
 
           const hasResult: boolean = typeof row.result === "string" && row.result.trim().length > 0;
           const noHitsSuffix: string = hasResult ? "" : "_no-hits";
+          const ownerUsername: string = typeof row.owner_username === "string" ? row.owner_username : "";
+          const userSuffix: string = ownerUsername ? `_${ownerUsername}` : "";
 
           const creationDate: string = typeof row.creation_date === "string" ? row.creation_date : new Date().toISOString();
           return {
-            name: `${queryDesc}_qid:${queryId}${noHitsSuffix}`,
+            name: `${queryDesc}_qid:${queryId}${userSuffix}${noHitsSuffix}`,
             type: "dir",
             size: 0,
-            owner: typeof row.owner_username === "string" ? row.owner_username : "system",
+            owner: ownerUsername || "system",
             date: creationDate,
           };
         });

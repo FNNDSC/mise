@@ -9,7 +9,7 @@
  */
 
 import chalk from 'chalk';
-import { pacsServers_list } from '@fnndsc/cumin';
+import { Client } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_show } from '../help.js';
 import { path_resolve } from '../utils.js';
@@ -76,7 +76,7 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
     return;
   }
 
-  const client = await session.connection.client_get();
+  const client: Client | null = await session.connection.client_get();
   if (!client) {
     console.error(chalk.red('cubepath: Not connected to ChRIS.'));
     process.exitCode = 1;
@@ -85,17 +85,18 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
 
   const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
 
+  type SeriesResult = { info: PACSSeriesInfo; cubePath: SeriesCubePath | null };
+
   // Resolve all series in parallel — no retry needed (cubepath is not called immediately post-pull)
-  const results: Array<{ info: PACSSeriesInfo; cubePath: SeriesCubePath | null }> =
+  const results: SeriesResult[] =
     await Promise.all(
-      series.map(async (info: PACSSeriesInfo) => {
+      series.map(async (info: PACSSeriesInfo): Promise<SeriesResult> => {
         const cubePath: SeriesCubePath | null = await series_cubePathGet(info.seriesUID, pacsClient, 1, 0);
         return { info, cubePath };
       }),
     );
 
-  // Compute label column width for alignment
-  const maxLabelLen: number = Math.max(...results.map(r => r.info.seriesLabel.length));
+  const maxLabelLen: number = Math.max(...results.map((r: SeriesResult) => r.info.seriesLabel.length));
 
   let notInCube: number = 0;
   for (const { info, cubePath } of results) {

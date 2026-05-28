@@ -19,6 +19,7 @@ import {
   pacsRetrieve_create,
   PACSQueryCreateData,
   PACSRetrieveRecord,
+  Client,
 } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_show } from '../help.js';
@@ -226,7 +227,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
   // --- LONK WebSocket: open and subscribe BEFORE firing retrieves ---
   // This eliminates the race condition where a fast/small series completes
   // before chell has a chance to subscribe, causing LONK to never notify us.
-  const client = await session.connection.client_get();
+  const client: Client | null = await session.connection.client_get();
   if (!client) {
     console.error(chalk.red('pull: Not connected to ChRIS.'));
     process.exitCode = 1;

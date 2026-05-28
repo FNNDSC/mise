@@ -232,9 +232,11 @@ export async function series_cubePathGet(
       const series = items[0] as { data?: { folder_path?: string } };
       const raw: string | undefined = series?.data?.folder_path;
       if (!raw) continue;
+      // Display path has leading slash; fname query uses raw (API stores without leading slash)
       const folderPath: string = raw.startsWith('/') ? raw : `/${raw}`;
+      const fnameQuery: string = raw.startsWith('/') ? raw.slice(1) : raw;
 
-      const fileList = await pacsClient.getPACSFiles({ fname: folderPath, limit: 1 });
+      const fileList = await pacsClient.getPACSFiles({ fname: fnameQuery, limit: 1 });
       const fileCount: number = Math.max(0, fileList.totalCount);
 
       return { folderPath, fileCount };

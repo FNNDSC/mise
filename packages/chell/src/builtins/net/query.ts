@@ -79,14 +79,16 @@ export function queryExpr_parse(expr: string): Record<string, string> | null {
  *
  * @param queryId - The numeric query ID.
  * @param queryObj - The parsed query key-value pairs.
+ * @param username - Optional username to embed in the folder name.
  * @returns Absolute VFS path string.
  */
-export function queryVfsPath_build(queryId: number, queryObj: Record<string, string>): string {
+export function queryVfsPath_build(queryId: number, queryObj: Record<string, string>, username?: string): string {
   const parts: string[] = Object.entries(queryObj)
     .filter(([, v]) => v.trim().length > 0)
     .map(([k, v]) => `${k}:${v}`);
   const desc: string = parts.join('_') || 'query';
-  return `/net/pacs/queries/${desc}_qid:${queryId}`;
+  const userSuffix: string = username ? `_${username}` : '';
+  return `/net/pacs/queries/${desc}_qid:${queryId}${userSuffix}`;
 }
 
 /**
@@ -121,7 +123,9 @@ export async function pacsQuery_createAndWait(
   }
 
   const queryId = createResult.value.id;
-  const vfsPath = queryVfsPath_build(queryId, queryObj);
+  const ownerUsername: string | undefined =
+    typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined;
+  const vfsPath = queryVfsPath_build(queryId, queryObj, ownerUsername);
   const deadline = Date.now() + QUERY_TIMEOUT_MS;
 
   const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));

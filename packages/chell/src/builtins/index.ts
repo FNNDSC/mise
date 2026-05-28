@@ -25,6 +25,7 @@ export * from './net/query.js';
 
 export * from './sys/context.js';
 export * from './sys/physicalmode.js';
+export * from './sys/prompt.js';
 export * from './sys/timing.js';
 export * from './debug.js';
 export * from './help.js';

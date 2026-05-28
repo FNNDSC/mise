@@ -431,6 +431,20 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Display current ChRIS context information',
     examples: ['context'],
   },
+  prompt: {
+    usage: 'prompt [list | <theme>]',
+    description: 'List available prompt themes or switch the active theme',
+    options: [
+      'list        Show all available themes (marks the active one)',
+      '<theme>     Switch to the named theme immediately',
+    ],
+    examples: [
+      'prompt             # Show current theme',
+      'prompt list        # List all themes',
+      'prompt default     # Switch to single-line smart-truncation theme',
+      'prompt p10k        # Switch to two-line Powerlevel10k-inspired theme',
+    ],
+  },
   physicalmode: {
     usage: 'physicalmode [on|off]',
     description: 'Toggle or display physical filesystem mode',
@@ -749,7 +763,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     'Single Resource': ['plugin', 'feed'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],
     PACS: ['pacsservers', 'pacsqueries', 'pacsretrieve', 'query', 'pull'],
-    'Shell Settings': ['physicalmode', 'timing', 'debug'],
+    'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
     General: ['help', 'exit', '!'],
   };
 

@@ -13,48 +13,10 @@
 
 import chalk from 'chalk';
 import type { PromptContext, PromptTheme } from './index.js';
+import { ansi_visibleLength, path_truncate } from './utils.js';
 
 /** Fraction of terminal width allowed before path truncation kicks in. */
 const FILL_RATIO: number = 0.8;
-
-/**
- * Returns the visible (non-ANSI) length of a string.
- *
- * @param s - String possibly containing ANSI escape codes.
- * @returns Number of visible columns.
- */
-function ansi_visibleLength(s: string): number {
-  return s.replace(/\x1b\[[0-9;]*m/g, '').length;
-}
-
-/**
- * Truncates a filesystem path to fit within `maxLen` visible columns.
- *
- * Drops leading path segments (oldest ancestors) replacing them with
- * `...`, then — if the leaf alone still exceeds the budget — truncates
- * the leaf itself from the front.
- *
- * @param path - Absolute or relative path string.
- * @param maxLen - Maximum number of visible columns allowed.
- * @returns Truncated path string (no ANSI codes).
- */
-function path_truncate(path: string, maxLen: number): string {
-  if (maxLen <= 0) return '...';
-  if (path.length <= maxLen) return path;
-
-  const segments: string[] = path.split('/').filter(Boolean);
-
-  // Drop ancestors from the front until it fits
-  for (let drop: number = 1; drop < segments.length; drop++) {
-    const candidate: string = '.../' + segments.slice(drop).join('/');
-    if (candidate.length <= maxLen) return candidate;
-  }
-
-  // Even the leaf alone won't fit — front-truncate it
-  const leaf: string = segments[segments.length - 1] ?? path;
-  const budget: number = maxLen - 3; // reserve 3 chars for '...'
-  return '...' + leaf.slice(-Math.max(budget, 0));
-}
 
 /**
  * Default single-line prompt theme with smart path truncation.

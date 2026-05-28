@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack, chrisConnection } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { commandHelp_get } from '../../../builtins/help.js';
 import chalk from 'chalk';
 import { session } from '../../../session/index.js';

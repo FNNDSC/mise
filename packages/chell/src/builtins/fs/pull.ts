@@ -71,14 +71,14 @@ interface SeriesPullTask {
 }
 
 /**
- * Minimal slice of the ChRIS API client used to locate pulled PACS files.
+ * Minimal slice of the ChRIS API client used to resolve the CUBE folder path for a pulled series.
  */
-interface ChRISPACSFilesClient {
-  getPACSFiles(
-    params: { fname_icontains: string; limit: number },
+interface ChRISPACSSeriesClient {
+  getPACSSeriesList(
+    params: { SeriesInstanceUID: string; limit: number },
     timeout?: number,
   ): Promise<{
-    getItems(): Array<{ data: { fname: string } }>;
+    getItems(): Array<unknown>;
   }>;
 }
 
@@ -553,14 +553,15 @@ export async function builtin_pull(args: string[]): Promise<void> {
   // Resolve CUBE filesystem paths for all successfully pulled series
   const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
   if (pulledTasks.length > 0) {
-    const pacsClient: ChRISPACSFilesClient = client as unknown as ChRISPACSFilesClient;
+    const pacsClient: ChRISPACSSeriesClient = client as unknown as ChRISPACSSeriesClient;
     await Promise.all(pulledTasks.map(async (t: SeriesPullTask): Promise<void> => {
       try {
-        const pacsFileList = await pacsClient.getPACSFiles({ fname_icontains: t.seriesUID, limit: 1 }, 5_000);
-        const items: Array<{ data: { fname: string } }> = pacsFileList.getItems();
+        const seriesList = await pacsClient.getPACSSeriesList({ SeriesInstanceUID: t.seriesUID, limit: 1 }, 5_000);
+        const items: Array<unknown> = seriesList.getItems();
         if (items.length > 0) {
-          const fname: string = items[0].data.fname;
-          t.cubePathDir = fname.substring(0, fname.lastIndexOf('/'));
+          const series = items[0] as { data?: { folder_path?: string } };
+          const folderPath: string | undefined = series?.data?.folder_path;
+          if (folderPath) t.cubePathDir = folderPath;
         }
       } catch {
         // path unavailable — silently omit

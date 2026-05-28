@@ -123,7 +123,7 @@ export class VFS {
    * @param targetPath - The path to list. If empty, uses CWD.
    * @param options - Listing options (long, human, sort, reverse, directory).
    */
-  async list(targetPath?: string, options: { long?: boolean, human?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
+  async list(targetPath?: string, options: { long?: boolean, human?: boolean, oneColumn?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
     // Resolve effective path for cache checking
     const cwd: string = await session.getCWD();
     const effectivePath: string = targetPath
@@ -174,7 +174,7 @@ export class VFS {
     if (options.long) {
       console.log(long_render(result.value, { human: !!options.human }));
     } else {
-      console.log(grid_render(result.value));
+      console.log(grid_render(result.value, { oneColumn: !!options.oneColumn }));
     }
 
     // If we served stale cache, show indicator and refresh in background

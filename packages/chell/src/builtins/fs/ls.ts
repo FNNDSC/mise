@@ -36,12 +36,14 @@ export async function builtin_ls(args: string[]): Promise<void> {
   const options: {
     long: boolean;
     human: boolean;
+    oneColumn: boolean;
     sort: 'name' | 'size' | 'date' | 'owner';
     reverse: boolean;
     directory: boolean;
   } = {
     long: !!parsed['l'],
     human: !!parsed['h'],
+    oneColumn: !!parsed['1'],
     sort: sortBy,
     reverse: !!parsed['reverse'] || !!parsed['r'],
     directory: !!parsed['d']

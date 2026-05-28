@@ -219,24 +219,26 @@ export async function series_cubePathGet(
   maxAttempts: number = 4,
   retryDelayMs: number = 2_000,
 ): Promise<SeriesCubePath | null> {
-  const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+  const sleep = (ms: number): Promise<void> => new Promise((r: (v: void) => void) => setTimeout(r, ms));
 
   for (let attempt: number = 0; attempt < maxAttempts; attempt++) {
     try {
       if (attempt > 0) await sleep(retryDelayMs);
 
-      const seriesList = await pacsClient.getPACSSeriesList({ SeriesInstanceUID: seriesUID, limit: 1 });
+      const seriesList: { getItems(): Array<unknown>; totalCount: number } =
+        await pacsClient.getPACSSeriesList({ SeriesInstanceUID: seriesUID, limit: 1 });
       const items: Array<unknown> = seriesList.getItems();
       if (items.length === 0) continue;
 
-      const series = items[0] as { data?: { folder_path?: string } };
+      const series: { data?: { folder_path?: string } } = items[0] as { data?: { folder_path?: string } };
       const raw: string | undefined = series?.data?.folder_path;
       if (!raw) continue;
       // Display path has leading slash; fname query uses raw (API stores without leading slash)
       const folderPath: string = raw.startsWith('/') ? raw : `/${raw}`;
       const fnameQuery: string = raw.startsWith('/') ? raw.slice(1) : raw;
 
-      const fileList = await pacsClient.getPACSFiles({ fname: fnameQuery, limit: 1 });
+      const fileList: { getItems(): Array<unknown>; totalCount: number } =
+        await pacsClient.getPACSFiles({ fname: fnameQuery, limit: 1 });
       const fileCount: number = Math.max(0, fileList.totalCount);
 
       return { folderPath, fileCount };

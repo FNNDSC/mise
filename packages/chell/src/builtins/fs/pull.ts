@@ -6,6 +6,7 @@
  * and materialises the matching DICOM series into ChRIS storage.
  *
  * Progress is driven by LONK WebSocket push notifications (api/v1/pacs/ws/).
+ * Use `--retry N` to automatically re-fire retrieves for series that received no LONK activity.
  *
  * @module
  */
@@ -27,11 +28,11 @@ import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
 import {
+  ChRISPACSClient,
   PACSSeriesInfo,
-  pacs_tagValueExtract,
-  folderUID_get,
   pacs_seriesCollect,
   pacsServer_resolve,
+  series_cubePathGet,
 } from '../net/pacsUtils.js';
 import { builtin_cubepath } from '../net/cubepath.js';
 
@@ -57,6 +58,7 @@ type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | '
  * @property lastProgressFiles - `actualFiles` at last progress-update tick (stall detection)
  * @property lastProgressTime - Timestamp of last progress-update tick
  * @property startTime - Timestamp when retrieve was fired
+ * @property lonkConfirmed - True only if LONK sent an explicit `done` message for this series
  * @property cubePathDir - CUBE filesystem directory where the series landed (resolved post-pull)
  */
 interface SeriesPullTask {
@@ -72,12 +74,23 @@ interface SeriesPullTask {
   lastProgressFiles: number;
   lastProgressTime: number;
   startTime: number;
+  lonkConfirmed: boolean;
   cubePathDir: string | null;
 }
 
+/**
+ * Minimal ChRIS API client slice for creating download tokens.
+ */
+interface ChRISTokenClient {
+  createDownloadToken(): Promise<{ data: unknown; url: unknown }>;
+}
 
 /**
  * Walks a VFS path and returns SeriesPullTask array, delegating collection to pacsUtils.
+ *
+ * @param pathStr - Absolute VFS path to a query, study, or series directory.
+ * @param fallbackPacsName - PACS identifier used when RetrieveAETitle is absent.
+ * @returns Array of SeriesPullTask ready for firing.
  */
 async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Promise<SeriesPullTask[]> {
   const infos: PACSSeriesInfo[] = await pacs_seriesCollect(pathStr, fallbackPacsName, 'pull');
@@ -94,6 +107,7 @@ async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Pr
     lastProgressFiles: 0,
     lastProgressTime: Date.now(),
     startTime: 0,
+    lonkConfirmed: false,
     cubePathDir: null,
   }));
 }
@@ -120,7 +134,7 @@ async function task_fire(task: SeriesPullTask, pacsserver: string): Promise<void
     return;
   }
 
-  const syntheticQueryId = queryResult.value.id;
+  const syntheticQueryId: number = queryResult.value.id;
   const retrieveResult = await pacsRetrieve_create(syntheticQueryId);
   if (!retrieveResult.ok) {
     task.status = 'error';
@@ -135,7 +149,7 @@ async function task_fire(task: SeriesPullTask, pacsserver: string): Promise<void
 /**
  * Constructs a LONK WebSocket URL from a download token response.
  *
- * @param tokenUrl - The download token resource URL (e.g. https://host/api/v1/downloadtokens/42/).
+ * @param tokenUrl - The download token resource URL.
  * @param token - The actual download token string.
  * @returns WebSocket URL for the LONK endpoint.
  */
@@ -146,107 +160,32 @@ function lonkWsUrl_build(tokenUrl: string, token: string): string {
 }
 
 /**
- * Pulls one or more `/net/pacs/queries/...` VFS paths into ChRIS storage.
+ * Opens a LONK WebSocket, fires retrieves for the given tasks, and blocks until all
+ * tasks reach a terminal state. Mutates each task's status, actualFiles, and lonkConfirmed.
  *
- * Blocking by default: shows per-series MultiBar progress via LONK WebSocket,
- * exits non-zero on partial failure.
- * With `--nowait`: fires retrieves and prints `<seriesUID> <retrieveId>` per line, then returns.
- *
- * @param args - Command arguments (VFS paths, optional flags).
- * @example
- * pull /net/pacs/queries/42_AccessionNumber:22548684
- * pull --nowait /net/pacs/queries/42_AccessionNumber:22548684/Study_1.2.3_US-Hips
+ * @param tasks - Tasks to subscribe, fire, and watch.
+ * @param pacsserver - Resolved PACS server identifier.
+ * @param client - Authenticated ChRIS API client.
+ * @returns Number of tasks that failed to fire their retrieve.
  */
-export async function builtin_pull(args: string[]): Promise<void> {
-  if (args_checkHasHelpFlag(args, 'pull')) {
-    help_show('pull');
-    return;
-  }
-
-  const nowait = args.includes('--nowait');
-  const paths = args.filter(a => !a.startsWith('--'));
-
-  if (paths.length === 0) {
-    console.error(chalk.red('pull: No paths specified. Usage: pull [--nowait] <vfs-path> [...]'));
-    process.exitCode = 1;
-    return;
-  }
-
-  const pacsIdentifier: string | null = await pacsServer_resolve();
-  if (!pacsIdentifier) {
-    console.error(chalk.red('pull: No PACS server available. Set context with: context set PACSserver <id>'));
-    process.exitCode = 1;
-    return;
-  }
-  // pacsserver ID needed for pacsQueries_create; pacsIdentifier used for LONK pacs_name
-  const pacsserver: string = pacsIdentifier;
-
-  // Resolve any non-VFS args (query expressions) to VFS paths first
-  const resolvedPaths: string[] = [];
-  for (const rawPath of paths) {
-    const p: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
-    if (p.startsWith('/net/pacs')) {
-      resolvedPaths.push(p);
-    } else if (queryExpr_parse(rawPath)) {
-      spinner.start(`Querying PACS for ${p}...`, true);
-      const qResult = await pacsQuery_createAndWait(
-        p,
-        `pull_${p}`,
-        pacsserver as string,
-        (msg: string) => spinner.updateMessage(msg),
-      );
-      spinner.stop();
-      if (qResult) {
-        console.log(chalk.gray(`  → ${qResult.vfsPath}`));
-        resolvedPaths.push(qResult.vfsPath);
-      } else {
-        console.error(chalk.red(`pull: Query failed for: ${p}`));
-      }
-    } else {
-      console.error(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
-    }
-  }
-
-  // Collect all series across all resolved paths
-  const allTasks: SeriesPullTask[] = [];
-  for (const p of resolvedPaths) {
-    const tasks = await path_seriesCollect(p, pacsIdentifier);
-    if (tasks.length === 0) {
-      console.error(chalk.yellow(`pull: No series found under: ${p}`));
-    }
-    allTasks.push(...tasks);
-  }
-
-  if (allTasks.length === 0) {
-    console.error(chalk.red('pull: No series to retrieve.'));
-    process.exitCode = 1;
-    return;
-  }
-
-  // --- LONK WebSocket: open and subscribe BEFORE firing retrieves ---
-  // This eliminates the race condition where a fast/small series completes
-  // before chell has a chance to subscribe, causing LONK to never notify us.
-  const client: Client | null = await session.connection.client_get();
-  if (!client) {
-    console.error(chalk.red('pull: Not connected to ChRIS.'));
-    process.exitCode = 1;
-    return;
-  }
-
-  const downloadToken = await client.createDownloadToken();
+async function tasks_pullWatch(
+  tasks: SeriesPullTask[],
+  pacsserver: string,
+  client: Client,
+): Promise<number> {
+  const tokenClient: ChRISTokenClient = client as unknown as ChRISTokenClient;
+  const downloadToken = await tokenClient.createDownloadToken();
   const tokenStr: string = String((downloadToken.data as unknown as Record<string, unknown>).token ?? '');
   const wsUrl: string = lonkWsUrl_build(downloadToken.url as string, tokenStr);
 
   const ws: WebSocket = new WebSocket(wsUrl);
 
-  // Await WS open before proceeding
-  await new Promise<void>((openResolve, openReject) => {
+  await new Promise<void>((openResolve: () => void, openReject: (err: Error) => void) => {
     ws.once('open', openResolve);
     ws.once('error', (err: Error) => openReject(err));
   });
 
-  // Subscribe all series now, before retrieves are fired
-  for (const t of allTasks) {
+  for (const t of tasks) {
     ws.send(JSON.stringify({
       SeriesInstanceUID: t.seriesUID,
       pacs_name: t.pacsName,
@@ -254,33 +193,16 @@ export async function builtin_pull(args: string[]): Promise<void> {
     }));
   }
 
-  // Fire all retrieves in parallel
-  await Promise.all(allTasks.map((t: SeriesPullTask) => task_fire(t, pacsserver as string)));
+  await Promise.all(tasks.map((t: SeriesPullTask): Promise<void> => task_fire(t, pacsserver)));
 
-  const fired: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'error');
-  const firingErrors: number = allTasks.length - fired.length;
-
-  if (nowait) {
-    ws.close();
-    for (const t of allTasks) {
-      if (t.retrieveId !== null) {
-        console.log(`${t.seriesUID} ${t.retrieveId}`);
-      } else {
-        console.log(`${t.seriesUID} ERROR`);
-      }
-    }
-    if (firingErrors > 0) process.exitCode = 1;
-    return;
-  }
+  const fired: SeriesPullTask[] = tasks.filter((t: SeriesPullTask) => t.status !== 'error');
+  const firingErrors: number = tasks.length - fired.length;
 
   if (fired.length === 0) {
     ws.close();
-    console.error(chalk.red('pull: All retrieve requests failed.'));
-    process.exitCode = 1;
-    return;
+    return firingErrors;
   }
 
-  // MultiBar progress display
   const multiBar: cliProgress.MultiBar = new cliProgress.MultiBar(
     {
       format: ' {label}> [{bar}] {value}/{total}',
@@ -295,16 +217,16 @@ export async function builtin_pull(args: string[]): Promise<void> {
   );
 
   const barMap: Map<SeriesPullTask, cliProgress.SingleBar> = new Map();
-  for (const t of allTasks) {
+  for (const t of tasks) {
     const bar: cliProgress.SingleBar = multiBar.create(Math.max(t.expectedFiles, 1), 0, { label: t.label });
     barMap.set(t, bar);
   }
 
   const taskByUID: Map<string, SeriesPullTask> = new Map(
-    allTasks.map((t: SeriesPullTask): [string, SeriesPullTask] => [t.seriesUID, t]),
+    tasks.map((t: SeriesPullTask): [string, SeriesPullTask] => [t.seriesUID, t]),
   );
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve: () => void) => {
     let resolved: boolean = false;
     const done = (): void => {
       if (resolved) return;
@@ -314,7 +236,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
       resolve();
     };
 
-    const checker = setInterval(() => {
+    const checker: NodeJS.Timeout = setInterval(() => {
       const now: number = Date.now();
       let allTerminal: boolean = true;
 
@@ -337,10 +259,9 @@ export async function builtin_pull(args: string[]): Promise<void> {
           continue;
         }
 
-        // No LONK activity at all — series may have completed before subscription
-        // or pacs_name is mismatched; treat as done after a short window.
         if (t.startTime > 0 && t.actualFiles === 0 && now - t.startTime > NO_ACTIVITY_TIMEOUT_MS) {
           t.status = 'pulled';
+          t.lonkConfirmed = false;
           bar?.update(Math.max(t.expectedFiles, 1), { label: `${t.label} [NO LONK]` });
           continue;
         }
@@ -372,6 +293,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
           bar?.update(n);
         } else if ('done' in message && message.done === true) {
           t.status = 'pulled';
+          t.lonkConfirmed = true;
           const finalTotal: number = t.expectedFiles > 0 ? t.expectedFiles : t.actualFiles || 1;
           bar?.setTotal(finalTotal);
           bar?.update(finalTotal, { label: `${t.label} [DONE]` });
@@ -394,12 +316,171 @@ export async function builtin_pull(args: string[]): Promise<void> {
       done();
     });
 
-    ws.on('close', () => {
-      done();
-    });
+    ws.on('close', () => { done(); });
   });
 
   multiBar.stop();
+  return firingErrors;
+}
+
+/**
+ * Pulls one or more `/net/pacs/queries/...` VFS paths into ChRIS storage.
+ *
+ * Blocking by default: shows per-series MultiBar progress via LONK WebSocket,
+ * exits non-zero on partial failure.
+ * With `--nowait`: fires retrieves and prints `<seriesUID> <retrieveId>` per line, then returns.
+ * With `--retry N`: re-fires retrieves for [NO LONK] series up to N additional times.
+ *
+ * @param args - Command arguments (VFS paths, optional flags).
+ * @example
+ * pull /net/pacs/queries/42_AccessionNumber:22548684
+ * pull --retry 3 /net/pacs/queries/42_AccessionNumber:22548684/Study_1.2.3_US-Hips
+ */
+export async function builtin_pull(args: string[]): Promise<void> {
+  if (args_checkHasHelpFlag(args, 'pull')) {
+    help_show('pull');
+    return;
+  }
+
+  const nowait: boolean = args.includes('--nowait');
+  let retryMax: number = 0;
+  const paths: string[] = [];
+
+  for (let i: number = 0; i < args.length; i++) {
+    if (args[i] === '--retry' && i + 1 < args.length) {
+      const n: number = parseInt(args[++i], 10);
+      if (!isNaN(n) && n >= 0) retryMax = n;
+    } else if (!args[i].startsWith('--')) {
+      paths.push(args[i]);
+    }
+  }
+
+  if (paths.length === 0) {
+    console.error(chalk.red('pull: No paths specified. Usage: pull [--nowait] [--retry N] <vfs-path> [...]'));
+    process.exitCode = 1;
+    return;
+  }
+
+  const pacsIdentifier: string | null = await pacsServer_resolve();
+  if (!pacsIdentifier) {
+    console.error(chalk.red('pull: No PACS server available. Set context with: context set PACSserver <id>'));
+    process.exitCode = 1;
+    return;
+  }
+  const pacsserver: string = pacsIdentifier;
+
+  // Resolve any non-VFS args (query expressions) to VFS paths first
+  const resolvedPaths: string[] = [];
+  for (const rawPath of paths) {
+    const p: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
+    if (p.startsWith('/net/pacs')) {
+      resolvedPaths.push(p);
+    } else if (queryExpr_parse(rawPath)) {
+      spinner.start(`Querying PACS for ${p}...`, true);
+      const qResult = await pacsQuery_createAndWait(
+        p,
+        `pull_${p}`,
+        pacsserver,
+        (msg: string) => spinner.updateMessage(msg),
+      );
+      spinner.stop();
+      if (qResult) {
+        console.log(chalk.gray(`  → ${qResult.vfsPath}`));
+        resolvedPaths.push(qResult.vfsPath);
+      } else {
+        console.error(chalk.red(`pull: Query failed for: ${p}`));
+      }
+    } else {
+      console.error(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
+    }
+  }
+
+  const allTasks: SeriesPullTask[] = [];
+  for (const p of resolvedPaths) {
+    const tasks: SeriesPullTask[] = await path_seriesCollect(p, pacsIdentifier);
+    if (tasks.length === 0) {
+      console.error(chalk.yellow(`pull: No series found under: ${p}`));
+    }
+    allTasks.push(...tasks);
+  }
+
+  if (allTasks.length === 0) {
+    console.error(chalk.red('pull: No series to retrieve.'));
+    process.exitCode = 1;
+    return;
+  }
+
+  const client: Client | null = await session.connection.client_get();
+  if (!client) {
+    console.error(chalk.red('pull: Not connected to ChRIS.'));
+    process.exitCode = 1;
+    return;
+  }
+
+  // --nowait: fire retrieves and exit without watching
+  if (nowait) {
+    for (const t of allTasks) {
+      await task_fire(t, pacsserver);
+      if (t.retrieveId !== null) {
+        console.log(`${t.seriesUID} ${t.retrieveId}`);
+      } else {
+        console.log(`${t.seriesUID} ERROR`);
+        process.exitCode = 1;
+      }
+    }
+    return;
+  }
+
+  // Initial pull
+  let totalFiringErrors: number = await tasks_pullWatch(allTasks, pacsserver, client);
+
+  // Retry loop for [NO LONK] series
+  let retryCandidates: SeriesPullTask[] = allTasks.filter(
+    (t: SeriesPullTask) => t.status === 'pulled' && !t.lonkConfirmed,
+  );
+
+  const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
+
+  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
+    // Check cubepath first — series may have landed despite silent LONK
+    await Promise.all(retryCandidates.map(async (t: SeriesPullTask): Promise<void> => {
+      const result = await series_cubePathGet(t.seriesUID, pacsClient, 1, 0);
+      if (result) {
+        t.lonkConfirmed = true;
+        t.cubePathDir = result.folderPath;
+      }
+    }));
+
+    retryCandidates = retryCandidates.filter((t: SeriesPullTask) => !t.lonkConfirmed);
+    if (retryCandidates.length === 0) break;
+
+    console.log(chalk.yellow(
+      `\nRetry ${attempt}/${retryMax} for ${retryCandidates.length} unconfirmed series...`,
+    ));
+
+    for (const t of retryCandidates) {
+      t.status = 'pending';
+      t.actualFiles = 0;
+      t.lastProgressFiles = 0;
+      t.lastProgressTime = Date.now();
+      t.startTime = 0;
+      t.lonkConfirmed = false;
+      t.syntheticQueryId = null;
+      t.retrieveId = null;
+    }
+
+    const retryFiringErrors: number = await tasks_pullWatch(retryCandidates, pacsserver, client);
+    totalFiringErrors += retryFiringErrors;
+
+    retryCandidates = retryCandidates.filter(
+      (t: SeriesPullTask) => t.status === 'pulled' && !t.lonkConfirmed,
+    );
+  }
+
+  // After all retries, permanently fail remaining unconfirmed series
+  for (const t of retryCandidates) {
+    t.status = 'error';
+  }
 
   // Summary
   const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
@@ -417,8 +498,8 @@ export async function builtin_pull(args: string[]): Promise<void> {
     process.exitCode = 1;
   }
 
-  if (firingErrors > 0) {
-    console.log(chalk.red(`  ${firingErrors} retrieve(s) failed to start.`));
+  if (totalFiringErrors > 0) {
+    console.log(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
     process.exitCode = 1;
   }
 

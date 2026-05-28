@@ -599,8 +599,9 @@ export const helpText: Record<string, CommandHelp> = {
     usage: 'pull [--nowait] <vfs-path|query-expr> [...]',
     description: 'Pull PACS series into ChRIS storage; accepts VFS paths or query expressions (blocking)',
     options: [
-      '--nowait    Fire retrieves and exit immediately; prints <seriesUID> <retrieveId> per line',
-      '--help      Show this help',
+      '--nowait      Fire retrieves and exit immediately; prints <seriesUID> <retrieveId> per line',
+      '--retry N     Re-fire retrieves for [NO LONK] series up to N additional times',
+      '--help        Show this help',
     ],
     examples: [
       '# Pull all series in a query (blocking)',

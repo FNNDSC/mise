@@ -49,6 +49,7 @@ import {
   builtin_context,
   builtin_parametersofplugin,
   builtin_physicalmode,
+  builtin_prompt,
   builtin_timing,
   builtin_debug,
   builtin_help,
@@ -66,7 +67,7 @@ import { vfs } from './lib/vfs/vfs.js';
 import { spinner } from './lib/spinner.js';
 import { args_tokenize } from './lib/parser.js';
 import { semicolons_parse } from './lib/semicolonParser.js';
-import { logo_linesRender, logo_animateStart, logo_animateStop } from './lib/logo.js';
+import { logo_linesRender, logo_print, logo_animatePulse, logo_animateStart, logo_animateStop } from './lib/logo.js';
 import {
   BootInfoItem,
   BootPanels,
@@ -409,6 +410,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   context: builtin_context,
   parametersofplugin: builtin_parametersofplugin,
   physicalmode: builtin_physicalmode,
+  prompt: builtin_prompt,
   timing: builtin_timing,
   debug: builtin_debug,
   help: builtin_help,
@@ -902,7 +904,7 @@ export async function chell_start(): Promise<void> {
   // --- Common Initialization ---
 
   if (isInteractiveSession) {
-    logo_animateStart(showLogo && !useAsciiBoot);
+    logo_print(showLogo && !useAsciiBoot);
   }
 
   spinner.start('Initializing session components');
@@ -1061,6 +1063,11 @@ export async function chell_start(): Promise<void> {
     // and we haven't already reported it.
     console.log(chalk.yellow('[!] Running in disconnected mode.'));
     session.offline = true;
+  }
+
+  // Login phase complete — start the brain activity animation now
+  if (isInteractiveSession && showLogo && !useAsciiBoot) {
+    logo_animatePulse();
   }
 
   const prefetch_path = async (label: string, target: string): Promise<{ ok: boolean; count?: number; message?: string }> => {

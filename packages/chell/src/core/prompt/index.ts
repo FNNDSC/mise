@@ -46,6 +46,9 @@ export interface PromptTheme {
 
 export type ThemeName = 'default' | 'p10k';
 
+/** All registered theme names, in the order they appear in the registry. */
+export const THEME_NAMES: readonly ThemeName[] = ['default', 'p10k'] as const;
+
 const registry: Record<ThemeName, PromptTheme> = {
   default: new ThemeDefault(),
   p10k: new ThemeP10k(),

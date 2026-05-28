@@ -63,6 +63,9 @@ interface BloomState {
   brightness: number; // 0 = off, 1 = dim, 2 = medium, 3 = bright, 4 = peak
 }
 
+/** Smooth pulse character sequence indexed by charBrightness (1–4). */
+const PULSE_CHARS: string[] = [' ', '·', '•', '●', '●'];
+
 const BLOOM_STATES: BloomState[] = [
   { radius: -1, brightness: 0 },
   { radius: -1, brightness: 0 },
@@ -175,8 +178,10 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
               rendered += ' ';
             } else {
               const dist: number = Math.abs(chIdx - block.mid);
-              // Shift the frame for each specific block to create flowing, organic firing patterns
-              const blockFrame: number = (frameIndex + block.mid + lineIdx * 3) % BLOOM_STATES.length;
+              // Cross-term (block.mid * lineIdx) breaks the linear vertical
+              // sweep so each node fires at a pseudo-random independent phase.
+              const phaseOffset: number = (block.mid * 7 + lineIdx * 11 + block.mid * lineIdx) % BLOOM_STATES.length;
+              const blockFrame: number = (frameIndex + phaseOffset) % BLOOM_STATES.length;
               const bloomState = BLOOM_STATES[blockFrame];
 
               const maxRadius: number = Math.floor((block.length - 1) / 2);
@@ -199,7 +204,8 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
                 b = Math.floor(b * scale);
 
                 const shade = `\x1b[38;2;${r};${g};${b}m`;
-                rendered += `${shade}•${RESET}${lastAnsiCode}`;
+                const pulseChar: string = PULSE_CHARS[charBrightness] ?? '•';
+                rendered += `${shade}${pulseChar}${RESET}${lastAnsiCode}`;
               } else {
                 rendered += ' ';
               }
@@ -251,45 +257,57 @@ function stdoutTrack_stop(): void {
 }
 
 /**
+ * Prints the static logo and begins tracking subsequent stdout lines.
+ * Call this at boot to show the brain art; follow with logo_animatePulse() after login.
+ *
+ * @param useColor - True to enable colored rendering and prepare for pulsing.
+ */
+export function logo_print(useColor: boolean): void {
+  const logoLines: string[] = logo_frameRender(0, true);
+  logoLines.forEach((line: string) => console.log(line));
+  console.log('');
+
+  if (useColor && process.stdout.isTTY) {
+    stdoutTrack_start();
+  }
+}
+
+/**
+ * Starts the pulsing brain activity animation in-place above already-printed output.
+ * Must be called after logo_print(true); no-op if already running or non-TTY.
+ */
+export function logo_animatePulse(): void {
+  if (logoInterval || !process.stdout.isTTY) return;
+
+  const totalLines: number = plainLogoLines.length;
+
+  logoInterval = setInterval(() => {
+    logoFrameIndex++;
+
+    const upOffset: number = totalLines + 1 + linesPrinted;
+    process.stdout.write('\x1b[s');
+    process.stdout.write(`\x1b[${upOffset}A\r`);
+
+    const frameLines: string[] = logo_frameRender(logoFrameIndex, false);
+    frameLines.forEach((line: string) => {
+      process.stdout.write(`\r${line}\x1b[1B`);
+    });
+
+    process.stdout.write('\x1b[u');
+  }, 100);
+}
+
+/**
  * Starts the brain activity pulsing node animation on the console.
  * Falls back to static plain rendering if non-TTY or color is disabled.
  *
  * @param useColor - True to enable colored pulsing, false for static plain rendering.
  */
 export function logo_animateStart(useColor: boolean): void {
-  if (!useColor || !process.stdout.isTTY) {
-    const logoLines: string[] = logo_frameRender(0, true);
-    logoLines.forEach((line: string) => console.log(line));
-    console.log('');
-    return;
+  logo_print(useColor);
+  if (useColor && process.stdout.isTTY) {
+    logo_animatePulse();
   }
-
-  const totalLines: number = plainLogoLines.length;
-
-  // Print initial plain logo once with static base frame (holes blank)
-  const initialLines: string[] = logo_frameRender(0, true);
-  initialLines.forEach((line: string) => console.log(line));
-  console.log('');
-
-  // Start tracking stdout newlines printed after the initial logo
-  stdoutTrack_start();
-
-  // Start interval to update in-place with the brain activity pulsing nodes
-  logoInterval = setInterval(() => {
-    logoFrameIndex++;
-    
-    // Save cursor position, move up, re-render, and restore cursor position
-    const upOffset: number = totalLines + 1 + linesPrinted;
-    process.stdout.write('\x1b[s'); // Save cursor
-    process.stdout.write(`\x1b[${upOffset}A\r`); // Move to top of logo
-    
-    const frameLines: string[] = logo_frameRender(logoFrameIndex, false);
-    frameLines.forEach((line: string) => {
-      process.stdout.write(`\r${line}\x1b[1B`);
-    });
-    
-    process.stdout.write('\x1b[u'); // Restore cursor
-  }, 100);
 }
 
 /**

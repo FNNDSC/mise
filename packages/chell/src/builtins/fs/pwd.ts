@@ -3,7 +3,7 @@
  * Prints the current working directory.
  */
 import { session } from '../../session/index.js';
-import { chrisConnection, FilteredResourceData } from '@fnndsc/cumin';
+import { FilteredResourceData } from '@fnndsc/cumin';
 import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
 
 /**

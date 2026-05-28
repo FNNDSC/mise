@@ -12,10 +12,10 @@
 
 import chalk from 'chalk';
 import cliProgress from 'cli-progress';
+import WebSocket from 'ws';
 import {
   errorStack,
   chrisContext,
-  chrisConnection,
   Context,
   pacsQuery_resultDecode,
   pacsQueries_create,
@@ -24,27 +24,18 @@ import {
   PACSQueryCreateData,
   PACSRetrieveRecord,
 } from '@fnndsc/cumin';
+import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_show } from '../help.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
+const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
 const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
 const CHECKER_INTERVAL_MS: number = 2_000;
 
 type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error';
-
-// Node.js v22+ native WebSocket — declare minimal interface for type safety
-interface NativeWebSocket {
-  addEventListener(type: 'open', listener: () => void): void;
-  addEventListener(type: 'message', listener: (event: { data: string }) => void): void;
-  addEventListener(type: 'error', listener: () => void): void;
-  addEventListener(type: 'close', listener: () => void): void;
-  send(data: string): void;
-  close(): void;
-}
-declare const WebSocket: { new(url: string): NativeWebSocket };
 
 /**
  * Runtime state for a single series being pulled.
@@ -61,6 +52,7 @@ declare const WebSocket: { new(url: string): NativeWebSocket };
  * @property lastProgressFiles - `actualFiles` at last progress-update tick (stall detection)
  * @property lastProgressTime - Timestamp of last progress-update tick
  * @property startTime - Timestamp when retrieve was fired
+ * @property cubePathDir - CUBE filesystem directory where the series landed (resolved post-pull)
  */
 interface SeriesPullTask {
   label: string;
@@ -75,6 +67,19 @@ interface SeriesPullTask {
   lastProgressFiles: number;
   lastProgressTime: number;
   startTime: number;
+  cubePathDir: string | null;
+}
+
+/**
+ * Minimal slice of the ChRIS API client used to locate pulled PACS files.
+ */
+interface ChRISPACSFilesClient {
+  getPACSFiles(
+    params: { fname_icontains: string; limit: number },
+    timeout?: number,
+  ): Promise<{
+    getItems(): Array<{ data: { fname: string } }>;
+  }>;
 }
 
 /**
@@ -147,7 +152,7 @@ async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Pr
     errorStack.stack_push('error', `pull: Cannot parse query ID from: ${queryFolder}`);
     return [];
   }
-  const queryLabel: string = queryFolder.replace(/_qid:\d+(?:_no-hits)?$/, '');
+  const queryLabel: string = queryFolder.replace(/_qid:\d+.*$/, '');
 
   const decodedResult = await pacsQuery_resultDecode(queryId);
   if (!decodedResult.ok || !decodedResult.value.json) {
@@ -220,6 +225,7 @@ async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Pr
         lastProgressFiles: 0,
         lastProgressTime: Date.now(),
         startTime: 0,
+        cubePathDir: null,
       });
     }
   }
@@ -366,13 +372,45 @@ export async function builtin_pull(args: string[]): Promise<void> {
     return;
   }
 
-  // Fire all retrieves in parallel
-  await Promise.all(allTasks.map(t => task_fire(t, pacsserver as string)));
+  // --- LONK WebSocket: open and subscribe BEFORE firing retrieves ---
+  // This eliminates the race condition where a fast/small series completes
+  // before chell has a chance to subscribe, causing LONK to never notify us.
+  const client = await session.connection.client_get();
+  if (!client) {
+    console.error(chalk.red('pull: Not connected to ChRIS.'));
+    process.exitCode = 1;
+    return;
+  }
 
-  const fired = allTasks.filter(t => t.status !== 'error');
-  const firingErrors = allTasks.length - fired.length;
+  const downloadToken = await client.createDownloadToken();
+  const tokenStr: string = String((downloadToken.data as unknown as Record<string, unknown>).token ?? '');
+  const wsUrl: string = lonkWsUrl_build(downloadToken.url as string, tokenStr);
+
+  const ws: WebSocket = new WebSocket(wsUrl);
+
+  // Await WS open before proceeding
+  await new Promise<void>((openResolve, openReject) => {
+    ws.once('open', openResolve);
+    ws.once('error', (err: Error) => openReject(err));
+  });
+
+  // Subscribe all series now, before retrieves are fired
+  for (const t of allTasks) {
+    ws.send(JSON.stringify({
+      SeriesInstanceUID: t.seriesUID,
+      pacs_name: t.pacsName,
+      action: 'subscribe',
+    }));
+  }
+
+  // Fire all retrieves in parallel
+  await Promise.all(allTasks.map((t: SeriesPullTask) => task_fire(t, pacsserver as string)));
+
+  const fired: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'error');
+  const firingErrors: number = allTasks.length - fired.length;
 
   if (nowait) {
+    ws.close();
     for (const t of allTasks) {
       if (t.retrieveId !== null) {
         console.log(`${t.seriesUID} ${t.retrieveId}`);
@@ -385,13 +423,14 @@ export async function builtin_pull(args: string[]): Promise<void> {
   }
 
   if (fired.length === 0) {
+    ws.close();
     console.error(chalk.red('pull: All retrieve requests failed.'));
     process.exitCode = 1;
     return;
   }
 
   // MultiBar progress display
-  const multiBar = new cliProgress.MultiBar(
+  const multiBar: cliProgress.MultiBar = new cliProgress.MultiBar(
     {
       format: ' {label}> [{bar}] {value}/{total}',
       barCompleteChar: '█',
@@ -404,33 +443,18 @@ export async function builtin_pull(args: string[]): Promise<void> {
     cliProgress.Presets.shades_classic,
   );
 
-  const barMap = new Map<SeriesPullTask, cliProgress.SingleBar>();
+  const barMap: Map<SeriesPullTask, cliProgress.SingleBar> = new Map();
   for (const t of allTasks) {
-    const bar = multiBar.create(Math.max(t.expectedFiles, 1), 0, { label: t.label });
+    const bar: cliProgress.SingleBar = multiBar.create(Math.max(t.expectedFiles, 1), 0, { label: t.label });
     barMap.set(t, bar);
   }
 
-  // --- LONK WebSocket progress tracking ---
-  const client = await chrisConnection.client_get();
-  if (!client) {
-    multiBar.stop();
-    console.error(chalk.red('pull: Not connected to ChRIS.'));
-    process.exitCode = 1;
-    return;
-  }
-
-  const downloadToken = await client.createDownloadToken();
-  const tokenStr = String((downloadToken.data as unknown as Record<string, unknown>).token ?? '');
-  const wsUrl = lonkWsUrl_build(downloadToken.url as string, tokenStr);
+  const taskByUID: Map<string, SeriesPullTask> = new Map(
+    allTasks.map((t: SeriesPullTask): [string, SeriesPullTask] => [t.seriesUID, t]),
+  );
 
   await new Promise<void>((resolve) => {
-    const ws = new WebSocket(wsUrl);
-
-    const taskByUID = new Map<string, SeriesPullTask>(
-      fired.map(t => [t.seriesUID, t]),
-    );
-
-    let resolved = false;
+    let resolved: boolean = false;
     const done = (): void => {
       if (resolved) return;
       resolved = true;
@@ -439,17 +463,16 @@ export async function builtin_pull(args: string[]): Promise<void> {
       resolve();
     };
 
-    // Stall + timeout checker runs every CHECKER_INTERVAL_MS
     const checker = setInterval(() => {
-      const now = Date.now();
-      let allTerminal = true;
+      const now: number = Date.now();
+      let allTerminal: boolean = true;
 
       for (const t of fired) {
         if (t.status === 'pulled' || t.status === 'error' || t.status === 'stalled' || t.status === 'timeout') {
           continue;
         }
         allTerminal = false;
-        const bar = barMap.get(t);
+        const bar: cliProgress.SingleBar | undefined = barMap.get(t);
 
         if (t.startTime > 0 && now - t.startTime > SERIES_TIMEOUT_MS) {
           t.status = 'timeout';
@@ -462,61 +485,55 @@ export async function builtin_pull(args: string[]): Promise<void> {
           bar?.update(t.actualFiles, { label: `${t.label} [STALLED]` });
           continue;
         }
+
+        // No LONK activity at all — series may have completed before subscription
+        // or pacs_name is mismatched; treat as done after a short window.
+        if (t.startTime > 0 && t.actualFiles === 0 && now - t.startTime > NO_ACTIVITY_TIMEOUT_MS) {
+          t.status = 'pulled';
+          bar?.update(Math.max(t.expectedFiles, 1), { label: `${t.label} [DONE]` });
+          continue;
+        }
       }
 
       if (allTerminal) done();
     }, CHECKER_INTERVAL_MS);
 
-    ws.addEventListener('open', () => {
-      for (const t of fired) {
-        ws.send(JSON.stringify({
-          SeriesInstanceUID: t.seriesUID,
-          pacs_name: t.pacsName,
-          action: 'subscribe',
-        }));
-      }
-    });
-
-    ws.addEventListener('message', (event: { data: string }) => {
+    ws.on('message', (data: WebSocket.RawData) => {
       try {
-        const outer = JSON.parse(event.data) as Record<string, unknown>;
-        const seriesUID = outer.SeriesInstanceUID as string | undefined;
-        const message = outer.message as Record<string, unknown> | undefined;
+        const outer: Record<string, unknown> = JSON.parse(data.toString()) as Record<string, unknown>;
+        const seriesUID: string | undefined = outer.SeriesInstanceUID as string | undefined;
+        const message: Record<string, unknown> | undefined = outer.message as Record<string, unknown> | undefined;
 
         if (!seriesUID || !message) return;
 
-        const t = taskByUID.get(seriesUID);
+        const t: SeriesPullTask | undefined = taskByUID.get(seriesUID);
         if (!t) return;
-        const bar = barMap.get(t);
+        const bar: cliProgress.SingleBar | undefined = barMap.get(t);
 
         if ('ndicom' in message && typeof message.ndicom === 'number') {
-          // Progress update
-          const n = message.ndicom;
+          const n: number = message.ndicom;
           t.actualFiles = n;
           t.lastProgressFiles = n;
           t.lastProgressTime = Date.now();
           if (t.status === 'pending') t.status = 'pulling';
-          const total = t.expectedFiles > 0 ? t.expectedFiles : Math.max(n, 1);
+          const total: number = t.expectedFiles > 0 ? t.expectedFiles : Math.max(n, 1);
           bar?.setTotal(total);
           bar?.update(n);
         } else if ('done' in message && message.done === true) {
-          // Done — series fully received
           t.status = 'pulled';
-          const finalTotal = t.expectedFiles > 0 ? t.expectedFiles : t.actualFiles || 1;
+          const finalTotal: number = t.expectedFiles > 0 ? t.expectedFiles : t.actualFiles || 1;
           bar?.setTotal(finalTotal);
           bar?.update(finalTotal, { label: `${t.label} [DONE]` });
         } else if ('error' in message && typeof message.error === 'string') {
           t.status = 'error';
           bar?.update(t.actualFiles, { label: `${t.label} [ERROR]` });
         }
-        // 'subscribed' acknowledgement — no action needed
       } catch {
         // Malformed message — ignore
       }
     });
 
-    ws.addEventListener('error', () => {
-      // WS connection failed — mark pending tasks as error and exit
+    ws.on('error', () => {
       for (const t of fired) {
         if (t.status === 'pending' || t.status === 'pulling') {
           t.status = 'error';
@@ -526,26 +543,55 @@ export async function builtin_pull(args: string[]): Promise<void> {
       done();
     });
 
-    ws.addEventListener('close', () => {
+    ws.on('close', () => {
       done();
     });
   });
 
   multiBar.stop();
 
+  // Resolve CUBE filesystem paths for all successfully pulled series
+  const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
+  if (pulledTasks.length > 0) {
+    const pacsClient: ChRISPACSFilesClient = client as unknown as ChRISPACSFilesClient;
+    await Promise.all(pulledTasks.map(async (t: SeriesPullTask): Promise<void> => {
+      try {
+        const pacsFileList = await pacsClient.getPACSFiles({ fname_icontains: t.seriesUID, limit: 1 }, 5_000);
+        const items: Array<{ data: { fname: string } }> = pacsFileList.getItems();
+        if (items.length > 0) {
+          const fname: string = items[0].data.fname;
+          t.cubePathDir = fname.substring(0, fname.lastIndexOf('/'));
+        }
+      } catch {
+        // path unavailable — silently omit
+      }
+    }));
+  }
+
   // Summary
-  const pulled = allTasks.filter(t => t.status === 'pulled').length;
-  const total = allTasks.length;
-  const failures = allTasks.filter(t => t.status !== 'pulled');
+  const pulled: number = pulledTasks.length;
+  const totalCount: number = allTasks.length;
+  const failures: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'pulled');
 
   if (failures.length === 0) {
-    console.log(chalk.green(`\n✓ ${pulled}/${total} series pulled successfully.`));
+    console.log(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
   } else {
-    console.log(chalk.yellow(`\n⚠ ${pulled}/${total} series complete.`));
+    console.log(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
     for (const f of failures) {
       console.log(chalk.red(`  ✗ ${f.label} [${f.status.toUpperCase()}]`));
     }
     process.exitCode = 1;
+  }
+
+  // Print CUBE paths for each pulled series
+  for (const t of pulledTasks) {
+    const seriesLabel: string = t.label.split('|').pop() ?? t.label;
+    const arrow: string = chalk.cyan('[->]');
+    if (t.cubePathDir) {
+      console.log(`  ${chalk.white(seriesLabel)} ${arrow} ${chalk.cyan(t.cubePathDir)}`);
+    } else {
+      console.log(`  ${chalk.white(seriesLabel)} ${arrow} ${chalk.gray('(path unavailable)')}`);
+    }
   }
 
   if (firingErrors > 0) {

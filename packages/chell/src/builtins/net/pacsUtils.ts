@@ -230,8 +230,9 @@ export async function series_cubePathGet(
       if (items.length === 0) continue;
 
       const series = items[0] as { data?: { folder_path?: string } };
-      const folderPath: string | undefined = series?.data?.folder_path;
-      if (!folderPath) continue;
+      const raw: string | undefined = series?.data?.folder_path;
+      if (!raw) continue;
+      const folderPath: string = raw.startsWith('/') ? raw : `/${raw}`;
 
       const fileList = await pacsClient.getPACSFiles({ fname: folderPath, limit: 1 });
       const fileCount: number = Math.max(0, fileList.totalCount);

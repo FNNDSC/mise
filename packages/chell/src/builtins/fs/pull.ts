@@ -341,7 +341,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
         // or pacs_name is mismatched; treat as done after a short window.
         if (t.startTime > 0 && t.actualFiles === 0 && now - t.startTime > NO_ACTIVITY_TIMEOUT_MS) {
           t.status = 'pulled';
-          bar?.update(Math.max(t.expectedFiles, 1), { label: `${t.label} [DONE]` });
+          bar?.update(Math.max(t.expectedFiles, 1), { label: `${t.label} [NO LONK]` });
           continue;
         }
       }

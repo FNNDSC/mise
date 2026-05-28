@@ -27,14 +27,13 @@ import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
 import {
-  ChRISPACSClient,
   PACSSeriesInfo,
   pacs_tagValueExtract,
   folderUID_get,
   pacs_seriesCollect,
   pacsServer_resolve,
-  series_cubePathGet,
 } from '../net/pacsUtils.js';
+import { builtin_cubepath } from '../net/cubepath.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -402,17 +401,8 @@ export async function builtin_pull(args: string[]): Promise<void> {
 
   multiBar.stop();
 
-  // Resolve CUBE filesystem paths for all successfully pulled series.
-  const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
-  if (pulledTasks.length > 0) {
-    const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
-    await Promise.all(pulledTasks.map(async (t: SeriesPullTask): Promise<void> => {
-      const result = await series_cubePathGet(t.seriesUID, pacsClient);
-      if (result) t.cubePathDir = result.folderPath;
-    }));
-  }
-
   // Summary
+  const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
   const pulled: number = pulledTasks.length;
   const totalCount: number = allTasks.length;
   const failures: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'pulled');
@@ -427,21 +417,13 @@ export async function builtin_pull(args: string[]): Promise<void> {
     process.exitCode = 1;
   }
 
-  // Print CUBE paths for each pulled series
-  for (const t of pulledTasks) {
-    const seriesLabel: string = t.label.split('|').pop() ?? t.label;
-    const arrow: string = chalk.cyan('[->]');
-    if (t.cubePathDir) {
-      console.log(`  ${chalk.white(seriesLabel)} ${arrow} ${chalk.cyan(t.cubePathDir)}`);
-    } else {
-      console.log(`  ${chalk.white(seriesLabel)} ${arrow} ${chalk.gray('(path unavailable)')}`);
-    }
-  }
-
   if (firingErrors > 0) {
     console.log(chalk.red(`  ${firingErrors} retrieve(s) failed to start.`));
     process.exitCode = 1;
   }
+
+  // Report CUBE paths via cubepath
+  await builtin_cubepath(resolvedPaths);
 
   console.log(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
 }

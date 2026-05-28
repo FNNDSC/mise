@@ -15,12 +15,8 @@ import cliProgress from 'cli-progress';
 import WebSocket from 'ws';
 import {
   errorStack,
-  chrisContext,
-  Context,
-  pacsQuery_resultDecode,
   pacsQueries_create,
   pacsRetrieve_create,
-  pacsServers_list,
   PACSQueryCreateData,
   PACSRetrieveRecord,
 } from '@fnndsc/cumin';
@@ -29,6 +25,15 @@ import { args_checkHasHelpFlag, help_show } from '../help.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
+import {
+  ChRISPACSClient,
+  PACSSeriesInfo,
+  pacs_tagValueExtract,
+  folderUID_get,
+  pacs_seriesCollect,
+  pacsServer_resolve,
+  series_cubePathGet,
+} from '../net/pacsUtils.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -70,167 +75,27 @@ interface SeriesPullTask {
   cubePathDir: string | null;
 }
 
-/**
- * Minimal slice of the ChRIS API client used to resolve the CUBE folder path for a pulled series.
- */
-interface ChRISPACSSeriesClient {
-  getPACSSeriesList(
-    params: { SeriesInstanceUID: string; limit: number },
-    timeout?: number,
-  ): Promise<{
-    getItems(): Array<unknown>;
-  }>;
-}
 
 /**
- * Safely unwraps a DICOM tag value (may be `{value: ...}` wrapper or plain string/number).
- *
- * @param val - Raw tag value from decoded query JSON.
- * @returns String representation of the value.
- */
-function pacs_tagValueExtract(val: unknown): string {
-  if (val && typeof val === 'object') {
-    const r = val as Record<string, unknown>;
-    if ('value' in r) return String(r.value ?? '');
-    if ('Value' in r && Array.isArray(r.Value) && r.Value.length > 0) return String(r.Value[0] ?? '');
-  }
-  return String(val ?? '');
-}
-
-/**
- * Extracts the human-readable label portion of a VFS folder name.
- *
- * @param folder - Folder name, e.g. `Study_1.2.3_US-Hips` or `Series_1.2.3_XR`.
- * @param prefix - Prefix to strip first, e.g. `Study` or `Series`.
- * @returns Everything after `<prefix>_<uid>_`.
- */
-function folderLabel_get(folder: string, prefix: string): string {
-  const withoutPrefix = folder.replace(new RegExp(`^${prefix}_`), '');
-  const idx = withoutPrefix.indexOf('_');
-  return idx >= 0 ? withoutPrefix.slice(idx + 1) : withoutPrefix;
-}
-
-/**
- * Extracts the UID portion of a VFS folder name.
- *
- * @param folder - Folder name, e.g. `Study_1.2.3_US-Hips`.
- * @param prefix - Prefix to strip, e.g. `Study` or `Series`.
- * @returns The UID segment (first `_`-delimited token after the prefix).
- */
-function folderUID_get(folder: string, prefix: string): string {
-  const withoutPrefix = folder.replace(new RegExp(`^${prefix}_`), '');
-  return withoutPrefix.split('_')[0];
-}
-
-/**
- * Walks a `/net/pacs/queries/...` VFS path and collects series pull tasks.
- *
- * Supports query-level, study-level, and series-level paths.
- *
- * @param pathStr - Absolute VFS path to a query, study, or series directory.
- * @param fallbackPacsName - PACS identifier to use if RetrieveAETitle absent in study JSON.
- * @returns Array of SeriesPullTask (without syntheticQueryId/retrieveId — filled later).
+ * Walks a VFS path and returns SeriesPullTask array, delegating collection to pacsUtils.
  */
 async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Promise<SeriesPullTask[]> {
-  const effective = pathStr.startsWith('/') ? pathStr : '/' + pathStr;
-  const parts = effective.split('/').filter(Boolean);
-
-  if (
-    parts.length < 4 ||
-    parts[0] !== 'net' ||
-    parts[1] !== 'pacs' ||
-    parts[2] !== 'queries'
-  ) {
-    errorStack.stack_push('error', `pull: Not a PACS query path: ${pathStr}`);
-    return [];
-  }
-
-  const queryFolder: string = parts[3];
-  const qidMatch: RegExpExecArray | null = /_qid:(\d+)/.exec(queryFolder);
-  const queryId: number = qidMatch ? Number(qidMatch[1]) : NaN;
-  if (Number.isNaN(queryId)) {
-    errorStack.stack_push('error', `pull: Cannot parse query ID from: ${queryFolder}`);
-    return [];
-  }
-  const queryLabel: string = queryFolder.replace(/_qid:\d+.*$/, '');
-
-  const decodedResult = await pacsQuery_resultDecode(queryId);
-  if (!decodedResult.ok || !decodedResult.value.json) {
-    errorStack.stack_push('error', `pull: Failed to decode results for query ${queryId}`);
-    return [];
-  }
-
-  const raw = decodedResult.value.json;
-  let studiesSource: unknown;
-  if (raw && typeof raw === 'object') {
-    const r = raw as Record<string, unknown>;
-    studiesSource =
-      'studies' in r ? r.studies :
-      'Studies' in r ? r.Studies :
-      'results' in r ? r.results :
-      raw;
-  } else {
-    studiesSource = raw;
-  }
-  const studies = (Array.isArray(studiesSource) ? studiesSource : [studiesSource]) as Record<string, unknown>[];
-
-  const targetStudyUID: string | null = parts.length >= 5
-    ? folderUID_get(parts[4], 'Study')
-    : null;
-  const targetSeriesUID: string | null = parts.length >= 6
-    ? folderUID_get(parts[5], 'Series')
-    : null;
-
-  const tasks: SeriesPullTask[] = [];
-
-  for (const studyObj of studies) {
-    if (!studyObj || typeof studyObj !== 'object') continue;
-
-    const studyUID = pacs_tagValueExtract(studyObj.StudyInstanceUID ?? studyObj.uid);
-    if (targetStudyUID && studyUID !== targetStudyUID) continue;
-
-    const studyLabel = pacs_tagValueExtract(studyObj.StudyDescription ?? 'Study').replace(/[\s/]/g, '_');
-
-    // pacs_name for LONK = RetrieveAETitle from the DICOM C-FIND response
-    const retrieveAETitle = pacs_tagValueExtract(studyObj.RetrieveAETitle ?? '');
-    const pacsName = retrieveAETitle || fallbackPacsName;
-
-    const seriesArr = (
-      Array.isArray(studyObj.series) ? studyObj.series :
-      Array.isArray(studyObj.Series) ? studyObj.Series :
-      Array.isArray(studyObj.results) ? studyObj.results :
-      []
-    ) as Record<string, unknown>[];
-
-    for (const seriesObj of seriesArr) {
-      if (!seriesObj || typeof seriesObj !== 'object') continue;
-
-      const seriesUID = pacs_tagValueExtract(seriesObj.SeriesInstanceUID ?? seriesObj.uid);
-      if (!seriesUID) continue;
-      if (targetSeriesUID && seriesUID !== targetSeriesUID) continue;
-
-      const seriesLabel = pacs_tagValueExtract(seriesObj.SeriesDescription ?? 'Series').replace(/[\s/]/g, '_');
-      const expectedFiles = Number(pacs_tagValueExtract(seriesObj.NumberOfSeriesRelatedInstances ?? '0')) || 0;
-
-      tasks.push({
-        label: `${queryLabel}|${studyLabel}|${seriesLabel}`,
-        seriesUID,
-        studyUID,
-        pacsName,
-        expectedFiles,
-        syntheticQueryId: null,
-        retrieveId: null,
-        status: 'pending',
-        actualFiles: 0,
-        lastProgressFiles: 0,
-        lastProgressTime: Date.now(),
-        startTime: 0,
-        cubePathDir: null,
-      });
-    }
-  }
-
-  return tasks;
+  const infos: PACSSeriesInfo[] = await pacs_seriesCollect(pathStr, fallbackPacsName, 'pull');
+  return infos.map((info: PACSSeriesInfo): SeriesPullTask => ({
+    label: info.label,
+    seriesUID: info.seriesUID,
+    studyUID: info.studyUID,
+    pacsName: info.pacsName,
+    expectedFiles: info.expectedFiles,
+    syntheticQueryId: null,
+    retrieveId: null,
+    status: 'pending',
+    actualFiles: 0,
+    lastProgressFiles: 0,
+    lastProgressTime: Date.now(),
+    startTime: 0,
+    cubePathDir: null,
+  }));
 }
 
 /**
@@ -307,28 +172,14 @@ export async function builtin_pull(args: string[]): Promise<void> {
     return;
   }
 
-  // Resolve PACS server
-  let pacsserver: string | null = await chrisContext.current_get(Context.PACSserver);
-  if (!pacsserver) {
-    const serversResult = await pacsServers_list();
-    if (serversResult.ok && serversResult.value.length > 0) {
-      pacsserver = String(serversResult.value[0].id);
-    } else {
-      console.error(chalk.red('pull: No PACS server available. Set context with: context set PACSserver <id>'));
-      process.exitCode = 1;
-      return;
-    }
+  const pacsIdentifier: string | null = await pacsServer_resolve();
+  if (!pacsIdentifier) {
+    console.error(chalk.red('pull: No PACS server available. Set context with: context set PACSserver <id>'));
+    process.exitCode = 1;
+    return;
   }
-
-  // Resolve PACS server identifier for LONK pacs_name fallback
-  let pacsIdentifier: string = pacsserver;
-  if (/^\d+$/.test(pacsserver)) {
-    const allServers = await pacsServers_list();
-    if (allServers.ok) {
-      const srv = allServers.value.find(s => s.id === Number(pacsserver));
-      if (srv?.identifier) pacsIdentifier = srv.identifier;
-    }
-  }
+  // pacsserver ID needed for pacsQueries_create; pacsIdentifier used for LONK pacs_name
+  const pacsserver: string = pacsIdentifier;
 
   // Resolve any non-VFS args (query expressions) to VFS paths first
   const resolvedPaths: string[] = [];
@@ -551,31 +402,12 @@ export async function builtin_pull(args: string[]): Promise<void> {
   multiBar.stop();
 
   // Resolve CUBE filesystem paths for all successfully pulled series.
-  // Retries handle the timing gap between LONK 'done' and the pacsseries DB record appearing.
   const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
   if (pulledTasks.length > 0) {
-    const pacsClient: ChRISPACSSeriesClient = client as unknown as ChRISPACSSeriesClient;
-    const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+    const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
     await Promise.all(pulledTasks.map(async (t: SeriesPullTask): Promise<void> => {
-      const maxAttempts: number = 4;
-      const retryDelayMs: number = 2_000;
-      for (let attempt: number = 0; attempt < maxAttempts; attempt++) {
-        try {
-          if (attempt > 0) await sleep(retryDelayMs);
-          const seriesList = await pacsClient.getPACSSeriesList({ SeriesInstanceUID: t.seriesUID, limit: 1 });
-          const items: Array<unknown> = seriesList.getItems();
-          if (items.length > 0) {
-            const series = items[0] as { data?: { folder_path?: string } };
-            const folderPath: string | undefined = series?.data?.folder_path;
-            if (folderPath) {
-              t.cubePathDir = folderPath;
-              break;
-            }
-          }
-        } catch {
-          // retry
-        }
-      }
+      const result = await series_cubePathGet(t.seriesUID, pacsClient);
+      if (result) t.cubePathDir = result.folderPath;
     }));
   }
 

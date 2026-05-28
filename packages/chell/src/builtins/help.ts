@@ -558,6 +558,24 @@ export const helpText: Record<string, CommandHelp> = {
       '! echo "test" > /tmp/file.txt  # Write to host file',
     ],
   },
+  cubepath: {
+    usage: 'cubepath <vfs-path> [--pacsserver <id>]',
+    description: 'Show CUBE FS path and file count for each series under a PACS VFS path. Zero files = not pulled.',
+    options: [
+      '--pacsserver <id>    Override PACS server (default: context PACSserver)',
+      '--help               Show this help',
+    ],
+    examples: [
+      '# All series under a query',
+      'cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661',
+      '',
+      '# All series under a study',
+      'cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661/Study_1.2.3_Brain_MRI',
+      '',
+      '# Single series',
+      'cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661/Study_1.2.3/Series_1.2.3.4_AX_T2',
+    ],
+  },
   query: {
     usage: 'query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>]',
     description: 'Create a PACS query, wait for results, and print the VFS path',

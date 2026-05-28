@@ -550,21 +550,31 @@ export async function builtin_pull(args: string[]): Promise<void> {
 
   multiBar.stop();
 
-  // Resolve CUBE filesystem paths for all successfully pulled series
+  // Resolve CUBE filesystem paths for all successfully pulled series.
+  // Retries handle the timing gap between LONK 'done' and the pacsseries DB record appearing.
   const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
   if (pulledTasks.length > 0) {
     const pacsClient: ChRISPACSSeriesClient = client as unknown as ChRISPACSSeriesClient;
+    const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
     await Promise.all(pulledTasks.map(async (t: SeriesPullTask): Promise<void> => {
-      try {
-        const seriesList = await pacsClient.getPACSSeriesList({ SeriesInstanceUID: t.seriesUID, limit: 1 }, 5_000);
-        const items: Array<unknown> = seriesList.getItems();
-        if (items.length > 0) {
-          const series = items[0] as { data?: { folder_path?: string } };
-          const folderPath: string | undefined = series?.data?.folder_path;
-          if (folderPath) t.cubePathDir = folderPath;
+      const maxAttempts: number = 4;
+      const retryDelayMs: number = 2_000;
+      for (let attempt: number = 0; attempt < maxAttempts; attempt++) {
+        try {
+          if (attempt > 0) await sleep(retryDelayMs);
+          const seriesList = await pacsClient.getPACSSeriesList({ SeriesInstanceUID: t.seriesUID, limit: 1 });
+          const items: Array<unknown> = seriesList.getItems();
+          if (items.length > 0) {
+            const series = items[0] as { data?: { folder_path?: string } };
+            const folderPath: string | undefined = series?.data?.folder_path;
+            if (folderPath) {
+              t.cubePathDir = folderPath;
+              break;
+            }
+          }
+        } catch {
+          // retry
         }
-      } catch {
-        // path unavailable — silently omit
       }
     }));
   }

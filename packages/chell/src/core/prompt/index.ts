@@ -11,6 +11,19 @@ import { ThemeDefault } from './theme_default.js';
 import { ThemeP10k } from './theme_p10k.js';
 
 /**
+ * Which optional p10k segments are enabled.
+ *
+ * @property time - Show current time (HH:MM).
+ * @property duration - Show last command duration when ≥3s.
+ * @property status - Show last exit code when non-zero.
+ */
+export interface P10kSegmentConfig {
+  time: boolean;
+  duration: boolean;
+  status: boolean;
+}
+
+/**
  * Data available to every prompt theme at render time.
  *
  * @property user - Authenticated ChRIS username.
@@ -19,6 +32,9 @@ import { ThemeP10k } from './theme_p10k.js';
  * @property pacsserver - Active PACS server identifier, or null if unset.
  * @property physicalMode - Whether physical (non-logical) path mode is active.
  * @property terminalWidth - Current terminal column count.
+ * @property lastExitCode - Exit code of the last command (0 = success).
+ * @property lastCommandDurationMs - Wall-clock duration of the last command in ms.
+ * @property p10kSegments - Which optional p10k segments are enabled.
  */
 export interface PromptContext {
   user: string;
@@ -27,6 +43,9 @@ export interface PromptContext {
   pacsserver: string | null;
   physicalMode: boolean;
   terminalWidth: number;
+  lastExitCode: number;
+  lastCommandDurationMs: number;
+  p10kSegments: P10kSegmentConfig;
 }
 
 /**
@@ -48,6 +67,10 @@ export type ThemeName = 'default' | 'p10k';
 
 /** All registered theme names, in the order they appear in the registry. */
 export const THEME_NAMES: readonly ThemeName[] = ['default', 'p10k'] as const;
+
+/** Names of optional p10k segments the user can toggle. */
+export const P10K_OPTIONAL_SEGMENTS: readonly (keyof P10kSegmentConfig)[] =
+  ['time', 'duration', 'status'] as const;
 
 const registry: Record<ThemeName, PromptTheme> = {
   default: new ThemeDefault(),

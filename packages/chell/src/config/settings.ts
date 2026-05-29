@@ -13,8 +13,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ThemeName } from '../core/prompt/index.js';
-import { THEME_NAMES } from '../core/prompt/index.js';
+import type { ThemeName, P10kSegmentConfig } from '../core/prompt/index.js';
+import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS } from '../core/prompt/index.js';
 
 export interface Settings {
   config: {
@@ -22,12 +22,13 @@ export interface Settings {
     historySize: number;
     /** Prompt theme — 'default' (single-line smart truncation) or 'p10k' (two-line segment bar). */
     promptTheme: ThemeName;
+    /** Which optional p10k segments are enabled. */
+    p10kSegments: P10kSegmentConfig;
   };
 }
 
 /**
  * Returns the platform-appropriate config directory for chell.
- * Creates it if it does not exist.
  */
 function configDir_get(): string {
   const platform: string = os.platform();
@@ -52,6 +53,7 @@ export const settings: Settings = {
     historyFile: '.chell_history',
     historySize: 1000,
     promptTheme: 'default',
+    p10kSegments: { time: false, duration: false, status: false },
   },
 };
 
@@ -64,6 +66,14 @@ export async function settings_load(): Promise<void> {
       if (typeof obj.promptTheme === 'string' && THEME_NAMES.includes(obj.promptTheme as ThemeName)) {
         settings.config.promptTheme = obj.promptTheme as ThemeName;
       }
+      if (obj.p10kSegments && typeof obj.p10kSegments === 'object') {
+        const segs: Record<string, unknown> = obj.p10kSegments as Record<string, unknown>;
+        for (const key of P10K_OPTIONAL_SEGMENTS) {
+          if (typeof segs[key] === 'boolean') {
+            settings.config.p10kSegments[key] = segs[key] as boolean;
+          }
+        }
+      }
     }
   } catch {
     // No config file yet — use defaults
@@ -75,6 +85,7 @@ export async function settings_save(): Promise<void> {
     await fs.promises.mkdir(configDir_get(), { recursive: true });
     const data: Record<string, unknown> = {
       promptTheme: settings.config.promptTheme,
+      p10kSegments: settings.config.p10kSegments,
     };
     await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(data, null, 2) + '\n');
   } catch {

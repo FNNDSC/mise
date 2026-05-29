@@ -21,6 +21,8 @@ import { prompt_render, type PromptContext } from './prompt/index.js';
 export class REPL {
   private rl: readline.Interface;
   private isOpen: boolean = true;
+  private lastCommandDurationMs: number = 0;
+  private lastExitCode: number = 0;
 
   /**
    * Initializes the REPL interface.
@@ -41,11 +43,16 @@ export class REPL {
   async start(commandHandler: (line: string) => Promise<void>): Promise<void> {
     await this.history_load();
     await this.prompt_update();
-    
+
     this.rl.on('line', async (line) => {
       await this.history_append(line);
+
+      const startMs: number = Date.now();
+      process.exitCode = 0;
       await commandHandler(line);
-      // Only prompt if still open (command might have exited)
+      this.lastCommandDurationMs = Date.now() - startMs;
+      this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
+
       if (this.isOpen) {
         await this.prompt_update();
       }
@@ -57,8 +64,6 @@ export class REPL {
       process.exit(0);
     });
   }
-  
-  // ...
 
   /**
    * Updates and redisplays the prompt based on current session state.
@@ -66,19 +71,20 @@ export class REPL {
   async prompt_update(): Promise<void> {
     if (!this.isOpen) return;
 
-    // Get current context to determine user and URL
     const context: SingleContext = await context_getSingle();
     const cwd: string = await session.getCWD();
-
     const isOffline: boolean = session.offline;
 
     const ctx: PromptContext = {
-      user:         isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
-      uri:          isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
-      cwd:          isOffline ? '/'            : cwd,
-      pacsserver:   context.pacsserver ?? null,
-      physicalMode: session.physicalMode_get(),
-      terminalWidth: process.stdout.columns || 80,
+      user:                 isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
+      uri:                  isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
+      cwd:                  isOffline ? '/'            : cwd,
+      pacsserver:           context.pacsserver ?? null,
+      physicalMode:         session.physicalMode_get(),
+      terminalWidth:        process.stdout.columns || 80,
+      lastExitCode:         this.lastExitCode,
+      lastCommandDurationMs: this.lastCommandDurationMs,
+      p10kSegments:         settings.config.p10kSegments,
     };
 
     this.rl.setPrompt(prompt_render(settings.config.promptTheme, ctx));
@@ -97,10 +103,8 @@ export class REPL {
     if (fs.existsSync(file)) {
       try {
         const content: string = await fs.promises.readFile(file, 'utf-8');
-        const lines: string[] = content.split('\n').filter((l) => l.trim()).reverse();
+        const lines: string[] = content.split('\n').filter((l: string) => l.trim()).reverse();
         const limit: number = settings.config.historySize;
-        // Force cast to history interface to access history property if strict types block it, 
-        // though it is part of the public API in recent Node versions.
         (this.rl as unknown as { history: string[] }).history = lines.slice(0, limit);
       } catch (e) {
         // Silently fail if history cannot be loaded

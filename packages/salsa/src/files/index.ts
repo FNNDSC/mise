@@ -529,7 +529,7 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
  */
 export async function fileContent_get(filePath: string): Promise<Result<string>> {
   const provider = vfsDispatcher.provider_get(filePath);
-  if (provider && provider.prefix !== '/') {
+  if (provider && provider.prefix !== '') {
     return vfsDispatcher.read(filePath);
   }
   if (filePath.startsWith('/PIPELINES/')) {
@@ -552,7 +552,7 @@ export async function fileContent_get(filePath: string): Promise<Result<string>>
  */
 export async function fileContent_getBinary(filePath: string): Promise<Result<Buffer>> {
   const provider = vfsDispatcher.provider_get(filePath);
-  if (provider && provider.prefix !== '/') {
+  if (provider && provider.prefix !== '') {
     return vfsDispatcher.readBinary(filePath);
   }
   if (filePath.startsWith('/PIPELINES/')) {

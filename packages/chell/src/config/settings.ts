@@ -2,6 +2,10 @@
  * @file ChELL Settings Configuration
  *
  * Manages application-level settings and preferences.
+ * Config file location follows platform conventions:
+ *   Linux:   $XDG_CONFIG_HOME/chell/settings.json  (default ~/.config/chell/settings.json)
+ *   macOS:   ~/Library/Application Support/chell/settings.json
+ *   Windows: %APPDATA%\chell\settings.json
  *
  * @module
  */
@@ -21,7 +25,27 @@ export interface Settings {
   };
 }
 
-const CONFIG_FILE: string = path.join(os.homedir(), '.chell_config.json');
+/**
+ * Returns the platform-appropriate config directory for chell.
+ * Creates it if it does not exist.
+ */
+function configDir_get(): string {
+  const platform: string = os.platform();
+  const home: string = os.homedir();
+
+  let base: string;
+  if (platform === 'win32') {
+    base = process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming');
+  } else if (platform === 'darwin') {
+    base = path.join(home, 'Library', 'Application Support');
+  } else {
+    base = process.env.XDG_CONFIG_HOME ?? path.join(home, '.config');
+  }
+
+  return path.join(base, 'chell');
+}
+
+const CONFIG_FILE: string = path.join(configDir_get(), 'settings.json');
 
 export const settings: Settings = {
   config: {
@@ -48,6 +72,7 @@ export async function settings_load(): Promise<void> {
 
 export async function settings_save(): Promise<void> {
   try {
+    await fs.promises.mkdir(configDir_get(), { recursive: true });
     const data: Record<string, unknown> = {
       promptTheme: settings.config.promptTheme,
     };

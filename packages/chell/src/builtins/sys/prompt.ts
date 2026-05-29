@@ -9,7 +9,10 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { settings, settings_save } from '../../config/settings.js';
-import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS, type ThemeName, type P10kSegmentConfig } from '../../core/prompt/index.js';
+import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS, prompt_render, type ThemeName, type P10kSegmentConfig, type PromptContext } from '../../core/prompt/index.js';
+import { context_getSingle } from '@fnndsc/salsa';
+import { SingleContext } from '@fnndsc/cumin';
+import { session } from '../../session/index.js';
 
 /** Human-readable descriptions for each optional p10k segment. */
 const SEGMENT_DESCRIPTIONS: Record<keyof P10kSegmentConfig, string> = {
@@ -156,6 +159,26 @@ export async function builtin_prompt(args: string[]): Promise<void> {
       await settings_save();
       configure_print();
     }
+    return;
+  }
+
+  // --show — render and print the current prompt (useful for single-shot testing)
+  if (subcommand === '--show') {
+    const context: SingleContext = await context_getSingle();
+    const cwd: string = await session.getCWD();
+    const isOffline: boolean = session.offline;
+    const ctx: PromptContext = {
+      user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
+      uri:                   isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
+      cwd:                   isOffline ? '/'            : cwd,
+      pacsserver:            context.pacsserver ?? null,
+      physicalMode:          session.physicalMode_get(),
+      terminalWidth:         process.stdout.columns || 80,
+      lastExitCode:          0,
+      lastCommandDurationMs: 0,
+      p10kSegments:          settings.config.p10kSegments,
+    };
+    process.stdout.write(prompt_render(settings.config.promptTheme, ctx) + '\n');
     return;
   }
 

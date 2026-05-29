@@ -65,6 +65,13 @@ export class REPL {
       }
     });
 
+    this.rl.on('SIGINT', () => {
+      // Ctrl+C cancels the current input line and re-prompts — does not exit.
+      process.stdout.write('\n');
+      readline.clearLine(process.stdout, 0);
+      this.prompt_update();
+    });
+
     this.rl.on('close', () => {
       this.isOpen = false;
       console.log(chalk.cyan('Exiting ChELL. Goodbye!'));

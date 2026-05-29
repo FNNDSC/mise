@@ -66,7 +66,7 @@ export class REPL {
     if (!this.isOpen) return;
 
     // Get current context to determine user and URL
-    const context = context_getSingle();
+    const context = await context_getSingle();
     const cwd: string = await session.getCWD();
 
     const isOffline: boolean = session.offline;

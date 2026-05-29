@@ -18,7 +18,7 @@ import type { PromptContext, PromptTheme } from './index.js';
 import { ansi_visibleLength, path_truncate } from './utils.js';
 
 /** Powerline right-arrow separator (Nerd Font U+E0B0). */
-const POWERLINE: string = '';
+const POWERLINE: string = '';
 
 /** Fraction of terminal width the segment bar should not exceed. */
 const FILL_RATIO: number = 0.95;

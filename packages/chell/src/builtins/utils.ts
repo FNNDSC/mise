@@ -105,7 +105,7 @@ export function path_resolve_pure(inputPath: string, context: PathContext): stri
  * @returns The absolute path.
  */
 export async function path_resolve(inputPath: string): Promise<string> {
-  const context = context_getSingle();
+  const context = await context_getSingle();
   const user: string | null = context.user;
   const cwd: string = await session.getCWD();
   return path_resolve_pure(inputPath, { user, cwd });

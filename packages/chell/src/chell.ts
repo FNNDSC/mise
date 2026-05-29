@@ -76,6 +76,7 @@ import {
   bootsequence_printIntroPanels,
   bootsequence_printIntroPanelsStacked
 } from './lib/bootsequence.js';
+import { settings_load } from './config/settings.js';
 
 /**
  * Interface for package.json structure.
@@ -909,6 +910,8 @@ export async function chell_start(): Promise<void> {
     logo_print(showLogo && !useAsciiBoot);
   }
 
+  await settings_load();
+
   spinner.start('Initializing session components');
   await session.init();
   spinner.stop();
@@ -946,7 +949,7 @@ export async function chell_start(): Promise<void> {
     }
   }
 
-  let currentContext: SingleContext = context_getSingle();
+  let currentContext: SingleContext = await context_getSingle();
   if (!currentContext.folder) {
     currentContext = { ...currentContext, folder: '/' };
   }
@@ -983,8 +986,7 @@ export async function chell_start(): Promise<void> {
         await chrisContext.current_set(Context.ChRISfolder, '/');
         await chrisContext.current_set(Context.ChRISfeed, '');
         await chrisContext.current_set(Context.ChRISplugin, '');
-        await chrisContext.currentContext_update();
-        currentContext = context_getSingle();
+        currentContext = await context_getSingle();
         spinner.stop();
         if (config.mode !== 'execute' && config.mode !== 'script') {
           console.log(chalk.green('[+] Connection established.'));
@@ -1001,9 +1003,8 @@ export async function chell_start(): Promise<void> {
   } else {
     // Check if we have a saved session from a previous run
     spinner.start('Checking for previous context');
-    await chrisContext.currentContext_update();
     spinner.stop();
-    currentContext = context_getSingle();
+    currentContext = await context_getSingle();
 
     if (currentContext.user && currentContext.URL) {
       if (config.mode !== 'execute' && config.mode !== 'script') {

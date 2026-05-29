@@ -183,7 +183,7 @@ async function path_complete(partial: string): Promise<string[]> {
   let effectivePartial = partial;
   
   if (partial.startsWith('~')) {
-    const context = context_getSingle();
+    const context = await context_getSingle();
     const user: string | null = context.user;
     const home = user ? `/home/${user}` : '/';
     if (partial === '~' || partial === '~/') {

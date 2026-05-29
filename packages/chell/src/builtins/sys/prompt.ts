@@ -6,13 +6,13 @@
  *
  * @module
  */
-import * as readline from 'readline';
 import chalk from 'chalk';
 import { settings, settings_save } from '../../config/settings.js';
 import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS, prompt_render, type ThemeName, type P10kSegmentConfig, type PromptContext } from '../../core/prompt/index.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
+import { repl_question } from '../../core/question.js';
 
 /** All segments in display order, with metadata. */
 interface SegmentMeta {
@@ -30,26 +30,6 @@ const ALL_SEGMENTS: SegmentMeta[] = [
   { label: 'duration', description: 'Last command duration — shown when ≥ 3s',                      toggleable: true  },
   { label: 'status',   description: 'Last exit code — shown when non-zero',                         toggleable: true  },
 ];
-
-/**
- * Asks a single question on stdout/stdin and resolves with the answer.
- *
- * @param prompt - The question to display.
- * @returns The trimmed answer string.
- */
-function question_ask(prompt: string): Promise<string> {
-  return new Promise((resolve: (answer: string) => void) => {
-    const rl: readline.Interface = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: false,
-    });
-    rl.question(prompt, (answer: string) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
 
 /**
  * Prints the configure menu for the current theme.
@@ -196,7 +176,7 @@ export async function builtin_prompt(args: string[]): Promise<void> {
     const pacsserver: string | null = ctxForConfigure.pacsserver ?? null;
 
     configure_print(pacsserver);
-    const answer: string = await question_ask(
+    const answer: string = await repl_question(
       chalk.white('Enter segment names to toggle (e.g. "time duration"), or Enter to exit: ')
     );
 

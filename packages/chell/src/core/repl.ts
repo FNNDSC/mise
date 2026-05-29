@@ -14,6 +14,7 @@ import { settings } from '../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { prompt_render, type PromptContext } from './prompt/index.js';
+import { repl_questionRegister } from './question.js';
 
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
@@ -41,6 +42,12 @@ export class REPL {
    * @param commandHandler - Async function to process each input line.
    */
   async start(commandHandler: (line: string) => Promise<void>): Promise<void> {
+    repl_questionRegister((prompt: string): Promise<string> =>
+      new Promise((resolve: (answer: string) => void) => {
+        this.rl.question(prompt, (answer: string) => resolve(answer.trim()));
+      })
+    );
+
     await this.history_load();
     await this.prompt_update();
 

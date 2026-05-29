@@ -12,6 +12,7 @@ import { session } from '../session/index.js';
 import { input_complete } from '../lib/completer/index.js';
 import { settings } from '../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
+import { SingleContext } from '@fnndsc/cumin';
 import { prompt_render, type PromptContext } from './prompt/index.js';
 
 /**
@@ -66,7 +67,7 @@ export class REPL {
     if (!this.isOpen) return;
 
     // Get current context to determine user and URL
-    const context = await context_getSingle();
+    const context: SingleContext = await context_getSingle();
     const cwd: string = await session.getCWD();
 
     const isOffline: boolean = session.offline;

@@ -36,7 +36,7 @@ export async function settings_load(): Promise<void> {
     const raw: string = await fs.promises.readFile(CONFIG_FILE, 'utf-8');
     const parsed: unknown = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
-      const obj = parsed as Record<string, unknown>;
+      const obj: Record<string, unknown> = parsed as Record<string, unknown>;
       if (typeof obj.promptTheme === 'string' && THEME_NAMES.includes(obj.promptTheme as ThemeName)) {
         settings.config.promptTheme = obj.promptTheme as ThemeName;
       }

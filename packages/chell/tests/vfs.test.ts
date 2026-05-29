@@ -335,7 +335,7 @@ describe('VFS', () => {
       await vfs.list('/home/user/scan.dcm');
 
       expect(mockFiles_list).toHaveBeenCalledWith({ path: '/home/user/scan.dcm' }, '/home/user/scan.dcm');
-      expect(mockGrid_render).toHaveBeenCalledWith([file]);
+      expect(mockGrid_render).toHaveBeenCalledWith([file], expect.objectContaining({ oneColumn: false }));
     });
 
     it('should inject virtual bin directory when listing root', async () => {

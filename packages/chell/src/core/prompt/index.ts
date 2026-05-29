@@ -13,11 +13,13 @@ import { ThemeP10k } from './theme_p10k.js';
 /**
  * Which optional p10k segments are enabled.
  *
+ * @property pacs - Show PACS server segment (when a server is set in context).
  * @property time - Show current time (HH:MM).
  * @property duration - Show last command duration when ≥3s.
  * @property status - Show last exit code when non-zero.
  */
 export interface P10kSegmentConfig {
+  pacs: boolean;
   time: boolean;
   duration: boolean;
   status: boolean;
@@ -70,7 +72,7 @@ export const THEME_NAMES: readonly ThemeName[] = ['default', 'p10k'] as const;
 
 /** Names of optional p10k segments the user can toggle. */
 export const P10K_OPTIONAL_SEGMENTS: readonly (keyof P10kSegmentConfig)[] =
-  ['time', 'duration', 'status'] as const;
+  ['pacs', 'time', 'duration', 'status'] as const;
 
 const registry: Record<ThemeName, PromptTheme> = {
   default: new ThemeDefault(),

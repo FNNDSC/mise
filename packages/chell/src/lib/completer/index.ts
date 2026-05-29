@@ -8,6 +8,7 @@
  */
 import { session } from '../../session/index.js';
 import { plugins_listAll, vfsDispatcher, context_getSingle } from '@fnndsc/salsa';
+import { SingleContext } from '@fnndsc/cumin';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
@@ -183,7 +184,7 @@ async function path_complete(partial: string): Promise<string[]> {
   let effectivePartial = partial;
   
   if (partial.startsWith('~')) {
-    const context = await context_getSingle();
+    const context: SingleContext = await context_getSingle();
     const user: string | null = context.user;
     const home = user ? `/home/${user}` : '/';
     if (partial === '~' || partial === '~/') {

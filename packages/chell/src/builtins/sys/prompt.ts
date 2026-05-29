@@ -83,6 +83,8 @@ function configure_print(): void {
  * @param args - Command line arguments.
  */
 export async function builtin_prompt(args: string[]): Promise<void> {
+  const hasConfigure: boolean = args.includes('--configure');
+  const hasShow: boolean = args.includes('--show');
   const subcommand: string | undefined = args[0];
 
   // No args — show current state
@@ -126,8 +128,43 @@ export async function builtin_prompt(args: string[]): Promise<void> {
     return;
   }
 
-  // --configure
-  if (subcommand === '--configure') {
+  // Switch theme if a known theme name is present (may be combined with flags)
+  if (subcommand && !subcommand.startsWith('--')) {
+    const isKnown: boolean = (THEME_NAMES as readonly string[]).includes(subcommand);
+    if (!isKnown) {
+      console.log(chalk.red(`Unknown theme: '${subcommand}'`));
+      console.log(chalk.gray(`  Available: ${THEME_NAMES.join(', ')}`));
+      return;
+    }
+    const theme: ThemeName = subcommand as ThemeName;
+    settings.config.promptTheme = theme;
+    await settings_save();
+    console.log(chalk.green(`[+] Prompt theme set to '${theme}'`));
+    // fall through to handle any flags that followed
+  }
+
+  // --show — render and print the current prompt (useful for single-shot testing)
+  if (hasShow) {
+    const context: SingleContext = await context_getSingle();
+    const cwd: string = await session.getCWD();
+    const isOffline: boolean = session.offline;
+    const ctx: PromptContext = {
+      user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
+      uri:                   isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
+      cwd:                   isOffline ? '/'            : cwd,
+      pacsserver:            context.pacsserver ?? null,
+      physicalMode:          session.physicalMode_get(),
+      terminalWidth:         process.stdout.columns || 80,
+      lastExitCode:          0,
+      lastCommandDurationMs: 0,
+      p10kSegments:          settings.config.p10kSegments,
+    };
+    process.stdout.write(prompt_render(settings.config.promptTheme, ctx) + '\n');
+    return;
+  }
+
+  // --configure — interactive segment configurator (p10k only)
+  if (hasConfigure) {
     const theme: ThemeName = settings.config.promptTheme;
     if (theme !== 'p10k') {
       console.log(chalk.yellow(`No configurable segments for '${theme}' theme.`));
@@ -159,39 +196,5 @@ export async function builtin_prompt(args: string[]): Promise<void> {
       await settings_save();
       configure_print();
     }
-    return;
   }
-
-  // --show — render and print the current prompt (useful for single-shot testing)
-  if (subcommand === '--show') {
-    const context: SingleContext = await context_getSingle();
-    const cwd: string = await session.getCWD();
-    const isOffline: boolean = session.offline;
-    const ctx: PromptContext = {
-      user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
-      uri:                   isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
-      cwd:                   isOffline ? '/'            : cwd,
-      pacsserver:            context.pacsserver ?? null,
-      physicalMode:          session.physicalMode_get(),
-      terminalWidth:         process.stdout.columns || 80,
-      lastExitCode:          0,
-      lastCommandDurationMs: 0,
-      p10kSegments:          settings.config.p10kSegments,
-    };
-    process.stdout.write(prompt_render(settings.config.promptTheme, ctx) + '\n');
-    return;
-  }
-
-  // prompt <theme> — switch theme
-  const isKnown: boolean = (THEME_NAMES as readonly string[]).includes(subcommand);
-  if (!isKnown) {
-    console.log(chalk.red(`Unknown theme: '${subcommand}'`));
-    console.log(chalk.gray(`  Available: ${THEME_NAMES.join(', ')}`));
-    return;
-  }
-
-  const theme: ThemeName = subcommand as ThemeName;
-  settings.config.promptTheme = theme;
-  await settings_save();
-  console.log(chalk.green(`[+] Prompt theme set to '${theme}'`));
 }

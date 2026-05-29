@@ -21,8 +21,8 @@ export function context_getFull(): FullContext {
   return chrisContext.fullContext_get();
 }
 
-export function context_getSingle(): SingleContext {
-  chrisContext.currentContext_update();
+export async function context_getSingle(): Promise<SingleContext> {
+  await chrisContext.currentContext_update();
   return chrisContext.singleContext;
 }
 

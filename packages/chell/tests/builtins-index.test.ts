@@ -50,6 +50,7 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_display: mockTableDisplay,
   border_draw: jest.fn(),
+  screen: { print: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
 // Mock chili path module
@@ -93,7 +94,19 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     user_get: jest.fn()
   },
   computeResourceNames_parse: jest.fn(),
-  computeResources_validate: jest.fn()
+  computeResources_validate: jest.fn(),
+  dictionary_fromCLI: jest.fn().mockReturnValue({}),
+  StackMessage: {},
+  Client: jest.fn(),
+  pacsQueries_create: jest.fn(),
+  pacsRetrieve_create: jest.fn(),
+  pacsQuery_get: jest.fn(),
+  pacsQuery_resultDecode: jest.fn(),
+  pacsServers_list: jest.fn(),
+  path_isInFeed: jest.fn().mockReturnValue(false),
+  path_extractPluginInstanceID: jest.fn().mockReturnValue(null),
+  path_extractFeedID: jest.fn().mockReturnValue(null),
+  path_findLatestDircopy: jest.fn().mockReturnValue(null),
 }));
 
 // Mock session
@@ -337,7 +350,7 @@ describe('Builtins - Core Functions', () => {
     it('should list current directory when no args', async () => {
       await builtin_ls([]);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should list specified path', async () => {
@@ -345,68 +358,68 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_ls(['/tmp']);
 
-      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle -l flag for long format', async () => {
       await builtin_ls(['-l']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle -h flag for human-readable sizes', async () => {
       await builtin_ls(['-l', '-h']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: true, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should list multiple operands independently', async () => {
       await builtin_ls(['file1.txt', 'file2.txt']);
 
-      expect(mockVfsList).toHaveBeenNthCalledWith(1, '/home/user/file1.txt', { long: false, human: false, sort: 'name', reverse: false, directory: false });
-      expect(mockVfsList).toHaveBeenNthCalledWith(2, '/home/user/file2.txt', { long: false, human: false, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenNthCalledWith(1, '/home/user/file1.txt', { long: false, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
+      expect(mockVfsList).toHaveBeenNthCalledWith(2, '/home/user/file2.txt', { long: false, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle --sort flag with size option', async () => {
       await builtin_ls(['--sort', 'size']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle --sort flag with date option', async () => {
       await builtin_ls(['--sort', 'date']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'date', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'date', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle --sort flag with owner option', async () => {
       await builtin_ls(['--sort', 'owner']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'owner', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'owner', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle --reverse flag', async () => {
       await builtin_ls(['--reverse']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true, directory: false, oneColumn: false });
     });
 
     it('should handle -r flag for reverse', async () => {
       await builtin_ls(['-r']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'name', reverse: true, directory: false, oneColumn: false });
     });
 
     it('should handle combined --sort and --reverse flags', async () => {
       await builtin_ls(['--sort', 'size', '--reverse']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true, directory: false, oneColumn: false });
     });
 
     it('should handle combined -l, --sort, and --reverse flags', async () => {
       await builtin_ls(['-l', '--sort', 'date', '--reverse']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'date', reverse: true, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'date', reverse: true, directory: false, oneColumn: false });
     });
   });
 
@@ -642,7 +655,7 @@ describe('Builtins - Core Functions', () => {
     it('should handle ls subcommand', async () => {
       await builtin_chefs(['ls', '-l']);
 
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false });
+      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle mkdir subcommand', async () => {

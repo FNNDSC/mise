@@ -95,13 +95,17 @@ function pluginParameters_render(
   lines.push('');
 
   lines.push(chalk.bold.blue('USAGE EXAMPLES'));
-  lines.push(`  ${chalk.white(`${command} --dir "."`)}                     ${chalk.gray('# Basic execution')}`);
-  if (parameters.length > 0) {
-    const optionalParams = parameters.filter((p: ChRISApiPluginParameter) => p.data.optional);
-    if (optionalParams.length > 0) {
-      const exampleParam = optionalParams[0].data.name;
-      lines.push(`  ${chalk.white(`${command} --dir "." --${exampleParam} "value"`)}     ${chalk.gray('# Execution with optional parameter')}`);
-    }
+  const requiredParams: ChRISApiPluginParameter[] = parameters.filter((p: ChRISApiPluginParameter) => !p.data.optional);
+  const optionalParams: ChRISApiPluginParameter[] = parameters.filter((p: ChRISApiPluginParameter) => p.data.optional);
+  const requiredFlags: string = requiredParams.map((p: ChRISApiPluginParameter) => `--${p.data.name} "value"`).join(' ');
+  const basicExample: string = requiredFlags ? `${command} ${requiredFlags}` : command;
+  lines.push(`  ${chalk.white(basicExample)}                     ${chalk.gray('# Basic execution')}`);
+  if (optionalParams.length > 0) {
+    const exampleParam: string = optionalParams[0].data.name;
+    const withOptional: string = requiredFlags
+      ? `${command} ${requiredFlags} --${exampleParam} "value"`
+      : `${command} --${exampleParam} "value"`;
+    lines.push(`  ${chalk.white(withOptional)}     ${chalk.gray('# With optional parameter')}`);
   }
   lines.push('');
 

@@ -14,7 +14,7 @@ import { table_display } from '@fnndsc/chili/screen/screen.js';
  * @param args - Command line arguments (optional flags).
  */
 export async function builtin_context(args: string[]): Promise<void> {
-  const context: SingleContext = context_getSingle();
+  const context: SingleContext = await context_getSingle();
 
   const tableData = [
     {

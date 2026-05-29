@@ -5,7 +5,7 @@
  * @module
  */
 import chalk from 'chalk';
-import { settings } from '../../config/settings.js';
+import { settings, settings_save } from '../../config/settings.js';
 import { THEME_NAMES, type ThemeName } from '../../core/prompt/index.js';
 
 /**
@@ -48,5 +48,6 @@ export async function builtin_prompt(args: string[]): Promise<void> {
 
   const theme: ThemeName = subcommand as ThemeName;
   settings.config.promptTheme = theme;
+  await settings_save();
   console.log(chalk.green(`[+] Prompt theme set to '${theme}'`));
 }

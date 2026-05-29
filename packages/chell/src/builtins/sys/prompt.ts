@@ -23,7 +23,7 @@ interface SegmentMeta {
 
 const ALL_SEGMENTS: SegmentMeta[] = [
   { label: 'host',     description: 'CUBE host URL',                                                toggleable: false },
-  { label: 'pacs',     description: 'Active PACS server (set via: context set PACSserver <id>)',     toggleable: false },
+  { label: 'pacs',     description: 'Active PACS server (set via: context set PACSserver <id>)',     toggleable: true  },
   { label: 'user',     description: 'Logged-in username',                                           toggleable: false },
   { label: 'dir',      description: 'Current VFS path',                                             toggleable: false },
   { label: 'time',     description: 'Current time (HH:MM)',                                         toggleable: true  },
@@ -54,9 +54,9 @@ function configure_print(pacsserver: string | null): void {
   for (const seg of ALL_SEGMENTS) {
     let enabled: boolean;
     if (seg.toggleable) {
-      enabled = settings.config.p10kSegments[seg.label as keyof P10kSegmentConfig];
-    } else if (seg.label === 'pacs') {
-      enabled = pacsserver !== null;
+      const val: boolean = settings.config.p10kSegments[seg.label as keyof P10kSegmentConfig];
+      // pacs: ON only when both toggled on AND a server is actually set
+      enabled = seg.label === 'pacs' ? (val && pacsserver !== null) : val;
     } else {
       enabled = true;
     }

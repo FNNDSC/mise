@@ -53,7 +53,7 @@ export const settings: Settings = {
     historyFile: '.chell_history',
     historySize: 1000,
     promptTheme: 'default',
-    p10kSegments: { time: false, duration: false, status: false },
+    p10kSegments: { pacs: true, time: false, duration: false, status: false },
   },
 };
 
@@ -72,6 +72,7 @@ export async function settings_load(): Promise<void> {
           if (typeof segs[key] === 'boolean') {
             settings.config.p10kSegments[key] = segs[key] as boolean;
           }
+          // pacs defaults true if not present in older config files
         }
       }
     }

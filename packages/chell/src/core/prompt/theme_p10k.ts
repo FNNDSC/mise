@@ -129,7 +129,7 @@ export class ThemeP10k implements PromptTheme {
       { text: `🌐 ${host}`, color: C.HOST },
     ];
 
-    if (ctx.pacsserver) {
+    if (ctx.pacsserver && ctx.p10kSegments.pacs) {
       fixed.push({ text: `🗄️ ${ctx.pacsserver}`, color: C.PACS });
     }
 

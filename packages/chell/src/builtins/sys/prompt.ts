@@ -14,12 +14,22 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 
-/** Human-readable descriptions for each optional p10k segment. */
-const SEGMENT_DESCRIPTIONS: Record<keyof P10kSegmentConfig, string> = {
-  time:     'Current time (HH:MM)',
-  duration: 'Last command duration — shown when ≥ 3s',
-  status:   'Last exit code — shown when non-zero',
-};
+/** All segments in display order, with metadata. */
+interface SegmentMeta {
+  label: string;
+  description: string;
+  toggleable: boolean;
+}
+
+const ALL_SEGMENTS: SegmentMeta[] = [
+  { label: 'host',     description: 'CUBE host URL',                                                toggleable: false },
+  { label: 'pacs',     description: 'Active PACS server (set via: context set PACSserver <id>)',     toggleable: false },
+  { label: 'user',     description: 'Logged-in username',                                           toggleable: false },
+  { label: 'dir',      description: 'Current VFS path',                                             toggleable: false },
+  { label: 'time',     description: 'Current time (HH:MM)',                                         toggleable: true  },
+  { label: 'duration', description: 'Last command duration — shown when ≥ 3s',                      toggleable: true  },
+  { label: 'status',   description: 'Last exit code — shown when non-zero',                         toggleable: true  },
+];
 
 /**
  * Asks a single question on stdout/stdin and resolves with the answer.
@@ -43,8 +53,10 @@ function question_ask(prompt: string): Promise<string> {
 
 /**
  * Prints the configure menu for the current theme.
+ *
+ * @param pacsserver - Current PACS server from context, or null if unset.
  */
-function configure_print(): void {
+function configure_print(pacsserver: string | null): void {
   const theme: ThemeName = settings.config.promptTheme;
 
   if (theme !== 'p10k') {
@@ -57,16 +69,24 @@ function configure_print(): void {
   console.log(
     `  ${chalk.bold('Segment'.padEnd(12))}${chalk.bold('Status'.padEnd(8))}${chalk.bold('Description')}`
   );
-  console.log(`  ${chalk.gray('─'.repeat(58))}`);
+  console.log(`  ${chalk.gray('─'.repeat(66))}`);
 
-  for (const key of P10K_OPTIONAL_SEGMENTS) {
-    const enabled: boolean = settings.config.p10kSegments[key];
-    const statusStr: string = enabled
-      ? chalk.green('[ON ] ')
-      : chalk.gray('[OFF] ');
-    console.log(`  ${chalk.cyan(key.padEnd(12))}${statusStr}${SEGMENT_DESCRIPTIONS[key]}`);
+  for (const seg of ALL_SEGMENTS) {
+    let enabled: boolean;
+    if (seg.toggleable) {
+      enabled = settings.config.p10kSegments[seg.label as keyof P10kSegmentConfig];
+    } else if (seg.label === 'pacs') {
+      enabled = pacsserver !== null;
+    } else {
+      enabled = true;
+    }
+
+    const statusStr: string = enabled ? chalk.green('[ON ] ') : chalk.gray('[OFF] ');
+    const toggleHint: string = !seg.toggleable ? chalk.gray(' (always)') : '';
+    console.log(`  ${chalk.cyan(seg.label.padEnd(12))}${statusStr}${seg.description}${toggleHint}`);
   }
 
+  console.log(chalk.gray('\n  Toggle optional segments: prompt toggle <segment>'));
   console.log('');
 }
 
@@ -172,7 +192,10 @@ export async function builtin_prompt(args: string[]): Promise<void> {
       return;
     }
 
-    configure_print();
+    const ctxForConfigure: SingleContext = await context_getSingle();
+    const pacsserver: string | null = ctxForConfigure.pacsserver ?? null;
+
+    configure_print(pacsserver);
     const answer: string = await question_ask(
       chalk.white('Enter segment names to toggle (e.g. "time duration"), or Enter to exit: ')
     );
@@ -194,7 +217,7 @@ export async function builtin_prompt(args: string[]): Promise<void> {
 
     if (changed.length > 0) {
       await settings_save();
-      configure_print();
+      configure_print(pacsserver);
     }
   }
 }

@@ -113,7 +113,7 @@ async function plugins_getNames(): Promise<string[]> {
 
       return pluginNames;
     }
-  } catch (e) {
+  } catch (e: unknown) {
     // Silently fail if plugins cannot be fetched
   }
   return [];
@@ -246,7 +246,7 @@ async function path_complete(partial: string): Promise<string[]> {
       if (items.length > 0) {
         listCache.cache_set(absDirToList, items);
       }
-    } catch (e) {
+    } catch (e: unknown) {
       // Ignore errors (e.g., perms, not a dir)
     }
   }

@@ -14,7 +14,6 @@ export async function builtin_timing(args: string[]): Promise<void> {
   const subcommand: string | undefined = args[0];
 
   if (!subcommand) {
-    // Display current status
     const status: string = session.timingEnabled_get() ? 'enabled' : 'disabled';
     console.log(`Command timing: ${chalk.yellow(status)}`);
     if (session.timingEnabled_get()) {

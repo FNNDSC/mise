@@ -131,7 +131,6 @@ export async function pacsQuery_createAndWait(
   const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
 
   while (Date.now() < deadline) {
-    // Show live status in spinner message
     const statusResult = await pacsQuery_get(queryId);
     const status = statusResult.ok ? (statusResult.value.status ?? 'pending') : 'pending';
     onStatus?.(`Query ${queryId} — ${status}`);
@@ -288,7 +287,6 @@ export async function builtin_query(args: string[]): Promise<void> {
     return;
   }
 
-  // Parse flags
   let title: string = `Query ${Date.now()}`;
   let pacsserverOverride: string | null = null;
   let tableMode = false;
@@ -328,7 +326,7 @@ export async function builtin_query(args: string[]): Promise<void> {
     if (serversResult.ok && serversResult.value.length > 0) {
       pacsserver = String(serversResult.value[0].id);
     } else {
-      console.error(chalk.red('query: No PACS server available. Set context with: context set PACSserver <id>'));
+      console.error(chalk.red('query: No PACS server available. Set one with: pacs connect <id>'));
       process.exitCode = 1;
       return;
     }

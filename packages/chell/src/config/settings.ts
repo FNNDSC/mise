@@ -53,7 +53,7 @@ export const settings: Settings = {
     historyFile: '.chell_history',
     historySize: 1000,
     promptTheme: 'default',
-    p10kSegments: { pacs: true, time: false, duration: false, status: false },
+    p10kSegments: { pacs: true, time: false, duration: false, status: true },
   },
 };
 

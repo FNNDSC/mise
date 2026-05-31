@@ -377,6 +377,123 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Manage directory resources',
     examples: ['dirs list', 'dirs fieldslist'],
   },
+  pipeline: {
+    usage: 'pipeline <subcommand> [args]',
+    description: 'Manage and execute ChRIS pipelines (registered DAG workflows)',
+    options: [
+      'SUBCOMMANDS:',
+      '  list [<search>]       List registered pipelines, optionally filtered by name',
+      '  info <name|id>        Show pipeline nodes, plugins, and topology',
+      '  run <name|id>         Execute pipeline on current context node',
+      '  source <name|id>      Display the pipeline YAML source file',
+      '',
+      'RUN OPTIONS:',
+      '  --compute <resource>  Override compute resource for all nodes',
+      '  --previous <inst_id>  Explicit previous instance ID (default: context node)',
+      '',
+      'PIPELINE EXECUTABLES:',
+      '  Pipelines also appear in /bin (colored magenta) and can be invoked directly.',
+      '  <PipelineName>              Run pipeline on context node',
+      '  <PipelineName> --nodes      Show DAG structure (alias: --parameters)',
+      '  <PipelineName> --source     Show YAML source (alias: --readme)',
+      '  cat /bin/<PipelineName>     Same as pipeline source',
+    ],
+    examples: [
+      'pipeline list                          # List all pipelines',
+      'pipeline list PHI                      # Filter by name',
+      'pipeline info PHI_detection            # Show nodes and topology',
+      'pipeline run PHI_detection             # Run on current context node',
+      'pipeline run PHI_detection --compute gpu',
+      'pipeline source PHI_detection          # Show YAML source',
+      '',
+      '# Direct invocation from /bin',
+      'PHI_detection                          # Run with defaults',
+      'PHI_detection --nodes                  # Show node structure',
+      'PHI_detection --source                 # Show YAML source',
+      'cat /bin/PHI_detection                 # Same as --source',
+    ],
+  },
+  pacs: {
+    usage: 'pacs <subcommand> [args]',
+    description: 'PACS subsystem — server context, query, and series retrieval',
+    options: [
+      'SUBCOMMANDS:',
+      '  connect               List registered PACS servers with active one marked',
+      '  connect <name|id>     Set active PACS server',
+      '  disconnect            Clear active PACS server',
+      '  list                  List registered PACS servers (alias: pacs connect)',
+      '  query <Key:Value...>  Create PACS query and wait for results',
+      '  pull <vfs-path...>    Pull DICOM series into ChRIS storage',
+    ],
+    examples: [
+      'pacs                              # Show active server',
+      'pacs connect                      # List all servers',
+      'pacs connect PACSDCM              # Set active server by identifier',
+      'pacs connect 1                    # Set active server by numeric ID',
+      'pacs disconnect                   # Clear active server',
+      'pacs list                         # List all servers',
+      'pacs query PatientID:1234         # Query PACS',
+      'pacs pull /net/pacs/queries/42_AccessionNumber:22548684',
+    ],
+  },
+  'pacs query': {
+    usage: 'pacs query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>]',
+    description: 'Create a PACS query, wait for results, and print the VFS path',
+    options: [
+      '--title <title>      Title for the query record (default: Query <timestamp>)',
+      '--pacsserver <id>    Override PACS server (default: context PACSserver)',
+      '--table              Render results as a table instead of the default list',
+      '--help               Show this help',
+    ],
+    examples: [
+      'pacs query PatientID:1234',
+      'pacs query AccessionNumber:22548684 --title "Hip DDH workup"',
+      'pacs query PatientID:1234,StudyDate:20240101',
+      '',
+      '# Standalone alias (identical behaviour)',
+      'query PatientID:1234',
+    ],
+  },
+  'pacs pull': {
+    usage: 'pacs pull [--nowait] [--retry N] <vfs-path|query-expr> [...]',
+    description: 'Pull PACS series into ChRIS storage (blocking, with LONK progress)',
+    options: [
+      '--nowait      Fire retrieves and exit immediately; prints <seriesUID> <retrieveId> per line',
+      '--retry N     Re-fire retrieves for [NO LONK] series up to N additional times',
+      '--help        Show this help',
+    ],
+    examples: [
+      'pacs pull /net/pacs/queries/42_AccessionNumber:22548684',
+      'pacs pull /net/pacs/queries/42_.../Study_1.2.3_US-Hips_DDH',
+      'pacs pull AccessionNumber:22548684   # query-then-pull shorthand',
+      '',
+      '# Standalone alias (identical behaviour)',
+      'pull /net/pacs/queries/42_AccessionNumber:22548684',
+    ],
+  },
+  'pacs connect': {
+    usage: 'pacs connect [<name|id>]',
+    description: 'List registered PACS servers or set the active one',
+    examples: [
+      'pacs connect                  # List all servers with active marked',
+      'pacs connect PACSDCM          # Set active server by identifier',
+      'pacs connect 1                # Set active server by numeric ID',
+    ],
+  },
+  'pacs disconnect': {
+    usage: 'pacs disconnect',
+    description: 'Clear the active PACS server from context',
+    examples: [
+      'pacs disconnect               # Clear active server',
+    ],
+  },
+  'pacs list': {
+    usage: 'pacs list',
+    description: 'List registered PACS servers with active one marked (alias: pacs connect)',
+    examples: [
+      'pacs list                     # List all servers',
+    ],
+  },
   pacsservers: {
     usage: 'pacsservers <subcommand> [options]',
     description: 'List or inspect available PACS servers (context-aware)',
@@ -761,7 +878,7 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
  * @param args - Command arguments (optional command name).
  */
 export async function builtin_help(args: string[]): Promise<void> {
-  const commandName: string | undefined = args[0];
+  const commandName: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
   // If a specific command is requested, show its help
   if (commandName) {
@@ -780,9 +897,9 @@ export async function builtin_help(args: string[]): Promise<void> {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
     Connection: ['connect', 'logout', 'context'],
-    'Single Resource': ['plugin', 'feed'],
+    'Single Resource': ['plugin', 'pipeline', 'feed'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],
-    PACS: ['pacsservers', 'pacsqueries', 'pacsretrieve', 'query', 'pull'],
+    PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
     General: ['help', 'exit', '!'],
   };
@@ -826,6 +943,6 @@ export function builtinCommands_list(): string[] {
  * @param command - The command name.
  * @returns The command description, or undefined if not found.
  */
-export function builtinCommand_description(command: string): string | undefined {
+export function builtinCommand_descriptionGet(command: string): string | undefined {
   return helpText[command]?.description;
 }

@@ -6,7 +6,7 @@
  * @module
  */
 import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
-import { VFSProvider, VFSItem, CpOptions, plugins_listAll } from '@fnndsc/salsa';
+import { VFSProvider, VFSItem, CpOptions, plugins_listAll, pipelines_getAll, PipelineRecord } from '@fnndsc/salsa';
 import { builtinCommands_list } from '../../../builtins/help.js';
 import { staticVfs_read, staticVfs_readBinary } from './static_content.js';
 
@@ -44,21 +44,37 @@ export class StaticVfsProvider implements VFSProvider {
       }
 
       if (effectivePath === "/bin") {
-        const plugins = await plugins_listAll({});
+        const [plugins, pipelinesResult] = await Promise.all([
+          plugins_listAll({}),
+          pipelines_getAll(),
+        ]);
         const items: VFSItem[] = [];
 
         if (plugins && plugins.tableData) {
           plugins.tableData.forEach((plugin: Record<string, unknown>) => {
-            const pluginName = typeof plugin.name === 'string' ? plugin.name : String(plugin.name);
-            const pluginVersion = typeof plugin.version === 'string' ? plugin.version : String(plugin.version || '');
-            const displayName = pluginVersion ? `${pluginName}-v${pluginVersion}` : pluginName;
-
+            const pluginName: string = typeof plugin.name === 'string' ? plugin.name : String(plugin.name);
+            const pluginVersion: string = typeof plugin.version === 'string' ? plugin.version : String(plugin.version || '');
+            const displayName: string = pluginVersion ? `${pluginName}-v${pluginVersion}` : pluginName;
             items.push({
               name: displayName,
               type: "plugin",
               size: 0,
               owner: "system",
               date: typeof plugin.creation_date === 'string' ? plugin.creation_date : '',
+            });
+          });
+        }
+
+        if (pipelinesResult.ok) {
+          pipelinesResult.value.forEach((pipeline: PipelineRecord) => {
+            const slug: string = typeof pipeline.slug === 'string' ? pipeline.slug : pipeline.name.replace(/\s+/g, '_');
+            items.push({
+              name: slug,
+              type: "pipeline",
+              size: 0,
+              owner: typeof pipeline.authors === 'string' ? pipeline.authors : 'system',
+              date: '',
+              title: pipeline.name,
             });
           });
         }

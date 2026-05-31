@@ -5,7 +5,7 @@ export interface BootInfoItem {
   value: string;
 }
 
-function visibleLength(text: string): number {
+function text_visibleLength(text: string): number {
   // Strip all ANSI escape sequences robustly to calculate correct visible width
   return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').length;
 }
@@ -57,7 +57,7 @@ function box_render(title: string, rows: BootInfoItem[], useColor: boolean, useA
   const cornerBR: string = useAscii ? '+' : '┘';
 
   const maxLabel: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, item.label.length), title.length);
-  const maxValue: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, visibleLength(item.value)), 0);
+  const maxValue: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, text_visibleLength(item.value)), 0);
   const innerWidth: number = Math.max(maxLabel + maxValue + 3, title.length + 2);
   const line: string = horiz.repeat(innerWidth);
 
@@ -67,7 +67,7 @@ function box_render(title: string, rows: BootInfoItem[], useColor: boolean, useA
   lines.push(`${vert}${useColor ? chalk.cyan(titlePadded) : titlePadded}${vert}`);
   rows.forEach((item: BootInfoItem) => {
     const rawContent: string = `${item.label.padEnd(maxLabel)} ${item.value}`;
-    const visLen: number = visibleLength(rawContent);
+    const visLen: number = text_visibleLength(rawContent);
     const padCount: number = Math.max(0, innerWidth - visLen);
     
     const label: string = useColor ? chalk.yellow(item.label.padEnd(maxLabel)) : item.label.padEnd(maxLabel);
@@ -81,7 +81,7 @@ function box_render(title: string, rows: BootInfoItem[], useColor: boolean, useA
 
 function box_minWidth(title: string, rows: BootInfoItem[]): number {
   const maxLabel: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, item.label.length), title.length);
-  const maxValue: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, visibleLength(item.value)), 0);
+  const maxValue: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, text_visibleLength(item.value)), 0);
   return Math.max(maxLabel + maxValue + 3, title.length + 2);
 }
 
@@ -95,7 +95,7 @@ function box_render_withMin(title: string, rows: BootInfoItem[], useColor: boole
   const cornerBR: string = useAscii ? '+' : '┘';
 
   const maxLabel: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, item.label.length), title.length);
-  const maxValue: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, visibleLength(item.value)), 0);
+  const maxValue: number = rows.reduce((max: number, item: BootInfoItem) => Math.max(max, text_visibleLength(item.value)), 0);
   const innerWidth: number = Math.max(maxLabel + maxValue + 3, title.length + 2, minInner);
   const line: string = horiz.repeat(innerWidth);
 
@@ -105,7 +105,7 @@ function box_render_withMin(title: string, rows: BootInfoItem[], useColor: boole
   lines.push(`${vert}${useColor ? chalk.cyan(titlePadded) : titlePadded}${vert}`);
   rows.forEach((item: BootInfoItem) => {
     const rawContent: string = `${item.label.padEnd(maxLabel)} ${item.value}`;
-    const visLen: number = visibleLength(rawContent);
+    const visLen: number = text_visibleLength(rawContent);
     const padCount: number = Math.max(0, innerWidth - visLen);
     
     const label: string = useColor ? chalk.yellow(item.label.padEnd(maxLabel)) : item.label.padEnd(maxLabel);
@@ -135,9 +135,9 @@ export function bootsequence_printIntroPanels(
   const chrisBox: string[] = box_render_withMin('ChRIS', panels.chris, useColor, useAscii, minInner);
 
   const rightLinesRaw: string[] = [...headerBox, '', ...localBox, '', ...chrisBox];
-  const rightWidth: number = rightLinesRaw.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
+  const rightWidth: number = rightLinesRaw.reduce((max: number, line: string) => Math.max(max, text_visibleLength(line)), 0);
   const rightLines: string[] = rightLinesRaw.map((line: string) => {
-    const currentLen: number = visibleLength(line);
+    const currentLen: number = text_visibleLength(line);
     if (currentLen >= rightWidth) return line;
     if (line.startsWith('┌') || line.startsWith('└') || line.startsWith('+') || line.startsWith('│') || line.startsWith('|')) {
       const padCount: number = rightWidth - currentLen;
@@ -148,13 +148,13 @@ export function bootsequence_printIntroPanels(
     return line.padEnd(line.length + (rightWidth - currentLen), ' ');
   });
 
-  const logoWidth: number = logoLines.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
+  const logoWidth: number = logoLines.reduce((max: number, line: string) => Math.max(max, text_visibleLength(line)), 0);
   const paddingBetween: number = 3;
   const logoBlock: string[] = ['', ...logoLines, ''].map((l: string) => l.padEnd(logoWidth, ' '));
   const totalWidth: number = logoWidth + paddingBetween + rightWidth;
   const lineChar: string = useAscii ? '-' : '─';
   const titleText: string = useColor ? chalk.bold.cyan('ChELL neofetch') : 'ChELL neofetch';
-  const titleLine: string = `${leftPad}${titleText} ${lineChar.repeat(Math.max(0, totalWidth - visibleLength(titleText) - 1))}`;
+  const titleLine: string = `${leftPad}${titleText} ${lineChar.repeat(Math.max(0, totalWidth - text_visibleLength(titleText) - 1))}`;
   const rows: number = Math.max(logoBlock.length, rightLines.length);
 
   console.log(titleLine);
@@ -184,16 +184,16 @@ export function bootsequence_printIntroPanelsStacked(
   const chrisBox: string[] = box_render_withMin('ChRIS', panels.chris, useColor, useAscii, minInner);
 
   const stackLines: string[] = [...headerBox, '', ...localBox, '', ...chrisBox];
-  const boxesWidth: number = stackLines.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
-  const logoWidth: number = logoLines.reduce((max: number, line: string) => Math.max(max, visibleLength(line)), 0);
+  const boxesWidth: number = stackLines.reduce((max: number, line: string) => Math.max(max, text_visibleLength(line)), 0);
+  const logoWidth: number = logoLines.reduce((max: number, line: string) => Math.max(max, text_visibleLength(line)), 0);
   const contentWidth: number = Math.max(boxesWidth, logoWidth);
 
   const lineChar: string = useAscii ? '-' : '─';
   const titleText: string = useColor ? chalk.bold.cyan('ChELL neofetch') : 'ChELL neofetch';
-  const titleLine: string = `${leftPad}${titleText} ${lineChar.repeat(Math.max(0, contentWidth - visibleLength(titleText) - 1))}`;
+  const titleLine: string = `${leftPad}${titleText} ${lineChar.repeat(Math.max(0, contentWidth - text_visibleLength(titleText) - 1))}`;
 
   const padVisible = (line: string): string => {
-    const diff: number = contentWidth - visibleLength(line);
+    const diff: number = contentWidth - text_visibleLength(line);
     return diff > 0 ? `${line}${' '.repeat(diff)}` : line;
   };
 

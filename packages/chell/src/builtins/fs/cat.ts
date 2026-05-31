@@ -10,6 +10,88 @@ import { help_show } from '../help.js';
 import { errorStack, Result, StackMessage } from '@fnndsc/cumin';
 import * as path from 'path';
 
+/** File extensions that receive syntax highlighting. */
+const HIGHLIGHT_EXTENSIONS: Set<string> = new Set(['.json', '.yaml', '.yml']);
+
+/**
+ * Applies chalk-based syntax highlighting to JSON content.
+ * Returns the original string if the content is not valid JSON.
+ *
+ * @param content - Raw JSON string.
+ * @returns Highlighted string, or original on parse failure.
+ */
+function json_highlight(content: string): string {
+  try {
+    JSON.parse(content);
+  } catch {
+    return content;
+  }
+  return content.replace(
+    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match: string): string => {
+      if (match.endsWith(':')) return chalk.cyan(match);           // key
+      if (match.startsWith('"')) return chalk.green(match);        // string value
+      if (match === 'true' || match === 'false') return chalk.yellow(match);
+      if (match === 'null') return chalk.gray(match);
+      return chalk.magenta(match);                                 // number
+    }
+  );
+}
+
+/**
+ * Applies chalk-based syntax highlighting to YAML content line by line.
+ *
+ * @param content - Raw YAML string.
+ * @returns Highlighted string.
+ */
+function yaml_highlight(content: string): string {
+  return content.split('\n').map((line: string): string => {
+    if (/^\s*#/.test(line)) return chalk.gray(line);
+    const kv: RegExpMatchArray | null = line.match(/^(\s*)([\w./-]+)(\s*:\s*)(.*)/);
+    if (kv) {
+      const [, indent, key, sep, value]: string[] = kv as string[];
+      const coloredValue: string = value_yamlColor(value);
+      return `${indent}${chalk.cyan(key)}${chalk.gray(sep)}${coloredValue}`;
+    }
+    const listItem: RegExpMatchArray | null = line.match(/^(\s*-\s+)(.*)/);
+    if (listItem) {
+      return `${chalk.gray(listItem[1])}${chalk.green(listItem[2])}`;
+    }
+    return line;
+  }).join('\n');
+}
+
+/**
+ * Colors a scalar YAML value based on its type.
+ *
+ * @param value - The raw value string from a YAML key: value line.
+ * @returns Chalk-colored value string.
+ */
+function value_yamlColor(value: string): string {
+  if (!value) return value;
+  if (value === 'true' || value === 'false') return chalk.yellow(value);
+  if (value === 'null' || value === '~') return chalk.gray(value);
+  if (/^-?\d+(\.\d+)?$/.test(value)) return chalk.magenta(value);
+  if (/^["']/.test(value)) return chalk.green(value);
+  return chalk.white(value);
+}
+
+/**
+ * Applies syntax highlighting to text content based on file extension.
+ * Returns the original string unchanged when stdout is not a TTY (piping).
+ *
+ * @param content - File content string.
+ * @param filePath - Full path used to determine the file type.
+ * @returns Highlighted or original content.
+ */
+function content_highlight(content: string, filePath: string): string {
+  if (!process.stdout.isTTY) return content;
+  const ext: string = path.extname(filePath).toLowerCase();
+  if (ext === '.json') return json_highlight(content);
+  if (ext === '.yaml' || ext === '.yml') return yaml_highlight(content);
+  return content;
+}
+
 /**
  * List of file extensions that are considered binary.
  */
@@ -115,7 +197,6 @@ async function buffer_writeToStdout(buffer: Buffer): Promise<void> {
  * ```
  */
 export async function builtin_cat(args: string[]): Promise<void> {
-  // Parse arguments: separate --binary flag from file paths
   let binaryMode: boolean = false;
   const filePaths: string[] = [];
 
@@ -132,7 +213,6 @@ export async function builtin_cat(args: string[]): Promise<void> {
      return;
   }
 
-  // Process each file
   for (let i: number = 0; i < filePaths.length; i++) {
     const pathArg: string = filePaths[i];
     const target: string = await path_resolve(pathArg);
@@ -156,6 +236,7 @@ export async function builtin_cat(args: string[]): Promise<void> {
        if (!result.ok) {
           const error: StackMessage | undefined = errorStack.stack_pop();
           console.error(chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`));
+          process.exitCode = 1;
           continue;
        }
 
@@ -167,10 +248,12 @@ export async function builtin_cat(args: string[]): Promise<void> {
        if (!result.ok) {
           const error: StackMessage | undefined = errorStack.stack_pop();
           console.error(chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`));
+          process.exitCode = 1;
           continue;
        }
 
-       console.log(cat_render(result.value, pathArg));
+       const highlighted: string = content_highlight(result.value, target);
+       console.log(cat_render(highlighted, pathArg));
     }
   }
 }

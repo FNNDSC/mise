@@ -38,6 +38,7 @@ export class ThemeDefault implements PromptTheme {
     const pathBudget: number = limit - fixedVisible;
     const path: string = path_truncate(ctx.cwd, pathBudget);
 
+    const glyph: string = ctx.lastExitCode !== 0 ? chalk.red('$ ') : chalk.green('$ ');
     return (
       modePrefix +
       chalk.green(ctx.user) +
@@ -45,7 +46,7 @@ export class ThemeDefault implements PromptTheme {
       chalk.cyan(ctx.uri) +
       ':' +
       chalk.yellow(path) +
-      '$ '
+      glyph
     );
   }
 }

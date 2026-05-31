@@ -74,7 +74,6 @@ export async function pacsVfs_read(
       return Err();
     }
 
-    // Fetch decoded query results
     const decoded = await queryResult_fetch(queryId);
     if (!decoded || !decoded.json) {
       errorStack.stack_push("error", `PACS query ${queryId} has no result payload.`);
@@ -84,7 +83,6 @@ export async function pacsVfs_read(
     const studyUID = studyFolder.replace(/^Study_/, "").split("_")[0];
     const seriesUID = seriesFolder.replace(/^Series_/, "").split("_")[0];
 
-    // Extract study object
     const decodedJson = decoded.json;
     let studiesObj: unknown;
     if (decodedJson && typeof decodedJson === "object") {
@@ -113,7 +111,6 @@ export async function pacsVfs_read(
       return Err();
     }
 
-    // Extract series object
     const seriesArray: unknown[] =
       Array.isArray(studyObj.series) ? studyObj.series :
       Array.isArray(studyObj.Series) ? studyObj.Series :

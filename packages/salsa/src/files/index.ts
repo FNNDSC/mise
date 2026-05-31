@@ -58,7 +58,6 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
     if (dirResults && dirResults.tableData) {
       for (const d of dirResults.tableData) {
         const dirPath: string = d.path as string;
-        // Add the directory itself
         items.push({ path: dirPath, type: 'dir' });
         
         // Recurse
@@ -231,7 +230,6 @@ export async function files_touch(
   path: string,
   content?: string | Buffer | Blob
 ): Promise<boolean> {
-  // Use files_create with provided content or empty Blob
   const fileContent: string | Buffer | Blob = content ?? new Blob([""]);
   return await files_create(fileContent, path);
 }
@@ -334,7 +332,6 @@ export async function files_uploadPath(localPath: string, remotePath: string): P
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function files_mkdir(folderPath: string): Promise<boolean> {
-  // Use cumin's folder_create method
   const result: Result<boolean> = await chrisIO.folder_create(folderPath);
 
   if (!result.ok) {
@@ -407,7 +404,7 @@ export async function files_getGroup(
       errorStack.stack_push("error", `Failed to initialize ChRIS context for ${assetName} at ${path}`);
       return null;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     errorStack.stack_push("error", `Error creating ChRISEmbeddedResourceGroup for ${assetName}: ${error}`);
     return null;
   }
@@ -498,7 +495,7 @@ export async function files_getSingle(
       errorStack.stack_push("error", `Failed to create ChRISFilesContext for path: ${path}`);
       return null;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     errorStack.stack_push("error", `Error creating ChRISFilesContext for path ${path}: ${error}`);
     return null;
   }

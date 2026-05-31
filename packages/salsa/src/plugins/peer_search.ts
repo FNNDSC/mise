@@ -98,7 +98,6 @@ export async function plugin_searchPeersByImage(
   dockerImage: string,
   peerStoreUrls?: string[]
 ): Promise<PeerStorePlugin | null> {
-  // Extract plugin name from docker image
   // Examples:
   //   'fnndsc/pl-dircopy:2.1.1' -> 'pl-dircopy'
   //   'pl-dircopy:latest' -> 'pl-dircopy'

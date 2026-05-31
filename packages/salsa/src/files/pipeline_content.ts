@@ -12,7 +12,6 @@ import {
  * @returns A Result containing the file content as a string, or an error.
  */
 export async function fileContent_getPipeline(filePath: string): Promise<Result<string>> {
-  // Use cumin's pipelineFile_getTextByPath to download the file
   return await pipelineFile_getTextByPath(filePath);
 }
 
@@ -25,6 +24,5 @@ export async function fileContent_getPipeline(filePath: string): Promise<Result<
  * @returns A Result containing the file content as a Buffer, or an error.
  */
 export async function fileContent_getPipelineBinary(filePath: string): Promise<Result<Buffer>> {
-  // Use cumin's pipelineFile_getByPath to download the file as binary
   return await pipelineFile_getByPath(filePath);
 }

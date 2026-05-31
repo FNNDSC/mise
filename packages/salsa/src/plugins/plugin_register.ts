@@ -51,7 +51,7 @@ export async function plugin_registerWithAdmin(
         if (token) {
           adminToken = token;
         }
-      } catch (e) {
+      } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         errorStack.stack_push('warning', `Failed to get admin token: ${msg}`);
       }
@@ -88,7 +88,6 @@ export async function plugin_register(
   pluginData: PluginRegistrationData,
   computeResources?: string[]
 ): Promise<PluginRegistrationResponse | null> {
-  // Use cumin's plugin_registerDirect function
   const result: Result<Record<string, unknown>> = await plugin_registerDirect(
     pluginData,
     computeResources
@@ -138,7 +137,6 @@ export async function plugin_assignToComputeResources(
   try {
     const chrisPlugin = new ChRISPlugin();
 
-    // Get current compute resources
     const currentResources: string[] = await chrisPlugin.plugin_getComputeResources(pluginId);
 
     // Determine new resources to add (avoid duplicates)

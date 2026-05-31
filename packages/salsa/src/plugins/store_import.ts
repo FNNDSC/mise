@@ -9,8 +9,7 @@
  * @module
  */
 
-import { ChRISPlugin, Client } from '@fnndsc/cumin';
-import { errorStack } from '@fnndsc/cumin';
+import { ChRISPlugin, Client, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 
 /**
  * Credentials for admin authentication.
@@ -81,20 +80,15 @@ export async function plugin_importFromStore(
 ): Promise<PluginImportResult> {
   const chrisPlugin = new ChRISPlugin();
 
-  // Fetch parameters if not present but link exists
   if (!pluginData.parameters && pluginData.links) {
     const links = pluginData.links as Array<{ rel: string; href: string }>;
     const paramsLink = links.find(l => l.rel === 'parameters');
     if (paramsLink) {
-      try {
-        const parameters = await fetchParameters_fromUrl(paramsLink.href);
-        if (parameters.length > 0) {
-          pluginData.parameters = parameters;
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.log(`Warning: Failed to fetch parameters: ${msg}`);
-        // Continue, maybe it has no parameters?
+      const paramsResult = await parameters_fetchFromUrl(paramsLink.href);
+      if (paramsResult.ok && paramsResult.value.length > 0) {
+        pluginData.parameters = paramsResult.value;
+      } else if (!paramsResult.ok) {
+        console.log(`Warning: Failed to fetch parameters from ${paramsLink.href}`);
       }
     }
   }
@@ -110,7 +104,6 @@ export async function plugin_importFromStore(
   let adminToken: string | undefined;
 
   if (adminCreds && adminCreds.username && adminCreds.password) {
-    // Fetch token for admin user
     const client = await chrisPlugin.client_get();
     if (client) {
       const authUrl = client.url + 'auth-token/';
@@ -123,7 +116,7 @@ export async function plugin_importFromStore(
         if (token) {
           adminToken = token;
         }
-      } catch (e) {
+      } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         errorStack.stack_push('warning', `Failed to get admin token: ${msg}`);
       }
@@ -218,19 +211,20 @@ interface CollectionJson {
  * @param url - The parameters URL (Collection+JSON).
  * @returns Promise resolving to array of parameter objects.
  */
-async function fetchParameters_fromUrl(url: string): Promise<Array<Record<string, unknown>>> {
+async function parameters_fetchFromUrl(url: string): Promise<Result<Array<Record<string, unknown>>>> {
   const response: Response = await fetch(url, {
     headers: { 'Accept': 'application/vnd.collection+json' }
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error ${response.status}`);
+    errorStack.stack_push('error', `parameters_fetchFromUrl: HTTP error ${response.status}`);
+    return Err();
   }
 
   const data: unknown = await response.json();
   const params: Array<Record<string, unknown>> = [];
 
-  if (isCollectionJson(data) && data.collection.items) {
+  if (collectionJson_is(data) && data.collection.items) {
     data.collection.items.forEach((item: CollectionItem) => {
       const paramObj: Record<string, unknown> = {};
       if (item.data) {
@@ -242,7 +236,6 @@ async function fetchParameters_fromUrl(url: string): Promise<Array<Record<string
       delete paramObj['id'];
       delete paramObj['plugin'];
 
-      // Map type if necessary
       if (paramObj['type'] && typeof paramObj['type'] === 'string') {
         const typeStr: string = paramObj['type'] as string;
         if (TYPE_MAPPING[typeStr]) {
@@ -254,13 +247,13 @@ async function fetchParameters_fromUrl(url: string): Promise<Array<Record<string
     });
   }
 
-  return params;
+  return Ok(params);
 }
 
 /**
  * Type guard for CollectionJson.
  */
-function isCollectionJson(data: unknown): data is CollectionJson {
+function collectionJson_is(data: unknown): data is CollectionJson {
   return (
     typeof data === 'object' &&
     data !== null &&

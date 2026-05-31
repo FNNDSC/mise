@@ -72,7 +72,6 @@ export async function feed_create(dirs: string[], params: ChRISObjectParams = {}
  */
 export interface FeedShareOptions {
   is_public?: boolean; // True to make public, false to make unpublic
-  // Add other sharing options here if needed, e.g., for specific users/groups
   [key: string]: unknown;
 }
 
@@ -84,7 +83,6 @@ export interface FeedShareOptions {
  * @returns A Promise resolving to true on successful sharing, false otherwise.
  */
 export async function feeds_share(feedId: number, options: FeedShareOptions): Promise<boolean> {
-  // Use cumin's feed functions
   if (options.is_public === true) {
     const result: Result<boolean> = await feed_makePublic(feedId);
     return result.ok && result.value;
@@ -105,7 +103,6 @@ export async function feeds_share(feedId: number, options: FeedShareOptions): Pr
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function feed_delete(id: number): Promise<boolean> {
-  // Use cumin's feed_delete function
   const result: Result<boolean> = await cumin_feed_delete(id);
   return result.ok && result.value;
 }

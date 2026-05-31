@@ -162,7 +162,7 @@ export async function pluginMeta_readmeContentFetch(repoUrl: string): Promise<st
       if (response.status === 200) {
         return response.data;
       }
-    } catch (error) {
+    } catch (error: unknown) {
       // Continue to next URL
     }
   }

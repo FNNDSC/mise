@@ -28,7 +28,6 @@ export async function fileContent_getPACS(filePath: string): Promise<Result<stri
   const dir: string = path.posix.dirname(filePath);
   const name: string = path.posix.basename(filePath);
 
-  // Get the directory listing to find the file ID
   const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
   if (!group) {
      return Err();
@@ -56,7 +55,6 @@ export async function fileContent_getPACS(filePath: string): Promise<Result<stri
       return Err();
   }
 
-  // Use cumin's pacsFile_getText to download the file
   return await pacsFile_getText(file.id);
 }
 
@@ -73,7 +71,6 @@ export async function fileContent_getPACSBinary(filePath: string): Promise<Resul
   const dir: string = path.posix.dirname(filePath);
   const name: string = path.posix.basename(filePath);
 
-  // Get the directory listing to find the file ID
   const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
   if (!group) {
      return Err();
@@ -101,6 +98,5 @@ export async function fileContent_getPACSBinary(filePath: string): Promise<Resul
       return Err();
   }
 
-  // Use cumin's pacsFile_getBlob to download the file as binary
   return await pacsFile_getBlob(file.id);
 }

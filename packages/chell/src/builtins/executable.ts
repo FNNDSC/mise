@@ -120,7 +120,6 @@ export async function pluginExecutable_handle(
         return true;
     }
 
-    // Handle introspection flags
     if (args.includes('--parameters')) {
         console.log(chalk.cyan(`Fetching parameters for plugin ${name} v${version}...`));
         const resolved = await plugin_resolveExact();

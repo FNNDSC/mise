@@ -58,7 +58,7 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
 
   const pacsIdentifier: string | null = await pacsServer_resolve(pacsserverOverride);
   if (!pacsIdentifier) {
-    console.error(chalk.red('cubepath: No PACS server available. Set context with: context set PACSserver <id>'));
+    console.error(chalk.red('cubepath: No PACS server available. Set one with: pacs connect <id>'));
     process.exitCode = 1;
     return;
   }

@@ -82,7 +82,7 @@ export async function builtin_executePlugin(
     if (pluginArgsStr.trim()) {
       try {
         pluginParams = dictionary_fromCLI(pluginArgsStr);
-      } catch (e) {
+      } catch (e: unknown) {
         const msg: string = e instanceof Error ? e.message : String(e);
         console.error(chalk.red(`Error parsing plugin parameters: ${msg}`));
         return;
@@ -92,7 +92,7 @@ export async function builtin_executePlugin(
     if (contextArgsStr.trim()) {
       try {
         contextParams = dictionary_fromCLI(contextArgsStr);
-      } catch (e) {
+      } catch (e: unknown) {
         const msg: string = e instanceof Error ? e.message : String(e);
         console.error(chalk.red(`Error parsing context parameters: ${msg}`));
         return;

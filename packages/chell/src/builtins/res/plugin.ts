@@ -1,6 +1,15 @@
 /**
- * @file Builtin plugin command.
- * Manages plugins (list, run, add).
+ * @file Builtin plugin/plugins command.
+ *
+ * Handles plugin management in chell. Subcommands:
+ * - `list`  — fetch and render the plugin collection via chili
+ * - `run`   — execute a plugin instance by searchable name/id
+ * - `add`   — register a new plugin into CUBE (interactive, with spinner)
+ *
+ * Unknown subcommands fall through to a spawned chili process.
+ * `plugin` and `plugins` are both registered as aliases in COMMAND_HANDLERS.
+ *
+ * @module
  */
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs } from '../utils.js';
@@ -70,7 +79,6 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
     return;
   }
 
-  // Prepare options
   const options = {
     compute: parsed.compute as string | undefined,
     store: parsed.store as string | undefined,
@@ -79,12 +87,10 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
     public_repo: parsed.publicRepo as string | undefined,
   };
 
-  // Clear error stack before starting
   errorStack.stack_clear();
 
   console.log(chalk.cyan(`\nAdding plugin: ${pluginInput}\n`));
 
-  // Wrap the plugin_add function with spinner for long operations
   const success = await plugin_add(pluginInput, options);
 
   spinner.stop();
@@ -94,7 +100,6 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   } else {
     console.log(chalk.red('\n[FAILED] Failed to add plugin.\n'));
 
-    // Display errors from errorStack
     const errors = errorStack.allOfType_get('error');
     if (errors.length > 0) {
       console.log(chalk.red('Errors:'));
@@ -106,7 +111,6 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
       console.log('');
     }
 
-    // Display warnings
     const warnings = errorStack.allOfType_get('warning');
     if (warnings.length > 0) {
       console.log(chalk.yellow('Warnings:'));

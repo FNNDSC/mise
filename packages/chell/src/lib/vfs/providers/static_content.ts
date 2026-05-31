@@ -7,8 +7,9 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack, pipeline_resolve, PipelineRecord } from '@fnndsc/cumin';
 import { commandHelp_get } from '../../../builtins/help.js';
+import { pipeline_sourceGet } from '@fnndsc/salsa';
 import chalk from 'chalk';
 import { session } from '../../../session/index.js';
 
@@ -113,6 +114,32 @@ function pluginParameters_render(
 }
 
 /**
+ * Renders a brief info block for a pipeline that has no registered YAML source.
+ *
+ * @param pipeline - The resolved PipelineRecord.
+ * @returns Formatted summary string.
+ */
+function pipelineSummary_render(pipeline: PipelineRecord): string {
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(chalk.bold.magenta(pipeline.name));
+  lines.push(chalk.gray('─'.repeat(74)));
+  lines.push(`${chalk.bold.blue('ID:')}       ${pipeline.id}`);
+  if (pipeline.authors) lines.push(`${chalk.bold.blue('Authors:')}  ${pipeline.authors}`);
+  if (pipeline.category) lines.push(`${chalk.bold.blue('Category:')} ${pipeline.category}`);
+  if (pipeline.locked !== undefined) lines.push(`${chalk.bold.blue('Locked:')}   ${pipeline.locked}`);
+  if (pipeline.description) {
+    lines.push('');
+    lines.push(chalk.bold.blue('DESCRIPTION'));
+    lines.push(`  ${pipeline.description}`);
+  }
+  lines.push('');
+  lines.push(chalk.dim('No YAML source registered. Use `pipeline info <name>` for full DAG details.'));
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
  * Reads virtual file content under command and builtin static paths.
  *
  * Handles help text formatting for /usr/bin and fetches parameter specifications for /bin plugins.
@@ -123,13 +150,13 @@ function pluginParameters_render(
  */
 export async function staticVfs_read(pathStr: string, prefix: string): Promise<Result<string>> {
   try {
-    let effectivePath = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
+    let effectivePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
     if (effectivePath.length > 1 && effectivePath.endsWith("/")) {
       effectivePath = effectivePath.slice(0, -1);
     }
 
     if (prefix === "/usr/bin") {
-      const commandName = effectivePath.substring("/usr/bin/".length);
+      const commandName: string = effectivePath.substring("/usr/bin/".length);
       const helpStr = commandHelp_get(commandName);
       if (helpStr !== undefined) {
         return Ok(helpStr);
@@ -139,16 +166,22 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
     }
 
     if (prefix === "/bin") {
-      const commandName = effectivePath.substring("/bin/".length);
-      const versionSeparatorIndex = commandName.lastIndexOf('-v');
-      
+      const commandName: string = effectivePath.substring("/bin/".length);
+      const versionSeparatorIndex: number = commandName.lastIndexOf('-v');
+
       if (versionSeparatorIndex === -1) {
-        errorStack.stack_push("error", `Invalid plugin filename format under /bin: ${commandName}`);
+        const yamlResult = await pipeline_sourceGet(commandName);
+        if (yamlResult.ok) return Ok(yamlResult.value);
+
+        const resolveResult = await pipeline_resolve(commandName);
+        if (resolveResult.ok) return Ok(pipelineSummary_render(resolveResult.value));
+
+        errorStack.stack_push("error", `Unknown /bin entry: ${commandName}`);
         return Err();
       }
 
-      const name = commandName.substring(0, versionSeparatorIndex);
-      const version = commandName.substring(versionSeparatorIndex + 2);
+      const name: string = commandName.substring(0, versionSeparatorIndex);
+      const version: string = commandName.substring(versionSeparatorIndex + 2);
 
       const client = await session.connection.client_get();
       if (!client) {
@@ -167,7 +200,7 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       const parametersList = await plugin.getPluginParameters({ limit: 100 });
       const parameters = parametersList.getItems();
 
-      const output = pluginParameters_render(plugin, parameters, commandName);
+      const output: string = pluginParameters_render(plugin, parameters, commandName);
       return Ok(output);
     }
 

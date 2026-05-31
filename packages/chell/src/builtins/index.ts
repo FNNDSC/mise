@@ -21,6 +21,7 @@ export * from './fs/du.js';
 
 export * from './net/connect.js';
 export * from './net/logout.js';
+export * from './net/pacs.js';
 export * from './net/query.js';
 export * from './net/cubepath.js';
 
@@ -32,10 +33,11 @@ export * from './debug.js';
 export * from './help.js';
 
 export * from './res/plugin.js';
+export * from './res/pipeline.js';
 export * from './res/feed.js';
 export * from './res/files.js';
 export * from './parametersofplugin.js';
 export * from './store.js';
 
-export { commandArgs_process, path_resolve, path_resolve_pure, error_stripDebugPrefix } from './utils.js';
+export { commandArgs_process, path_resolve, path_resolvePure, error_stripDebugPrefix } from './utils.js';
 export type { ParsedArgs } from './utils.js';

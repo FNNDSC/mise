@@ -363,7 +363,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
 
   const pacsIdentifier: string | null = await pacsServer_resolve();
   if (!pacsIdentifier) {
-    console.error(chalk.red('pull: No PACS server available. Set context with: context set PACSserver <id>'));
+    console.error(chalk.red('pull: No PACS server available. Set one with: pacs connect <id>'));
     process.exitCode = 1;
     return;
   }

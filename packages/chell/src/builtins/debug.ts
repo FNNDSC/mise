@@ -21,7 +21,6 @@ export async function builtin_debug(args: string[]): Promise<void> {
   }
 
   if (!subcommand) {
-    // Display current status
     const status: string = config.debug ? 'enabled' : 'disabled';
     console.log(`Debug mode: ${chalk.yellow(status)}`);
     if (config.debug) {

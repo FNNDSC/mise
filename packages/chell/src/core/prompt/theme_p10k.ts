@@ -183,7 +183,7 @@ export class ThemeP10k implements PromptTheme {
       }
     }
 
-    const line2: string = chalk.green('❯') + ' ';
+    const line2: string = (ctx.lastExitCode !== 0 ? chalk.red('❯') : chalk.green('❯')) + ' ';
     return `${line1}\n${line2}`;
   }
 }

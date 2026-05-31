@@ -57,26 +57,13 @@ export async function builtin_rm(args: string[]): Promise<void> {
       continue;
     }
 
-    // Parse flags
-    if (arg === '-r' || arg === '-R') {
-      recursive = true;
-    } else if (arg === '-f') {
-      force = true;
-    } else if (arg === '-i') {
-      interactive = true;
-    } else if (arg === '-rf' || arg === '-fr' || arg === '-Rf' || arg === '-fR') {
-      recursive = true;
-      force = true;
-    } else if (arg === '-ri' || arg === '-ir' || arg === '-Ri' || arg === '-iR') {
-      recursive = true;
-      interactive = true;
-    } else if (arg === '-fi' || arg === '-if') {
-      force = true;
-      interactive = true;
-    } else if (arg === '-rfi' || arg === '-rif' || arg === '-fri' || arg === '-fir' || arg === '-irf' || arg === '-ifr') {
-      recursive = true;
-      force = true;
-      interactive = true;
+    // Parse flags — iterate characters to handle any combination (-rf, -fr, -rfi, etc.)
+    if (arg.startsWith('-') && arg.length > 1) {
+      for (const ch of arg.substring(1)) {
+        if (ch === 'r' || ch === 'R') recursive = true;
+        else if (ch === 'f') force = true;
+        else if (ch === 'i') interactive = true;
+      }
     } else if (!arg.startsWith('-')) {
       pathArgs.push(arg);
     }

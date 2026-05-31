@@ -14,6 +14,21 @@ import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 
 
 /**
+ * Formats a byte count for `du` output: human-readable string or KB integer,
+ * right-padded to 12 characters for column alignment.
+ *
+ * @param bytes - Raw byte count.
+ * @param humanReadable - If true, format as human-readable (e.g. `1.2M`).
+ * @returns Right-aligned size string.
+ */
+function duSize_format(bytes: number, humanReadable: boolean): string {
+  const formatted: string = humanReadable
+    ? bytes_format(bytes)
+    : Math.ceil(bytes / 1024).toString();
+  return formatted.padStart(12, ' ');
+}
+
+/**
  * Displays disk usage statistics for ChRIS filesystem directories.
  * Mimics standard Linux du command behavior and flags.
  * Uses chili's scan_do machinery for recursive filesystem traversal.
@@ -35,7 +50,6 @@ export async function builtin_du(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
 
-  // Parse flags
   const humanReadable: boolean = !!parsed['h'] || !!parsed['human-readable'];
   const summarize: boolean = !!parsed['s'] || !!parsed['summarize'];
   const showAll: boolean = !!parsed['a'] || !!parsed['all'];
@@ -44,11 +58,9 @@ export async function builtin_du(args: string[]): Promise<void> {
   const maxDepth: number | undefined = parsed['d'] ? parseInt(String(parsed['d']), 10) :
                                         parsed['max-depth'] ? parseInt(String(parsed['max-depth']), 10) : undefined;
 
-  // Determine target paths
   const originalFolder: string = await session.getCWD();
   const rawTargets: string[] = pathArgs.length > 0 ? pathArgs : ['.'];
-  
-  // Pre-resolve all targets against the ORIGINAL working directory
+
   const resolvedTargets: string[] = [];
   for (const raw of rawTargets) {
     resolvedTargets.push(await path_resolve(raw));
@@ -56,30 +68,15 @@ export async function builtin_du(args: string[]): Promise<void> {
 
   let grandTotal: number = 0;
 
-  // Format size for display with padding for alignment
-  const size_format = (bytes: number): string => {
-    let formatted: string;
-    if (humanReadable) {
-      formatted = bytes_format(bytes);
-    } else {
-      // KB (1024 bytes per block, like du default)
-      formatted = Math.ceil(bytes / 1024).toString();
-    }
-    // Pad to 12 characters for alignment (matches typical sizes)
-    return formatted.padStart(12, ' ');
-  };
-
   try {
     for (const targetPath of resolvedTargets) {
       const argLabel = path.basename(targetPath); 
       spinner.start(`Scanning ${argLabel}...`);
 
-      // Check if target is a file or directory
       let isDirectory = false;
       let fileSize = 0;
 
       try {
-        // Use vfs to get metadata (directory: true asks for the item itself)
         const result = await vfs.data_get(targetPath, { directory: true });
         
         if (result.ok && result.value.length > 0) {
@@ -95,24 +92,20 @@ export async function builtin_du(args: string[]): Promise<void> {
            console.error(chalk.red(`du: cannot access '${targetPath}': No such file or directory`));
            continue; 
         }
-      } catch (e) {
+      } catch (e: unknown) {
          spinner.stop();
          console.error(chalk.red(`du: cannot access '${targetPath}': ${e}`));
          continue;
       }
 
       if (!isDirectory) {
-         // It is a file
          grandTotal += fileSize;
          spinner.stop();
-         console.log(`${size_format(fileSize)}	${targetPath}`);
+         console.log(`${duSize_format(fileSize, humanReadable)}	${targetPath}`);
          continue;
       }
 
-      // It is a directory, use scan_do
       await session.setCWD(targetPath);
-      
-      // Build scan options
       const scanOptions: CLIscan = {
         silent: true,
         tree: false,
@@ -122,16 +115,13 @@ export async function builtin_du(args: string[]): Promise<void> {
       
       const scanResult: ScanRecord | null = await scan_do(scanOptions);
 
-      // Restore CWD immediately after scan
       await session.setCWD(originalFolder);
 
       if (!scanResult) {
         spinner.stop();
-        // Suppress duplicate error if scan_do printed one
         continue;
       }
 
-      // Aggregate sizes for this target
       const dirSizes: Map<string, number> = new Map<string, number>();
       
       scanResult.fileInfo.forEach((fileInfo) => {
@@ -156,7 +146,6 @@ export async function builtin_du(args: string[]): Promise<void> {
              currentPath = path.posix.dirname(currentPath);
           }
           
-          // If -a is set, show files
           if (showAll) {
              dirSizes.set(filePath, fSize);
           }
@@ -171,12 +160,10 @@ export async function builtin_du(args: string[]): Promise<void> {
       grandTotal += scanResult.totalSize;
       spinner.stop();
 
-      // Stream output for this target
       if (summarize) {
          const size: number = dirSizes.get(targetPath) || 0;
-         console.log(`${size_format(size)}	${targetPath}`);
+         console.log(`${duSize_format(size, humanReadable)}	${targetPath}`);
       } else {
-         // Sort entries for this target
          let entries: Array<[string, number]> = Array.from(dirSizes.entries());
          entries.sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -187,18 +174,17 @@ export async function builtin_du(args: string[]): Promise<void> {
                const depth = rel === '' ? 0 : rel.split('/').length;
                if (depth > maxDepth) continue;
             }
-            console.log(`${size_format(dirSize)}	${dirPath}`);
+            console.log(`${duSize_format(dirSize, humanReadable)}	${dirPath}`);
          }
       }
     } // end for targets
 
     if (showTotal && rawTargets.length > 0) {
-       console.log(`${size_format(grandTotal)}	total`);
+       console.log(`${duSize_format(grandTotal, humanReadable)}	total`);
     }
 
   } finally {
     spinner.stop();
-    // Restore original path
     await session.setCWD(originalFolder);
   }
 }

@@ -75,7 +75,7 @@ export interface PathContext {
  * @param context - User and CWD context.
  * @returns The absolute path.
  */
-export function path_resolve_pure(inputPath: string, context: PathContext): string {
+export function path_resolvePure(inputPath: string, context: PathContext): string {
   let resolved = inputPath;
   const { user, cwd } = context;
   
@@ -109,7 +109,7 @@ export async function path_resolve(inputPath: string): Promise<string> {
   const context: SingleContext = await context_getSingle();
   const user: string | null = context.user;
   const cwd: string = await session.getCWD();
-  return path_resolve_pure(inputPath, { user, cwd });
+  return path_resolvePure(inputPath, { user, cwd });
 }
 
 /**
@@ -148,7 +148,7 @@ export async function path_resolveLinks(targetPath: string): Promise<string> {
           currentPath = `${parentPath}/${item.target}`.replace('//', '/');
         }
       }
-    } catch (error) {
+    } catch (_error: unknown) {
       // If we can't list the directory, continue with the current path
       continue;
     }

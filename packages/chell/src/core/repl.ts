@@ -104,7 +104,7 @@ export class REPL {
     this.rl.setPrompt(prompt_render(settings.config.promptTheme, ctx));
     try {
       this.rl.prompt();
-    } catch (e) {
+    } catch (e: unknown) {
       // Interface might be closed
     }
   }
@@ -120,7 +120,7 @@ export class REPL {
         const lines: string[] = content.split('\n').filter((l: string) => l.trim()).reverse();
         const limit: number = settings.config.historySize;
         (this.rl as unknown as { history: string[] }).history = lines.slice(0, limit);
-      } catch (e) {
+      } catch (e: unknown) {
         // Silently fail if history cannot be loaded
       }
     }
@@ -135,7 +135,7 @@ export class REPL {
     const file: string = settings.config.historyFile;
     try {
       await fs.promises.appendFile(file, line + '\n');
-    } catch (e) {
+    } catch (e: unknown) {
       // Silently fail if history cannot be saved
     }
   }

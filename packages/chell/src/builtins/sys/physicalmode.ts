@@ -14,7 +14,6 @@ export async function builtin_physicalmode(args: string[]): Promise<void> {
   const subcommand: string | undefined = args[0];
 
   if (!subcommand) {
-    // Display current status
     const status: string = session.physicalMode_get() ? 'enabled' : 'disabled';
     console.log(`Physical filesystem mode: ${chalk.yellow(status)}`);
     if (session.physicalMode_get()) {

@@ -15,7 +15,6 @@ import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
-import { builtinCommands_list, builtinCommand_description } from '../../builtins/help.js';
 import { error_stripDebugPrefix } from '../../builtins/utils.js';
 
 /**
@@ -205,7 +204,7 @@ export class VFS {
 
       // Don't update display - user has moved on
       // Fresh data is now cached for next access
-    } catch (error) {
+    } catch (_error: unknown) {
       // Silently fail - background refresh is best-effort
     }
   }

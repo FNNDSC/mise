@@ -31,7 +31,7 @@ const currentFile = fileURLToPath(import.meta.url);
 let isMain = false;
 try {
   isMain = realpathSync(process.argv[1]) === realpathSync(currentFile);
-} catch (e) {
+} catch (e: unknown) {
   // Fallback or ignore
 }
 

@@ -24,13 +24,19 @@ import {
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function feeds_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const feedGroup = new ChRISFeedGroup(); // Instantiate directly
-
-  if (!feedGroup) { // This check might be redundant if constructor always returns valid object
-    return null;
-  }
-
+  const feedGroup = new ChRISFeedGroup();
   return await feedGroup.asset.resources_listAndFilterByOptions(options);
+}
+
+/**
+ * Fetches all feeds across all pages.
+ *
+ * @param options - Filter options (limit/offset managed internally).
+ * @returns A Promise resolving to FilteredResourceData or null.
+ */
+export async function feeds_listAll(options?: Partial<ListOptions>): Promise<FilteredResourceData | null> {
+  const feedGroup = new ChRISFeedGroup();
+  return await feedGroup.asset.resources_getAll(options);
 }
 
 /**

@@ -161,8 +161,25 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
     list: jest.fn().mockResolvedValue({ ok: true, value: [] })
   },
   pipelines_list: jest.fn().mockResolvedValue(null),
+  pipelines_listAll: jest.fn().mockResolvedValue(null),
+  pipelineFields_get: jest.fn().mockResolvedValue(null),
   pipeline_run: jest.fn().mockResolvedValue({ ok: false }),
   pipeline_sourceGet: jest.fn().mockResolvedValue({ ok: false }),
+  tags_list: jest.fn().mockResolvedValue(null),
+  tags_listAll: jest.fn().mockResolvedValue(null),
+  tagFields_get: jest.fn().mockResolvedValue(null),
+  groups_list: jest.fn().mockResolvedValue(null),
+  groups_listAll: jest.fn().mockResolvedValue(null),
+  groupFields_get: jest.fn().mockResolvedValue(null),
+  pluginMetas_list: jest.fn().mockResolvedValue(null),
+  pluginMetas_listAll: jest.fn().mockResolvedValue(null),
+  pluginMetaFields_get: jest.fn().mockResolvedValue(null),
+  pluginInstances_listAll: jest.fn().mockResolvedValue(null),
+  pluginInstanceFields_get: jest.fn().mockResolvedValue(null),
+  workflows_list: jest.fn().mockResolvedValue(null),
+  workflows_listAll: jest.fn().mockResolvedValue(null),
+  workflowFields_get: jest.fn().mockResolvedValue(null),
+  feeds_listAll: jest.fn().mockResolvedValue(null),
 }));
 
 // Mock chili commands
@@ -174,6 +191,16 @@ jest.unstable_mockModule('@fnndsc/chili/commands/feeds/list.js', () => ({ feeds_
 jest.unstable_mockModule('@fnndsc/chili/commands/feed/create.js', () => ({ feed_create: mockFeedCreate }));
 jest.unstable_mockModule('@fnndsc/chili/commands/files/list.js', () => ({ files_fetchList: mockFilesFetchList }));
 jest.unstable_mockModule('@fnndsc/chili/commands/files/fields.js', () => ({ fileFields_fetch: mockFileFieldsFetch }));
+jest.unstable_mockModule('@fnndsc/chili/commands/tags/list.js', () => ({ tags_fetchList: jest.fn().mockResolvedValue({ tags: [], selectedFields: [] }) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/tags/fields.js', () => ({ tagFields_fetch: jest.fn().mockResolvedValue([]) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/groups/list.js', () => ({ groups_fetchList: jest.fn().mockResolvedValue({ groups: [], selectedFields: [] }) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/groups/fields.js', () => ({ groupFields_fetch: jest.fn().mockResolvedValue([]) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/list.js', () => ({ pluginMetas_fetchList: jest.fn().mockResolvedValue({ pluginMetas: [], selectedFields: [] }) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/fields.js', () => ({ pluginMetaFields_fetch: jest.fn().mockResolvedValue([]) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/plugininstances/list.js', () => ({ pluginInstances_fetchList: jest.fn().mockResolvedValue({ pluginInstances: [], selectedFields: [] }) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/plugininstances/fields.js', () => ({ pluginInstanceFields_fetch: jest.fn().mockResolvedValue([]) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/workflows/list.js', () => ({ workflows_fetchList: jest.fn().mockResolvedValue({ workflows: [], selectedFields: [] }) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/workflows/fields.js', () => ({ workflowFields_fetch: jest.fn().mockResolvedValue([]) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mkdir: mockChefsMkdir }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({ files_touch: mockChefsTouch }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({ 
@@ -248,7 +275,12 @@ const {
   builtin_chefs,
   builtin_cat,
   builtin_rm,
-  builtin_context
+  builtin_context,
+  builtin_tag,
+  builtin_group,
+  builtin_pluginmeta,
+  builtin_plugininstance,
+  builtin_workflow,
 } = await import('../src/builtins/index.js');
 
 describe('Builtins - Core Functions', () => {

@@ -17,3 +17,4 @@ export * from './groups/index.js';
 export * from './pluginmetas/index.js';
 export * from './plugininstances/index.js';
 export * from './workflows/index.js';
+export * from './compute/index.js';

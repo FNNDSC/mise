@@ -107,6 +107,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   path_extractPluginInstanceID: jest.fn().mockReturnValue(null),
   path_extractFeedID: jest.fn().mockReturnValue(null),
   path_findLatestDircopy: jest.fn().mockReturnValue(null),
+  pipeline_resolve: jest.fn().mockResolvedValue({ ok: false }),
 }));
 
 // Mock session
@@ -157,7 +158,10 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
       prefix: path.startsWith('/net') ? '/net/pacs' : (path.startsWith('/bin') || path.startsWith('/usr')) ? path : ''
     })),
     list: jest.fn().mockResolvedValue({ ok: true, value: [] })
-  }
+  },
+  pipelines_list: jest.fn().mockResolvedValue(null),
+  pipeline_run: jest.fn().mockResolvedValue({ ok: false }),
+  pipeline_sourceGet: jest.fn().mockResolvedValue({ ok: false }),
 }));
 
 // Mock chili commands

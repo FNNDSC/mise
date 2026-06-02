@@ -14,9 +14,11 @@
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
+import { pluginFields_fetch } from '@fnndsc/chili/commands/plugins/fields.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
 import { plugin_add } from '@fnndsc/chili/commands/plugins/add.js';
 import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.js';
+import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
 import { chiliCommand_run } from '../../chell.js';
 import { spinner } from '../../lib/spinner.js';
@@ -56,6 +58,16 @@ export async function builtin_plugin(args: string[]): Promise<void> {
        }
     } else if (subcommand === 'add') {
        await plugin_addInteractive(parsed);
+    } else if (subcommand === 'inspect') {
+       const fields: string[] | null = await pluginFields_fetch();
+       if (fields && fields.length > 0) {
+         table_display(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Plugin fields', justification: 'center' } });
+       } else {
+         console.log(chalk.gray('No fields found.'));
+       }
+    } else if (subcommand === 'search') {
+       const query: string = parsed._[1] ?? '';
+       await builtin_plugin(['list', `--search`, query]);
     } else {
        console.log(chalk.yellow('Directive not handled by chell... spawning chili directly'));
        await chiliCommand_run('plugins', ['-s', ...args]);

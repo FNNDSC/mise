@@ -22,7 +22,7 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
   const subcommand = parsed._[0];
 
   if (!subcommand) {
-     console.log(chalk.red(`Usage: ${assetName} <list|fieldslist|delete|share> ...`));
+     console.log(chalk.red(`Usage: ${assetName} <list|search|inspect> ...`));
      return;
   }
 
@@ -45,7 +45,7 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
              { title: { title: assetName, justification: "center" } }
           );
        }
-    } else if (subcommand === 'fieldslist') {
+    } else if (subcommand === 'inspect' || subcommand === 'fieldslist') {
        const fields: string[] | null = await fileFields_fetch(assetName);
        if (fields && fields.length > 0) {
           table_display(fields.map(f => ({ fields: f })), ["fields"]);

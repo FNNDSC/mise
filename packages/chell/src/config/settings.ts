@@ -24,6 +24,8 @@ export interface Settings {
     promptTheme: ThemeName;
     /** Which optional p10k segments are enabled. */
     p10kSegments: P10kSegmentConfig;
+    /** Peer store URL. Undefined means use the built-in default. */
+    storeUrl?: string;
   };
 }
 
@@ -75,6 +77,9 @@ export async function settings_load(): Promise<void> {
           // pacs defaults true if not present in older config files
         }
       }
+      if (typeof obj.storeUrl === 'string') {
+        settings.config.storeUrl = obj.storeUrl;
+      }
     }
   } catch {
     // No config file yet — use defaults
@@ -87,6 +92,7 @@ export async function settings_save(): Promise<void> {
     const data: Record<string, unknown> = {
       promptTheme: settings.config.promptTheme,
       p10kSegments: settings.config.p10kSegments,
+      ...(settings.config.storeUrl !== undefined ? { storeUrl: settings.config.storeUrl } : {}),
     };
     await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(data, null, 2) + '\n');
   } catch {

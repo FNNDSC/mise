@@ -11,12 +11,14 @@ import {
   chrisConnection,
   errorStack,
   FilteredResourceData,
+  ListOptions,
   Result,
   Ok,
   Err,
   PipelineRecord,
   WorkflowCreateOptions,
   WorkflowResult,
+  ChRISPipelineGroup,
   pipelines_list as cumin_pipelines_list,
   pipeline_resolve,
   pipeline_createWorkflow,
@@ -43,6 +45,25 @@ export async function pipelines_list(
     tableData: records,
     selectedFields: ['id', 'name', 'authors', 'category', 'description'],
   };
+}
+
+/**
+ * Lists all pipelines across all pages.
+ *
+ * @param options - Search options (limit/offset managed internally).
+ */
+export async function pipelines_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
+  const group = new ChRISPipelineGroup();
+  return await group.asset.resources_getAll(options);
+}
+
+/**
+ * Returns available field names for pipelines.
+ */
+export async function pipelineFields_get(): Promise<string[] | null> {
+  const group = new ChRISPipelineGroup();
+  const result = await group.asset.resourceFields_get();
+  return result ? result.fields : null;
 }
 
 /**

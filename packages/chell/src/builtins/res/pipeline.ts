@@ -24,6 +24,8 @@ import {
   pipeline_run,
   pipeline_sourceGet,
 } from '@fnndsc/salsa';
+import { pipelineFields_fetch } from '@fnndsc/chili/commands/pipeline/fields.js';
+import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { args_checkHasHelpFlag, help_show } from '../help.js';
 import { session } from '../../session/index.js';
 
@@ -231,9 +233,25 @@ export async function builtin_pipeline(args: string[]): Promise<void> {
       return;
     }
 
+    case 'inspect': {
+      const fields: string[] | null = await pipelineFields_fetch();
+      if (fields && fields.length > 0) {
+        table_display(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Pipeline fields', justification: 'center' } });
+      } else {
+        console.log(chalk.gray('No fields found.'));
+      }
+      return;
+    }
+
+    case 'search': {
+      const query: string | undefined = args[1];
+      await builtin_pipeline(['list', query ?? '']);
+      return;
+    }
+
     default:
       console.error(chalk.red(`pipeline: unknown subcommand '${subcommand}'`));
-      console.log(chalk.gray('  Subcommands: list, info, run, source'));
+      console.log(chalk.gray('  Subcommands: list, search, inspect, info, run, source'));
       process.exitCode = 1;
   }
 }

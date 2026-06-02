@@ -12,7 +12,9 @@
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { computeResources_fetchList, ComputeListResult } from '@fnndsc/chili/commands/compute/list.js';
+import { computeFields_fetch } from '@fnndsc/chili/commands/compute/fields.js';
 import { computeList_render } from '@fnndsc/chili/views/compute.js';
+import { table_display } from '@fnndsc/chili/screen/screen.js';
 
 /**
  * Handles compute commands.
@@ -35,6 +37,21 @@ export async function builtin_compute(args: string[]): Promise<void> {
     return;
   }
 
+  if (subcommand === 'inspect') {
+    const fields: string[] | null = await computeFields_fetch();
+    if (fields && fields.length > 0) {
+      table_display(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Compute fields', justification: 'center' } });
+    } else {
+      console.log(chalk.gray('No fields found.'));
+    }
+    return;
+  }
+
+  if (subcommand === 'search') {
+    await builtin_compute(['list', '--search', parsed._[1] ?? '']);
+    return;
+  }
+
   process.exitCode = 1;
-  console.log(chalk.red(`Unknown subcommand: ${subcommand}. Usage: compute list`));
+  console.log(chalk.red(`Unknown subcommand: ${subcommand}. Usage: compute <list|search|inspect>`));
 }

@@ -17,6 +17,16 @@ import {
   Result,
 } from '@fnndsc/cumin';
 
+export {
+  feedNote_get,
+  feedNote_update,
+  feedComments_list,
+  feedComment_create,
+  feedComment_delete,
+  feedComment_update,
+} from '@fnndsc/cumin';
+export type { FeedNote, FeedComment } from '@fnndsc/cumin';
+
 /**
  * List feeds based on options.
  *

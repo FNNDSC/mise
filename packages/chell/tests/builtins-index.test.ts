@@ -34,6 +34,12 @@ const mockUploadRender = jest.fn();
 const mockCatRender = jest.fn();
 const mockRmRender = jest.fn();
 const mockChiliCommandRun = jest.fn();
+const mockPluginFieldsFetch = jest.fn().mockResolvedValue([]);
+const mockFeedFieldsFetch = jest.fn().mockResolvedValue([]);
+const mockPipelineFieldsFetch = jest.fn().mockResolvedValue([]);
+const mockComputeFieldsFetch = jest.fn().mockResolvedValue([]);
+const mockSettingsSave = jest.fn().mockResolvedValue(undefined);
+const mockSettings = { config: { promptTheme: 'default', p10kSegments: {}, storeUrl: undefined as string | undefined } };
 
 // Define local Ok, Err, and errorStack for consistent use across mocks and tests
 const Ok = (val: any) => ({ ok: true, value: val });
@@ -191,10 +197,11 @@ jest.unstable_mockModule('@fnndsc/chili/commands/feeds/list.js', () => ({ feeds_
 jest.unstable_mockModule('@fnndsc/chili/commands/feed/create.js', () => ({ feed_create: mockFeedCreate }));
 jest.unstable_mockModule('@fnndsc/chili/commands/files/list.js', () => ({ files_fetchList: mockFilesFetchList }));
 jest.unstable_mockModule('@fnndsc/chili/commands/files/fields.js', () => ({ fileFields_fetch: mockFileFieldsFetch }));
-jest.unstable_mockModule('@fnndsc/chili/commands/plugins/fields.js', () => ({ pluginFields_fetch: jest.fn().mockResolvedValue([]) }));
-jest.unstable_mockModule('@fnndsc/chili/commands/feeds/fields.js', () => ({ feedFields_fetch: jest.fn().mockResolvedValue([]) }));
-jest.unstable_mockModule('@fnndsc/chili/commands/pipeline/fields.js', () => ({ pipelineFields_fetch: jest.fn().mockResolvedValue([]) }));
-jest.unstable_mockModule('@fnndsc/chili/commands/compute/fields.js', () => ({ computeFields_fetch: jest.fn().mockResolvedValue([]) }));
+jest.unstable_mockModule('@fnndsc/chili/commands/plugins/fields.js', () => ({ pluginFields_fetch: mockPluginFieldsFetch }));
+jest.unstable_mockModule('@fnndsc/chili/commands/feeds/fields.js', () => ({ feedFields_fetch: mockFeedFieldsFetch }));
+jest.unstable_mockModule('@fnndsc/chili/commands/pipeline/fields.js', () => ({ pipelineFields_fetch: mockPipelineFieldsFetch }));
+jest.unstable_mockModule('@fnndsc/chili/commands/compute/fields.js', () => ({ computeFields_fetch: mockComputeFieldsFetch }));
+jest.unstable_mockModule('../src/config/settings.js', () => ({ settings: mockSettings, settings_save: mockSettingsSave }));
 jest.unstable_mockModule('@fnndsc/chili/commands/tags/list.js', () => ({ tags_fetchList: jest.fn().mockResolvedValue({ tags: [], selectedFields: [] }) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/tags/fields.js', () => ({ tagFields_fetch: jest.fn().mockResolvedValue([]) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/list.js', () => ({ groups_fetchList: jest.fn().mockResolvedValue({ groups: [], selectedFields: [] }) }));
@@ -856,6 +863,94 @@ describe('Builtins - Core Functions', () => {
         ['Context', 'Value'],
         expect.anything()
       );
+    });
+  });
+});
+
+describe('Builtins - Subcommand dispatch', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSettings.config.storeUrl = undefined;
+  });
+
+  describe('builtin_plugin', () => {
+    it('inspect calls pluginFields_fetch', async () => {
+      await builtin_plugin(['inspect']);
+      expect(mockPluginFieldsFetch).toHaveBeenCalled();
+    });
+
+    it('inspect does not fall through to chili', async () => {
+      await builtin_plugin(['inspect']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+    });
+
+    it('search delegates to list with --search', async () => {
+      await builtin_plugin(['search', 'dircopy']);
+      expect(mockPluginsFetchList).toHaveBeenCalled();
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('builtin_feed', () => {
+    it('inspect calls feedFields_fetch', async () => {
+      await builtin_feed(['inspect']);
+      expect(mockFeedFieldsFetch).toHaveBeenCalled();
+    });
+
+    it('inspect does not fall through to chili', async () => {
+      await builtin_feed(['inspect']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+    });
+
+    it('search delegates to list with --search', async () => {
+      await builtin_feed(['search', 'brain']);
+      expect(mockFeedsFetchList).toHaveBeenCalled();
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('builtin_files/links/dirs', () => {
+    it('files inspect calls fileFields_fetch', async () => {
+      await builtin_files(['inspect']);
+      expect(mockFileFieldsFetch).toHaveBeenCalled();
+    });
+
+    it('files inspect does not fall through to chili', async () => {
+      await builtin_files(['inspect']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+    });
+
+    it('links inspect calls fileFields_fetch', async () => {
+      await builtin_links(['inspect']);
+      expect(mockFileFieldsFetch).toHaveBeenCalled();
+    });
+
+    it('dirs inspect calls fileFields_fetch', async () => {
+      await builtin_dirs(['inspect']);
+      expect(mockFileFieldsFetch).toHaveBeenCalled();
+    });
+  });
+
+  describe('store subcommands', () => {
+    it('inspect prints store URL without chili', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      await (await import('../src/builtins/store.js')).builtin_store(['inspect']);
+      expect(consoleSpy).toHaveBeenCalled();
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    it('set saves storeUrl to settings', async () => {
+      await (await import('../src/builtins/store.js')).builtin_store(['set', 'https://my-store.org/api/v1/']);
+      expect(mockSettings.config.storeUrl).toBe('https://my-store.org/api/v1/');
+      expect(mockSettingsSave).toHaveBeenCalled();
+    });
+
+    it('reset clears storeUrl from settings', async () => {
+      mockSettings.config.storeUrl = 'https://custom.org/api/v1/';
+      await (await import('../src/builtins/store.js')).builtin_store(['reset']);
+      expect(mockSettings.config.storeUrl).toBeUndefined();
+      expect(mockSettingsSave).toHaveBeenCalled();
     });
   });
 });

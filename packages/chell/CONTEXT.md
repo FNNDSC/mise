@@ -44,7 +44,14 @@ A Feed is a first-class ChRIS object with a dual identity — intentional, not a
 
 These are the same object seen from two angles. This duality is a deliberate architectural unification: ChRIS is simultaneously a compute platform and a filesystem. The filesystem naming convention for all objects was an explicit design decision made early, before a real VFS existed, to preserve navigability as a first-class property.
 
-**Known divergence:** `feeds list` (Resource Command, uses `client.getFeeds()`) and `ls /home/<user>/feeds/` (VFS folder listing) are two views of the same data but can return different counts. The API applies ownership/sharing logic server-side (e.g. the `chris` superuser sees all non-public feeds via the API but only owned feeds via the VFS folder). This is a known and expected divergence — not a bug.
+**Known divergence:** `feeds list` (Resource Command, uses `client.getFeeds()`) and `ls /home/<user>/feeds/` (VFS folder listing) answer different questions and will return different counts for admin users:
+
+- `feeds list` / `feeds list --all` — permission-filtered global query: admin sees **all** feeds from all users
+- `ls /home/chris/feeds/` — namespace-scoped VFS path: shows only **chris's owned** feeds
+
+This divergence is real but intentional. The web GUI compounds the confusion by rendering the global API query at `/home/chris/feeds`, which implies ownership-scoped data — it is semantically wrong to show all users' feeds at a path that names a specific user's home.
+
+**Design gap:** `feeds list` has no `--user <name>` filter. Without it, an admin cannot replicate `ls /home/radstar/feeds/` via the Resource Command interface. Adding `feeds list --user radstar` would close this gap and make the two views explicitly reconcilable.
 
 **Historical note:** the pervasive filesystem model was adopted gradually and with pushback. The Feed concept predates the VFS — feeds were originally linked lists of plugin instances with no folder metaphor. The folder metaphor was imposed on the naming convention first, then later backed by a real VFS implementation.
 

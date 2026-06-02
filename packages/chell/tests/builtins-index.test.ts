@@ -108,6 +108,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   path_extractFeedID: jest.fn().mockReturnValue(null),
   path_findLatestDircopy: jest.fn().mockReturnValue(null),
   pipeline_resolve: jest.fn().mockResolvedValue({ ok: false }),
+  computeResources_getAll: jest.fn().mockResolvedValue({ ok: true, value: [] }),
 }));
 
 // Mock session

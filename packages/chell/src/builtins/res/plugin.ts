@@ -71,7 +71,7 @@ export async function builtin_plugin(args: string[]): Promise<void> {
  *
  * @param parsed - Parsed command arguments.
  */
-async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
+export async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   const pluginInput = parsed._[1];
 
   if (!pluginInput) {
@@ -98,6 +98,7 @@ async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   if (success) {
     console.log(chalk.green('\n[SUCCESS] Plugin added successfully!\n'));
   } else {
+    process.exitCode = 1;
     console.log(chalk.red('\n[FAILED] Failed to add plugin.\n'));
 
     const errors = errorStack.allOfType_get('error');

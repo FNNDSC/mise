@@ -645,15 +645,35 @@ export const helpText: Record<string, CommandHelp> = {
   },
   store: {
     usage: 'store <subcommand> [options]',
-    description: 'Browse and search the ChRIS peer store',
+    description: 'Browse, search, and install plugins from ChRIS peer store',
     options: [
       '--store <url>         Use specific store URL',
+      '--compute <names>     Compute resources for install (comma-separated)',
+      '--adminUser <user>    Admin username for install',
+      '--adminPassword <pw>  Admin password for install',
       '-l                    Long listing format',
     ],
     examples: [
-      'store list            # List all plugins in store',
-      'store search dicom    # Search plugins matching "dicom"',
-      'store list -l         # List with details',
+      'store list                    # List all plugins in store',
+      'store search dicom            # Search plugins matching "dicom"',
+      'store list -l                 # List with details',
+      'store install pl-dcm2niix              # Install latest from peer store',
+      'store install pl-dcm2niix-v1.2.3      # Install specific version',
+      'store install fnndsc/pl-dcm2niix:1.2.3  # Install by Docker image',
+      'store install pl-dcm2niix --compute moc  # Install on specific compute',
+    ],
+  },
+  compute: {
+    usage: 'compute [list] [options]',
+    description: 'List compute resources available in ChRIS CUBE',
+    options: [
+      '--table               Table format',
+      '--csv                 CSV format',
+    ],
+    examples: [
+      'compute list          # List all compute resources',
+      'compute               # Same as compute list',
+      'compute list --table  # Table format',
     ],
   },
   help: {
@@ -898,7 +918,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
     Connection: ['connect', 'logout', 'context'],
     'Single Resource': ['plugin', 'pipeline', 'feed'],
-    'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'parametersofplugin'],
+    'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
     General: ['help', 'exit', '!'],

@@ -486,8 +486,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   }
 };
 
-/** All registered command keys — used by tests to verify wiring without importing live handlers. */
-export const COMMAND_HANDLERS_KEYS: string[] = Object.keys(COMMAND_HANDLERS);
+export { COMMAND_HANDLERS_KEYS } from './command-keys.js';
 
 /**
  * Prints elapsed time since startTime if timing is enabled.

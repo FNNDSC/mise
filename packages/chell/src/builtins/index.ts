@@ -38,6 +38,11 @@ export * from './res/pipeline.js';
 export * from './res/feed.js';
 export * from './res/files.js';
 export * from './res/compute.js';
+export * from './res/tag.js';
+export * from './res/group.js';
+export * from './res/pluginmeta.js';
+export * from './res/plugininstance.js';
+export * from './res/workflow.js';
 export * from './parametersofplugin.js';
 export * from './store.js';
 

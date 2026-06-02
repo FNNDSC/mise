@@ -41,8 +41,11 @@ export async function builtin_plugin(args: string[]): Promise<void> {
 
   try {
     if (subcommand === 'list') {
-       const { plugins, selectedFields } = await plugins_fetchList(parsed as unknown as CLIoptions);
+       const { plugins, selectedFields, totalCount } = await plugins_fetchList(parsed as unknown as CLIoptions);
        console.log(pluginList_render(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
+       if (totalCount !== undefined && plugins.length < totalCount) {
+         console.log(chalk.dim(`  ↓ showing ${plugins.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`));
+       }
     } else if (subcommand === 'run') {
        const searchable = parsed._[1];
        if (!searchable) {

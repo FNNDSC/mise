@@ -17,9 +17,9 @@ export async function builtin_workflow(args: string[]): Promise<void> {
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { workflows, selectedFields }: WorkflowListResult = await workflows_fetchList(parsed as unknown as CLIoptions);
+      const { workflows, selectedFields, totalCount }: WorkflowListResult = await workflows_fetchList(parsed as unknown as CLIoptions);
       if (workflows.length === 0) { console.log(chalk.gray('No workflows found.')); return; }
-      table_display(workflows, selectedFields, { title: { title: 'Workflows', justification: 'center' } });
+      table_display(workflows, selectedFields, { title: { title: 'Workflows', justification: 'center' }, pagination: totalCount !== undefined ? { shown: workflows.length, total: totalCount } : undefined });
     } catch (e: unknown) {
       process.exitCode = 1;
       console.error(chalk.red(`workflow error: ${e instanceof Error ? e.message : String(e)}`));

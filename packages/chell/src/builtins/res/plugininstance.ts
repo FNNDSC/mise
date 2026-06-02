@@ -17,9 +17,9 @@ export async function builtin_plugininstance(args: string[]): Promise<void> {
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { pluginInstances, selectedFields }: PluginInstanceListResult = await pluginInstances_fetchList(parsed as unknown as CLIoptions);
+      const { pluginInstances, selectedFields, totalCount }: PluginInstanceListResult = await pluginInstances_fetchList(parsed as unknown as CLIoptions);
       if (pluginInstances.length === 0) { console.log(chalk.gray('No plugin instances found.')); return; }
-      table_display(pluginInstances, selectedFields, { title: { title: 'Plugin Instances', justification: 'center' } });
+      table_display(pluginInstances, selectedFields, { title: { title: 'Plugin Instances', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginInstances.length, total: totalCount } : undefined });
     } catch (e: unknown) {
       process.exitCode = 1;
       console.error(chalk.red(`plugininstance error: ${e instanceof Error ? e.message : String(e)}`));

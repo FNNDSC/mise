@@ -570,6 +570,16 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Display current ChRIS context information',
     examples: ['context'],
   },
+  whoami: {
+    usage: 'whoami',
+    description: 'Print the currently authenticated ChRIS username',
+    examples: ['whoami'],
+  },
+  whereami: {
+    usage: 'whereami',
+    description: 'Print the current CUBE URL',
+    examples: ['whereami'],
+  },
   prompt: {
     usage: 'prompt [list | <theme>]',
     description: 'List available prompt themes or switch the active theme',
@@ -1091,7 +1101,7 @@ export async function builtin_help(args: string[]): Promise<void> {
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
-    Connection: ['connect', 'logout', 'context'],
+    Connection: ['connect', 'logout', 'context', 'whoami', 'whereami'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],

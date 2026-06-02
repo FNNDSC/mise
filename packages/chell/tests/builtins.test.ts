@@ -14,7 +14,7 @@ jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({
 }));
 
 // Import directly from utils.js to avoid potential circular dependencies in index.js
-const { commandArgs_process, path_resolve_pure } = await import('../src/builtins/utils.js');
+const { commandArgs_process, path_resolvePure } = await import('../src/builtins/utils.js');
 
 describe('commandArgs_process', () => {
   it('should parse positional arguments', () => {
@@ -53,46 +53,46 @@ describe('commandArgs_process', () => {
   });
 });
 
-describe('path_resolve_pure', () => {
+describe('path_resolvePure', () => {
   const context = { user: 'chris', cwd: '/home/chris/work' };
 
   it('should resolve ~ to user home', () => {
-    const p = path_resolve_pure('~', context);
+    const p = path_resolvePure('~', context);
     expect(p).toBe('/home/chris');
   });
 
   it('should resolve ~/subdir to user home subdir', () => {
-    const p = path_resolve_pure('~/data', context);
+    const p = path_resolvePure('~/data', context);
     expect(p).toBe('/home/chris/data');
   });
 
   it('should resolve relative path against CWD', () => {
-    const p = path_resolve_pure('file.txt', context);
+    const p = path_resolvePure('file.txt', context);
     expect(p).toBe('/home/chris/work/file.txt');
   });
 
   it('should resolve absolute path as is', () => {
-    const p = path_resolve_pure('/usr/local/bin', context);
+    const p = path_resolvePure('/usr/local/bin', context);
     expect(p).toBe('/usr/local/bin');
   });
 
   it('should resolve .. parent directory', () => {
-    const p = path_resolve_pure('..', context);
+    const p = path_resolvePure('..', context);
     expect(p).toBe('/home/chris');
   });
 
   it('should resolve . current directory', () => {
-    const p = path_resolve_pure('.', context);
+    const p = path_resolvePure('.', context);
     expect(p).toBe('/home/chris/work');
   });
 
   it('should handle root path correctly', () => {
-    const p = path_resolve_pure('/', context);
+    const p = path_resolvePure('/', context);
     expect(p).toBe('/');
   });
 
   it('should handle missing user (fallback to root for ~)', () => {
-    const p = path_resolve_pure('~', { user: null, cwd: '/' });
+    const p = path_resolvePure('~', { user: null, cwd: '/' });
     expect(p).toBe('/');
   });
 });

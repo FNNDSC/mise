@@ -98,6 +98,9 @@ interface PackageJson {
 const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = path.dirname(__filename);
 const packageJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
+const cuminJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../node_modules/@fnndsc/cumin/package.json'), 'utf-8'));
+const salsaJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../node_modules/@fnndsc/salsa/package.json'), 'utf-8'));
+const chiliJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../node_modules/@fnndsc/chili/package.json'), 'utf-8'));
 
 /**
  * Spawns the `chili` CLI as a child process.
@@ -1285,7 +1288,10 @@ export async function chell_start(): Promise<void> {
 
     const headerItems: BootInfoItem[] = [
       { label: 'Title', value: 'ChELL Executes Layered Logic' },
-      { label: 'Version', value: packageJson.version }
+      { label: 'Version', value: packageJson.version },
+      { label: 'cumin', value: cuminJson.version },
+      { label: 'salsa', value: salsaJson.version },
+      { label: 'chili', value: chiliJson.version },
     ];
     const localItems: BootInfoItem[] = [
       { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },

@@ -48,6 +48,11 @@ import {
   builtin_plugin,
   builtin_feed,
   builtin_compute,
+  builtin_tag,
+  builtin_group,
+  builtin_pluginmeta,
+  builtin_plugininstance,
+  builtin_workflow,
   builtin_download,
   builtin_files,
   builtin_links,
@@ -451,6 +456,22 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   feeds: builtin_feed,
   compute: builtin_compute,
   computes: builtin_compute,
+  tag: builtin_tag,
+  tags: builtin_tag,
+  group: builtin_group,
+  groups: builtin_group,
+  pluginmeta: builtin_pluginmeta,
+  pluginmetas: builtin_pluginmeta,
+  meta: builtin_pluginmeta,
+  metas: builtin_pluginmeta,
+  plugininstance: builtin_plugininstance,
+  plugininstances: builtin_plugininstance,
+  instance: builtin_plugininstance,
+  instances: builtin_plugininstance,
+  job: builtin_plugininstance,
+  jobs: builtin_plugininstance,
+  workflow: builtin_workflow,
+  workflows: builtin_workflow,
   files: builtin_files,
   links: builtin_links,
   dirs: builtin_dirs,
@@ -464,6 +485,9 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     await chiliCommand_run('pacsretrieve', ['-s', ...args]);
   }
 };
+
+/** All registered command keys — used by tests to verify wiring without importing live handlers. */
+export const COMMAND_HANDLERS_KEYS: string[] = Object.keys(COMMAND_HANDLERS);
 
 /**
  * Prints elapsed time since startTime if timing is enabled.

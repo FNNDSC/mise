@@ -7,11 +7,16 @@ import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { feeds_fetchList, FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import { feedFields_fetch } from '@fnndsc/chili/commands/feeds/fields.js';
 import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
-import { feedList_render, feedCreate_render } from '@fnndsc/chili/views/feed.js';
+import { feed_noteGet, feed_noteUpdate } from '@fnndsc/chili/commands/feed/note.js';
+import type { FeedNote } from '@fnndsc/chili/commands/feed/note.js';
+import { feed_commentsList, feed_commentCreate, feed_commentDelete, feed_commentUpdate } from '@fnndsc/chili/commands/feed/comments.js';
+import type { FeedComment } from '@fnndsc/chili/commands/feed/comments.js';
+import { feedList_render, feedCreate_render, feedNote_render, feedComments_render } from '@fnndsc/chili/views/feed.js';
 import { Feed } from '@fnndsc/chili/models/feed.js';
 import { chiliCommand_run } from '../../chell.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
+import { Result } from '@fnndsc/cumin';
 
 /**
  * Handles feed commands.
@@ -49,6 +54,65 @@ export async function builtin_feed(args: string[]): Promise<void> {
     } else if (subcommand === 'search') {
        const query: string = parsed._[1] ?? '';
        await builtin_feed(['list', '--search', query]);
+
+    } else if (subcommand === 'note') {
+       const feedId: number = parseInt(String(parsed._[1]), 10);
+       if (isNaN(feedId)) { console.error(chalk.red('Usage: feed note <feedId> [--title <t>] [--content <c>]')); return; }
+       const hasUpdate: boolean = !!(parsed.title || parsed.content);
+       if (hasUpdate) {
+         const result: Result<boolean> = await feed_noteUpdate(feedId, {
+           title: parsed.title as string | undefined,
+           content: parsed.content as string | undefined,
+         });
+         if (result.ok) console.log(chalk.green(`Note updated on feed ${feedId}.`));
+         else { process.exitCode = 1; console.error(chalk.red('Failed to update note.')); }
+       } else {
+         const result: Result<FeedNote> = await feed_noteGet(feedId);
+         if (result.ok) console.log(feedNote_render(result.value, feedId));
+         else { process.exitCode = 1; console.error(chalk.red(`Failed to get note for feed ${feedId}.`)); }
+       }
+
+    } else if (subcommand === 'comments') {
+       const feedId: number = parseInt(String(parsed._[1]), 10);
+       if (isNaN(feedId)) { console.error(chalk.red('Usage: feed comments <feedId>')); return; }
+       const result: Result<FeedComment[]> = await feed_commentsList(feedId);
+       if (result.ok) console.log(feedComments_render(result.value, feedId));
+       else { process.exitCode = 1; console.error(chalk.red(`Failed to list comments for feed ${feedId}.`)); }
+
+    } else if (subcommand === 'comment') {
+       const op: string = parsed._[1] ?? '';
+       const feedId: number = parseInt(String(parsed._[2]), 10);
+       if (!op || isNaN(feedId)) {
+         console.error(chalk.red('Usage: feed comment <add|delete|edit> <feedId> [commentId] [--title <t>] [--content <c>]'));
+         return;
+       }
+       if (op === 'add') {
+         const result: Result<FeedComment> = await feed_commentCreate(feedId, {
+           title: parsed.title as string | undefined,
+           content: parsed.content as string | undefined,
+         });
+         if (result.ok) console.log(chalk.green(`Comment added (id: ${result.value.id}) on feed ${feedId}.`));
+         else { process.exitCode = 1; console.error(chalk.red('Failed to add comment.')); }
+       } else if (op === 'delete') {
+         const commentId: number = parseInt(String(parsed._[3]), 10);
+         if (isNaN(commentId)) { console.error(chalk.red('Usage: feed comment delete <feedId> <commentId>')); return; }
+         const result: Result<boolean> = await feed_commentDelete(feedId, commentId);
+         if (result.ok) console.log(chalk.green(`Comment ${commentId} deleted.`));
+         else { process.exitCode = 1; console.error(chalk.red('Failed to delete comment.')); }
+       } else if (op === 'edit') {
+         const commentId: number = parseInt(String(parsed._[3]), 10);
+         if (isNaN(commentId)) { console.error(chalk.red('Usage: feed comment edit <feedId> <commentId> [--title <t>] [--content <c>]')); return; }
+         const result: Result<boolean> = await feed_commentUpdate(feedId, commentId, {
+           title: parsed.title as string | undefined,
+           content: parsed.content as string | undefined,
+         });
+         if (result.ok) console.log(chalk.green(`Comment ${commentId} updated.`));
+         else { process.exitCode = 1; console.error(chalk.red('Failed to update comment.')); }
+       } else {
+         console.error(chalk.red(`Unknown comment op: ${op}. Use add, delete, or edit.`));
+         process.exitCode = 1;
+       }
+
     } else {
        console.log(chalk.yellow('Directive not handled by chell... spawning chili directly'));
        await chiliCommand_run('feeds', ['-s', ...args]);

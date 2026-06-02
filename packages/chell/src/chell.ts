@@ -47,6 +47,7 @@ import {
   builtin_mkdir,
   builtin_plugin,
   builtin_feed,
+  builtin_compute,
   builtin_download,
   builtin_files,
   builtin_links,
@@ -75,6 +76,7 @@ import { semicolons_parse } from './lib/semicolonParser.js';
 import { logo_linesRender, logo_print, logo_animatePulse, logo_animateStart, logo_animateStop } from './lib/logo.js';
 import {
   BootInfoItem,
+  BootInfoItem3,
   BootPanels,
   bootLogger_create,
   bootsequence_printIntroPanels,
@@ -443,6 +445,8 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   plugins: builtin_plugin,
   feed: builtin_feed,
   feeds: builtin_feed,
+  compute: builtin_compute,
+  computes: builtin_compute,
   files: builtin_files,
   links: builtin_links,
   dirs: builtin_dirs,
@@ -1286,12 +1290,11 @@ export async function chell_start(): Promise<void> {
   if (isInteractiveSession) {
     logo_animateStop();
 
-    const headerItems: BootInfoItem[] = [
-      { label: 'Title', value: 'ChELL Executes Layered Logic' },
-      { label: 'Version', value: packageJson.version },
-      { label: 'cumin', value: cuminJson.version },
-      { label: 'salsa', value: salsaJson.version },
-      { label: 'chili', value: chiliJson.version },
+    const headerItems: BootInfoItem3[] = [
+      { app: 'chell', name: 'ChELL Executes Layered Logic',                    version: packageJson.version },
+      { app: 'chili', name: 'ChILI handles Intelligent Line Interactions',     version: chiliJson.version   },
+      { app: 'salsa', name: 'Salsa Abstracts Logic Service Assets',            version: salsaJson.version   },
+      { app: 'cumin', name: 'Cumin Underpins Management Infrastructure Needs', version: cuminJson.version   },
     ];
     const localItems: BootInfoItem[] = [
       { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },

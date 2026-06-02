@@ -1,12 +1,13 @@
 /**
  * @file Builtin store command.
- * Manages peer store interactions (list, search).
+ * Manages peer store interactions (list, search, install).
  */
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs } from './utils.js';
 import { store_listPlugins, store_searchPlugins } from '@fnndsc/chili/commands/store/list.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { spinner } from '../lib/spinner.js';
+import { plugin_addInteractive } from './res/plugin.js';
 
 /**
  * Handles store commands.
@@ -18,7 +19,7 @@ export async function builtin_store(args: string[]): Promise<void> {
   const subcommand = parsed._[0];
 
   if (!subcommand) {
-     console.log(chalk.red("Usage: store <list|search> ..."));
+     console.log(chalk.red("Usage: store <list|search|install> ..."));
      return;
   }
 
@@ -70,6 +71,10 @@ export async function builtin_store(args: string[]): Promise<void> {
          console.log(grid_render(items));
        }
 
+    } else if (subcommand === 'install') {
+       spinner.stop();
+       const installParsed: ParsedArgs = { ...parsed, _: [parsed._[0], parsed._[1]] };
+       await plugin_addInteractive(installParsed);
     } else {
        spinner.stop();
        console.log(chalk.red(`Unknown subcommand: ${subcommand}`));

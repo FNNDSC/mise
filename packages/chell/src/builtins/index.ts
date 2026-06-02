@@ -36,6 +36,7 @@ export * from './res/plugin.js';
 export * from './res/pipeline.js';
 export * from './res/feed.js';
 export * from './res/files.js';
+export * from './res/compute.js';
 export * from './parametersofplugin.js';
 export * from './store.js';
 

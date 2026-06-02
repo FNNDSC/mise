@@ -42,7 +42,10 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
           table_display(
              results.tableData,
              results.selectedFields,
-             { title: { title: assetName, justification: "center" } }
+             {
+               title: { title: assetName, justification: "center" },
+               pagination: results.totalCount !== undefined ? { shown: results.tableData.length, total: results.totalCount } : undefined,
+             }
           );
        }
     } else if (subcommand === 'inspect' || subcommand === 'fieldslist') {

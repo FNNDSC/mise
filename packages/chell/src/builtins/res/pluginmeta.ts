@@ -17,9 +17,9 @@ export async function builtin_pluginmeta(args: string[]): Promise<void> {
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { pluginMetas, selectedFields }: PluginMetaListResult = await pluginMetas_fetchList(parsed as unknown as CLIoptions);
+      const { pluginMetas, selectedFields, totalCount }: PluginMetaListResult = await pluginMetas_fetchList(parsed as unknown as CLIoptions);
       if (pluginMetas.length === 0) { console.log(chalk.gray('No plugin metas found.')); return; }
-      table_display(pluginMetas, selectedFields, { title: { title: 'Plugin Metas', justification: 'center' } });
+      table_display(pluginMetas, selectedFields, { title: { title: 'Plugin Metas', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginMetas.length, total: totalCount } : undefined });
     } catch (e: unknown) {
       process.exitCode = 1;
       console.error(chalk.red(`pluginmeta error: ${e instanceof Error ? e.message : String(e)}`));

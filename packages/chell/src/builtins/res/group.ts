@@ -18,9 +18,9 @@ export async function builtin_group(args: string[]): Promise<void> {
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { groups, selectedFields }: GroupListResult = await groups_fetchList(parsed as unknown as CLIoptions);
+      const { groups, selectedFields, totalCount }: GroupListResult = await groups_fetchList(parsed as unknown as CLIoptions);
       if (groups.length === 0) { console.log(chalk.gray('No groups found.')); return; }
-      table_display(groups, selectedFields, { title: { title: 'Groups', justification: 'center' } });
+      table_display(groups, selectedFields, { title: { title: 'Groups', justification: 'center' }, pagination: totalCount !== undefined ? { shown: groups.length, total: totalCount } : undefined });
     } catch (e: unknown) {
       process.exitCode = 1;
       console.error(chalk.red(`group error: ${e instanceof Error ? e.message : String(e)}`));

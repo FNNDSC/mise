@@ -17,9 +17,9 @@ export async function builtin_tag(args: string[]): Promise<void> {
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { tags, selectedFields }: TagListResult = await tags_fetchList(parsed as unknown as CLIoptions);
+      const { tags, selectedFields, totalCount }: TagListResult = await tags_fetchList(parsed as unknown as CLIoptions);
       if (tags.length === 0) { console.log(chalk.gray('No tags found.')); return; }
-      table_display(tags, selectedFields, { title: { title: 'Tags', justification: 'center' } });
+      table_display(tags, selectedFields, { title: { title: 'Tags', justification: 'center' }, pagination: totalCount !== undefined ? { shown: tags.length, total: totalCount } : undefined });
     } catch (e: unknown) {
       process.exitCode = 1;
       console.error(chalk.red(`tag error: ${e instanceof Error ? e.message : String(e)}`));

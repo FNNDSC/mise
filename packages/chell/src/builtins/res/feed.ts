@@ -29,8 +29,11 @@ export async function builtin_feed(args: string[]): Promise<void> {
 
   try {
     if (subcommand === 'list') {
-       const { feeds, selectedFields }: FeedListResult = await feeds_fetchList(parsed as unknown as CLIoptions);
+       const { feeds, selectedFields, totalCount }: FeedListResult = await feeds_fetchList(parsed as unknown as CLIoptions);
        console.log(feedList_render(feeds, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
+       if (totalCount !== undefined && feeds.length < totalCount) {
+         console.log(chalk.dim(`  ↓ showing ${feeds.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`));
+       }
     } else if (subcommand === 'create') {
        const feed: Feed | null = await feed_create(parsed as unknown as CLIoptions);
        if (feed) {

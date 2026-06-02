@@ -186,6 +186,12 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   workflows_listAll: jest.fn().mockResolvedValue(null),
   workflowFields_get: jest.fn().mockResolvedValue(null),
   feeds_listAll: jest.fn().mockResolvedValue(null),
+  feedNote_get: jest.fn().mockResolvedValue({ ok: true, value: { title: '', content: '' } }),
+  feedNote_update: jest.fn().mockResolvedValue({ ok: true, value: true }),
+  feedComments_list: jest.fn().mockResolvedValue({ ok: true, value: [] }),
+  feedComment_create: jest.fn().mockResolvedValue({ ok: true, value: { id: 1, title: '', content: '', owner_username: '' } }),
+  feedComment_delete: jest.fn().mockResolvedValue({ ok: true, value: true }),
+  feedComment_update: jest.fn().mockResolvedValue({ ok: true, value: true }),
 }));
 
 // Mock chili commands
@@ -242,7 +248,12 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/download.js', () => ({
 
 // Mock chili views
 jest.unstable_mockModule('@fnndsc/chili/views/plugin.js', () => ({ pluginList_render: mockPluginListRender, pluginRun_render: mockPluginRunRender }));
-jest.unstable_mockModule('@fnndsc/chili/views/feed.js', () => ({ feedList_render: mockFeedListRender, feedCreate_render: mockFeedCreateRender }));
+jest.unstable_mockModule('@fnndsc/chili/views/feed.js', () => ({
+  feedList_render: mockFeedListRender,
+  feedCreate_render: mockFeedCreateRender,
+  feedNote_render: jest.fn().mockReturnValue(''),
+  feedComments_render: jest.fn().mockReturnValue(''),
+}));
 jest.unstable_mockModule('@fnndsc/chili/views/connect.js', () => ({ login_render: mockLoginRender, logout_render: mockLogoutRender }));
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   mkdir_render: mockMkdirRender,

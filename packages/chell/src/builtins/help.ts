@@ -100,6 +100,21 @@ export const helpText: Record<string, CommandHelp> = {
       'cat *.log             # Display all .log files (wildcard)',
     ],
   },
+  edit: {
+    usage: 'edit <file>',
+    description: 'Edit a ChRIS file in $EDITOR — fetches, opens, saves back on write',
+    options: [
+      'Uses $EDITOR (or $VISUAL, or vi as fallback)',
+      'No-ops if file is unchanged on exit',
+      'On save: deletes original and re-uploads — file path preserved, ID changes',
+      'On upload failure: edited content preserved in /tmp',
+    ],
+    examples: [
+      'edit /home/chris/uploads/config.yaml',
+      'edit notes.txt',
+      'EDITOR=nano edit report.json',
+    ],
+  },
   rm: {
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',
@@ -335,6 +350,7 @@ export const helpText: Record<string, CommandHelp> = {
       'SUBCOMMANDS:',
       '  create <path>                    Create a new feed from a data directory',
       '  note <feedId>                    Show the feed\'s note',
+      '  note edit <feedId>              Open note in $EDITOR',
       '  note <feedId> --title <t>        Update note title',
       '  note <feedId> --content <c>      Update note content',
       '  comments <feedId>                List all comments on a feed',
@@ -1107,7 +1123,7 @@ export async function builtin_help(args: string[]): Promise<void> {
   // Group commands by category
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
-    'File Operations': ['cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
+    'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
     Connection: ['connect', 'logout', 'context', 'whoami', 'whereami'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],

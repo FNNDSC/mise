@@ -5,12 +5,12 @@
 import { spawnSync, SpawnSyncReturns } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
-import { join, extname } from 'path';
+import { join, extname, posix } from 'path';
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { files_cat } from '@fnndsc/chili/commands/fs/cat.js';
 import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.js';
-import { errorStack, Result, StackMessage } from '@fnndsc/cumin';
+import { errorStack, Result, StackMessage, listCache_get } from '@fnndsc/cumin';
 
 const BINARY_EXTENSIONS: Set<string> = new Set([
   '.dcm', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico',
@@ -72,6 +72,7 @@ export async function builtin_edit(args: string[]): Promise<void> {
     }
 
     const result: EditResult = await file_replaceContent(target, tmpPath);
+    listCache_get().cache_invalidate(posix.dirname(target));
     if (result.success) {
       console.log(chalk.green(`Saved: ${args[0]}`));
     } else {

@@ -42,10 +42,43 @@ export class REPL {
    * @param commandHandler - Async function to process each input line.
    */
   async start(commandHandler: (line: string) => Promise<void>): Promise<void> {
-    repl_questionRegister((prompt: string): Promise<string> =>
-      new Promise((resolve: (answer: string) => void) => {
-        this.rl.question(prompt, (answer: string) => resolve(answer.trim()));
-      })
+    repl_questionRegister(
+      (prompt: string): Promise<string> =>
+        new Promise((resolve: (answer: string) => void) => {
+          this.rl.question(prompt, (answer: string) => resolve(answer.trim()));
+        }),
+      (prompt: string): Promise<string> => {
+        // Pause the REPL readline so it doesn't consume the chars, then read
+        // via raw-mode stdin with echo suppressed.
+        this.rl.pause();
+        process.stdout.write(prompt);
+        return new Promise((resolve: (answer: string) => void) => {
+          const chars: string[] = [];
+          const onData = (chunk: Buffer): void => {
+            const key: string = chunk.toString();
+            if (key === '\r' || key === '\n') {
+              process.stdin.removeListener('data', onData);
+              if (process.stdin.isTTY) process.stdin.setRawMode(false);
+              process.stdout.write('\n');
+              this.rl.resume();
+              resolve(chars.join('').trim());
+            } else if (key === '') { // Ctrl+C
+              process.stdin.removeListener('data', onData);
+              if (process.stdin.isTTY) process.stdin.setRawMode(false);
+              process.stdout.write('\n');
+              this.rl.resume();
+              resolve('');
+            } else if (key === '' || key === '\b') { // backspace
+              chars.pop();
+            } else if (key.charCodeAt(0) >= 0x20) {
+              chars.push(key);
+            }
+          };
+          if (process.stdin.isTTY) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdin.on('data', onData);
+        });
+      }
     );
 
     await this.history_load();

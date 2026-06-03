@@ -294,7 +294,6 @@ const {
   builtin_files,
   builtin_links,
   builtin_dirs,
-  builtin_chefs,
   builtin_cat,
   builtin_rm,
   builtin_context,
@@ -699,56 +698,6 @@ describe('Builtins - Core Functions', () => {
       await builtin_files(['list']);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No files resources found'));
-    });
-  });
-
-  describe('builtin_chefs()', () => {
-    it('should handle pwd subcommand', async () => {
-      mockGetCWD.mockResolvedValue('/home/user/data');
-
-      await builtin_chefs(['pwd']);
-
-      expect(consoleLogSpy).toHaveBeenCalledWith('/home/user/data');
-    });
-
-    it('should handle ls subcommand', async () => {
-      await builtin_chefs(['ls', '-l']);
-
-      expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: true, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
-    });
-
-    it('should handle mkdir subcommand', async () => {
-      mockChefsMkdir.mockResolvedValue(true);
-      mockMkdirRender.mockReturnValue('Directory created');
-
-      await builtin_chefs(['mkdir', '/tmp/newdir']);
-
-      expect(mockChefsMkdir).toHaveBeenCalledWith('/tmp/newdir');
-      expect(consoleLogSpy).toHaveBeenCalledWith('Directory created');
-    });
-
-    it('should handle touch subcommand', async () => {
-      mockChefsTouch.mockResolvedValue(true);
-      mockTouchRender.mockReturnValue('File created');
-
-      await builtin_chefs(['touch', '/tmp/newfile']);
-
-      expect(mockChefsTouch).toHaveBeenCalledWith('/tmp/newfile');
-      expect(consoleLogSpy).toHaveBeenCalledWith('File created');
-    });
-
-    it('should handle upload subcommand', async () => {
-      mockChefsUpload.mockResolvedValue(true);
-
-      await builtin_chefs(['upload', 'local.txt', 'remote.txt']);
-
-      expect(mockChefsUpload).toHaveBeenCalled();
-    });
-
-    it('should error on unknown subcommand', async () => {
-      await builtin_chefs(['unknown']);
-
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown chefs subcommand'));
     });
   });
 

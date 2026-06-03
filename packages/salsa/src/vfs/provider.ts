@@ -17,7 +17,7 @@ export interface VFSItem {
   name: string;
   
   /** The type of the item. */
-  type: "dir" | "file" | "link" | "plugin" | "pipeline" | "vfs";
+  type: "dir" | "file" | "link" | "plugin" | "pipeline" | "vfs" | "job";
   
   /** Size in bytes. */
   size: number;
@@ -36,6 +36,9 @@ export interface VFSItem {
   
   /** Title or description (for feeds, queries). */
   title?: string;
+
+  /** Execution status (for job type items). */
+  status?: string;
 }
 
 /**

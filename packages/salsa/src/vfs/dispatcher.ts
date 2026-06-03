@@ -12,6 +12,7 @@ import { VFSProvider, VFSItem, CpOptions } from "./provider.js";
 import { NativeVfsProvider } from "./providers/native.js";
 import { PacsVfsProvider } from "./providers/pacs.js";
 import { EtcVfsProvider } from "./providers/etc.js";
+import { ProcVfsProvider } from "./providers/proc.js";
 
 /**
  * Registry and dispatcher routing filesystem commands to matched VFS providers.
@@ -28,6 +29,7 @@ export class VFSDispatcher {
     this.defaultProvider = new NativeVfsProvider();
     this.provider_register(new PacsVfsProvider());
     this.provider_register(new EtcVfsProvider());
+    this.provider_register(new ProcVfsProvider());
   }
 
   /**

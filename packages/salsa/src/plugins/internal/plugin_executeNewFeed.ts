@@ -89,5 +89,6 @@ export async function plugin_executeNewFeed(
     pluginInstanceID,
     pluginName: actualPluginName,
     outputPath,
+    parentID: dircopyInstanceID,
   };
 }

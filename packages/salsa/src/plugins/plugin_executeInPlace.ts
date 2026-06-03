@@ -28,6 +28,8 @@ export interface PluginExecutionResult {
   pluginName: string;
   /** Path where output will appear */
   outputPath: string;
+  /** Parent instance ID — null for feed root nodes, set for all others */
+  parentID: number | null;
 }
 
 /**

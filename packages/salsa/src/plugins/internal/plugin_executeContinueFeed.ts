@@ -82,5 +82,6 @@ export async function plugin_executeContinueFeed(
     pluginInstanceID,
     pluginName: actualPluginName,
     outputPath,
+    parentID: previousID,
   };
 }

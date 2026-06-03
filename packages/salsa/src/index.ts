@@ -18,3 +18,5 @@ export * from './pluginmetas/index.js';
 export * from './plugininstances/index.js';
 export * from './workflows/index.js';
 export * from './compute/index.js';
+export * from './jobs/index.js';
+export { procCache_refresh } from './vfs/providers/proc.js';

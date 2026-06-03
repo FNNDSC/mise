@@ -8,40 +8,90 @@
 
 **Salsa Abstracts Logic Service Assets**
 
-`salsa` is the logic layer of the ChRIS interface ecosystem. It is a TypeScript library that encapsulates high-level business intents and operational logic, serving as the bridge between user-facing interfaces (like the `chili` CLI) and the underlying infrastructure (`cumin` and `chrisapi`).
+`salsa` is the logic layer of the ChRIS interface ecosystem. It encapsulates high-level business intents and operational logic, serving as the bridge between user-facing interfaces (`chell`, `chili`) and the underlying infrastructure (`cumin` and `chrisapi`).
 
 ## Purpose
 
-- **Consolidate Business Logic:** Centralizes "Intents" (e.g., "Create a Feed from these local files", "Run a Plugin with these parameters"). This ensures that `chili` (CLI), future web apps, and other frontends share the exact same behavior.
-- **Frontend Agnostic:** Designed to be free of CLI-specific dependencies (like `commander` or `process.stdout`). It returns pure data or typed objects.
-- **Powering Chefs:** Provides the primitive file operations that power the `chefs` shell experience in `chili` and `chell`.
+- **Consolidate Business Logic**: Centralises intents such as "list directory", "upload file", "register plugin", "fetch feed note". All frontends share identical behaviour.
+- **Frontend Agnostic**: No CLI-specific dependencies (`commander`, `process.stdout`). Returns pure data or typed objects.
+- **Virtual Filesystem**: Owns the VFS dispatcher that maps ChRIS API resources onto Unix-style paths — see [VFS](#virtual-filesystem-vfs) below.
 
-## Architecture: The Sandwich Model 🥪
+## Architecture: The Sandwich Model
 
 ```text
-[ Chili (CLI) ]   [ Web App ]   [ Mobile App ]
-       |               |              |
-       +-------+-------+              |
-               |                      |
-               v                      v
-    [      Salsa (Logic / Intents)        ]  <-- YOU ARE HERE
-               |
-               v
-    [      Cumin (State / Infrastructure) ]
-               |
-               v
-    [      @fnndsc/chrisapi (Client)      ]
+[ ChELL (REPL) ]  [ Chili (CLI) ]  [ Web App ]  [ Mobile App ]
+       |                 |               |              |
+       +-----------------+---------------+              |
+                         |                              |
+                         v                              v
+              [      Salsa (Logic / Intents)        ]  <-- YOU ARE HERE
+                         |
+                         v
+              [      Cumin (State / Infrastructure) ]
+                         |
+                         v
+              [      @fnndsc/chrisapi (Client)      ]
 ```
 
 ## Key Modules
 
--   **`feeds`**: Logic for creating and managing feeds.
--   **`plugins`**: Logic for searching, resolving, running, and registering plugins. `plugins_listAll` fetches complete lists.
--   **`files`**: File system interactions:
-    -   `files_listAll`: Fetch complete directory listings (pagination handling).
-    -   `fileContent_get`: Read remote file content.
-    -   `files_uploadPath`: Recursively upload local files or directories to ChRIS.
-    -   `files_touch`, `files_mkdir`.
+### Filesystem
+
+| Function | Description |
+|----------|-------------|
+| `vfsDispatcher` | Routes `list`/`read` calls to the correct VFS provider by path prefix |
+| `files_list` | List a directory (paginated) |
+| `files_listAll` | Full directory listing (all pages) |
+| `fileContent_get` | Read remote file content |
+| `files_uploadPath` | Upload a local file or directory tree to ChRIS |
+| `files_touch` | Create an empty file |
+| `files_mkdir` | Create a directory |
+| `files_rm` | Delete a file or directory |
+| `files_cp` / `files_mv` | Copy / move |
+
+### Plugins & Store
+
+| Function | Description |
+|----------|-------------|
+| `plugins_list` / `plugins_listAll` | Fetch plugin list |
+| `plugin_checkExists` | Check if a plugin is already registered |
+| `plugin_registerWithAdmin` | Register a plugin via the admin endpoint |
+| `plugin_assignToComputeResources` | Assign plugin to compute environments |
+| `plugins_searchPeers` | Search peer ChRIS stores (e.g. cube.chrisproject.org) |
+| `plugin_importFromStore` | Import a plugin from peer store data |
+| `plugin_searchPeersByImage` | Resolve a Docker image to a peer-store plugin |
+
+### Feeds & Sub-resources
+
+| Function | Description |
+|----------|-------------|
+| `feeds_list` / `feeds_listAll` | Fetch feeds |
+| `feedNote_get` / `feedNote_update` | Read or update the singleton note on a feed |
+| `feedComments_list` | List comments on a feed |
+| `feedComment_create` / `feedComment_update` / `feedComment_delete` | Comment CRUD |
+
+### Pipelines & Workflows
+
+| Function | Description |
+|----------|-------------|
+| `pipelines_list` | List registered pipelines |
+| `workflow_create` | Instantiate a pipeline as a workflow on a feed |
+
+## Virtual Filesystem (VFS)
+
+`vfsDispatcher` translates a ChRIS path into a provider call. Each provider handles a path prefix and maps API resources onto filesystem semantics:
+
+| Path prefix | Provider | Backed by |
+|-------------|----------|-----------|
+| `/home/<user>/` | `HomeVfsProvider` | ChRIS user-file API |
+| `/home/<user>/feeds/` | `FeedVfsProvider` | Feed resources |
+| `/bin` | `BinVfsProvider` | Registered plugins (virtual executables) |
+| `/usr/bin` | `UsrBinVfsProvider` | Built-in shell commands (`whoami`, `whereami`) |
+| `/etc` | `EtcVfsProvider` | Config files (`compute.yaml`, `group`, `passwd`, `cube`) |
+| `/net/pacs/queries/` | `PacsVfsProvider` | PACS query results |
+| `*.chrislink` | resolved by dispatcher | Symlinks to other ChRIS paths |
+
+Providers implement a common interface: `list(path)` → `VfsItem[]` and `read(path)` → `string`.
 
 ## Development
 

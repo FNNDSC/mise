@@ -571,18 +571,6 @@ export const helpText: Record<string, CommandHelp> = {
       'pacsretrieve cancel <retrieveId> # Cancel a retrieve',
     ],
   },
-  chefs: {
-    usage: 'chefs <subcommand> [args]',
-    description: 'ChRIS Experimental File System commands',
-    examples: [
-      'chefs ls -l                                         # List directory',
-      'chefs mkdir newdir                                  # Create directory',
-      'chefs touch file.txt                                # Create empty file',
-      'chefs touch --withContents "data" file.txt          # Create file with content',
-      'chefs touch --withContentsFromFile local.txt remote.txt  # Create from local file',
-      'chefs rm file                                       # Remove file',
-    ],
-  },
   exit: {
     usage: 'exit',
     description: 'Exit the shell',
@@ -1123,7 +1111,7 @@ export async function builtin_help(args: string[]): Promise<void> {
   // Group commands by category
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
-    'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download', 'chefs'],
+    'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
     Connection: ['connect', 'logout', 'context', 'whoami', 'whereami'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],

@@ -63,7 +63,7 @@ describe('Tab Completion', () => {
         expect(original).toBe('c');
         expect(hits).toContain('cd');
         expect(hits).toContain('connect');
-        expect(hits).toContain('chefs');
+        expect(hits).toContain('cat');
         done();
       });
     });
@@ -105,7 +105,7 @@ describe('Tab Completion', () => {
         // Should include builtins starting with 'c'
         expect(hits).toContain('cd');
         expect(hits).toContain('connect');
-        expect(hits).toContain('chefs');
+        expect(hits).toContain('cat');
         // Should include plugin starting with 'c'
         expect(hits).toContain('custom-app-v1.0.0');
         // Should NOT include plugin not starting with 'c'

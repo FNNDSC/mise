@@ -85,7 +85,6 @@ ${chalk.bold.cyan('INTERACTIVE COMMANDS')}
   ${chalk.bold.green('ls')}          List virtual directory contents
   ${chalk.bold.green('pwd')}         Print the current virtual working directory
   ${chalk.bold.green('cat')}         Display file contents
-  ${chalk.bold.green('chefs')}       Access ChRIS Experimental File System controls
   ${chalk.bold.green('exit')}        Exit the interactive shell
   ${chalk.bold.yellow('<other>')}     Any unrecognized command is passed directly to the chili CLI
 

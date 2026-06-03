@@ -24,6 +24,8 @@ import { chiliCommand_run } from '../../chell.js';
 import { spinner } from '../../lib/spinner.js';
 import { errorStack } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { adminPrompt_register } from '@fnndsc/chili/utils/admin_prompt.js';
+import { repl_question, repl_questionHidden } from '../../core/question.js';
 
 /**
  * Handles plugin commands.
@@ -103,6 +105,7 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   };
 
   errorStack.stack_clear();
+  adminPrompt_register(repl_question, repl_questionHidden);
 
   console.log(chalk.cyan(`\nAdding plugin: ${pluginInput}\n`));
 

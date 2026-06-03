@@ -26,11 +26,15 @@ The ChELL filesystem has two kinds of paths:
 
 | Path | Type | What you see |
 |------|:----:|-------------|
-| `/home/<user>/` | CFS | Uploaded files and directories |
-| `/home/<user>/feeds/` | CFS | Analysis feeds and their output trees |
+| `/home/<user>/` | CFS | Your uploaded files and directories |
+| `/home/<user>/feeds/` | CFS | Your analysis feeds and their output trees |
+| `/PIPELINES/` | CFS | Shared pipeline output data |
+| `/PUBLIC/` | CFS | Publicly accessible files |
+| `/SERVICES/` | CFS | Service-level data |
+| `/SHARED/` | CFS | Cross-user shared data |
 | `*.chrislink` | CFS | Symbolic links to other ChRIS paths |
 | `/bin` | VFS | Every plugin registered in this CUBE |
-| `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`) |
+| `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`, …) |
 | `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | VFS | PACS query result sets |
 

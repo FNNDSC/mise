@@ -84,7 +84,7 @@ export class REPL {
     await this.history_load();
     await this.prompt_update();
 
-    this.rl.on('line', async (line) => {
+    this.rl.on('line', async (line: string) => {
       await this.history_append(line);
 
       const startMs: number = Date.now();

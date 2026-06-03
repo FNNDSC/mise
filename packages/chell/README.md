@@ -58,22 +58,41 @@ ChRIS uses `.chrislink` files as symbolic links. `ls -l` renders them as `l` ent
 
 ## Running Plugins
 
-Because plugins live in `/bin` as virtual executables, you can invoke them **directly by name** — exactly as you would run a local binary. No subcommand prefix required:
+Because plugins live in `/bin` as virtual executables, you invoke them **directly by name** — exactly like running a local binary. ChELL uses your **current working directory** to determine context automatically, so you never need to supply a `--previous_id` by hand.
+
+### Case 1 — Starting a new analysis from a data directory
 
 ```bash
-pl-dircopy-v2.1.1 --previous_id 14 --dir .
-pl-fshack-v1.2.0  --previous_id 14 --inputFile brain.mgz --outputFile brain.nii
+cd /home/chris/uploads/SAG-anon
+pl-fshack-v1.2.0 --inputFile brain.mgz --outputFile brain.nii
 ```
 
-ChELL recognises the plugin name, resolves it against `/bin`, and calls `plugin run` on your behalf. This is the main UX win: a ChRIS CUBE behaves like a compute host where algorithms are just commands on `$PATH`.
+ChELL detects you are **outside a feed**. It:
+1. Automatically runs `pl-dircopy` on the current directory to stage the data into a new feed
+2. Attaches your plugin to that dircopy instance as the next step
 
-If you prefer the explicit form, or need to pass structured args:
+A new feed is created for you — no boilerplate.
+
+### Case 2 — Continuing an existing analysis
 
 ```bash
-plugin run pl-dircopy-v2.1.1 --previous_id 14 --dir .
+cd /home/chris/feeds/feed_123/pl-fshack_456/data
+pl-segmentation-v1.0.0 --threshold 0.5
 ```
 
-Either way, the result is a **plugin instance** — a new node in the feed's computation DAG. Check its status:
+ChELL detects you are **inside a feed**. It extracts the plugin instance ID from the path (`456`) and uses it as `previous_id` automatically. The new plugin node is wired into the existing computation DAG.
+
+### Naming feeds and instances
+
+Use `--` to separate plugin parameters from feed-level context:
+
+```bash
+pl-fshack-v1.2.0 --inputFile brain.mgz -- feed_title="Brain MRI Study" instance_title="FreeSurfer recon"
+```
+
+Everything before `--` goes to the plugin; everything after sets ChRIS metadata.
+
+### Monitoring
 
 ```bash
 job inspect <instance_id>

@@ -42,13 +42,19 @@ export class VFS {
         return this.directoryEntry_get(effectivePath, options);
       }
 
-      // Check cache first
+      // /proc paths are backed by ProcCache which manages its own freshness —
+      // skip listCache entirely so proc refresh and live status reads are visible.
+      const isProcPath: boolean = effectivePath.startsWith('/proc');
+
+      // Check cache first (not for /proc paths)
       const listCache = listCache_get();
-      const cached = listCache.cache_get<ListingItem[]>(effectivePath);
-      if (cached) {
-        const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
-        const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
-        return Ok(sortedItems);
+      if (!isProcPath) {
+        const cached = listCache.cache_get<ListingItem[]>(effectivePath);
+        if (cached) {
+          const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
+          const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
+          return Ok(sortedItems);
+        }
       }
 
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
@@ -56,8 +62,10 @@ export class VFS {
       if (vfsResult.ok) {
         const items = vfsResult.value as unknown as ListingItem[];
 
-        // Cache the results!
-        listCache.cache_set(effectivePath, items);
+        // Cache the results (not for /proc paths)
+        if (!isProcPath) {
+          listCache.cache_set(effectivePath, items);
+        }
 
         return Ok(items);
       }

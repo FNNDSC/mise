@@ -205,7 +205,7 @@ function params_render(inst: ProcInstance): string {
  * Backs /proc with ProcCache; does not use listCache.
  */
 export class ProcVfsProvider implements VFSProvider {
-  readonly prefix: string = '/proc';
+  readonly prefix: string = '/proc/feeds';
 
   async list(
     pathStr: string,
@@ -215,8 +215,8 @@ export class ProcVfsProvider implements VFSProvider {
     const cache: ProcCache = procCache_get();
     const clean: string = pathStr.replace(/\/$/, '');
 
-    // /proc or /proc/feeds — list feeds
-    if (clean === '/proc' || clean === '/proc/feeds') {
+    // /proc/feeds — list feeds
+    if (clean === '/proc/feeds') {
       const items: VFSItem[] = cache.feedIDs_get().map((feedID: number): VFSItem => {
         const feed: ProcFeed | undefined = cache.feed_get(feedID);
         const status: string = feedStatus_derive(feedID);

@@ -121,18 +121,23 @@ store install pl-simplefsapp --compute ares,argentum
 
 ## Running Pipelines
 
-Pipelines are pre-wired sequences of plugins. Instantiating one creates a **workflow** — all steps run in order, outputs wired to inputs automatically.
+A **pipeline** is a registered template — a named, reusable graph of plugins with their parameter defaults wired together. Pipelines are static definitions; they do not run on their own.
+
+A **workflow** is a live instantiation of a pipeline, attached to a specific feed node. Creating a workflow is the act of "running" a pipeline: ChRIS schedules each plugin step in order, feeding outputs of one into the inputs of the next.
 
 ```bash
-# Browse what's available
+# Browse registered pipeline templates
 pipeline list
+pipeline inspect <id>
 
-# Fire a pipeline on an existing feed node — same idea as running a plugin
+# Instantiate a pipeline on an existing feed node → creates a workflow
 workflow create <pipeline_id> --previous_id <instance_id>
 
 # Monitor all the jobs it spawns
 jobs list --feed <feed_id>
 ```
+
+The `--previous_id` here is the feed node to attach the first pipeline step to — the same context that ChELL resolves automatically when you invoke a single plugin directly.
 
 ---
 
@@ -189,22 +194,27 @@ logout
 ## Getting Started
 
 ```bash
-# Start the shell
+# Start the shell, then connect interactively
 chell
-
-# Connect
 > connect --user chris --password chris1234 http://localhost:8000/api/v1/
 
-# Or connect directly from the command line
+# Connect via flags
 chell -u chris -p chris1234 http://localhost:8000/api/v1/
+
+# Compact user@host form (password prompted if omitted)
+chell chris@localhost:8000/api/v1/
+chell -p chris1234 chris@localhost:8000/api/v1/
 ```
 
 ### Scripting
 
 ```bash
-# Non-interactive: pipe commands via -c
+# Non-interactive: single command via -c
 chell -c "ls -l /home/user/study" > study_contents.txt
 chell -c "store install pl-dircopy"
+
+# Run a script file
+chell -f my_workflow.chell
 ```
 
 ---
@@ -218,6 +228,25 @@ ChELL is the presentation layer of the "Sandwich Model":
 3. **Salsa** — business logic, VFS dispatcher, intent layer
 4. **Cumin** — connection, context persistence, state
 5. **`@fnndsc/chrisapi`** — raw ChRIS REST client
+
+---
+
+## Further Reading
+
+| Document | Topic |
+|----------|-------|
+| [docs/vfs.adoc](docs/vfs.adoc) | VFS architecture — providers, dispatch, path resolution |
+| [docs/pluginrun.adoc](docs/pluginrun.adoc) | Plugin execution in depth — new feed vs continue feed |
+| [docs/plugin-run-summary.md](docs/plugin-run-summary.md) | Quick-reference summary of plugin run modes |
+| [docs/store.adoc](docs/store.adoc) | Store install — three-phase resolution, admin escalation |
+| [docs/login.adoc](docs/login.adoc) | Connection and authentication options |
+| [docs/execution.adoc](docs/execution.adoc) | Command execution, scripting, and pipeline mode |
+| [docs/commands.adoc](docs/commands.adoc) | Full command reference |
+| [docs/pacsqr.adoc](docs/pacsqr.adoc) | PACS query and retrieve |
+| [docs/physicalMode.adoc](docs/physicalMode.adoc) | Physical vs logical filesystem mode |
+| [docs/gotchas.adoc](docs/gotchas.adoc) | Known edge cases and workarounds |
+| [docs/architecture.adoc](docs/architecture.adoc) | Full architecture deep-dive |
+| [CONTEXT.md](CONTEXT.md) | Domain glossary — ChRIS concepts, permission model, resource contract |
 
 ---
 *ChELL is part of the ChRIS Project.*

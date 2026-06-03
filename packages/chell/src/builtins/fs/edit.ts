@@ -76,7 +76,9 @@ export async function builtin_edit(args: string[]): Promise<void> {
     if (result.success) {
       console.log(chalk.green(`Saved: ${args[0]}`));
     } else {
+      const apiErr: StackMessage | undefined = errorStack.stack_pop();
       console.error(chalk.red(`edit: Save failed — ${result.error}`));
+      if (apiErr) console.error(chalk.red(`  API error: ${error_stripDebugPrefix(apiErr.message)}`));
       console.error(chalk.yellow(`Your edits are preserved at: ${tmpPath}`));
       keepTmp = true;
       process.exitCode = 1;

@@ -592,9 +592,9 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc refresh [feed_id]',
-    description: 'Rebuild the /proc/feeds job cache. Scoped to a single feed if feed_id given.',
-    examples: ['proc refresh', 'proc refresh 123', 'proc refresh feed_123'],
+    usage: 'proc refresh [feed_id] | proc find <instance_id>',
+    description: 'Manage the /proc/feeds job cache. refresh rebuilds it; find returns the full /proc path for an instance ID.',
+    examples: ['proc refresh', 'proc refresh 123', 'proc find 64306'],
   },
   prompt: {
     usage: 'prompt [list | <theme>]',

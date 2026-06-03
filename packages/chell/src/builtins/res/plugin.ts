@@ -16,7 +16,7 @@ import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
 import { pluginFields_fetch } from '@fnndsc/chili/commands/plugins/fields.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
-import { plugin_add } from '@fnndsc/chili/commands/plugins/add.js';
+import { plugin_add, PluginAddOutcome } from '@fnndsc/chili/commands/plugins/add.js';
 import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
@@ -109,32 +109,33 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
 
   console.log(chalk.cyan(`\nAdding plugin: ${pluginInput}\n`));
 
-  const success = await plugin_add(pluginInput, options);
+  const outcome: PluginAddOutcome = await plugin_add(pluginInput, options);
 
   spinner.stop();
 
-  if (success) {
+  if (outcome === 'installed') {
     console.log(chalk.green('\n[SUCCESS] Plugin added successfully!\n'));
+  } else if (outcome === 'already_exists') {
+    console.log(chalk.yellow(`\n[INFO] '${pluginInput}' is already registered in this CUBE.\n`));
   } else {
     process.exitCode = 1;
     console.log(chalk.red('\n[FAILED] Failed to add plugin.\n'));
 
-    const errors = errorStack.allOfType_get('error');
+    const errors: string[] = errorStack.allOfType_get('error');
     if (errors.length > 0) {
       console.log(chalk.red('Errors:'));
       errors.forEach((error: string) => {
-        // Remove function name prefix for cleaner display
-        const cleanError = error.replace(/^\[.*?\]\s+\|\s+/, '');
+        const cleanError: string = error.replace(/^\[.*?\]\s+\|\s+/, '');
         console.log(chalk.red(`  - ${cleanError}`));
       });
       console.log('');
     }
 
-    const warnings = errorStack.allOfType_get('warning');
+    const warnings: string[] = errorStack.allOfType_get('warning');
     if (warnings.length > 0) {
       console.log(chalk.yellow('Warnings:'));
       warnings.forEach((warning: string) => {
-        const cleanWarning = warning.replace(/^\[.*?\]\s+\|\s+/, '');
+        const cleanWarning: string = warning.replace(/^\[.*?\]\s+\|\s+/, '');
         console.log(chalk.yellow(`  [WARNING] ${cleanWarning}`));
       });
       console.log('');

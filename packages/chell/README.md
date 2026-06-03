@@ -37,6 +37,7 @@ The ChELL filesystem has two kinds of paths:
 | `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`, …) |
 | `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | VFS | PACS query result sets |
+| `/proc/feeds/` | VFS | Job monitoring — live status of all plugin instances |
 
 ```bash
 cd /etc
@@ -141,6 +142,59 @@ The `--previous_id` here is the feed node to attach the first pipeline step to �
 
 ---
 
+## Monitoring Jobs: `/proc/feeds/`
+
+Because every plugin runs asynchronously in ChRIS, `/proc/feeds/` is where you come back to see what happened. It exposes all your visible feeds and their plugin instances as a navigable DAG — the same tree structure the computation actually ran in.
+
+```
+/proc/feeds/
+└── feed_123/
+    ├── status                        ← aggregate feed status
+    ├── title                         ← feed name
+    └── pl-dircopy_456/               ← root node (j = job type in ls -l)
+        ├── status                    ← finishedSuccessfully
+        ├── params
+        ├── log
+        └── pl-fshack_789/
+            ├── status                ← started
+            └── pl-segmentation_1011/
+                └── status            ← scheduled
+```
+
+```bash
+ls -l /proc/feeds/feed_123            # see all nodes with colour-coded status
+cat /proc/feeds/feed_123/pl-fshack_789/status   # live status fetch
+cat /proc/feeds/feed_123/pl-fshack_789/log      # stdout/stderr
+cat /proc/feeds/feed_123/pl-fshack_789/params   # what it ran with
+
+# Search across all jobs
+tree /proc/feeds | grep 789           # find instance 789 and see its full lineage
+
+# Cancel a running job
+rm /proc/feeds/feed_123/pl-fshack_789
+
+# Cancel all jobs in a feed (requires -r)
+rm -r /proc/feeds/feed_123
+```
+
+Status colours in `ls -l`: green = `finishedSuccessfully`, yellow = `started`/`running`, gray = `scheduled`/`cancelled`, red = `finishedWithError`.
+
+The cache is built lazily on first access to `/proc`. Rebuild explicitly after external activity (other users, web GUI):
+
+```bash
+proc refresh              # rebuild all
+proc refresh feed_123     # scope to one feed
+```
+
+Since `/proc` paths encode the instance ID, you can also **continue an analysis from any node** just by `cd`-ing into it:
+
+```bash
+cd /proc/feeds/feed_123/pl-dircopy_456
+pl-fshack-v1.2.0 --inputFile brain.mgz   # attaches here, no --previous_id needed
+```
+
+---
+
 ## Key Commands
 
 ### Filesystem
@@ -187,6 +241,8 @@ whoami                  # current user and CUBE URL
 whereami                # current working directory
 connect --user <u> --password <p> <url>
 logout
+proc refresh            # rebuild /proc job cache
+proc refresh feed_123   # scope rebuild to one feed
 ```
 
 ---

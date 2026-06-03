@@ -30,16 +30,15 @@ interface RawFeed {
   [key: string]: unknown;
 }
 
+/** Minimal chrisapi list resource shape we rely on. */
+interface ChrisListResource<T> {
+  data: T[] | null;
+}
+
 /** chrisapi client shape for the calls we need. */
 interface ChrisClient {
-  getPluginInstances(params?: Record<string, unknown>): Promise<{
-    data: RawInstance[];
-    hasNextPage?: boolean;
-    getNext?(): Promise<{ data: RawInstance[] }>;
-  }>;
-  getFeeds(params?: Record<string, unknown>): Promise<{
-    data: RawFeed[];
-  }>;
+  getPluginInstances(params?: Record<string, unknown>): Promise<ChrisListResource<RawInstance>>;
+  getFeeds(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
 }
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -59,6 +58,9 @@ const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
  * Fetches all visible plugin instances in one paginated call,
  * groups by feed_id.
  */
+/**
+ * Builds the feed index only (fast). Instance data is loaded lazily per-feed.
+ */
 async function procCache_build(): Promise<void> {
   const cache: ProcCache = procCache_get();
   cache.cache_clear();
@@ -70,54 +72,64 @@ async function procCache_build(): Promise<void> {
   }
 
   const typedClient = client as unknown as ChrisClient;
+  const PAGE: number = 100;
 
-  // Fetch all feeds for title lookup
-  const feedsResp = await typedClient.getFeeds({ limit: 1000 });
-  const feedMap: Map<number, string> = new Map();
-  for (const f of (feedsResp.data as RawFeed[])) {
-    feedMap.set(f.id, f.name);
-  }
-
-  // Fetch all plugin instances (paginated)
-  const allInstances: RawInstance[] = [];
-  let page = await typedClient.getPluginInstances({ limit: 100 });
-  allInstances.push(...(page.data as RawInstance[]));
-
-  while (page.hasNextPage && page.getNext) {
-    page = await page.getNext();
-    allInstances.push(...(page.data as RawInstance[]));
-  }
-
-  // Register feeds encountered in instances
-  for (const inst of allInstances) {
-    const feedID: number = inst.feed_id;
-    if (!cache.feed_get(feedID)) {
-      cache.feed_add({
-        id: feedID,
-        title: feedMap.get(feedID) ?? `feed_${feedID}`,
-      });
+  // Fetch all feeds — paginated
+  let feedOffset: number = 0;
+  while (true) {
+    const feedPage: ChrisListResource<RawFeed> = await typedClient.getFeeds({ limit: PAGE, offset: feedOffset });
+    const chunk: RawFeed[] = feedPage.data ?? [];
+    for (const f of chunk) {
+      cache.feed_add({ id: Number(f.id), title: String(f.name) });
     }
-  }
-
-  // Register all instances
-  for (const inst of allInstances) {
-    const params: Record<string, unknown> = {};
-    if (inst.parameters) {
-      for (const [k, v] of Object.entries(inst.parameters)) {
-        params[k] = v;
-      }
-    }
-    cache.instance_add({
-      id: inst.id,
-      feedID: inst.feed_id,
-      parentID: inst.previous_id ?? null,
-      pluginName: inst.plugin_name,
-      status: inst.status,
-      params: Object.keys(params).length > 0 ? params : null,
-    });
+    if (chunk.length < PAGE) break;
+    feedOffset += PAGE;
   }
 
   cache.built_set();
+}
+
+/**
+ * Lazily loads instances for a single feed into the cache.
+ * No-op if instances for this feed are already cached.
+ */
+async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
+  const cache: ProcCache = procCache_get();
+
+  // Already loaded if any instances are known for this feed
+  if (cache.feedRoots_get(feedID).length > 0) return;
+
+  const client = await chrisConnection.client_get();
+  if (!client) return;
+
+  const typedClient = client as unknown as ChrisClient;
+  const PAGE: number = 100;
+  const instances: RawInstance[] = [];
+  let offset: number = 0;
+
+  while (true) {
+
+    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({ feed_id: feedID, limit: PAGE, offset });
+    const chunk: RawInstance[] = page.data ?? [];
+
+    instances.push(...chunk);
+    if (chunk.length < PAGE) break;
+    offset += PAGE;
+  }
+  for (const inst of instances) {
+    const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
+      ? Number(inst.previous_id)
+      : null;
+    cache.instance_add({
+      id: Number(inst.id),
+      feedID: Number(inst.feed_id),
+      parentID: prevID,
+      pluginName: String(inst.plugin_name),
+      status: String(inst.status),
+      params: null,
+    });
+  }
+
 }
 
 /** Ensures cache is built, building it on first access. */
@@ -237,6 +249,8 @@ export class ProcVfsProvider implements VFSProvider {
 
     // /proc/feeds/feed_N — list root instances + feed virtual files
     if (feedID !== null && instanceID === null) {
+      await feedInstances_ensureLoaded(feedID);
+
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
       if (!feed) return Ok([]);
 
@@ -392,28 +406,14 @@ export class ProcVfsProvider implements VFSProvider {
  */
 export async function procCache_refresh(feedID?: number): Promise<void> {
   if (feedID !== undefined) {
-    // Scoped rebuild: remove existing feed entries then re-fetch
-    procCache_get().feed_remove(feedID);
-    const client = await chrisConnection.client_get();
-    if (!client) return;
-
-    const typedClient = client as unknown as ChrisClient;
-    const page = await typedClient.getPluginInstances({ feed_id: feedID, limit: 1000 });
+    // Scoped refresh: evict cached instances for this feed, re-fetch on next access
     const cache: ProcCache = procCache_get();
-
-    for (const inst of (page.data as RawInstance[])) {
-      if (!cache.feed_get(feedID)) {
-        cache.feed_add({ id: feedID, title: `feed_${feedID}` });
-      }
-      cache.instance_add({
-        id: inst.id,
-        feedID: inst.feed_id,
-        parentID: inst.previous_id ?? null,
-        pluginName: inst.plugin_name,
-        status: inst.status,
-        params: null,
-      });
-    }
+    const feed: ProcFeed | undefined = cache.feed_get(feedID);
+    // Remove only instances, keep feed entry
+    const allIDs: number[] = getAllInstanceIDs_forFeed(feedID, cache);
+    for (const id of allIDs) { cache.instance_remove(id); }
+    // Re-populate immediately
+    if (feed) await feedInstances_ensureLoaded(feedID);
   } else {
     await procCache_build();
   }

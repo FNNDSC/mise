@@ -48,35 +48,21 @@ export class REPL {
           this.rl.question(prompt, (answer: string) => resolve(answer.trim()));
         }),
       (prompt: string): Promise<string> => {
-        // Pause the REPL readline so it doesn't consume the chars, then read
-        // via raw-mode stdin with echo suppressed.
-        this.rl.pause();
+        // Suppress echo by intercepting readline's internal _writeToOutput.
+        // This keeps a single readline interface on stdin — no raw mode, no
+        // second interface, no leaked keystrokes back to the REPL command handler.
+        type RlInternal = { _writeToOutput(str: string): void };
+        const rlInternal: RlInternal = this.rl as unknown as RlInternal;
+        const origWrite: (str: string) => void = rlInternal._writeToOutput.bind(this.rl);
+        rlInternal._writeToOutput = (_str: string): void => { /* suppress echo */ };
+
         process.stdout.write(prompt);
         return new Promise((resolve: (answer: string) => void) => {
-          const chars: string[] = [];
-          const onData = (chunk: Buffer): void => {
-            const key: string = chunk.toString();
-            if (key === '\r' || key === '\n') {
-              process.stdin.removeListener('data', onData);
-              if (process.stdin.isTTY) process.stdin.setRawMode(false);
-              process.stdout.write('\n');
-              this.rl.resume();
-              resolve(chars.join('').trim());
-            } else if (key === '') { // Ctrl+C
-              process.stdin.removeListener('data', onData);
-              if (process.stdin.isTTY) process.stdin.setRawMode(false);
-              process.stdout.write('\n');
-              this.rl.resume();
-              resolve('');
-            } else if (key === '' || key === '\b') { // backspace
-              chars.pop();
-            } else if (key.charCodeAt(0) >= 0x20) {
-              chars.push(key);
-            }
-          };
-          if (process.stdin.isTTY) process.stdin.setRawMode(true);
-          process.stdin.resume();
-          process.stdin.on('data', onData);
+          this.rl.question('', (answer: string) => {
+            rlInternal._writeToOutput = origWrite;
+            process.stdout.write('\n');
+            resolve(answer.trim());
+          });
         });
       }
     );

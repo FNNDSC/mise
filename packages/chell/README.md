@@ -19,20 +19,20 @@ You navigate with `cd`, inspect with `ls`, read files with `cat`, and run analys
 
 ## The Virtual Filesystem
 
-ChELL's filesystem is entirely virtual — there is no local disk. Every path maps to a ChRIS API resource via the `vfsDispatcher` in `salsa`. Different path prefixes are served by different providers:
+The ChELL filesystem has two kinds of paths:
 
-| Path | What you see |
-|------|-------------|
-| `/home/<user>/` | Your uploaded files and directories |
-| `/home/<user>/feeds/` | Your analysis feeds (each is a directory tree) |
-| `/bin` | Every plugin registered in this CUBE, as a virtual executable |
-| `/usr/bin` | Built-in introspection commands (`whoami`, `whereami`) |
-| `/etc/compute.yaml` | All compute environments in YAML |
-| `/etc/group` | LDAP-style group listing |
-| `/etc/passwd` | User listing |
-| `/etc/cube` | CUBE instance info |
-| `/net/pacs/queries/` | PACS query result sets |
-| `*.chrislink` | Symbolic links to other ChRIS paths |
+- **CFS (CubeFS)** — real ChRIS storage: files you upload, feed outputs, symlink files. Readable, writable, persistent.
+- **VFS (Virtual)** — synthesised on the fly from API resources: plugins, config, PACS results. Read-only views, no stored bytes.
+
+| Path | Type | What you see |
+|------|:----:|-------------|
+| `/home/<user>/` | CFS | Uploaded files and directories |
+| `/home/<user>/feeds/` | CFS | Analysis feeds and their output trees |
+| `*.chrislink` | CFS | Symbolic links to other ChRIS paths |
+| `/bin` | VFS | Every plugin registered in this CUBE |
+| `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`) |
+| `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
+| `/net/pacs/queries/` | VFS | PACS query result sets |
 
 ```bash
 cd /etc
@@ -54,20 +54,27 @@ ChRIS uses `.chrislink` files as symbolic links. `ls -l` renders them as `l` ent
 
 ## Running Plugins
 
-Plugins live in `/bin` as virtual executables. To run one, use `plugin run`:
+Because plugins live in `/bin` as virtual executables, you can invoke them **directly by name** — exactly as you would run a local binary. No subcommand prefix required:
 
 ```bash
-# Run by name (resolves latest registered version)
-plugin run pl-dircopy --previous_id 14 --dir .
-
-# Run by exact versioned name (from /bin listing)
-plugin run pl-dircopy-v2.1.1 --previous_id 14 --dir .
-
-# Check status of the resulting job
-job inspect <instance_id>
+pl-dircopy-v2.1.1 --previous_id 14 --dir .
+pl-fshack-v1.2.0  --previous_id 14 --inputFile brain.mgz --outputFile brain.nii
 ```
 
-`plugin run` creates a **plugin instance** — a ChRIS job. It needs a `previous_id` (the feed node to attach to). The result is a new node in the feed's computation DAG.
+ChELL recognises the plugin name, resolves it against `/bin`, and calls `plugin run` on your behalf. This is the main UX win: a ChRIS CUBE behaves like a compute host where algorithms are just commands on `$PATH`.
+
+If you prefer the explicit form, or need to pass structured args:
+
+```bash
+plugin run pl-dircopy-v2.1.1 --previous_id 14 --dir .
+```
+
+Either way, the result is a **plugin instance** — a new node in the feed's computation DAG. Check its status:
+
+```bash
+job inspect <instance_id>
+jobs list --feed <feed_id>
+```
 
 ### Installing new plugins
 
@@ -91,23 +98,16 @@ store install pl-simplefsapp --compute ares,argentum
 
 ## Running Pipelines
 
-Pipelines are pre-wired sequences of plugins. List what's available, then instantiate one as a **workflow** on an existing feed node:
+Pipelines are pre-wired sequences of plugins. Instantiating one creates a **workflow** — all steps run in order, outputs wired to inputs automatically.
 
 ```bash
-# Browse registered pipelines
+# Browse what's available
 pipeline list
 
-# Inspect a specific pipeline
-pipeline inspect <id>
-
-# Create a workflow from a pipeline on a feed node
+# Fire a pipeline on an existing feed node — same idea as running a plugin
 workflow create <pipeline_id> --previous_id <instance_id>
-```
 
-A workflow runs all pipeline steps in order, wiring outputs to inputs automatically. Monitor progress:
-
-```bash
-job inspect <instance_id>
+# Monitor all the jobs it spawns
 jobs list --feed <feed_id>
 ```
 

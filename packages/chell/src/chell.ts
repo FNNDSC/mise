@@ -92,7 +92,7 @@ import {
 } from './lib/bootsequence.js';
 import { settings_load } from './config/settings.js';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
-import { context_getSingle } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 
 /**
@@ -1010,6 +1010,7 @@ export async function chell_start(): Promise<void> {
   const prefetchPlugins: boolean = isInteractiveSession && (config.prefetchPlugins ?? true);
   const prefetchFeeds: boolean = isInteractiveSession && (config.prefetchFeeds ?? true);
   const prefetchPublicFeeds: boolean = isInteractiveSession && prefetchFeeds && (config.prefetchPublicFeeds ?? true);
+  const prefetchJobs: boolean = isInteractiveSession && (config.prefetchJobs ?? true);
   const showLogo: boolean = isInteractiveSession && process.stdout.isTTY && (config.showLogo ?? true);
   const boot = isInteractiveSession ? bootLogger_create('ChELL Boot', useAsciiBoot) : null;
 
@@ -1314,6 +1315,29 @@ export async function chell_start(): Promise<void> {
     boot?.log('skip', 'Feeds', 'Prefetch disabled');
   } else {
     boot?.log('skip', 'Feeds', 'Offline mode');
+  }
+
+  if (!session.offline && prefetchJobs) {
+    const jobsResult = await prefetch_withSpinner('Jobs', 'Prefetching /proc/feeds job cache', async () => {
+      try {
+        await procCache_refresh();
+        const { procCache_get } = await import('@fnndsc/cumin');
+        const count: number = procCache_get().feedIDs_get().length;
+        return { ok: true, count };
+      } catch (err: unknown) {
+        const msg: string = err instanceof Error ? err.message : String(err);
+        return { ok: false, message: msg };
+      }
+    });
+    if (jobsResult.ok) {
+      boot?.log('ok', 'Jobs', `Cached ${jobsResult.count ?? 0} feed(s) in /proc/feeds`);
+    } else {
+      boot?.log('fail', 'Jobs', jobsResult.message || 'Failed to prefetch /proc/feeds');
+    }
+  } else if (!session.offline) {
+    boot?.log('skip', 'Jobs', 'Prefetch disabled');
+  } else {
+    boot?.log('skip', 'Jobs', 'Offline mode');
   }
 
   if (isInteractiveSession) {

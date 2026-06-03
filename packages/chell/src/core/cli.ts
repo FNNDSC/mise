@@ -16,6 +16,7 @@ export interface ChellCLIConfig {
   prefetchPlugins?: boolean;
   prefetchFeeds?: boolean;
   prefetchPublicFeeds?: boolean;
+  prefetchJobs?: boolean;
   asciiBoot?: boolean;
   showLogo?: boolean;
   commandToExecute?: string;
@@ -75,6 +76,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
       .option('--no-prefetch-feeds', 'Disable feed prefetch at startup')
       .option('--prefetch-public-feeds', 'Prefetch public feeds at startup (interactive mode)')
       .option('--no-prefetch-plugins', 'Skip plugin cache prefetch at startup')
+      .option('--no-prefetch-jobs', 'Skip /proc/feeds job cache prefetch at startup')
       .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
       .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
       .addHelpText('after', `
@@ -176,6 +178,7 @@ ${chalk.bold.cyan('EXAMPLES')}
         prefetchFeeds?: boolean;
         prefetchPublicFeeds?: boolean;
         prefetchPlugins?: boolean;
+        prefetchJobs?: boolean;
         asciiBoot?: boolean;
         logo?: boolean;
       }) => {
@@ -246,6 +249,9 @@ ${chalk.bold.cyan('EXAMPLES')}
           }
           if (typeof options.prefetchPlugins === 'boolean') {
             config.prefetchPlugins = options.prefetchPlugins;
+          }
+          if (typeof options.prefetchJobs === 'boolean') {
+            config.prefetchJobs = options.prefetchJobs;
           }
           if (typeof options.asciiBoot === 'boolean') {
             config.asciiBoot = options.asciiBoot;

@@ -8,7 +8,7 @@
  */
 
 import { plugin_executeInPlace, PluginExecutionResult } from '@fnndsc/salsa';
-import { dictionary_fromCLI, Dictionary, errorStack, Result } from '@fnndsc/cumin';
+import { dictionary_fromCLI, Dictionary, errorStack, Result, procCache_get } from '@fnndsc/cumin';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
@@ -143,7 +143,45 @@ export async function builtin_executePlugin(
       return;
     }
 
-    // 7. Render output
+    // 7. Push to procCache so /proc reflects new jobs immediately
+    if (result.feedID !== undefined && result.dircopyInstanceID !== undefined) {
+      // New feed: push dircopy root node + plugin node
+      procCache_get().feed_add({ id: result.feedID, title: cwd.split('/').pop() || `feed_${result.feedID}` });
+      procCache_get().instance_add({
+        id: result.dircopyInstanceID,
+        feedID: result.feedID,
+        parentID: null,
+        pluginName: 'pl-dircopy',
+        status: 'scheduled',
+        params: null,
+      });
+      procCache_get().instance_add({
+        id: result.pluginInstanceID,
+        feedID: result.feedID,
+        parentID: result.dircopyInstanceID,
+        pluginName: result.pluginName,
+        status: 'scheduled',
+        params: null,
+      });
+    } else if (result.parentID !== null) {
+      // Continue feed: push just the new instance
+      const feedID: number | null = (() => {
+        const inst = procCache_get().instance_get(result.parentID!);
+        return inst ? inst.feedID : null;
+      })();
+      if (feedID !== null) {
+        procCache_get().instance_add({
+          id: result.pluginInstanceID,
+          feedID,
+          parentID: result.parentID,
+          pluginName: result.pluginName,
+          status: 'scheduled',
+          params: null,
+        });
+      }
+    }
+
+    // 8. Render output
     if (result.feedID) {
       console.log(chalk.green(`Feed created: ${result.feedID}`));
     }

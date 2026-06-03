@@ -72,6 +72,7 @@ import {
   error_stripDebugPrefix
 } from './builtins/index.js';
 import { builtin_executePlugin } from './builtins/pluginExecute.js';
+import { builtin_proc } from './builtins/proc.js';
 import { wildcards_expandAll } from './builtins/wildcard.js';
 import { help_show, args_checkHasHelpFlag } from './builtins/help.js';
 import { pluginExecutable_handle } from './builtins/executable.js';
@@ -447,6 +448,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   whereami: builtin_whereami,
   debug: builtin_debug,
   help: builtin_help,
+  proc: builtin_proc,
   tree: builtin_tree,
   du: builtin_du,
   store: builtin_store,

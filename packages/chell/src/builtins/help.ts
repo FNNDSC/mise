@@ -591,6 +591,11 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Print the current CUBE URL',
     examples: ['whereami'],
   },
+  proc: {
+    usage: 'proc refresh [feed_id]',
+    description: 'Rebuild the /proc/feeds job cache. Scoped to a single feed if feed_id given.',
+    examples: ['proc refresh', 'proc refresh 123', 'proc refresh feed_123'],
+  },
   prompt: {
     usage: 'prompt [list | <theme>]',
     description: 'List available prompt themes or switch the active theme',

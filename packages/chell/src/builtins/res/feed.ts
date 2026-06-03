@@ -7,6 +7,10 @@ import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { feeds_fetchList, FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import { feedFields_fetch } from '@fnndsc/chili/commands/feeds/fields.js';
 import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
+import { spawnSync } from 'child_process';
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { feed_noteGet, feed_noteUpdate } from '@fnndsc/chili/commands/feed/note.js';
 import type { FeedNote } from '@fnndsc/chili/commands/feed/note.js';
 import { feed_commentsList, feed_commentCreate, feed_commentDelete, feed_commentUpdate } from '@fnndsc/chili/commands/feed/comments.js';
@@ -56,8 +60,34 @@ export async function builtin_feed(args: string[]): Promise<void> {
        await builtin_feed(['list', '--search', query]);
 
     } else if (subcommand === 'note') {
-       const feedId: number = parseInt(String(parsed._[1]), 10);
-       if (isNaN(feedId)) { console.error(chalk.red('Usage: feed note <feedId> [--title <t>] [--content <c>]')); return; }
+       const second: string = String(parsed._[1] ?? '');
+
+       // feed note edit <feedId>
+       if (second === 'edit') {
+         const feedId: number = parseInt(String(parsed._[2]), 10);
+         if (isNaN(feedId)) { console.error(chalk.red('Usage: feed note edit <feedId>')); return; }
+         const getResult: Result<FeedNote> = await feed_noteGet(feedId);
+         if (!getResult.ok) { process.exitCode = 1; console.error(chalk.red(`Failed to get note for feed ${feedId}.`)); return; }
+         const note: FeedNote = getResult.value;
+         const tmpPath: string = join(tmpdir(), `chell-note-${feedId}-${Date.now()}.txt`);
+         const body: string = `# Title: ${note.title}\n\n${note.content}`;
+         writeFileSync(tmpPath, body, 'utf8');
+         const editor: string = process.env.EDITOR || process.env.VISUAL || 'vi';
+         spawnSync(editor, [tmpPath], { stdio: 'inherit' });
+         const edited: string = readFileSync(tmpPath, 'utf8');
+         if (existsSync(tmpPath)) try { unlinkSync(tmpPath); } catch { /* ignore */ }
+         if (edited === body) { console.log(chalk.gray('(no changes)')); return; }
+         const titleMatch: RegExpMatchArray | null = edited.match(/^#\s*Title:\s*(.+)/m);
+         const title: string = titleMatch ? titleMatch[1].trim() : note.title;
+         const content: string = edited.replace(/^#\s*Title:.*\n?/m, '').replace(/^\n+/, '');
+         const updateResult: Result<boolean> = await feed_noteUpdate(feedId, { title, content });
+         if (updateResult.ok) console.log(chalk.green(`Note updated on feed ${feedId}.`));
+         else { process.exitCode = 1; console.error(chalk.red('Failed to save note.')); }
+         return;
+       }
+
+       const feedId: number = parseInt(second, 10);
+       if (isNaN(feedId)) { console.error(chalk.red('Usage: feed note <feedId> [--title <t>] [--content <c>]  |  feed note edit <feedId>')); return; }
        const hasUpdate: boolean = !!(parsed.title || parsed.content);
        if (hasUpdate) {
          const result: Result<boolean> = await feed_noteUpdate(feedId, {

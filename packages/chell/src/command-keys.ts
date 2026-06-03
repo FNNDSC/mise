@@ -13,7 +13,7 @@ export const COMMAND_HANDLERS_KEYS: string[] = [
   // net
   'connect', 'logout', 'pacs', 'query', 'cubepath',
   // sys
-  'context', 'physicalmode', 'prompt', 'timing', 'whoami', 'whereami', 'debug', 'help',
+  'context', 'physicalmode', 'prompt', 'timing', 'whoami', 'whereami', 'debug', 'help', 'proc',
   // resources — canonical + aliases
   'plugin', 'plugins',
   'feed', 'feeds',

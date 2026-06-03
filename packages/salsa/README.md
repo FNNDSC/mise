@@ -77,6 +77,16 @@
 | `pipelines_list` | List registered pipelines |
 | `workflow_create` | Instantiate a pipeline as a workflow on a feed |
 
+### Jobs (Plugin Instance Operations)
+
+| Function | Description |
+|----------|-------------|
+| `job_cancel(id)` | Cancel a running/scheduled instance (`PUT {status: cancelled}`) |
+| `job_delete(id)` | Delete a terminal instance record |
+| `job_statusFetch(id)` | Live-fetch current status from API (bypasses cache) |
+| `job_logFetch(id)` | Fetch stdout/stderr log for an instance |
+| `procCache_refresh([feedID])` | Rebuild the `/proc` job cache, optionally scoped to one feed |
+
 ## Virtual Filesystem (VFS)
 
 `vfsDispatcher` translates a ChRIS path into a provider call. Each provider handles a path prefix and maps API resources onto filesystem semantics:
@@ -89,9 +99,28 @@
 | `/usr/bin` | `UsrBinVfsProvider` | Built-in shell commands (`whoami`, `whereami`) |
 | `/etc` | `EtcVfsProvider` | Config files (`compute.yaml`, `group`, `passwd`, `cube`) |
 | `/net/pacs/queries/` | `PacsVfsProvider` | PACS query results |
+| `/proc/feeds/` | `ProcVfsProvider` | Job monitoring DAG (backed by `ProcCache` in cumin) |
 | `*.chrislink` | resolved by dispatcher | Symlinks to other ChRIS paths |
 
-Providers implement a common interface: `list(path)` → `VfsItem[]` and `read(path)` → `string`.
+Providers implement a common interface: `list(path)` → `Result<VFSItem[]>` and `read(path)` → `Result<string>`.
+
+### `/proc/feeds/` — Job Monitoring
+
+`ProcVfsProvider` mirrors the computation DAG of every visible feed. Each plugin instance is a directory; virtual files inside expose live status, params, and log:
+
+```
+/proc/feeds/feed_123/
+├── status                  ← aggregate: running | finishedSuccessfully | finishedWithError
+├── title
+└── pl-dircopy_456/         ← type=job in VFSItem; ls -l shows colour-coded status
+    ├── status              ← live API fetch if non-terminal
+    ├── params              ← key=value, cached permanently
+    ├── log                 ← never cached, always live
+    └── pl-fshack_789/
+        └── …
+```
+
+The cache (`ProcCache` in cumin) holds two flat maps (`instances`, `children`/`feedRoots`) for O(1) lookup and O(depth) path reconstruction. Structure is permanent; only status of non-terminal nodes is refreshed on read.
 
 ## Development
 

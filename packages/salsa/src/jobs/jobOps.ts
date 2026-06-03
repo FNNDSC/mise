@@ -149,6 +149,47 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
 }
 
 /**
+ * Looks up which feed a plugin instance belongs to.
+ *
+ * @param instanceID - The plugin instance ID.
+ * @returns Ok(feedID) or Err if not found.
+ *
+ * @example
+ * ```typescript
+ * const r = await job_feedID_get(64306);
+ * if (r.ok) console.log(r.value); // 1107
+ * ```
+ */
+export async function job_feedID_get(instanceID: number): Promise<Result<number>> {
+  try {
+    const client = await chrisConnection.client_get();
+    if (!client) {
+      errorStack.stack_push('error', 'Not connected to ChRIS.');
+      return Err();
+    }
+
+    interface InstListResult {
+      data: Array<{ feed_id?: unknown; id?: unknown }> | null;
+    }
+    const result: InstListResult = await (client as unknown as {
+      getPluginInstances(p: Record<string, unknown>): Promise<InstListResult>;
+    }).getPluginInstances({ id: instanceID, limit: 1 });
+
+    const hit: { feed_id?: unknown } | undefined = result.data?.[0];
+    if (!hit || hit.feed_id === undefined || hit.feed_id === null) {
+      errorStack.stack_push('error', `Instance ${instanceID} not found.`);
+      return Err();
+    }
+
+    return Ok(Number(hit.feed_id));
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('error', `Failed to find feed for instance ${instanceID}: ${msg}`);
+    return Err();
+  }
+}
+
+/**
  * Fetches the log output for a plugin instance from the API.
  *
  * @param instanceID - The plugin instance ID.

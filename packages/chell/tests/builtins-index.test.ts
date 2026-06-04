@@ -164,6 +164,13 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
     provider_get: jest.fn().mockImplementation((path: string) => ({
       prefix: path.startsWith('/net') ? '/net/pacs' : (path.startsWith('/bin') || path.startsWith('/usr')) ? path : ''
     })),
+    providers_get: jest.fn().mockReturnValue([
+      { prefix: '/net/pacs' },
+      { prefix: '/bin' },
+      { prefix: '/usr/bin' },
+      { prefix: '/etc' },
+      { prefix: '/proc/feeds' },
+    ]),
     list: jest.fn().mockResolvedValue({ ok: true, value: [] })
   },
   pipelines_list: jest.fn().mockResolvedValue(null),

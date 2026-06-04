@@ -149,6 +149,62 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
 }
 
 /**
+ * Searches for plugin instances by plugin name (substring match).
+ * Returns id, feedID, pluginName, and status for each match.
+ *
+ * @param pluginName - Plugin name substring to search for.
+ * @returns Ok(array of matches) or Err on failure.
+ *
+ * @example
+ * ```typescript
+ * const r = await jobs_searchByPluginName('pl-fshack');
+ * // r.value = [{ id: 789, feedID: 123, pluginName: 'pl-fshack', status: 'finishedSuccessfully' }, ...]
+ * ```
+ */
+export async function jobs_searchByPluginName(
+  pluginName: string
+): Promise<Result<Array<{ id: number; feedID: number; pluginName: string; status: string }>>> {
+  try {
+    const client = await chrisConnection.client_get();
+    if (!client) {
+      errorStack.stack_push('error', 'Not connected to ChRIS.');
+      return Err();
+    }
+
+    interface InstListResult {
+      data: Array<{ id?: unknown; feed_id?: unknown; plugin_name?: unknown; status?: unknown }> | null;
+    }
+    const PAGE: number = 100;
+    const results: Array<{ id: number; feedID: number; pluginName: string; status: string }> = [];
+    let offset: number = 0;
+
+    while (true) {
+      const page: InstListResult = await (client as unknown as {
+        getPluginInstances(p: Record<string, unknown>): Promise<InstListResult>;
+      }).getPluginInstances({ plugin_name: pluginName, limit: PAGE, offset });
+
+      const chunk = page.data ?? [];
+      for (const inst of chunk) {
+        results.push({
+          id: Number(inst.id),
+          feedID: Number(inst.feed_id),
+          pluginName: String(inst.plugin_name),
+          status: String(inst.status),
+        });
+      }
+      if (chunk.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    return Ok(results);
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('error', `Failed to search plugin instances: ${msg}`);
+    return Err();
+  }
+}
+
+/**
  * Looks up which feed a plugin instance belongs to.
  *
  * @param instanceID - The plugin instance ID.

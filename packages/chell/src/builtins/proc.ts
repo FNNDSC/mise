@@ -70,17 +70,14 @@ export async function builtin_proc(args: string[]): Promise<void> {
         return;
       }
 
-      // Ensure each matched feed's instance tree is loaded for path reconstruction
-      const feedsSeen: Set<number> = new Set();
-      for (const m of matches) {
-        if (!feedsSeen.has(m.feedID)) {
-          feedsSeen.add(m.feedID);
-          if (!cache.feed_get(m.feedID)) {
-            cache.feed_add({ id: m.feedID, title: `feed_${m.feedID}` });
-          }
-          await procCache_refresh(m.feedID);
+      // Load all matched feeds in parallel
+      const feedIDs: number[] = [...new Set(matches.map(m => m.feedID))];
+      await Promise.all(feedIDs.map(async (feedID: number) => {
+        if (!cache.feed_get(feedID)) {
+          cache.feed_add({ id: feedID, title: `feed_${feedID}` });
         }
-      }
+        await procCache_refresh(feedID);
+      }));
 
       spinner.stop();
       for (const m of matches) {

@@ -19,4 +19,4 @@ export * from './plugininstances/index.js';
 export * from './workflows/index.js';
 export * from './compute/index.js';
 export * from './jobs/index.js';
-export { procCache_refresh, procTopology_warmup } from './vfs/providers/proc.js';
+export { procCache_refresh, procTopology_warmup, procFeed_ensureLoaded } from './vfs/providers/proc.js';

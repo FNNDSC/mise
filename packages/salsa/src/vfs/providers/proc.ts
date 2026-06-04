@@ -434,6 +434,23 @@ export class ProcVfsProvider implements VFSProvider {
   async write(_pathStr: string, _content: string): Promise<boolean> { return false; }
 }
 
+/**
+ * Ensures instance topology is loaded for a feed without clearing existing data.
+ * Use this from proc find — it respects already-loaded feeds and the in-flight map.
+ * Use procCache_refresh(feedID) only when a forced reload is desired.
+ */
+export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  if (!cache.feed_get(feedID)) {
+    cache.feed_add({
+      id: feedID, title: `feed_${feedID}`,
+      finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
+      scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+    });
+  }
+  await feedInstances_ensureLoaded(feedID);
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**

@@ -2,64 +2,74 @@
  * @file /proc VFS Provider
  *
  * Surfaces ChRIS plugin instances as a navigable DAG under /proc/feeds/.
- * Backed by ProcCache in cumin. Structure is permanent; status of non-terminal
- * nodes is refreshed live on read.
+ * Backed by ProcCache (topology only — no status stored).
+ *
+ * Status is always fetched live:
+ * - cat .../status        → getPluginInstance(id)
+ * - ls -l /proc/feeds/N   → jobs_statusBatch(allNodeIDs) — parallel
+ * - ls /proc/feeds        → aggregate from ProcFeed job counters (no API)
  *
  * @module
  */
 
+import {
+  chrisConnection,
+  errorStack,
+  procCache_get,
+  ProcCache,
+  ProcInstance,
+  ProcFeed,
+  Result,
+  Ok,
+  Err,
+} from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
-import { job_cancel, job_delete, job_statusFetch, job_logFetch } from '../../jobs/index.js';
-import { Result, Ok, Err, procCache_get, ProcCache, ProcInstance, ProcFeed, chrisConnection, errorStack } from '@fnndsc/cumin';
+import { job_cancel, job_delete, job_statusFetch, job_logFetch, jobs_statusBatch } from '../../jobs/index.js';
 
-/** Raw plugin instance data shape from chrisapi. */
+/** Raw instance data from chrisapi. */
 interface RawInstance {
   id: number;
   feed_id: number;
   previous_id: number | null;
   plugin_name: string;
   status: string;
-  parameters?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
-/** Raw feed data shape from chrisapi. */
+/** Raw feed data from chrisapi (includes job count fields). */
 interface RawFeed {
   id: number;
   name: string;
+  finished_jobs?: number;
+  errored_jobs?: number;
+  started_jobs?: number;
+  scheduled_jobs?: number;
+  cancelled_jobs?: number;
+  created_jobs?: number;
   [key: string]: unknown;
 }
 
-/** Minimal chrisapi list resource shape we rely on. */
 interface ChrisListResource<T> {
   data: T[] | null;
 }
 
-/** chrisapi client shape for the calls we need. */
 interface ChrisClient {
   getPluginInstances(params?: Record<string, unknown>): Promise<ChrisListResource<RawInstance>>;
   getFeeds(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
 }
 
-const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  'finishedSuccessfully',
-  'finishedWithError',
-  'cancelled',
-]);
-
 /** Virtual filenames inside each instance directory. */
 const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log']);
-
 /** Virtual filenames inside each feed directory. */
 const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 
+const PAGE: number = 100;
+
+// ── Cache build ────────────────────────────────────────────────────────────
+
 /**
- * Builds or rebuilds the ProcCache from the ChRIS API.
- * Fetches all visible plugin instances in one paginated call,
- * groups by feed_id.
- */
-/**
- * Builds the feed index only (fast). Instance data is loaded lazily per-feed.
+ * Builds the feed index (fast). Fetches all feeds with job counters.
+ * Instance topology is loaded separately via procTopology_warmup().
  */
 async function procCache_build(): Promise<void> {
   const cache: ProcCache = procCache_get();
@@ -72,15 +82,22 @@ async function procCache_build(): Promise<void> {
   }
 
   const typedClient = client as unknown as ChrisClient;
-  const PAGE: number = 100;
-
-  // Fetch all feeds — paginated
   let feedOffset: number = 0;
+
   while (true) {
     const feedPage: ChrisListResource<RawFeed> = await typedClient.getFeeds({ limit: PAGE, offset: feedOffset });
     const chunk: RawFeed[] = feedPage.data ?? [];
     for (const f of chunk) {
-      cache.feed_add({ id: Number(f.id), title: String(f.name) });
+      cache.feed_add({
+        id: Number(f.id),
+        title: String(f.name),
+        finishedJobs:   Number(f.finished_jobs  ?? 0),
+        erroredJobs:    Number(f.errored_jobs    ?? 0),
+        startedJobs:    Number(f.started_jobs    ?? 0),
+        scheduledJobs:  Number(f.scheduled_jobs  ?? 0),
+        cancelledJobs:  Number(f.cancelled_jobs  ?? 0),
+        createdJobs:    Number(f.created_jobs    ?? 0),
+      });
     }
     if (chunk.length < PAGE) break;
     feedOffset += PAGE;
@@ -89,33 +106,36 @@ async function procCache_build(): Promise<void> {
   cache.built_set();
 }
 
+/** Ensures the feed index is built, building it on first access. */
+async function cache_ensure(): Promise<void> {
+  if (!procCache_get().built) {
+    await procCache_build();
+  }
+}
+
 /**
- * Lazily loads instances for a single feed into the cache.
- * No-op if instances for this feed are already cached.
+ * Loads instance topology for a single feed.
+ * Uses in-flight map to prevent duplicate API calls.
  */
-async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
+async function feedInstances_load(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
-
-  // Already loaded if any instances are known for this feed
-  if (cache.feedRoots_get(feedID).length > 0) return;
-
   const client = await chrisConnection.client_get();
   if (!client) return;
 
   const typedClient = client as unknown as ChrisClient;
-  const PAGE: number = 100;
   const instances: RawInstance[] = [];
   let offset: number = 0;
 
   while (true) {
-
-    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({ feed_id: feedID, limit: PAGE, offset });
+    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
+      feed_id: feedID, limit: PAGE, offset,
+    });
     const chunk: RawInstance[] = page.data ?? [];
-
     instances.push(...chunk);
     if (chunk.length < PAGE) break;
     offset += PAGE;
   }
+
   for (const inst of instances) {
     const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
       ? Number(inst.previous_id)
@@ -125,57 +145,50 @@ async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
       feedID: Number(inst.feed_id),
       parentID: prevID,
       pluginName: String(inst.plugin_name),
-      status: String(inst.status),
       params: null,
     });
   }
 
+  cache.topologyLoaded_mark(feedID);
 }
 
-/** Ensures cache is built, building it on first access. */
-async function cache_ensure(): Promise<void> {
-  if (!procCache_get().built) {
-    await procCache_build();
-  }
-}
-
-/** Derives aggregate feed status from its instances. */
-function feedStatus_derive(feedID: number): string {
+/**
+ * Ensures topology for a feed is loaded.
+ * Returns immediately if already loaded or in-flight.
+ */
+async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
-  const allIDs: number[] = getAllInstanceIDs_forFeed(feedID, cache);
-  if (allIDs.length === 0) return 'empty';
+  if (cache.topologyLoaded_has(feedID)) return;
 
-  const statuses: string[] = allIDs
-    .map((id: number) => cache.instance_get(id)?.status ?? '')
-    .filter(Boolean);
+  const inflight: Promise<void> | undefined = cache.loading_get(feedID);
+  if (inflight) return inflight;
 
-  if (statuses.some((s: string) => s === 'finishedWithError')) return 'finishedWithError';
-  if (statuses.some((s: string) => !TERMINAL_STATUSES.has(s))) return 'running';
-  if (statuses.every((s: string) => s === 'cancelled')) return 'cancelled';
-  return 'finishedSuccessfully';
+  const promise: Promise<void> = feedInstances_load(feedID);
+  cache.loading_set(feedID, promise);
+  await promise;
+  cache.loading_clear(feedID);
 }
 
-/** Collects all instance IDs for a feed recursively. */
-function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
-  const result: number[] = [];
-  const queue: number[] = [...cache.feedRoots_get(feedID)];
-  while (queue.length > 0) {
-    const id: number = queue.shift()!;
-    result.push(id);
-    queue.push(...cache.children_get(id));
-  }
-  return result;
+// ── Aggregate status ───────────────────────────────────────────────────────
+
+/** Derives aggregate feed status from stored job counters — no API call. */
+function feedStatus_derive(feed: ProcFeed): string {
+  if (feed.erroredJobs > 0) return 'finishedWithError';
+  const running: number = feed.startedJobs + feed.scheduledJobs + feed.createdJobs;
+  if (running > 0) return 'running';
+  if (feed.cancelledJobs > 0 && feed.finishedJobs === 0) return 'cancelled';
+  if (feed.finishedJobs > 0) return 'finishedSuccessfully';
+  return 'empty';
 }
 
-/** Parses a /proc path into its components. */
+// ── Path parsing ───────────────────────────────────────────────────────────
+
 function procPath_parse(pathStr: string): {
   feedID: number | null;
   instanceID: number | null;
   virtualFile: string | null;
 } {
-  // /proc/feeds/feed_123/pl-fshack_789/status
   const parts: string[] = pathStr.replace(/^\/proc\/feeds\/?/, '').split('/').filter(Boolean);
-
   let feedID: number | null = null;
   let instanceID: number | null = null;
   let virtualFile: string | null = null;
@@ -204,18 +217,26 @@ function procPath_parse(pathStr: string): {
 
 /** Formats instance params as key=value lines. */
 function params_render(inst: ProcInstance): string {
-  if (!inst.params || Object.keys(inst.params).length === 0) {
-    return '(no parameters)';
-  }
+  if (!inst.params || Object.keys(inst.params).length === 0) return '(no parameters)';
   return Object.entries(inst.params)
     .map(([k, v]: [string, unknown]) => `${k}=${String(v)}`)
     .join('\n');
 }
 
-/**
- * VFS provider for the /proc/feeds/ namespace.
- * Backs /proc with ProcCache; does not use listCache.
- */
+/** Collects all instance IDs for a feed recursively. */
+function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
+  const result: number[] = [];
+  const queue: number[] = [...cache.feedRoots_get(feedID)];
+  while (queue.length > 0) {
+    const id: number = queue.shift()!;
+    result.push(id);
+    queue.push(...cache.children_get(id));
+  }
+  return result;
+}
+
+// ── Provider ───────────────────────────────────────────────────────────────
+
 export class ProcVfsProvider implements VFSProvider {
   readonly prefix: string = '/proc/feeds';
 
@@ -227,11 +248,11 @@ export class ProcVfsProvider implements VFSProvider {
     const cache: ProcCache = procCache_get();
     const clean: string = pathStr.replace(/\/$/, '');
 
-    // /proc/feeds — list feeds
+    // /proc/feeds — list all feeds with aggregate status from counters
     if (clean === '/proc/feeds') {
       const items: VFSItem[] = cache.feedIDs_get().map((feedID: number): VFSItem => {
         const feed: ProcFeed | undefined = cache.feed_get(feedID);
-        const status: string = feedStatus_derive(feedID);
+        const status: string = feed ? feedStatus_derive(feed) : 'unknown';
         return {
           name: `feed_${feedID}`,
           type: 'job',
@@ -250,18 +271,20 @@ export class ProcVfsProvider implements VFSProvider {
     // /proc/feeds/feed_N — list root instances + feed virtual files
     if (feedID !== null && instanceID === null) {
       await feedInstances_ensureLoaded(feedID);
-
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
       if (!feed) return Ok([]);
 
-      const items: VFSItem[] = [];
+      // Collect all root instance IDs to batch-fetch statuses
+      const rootIDs: number[] = cache.feedRoots_get(feedID);
+      const statuses: Map<number, string> = rootIDs.length > 0
+        ? await jobs_statusBatch(rootIDs)
+        : new Map();
 
-      // Virtual files
+      const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
       items.push({ name: 'title',  type: 'file', size: 0, owner: '', date: '' });
 
-      // Root instance dirs
-      for (const rootID of cache.feedRoots_get(feedID)) {
+      for (const rootID of rootIDs) {
         const inst: ProcInstance | undefined = cache.instance_get(rootID);
         if (!inst) continue;
         items.push({
@@ -270,29 +293,29 @@ export class ProcVfsProvider implements VFSProvider {
           size: 0,
           owner: '',
           date: '',
-          status: inst.status,
+          status: statuses.get(rootID) ?? 'unknown',
         });
       }
       return Ok(items);
     }
 
-    // /proc/feeds/feed_N/plugin_ID — list children + instance virtual files
+    // /proc/feeds/feed_N/plugin_ID — list children + virtual files
     if (feedID !== null && instanceID !== null) {
+      await feedInstances_ensureLoaded(feedID);
       const inst: ProcInstance | undefined = cache.instance_get(instanceID);
       if (!inst) return Ok([]);
 
-      // Refresh status if non-terminal
-      if (!inst.statusIsTerminal) {
-        const fresh: Result<string> = await job_statusFetch(instanceID);
-        if (fresh.ok) cache.status_update(instanceID, fresh.value);
-      }
+      const childIDs: number[] = cache.children_get(instanceID);
+      const statuses: Map<number, string> = childIDs.length > 0
+        ? await jobs_statusBatch(childIDs)
+        : new Map();
 
       const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
       items.push({ name: 'params', type: 'file', size: 0, owner: '', date: '' });
       items.push({ name: 'log',    type: 'file', size: 0, owner: '', date: '' });
 
-      for (const childID of cache.children_get(instanceID)) {
+      for (const childID of childIDs) {
         const child: ProcInstance | undefined = cache.instance_get(childID);
         if (!child) continue;
         items.push({
@@ -301,7 +324,7 @@ export class ProcVfsProvider implements VFSProvider {
           size: 0,
           owner: '',
           date: '',
-          status: child.status,
+          status: statuses.get(childID) ?? 'unknown',
         });
       }
       return Ok(items);
@@ -320,28 +343,42 @@ export class ProcVfsProvider implements VFSProvider {
     if (feedID !== null && instanceID === null && virtualFile !== null) {
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
       if (!feed) return Ok('');
-      if (virtualFile === 'status') return Ok(feedStatus_derive(feedID));
+      if (virtualFile === 'status') return Ok(feedStatus_derive(feed));
       if (virtualFile === 'title') return Ok(feed.title);
       return Ok('');
     }
 
-    // Instance-level virtual files
+    // Instance-level virtual files — all live or cached-on-first-read
     if (instanceID !== null && virtualFile !== null) {
+      await feedInstances_ensureLoaded(feedID!);
       const inst: ProcInstance | undefined = cache.instance_get(instanceID);
       if (!inst) return Ok('');
 
       if (virtualFile === 'status') {
-        if (!inst.statusIsTerminal) {
-          const fresh: Result<string> = await job_statusFetch(instanceID);
-          if (fresh.ok) {
-            cache.status_update(instanceID, fresh.value);
-            return Ok(fresh.value);
-          }
-        }
-        return Ok(inst.status);
+        const fresh: Result<string> = await job_statusFetch(instanceID);
+        return Ok(fresh.ok ? fresh.value : 'unknown');
       }
 
-      if (virtualFile === 'params') return Ok(params_render(inst));
+      if (virtualFile === 'params') {
+        if (inst.params === null) {
+          // Fetch params on first read and cache permanently
+          const client = await chrisConnection.client_get();
+          if (client) {
+            try {
+              const raw = await (client as unknown as {
+                getPluginInstance(id: number): Promise<{ data: Record<string, unknown> } | null>;
+              }).getPluginInstance(instanceID);
+              if (raw?.data) {
+                const p: Record<string, unknown> = { ...raw.data };
+                delete p['id']; delete p['feed_id']; delete p['plugin_name'];
+                delete p['status']; delete p['previous_id'];
+                cache.params_update(instanceID, p);
+              }
+            } catch { /* leave null */ }
+          }
+        }
+        return Ok(params_render(inst));
+      }
 
       if (virtualFile === 'log') {
         const logResult: Result<string> = await job_logFetch(instanceID);
@@ -358,28 +395,27 @@ export class ProcVfsProvider implements VFSProvider {
     const clean: string = pathStr.replace(/\/$/, '');
     const { feedID, instanceID } = procPath_parse(clean);
 
-    // rm /proc/feeds/feed_N — delete entire feed (requires recursive)
     if (feedID !== null && instanceID === null) {
       const allIDs: number[] = getAllInstanceIDs_forFeed(feedID, cache);
-      for (const id of allIDs) {
-        const inst: ProcInstance | undefined = cache.instance_get(id);
-        if (inst && !inst.statusIsTerminal) {
+      const statusMap: Map<number, string> = await jobs_statusBatch(allIDs);
+      await Promise.all(allIDs.map(async (id: number) => {
+        const s: string = statusMap.get(id) ?? '';
+        if (!['finishedSuccessfully', 'finishedWithError', 'cancelled'].includes(s)) {
           await job_cancel(id);
         }
-      }
+      }));
       cache.feed_remove(feedID);
       return true;
     }
 
-    // rm /proc/feeds/feed_N/plugin_ID — cancel or delete single instance
     if (instanceID !== null) {
-      const inst: ProcInstance | undefined = cache.instance_get(instanceID);
-      if (!inst) return false;
+      const statusResult: Result<string> = await job_statusFetch(instanceID);
+      const status: string = statusResult.ok ? statusResult.value : '';
+      const isTerminal: boolean = ['finishedSuccessfully', 'finishedWithError', 'cancelled'].includes(status);
 
       let result: Result<boolean>;
-      if (!inst.statusIsTerminal) {
+      if (!isTerminal) {
         result = await job_cancel(instanceID);
-        if (result.ok) cache.status_update(instanceID, 'cancelled');
       } else {
         result = await job_delete(instanceID);
         if (result.ok) cache.instance_remove(instanceID);
@@ -390,7 +426,6 @@ export class ProcVfsProvider implements VFSProvider {
     return false;
   }
 
-  // ProcVfsProvider is read-only except for rm
   async cp(_src: string, _dst: string, _options?: CpOptions): Promise<boolean> { return false; }
   async mv(_src: string, _dst: string): Promise<boolean> { return false; }
   async mkdir(_pathStr: string): Promise<boolean> { return false; }
@@ -399,21 +434,62 @@ export class ProcVfsProvider implements VFSProvider {
   async write(_pathStr: string, _content: string): Promise<boolean> { return false; }
 }
 
+// ── Public API ─────────────────────────────────────────────────────────────
+
+/**
+ * Background topology warm-up — loads instance DAG for all feeds in
+ * batches of 10 concurrent feeds. Fire-and-forget from chell startup.
+ *
+ * Updates ProcCache.warmupProgress on each batch so the prompt indicator
+ * stays current. Sets warmupComplete when all feeds are done.
+ */
+export async function procTopology_warmup(): Promise<void> {
+  await cache_ensure();
+  const cache: ProcCache = procCache_get();
+  const feedIDs: number[] = cache.feedIDs_get();
+  const total: number = feedIDs.length;
+  const CONCURRENCY: number = 10;
+  let loaded: number = 0;
+
+  cache.warmup_progress(0, total);
+
+  for (let i: number = 0; i < feedIDs.length; i += CONCURRENCY) {
+    const batch: number[] = feedIDs.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map((feedID: number) => feedInstances_ensureLoaded(feedID)));
+    loaded += batch.length;
+    cache.warmup_progress(loaded, total);
+  }
+
+  cache.warmup_complete();
+}
+
 /**
  * Rebuilds the ProcCache, optionally scoped to one feed.
- *
- * @param feedID - Optional feed ID to scope the rebuild.
  */
 export async function procCache_refresh(feedID?: number): Promise<void> {
   if (feedID !== undefined) {
-    // Scoped refresh: evict cached instances for this feed, re-fetch on next access
     const cache: ProcCache = procCache_get();
-    const feed: ProcFeed | undefined = cache.feed_get(feedID);
-    // Remove only instances, keep feed entry
-    const allIDs: number[] = getAllInstanceIDs_forFeed(feedID, cache);
-    for (const id of allIDs) { cache.instance_remove(id); }
-    // Re-populate immediately
-    if (feed) await feedInstances_ensureLoaded(feedID);
+    cache.feed_remove(feedID);
+    // Re-fetch feed metadata with job counters
+    const client = await chrisConnection.client_get();
+    if (client) {
+      const typedClient = client as unknown as ChrisClient;
+      const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
+      const f: RawFeed | undefined = (page.data ?? [])[0];
+      if (f) {
+        cache.feed_add({
+          id: Number(f.id),
+          title: String(f.name),
+          finishedJobs:   Number(f.finished_jobs  ?? 0),
+          erroredJobs:    Number(f.errored_jobs    ?? 0),
+          startedJobs:    Number(f.started_jobs    ?? 0),
+          scheduledJobs:  Number(f.scheduled_jobs  ?? 0),
+          cancelledJobs:  Number(f.cancelled_jobs  ?? 0),
+          createdJobs:    Number(f.created_jobs    ?? 0),
+        });
+      }
+    }
+    await feedInstances_ensureLoaded(feedID);
   } else {
     await procCache_build();
   }

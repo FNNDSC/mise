@@ -146,22 +146,19 @@ export async function builtin_executePlugin(
     // 7. Push to procCache so /proc reflects new jobs immediately
     if (result.feedID !== undefined && result.dircopyInstanceID !== undefined) {
       // New feed: push dircopy root node + plugin node
-      procCache_get().feed_add({ id: result.feedID, title: cwd.split('/').pop() || `feed_${result.feedID}` });
-      procCache_get().instance_add({
-        id: result.dircopyInstanceID,
-        feedID: result.feedID,
-        parentID: null,
-        pluginName: 'pl-dircopy',
-        status: 'scheduled',
-        params: null,
+      const feedTitle: string = cwd.split('/').pop() || `feed_${result.feedID}`;
+      procCache_get().feed_add({
+        id: result.feedID, title: feedTitle,
+        finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
+        scheduledJobs: 2, cancelledJobs: 0, createdJobs: 0,
       });
       procCache_get().instance_add({
-        id: result.pluginInstanceID,
-        feedID: result.feedID,
-        parentID: result.dircopyInstanceID,
-        pluginName: result.pluginName,
-        status: 'scheduled',
-        params: null,
+        id: result.dircopyInstanceID, feedID: result.feedID,
+        parentID: null, pluginName: 'pl-dircopy', params: null,
+      });
+      procCache_get().instance_add({
+        id: result.pluginInstanceID, feedID: result.feedID,
+        parentID: result.dircopyInstanceID, pluginName: result.pluginName, params: null,
       });
     } else if (result.parentID !== null) {
       // Continue feed: push just the new instance
@@ -171,12 +168,8 @@ export async function builtin_executePlugin(
       })();
       if (feedID !== null) {
         procCache_get().instance_add({
-          id: result.pluginInstanceID,
-          feedID,
-          parentID: result.parentID,
-          pluginName: result.pluginName,
-          status: 'scheduled',
-          params: null,
+          id: result.pluginInstanceID, feedID,
+          parentID: result.parentID, pluginName: result.pluginName, params: null,
         });
       }
     }

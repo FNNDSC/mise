@@ -1,0 +1,356 @@
+= /proc: Job Monitoring VFS
+:toc:
+:toclevels: 3
+:sectnums:
+
+== Overview
+
+`/proc/feeds/` is a read-mostly Virtual Filesystem that surfaces ChRIS plugin
+instances (jobs) as a navigable DAG. It mirrors the computation graph of every
+feed visible to the current user.
+
+The design separates two concerns with different freshness requirements:
+
+[cols="1,1,1"]
+|===
+| Data | Freshness | Storage
+
+| Feed index (id, title, job counts)
+| Loaded at login, refreshed on `proc refresh`
+| `ProcCache.feeds`
+
+| Instance topology (id, parentID, pluginName)
+| Permanent once written — loaded lazily, never stale
+| `ProcCache.instances`
+
+| Instance status
+| Always live — never stored
+| API call on every read
+
+| Instance params
+| Immutable — cached on first read
+| `ProcCache.instances[N].params`
+|===
+
+== VFS Structure
+
+[source]
+----
+/proc/
+└── feeds/
+    └── feed_<N>/               ← type=job, aggregate status from counters
+        ├── status               ← derived from feed.finished_jobs etc.
+        ├── title                ← feed name
+        └── <plugin>_<id>/      ← type=job, status fetched live on ls -l
+            ├── status           ← always live API fetch
+            ├── params           ← cached on first read
+            └── log              ← always live
+----
+
+=== Path rules
+
+* `/proc` → synthetic VFS container (no provider owns it; dispatcher synthesises)
+* `/proc/feeds` → `ProcVfsProvider` prefix
+* `cd /proc` and `cd /proc/feeds` both work — both are in `structuralVfsPaths`
+* Instance directories have `type=job` in `VFSItem` — rendered cyan/bold with trailing `/`
+
+=== Type characters in `ls -l`
+
+[cols="1,3"]
+|===
+| Char | Meaning
+
+| `j` | Job (feed directory or instance node)
+| `-` | Virtual file (`status`, `params`, `log`, `title`)
+|===
+
+== Cache Architecture
+
+=== ProcCache (cumin)
+
+Location: `cumin/src/cache/procCache.ts`
+
+[source,typescript]
+----
+interface ProcFeed {
+  id: number;
+  title: string;
+  // Job count fields from ChRIS API (used for aggregate status without
+  // needing to query individual instance statuses):
+  finishedJobs: number;
+  erroredJobs: number;
+  startedJobs: number;
+  scheduledJobs: number;
+  cancelledJobs: number;
+  createdJobs: number;
+}
+
+interface ProcInstance {
+  id: number;
+  feedID: number;
+  parentID: number | null;   // null = root node of feed
+  pluginName: string;
+  params: Record<string, unknown> | null;  // null until first cat
+}
+----
+
+NOTE: `status` and `statusIsTerminal` are **not** stored. Status is always
+fetched live from the API. This ensures `ls -l` and `cat status` never show
+stale data.
+
+=== State tracking fields
+
+[cols="1,2"]
+|===
+| Field | Purpose
+
+| `feeds: Map<number, ProcFeed>`
+| Feed index. Populated at login from `getFeeds()`.
+
+| `instances: Map<number, ProcInstance>`
+| All loaded instances. Populated lazily per-feed.
+
+| `feedRoots: Map<number, number[]>`
+| Root instance IDs per feed (parentID === null).
+
+| `children: Map<number, number[]>`
+| Child instance IDs keyed by parent instance ID.
+
+| `topologyLoaded: Set<number>`
+| Feed IDs whose instance topology has been fully fetched.
+  Distinguishes "loaded but empty" from "not yet loaded".
+
+| `loading: Map<number, Promise<void>>`
+| In-flight topology fetch promises. Prevents duplicate API calls when
+  the background loader and a user navigation race on the same feed.
+
+| `warmupComplete: boolean`
+| True when background loader has finished all feeds. Enables
+  pure in-memory path for `proc find <name>`.
+
+| `warmupProgress: { loaded: number; total: number }`
+| Drives the `[proc: N/total]` prompt segment during warm-up.
+|===
+
+=== Aggregate feed status derivation
+
+`/proc/feeds/feed_N/status` is derived from `ProcFeed` job counters — no
+per-instance API calls needed:
+
+[source,typescript]
+----
+if (feed.erroredJobs > 0)              → 'finishedWithError'
+if (feed.startedJobs + feed.scheduledJobs + feed.createdJobs > 0) → 'running'
+if (feed.cancelledJobs > 0 && others == 0) → 'cancelled'
+else                                   → 'finishedSuccessfully'
+----
+
+== Loading Strategy
+
+=== Phase 1: Feed index (synchronous, at login)
+
+`procCache_build()` fetches all feeds via paginated `getFeeds()` calls
+(100 per page). Stores `ProcFeed` with job counters. Sets `built = true`.
+Runs during the boot sequence before the REPL starts — blocks briefly
+(~5–30s depending on feed count).
+
+=== Phase 2: Instance topology (background, batched)
+
+`procTopology_warmup()` runs as a fire-and-forget after `repl.start()`.
+Loads instance topology for all feeds in batches of **10 concurrent feeds**.
+
+[source,typescript]
+----
+// Pseudo-code
+const feedIDs = cache.feedIDs_get();
+for (let i = 0; i < feedIDs.length; i += BATCH_SIZE) {
+  const batch = feedIDs.slice(i, i + BATCH_SIZE);
+  await Promise.all(batch.map(feedID => feedInstances_load(feedID)));
+  cache.warmup_progress(i + batch.length, feedIDs.length);
+}
+cache.warmup_complete();
+----
+
+Warm-up progress is visible in the prompt: `[proc: 342/1275]`.
+The indicator disappears when `warmupComplete = true`.
+
+=== Phase 3: Per-feed lazy loading (on navigation)
+
+When the user navigates to `/proc/feeds/feed_N` before the background
+loader reaches that feed, `feedInstances_ensureLoaded(N)` triggers an
+immediate load. Uses the in-flight map to prevent duplicate fetches.
+
+[source,typescript]
+----
+async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
+  if (cache.topologyLoaded_has(feedID)) return;        // already loaded
+
+  const inflight = cache.loading_get(feedID);
+  if (inflight) return inflight;                        // load in progress
+
+  const promise = feedInstances_load(feedID);
+  cache.loading_set(feedID, promise);
+  await promise;
+  cache.loading_clear(feedID);
+}
+----
+
+=== Duplicate fetch prevention
+
+`ProcCache.loading: Map<number, Promise<void>>` stores in-flight promises.
+If both the background loader and a user navigation arrive at the same feed
+simultaneously, the second caller awaits the existing promise rather than
+firing a redundant API call.
+
+== Status: Always Live
+
+Per-node status is **never cached**. Every read goes to the API:
+
+* `cat /proc/feeds/feed_N/<instance>/status` → `getPluginInstance(id)`
+* `ls -l /proc/feeds/feed_N` → `jobs_statusBatch(allNodeIDs)` — one
+  `Promise.all` across all nodes in the feed (~10–20 parallel calls)
+
+`jobs_statusBatch(ids)` in `salsa/src/jobs/jobOps.ts` returns
+`Map<number, string>` — all statuses in one parallel round-trip.
+
+=== Feed aggregate status
+
+`/proc/feeds/feed_N/status` is derived from `ProcFeed` job counters
+(stored at cache-build time). No per-node API calls. Refreshed on
+`proc refresh`.
+
+== `proc` Commands
+
+=== proc refresh
+
+Resets the cache and re-triggers both phases:
+
+[source,bash]
+----
+proc refresh              # reset all — rebuilds feed index, restarts warm-up
+proc refresh feed_123     # scoped — reloads one feed's topology and job counts
+proc refresh 123          # same
+----
+
+Behaviour:
+
+. Calls `cache.cache_clear()` (or scoped equivalent)
+. Re-fetches feed index synchronously
+. Re-triggers background topology warm-up (fire-and-forget)
+. Returns immediately — prompt warm-up indicator reappears
+
+=== proc find
+
+[source,bash]
+----
+proc find <term>
+----
+
+* `term` is all digits → exact instance ID lookup
+* `term` is a string → plugin name substring search
+
+Behaviour:
+
+[cols="1,2"]
+|===
+| State | Behaviour
+
+| `warmupComplete = false`
+| Always queries API (`getPluginInstances({ plugin_name: term })`).
+  Falls back to API for ID lookups too if not in cache.
+
+| `warmupComplete = true`
+| Pure in-memory: `cache.instances_find(term)` — microseconds, zero API.
+|===
+
+After finding matches, loads topology for any unloaded feeds
+(via `procCache_refresh(feedID)`) and calls `path_build(id)` to
+reconstruct full `/proc` paths.
+
+=== rm in /proc
+
+[cols="1,2"]
+|===
+| Target | Behaviour
+
+| `/proc/feeds/feed_N/<instance>`
+| Non-terminal → `job_cancel(id)` (PUT `status=cancelled`).
+  Terminal → `job_delete(id)` (DELETE).
+  Updates cache: removes instance or updates nothing (status not stored).
+
+| `/proc/feeds/feed_N`
+| Requires `-r`. Cancels all non-terminal instances, removes from cache.
+|===
+
+== Prompt Warm-up Indicator
+
+`PromptContext` carries an optional `procWarmup` field:
+
+[source,typescript]
+----
+procWarmup?: { loaded: number; total: number }
+----
+
+Present and rendered only while `warmupComplete = false`. Disappears
+automatically when warm-up finishes. Example prompt segment:
+
+[source]
+----
+ 🌐 radstar  📂 /home/radstar  [proc: 342/1275]
+❯
+----
+
+== Implementation Locations
+
+[cols="1,2"]
+|===
+| File | Responsibility
+
+| `cumin/src/cache/procCache.ts`
+| `ProcCache` class with all state fields and methods
+
+| `salsa/src/vfs/providers/proc.ts`
+| `ProcVfsProvider`, `procTopology_warmup`, `feedInstances_ensureLoaded`
+
+| `salsa/src/jobs/jobOps.ts`
+| `jobs_statusBatch`, `jobs_find`, `job_cancel`, `job_delete`
+
+| `chell/src/chell.ts`
+| Fire-and-forget `procTopology_warmup()` just before `repl.start()`
+
+| `chell/src/core/prompt/index.ts`
+| `procWarmup` in `PromptContext`
+
+| `chell/src/core/repl.ts`
+| Reads `procCache_get().warmupProgress_get()` in `prompt_update()`
+|===
+
+== Design Decisions
+
+ADR entries (see `docs/adr/`):
+
+* **Topology permanent, status volatile**: instance DAG structure never
+  changes once written. Status changes continuously. Storing them in the
+  same cache would require TTL logic or invalidation. Separation eliminates
+  the problem entirely.
+
+* **10 concurrent feeds in background loader**: ChRIS CUBE runs gunicorn
+  with `2*CPU+1` workers (typically 5–9). 10 concurrent requests keeps
+  queue depth at ~1–2, balancing throughput against server load.
+
+* **`topologyLoaded` set vs length check**: `feedRoots_get(N).length > 0`
+  cannot distinguish "not loaded" from "loaded but genuinely 0 instances."
+  An explicit `Set<number>` eliminates the ambiguity.
+
+* **In-flight map**: background loader and user navigation can race on the
+  same feed. A `Map<number, Promise<void>>` makes the second caller await
+  the first's result rather than firing a duplicate API call.
+
+* **Feed job counters for aggregate status**: ChRIS feed objects carry
+  `finished_jobs`, `errored_jobs`, `started_jobs` etc. Aggregate status
+  is derivable from these without querying individual instance statuses.
+
+* **`proc find` switches to cache after warm-up**: name searches during
+  warm-up fall back to API for completeness. After `warmupComplete`,
+  in-memory scan is instant and authoritative (topology never changes).
+|===

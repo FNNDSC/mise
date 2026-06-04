@@ -74,7 +74,11 @@ export async function builtin_proc(args: string[]): Promise<void> {
       const feedIDs: number[] = [...new Set(matches.map(m => m.feedID))];
       await Promise.all(feedIDs.map(async (feedID: number) => {
         if (!cache.feed_get(feedID)) {
-          cache.feed_add({ id: feedID, title: `feed_${feedID}` });
+          cache.feed_add({
+            id: feedID, title: `feed_${feedID}`,
+            finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
+            scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+          });
         }
         await procCache_refresh(feedID);
       }));
@@ -82,9 +86,7 @@ export async function builtin_proc(args: string[]): Promise<void> {
       spinner.stop();
       for (const m of matches) {
         const path: string | null = cache.path_build(m.id);
-        if (path) {
-          console.log(`${path}  [${m.status}]`);
-        }
+        if (path) console.log(path);
       }
 
     } catch (error: unknown) {

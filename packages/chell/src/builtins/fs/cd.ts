@@ -57,15 +57,21 @@ export async function builtin_cd(args: string[]): Promise<void> {
 
     const { vfsDispatcher } = await import('@fnndsc/salsa');
     const cleanPath = logicalPath.endsWith('/') && logicalPath.length > 1 ? logicalPath.slice(0, -1) : logicalPath;
+    // Also treat path as virtual if it is a parent of any registered provider prefix
+    // (e.g. /proc is parent of /proc/feeds, so it's a synthesised VFS container).
+    const isParentOfVfs: boolean = vfsDispatcher.providers_get().some(
+      (p: { prefix: string }) => p.prefix.startsWith(cleanPath + '/')
+    );
     const isVirtual =
       cleanPath === '/' ||
       cleanPath === '/net' ||
+      isParentOfVfs ||
       vfsDispatcher.provider_get(cleanPath).prefix !== '';
 
     if (isVirtual) {
       // Structural VFS container paths are always valid — skip the expensive list() call.
       // These are virtual dirs that exist by definition, not via API query.
-      const structuralVfsPaths = ['/', '/net', '/net/pacs', '/net/pacs/queries'];
+      const structuralVfsPaths = ['/', '/net', '/net/pacs', '/net/pacs/queries', '/proc', '/proc/feeds'];
       if (structuralVfsPaths.includes(cleanPath)) {
         await session.setCWD(cleanPath);
         return;

@@ -592,9 +592,9 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc refresh [feed_id] | proc find <instance_id>',
-    description: 'Manage the /proc/feeds job cache. refresh rebuilds it; find returns the full /proc path for an instance ID.',
-    examples: ['proc refresh', 'proc refresh 123', 'proc find 64306'],
+    usage: 'proc refresh [feed_id] | proc find <id|name>',
+    description: 'Manage /proc/feeds cache. refresh rebuilds it. find <id> returns path for a numeric instance ID; find <name> searches all feeds by plugin name substring and returns all matching paths with status.',
+    examples: ['proc refresh', 'proc refresh 123', 'proc find 64306', 'proc find pl-fshack', 'proc find dircopy'],
   },
   prompt: {
     usage: 'prompt [list | <theme>]',

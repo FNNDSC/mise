@@ -3,8 +3,8 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { procCache_refresh, job_feedID_get, jobs_searchByPluginName } from '@fnndsc/salsa';
-import { procCache_get, Result } from '@fnndsc/cumin';
+import { procCache_refresh, jobs_find } from '@fnndsc/salsa';
+import { procCache_get } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 
 /**
@@ -50,74 +50,43 @@ export async function builtin_proc(args: string[]): Promise<void> {
       return;
     }
 
-    const numericID: number = parseInt(query, 10);
-    const isNumeric: boolean = !isNaN(numericID) && String(numericID) === query;
-
-    spinner.start(`Finding ${isNumeric ? `instance ${numericID}` : `"${query}"`}...`);
+    spinner.start(`Finding "${query}"...`);
 
     try {
       const cache = procCache_get();
 
-      if (isNumeric) {
-        // Numeric: find by instance ID
-        let path: string | null = cache.path_build(numericID);
-
-        if (!path) {
-          const feedResult: Result<number> = await job_feedID_get(numericID);
-          if (!feedResult.ok) {
-            spinner.stop();
-            console.error(chalk.yellow(`Instance ${numericID} not found.`));
-            return;
-          }
-          const feedID: number = feedResult.value;
-          if (!cache.feed_get(feedID)) {
-            cache.feed_add({ id: feedID, title: `feed_${feedID}` });
-          }
-          await procCache_refresh(feedID);
-          path = cache.path_build(numericID);
-        }
-
+      // Unified search: cache-first, API fallback for both ID and name
+      const result = await jobs_find(query);
+      if (!result.ok) {
         spinner.stop();
+        console.error(chalk.red(`Search failed.`));
+        return;
+      }
+
+      const matches = result.value;
+      if (matches.length === 0) {
+        spinner.stop();
+        console.error(chalk.yellow(`No instances found matching "${query}".`));
+        return;
+      }
+
+      // Ensure each matched feed's instance tree is loaded for path reconstruction
+      const feedsSeen: Set<number> = new Set();
+      for (const m of matches) {
+        if (!feedsSeen.has(m.feedID)) {
+          feedsSeen.add(m.feedID);
+          if (!cache.feed_get(m.feedID)) {
+            cache.feed_add({ id: m.feedID, title: `feed_${m.feedID}` });
+          }
+          await procCache_refresh(m.feedID);
+        }
+      }
+
+      spinner.stop();
+      for (const m of matches) {
+        const path: string | null = cache.path_build(m.id);
         if (path) {
-          console.log(path);
-        } else {
-          console.error(chalk.yellow(`Instance ${numericID} path could not be reconstructed.`));
-        }
-
-      } else {
-        // String: search by plugin name, return all matching paths
-        const searchResult = await jobs_searchByPluginName(query);
-        if (!searchResult.ok) {
-          spinner.stop();
-          console.error(chalk.red(`Search failed.`));
-          return;
-        }
-
-        const matches = searchResult.value;
-        if (matches.length === 0) {
-          spinner.stop();
-          console.error(chalk.yellow(`No instances found matching "${query}".`));
-          return;
-        }
-
-        // Load instances for each unique feed encountered
-        const feedsSeen: Set<number> = new Set();
-        for (const m of matches) {
-          if (!feedsSeen.has(m.feedID)) {
-            feedsSeen.add(m.feedID);
-            if (!cache.feed_get(m.feedID)) {
-              cache.feed_add({ id: m.feedID, title: `feed_${m.feedID}` });
-            }
-            await procCache_refresh(m.feedID);
-          }
-        }
-
-        spinner.stop();
-        for (const m of matches) {
-          const path: string | null = cache.path_build(m.id);
-          if (path) {
-            console.log(`${path}  [${m.status}]`);
-          }
+          console.log(`${path}  [${m.status}]`);
         }
       }
 

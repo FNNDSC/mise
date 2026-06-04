@@ -3,7 +3,7 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { procCache_refresh, jobs_find } from '@fnndsc/salsa';
+import { procCache_refresh, procFeed_ensureLoaded, jobs_find } from '@fnndsc/salsa';
 import { procCache_get } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 
@@ -70,18 +70,11 @@ export async function builtin_proc(args: string[]): Promise<void> {
         return;
       }
 
-      // Load all matched feeds in parallel
+      // Ensure topology loaded for all matched feeds in parallel.
+      // Uses procFeed_ensureLoaded (not procCache_refresh) so warmup work
+      // is reused — only fetches feeds that aren't already in the cache.
       const feedIDs: number[] = [...new Set(matches.map(m => m.feedID))];
-      await Promise.all(feedIDs.map(async (feedID: number) => {
-        if (!cache.feed_get(feedID)) {
-          cache.feed_add({
-            id: feedID, title: `feed_${feedID}`,
-            finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
-            scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
-          });
-        }
-        await procCache_refresh(feedID);
-      }));
+      await Promise.all(feedIDs.map((feedID: number) => procFeed_ensureLoaded(feedID)));
 
       spinner.stop();
       for (const m of matches) {

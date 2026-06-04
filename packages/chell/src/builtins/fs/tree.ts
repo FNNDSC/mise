@@ -27,6 +27,7 @@ import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 export async function builtin_tree(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
+  const pathMode: boolean = !!parsed['path'];
 
   // Determine target path
   let targetPath: string | undefined;
@@ -65,9 +66,16 @@ export async function builtin_tree(args: string[]): Promise<void> {
 
     spinner.stop();
 
-    // Display the tree
-    const treeOutput: string = archyTree_create(scanResult.fileInfo);
-    console.log(treeOutput);
+    if (pathMode) {
+      // --path: emit one full chrisPath per entry — grep-friendly
+      for (const item of scanResult.fileInfo) {
+        console.log(item.chrisPath);
+      }
+    } else {
+      // Default: ASCII tree
+      const treeOutput: string = archyTree_create(scanResult.fileInfo);
+      console.log(treeOutput);
+    }
 
     // Display summary
     console.log(chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`));

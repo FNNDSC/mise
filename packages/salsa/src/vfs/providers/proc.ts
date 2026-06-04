@@ -40,6 +40,7 @@ interface RawInstance {
 interface RawFeed {
   id: number;
   name: string;
+  creation_date?: string;
   finished_jobs?: number;
   errored_jobs?: number;
   started_jobs?: number;
@@ -91,6 +92,7 @@ async function procCache_build(): Promise<void> {
       cache.feed_add({
         id: Number(f.id),
         title: String(f.name),
+        creationDate:   String(f.creation_date ?? ''),
         finishedJobs:   Number(f.finished_jobs  ?? 0),
         erroredJobs:    Number(f.errored_jobs    ?? 0),
         startedJobs:    Number(f.started_jobs    ?? 0),
@@ -443,7 +445,7 @@ export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   if (!cache.feed_get(feedID)) {
     cache.feed_add({
-      id: feedID, title: `feed_${feedID}`,
+      id: feedID, title: `feed_${feedID}`, creationDate: '',
       finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
       scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
     });
@@ -454,24 +456,31 @@ export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Background topology warm-up — loads instance DAG for all feeds in
- * batches of 10 concurrent feeds. Fire-and-forget from chell startup.
+ * Background topology warm-up — loads instance DAG for feeds created within
+ * the last `days` days, in batches of 10 concurrent feeds.
+ * Fire-and-forget from chell startup. Everything else is lazy on access.
  *
- * Updates ProcCache.warmupProgress on each batch so the prompt indicator
- * stays current. Sets warmupComplete when all feeds are done.
+ * @param days - How many days back to pre-warm (default 30).
  */
-export async function procTopology_warmup(): Promise<void> {
+export async function procTopology_warmup(days: number = 30): Promise<void> {
   await cache_ensure();
   const cache: ProcCache = procCache_get();
-  const feedIDs: number[] = cache.feedIDs_get();
-  const total: number = feedIDs.length;
+
+  const cutoff: Date = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const recentIDs: number[] = cache.feedIDs_get().filter((id: number) => {
+    const feed: ProcFeed | undefined = cache.feed_get(id);
+    if (!feed?.creationDate) return true; // no date → include
+    return new Date(feed.creationDate) >= cutoff;
+  });
+
+  const total: number = recentIDs.length;
   const CONCURRENCY: number = 10;
   let loaded: number = 0;
 
   cache.warmup_progress(0, total);
 
-  for (let i: number = 0; i < feedIDs.length; i += CONCURRENCY) {
-    const batch: number[] = feedIDs.slice(i, i + CONCURRENCY);
+  for (let i: number = 0; i < recentIDs.length; i += CONCURRENCY) {
+    const batch: number[] = recentIDs.slice(i, i + CONCURRENCY);
     await Promise.all(batch.map((feedID: number) => feedInstances_ensureLoaded(feedID)));
     loaded += batch.length;
     cache.warmup_progress(loaded, total);
@@ -497,6 +506,7 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
         cache.feed_add({
           id: Number(f.id),
           title: String(f.name),
+          creationDate:   String(f.creation_date ?? ''),
           finishedJobs:   Number(f.finished_jobs  ?? 0),
           erroredJobs:    Number(f.errored_jobs    ?? 0),
           startedJobs:    Number(f.started_jobs    ?? 0),

@@ -39,6 +39,9 @@ export class ThemeDefault implements PromptTheme {
     const path: string = path_truncate(ctx.cwd, pathBudget);
 
     const glyph: string = ctx.lastExitCode !== 0 ? chalk.red('$ ') : chalk.green('$ ');
+    const warmup: string = (ctx.procWarmup && ctx.procWarmup.loaded < ctx.procWarmup.total)
+      ? chalk.dim(` [proc: ${ctx.procWarmup.loaded}/${ctx.procWarmup.total}]`)
+      : '';
     return (
       modePrefix +
       chalk.green(ctx.user) +
@@ -46,6 +49,7 @@ export class ThemeDefault implements PromptTheme {
       chalk.cyan(ctx.uri) +
       ':' +
       chalk.yellow(path) +
+      warmup +
       glyph
     );
   }

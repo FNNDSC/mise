@@ -92,7 +92,7 @@ import {
 } from './lib/bootsequence.js';
 import { settings_load } from './config/settings.js';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
-import { context_getSingle, procCache_refresh } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 
 /**
@@ -1318,7 +1318,8 @@ export async function chell_start(): Promise<void> {
   }
 
   if (!session.offline && prefetchJobs) {
-    const jobsResult = await prefetch_withSpinner('Jobs', 'Prefetching /proc/feeds job cache', async () => {
+    // Feed index (synchronous — needed before REPL starts for proc find)
+    const jobsResult = await prefetch_withSpinner('Jobs', 'Indexing /proc/feeds (feed list)...', async () => {
       try {
         await procCache_refresh();
         const { procCache_get } = await import('@fnndsc/cumin');
@@ -1330,9 +1331,9 @@ export async function chell_start(): Promise<void> {
       }
     });
     if (jobsResult.ok) {
-      boot?.log('ok', 'Jobs', `Cached ${jobsResult.count ?? 0} feed(s) in /proc/feeds`);
+      boot?.log('ok', 'Jobs', `Indexed ${jobsResult.count ?? 0} feed(s) — topology warming in background`);
     } else {
-      boot?.log('fail', 'Jobs', jobsResult.message || 'Failed to prefetch /proc/feeds');
+      boot?.log('fail', 'Jobs', jobsResult.message || 'Failed to index /proc/feeds');
     }
   } else if (!session.offline) {
     boot?.log('skip', 'Jobs', 'Prefetch disabled');
@@ -1401,6 +1402,12 @@ export async function chell_start(): Promise<void> {
     }
     console.log(chalk.gray("Tip: type 'help' for available commands."));
     console.log('');
+  }
+
+  // Fire instance topology warm-up — does NOT block the REPL.
+  // Progress is shown in the prompt as [proc: N/total] until complete.
+  if (!session.offline && prefetchJobs) {
+    procTopology_warmup().catch(() => { /* non-fatal */ });
   }
 
   const repl: REPL = new REPL();

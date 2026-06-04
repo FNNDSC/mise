@@ -15,6 +15,7 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { prompt_render, type PromptContext } from './prompt/index.js';
 import { repl_questionRegister } from './question.js';
+import { procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
 
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
@@ -108,6 +109,12 @@ export class REPL {
     const cwd: string = await session.getCWD();
     const isOffline: boolean = session.offline;
 
+    const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
+    const procWarmup: { loaded: number; total: number } | undefined =
+      (warmupRaw.total > 0 && warmupRaw.loaded < warmupRaw.total)
+        ? warmupRaw
+        : undefined;
+
     const ctx: PromptContext = {
       user:                 isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
       uri:                  isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
@@ -118,6 +125,7 @@ export class REPL {
       lastExitCode:         this.lastExitCode,
       lastCommandDurationMs: this.lastCommandDurationMs,
       p10kSegments:         settings.config.p10kSegments,
+      procWarmup,
     };
 
     this.rl.setPrompt(prompt_render(settings.config.promptTheme, ctx));

@@ -149,22 +149,40 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
 }
 
 /**
- * Searches for plugin instances by plugin name (substring match).
- * Returns id, feedID, pluginName, and status for each match.
+ * Finds plugin instances by numeric ID or plugin name substring.
  *
- * @param pluginName - Plugin name substring to search for.
- * @returns Ok(array of matches) or Err on failure.
+ * Checks ProcCache first. On a miss, queries the API and loads the
+ * relevant feed(s) into the cache so paths can be reconstructed.
+ *
+ * @param term - Numeric instance ID string, or plugin name substring.
+ * @returns Ok(array of {id, feedID, pluginName, status}) or Err.
  *
  * @example
  * ```typescript
- * const r = await jobs_searchByPluginName('pl-fshack');
- * // r.value = [{ id: 789, feedID: 123, pluginName: 'pl-fshack', status: 'finishedSuccessfully' }, ...]
+ * await jobs_find('64306');    // exact ID
+ * await jobs_find('pl-fshack'); // all instances whose name contains 'pl-fshack'
  * ```
  */
-export async function jobs_searchByPluginName(
-  pluginName: string
+export async function jobs_find(
+  term: string
 ): Promise<Result<Array<{ id: number; feedID: number; pluginName: string; status: string }>>> {
   try {
+    const { procCache_get } = await import('@fnndsc/cumin');
+    const cache = procCache_get();
+
+    const numeric: number = parseInt(term, 10);
+    const isID: boolean = !isNaN(numeric) && String(numeric) === term;
+
+    // Exact ID: cache-first (only one possible result, cache is reliable for a known ID)
+    if (isID) {
+      const cached = cache.instances_find(term);
+      if (cached.length > 0) {
+        return Ok(cached.map(i => ({ id: i.id, feedID: i.feedID, pluginName: i.pluginName, status: i.status })));
+      }
+    }
+    // Name substring: always query API — cache is incomplete (lazily loaded per-feed),
+    // so a cache hit only reflects loaded feeds, not all matches.
+
     const client = await chrisConnection.client_get();
     if (!client) {
       errorStack.stack_push('error', 'Not connected to ChRIS.');
@@ -174,32 +192,36 @@ export async function jobs_searchByPluginName(
     interface InstListResult {
       data: Array<{ id?: unknown; feed_id?: unknown; plugin_name?: unknown; status?: unknown }> | null;
     }
-    const PAGE: number = 100;
-    const results: Array<{ id: number; feedID: number; pluginName: string; status: string }> = [];
+
+    const searchParam: Record<string, unknown> = isID
+      ? { id: numeric, limit: 1, offset: 0 }
+      : { plugin_name: term, limit: 100, offset: 0 };
+
+    const apiResults: Array<{ id: number; feedID: number; pluginName: string; status: string }> = [];
     let offset: number = 0;
 
     while (true) {
       const page: InstListResult = await (client as unknown as {
         getPluginInstances(p: Record<string, unknown>): Promise<InstListResult>;
-      }).getPluginInstances({ plugin_name: pluginName, limit: PAGE, offset });
+      }).getPluginInstances({ ...searchParam, offset });
 
       const chunk = page.data ?? [];
       for (const inst of chunk) {
-        results.push({
+        apiResults.push({
           id: Number(inst.id),
           feedID: Number(inst.feed_id),
           pluginName: String(inst.plugin_name),
           status: String(inst.status),
         });
       }
-      if (chunk.length < PAGE) break;
-      offset += PAGE;
+      if (isID || chunk.length < 100) break;
+      offset += 100;
     }
 
-    return Ok(results);
+    return Ok(apiResults);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
-    errorStack.stack_push('error', `Failed to search plugin instances: ${msg}`);
+    errorStack.stack_push('error', `jobs_find failed: ${msg}`);
     return Err();
   }
 }

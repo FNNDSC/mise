@@ -53,6 +53,14 @@ export class VFSDispatcher {
   }
 
   /**
+   * Returns all registered providers (excluding the default native provider).
+   * Used by callers that need to detect parent-of-prefix paths.
+   */
+  providers_get(): VFSProvider[] {
+    return [...this.providers];
+  }
+
+  /**
    * Resolves the matching provider for a given virtual path.
    *
    * @param pathStr - The absolute virtual path.

@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import { procCache_refresh, procFeed_ensureLoaded, jobs_find } from '@fnndsc/salsa';
-import { procCache_get } from '@fnndsc/cumin';
+import { procCache_get, type ProcFeed, type ProcWarmupProgress } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 
 /**
@@ -90,5 +90,103 @@ export async function builtin_proc(args: string[]): Promise<void> {
     return;
   }
 
-  console.error(chalk.red(`proc: unknown subcommand '${subcommand}'. Usage: proc refresh [feed_id] | proc find <id>`));
+  if (subcommand === 'feeds') {
+    const query: string | undefined = args[1];
+    if (!query) {
+      console.error(chalk.red('Usage: proc feeds <title_substring>'));
+      return;
+    }
+
+    const cache = procCache_get();
+    const matches = cache.feeds_find(query);
+
+    if (matches.length === 0) {
+      console.error(chalk.yellow(`No feeds found with title containing "${query}".`));
+      return;
+    }
+
+    for (const feed of matches) {
+      let status: string;
+      if (feed.erroredJobs > 0) status = 'finishedWithError';
+      else if (feed.startedJobs + feed.scheduledJobs + feed.createdJobs > 0) status = 'running';
+      else if (feed.cancelledJobs > 0 && feed.finishedJobs === 0) status = 'cancelled';
+      else if (feed.finishedJobs > 0) status = 'finishedSuccessfully';
+      else status = 'empty';
+
+      const statusColor: string =
+        status === 'finishedSuccessfully' ? chalk.green(status) :
+        status === 'finishedWithError'    ? chalk.red(status) :
+        status === 'running'              ? chalk.yellow(status) :
+        status === 'cancelled'            ? chalk.dim(status) :
+        chalk.gray(status);
+
+      console.log(`/proc/jobs/feed_${feed.id}  ${statusColor}  ${chalk.dim(feed.title)}`);
+    }
+    return;
+  }
+
+  if (subcommand === 'stat') {
+    const cache = procCache_get();
+    const feedArg: string | undefined = args[1];
+
+    if (!feedArg) {
+      // Cache-level summary
+      const warmup: ProcWarmupProgress = cache.warmupProgress_get();
+      const warmupLine: string = warmup.active
+        ? chalk.yellow(`in progress (${warmup.loaded} instances loaded)`)
+        : cache.warmupComplete
+          ? chalk.green('complete')
+          : chalk.dim('not started');
+
+      console.log(chalk.bold('proc cache summary'));
+      console.log(`  feeds known    : ${chalk.cyan(String(cache.feedIDs_get().length))}`);
+      console.log(`  instances      : ${chalk.cyan(String(cache.instances_count()))}`);
+      console.log(`  topology sweep : ${warmupLine}`);
+      return;
+    }
+
+    const match: RegExpMatchArray | null = feedArg.match(/^(?:feed_)?(\d+)$/);
+    if (!match) {
+      console.error(chalk.red(`proc stat: invalid feed ID '${feedArg}'`));
+      return;
+    }
+    const feedID: number = parseInt(match[1], 10);
+    const feed: ProcFeed | undefined = cache.feed_get(feedID);
+    if (!feed) {
+      console.error(chalk.yellow(`proc stat: feed_${feedID} not in cache`));
+      return;
+    }
+
+    const topoLoaded: boolean = cache.topologyLoaded_has(feedID);
+    const instCount: number = topoLoaded ? cache.instancesForFeed_count(feedID) : -1;
+
+    // Derive status (mirrors feedStatus_derive in proc.ts)
+    let status: string;
+    if (feed.erroredJobs > 0) status = 'finishedWithError';
+    else if (feed.startedJobs + feed.scheduledJobs + feed.createdJobs > 0) status = 'running';
+    else if (feed.cancelledJobs > 0 && feed.finishedJobs === 0) status = 'cancelled';
+    else if (feed.finishedJobs > 0) status = 'finishedSuccessfully';
+    else status = 'empty';
+
+    const statusColor: string =
+      status === 'finishedSuccessfully' ? chalk.green(status) :
+      status === 'finishedWithError'    ? chalk.red(status) :
+      status === 'running'              ? chalk.yellow(status) :
+      status === 'cancelled'            ? chalk.dim(status) :
+      chalk.gray(status);
+
+    console.log(chalk.bold(`feed_${feedID}`));
+    console.log(`  title          : ${chalk.cyan(feed.title)}`);
+    console.log(`  status         : ${statusColor}`);
+    console.log(`  finishedJobs   : ${feed.finishedJobs}`);
+    console.log(`  erroredJobs    : ${chalk[feed.erroredJobs > 0 ? 'red' : 'white'](String(feed.erroredJobs))}`);
+    console.log(`  startedJobs    : ${feed.startedJobs}`);
+    console.log(`  scheduledJobs  : ${feed.scheduledJobs}`);
+    console.log(`  cancelledJobs  : ${feed.cancelledJobs}`);
+    console.log(`  createdJobs    : ${feed.createdJobs}`);
+    console.log(`  topology       : ${topoLoaded ? chalk.green(`loaded (${instCount} instances)`) : chalk.dim('not loaded')}`);
+    return;
+  }
+
+  console.error(chalk.red(`proc: unknown subcommand '${subcommand}'. Use proc --help.`));
 }

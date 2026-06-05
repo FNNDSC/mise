@@ -71,7 +71,7 @@ export async function builtin_cd(args: string[]): Promise<void> {
     if (isVirtual) {
       // Structural VFS container paths are always valid — skip the expensive list() call.
       // These are virtual dirs that exist by definition, not via API query.
-      const structuralVfsPaths = ['/', '/net', '/net/pacs', '/net/pacs/queries', '/proc', '/proc/feeds'];
+      const structuralVfsPaths = ['/', '/net', '/net/pacs', '/net/pacs/queries', '/proc', '/proc/jobs'];
       if (structuralVfsPaths.includes(cleanPath)) {
         await session.setCWD(cleanPath);
         return;

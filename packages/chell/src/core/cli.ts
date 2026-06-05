@@ -76,7 +76,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
       .option('--no-prefetch-feeds', 'Disable feed prefetch at startup')
       .option('--prefetch-public-feeds', 'Prefetch public feeds at startup (interactive mode)')
       .option('--no-prefetch-plugins', 'Skip plugin cache prefetch at startup')
-      .option('--no-prefetch-jobs', 'Skip /proc/feeds job cache prefetch at startup')
+      .option('--no-prefetch-jobs', 'Skip /proc/jobs job cache prefetch at startup')
       .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
       .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
       .addHelpText('after', `

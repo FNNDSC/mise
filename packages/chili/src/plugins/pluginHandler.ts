@@ -24,29 +24,7 @@ import { pluginIds_resolve } from "../commands/plugin/search.js";
 import { pluginRun_render } from "../views/plugin.js"; // Still needed for pluginRun_render
 import { Plugin, PluginInstance } from "../models/plugin.js";
 import chalk from "chalk";
-import { marked } from "marked";
-import TerminalRenderer from "marked-terminal";
-
-// Configure marked to use the terminal renderer
-marked.setOptions({
-  renderer: new TerminalRenderer({
-    code: chalk.yellow,
-    blockquote: chalk.gray.italic,
-    html: chalk.gray,
-    heading: chalk.green.bold,
-    firstHeading: chalk.magenta.underline.bold,
-    hr: chalk.reset,
-    listitem: chalk.cyan,
-    table: chalk.white,
-    paragraph: chalk.white,
-    strong: chalk.bold,
-    em: chalk.italic,
-    codespan: chalk.yellow,
-    del: chalk.dim.gray.strikethrough,
-    link: chalk.cyan,
-    href: chalk.blueBright.underline,
-  }),
-});
+import { pluginReadme_render } from "../commands/plugin/readme.js";
 
 /**
  * Handles commands related to groups of ChRIS plugins.
@@ -241,8 +219,7 @@ export class PluginMemberHandler {
     const content = await this.controller.readmeContent_fetch(repoUrl);
     if (content) {
       console.log(chalk.green.bold("\nREADME Content:"));
-      const parsedContent = marked(content);
-      console.log(parsedContent);
+      console.log(pluginReadme_render(content));
     } else {
       console.log(chalk.red("README not found in the repository."));
     }

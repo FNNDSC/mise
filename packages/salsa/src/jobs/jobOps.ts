@@ -159,7 +159,7 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
  *
 /**
  * Fetches current status for a batch of plugin instances in parallel.
- * Used by ls -l /proc/feeds/feed_N to get all node statuses in one round-trip.
+ * Used by ls -l /proc/jobs/feed_N to get all node statuses in one round-trip.
  *
  * @param ids - Array of instance IDs.
  * @returns Map from instance ID to status string. Missing entries on failure.

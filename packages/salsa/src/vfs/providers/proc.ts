@@ -1,13 +1,13 @@
 /**
  * @file /proc VFS Provider
  *
- * Surfaces ChRIS plugin instances as a navigable DAG under /proc/feeds/.
+ * Surfaces ChRIS plugin instances as a navigable DAG under /proc/jobs/.
  * Backed by ProcCache (topology only — no status stored).
  *
  * Status is always fetched live:
  * - cat .../status        → getPluginInstance(id)
- * - ls -l /proc/feeds/N   → jobs_statusBatch(allNodeIDs) — parallel
- * - ls /proc/feeds        → aggregate from ProcFeed job counters (no API)
+ * - ls -l /proc/jobs/N   → jobs_statusBatch(allNodeIDs) — parallel
+ * - ls /proc/jobs        → aggregate from ProcFeed job counters (no API)
  *
  * @module
  */
@@ -156,7 +156,8 @@ async function feedInstances_load(feedID: number): Promise<void> {
 
 /**
  * Ensures topology for a feed is loaded.
- * Returns immediately if already loaded or in-flight.
+ * Per-feed loads proceed immediately even while the global sweep is running —
+ * instance_add is idempotent so concurrent additions are safe.
  */
 async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
@@ -240,7 +241,7 @@ function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
 // ── Provider ───────────────────────────────────────────────────────────────
 
 export class ProcVfsProvider implements VFSProvider {
-  readonly prefix: string = '/proc/feeds';
+  readonly prefix: string = '/proc/jobs';
 
   async list(
     pathStr: string,
@@ -250,8 +251,8 @@ export class ProcVfsProvider implements VFSProvider {
     const cache: ProcCache = procCache_get();
     const clean: string = pathStr.replace(/\/$/, '');
 
-    // /proc/feeds — list all feeds with aggregate status from counters
-    if (clean === '/proc/feeds') {
+    // /proc/jobs — list all feeds with aggregate status from counters
+    if (clean === '/proc/jobs') {
       const items: VFSItem[] = cache.feedIDs_get().map((feedID: number): VFSItem => {
         const feed: ProcFeed | undefined = cache.feed_get(feedID);
         const status: string = feed ? feedStatus_derive(feed) : 'unknown';
@@ -270,7 +271,7 @@ export class ProcVfsProvider implements VFSProvider {
 
     const { feedID, instanceID } = procPath_parse(clean);
 
-    // /proc/feeds/feed_N — list root instances + feed virtual files
+    // /proc/jobs/feed_N — list root instances + feed virtual files
     if (feedID !== null && instanceID === null) {
       await feedInstances_ensureLoaded(feedID);
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
@@ -301,7 +302,7 @@ export class ProcVfsProvider implements VFSProvider {
       return Ok(items);
     }
 
-    // /proc/feeds/feed_N/plugin_ID — list children + virtual files
+    // /proc/jobs/feed_N/plugin_ID — list children + virtual files
     if (feedID !== null && instanceID !== null) {
       await feedInstances_ensureLoaded(feedID);
       const inst: ProcInstance | undefined = cache.instance_get(instanceID);
@@ -456,36 +457,65 @@ export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Background topology warm-up — loads instance DAG for feeds created within
- * the last `days` days, in batches of 10 concurrent feeds.
- * Fire-and-forget from chell startup. Everything else is lazy on access.
+ * Background topology warm-up — single paginated sweep of all plugin instances
+ * across all feeds. Replaces the per-feed fan-out that was O(feeds) round trips.
  *
- * @param days - How many days back to pre-warm (default 30).
+ * Registers itself as the active sweep so that any concurrent
+ * feedInstances_ensureLoaded call waits for this sweep rather than launching
+ * its own per-feed API call.
  */
-export async function procTopology_warmup(days: number = 30): Promise<void> {
+export async function procTopology_warmup(): Promise<void> {
   await cache_ensure();
   const cache: ProcCache = procCache_get();
+  const client = await chrisConnection.client_get();
+  if (!client) return;
 
-  const cutoff: Date = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const recentIDs: number[] = cache.feedIDs_get().filter((id: number) => {
-    const feed: ProcFeed | undefined = cache.feed_get(id);
-    if (!feed?.creationDate) return true; // no date → include
-    return new Date(feed.creationDate) >= cutoff;
-  });
+  cache.warmup_progress(0, 0);
 
-  const total: number = recentIDs.length;
-  const CONCURRENCY: number = 10;
+  const typedClient: ChrisClient = client as unknown as ChrisClient;
+  let offset: number = 0;
   let loaded: number = 0;
+  const seenFeedIDs: Set<number> = new Set();
 
-  cache.warmup_progress(0, total);
+  while (true) {
+    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
+      limit: PAGE, offset,
+    });
+    const chunk: RawInstance[] = page.data ?? [];
 
-  for (let i: number = 0; i < recentIDs.length; i += CONCURRENCY) {
-    const batch: number[] = recentIDs.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map((feedID: number) => feedInstances_ensureLoaded(feedID)));
-    loaded += batch.length;
-    cache.warmup_progress(loaded, total);
+    for (const inst of chunk) {
+      const feedID: number = Number(inst.feed_id);
+      const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
+        ? Number(inst.previous_id)
+        : null;
+
+      if (!cache.feed_get(feedID)) {
+        cache.feed_add({
+          id: feedID, title: `feed_${feedID}`, creationDate: '',
+          finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
+          scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+        });
+      }
+
+      cache.instance_add({
+        id: Number(inst.id),
+        feedID,
+        parentID: prevID,
+        pluginName: String(inst.plugin_name),
+        params: null,
+      });
+      seenFeedIDs.add(feedID);
+      loaded++;
+    }
+
+    cache.warmup_progress(loaded, 0);
+    if (chunk.length < PAGE) break;
+    offset += PAGE;
   }
 
+  for (const feedID of seenFeedIDs) {
+    cache.topologyLoaded_mark(feedID);
+  }
   cache.warmup_complete();
 }
 

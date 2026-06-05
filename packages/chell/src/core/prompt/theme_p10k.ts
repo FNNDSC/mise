@@ -154,8 +154,8 @@ export class ThemeP10k implements PromptTheme {
       trailing.push({ text: `✖ ${ctx.lastExitCode}`, color: C.STATUS });
     }
 
-    if (ctx.procWarmup && ctx.procWarmup.loaded < ctx.procWarmup.total) {
-      trailing.push({ text: `⚙ proc: ${ctx.procWarmup.loaded}/${ctx.procWarmup.total}`, color: C.TIME });
+    if (ctx.procWarmup) {
+      trailing.push({ text: `⚙ proc: ${ctx.procWarmup.loaded}`, color: C.TIME });
     }
 
     // Compute path budget: terminal limit minus fixed + trailing segment overhead + dir overhead

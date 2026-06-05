@@ -10,6 +10,7 @@ import chalk from 'chalk';
 interface CommandHelp {
   usage: string;
   description: string;
+  subcommands?: string[];
   options?: string[];
   examples?: string[];
 }
@@ -592,9 +593,28 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc refresh [feed_id] | proc find <id|name>',
-    description: 'Manage /proc/feeds cache. refresh rebuilds it. find <id> returns path for a numeric instance ID; find <name> searches all feeds by plugin name substring and returns all matching paths with status.',
-    examples: ['proc refresh', 'proc refresh 123', 'proc find 64306', 'proc find pl-fshack', 'proc find dircopy'],
+    usage: 'proc <stat|feeds|refresh|find> [args]',
+    description: '/proc/jobs is a job history inspector. Every computation ever run in ChRIS is a plugin instance — a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. cd into a feed to see what ran. ls -l shows job status at a glance. tree shows the full execution DAG. cat status, cat log, cat params give you CUBE data as plain text — no API queries to write, no UI to open. The in-memory cache makes this instant: built at login from the feed index, warmed in the background across all plugin instances. Once warm, all navigation, search, and path reconstruction are zero-cost in-memory operations.',
+    subcommands: [
+      'stat              Show cache summary (feeds known, instances loaded, sweep state)',
+      'stat <feed_id>    Show raw ProcFeed counters + topology state for one feed',
+      'feeds <title>     Search feed titles by substring; returns /proc/jobs/feed_N paths with status',
+      'refresh           Rebuild entire proc cache',
+      'refresh <feed_id> Rebuild cache for one feed only',
+      'find <id|name>    Find instance by numeric ID or plugin name substring; returns full /proc paths',
+    ],
+    examples: [
+      'proc stat',
+      'proc stat 899',
+      'proc stat feed_899',
+      'proc feeds failed',
+      'proc feeds "brain mri"',
+      'proc refresh',
+      'proc refresh 123',
+      'proc find 64306',
+      'proc find pl-fshack',
+      'proc find dircopy',
+    ],
   },
   prompt: {
     usage: 'prompt [list | <theme>]',
@@ -662,11 +682,13 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Display directory tree structure',
     options: [
       '--follow    Follow symbolic links when traversing',
+      '--path      Emit one full path per entry (grep-friendly, no tree art)',
     ],
     examples: [
       'tree                  # Tree of current directory',
       'tree /home/user/data  # Tree of specific path',
       'tree --follow         # Follow symbolic links',
+      'tree --path           # One path per line, no decoration',
     ],
   },
   du: {
@@ -974,6 +996,36 @@ export const helpText: Record<string, CommandHelp> = {
  * Formats and returns the detailed help text for a specific command as a string.
  *
  * @param command - The command name to retrieve help for.
+/**
+ * Word-wraps a flat string to fit within a given width, with uniform indentation.
+ *
+ * @param str    - Input text (single line or freeform).
+ * @param width  - Total line width including indent (default 78).
+ * @param indent - Leading spaces on every line (default 2).
+ * @returns Multi-line string, each line at most `width` chars wide.
+ */
+export function text_boxFormat(str: string, width: number = 78, indent: number = 2): string {
+  const prefix: string = ' '.repeat(indent);
+  const maxContent: number = Math.max(1, width - indent);
+  const words: string[] = str.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current: string = '';
+
+  for (const word of words) {
+    if (current.length === 0) {
+      current = word;
+    } else if (current.length + 1 + word.length <= maxContent) {
+      current += ' ' + word;
+    } else {
+      lines.push(prefix + current);
+      current = word;
+    }
+  }
+  if (current.length > 0) lines.push(prefix + current);
+  return lines.join('\n');
+}
+
+/**
  * @returns The formatted help text string, or undefined if no help exists.
  */
 export function commandHelp_get(command: string): string | undefined {
@@ -997,7 +1049,17 @@ export function commandHelp_get(command: string): string | undefined {
   
   lines.push('');
   lines.push(chalk.bold.blue('DESCRIPTION'));
-  lines.push(`  ${help.description}`);
+  text_boxFormat(help.description, 78, 2).split('\n').forEach((l: string) => lines.push(l));
+
+  if (help.subcommands && help.subcommands.length > 0) {
+    lines.push('');
+    lines.push(chalk.bold.blue('SUBCOMMANDS'));
+    help.subcommands.forEach((opt: string) => {
+      const trimmed = opt.trim();
+      if (!trimmed) { lines.push(''); return; }
+      lines.push(`  ${trimmed}`);
+    });
+  }
 
   if (help.options && help.options.length > 0) {
     lines.push('');

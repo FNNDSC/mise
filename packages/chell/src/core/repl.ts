@@ -110,10 +110,8 @@ export class REPL {
     const isOffline: boolean = session.offline;
 
     const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
-    const procWarmup: { loaded: number; total: number } | undefined =
-      (warmupRaw.total > 0 && warmupRaw.loaded < warmupRaw.total)
-        ? warmupRaw
-        : undefined;
+    const procWarmup: { loaded: number } | undefined =
+      warmupRaw.active ? { loaded: warmupRaw.loaded } : undefined;
 
     const ctx: PromptContext = {
       user:                 isOffline ? 'disconnected' : (context.user ?? 'disconnected'),

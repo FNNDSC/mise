@@ -1319,7 +1319,7 @@ export async function chell_start(): Promise<void> {
 
   if (!session.offline && prefetchJobs) {
     // Feed index (synchronous — needed before REPL starts for proc find)
-    const jobsResult = await prefetch_withSpinner('Jobs', 'Indexing /proc/feeds (feed list)...', async () => {
+    const jobsResult = await prefetch_withSpinner('Jobs', 'Indexing /proc/jobs (feed list)...', async () => {
       try {
         await procCache_refresh();
         const { procCache_get } = await import('@fnndsc/cumin');
@@ -1333,7 +1333,7 @@ export async function chell_start(): Promise<void> {
     if (jobsResult.ok) {
       boot?.log('ok', 'Jobs', `Indexed ${jobsResult.count ?? 0} feed(s) — topology warming in background`);
     } else {
-      boot?.log('fail', 'Jobs', jobsResult.message || 'Failed to index /proc/feeds');
+      boot?.log('fail', 'Jobs', jobsResult.message || 'Failed to index /proc/jobs');
     }
   } else if (!session.offline) {
     boot?.log('skip', 'Jobs', 'Prefetch disabled');
@@ -1357,7 +1357,10 @@ export async function chell_start(): Promise<void> {
       { label: 'Time', value: localTime_withOffset() },
     ];
     const chrisItems: BootInfoItem[] = [];
-    chrisItems.push({ label: 'ChRIS', value: currentContext.URL || 'offline' });
+    const maxItemLen: number = Math.max(30, (process.stdout.columns || 100) - 20);
+    const str_truncate = (s: string): string => s.length > maxItemLen ? `…${s.slice(-(maxItemLen - 1))}` : s;
+    const cubeUrl: string = currentContext.URL || 'offline';
+    chrisItems.push({ label: 'ChRIS', value: str_truncate(cubeUrl) });
     chrisItems.push({ label: 'User', value: currentContext.user || 'offline' });
     chrisItems.push({ label: 'Mode', value: config.mode });
     if (typeof cachedPlugins === 'number') {
@@ -1382,8 +1385,8 @@ export async function chell_start(): Promise<void> {
     if (currentContext.pacsserver) {
       chrisItems.push({ label: 'PACS Server', value: currentContext.pacsserver });
     }
-    const folderDisplay: string = currentContext.folder ?? '/';
-    chrisItems.push({ label: 'Path', value: folderDisplay });
+    const folderRaw: string = currentContext.folder ?? '/';
+    chrisItems.push({ label: 'Path', value: str_truncate(folderRaw) });
 
     const panels: BootPanels = {
       header: headerItems,

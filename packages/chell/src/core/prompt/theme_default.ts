@@ -39,8 +39,8 @@ export class ThemeDefault implements PromptTheme {
     const path: string = path_truncate(ctx.cwd, pathBudget);
 
     const glyph: string = ctx.lastExitCode !== 0 ? chalk.red('$ ') : chalk.green('$ ');
-    const warmup: string = (ctx.procWarmup && ctx.procWarmup.loaded < ctx.procWarmup.total)
-      ? chalk.dim(` [proc: ${ctx.procWarmup.loaded}/${ctx.procWarmup.total}]`)
+    const warmup: string = ctx.procWarmup
+      ? chalk.dim(` [proc: ${ctx.procWarmup.loaded}]`)
       : '';
     return (
       modePrefix +

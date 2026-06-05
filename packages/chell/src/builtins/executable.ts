@@ -1,7 +1,8 @@
 import chalk from 'chalk';
 import { spinner } from '../lib/spinner.js';
 import { builtin_parametersofplugin } from './parametersofplugin.js';
-import { plugin_readme as salsa_plugin_readme, plugins_list, plugins_listAll } from '@fnndsc/salsa';
+import { plugins_list, plugins_listAll } from '@fnndsc/salsa';
+import { pluginReadme_fetch, pluginReadme_render } from '@fnndsc/chili/commands/plugin/readme.js';
 
 type PluginExecutableOptions = {
     piped?: boolean;
@@ -42,7 +43,8 @@ export async function pluginExecutable_handle(
     if (showHelp) {
         console.log(chalk.cyan(`Plugin executable flags for ${name}-v${version}:`));
         console.log('  --parameters   Show parameter definitions for this plugin version');
-        console.log('  --readme       Show README pulled from plugin metadata repository URL');
+        console.log('  --readme       Show README (rendered) from plugin metadata repository URL');
+        console.log('  --readme --raw Output raw markdown, suitable for piping to glow or bat');
         return true;
     }
 
@@ -88,32 +90,25 @@ export async function pluginExecutable_handle(
     };
 
     if (args.includes('--readme')) {
-        if (!isPipedOutput) {
-            console.log(chalk.cyan(`Resolving plugin ${name} v${version} for README...`));
-        }
+        const rawMode: boolean = args.includes('--raw');
+        console.log(chalk.cyan(`Resolving plugin ${name} v${version} for README...`));
         const resolved = await plugin_resolveExact();
         if (!resolved) {
             console.log(chalk.red(`Plugin ${name} v${version} not found.`));
             return true;
         }
 
-        if (!isPipedOutput) {
-            spinner.start(`[ .. ] Fetching README for ${resolved.name} v${resolved.version}`, true);
-        }
+        spinner.start(`Fetching README for ${resolved.name} v${resolved.version}...`);
         try {
-            const readmeContent: string | null = await salsa_plugin_readme(String(resolved.id));
-            if (!isPipedOutput) {
-                spinner.stop();
-            }
-            if (readmeContent) {
-                console.log(readmeContent);
+            const content: string | null = await pluginReadme_fetch(String(resolved.id));
+            spinner.stop();
+            if (content) {
+                console.log(rawMode ? content : pluginReadme_render(content));
             } else {
-                console.log(chalk.yellow(`No README found for plugin ${resolved.name} v${resolved.version} (ID: ${resolved.id}).`));
+                console.log(chalk.yellow(`No README found for ${resolved.name} v${resolved.version}.`));
             }
         } catch (error: unknown) {
-            if (!isPipedOutput) {
-                spinner.stop();
-            }
+            spinner.stop();
             const message: string = error instanceof Error ? error.message : String(error);
             console.log(chalk.red(`Failed to fetch README: ${message}`));
         }

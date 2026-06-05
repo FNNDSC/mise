@@ -9,6 +9,7 @@ import chalk from 'chalk';
 
 interface CommandHelp {
   usage: string;
+  summary?: string;        // one-liner for universal help listing; falls back to description
   description: string;
   subcommands?: string[];
   options?: string[];
@@ -593,27 +594,37 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc <stat|feeds|refresh|find> [args]',
+    usage: 'proc <jobs|stat|feeds|refresh|find> [args]',
+    summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
     description: '/proc/jobs is a job history inspector. Every computation ever run in ChRIS is a plugin instance — a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. cd into a feed to see what ran. ls -l shows job status at a glance. tree shows the full execution DAG. cat status, cat log, cat params give you CUBE data as plain text — no API queries to write, no UI to open. The in-memory cache makes this instant: built at login from the feed index, warmed in the background across all plugin instances. Once warm, all navigation, search, and path reconstruction are zero-cost in-memory operations.',
     subcommands: [
-      'stat              Show cache summary (feeds known, instances loaded, sweep state)',
-      'stat <feed_id>    Show raw ProcFeed counters + topology state for one feed',
-      'feeds <title>     Search feed titles by substring; returns /proc/jobs/feed_N paths with status',
-      'refresh           Rebuild entire proc cache',
-      'refresh <feed_id> Rebuild cache for one feed only',
-      'find <id|name>    Find instance by numeric ID or plugin name substring; returns full /proc paths',
+      'jobs list                               List all feeds with full counter fields (default 20)',
+      'jobs list --fields id,title,erroredJobs Select columns',
+      'jobs list --sort erroredJobs --reverse  Sort by field',
+      'jobs list --table                       Tabular output',
+      'jobs list --csv                         CSV output',
+      'jobs list --all                         All feeds (no limit)',
+      'jobs list --search failed               Filter by title substring',
+      'jobs inspect                            Show all available field names',
+      'stat                                   Show cache summary',
+      'stat <feed_id>                         Show raw counters + topology state for one feed',
+      'feeds <title>                          Search feed titles; returns /proc/jobs/feed_N paths',
+      'refresh                                Rebuild entire proc cache',
+      'refresh <feed_id>                      Rebuild cache for one feed only',
+      'find <id|name>                         Find instance by ID or plugin name substring',
     ],
     examples: [
+      'proc jobs list',
+      'proc jobs list --sort erroredJobs --reverse --table',
+      'proc jobs list --fields id,title,erroredJobs,startedJobs --all',
+      'proc jobs list --search failed',
+      'proc jobs inspect',
       'proc stat',
       'proc stat 899',
-      'proc stat feed_899',
       'proc feeds failed',
-      'proc feeds "brain mri"',
       'proc refresh',
-      'proc refresh 123',
       'proc find 64306',
       'proc find pl-fshack',
-      'proc find dircopy',
     ],
   },
   prompt: {
@@ -1180,6 +1191,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
     Connection: ['connect', 'logout', 'context', 'whoami', 'whereami'],
+    Monitoring: ['proc'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
@@ -1193,7 +1205,7 @@ export async function builtin_help(args: string[]): Promise<void> {
     commands.forEach((cmd: string) => {
       const help: CommandHelp | undefined = helpText[cmd];
       if (help) {
-        console.log(`  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.description)}`);
+        console.log(`  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}`);
       }
     });
     console.log('');

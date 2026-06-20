@@ -1,0 +1,558 @@
+/**
+ * @file ChRIS Resource Management
+ *
+ * This module defines the base class and interfaces for managing ChRIS resources.
+ * It provides functionality for listing, filtering, and manipulating resource items.
+ *
+ * @module
+ */
+
+import Client from "@fnndsc/chrisapi";
+import { ListResource, Resource, ItemResource } from "@fnndsc/chrisapi";
+import { chrisConnection } from "../connect/chrisConnection.js";
+import { connectionConfig } from "../config/config.js";
+
+/**
+ * ListResource with pagination support (hasNext property exists at runtime).
+ */
+interface ListResourceWithPagination extends ListResource {
+  hasNext: boolean;
+}
+
+/**
+ * A simple record with string keys and unknown values.
+ */
+export interface SimpleRecord {
+  [key: string]: unknown;
+}
+
+/**
+ * Options for listing resources, including pagination.
+ */
+export interface ListOptions extends SimpleRecord {
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Represents an item in a resource collection.
+ */
+export interface Item {
+  data: Array<{ name: string; value: unknown }>;
+  href: string;
+  links: Array<unknown>;
+}
+
+interface ResourcesFromOptions {
+  resources: ListResource | Resource | null;
+  options?: ListOptions | null;
+}
+
+/**
+ * Contains items and the fields available for them.
+ */
+export interface ResourceFieldsPerItem {
+  items: Item[];
+  fields: string[];
+}
+
+/**
+ * Contains resources, items, options, and selected fields.
+ */
+export interface ResourcesByFields extends ResourcesFromOptions {
+  items: Item[] | null;
+  fields: string[];
+}
+
+/**
+ * Contains data filtered for table display and selected fields.
+ */
+export interface FilteredResourceData {
+  tableData: Record<string, unknown>[];
+  selectedFields: string[];
+  /** Total count of items in the full collection (may exceed tableData.length when paginated). */
+  totalCount?: number;
+}
+
+/**
+ * A dictionary with string keys and primitive values.
+ */
+export interface Dictionary {
+  [key: string]: string | number | boolean;
+}
+
+/**
+ * Base class for managing ChRIS resources.
+ */
+export class ChRISResource {
+  private _client: Client | null = null;
+  private _resourceName: string = "";
+  private _resourceCollection: ListResource | Resource | null = null;
+  private _resourceArrayItems: Item[] | null = null;
+  private _resourceArray: ItemResource[] | null | undefined = null;
+  private _resourceItem: ItemResource | null = null;
+  private resourceMethod: ((params: ListOptions) => Promise<ListResource | Resource>) | null = null;
+  private _lazyMethodName: string | null = null;
+  private _lazyObjProvider: (() => Promise<unknown>) | null = null;
+
+  constructor() {
+    // Client initialization is deferred
+  }
+
+  /**
+   * Retrieves the ChRIS client instance asynchronously.
+   * @returns A Promise resolving to the Client instance or null.
+   */
+  async client_get(): Promise<Client | null> {
+    if (!this._client) {
+      this._client = await chrisConnection.client_get();
+    }
+    return this._client;
+  }
+
+  get resourceName(): string {
+    return this._resourceName;
+  }
+
+  set resourceName(name: string) {
+    this._resourceName = name;
+  }
+
+  set resourceCollection(collection: ListResource | Resource) {
+    this._resourceCollection = collection;
+  }
+
+  /**
+   * Converts a resource item to a dictionary.
+   * @param item - The item to convert.
+   * @returns A dictionary representation of the item.
+   */
+  resourceItem_toDict(item: Item): Dictionary {
+    return item.data.reduce((acc: Dictionary, { name, value }) => {
+      acc[name] = value as string | number | boolean;
+      return acc;
+    }, {});
+  }
+
+  /**
+   * Converts a list of resource items to dictionaries.
+   * @param items - The list of items to convert.
+   * @returns An array of dictionaries.
+   */
+  resourceItems_toDicts(items: Item[]): Dictionary[] {
+    return items.map(this.resourceItem_toDict);
+  }
+
+  /**
+   * Deletes a resource item by its ID.
+   * @param id - The ID of the item to delete.
+   * @returns A Promise resolving to true on success, false otherwise.
+   */
+  async resourceItem_delete(id: number): Promise<boolean> {
+    if (!(this._resourceCollection instanceof ListResource)) {
+      return false;
+    }
+    const res: ItemResource = this._resourceCollection?.getItem(id) as ItemResource;
+    try {
+      await res._delete();
+      return true;
+    } catch (e: unknown) {
+      return false;
+    }
+  }
+
+  /**
+   * Builds a list of items from a resource collection.
+   * @param resources - The resource collection.
+   * @returns An array of Items or null.
+   */
+  resourceItems_buildFromCollection(
+    resources: ListResource | Resource | null
+  ): Item[] | null {
+    if (!resources || !resources.collection) {
+      return null;
+    }
+    return (resources.collection as unknown as { items: Item[] }).items.map((item: Item) => ({
+      data: item.data,
+      href: item.href,
+      links: item.links,
+    }));
+  }
+
+  /**
+   * Binds a resource fetching method to an object.
+   * @param obj - The object context.
+   * @param resourceMethod - The method to bind.
+   * @param resourceName - Optional name for the resource.
+   */
+  binding_applyGet(
+    obj: unknown,
+    resourceMethod: (params: ListOptions) => Promise<ListResource | Resource>,
+    resourceName?: string
+  ): void {
+    // this._resourceObj = obj;
+    this.resourceMethod = resourceMethod.bind(obj);
+    if (resourceName) this._resourceName = resourceName;
+  }
+
+  /**
+   * Binds a resource fetching method lazily.
+   * @param objProvider - A function returning a Promise to the object context.
+   * @param methodName - The name of the method to bind.
+   * @param resourceName - Optional name for the resource.
+   */
+  binding_applyLazy(
+    objProvider: () => Promise<unknown>,
+    methodName: string,
+    resourceName?: string
+  ): void {
+    this._lazyObjProvider = objProvider;
+    this._lazyMethodName = methodName;
+    if (resourceName) this._resourceName = resourceName;
+  }
+
+  private async lazyBinding_resolve(): Promise<void> {
+    if (!this.resourceMethod && this._lazyObjProvider && this._lazyMethodName) {
+      const obj: unknown = await this._lazyObjProvider();
+      if (obj) {
+        const method: unknown = (obj as Record<string, unknown>)[this._lazyMethodName];
+        if (typeof method === 'function') {
+            this.resourceMethod = method.bind(obj);
+        } else {
+            console.error(`Method ${this._lazyMethodName} not found on object.`);
+        }
+      }
+    }
+  }
+
+  get hasNextPage(): boolean {
+    if (this._resourceCollection instanceof ListResource) {
+      return (this._resourceCollection as ListResourceWithPagination).hasNext;
+    }
+    return false;
+  }
+
+  /**
+   * Lists *all* resources by automatically handling pagination.
+   * @param options - Filtering options. Limit and offset will be managed internally.
+   * @returns A Promise resolving to FilteredResourceData containing all matching resources, or null.
+   */
+  async resources_getAll(
+    options?: Partial<ListOptions>
+  ): Promise<FilteredResourceData | null> {
+    const limit: number = 100;
+    let offset: number = 0;
+    let allTableData: Record<string, unknown>[] = [];
+    let selectedFields: string[] = [];
+    // If options has a limit, we should respect it? No, getAll implies fetching everything.
+    // But we should respect filters.
+
+    while (true) {
+      const pageOptions: Partial<ListOptions> = { ...options, limit, offset };
+      const result: FilteredResourceData | null = await this.resources_listAndFilterByOptions(pageOptions);
+
+      if (!result || !result.tableData) {
+        break;
+      }
+
+      if (selectedFields.length === 0) {
+        selectedFields = result.selectedFields;
+      }
+
+      allTableData = allTableData.concat(result.tableData);
+
+      // Robust exit conditions:
+      // 1. If we got 0 items, we are definitely done.
+      if (result.tableData.length === 0) {
+        break;
+      }
+
+      // 2. If we got fewer items than the limit, this must be the last page.
+      if (result.tableData.length < limit) {
+        break;
+      }
+
+      // 3. If API explicitly says no next page (and it's not undefined).
+      if (this.hasNextPage === false) {
+        break;
+      }
+
+      // If we got a full page and hasNextPage is not explicitly false, continue
+      offset += limit;
+    }
+
+    if (allTableData.length === 0) {
+      return null;
+    }
+
+    return {
+      tableData: allTableData,
+      selectedFields,
+      totalCount: allTableData.length,
+    };
+  }
+
+  /**
+   * Lists and filters resources based on options.
+   * @param options - Filtering and listing options.
+   * @returns A Promise resolving to filtered resource data or null.
+   */
+  async resources_listAndFilterByOptions(
+    options?: Partial<ListOptions>
+  ): Promise<FilteredResourceData | null> {
+    const results: FilteredResourceData | null = this.resources_filterByFields(
+      await this.resourceFields_get(await this.resources_getList(options))
+    );
+    if (results && this._resourceCollection instanceof ListResource) {
+      const total: number = (this._resourceCollection as ListResource).totalCount;
+      if (total >= 0) results.totalCount = total;
+    }
+    return results;
+  }
+
+  /**
+   * Filters resources by specific fields.
+   * @param resourcesByFields - The resources and fields to filter.
+   * @returns Filtered data suitable for table display.
+   */
+  resources_filterByFields(
+    resourcesByFields: ResourcesByFields | null
+  ): FilteredResourceData | null {
+    if (!resourcesByFields) {
+      return null;
+    }
+    const resources: Item[] | null = resourcesByFields.items;
+    const selectedFields: string[] = resourcesByFields.fields;
+
+    if (!resources) return null;
+
+    const tableData: Record<string, unknown>[] = resources.map((resource) => {
+      const rowData: Record<string, unknown> = {
+        id: resource.href.split("/").slice(-2)[0],
+      };
+      resource.data.forEach((item) => {
+        if (selectedFields.includes(item.name)) {
+          rowData[item.name] = item.value;
+        }
+      });
+      return rowData;
+    });
+    return { tableData, selectedFields };
+  }
+
+  resourcesByFields_enumerate(
+    items: Item[] | null
+  ): ResourceFieldsPerItem | null {
+    if (!items || !items.length) {
+      return null;
+    }
+    const allFields: string[] = ["id", ...items[0].data.map((item) => item.name)];
+    const resourcesFieldsPerItem: ResourceFieldsPerItem = {
+      items: items,
+      fields: allFields,
+    };
+    return resourcesFieldsPerItem;
+  }
+
+  fieldSpec_resolve(
+    fieldFilter?: string,
+    options?: ListOptions | null
+  ): string[] {
+    let selectedFields: string[] = [];
+    let fieldSpec: string = "";
+    if (typeof options?.fields === "string") {
+      fieldSpec = options.fields;
+    } else if (fieldFilter) {
+      fieldSpec = fieldFilter;
+    }
+    if (fieldSpec) {
+      selectedFields = fieldSpec.split(",").map((f) => f.trim());
+    }
+    return selectedFields;
+  }
+
+  async resourceFields_get(
+    options?: ListOptions | null,
+    fields?: string
+  ): Promise<ResourcesByFields | null> {
+    if (!this._resourceCollection) {
+      await this.resources_getList();
+    }
+    if (!this._resourceArrayItems) {
+      return null;
+    }
+    let selectedFields: string[] = this.fieldSpec_resolve(fields, options);
+    const resourcesFields: ResourceFieldsPerItem | null =
+      this.resourcesByFields_enumerate(this._resourceArrayItems);
+    if (!resourcesFields) {
+      return null;
+    }
+    if (!selectedFields.length) {
+      if (resourcesFields) {
+        selectedFields = resourcesFields.fields;
+      }
+    }
+
+    selectedFields = Array.from(new Set(selectedFields));
+
+    const resourcesByFields: ResourcesByFields = {
+      resources: this._resourceCollection,
+      items: this._resourceArrayItems,
+      options: options,
+      fields: selectedFields,
+    };
+    return resourcesByFields;
+  }
+
+  async resources_getItems(
+    options?: Partial<ListOptions>
+  ): Promise<ItemResource[] | null> {
+    const params: ListOptions = {
+      limit: options?.limit ?? 20,
+      offset: options?.offset ?? 0,
+    };
+    
+    await this.lazyBinding_resolve();
+
+    if (!this.resourceMethod) {
+      return null;
+    }
+    const resources: ListResource | Resource | null = await this.resourceMethod(params);
+    if (!(this._resourceCollection instanceof ListResource)) {
+      return null;
+    }
+    this._resourceArray = this._resourceCollection?.getItems() as ItemResource[] | null;
+    if (this._resourceArray) {
+      // console.log(this._resourceArray);
+      return this._resourceArray;
+    }
+    return null;
+  }
+
+  options_simplify(options: ListOptions): ListOptions {
+    const params: ListOptions = {
+      limit: options?.limit ?? 20,
+      offset: options?.offset ?? 0,
+    };
+    return params;
+  }
+
+  private filtering_applyAdditional(originalParams: ListOptions): Item[] | null {
+    if (!this._resourceArrayItems || this._resourceArrayItems.length === 0) {
+      return null;
+    }
+
+    const filteredItems: Item[] = this._resourceArrayItems.filter((item) => {
+      return Object.entries(originalParams).every(([paramKey, paramValue]) => {
+        // Skip non-search related parameters
+        if (["limit", "offset"].includes(paramKey)) {
+          return true;
+        }
+
+        const dataItem: { name: string; value: unknown } | undefined = item.data.find((d) => d.name === paramKey);
+        if (!dataItem) {
+          return false; // If the field is not found, it doesn't match the filter
+        }
+
+        const itemValue: string = String(dataItem.value).toLowerCase();
+        const searchValue: string = String(paramValue).toLowerCase();
+
+        // Perform exact match for 'id', partial match for other fields
+        if (paramKey === "id") {
+          return itemValue === searchValue;
+        } else {
+          return itemValue.includes(searchValue);
+        }
+      });
+    });
+
+    return filteredItems.length > 0 ? filteredItems : null;
+  }
+
+  async resources_getList(
+    options?: Partial<ListOptions>,
+    resourceMethod?: (params: ListOptions) => Promise<ListResource | Resource>
+  ): Promise<ListOptions | null> {
+    const params: ListOptions = {
+      limit: 20,
+      offset: 0,
+      ...options,
+    };
+    // Remove the "fields" otherwise some list resource ops break
+    const { fields, ...pureparams }: ListOptions = params;
+    let simplifiedParams: ListOptions = pureparams;
+    if (resourceMethod) {
+      this.resourceMethod = resourceMethod;
+    }
+    
+    await this.lazyBinding_resolve();
+
+    if (!this.resourceMethod) return params;
+    let resources: ListResource | Resource | null = null;
+    try {
+      resources = await this.resourceMethod(pureparams);
+    } catch (error: unknown) {
+      if (connectionConfig && connectionConfig.debug) {
+        console.error(`Error fetching ${this._resourceName}:`, error);
+      }
+      // Attempt simplified params as fallback
+      try {
+        simplifiedParams = this.options_simplify(pureparams);
+        resources = await this.resourceMethod(simplifiedParams);
+      } catch (retryError: unknown) {
+        if (connectionConfig && connectionConfig.debug) {
+          console.error(`Retry failed for ${this._resourceName}:`, retryError);
+        }
+        throw retryError; // Re-throw the error if retry fails
+      }
+    }
+    if (resources == undefined || resources == null) {
+      console.log(
+        this._resourceName + " resource list returned 'undefined' or 'null'"
+      );
+      return params;
+    }
+
+    this._resourceCollection = resources;
+    if (!(this._resourceCollection instanceof ListResource)) {
+      return null;
+    }
+    this._resourceArray = this._resourceCollection?.getItems() as ItemResource[] | null;
+    this._resourceArrayItems =
+      this.resourceItems_buildFromCollection(resources);
+    if (Object.keys(pureparams).length > Object.keys(simplifiedParams).length) {
+      const filteredItems: Item[] | null = this.filtering_applyAdditional(pureparams);
+      if (filteredItems === null) {
+        console.log("Warning: No items match the search criteria.");
+      }
+      this._resourceArrayItems = filteredItems;
+    }
+
+    return params;
+  }
+}
+
+/**
+ * Helper to get resource fields from a resource object.
+ * @param obj - The resource object.
+ * @param fields - The fields to extract.
+ * @returns A SimpleRecord of fields or null.
+ */
+export function resourceFields_get(
+  obj: Resource | ListResource,
+  fields: string[]
+): SimpleRecord | null {
+  const chrisResource: ChRISResource = new ChRISResource();
+  const item: Item[] | null =
+    chrisResource.resourceItems_buildFromCollection(obj);
+  const resourceData: FilteredResourceData | null =
+    chrisResource.resources_filterByFields({
+      resources: obj,
+      items: item,
+      fields: fields,
+    });
+  if (!resourceData) {
+    return null;
+  }
+  return resourceData.tableData[0];
+}

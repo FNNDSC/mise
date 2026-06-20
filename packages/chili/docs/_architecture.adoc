@@ -1,0 +1,48 @@
+= ChUI Architecture: The "Command as Library" Model
+
+== Introduction
+
+The ChUI (ChRIS User Interface) codebase, encompassing `chili`, `salsa`, and `cumin`, follows a strict layered "Sandwich" architecture. This design decouples business logic from presentation, enabling the core functionality to be consumed by multiple frontends—specifically the `chili` CLI and the `chell` interactive shell.
+
+== Core Principles
+
+. **Single Source of Truth:** `chili` commands serve as the definitive implementation for app-level logic.
+. **Separation of Concerns:** Logic (`salsa`), Control (`chili commands`), and Presentation (`chili views`) are distinct.
+. **Pervasive Typing:** Data exchange between layers is governed by strict TypeScript interfaces (Models).
+
+== The Layered "Sandwich" Model
+
+The architecture is composed of three primary layers:
+
+[cols="1,3"]
+|===
+| Layer | Responsibility
+
+| *`chili`* (Controller & View)
+| The top layer is split into sub-layers:
+  * **Commands (`commands/`)**: Headless controllers that call `salsa` and return strictly typed **Models**. They are UI-agnostic and consumable by `chell`.
+  * **Views (`views/`)**: Pure functions that accept Models and return formatted strings/tables.
+  * **Handlers (`handlers/` & `chefs/`)**: The CLI entry points. They parse arguments, invoke Commands, and pass the results to Views.
+  * **Models (`models/`)**: TypeScript interfaces (`src/models/`) defining the data structures exchanged between layers.
+
+| *`salsa`* (Business Logic)
+| The core, reusable library of "Intents". It contains the "how" for every action (e.g., `feed_create`, `files_uploadPath`). This layer wraps `cumin` and returns raw data or success status.
+
+| *`cumin`* (Infrastructure)
+| The lowest-level library that manages state, connectivity, and raw I/O. It provides `IStorageProvider` abstractions for filesystem access (Node vs Browser) and `ChrisIO` for recursive operations.
+|===
+
+== Data Flow Example: `ls`
+
+When a user runs `ls` (in CLI or Shell):
+
+1.  **CLI/Shell**: Calls `chili/commands/fs/ls.ts`.
+2.  **Command**: Calls `salsa/files/index.ts` (`files_listAll`).
+3.  **Salsa**: Calls `cumin` to fetch data from CUBE.
+4.  **Salsa**: Returns raw data to Command.
+5.  **Command**: Maps raw data to `ListingItem[]` Model. Returns Model.
+6.  **CLI/Shell**: Passes `ListingItem[]` to `chili/views/ls.ts` (`renderGrid` or `renderLong`).
+7.  **View**: Returns formatted string.
+8.  **CLI/Shell**: Prints string to stdout.
+
+This ensures `chell` and `chili` behave identically.

@@ -1,0 +1,16 @@
+= plugins
+
+== intro
+
+`plugins` are a central concept within ChRIS and can be accessed via several subcommands in `chili`
+
+* `plugin`
+* `plugins`
+* `pluginMetas`
+* `computesofplugin`
+* `instancesofplugin`
+* `parametersofplugin`
+
+== how to use
+
+See various document chapters for information and examples on each.

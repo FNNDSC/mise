@@ -1,0 +1,187 @@
+= Architecture of "Searchable" Strings
+:toc: left
+:toclevels: 3
+
+The **"Searchable"** architecture is a core ChILI concept designed to unify resource identification and searching into a single, flexible string format. It allows users to specify resources by ID, Name, or complex query parameters seamlessly within CLI arguments and context strings.
+
+As of version 0.4.1 of cumin, searchables are implemented as a formal `Searchable` class providing type safety, validation, and a unified API for all searchable operations.
+
+== The Concept: "One String to Find Them All"
+
+In a traditional REST API, fetching a resource by ID (`GET /plugins/14/`) is distinct from searching for resources (`GET /plugins/?name=pl-dircopy`). The Searchable concept blurs this line for the CLI user.
+
+A "Searchable" string is an input argument that the system automatically interprets as either:
+1.  **A Direct ID/Name**: `"14"`, `"pl-dircopy"`
+2.  **An Explicit Query**: `"name_exact:pl-dircopy"`, `"version:1.0.2, min_creation_date:2023-01-01"`
+
+== Syntax Specification
+
+The explicit syntax is a comma-separated list of key-value pairs:
+
+`"key1: value1, key2: value2, ..."`
+
+*   **Keys**: Correspond directly to the Django filter fields supported by the ChRIS API (e.g., `name`, `name_exact`, `id`, `min_creation_date`).
+*   **Values**: The values to search for.
+*   **Separator**: A colon (`:`) separates key and value. A comma (`,`) separates pairs.
+
+=== Batch Operations (`++` Separator)
+
+For commands that support batch operations (such as `delete`), multiple searchables can be combined using the `++` separator:
+
+`"searchable1++searchable2++searchable3"`
+
+Each searchable is processed independently. For example:
+
+[source,bash]
+----
+chili plugins delete "id:77++id:33++name:pl-test"
+----
+
+This command will:
+1. Resolve `id:77` and delete plugin 77
+2. Resolve `id:33` and delete plugin 33
+3. Resolve `name:pl-test` and delete matching plugin(s)
+
+The implementation splits on `++` and iterates through each part (`pluginHandler.ts:83`).
+
+== Implementation Mechanism
+
+The logic resides in the `Searchable` class (`cumin/src/utils/searchable.ts`) which integrates with the existing parsing utilities (`cumin/src/utils/keypair.ts`) and ChRIS plugin operations (`cumin/src/plugins/chrisPlugins.ts`).
+
+=== The Searchable Class
+
+The `Searchable` class encapsulates all searchable logic in a type-safe, testable module:
+
+[source,typescript]
+----
+import { Searchable } from '@fnndsc/cumin';
+
+// Auto-detect type
+const s1 = Searchable.from("pl-dircopy");              // simple
+const s2 = Searchable.from("name:pl-dircopy");         // compound
+const s3 = Searchable.from("id:77++id:33");            // batch
+
+// Explicit constructors
+const simple = Searchable.simple("pl-dircopy");
+const compound = Searchable.compound("name:foo,version:1.0");
+const batch = Searchable.batch("id:77++id:33");
+
+// Type checking
+if (s1.isSimple()) { /* ... */ }
+if (s2.isCompound()) { /* ... */ }
+if (s3.isBatch()) { /* ... */ }
+
+// Convert to query parameters
+const params = s2.toQueryParams();  // { name: "pl-dircopy" }
+
+// Split batch into individual searchables
+const parts = s3.toBatchSearchables();  // [Searchable, Searchable]
+
+// Validate
+if (s1.validate()) { /* searchable is valid */ }
+----
+
+All ChRIS resource methods accept either strings or `Searchable` objects, providing backward compatibility while enabling explicit type safety when desired.
+
+=== 1. Type Detection (`Searchable.from`)
+
+When a string is passed to `Searchable.from()`, the system automatically detects the type:
+
+*   **Batch Mode**: If the string contains `++`, it is treated as a batch searchable.
+    *   Input: `"id:77++id:33"` -> Type: `batch`
+*   **Compound Mode**: If the string contains a colon (`:`) but no `++`, it is treated as a key-value search.
+    *   Input: `"id:14"` -> Type: `compound`
+*   **Simple Mode**: If the string contains neither `:` nor `++`, it is assumed to be a plain name.
+    *   Input: `"pl-dircopy"` -> Type: `simple`, normalized to `"name: pl-dircopy"`
+
+For backward compatibility, `pluginString_makeSearchable()` still exists but is deprecated in favor of the `Searchable` class.
+
+=== 2. Parsing (`Searchable.toQueryParams`)
+
+The Searchable instance provides parsed key-value pairs via `toQueryParams()`:
+
+[source,typescript]
+----
+const searchable = Searchable.from("name: foo, version: 1.0");
+const params = searchable.toQueryParams();
+// Result: { name: "foo", version: "1.0" }
+----
+
+Internally, this uses the existing `keyPairString_parse()` utility for compound searchables.
+
+=== 3. Normalization (`Searchable.toNormalizedString`)
+
+Before passing to the API, the searchable is normalized:
+
+[source,typescript]
+----
+const s1 = Searchable.simple("pl-dircopy");
+s1.toNormalizedString();  // "name: pl-dircopy"
+
+const s2 = Searchable.compound("name:foo,version:1.0");
+s2.toNormalizedString();  // "name:foo,version:1.0" (unchanged)
+----
+
+This normalized string is then passed through `options_toParams()`, merged with pagination options, and sent to the `@fnndsc/chrisapi` client as a standard HTTP Query String:
+
+`GET /api/v1/endpoint/?name=foo&version=1.0`
+
+=== 4. Resolution
+
+The API returns a list of matching objects. The system then extracts the relevant identifier (typically `id`) from the first result (or handles errors if multiple/zero results are found).
+
+==== Multiple Match Warning
+
+When a searchable resolves to more than one result, the system:
+
+1. Issues a warning: `"Multiple plugins conformed to '<searchable>'"`
+2. Continues execution using the **first match**
+3. Pushes the warning to the error stack for user visibility
+
+[source,typescript]
+----
+// From chrisPlugins.ts:214-219
+if (pluginList.hits.length > 1) {
+  errorStack.stack_push(
+    "warning",
+    `Multiple plugins conformed to "${searchable}.`
+  );
+}
+----
+
+This behavior helps users identify when their search criteria are too broad. Best practice is to use more specific searchables (e.g., `name_exact` instead of `name`, or include version constraints) to ensure deterministic results.
+
+== Integration Points
+
+The Searchable concept is integrated deeply into two main areas:
+
+=== Resource Commands
+
+Commands that operate on resources accept searchable strings as arguments.
+
+[source,bash]
+----
+chili plugin run "name_exact:pl-dircopy, version:2.0.1"
+----
+
+=== Context Initialization
+
+The Context parser (`chrisContextURL_parse` in `cumin`) supports searchables within the query string of a context URI.
+
+[source,bash]
+----
+chili "user@http://cube.org?plugin=name_exact:pl-dircopy" ...
+----
+
+When the parser encounters a key like `plugin` with a value containing a colon (`:`), it triggers the full resolution logic (API call -> Search -> Resolve ID) *before* setting the persistent session state.
+
+== Data Flow Summary
+
+1.  **User Input**: `"name_exact:foo"`
+2.  **CLI Parser**: Passes string to Resolver.
+3.  **Resolver**: calls `keyPairString_parse("name_exact:foo")`.
+4.  **Object**: `{ name_exact: "foo" }`.
+5.  **API Client**: `GET .../?name_exact=foo`.
+6.  **Response**: `[{ id: 42, name: "foo", ... }]`.
+7.  **Resolution**: Returns ID `42`.
+8.  **Action**: Command operates on Resource ID `42`.

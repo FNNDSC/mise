@@ -1,0 +1,686 @@
+/**
+ * @file Terminal table/screen rendering utilities and the Screen singleton.
+ *
+ * @module
+ */
+
+import { table, getBorderCharacters, TableUserConfig } from "table";
+import chalk from "chalk";
+
+/**
+ * A chalk-style color function mapping a string to a styled string.
+ */
+export interface ChalkColorFunction {
+  (text: string): string;
+  bold: (text: string) => string;
+}
+
+type Justification = "left" | "center" | "right";
+type CellValue = string | number | boolean | null | undefined | object | unknown;
+
+/**
+ * Per-column rendering options for table output.
+ */
+export interface ColumnOptions {
+  width?: number;
+  color?: string;
+  justification?: Justification;
+}
+
+/**
+ * Options controlling table rendering (borders, headers, colors).
+ */
+export interface TableOptions {
+  columns?: ColumnOptions[];
+  head?: string[];
+  typeColors?: {
+    number?: string;
+    string?: string;
+    boolean?: string;
+    object?: string;
+  };
+  title?: Title;
+  borderless?: boolean;
+  /** When set and shown < total, renders a pagination footer after the table. */
+  pagination?: { shown: number; total: number };
+}
+
+interface Title {
+  title: string;
+  justification?: Justification;
+}
+
+interface Borders {
+  left?: boolean;
+  top?: boolean;
+  right?: boolean;
+  bottom?: boolean;
+}
+
+/**
+ * A single row of table data keyed by column name.
+ */
+export interface TableDataRow {
+  [key: string]: string | number | boolean | null | undefined | object | unknown;
+}
+
+interface TableContent {
+  headers: string[];
+  body: unknown[][];
+}
+
+/**
+ * Processes raw table input data and headers into a standardized format.
+ *
+ * @param tableData - The raw table data, can be `TableDataRow[] | string[][] | string[]`.
+ * @param headers - The headers for the table, can be `string[] | string`.
+ * @returns An object containing the processed table data and headers.
+ */
+function tableInput_process(
+  tableData: TableDataRow[] | string[][] | string[],
+  headers: string[] | string
+): { processedTableData: TableDataRow[]; processedHeaders: string[] } {
+  let processedTableData: TableDataRow[];
+  let processedHeaders: string[];
+
+  processedHeaders = Array.isArray(headers)
+    ? headers
+    : headers.split(",").map((h) => h.trim());
+
+  if (
+    Array.isArray(tableData) &&
+    Array.isArray(tableData[0]) &&
+    typeof tableData[0][0] === "string"
+  ) {
+    // tableData is a string[][]
+    processedTableData = (tableData as string[][]).map((row) => {
+      return processedHeaders.reduce((rowObj, header, index) => {
+        rowObj[header] = row[index];
+        return rowObj;
+      }, {} as TableDataRow);
+    });
+  } else if (Array.isArray(tableData) && typeof tableData[0] === "string") {
+    // tableData is a string[]
+    processedTableData = (tableData as string[]).map((rowStr) => {
+      const rowValues: string[] = rowStr.split(",");
+      return processedHeaders.reduce((rowObj, header, index) => {
+        rowObj[header] = rowValues[index];
+        return rowObj;
+      }, {} as TableDataRow);
+    });
+  } else {
+    // tableData is neither string[][] nor string[]
+    processedTableData = tableData as TableDataRow[];
+  }
+  return { processedTableData, processedHeaders };
+}
+
+/**
+ * Packs table data and selected fields into a `TableContent` object.
+ *
+ * @param tableData - The table data.
+ * @param selectedFields - The fields to include as headers.
+ * @returns A `TableContent` object or null if invalid data.
+ */
+function tableContent_pack(
+  tableData: TableDataRow[],
+  selectedFields: string[]
+): TableContent | null {
+  let headers: string[];
+  let body: unknown[][];
+
+  if (Array.isArray(tableData) && tableData.length > 0) {
+    headers = selectedFields;
+    body = tableData.map((row) =>
+      headers.map((field) => (row[field] !== undefined ? row[field] : ""))
+    );
+  } else {
+    console.error("Invalid table data");
+    return null;
+  }
+
+  return { headers, body };
+}
+
+/**
+ * Draws a border around the given text.
+ *
+ * @param text - The text to wrap with a border.
+ * @param borders - Optional configuration for which borders to draw.
+ * @returns The text surrounded by a border.
+ */
+export function border_draw(text: string, borders: Borders = {}): string {
+  const defaultBorders: Required<Borders> = {
+    left: true,
+    top: true,
+    right: true,
+    bottom: true,
+  };
+  const actualBorders: Required<Borders> = { ...defaultBorders, ...borders };
+
+  const lines: string[] = text.split("\n");
+  const data: string[][] = lines.map((line) => [line]);
+  const config: TableUserConfig = {
+    border: getBorderCharacters("norc"),
+    columnDefault: {
+      paddingLeft: 1,
+      paddingRight: 1,
+    },
+    drawHorizontalLine: (index: number, size: number): boolean =>
+      (actualBorders.top && index === 0) ||
+      (actualBorders.bottom && index === size),
+    drawVerticalLine: (index: number, size: number): boolean =>
+      (actualBorders.left && index === 0) ||
+      (actualBorders.right && index === 1),
+  };
+  return table(data, config).trim();
+}
+
+/**
+ * Applies default settings to the first column of a table.
+ *
+ * @param columns - An array of ColumnOptions.
+ * @returns The updated array of ColumnOptions.
+ */
+function firstColumnSettings_apply(columns: ColumnOptions[]): ColumnOptions[] {
+  if (columns.length > 1) {
+    return [
+      { ...columns[0], justification: "right", color: "white" },
+      ...columns.slice(1),
+    ];
+  }
+  return columns;
+}
+
+/**
+ * Displays a formatted table in the console.
+ *
+ * @param tableData - The data for the table.
+ * @param headers - The headers for the table.
+ * @param options - Optional table display options.
+ * @returns The `TableContent` object or null on error.
+ */
+export function table_display(
+  tableData: TableDataRow[] | string[][] | string[],
+  headers: string[] | string,
+  options: TableOptions = {}
+): TableContent | null {
+  const { processedTableData, processedHeaders } = tableInput_process(
+    tableData,
+    headers
+  );
+
+  const tableObj: TableContent | null = tableContent_pack(
+    processedTableData,
+    processedHeaders
+  );
+
+  if (!tableObj) {
+    return null;
+  }
+
+  const columns: ColumnOptions[] = tableObj.headers.map((_, index) => {
+    const existingCol: ColumnOptions = options.columns?.[index] || {};
+    return {
+      justification: "left" as const,
+      ...existingCol,
+    };
+  });
+  const updatedColumns: ColumnOptions[] = firstColumnSettings_apply(columns);
+
+  const tableOptions: TableOptions = {
+    ...options,
+    head: processedHeaders,
+    columns: updatedColumns,
+    typeColors: {
+      string: "green",
+      number: "yellow",
+      boolean: "cyan",
+      object: "magenta",
+    },
+  };
+
+  const result: string = screen.table_output(processedTableData, tableOptions);
+  console.log(result);
+
+  if (options.pagination && options.pagination.shown < options.pagination.total) {
+    const { shown, total } = options.pagination;
+    console.log(
+      chalk.dim(`  ↓ showing ${shown} of ${total}  ·  --all to fetch all  ·  --limit <n> for page size`)
+    );
+  }
+
+  return tableObj;
+}
+
+/**
+ * Provides screen utilities for logging and table output.
+ */
+export class Screen {
+  log(...args: unknown[]): void {
+    console.log(...args);
+  }
+
+  error(...args: unknown[]): void {
+    console.error(chalk.red(...args));
+  }
+
+  warn(...args: unknown[]): void {
+    console.warn(chalk.yellow(...args));
+  }
+
+  info(...args: unknown[]): void {
+    console.info(chalk.blue(...args));
+  }
+
+  /**
+   * Generates a formatted table output string.
+   *
+   * @param data - The data to display in the table.
+   * @param options - Options for table formatting, including headers, columns, and title.
+   * @returns A string representation of the formatted table.
+   */
+  public table_output(data: TableDataRow[] | Object, options: TableOptions = {}): string {
+    try {
+      const { tableData, headers } = this.data_prepare(data, options);
+      const safeColumns: ColumnOptions[] = this.safeColumns_prepare(tableData, headers, options);
+      const colWidths: number[] = this.columnWidths_calculate(
+        tableData,
+        headers,
+        safeColumns
+      );
+      const styledData: string[][] = this.data_applyStyle(
+        tableData,
+        headers,
+        safeColumns,
+        colWidths,
+        options
+      );
+
+      // First pass: Generate table without title to get width
+      const config: TableUserConfig = this.tableConfig_prepare(false, options);
+      const tempOutput: string = table(styledData, config);
+      const tableWidth: number = tempOutput.split("\n")[0].length;
+
+      // Prepare title if needed
+      let titleString: string = "";
+      if (options.title) {
+        titleString = this.title_prepare(options.title, tableWidth);
+      }
+
+      // Second pass: Generate full table with correct title
+      const fullConfig: TableUserConfig = this.tableConfig_prepare(!!options.title, options);
+      const output: string = table(styledData, fullConfig);
+
+      // Combine title (if any) and table
+      return titleString
+        ? border_draw(titleString, { bottom: false }) + "\n" + output
+        : output;
+    } catch (error: unknown) {
+      console.error("Error in table_output method:", error);
+      return "Error generating table";
+    }
+  }
+
+  /**
+   * Prepares raw data for table display.
+   *
+   * @param data - The input data, which can be an array or an object.
+   * @param options - Table options, specifically for `head`.
+   * @returns An object containing `tableData` (2D array) and `headers`.
+   */
+  private data_prepare(
+    data: TableDataRow[] | Object,
+    options: TableOptions
+  ): { tableData: unknown[][]; headers: string[] } {
+    if (Array.isArray(data)) {
+      const headers: string[] = options.head || Object.keys(data[0]);
+      const tableData: any[][] = data.map((row) =>
+        headers.map((header) => (row[header] !== undefined ? row[header] : ""))
+      );
+      return { tableData, headers };
+    }
+
+    if (typeof data === "object" && data !== null) {
+      const headers: string[] = options.head || ["Key", "Value"];
+      const tableData: [string, any][] = Object.entries(data);
+      return { tableData, headers };
+    }
+
+    const headers: string[] = options.head || ["Value"];
+    const tableData: never[][] = [[data]];
+    return { tableData, headers };
+  }
+
+  /**
+   * Ensures that the `columns` option has enough entries for all table columns.
+   *
+   * @param tableData - The 2D array of table data.
+   * @param headers - The array of table headers.
+   * @param options - Table options.
+   * @returns An array of `ColumnOptions` with enough entries for all columns.
+   */
+  private safeColumns_prepare(
+    tableData: unknown[][],
+    headers: string[],
+    options: TableOptions
+  ): ColumnOptions[] {
+    const safeColumns: ColumnOptions[] = options.columns || [];
+    const columnCount: number = Math.max(
+      headers.length,
+      ...tableData.map((row) => row.length)
+    );
+    while (safeColumns.length < columnCount) {
+      safeColumns.push({});
+    }
+    return safeColumns;
+  }
+
+  /**
+   * Calculates the width for each column.
+   *
+   * @param tableData - The 2D array of table data.
+   * @param headers - The array of table headers.
+   * @param safeColumns - The array of `ColumnOptions` for each column.
+   * @returns An array of numbers representing the calculated width for each column.
+   */
+  private columnWidths_calculate(
+    tableData: unknown[][],
+    headers: string[],
+    safeColumns: ColumnOptions[]
+  ): number[] {
+    return safeColumns.map(
+      (col: ColumnOptions, index: number): number =>
+        col.width || this.columnWidth_calculate([headers, ...tableData], index)
+    );
+  }
+
+  /**
+   * Calculates the maximum visible width for a specific column.
+   *
+   * @param data - The 2D array of data (including headers).
+   * @param columnIndex - The index of the column to calculate width for.
+   * @returns The maximum visible length in the column.
+   */
+  private columnWidth_calculate(data: unknown[][], columnIndex: number): number {
+    const columnData: unknown[] = data.map((row: unknown[]): unknown => row[columnIndex]);
+    const maxWidth: number = Math.max(
+      ...columnData.map((cell: unknown): number =>
+        this.visibleLength_get(this.string_safeConvert(cell))
+      ),
+      0
+    );
+    return maxWidth; // Add some padding
+  }
+
+  /**
+   * Applies styling (color, justification) to the table data.
+   *
+   * @param tableData - The 2D array of raw table data.
+   * @param headers - The array of table headers.
+   * @param safeColumns - The array of `ColumnOptions`.
+   * @param colWidths - The calculated widths for each column.
+   * @param options - Table options for type colors.
+   * @returns A 2D array of styled strings.
+   */
+  private data_applyStyle(
+    tableData: unknown[][],
+    headers: string[],
+    safeColumns: ColumnOptions[],
+    colWidths: number[],
+    options: TableOptions
+  ): string[][] {
+    const styledData: string[][] = tableData.map((row: unknown[]): string[] =>
+      row.map((cell: unknown, index: number): string =>
+        this.cell_style(cell, index, safeColumns, colWidths, options)
+      )
+    );
+
+    const styledHeaders: string[] = headers.map(
+      (header: string, index: number): string =>
+        this.header_style(header, index, safeColumns, colWidths)
+    );
+
+    return [styledHeaders, ...styledData];
+  }
+
+  /**
+   * Styles an individual table cell based on its content type and column options.
+   *
+   * @param cell - The cell content.
+   * @param index - The column index of the cell.
+   * @param safeColumns - The array of `ColumnOptions`.
+   * @param colWidths - The calculated width for the column.
+   * @param options - Table options for type colors.
+   * @returns The styled and justified cell string.
+   */
+  private cell_style(
+    cell: unknown,
+    index: number,
+    safeColumns: ColumnOptions[],
+    colWidths: number[],
+    options: TableOptions
+  ): string {
+    const columnOptions: ColumnOptions = safeColumns[index] || {};
+    const justification: Justification = columnOptions.justification || "left";
+    const width: number = colWidths[index]; // This is the target width for the column
+
+    // Use explicit width from column options if available for truncation limit, 
+    // otherwise use the calculated width (which fits the content anyway).
+    // Actually, colWidths[index] comes from columnWidths_calculate which respects columnOptions.width.
+    // So 'width' IS the limit if specified.
+
+    let cellString: string = this.string_safeConvert(cell);
+    const rawLength: number = this.visibleLength_get(cellString);
+
+    // Truncate if necessary (only if explicit width was likely set or calculated width is restrictive)
+    // Note: If width comes from content, rawLength <= width. 
+    // If width comes from columnOptions.width, it might be < rawLength.
+    if (columnOptions.width && rawLength > width) {
+        const truncateLen: number = Math.max(0, width - 3);
+        cellString = cellString.slice(0, truncateLen) + "...";
+    }
+
+    let color: string | undefined = columnOptions.color;
+
+    if (!color && options.typeColors) {
+      color = this.color_determine(cell, options.typeColors);
+    }
+
+    const chalkColors: Record<string, ChalkColorFunction> = chalk as unknown as Record<string, ChalkColorFunction>;
+    const colorFn: ChalkColorFunction | undefined = color ? chalkColors[color] : undefined;
+
+    const coloredCell: string = cellString.includes("\u001b")
+      ? cellString
+      : colorFn
+      ? colorFn(cellString)
+      : cellString;
+
+    return this.text_justify(coloredCell, width, justification);
+  }
+
+  /**
+   * Styles a table header cell.
+   *
+   * @param header - The header string.
+   * @param index - The column index of the header.
+   * @param safeColumns - The array of `ColumnOptions`.
+   * @param colWidths - The calculated width for the column.
+   * @returns The styled and justified header string.
+   */
+  private header_style(
+    header: string,
+    index: number,
+    safeColumns: ColumnOptions[],
+    colWidths: number[]
+  ): string {
+    const columnOptions: ColumnOptions = safeColumns[index] || {};
+    const color: string = columnOptions.color || "white";
+    const justification: Justification = columnOptions.justification || "left";
+    const width: number = colWidths[index];
+    const chalkColors: Record<string, ChalkColorFunction> = chalk as unknown as Record<string, ChalkColorFunction>;
+    const colorFn: ChalkColorFunction = chalkColors[color] || chalkColors.white;
+    return this.text_justify(colorFn.bold(header), width, justification);
+  }
+
+  /**
+   * Determines the color for a cell based on its type.
+   *
+   * @param cell - The cell content.
+   * @param typeColors - Map of type to color strings.
+   * @returns The color string or undefined if no specific color for the type.
+   */
+  private color_determine(
+    cell: CellValue,
+    typeColors: TableOptions["typeColors"]
+  ): string | undefined {
+    if (typeof cell === "number" && typeColors?.number) {
+      return typeColors.number;
+    }
+    if (typeof cell === "string" && typeColors?.string) {
+      return typeColors.string;
+    }
+    if (typeof cell === "boolean" && typeColors?.boolean) {
+      return typeColors.boolean;
+    }
+    if (typeof cell === "object" && cell !== null && typeColors?.object) {
+      return typeColors.object;
+    }
+    return undefined;
+  }
+
+  /**
+   * Prepares the title string for the table, including justification and truncation.
+   *
+   * @param title - The Title object.
+   * @param width - The total width of the table.
+   * @returns The formatted title string.
+   */
+  private title_prepare(title: Title, width: number): string {
+    let { title: titleText, justification = "left" } = title;
+    const contentWidth: number = width - 4; // Accounting for border characters
+
+    if (titleText.length > contentWidth) {
+      titleText = titleText.slice(0, contentWidth - 3) + "...";
+    }
+
+    switch (justification) {
+      case "right":
+        titleText = titleText.padStart(contentWidth);
+        break;
+      case "center":
+        const padding: number = Math.floor((contentWidth - titleText.length) / 2);
+        titleText =
+          " ".repeat(padding) +
+          titleText +
+          " ".repeat(contentWidth - titleText.length - padding);
+        break;
+      case "left":
+      default:
+        titleText = titleText.padEnd(contentWidth);
+    }
+
+    return titleText;
+  }
+
+  /**
+   * Prepares the `table` library configuration object.
+   *
+   * @param hasTitle - Whether the table has a title (affects border drawing).
+   * @param options - Table options to check for borderless mode.
+   * @returns The `TableUserConfig` object.
+   */
+  private tableConfig_prepare(hasTitle: boolean, options: TableOptions): TableUserConfig {
+    if (options.borderless) {
+      return {
+        border: getBorderCharacters("void"),
+        drawHorizontalLine: () => false,
+      };
+    }
+
+    const borderCharacters = getBorderCharacters("norc");
+    const customBorderCharacters = hasTitle
+      ? {
+          ...borderCharacters,
+          topLeft: "├",
+          topRight: "┤",
+        }
+      : borderCharacters;
+
+    return {
+      border: customBorderCharacters,
+      drawHorizontalLine: (index: number, size: number): boolean =>
+        index === 0 || index === 1 || index === size,
+    };
+  }
+
+  /**
+   * Calculates the visible length of a string, accounting for ANSI escape codes.
+   *
+   * @param str - The string to measure.
+   * @returns The visible length of the string.
+   */
+  private visibleLength_get(str: string): number {
+    return str.replace(/\u001b\[[0-9;]*m/g, "").length;
+  }
+
+  /**
+   * Safely converts any value to a string.
+   *
+   * @param value - The value to convert.
+   * @returns The string representation of the value.
+   */
+  private string_safeConvert(value: unknown): string {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return value.toString();
+    }
+    if (typeof value === "object") {
+      return JSON.stringify(value);
+    }
+    return String(value);
+  }
+
+  /**
+   * Justifies text within a given width.
+   *
+   * @param text - The text to justify.
+   * @param width - The total width for justification.
+   * @param justification - The justification type ('left', 'center', 'right').
+   * @returns The justified text string.
+   */
+  private text_justify(
+    text: string,
+    width: number,
+    justification: Justification
+  ): string {
+    const visibleLength: number = this.visibleLength_get(text);
+    const paddingLength: number = Math.max(0, width - visibleLength);
+
+    switch (justification) {
+      case "right":
+        return " ".repeat(paddingLength) + text;
+      case "center":
+        const leftPad: number = Math.floor(paddingLength / 2);
+        const rightPad: number = paddingLength - leftPad;
+        return " ".repeat(leftPad) + text + " ".repeat(rightPad);
+      case "left":
+      default:
+        return text + " ".repeat(paddingLength);
+    }
+  }
+
+  clear(): void {
+    console.clear();
+  }
+}
+
+/**
+ * Shared Screen singleton for terminal rendering.
+ */
+export const screen: Screen = new Screen();

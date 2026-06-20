@@ -1,0 +1,827 @@
+= File Content Retrieval Architecture
+:toc:
+:toc-placement: preamble
+:toclevels: 4
+:sectnums:
+
+== Overview
+
+This document describes the architecture for retrieving file content from ChRIS, with a focus on handling different file types that require specialized API endpoints. The design implements a **router pattern** that abstracts file type detection and delegates to specialized handlers.
+
+**Version:** 1.2 (Added PACS/DICOM file support)
+**Note:** This document describes architecture and patterns. For implementation details, see linked source files.
+
+=== The Problem
+
+ChRIS exposes different file types through different API resources:
+
+* **Regular files**: Accessed via `FileBrowserFolderFile` → `getFileBlob()`
+* **Pipeline files** (`/PIPELINES/*`): Accessed via `PipelineSourceFile` → `getFileBlob()`
+* **PACS files** (`/SERVICES/PACS/*`): Accessed via `PACSFile` → `getFileBlob()`
+
+Using the wrong API endpoint results in access errors, even though files appear in directory listings (which use the FileBrowser API).
+
+=== The Solution
+
+A **router pattern** that:
+
+1. Inspects the file path to determine file type
+2. Delegates to type-specific handlers
+3. Returns a consistent `Result<string>` interface
+4. Maintains RPN naming convention throughout
+
+**Conceptual Router:**
+[source,typescript]
+----
+function fileContent_get(filePath: string): Promise<Result<string>> {
+  if (filePath.startsWith('/PIPELINES/')) {
+    return fileContent_getPipeline(filePath);
+  }
+  if (filePath.startsWith('/SERVICES/PACS/')) {
+    return fileContent_getPACS(filePath);
+  }
+  return fileContent_getRegular(filePath);
+}
+----
+
+**Implementation:** link:../src/files/index.ts[`src/files/index.ts`] (lines ~562-571)
+
+== Architecture
+
+=== Component Hierarchy
+
+[source]
+----
+┌─────────────────────────────────────────┐
+│  chell (Presentation Layer)             │
+│  - Builtin commands (cat)               │
+│  - REPL, user interaction               │
+└─────────────────────────────────────────┘
+              ↓ imports
+┌─────────────────────────────────────────┐
+│  chili (Controller Layer)               │
+│  - commands/fs/cat.ts                   │
+│  - commands/file/view.ts                │
+│  - controllers/fileController.ts        │
+└─────────────────────────────────────────┘
+              ↓ imports
+┌─────────────────────────────────────────┐
+│  salsa (Business Logic Layer)           │  ← YOU ARE HERE
+│  - files/index.ts                       │
+│    • fileContent_get() [router]         │
+│  - files/pipeline_content.ts            │
+│    • fileContent_getPipeline()          │
+│  - files/pacs_content.ts                │
+│    • fileContent_getPACS()              │
+│  - files/regular_content.ts             │
+│    • fileContent_getRegular()           │
+└─────────────────────────────────────────┘
+              ↓ uses
+┌─────────────────────────────────────────┐
+│  cumin (Infrastructure Layer)           │
+│  - chrisConnection, errorStack          │
+│  - Result<T> pattern                    │
+└─────────────────────────────────────────┘
+              ↓ uses
+┌─────────────────────────────────────────┐
+│  @fnndsc/chrisapi                       │
+│  - Client, FileBrowserFolderFile        │
+│  - PipelineSourceFile, etc.             │
+└─────────────────────────────────────────┘
+----
+
+=== Module Structure
+
+[source]
+----
+salsa/src/files/
+├── index.ts                # Main file operations + router
+├── pipeline_content.ts     # Pipeline-specific handler
+├── pacs_content.ts         # PACS/DICOM file handler
+└── regular_content.ts      # Regular file handler
+----
+
+==== Purpose of Each Module
+
+[cols="1,3"]
+|===
+| Module | Responsibility
+
+| link:../src/files/index.ts[`index.ts`]
+| Exports router (`fileContent_get`), general file operations (`files_list`, `files_mkdir`, etc.)
+
+| link:../src/files/pipeline_content.ts[`pipeline_content.ts`]
+| Knows how to query `PipelineSourceFileList` and extract blobs from `PipelineSourceFile`
+
+| link:../src/files/pacs_content.ts[`pacs_content.ts`]
+| Knows how to fetch PACS files via `client.getPACSFile(id)` and extract blobs from `PACSFile`
+
+| link:../src/files/regular_content.ts[`regular_content.ts`]
+| Knows how to query `FileBrowserFolder` and download via `chrisIO.file_download()`
+|===
+
+== Detailed Function Flow
+
+=== Router: `fileContent_get()`
+
+**Location:** link:../src/files/index.ts[`src/files/index.ts`]
+
+**Signature:**
+[source,typescript]
+----
+function fileContent_get(filePath: string): Promise<Result<string>>
+----
+
+**Algorithm:**
+
+1. Check if path starts with `/PIPELINES/` → delegate to `fileContent_getPipeline()`
+2. Check if path starts with `/SERVICES/PACS/` → delegate to `fileContent_getPACS()`
+3. Otherwise → delegate to `fileContent_getRegular()`
+4. Return `Result<string>` from delegated handler
+
+**Design Decision:** Path-based routing is simple and explicit. Alternative approaches (file metadata lookup) would add unnecessary API calls.
+
+---
+
+=== Pipeline Handler: `fileContent_getPipeline()`
+
+**Location:** link:../src/files/pipeline_content.ts[`src/files/pipeline_content.ts`]
+
+**Signature:**
+[source,typescript]
+----
+function fileContent_getPipeline(filePath: string): Promise<Result<string>>
+----
+
+==== API Discovery Process
+
+During implementation, we discovered critical API behavior:
+
+[source,typescript]
+----
+// ❌ WRONG: This returns 0 results
+await client.getPipelineSourceFiles({ fname: 'file.yml' })
+
+// ✅ CORRECT: Query all, filter client-side
+const allFiles = await client.getPipelineSourceFiles();
+const matches = allFiles.getItems().filter(item =>
+  item.data.fname === 'PIPELINES/user/file.yml'  // No leading slash!
+);
+----
+
+**Key Insights:**
+
+* **Filename queries don't work**: The `fname` parameter returns no results
+* **Path format**: API stores full paths as `"PIPELINES/user/file.yml"` (no leading `/`)
+* **Owner field quirk**: Contains uploader username (`chris`), not directory path username
+* **Client-side filtering required**: Must fetch all items and filter by exact path match
+
+==== Implementation Algorithm
+
+1. **Normalize path**: Remove leading `/` to match API format
+2. **Query all pipeline files**: `client.getPipelineSourceFiles()` (no parameters)
+3. **Filter by exact match**: Compare `item.data.fname === normalizedPath`
+4. **Extract blob**: `pipelineFile.getFileBlob()`
+5. **Convert blob**: Handle string, ArrayBuffer, or Blob types → UTF-8 string
+6. **Return result**: `Ok(content)` or `Err()` with errorStack
+
+**Full implementation:** link:../src/files/pipeline_content.ts[`pipeline_content.ts` lines 16-79]
+
+**Critical code for blob conversion:** See source for handling multiple blob types (string, ArrayBuffer, Blob).
+
+==== Implementation Details
+
+[cols="1,3"]
+|===
+| Aspect | Detail
+
+| **Path normalization**
+| Remove leading `/` because API stores `"PIPELINES/user/file.yml"`
+
+| **Query strategy**
+| Fetch all items, filter client-side (API fname parameter doesn't work)
+
+| **Matching logic**
+| Direct string comparison on full path
+
+| **Blob handling**
+| Support string, ArrayBuffer, and Blob types (see source for conversion logic)
+
+| **Error handling**
+| Push detailed errors to `errorStack`, return `Err()`
+|===
+
+---
+
+=== Regular File Handler: `fileContent_getRegular()`
+
+**Location:** link:../src/files/regular_content.ts[`src/files/regular_content.ts`]
+
+**Signature:**
+[source,typescript]
+----
+function fileContent_getRegular(filePath: string): Promise<Result<string>>
+----
+
+**Algorithm:**
+
+1. **Split path**: Extract directory and filename using `path.posix.dirname/basename`
+2. **Get directory context**: Query `files_getGroup('files', dir)`
+3. **List directory files**: Call `resources_getAll()` on group
+4. **Find file by name**: Match basename in results (handle `? filename` prefix)
+5. **Resolve file ID**: Extract numeric ID from matched file
+6. **Download content**: Use `chrisIO.file_download(fileId)` → Buffer
+7. **Convert to string**: `buffer.toString('utf-8')`
+8. **Return result**: `Ok(content)` or `Err()`
+
+**Full implementation:** link:../src/files/regular_content.ts[`regular_content.ts` lines 36-74]
+
+**Helper function:** `files_view(fileId)` - see source for Buffer→Result conversion
+
+==== Implementation Details
+
+[cols="1,3"]
+|===
+| Aspect | Detail
+
+| **Directory navigation**
+| Split path into directory + filename components
+
+| **File lookup**
+| Query directory, find file by basename match
+
+| **Download method**
+| Use `chrisIO.file_download(fileId)` infrastructure method
+
+| **File ID resolution**
+| Critical step: Must resolve filename → ID before download
+
+| **Basename quirk**
+| Handle `? filename` prefix (ChRIS metadata indicator)
+|===
+
+---
+
+=== PACS Handler: `fileContent_getPACS()`
+
+**Location:** link:../src/files/pacs_content.ts[`src/files/pacs_content.ts`]
+
+**Signature:**
+[source,typescript]
+----
+function fileContent_getPACS(filePath: string): Promise<Result<string>>
+----
+
+==== API Discovery Process
+
+PACS files are stored in `/SERVICES/PACS/` directories and have unique API requirements:
+
+**Key Insights:**
+
+* **Directory listing works**: PACS files appear in `FileBrowserFolder` directory listings
+* **Regular download fails**: Calling `chrisIO.file_download(fileId)` returns 404/403
+* **PACSFile API required**: Must use `client.getPACSFile(id)` to get PACSFile resource
+* **Specialized endpoint**: Uses `pacsFile.getFileBlob()` for content retrieval
+
+==== Implementation Algorithm
+
+1. **Get client**: Verify ChRIS connection
+2. **Split path**: Extract directory and filename
+3. **Get directory listing**: Query `files_getGroup('files', dir)` to find file ID
+4. **Find file by name**: Match basename in results
+5. **Resolve file ID**: Extract numeric ID from matched file
+6. **Get PACSFile resource**: Call `client.getPACSFile(fileId)`
+7. **Extract blob**: `pacsFile.getFileBlob()`
+8. **Convert blob**: Handle Buffer, string, ArrayBuffer, or Blob types → UTF-8 string
+9. **Return result**: `Ok(content)` or `Err()` with errorStack
+
+**Full implementation:** link:../src/files/pacs_content.ts[`pacs_content.ts` lines 26-92]
+
+==== Implementation Details
+
+[cols="1,3"]
+|===
+| Aspect | Detail
+
+| **Path structure**
+| `/SERVICES/PACS/PACSDCM/<patient>/<study>/<series>/<file>.dcm`
+
+| **Directory navigation**
+| Uses standard `FileBrowserFolder` API for listing
+
+| **Critical difference**
+| Cannot use `chrisIO.file_download()` - must use `client.getPACSFile(id)`
+
+| **PACSFile retrieval**
+| Two-step: (1) Find ID in directory listing, (2) Get PACSFile resource by ID
+
+| **Blob handling**
+| Returns Node.js Buffer (not browser Blob) - supports multiple blob types
+
+| **File format**
+| Typically DICOM medical imaging files (.dcm)
+|===
+
+**Example path:**
+```
+/SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/PET_CH_DIAG_PETCT_TORSO_Over_55KG_Adult_-AccessionNumber-20130829/00005-AC_CT_DIAG_DIAG-98d76c0/0168-1.3.12.2.1107.5.1.4.11071.30000013082915055700000002032.dcm
+```
+
+== Adding New File Type Handlers
+
+This section provides a pattern for adding support for future file types beyond the currently implemented handlers (regular, pipeline, PACS).
+
+=== Reference Implementations
+
+**Study existing handlers** as references:
+
+* **Pipeline handler:** link:../src/files/pipeline_content.ts[`pipeline_content.ts`] - Query all, filter client-side
+* **PACS handler:** link:../src/files/pacs_content.ts[`pacs_content.ts`] - Directory listing + specialized API
+* **Regular handler:** link:../src/files/regular_content.ts[`regular_content.ts`] - Standard file download
+
+The pattern is consistent across all handlers:
+1. Query API for file resources
+2. Filter/match to find specific file
+3. Extract blob
+4. Convert to string
+5. Return `Result<string>`
+
+=== Step 1: Create Handler Module
+
+Create `salsa/src/files/<type>_content.ts` following this **conceptual template**:
+
+[source,typescript]
+----
+import { chrisConnection, errorStack, Result, Ok, Err } from "@fnndsc/cumin";
+import Client, { /* Import relevant API types */ } from "@fnndsc/chrisapi";
+
+/**
+ * Fetches the content of a <TYPE> file.
+ *
+ * @param filePath - The full path to the file, e.g., /<PREFIX>/<path>/<file>
+ * @returns A Result containing the file content as a string, or an error.
+ */
+export async function fileContent_get<Type>(filePath: string): Promise<Result<string>> {
+  // 1. Get client
+  const client = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push("error", "Not connected to ChRIS.");
+    return Err();
+  }
+
+  // 2. Normalize path (investigate API path format first!)
+  const normalizedPath = /* TODO: Determine normalization */;
+
+  try {
+    // 3. Query files (investigate API method)
+    // Study the ChRIS API to find the appropriate method
+    // const fileList = await client.get<Type>Files(/* params? */);
+
+    // 4. Filter to find matching file
+    // const matches = fileList.getItems().filter(/* match logic */);
+
+    // 5. Extract blob
+    // const blob = await file.getFileBlob();
+
+    // 6. Convert blob to string (copy pattern from existing handlers)
+    // Handle Buffer, string, ArrayBuffer, or Blob types
+    // return Ok(content);
+
+    return Err(); // Placeholder until implementation
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Failed to fetch file: ${msg}`);
+    return Err();
+  }
+}
+----
+
+**Note:** This is a conceptual template. Actual implementation depends on ChRIS API structure. See existing handlers (pipeline, PACS) for blob conversion patterns.
+
+=== Step 2: Update Router
+
+Edit link:../src/files/index.ts[`src/files/index.ts`]:
+
+[source,typescript]
+----
+import { fileContent_get<Type> } from './<type>_content';  // Add import
+
+export async function fileContent_get(filePath: string): Promise<Result<string>> {
+  if (filePath.startsWith('/PIPELINES/')) {
+    return fileContent_getPipeline(filePath);
+  }
+  if (filePath.startsWith('/SERVICES/PACS/')) {
+    return fileContent_getPACS(filePath);
+  }
+  if (filePath.startsWith('/<YOUR_PREFIX>/')) {    // Add your route
+    return fileContent_get<Type>(filePath);
+  }
+  return fileContent_getRegular(filePath);
+}
+
+// Add to exports
+export { fileContent_get<Type> } from './<type>_content';
+----
+
+=== Step 3: Investigation Checklist
+
+Before implementing, investigate the ChRIS API:
+
+[.checklist]
+* [ ] How are PACS files listed in directories?
+* [ ] What API resource provides PACS file access? (`PACSFileList`?)
+* [ ] How are paths structured in the API response?
+* [ ] Does the API support query parameters? (learn from pipeline failure)
+* [ ] What is the actual field name for paths/identifiers?
+* [ ] Is owner/uploader information relevant?
+* [ ] What blob types are returned? (string, ArrayBuffer, Blob?)
+* [ ] Does path need normalization? (leading slash handling)
+
+=== Step 4: Debug Pattern
+
+Use temporary debug logging during development:
+
+[source,typescript]
+----
+const allItems = await client.getPACSFiles();
+console.error(`[DEBUG] Query returned ${allItems.length} items`);
+
+allItems.slice(0, 5).forEach((item, idx) => {
+  console.error(`[DEBUG] Item ${idx}:`, JSON.stringify(item.data, null, 2));
+});
+----
+
+**Important:** Remove debug statements before committing.
+
+=== Step 5: Testing Strategy
+
+1. **Manual testing:**
+   ```bash
+   chell -c 'ls /PACS/study123/'           # Verify listing works
+   chell -c 'cat /PACS/study123/file.dcm'  # Test content retrieval
+   ```
+
+2. **Error cases:**
+   * Non-existent file
+   * Malformed path
+   * Network errors
+   * Empty blob
+
+3. **Unit tests:**
+   * Add to link:../test/files.test.ts[`test/files.test.ts`]
+   * Mock `chrisConnection.client_get()`
+   * Test path normalization
+   * Test error handling
+
+== API Contracts
+
+=== Public Functions
+
+==== `fileContent_get(filePath: string)`
+
+**Purpose:** Router function - determines file type and delegates to handler
+
+**Parameters:**
+[cols="1,2,3"]
+|===
+| Name | Type | Description
+
+| `filePath`
+| `string`
+| Full ChRIS path to file (e.g., `/home/user/file.txt`, `/PIPELINES/user/spec.yml`)
+|===
+
+**Returns:** `Promise<Result<string>>`
+
+* `Ok(content)` - File content as UTF-8 string
+* `Err()` - Error pushed to `errorStack`
+
+**Implementation:** link:../src/files/index.ts[`src/files/index.ts`]
+
+**Example:**
+[source,typescript]
+----
+const result = await fileContent_get('/PIPELINES/user/demo.yml');
+if (result.ok) {
+  console.log(result.value);
+} else {
+  const error = errorStack.stack_pop();
+  console.error(error?.message);
+}
+----
+
+---
+
+==== `fileContent_getPipeline(filePath: string)`
+
+**Purpose:** Retrieve pipeline source files from `/PIPELINES/*` paths
+
+**Parameters:**
+[cols="1,2,3"]
+|===
+| Name | Type | Description
+
+| `filePath`
+| `string`
+| Full path to pipeline file (e.g., `/PIPELINES/sandip.samal/PHI_detection.yml`)
+|===
+
+**Returns:** `Promise<Result<string>>`
+
+**Path Structure:** `/PIPELINES/<owner_username>/<filename>.yml`
+
+**Implementation:** link:../src/files/pipeline_content.ts[`src/files/pipeline_content.ts`]
+
+**API Details:**
+
+* Queries `client.getPipelineSourceFiles()` (no parameters)
+* Matches on `fname` field (full path without leading `/`)
+* Calls `pipelineSourceFile.getFileBlob()`
+
+**Error Cases:**
+
+* Not connected to ChRIS
+* Pipeline file list query fails
+* No matching file found
+* Blob is null/empty
+* Unexpected blob type
+
+---
+
+==== `fileContent_getRegular(filePath: string)`
+
+**Purpose:** Retrieve regular ChRIS files from standard paths
+
+**Parameters:**
+[cols="1,2,3"]
+|===
+| Name | Type | Description
+
+| `filePath`
+| `string`
+| Full path to regular file (e.g., `/home/user/data.txt`)
+|===
+
+**Returns:** `Promise<Result<string>>`
+
+**Implementation:** link:../src/files/regular_content.ts[`src/files/regular_content.ts`]
+
+**Process:**
+
+1. Split path into directory + filename
+2. Query `files_getGroup('files', dir)`
+3. Find file by basename in `resources_getAll()`
+4. Extract file ID
+5. Download via `chrisIO.file_download(id)`
+
+**Error Cases:**
+
+* Directory not accessible
+* No files in directory
+* File not found by name
+* File has no ID
+* Download fails
+
+== Design Decisions
+
+=== Why Split Into Multiple Modules?
+
+[cols="1,3"]
+|===
+| Decision | Rationale
+
+| **Separate files**
+| Keeps pipeline logic isolated, easier to add PACS/other handlers
+
+| **Named exports**
+| Clear intent, supports tree-shaking
+
+| **No class hierarchy**
+| Functional approach simpler for stateless operations
+|===
+
+=== Why Path-Based Routing?
+
+**Alternatives considered:**
+
+1. **File metadata lookup:**
+   * Query file, check type field
+   * **Rejected:** Requires extra API call before every content fetch
+
+2. **MIME type detection:**
+   * Check file extension
+   * **Rejected:** Extensions unreliable (`.yml` could be pipeline or regular)
+
+3. **Path prefix:**
+   * Simple, fast, explicit
+   * **Chosen:** Matches user's mental model of VFS directories
+
+=== Why Query All Pipeline Files?
+
+**API limitation:** The `fname` parameter in `client.getPipelineSourceFiles({ fname: "file.yml" })` returns 0 results.
+
+**Attempted solutions:**
+
+1. Query with `fname` parameter → No results
+2. Query with `owner_username` parameter → No results
+3. Query all, filter client-side → **Works**
+
+**Trade-off:** Small overhead (10-100 items) vs. code complexity. Acceptable for MVP.
+
+**Future optimization:** If pipeline file counts grow, consider:
+
+* Server-side API improvement
+* Client-side caching (already exists via `ListCache`)
+* Pagination if needed
+
+=== Why Result<T> Pattern?
+
+**Consistency:** All salsa functions use `Result<T>` for type-safe error handling.
+
+[source,typescript]
+----
+// Caller can handle errors safely
+const result = await fileContent_get(path);
+if (!result.ok) {
+  const error = errorStack.stack_pop();
+  // Handle error
+}
+// TypeScript knows result.value is string here
+----
+
+**Benefits:**
+
+* No exceptions in happy path
+* Explicit error handling
+* Composable operations
+* Stack traces via `errorStack`
+
+== Error Handling
+
+=== Error Flow Pattern
+
+[source]
+----
+1. Handler detects error
+2. Push to errorStack: errorStack.stack_push("error", message)
+3. Return Err()
+4. Caller checks !result.ok
+5. Caller pops: const error = errorStack.stack_pop()
+6. Caller displays: console.error(error?.message)
+----
+
+=== Error Message Guidelines
+
+**DO:**
+
+* Be specific: `"Pipeline file not found: /PIPELINES/user/file.yml"`
+* Include context: `"Failed to retrieve pipeline file list."`
+* Include function name in stack: `[fileContent_getPipeline]`
+
+**DON'T:**
+
+* Generic messages: `"Error occurred"`
+* Technical jargon: `"Null pointer in resource fetch"`
+* Expose internal details: `"SQL error: table not found"`
+
+=== Common Errors
+
+[cols="1,2,2"]
+|===
+| Error | Cause | Solution
+
+| `"Not connected to ChRIS"`
+| `client_get()` returns null
+| Prompt user to connect
+
+| `"Pipeline file not found"`
+| Path typo or file doesn't exist
+| Verify path with `ls /PIPELINES/user/`
+
+| `"No files found in directory"`
+| Directory empty or inaccessible
+| Check permissions, verify directory exists
+
+| `"File returned no content"`
+| API returned null blob
+| File may be corrupt or zero-length
+|===
+
+== Performance Considerations
+
+=== Caching Strategy
+
+**Current:** File content is NOT cached by design.
+
+**Rationale:**
+
+* Files can be large (MBs)
+* Content may change
+* Single fetch per user action is acceptable
+
+**Future:** If performance becomes an issue:
+
+* Cache small files (< 1MB) in `ListCache`
+* Add TTL expiration
+* Invalidate on file modifications
+
+=== Query Optimization
+
+[cols="2,3"]
+|===
+| Operation | Optimization
+
+| **Pipeline file query**
+| All files fetched, but result is small (10-100 items). Consider pagination if count grows > 1000.
+
+| **Regular file lookup**
+| Uses existing `files_getGroup` which may already be cached by `ListCache`.
+
+| **Blob conversion**
+| Buffer allocation is unavoidable. String conversion is optimized by Node.js runtime.
+|===
+
+== Testing
+
+=== Unit Test Structure
+
+**File:** link:../test/files.test.ts[`test/files.test.ts`]
+
+**Pattern:**
+[source,typescript]
+----
+describe('fileContent_get', () => {
+  it('should route pipeline paths to pipeline handler', async () => {
+    // Mock fileContent_getPipeline
+    const result = await fileContent_get('/PIPELINES/user/file.yml');
+    // Assert pipeline handler was called
+  });
+
+  it('should route regular paths to regular handler', async () => {
+    const result = await fileContent_get('/home/user/file.txt');
+    // Assert regular handler was called
+  });
+});
+----
+
+See test file for complete examples.
+
+=== Integration Testing
+
+**Manual verification:**
+
+[source,bash]
+----
+# Test regular file
+chell -c 'cat /home/rudolphpienaar/whoami.txt'
+# Expected: File content displayed
+
+# Test pipeline file
+chell -c 'cat /PIPELINES/sandip.samal/PHI_detection.yml'
+# Expected: YAML content displayed
+
+# Test PACS file
+chell -c 'cat /SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/.../file.dcm'
+# Expected: DICOM binary content displayed
+
+# Test error case
+chell -c 'cat /PIPELINES/user/nonexistent.yml'
+# Expected: Error message
+----
+
+== Implementation Reference
+
+For current implementation details, see:
+
+* **Router:** link:../src/files/index.ts[`src/files/index.ts`] (~562-571)
+* **Pipeline handler:** link:../src/files/pipeline_content.ts[`src/files/pipeline_content.ts`] (16-79)
+* **PACS handler:** link:../src/files/pacs_content.ts[`src/files/pacs_content.ts`] (26-92)
+* **Regular handler:** link:../src/files/regular_content.ts[`src/files/regular_content.ts`] (36-74)
+* **Tests:** link:../test/files.test.ts[`test/files.test.ts`]
+
+== Related Documentation
+
+* **RPN Naming Convention:** link:../TYPESCRIPT-STYLE-GUIDE.md[`TYPESCRIPT-STYLE-GUIDE.md`]
+* **Error Handling:** `cumin/docs/error_handling.adoc`
+* **Result<T> Pattern:** `cumin/docs/error_handling.adoc`
+* **VFS Architecture:** `chell/docs/vfs.adoc`
+* **ChRIS API Reference:** https://fnndsc.github.io/fnndsc/chrisdoc/
+
+== Change Log
+
+[cols="1,2,4"]
+|===
+| Version | Date | Changes
+
+| 1.2.0
+| 2025-12-09
+| Added PACS/DICOM file content retrieval support. Updated documentation with PACS handler implementation details, API discovery process, and integration examples.
+
+| 1.1.0
+| 2025-12-09
+| Refactored to use links and pseudocode instead of literal code blocks to prevent documentation drift
+
+| 1.0.0
+| 2025-12-09
+| Initial documentation for pipeline file retrieval implementation
+|===

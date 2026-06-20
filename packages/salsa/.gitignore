@@ -1,0 +1,7 @@
+node_modules
+dist
+types
+npm-debug.log
+.DS_Store
+coverage
+.chell_history

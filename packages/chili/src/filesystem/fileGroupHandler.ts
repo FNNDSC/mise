@@ -20,7 +20,7 @@ import { fileFields_fetch } from "../commands/files/fields.js";
 import { files_searchByTerm, files_deleteById } from "../commands/files/delete.js";
 import { prompt_confirm } from "../utils/ui.js";
 import { files_viewContent } from "../commands/file/view.js";
-import { fileList_render } from "../views/file.js";
+import { fileList_render, FileResource } from "../views/file.js";
 
 /**
  * Handles commands related to groups of ChRIS files, links, or directories.
@@ -55,13 +55,13 @@ export class FileGroupHandler {
     path?: string
   ): Promise<FileGroupHandler> {
     try {
-      const controller = await FileController.handler_create(assetName, path);
+      const controller: FileController | null = await FileController.handler_create(assetName, path);
       if (controller === null) {
         throw new Error(`Failed to create FileController for asset type: ${assetName}`);
       }
       return new FileGroupHandler(controller, assetName);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage: string = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to initialize FileGroupHandler for ${assetName}: ${errorMessage}`);
     }
   }
@@ -73,11 +73,11 @@ export class FileGroupHandler {
   private columns_removeDuplicates(
     results: FilteredResourceData
   ): FilteredResourceData {
-    const uniqueHeaders = Array.from(
+    const uniqueHeaders: string[] = Array.from(
       new Set(results.selectedFields)
     ) as string[];
 
-    const uniqueTableData = results.tableData.map((row) =>
+    const uniqueTableData: SimpleRecord[] = results.tableData.map((row) =>
       uniqueHeaders.reduce<SimpleRecord>((acc, header) => {
         if (typeof header === "string" && header in row) {
           acc[header] = (row as SimpleRecord)[header];
@@ -98,7 +98,7 @@ export class FileGroupHandler {
    */
   async files_list(options: CLIoptions, path?: string): Promise<void> {
     try {
-      const results = await files_fetchList(options, this.assetName, path);
+      const results: FilteredResourceData | null = await files_fetchList(options, this.assetName, path);
 
       if (!results) {
         console.error(
@@ -110,18 +110,20 @@ export class FileGroupHandler {
       if (results.tableData.length === 0) {
         console.log(`No ${this.assetName} found matching the criteria.`);
                       } else {
-                          const uniqueResults = this.columns_removeDuplicates(results);
+                          const uniqueResults: FilteredResourceData = this.columns_removeDuplicates(results);
+                          // cumin returns dynamic table rows (Record<string, unknown>[]);
+                          // narrow to the FileResource view model at this boundary.
                           console.log(fileList_render(
-                              uniqueResults.tableData,
+                              uniqueResults.tableData as FileResource[],
                               uniqueResults.selectedFields,
                               { table: options.table, csv: options.csv }
                           ));
                       }    } catch (error: unknown) {
-      const errors = errorStack.stack_search(this.assetName);
+      const errors: string[] = errorStack.stack_search(this.assetName);
       if (errors.length > 0) {
         console.log(errors[0]);
       } else {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg: string = error instanceof Error ? error.message : String(error);
         console.error(`Error: ${msg}`);
 
         interface AxiosLikeError {
@@ -130,7 +132,7 @@ export class FileGroupHandler {
             [key: string]: unknown;
           };
         }
-        const errObj = error as AxiosLikeError;
+        const errObj: AxiosLikeError = error as AxiosLikeError;
         if (msg.includes("Internal server error") || (errObj && errObj.response && errObj.response.status === 500)) {
             console.error(chalk.yellow("\nHint: This indicates a problem on the ChRIS server (CUBE)."));
             console.error(chalk.yellow("      Please contact your system administrator or check the CUBE logs."));
@@ -146,7 +148,7 @@ export class FileGroupHandler {
    */
   async files_fields(): Promise<void> {
     try {
-      const fields = await fileFields_fetch(this.assetName);
+      const fields: string[] | null = await fileFields_fetch(this.assetName);
       if (fields && fields.length > 0) {
         table_display(fields, ["fields"]);
       } else {
@@ -161,16 +163,16 @@ export class FileGroupHandler {
    * Deletes files using the new command logic.
    */
   async files_delete(searchable: string, options: CLIoptions): Promise<void> {
-    const searchParts = searchable.split("++").map((part) => part.trim());
+    const searchParts: string[] = searchable.split("++").map((part) => part.trim());
     for (const searchPart of searchParts) {
-      const items = await files_searchByTerm(searchPart, this.assetName);
+      const items: Record<string, unknown>[] = await files_searchByTerm(searchPart, this.assetName);
       if (items.length === 0) {
         console.log(`No ${this.assetName} found matching: ${searchPart}`);
         continue;
       }
 
       for (const item of items) {
-        const displayName = item.fname || item.path || item.id;
+        const displayName: unknown = item.fname || item.path || item.id;
         if (!item.id) {
              console.error(`Cannot delete item without ID. Details: ${JSON.stringify(item)}`);
              continue;
@@ -179,11 +181,11 @@ export class FileGroupHandler {
         console.log(`Preparing to delete ${this.assetName}: ID=${item.id}, Name=${displayName}`);
 
         if (!options.force) {
-           const confirmed = await prompt_confirm(`Are you sure you want to delete ${this.assetName} ${displayName} (ID: ${item.id})?`);
+           const confirmed: boolean = await prompt_confirm(`Are you sure you want to delete ${this.assetName} ${displayName} (ID: ${item.id})?`);
            if (!confirmed) continue;
         }
 
-        const success = await files_deleteById(item.id as number, this.assetName);
+        const success: boolean = await files_deleteById(item.id as number, this.assetName);
         if (success) {
             console.log(`Deleted ${this.assetName} ${item.id}`);
         } else {
@@ -222,11 +224,11 @@ export class FileGroupHandler {
    * @param program - The Commander.js program instance.
    */
   fileGroupCommand_setup(program: Command): void {
-    const fileGroupCommand = program
+    const fileGroupCommand: Command = program
       .command(this.assetName)
       .description(`Interact with a group of ChRIS ${this.assetName}`);
 
-    const listCommand = this.baseGroupHandler.baseListCommand_create(
+    const listCommand: Command = this.baseGroupHandler.baseListCommand_create(
       async (options: CLIoptions) => {
         await this.files_list(options);
       }
@@ -298,13 +300,13 @@ export class FileMemberHandler {
    */
   static async handler_create(path: string): Promise<FileMemberHandler> {
     try {
-      const controller = await FileController.member_create(path);
+      const controller: FileController | null = await FileController.member_create(path);
       if (controller === null) {
         throw new Error(`Failed to create FileController for path: ${path}`);
       }
       return new FileMemberHandler(controller);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage: string = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to initialize FileMemberHandler for path ${path}: ${errorMessage}`);
     }
   }
@@ -326,7 +328,7 @@ export class FileMemberHandler {
       // If success is false, files_create would have thrown an error which is caught below.
     } catch (error: unknown) {
       // Log the error from files_create
-      const message = error instanceof Error ? error.message : String(error);
+      const message: string = error instanceof Error ? error.message : String(error);
       console.error(message);
     }
   }
@@ -338,12 +340,12 @@ export class FileMemberHandler {
    * @param program - The Commander.js program instance.
    */
   fileMemberCommand_setup(program: Command): void {
-    const fileCommand = program
+    const fileCommand: Command = program
       .command(this.assetName)
       .description(`Interact with a single ChRIS ${this.assetName}`);
     
-    const existingCommand = program.commands.find(cmd => cmd.name() === this.assetName);
-    const commandToUse = existingCommand || fileCommand;
+    const existingCommand: Command | undefined = program.commands.find(cmd => cmd.name() === this.assetName);
+    const commandToUse: Command = existingCommand || fileCommand;
 
     commandToUse
       .command("create [fileIdentifier]")
@@ -390,10 +392,10 @@ export class FileMemberHandler {
      */
     async file_cat(options: CLIoptions): Promise<void> {
       try {
-        const path = this.controller.path_get;
+        const path: string = this.controller.path_get;
         console.log(`Viewing file at ${path}`);
         
-        const content = await files_viewContent(path);
+        const content: string | null = await files_viewContent(path);
         
         if (content !== null) {
           console.log(content);
@@ -402,7 +404,7 @@ export class FileMemberHandler {
         }
       }
       catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message: string = error instanceof Error ? error.message : String(error);
         console.error(`Error viewing file: ${message}`);
       }
     }

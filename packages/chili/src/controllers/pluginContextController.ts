@@ -1,3 +1,9 @@
+/**
+ * @file Controller for plugin-context business logic and presentation.
+ *
+ * @module
+ */
+
 import {
   ChRISEmbeddedResourceGroup,
   objContext_create,

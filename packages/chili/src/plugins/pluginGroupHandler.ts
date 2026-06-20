@@ -1,3 +1,9 @@
+/**
+ * @file Handler for the plugin context command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { CLIoptions, options_toParams } from "../utils/cli.js";
@@ -46,7 +52,7 @@ export class PluginContextGroupHandler {
     id?: number | null
   ): Promise<PluginContextGroupHandler> {
     try {
-        const controller = await PluginContextController.controller_create(assetName, id);
+        const controller: PluginContextController = await PluginContextController.controller_create(assetName, id);
         return new PluginContextGroupHandler(controller, assetName);
     } catch (error: unknown) {
         throw new InitializationError(`Failed to initialize PluginContextGroupHandler: ${error}`);
@@ -101,7 +107,7 @@ export class PluginContextGroupHandler {
       this.baseGroupHandler.command_setup(program);
     }
 
-    const fileGroupCommand = program.commands.find(
+    const fileGroupCommand: Command | undefined = program.commands.find(
       (cmd) => cmd.name() === this.assetName
     );
   }

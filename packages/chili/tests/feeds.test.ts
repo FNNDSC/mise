@@ -26,7 +26,7 @@ describe('feed create command', () => {
       // Mock other necessary properties if SimpleRecord expects them
     };
     const mockFeedCreateDo = jest.spyOn(feedCreateCmd, 'feed_create');
-    mockFeedCreateDo.mockResolvedValue(mockFeedInfo);
+    mockFeedCreateDo.mockResolvedValue(mockFeedInfo as unknown as Awaited<ReturnType<typeof feedCreateCmd.feed_create>>);
 
     const dirs = '/path/to/data';
     const params = 'title:MyFeed,cpu_limit:1000';

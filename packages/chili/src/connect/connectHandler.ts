@@ -26,7 +26,7 @@ export function connectCommand_setup(program: Command): void {
     .option("-u, --user <user>", "username")
     .option("-p, --password <password>", "password")
     .action(async (url: string, options: CLIoptions) => {
-      const user = (options.user as string) || 'unknown';
+      const user: string = (options.user as string) || 'unknown';
       const connectOptions: ConnectOptions = {
         url,
         user: (options.user as string) || '',
@@ -39,7 +39,7 @@ export function connectCommand_setup(program: Command): void {
         console.log(login_render(success, url, user));
       } catch (error: unknown) {
         console.log(login_render(false, url, user));
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg: string = error instanceof Error ? error.message : String(error);
         console.error(chalk.red(`Error: ${msg}`));
       }
     });
@@ -53,7 +53,7 @@ export function connectCommand_setup(program: Command): void {
         console.log(logout_render(true));
       } catch (error: unknown) {
         console.log(logout_render(false));
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg: string = error instanceof Error ? error.message : String(error);
         console.error(chalk.red(`Error: ${msg}`));
       }
     });

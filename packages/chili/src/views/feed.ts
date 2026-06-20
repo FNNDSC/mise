@@ -30,13 +30,13 @@ export function feedList_render(feeds: Feed[], selectedFields: string[], options
   if (feeds.length === 0) return chalk.gray("No feeds found.");
   
   // Define default fields if none are specified or if the fields are empty
-  const effectiveFields = selectedFields.length > 0 ? selectedFields : ['id', 'name', 'creation_date', 'owner_username'];
+  const effectiveFields: string[] = selectedFields.length > 0 ? selectedFields : ['id', 'name', 'creation_date', 'owner_username'];
 
-  const rows = feeds.map(f => {
+  const rows: string[][] = feeds.map(f => {
     return effectiveFields.map(field => {
-      const fieldKey = field as keyof Feed;
-      const rawValue = f[fieldKey];
-      let value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
+      const fieldKey: keyof Feed = field as keyof Feed;
+      const rawValue: unknown = f[fieldKey];
+      let value: string = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
       
       // Apply basic styling for key fields only in non-CSV/non-Table output
       if (!options.csv && !options.table) {
@@ -48,12 +48,12 @@ export function feedList_render(feeds: Feed[], selectedFields: string[], options
     });
   });
 
-  const headerForDisplay = effectiveFields.map(field => field.toUpperCase());
+  const headerForDisplay: string[] = effectiveFields.map(field => field.toUpperCase());
 
   if (options.csv) {
     // CSV format
-    const csvHeader = headerForDisplay.map(h => `"${h}"`).join(',');
-    const csvRows = rows.map(row => row.map(cell => `"${String(cell).split('"').join('""')}"`).join(',')).join('\n'); // Fixed CSV escaping
+    const csvHeader: string = headerForDisplay.map(h => `"${h}"`).join(',');
+    const csvRows: string = rows.map(row => row.map(cell => `"${String(cell).split('"').join('""')}"`).join(',')).join('\n'); // Fixed CSV escaping
     return [csvHeader, csvRows].join('\n');
   } else if (options.table) {
     // Prepare data for screen.table_output
@@ -63,8 +63,8 @@ export function feedList_render(feeds: Feed[], selectedFields: string[], options
     const tableDataForScreen: FeedTableRow[] = feeds.map(feed => {
       const row: FeedTableRow = {};
       effectiveFields.forEach(field => {
-        const fieldKey = field as keyof Feed;
-        const val = feed[fieldKey];
+        const fieldKey: keyof Feed = field as keyof Feed;
+        const val: unknown = feed[fieldKey];
         row[field] = val !== undefined && val !== null ? (val as string | number | boolean) : '';
       });
       return row;

@@ -42,9 +42,9 @@ export interface UploadSummary {
  */
 export function bytes_format(bytes: number): string {
   if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const k: number = 1024;
+  const sizes: string[] = ["B", "KB", "MB", "GB", "TB"];
+  const i: number = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
@@ -55,9 +55,9 @@ export function bytes_format(bytes: number): string {
 export function eta_format(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "--";
   if (seconds < 60) return `${Math.round(seconds)}s`;
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
+  const hrs: number = Math.floor(seconds / 3600);
+  const mins: number = Math.floor((seconds % 3600) / 60);
+  const secs: number = Math.floor(seconds % 60);
   if (hrs > 0) {
     return `${hrs}h ${mins}m ${secs}s`;
   }
@@ -83,18 +83,18 @@ async function localFiles_scan(localPath: string, remotePath: string): Promise<U
   const files: UploadFileInfo[] = [];
 
   async function walkDir(currentLocal: string, currentRemote: string): Promise<void> {
-    const entries = await fs.promises.readdir(currentLocal, { withFileTypes: true });
+    const entries: fs.Dirent<string>[] = await fs.promises.readdir(currentLocal, { withFileTypes: true });
 
     for (const entry of entries) {
-      const localFilePath = path.join(currentLocal, entry.name);
-      const remoteFilePath = currentRemote.endsWith('/')
+      const localFilePath: string = path.join(currentLocal, entry.name);
+      const remoteFilePath: string = currentRemote.endsWith('/')
         ? currentRemote + entry.name
         : currentRemote + '/' + entry.name;
 
       if (entry.isDirectory()) {
         await walkDir(localFilePath, remoteFilePath);
       } else {
-        const stats = await fs.promises.stat(localFilePath);
+        const stats: fs.Stats = await fs.promises.stat(localFilePath);
         files.push({
           hostPath: localFilePath,
           chrisPath: remoteFilePath,
@@ -104,18 +104,18 @@ async function localFiles_scan(localPath: string, remotePath: string): Promise<U
     }
   }
 
-  const stats = await fs.promises.stat(localPath);
+  const stats: fs.Stats = await fs.promises.stat(localPath);
   if (stats.isDirectory()) {
     // Preserve directory basename in remote path (Unix cp semantics)
-    const basename = path.basename(localPath);
-    const targetDir = remotePath.endsWith('/')
+    const basename: string = path.basename(localPath);
+    const targetDir: string = remotePath.endsWith('/')
       ? remotePath + basename
       : remotePath + '/' + basename;
     await walkDir(localPath, targetDir);
   } else {
     // Single file upload
-    const filename = path.basename(localPath);
-    const targetPath = remotePath.endsWith('/')
+    const filename: string = path.basename(localPath);
+    const targetPath: string = remotePath.endsWith('/')
       ? remotePath + filename
       : remotePath + '/' + filename;
     files.push({
@@ -166,8 +166,8 @@ export async function files_uploadWithProgress(
       const client = await chrisIO.client_get();
       if (client) {
         const folderList = await client.getFileBrowserFolders({ path: actualTarget });
-        const items = await folderList.getItems();
-        if (items.length > 0) {
+        const items: Object[] | null = await folderList.getItems();
+        if (items && items.length > 0) {
           await prompt_confirmOrThrow(`Target '${actualTarget}' already exists in ChRIS. Merge/overwrite? (y/N)`);
         }
       }
@@ -179,7 +179,7 @@ export async function files_uploadWithProgress(
   }
 
   const showProgress: boolean = !!process.stdout.isTTY;
-  const progressBar = showProgress
+  const progressBar: cliProgress.SingleBar | null = showProgress
     ? new cliProgress.SingleBar(
         {
           format:
@@ -213,15 +213,15 @@ export async function files_uploadWithProgress(
 
   for (const [index, file] of fileList.entries()) {
     try {
-      const fileContent = await fs.promises.readFile(file.hostPath);
-      const fileBlob = new Blob([fileContent as unknown as BlobPart]);
+      const fileContent: NonSharedBuffer = await fs.promises.readFile(file.hostPath);
+      const fileBlob: Blob = new Blob([fileContent as unknown as BlobPart]);
 
       // Split chrisPath into dir and filename for the new API
-      const lastSlash = file.chrisPath.lastIndexOf('/');
-      const dir = file.chrisPath.substring(0, lastSlash) || '/';
-      const filename = file.chrisPath.substring(lastSlash + 1);
+      const lastSlash: number = file.chrisPath.lastIndexOf('/');
+      const dir: string = file.chrisPath.substring(0, lastSlash) || '/';
+      const filename: string = file.chrisPath.substring(lastSlash + 1);
 
-      const uploadResult = await chrisIO.file_upload(fileBlob, dir, filename);
+      const uploadResult: boolean = await chrisIO.file_upload(fileBlob, dir, filename);
 
       if (uploadResult) {
         summary.transferredCount++;

@@ -22,8 +22,8 @@ import { Feed } from "../../models/feed.js";
  * @throws {Error} If feed parameters cannot be parsed or if directories are missing.
  */
 export async function feed_create(options: CLIoptions): Promise<Feed | null> {
-  const params = options.params;
-  const dirs = options.dirs; // Expects a comma-separated string for directories
+  const params: string | undefined = options.params;
+  const dirs: unknown = options.dirs; // Expects a comma-separated string for directories
 
   let feedParams: ChRISObjectParams = {};
   if (params) {
@@ -41,6 +41,6 @@ export async function feed_create(options: CLIoptions): Promise<Feed | null> {
     throw new Error("Directories for feed creation are required (e.g., --dirs '/some/path').");
   }
 
-  const result = await salsaFeed_create(dirsArray, feedParams);
+  const result: SimpleRecord | null = await salsaFeed_create(dirsArray, feedParams);
   return result as unknown as Feed;
 }

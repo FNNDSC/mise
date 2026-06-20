@@ -64,7 +64,7 @@ export async function shellCommand_runWithDetails(command: string): Promise<{
       success: true,
     };
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage: string = error instanceof Error ? error.message : String(error);
     return {
       stdout: '',
       stderr: '',
@@ -79,7 +79,7 @@ export async function shellCommand_runWithDetails(command: string): Promise<{
  * @returns True if Docker is available, false otherwise.
  */
 export async function docker_checkAvailability(): Promise<boolean> {
-  const result = await shellCommand_run("docker info > /dev/null 2>&1 && echo OK");
+  const result: string | null = await shellCommand_run("docker info > /dev/null 2>&1 && echo OK");
   if (result === "OK") {
     return true;
   }
@@ -103,7 +103,7 @@ export async function docker_checkAvailability(): Promise<boolean> {
  * ```
  */
 export async function docker_imageExistsLocally(image: string): Promise<boolean> {
-  const result = await shellCommand_run(`docker images -q ${image} 2>/dev/null`);
+  const result: string | null = await shellCommand_run(`docker images -q ${image} 2>/dev/null`);
   return result !== null && result.trim().length > 0;
 }
 
@@ -118,15 +118,15 @@ export async function docker_imageExistsLocally(image: string): Promise<boolean>
  * @returns Promise resolving to true if pull succeeded or image already exists, false otherwise.
  */
 export async function docker_pullImage(image: string, quiet: boolean = true): Promise<boolean> {
-  const existsLocally = await docker_imageExistsLocally(image);
+  const existsLocally: boolean = await docker_imageExistsLocally(image);
   if (existsLocally) {
     console.log(`Docker image ${image} already exists locally.`);
     return true;
   }
 
   console.log(`Pulling Docker image: ${image}...`);
-  const quietFlag = quiet ? '--quiet' : '';
-  const result = await shellCommand_run(`docker pull ${quietFlag} ${image}`);
+  const quietFlag: string = quiet ? '--quiet' : '';
+  const result: string | null = await shellCommand_run(`docker pull ${quietFlag} ${image}`);
 
   if (result !== null) {
     console.log(`Successfully pulled ${image}`);
@@ -153,7 +153,7 @@ export async function docker_pullImage(image: string, quiet: boolean = true): Pr
  * ```
  */
 export async function docker_getImageCmd(image: string): Promise<string[]> {
-  const result = await shellCommand_run(
+  const result: string | null = await shellCommand_run(
     `docker inspect --format='{{json .Config.Cmd}}' ${image} 2>/dev/null`
   );
 

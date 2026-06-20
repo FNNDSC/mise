@@ -68,7 +68,7 @@ export function items_sort(
   sortBy: 'name' | 'size' | 'date' | 'owner' = 'name',
   reverse: boolean = false
 ): ListingItem[] {
-  const sorted = [...items].sort((a: ListingItem, b: ListingItem) => {
+  const sorted: ListingItem[] = [...items].sort((a: ListingItem, b: ListingItem) => {
     let comparison: number = 0;
 
     switch (sortBy) {

@@ -35,7 +35,7 @@ export async function feeds_fetchList(options: CLIoptions): Promise<FeedListResu
     : await salsaFeeds_list(params);
 
   if (result && result.tableData) {
-    let feeds = result.tableData as unknown as Feed[];
+    let feeds: Feed[] = result.tableData as unknown as Feed[];
 
     // Apply sorting if specified
     if (options.sort) {

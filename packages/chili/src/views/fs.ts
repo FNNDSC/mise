@@ -88,6 +88,12 @@ export function mv_render(src: string, dest: string, success: boolean): string {
     return chalk.red(`Failed to move ${src} to ${dest}`);
   }
 }
+/**
+ * Renders the outcome of an rm operation for terminal display.
+ *
+ * @param result - The rm result.
+ * @returns Formatted status string.
+ */
 export function rm_render(result: { success: boolean; path: string; type: 'file' | 'dir' | 'link' | null; error?: string }): string {
   if (result.success) {
     const typeStr: string = result.type || 'item';

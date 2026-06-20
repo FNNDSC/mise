@@ -95,7 +95,7 @@ export async function files_downloadWithProgress(
     try {
       const result = await fileContent_getBinaryStream(resolvedChris);
       if (!result.ok) {
-        throw new Error(result.error || "Failed to download file");
+        throw new Error("Failed to download file");
       }
 
       const { stream, size } = result.value as {
@@ -130,11 +130,11 @@ export async function files_downloadWithProgress(
       }
 
       // Ensure parent directory exists
-      const parentDir = path.dirname(finalLocalPath);
+      const parentDir: string = path.dirname(finalLocalPath);
       await directory_ensureExists(parentDir);
 
       const showProgress: boolean = !!process.stdout.isTTY;
-      const progressBar =
+      const progressBar: cliProgress.SingleBar | null =
         typeof size === "number" && showProgress
           ? new cliProgress.SingleBar(
               {
@@ -235,7 +235,7 @@ export async function files_downloadWithProgress(
   await directory_ensureExists(targetDir);
 
   const showProgress: boolean = !!process.stdout.isTTY;
-  const progressBar = showProgress
+  const progressBar: cliProgress.SingleBar | null = showProgress
     ? new cliProgress.SingleBar(
         {
           format:
@@ -289,7 +289,7 @@ export async function files_downloadWithProgress(
       summary.transferSize += size ?? transferred;
     } catch (error: unknown) {
       summary.failedCount++;
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg: string = error instanceof Error ? error.message : String(error);
       console.log(chalk.red(`\nError downloading ${file.path}: ${msg}`));
     }
 

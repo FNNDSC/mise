@@ -10,7 +10,7 @@ import {
   plugins_list as salsaPlugins_list,
   plugins_listAll as salsaPlugins_listAll
 } from "@fnndsc/salsa";
-import { FilteredResourceData } from "@fnndsc/cumin";
+import { FilteredResourceData, ListOptions } from "@fnndsc/cumin";
 import { CLIoptions, options_toParams } from "../../utils/cli.js";
 import { Plugin } from "../../models/plugin.js";
 import { list_applySort } from "../../utils/sort.js";
@@ -31,7 +31,7 @@ export interface PluginListResult {
  * @returns A Promise resolving to a `PluginListResult` object.
  */
 export async function plugins_fetchList(options: CLIoptions): Promise<PluginListResult> {
-  const params: Record<string, string | number | boolean> = options_toParams(options);
+  const params: ListOptions = options_toParams(options);
 
   let result: FilteredResourceData | null;
 
@@ -42,7 +42,7 @@ export async function plugins_fetchList(options: CLIoptions): Promise<PluginList
   }
 
   if (result && result.tableData) {
-    let plugins = result.tableData as unknown as Plugin[];
+    let plugins: Plugin[] = result.tableData as unknown as Plugin[];
 
     // Apply sorting if specified
     if (options.sort) {

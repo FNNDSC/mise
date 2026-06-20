@@ -1,3 +1,9 @@
+/**
+ * @file Controller for file business logic and presentation.
+ *
+ * @module
+ */
+
 import { ChRISEmbeddedResourceGroup, errorStack, Result, ChrisPathNode } from "@fnndsc/cumin";
 import chalk from 'chalk';
 import { BaseController } from "./baseController.js";
@@ -47,14 +53,14 @@ export class FileController extends BaseController {
     assetName: string,
     path?: string
   ): Promise<FileController | null> {
-    const chrisFileSystemGroup = await files_getGroup(assetName, path);
+    const chrisFileSystemGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName, path);
     if (!chrisFileSystemGroup) {
       // Error handling is done in salsa, so we just pass null here
       return null;
     }
     
-    const groupWithFolder = chrisFileSystemGroup as unknown as ChRISFileSystemGroupWithFolder;
-    const effectivePath = path || groupWithFolder.folder || "";
+    const groupWithFolder: ChRISFileSystemGroupWithFolder = chrisFileSystemGroup as unknown as ChRISFileSystemGroupWithFolder;
+    const effectivePath: string = path || groupWithFolder.folder || "";
     
     return new FileController(chrisFileSystemGroup, effectivePath, assetName);
   }
@@ -68,7 +74,7 @@ export class FileController extends BaseController {
    * @throws Error if context creation fails.
    */
   static async member_create(path: string): Promise<FileController | null> {
-    const chrisFilesGroup = await files_getSingle(path);
+    const chrisFilesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getSingle(path);
     if (!chrisFilesGroup) {
       // Error handling is done in salsa, so we just pass null here
       return null;
@@ -83,7 +89,7 @@ export class FileController extends BaseController {
    * @returns A Promise resolving to void.
    */
   async files_share(options: CLIoptions): Promise<void> {
-    const fileId = options.fileId; // Assuming CLIoptions has a fileId property
+    const fileId: unknown = options.fileId; // Assuming CLIoptions has a fileId property
     if (fileId === undefined) {
       console.error("Error: fileId is required for sharing.");
       return;

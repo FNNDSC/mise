@@ -1,8 +1,17 @@
+/**
+ * @file Handler for the PACS server command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import { ChRISPACSGroup } from "@fnndsc/cumin";
 import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { CLIoptions } from "../utils/cli.js";
 
+/**
+ * Command-group handler for PACS server operations.
+ */
 export class PACSServerGroupHandler {
   private baseGroupHandler: BaseGroupHandler;
   private assetName: string = "pacsservers";
@@ -13,11 +22,11 @@ export class PACSServerGroupHandler {
   }
 
   pacsServerCommand_setup(program: Command): void {
-    const pacsServerCommand = program
+    const pacsServerCommand: Command = program
       .command(this.assetName)
       .description("Interact with PACS servers");
 
-    const listCommand = this.baseGroupHandler.baseListCommand_create(
+    const listCommand: Command = this.baseGroupHandler.baseListCommand_create(
       async (options: CLIoptions) => {
         await this.baseGroupHandler.resources_list(options);
       }

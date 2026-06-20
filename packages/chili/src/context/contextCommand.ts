@@ -1,3 +1,9 @@
+/**
+ * @file Commander setup for the `context` command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import {
   FullContext,
@@ -14,6 +20,13 @@ import {
 import chalk from "chalk";
 // import Table from "cli-table3";
 import { screen, border_draw, table_display, TableDataRow } from "../screen/screen.js";
+
+/** A single context key/value row for tabular display. */
+interface ContextRow {
+  Context: string;
+  Value: string;
+}
+
 
 /**
  * Retrieves and formats ChRIS context information based on CLI options.
@@ -93,7 +106,7 @@ async function context_displaySingle(options: ContextOptions): Promise<string> {
   const singleContext = await context_getSingle();
 
   if (options.full) {
-    const tableData = [
+    const tableData: ContextRow[] = [
       {
         Context: "ChRIS URL",
         Value: singleContext.URL || "Not set",
@@ -189,7 +202,7 @@ async function context_displaySingle(options: ContextOptions): Promise<string> {
 async function context_set(options: ContextOptions): Promise<string> {
   const result = await salsa_context_set(options);
   if (!result.ok) {
-    const errors = errorStack.allOfType_get('error');
+    const errors: string[] = errorStack.allOfType_get('error');
     border_draw(chalk.red(`ERROR: ${errors.join('\n')}`));
     return "";
   }
@@ -206,7 +219,7 @@ async function context_set(options: ContextOptions): Promise<string> {
  * @param program - The Commander.js program instance.
  */
 export async function contextCommand_setup(program: Command): Promise<void> {
-  const contextCommand = program
+  const contextCommand: Command = program
     .command("context")
     .description("Manipulate the ChRIS context");
 
@@ -242,7 +255,7 @@ export async function contextCommand_setup(program: Command): Promise<void> {
     )
     .option("--pacsserver <pacsserver>", "set the current PACS server context")
     .action(async (options) => {
-      const result = await context_set(options);
+      const result: string = await context_set(options);
       if (result.length) border_draw(result);
     });
 }

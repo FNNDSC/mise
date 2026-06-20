@@ -20,7 +20,7 @@ export function computeList_render(
   if (resources.length === 0) return chalk.gray('No compute resources found.');
 
   const fields: Array<keyof ComputeResource> = ['id', 'name', 'compute_url', 'description'];
-  const headers = ['ID', 'NAME', 'URL', 'DESCRIPTION'];
+  const headers: string[] = ['ID', 'NAME', 'URL', 'DESCRIPTION'];
 
   if (options.csv) {
     const lines: string[] = [headers.map((h: string) => `"${h}"`).join(',')];
@@ -43,8 +43,8 @@ export function computeList_render(
   }
 
   const termWidth: number = process.stdout.columns || 120;
-  const urlWidth = 40;
-  const nameWidth = 20;
+  const urlWidth: number = 40;
+  const nameWidth: number = 20;
   const lines: string[] = [];
 
   for (const r of resources) {

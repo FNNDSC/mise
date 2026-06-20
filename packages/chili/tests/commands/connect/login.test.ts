@@ -15,8 +15,8 @@ describe('connect_login', () => {
     expect(salsa.connect_do).toHaveBeenCalledWith(mockOptions);
   });
 
-  it('should return false if salsa.connect_do returns Err()', async () => {
-    (salsa.connect_do as jest.Mock).mockResolvedValue({ ok: false }); // Mock salsa.connect_do to return Err()
+  it('should return false if salsa.connect_do returns false', async () => {
+    (salsa.connect_do as jest.Mock).mockResolvedValue(false); // connect_do now returns a boolean
     const mockOptions = { url: 'http://example.com', user: 'test', password: 'password', debug: false };
     const result = await connect_login(mockOptions);
     expect(result).toBe(false);

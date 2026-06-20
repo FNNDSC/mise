@@ -17,6 +17,6 @@ import { path_resolveChrisFs } from "../../utils/cli.js";
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function files_mkdir(dirPath: string): Promise<boolean> {
-  const resolvedPath = await path_resolveChrisFs(dirPath, {});
+  const resolvedPath: string = await path_resolveChrisFs(dirPath, {});
   return await salsaFiles_mkdir(resolvedPath);
 }

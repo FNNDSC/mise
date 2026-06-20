@@ -25,6 +25,6 @@ export async function plugin_execute(searchable: string, params: string): Promis
   } catch (e: unknown) {
     throw new Error(`Error parsing plugin parameters: ${e}`);
   }
-  const result = await salsaPlugin_run(searchable, parsedParams);
+  const result: Dictionary | null = await salsaPlugin_run(searchable, parsedParams);
   return result as unknown as PluginInstance;
 }

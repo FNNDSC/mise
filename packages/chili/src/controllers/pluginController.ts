@@ -1,3 +1,9 @@
+/**
+ * @file Controller for plugin business logic and presentation.
+ *
+ * @module
+ */
+
 import {
   ChRISPluginGroup,
   Dictionary,
@@ -29,7 +35,7 @@ export class PluginController extends BaseController {
    * @returns A new PluginController instance.
    */
   static controller_create(): PluginController {
-    const chrisPluginGroup = new ChRISPluginGroup();
+    const chrisPluginGroup: ChRISPluginGroup = new ChRISPluginGroup();
     return new PluginController(chrisPluginGroup);
   }
 

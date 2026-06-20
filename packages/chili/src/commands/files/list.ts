@@ -8,7 +8,7 @@
  * @module
  */
 import { files_list as salsaFiles_list } from "@fnndsc/salsa";
-import { FilteredResourceData } from "@fnndsc/cumin";
+import { FilteredResourceData, ListOptions } from "@fnndsc/cumin";
 import { CLIoptions, options_toParams } from "../../utils/cli.js";
 
 /**
@@ -24,6 +24,6 @@ export async function files_fetchList(
   assetName: string = "files", 
   path?: string
 ): Promise<FilteredResourceData | null> {
-  const params: Record<string, string | number | boolean> = options_toParams(options);
+  const params: ListOptions = options_toParams(options);
   return await salsaFiles_list(params, assetName, path);
 }

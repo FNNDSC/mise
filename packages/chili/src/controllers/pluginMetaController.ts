@@ -1,3 +1,9 @@
+/**
+ * @file Controller mediating plugin-meta business logic and presentation.
+ *
+ * @module
+ */
+
 import {
   ChRISPluginMetaPluginGroup,
 } from "@fnndsc/cumin";
@@ -25,7 +31,7 @@ export class PluginMetaController extends BaseController {
    * @returns A new PluginMetaController instance.
    */
   static controller_create(): PluginMetaController {
-    const chrisPluginMetaGroup = new ChRISPluginMetaPluginGroup();
+    const chrisPluginMetaGroup: ChRISPluginMetaPluginGroup = new ChRISPluginMetaPluginGroup();
     return new PluginMetaController(chrisPluginMetaGroup);
   }
 

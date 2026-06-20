@@ -151,7 +151,7 @@ export function fileSystemItem_colorize(
 
   let icon: string = '';
   if (config.icons && config.icons.enabled) {
-    const iconKey = type in config.icons ? type : 'file';
+    const iconKey: string = type in config.icons ? type : 'file';
     icon = (config.icons as unknown as Record<string, string>)[iconKey] + ' ';
   }
 

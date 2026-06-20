@@ -1,3 +1,9 @@
+/**
+ * @file Handler for the PACS retrieve command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import {
   Result,
@@ -26,7 +32,7 @@ export class PACSRetrieveGroupHandler {
    * @param program - Commander program instance.
    */
   pacsRetrieveCommand_setup(program: Command): void {
-    const pacsRetrieveCommand = program
+    const pacsRetrieveCommand: Command = program
       .command(this.assetName)
       .description("Manage PACS retrieves (pull DICOM data from PACS to ChRIS)");
 
@@ -70,7 +76,7 @@ export class PACSRetrieveGroupHandler {
     const result: Result<PACSRetrieveRecord> = await pacsRetrieve_create(queryId);
 
     if (!result.ok) {
-      const errors = errorStack_getAllOfType("error");
+      const errors: string[] = errorStack_getAllOfType("error");
       if (errors.length) {
         errors.forEach((msg: string) => console.log(border_draw(msg)));
       } else {
@@ -104,7 +110,7 @@ export class PACSRetrieveGroupHandler {
     const result: Result<PACSQueryStatusReport> = await pacsRetrieve_statusForQuery(queryId);
 
     if (!result.ok) {
-      const errors = errorStack_getAllOfType("error");
+      const errors: string[] = errorStack_getAllOfType("error");
       if (errors.length) {
         errors.forEach((msg: string) => console.log(border_draw(msg)));
       } else {
@@ -133,7 +139,7 @@ export class PACSRetrieveGroupHandler {
     const result: Result<void> = await pacsRetrieve_delete(retrieveId);
 
     if (!result.ok) {
-      const errors = errorStack_getAllOfType("error");
+      const errors: string[] = errorStack_getAllOfType("error");
       if (errors.length) {
         errors.forEach((msg: string) => console.log(border_draw(msg)));
       } else {
@@ -182,8 +188,8 @@ export class PACSRetrieveGroupHandler {
       lines.push(`Retrieve ID: ${report.retrieveId}`);
 
       // Check if all series are actually pulled (more accurate than retrieve record status)
-      const allPulled = this.allSeries_arePulled(report);
-      const displayStatus = allPulled
+      const allPulled: boolean = this.allSeries_arePulled(report);
+      const displayStatus: string = allPulled
         ? "Completed"
         : this.status_mapToDisplay(report.retrieveStatus || "unknown");
 
@@ -234,8 +240,8 @@ export class PACSRetrieveGroupHandler {
   ): void {
     lines.push(`Study ${studyNum}`);
 
-    const studyDesc = this.tagValue_extract(study.studyDescription);
-    const studyUID = this.tagValue_extract(study.studyInstanceUID);
+    const studyDesc: string = this.tagValue_extract(study.studyDescription);
+    const studyUID: string = this.tagValue_extract(study.studyInstanceUID);
 
     if (studyDesc) {
       lines.push(`  Description: ${studyDesc}`);
@@ -269,7 +275,7 @@ export class PACSRetrieveGroupHandler {
     seriesNum: number,
     lines: string[]
   ): void {
-    const seriesDesc = this.tagValue_extract(series.seriesDescription);
+    const seriesDesc: string = this.tagValue_extract(series.seriesDescription);
     const description: string = seriesDesc || `Series ${seriesNum}`;
     const statusDisplay: string = this.series_statusDisplay(series);
 

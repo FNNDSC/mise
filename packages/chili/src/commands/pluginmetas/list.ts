@@ -7,12 +7,21 @@ import { FilteredResourceData } from '@fnndsc/cumin';
 import { CLIoptions, options_toParams } from '../../utils/cli.js';
 import { list_applySort } from '../../utils/sort.js';
 
+/**
+ * Result of listing plugin-metas (table data plus selected fields).
+ */
 export interface PluginMetaListResult {
   pluginMetas: Record<string, unknown>[];
   selectedFields: string[];
   totalCount?: number;
 }
 
+/**
+ * Fetches a list of plugin-metas.
+ *
+ * @param options - List and filter options.
+ * @returns The plugin-metas list result.
+ */
 export async function pluginMetas_fetchList(options: CLIoptions): Promise<PluginMetaListResult> {
   const params = options_toParams(options);
   const result: FilteredResourceData | null = options.all
@@ -20,7 +29,7 @@ export async function pluginMetas_fetchList(options: CLIoptions): Promise<Plugin
     : await salsaPluginMetas_list(params);
 
   if (result && result.tableData) {
-    let pluginMetas = result.tableData as Record<string, unknown>[];
+    let pluginMetas: Record<string, unknown>[] = result.tableData as Record<string, unknown>[];
     if (options.sort) pluginMetas = list_applySort(pluginMetas, options.sort, options.reverse);
     return { pluginMetas, selectedFields: result.selectedFields || [], totalCount: result.totalCount };
   }

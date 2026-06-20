@@ -9,6 +9,9 @@ import { store_list, store_search } from '@fnndsc/salsa';
 import { ListingItem } from '../../models/listing.js';
 import { CLIoptions } from '../../utils/cli.js';
 
+/**
+ * Options for listing store plugins.
+ */
 export interface StoreOptions extends CLIoptions {
   store?: string;
 }
@@ -17,12 +20,12 @@ export interface StoreOptions extends CLIoptions {
  * Maps raw store plugin data to ListingItem model.
  */
 function storeItem_map(plugin: Record<string, unknown>): ListingItem {
-  const name = (plugin.name as string) || 'unknown';
-  const version = (plugin.version as string) || '';
+  const name: string = (plugin.name as string) || 'unknown';
+  const version: string = (plugin.version as string) || '';
   
   // Format name as name-vVersion to match chell's ls /bin style
   // This ensures consistent colorization (green name, dim green version)
-  const displayName = version ? `${name}-v${version}` : name;
+  const displayName: string = version ? `${name}-v${version}` : name;
 
   return {
     name: displayName,
@@ -42,7 +45,7 @@ function storeItem_map(plugin: Record<string, unknown>): ListingItem {
  * @returns Promise resolving to ListingItem array.
  */
 export async function store_listPlugins(options: StoreOptions): Promise<ListingItem[]> {
-  const plugins = await store_list(options.store);
+  const plugins: Record<string, unknown>[] = await store_list(options.store);
   return plugins.map(storeItem_map);
 }
 
@@ -54,6 +57,6 @@ export async function store_listPlugins(options: StoreOptions): Promise<ListingI
  * @returns Promise resolving to ListingItem array.
  */
 export async function store_searchPlugins(query: string, options: StoreOptions): Promise<ListingItem[]> {
-  const plugins = await store_search(query, options.store);
+  const plugins: Record<string, unknown>[] = await store_search(query, options.store);
   return plugins.map(storeItem_map);
 }

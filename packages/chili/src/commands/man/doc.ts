@@ -10,6 +10,9 @@ import fs from "fs";
 import path from "path";
 import { projectDir_get, browser_open, asciidoc_render } from "../../man/renderer.js";
 
+/**
+ * Options for rendering a man page.
+ */
 export interface ManPageOptions {
   topic: string;
   browser?: boolean;

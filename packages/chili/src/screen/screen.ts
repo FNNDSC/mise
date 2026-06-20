@@ -1,6 +1,15 @@
+/**
+ * @file Terminal table/screen rendering utilities and the Screen singleton.
+ *
+ * @module
+ */
+
 import { table, getBorderCharacters, TableUserConfig } from "table";
 import chalk from "chalk";
 
+/**
+ * A chalk-style color function mapping a string to a styled string.
+ */
 export interface ChalkColorFunction {
   (text: string): string;
   bold: (text: string) => string;
@@ -9,12 +18,18 @@ export interface ChalkColorFunction {
 type Justification = "left" | "center" | "right";
 type CellValue = string | number | boolean | null | undefined | object | unknown;
 
+/**
+ * Per-column rendering options for table output.
+ */
 export interface ColumnOptions {
   width?: number;
   color?: string;
   justification?: Justification;
 }
 
+/**
+ * Options controlling table rendering (borders, headers, colors).
+ */
 export interface TableOptions {
   columns?: ColumnOptions[];
   head?: string[];
@@ -42,6 +57,9 @@ interface Borders {
   bottom?: boolean;
 }
 
+/**
+ * A single row of table data keyed by column name.
+ */
 export interface TableDataRow {
   [key: string]: string | number | boolean | null | undefined | object | unknown;
 }
@@ -84,7 +102,7 @@ function tableInput_process(
   } else if (Array.isArray(tableData) && typeof tableData[0] === "string") {
     // tableData is a string[]
     processedTableData = (tableData as string[]).map((rowStr) => {
-      const rowValues = rowStr.split(",");
+      const rowValues: string[] = rowStr.split(",");
       return processedHeaders.reduce((rowObj, header, index) => {
         rowObj[header] = rowValues[index];
         return rowObj;
@@ -140,8 +158,8 @@ export function border_draw(text: string, borders: Borders = {}): string {
   };
   const actualBorders: Required<Borders> = { ...defaultBorders, ...borders };
 
-  const lines = text.split("\n");
-  const data = lines.map((line) => [line]);
+  const lines: string[] = text.split("\n");
+  const data: string[][] = lines.map((line) => [line]);
   const config: TableUserConfig = {
     border: getBorderCharacters("norc"),
     columnDefault: {
@@ -202,13 +220,13 @@ export function table_display(
   }
 
   const columns: ColumnOptions[] = tableObj.headers.map((_, index) => {
-    const existingCol = options.columns?.[index] || {};
+    const existingCol: ColumnOptions = options.columns?.[index] || {};
     return {
       justification: "left" as const,
       ...existingCol,
     };
   });
-  const updatedColumns = firstColumnSettings_apply(columns);
+  const updatedColumns: ColumnOptions[] = firstColumnSettings_apply(columns);
 
   const tableOptions: TableOptions = {
     ...options,
@@ -222,7 +240,7 @@ export function table_display(
     },
   };
 
-  const result = screen.table_output(processedTableData, tableOptions);
+  const result: string = screen.table_output(processedTableData, tableOptions);
   console.log(result);
 
   if (options.pagination && options.pagination.shown < options.pagination.total) {
@@ -265,13 +283,13 @@ export class Screen {
   public table_output(data: TableDataRow[] | Object, options: TableOptions = {}): string {
     try {
       const { tableData, headers } = this.data_prepare(data, options);
-      const safeColumns = this.safeColumns_prepare(tableData, headers, options);
-      const colWidths = this.columnWidths_calculate(
+      const safeColumns: ColumnOptions[] = this.safeColumns_prepare(tableData, headers, options);
+      const colWidths: number[] = this.columnWidths_calculate(
         tableData,
         headers,
         safeColumns
       );
-      const styledData = this.data_applyStyle(
+      const styledData: string[][] = this.data_applyStyle(
         tableData,
         headers,
         safeColumns,
@@ -280,18 +298,18 @@ export class Screen {
       );
 
       // First pass: Generate table without title to get width
-      const config = this.tableConfig_prepare(false, options);
+      const config: TableUserConfig = this.tableConfig_prepare(false, options);
       const tempOutput: string = table(styledData, config);
-      const tableWidth = tempOutput.split("\n")[0].length;
+      const tableWidth: number = tempOutput.split("\n")[0].length;
 
       // Prepare title if needed
-      let titleString = "";
+      let titleString: string = "";
       if (options.title) {
         titleString = this.title_prepare(options.title, tableWidth);
       }
 
       // Second pass: Generate full table with correct title
-      const fullConfig = this.tableConfig_prepare(!!options.title, options);
+      const fullConfig: TableUserConfig = this.tableConfig_prepare(!!options.title, options);
       const output: string = table(styledData, fullConfig);
 
       // Combine title (if any) and table
@@ -316,21 +334,21 @@ export class Screen {
     options: TableOptions
   ): { tableData: unknown[][]; headers: string[] } {
     if (Array.isArray(data)) {
-      const headers = options.head || Object.keys(data[0]);
-      const tableData = data.map((row) =>
+      const headers: string[] = options.head || Object.keys(data[0]);
+      const tableData: any[][] = data.map((row) =>
         headers.map((header) => (row[header] !== undefined ? row[header] : ""))
       );
       return { tableData, headers };
     }
 
     if (typeof data === "object" && data !== null) {
-      const headers = options.head || ["Key", "Value"];
-      const tableData = Object.entries(data);
+      const headers: string[] = options.head || ["Key", "Value"];
+      const tableData: [string, any][] = Object.entries(data);
       return { tableData, headers };
     }
 
-    const headers = options.head || ["Value"];
-    const tableData = [[data]];
+    const headers: string[] = options.head || ["Value"];
+    const tableData: never[][] = [[data]];
     return { tableData, headers };
   }
 
@@ -453,13 +471,13 @@ export class Screen {
     // So 'width' IS the limit if specified.
 
     let cellString: string = this.string_safeConvert(cell);
-    const rawLength = this.visibleLength_get(cellString);
+    const rawLength: number = this.visibleLength_get(cellString);
 
     // Truncate if necessary (only if explicit width was likely set or calculated width is restrictive)
     // Note: If width comes from content, rawLength <= width. 
     // If width comes from columnOptions.width, it might be < rawLength.
     if (columnOptions.width && rawLength > width) {
-        const truncateLen = Math.max(0, width - 3);
+        const truncateLen: number = Math.max(0, width - 3);
         cellString = cellString.slice(0, truncateLen) + "...";
     }
 
@@ -469,8 +487,8 @@ export class Screen {
       color = this.color_determine(cell, options.typeColors);
     }
 
-    const chalkColors = chalk as unknown as Record<string, ChalkColorFunction>;
-    const colorFn = color ? chalkColors[color] : undefined;
+    const chalkColors: Record<string, ChalkColorFunction> = chalk as unknown as Record<string, ChalkColorFunction>;
+    const colorFn: ChalkColorFunction | undefined = color ? chalkColors[color] : undefined;
 
     const coloredCell: string = cellString.includes("\u001b")
       ? cellString
@@ -500,8 +518,8 @@ export class Screen {
     const color: string = columnOptions.color || "white";
     const justification: Justification = columnOptions.justification || "left";
     const width: number = colWidths[index];
-    const chalkColors = chalk as unknown as Record<string, ChalkColorFunction>;
-    const colorFn = chalkColors[color] || chalkColors.white;
+    const chalkColors: Record<string, ChalkColorFunction> = chalk as unknown as Record<string, ChalkColorFunction>;
+    const colorFn: ChalkColorFunction = chalkColors[color] || chalkColors.white;
     return this.text_justify(colorFn.bold(header), width, justification);
   }
 
@@ -540,7 +558,7 @@ export class Screen {
    */
   private title_prepare(title: Title, width: number): string {
     let { title: titleText, justification = "left" } = title;
-    const contentWidth = width - 4; // Accounting for border characters
+    const contentWidth: number = width - 4; // Accounting for border characters
 
     if (titleText.length > contentWidth) {
       titleText = titleText.slice(0, contentWidth - 3) + "...";
@@ -551,7 +569,7 @@ export class Screen {
         titleText = titleText.padStart(contentWidth);
         break;
       case "center":
-        const padding = Math.floor((contentWidth - titleText.length) / 2);
+        const padding: number = Math.floor((contentWidth - titleText.length) / 2);
         titleText =
           " ".repeat(padding) +
           titleText +
@@ -662,4 +680,7 @@ export class Screen {
   }
 }
 
-export const screen = new Screen();
+/**
+ * Shared Screen singleton for terminal rendering.
+ */
+export const screen: Screen = new Screen();

@@ -57,7 +57,7 @@ export class FeedGroupHandler {
    */
   async feeds_fields(): Promise<void> {
     try {
-      const fields = await feedFields_fetch();
+      const fields: string[] | null = await feedFields_fetch();
       if (fields && fields.length > 0) {
         table_display(fields, ["fields"]);
       } else {
@@ -75,9 +75,9 @@ export class FeedGroupHandler {
    * @param options - Sharing options (e.g. is_public).
    */
   async feeds_share(searchable: string, options: CLIoptions): Promise<void> {
-    const searchParts = searchable.split("++").map((part) => part.trim());
+    const searchParts: string[] = searchable.split("++").map((part) => part.trim());
     for (const searchPart of searchParts) {
-      const feedIds = await this.baseGroupHandler.IDs_getFromSearch({ search: searchPart });
+      const feedIds: number[] | null = await this.baseGroupHandler.IDs_getFromSearch({ search: searchPart });
       if (!feedIds || feedIds.length === 0) {
         console.log(`No feeds found matching: ${searchPart}`);
         continue;
@@ -86,7 +86,7 @@ export class FeedGroupHandler {
       for (const feedId of feedIds) {
         console.log(`Sharing feed ID: ${feedId}...`);
         const shareOptions: FeedShareOptions = { is_public: options.is_public === true };
-        const success = await feed_shareById(Number(feedId), shareOptions);
+        const success: boolean = await feed_shareById(Number(feedId), shareOptions);
         if (success) {
           console.log(`Feed ID ${feedId} shared successfully.`);
         } else {
@@ -102,9 +102,9 @@ export class FeedGroupHandler {
    * @param options - CLI options, including --force.
    */
   async feeds_delete(searchable: string, options: CLIoptions): Promise<void> {
-    const searchParts = searchable.split("++").map((part) => part.trim());
+    const searchParts: string[] = searchable.split("++").map((part) => part.trim());
     for (const searchPart of searchParts) {
-      const items = await feeds_searchByTerm(searchPart);
+      const items: Record<string, unknown>[] = await feeds_searchByTerm(searchPart);
       if (items.length === 0) {
         console.log(`No feeds found matching: ${searchPart}`);
         continue;
@@ -114,11 +114,12 @@ export class FeedGroupHandler {
         console.log(`Preparing to delete Feed: ID=${item.id}, Name=${item.name}`);
 
         if (!options.force) {
-           const confirmed = await prompt_confirm(`Are you sure you want to delete feed ${item.name} (ID: ${item.id})?`);
+           const confirmed: boolean = await prompt_confirm(`Are you sure you want to delete feed ${item.name} (ID: ${item.id})?`);
            if (!confirmed) continue;
         }
 
-        const success = await feed_deleteById(item.id);
+        const id: number = typeof item.id === "number" ? item.id : Number(item.id);
+        const success: boolean = await feed_deleteById(id);
         if (success) {
             console.log(`Deleted feed ${item.id}`);
         } else {
@@ -134,11 +135,11 @@ export class FeedGroupHandler {
    * @param program - The Commander.js program instance.
    */
   feedGroupCommand_setup(program: Command): void {
-    const feedGroupCommand = program
+    const feedGroupCommand: Command = program
       .command(this.assetName)
       .description(`Interact with a group of ChRIS ${this.assetName}`);
 
-    const listCommand = this.baseGroupHandler.baseListCommand_create(
+    const listCommand: Command = this.baseGroupHandler.baseListCommand_create(
       async (options: CLIoptions) => {
         await this.baseGroupHandler.resources_list(options);
       }
@@ -196,20 +197,20 @@ export class FeedMemberHandler {
    */
   async feed_create(options: CLIoptions): Promise<Feed | null> {
     try {
-      const feed = await feed_create_command(options);
+      const feed: Feed | null = await feed_create_command(options);
       if (feed) {
         console.log(feedCreate_render(feed));
         return feed;
       }
       console.error(chalk.red("Feed creation returned null result."));
-      const errors = errorStack.allOfType_get('error'); // Keep error reporting
+      const errors: string[] = errorStack.allOfType_get('error'); // Keep error reporting
       if (errors.length > 0) {
           console.error(chalk.red('Errors:'));
           errors.forEach(e => console.error(chalk.red(`  - ${e}`)));
       }
       return null;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message: string = error instanceof Error ? error.message : String(error);
       console.error(chalk.red(`Error: ${message}`));
       return null;
     }
@@ -221,7 +222,7 @@ export class FeedMemberHandler {
    * @param program - The Commander.js program instance.
    */
   feedCommand_setup(program: Command): void {
-    const feedCommand = program
+    const feedCommand: Command = program
       .command(this.assetName)
       .description(`Interact with a single ChRIS ${this.assetName}`);
 

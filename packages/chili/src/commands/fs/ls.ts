@@ -14,6 +14,9 @@ import { ChrisFileOrDirRaw } from "../../models/resource.js";
 import { list_applySort } from "../../utils/sort.js";
 import { errorStack, chrisConnection, FilteredResourceData } from "@fnndsc/cumin";
 
+/**
+ * Options for the list (ls) operation.
+ */
 export interface LsOptions {
   path?: string;
   sort?: string;
@@ -76,7 +79,7 @@ export async function files_list(options: LsOptions, pathStr: string = ""): Prom
   };
 
   if (dirsResult.status === 'fulfilled') {
-    const dirs = dirsResult.value;
+    const dirs: FilteredResourceData | null = dirsResult.value;
     if (dirs && dirs.tableData) {
       dirs.tableData.forEach((d: ChrisFileOrDirRaw) => items.push(mapToItem(d, 'dir')));
     }
@@ -85,7 +88,7 @@ export async function files_list(options: LsOptions, pathStr: string = ""): Prom
   }
 
   if (filesResult.status === 'fulfilled') {
-    const files = filesResult.value;
+    const files: FilteredResourceData | null = filesResult.value;
     if (files && files.tableData) {
       files.tableData.forEach((f: ChrisFileOrDirRaw) => items.push(mapToItem(f, 'file')));
     }
@@ -94,7 +97,7 @@ export async function files_list(options: LsOptions, pathStr: string = ""): Prom
   }
 
   if (linksResult.status === 'fulfilled') {
-    const links = linksResult.value;
+    const links: FilteredResourceData | null = linksResult.value;
     if (links && links.tableData) {
       links.tableData.forEach((l: ChrisFileOrDirRaw) => items.push(mapToItem(l, 'link')));
     }
@@ -106,8 +109,8 @@ export async function files_list(options: LsOptions, pathStr: string = ""): Prom
   await listingItems_enrichTitles(items);
 
   // Apply sorting (default to name if not specified)
-  const sortField = options.sort || 'name';
-  const sortedItems = list_applySort(items, sortField, options.reverse);
+  const sortField: string = options.sort || 'name';
+  const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
 
   return sortedItems;
 }
@@ -129,7 +132,7 @@ async function listingItems_enrichTitles(items: ListingItem[]): Promise<void> {
       try {
         const feedData: FilteredResourceData | null = await feeds_list({ id: feedId, limit: 1 });
         if (feedData && feedData.tableData && feedData.tableData.length > 0) {
-          const feed = feedData.tableData[0];
+          const feed: Record<string, unknown> = feedData.tableData[0];
           if (feed && typeof feed['name'] === 'string') {
             item.title = feed['name'];
           }
@@ -147,7 +150,7 @@ async function listingItems_enrichTitles(items: ListingItem[]): Promise<void> {
       try {
         const instanceData: FilteredResourceData | null = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
         if (instanceData && instanceData.tableData && instanceData.tableData.length > 0) {
-          const instance = instanceData.tableData[0];
+          const instance: Record<string, unknown> = instanceData.tableData[0];
           if (instance) {
             const pluginName: string = typeof instance['plugin_name'] === 'string' ? instance['plugin_name'] : '';
             const pluginVersion: string = typeof instance['plugin_version'] === 'string' ? instance['plugin_version'] : '';

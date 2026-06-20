@@ -1,3 +1,9 @@
+/**
+ * @file Renderer for plugin parameter tables in man/help output.
+ *
+ * @module
+ */
+
 import chalk from 'chalk';
 import { FilteredResourceData } from '@fnndsc/cumin';
 
@@ -42,7 +48,7 @@ export function pluginParameters_renderMan(data: FilteredResourceData): void {
     // Short flag: Display only if it exists and is a single character (excluding dashes)
     // Note: 'param.flag' usually comes with dashes (e.g. '-v').
     if (param.flag) {
-      const cleanFlag = param.flag.replace(/^-+/, '');
+      const cleanFlag: string = param.flag.replace(/^-+/, '');
       if (cleanFlag.length === 1) {
         // Avoid duplicating if it somehow matches the long flag visual (unlikely given logic)
         // The prompt says "only if different to long parameter".
@@ -57,7 +63,7 @@ export function pluginParameters_renderMan(data: FilteredResourceData): void {
       // Boolean flags usually don't take a value in the signature invocation
     } else {
       // Generic value placeholder based on type
-      const valueType = param.type ? `<${param.type}>` : '<value>';
+      const valueType: string = param.type ? `<${param.type}>` : '<value>';
       line1Parts.push(chalk.cyan(valueType));
     }
 

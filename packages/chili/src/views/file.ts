@@ -42,14 +42,14 @@ export function fileList_render(
   if (files.length === 0) return chalk.gray("No files found.");
 
   // Define default fields if none are specified or if the fields are empty
-  const effectiveFields = selectedFields.length > 0
+  const effectiveFields: string[] = selectedFields.length > 0
     ? selectedFields
     : ['id', 'fname', 'fsize', 'owner_username', 'creation_date'];
 
-  const rows = files.map(f => {
+  const rows: string[][] = files.map(f => {
     return effectiveFields.map(field => {
-      const rawValue = f[field];
-      let value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
+      const rawValue: string | number | boolean | null | undefined = f[field];
+      let value: string = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
 
       // Apply basic styling for key fields only in non-CSV/non-Table output
       if (!options.csv && !options.table) {
@@ -61,12 +61,12 @@ export function fileList_render(
     });
   });
 
-  const headerForDisplay = effectiveFields.map(field => field.toUpperCase());
+  const headerForDisplay: string[] = effectiveFields.map(field => field.toUpperCase());
 
   if (options.csv) {
     // CSV format
-    const csvHeader = headerForDisplay.map(h => `"${h}"`).join(',');
-    const csvRows = rows.map(row =>
+    const csvHeader: string = headerForDisplay.map(h => `"${h}"`).join(',');
+    const csvRows: string = rows.map(row =>
       row.map(cell => `"${String(cell).split('"').join('""')}"`).join(',')
     ).join('\n');
     return [csvHeader, csvRows].join('\n');
@@ -75,7 +75,7 @@ export function fileList_render(
     const tableDataForScreen = files.map(file => {
       const row: Record<string, string | number | boolean | null | undefined> = {};
       effectiveFields.forEach(field => {
-        const val = file[field];
+        const val: string | number | boolean | null | undefined = file[field];
         row[field] = val !== undefined && val !== null ? val : '';
       });
       return row;

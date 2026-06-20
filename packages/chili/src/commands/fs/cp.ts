@@ -27,7 +27,7 @@ export async function files_cp(src: string, dest: string, options: CpOptions): P
   try {
     return await vfsDispatcher.cp(src, dest, options);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `cp command failed: ${msg}`);
     return false;
   }

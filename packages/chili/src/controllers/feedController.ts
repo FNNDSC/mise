@@ -1,3 +1,9 @@
+/**
+ * @file Controller for feed business logic and presentation.
+ *
+ * @module
+ */
+
 import {
   ChRISFeedGroup,
   ChRISFeed,
@@ -23,7 +29,7 @@ export class FeedController extends BaseController {
    * @returns A new FeedController instance.
    */
   static controller_create(): FeedController {
-    const chrisFeedGroup = new ChRISFeedGroup();
+    const chrisFeedGroup: ChRISFeedGroup = new ChRISFeedGroup();
     return new FeedController(chrisFeedGroup);
   }
 
@@ -47,8 +53,8 @@ export class FeedController extends BaseController {
   async feed_create(options: CLIoptions): Promise<SimpleRecord | null> {
     const chrisFeed: ChRISFeed = new ChRISFeed();
     try {
-      const dirs = options.dirs as string;
-      const feedParams = listParams_fromOptions({ ...options, returnFilter: "params" }) as ChRISObjectParams;
+      const dirs: string = options.dirs as string;
+      const feedParams: ChRISObjectParams = listParams_fromOptions({ ...options, returnFilter: "params" }) as ChRISObjectParams;
       return await chrisFeed.createFromDirs(dirs, feedParams);
     } catch (error: unknown) {
         // Logging handled by cumin errorStack or caller

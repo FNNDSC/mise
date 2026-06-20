@@ -1,3 +1,9 @@
+/**
+ * @file Base class for resource command-group handlers.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import {
   FilteredResourceData,
@@ -54,11 +60,11 @@ export class BaseGroupHandler {
   private columns_removeDuplicates(
     results: FilteredResourceData
   ): FilteredResourceData {
-    const uniqueHeaders = Array.from(
+    const uniqueHeaders: string[] = Array.from(
       new Set(results.selectedFields)
     ) as string[];
 
-    const uniqueTableData = results.tableData.map((row) =>
+    const uniqueTableData: Record<string, unknown>[] = results.tableData.map((row) =>
       uniqueHeaders.reduce<Record<string, unknown>>((acc, header) => {
         if (typeof header === "string" && header in row) {
           acc[header] = (row as Record<string, unknown>)[header];
@@ -84,14 +90,14 @@ export class BaseGroupHandler {
       // Parse fields to handle column width specifiers (e.g., "name:20")
       const columnWidths: Record<string, number> = {};
       if (options.fields) {
-        const fields = options.fields.split(',').map(f => f.trim());
+        const fields: string[] = options.fields.split(',').map(f => f.trim());
         const cleanFields: string[] = [];
         
         fields.forEach(field => {
-          const parts = field.split(':');
+          const parts: string[] = field.split(':');
           if (parts.length === 2 && !isNaN(Number(parts[1]))) {
-            const fieldName = parts[0];
-            const width = Number(parts[1]);
+            const fieldName: string = parts[0];
+            const width: number = Number(parts[1]);
             columnWidths[fieldName] = width;
             cleanFields.push(fieldName);
           } else {
@@ -102,7 +108,7 @@ export class BaseGroupHandler {
         options.fields = cleanFields.join(',');
       }
 
-      const params = options_toParams(options);
+      const params: ListOptions = options_toParams(options);
       const results: FilteredResourceData | null =
         await this.chrisObject.asset.resources_listAndFilterByOptions(params);
 
@@ -116,20 +122,20 @@ export class BaseGroupHandler {
       if (results.tableData.length === 0) {
         console.log(`No ${this.assetName} found matching the criteria.`);
       } else {
-        const uniqueResults = this.columns_removeDuplicates(results);
+        const uniqueResults: FilteredResourceData = this.columns_removeDuplicates(results);
         
         // Construct column options based on parsed widths
         const columns = uniqueResults.selectedFields.map(field => {
-           const width = columnWidths[field];
+           const width: number = columnWidths[field];
            return width ? { width } : {};
         });
 
         if (options.csv) {
           // CSV Output
-          const header = uniqueResults.selectedFields.map(h => `"${h.toUpperCase()}"`).join(',');
-          const rows = uniqueResults.tableData.map(row => {
+          const header: string = uniqueResults.selectedFields.map(h => `"${h.toUpperCase()}"`).join(',');
+          const rows: string = uniqueResults.tableData.map(row => {
              return uniqueResults.selectedFields.map(field => {
-               const val = (row as Record<string, unknown>)[field];
+               const val: unknown = (row as Record<string, unknown>)[field];
                return `"${String(val !== undefined ? val : '').split('"').join('""')}"`;
              }).join(',');
           }).join('\n');
@@ -205,7 +211,7 @@ export class BaseGroupHandler {
    * @returns A Promise resolving to true if confirmed, false otherwise.
    */
   private async operation_confirm(ID: number, opName: string): Promise<boolean> {
-    const rl = readline.createInterface({
+    const rl: readline.Interface = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
@@ -255,7 +261,7 @@ export class BaseGroupHandler {
     fields?: string
   ): Promise<boolean> {
     await this.resource_printGivenID(ID);
-    const confirmed = await this.operation_confirm(ID, operation);
+    const confirmed: boolean = await this.operation_confirm(ID, operation);
     return confirmed;
   }
 
@@ -394,7 +400,7 @@ export class BaseGroupHandler {
    * @param program - The Commander.js program instance.
    */
   command_setup(program: Command): void {
-    const command = program
+    const command: Command = program
       .command(this.assetName)
       .description(`Interact with a group of ChRIS ${this.assetName}`);
 
@@ -421,7 +427,7 @@ export class BaseGroupHandler {
         `force the deletion without prompting for user confirmation`
       )
       .action(async (searchable: string, options: CLIoptions) => {
-        const searchParts = searchable.split("++").map((part) => part.trim());
+        const searchParts: string[] = searchable.split("++").map((part) => part.trim());
         // console.log(`searchParts = ${searchParts}`);
         for (const searchPart of searchParts) {
           const currentOptions: CLIoptions = {

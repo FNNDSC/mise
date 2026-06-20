@@ -1,3 +1,9 @@
+/**
+ * @file Handler for the PACS query command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import {
   ChRISPACSQueryGroup,
@@ -15,6 +21,8 @@ import { pacsQueries_list, pacsQueries_create, pacsQuery_resultDecode } from "@f
 import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { CLIoptions } from "../utils/cli.js";
 import { border_draw } from "../screen/screen.js";
+import { pacsQueryResult_renderPretty } from "./pacsResultRender.js";
+import { pacsQueryPayload_build } from "./pacsQueryPayload.js";
 
 /**
  * Handler for PACS queries commands.
@@ -38,120 +46,7 @@ export class PACSQueryGroupHandler {
    * Falls back gracefully if structure varies.
    */
   private pacsResult_renderPretty(payload: unknown): string | null {
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-
-    const lines: string[] = [];
-
-    const asTag = (val: unknown): { label: string; value: unknown } | null => {
-      if (val && typeof val === "object" && "value" in (val as Record<string, unknown>)) {
-        const tagObj = val as { label?: unknown; value?: unknown };
-        const label: string =
-          typeof tagObj.label === "string" && tagObj.label.length
-            ? tagObj.label
-            : "";
-        return { label, value: tagObj.value };
-      }
-      return null;
-    };
-
-    const extractFields = (
-      obj: Record<string, unknown>,
-      preferredOrder: string[],
-      includeAll: boolean
-    ): Array<{ label: string; value: unknown }> => {
-      const collected: Array<{ label: string; value: unknown }> = [];
-      const seen = new Set<string>();
-
-      const pushField = (label: string, value: unknown) => {
-        if (label && !seen.has(label)) {
-          collected.push({ label, value });
-          seen.add(label);
-        }
-      };
-
-      const scan = (keys: Iterable<string>) => {
-        for (const key of keys) {
-          const val = obj[key];
-          if (Array.isArray(val)) continue;
-          const tagVal = asTag(val);
-          if (tagVal) {
-            const lbl: string = tagVal.label || key;
-            pushField(lbl, tagVal.value);
-          } else if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
-            pushField(key, val);
-          }
-        }
-      };
-
-      scan(preferredOrder);
-      if (includeAll) {
-        scan(Object.keys(obj));
-      }
-      return collected;
-    };
-
-    const renderStudy = (studyIdx: number, studyObj: Record<string, unknown>): void => {
-      const seriesArr: unknown[] | null =
-        Array.isArray(studyObj['series']) ? (studyObj['series'] as unknown[]) :
-        Array.isArray(studyObj['Series']) ? (studyObj['Series'] as unknown[]) :
-        Array.isArray(studyObj['results']) ? (studyObj['results'] as unknown[]) :
-        Array.isArray(studyObj['data']) ? (studyObj['data'] as unknown[]) :
-        null;
-
-      const studyFields = extractFields(studyObj, [
-        "AccessionNumber",
-        "PatientName",
-        "PatientID",
-        "PatientBirthDate",
-        "PatientSex",
-        "StudyDate",
-        "StudyDescription",
-        "StudyInstanceUID",
-        "ModalitiesInStudy",
-        "NumberOfStudyRelatedSeries",
-        "NumberOfStudyRelatedInstances",
-        "RetrieveAETitle",
-        "status",
-        "QueryRetrieveLevel",
-      ], true);
-
-      lines.push(`Study ${studyIdx + 1}`);
-      studyFields.forEach((f) => lines.push(`  ${f.label}: ${f.value as string}`));
-
-      if (seriesArr && seriesArr.length) {
-        seriesArr.forEach((series, idx) => {
-          if (!series || typeof series !== "object") return;
-          const seriesFields = extractFields(series as Record<string, unknown>, [
-            "SeriesDescription",
-            "Modality",
-            "SeriesInstanceUID",
-            "NumberOfSeriesRelatedInstances",
-            "InstanceNumber",
-            "PerformedStationAETitle",
-            "RetrieveLevel",
-            "status",
-            "uid",
-          ], false);
-          lines.push(`  Series ${idx + 1}`);
-          seriesFields.forEach((f) =>
-            lines.push(`    ${f.label}: ${f.value as string}`)
-          );
-        });
-      }
-      lines.push("");
-    };
-
-    const payloadArray: unknown[] = Array.isArray(payload) ? (payload as unknown[]) : [payload];
-    payloadArray.forEach((item: unknown, idx: number) => {
-      if (item && typeof item === "object") {
-        renderStudy(idx, item as Record<string, unknown>);
-      }
-    });
-
-    const output: string = lines.join("\n").trim();
-    return output.length ? output : null;
+    return pacsQueryResult_renderPretty(payload);
   }
 
   private async pacsserverContext_resolve(
@@ -160,7 +55,7 @@ export class PACSQueryGroupHandler {
     if (overridePacsserver && overridePacsserver.length > 0) {
       return overridePacsserver;
     }
-    const current = await chrisContext.current_get(Context.PACSserver);
+    const current: string | null = await chrisContext.current_get(Context.PACSserver);
     return current;
   }
 
@@ -183,11 +78,23 @@ export class PACSQueryGroupHandler {
   }
 
   pacsQueryCommand_setup(program: Command): void {
-    const pacsQueryCommand = program
+    const pacsQueryCommand: Command = program
       .command(this.assetName)
       .description("Interact with PACS queries");
 
-    const listCommand = this.baseGroupHandler.baseListCommand_create(
+    this.listCommand_register(pacsQueryCommand);
+    this.fieldsListCommand_register(pacsQueryCommand);
+    this.createCommand_register(pacsQueryCommand);
+    this.decodeCommand_register(pacsQueryCommand);
+  }
+
+  /**
+   * Registers the `list` subcommand (with PACS-server context filtering).
+   *
+   * @param parent - The parent `pacsqueries` command.
+   */
+  private listCommand_register(parent: Command): void {
+    const listCommand: Command = this.baseGroupHandler.baseListCommand_create(
       async (options: CLIoptions & { pacsserver?: string }) => {
         const pacsserver: string | null = await this.pacsserverContext_resolve(
           options.pacsserver
@@ -209,16 +116,30 @@ export class PACSQueryGroupHandler {
       "--pacsserver <pacsserver>",
       "PACS server ID or identifier to filter queries"
     );
-    pacsQueryCommand.addCommand(listCommand);
+    parent.addCommand(listCommand);
+  }
 
-    pacsQueryCommand
+  /**
+   * Registers the `fieldslist` subcommand.
+   *
+   * @param parent - The parent `pacsqueries` command.
+   */
+  private fieldsListCommand_register(parent: Command): void {
+    parent
       .command("fieldslist")
       .description(`list the ${this.assetName} resource fields`)
       .action(async () => {
         await this.baseGroupHandler.resourceFields_list();
       });
+  }
 
-    pacsQueryCommand
+  /**
+   * Registers the `create <query>` subcommand.
+   *
+   * @param parent - The parent `pacsqueries` command.
+   */
+  private createCommand_register(parent: Command): void {
+    parent
       .command("create <query>")
       .description(
         "Create a PACS query against the current or specified PACS server. <query> can be JSON or comma-separated key:value pairs."
@@ -241,7 +162,7 @@ export class PACSQueryGroupHandler {
           return;
         }
 
-        const payload: PACSQueryCreateData | null = this.queryPayload_build(
+        const payload: PACSQueryCreateData | null = pacsQueryPayload_build(
           queryInput,
           options.title,
           options.description
@@ -255,7 +176,7 @@ export class PACSQueryGroupHandler {
 
         const result: Result<PACSQueryRecord> = await pacsQueries_create(pacsserver, payload);
         if (!result.ok) {
-          const errors = errorStack_getAllOfType("error");
+          const errors: string[] = errorStack_getAllOfType("error");
           if (errors.length) {
             errors.forEach((msg: string) => console.log(border_draw(msg)));
           } else {
@@ -273,8 +194,15 @@ export class PACSQueryGroupHandler {
         ].join(" ");
         console.log(border_draw(msg.trim()));
       });
+  }
 
-    pacsQueryCommand
+  /**
+   * Registers the `decode <queryId>` subcommand.
+   *
+   * @param parent - The parent `pacsqueries` command.
+   */
+  private decodeCommand_register(parent: Command): void {
+    parent
       .command("decode <queryId>")
       .description("Decode the result payload of a PACS query")
       .option("--raw", "Print raw decoded JSON if available")
@@ -286,7 +214,7 @@ export class PACSQueryGroupHandler {
         }
         const result: Result<PACSQueryDecodedResult> = await pacsQuery_resultDecode(idNum);
         if (!result.ok) {
-          const errors = errorStack_getAllOfType("error");
+          const errors: string[] = errorStack_getAllOfType("error");
           if (errors.length) {
             errors.forEach((msg: string) => console.log(border_draw(msg)));
           } else {
@@ -310,7 +238,7 @@ export class PACSQueryGroupHandler {
         } else if (decoded.text) {
           console.log(border_draw(decoded.text));
         } else {
-          const len = decoded.raw.length;
+          const len: number = decoded.raw.length;
           console.log(
             border_draw(`Decoded payload available (base64 length ${len}), but not printable.`)
           );
@@ -326,39 +254,6 @@ export class PACSQueryGroupHandler {
     title?: string,
     description?: string
   ): PACSQueryCreateData | null {
-    let queryObject: Record<string, string> = {};
-    try {
-      const parsed = JSON.parse(queryInput);
-      if (typeof parsed === "object" && parsed !== null) {
-        queryObject = parsed as Record<string, string>;
-      }
-    } catch {
-      // Fallback to comma-separated key:value pairs
-      queryObject = queryInput.split(",").reduce<Record<string, string>>((acc, part) => {
-        const [keyRaw, ...rest] = part.split(":");
-        if (!keyRaw || rest.length === 0) {
-          return acc;
-        }
-        const key = keyRaw.trim();
-        const value = rest.join(":").trim();
-        if (key && value) {
-          acc[key] = value;
-        }
-        return acc;
-      }, {});
-    }
-
-    if (Object.keys(queryObject).length === 0) {
-      return null;
-    }
-
-    const payload: PACSQueryCreateData = {
-      title: title || `Query ${Date.now()}`,
-      query: JSON.stringify(queryObject),
-    };
-    if (description) {
-      payload.description = description;
-    }
-    return payload;
+    return pacsQueryPayload_build(queryInput, title, description);
   }
 }

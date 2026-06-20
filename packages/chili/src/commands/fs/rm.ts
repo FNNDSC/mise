@@ -13,11 +13,17 @@ import { path_resolveChrisFs } from "../../utils/cli.js";
 import { ChrisFileOrDirRaw } from "../../models/resource.js";
 import { FilteredResourceData } from "@fnndsc/cumin";
 
+/**
+ * Options for the remove (rm) operation.
+ */
 export interface RmOptions {
   recursive?: boolean;
   force?: boolean;
 }
 
+/**
+ * Result of a remove (rm) operation.
+ */
 export interface RmResult {
   success: boolean;
   path: string;
@@ -57,7 +63,7 @@ async function pathInfo_find(targetPath: string): Promise<{ type: 'file' | 'dir'
   if (dirs && dirs.tableData) {
     for (const d of dirs.tableData) {
       if (extractName(d) === basename && d.id) {
-        return { type: 'dir', id: d.id, name: basename };
+        return { type: 'dir', id: Number(d.id), name: basename };
       }
     }
   }
@@ -65,7 +71,7 @@ async function pathInfo_find(targetPath: string): Promise<{ type: 'file' | 'dir'
   if (files && files.tableData) {
     for (const f of files.tableData) {
       if (extractName(f) === basename && f.id) {
-        return { type: 'file', id: f.id, name: basename };
+        return { type: 'file', id: Number(f.id), name: basename };
       }
     }
   }
@@ -73,7 +79,7 @@ async function pathInfo_find(targetPath: string): Promise<{ type: 'file' | 'dir'
   if (links && links.tableData) {
     for (const l of links.tableData) {
       if (extractName(l) === basename && l.id) {
-        return { type: 'link', id: l.id, name: basename };
+        return { type: 'link', id: Number(l.id), name: basename };
       }
     }
   }

@@ -10,6 +10,9 @@ import { path_resolveChrisFs } from "../../utils/cli.js";
 import { errorStack, FilteredResourceData } from "@fnndsc/cumin";
 import path from "path";
 
+/**
+ * Options for the move (mv) operation.
+ */
 export interface MvOptions {
   // Reserved for future flags (e.g., force, interactive)
 }

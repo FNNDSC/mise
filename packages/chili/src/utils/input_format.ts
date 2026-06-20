@@ -12,6 +12,9 @@
  */
 import readline from "readline";
 
+/**
+ * Recognized input formats for plugin add (e.g. docker image, source URL).
+ */
 export enum PluginInputFormat {
   PLUGIN_NAME = 'plugin_name',
   DOCKER_IMAGE = 'docker_image',
@@ -76,9 +79,9 @@ export function input_detectFormat(input: string): DetectedFormat {
   // Otherwise, it's a plugin name
   // Check if it includes version (e.g. pl-dircopy-v2.1.1)
   if (trimmedInput.includes('-v')) {
-    const lastVIndex = trimmedInput.lastIndexOf('-v');
-    const name = trimmedInput.substring(0, lastVIndex);
-    const version = trimmedInput.substring(lastVIndex + 2); // +2 for '-v'
+    const lastVIndex: number = trimmedInput.lastIndexOf('-v');
+    const name: string = trimmedInput.substring(0, lastVIndex);
+    const version: string = trimmedInput.substring(lastVIndex + 2); // +2 for '-v'
     
     return {
       format: PluginInputFormat.PLUGIN_NAME,
@@ -142,7 +145,7 @@ export async function prompt_confirmOrThrow(message: string): Promise<void> {
     throw new Error(`${message} Use --force to skip confirmation.`);
   }
 
-  const rl = readline.createInterface({
+  const rl: readline.Interface = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });

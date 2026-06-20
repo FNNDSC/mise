@@ -5,6 +5,9 @@
 import { files_rm, RmResult } from './rm.js';
 import { files_uploadPath } from '@fnndsc/salsa';
 
+/**
+ * Result of an edit operation.
+ */
 export interface EditResult {
   success: boolean;
   error?: string;

@@ -1,8 +1,17 @@
+/**
+ * @file CLI option helpers: parsing, param conversion, and ChRIS path resolution.
+ *
+ * @module
+ */
+
 import { ListOptions, chrisContext, Context, errorStack, Result, Ok, Err } from "@fnndsc/cumin";
 import { keyPairParams_apply } from "@fnndsc/cumin";
 import path from "path"; // Node.js path module for joining paths
 import { pathMapper_get } from "../path/pathMapper.js";
 
+/**
+ * Common CLI option flags shared across chili commands.
+ */
 export interface CLIoptions {
   page?: string;
   fields?: string;
@@ -21,6 +30,13 @@ export interface CLIoptions {
   [key: string]: unknown; // Allow dynamic CLI options from commander
 }
 
+/**
+ * Converts CLI options into ChRIS list query parameters.
+ *
+ * @param options - The CLI options.
+ * @param keyPairField - Field treated as the search key-pair.
+ * @returns ListOptions suitable for a ChRIS list query.
+ */
 export function options_toParams(
   options: CLIoptions,
   keyPairField: keyof CLIoptions = "search"
@@ -31,7 +47,7 @@ export function options_toParams(
     fields: options.fields,
   };
 
-  const keyPairValue = options[keyPairField];
+  const keyPairValue: unknown = options[keyPairField];
 
   if (typeof keyPairValue === "string") {
     return keyPairParams_apply(baseParams, keyPairValue);
@@ -66,7 +82,7 @@ export async function path_resolveChrisFs(
     if (options.path) {
       baseDir = options.path;
     } else {
-      const currentContext = await chrisContext.current_get(Context.ChRISfolder);
+      const currentContext: string | null = await chrisContext.current_get(Context.ChRISfolder);
       baseDir = currentContext || "/";
     }
 

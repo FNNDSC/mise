@@ -27,9 +27,9 @@ export function items_sort<T extends SimpleRecord>(
     return items;
   }
 
-  const sorted = [...items].sort((a: T, b: T) => {
-    const aVal = a[sortBy];
-    const bVal = b[sortBy];
+  const sorted: T[] = [...items].sort((a: T, b: T) => {
+    const aVal: unknown = a[sortBy];
+    const bVal: unknown = b[sortBy];
 
     // Handle undefined/null values
     if (aVal === undefined || aVal === null) return 1;

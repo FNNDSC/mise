@@ -1,17 +1,24 @@
+/**
+ * @file Path scan/transfer commands and the recursive ChRIS path scanner.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import {
   chrisIO,
   ChrisIO,
   chrisContext,
-  SingleContext,
+  Context,
   errorStack,
   ChRISEmbeddedResourceGroup,
   ListOptions,
   FilteredResourceData,
   objContext_create,
   ChrisPathNode,
+  Result,
 } from "@fnndsc/cumin";
-import { vfsDispatcher } from "@fnndsc/salsa";
+import { vfsDispatcher, VFSItem } from "@fnndsc/salsa";
 import chalk from "chalk";
 import fs from "fs";
 import path from "path";
@@ -44,8 +51,16 @@ interface FileInfo {
   isDirectory: boolean;
 }
 
+/**
+ * Aggregated result of a recursive ChRIS path scan.
+ */
 export interface ScanRecord {
   fileInfo: FileInfo[];
+  totalSize: number;
+}
+
+interface DirWalkResult {
+  files: FileInfo[];
   totalSize: number;
 }
 
@@ -71,6 +86,9 @@ interface ResourceGroups {
   linksGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>;
 }
 
+/**
+ * CLI options controlling a path scan or transfer.
+ */
 export interface CLIscan {
   tree?: boolean;
   follow?: boolean;
@@ -121,15 +139,15 @@ async function resourceGroups_create(
   currentPath: string
 ): Promise<ResourceGroups | null> {
   try {
-    const filesGroup = (await objContext_create(
+    const filesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> = (await objContext_create(
       "ChRISFilesContext",
       `folder:${currentPath}`
     )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
-    const dirsGroup = (await objContext_create(
+    const dirsGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> = (await objContext_create(
       "ChRISDirsContext",
       `folder:${currentPath}`
     )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
-    const linksGroup = (await objContext_create(
+    const linksGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> = (await objContext_create(
       "ChRISLinksContext",
       `folder:${currentPath}`
     )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
@@ -151,16 +169,16 @@ async function resourceGroups_create(
  * @returns The Mermaid diagram definition string.
  */
 function mermaidDefinition_generate(scanResult: ScanRecord): string {
-  let definition = "graph TD\n";
+  let definition: string = "graph TD\n";
   definition += "    %% Styles\n";
   definition +=
     "    classDef default fill:#f9f,stroke:#333,stroke-width:2px;\n";
   definition += "    classDef root fill:#ff9,stroke:#333,stroke-width:4px;\n";
   definition += "    classDef leaf fill:#9f9,stroke:#333,stroke-width:2px;\n\n";
 
-  const nodes = new Map<string, number>();
-  const edges = new Set<string>();
-  let nodeCounter = 0;
+  const nodes: Map<string, number> = new Map<string, number>();
+  const edges: Set<string> = new Set<string>();
+  let nodeCounter: number = 0;
 
   function nodeId_getOrCreate(path: string): number {
     if (!nodes.has(path)) {
@@ -169,18 +187,18 @@ function mermaidDefinition_generate(scanResult: ScanRecord): string {
     return nodes.get(path)!;
   }
 
-  const leafNodes = new Set<number>();
+  const leafNodes: Set<number> = new Set<number>();
 
   scanResult.fileInfo.forEach((file) => {
-    const parts = file.chrisPath.split("/").filter(Boolean);
+    const parts: string[] = file.chrisPath.split("/").filter(Boolean);
     for (let i = 1; i < parts.length; i++) {
-      const parentPath = "/" + parts.slice(0, i).join("/");
-      const currentPath = "/" + parts.slice(0, i + 1).join("/");
+      const parentPath: string = "/" + parts.slice(0, i).join("/");
+      const currentPath: string = "/" + parts.slice(0, i + 1).join("/");
 
-      const parentNode = nodeId_getOrCreate(parentPath);
-      const currentNode = nodeId_getOrCreate(currentPath);
+      const parentNode: number = nodeId_getOrCreate(parentPath);
+      const currentNode: number = nodeId_getOrCreate(currentPath);
 
-      const edge = `${parentNode} --> ${currentNode}`;
+      const edge: string = `${parentNode} --> ${currentNode}`;
       if (!edges.has(edge)) {
         edges.add(edge);
         definition += `    ${parentNode}[${parts[i - 1]}] --> ${currentNode}[${
@@ -239,9 +257,9 @@ function mermaidHtml_generate(mermaidDefinition: string): string {
  * @param mermaidDefinition - The Mermaid diagram definition string.
  */
 async function mermaid_renderInBrowser(mermaidDefinition: string) {
-  const html = mermaidHtml_generate(mermaidDefinition);
-  const tempDir = os.tmpdir();
-  const filePath = path.join(tempDir, "mermaid-diagram.html");
+  const html: string = mermaidHtml_generate(mermaidDefinition);
+  const tempDir: string = os.tmpdir();
+  const filePath: string = path.join(tempDir, "mermaid-diagram.html");
   fs.writeFileSync(filePath, html);
   await open(filePath);
 }
@@ -258,8 +276,8 @@ async function mermaid_renderServerSide(
   mermaidDefinition: string,
   outputFile: string
 ): Promise<string> {
-  const tempDir = os.tmpdir();
-  const inputFile = path.join(tempDir, "input.mmd");
+  const tempDir: string = os.tmpdir();
+  const inputFile: string = path.join(tempDir, "input.mmd");
 
   fs.writeFileSync(inputFile, mermaidDefinition);
 
@@ -340,10 +358,10 @@ async function dirs_scan(
     );
   if (dirResults && dirResults.tableData) {
     for (const dir of dirResults.tableData) {
-      dir.path = "/" + dir.path;
+      const dirPath: string = "/" + String(dir.path);
       const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, path.basename(dir.path))
-        : dir.path;
+        ? path.join(linkedPath, path.basename(dirPath))
+        : dirPath;
       const dirInfo: FileInfo = {
         id: 0,
         hostPath: path.join(
@@ -384,13 +402,13 @@ async function files_scan(
     );
   if (fileResults && fileResults.tableData) {
     for (const file of fileResults.tableData) {
-      const size: number = parseInt(file.fsize, 10);
-      file.fname = "/" + file.fname;
+      const size: number = parseInt(String(file.fsize), 10);
+      const fname: string = "/" + String(file.fname);
       const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, path.basename(file.fname))
-        : file.fname;
+        ? path.join(linkedPath, path.basename(fname))
+        : fname;
       const fileInfo: FileInfo = {
-        id: parseInt(file.id, 10),
+        id: parseInt(String(file.id), 10),
         hostPath: path.join(
           hostBasePath,
           path.relative(chrisPath, relativeChrisPath)
@@ -398,7 +416,7 @@ async function files_scan(
         chrisPath: relativeChrisPath,
         size: isNaN(size) ? 0 : size,
         isLink: !!linkedPath,
-        linkTarget: linkedPath ? file.fname : "",
+        linkTarget: linkedPath ? fname : "",
         isDirectory: false,
       };
       files.push(fileInfo);
@@ -429,20 +447,20 @@ async function links_scan(
     );
   if (linkResults && linkResults.tableData) {
     for (const link of linkResults.tableData) {
-      link.path = "/" + link.path;
-      link.fname = "/" + link.fname;
+      const linkPath: string = "/" + String(link.path);
+      const linkFname: string = "/" + String(link.fname);
       const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, path.basename(link.fname))
-        : link.fname;
+        ? path.join(linkedPath, path.basename(linkFname))
+        : linkFname;
       const linkInfo: FileInfo = {
-        id: parseInt(link.id, 10),
+        id: parseInt(String(link.id), 10),
         hostPath: path.join(
           hostBasePath,
           path.relative(chrisPath, relativeChrisPath)
         ),
         chrisPath: relativeChrisPath,
         isLink: true,
-        linkTarget: link.path,
+        linkTarget: linkPath,
         size: 0,
         isDirectory: false,
       };
@@ -452,206 +470,139 @@ async function links_scan(
   return links;
 }
 
-/**
- * Scans the ChRIS filesystem recursively.
- *
- * @param chrisPath - The starting ChRIS path for the scan.
- * @param hostBasePath - The base path on the host system for path mapping.
- * @param followLinks - If true, follow ChRIS links.
- * @param dirsOnly - If true, scan only directories.
- * @returns A Promise resolving to a ScanRecord, or null on error.
- */
+async function chrisDir_walk(
+  currentPath: string,
+  chrisPath: string,
+  hostBasePath: string,
+  followLinks: boolean,
+  dirsOnly: boolean,
+  linkedPath: string = ""
+): Promise<DirWalkResult> {
+  const listResult: Result<VFSItem[]> = await vfsDispatcher.list(currentPath);
+  if (!listResult.ok) {
+    return { files: [], totalSize: 0 };
+  }
+  const items: VFSItem[] = listResult.value || [];
+
+  const dirs: VFSItem[] = items.filter((item) => item.type === "dir" || item.type === "vfs" || item.type === "job");
+  const normalFiles: VFSItem[] = items.filter((item) => item.type === "file");
+  const links: VFSItem[] = items.filter((item) => item.type === "link");
+
+  const files: FileInfo[] = [];
+  let totalSize: number = 0;
+
+  const dirInfos: FileInfo[] = dirs.map((dir) => {
+    const fullPath: string = currentPath === "/" ? "/" + dir.name : path.join(currentPath, dir.name);
+    const relativeChrisPath: string = linkedPath ? path.join(linkedPath, dir.name) : fullPath;
+    return {
+      id: 0,
+      hostPath: path.join(hostBasePath, path.relative(chrisPath, relativeChrisPath)),
+      chrisPath: relativeChrisPath,
+      size: 0,
+      isLink: false,
+      linkTarget: "",
+      isDirectory: true,
+    };
+  });
+  files.push(...dirInfos);
+
+  if (!dirsOnly) {
+    const fileInfos: FileInfo[] = normalFiles.map((file) => {
+      const fullPath: string = currentPath === "/" ? "/" + file.name : path.join(currentPath, file.name);
+      const relativeChrisPath: string = linkedPath ? path.join(linkedPath, file.name) : fullPath;
+      return {
+        id: 0,
+        hostPath: path.join(hostBasePath, path.relative(chrisPath, relativeChrisPath)),
+        chrisPath: relativeChrisPath,
+        size: file.size,
+        isLink: !!linkedPath,
+        linkTarget: linkedPath ? fullPath : "",
+        isDirectory: false,
+      };
+    });
+    files.push(...fileInfos);
+    totalSize += fileInfos.reduce((sum, f) => sum + f.size, 0);
+
+    const linkInfos: FileInfo[] = links.map((link) => {
+      const fullPath: string = currentPath === "/" ? "/" + link.name : path.join(currentPath, link.name);
+      const relativeChrisPath: string = linkedPath ? path.join(linkedPath, link.name) : fullPath;
+      return {
+        id: 0,
+        hostPath: path.join(hostBasePath, path.relative(chrisPath, relativeChrisPath)),
+        chrisPath: relativeChrisPath,
+        isLink: true,
+        linkTarget: link.target || "",
+        size: 0,
+        isDirectory: false,
+      };
+    });
+    files.push(...linkInfos);
+
+    if (followLinks) {
+      for (const link of linkInfos) {
+        const sub: DirWalkResult = await chrisDir_walk(link.linkTarget, chrisPath, hostBasePath, followLinks, dirsOnly, link.chrisPath);
+        files.push(...sub.files);
+        totalSize += sub.totalSize;
+      }
+    }
+  }
+
+  for (const dir of dirs) {
+    const fullPath: string = currentPath === "/" ? "/" + dir.name : path.join(currentPath, dir.name);
+    const nextLinkedPath: string = linkedPath ? path.join(linkedPath, dir.name) : "";
+    const sub: DirWalkResult = await chrisDir_walk(fullPath, chrisPath, hostBasePath, followLinks, dirsOnly, nextLinkedPath);
+    files.push(...sub.files);
+    totalSize += sub.totalSize;
+  }
+
+  return { files, totalSize };
+}
+
 async function chrisFS_scan(
   chrisPath: string,
   hostBasePath: string,
   followLinks: boolean = false,
   dirsOnly: boolean = false
 ): Promise<ScanRecord | null> {
-  const files: FileInfo[] = [];
-  let totalSize: number = 0;
-
-  async function chrisDir_walk(
-    currentPath: string,
-    linkedPath: string = ""
-  ): Promise<void> {
-    const listResult = await vfsDispatcher.list(currentPath);
-    if (!listResult.ok) {
-      return;
-    }
-    const items = listResult.value || [];
-
-    // Separate items into directories/vfs roots, files, and links
-    const dirs = items.filter((item) => item.type === "dir" || item.type === "vfs" || item.type === "job");
-    const normalFiles = items.filter((item) => item.type === "file");
-    const links = items.filter((item) => item.type === "link");
-
-    const dirInfos: FileInfo[] = dirs.map((dir) => {
-      const fullPath: string =
-        currentPath === "/" ? "/" + dir.name : path.join(currentPath, dir.name);
-      const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, dir.name)
-        : fullPath;
-      return {
-        id: 0,
-        hostPath: path.join(
-          hostBasePath,
-          path.relative(chrisPath, relativeChrisPath)
-        ),
-        chrisPath: relativeChrisPath,
-        size: 0,
-        isLink: false,
-        linkTarget: "",
-        isDirectory: true,
-      };
-    });
-    files.push(...dirInfos);
-
-    if (!dirsOnly) {
-      const fileInfos: FileInfo[] = normalFiles.map((file) => {
-        const fullPath: string =
-          currentPath === "/" ? "/" + file.name : path.join(currentPath, file.name);
-        const relativeChrisPath: string = linkedPath
-          ? path.join(linkedPath, file.name)
-          : fullPath;
-        return {
-          id: 0,
-          hostPath: path.join(
-            hostBasePath,
-            path.relative(chrisPath, relativeChrisPath)
-          ),
-          chrisPath: relativeChrisPath,
-          size: file.size,
-          isLink: !!linkedPath,
-          linkTarget: linkedPath ? fullPath : "",
-          isDirectory: false,
-        };
-      });
-      files.push(...fileInfos);
-      totalSize += fileInfos.reduce((sum, f) => sum + f.size, 0);
-
-      const linkInfos: FileInfo[] = links.map((link) => {
-        const fullPath: string =
-          currentPath === "/" ? "/" + link.name : path.join(currentPath, link.name);
-        const relativeChrisPath: string = linkedPath
-          ? path.join(linkedPath, link.name)
-          : fullPath;
-        return {
-          id: 0,
-          hostPath: path.join(
-            hostBasePath,
-            path.relative(chrisPath, relativeChrisPath)
-          ),
-          chrisPath: relativeChrisPath,
-          isLink: true,
-          linkTarget: link.linkTarget || "",
-          size: 0,
-          isDirectory: false,
-        };
-      });
-      files.push(...linkInfos);
-
-      if (followLinks) {
-        for (const link of linkInfos) {
-          await chrisDir_walk(link.linkTarget, link.chrisPath);
-        }
-      }
-    }
-
-    for (const dir of dirs) {
-      const fullPath: string =
-        currentPath === "/" ? "/" + dir.name : path.join(currentPath, dir.name);
-      await chrisDir_walk(
-        fullPath,
-        linkedPath ? path.join(linkedPath, dir.name) : ""
-      );
-    }
-  }
-
   try {
-    await chrisDir_walk(chrisPath);
-    return { fileInfo: files, totalSize };
+    const result: DirWalkResult = await chrisDir_walk(chrisPath, chrisPath, hostBasePath, followLinks, dirsOnly);
+    return { fileInfo: result.files, totalSize: result.totalSize };
   } catch (error: unknown) {
     errorStack.stack_push("error", `Failed to scan ChRIS filesystem: ${error}`);
     return null;
   }
 }
 
-/**
- * Initiates a scan of the ChRIS filesystem and presents the results.
- *
- * @param options - CLI options for the scan, including display format and filters.
- * @returns A Promise resolving to a ScanRecord, or null on error.
- */
-export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
-  const chrisFolder: string | null = await chrisContext.current_get(
-    "folder" as keyof SingleContext
-  );
-  if (!chrisFolder) {
-    console.error(
-      chalk.red("No ChRIS folder context set. Use 'folder=' to set a context.")
-    );
-    return null;
+function scanResult_filter(scanResult: ScanRecord, options: CLIscan): ScanRecord {
+  if (!options.filter && !options.endsWith) {
+    return scanResult;
   }
-  if (!options.silent) {
-    console.log(
-      chalk.cyan(
-        `Scanning for ${options.dirsOnly ? "directories" : "all files"} recursively from ${chrisFolder}`
-      )
-    );
-  }
-  const hostBasePath: string = options.hostpath || process.cwd();
-  let scanResult: ScanRecord | null = await chrisFS_scan(
-    chrisFolder,
-    hostBasePath,
-    options.follow,
-    options.dirsOnly
-  );
-  if (!scanResult) {
-    console.error(chalk.red("Failed to scan ChRIS filesystem."));
-    return null;
-  }
-
-  // Apply filters if specified
-  if (options.filter || options.endsWith) {
-    const keepPaths = new Set<string>();
-    scanResult.fileInfo.forEach((file) => {
-      const basename = path.basename(file.chrisPath);
-      if (
-        (!options.filter || file.chrisPath.includes(options.filter)) &&
-        (!options.endsWith || basename.includes(options.endsWith))
-      ) {
-        // Keep this file and all its parent directories
-        let currentPath = file.chrisPath;
-        while (currentPath !== "/") {
-          keepPaths.add(currentPath);
-          currentPath = path.dirname(currentPath);
-        }
-        keepPaths.add("/"); // Ensure root is always included
+  const keepPaths: Set<string> = new Set<string>();
+  for (const file of scanResult.fileInfo) {
+    const basename: string = path.basename(file.chrisPath);
+    if (
+      (!options.filter || file.chrisPath.includes(options.filter)) &&
+      (!options.endsWith || basename.includes(options.endsWith))
+    ) {
+      let currentPath: string = file.chrisPath;
+      while (currentPath !== "/") {
+        keepPaths.add(currentPath);
+        currentPath = path.dirname(currentPath);
       }
-    });
-
-    const filteredFileInfo = scanResult.fileInfo.filter((file) =>
-      keepPaths.has(file.chrisPath)
-    );
-    const filteredTotalSize = filteredFileInfo.reduce(
-      (sum, file) => sum + file.size,
-      0
-    );
-    scanResult = {
-      fileInfo: filteredFileInfo,
-      totalSize: filteredTotalSize,
-    };
+      keepPaths.add("/");
+    }
   }
+  const fileInfo: FileInfo[] = scanResult.fileInfo.filter((f) => keepPaths.has(f.chrisPath));
+  return { fileInfo, totalSize: fileInfo.reduce((sum, f) => sum + f.size, 0) };
+}
 
+async function scanResult_render(scanResult: ScanRecord, options: CLIscan): Promise<void> {
   if (options.mermaid) {
-    const mermaidDefinition = mermaidDefinition_generate(scanResult);
+    const mermaidDefinition: string = mermaidDefinition_generate(scanResult);
     if (options.save) {
       try {
-        const outputFile = path.resolve(options.save);
-        const savedFilePath = await mermaid_renderServerSide(
-          mermaidDefinition,
-          outputFile
-        );
+        const outputFile: string = path.resolve(options.save);
+        const savedFilePath: string = await mermaid_renderServerSide(mermaidDefinition, outputFile);
         console.log(`Mermaid diagram saved to: ${savedFilePath}`);
       } catch (error: unknown) {
         console.error(`Failed to save Mermaid diagram: ${error}`);
@@ -659,33 +610,55 @@ export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
     } else {
       await mermaid_renderInBrowser(mermaidDefinition);
     }
-  } else {
-    if (options.tree) {
-      console.log(archyTree_create(scanResult.fileInfo));
-    } else {
-      if (!options.silent) {
-        scanResult.fileInfo.forEach((file: FileInfo) => {
-          if (file.isLink && !options.follow) {
-            console.log(`${file.chrisPath} -> ${file.linkTarget}`);
-          } else {
-            console.log(`${file.chrisPath}`);
-          }
-        });
+    return;
+  }
+  if (options.tree) {
+    console.log(archyTree_create(scanResult.fileInfo));
+    return;
+  }
+  if (!options.silent) {
+    for (const file of scanResult.fileInfo) {
+      if (file.isLink && !options.follow) {
+        console.log(`${file.chrisPath} -> ${file.linkTarget}`);
+      } else {
+        console.log(`${file.chrisPath}`);
       }
     }
   }
+}
 
+/**
+ * Performs a recursive scan of the current ChRIS folder.
+ *
+ * @param options - Scan options.
+ * @returns The scan record, or null if no context is set.
+ */
+export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
+  const chrisFolder: string | null = await chrisContext.current_get(
+    Context.ChRISfolder
+  );
+  if (!chrisFolder) {
+    console.error(chalk.red("No ChRIS folder context set. Use 'folder=' to set a context."));
+    return null;
+  }
   if (!options.silent) {
-    console.log(
-      chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`)
-    );
+    console.log(chalk.cyan(`Scanning for ${options.dirsOnly ? "directories" : "all files"} recursively from ${chrisFolder}`));
+  }
+  const hostBasePath: string = options.hostpath || process.cwd();
+  const scanResult: ScanRecord | null = await chrisFS_scan(chrisFolder, hostBasePath, options.follow, options.dirsOnly);
+  if (!scanResult) {
+    console.error(chalk.red("Failed to scan ChRIS filesystem."));
+    return null;
+  }
+  const filtered: ScanRecord = scanResult_filter(scanResult, options);
+  await scanResult_render(filtered, options);
+  if (!options.silent) {
+    console.log(chalk.green(`Total size: ${bytes_format(filtered.totalSize)}`));
     if (options.filter || options.endsWith) {
-      console.log(
-        chalk.cyan(`Filtered results: ${scanResult.fileInfo.length} items`)
-      );
+      console.log(chalk.cyan(`Filtered results: ${filtered.fileInfo.length} items`));
     }
   }
-  return scanResult;
+  return filtered;
 }
 
 /**
@@ -752,7 +725,7 @@ async function localFS_scan(options: TransferCLI): Promise<ScanRecord | null> {
 
   // Validate that the folder context exists in CUBE before proceeding
   try {
-    const testGroup = await objContext_create("ChRISDirsContext", `folder:${folder}`);
+    const testGroup: ChRISEmbeddedResourceGroup<unknown> | null = await objContext_create("ChRISDirsContext", `folder:${folder}`);
     if (!testGroup) {
       console.error(chalk.red(`Folder context '${folder}' does not exist in CUBE. Please specify an existing directory.`));
       return null;
@@ -945,7 +918,8 @@ async function chris_push(
       const fileBlob: Blob = new Blob([fileContent as unknown as BlobPart]);
       const uploadResult: boolean = await chrisIO.file_upload(
         fileBlob,
-        file.chrisPath
+        path.dirname(file.chrisPath),
+        path.basename(file.chrisPath)
       );
 
       if (uploadResult) {
@@ -1002,7 +976,7 @@ async function download_handle(options: TransferCLI): Promise<boolean> { // Rena
     });
     return summary.failedCount === 0;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     console.error(chalk.red(`Download failed: ${msg}`));
     return false;
   }
@@ -1021,7 +995,7 @@ async function upload_handle(options: TransferCLI): Promise<boolean> { // Rename
   }
   const progressBar: cliProgress.SingleBar =
     progressBar_setupAndStart(scanRecord);
-  const summary = await chris_push(scanRecord, progressBar);
+  const summary: TransferDetail = await chris_push(scanRecord, progressBar);
   table_display(summaryTable_create(summary), ["Metric", "Value"], { // Renamed
     title: { title: "Upload summary", justification: "center" },
   });
@@ -1037,9 +1011,9 @@ async function upload_handle(options: TransferCLI): Promise<boolean> { // Rename
  */
 export function bytes_format(bytes: number): string {
   if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const k: number = 1024;
+  const sizes: string[] = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  const i: number = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 

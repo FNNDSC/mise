@@ -7,7 +7,7 @@
  * @module
  */
 import { feeds_list as salsaFeeds_list, feed_delete as salsaFeed_delete } from "@fnndsc/salsa";
-import { FilteredResourceData } from "@fnndsc/cumin";
+import { FilteredResourceData, ListOptions } from "@fnndsc/cumin";
 import { CLIoptions, options_toParams } from "../../utils/cli.js";
 
 /**
@@ -16,9 +16,9 @@ import { CLIoptions, options_toParams } from "../../utils/cli.js";
  * @param searchable - The search string.
  * @returns A Promise resolving to an array of feed items (table data).
  */
-export async function feeds_searchByTerm(searchable: string): Promise<Record<string, any>[]> {
+export async function feeds_searchByTerm(searchable: string): Promise<Record<string, unknown>[]> {
   const options: CLIoptions = { search: searchable };
-  const params: Record<string, string | number | boolean> = options_toParams(options);
+  const params: ListOptions = options_toParams(options);
   const results: FilteredResourceData | null = await salsaFeeds_list(params);
 
   if (!results || !results.tableData) {

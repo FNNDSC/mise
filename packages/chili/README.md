@@ -9,6 +9,23 @@
 
 `chili` is both a standalone CLI and a reusable library for interacting with the ChRIS ecosystem. It serves as the controller layer in the ChRIS interface stack, bridging raw business logic (`salsa`) and user presentation.
 
+## Installation
+
+Install globally to use the `chili` command:
+
+```bash
+npm install -g @fnndsc/chili
+chili --help
+```
+
+Requires Node.js ≥ 20.12. See [Quick Start](#quick-start) for usage.
+
+`chili` is also consumed as a library (e.g. by [`chell`](https://github.com/FNNDSC/chell)): its headless **Commands** return typed **Models**, free of presentation concerns.
+
+```bash
+npm install @fnndsc/chili
+```
+
 ## Abstract
 
 Designed for developers and power-users who want to script and control a ChRIS instance from the terminal. Maintains a persistent local context: connection details, active user, and current ChRIS working directory survive across invocations.
@@ -22,8 +39,8 @@ Designed for developers and power-users who want to script and control a ChRIS i
     *   **Models (`src/models`)**: Explicit interfaces (`Plugin`, `Feed`, `ListingItem`, etc.) defining data structures.
     *   **Views (`src/views`)**: Pure functions that render Models into formatted strings and tables.
     *   **CLI (`src/index.ts`)**: Commander.js entry point orchestrating Commands and Views.
-2.  **[`salsa`](../salsa/README.md) (Logic)**: Shared Application Logic and Service Assets — high-level business intents.
-3.  **[`cumin`](../cumin/README.md) (Infrastructure)**: State and connection layer — authentication, context persistence, low-level API.
+2.  **[`salsa`](https://github.com/FNNDSC/salsa) (Logic)**: Shared Application Logic and Service Assets — high-level business intents.
+3.  **[`cumin`](https://github.com/FNNDSC/cumin) (Infrastructure)**: State and connection layer — authentication, context persistence, low-level API.
 
 ## Installation & Development
 
@@ -87,6 +104,10 @@ chili plugins add pl-fshack --compute ares,argentum
 ```bash
 chili files list --path /home/user/uploads
 ```
+
+## License
+
+MIT — part of the [ChRIS Project](https://chrisproject.org).
 
 ---
 _-30-_

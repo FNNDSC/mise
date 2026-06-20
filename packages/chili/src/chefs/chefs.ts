@@ -7,7 +7,7 @@
  * @module
  */
 import { Command } from "commander";
-import { chrisContext, Context } from "@fnndsc/cumin";
+import { chrisContext, Context, Result } from "@fnndsc/cumin";
 import { files_list, LsOptions } from '../commands/fs/ls.js';
 import { ListingItem } from '../models/listing.js';
 import { grid_render, long_render } from '../views/ls.js';
@@ -125,7 +125,8 @@ async function chefs_pwd(): Promise<void> {
  * @param filePath - The path of the file to read.
  */
 async function chefs_cat(filePath: string): Promise<void> {
-  const content: string | null = await files_cat(filePath);
+  const result: Result<string> = await files_cat(filePath);
+  const content: string | null = result.ok ? result.value : null;
   console.log(cat_render(content, filePath));
 }
 
@@ -146,7 +147,7 @@ async function chefs_rm(targetPath: string, options: RmOptions): Promise<void> {
  * @param program - The Commander program instance.
  */
 export function chefsCommand_setup(program: Command): void {
-  const chefsCommand = program
+  const chefsCommand: Command = program
     .command("chefs")
     .description("Chris Experimental File System - Shell primitives");
 

@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * @file Command-line entry point for the chili (ChILI) CLI.
+ *
+ * @module
+ */
+
 
 /**
  * Suppress DEP0169 warning from axios/proxy-from-env dependency.
@@ -58,7 +64,7 @@ import { chrisConnection, chrisConnection_init, NodeStorageProvider, errorStack_
 import { FileGroupHandler } from "./filesystem/fileGroupHandler.js";
 import { screen, table_display } from "./screen/screen.js";
 
-const program = new Command();
+const program: Command = new Command();
 
 program.version("1.0.1").description("A CLI for ChRIS");
 
@@ -67,7 +73,7 @@ program.version("1.0.1").description("A CLI for ChRIS");
  * This provides auto-completion suggestions in the shell.
  */
 function commandCompletion_setup() {
-  const completion = omelette(`chili|chili`);
+  const completion: omelette.Instance = omelette(`chili|chili`);
   completion.tree({
     connect: ["--user", "--password"],
     man: {
@@ -169,9 +175,9 @@ async function handlers_initialize() {
     );
     dirsGroupHandler.fileGroupCommand_setup(program);
   } catch (e: unknown) {
-    const err = e instanceof Error ? e.message : String(e);
-    const errors = errorStack_getAllOfType("error");
-    const warnings = errorStack_getAllOfType("warning");
+    const err: string = e instanceof Error ? e.message : String(e);
+    const errors: string[] = errorStack_getAllOfType("error");
+    const warnings: string[] = errorStack_getAllOfType("warning");
     console.log(`Note: File group commands (files, dirs, links) are unavailable. Reason: ${err}`);
     if (errors.length > 0) {
         console.log("Errors:");
@@ -196,9 +202,9 @@ async function handlers_initialize() {
       await PluginContextGroupHandler.handler_create("parametersofplugin");
     pluginParametersHandler.pluginContextGroupCommand_setup(program);
   } catch (e: unknown) {
-    const err = e instanceof Error ? e.message : String(e);
-    const errors = errorStack_getAllOfType("error");
-    const warnings = errorStack_getAllOfType("warning");
+    const err: string = e instanceof Error ? e.message : String(e);
+    const errors: string[] = errorStack_getAllOfType("error");
+    const warnings: string[] = errorStack_getAllOfType("warning");
     console.log(`Note: Plugin context commands are unavailable. Reason: ${err}`);
     if (errors.length > 0) {
         console.log("Errors:");
@@ -222,11 +228,11 @@ async function handlers_initialize() {
 function context_parse(args: string[]): [string | undefined, string[]] {
   // Find the first argument that looks like a context string (contains "=" but doesn't start with "-")
   for (let i = 2; i < args.length; i++) {
-    const arg = args[i];
+    const arg: string = args[i];
     if (arg.includes("=") && !arg.startsWith("-")) {
       const context: string = arg;
       // Reconstruct args without the context string
-      const newArgs = [...args.slice(0, i), ...args.slice(i + 1)];
+      const newArgs: string[] = [...args.slice(0, i), ...args.slice(i + 1)];
       return [context, newArgs];
     }
   }
@@ -239,12 +245,12 @@ function context_parse(args: string[]): [string | undefined, string[]] {
  * Handles initialization, context parsing, and command execution.
  */
 async function main() {
-  const nodeStorageProvider = new NodeStorageProvider();
+  const nodeStorageProvider: NodeStorageProvider = new NodeStorageProvider();
   const connection = await chrisConnection_init(nodeStorageProvider);
 
   const [context, newArgs] = context_parse(process.argv);
   if (context) {
-    const contextSetSuccess = await connection.context_set(context);
+    const contextSetSuccess: boolean = await connection.context_set(context);
     if (!contextSetSuccess) {
       console.error("Failed to set context. Exiting.");
       process.exit(1);

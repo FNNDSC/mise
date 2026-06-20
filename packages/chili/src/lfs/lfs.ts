@@ -10,6 +10,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Command } from 'commander';
 
+/** Local filesystem entry with size (KB) and creation time. */
+interface DetailedFile {
+  filename: string;
+  "size(KB)": number;
+  created_at: Date;
+}
+
+
 /**
  * Lists the contents of a directory with details.
  *
@@ -17,13 +25,13 @@ import { Command } from 'commander';
  */
 export async function dirContents_list(filepath: string) {
   try {
-    const files = await fs.promises.readdir(filepath);
-    const detailedFilesPromises = files.map(async (file: string) => {
-      let fileDetails = await fs.promises.lstat(path.resolve(filepath, file));
+    const files: string[] = await fs.promises.readdir(filepath);
+    const detailedFilesPromises: Promise<DetailedFile>[] = files.map(async (file: string): Promise<DetailedFile> => {
+      let fileDetails: fs.Stats = await fs.promises.lstat(path.resolve(filepath, file));
       const { size, birthtime } = fileDetails;
       return { filename: file, "size(KB)": size, created_at: birthtime };
     });
-    const detailedFiles = await Promise.all(detailedFilesPromises);
+    const detailedFiles: DetailedFile[] = await Promise.all(detailedFilesPromises);
     console.table(detailedFiles);
   } catch (error: unknown) {
     console.error("Error occurred while reading the directory!", error);
@@ -58,7 +66,7 @@ export function file_create(filepath: string) {
  * @param program - The Commander program instance.
  */
 export function lfsCommand_setup(program: Command) {
-  const lfs = program.command('lfs')
+  const lfs: Command = program.command('lfs')
     .description('Local filesystem operations');
 
   lfs.command('ls [directory]')

@@ -67,7 +67,7 @@ export class PluginGroupHandler {
    */
   async plugins_fields(): Promise<void> {
     try {
-      const fields = await pluginFields_fetch();
+      const fields: string[] | null = await pluginFields_fetch();
       if (fields && fields.length > 0) {
         table_display(fields, ["fields"]);
       } else {
@@ -83,11 +83,11 @@ export class PluginGroupHandler {
    * Supports batch deletion using ++ separator.
    */
   async plugins_delete(searchable: string, options: CLIoptions): Promise<void> {
-    const searchableObj = Searchable.from(searchable);
-    const searchables = searchableObj.toBatchSearchables();
+    const searchableObj: Searchable = Searchable.from(searchable);
+    const searchables: Searchable[] = searchableObj.toBatchSearchables();
 
     for (const search of searchables) {
-      const items = await plugins_searchByTerm(search.raw);
+      const items: Record<string, unknown>[] = await plugins_searchByTerm(search.raw);
       if (items.length === 0) {
         console.log(`No plugins found matching: ${search.raw}`);
         continue;
@@ -98,11 +98,11 @@ export class PluginGroupHandler {
         console.log(`Preparing to delete Plugin: ID=${item.id}, Name=${item.name}, Version=${item.version}`);
 
         if (!options.force) {
-           const confirmed = await prompt_confirm(`Are you sure you want to delete plugin ${item.name} (ID: ${item.id})?`);
+           const confirmed: boolean = await prompt_confirm(`Are you sure you want to delete plugin ${item.name} (ID: ${item.id})?`);
            if (!confirmed) continue;
         }
 
-        const success = await plugin_deleteById(item.id as number);
+        const success: boolean = await plugin_deleteById(item.id as number);
         if (success) {
             console.log(`Deleted plugin ${item.id}`);
         } else {
@@ -128,12 +128,12 @@ export class PluginGroupHandler {
    */
   pluginGroupCommand_setup(program: Command): void {
     // Manually set up commands to use new logic for list, but keep base for others
-    const pluginsCommand = program
+    const pluginsCommand: Command = program
       .command(this.assetName)
       .description(`Interact with a group of ChRIS ${this.assetName}`);
 
     // Use base list command generator and add plugin-specific options
-    const listCommand = this.baseGroupHandler.baseListCommand_create(
+    const listCommand: Command = this.baseGroupHandler.baseListCommand_create(
       async (options: CLIoptions) => {
         await this.baseGroupHandler.resources_list(options);
       }
@@ -216,7 +216,7 @@ export class PluginMemberHandler {
    * @param repoUrl - The base URL of the plugin repository.
    */
   async readme_print(repoUrl: string): Promise<void> {
-    const content = await this.controller.readmeContent_fetch(repoUrl);
+    const content: string | null = await this.controller.readmeContent_fetch(repoUrl);
     if (content) {
       console.log(chalk.green.bold("\nREADME Content:"));
       console.log(pluginReadme_render(content));
@@ -234,7 +234,7 @@ export class PluginMemberHandler {
   async plugin_readme(pluginId: string): Promise<string | null> {
     try {
       console.log(`Fetching info for plugin with ID: ${pluginId}`);
-      const documentation = await this.controller.documentationUrl_get(pluginId);
+      const documentation: string | null = await this.controller.documentationUrl_get(pluginId);
       if (!documentation) {
         return null;
       }
@@ -258,7 +258,7 @@ export class PluginMemberHandler {
    * @returns A Promise resolving to the plugin ID as a string, or null if not found.
    */
   async pluginID_fromSearch(options: CLIoptions): Promise<string | null> {
-    const pluginId = await this.controller.pluginID_fromSearch(options);
+    const pluginId: string | null = await this.controller.pluginID_fromSearch(options);
     // Warning logic could be here if controller returns array, but controller returns single ID or null.
     // Assuming single hit for simplicity based on previous refactor
     return pluginId;
@@ -278,7 +278,7 @@ export class PluginMemberHandler {
       console.log(pluginRun_render(instance));
       return instance.id;
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message: string = e instanceof Error ? e.message : String(e);
       console.error(message);
       return null;
     }
@@ -288,7 +288,7 @@ export class PluginMemberHandler {
    * Resolves a search term to plugin IDs.
    */
   async plugin_searchableToIDs(searchable: string): Promise<string[] | null> {
-    const hits = await pluginIds_resolve(searchable);
+    const hits: string[] | null = await pluginIds_resolve(searchable);
     if (!hits) {
       return null;
     }
@@ -302,7 +302,7 @@ export class PluginMemberHandler {
    * @param program - The Commander.js program instance.
    */
   pluginCommand_setup(program: Command): void {
-    const pluginCommand = program
+    const pluginCommand: Command = program
       .command(this.assetName)
       .description(`Interact with a single ChRIS ${this.assetName}`);
 
@@ -332,7 +332,7 @@ export class PluginMemberHandler {
             if (targetId) {
               await this.plugin_readme(targetId);
             } else {
-              const warnings = errorStack_getAllOfType('warning');
+              const warnings: string[] = errorStack_getAllOfType('warning');
               if (warnings && warnings.length > 0) {
                 warnings.forEach(warning => console.error(chalk.yellow(warning)));
               } else {

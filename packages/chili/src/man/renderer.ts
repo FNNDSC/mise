@@ -1,3 +1,9 @@
+/**
+ * @file AsciiDoc/man page rendering and browser-open helpers.
+ *
+ * @module
+ */
+
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
@@ -61,7 +67,7 @@ export function projectDir_get(): string {
     if (fs.existsSync(packageJsonPath)) {
       return directoryToCheck;
     }
-    const parent = path.dirname(directoryToCheck);
+    const parent: string = path.dirname(directoryToCheck);
     if (parent === directoryToCheck) break; // Root reached
     directoryToCheck = parent;
   }
@@ -97,9 +103,9 @@ function adoc_htmlConvert(content: string): string {
 function text_wrap(text: string, width: number): string {
   if (!width || width <= 0) return text;
 
-  const words = text.split(" ");
-  let wrappedText = "";
-  let line = "";
+  const words: string[] = text.split(" ");
+  let wrappedText: string = "";
+  let line: string = "";
 
   for (const word of words) {
     if ((line + word).length > width) {
@@ -129,7 +135,7 @@ export async function asciidoc_render(
   let result: string = adoc_htmlConvert(content);
 
   function ASCII_create(text: string, style: ASCIIHeadingStyle): string {
-    const transformedText = style.textTransform(text);
+    const transformedText: string = style.textTransform(text);
     return style.color(transformedText);
   }
 
@@ -148,14 +154,14 @@ export async function asciidoc_render(
   };
 
   for (let i = 0; i < headingStyles.length; i++) {
-    const figletStyle = headingStyles[i];
-    const asciiStyle = asciiHeadingStyles[i];
-    const matches = result.match(figletStyle.regex) || [];
+    const figletStyle: HeadingStyle = headingStyles[i];
+    const asciiStyle: ASCIIHeadingStyle = asciiHeadingStyles[i];
+    const matches: [] | RegExpMatchArray = result.match(figletStyle.regex) || [];
     for (const match of matches) {
-      const text = match
+      const text: string = match
         .replace(/<\/?h[1-4].*?>/g, "")
         .replace(/<a.*?>(.*?)<\/a>/g, "$1");
-      const processed = await heading_process(
+      const processed: string = await heading_process(
         text,
         style,
         figletStyle,

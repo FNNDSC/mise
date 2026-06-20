@@ -14,7 +14,7 @@ import * as readline from "readline";
  * @returns A Promise resolving to true if the user answers 'y', false otherwise.
  */
 export async function prompt_confirm(question: string): Promise<boolean> {
-  const rl = readline.createInterface({
+  const rl: readline.Interface = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });

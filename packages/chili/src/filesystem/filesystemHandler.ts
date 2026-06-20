@@ -1,3 +1,9 @@
+/**
+ * @file Commander setup for the ChRIS file-browser command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import {
   ChRISinode,
@@ -61,8 +67,8 @@ async function inodeResources_list(
         continue;
       }
 
-      const resourcesList = await resourceGet.resources_getList(params);
-      const resourceFields = await resourceGet.resourceFields_get(
+      const resourcesList: ListOptions | null = await resourceGet.resources_getList(params);
+      const resourceFields: ResourcesByFields | null = await resourceGet.resourceFields_get(
         resourcesList,
         fieldOptions[browserType]
       );
@@ -141,7 +147,7 @@ async function inodeResourceFields_list(path: string = ""): Promise<void> {
  * @param program - The Commander.js program instance.
  */
 export async function fileBrowserCommand_setup(program: Command): Promise<void> {
-  const pluginsCommand = program
+  const pluginsCommand: Command = program
     .command("fobj")
     .description("Interact with ChRIS file system objects");
 

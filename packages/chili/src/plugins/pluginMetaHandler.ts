@@ -1,3 +1,9 @@
+/**
+ * @file Handler for the plugin-meta command group.
+ *
+ * @module
+ */
+
 import { Command } from "commander";
 import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { PluginMetaController } from "../controllers/pluginMetaController.js";

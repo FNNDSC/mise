@@ -319,7 +319,7 @@ export class PathMapper {
     
     if (cached && cached.data && Array.isArray(cached.data)) {
       // Look for the item in the cached listing
-      const item = (cached.data as ListingItem[]).find((i: ListingItem) => i.name === itemName);
+      const item: ListingItem | undefined = (cached.data as ListingItem[]).find((i: ListingItem) => i.name === itemName);
       
       if (item) {
         // Item found in cache!

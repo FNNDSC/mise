@@ -1,3 +1,9 @@
+/**
+ * @file Base controller: shared resource listing and presentation logic.
+ *
+ * @module
+ */
+
 import {
   FilteredResourceData,
   ChRISPluginGroup,
@@ -20,13 +26,13 @@ export class BaseController {
   chrisObject:
     | ChRISPluginGroup
     | ChRISFeedGroup
-    | ChRISEmbeddedResourceGroup<any>; // Use any for generic type for now
+    | ChRISEmbeddedResourceGroup<unknown>; // Use any for generic type for now
 
   constructor(
     chrisObject:
       | ChRISPluginGroup
       | ChRISFeedGroup
-      | ChRISEmbeddedResourceGroup<any>
+      | ChRISEmbeddedResourceGroup<unknown>
   ) {
     this.chrisObject = chrisObject;
   }
@@ -39,7 +45,7 @@ export class BaseController {
    */
   async resources_get(options: CLIoptions): Promise<FilteredResourceData | null> {
     try {
-      const params = listParams_fromOptions(options);
+      const params: ListOptions = listParams_fromOptions(options);
       const results: FilteredResourceData | null =
         await this.chrisObject.asset.resources_listAndFilterByOptions(params);
       return results;

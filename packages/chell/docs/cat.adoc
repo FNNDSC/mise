@@ -1,0 +1,515 @@
+= The `cat` Command: File Content Display
+:toc:
+:toc-placement: preamble
+:sectnums:
+
+== Overview
+
+The `cat` command displays file contents from the ChRIS filesystem. It supports both text and binary file modes, with intelligent auto-detection of file types. This makes it ideal for viewing configuration files, examining DICOM medical images, and piping data to external analysis tools.
+
+**Key Features:**
+
+* **Auto-detection** - Automatically recognizes binary file types (DICOM, images, PDFs)
+* **Binary mode** - Preserves exact byte-for-byte integrity for medical imaging and other binary data
+* **Piping support** - Works seamlessly with external tools via Unix pipes
+* **Multiple file types** - Handles regular files, pipeline specs, and PACS DICOM files
+* **Backpressure handling** - Ensures complete data transfer even for large files (>100MB)
+
+== Basic Usage
+
+**Syntax:**
+```bash
+cat [--binary] <file> [file...]
+```
+
+**Parameters:**
+
+* `--binary` - Force binary mode (optional, auto-detected for known types)
+* `file` - Path to file(s) to display. Supports wildcards.
+
+== Text Mode Examples
+
+For human-readable files, `cat` displays content as UTF-8 text:
+
+```bash
+# Display a configuration file
+cat config.json
+
+# View a pipeline specification
+cat /PIPELINES/user/analysis_pipeline.yml
+
+# Multiple files (concatenated)
+cat file1.txt file2.txt file3.txt
+
+# Using wildcards
+cat *.json                    # All JSON files in current directory
+cat logs/*.log                # All log files in logs/ subdirectory
+
+# Path expansion
+cat ~/data/notes.txt          # Expands to /home/username/data/notes.txt
+```
+
+**Output:**
+```
+{
+  "name": "analysis_config",
+  "version": "1.0",
+  "parameters": {
+    "threshold": 0.85
+  }
+}
+```
+
+== Binary Mode
+
+Binary mode ensures exact byte-for-byte transfer, critical for medical imaging (DICOM), executables, and compressed files.
+
+=== Auto-Detection
+
+Binary mode is **automatically enabled** for these file extensions:
+
+* **Medical:** `.dcm` (DICOM)
+* **Images:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`
+* **Documents:** `.pdf`
+* **Archives:** `.zip`, `.tar`, `.gz`, `.bz2`, `.xz`, `.7z`, `.rar`
+* **Executables:** `.exe`, `.dll`, `.so`, `.dylib`, `.bin`
+* **Media:** `.mp3`, `.mp4`, `.avi`, `.mov`, `.wav`, `.flac`
+
+=== Explicit Binary Mode
+
+For files with non-standard extensions, use `--binary`:
+
+```bash
+# Force binary mode for custom extension
+cat --binary data.dat
+
+# Binary file without extension
+cat --binary /data/imaging_study
+```
+
+=== Binary Mode Behavior
+
+When binary mode is active:
+
+1. **No text conversion** - Raw bytes passed through
+2. **TTY detection** - Info message shown only in interactive terminal
+3. **Piping** - Silent when output is redirected/piped
+4. **Backpressure** - Handles large files with proper flow control
+
+**Interactive terminal output:**
+```bash
+$ cat study.dcm
+Info: study.dcm detected as binary file (.dcm), using binary mode.
+Tip: Use "cat --binary <file>" to explicitly request binary mode.
+
+<binary data displayed>
+```
+
+**Piped output (silent):**
+```bash
+$ cat study.dcm | dcmdump -
+<no info message, just binary data>
+```
+
+== DICOM Medical Imaging Examples
+
+DICOM (Digital Imaging and Communications in Medicine) files are automatically handled in binary mode.
+
+=== Viewing DICOM Metadata
+
+Use `dcmdump` to inspect DICOM file structure:
+
+```bash
+# Direct piping to dcmdump
+cat /SERVICES/PACS/PACSDCM/patient123/study/series/image.dcm | dcmdump -
+
+# Save locally then analyze
+cat /SERVICES/PACS/PACSDCM/patient123/study/series/image.dcm > /tmp/study.dcm
+dcmdump /tmp/study.dcm
+```
+
+**Output:**
+```
+# Dicom-File-Format
+(0008,0005) CS [ISO_IR 100]                    # 10, 1 SpecificCharacterSet
+(0008,0008) CS [DERIVED\PRIMARY\AXIAL]         # 22, 3 ImageType
+(0010,0010) PN [Doe^John]                      # 8, 1 PatientName
+(0020,0013) IS [1]                             # 2, 1 InstanceNumber
+(0028,0010) US 512                             # 2, 1 Rows
+(0028,0011) US 512                             # 2, 1 Columns
+```
+
+=== Converting DICOM to PNG
+
+```bash
+# Method 1: Direct pipe (if tool supports stdin)
+cat /SERVICES/PACS/.../image.dcm | dcm2pnm - output.ppm
+
+# Method 2: Save then convert (recommended)
+cat /SERVICES/PACS/.../image.dcm > /tmp/dicom_image.dcm
+dcmj2pnm --write-png /tmp/dicom_image.dcm output.png
+
+# Method 3: Using ImageMagick
+cat /SERVICES/PACS/.../image.dcm > study.dcm
+convert study.dcm study.png
+```
+
+=== Extracting Specific DICOM Tags
+
+```bash
+# Get patient name and study date
+cat /SERVICES/PACS/.../image.dcm > /tmp/study.dcm
+dcmdump /tmp/study.dcm | grep -E "PatientName|StudyDate"
+```
+
+**Output:**
+```
+(0010,0010) PN [Doe^John]                      # 8, 1 PatientName
+(0008,0020) DA [20231215]                      # 8, 1 StudyDate
+```
+
+=== Batch Processing DICOM Series
+
+```bash
+# Process all DICOM files in a series
+for file in /SERVICES/PACS/PACSDCM/patient/study/series/*.dcm; do
+  cat "$file" > "/tmp/$(basename "$file")"
+done
+
+# Verify integrity with checksums
+cat /SERVICES/PACS/.../image_001.dcm | md5sum
+cat /SERVICES/PACS/.../image_002.dcm | md5sum
+```
+
+== Advanced Piping Patterns
+
+=== Piping to Analysis Tools
+
+```bash
+# DICOM validation
+cat image.dcm | dcmftest -
+
+# Convert to JSON metadata
+cat study.dcm > /tmp/study.dcm
+dcm2json /tmp/study.dcm output.json
+
+# Convert to XML
+cat study.dcm > /tmp/study.dcm
+dcm2xml /tmp/study.dcm output.xml
+
+# Extract pixel data
+cat ct_scan.dcm | dcmj2pnm - - | convert - output.png
+```
+
+=== Compression and Archiving
+
+```bash
+# Compress DICOM file
+cat large_study.dcm | gzip > large_study.dcm.gz
+
+# Create archive of multiple files
+cat file1.dcm file2.dcm file3.dcm | tar czf - > studies.tar.gz
+
+# Calculate checksum without saving
+cat /SERVICES/PACS/.../image.dcm | sha256sum
+```
+
+=== Data Integrity Verification
+
+```bash
+# Compare local and remote file
+cat /SERVICES/PACS/.../remote.dcm | md5sum
+md5sum /local/path/local.dcm
+
+# Both should show same hash:
+# 3806329edcf10dc1cafe33c88abde38b
+```
+
+== Redirection vs Piping
+
+=== Redirection (Save to File)
+
+**Syntax:** `cat <source> > <destination>`
+
+```bash
+# Save DICOM file locally
+cat /SERVICES/PACS/.../study.dcm > /tmp/study.dcm
+
+# Append to existing file
+cat additional_data.txt >> combined_log.txt
+
+# Silent operation (no terminal output)
+cat large_file.dcm > local_copy.dcm 2>&1
+```
+
+**Use cases:**
+- Download files from ChRIS for local analysis
+- Create local backups of important data
+- Transfer files between ChRIS and local filesystem
+
+=== Piping (Send to Command)
+
+**Syntax:** `cat <source> | <command>`
+
+```bash
+# Process without saving
+cat study.dcm | dcmdump - | grep PatientName
+
+# Chain multiple commands
+cat image.dcm | dcmj2pnm - - | convert - -resize 50% thumbnail.png
+
+# Count lines in text file
+cat logfile.txt | wc -l
+```
+
+**Use cases:**
+- Stream processing without disk I/O
+- Quick analysis without cluttering filesystem
+- Complex pipelines with multiple transformations
+
+=== Combining Both
+
+```bash
+# Save and display simultaneously
+cat study.dcm | tee /tmp/study.dcm | dcmdump -
+
+# Process and save results
+cat image.dcm | dcmdump - > metadata.txt
+```
+
+== File Type Support
+
+=== Regular ChRIS Files
+
+Standard files in the ChRIS filesystem:
+
+```bash
+cat /home/user/analysis_results.json
+cat /home/user/data/experiment_log.txt
+cat /feeds/123/pl-plugin_inst_456/output.csv
+```
+
+=== Pipeline Specifications
+
+YAML/JSON pipeline definitions in `/PIPELINES`:
+
+```bash
+cat /PIPELINES/johndoe/mri_processing.yml
+cat /PIPELINES/research_team/analysis_workflow.json
+```
+
+**Sample output:**
+```yaml
+name: MRI Analysis Pipeline
+version: "2.1"
+plugins:
+  - name: pl-dicom2nifti
+    params:
+      output_format: nifti
+  - name: pl-fsl-bet
+    params:
+      threshold: 0.5
+```
+
+=== PACS DICOM Files
+
+Medical imaging files in `/SERVICES/PACS/PACSDCM`:
+
+```bash
+cat /SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/study/series/image.dcm
+```
+
+**Path structure:**
+```
+/SERVICES/PACS/PACSDCM/
+  <patient-id>/
+    <study-description>/
+      <series-number>-<series-description>/
+        <instance>.dcm
+```
+
+== Performance and Large Files
+
+=== Backpressure Handling
+
+The `cat` command implements **proper backpressure** to prevent data loss:
+
+- **Chunked writing** - Data sent in 64KB chunks
+- **Drain events** - Waits for buffer space before continuing
+- **No truncation** - Ensures complete file transfer (tested with 150MB+ files)
+
+```bash
+# Large DICOM file (150 MB) - complete transfer guaranteed
+cat /SERVICES/PACS/.../large_ct_series/0001.dcm > local.dcm
+
+# Verify no truncation
+cat /SERVICES/PACS/.../large_ct_series/0001.dcm | wc -c
+# Output: 150205 bytes (exact size)
+```
+
+=== Memory Efficiency
+
+Files are **streamed**, not loaded entirely into memory:
+
+```bash
+# Works efficiently even with large files
+cat 500mb_mri_scan.dcm | gzip > compressed.dcm.gz
+
+# Multiple large files
+cat scan1.dcm scan2.dcm scan3.dcm | tar czf - > complete_study.tar.gz
+```
+
+== Error Handling
+
+=== File Not Found
+
+```bash
+$ cat nonexistent.txt
+cat: File not found: nonexistent.txt
+```
+
+=== Permission Denied
+
+```bash
+$ cat /restricted/file.dcm
+cat: Permission denied: /restricted/file.dcm
+```
+
+=== Invalid Path
+
+```bash
+$ cat /bin/pl-plugin
+cat: Cannot cat plugins yet.
+```
+
+=== Network/API Errors
+
+```bash
+$ cat /SERVICES/PACS/.../unavailable.dcm
+cat: Failed to retrieve file: Network timeout
+```
+
+== Troubleshooting
+
+=== DICOM Tools Report Corruption
+
+**Problem:** `dcmdump` shows parsing errors
+
+**Diagnosis:**
+```bash
+# Check if data transfer is complete
+cat study.dcm > /tmp/test.dcm
+ls -lh /tmp/test.dcm            # Check file size
+md5sum /tmp/test.dcm            # Compare checksums
+
+# Test with saved file
+dcmdump /tmp/test.dcm           # Should show same errors
+```
+
+**If saved file has same errors:** The DICOM file itself has structural issues, not a transfer problem.
+
+**If saved file is valid:** Report a bug - piping may be truncating data.
+
+=== Binary Data Shown as Garbage
+
+**Problem:** Binary data displayed in terminal
+
+**Solution:** Use redirection or piping:
+```bash
+# WRONG: Displays binary garbage in terminal
+cat study.dcm
+
+# RIGHT: Save to file
+cat study.dcm > /tmp/study.dcm
+
+# RIGHT: Pipe to tool
+cat study.dcm | dcmdump -
+```
+
+=== Piping Truncates Data
+
+**Problem:** Piped output is smaller than source file
+
+**Diagnosis:**
+```bash
+# Check sizes
+cat source.dcm > saved.dcm
+wc -c saved.dcm                 # Should match source
+
+cat source.dcm | wc -c          # Should match saved.dcm
+```
+
+**If piping truncates:** Ensure you're using latest chell version with backpressure fixes.
+
+== Technical Details
+
+=== Implementation
+
+* **Language:** TypeScript (compiled to JavaScript/Node.js)
+* **Chunk size:** 64 KB for optimal performance
+* **Buffer handling:** Asynchronous with drain event monitoring
+* **Type detection:** Extension-based with Set lookup (O(1))
+
+=== Auto-Detection Algorithm
+
+1. Extract file extension with `path.extname()`
+2. Convert to lowercase
+3. Check against `BINARY_EXTENSIONS` set
+4. If match found: enable binary mode
+5. If `--binary` flag present: enable binary mode
+6. Otherwise: use text mode (UTF-8)
+
+=== Data Flow
+
+**Text mode:**
+```
+ChRIS API → UTF-8 decode → console.log() → terminal
+```
+
+**Binary mode:**
+```
+ChRIS API → Buffer → stdout.write() → pipe/redirect
+                  ↓
+            backpressure monitoring
+                  ↓
+            drain events
+```
+
+== See Also
+
+* `salsa/docs/file-content-retrieval.adoc` - Architecture of file retrieval
+* `chili/docs/32_file_content.adoc` - Integration patterns
+* `chili/docs/31_fileops.adoc` - File operations overview
+* `chell/docs/commands.adoc` - All command reference
+
+== Quick Reference
+
+**Display text file:**
+```bash
+cat config.json
+```
+
+**Save DICOM locally:**
+```bash
+cat /SERVICES/PACS/.../image.dcm > local.dcm
+```
+
+**Pipe to analysis tool:**
+```bash
+cat study.dcm | dcmdump - | less
+```
+
+**Multiple files:**
+```bash
+cat *.yml
+```
+
+**Force binary mode:**
+```bash
+cat --binary unknown_type.dat
+```
+
+**Verify transfer integrity:**
+```bash
+cat remote_file.dcm | md5sum
+```

@@ -1,0 +1,812 @@
+= Running Plugins in ChELL
+:toc:
+:toc-placement: preamble
+:toclevels: 3
+:sectnums:
+
+== Overview
+
+ChELL transforms plugin execution into a natural, filesystem-based workflow. Instead of complex API calls or verbose command-line invocations, you simply navigate to your data and type the plugin name—just like running a local program.
+
+=== The Vision
+
+ChRIS analyses are powerful but traditionally require understanding feeds, plugin instances, and graph topologies. ChELL abstracts this complexity behind a familiar metaphor: **your filesystem location is your execution context**.
+
+[source,bash]
+----
+cd ~/uploads/brain-scans
+pl-dcm2niix-v2.1.1 --outputdir results
+----
+
+Behind this simple command, ChELL:
+1. Creates a new feed
+2. Copies your data into the feed
+3. Runs the plugin on that data
+4. Returns a job ID for monitoring
+
+All of this happens transparently, letting you focus on your analysis instead of infrastructure.
+
+== The Two Execution Contexts
+
+ChELL supports two distinct workflows based on where you are in the filesystem.
+
+=== Context 1: Starting a New Analysis
+
+When you're in a regular directory (not inside a feed), typing a plugin name initiates a **new analysis**:
+
+[source,bash]
+----
+cd ~/uploads/SAG-anon
+pl-dcm2niix-v2.1.1 --outputdir converted --compress true
+----
+
+**What happens:**
+
+1. **Feed Creation**: ChELL creates a new feed using the special `pl-dircopy` plugin to copy your current directory into the ChRIS feed system
+2. **Data Preparation**: Your data (SAG-anon) is now the root of a new feed
+3. **Plugin Execution**: Your specified plugin (pl-dcm2niix) runs with the copied data as input
+4. **Result**: You get back feed and job IDs
+
+**Output:**
+[source]
+----
+Feed created: 123
+Job scheduled: pl-dcm2niix-v2.1.1 (ID: 789)
+Output will be in: ~/feeds/feed_123/pl-dcm2niix_789/data/
+----
+
+The feed structure looks like:
+[source]
+----
+~/feeds/feed_123/
+  ├── pl-dircopy_456/
+  │   └── data/              # Your copied SAG-anon data
+  └── pl-dcm2niix_789/
+      └── data/              # Converted NIfTI output
+----
+
+=== Context 2: Continuing an Existing Analysis
+
+When you're inside a feed directory, typing a plugin name **continues the analysis**:
+
+[source,bash]
+----
+cd ~/feeds/feed_123/pl-dircopy_456/data/
+pl-segmentation-v1.0.0 --threshold 0.5
+----
+
+**What happens:**
+
+1. **Context Detection**: ChELL recognizes you're in a feed directory
+2. **Parent Resolution**: Extracts the plugin instance ID (456) from the directory name
+3. **Plugin Execution**: Runs segmentation with the dircopy output as input
+4. **Result**: New plugin instance added to the feed graph
+
+**Output:**
+[source]
+----
+Job scheduled: pl-segmentation-v1.0.0 (ID: 891)
+Output will be in: ~/feeds/feed_123/pl-segmentation_891/data/
+----
+
+The feed now has a branching structure:
+[source]
+----
+~/feeds/feed_123/
+  ├── pl-dircopy_456/
+  │   └── data/
+  ├── pl-dcm2niix_789/
+  │   └── data/              # From pl-dircopy_456
+  └── pl-segmentation_891/
+      └── data/              # Also from pl-dircopy_456
+----
+
+== The Filesystem Topology = Analysis Graph
+
+The ChRIS feed filesystem directly represents your analysis graph:
+
+[source]
+----
+~/feeds/feed_123/
+  ├── pl-dircopy_456/          # Root node
+  │   └── data/
+  ├── pl-dcm2niix_789/         # Child of 456
+  │   └── data/
+  ├── pl-segmentation_891/     # Another child of 456
+  │   └── data/
+  └── pl-registration_912/     # Child of 789
+      └── data/
+----
+
+**The naming convention** is critical:
+[source]
+----
+<plugin-name>_<instance-id>/
+----
+
+This encoding allows ChELL to:
+- Determine which plugin created which data
+- Automatically wire up parent-child relationships
+- Navigate the graph by navigating directories
+
+When you `cd` into any `/data/` directory, the parent directory name tells ChELL: "This is the output of plugin instance N, so any new plugin I run should use N as its previous_id."
+
+== Understanding Asynchronous Execution
+
+Unlike local programs that block until complete, ChRIS plugin execution is **asynchronous**:
+
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 --outputdir results
+# Returns immediately with job ID
+# Plugin runs on a compute node in the background
+----
+
+This is analogous to Unix job control with `&`:
+[source,bash]
+----
+long-running-program &
+[1] 12345              # Job ID returned immediately
+----
+
+**Why asynchronous?**
+
+ChRIS plugins run on remote compute resources. A single DICOM-to-NIfTI conversion might take seconds, but a brain segmentation could take hours. Rather than blocking your shell, ChELL:
+
+1. Submits the job to ChRIS
+2. Returns a job ID immediately
+3. Lets you continue working
+4. Allows you to check status later (Phase 2 feature: `plugin status <id>`)
+
+**Your working directory remains unchanged** after execution, because you're not "in" the job—you're *observing* it, like a backgrounded process.
+
+== Parameter Syntax
+
+=== Basic Plugin Parameters
+
+Plugin parameters work just like command-line arguments:
+
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 --outputdir results --compress true --output-format nifti
+----
+
+All flags after the plugin name are passed directly to the plugin.
+
+=== Context Parameters with `--` Delimiter
+
+ChELL extends the syntax with **context parameters** that control feed creation or instance naming, separated by a `--` delimiter:
+
+[source,bash]
+----
+<plugin-name> <plugin-params> -- <context-params>
+----
+
+**Before `--`**: Parameters for the plugin itself
+**After `--`**: Parameters for ChELL's execution context
+
+=== Available Context Parameters
+
+==== `feed_title`
+
+Used when creating a new feed (non-feed directory context):
+
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 --outputdir results -- feed_title="Brain MRI Study 2025-12"
+----
+
+If omitted, ChELL prompts interactively:
+[source]
+----
+Feed title [SAG-anon]: Brain MRI Study 2025-12
+----
+
+You can accept the default (current directory name) by pressing Enter.
+
+==== `instance_title`
+
+Used in existing feeds to name this plugin instance in the DAG graph:
+
+[source,bash]
+----
+pl-segmentation-v1.0.0 --threshold 0.5 -- instance_title="Segment Cortex"
+----
+
+This title appears in ChRIS UI visualizations of your analysis graph, making it easier to understand complex workflows.
+
+=== Interactive vs Non-Interactive Mode
+
+**The rule:** Presence of `--` signals **non-interactive mode**.
+
+**Interactive (no `--`):**
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 --outputdir results
+# Prompts: "Feed title [SAG-anon]: "
+----
+
+**Non-interactive (`--` present):**
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 --outputdir results -- feed_title="MRI Study"
+# No prompts, all parameters provided
+----
+
+This is critical for **scripting and automation**. Scripts can provide all parameters upfront and run without user interaction.
+
+== Complete Walkthrough
+
+Let's follow a complete analysis from raw data to final results.
+
+=== Step 1: Prepare Data
+
+You've acquired DICOM images on your local machine:
+
+[source,bash]
+----
+ls ~/local-data/patient-001/
+# Output: IMG0001.dcm IMG0002.dcm ... IMG0512.dcm
+----
+
+=== Step 2: Upload to ChRIS
+
+Use ChELL's upload command to transfer data:
+
+[source,bash]
+----
+upload ~/local-data/patient-001 ~/uploads/patient-001
+# Uploading [████████████████████] 100% | 512/512 files
+----
+
+=== Step 3: Start Analysis - DICOM to NIfTI Conversion
+
+[source,bash]
+----
+cd ~/uploads/patient-001
+pl-dcm2niix-v2.1.1 --outputdir nifti -- feed_title="Patient 001 Analysis"
+----
+
+**Output:**
+[source]
+----
+Feed created: 42
+Job scheduled: pl-dcm2niix-v2.1.1 (ID: 103)
+Output will be in: ~/feeds/feed_42/pl-dcm2niix_103/data/
+----
+
+**What you now have:**
+[source]
+----
+~/feeds/feed_42/
+  ├── pl-dircopy_102/        # Root: your uploaded DICOMs
+  │   └── data/
+  └── pl-dcm2niix_103/       # Conversion job (running)
+      └── data/              # NIfTI files appear here when complete
+----
+
+=== Step 4: Continue Analysis - Brain Extraction
+
+Once conversion completes (you can check with `ls` or wait for notification), continue:
+
+[source,bash]
+----
+cd ~/feeds/feed_42/pl-dcm2niix_103/data/
+ls
+# Output: brain.nii.gz
+
+# Run brain extraction
+pl-fsl-bet-v1.0.2 --fractional-threshold 0.5 -- instance_title="Extract Brain"
+----
+
+**Output:**
+[source]
+----
+Job scheduled: pl-fsl-bet-v1.0.2 (ID: 104)
+Output will be in: ~/feeds/feed_42/pl-fsl-bet_104/data/
+----
+
+**Feed structure:**
+[source]
+----
+~/feeds/feed_42/
+  ├── pl-dircopy_102/
+  │   └── data/
+  ├── pl-dcm2niix_103/
+  │   └── data/
+  └── pl-fsl-bet_104/         # Brain extraction (running)
+      └── data/
+----
+
+=== Step 5: Parallel Processing
+
+You can spawn multiple analyses from the same data:
+
+[source,bash]
+----
+cd ~/feeds/feed_42/pl-dcm2niix_103/data/
+
+# Segmentation
+pl-freesurfer-v7.3.2 -- instance_title="Full Segmentation"
+
+# Registration to atlas
+pl-fsl-flirt-v1.0.0 --reference MNI152 -- instance_title="Register to MNI"
+----
+
+Both jobs run in parallel, each reading from `pl-dcm2niix_103`:
+
+[source]
+----
+~/feeds/feed_42/
+  ├── pl-dircopy_102/
+  ├── pl-dcm2niix_103/
+  ├── pl-fsl-bet_104/
+  ├── pl-freesurfer_105/      # Parallel branch 1
+  └── pl-fsl-flirt_106/       # Parallel branch 2
+----
+
+=== Step 6: Downstream Analysis
+
+Outputs from one step become inputs to the next:
+
+[source,bash]
+----
+cd ~/feeds/feed_42/pl-fsl-bet_104/data/
+ls
+# Output: brain_mask.nii.gz
+
+# Apply mask to segmentation
+pl-apply-mask-v1.0.0 --mask brain_mask.nii.gz
+----
+
+This creates a **two-level deep graph**:
+[source]
+----
+pl-dircopy_102
+  └── pl-dcm2niix_103
+        ├── pl-fsl-bet_104
+        │     └── pl-apply-mask_107
+        ├── pl-freesurfer_105
+        └── pl-fsl-flirt_106
+----
+
+== Working in Subdirectories
+
+ChRIS plugins can create complex output directory structures:
+
+[source]
+----
+~/feeds/feed_42/pl-freesurfer_105/data/
+  ├── mri/
+  │   ├── T1.mgz
+  │   └── brain.mgz
+  ├── surf/
+  │   ├── lh.pial
+  │   └── rh.pial
+  └── stats/
+      └── aseg.stats
+----
+
+ChELL handles navigation intelligently:
+
+[source,bash]
+----
+cd ~/feeds/feed_42/pl-freesurfer_105/data/mri/
+# Deep in a subdirectory
+
+pl-volume-analysis-v1.0.0 brain.mgz
+# ChELL walks UP to find pl-freesurfer_105, extracts ID 105, uses as previous_id
+----
+
+**The algorithm:** Walk up from CWD until finding a directory matching `<plugin-name>_<id>`, extract `id`, use as `previous_id`.
+
+This means you can **navigate naturally** within plugin outputs without worrying about the graph topology.
+
+== Plugin Name Completion
+
+ChELL provides tab completion for plugin names:
+
+[source,bash]
+----
+pl-<TAB>
+# Shows all available plugins:
+# pl-dcm2niix-v2.1.1
+# pl-dircopy-v2.0.0
+# pl-fsl-bet-v1.0.2
+# pl-freesurfer-v7.3.2
+# ...
+
+pl-dcm<TAB>
+# Completes to: pl-dcm2niix-v2.1.1
+----
+
+**Full version required:** You must type (or tab-complete) the full plugin name including version: `pl-dcm2niix-v2.1.1`, not just `pl-dcm2niix`.
+
+This ensures **deterministic execution**—you always know exactly which plugin version you're running.
+
+== Behind the Scenes: pl-dircopy
+
+When you run a plugin in a non-feed directory, ChELL uses the special `pl-dircopy` plugin to create the feed:
+
+[source,bash]
+----
+# You type:
+cd ~/uploads/SAG-anon
+pl-dcm2niix-v2.1.1 --outputdir results
+
+# ChELL executes (transparently):
+# 1. Create feed with pl-dircopy of ~/uploads/SAG-anon
+# 2. Run pl-dcm2niix with pl-dircopy output as input
+----
+
+**`pl-dircopy` requirements:**
+
+- Must be registered in your ChRIS instance
+- If multiple versions exist (e.g., v1.0.0, v2.1.0), ChELL automatically selects the **highest version**
+- If missing: Error message "pl-dircopy not found. Cannot create feeds."
+
+**Resolution if missing:**
+[source,bash]
+----
+plugin add pl-dircopy
+# Or with full Docker image:
+plugin add fnndsc/pl-dircopy:latest
+----
+
+== Error Scenarios
+
+=== Plugin Not Found
+
+[source,bash]
+----
+pl-typo-v1.2.3
+# Error: Plugin 'pl-typo-v1.2.3' not found in /bin
+----
+
+**Resolution:** Check available plugins with `cd /bin && ls`, or use tab completion.
+
+=== Not in Valid Context
+
+[source,bash]
+----
+cd /tmp
+pl-dcm2niix-v2.1.1
+# Error: Cannot create feed from /tmp (not a ChRIS directory)
+----
+
+**Resolution:** Navigate to a ChRIS-managed location (`~/uploads/`, `~/feeds/`, etc.).
+
+=== Cannot Extract Context
+
+[source,bash]
+----
+cd ~/feeds/feed_42/some-manual-directory/
+pl-segmentation-v1.0.0
+# Error: Could not determine plugin context from current directory
+----
+
+**Resolution:** Navigate to a valid plugin output directory (matching pattern `<plugin-name>_<id>/data/`).
+
+=== pl-dircopy Missing
+
+[source,bash]
+----
+cd ~/uploads/data
+pl-dcm2niix-v2.1.1
+# Error: pl-dircopy not found. Cannot create feeds.
+----
+
+**Resolution:** Install pl-dircopy: `plugin add pl-dircopy`
+
+== Scripting with ChELL
+
+The non-interactive mode (`--` delimiter) enables automation:
+
+[source,bash]
+----
+#!/bin/bash
+# process-patient.sh
+
+PATIENT_ID=$1
+
+# Upload data
+upload ~/raw-data/${PATIENT_ID} ~/uploads/${PATIENT_ID}
+
+# Start analysis (non-interactive)
+cd ~/uploads/${PATIENT_ID}
+pl-dcm2niix-v2.1.1 --outputdir nifti -- feed_title="Patient ${PATIENT_ID} Analysis"
+
+# Note: Job runs asynchronously, script continues immediately
+echo "Analysis started for patient ${PATIENT_ID}"
+----
+
+**Usage:**
+[source,bash]
+----
+./process-patient.sh 001
+./process-patient.sh 002
+./process-patient.sh 003
+# All analyses submitted in parallel
+----
+
+== Comparison with Traditional chili Commands
+
+ChELL's plugin execution is syntactic sugar over verbose chili commands:
+
+[cols="1,1"]
+|===
+|ChELL (Simple) |chili (Verbose)
+
+a|
+[source,bash]
+----
+cd ~/uploads/data
+pl-dcm2niix-v2.1.1 --arg val
+----
+a|
+[source,bash]
+----
+chili feed create \
+  --dirs /uploads/data \
+  --params "title:My Feed"
+
+# Note plugin ID from output (e.g., 456)
+
+chili plugin run pl-dcm2niix-v2.1.1 \
+  --previous_id 456 \
+  --params "arg:val"
+----
+|===
+
+ChELL collapses two commands, context management, and parameter marshaling into a single, intuitive invocation.
+
+== Phase 2 Features (Future)
+
+The following features are **not yet implemented** but planned:
+
+=== Job Status Monitoring
+
+[source,bash]
+----
+plugin status 789
+# Output:
+# Job ID: 789
+# Plugin: pl-dcm2niix-v2.1.1
+# Status: running
+# Progress: 45%
+# Started: 2025-12-05 14:32:10
+----
+
+=== Real-Time Progress
+
+[source,bash]
+----
+pl-freesurfer-v7.3.2 --follow
+# Streams live output from compute node
+# [14:35:12] Preprocessing...
+# [14:36:45] Surface reconstruction...
+# [14:42:03] Cortical parcellation...
+----
+
+=== Automatic Navigation
+
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 --outputdir results --cd-on-complete
+# After job completes, shell automatically cd's to output directory
+----
+
+=== Dependency Specification
+
+[source,bash]
+----
+pl-registration-v1.0.0 --wait-for 103,104
+# Waits for jobs 103 and 104 to complete before starting
+----
+
+== Best Practices
+
+=== Organizing Uploads
+
+Structure your uploads directory logically:
+
+[source]
+----
+~/uploads/
+  ├── project-a/
+  │   ├── patient-001/
+  │   ├── patient-002/
+  │   └── patient-003/
+  └── project-b/
+      ├── scan-alpha/
+      └── scan-beta/
+----
+
+Each subdirectory can become a separate feed.
+
+=== Naming Feeds
+
+Use descriptive, searchable titles:
+
+[source,bash]
+----
+# Good
+-- feed_title="2025-12-05 Patient 001 Structural MRI"
+
+# Avoid
+-- feed_title="test" # Too generic
+-- feed_title="asdf" # Meaningless
+----
+
+=== Naming Plugin Instances
+
+Use instance titles to document your workflow:
+
+[source,bash]
+----
+pl-dcm2niix-v2.1.1 -- instance_title="Convert T1 Structural"
+pl-fsl-bet-v1.0.2 -- instance_title="Extract Brain (thresh=0.5)"
+pl-freesurfer-v7.3.2 -- instance_title="Full Cortical Segmentation"
+----
+
+This creates a self-documenting analysis graph visible in ChRIS UI.
+
+=== Keeping Context
+
+When working on long-running analyses, document your feed ID:
+
+[source,bash]
+----
+echo "Patient 001 Analysis: feed_42" > ~/notes.txt
+# Later:
+cd ~/feeds/feed_42/
+----
+
+Or use descriptive feed titles that are easy to search.
+
+=== Parallel vs Sequential
+
+**Parallel:** Run multiple plugins from the same data simultaneously:
+[source,bash]
+----
+cd ~/feeds/feed_42/pl-dcm2niix_103/data/
+pl-segmentation-v1.0.0 &
+pl-registration-v1.0.0 &
+# Both jobs submitted, running in parallel
+----
+
+**Sequential:** Wait for completion before next step (manual for now, automated in Phase 2):
+[source,bash]
+----
+pl-step1-v1.0.0
+# Wait for completion (check with ls or Phase 2 `plugin status`)
+cd ~/feeds/feed_42/pl-step1_104/data/
+pl-step2-v1.0.0
+----
+
+== Technical Details
+
+=== Path Pattern Matching
+
+ChELL detects feed directories by matching:
+[source]
+----
+/home/<username>/feeds/feed_<numeric-id>/
+----
+
+Examples:
+[source]
+----
+/home/chris/feeds/feed_42/           ✓ Feed directory
+/home/chris/feeds/feed_42/pl-dircopy_103/data/ ✓ In feed
+/home/chris/uploads/data/            ✗ Not a feed
+----
+
+=== Plugin Instance ID Extraction
+
+ChELL walks up the directory tree from CWD, looking for:
+[source]
+----
+<plugin-name>_<numeric-id>
+----
+
+Regex: `^(.+)_(\d+)$`
+
+Examples:
+[source]
+----
+pl-dircopy_456        → ID: 456
+pl-dcm2niix_789       → ID: 789
+pl-freesurfer_1042    → ID: 1042
+----
+
+=== Parameter Parsing
+
+ChELL splits arguments on the first ` -- ` (space-dash-dash-space) occurrence:
+
+[source,bash]
+----
+Input: "pl-test --a 1 --b 2 -- title=Foo limit=99"
+Split: ["--a 1 --b 2", "title=Foo limit=99"]
+Plugin params: {a: "1", b: "2"}
+Context params: {title: "Foo", limit: "99"}
+----
+
+If ` -- ` is absent, all arguments are plugin parameters, and ChELL prompts for missing context parameters interactively.
+
+== Troubleshooting
+
+=== "Plugin not found" but it exists
+
+**Symptom:** You can see the plugin with `ls /bin` but ChELL says it's not found.
+
+**Cause:** Tab completion or typing error in version number.
+
+**Solution:**
+[source,bash]
+----
+cd /bin
+ls | grep dcm
+# Output: pl-dcm2niix-v2.1.1
+
+# Copy exact name
+pl-dcm2niix-v2.1.1 --help
+----
+
+=== Job never completes
+
+**Symptom:** You submitted a job hours ago, but the output directory is still empty.
+
+**Cause:** Job may have failed, or compute resource is overloaded.
+
+**Solution (Phase 2):**
+[source,bash]
+----
+plugin status 789
+# Check job status and logs
+----
+
+**Current workaround:** Check ChRIS web UI for job status.
+
+=== Wrong previous_id
+
+**Symptom:** Plugin runs but uses unexpected input data.
+
+**Cause:** Navigated to wrong directory, so ChELL extracted wrong plugin instance ID.
+
+**Solution:** Verify you're in the correct output directory:
+[source,bash]
+----
+pwd
+# Should be: ~/feeds/feed_42/pl-dcm2niix_103/data/
+# Not: ~/feeds/feed_42/pl-dircopy_102/data/
+----
+
+=== Cannot create feed
+
+**Symptom:** "pl-dircopy not found. Cannot create feeds."
+
+**Cause:** pl-dircopy plugin not installed.
+
+**Solution:**
+[source,bash]
+----
+plugin add pl-dircopy
+# Or:
+plugin add fnndsc/pl-dircopy:latest --compute host
+----
+
+== Summary
+
+ChELL's plugin execution model transforms ChRIS from a complex API-driven system into an intuitive, filesystem-based workflow. By encoding context in directory paths and treating plugins like local executables, it provides:
+
+1. **Simplicity:** `cd` to data, type plugin name
+2. **Transparency:** Filesystem structure = analysis graph
+3. **Flexibility:** Interactive prompts or scriptable non-interactive mode
+4. **Power:** Full ChRIS capabilities without API complexity
+
+The key insight: **your location is your context**. Navigate to your data, run your analysis, and let ChELL handle the complexity of feeds, instances, and graph topology.
+
+---
+
+_Last updated: 2025-12-05_

@@ -1,0 +1,90 @@
+= ChELL Store Command Reference
+:toc:
+:toclevels: 3
+:sectnums:
+
+== Introduction
+
+The `store` command in ChELL allows users to interact with the public ChRIS plugin store (peer store). You can list all available plugins or search for specific ones by name.
+
+== store list
+
+Lists all plugins available in the configured peer store.
+
+**Syntax:**
+```bash
+store list [options]
+```
+
+**Options:**
+
+* `--store <url>` - URL of the peer store to query (default: `https://cube.chrisproject.org/api/v1/`)
+* `-l` - Long listing format (shows more details)
+
+**Examples:**
+```bash
+# List all plugins (grid view)
+store list
+
+# List all plugins with details
+store list -l
+
+# List from a custom store
+store list --store https://my-store.org/api/v1/
+```
+
+== store search
+
+Searches for plugins in the peer store matching a partial name query.
+
+**Syntax:**
+```bash
+store search <query> [options]
+```
+
+**Parameters:**
+
+* `<query>` - The partial name to search for (e.g., "dicom")
+
+**Options:**
+
+* `--store <url>` - URL of the peer store to query
+* `-l` - Long listing format
+
+**Examples:**
+```bash
+# Search for plugins with "dicom" in their name
+store search dicom
+
+# Search and show details
+store search convert -l
+```
+
+== Output Format
+
+Plugins are displayed in a format consistent with ChELL's `ls` command:
+
+* **Grid View**: Displays plugin names in columns.
+* **Long View (`-l`)**: Shows type, owner, size, date, and name.
+
+**Name Format:**
+Plugins are displayed as `<name>-v<version>` (e.g., `pl-dircopy-v2.1.1`).
+
+== Integration with Plugin Add
+
+You can use the `plugin add` command to install plugins found in the store.
+
+**Example Workflow:**
+
+1. **Search for a plugin:**
+   ```bash
+   store search fshack
+   # Output: pl-fshack-v1.2.0 ...
+   ```
+
+2. **Add the desired plugin:**
+   ```bash
+   plugin add pl-fshack-v1.2.0
+   ```
+
+See `help plugin` for more details on adding plugins.

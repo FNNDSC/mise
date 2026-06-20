@@ -13,6 +13,7 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { repl_question } from '../../core/question.js';
+import { promptContext_build, segmentTokens_parse } from './prompt.helpers.js';
 
 /** All segments in display order, with metadata. */
 interface SegmentMeta {
@@ -71,6 +72,86 @@ function configure_print(pacsserver: string | null): void {
 }
 
 /**
+ * Renders and prints the current prompt once (useful for single-shot testing).
+ */
+async function promptShow_handle(): Promise<void> {
+  const context: SingleContext = await context_getSingle();
+  const cwd: string = await session.getCWD();
+  const ctx: PromptContext = promptContext_build(
+    context,
+    cwd,
+    session.offline,
+    session.physicalMode_get(),
+    process.stdout.columns || 80,
+    settings.config.p10kSegments
+  );
+  process.stdout.write(prompt_render(settings.config.promptTheme, ctx) + '\n');
+}
+
+/**
+ * Runs the interactive p10k segment configurator.
+ */
+async function promptConfigure_handle(): Promise<void> {
+  const theme: ThemeName = settings.config.promptTheme;
+  if (theme !== 'p10k') {
+    console.log(chalk.yellow(`No configurable segments for '${theme}' theme.`));
+    console.log(chalk.gray(`Switch to p10k first: prompt p10k`));
+    return;
+  }
+
+  const ctxForConfigure: SingleContext = await context_getSingle();
+  const pacsserver: string | null = ctxForConfigure.pacsserver ?? null;
+
+  configure_print(pacsserver);
+  const answer: string = await repl_question(
+    chalk.white('Enter segment names to toggle (e.g. "time duration"), or Enter to exit: ')
+  );
+
+  if (!answer) return;
+
+  const tokens: string[] = segmentTokens_parse(answer);
+  const changed: string[] = [];
+
+  for (const token of tokens) {
+    if ((P10K_OPTIONAL_SEGMENTS as readonly string[]).includes(token)) {
+      const key: keyof P10kSegmentConfig = token as keyof P10kSegmentConfig;
+      settings.config.p10kSegments[key] = !settings.config.p10kSegments[key];
+      changed.push(token);
+    } else {
+      console.log(chalk.yellow(`  Unknown segment: '${token}' — skipped`));
+    }
+  }
+
+  if (changed.length > 0) {
+    await settings_save();
+    configure_print(pacsserver);
+  }
+}
+
+/**
+ * Toggles a single p10k optional segment on/off.
+ *
+ * @param segName - The segment name to toggle.
+ */
+async function promptToggle_handle(segName: string | undefined): Promise<void> {
+  const validKey: boolean = segName !== undefined &&
+    (P10K_OPTIONAL_SEGMENTS as readonly string[]).includes(segName);
+
+  if (!validKey) {
+    console.log(chalk.red(`Usage: prompt toggle <segment>`));
+    console.log(chalk.gray(`  Segments: ${P10K_OPTIONAL_SEGMENTS.join(', ')}`));
+    return;
+  }
+
+  const key: keyof P10kSegmentConfig = segName as keyof P10kSegmentConfig;
+  const prev: boolean = settings.config.p10kSegments[key];
+  settings.config.p10kSegments[key] = !prev;
+  await settings_save();
+  const nowStr: string = settings.config.p10kSegments[key] ? chalk.green('ON') : chalk.gray('OFF');
+  console.log(`  ${chalk.cyan(key)} → ${nowStr}`);
+}
+
+/**
  * Lists available themes or switches/configures the active theme.
  *
  * Subcommands:
@@ -109,22 +190,7 @@ export async function builtin_prompt(args: string[]): Promise<void> {
 
   // toggle <segment>
   if (subcommand === 'toggle') {
-    const segName: string | undefined = args[1];
-    const validKey: boolean = segName !== undefined &&
-      (P10K_OPTIONAL_SEGMENTS as readonly string[]).includes(segName);
-
-    if (!validKey) {
-      console.log(chalk.red(`Usage: prompt toggle <segment>`));
-      console.log(chalk.gray(`  Segments: ${P10K_OPTIONAL_SEGMENTS.join(', ')}`));
-      return;
-    }
-
-    const key: keyof P10kSegmentConfig = segName as keyof P10kSegmentConfig;
-    const prev: boolean = settings.config.p10kSegments[key];
-    settings.config.p10kSegments[key] = !prev;
-    await settings_save();
-    const nowStr: string = settings.config.p10kSegments[key] ? chalk.green('ON') : chalk.gray('OFF');
-    console.log(`  ${chalk.cyan(key)} → ${nowStr}`);
+    await promptToggle_handle(args[1]);
     return;
   }
 
@@ -145,59 +211,12 @@ export async function builtin_prompt(args: string[]): Promise<void> {
 
   // --show — render and print the current prompt (useful for single-shot testing)
   if (hasShow) {
-    const context: SingleContext = await context_getSingle();
-    const cwd: string = await session.getCWD();
-    const isOffline: boolean = session.offline;
-    const ctx: PromptContext = {
-      user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
-      uri:                   isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
-      cwd:                   isOffline ? '/'            : cwd,
-      pacsserver:            context.pacsserver ?? null,
-      physicalMode:          session.physicalMode_get(),
-      terminalWidth:         process.stdout.columns || 80,
-      lastExitCode:          0,
-      lastCommandDurationMs: 0,
-      p10kSegments:          settings.config.p10kSegments,
-    };
-    process.stdout.write(prompt_render(settings.config.promptTheme, ctx) + '\n');
+    await promptShow_handle();
     return;
   }
 
   // --configure — interactive segment configurator (p10k only)
   if (hasConfigure) {
-    const theme: ThemeName = settings.config.promptTheme;
-    if (theme !== 'p10k') {
-      console.log(chalk.yellow(`No configurable segments for '${theme}' theme.`));
-      console.log(chalk.gray(`Switch to p10k first: prompt p10k`));
-      return;
-    }
-
-    const ctxForConfigure: SingleContext = await context_getSingle();
-    const pacsserver: string | null = ctxForConfigure.pacsserver ?? null;
-
-    configure_print(pacsserver);
-    const answer: string = await repl_question(
-      chalk.white('Enter segment names to toggle (e.g. "time duration"), or Enter to exit: ')
-    );
-
-    if (!answer) return;
-
-    const tokens: string[] = answer.split(/[\s,]+/).filter((t: string) => t.length > 0);
-    const changed: string[] = [];
-
-    for (const token of tokens) {
-      if ((P10K_OPTIONAL_SEGMENTS as readonly string[]).includes(token)) {
-        const key: keyof P10kSegmentConfig = token as keyof P10kSegmentConfig;
-        settings.config.p10kSegments[key] = !settings.config.p10kSegments[key];
-        changed.push(token);
-      } else {
-        console.log(chalk.yellow(`  Unknown segment: '${token}' — skipped`));
-      }
-    }
-
-    if (changed.length > 0) {
-      await settings_save();
-      configure_print(pacsserver);
-    }
+    await promptConfigure_handle();
   }
 }

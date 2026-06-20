@@ -24,7 +24,7 @@ export async function builtin_ls(args: string[]): Promise<void> {
 
   let sortBy: LsSortField = 'name';
   if (parsed['sort']) {
-    const sortValue = String(parsed['sort']);
+    const sortValue: string = String(parsed['sort']);
     if (['name', 'size', 'date', 'owner'].includes(sortValue)) {
       sortBy = sortValue as LsSortField;
     }
@@ -32,7 +32,7 @@ export async function builtin_ls(args: string[]): Promise<void> {
 
   let pathArgs: string[] = pathArgsRaw;
 
-  const shouldRefresh = !!parsed['refresh'] || !!parsed['f'];
+  const shouldRefresh: boolean = !!parsed['refresh'] || !!parsed['f'];
 
   const options: {
     long: boolean;
@@ -53,13 +53,13 @@ export async function builtin_ls(args: string[]): Promise<void> {
   if (shouldRefresh) {
     const listCache = listCache_get();
     if (pathArgs.length === 0) {
-      const cwd = await session.getCWD();
+      const cwd: string = await session.getCWD();
       console.log(chalk.gray(`[Cache] Invalidating: ${cwd}`));
       listCache.cache_invalidate(cwd);
       listCache.cache_invalidate();
     } else {
       for (const pathArg of pathArgs) {
-        const resolvedPath = await path_resolve(pathArg);
+        const resolvedPath: string = await path_resolve(pathArg);
         console.log(chalk.gray(`[Cache] Invalidating: ${resolvedPath}`));
         listCache.cache_invalidate(resolvedPath);
       }

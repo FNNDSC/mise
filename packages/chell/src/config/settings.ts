@@ -16,6 +16,9 @@ import * as os from 'os';
 import type { ThemeName, P10kSegmentConfig } from '../core/prompt/index.js';
 import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS } from '../core/prompt/index.js';
 
+/**
+ * User-configurable chell settings.
+ */
 export interface Settings {
   config: {
     historyFile: string;
@@ -50,6 +53,9 @@ function configDir_get(): string {
 
 const CONFIG_FILE: string = path.join(configDir_get(), 'settings.json');
 
+/**
+ * The active in-memory settings object.
+ */
 export const settings: Settings = {
   config: {
     historyFile: '.chell_history',
@@ -59,6 +65,9 @@ export const settings: Settings = {
   },
 };
 
+/**
+ * Loads settings from disk into the active settings object.
+ */
 export async function settings_load(): Promise<void> {
   try {
     const raw: string = await fs.promises.readFile(CONFIG_FILE, 'utf-8');
@@ -86,6 +95,9 @@ export async function settings_load(): Promise<void> {
   }
 }
 
+/**
+ * Persists the active settings object to disk.
+ */
 export async function settings_save(): Promise<void> {
   try {
     await fs.promises.mkdir(configDir_get(), { recursive: true });

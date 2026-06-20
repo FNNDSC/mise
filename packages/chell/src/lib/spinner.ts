@@ -1,5 +1,14 @@
+/**
+ * @file Terminal spinner utility for long-running operations.
+ *
+ * @module
+ */
+
 import chalk from 'chalk';
 
+/**
+ * Terminal spinner indicating progress of async work.
+ */
 export class Spinner {
   private interval: NodeJS.Timeout | null = null;
   private message: string = '';
@@ -32,12 +41,12 @@ export class Spinner {
     process.stdout.write('\x1B[?25l');
 
     this.interval = setInterval(() => {
-      const frame = this.frames[this.frameIndex = (this.frameIndex + 1) % this.frames.length];
-      let displayMessage = this.message;
+      const frame: string = this.frames[this.frameIndex = (this.frameIndex + 1) % this.frames.length];
+      let displayMessage: string = this.message;
 
       // Add timing if enabled
       if (this.showTiming) {
-        const elapsedSeconds = ((Date.now() - this.startTime) / 1000).toFixed(1);
+        const elapsedSeconds: string = ((Date.now() - this.startTime) / 1000).toFixed(1);
         displayMessage = `${this.message} (${elapsedSeconds}s)`;
       }
 
@@ -66,5 +75,5 @@ export class Spinner {
   }
 }
 
-const globalSpinner = new Spinner();
+const globalSpinner: Spinner = new Spinner();
 export { globalSpinner as spinner };

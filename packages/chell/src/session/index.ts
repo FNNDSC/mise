@@ -36,7 +36,7 @@ export class Session {
    * Initialize the session (load config/token).
    */
   async init(): Promise<void> {
-    const nodeStorageProvider = new NodeStorageProvider();
+    const nodeStorageProvider: NodeStorageProvider = new NodeStorageProvider();
     // Initialize the connection singleton which also initializes config
     this._connection = await chrisConnection_init(nodeStorageProvider);
 
@@ -127,4 +127,7 @@ export class Session {
   }
 }
 
-export const session = Session.getInstance();
+/**
+ * Shared Session singleton.
+ */
+export const session: Session = Session.getInstance();

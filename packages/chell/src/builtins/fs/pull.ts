@@ -35,6 +35,7 @@ import {
   series_cubePathGet,
 } from '../net/pacsUtils.js';
 import { builtin_cubepath } from '../net/cubepath.js';
+import { pullArgs_parse, type PullArgs } from './pull.args.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -324,6 +325,132 @@ async function tasks_pullWatch(
 }
 
 /**
+ * Resolves raw path/query arguments to concrete `/net/pacs` VFS paths,
+ * running PACS queries for query expressions.
+ *
+ * @param paths - Raw path or query-expression operands.
+ * @param pacsserver - The resolved PACS server identifier.
+ * @returns The resolved VFS paths.
+ */
+async function paths_resolveToVfs(paths: string[], pacsserver: string): Promise<string[]> {
+  const resolvedPaths: string[] = [];
+  for (const rawPath of paths) {
+    const p: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
+    if (p.startsWith('/net/pacs')) {
+      resolvedPaths.push(p);
+    } else if (queryExpr_parse(rawPath)) {
+      spinner.start(`Querying PACS for ${p}...`, true);
+      const qResult: Awaited<ReturnType<typeof pacsQuery_createAndWait>> = await pacsQuery_createAndWait(
+        p,
+        `pull_${p}`,
+        pacsserver,
+        (msg: string) => spinner.updateMessage(msg),
+      );
+      spinner.stop();
+      if (qResult) {
+        console.log(chalk.gray(`  → ${qResult.vfsPath}`));
+        resolvedPaths.push(qResult.vfsPath);
+      } else {
+        console.error(chalk.red(`pull: Query failed for: ${p}`));
+      }
+    } else {
+      console.error(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
+    }
+  }
+  return resolvedPaths;
+}
+
+/**
+ * Re-fires retrieves for series that pulled without LONK confirmation, up to
+ * `retryMax` additional attempts, then permanently fails any still unconfirmed.
+ *
+ * @param allTasks - All pull tasks.
+ * @param retryMax - Maximum retry attempts.
+ * @param pacsserver - The PACS server identifier.
+ * @param client - The connected ChRIS client.
+ * @returns The number of additional retrieve-firing errors incurred.
+ */
+async function pullRetryLoop(
+  allTasks: SeriesPullTask[],
+  retryMax: number,
+  pacsserver: string,
+  client: Client,
+): Promise<number> {
+  let extraFiringErrors: number = 0;
+  let retryCandidates: SeriesPullTask[] = allTasks.filter(
+    (t: SeriesPullTask) => t.status === 'pulled' && !t.lonkConfirmed,
+  );
+  const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
+
+  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
+    await Promise.all(retryCandidates.map(async (t: SeriesPullTask): Promise<void> => {
+      const result: Awaited<ReturnType<typeof series_cubePathGet>> = await series_cubePathGet(t.seriesUID, pacsClient, 1, 0);
+      if (result) {
+        t.lonkConfirmed = true;
+        t.cubePathDir = result.folderPath;
+      }
+    }));
+
+    retryCandidates = retryCandidates.filter((t: SeriesPullTask) => !t.lonkConfirmed);
+    if (retryCandidates.length === 0) break;
+
+    console.log(chalk.yellow(
+      `\nRetry ${attempt}/${retryMax} for ${retryCandidates.length} unconfirmed series...`,
+    ));
+
+    for (const t of retryCandidates) {
+      t.status = 'pending';
+      t.actualFiles = 0;
+      t.lastProgressFiles = 0;
+      t.lastProgressTime = Date.now();
+      t.startTime = 0;
+      t.lonkConfirmed = false;
+      t.syntheticQueryId = null;
+      t.retrieveId = null;
+    }
+
+    extraFiringErrors += await tasks_pullWatch(retryCandidates, pacsserver, client);
+
+    retryCandidates = retryCandidates.filter(
+      (t: SeriesPullTask) => t.status === 'pulled' && !t.lonkConfirmed,
+    );
+  }
+
+  for (const t of retryCandidates) {
+    t.status = 'error';
+  }
+  return extraFiringErrors;
+}
+
+/**
+ * Prints the pull summary and sets a non-zero exit code on any failure.
+ *
+ * @param allTasks - All pull tasks.
+ * @param totalFiringErrors - Count of retrieve-firing errors across all attempts.
+ */
+function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number): void {
+  const pulled: number = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled').length;
+  const totalCount: number = allTasks.length;
+  const failures: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'pulled');
+
+  if (failures.length === 0) {
+    console.log(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
+  } else {
+    console.log(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
+    for (const f of failures) {
+      console.log(chalk.red(`  ✗ ${f.label} [${f.status.toUpperCase()}]`));
+    }
+    process.exitCode = 1;
+  }
+
+  if (totalFiringErrors > 0) {
+    console.log(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
+    process.exitCode = 1;
+  }
+}
+
+
+/**
  * Pulls one or more `/net/pacs/queries/...` VFS paths into ChRIS storage.
  *
  * Blocking by default: shows per-series MultiBar progress via LONK WebSocket,
@@ -342,18 +469,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
     return;
   }
 
-  const nowait: boolean = args.includes('--nowait');
-  let retryMax: number = 0;
-  const paths: string[] = [];
-
-  for (let i: number = 0; i < args.length; i++) {
-    if (args[i] === '--retry' && i + 1 < args.length) {
-      const n: number = parseInt(args[++i], 10);
-      if (!isNaN(n) && n >= 0) retryMax = n;
-    } else if (!args[i].startsWith('--')) {
-      paths.push(args[i]);
-    }
-  }
+  const { nowait, retryMax, paths }: PullArgs = pullArgs_parse(args);
 
   if (paths.length === 0) {
     console.error(chalk.red('pull: No paths specified. Usage: pull [--nowait] [--retry N] <vfs-path> [...]'));
@@ -369,31 +485,7 @@ export async function builtin_pull(args: string[]): Promise<void> {
   }
   const pacsserver: string = pacsIdentifier;
 
-  // Resolve any non-VFS args (query expressions) to VFS paths first
-  const resolvedPaths: string[] = [];
-  for (const rawPath of paths) {
-    const p: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
-    if (p.startsWith('/net/pacs')) {
-      resolvedPaths.push(p);
-    } else if (queryExpr_parse(rawPath)) {
-      spinner.start(`Querying PACS for ${p}...`, true);
-      const qResult = await pacsQuery_createAndWait(
-        p,
-        `pull_${p}`,
-        pacsserver,
-        (msg: string) => spinner.updateMessage(msg),
-      );
-      spinner.stop();
-      if (qResult) {
-        console.log(chalk.gray(`  → ${qResult.vfsPath}`));
-        resolvedPaths.push(qResult.vfsPath);
-      } else {
-        console.error(chalk.red(`pull: Query failed for: ${p}`));
-      }
-    } else {
-      console.error(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
-    }
-  }
+  const resolvedPaths: string[] = await paths_resolveToVfs(paths, pacsserver);
 
   const allTasks: SeriesPullTask[] = [];
   for (const p of resolvedPaths) {
@@ -431,77 +523,10 @@ export async function builtin_pull(args: string[]): Promise<void> {
     return;
   }
 
-  // Initial pull
   let totalFiringErrors: number = await tasks_pullWatch(allTasks, pacsserver, client);
+  totalFiringErrors += await pullRetryLoop(allTasks, retryMax, pacsserver, client);
 
-  // Retry loop for [NO LONK] series
-  let retryCandidates: SeriesPullTask[] = allTasks.filter(
-    (t: SeriesPullTask) => t.status === 'pulled' && !t.lonkConfirmed,
-  );
-
-  const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
-
-  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
-    // Check cubepath first — series may have landed despite silent LONK
-    await Promise.all(retryCandidates.map(async (t: SeriesPullTask): Promise<void> => {
-      const result = await series_cubePathGet(t.seriesUID, pacsClient, 1, 0);
-      if (result) {
-        t.lonkConfirmed = true;
-        t.cubePathDir = result.folderPath;
-      }
-    }));
-
-    retryCandidates = retryCandidates.filter((t: SeriesPullTask) => !t.lonkConfirmed);
-    if (retryCandidates.length === 0) break;
-
-    console.log(chalk.yellow(
-      `\nRetry ${attempt}/${retryMax} for ${retryCandidates.length} unconfirmed series...`,
-    ));
-
-    for (const t of retryCandidates) {
-      t.status = 'pending';
-      t.actualFiles = 0;
-      t.lastProgressFiles = 0;
-      t.lastProgressTime = Date.now();
-      t.startTime = 0;
-      t.lonkConfirmed = false;
-      t.syntheticQueryId = null;
-      t.retrieveId = null;
-    }
-
-    const retryFiringErrors: number = await tasks_pullWatch(retryCandidates, pacsserver, client);
-    totalFiringErrors += retryFiringErrors;
-
-    retryCandidates = retryCandidates.filter(
-      (t: SeriesPullTask) => t.status === 'pulled' && !t.lonkConfirmed,
-    );
-  }
-
-  // After all retries, permanently fail remaining unconfirmed series
-  for (const t of retryCandidates) {
-    t.status = 'error';
-  }
-
-  // Summary
-  const pulledTasks: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled');
-  const pulled: number = pulledTasks.length;
-  const totalCount: number = allTasks.length;
-  const failures: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'pulled');
-
-  if (failures.length === 0) {
-    console.log(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
-  } else {
-    console.log(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
-    for (const f of failures) {
-      console.log(chalk.red(`  ✗ ${f.label} [${f.status.toUpperCase()}]`));
-    }
-    process.exitCode = 1;
-  }
-
-  if (totalFiringErrors > 0) {
-    console.log(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
-    process.exitCode = 1;
-  }
+  pullSummary_print(allTasks, totalFiringErrors);
 
   // Report CUBE paths via cubepath; --retry handles pacsseries DB lag post-pull
   await builtin_cubepath([...resolvedPaths, '--retry']);

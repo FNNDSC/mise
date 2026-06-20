@@ -60,7 +60,7 @@ export class VFS {
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
       const vfsResult = await vfsDispatcher.list(effectivePath, options);
       if (vfsResult.ok) {
-        const items = vfsResult.value as unknown as ListingItem[];
+        const items: ListingItem[] = vfsResult.value as unknown as ListingItem[];
 
         // Cache the results (not for /proc paths)
         if (!isProcPath) {
@@ -140,11 +140,11 @@ export class VFS {
     // Check if we're serving from stale cache BEFORE fetching
     const listCache = listCache_get();
     const cached = listCache.cache_get(effectivePath);
-    const wasStale = cached && !cached.fresh;
-    const isCacheMiss = !cached;
+    const wasStale: boolean | null = cached && !cached.fresh;
+    const isCacheMiss: boolean = !cached;
 
     // For cache miss, show loading indicator after 500ms timeout
-    let spinnerStarted = false; // Flag to track if spinner was actually started
+    let spinnerStarted: boolean = false; // Flag to track if spinner was actually started
     let spinnerDelayTimeout: NodeJS.Timeout | null = null;
 
     if (isCacheMiss) {
@@ -220,4 +220,7 @@ export class VFS {
   // Removed legacy virtual directory list helpers (fully unified under StaticVfsProvider and VFSDispatcher)
 }
 
-export const vfs = new VFS();
+/**
+ * Shared VFS singleton.
+ */
+export const vfs: VFS = new VFS();

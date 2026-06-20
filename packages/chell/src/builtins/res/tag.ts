@@ -11,6 +11,11 @@ import { tagFields_fetch } from '@fnndsc/chili/commands/tags/fields.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
+/**
+ * Builtin handler for the `tag` command.
+ *
+ * @param args - Parsed command arguments for the tag command.
+ */
 export async function builtin_tag(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand: string | undefined = parsed._[0];

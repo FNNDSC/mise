@@ -17,7 +17,7 @@ import { listCache_get } from '@fnndsc/cumin';
  */
 export async function builtin_cp(args: string[]): Promise<void> {
   const parsed = commandArgs_process(args);
-  const pathArgs = parsed._ as string[];
+  const pathArgs: string[] = parsed._ as string[];
 
   if (pathArgs.length < 2) {
     console.log(chalk.red('Usage: cp [-r] <source...> <dest>'));

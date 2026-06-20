@@ -76,11 +76,11 @@ function pluginParameters_render(
   lines.push(`  ${chalk.gray('─'.repeat(74))}`);
 
   parameters.forEach((param: ChRISApiPluginParameter) => {
-    const flag = `--${param.data.name}`;
-    const type = param.data.type || 'string';
-    const required = param.data.optional ? 'No' : 'Yes';
+    const flag: string = `--${param.data.name}`;
+    const type: string = param.data.type || 'string';
+    const required: string = param.data.optional ? 'No' : 'Yes';
     
-    let defaultValue = '';
+    let defaultValue: string = '';
     if (param.data.default !== undefined && param.data.default !== null) {
       defaultValue = String(param.data.default);
       if (defaultValue === '') {
@@ -90,7 +90,7 @@ function pluginParameters_render(
       defaultValue = 'None';
     }
 
-    const help = param.data.help || '';
+    const help: string = param.data.help || '';
     lines.push(`  ${chalk.yellow(flag.padEnd(22))}${type.padEnd(11)}${required.padEnd(11)}${defaultValue.padEnd(13)}${help}`);
   });
   lines.push('');
@@ -157,7 +157,7 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
 
     if (prefix === "/usr/bin") {
       const commandName: string = effectivePath.substring("/usr/bin/".length);
-      const helpStr = commandHelp_get(commandName);
+      const helpStr: string | undefined = commandHelp_get(commandName);
       if (helpStr !== undefined) {
         return Ok(helpStr);
       }
@@ -170,10 +170,10 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       const versionSeparatorIndex: number = commandName.lastIndexOf('-v');
 
       if (versionSeparatorIndex === -1) {
-        const yamlResult = await pipeline_sourceGet(commandName);
+        const yamlResult: Result<string> = await pipeline_sourceGet(commandName);
         if (yamlResult.ok) return Ok(yamlResult.value);
 
-        const resolveResult = await pipeline_resolve(commandName);
+        const resolveResult: Result<PipelineRecord> = await pipeline_resolve(commandName);
         if (resolveResult.ok) return Ok(pipelineSummary_render(resolveResult.value));
 
         errorStack.stack_push("error", `Unknown /bin entry: ${commandName}`);
@@ -190,15 +190,15 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       }
 
       const pluginsList = await client.getPlugins({ name_exact: name, version: version, limit: 1 });
-      const plugins = pluginsList.getItems();
+      const plugins: Object[] | null = pluginsList.getItems();
       if (!plugins || plugins.length === 0) {
         errorStack.stack_push("error", `Plugin not found on server: ${name} v${version}`);
         return Err();
       }
 
-      const plugin = plugins[0] as unknown as ChRISApiPlugin;
+      const plugin: ChRISApiPlugin = plugins[0] as unknown as ChRISApiPlugin;
       const parametersList = await plugin.getPluginParameters({ limit: 100 });
-      const parameters = parametersList.getItems();
+      const parameters: ChRISApiPluginParameter[] = parametersList.getItems();
 
       const output: string = pluginParameters_render(plugin, parameters, commandName);
       return Ok(output);
@@ -207,7 +207,7 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
     errorStack.stack_push("error", `File not found: ${pathStr}`);
     return Err();
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Static VFS read failed for prefix ${prefix}: ${msg}`);
     return Err();
   }
@@ -221,7 +221,7 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
  * @returns Promise resolving to a Result containing the file contents as a Buffer.
  */
 export async function staticVfs_readBinary(pathStr: string, prefix: string): Promise<Result<Buffer>> {
-  const res = await staticVfs_read(pathStr, prefix);
+  const res: Result<string> = await staticVfs_read(pathStr, prefix);
   if (res.ok) {
     return Ok(Buffer.from(res.value, "utf-8"));
   }

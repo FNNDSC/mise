@@ -10,7 +10,7 @@ import { spinner } from '../lib/spinner.js';
 import { plugin_addInteractive } from './res/plugin.js';
 import { settings, settings_save } from '../config/settings.js';
 
-const DEFAULT_STORE_URL = 'https://cube.chrisproject.org/api/v1/';
+const DEFAULT_STORE_URL: string = 'https://cube.chrisproject.org/api/v1/';
 
 /**
  * Handles store commands.
@@ -19,7 +19,7 @@ const DEFAULT_STORE_URL = 'https://cube.chrisproject.org/api/v1/';
  */
 export async function builtin_store(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
-  const subcommand = parsed._[0];
+  const subcommand: string = parsed._[0];
 
   if (!subcommand) {
      console.log(chalk.red("Usage: store <list|search|install> ..."));
@@ -53,7 +53,7 @@ export async function builtin_store(args: string[]): Promise<void> {
        }
 
     } else if (subcommand === 'search') {
-       const query = parsed._[1];
+       const query: string = parsed._[1];
        if (!query) {
           spinner.stop();
           console.log(chalk.red("Usage: store search <query>"));

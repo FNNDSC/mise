@@ -10,6 +10,7 @@ import { session } from '../../session/index.js';
 import { plugins_listAll, vfsDispatcher, context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import { partialPath_split, completions_build } from './pathComplete.helpers.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
 import { builtinCommands_list } from '../../builtins/help.js';
@@ -127,13 +128,13 @@ async function plugins_getNames(): Promise<string[]> {
  * @param callback - The callback function to return results.
  */
 export function input_complete(line: string, callback: CompleterCallback): void {
-  const trimmed = line.trimStart();
+  const trimmed: string = line.trimStart();
   const args: string[] = args_tokenize(trimmed);
 
   // Case 1: Command Completion (First word)
   // If we have only one token and the line doesn't end with space, we are typing the command
   // Or if line is empty
-  const isCommandCompletion = args.length === 0 || (args.length === 1 && !line.endsWith(' '));
+  const isCommandCompletion: boolean = args.length === 0 || (args.length === 1 && !line.endsWith(' '));
 
   if (isCommandCompletion) {
     // Check builtins first (instant, no async)
@@ -144,7 +145,7 @@ export function input_complete(line: string, callback: CompleterCallback): void 
       const pluginHits: string[] = pluginNames.filter((c) => c.startsWith(trimmed));
       
       // Combine both builtins and plugins
-      const allHits = [...builtinHits, ...pluginHits];
+      const allHits: string[] = [...builtinHits, ...pluginHits];
       callback(null, [allHits, trimmed]);
     }).catch(() => {
       // On error, return only builtin matches
@@ -154,7 +155,7 @@ export function input_complete(line: string, callback: CompleterCallback): void 
   }
   
   // Case 2: Path Completion (Argument to specific commands)
-  const cmd = args[0];
+  const cmd: string = args[0];
   if (['cd', 'ls', 'mkdir', 'touch', 'cat', 'edit', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'tree', 'pull', 'cubepath', 'query'].includes(cmd)) {
     const word: CompletionWord = completionWord_get(line);
     
@@ -176,17 +177,13 @@ export function input_complete(line: string, callback: CompleterCallback): void 
  * @param partial - The partial path string typed so far.
  */
 async function path_complete(partial: string): Promise<string[]> {
-  // 1. Resolve the directory to list and the prefix to match
-  let dirToList: string;
-  let prefix: string;
-  
-  // Handle ~ expansion for the partial path base
-  let effectivePartial = partial;
-  
+  // 1. Handle ~ expansion for the partial path base
+  let effectivePartial: string = partial;
+
   if (partial.startsWith('~')) {
     const context: SingleContext = await context_getSingle();
     const user: string | null = context.user;
-    const home = user ? `/home/${user}` : '/';
+    const home: string = user ? `/home/${user}` : '/';
     if (partial === '~' || partial === '~/') {
       effectivePartial = home + (partial.endsWith('/') ? '/' : '');
     } else if (partial.startsWith('~/')) {
@@ -194,21 +191,15 @@ async function path_complete(partial: string): Promise<string[]> {
     }
   }
 
-  if (effectivePartial.endsWith('/')) {
-     dirToList = effectivePartial;
-     prefix = '';
-  } else {
-     dirToList = path.posix.dirname(effectivePartial);
-     prefix = path.posix.basename(effectivePartial);
-     if (dirToList === '.') dirToList = ''; // Relative current dir
-  }
+  // Resolve the directory to list and the prefix to match
+  const { dirToList, prefix } = partialPath_split(effectivePartial);
 
   // 2. Resolve absolute path for listing
   let absDirToList: string;
   if (dirToList.startsWith('/')) {
     absDirToList = dirToList;
   } else {
-    const cwd = await session.getCWD();
+    const cwd: string = await session.getCWD();
     absDirToList = dirToList ? path.posix.resolve(cwd, dirToList) : cwd;
   }
 
@@ -251,30 +242,7 @@ async function path_complete(partial: string): Promise<string[]> {
     }
   }
 
-  // 4. Filter and format matches
-  const hits: ListingItem[] = items.filter((i: ListingItem) => i.name.startsWith(prefix));
-
-  // Reconstruct the full path for each match, preserving the original partial's style (tilde/relative)
-  // Append "/" for directories and virtual filesystems
-  const completions: string[] = hits.map((hit: ListingItem) => {
-    // This is the segment that was *not* yet typed, but matched.
-    // Example: partial = "~/P", prefix = "P", hit.name = "PIPELINES", remainingSegment = "IPELINES"
-    // Example: partial = "~/", prefix = "", hit.name = "home", remainingSegment = "home"
-    const remainingSegment: string = hit.name.substring(prefix.length);
-
-    // We want to return the original partial + remainingSegment
-    // Example: "~/P" + "IPELINES" = "~/PIPELINES"
-    // Example: "~/" + "home" = "~/home"
-    // Example: "fo" + "obar" = "foobar"
-    let completion: string = partial + remainingSegment;
-
-    // Append "/" for directories, virtual filesystems, and links (which may point to directories)
-    if (hit.type === 'dir' || hit.type === 'vfs' || hit.type === 'link') {
-      completion += '/';
-    }
-
-    return completion;
-  });
-
-  return completions;
+  // 4. Filter and format matches, preserving the original partial's style
+  // (tilde/relative) and appending "/" to directory-like entries.
+  return completions_build(items, prefix, partial);
 }

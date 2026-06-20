@@ -1,8 +1,22 @@
+/**
+ * @file Builtin handler for executing a plugin as a shell command.
+ *
+ * @module
+ */
+
 import chalk from 'chalk';
 import { spinner } from '../lib/spinner.js';
 import { builtin_parametersofplugin } from './parametersofplugin.js';
 import { plugins_list, plugins_listAll } from '@fnndsc/salsa';
 import { pluginReadme_fetch, pluginReadme_render } from '@fnndsc/chili/commands/plugin/readme.js';
+
+/** A plugin resolved to its exact id, name, and version. */
+interface ResolvedPlugin {
+  id: number;
+  name: string;
+  version: string;
+}
+
 
 type PluginExecutableOptions = {
     piped?: boolean;
@@ -26,13 +40,13 @@ export async function pluginExecutable_handle(
     options?: PluginExecutableOptions
 ): Promise<boolean> {
     // Expected format: name-vVersion (e.g., "pl-simpledsapp-v2.1.3")
-    const versionSeparatorIndex = command.lastIndexOf('-v');
+    const versionSeparatorIndex: number = command.lastIndexOf('-v');
     if (versionSeparatorIndex === -1) {
         return false;
     }
 
-    const name = command.substring(0, versionSeparatorIndex);
-    const version = command.substring(versionSeparatorIndex + 2);
+    const name: string = command.substring(0, versionSeparatorIndex);
+    const version: string = command.substring(versionSeparatorIndex + 2);
 
     if (!name || !version) {
         return false;
@@ -51,7 +65,7 @@ export async function pluginExecutable_handle(
     type PluginCandidate = { id?: number; name?: string; version?: string };
     type PluginListResponse = { tableData?: PluginCandidate[] } | null;
 
-    const plugin_resolveExact = async (): Promise<{ id: number; name: string; version: string } | null> => {
+    const plugin_resolveExact = async (): Promise<ResolvedPlugin | null> => {
         try {
             const resultsExactUnknown: unknown = await plugins_list({
                 search: {
@@ -92,7 +106,7 @@ export async function pluginExecutable_handle(
     if (args.includes('--readme')) {
         const rawMode: boolean = args.includes('--raw');
         console.log(chalk.cyan(`Resolving plugin ${name} v${version} for README...`));
-        const resolved = await plugin_resolveExact();
+        const resolved: ResolvedPlugin | null = await plugin_resolveExact();
         if (!resolved) {
             console.log(chalk.red(`Plugin ${name} v${version} not found.`));
             return true;
@@ -117,7 +131,7 @@ export async function pluginExecutable_handle(
 
     if (args.includes('--parameters')) {
         console.log(chalk.cyan(`Fetching parameters for plugin ${name} v${version}...`));
-        const resolved = await plugin_resolveExact();
+        const resolved: ResolvedPlugin | null = await plugin_resolveExact();
         if (!resolved) {
             console.log(chalk.red(`Plugin ${name} v${version} not found.`));
             return true; // Handled (attempted), but failed

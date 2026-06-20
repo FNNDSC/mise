@@ -34,7 +34,7 @@ import { repl_question, repl_questionHidden } from '../../core/question.js';
  */
 export async function builtin_plugin(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
-  const subcommand = parsed._[0];
+  const subcommand: string = parsed._[0];
 
   if (!subcommand) {
      console.log(chalk.red("Usage: plugin <list|run|add> ..."));
@@ -49,12 +49,12 @@ export async function builtin_plugin(args: string[]): Promise<void> {
          console.log(chalk.dim(`  ↓ showing ${plugins.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`));
        }
     } else if (subcommand === 'run') {
-       const searchable = parsed._[1];
+       const searchable: string = parsed._[1];
        if (!searchable) {
           console.log(chalk.red("Usage: plugin run <plugin> [args...]"));
           return;
        }
-       const params = args.slice(2).join(' ');
+       const params: string = args.slice(2).join(' ');
        const instance: PluginInstance | null = await plugin_execute(searchable, params);
        if (instance) {
           console.log(pluginRun_render(instance));
@@ -89,7 +89,7 @@ export async function builtin_plugin(args: string[]): Promise<void> {
  * @param parsed - Parsed command arguments.
  */
 export async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
-  const pluginInput = parsed._[1];
+  const pluginInput: string = parsed._[1];
 
   if (!pluginInput) {
     console.log(chalk.red('Usage: plugin add <name|image|url> [--compute <resources>] [--store <url>]'));

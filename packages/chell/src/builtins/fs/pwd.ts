@@ -43,7 +43,7 @@ async function path_withTitles(path: string): Promise<string> {
         try {
           const feedData: FilteredResourceData | null = await feeds_list({ id: feedId, limit: 1 });
           if (feedData && feedData.tableData && feedData.tableData.length > 0) {
-            const feed = feedData.tableData[0];
+            const feed: Record<string, unknown> = feedData.tableData[0];
             if (feed && typeof feed.name === 'string') {
               return feed.name;
             }
@@ -61,7 +61,7 @@ async function path_withTitles(path: string): Promise<string> {
         try {
           const instanceData: FilteredResourceData | null = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
           if (instanceData && instanceData.tableData && instanceData.tableData.length > 0) {
-            const instance = instanceData.tableData[0];
+            const instance: Record<string, unknown> = instanceData.tableData[0];
             if (instance) {
               const pluginName: string = typeof instance.plugin_name === 'string' ? instance.plugin_name : '';
               const pluginVersion: string = typeof instance.plugin_version === 'string' ? instance.plugin_version : '';

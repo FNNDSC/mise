@@ -1,3 +1,9 @@
+/**
+ * @file Builtin that lists the parameters of a plugin.
+ *
+ * @module
+ */
+
 import chalk from 'chalk';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { commandArgs_process } from './utils.js';
@@ -12,7 +18,7 @@ import { PluginContextGroupHandler } from '@fnndsc/chili/plugins/pluginGroupHand
  */
 export async function builtin_parametersofplugin(args: string[]): Promise<void> {
     const parsedArgs: CLIoptions = commandArgs_process(args);
-    const subcommand = (parsedArgs._ as string[])[0]; // e.g., 'list', 'fieldslist'
+    const subcommand: string = (parsedArgs._ as string[])[0]; // e.g., 'list', 'fieldslist'
     const pluginIdFromArgs: string | undefined = parsedArgs['plugin-id'] as string;
 
     if (!subcommand) {
@@ -22,7 +28,7 @@ export async function builtin_parametersofplugin(args: string[]): Promise<void> 
 
     try {
         // Instantiate the specialized handler
-        const handler = await PluginContextGroupHandler.handler_create(
+        const handler: PluginContextGroupHandler = await PluginContextGroupHandler.handler_create(
             'parametersofplugin',
             pluginIdFromArgs ? Number(pluginIdFromArgs) : undefined
         );
@@ -37,7 +43,7 @@ export async function builtin_parametersofplugin(args: string[]): Promise<void> 
         }
 
     } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg: string = error instanceof Error ? error.message : String(error);
         console.error(chalk.red(`Error in parametersofplugin: ${msg}`));
     }
 }

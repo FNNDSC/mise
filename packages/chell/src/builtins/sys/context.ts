@@ -8,6 +8,14 @@ import { session } from '../../session/index.js';
 import { SingleContext } from '@fnndsc/cumin';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 
+/** A single context key/value row for tabular display. */
+interface ContextRow {
+  Context: string;
+  Value: string;
+  [key: string]: string;
+}
+
+
 /**
  * Displays the current ChRIS context.
  *
@@ -16,7 +24,7 @@ import { table_display } from '@fnndsc/chili/screen/screen.js';
 export async function builtin_context(args: string[]): Promise<void> {
   const context: SingleContext = await context_getSingle();
 
-  const tableData = [
+  const tableData: ContextRow[] = [
     {
       Context: 'ChRIS User',
       Value: context.user || chalk.gray('Not set'),

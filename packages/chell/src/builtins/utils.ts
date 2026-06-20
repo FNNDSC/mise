@@ -50,7 +50,7 @@ export function commandArgs_process(args: string[]): ParsedArgs {
         result[key] = true;
       }
     } else if (arg.startsWith('-') && arg.length > 1) {
-      const flags = arg.substring(1).split('');
+      const flags: string[] = arg.substring(1).split('');
       flags.forEach(flag => result[flag] = true);
     } else {
       (result._ as string[]).push(arg);
@@ -76,11 +76,11 @@ export interface PathContext {
  * @returns The absolute path.
  */
 export function path_resolvePure(inputPath: string, context: PathContext): string {
-  let resolved = inputPath;
+  let resolved: string = inputPath;
   const { user, cwd } = context;
   
   if (inputPath.startsWith('~')) {
-    const home = user ? `/home/${user}` : '/';
+    const home: string = user ? `/home/${user}` : '/';
     if (inputPath === '~' || inputPath === '~/') {
       resolved = home;
     } else if (inputPath.startsWith('~/')) {
@@ -136,7 +136,7 @@ export async function path_resolveLinks(targetPath: string): Promise<string> {
       const items: ListingItem[] = await files_list({ path: parentPath }, parentPath);
 
       // Find the component in the listing
-      const item = items.find((i: ListingItem) => i.name === component);
+      const item: ListingItem | undefined = items.find((i: ListingItem) => i.name === component);
 
       if (item && item.type === 'link' && item.target) {
         // Component is a link - resolve it

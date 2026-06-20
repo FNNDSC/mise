@@ -37,6 +37,9 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
   '  --csv             CSV output',
 ];
 
+/**
+ * Help-text registry keyed by builtin command name.
+ */
 export const helpText: Record<string, CommandHelp> = {
   ls: {
     usage: 'ls [options] [path]',
@@ -1053,9 +1056,9 @@ export function commandHelp_get(command: string): string | undefined {
   lines.push('');
   
   lines.push(chalk.bold.blue('USAGE'));
-  const usageParts = help.usage.split(' ');
-  const cmdName = usageParts[0];
-  const args = usageParts.slice(1).join(' ');
+  const usageParts: string[] = help.usage.split(' ');
+  const cmdName: string = usageParts[0];
+  const args: string = usageParts.slice(1).join(' ');
   lines.push(`  ${chalk.green(cmdName)} ${chalk.cyan(args)}`);
   
   lines.push('');
@@ -1066,7 +1069,7 @@ export function commandHelp_get(command: string): string | undefined {
     lines.push('');
     lines.push(chalk.bold.blue('SUBCOMMANDS'));
     help.subcommands.forEach((opt: string) => {
-      const trimmed = opt.trim();
+      const trimmed: string = opt.trim();
       if (!trimmed) { lines.push(''); return; }
       lines.push(`  ${trimmed}`);
     });
@@ -1076,7 +1079,7 @@ export function commandHelp_get(command: string): string | undefined {
     lines.push('');
     lines.push(chalk.bold.blue('OPTIONS'));
     help.options.forEach((opt: string) => {
-      const trimmed = opt.trim();
+      const trimmed: string = opt.trim();
       if (!trimmed) {
         lines.push('');
         return;
@@ -1089,7 +1092,7 @@ export function commandHelp_get(command: string): string | undefined {
       }
 
       // Try to split by double space (common separator in help definitions)
-      const splitMatch = opt.match(/^(\s*)(.*?)(\s{2,})(.*)$/);
+      const splitMatch: RegExpMatchArray | null = opt.match(/^(\s*)(.*?)(\s{2,})(.*)$/);
       
       if (splitMatch) {
         const [, indent, content, separator, description] = splitMatch;
@@ -1109,10 +1112,10 @@ export function commandHelp_get(command: string): string | undefined {
     lines.push('');
     lines.push(chalk.bold.blue('EXAMPLES'));
     help.examples.forEach((ex: string) => {
-      const commentIdx = ex.indexOf('#');
+      const commentIdx: number = ex.indexOf('#');
       if (commentIdx !== -1) {
-        const cmdPart = ex.substring(0, commentIdx);
-        const commentPart = ex.substring(commentIdx);
+        const cmdPart: string = ex.substring(0, commentIdx);
+        const commentPart: string = ex.substring(commentIdx);
         lines.push(`  ${chalk.white(cmdPart)}${chalk.gray(commentPart)}`);
       } else {
         lines.push(`  ${chalk.white(ex)}`);
@@ -1153,7 +1156,7 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
   if (!isPluginExecutable && args.includes('--help')) return true;
 
   // Commands where -h means human-readable sizes, not help
-  const humanReadableCommands = ['ls', 'du'];
+  const humanReadableCommands: string[] = ['ls', 'du'];
   
   if (command && humanReadableCommands.includes(command)) {
     return false;

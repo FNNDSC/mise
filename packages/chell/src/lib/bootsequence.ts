@@ -1,10 +1,22 @@
+/**
+ * @file Boot-sequence logging and intro-panel rendering for chell startup.
+ *
+ * @module
+ */
+
 import chalk from 'chalk';
 
+/**
+ * A single labeled boot-info line.
+ */
 export interface BootInfoItem {
   label: string;
   value: string;
 }
 
+/**
+ * A three-column boot-info line.
+ */
 export interface BootInfoItem3 {
   app: string;
   name: string;
@@ -16,14 +28,27 @@ function text_visibleLength(text: string): number {
   return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').length;
 }
 
+/**
+ * Grouped boot-info panels (header, local, chris).
+ */
 export interface BootPanels {
   header: BootInfoItem3[];
   local: BootInfoItem[];
   chris: BootInfoItem[];
 }
 
+/**
+ * Status of a boot step: ok, skip, or fail.
+ */
 export type BootStatus = 'ok' | 'skip' | 'fail';
 
+/**
+ * Creates a boot logger that renders a titled status box.
+ *
+ * @param title - Box title.
+ * @param useAscii - Use ASCII (vs unicode) box characters.
+ * @returns A boot logger exposing status-logging helpers.
+ */
 export function bootLogger_create(title: string, useAscii: boolean) {
   const horiz: string = useAscii ? '-' : '─';
   const cornerTL: string = useAscii ? '+' : '┌';
@@ -170,6 +195,14 @@ function box_render_withMin(title: string, rows: BootInfoItem[], useColor: boole
   return lines;
 }
 
+/**
+ * Prints the intro panels side-by-side with the logo.
+ *
+ * @param logoLines - Rendered logo lines.
+ * @param panels - Boot-info panels.
+ * @param useColor - Whether to colorize output.
+ * @param useAscii - Use ASCII box characters.
+ */
 export function bootsequence_printIntroPanels(
   logoLines: string[],
   panels: BootPanels,
@@ -219,6 +252,14 @@ export function bootsequence_printIntroPanels(
   }
 }
 
+/**
+ * Prints the intro panels stacked vertically with the logo.
+ *
+ * @param logoLines - Rendered logo lines.
+ * @param panels - Boot-info panels.
+ * @param useColor - Whether to colorize output.
+ * @param useAscii - Use ASCII box characters.
+ */
 export function bootsequence_printIntroPanelsStacked(
   logoLines: string[],
   panels: BootPanels,

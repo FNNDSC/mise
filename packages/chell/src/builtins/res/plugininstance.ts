@@ -11,6 +11,11 @@ import { pluginInstanceFields_fetch } from '@fnndsc/chili/commands/plugininstanc
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
+/**
+ * Builtin handler for the `plugininstance` command.
+ *
+ * @param args - Parsed command arguments for the plugin-instance command.
+ */
 export async function builtin_plugininstance(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand: string | undefined = parsed._[0];

@@ -12,6 +12,11 @@ import { groupFields_fetch } from '@fnndsc/chili/commands/groups/fields.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
+/**
+ * Builtin handler for the `group` command.
+ *
+ * @param args - Parsed command arguments for the group command.
+ */
 export async function builtin_group(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand: string | undefined = parsed._[0];

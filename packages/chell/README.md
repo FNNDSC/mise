@@ -4,6 +4,14 @@
 
 ChELL is a command-line shell that presents a ChRIS distributed-computing platform as a familiar Unix filesystem. If you know `bash` or `zsh`, you already know most of ChELL.
 
+## Installation
+
+```bash
+npm install -g @fnndsc/chell
+```
+
+Requires Node.js ≥ 20.12. This installs the `chell` command — see [Getting Started](#getting-started) to connect to a CUBE.
+
 ## The Concept
 
 ChRIS stores data, analysis tools, and results behind a REST API. ChELL maps all of that onto paths:
@@ -305,4 +313,13 @@ ChELL is the presentation layer of the "Sandwich Model":
 | [CONTEXT.md](CONTEXT.md) | Domain glossary — ChRIS concepts, permission model, resource contract |
 
 ---
+
+## License
+
+Part of the [ChRIS Project](https://chrisproject.org).
+
+---
 *ChELL is part of the ChRIS Project.*
+
+---
+_-30-_

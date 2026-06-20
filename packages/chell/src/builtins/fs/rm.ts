@@ -18,7 +18,7 @@ import { listCache_get } from '@fnndsc/cumin';
  */
 async function prompt_confirm(message: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const rl = readline.createInterface({
+    const rl: readline.Interface = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
@@ -32,32 +32,38 @@ async function prompt_confirm(message: string): Promise<boolean> {
 }
 
 /**
- * Removes one or more files or directories.
- *
- * @param args - Command line arguments (flags and paths).
+ * Parsed `rm` arguments: flags plus the resolved list of path operands.
  */
-export async function builtin_rm(args: string[]): Promise<void> {
-  // Parse flags and paths
+export interface RmArgs {
+  recursive: boolean;
+  force: boolean;
+  interactive: boolean;
+  paths: string[];
+}
+
+/**
+ * Parses `rm` arguments, supporting combined short flags (`-rf`, `-rfi`) and the
+ * `--` end-of-options separator.
+ *
+ * @param args - Raw command arguments.
+ * @returns The parsed flags and path operands.
+ */
+export function rmArgs_parse(args: string[]): RmArgs {
   let recursive: boolean = false;
   let force: boolean = false;
   let interactive: boolean = false;
-  const pathArgs: string[] = [];
+  const paths: string[] = [];
   let endOfOptions: boolean = false;
 
   for (const arg of args) {
-    // Handle -- (end of options)
     if (arg === '--') {
       endOfOptions = true;
       continue;
     }
-
-    // After --, everything is a path
     if (endOfOptions) {
-      pathArgs.push(arg);
+      paths.push(arg);
       continue;
     }
-
-    // Parse flags — iterate characters to handle any combination (-rf, -fr, -rfi, etc.)
     if (arg.startsWith('-') && arg.length > 1) {
       for (const ch of arg.substring(1)) {
         if (ch === 'r' || ch === 'R') recursive = true;
@@ -65,11 +71,41 @@ export async function builtin_rm(args: string[]): Promise<void> {
         else if (ch === 'i') interactive = true;
       }
     } else if (!arg.startsWith('-')) {
-      pathArgs.push(arg);
+      paths.push(arg);
     }
   }
 
-  if (pathArgs.length === 0) {
+  return { recursive, force, interactive, paths };
+}
+
+/**
+ * Formats the multi-target removal summary line.
+ *
+ * @param successCount - Number of items removed successfully.
+ * @param failCount - Number of items that failed to remove.
+ * @returns The summary string, or null if there is nothing to summarise.
+ */
+export function rmSummary_format(successCount: number, failCount: number): string | null {
+  if (!(successCount > 0 || failCount > 0)) return null;
+  if (successCount > 0 && failCount === 0) {
+    return chalk.green(`Successfully removed ${successCount} item${successCount !== 1 ? 's' : ''}`);
+  }
+  if (successCount > 0 && failCount > 0) {
+    return chalk.yellow(`Removed ${successCount} item${successCount !== 1 ? 's' : ''}, failed ${failCount}`);
+  }
+  return chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`);
+}
+
+
+/**
+ * Removes one or more files or directories.
+ *
+ * @param args - Command line arguments (flags and paths).
+ */
+export async function builtin_rm(args: string[]): Promise<void> {
+  const { recursive, force, interactive, paths }: RmArgs = rmArgs_parse(args);
+
+  if (paths.length === 0) {
     console.error(chalk.red('Usage: rm [-rf] <path> [path...]'));
     return;
   }
@@ -78,8 +114,7 @@ export async function builtin_rm(args: string[]): Promise<void> {
   let successCount: number = 0;
   let failCount: number = 0;
 
-  // Process each path
-  for (const pathArg of pathArgs) {
+  for (const pathArg of paths) {
     try {
       const target: string = await path_resolve(pathArg);
 
@@ -89,32 +124,28 @@ export async function builtin_rm(args: string[]): Promise<void> {
         continue;
       }
 
-      // Interactive prompt
       if (interactive) {
         const confirmed: boolean = await prompt_confirm(`rm: remove '${pathArg}'? (y/n): `);
         if (!confirmed) {
           console.log(chalk.gray(`skipped '${pathArg}'`));
-          continue; // Skip this file
+          continue;
         }
       }
 
       const result: RmResult = await chefs_rm_cmd(target, options);
 
       if (result.success) {
-        // Show success for each file when multiple files
-        if (pathArgs.length > 1) {
+        if (paths.length > 1) {
           console.log(chalk.gray(`removed '${pathArg}'`));
         } else {
           console.log(rm_render(result));
         }
         successCount++;
 
-        // Invalidate cache for parent directory
         const listCache = listCache_get();
         const parentDir: string = path.posix.dirname(target);
         listCache.cache_invalidate(parentDir);
       } else {
-        // Always show errors
         console.error(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));
         failCount++;
       }
@@ -125,15 +156,11 @@ export async function builtin_rm(args: string[]): Promise<void> {
     }
   }
 
-  // Print summary only if multiple files
-  if (pathArgs.length > 1 && (successCount > 0 || failCount > 0)) {
-    console.log('');
-    if (successCount > 0 && failCount === 0) {
-      console.log(chalk.green(`Successfully removed ${successCount} item${successCount !== 1 ? 's' : ''}`));
-    } else if (successCount > 0 && failCount > 0) {
-      console.log(chalk.yellow(`Removed ${successCount} item${successCount !== 1 ? 's' : ''}, failed ${failCount}`));
-    } else if (failCount > 0) {
-      console.log(chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`));
+  if (paths.length > 1) {
+    const summary: string | null = rmSummary_format(successCount, failCount);
+    if (summary) {
+      console.log('');
+      console.log(summary);
     }
   }
 }

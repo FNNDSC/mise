@@ -67,6 +67,9 @@ export interface PromptTheme {
   render(ctx: PromptContext): string;
 }
 
+/**
+ * Available prompt theme names.
+ */
 export type ThemeName = 'default' | 'p10k';
 
 /** All registered theme names, in the order they appear in the registry. */

@@ -38,7 +38,7 @@ export class StaticVfsProvider implements VFSProvider {
     options?: { sort?: "name" | "size" | "date" | "owner"; reverse?: boolean }
   ): Promise<Result<VFSItem[]>> {
     try {
-      let effectivePath = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
+      let effectivePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
       if (effectivePath.length > 1 && effectivePath.endsWith("/")) {
         effectivePath = effectivePath.slice(0, -1);
       }
@@ -79,7 +79,7 @@ export class StaticVfsProvider implements VFSProvider {
           });
         }
 
-        const sorted = this.staticVfsItems_sort(items, options?.sort, options?.reverse);
+        const sorted: VFSItem[] = this.staticVfsItems_sort(items, options?.sort, options?.reverse);
         return Ok(sorted);
       }
 
@@ -97,7 +97,7 @@ export class StaticVfsProvider implements VFSProvider {
       }
 
       if (effectivePath === "/usr/bin") {
-        const builtinNames = builtinCommands_list();
+        const builtinNames: string[] = builtinCommands_list();
         const items: VFSItem[] = builtinNames.map((name: string) => ({
           name,
           type: "plugin",
@@ -106,13 +106,13 @@ export class StaticVfsProvider implements VFSProvider {
           date: new Date().toISOString(),
         }));
 
-        const sorted = this.staticVfsItems_sort(items, options?.sort, options?.reverse);
+        const sorted: VFSItem[] = this.staticVfsItems_sort(items, options?.sort, options?.reverse);
         return Ok(sorted);
       }
 
       return Ok([]);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push("error", `Static VFS list failed for prefix ${this.prefix}: ${msg}`);
       return Err();
     }
@@ -145,9 +145,9 @@ export class StaticVfsProvider implements VFSProvider {
     reverse?: boolean
   ): VFSItem[] {
     const field: keyof VFSItem = sortField || "name";
-    const sorted = [...items].sort((a: VFSItem, b: VFSItem) => {
-      const valA = a[field];
-      const valB = b[field];
+    const sorted: VFSItem[] = [...items].sort((a: VFSItem, b: VFSItem) => {
+      const valA: string | number = a[field];
+      const valB: string | number = b[field];
       if (typeof valA === "string" && typeof valB === "string") {
         return valA.localeCompare(valB);
       }

@@ -19,7 +19,7 @@ import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
  */
 async function builtin_fileGroup(args: string[], assetName: string): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
-  const subcommand = parsed._[0];
+  const subcommand: string = parsed._[0];
 
   if (!subcommand) {
      console.log(chalk.red(`Usage: ${assetName} <list|search|inspect> ...`));
@@ -28,7 +28,7 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
 
   try {
     if (subcommand === 'list') {
-       const path = parsed._[1] as string | undefined;
+       const path: string | undefined = parsed._[1] as string | undefined;
        const results: FilteredResourceData | null = await files_fetchList(parsed as unknown as CLIoptions, assetName, path);
 
        if (!results) {

@@ -64,10 +64,10 @@ export function queryExpr_parse(expr: string): Record<string, string> | null {
 
   const result: Record<string, string> = {};
   for (const part of expr.split(',')) {
-    const colonIdx = part.indexOf(':');
+    const colonIdx: number = part.indexOf(':');
     if (colonIdx < 1) return null;
-    const key = part.slice(0, colonIdx).trim();
-    const value = part.slice(colonIdx + 1).trim();
+    const key: string = part.slice(0, colonIdx).trim();
+    const value: string = part.slice(colonIdx + 1).trim();
     if (!key || !value) return null;
     result[key] = value;
   }
@@ -106,7 +106,7 @@ export async function pacsQuery_createAndWait(
   pacsserver: string,
   onStatus?: (msg: string) => void,
 ): Promise<QueryCreateResult | null> {
-  const queryObj = queryExpr_parse(queryExpr);
+  const queryObj: Record<string, string> | null = queryExpr_parse(queryExpr);
   if (!queryObj) {
     errorStack.stack_push('error', `query: Invalid expression: "${queryExpr}". Use Key:Value or JSON.`);
     return null;
@@ -122,17 +122,17 @@ export async function pacsQuery_createAndWait(
     return null;
   }
 
-  const queryId = createResult.value.id;
+  const queryId: number = createResult.value.id;
   const ownerUsername: string | undefined =
     typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined;
-  const vfsPath = queryVfsPath_build(queryId, queryObj, ownerUsername);
-  const deadline = Date.now() + QUERY_TIMEOUT_MS;
+  const vfsPath: string = queryVfsPath_build(queryId, queryObj, ownerUsername);
+  const deadline: number = Date.now() + QUERY_TIMEOUT_MS;
 
   const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
 
   while (Date.now() < deadline) {
     const statusResult = await pacsQuery_get(queryId);
-    const status = statusResult.ok ? (statusResult.value.status ?? 'pending') : 'pending';
+    const status: string = statusResult.ok ? (statusResult.value.status ?? 'pending') : 'pending';
     onStatus?.(`Query ${queryId} — ${status}`);
 
     const decodeResult = await pacsQuery_resultDecode(queryId);
@@ -154,7 +154,7 @@ export async function pacsQuery_createAndWait(
  * @returns Formatted multi-line string, or null if no displayable content.
  */
 function queryResult_render(decoded: PACSQueryDecodedResult): string | null {
-  const payload = decoded.json;
+  const payload: unknown = decoded.json;
   if (!payload || typeof payload !== 'object') return null;
 
   const tagVal = (v: unknown): string => {
@@ -167,18 +167,18 @@ function queryResult_render(decoded: PACSQueryDecodedResult): string | null {
   const lines: string[] = [];
   const payloadArr: unknown[] = Array.isArray(payload) ? payload : [payload];
 
-  let totalSeries = 0;
+  let totalSeries: number = 0;
 
   payloadArr.forEach((studyRaw: unknown, sIdx: number) => {
     if (!studyRaw || typeof studyRaw !== 'object') return;
-    const study = studyRaw as Record<string, unknown>;
+    const study: Record<string, unknown> = studyRaw as Record<string, unknown>;
 
-    const studyDesc = tagVal(study.StudyDescription ?? '');
-    const patientName = tagVal(study.PatientName ?? study.patient_name ?? '');
-    const patientId = tagVal(study.PatientID ?? study.patient_id ?? '');
-    const studyDate = tagVal(study.StudyDate ?? '');
-    const modalities = tagVal(study.ModalitiesInStudy ?? '');
-    const accession = tagVal(study.AccessionNumber ?? '');
+    const studyDesc: string = tagVal(study.StudyDescription ?? '');
+    const patientName: string = tagVal(study.PatientName ?? study.patient_name ?? '');
+    const patientId: string = tagVal(study.PatientID ?? study.patient_id ?? '');
+    const studyDate: string = tagVal(study.StudyDate ?? '');
+    const modalities: string = tagVal(study.ModalitiesInStudy ?? '');
+    const accession: string = tagVal(study.AccessionNumber ?? '');
 
     lines.push(chalk.bold.cyan(`  Study ${sIdx + 1}: ${studyDesc || '(no description)'}`));
     if (patientName) lines.push(chalk.gray(`    Patient:   ${patientName}${patientId ? ` (ID: ${patientId})` : ''}`));
@@ -196,12 +196,12 @@ function queryResult_render(decoded: PACSQueryDecodedResult): string | null {
       lines.push('');
       seriesArr.forEach((seriesRaw: unknown, rIdx: number) => {
         if (!seriesRaw || typeof seriesRaw !== 'object') return;
-        const series = seriesRaw as Record<string, unknown>;
-        const desc = tagVal(series.SeriesDescription ?? '');
-        const mod = tagVal(series.Modality ?? '');
-        const count = tagVal(series.NumberOfSeriesRelatedInstances ?? '');
-        const countStr = count ? chalk.gray(` (${count} files)`) : '';
-        const modStr = mod ? chalk.yellow(` [${mod}]`) : '';
+        const series: Record<string, unknown> = seriesRaw as Record<string, unknown>;
+        const desc: string = tagVal(series.SeriesDescription ?? '');
+        const mod: string = tagVal(series.Modality ?? '');
+        const count: string = tagVal(series.NumberOfSeriesRelatedInstances ?? '');
+        const countStr: string = count ? chalk.gray(` (${count} files)`) : '';
+        const modStr: string = mod ? chalk.yellow(` [${mod}]`) : '';
         lines.push(`    ${chalk.white(`Series ${rIdx + 1}:`)} ${desc || '(no description)'}${modStr}${countStr}`);
         totalSeries++;
       });
@@ -227,7 +227,7 @@ function queryResult_render(decoded: PACSQueryDecodedResult): string | null {
  * @returns Formatted table string, or null if no displayable content.
  */
 function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string): string | null {
-  const payload = decoded.json;
+  const payload: unknown = decoded.json;
   if (!payload || typeof payload !== 'object') return null;
 
   const tagVal = (v: unknown): string => {
@@ -243,10 +243,10 @@ function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string
 
   payloadArr.forEach((studyRaw: unknown, sIdx: number) => {
     if (!studyRaw || typeof studyRaw !== 'object') return;
-    const study = studyRaw as Record<string, unknown>;
-    const studyLabel = tagVal(study.StudyDescription ?? `Study ${sIdx + 1}`);
-    const accession = tagVal(study.AccessionNumber ?? '');
-    const studyDisplay = accession ? `${studyLabel} [${accession}]` : studyLabel;
+    const study: Record<string, unknown> = studyRaw as Record<string, unknown>;
+    const studyLabel: string = tagVal(study.StudyDescription ?? `Study ${sIdx + 1}`);
+    const accession: string = tagVal(study.AccessionNumber ?? '');
+    const studyDisplay: string = accession ? `${studyLabel} [${accession}]` : studyLabel;
 
     const seriesArr: unknown[] =
       Array.isArray(study.series)   ? study.series :
@@ -256,7 +256,7 @@ function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string
 
     seriesArr.forEach((seriesRaw: unknown, rIdx: number) => {
       if (!seriesRaw || typeof seriesRaw !== 'object') return;
-      const series = seriesRaw as Record<string, unknown>;
+      const series: Record<string, unknown> = seriesRaw as Record<string, unknown>;
       rows.push({
         Study:       studyDisplay,
         '#':         String(rIdx + 1),
@@ -289,7 +289,7 @@ export async function builtin_query(args: string[]): Promise<void> {
 
   let title: string = `Query ${Date.now()}`;
   let pacsserverOverride: string | null = null;
-  let tableMode = false;
+  let tableMode: boolean = false;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -310,7 +310,7 @@ export async function builtin_query(args: string[]): Promise<void> {
     return;
   }
 
-  const queryExpr = positional.join(' ');
+  const queryExpr: string = positional.join(' ');
 
   // Validate expression early
   if (!queryExpr_parse(queryExpr)) {
@@ -334,7 +334,7 @@ export async function builtin_query(args: string[]): Promise<void> {
 
   spinner.start(`Querying PACS for ${queryExpr}...`, true);
 
-  const result = await pacsQuery_createAndWait(
+  const result: QueryCreateResult | null = await pacsQuery_createAndWait(
     queryExpr,
     title,
     pacsserver,
@@ -352,7 +352,7 @@ export async function builtin_query(args: string[]): Promise<void> {
     return;
   }
 
-  const rendered = tableMode
+  const rendered: string | null = tableMode
     ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
     : queryResult_render(result.decoded);
 

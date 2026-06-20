@@ -11,6 +11,11 @@ import { pluginMetaFields_fetch } from '@fnndsc/chili/commands/pluginmetas/field
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
+/**
+ * Builtin handler for the `pluginmeta` command.
+ *
+ * @param args - Parsed command arguments for the plugin-meta command.
+ */
 export async function builtin_pluginmeta(args: string[]): Promise<void> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand: string | undefined = parsed._[0];

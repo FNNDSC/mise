@@ -1,0 +1,553 @@
+= PACS Query / Retrieve / Resolve
+:toc:
+:toc-placement: preamble
+:toclevels: 3
+:sectnums:
+
+== Overview
+
+The PACS Q/R subsystem provides chell's interface to medical imaging archives via the ChRIS CUBE backend.
+Three commands cover the full workflow:
+
+[cols="1,3"]
+|===
+|Command |Purpose
+
+|`query`
+|Issue a DICOM C-FIND against a PACS server; poll until results are available; print the VFS path.
+
+|`pull`
+|Retrieve one or more series from PACS into CUBE storage; track progress via LONK WebSocket;
+support automatic retry for silently failed retrieves.
+
+|`cubepath`
+|Resolve the CUBE filesystem path and actual file count for any series identified by a VFS path.
+Zero files means the series has not been pulled. Works at query, study, or series granularity.
+|===
+
+All three commands operate on the same VFS namespace rooted at `/net/pacs/queries/`.
+
+=== The Problem
+
+ChRIS exposes PACS data through three separate API surfaces:
+
+* **PACSQuery** — records a DICOM C-FIND and its JSON result payload.
+* **PACSRetrieve** — triggers an oxidicom-driven DICOM C-MOVE to pull files into CUBE storage.
+* **LONK** — a WebSocket endpoint that publishes per-series file-arrival events during retrieval.
+* **pacsseries** — a REST resource that maps a pulled series to its CUBE filesystem folder.
+* **pacsfiles** — a REST resource listing individual files under `SERVICES/PACS/`.
+
+Orchestrating these in a user-facing shell requires:
+
+. Navigating the VFS path to extract query IDs and DICOM UIDs.
+. Knowing which API to call to get a CUBE path (hint: not `pacsfiles`).
+. Handling the timing gap between LONK completion and `pacsseries` DB indexing.
+. Detecting silently failed retrieves (LONK never fires) without false-positives.
+
+=== Solution Architecture
+
+[source]
+----
+ User command
+      │
+      ▼
+ ┌──────────────────────────────────────────────────────┐
+ │  builtins/net/query.ts                               │
+ │  Resolve query expression → PACSQuery → VFS path     │
+ └────────────────────────┬─────────────────────────────┘
+                          │ VFS path
+                          ▼
+ ┌──────────────────────────────────────────────────────┐
+ │  builtins/net/pacsUtils.ts  (shared)                 │
+ │  pacs_seriesCollect()   — VFS path → PACSSeriesInfo  │
+ │  series_cubePathGet()   — UID → CUBE path + count    │
+ │  pacsServer_resolve()   — context → PACS identifier  │
+ └──────┬─────────────────────────┬────────────────────-┘
+        │                         │
+        ▼                         ▼
+ ┌─────────────────┐    ┌────────────────────────────────┐
+ │  builtins/fs/   │    │  builtins/net/cubepath.ts      │
+ │  pull.ts        │    │  Resolve CUBE path + file count│
+ │  tasks_pullWatch│    │  for any VFS path level        │
+ │  --retry N      │    └────────────────────────────────┘
+ └─────────────────┘
+----
+
+== VFS PACS Path Structure
+
+The PACS namespace under `/net/pacs/` is virtual — it has no backing directory on the CUBE server.
+`salsa`'s `PacsVfsProvider` synthesises directory entries by decoding PACSQuery records.
+
+=== Folder naming
+
+Query-level folders follow the pattern:
+
+----
+/net/pacs/queries/<queryDesc>_qid:<id>_<ownerUsername>[_no-hits]
+----
+
+[cols="1,3"]
+|===
+|Segment |Source
+
+|`<queryDesc>`
+|Stringified DICOM key-value pairs from the query (e.g. `AccessionNumber:25162540`).
+
+|`_qid:<id>`
+|Numeric PACSQuery ID from the CUBE API.
+
+|`_<ownerUsername>`
+|`owner_username` from the PACSQuery record — the user who ran the query, NOT the current session user.
+
+|`_no-hits`
+|Appended when the query result payload is empty.
+|===
+
+Study and series sub-folders:
+
+----
+/net/pacs/queries/<queryFolder>/
+  Study_<StudyInstanceUID>_<StudyDescription>/
+    Series_<SeriesInstanceUID>_<SeriesDescription>/
+----
+
+The folder names embed the full DICOM UIDs, which `pacs_seriesCollect` uses to extract UIDs without
+re-calling the API.
+
+=== CUBE storage path structure
+
+When a series is pulled, oxidicom stores files under:
+
+----
+SERVICES/PACS/<pacsName>/<PatientID>-<PatientName>-<DOB>/
+  <Modality>-<StudyDescription>-<AccessionNumber>-<StudyDate>/
+    <SeriesNumber>-<SeriesDescription>-<uidHash>/
+----
+
+`<uidHash>` is a short (7-char) hash of the `SeriesInstanceUID`.
+This means the full UID is **not** present in the storage path — `fname_icontains` on the raw UID
+will not match any file. The correct lookup is via `getPACSSeriesList({ SeriesInstanceUID })` →
+`series.data.folder_path`.
+
+== Shared Utilities (`pacsUtils.ts`)
+
+`builtins/net/pacsUtils.ts` extracts the logic that `pull` and `cubepath` share.
+
+=== `pacs_seriesCollect`
+
+[source,typescript]
+----
+async function pacs_seriesCollect(
+  pathStr: string,
+  fallbackPacsName: string,
+  callerTag: string,
+): Promise<PACSSeriesInfo[]>
+----
+
+Walks a VFS path at any level (query / study / series) and returns one `PACSSeriesInfo` per matching
+series. Decodes the PACSQuery result JSON once, then filters by `StudyInstanceUID` and
+`SeriesInstanceUID` extracted from the VFS folder names — no additional API calls.
+
+=== `series_cubePathGet`
+
+[source,typescript]
+----
+async function series_cubePathGet(
+  seriesUID: string,
+  pacsClient: ChRISPACSClient,
+  maxAttempts: number = 4,
+  retryDelayMs: number = 2_000,
+): Promise<SeriesCubePath | null>
+----
+
+. Calls `getPACSSeriesList({ SeriesInstanceUID, limit: 1 })` to get `folder_path`.
+. Strips the leading `/` from `folder_path` before passing it as `fname` to `getPACSFiles`
+  (CUBE stores paths without a leading slash, but the display path must have one).
+. Returns `{ folderPath, fileCount }` where `fileCount` comes from `getPACSFiles.totalCount`.
+
+The retry loop handles the timing gap between LONK `done` and the `pacsseries` DB record appearing.
+`cubepath` calls this with `maxAttempts=1` (no retry); `pull` calls it with `maxAttempts=4` via
+`--retry`.
+
+NOTE: The correct API for resolving a series path is `getPACSSeriesList`, *not* `getPACSFiles`.
+`getPACSFiles` supports only `fname`-based filters; `SeriesInstanceUID` is only a valid filter on
+`getPACSSeriesList`. Using `getPACSFiles({ SeriesInstanceUID })` silently ignores the parameter
+and returns unrelated results.
+
+=== `pacsServer_resolve`
+
+Resolves a PACS server identifier from either an override string, the current context, or
+the first server returned by `pacsServers_list`. When the value is a numeric ID, looks up the
+human-readable `identifier` string (required by LONK subscription messages).
+
+== The `query` Command
+
+`query` creates a PACSQuery record and polls until the result payload is populated, then prints
+the VFS path the user can pass to `pull` or `cd`.
+
+[source]
+----
+query AccessionNumber:25162540 --title "Brain MRI Jan 2024"
+
+  Query 2679 — pending
+  Query 2679 — pending
+  Query 2679 — complete
+
+✓ Query 2679 complete
+  ...study/series summary...
+
+  VFS path: /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+  cd /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+  pull /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+----
+
+=== VFS path construction
+
+`queryVfsPath_build` mirrors the folder-naming logic in `salsa`'s `PacsVfsProvider` exactly — if they
+diverge, `cd` and `pull` will reference paths that `ls` does not show.
+
+[source,typescript]
+----
+export function queryVfsPath_build(
+  queryId: number,
+  queryObj: Record<string, string>,
+  username?: string,
+): string {
+  const desc = Object.entries(queryObj)
+    .filter(([, v]) => v.trim().length > 0)
+    .map(([k, v]) => `${k}:${v}`)
+    .join('_') || 'query';
+  const userSuffix = username ? `_${username}` : '';
+  return `/net/pacs/queries/${desc}_qid:${queryId}${userSuffix}`;
+}
+----
+
+The username is sourced from `createResult.value.owner_username` on the API response — the owner
+of this specific query record — not from the current session context. This is essential when
+listing queries created by other users.
+
+== The `pull` Command
+
+=== Overview
+
+`pull` accepts one or more VFS paths (at query, study, or series level), fires a PACSRetrieve per
+series, and tracks progress via the LONK WebSocket. After completion it calls `cubepath` to report
+resolved CUBE paths and file counts.
+
+[source]
+----
+pull /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar/Study_.../Series_..._AX_T2
+
+ AccessionNumber:25162540|MR-Brain|AX_T2_TSE [DONE]> [████████████████] 68/68
+
+✓ 1/1 series pulled successfully.
+  AX_T2_TSE  ->  /SERVICES/PACS/PACSDCM/4472875-.../00018-AX_T2_TSE-90c176c  (68 files)
+----
+
+=== Synthetic query pattern
+
+CUBE's `PACSRetrieve` API requires a `PACSQuery` ID. `pull` cannot reuse the user-facing query
+directly (it may span multiple series and studies). Instead, for each series to be pulled, `pull`
+creates a *synthetic* `PACSQuery` containing only that series' UIDs:
+
+[source,typescript]
+----
+{
+  title: `pull_${task.seriesUID}`,
+  query: JSON.stringify({
+    SeriesInstanceUID: task.seriesUID,
+    StudyInstanceUID:  task.studyUID,
+  }),
+  execute: false,   // do not auto-execute; PACSRetrieve fires it
+}
+----
+
+A `PACSRetrieve` is then created against this synthetic query ID. These synthetic queries appear
+under `ls /net/pacs/queries` — their long UID-based names inflated the `maxLen` in `grid_render`,
+causing visual blank lines until `colWidth` was capped at `termWidth`.
+
+=== LONK WebSocket
+
+LONK (`api/v1/pacs/ws/`) is a WebSocket endpoint that publishes per-series DICOM file arrival
+events during retrieval. chell subscribes **before** firing retrieves to close the timing race
+where a fast series completes before the subscription is registered.
+
+Subscription message format:
+
+[source,json]
+----
+{ "SeriesInstanceUID": "1.2.3...", "pacs_name": "PACSDCM", "action": "subscribe" }
+----
+
+Incoming message types:
+
+[cols="1,3"]
+|===
+|Message |Meaning
+
+|`{ "ndicom": N }`
+|N files have arrived so far (progress update).
+
+|`{ "done": true }`
+|All files for this series have been received. Sets `lonkConfirmed = true`.
+
+|`{ "error": "..." }`
+|Retrieve failed on the CUBE/oxidicom side.
+|===
+
+=== `lonkConfirmed` and `[NO LONK]`
+
+Each `SeriesPullTask` carries a `lonkConfirmed: boolean` flag, set only when LONK sends an explicit
+`done` message. If 15 seconds elapse with zero LONK activity (`NO_ACTIVITY_TIMEOUT_MS`), the series
+is marked `pulled` but `lonkConfirmed` remains `false`, and the progress bar shows `[NO LONK]`
+rather than `[DONE]`.
+
+[cols="1,1,3"]
+|===
+|Label |`lonkConfirmed` |Meaning
+
+|`[DONE]`
+|`true`
+|LONK confirmed all files received.
+
+|`[NO LONK]`
+|`false`
+|Retrieve fired; no LONK messages received in 15 s. May or may not be in CUBE.
+
+|`[STALLED]`
+|`false`
+|LONK was active but stopped for 30 s with files still outstanding.
+
+|`[TIMEOUT]`
+|`false`
+|Series exceeded the 5-minute series timeout.
+
+|`[ERROR]`
+|`false`
+|LONK reported an explicit error, or the retrieve failed to fire.
+|===
+
+`[NO LONK]` is the ambiguous case. It arises most commonly when:
+
+* The oxidicom retrieve failed silently on the CUBE side (no error propagated via LONK).
+* The `pacs_name` in the subscription does not exactly match the identifier oxidicom uses.
+
+It does **not** mean multiple subscribers interfere with each other — LONK is a broadcast pub/sub
+system. chell and ChRIS UI can subscribe to the same series simultaneously without message loss.
+
+=== `tasks_pullWatch`
+
+The WS loop is extracted into a standalone function:
+
+[source,typescript]
+----
+async function tasks_pullWatch(
+  tasks: SeriesPullTask[],
+  pacsserver: string,
+  client: Client,
+): Promise<number>      // returns number of firing errors
+----
+
+This function:
+
+. Creates a download token and opens a fresh WebSocket (one per call — ensures clean state on retry).
+. Subscribes all tasks and fires retrieves in parallel.
+. Creates a `cliProgress.MultiBar` and runs the checker/handler loop until all tasks are terminal.
+. Stops the MultiBar and returns.
+
+It mutates `task.status`, `task.actualFiles`, and `task.lonkConfirmed` in place. Calling
+`tasks_pullWatch` a second time on a subset of tasks (with reset state) implements retry cleanly.
+
+=== `--retry N`
+
+After the initial `tasks_pullWatch` call, `[NO LONK]` tasks enter a retry loop:
+
+[source]
+----
+pull --retry 3 /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+
+ COW_TUMBLE [NO LONK]> ░░░░░░░░░░░░░░░░░░░░  0/36
+ COW_ROTATE [DONE]>    ████████████████████ 36/36
+
+Retry 1/3 for 1 unconfirmed series...
+ COW_TUMBLE [DONE]>    ████████████████████ 36/36
+
+✓ 2/2 series pulled successfully.
+----
+
+For each attempt:
+
+. **Cubepath check** — call `series_cubePathGet(uid, client, 1, 0)` (single attempt, no sleep) for
+  each candidate. If the series is found in CUBE, it landed silently; mark it confirmed and remove
+  from candidates.
+. **Re-fire** — reset task state (`status='pending'`, all counters zeroed) and call `tasks_pullWatch`
+  again on the remaining candidates.
+. **Identify new candidates** — tasks still `pulled && !lonkConfirmed` after the retry round feed
+  into the next iteration.
+
+After all retries are exhausted, remaining unconfirmed tasks are permanently marked `error` and
+counted in the failure summary with a non-zero exit code.
+
+== The `cubepath` Command
+
+`cubepath` resolves the CUBE filesystem path and actual file count for every series under one or
+more VFS paths. It is also called automatically by `pull` after retrieval completes.
+
+[source]
+----
+cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+
+  BRN_LOC_AAHScout    ->  /SERVICES/PACS/PACSDCM/.../00001-BRN_LOC_AAHScout-b46aa71  (128 files)
+  AX_T2_TSE           ->  /SERVICES/PACS/PACSDCM/.../00018-AX_T2_TSE-90c176c         (68 files)
+  COW_TUMBLE          ->  (not in CUBE)
+
+  1/35 series not found in CUBE — use pull to retrieve.
+----
+
+=== Multi-path support
+
+`cubepath` accepts multiple positional arguments. Each path is resolved through `pacs_seriesCollect`
+independently; results are collected before any CUBE lookups begin. This supports the pattern
+where `pull` passes its entire `resolvedPaths` list directly:
+
+[source,typescript]
+----
+await builtin_cubepath([...resolvedPaths, '--retry']);
+----
+
+=== `--retry` flag
+
+When called standalone, `cubepath` uses `maxAttempts=1` (single attempt, no sleep) — appropriate
+for interactive use where results are already stable. When called from `pull` immediately after
+retrieval, `--retry` is passed, enabling `maxAttempts=4` with 2-second intervals to absorb the
+timing gap between LONK `done` and `pacsseries` DB indexing.
+
+=== The `folder_path` slash problem
+
+`series.data.folder_path` from the CUBE API omits the leading slash:
+
+----
+SERVICES/PACS/PACSDCM/4472875-.../00018-AX_T2_TSE-90c176c
+----
+
+`series_cubePathGet` normalises this in two distinct ways:
+
+* **For display** — prepends `/` so the printed path is an absolute CUBE path.
+* **For `getPACSFiles({ fname })`** — uses the *raw* slash-less form, because CUBE stores
+  filenames without a leading slash. Passing `/SERVICES/...` as `fname` matches nothing.
+
+== Design Decisions
+
+=== Why `getPACSSeriesList`, not `getPACSFiles`?
+
+Early implementation used `getPACSFiles({ SeriesInstanceUID, limit: 1 })`. This silently failed
+because `SeriesInstanceUID` is not a valid filter parameter for `getPACSFiles` — the server ignores
+unknown parameters and returns unfiltered results. The valid parameters for `getPACSFiles` are
+`fname`, `fname_exact`, `fname_icontains`, and date range filters.
+
+`getPACSSeriesList` explicitly supports `SeriesInstanceUID` as a filter and returns a
+`folder_path` field that directly identifies the series directory without path arithmetic.
+
+=== Why LONK + cubepath hybrid, not polling alone?
+
+LONK provides live per-file progress counts (`ndicom`) during retrieval — valuable for large
+series. Pure REST polling of `PACSRetrieve.status` would give only coarse lifecycle states.
+
+However, LONK is not a reliable ground-truth signal. The `[NO LONK]` case (retrieve fired, no
+messages received) cannot be distinguished from a complete retrieve purely from the WebSocket.
+`cubepath` / `series_cubePathGet` fills this gap: after the WS loop, the actual CUBE state is
+checked directly. This hybrid means LONK is used for UX (progress display) while `cubepath`
+provides the definitive answer.
+
+=== Why `lonkConfirmed`, not just checking `actualFiles > 0`?
+
+A series with a single DICOM file would show `actualFiles = 1` after one `ndicom` message
+but might never receive `done` if the connection drops. Using `lonkConfirmed` (set only on
+explicit `done`) correctly distinguishes partial-progress series from confirmed-complete series,
+enabling accurate retry targeting.
+
+=== Why per-series synthetic PACSQueries?
+
+CUBE's `PACSRetrieve` requires a `PACSQuery` ID. Using the user's original query ID would retrieve
+all series in the study, not just the selected ones. Synthetic single-series queries give `pull`
+fine-grained control and allow LONK subscriptions to be matched per-series via `SeriesInstanceUID`.
+
+The downside is query pollution under `ls /net/pacs/queries`. These are filtered from the `cubepath`
+report since the `_pull_` prefix makes them identifiable.
+
+== API Quick Reference
+
+=== `query`
+
+[source]
+----
+query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>] [--table]
+----
+
+=== `pull`
+
+[source]
+----
+pull [--nowait] [--retry N] <vfs-path|query-expr> [...]
+----
+
+[cols="1,3"]
+|===
+|Flag |Behaviour
+
+|`--nowait`
+|Fire retrieves immediately and print `<seriesUID> <retrieveId>` per line; do not watch LONK.
+
+|`--retry N`
+|After the initial pull, re-fire retrieves for `[NO LONK]` series up to N additional times.
+Each retry checks `cubepath` first to avoid unnecessary re-fires.
+|===
+
+=== `cubepath`
+
+[source]
+----
+cubepath <vfs-path> [...] [--pacsserver <id>] [--retry]
+----
+
+[cols="1,3"]
+|===
+|Flag |Behaviour
+
+|`--retry`
+|Use `maxAttempts=4` with 2 s delays when resolving CUBE paths (for post-pull use).
+Default is a single attempt with no delay.
+|===
+
+== Key Source Files
+
+[cols="2,3"]
+|===
+|File |Responsibility
+
+|`src/builtins/net/query.ts`
+|`query` command; `pacsQuery_createAndWait`; `queryVfsPath_build`.
+
+|`src/builtins/net/pacsUtils.ts`
+|Shared: `pacs_seriesCollect`, `series_cubePathGet`, `pacsServer_resolve`, `ChRISPACSClient` interface.
+
+|`src/builtins/net/cubepath.ts`
+|`cubepath` command; multi-path collection; `--retry` flag.
+
+|`src/builtins/fs/pull.ts`
+|`pull` command; `tasks_pullWatch`; `task_fire`; `lonkWsUrl_build`; `--retry N` loop.
+
+|`salsa/src/vfs/providers/pacs.ts`
+|VFS provider synthesising `/net/pacs/` directory entries from PACSQuery records;
+`seriesFolderPath_get` (uses same `getPACSSeriesList` pattern).
+|===
+
+== References
+
+* link:architecture.adoc[ChELL Architecture] — overall package structure and data flow.
+* link:vfs.adoc[VFS: Virtual File System Router] — VFS dispatch and provider architecture.
+* link:commands.adoc[Commands Reference] — full command listing.
+
+---
+
+_Last updated: 2026-05-28_

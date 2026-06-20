@@ -1,0 +1,855 @@
+= ChELL Script Reference
+:toc:
+:toclevels: 3
+:sectnums:
+:source-highlighter: highlight.js
+
+== Purpose
+
+This document is a complete reference for writing ChELL scripts and automation.
+It covers every builtin command, option, and scripting pattern.
+An agent reading this document should be able to produce correct `.chell` scripts
+without further context.
+
+== Grammar Rules
+
+All resource commands follow `<object> <verb>` order — never `<verb> <object>`.
+
+[cols="1,1"]
+|===
+| Correct | Wrong
+
+| `feed list`
+| `list feed`
+
+| `plugin run pl-dircopy`
+| `run plugin pl-dircopy`
+
+| `feeds list --all`
+| `list feeds --all`
+
+| `proc refresh`
+| `refresh proc`
+|===
+
+Filesystem commands are exceptions: `ls`, `cd`, `cat`, `rm`, `cp`, `mv`, `mkdir`,
+`touch`, `tree`, `du`, `upload`, `download`, `edit` follow the standard Unix form.
+
+== Execution Modes
+
+[source,bash]
+----
+# Interactive REPL
+chell
+
+# Single command
+chell -c "ls /home/alice"
+
+# Multiple commands separated by semicolons
+chell -c "cd /home/alice/uploads; ls -l; cat notes.txt"
+
+# Script file (explicit)
+chell -f workflow.chell
+
+# Script file (auto-detected by .chell extension)
+chell workflow.chell
+
+# Shebang script
+#!/usr/bin/env chell
+----
+
+=== Script file format
+
+[source,bash]
+----
+#!/usr/bin/env chell
+# Comments start with #
+connect alice http://localhost:8000/api/v1/ s3cr3t
+cd /home/alice/uploads
+ls -l
+upload ~/local_data .
+----
+
+=== Stop-on-error flag
+
+[source,bash]
+----
+chell -e -f workflow.chell   # exit on first error
+----
+
+== Connection
+
+=== connect
+
+[source,bash]
+----
+connect --user <user> --password <pass> <url>
+
+# Compact form: user@url (password prompted if omitted)
+chell chris@localhost:8000/api/v1/
+chell -p chris1234 chris@localhost:8000/api/v1/
+----
+
+In a `.chell` script the flags form is more readable:
+
+[source,bash]
+----
+connect --user chris --password chris1234 http://localhost:8000/api/v1/
+----
+
+=== logout
+
+[source,bash]
+----
+logout
+----
+
+== System Introspection
+
+=== whoami
+
+Prints `<username>  <CUBE URL>`.
+
+[source,bash]
+----
+whoami
+# rudolphpienaar  http://localhost:32223/api/v1/
+----
+
+=== whereami
+
+Prints current working directory.
+
+[source,bash]
+----
+whereami
+# /home/rudolphpienaar/uploads
+----
+
+== Filesystem Navigation
+
+=== cd
+
+[source,bash]
+----
+cd <path>
+cd              # go to home (/home/<user>)
+cd ~            # same
+cd ..           # parent
+cd -            # not supported; use absolute path
+----
+
+Paths that work:
+
+* Absolute: `/home/alice/feeds/feed_123`
+* Relative: `data/2024` or `../results`
+* Home: `~` or `~/uploads`
+* VFS: `/bin`, `/etc`, `/proc/feeds`, `/net/pacs/queries`
+
+=== pwd
+
+[source,bash]
+----
+pwd
+----
+
+== Directory Listing
+
+=== ls
+
+[source,bash]
+----
+ls [options] [path]
+
+-l          long format (type char, owner, size/status, date, name)
+-h          human-readable sizes (use with -l)
+-a          show hidden entries
+-d          show the directory entry itself, not its contents
+--sort <field>    name|size|date|owner  (default: name)
+--reverse   reverse sort order
+----
+
+Type characters in long format:
+
+[cols="1,3"]
+|===
+| Char | Meaning
+
+| `d`  | CFS directory
+| `-`  | CFS file
+| `l`  | `.chrislink` symlink
+| `p`  | Plugin (in `/bin`)
+| `P`  | Pipeline
+| `v`  | VFS entry
+| `j`  | Job/instance node (in `/proc/feeds`)
+|===
+
+For `j` (job) entries, the size column is replaced by the colour-coded execution
+status string: `finishedSuccessfully`, `started`, `scheduled`, `finishedWithError`,
+`cancelled`.
+
+[source,bash]
+----
+ls
+ls -l
+ls -lh
+ls /proc/feeds/feed_1107
+ls -l /bin              # list registered plugins
+ls /etc                 # list virtual config files
+----
+
+=== tree
+
+Recursive listing in ASCII tree form.  Descends into `dir`, `vfs`, and `job` types.
+
+[source,bash]
+----
+tree [path]
+----
+
+[source,bash]
+----
+tree
+tree /proc/feeds/feed_1107   # full DAG of a feed's jobs
+tree /home/alice/data
+----
+
+=== du
+
+Disk usage summary for a directory tree.
+
+[source,bash]
+----
+du [path]
+----
+
+== File Operations
+
+=== cat
+
+[source,bash]
+----
+cat [--binary] <file> [file...]
+----
+
+Binary mode is auto-detected for `.dcm`, `.png`, `.zip`, `.pdf`, etc.
+Use `--binary` to force.
+
+[source,bash]
+----
+cat readme.txt
+cat /etc/compute.yaml
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/log
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/params
+----
+
+=== edit
+
+Opens a file in `$EDITOR` (falls back to `vi`), then saves the modified content
+back to ChRIS.
+
+[source,bash]
+----
+edit <file>
+----
+
+=== cp
+
+[source,bash]
+----
+cp <source> <dest>
+----
+
+=== mv
+
+[source,bash]
+----
+mv <source> <dest>
+----
+
+=== rm
+
+[source,bash]
+----
+rm [options] <path> [path...]
+
+-r, -R      recursive (required for directories)
+-f          force (no confirmation)
+-i          interactive (prompt per file)
+----
+
+[source,bash]
+----
+rm old_file.txt
+rm -r old_dir/
+rm -rf temp_*
+rm /proc/feeds/feed_123/pl-fshack_789   # cancel/delete a job
+rm -r /proc/feeds/feed_123              # cancel all jobs in feed
+----
+
+=== mkdir
+
+[source,bash]
+----
+mkdir <path>
+----
+
+=== touch
+
+Creates an empty file.
+
+[source,bash]
+----
+touch <path>
+----
+
+=== upload
+
+[source,bash]
+----
+upload <local_path> <chris_path>
+----
+
+Recursively uploads a local file or directory tree.
+
+[source,bash]
+----
+upload ~/data/study .
+upload /tmp/results.csv /home/alice/uploads/
+----
+
+=== download
+
+[source,bash]
+----
+download <chris_path> <local_path>
+----
+
+=== pull
+
+Alias for download.
+
+[source,bash]
+----
+pull <chris_path> <local_path>
+----
+
+== Virtual Filesystem Paths
+
+ChELL presents a unified path tree mixing CFS (real ChRIS storage) and VFS
+(synthesised from API resources).
+
+[cols="1,1,3"]
+|===
+| Path | Type | Content
+
+| `/home/<user>/`         | CFS | Uploaded files and directories
+| `/home/<user>/feeds/`   | CFS | Analysis feeds and their output trees
+| `/PIPELINES/`           | CFS | Shared pipeline output data
+| `/PUBLIC/`              | CFS | Publicly accessible files
+| `/SERVICES/`            | CFS | Service-level data (e.g. PACS)
+| `/SHARED/`              | CFS | Cross-user shared data
+| `*.chrislink`           | CFS | Symbolic links to other ChRIS paths
+| `/bin`                  | VFS | Every registered plugin as a virtual executable
+| `/usr/bin`              | VFS | Built-in shell commands (`whoami`, `whereami`)
+| `/etc/`                 | VFS | Config files (see below)
+| `/net/pacs/queries/`    | VFS | PACS query result sets
+| `/proc/feeds/`          | VFS | Job monitoring DAG (see <<job-monitoring>>)
+|===
+
+=== /etc files
+
+[cols="1,3"]
+|===
+| Path | Content
+
+| `/etc/compute.yaml` | All compute environments in YAML
+| `/etc/group`        | LDAP-style group listing
+| `/etc/passwd`       | User listing
+| `/etc/cube`         | CUBE instance information
+|===
+
+[source,bash]
+----
+cat /etc/compute.yaml    # inspect available compute environments
+cat /etc/group           # list groups and members
+cat /etc/passwd          # list users
+----
+
+== Plugin Execution
+
+=== Direct invocation (primary form)
+
+Plugins live in `/bin` as virtual executables.  Type the plugin name directly —
+ChELL resolves context from CWD automatically.
+
+[source,bash]
+----
+pl-dircopy-v2.1.1 --dir .
+pl-fshack-v1.2.0 --inputFile brain.mgz --outputFile brain.nii
+----
+
+Two cases depending on CWD:
+
+==== Case 1: CWD is outside a feed
+
+ChELL creates a new feed automatically:
+
+1. Runs `pl-dircopy` on the current directory to stage data.
+2. Attaches your plugin to the dircopy instance.
+
+[source,bash]
+----
+cd /home/alice/uploads/SAG-anon
+pl-fshack-v1.2.0 --inputFile brain.mgz --outputFile brain.nii
+# → new feed created, pl-fshack scheduled as child of pl-dircopy
+----
+
+Use `--` to pass feed-level context separately from plugin params:
+
+[source,bash]
+----
+pl-fshack-v1.2.0 --inputFile brain.mgz -- feed_title="Brain MRI Study" instance_title="FreeSurfer recon"
+----
+
+==== Case 2: CWD is inside a feed
+
+ChELL extracts the `previous_id` from the path and attaches directly.
+
+[source,bash]
+----
+cd /home/alice/feeds/feed_123/pl-dircopy_456/data
+pl-segmentation-v1.0.0 --threshold 0.5
+# → attaches to instance 456, no --previous_id needed
+----
+
+Works identically from a `/proc/feeds` path:
+
+[source,bash]
+----
+cd /proc/feeds/feed_123/pl-dircopy_456
+pl-segmentation-v1.0.0 --threshold 0.5
+----
+
+=== plugin run (explicit form)
+
+[source,bash]
+----
+plugin run <searchable> [--previous_id <id>] [plugin_params...]
+----
+
+`searchable` formats:
+
+[cols="1,2"]
+|===
+| Format | Example
+
+| `name:value`         | `name:pl-dircopy`
+| `name_exact:value`   | `name_exact:pl-dircopy`
+| `id:value`           | `id:42`
+| versioned name       | `pl-dircopy-v2.1.1`
+|===
+
+[source,bash]
+----
+plugin run pl-dircopy-v2.1.1 --previous_id 14 --dir .
+plugin run name_exact:pl-fshack,version:1.2.0 --previous_id 14 --inputFile brain.mgz
+----
+
+== Pipeline Execution
+
+A *pipeline* is a registered template (named, reusable graph of plugins with
+wired parameters).  A *workflow* is a live instantiation of a pipeline on a feed.
+
+=== pipeline list
+
+[source,bash]
+----
+pipeline list [--search <term>] [--all] [--limit <n>]
+pipeline inspect <id>
+----
+
+=== workflow create
+
+Instantiates a pipeline as a workflow on an existing feed node.
+
+[source,bash]
+----
+workflow create <pipeline_id> --previous_id <instance_id>
+----
+
+[source,bash]
+----
+pipeline list
+workflow create 7 --previous_id 456
+jobs list --feed 123
+----
+
+=== Running a pipeline directly (from /bin)
+
+Pipelines registered in `/bin` can be invoked directly.  Flags route to the
+appropriate subcommand:
+
+[cols="1,2"]
+|===
+| Flags | Action
+
+| (none)                        | run the pipeline
+| `--nodes` or `--parameters`  | show pipeline info
+| `--source` or `--readme`     | show pipeline source
+|===
+
+[source,bash]
+----
+my-pipeline --previous_id 456
+my-pipeline --nodes
+----
+
+== Resource Commands
+
+All resource commands follow `<object> <verb>`.  Standard options shared by
+every `list` subcommand:
+
+[cols="1,3"]
+|===
+| Option | Description
+
+| `--all`                 | Fetch all pages (no pagination limit)
+| `--limit <n>`           | Items per page (default varies)
+| `--search <key:value>`  | Filter by field
+| `--fields <f1,f2>`      | Show only named fields
+| `--sort <field>`        | Sort by field
+| `--reverse`             | Reverse sort order
+| `--table`               | Render as table
+| `--csv`                 | Render as CSV
+|===
+
+=== feeds
+
+[source,bash]
+----
+feeds list [--all] [--limit <n>] [--search <k:v>] [--user <username>]
+feeds list --user rudolphpienaar
+feeds list --all --fields id,name,creation_date
+
+feed inspect <id>
+feed note <id>                          # show singleton note
+feed note edit <id>                     # open note in $EDITOR and save back
+feed note <id> --title "New title"      # update title only
+feed note <id> --content "New content"  # update content only
+feed comments <id>                      # list comments
+feed comment add <id> --content "text"  # create comment
+feed comment edit <id> <comment_id>     # edit comment in $EDITOR
+feed comment delete <id> <comment_id>   # delete comment
+----
+
+=== plugins / plugin
+
+[source,bash]
+----
+plugins list [--all] [--search name:pl-dircopy]
+plugins list --fields name,version,category
+
+plugin run <searchable> [params...]    # run a plugin
+plugin readme <id>                     # show README
+plugin search <searchable>             # resolve to IDs
+----
+
+==== store install / store search (admin)
+
+[source,bash]
+----
+store list [--store <url>]
+store search <query>
+store install <plugin_name> [--compute <res1,res2>] [--adminUser <u> --adminPassword <p>]
+store inspect                 # show current peer store URL
+store set <url>               # override peer store
+store reset                   # reset to default (cube.chrisproject.org)
+----
+
+`store install` three-phase resolution:
+
+1. Already in CUBE → reports `[INFO] already registered`
+2. Found in peer store → imports (prompts for admin credentials interactively if needed)
+3. Not found → Docker extraction and registration
+
+=== jobs / plugininstances / instances
+
+All aliases for the same resource.
+
+[source,bash]
+----
+jobs list [--all] [--search <k:v>] [--feed <feed_id>]
+job inspect <id>
+job list --feed 123
+jobs list --search status:started
+----
+
+=== compute / computes
+
+[source,bash]
+----
+compute list
+compute inspect <id>
+----
+
+=== pipelines / pipeline
+
+[source,bash]
+----
+pipelines list [--all]
+pipeline inspect <id>
+pipeline info <name>     # show nodes and parameters of a named pipeline
+pipeline source <name>   # show pipeline YAML source
+pipeline run <name> [--previous_id <id>] [--compute <res>]
+----
+
+=== workflows / workflow
+
+[source,bash]
+----
+workflows list [--all]
+workflow create <pipeline_id> --previous_id <instance_id>
+workflow inspect <id>
+----
+
+=== tags / tag
+
+[source,bash]
+----
+tags list [--all]
+tag inspect <id>
+----
+
+=== groups / group
+
+[source,bash]
+----
+groups list [--all]
+group inspect <id>
+group create <name>          # [admin]
+group delete <id>            # [admin]
+group adduser <id> <user>    # [admin]
+group removeuser <id> <user> # [admin]
+----
+
+=== pluginmetas / meta / metas
+
+[source,bash]
+----
+pluginmetas list [--all]
+pluginmeta inspect <id>
+----
+
+== Job Monitoring: /proc/feeds
+
+`/proc/feeds/` surfaces all visible plugin instances as a navigable DAG.
+Each feed is a directory; each plugin instance within it is a subdirectory.
+
+=== Structure
+
+[source]
+----
+/proc/feeds/
+└── feed_1107/
+    ├── status          ← aggregate: running|finishedSuccessfully|finishedWithError|…
+    ├── title           ← feed name
+    └── pl-dircopy_64267/           ← type=job, shown with trailing /
+        ├── status      ← live API fetch if non-terminal
+        ├── params      ← key=value lines, what the plugin ran with
+        ├── log         ← stdout/stderr, always live
+        └── pl-shexec_64295/
+            ├── status
+            ├── params
+            ├── log
+            └── …
+----
+
+=== Common patterns
+
+[source,bash]
+----
+# List all feeds with aggregate status
+ls -l /proc/feeds
+
+# See full DAG of a feed
+tree /proc/feeds/feed_1107
+
+# Read live status of a specific node
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
+
+# Read log output
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/log
+
+# Read what params a job ran with
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/params
+
+# Cancel a running job
+rm /proc/feeds/feed_1107/pl-shexec_64295
+
+# Cancel all jobs in a feed
+rm -r /proc/feeds/feed_1107
+----
+
+=== proc command
+
+[source,bash]
+----
+proc refresh              # rebuild /proc feed index (fast — feeds only)
+proc refresh feed_123     # scope rebuild to one feed
+proc refresh 123          # same
+
+proc find <instance_id>   # return full /proc path for any instance ID
+----
+
+`proc find` example:
+
+[source,bash]
+----
+proc find 64306
+# → /proc/feeds/feed_1107/pl-dircopy_64267/.../pl-neurofiles-push_64306
+
+# Then read status directly:
+cat $(proc find 64306)/status
+----
+
+=== /proc cache behaviour
+
+* Built lazily on first access to any `/proc/feeds` path.
+* `proc refresh` rebuilds the feed index (fast, feeds only).
+* Instance nodes within a feed are loaded on first access to that feed's directory.
+* Status of non-terminal nodes is always fetched live from the API on `cat status`.
+* `/proc` paths bypass listCache — always fresh.
+
+== PACS Commands
+
+[source,bash]
+----
+pacs <subcommand>
+
+# Delegated to chili:
+pacsservers list
+pacsqueries list
+pacsretrieve list
+----
+
+See link:pacsqr.adoc[pacsqr.adoc] for PACS query/retrieve workflows.
+
+== Shell Control
+
+[source,bash]
+----
+context                   # show current context (user, URL, feed, plugin)
+physicalmode              # toggle physical/logical filesystem mode
+prompt list               # list available prompt themes
+prompt <theme>            # switch prompt theme
+timing                    # toggle command timing display
+debug                     # toggle debug output
+help [command]            # show help
+----
+
+== Scripting Patterns
+
+=== Wait for a job to finish
+
+`/proc` status is always live for non-terminal jobs.  Poll with a loop:
+
+[source,bash]
+----
+#!/usr/bin/env chell
+# Run a plugin and wait for completion
+cd /home/alice/uploads/study
+pl-fshack-v1.2.0 --inputFile brain.mgz
+# Note the instance ID from the output, then:
+# (in a loop externally) cat /proc/feeds/<feed>/pl-fshack_<id>/status
+----
+
+=== Continue analysis from a known node
+
+[source,bash]
+----
+cd /proc/feeds/feed_123/pl-dircopy_456
+pl-segmentation-v1.0.0 --threshold 0.5
+----
+
+=== Find and inspect a job by ID
+
+[source,bash]
+----
+proc find 64306
+cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/pl-dcm2mha_cnvtr_64296/pl-lld_inference_64297/pl-topologicalcopy_64304/pl-markimg_64305/pl-neurofiles-push_64306/status
+----
+
+=== Upload data and run analysis
+
+[source,bash]
+----
+#!/usr/bin/env chell
+connect --user alice --password s3cr3t http://cube:8000/api/v1/
+cd /home/alice/uploads
+mkdir study-2024
+cd study-2024
+upload ~/local_data/brain.mgz .
+pl-fshack-v1.2.0 --inputFile brain.mgz --outputFile brain.nii -- feed_title="Brain recon 2024"
+----
+
+=== Check compute environments before running
+
+[source,bash]
+----
+cat /etc/compute.yaml
+store install pl-fshack --compute ares
+----
+
+=== Install a plugin (non-interactive, admin credentials via flags)
+
+[source,bash]
+----
+store install pl-fshack --compute ares,argentum --adminUser chris --adminPassword chris1234
+----
+
+=== List all running jobs
+
+[source,bash]
+----
+proc refresh
+jobs list --search status:started
+----
+
+=== Run a pipeline on existing data
+
+[source,bash]
+----
+pipeline list
+# find pipeline ID, e.g. 7
+cd /home/alice/feeds/feed_123/pl-dircopy_456/data
+workflow create 7 --previous_id 456
+jobs list --feed 123
+----
+
+== Output Conventions
+
+Commands that succeed produce output on stdout.  Error messages go to stderr.
+Exit code is 0 on success, non-zero on failure.
+
+In `-c` or script mode, each command's output is emitted as it runs.
+`proc refresh` and `store install` print a status line on completion.
+
+== Tab Completion (interactive only)
+
+* Command names complete from all registered builtins.
+* Plugin names (with version suffix) complete from `/bin`.
+* Path arguments complete from the VFS using `vfsDispatcher`.
+
+== See Also
+
+* link:vfs.adoc[vfs.adoc] — VFS architecture and provider details
+* link:pluginrun.adoc[pluginrun.adoc] — Plugin execution deep-dive
+* link:store.adoc[store.adoc] — Store install three-phase resolution
+* link:login.adoc[login.adoc] — Connection and authentication options
+* link:execution.adoc[execution.adoc] — Scripting, shebang, error handling
+* link:pacsqr.adoc[pacsqr.adoc] — PACS query and retrieve
+* link:physicalMode.adoc[physicalMode.adoc] — Physical vs logical path mode
+* link:gotchas.adoc[gotchas.adoc] — Known edge cases
+* link:../CONTEXT.md[CONTEXT.md] — Domain glossary and permission model

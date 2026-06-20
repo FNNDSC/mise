@@ -12,6 +12,9 @@ import TerminalRenderer from "marked-terminal";
 import chalk from "chalk";
 
 marked.setOptions({
+  // @ts-expect-error marked-terminal@6 ships .d.ts that drift from marked@9's
+  // Renderer type at this runtime-compatible version pair. (Tracked: align the
+  // marked / marked-terminal versions across chili & chell.)
   renderer: new TerminalRenderer({
     code:           chalk.yellow,
     blockquote:     chalk.gray.italic,

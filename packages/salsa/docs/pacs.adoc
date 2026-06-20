@@ -1,0 +1,100 @@
+= PACS Support in Salsa
+:toc:
+:toclevels: 2
+:sectnums:
+
+== Overview
+
+`salsa` is the logic layer. Its PACS intents are deliberately thin so they can be reused across CLIs or UIs without side effects. They delegate directly to `cumin`, returning `Result<T>` and relying on `errorStack` for messaging. Nothing is printed here; consumers render or log as they see fit.
+
+== Available Intents
+
+=== Query Operations
+
+- **List PACS servers**: `pacsServers_list(options?)` → `Result<PACSServer[]>`
+- **List PACS queries**: `pacsQueries_list(options?)` → `Result<FilteredResourceData | null>`
+- **Create PACS query**: `pacsQueries_create(pacsserver, data)` → `Result<PACSQueryRecord>`
+- **Decode PACS query result**: `pacsQuery_resultDecode(queryId)` → `Result<PACSQueryDecodedResult>`
+
+=== Retrieve Operations
+
+- **Create PACS retrieve**: `pacsRetrieve_create(queryId)` → `Result<PACSRetrieveRecord>`
+- **List PACS retrieves**: `pacsRetrieves_list(queryId, options?)` → `Result<PACSRetrieveRecord[]>`
+- **Delete PACS retrieve**: `pacsRetrieve_delete(retrieveId)` → `Result<void>`
+- **Generate status report**: `pacsRetrieve_statusForQuery(queryId)` → `Result<PACSQueryStatusReport>`
+
+== Parameters (delegated to cumin)
+
+- `pacsserver`: identifier or numeric id; resolution/validation handled in `cumin`.
+- `PACSQueryCreateData`: `{ title: string; query: string; description?: string }` where `query` is a JSON string of DICOM tag filters (e.g., `{"PatientID":"4456554"}`).
+- `PACSQueryListOptions`: includes `pacs_id`, `pacs_identifier`, plus standard list options.
+
+== Usage Example
+
+=== Basic Query
+
+```typescript
+import type {
+  Result,
+  PACSServer,
+  PACSQueryRecord,
+  PACSQueryDecodedResult,
+} from "@fnndsc/cumin";
+import {
+  pacsServers_list,
+  pacsQueries_create,
+  pacsQuery_resultDecode,
+} from "@fnndsc/salsa";
+
+const serversResult: Result<PACSServer[]> = await pacsServers_list();
+if (!serversResult.ok) return;
+const servers: PACSServer[] = serversResult.value;
+
+const createdQuery: Result<PACSQueryRecord> = await pacsQueries_create("PACSDCM", {
+  title: "PID 4456554",
+  query: JSON.stringify({ PatientID: "4456554" }),
+});
+if (!createdQuery.ok) return;
+const queryId: number = createdQuery.value.id;
+
+const decodedResult: Result<PACSQueryDecodedResult> = await pacsQuery_resultDecode(
+  queryId
+);
+if (decodedResult.ok && decodedResult.value.json) {
+  const decodedJson: unknown = decodedResult.value.json;
+  // consume decodedJson / text
+}
+```
+
+=== Retrieve with Progress Monitoring
+
+```typescript
+import type { Result, PACSRetrieveRecord, PACSQueryStatusReport } from "@fnndsc/cumin";
+import {
+  pacsRetrieve_create,
+  pacsRetrieve_statusForQuery,
+} from "@fnndsc/salsa";
+
+const queryId: number = 123; // existing PACS query id
+
+// Trigger retrieve
+const retrieveResult: Result<PACSRetrieveRecord> = await pacsRetrieve_create(queryId);
+if (!retrieveResult.ok) return;
+const retrieveId: number = retrieveResult.value.id;
+
+// Monitor progress
+const statusResult: Result<PACSQueryStatusReport> = await pacsRetrieve_statusForQuery(
+  queryId
+);
+if (statusResult.ok) {
+  const statusReport: PACSQueryStatusReport = statusResult.value;
+  // statusReport contains studies with series-level progress
+  // Each series shows expectedFiles, actualFiles, and status
+}
+```
+
+== Notes
+
+- Network/authentication is handled in `cumin`; ensure a valid CUBE session before invoking these intents.
+- Result decoding attempts base64 → zlib/gzip → text/JSON. Failures are reported via `Result` and `errorStack`, never stdout.
+- Because intents are pass-through, any new PACS surface added to `cumin` can be exposed here with minimal code.

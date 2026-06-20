@@ -17,7 +17,7 @@ import { Result, Ok, Err, errorStack, PACSQueryDecodedResult } from "@fnndsc/cum
  */
 function pacs_tagValueExtract(val: unknown): string {
   if (val && typeof val === "object") {
-    const record = val as Record<string, unknown>;
+    const record: Record<string, unknown> = val as Record<string, unknown>;
     if ("value" in record) {
       return String(record.value ?? "");
     }
@@ -39,23 +39,23 @@ export async function pacsVfs_read(
   queryResult_fetch: (queryId: number) => Promise<PACSQueryDecodedResult | null>
 ): Promise<Result<string>> {
   try {
-    let effectivePath = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
+    let effectivePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
     if (effectivePath.length > 1 && effectivePath.endsWith("/")) {
       effectivePath = effectivePath.slice(0, -1);
     }
 
-    const parts = effectivePath.split("/").filter(Boolean);
+    const parts: string[] = effectivePath.split("/").filter(Boolean);
     if (parts.length !== 7 || parts[0] !== "net" || parts[1] !== "pacs" || parts[2] !== "queries") {
       errorStack.stack_push("error", `File not found: ${pathStr}`);
       return Err();
     }
 
-    const queryFolder = parts[3];
-    const studyFolder = parts[4];
-    const seriesFolder = parts[5];
-    const filename = parts[6];
+    const queryFolder: string = parts[3];
+    const studyFolder: string = parts[4];
+    const seriesFolder: string = parts[5];
+    const filename: string = parts[6];
 
-    const queryId = Number(queryFolder.split("_")[0]);
+    const queryId: number = Number(queryFolder.split("_")[0]);
     if (Number.isNaN(queryId)) {
       errorStack.stack_push("error", `Invalid query ID in path '${pathStr}'`);
       return Err();
@@ -74,19 +74,19 @@ export async function pacsVfs_read(
       return Err();
     }
 
-    const decoded = await queryResult_fetch(queryId);
+    const decoded: PACSQueryDecodedResult | null = await queryResult_fetch(queryId);
     if (!decoded || !decoded.json) {
       errorStack.stack_push("error", `PACS query ${queryId} has no result payload.`);
       return Err();
     }
 
-    const studyUID = studyFolder.replace(/^Study_/, "").split("_")[0];
-    const seriesUID = seriesFolder.replace(/^Series_/, "").split("_")[0];
+    const studyUID: string = studyFolder.replace(/^Study_/, "").split("_")[0];
+    const seriesUID: string = seriesFolder.replace(/^Series_/, "").split("_")[0];
 
     const decodedJson = decoded.json;
     let studiesObj: unknown;
     if (decodedJson && typeof decodedJson === "object") {
-      const record = decodedJson as Record<string, unknown>;
+      const record: Record<string, unknown> = decodedJson as Record<string, unknown>;
       if ("studies" in record) {
         studiesObj = record.studies;
       } else if ("Studies" in record) {
@@ -101,8 +101,8 @@ export async function pacsVfs_read(
     }
 
     const studies: unknown[] = Array.isArray(studiesObj) ? studiesObj : [studiesObj];
-    const studyObj = (studies as Record<string, unknown>[]).find((s: Record<string, unknown>) => {
-      const sUID = pacs_tagValueExtract(s.StudyInstanceUID || s.uid);
+    const studyObj: Record<string, unknown> | undefined = (studies as Record<string, unknown>[]).find((s: Record<string, unknown>) => {
+      const sUID: string = pacs_tagValueExtract(s.StudyInstanceUID || s.uid);
       return sUID === studyUID;
     });
 
@@ -118,8 +118,8 @@ export async function pacsVfs_read(
       Array.isArray(studyObj.data) ? studyObj.data :
       [];
 
-    const seriesObj = (seriesArray as Record<string, unknown>[]).find((s: Record<string, unknown>) => {
-      const sUID = pacs_tagValueExtract(s.SeriesInstanceUID || s.uid);
+    const seriesObj: Record<string, unknown> | undefined = (seriesArray as Record<string, unknown>[]).find((s: Record<string, unknown>) => {
+      const sUID: string = pacs_tagValueExtract(s.SeriesInstanceUID || s.uid);
       return sUID === seriesUID;
     });
 
@@ -130,7 +130,7 @@ export async function pacsVfs_read(
 
     return Ok(JSON.stringify(seriesObj, null, 2));
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `PACS VFS read failed: ${msg}`);
     return Err();
   }
@@ -147,7 +147,7 @@ export async function pacsVfs_readBinary(
   pathStr: string,
   queryResult_fetch: (queryId: number) => Promise<PACSQueryDecodedResult | null>
 ): Promise<Result<Buffer>> {
-  const res = await pacsVfs_read(pathStr, queryResult_fetch);
+  const res: Result<string> = await pacsVfs_read(pathStr, queryResult_fetch);
   if (res.ok) {
     return Ok(Buffer.from(res.value, "utf-8"));
   }

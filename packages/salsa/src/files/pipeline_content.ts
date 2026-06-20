@@ -1,3 +1,9 @@
+/**
+ * @file Content retrieval for pipeline-source files (text and binary).
+ *
+ * @module
+ */
+
 import {
   errorStack,
   Result,

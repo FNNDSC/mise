@@ -11,7 +11,7 @@ import { ChRISGroupGroup, FilteredResourceData, ListOptions } from '@fnndsc/cumi
  * @param options - Search and pagination options.
  */
 export async function groups_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const group = new ChRISGroupGroup();
+  const group: ChRISGroupGroup = new ChRISGroupGroup();
   return await group.asset.resources_listAndFilterByOptions(options);
 }
 
@@ -21,7 +21,7 @@ export async function groups_list(options: ListOptions): Promise<FilteredResourc
  * @param options - Search options (limit/offset managed internally).
  */
 export async function groups_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
-  const group = new ChRISGroupGroup();
+  const group: ChRISGroupGroup = new ChRISGroupGroup();
   return await group.asset.resources_getAll(options);
 }
 
@@ -29,7 +29,7 @@ export async function groups_listAll(options: Partial<ListOptions> = {}): Promis
  * Returns available field names for groups.
  */
 export async function groupFields_get(): Promise<string[] | null> {
-  const group = new ChRISGroupGroup();
+  const group: ChRISGroupGroup = new ChRISGroupGroup();
   const result = await group.asset.resourceFields_get();
   return result ? result.fields : null;
 }

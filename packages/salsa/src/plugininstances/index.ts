@@ -11,7 +11,7 @@ import { ChRISPluginInstanceGroup, FilteredResourceData, ListOptions } from '@fn
  * @param options - Search options (limit/offset managed internally).
  */
 export async function pluginInstances_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
-  const group = new ChRISPluginInstanceGroup();
+  const group: ChRISPluginInstanceGroup = new ChRISPluginInstanceGroup();
   return await group.asset.resources_getAll(options);
 }
 
@@ -19,7 +19,7 @@ export async function pluginInstances_listAll(options: Partial<ListOptions> = {}
  * Returns available field names for plugin instances.
  */
 export async function pluginInstanceFields_get(): Promise<string[] | null> {
-  const group = new ChRISPluginInstanceGroup();
+  const group: ChRISPluginInstanceGroup = new ChRISPluginInstanceGroup();
   const result = await group.asset.resourceFields_get();
   return result ? result.fields : null;
 }

@@ -37,10 +37,10 @@ export type { PipelineRecord, WorkflowResult };
 export async function pipelines_list(
   search?: string
 ): Promise<FilteredResourceData | null> {
-  const result = await cumin_pipelines_list(search);
+  const result: Result<PipelineRecord[]> = await cumin_pipelines_list(search);
   if (!result.ok || result.value.length === 0) return null;
 
-  const records = result.value as Record<string, unknown>[];
+  const records: Record<string, unknown>[] = result.value as Record<string, unknown>[];
   return {
     tableData: records,
     selectedFields: ['id', 'name', 'authors', 'category', 'description'],
@@ -53,7 +53,7 @@ export async function pipelines_list(
  * @param options - Search options (limit/offset managed internally).
  */
 export async function pipelines_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
-  const group = new ChRISPipelineGroup();
+  const group: ChRISPipelineGroup = new ChRISPipelineGroup();
   return await group.asset.resources_getAll(options);
 }
 
@@ -61,7 +61,7 @@ export async function pipelines_listAll(options: Partial<ListOptions> = {}): Pro
  * Returns available field names for pipelines.
  */
 export async function pipelineFields_get(): Promise<string[] | null> {
-  const group = new ChRISPipelineGroup();
+  const group: ChRISPipelineGroup = new ChRISPipelineGroup();
   const result = await group.asset.resourceFields_get();
   return result ? result.fields : null;
 }
@@ -91,7 +91,7 @@ export async function pipelines_getAll(): Promise<Result<PipelineRecord[]>> {
 
   if (!pipelinesResult.ok) return Err();
 
-  const idToSlug = new Map<number, string>();
+  const idToSlug: Map<number, string> = new Map<number, string>();
   if (sourceFilesResponse) {
     for (const item of sourceFilesResponse.getItems()) {
       const { fname, pipeline_id } = item.data;
@@ -132,10 +132,10 @@ export async function pipeline_run(
   previousPluginInstId: number,
   computeOverride?: string
 ): Promise<Result<WorkflowResult>> {
-  const pipelineResult = await pipeline_resolve(nameOrId);
+  const pipelineResult: Result<PipelineRecord> = await pipeline_resolve(nameOrId);
   if (!pipelineResult.ok) return Err();
 
-  const pipeline = pipelineResult.value;
+  const pipeline: PipelineRecord = pipelineResult.value;
 
   const options: WorkflowCreateOptions = { previousPluginInstId };
 
@@ -164,7 +164,7 @@ export async function pipeline_run(
         }));
       }
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push('error', `pipeline_run: compute override failed: ${msg}`);
       return Err();
     }
@@ -183,10 +183,10 @@ export async function pipeline_run(
 export async function pipeline_sourceGet(
   nameOrId: string
 ): Promise<Result<string>> {
-  const pipelineResult = await pipeline_resolve(nameOrId);
+  const pipelineResult: Result<PipelineRecord> = await pipeline_resolve(nameOrId);
   if (!pipelineResult.ok) return Err();
 
-  const pipeline = pipelineResult.value;
+  const pipeline: PipelineRecord = pipelineResult.value;
 
   const client = await chrisConnection.client_get();
   if (!client) {
@@ -213,7 +213,7 @@ export async function pipeline_sourceGet(
 
     return pipelineFile_getTextByPath('/' + items[0].data.fname);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipeline_sourceGet: ${msg}`);
     return Err();
   }
@@ -225,7 +225,7 @@ export async function pipeline_sourceGet(
  * @param url - Direct URL to the pipeline source file.
  */
 export async function pipeline_getContent(url: string): Promise<Result<string>> {
-  const token = await chrisConnection.authToken_get();
+  const token: string | null = await chrisConnection.authToken_get();
   if (!token) {
     errorStack.stack_push('error', 'Not connected to ChRIS');
     return Err();
@@ -237,7 +237,7 @@ export async function pipeline_getContent(url: string): Promise<Result<string>> 
     });
     return Ok(response.data);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipeline_getContent: ${msg}`);
     return Err();
   }

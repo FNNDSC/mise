@@ -12,6 +12,9 @@ import { plugin_run } from '../index.js';
 import * as path from 'path';
 import { PluginExecutionResult } from '../plugin_executeInPlace.js';
 
+/**
+ * Result of creating a new feed by executing a plugin.
+ */
 export interface FeedCreationResult {
   id: number;
   name: string;
@@ -50,7 +53,7 @@ export async function plugin_executeNewFeed(
     return null;
   }
 
-  const feedResult = (await feed_create([cwd], {
+  const feedResult: FeedCreationResult | null = (await feed_create([cwd], {
     params: `title:${feedTitle}`,
   })) as FeedCreationResult | null;
 

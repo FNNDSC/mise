@@ -43,7 +43,7 @@ export async function job_cancel(instanceID: number): Promise<Result<boolean>> {
       return Err();
     }
 
-    const instance = await (client as unknown as {
+    const instance: PluginInstanceObj = await (client as unknown as {
       getPluginInstance(id: number): Promise<PluginInstanceObj>;
     }).getPluginInstance(instanceID);
 
@@ -87,7 +87,7 @@ export async function job_delete(instanceID: number): Promise<Result<boolean>> {
       return Err();
     }
 
-    const instance = await (client as unknown as {
+    const instance: PluginInstanceObj = await (client as unknown as {
       getPluginInstance(id: number): Promise<PluginInstanceObj>;
     }).getPluginInstance(instanceID);
 
@@ -130,7 +130,7 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
       return Err();
     }
 
-    const instance = await (client as unknown as {
+    const instance: PluginInstanceObj = await (client as unknown as {
       getPluginInstance(id: number): Promise<PluginInstanceObj>;
     }).getPluginInstance(instanceID);
 

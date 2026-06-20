@@ -1,3 +1,9 @@
+/**
+ * @file Content retrieval for regular uploaded files (text, binary, stream).
+ *
+ * @module
+ */
+
 import * as path from 'path';
 import {
   ChRISEmbeddedResourceGroup,

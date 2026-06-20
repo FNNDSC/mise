@@ -11,6 +11,13 @@
 
 import { ChRISPlugin, Client, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 
+/** A HATEOAS-style collection link (relation + URL). */
+interface CollectionLink {
+  rel: string;
+  href: string;
+}
+
+
 /**
  * Credentials for admin authentication.
  */
@@ -33,7 +40,7 @@ export interface PluginImportResult {
  * Whitelist of fields to keep from peer store plugin data.
  * Removes read-only fields like id, creation_date, stars, etc.
  */
-const PLUGIN_FIELD_WHITELIST = [
+const PLUGIN_FIELD_WHITELIST: string[] = [
   'name', 'dock_image', 'public_repo', 'version',
   'title', 'category', 'description', 'documentation', 'license', 'icon',
   'execshell', 'selfpath', 'selfexec',
@@ -78,13 +85,13 @@ export async function plugin_importFromStore(
   computeResources: string[] = ['host'],
   adminCreds?: AdminCredentials
 ): Promise<PluginImportResult> {
-  const chrisPlugin = new ChRISPlugin();
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
 
   if (!pluginData.parameters && pluginData.links) {
-    const links = pluginData.links as Array<{ rel: string; href: string }>;
-    const paramsLink = links.find(l => l.rel === 'parameters');
+    const links: CollectionLink[] = pluginData.links as CollectionLink[];
+    const paramsLink: CollectionLink | undefined = links.find((l: CollectionLink) => l.rel === 'parameters');
     if (paramsLink) {
-      const paramsResult = await parameters_fetchFromUrl(paramsLink.href);
+      const paramsResult: Result<Record<string, unknown>[]> = await parameters_fetchFromUrl(paramsLink.href);
       if (paramsResult.ok && paramsResult.value.length > 0) {
         pluginData.parameters = paramsResult.value;
       } else if (!paramsResult.ok) {
@@ -104,11 +111,11 @@ export async function plugin_importFromStore(
   let adminToken: string | undefined;
 
   if (adminCreds && adminCreds.username && adminCreds.password) {
-    const client = await chrisPlugin.client_get();
+    const client: Client | null = await chrisPlugin.client_get();
     if (client) {
-      const authUrl = client.url + 'auth-token/';
+      const authUrl: string = client.url + 'auth-token/';
       try {
-        const token = await Client.getAuthToken(
+        const token: string = await Client.getAuthToken(
           authUrl,
           adminCreds.username,
           adminCreds.password
@@ -117,13 +124,13 @@ export async function plugin_importFromStore(
           adminToken = token;
         }
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg: string = e instanceof Error ? e.message : String(e);
         errorStack.stack_push('warning', `Failed to get admin token: ${msg}`);
       }
     }
   }
 
-  const registeredPlugin = await chrisPlugin.plugin_registerWithAdmin(
+  const registeredPlugin: Record<string, unknown> | null = await chrisPlugin.plugin_registerWithAdmin(
     sanitizedData,
     computeResources,
     adminToken
@@ -139,7 +146,7 @@ export async function plugin_importFromStore(
   // Check if failure was due to authentication
   const errors: string[] = errorStack.allOfType_get('error');
   const authError: boolean = errors.some((e: string) => {
-    const lowerE = e.toLowerCase();
+    const lowerE: string = e.toLowerCase();
     return lowerE.includes('unauthorized') ||
            lowerE.includes('forbidden') ||
            lowerE.includes('permission denied') ||

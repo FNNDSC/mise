@@ -40,9 +40,9 @@ function vfs_sortItems(
   reverse?: boolean
 ): VFSItem[] {
   const field: keyof VFSItem = sortField || "name";
-  const sorted = [...items].sort((a: VFSItem, b: VFSItem) => {
-    const valA = a[field];
-    const valB = b[field];
+  const sorted: VFSItem[] = [...items].sort((a: VFSItem, b: VFSItem) => {
+    const valA: string | number = a[field];
+    const valB: string | number = b[field];
     if (typeof valA === "string" && typeof valB === "string") {
       return valA.localeCompare(valB);
     }
@@ -76,7 +76,7 @@ export class NativeVfsProvider implements VFSProvider {
   ): Promise<Result<VFSItem[]>> {
     try {
       const fetchOpts = { limit: 1000, offset: 0 };
-      const resolvedPath = pathStr || "/";
+      const resolvedPath: string = pathStr || "/";
 
       // Parallelize files/dirs/links API requests
       const results = await Promise.allSettled([
@@ -92,14 +92,14 @@ export class NativeVfsProvider implements VFSProvider {
         raw: ChrisFileOrDirRaw,
         type: "dir" | "file" | "link" | "vfs"
       ): VFSItem => {
-        let name = raw.fname || raw.path || "";
+        let name: string = raw.fname || raw.path || "";
         if (name.includes("/")) {
           name = name.split("/").pop() || name;
         }
         if (type === "link" && name.endsWith(".chrislink")) {
           name = name.slice(0, -10);
         }
-        const targetPath = raw.path
+        const targetPath: string | undefined = raw.path
           ? raw.path.startsWith("/")
             ? raw.path
             : "/" + raw.path
@@ -133,10 +133,10 @@ export class NativeVfsProvider implements VFSProvider {
         );
       }
 
-      const sorted = vfs_sortItems(items, options?.sort, options?.reverse);
+      const sorted: VFSItem[] = vfs_sortItems(items, options?.sort, options?.reverse);
       return Ok(sorted);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push("error", `Native VFS list failed: ${msg}`);
       return Err();
     }
@@ -151,7 +151,7 @@ export class NativeVfsProvider implements VFSProvider {
    */
   async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
     try {
-      const srcIsDir = await path_checkIsDir(src);
+      const srcIsDir: boolean = await path_checkIsDir(src);
       if (srcIsDir && !options.recursive) {
         errorStack.stack_push(
           "error",
@@ -160,8 +160,8 @@ export class NativeVfsProvider implements VFSProvider {
         return false;
       }
 
-      const destIsDir = await path_checkIsDir(dest);
-      const destLooksDir = dest.endsWith("/");
+      const destIsDir: boolean = await path_checkIsDir(dest);
+      const destLooksDir: boolean = dest.endsWith("/");
       const finalDest = (destIsDir || destLooksDir)
         ? path.posix.join(dest, path.posix.basename(src))
         : dest;
@@ -172,7 +172,7 @@ export class NativeVfsProvider implements VFSProvider {
         return await files_copy(src, finalDest);
       }
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push("error", `Native VFS copy failed: ${msg}`);
       return false;
     }

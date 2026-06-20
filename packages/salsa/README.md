@@ -10,6 +10,26 @@
 
 `salsa` is the logic layer of the ChRIS interface ecosystem. It encapsulates high-level business intents and operational logic, serving as the bridge between user-facing interfaces (`chell`, `chili`) and the underlying infrastructure (`cumin` and `chrisapi`).
 
+## Installation
+
+```bash
+npm install @fnndsc/salsa
+```
+
+Requires Node.js ≥ 20.12. Ships with TypeScript type definitions. Depends on [`@fnndsc/cumin`](https://github.com/FNNDSC/cumin).
+
+## Usage
+
+```typescript
+import { files_listAll, fileContent_get, vfsDispatcher } from "@fnndsc/salsa";
+
+// Salsa returns pure data / typed objects — no CLI dependencies
+const listing = await files_listAll({ limit: 1000, offset: 0 }, "files", "/home/chris");
+const content = await fileContent_get("/home/chris/uploads/notes.txt");
+```
+
+See [Key Modules](#key-modules) for the full intent catalogue.
+
 ## Purpose
 
 - **Consolidate Business Logic**: Centralises intents such as "list directory", "upload file", "register plugin", "fetch feed note". All frontends share identical behaviour.
@@ -135,3 +155,10 @@ npm run build
 ```bash
 npm run test
 ```
+
+## License
+
+MIT — part of the [ChRIS Project](https://chrisproject.org).
+
+---
+_-30-_

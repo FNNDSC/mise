@@ -87,21 +87,21 @@ export class VFSDispatcher {
     options?: { sort?: "name" | "size" | "date" | "owner"; reverse?: boolean }
   ): Promise<Result<VFSItem[]>> {
     const absolutePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
-    const cleanPath = absolutePath.endsWith("/") && absolutePath.length > 1 ? absolutePath.slice(0, -1) : absolutePath;
+    const cleanPath: string = absolutePath.endsWith("/") && absolutePath.length > 1 ? absolutePath.slice(0, -1) : absolutePath;
 
     // Check if cleanPath is a parent of any registered provider's prefix
-    const prefixParent = cleanPath === "/" ? "/" : cleanPath + "/";
-    const children = this.providers.filter(
+    const prefixParent: string = cleanPath === "/" ? "/" : cleanPath + "/";
+    const children: VFSProvider[] = this.providers.filter(
       (p) => p.prefix.startsWith(prefixParent)
     );
 
     if (children.length > 0) {
-      const segmentIndex = cleanPath === "/" ? 1 : cleanPath.split("/").length;
-      const virtualSubdirs = new Set<string>();
+      const segmentIndex: number = cleanPath === "/" ? 1 : cleanPath.split("/").length;
+      const virtualSubdirs: Set<string> = new Set<string>();
 
       for (const p of children) {
-        const segments = p.prefix.split("/");
-        const nextSegment = segments[segmentIndex];
+        const segments: string[] = p.prefix.split("/");
+        const nextSegment: string = segments[segmentIndex];
         if (nextSegment) {
           virtualSubdirs.add(nextSegment);
         }
@@ -125,9 +125,9 @@ export class VFSDispatcher {
             // Fall back cleanly to the original path on failure
           }
         }
-        const nativeResult = await this.defaultProvider.list(resolvedPathStr, options);
+        const nativeResult: Result<VFSItem[]> = await this.defaultProvider.list(resolvedPathStr, options);
         if (nativeResult.ok && nativeResult.value) {
-          const nativeItems = nativeResult.value;
+          const nativeItems: VFSItem[] = nativeResult.value;
           for (const item of nativeItems) {
             if (!virtualSubdirs.has(item.name)) {
               vfsItems.push(item);
@@ -139,7 +139,7 @@ export class VFSDispatcher {
       }
     }
 
-    const provider = this.provider_get(pathStr);
+    const provider: VFSProvider = this.provider_get(pathStr);
     if (provider === this.defaultProvider && this.pathResolver) {
       try {
         const resolvedPath: string = await this.pathResolver(pathStr);
@@ -160,7 +160,7 @@ export class VFSDispatcher {
    * @returns Promise resolving to success boolean.
    */
   async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
-    const provider = this.provider_get(src);
+    const provider: VFSProvider = this.provider_get(src);
     if (provider === this.defaultProvider && this.pathResolver) {
       let resolvedSrc: string = src;
       let resolvedDest: string = dest;
@@ -182,7 +182,7 @@ export class VFSDispatcher {
    * @returns A Promise resolving to a Result containing the file contents as a string.
    */
   async read(pathStr: string): Promise<Result<string>> {
-    const provider = this.provider_get(pathStr);
+    const provider: VFSProvider = this.provider_get(pathStr);
     if (provider !== this.defaultProvider && provider.read) {
       return provider.read(pathStr);
     }
@@ -197,7 +197,7 @@ export class VFSDispatcher {
    * @returns A Promise resolving to a Result containing the file contents as a Buffer.
    */
   async readBinary(pathStr: string): Promise<Result<Buffer>> {
-    const provider = this.provider_get(pathStr);
+    const provider: VFSProvider = this.provider_get(pathStr);
     if (provider !== this.defaultProvider && provider.readBinary) {
       return provider.readBinary(pathStr);
     }

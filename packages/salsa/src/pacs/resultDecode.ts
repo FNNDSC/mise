@@ -1,3 +1,9 @@
+/**
+ * @file Thin salsa wrapper around cumin's PACS query result decoder.
+ *
+ * @module
+ */
+
 import { pacsQuery_resultDecode as cumin_pacsQuery_resultDecode, PACSQueryDecodedResult, Result } from "@fnndsc/cumin";
 
 /**

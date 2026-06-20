@@ -9,7 +9,7 @@ import { ChRISComputeResourceGroup, FilteredResourceData, ListOptions } from '@f
  * Lists compute resources (single page).
  */
 export async function computeResources_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const group = new ChRISComputeResourceGroup();
+  const group: ChRISComputeResourceGroup = new ChRISComputeResourceGroup();
   return await group.asset.resources_listAndFilterByOptions(options);
 }
 
@@ -17,7 +17,7 @@ export async function computeResources_list(options: ListOptions): Promise<Filte
  * Lists all compute resources across all pages.
  */
 export async function computeResources_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
-  const group = new ChRISComputeResourceGroup();
+  const group: ChRISComputeResourceGroup = new ChRISComputeResourceGroup();
   return await group.asset.resources_getAll(options);
 }
 
@@ -25,7 +25,7 @@ export async function computeResources_listAll(options: Partial<ListOptions> = {
  * Returns available field names for compute resources.
  */
 export async function computeResourceFields_get(): Promise<string[] | null> {
-  const group = new ChRISComputeResourceGroup();
+  const group: ChRISComputeResourceGroup = new ChRISComputeResourceGroup();
   const result = await group.asset.resourceFields_get();
   return result ? result.fields : null;
 }

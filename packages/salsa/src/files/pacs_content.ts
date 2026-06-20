@@ -1,3 +1,9 @@
+/**
+ * @file Content retrieval for PACS-backed files (text and binary).
+ *
+ * @module
+ */
+
 import * as path from 'path';
 import {
   ChRISEmbeddedResourceGroup,

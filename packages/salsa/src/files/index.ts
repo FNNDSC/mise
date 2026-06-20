@@ -1,3 +1,9 @@
+/**
+ * @file File group resolution and content dispatch across file source types.
+ *
+ * @module
+ */
+
 import * as path from 'path';
 import {
   ChRISEmbeddedResourceGroup,
@@ -37,7 +43,7 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
   let items: FsItem[] = [];
 
   // 1. List files in current directory
-  const filesGroup = await files_getGroup('files', rootPath);
+  const filesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', rootPath);
   if (filesGroup) {
     const fileResults: FilteredResourceData | null = await filesGroup.asset.resources_getAll();
     if (fileResults && fileResults.tableData) {
@@ -52,7 +58,7 @@ export async function files_listRecursive(rootPath: string): Promise<FsItem[]> {
   }
 
   // 2. List subdirectories
-  const dirsGroup = await files_getGroup('dirs', rootPath);
+  const dirsGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('dirs', rootPath);
   if (dirsGroup) {
     const dirResults: FilteredResourceData | null = await dirsGroup.asset.resources_getAll();
     if (dirResults && dirResults.tableData) {
@@ -85,8 +91,8 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
     await files_mkdir(destPath);
 
     const items: FsItem[] = await files_listRecursive(srcPath);
-    let successCount = 0;
-    let failCount = 0;
+    let successCount: number = 0;
+    let failCount: number = 0;
 
     for (const item of items) {
       // Normalize item.path to ensure it has a leading slash
@@ -120,7 +126,7 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
     console.log(`Copied ${successCount} items, ${failCount} failed`);
     return failCount === 0;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Recursive copy failed: ${msg}`);
     return false;
   }
@@ -212,7 +218,7 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
     }
     return success;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `File creation failed for ${pathStr}: ${msg}`);
     return false;
   }
@@ -269,7 +275,7 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
     return uploadSuccess;
 
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Copy failed from ${srcPath} to ${destPath}: ${msg}`);
     return false;
   }
@@ -421,7 +427,7 @@ export async function files_getGroup(
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function files_list(options: ListOptions, assetName: string = "files", path?: string): Promise<FilteredResourceData | null> {
-  const group = await files_getGroup(assetName, path);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName, path);
   if (!group) {
     return null;
   }
@@ -437,7 +443,7 @@ export async function files_list(options: ListOptions, assetName: string = "file
  * @returns A Promise resolving to FilteredResourceData containing all matching assets, or null.
  */
 export async function files_listAll(options: ListOptions, assetName: string = "files", path?: string): Promise<FilteredResourceData | null> {
-  const group = await files_getGroup(assetName, path);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName, path);
   if (!group) {
     return null;
   }
@@ -451,7 +457,7 @@ export async function files_listAll(options: ListOptions, assetName: string = "f
  * @returns A Promise resolving to an array of field names or null.
  */
 export async function fileFields_get(assetName: string = "files"): Promise<string[] | null> {
-  const group = await files_getGroup(assetName);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName);
   if (!group) {
     return null;
   }
@@ -467,7 +473,7 @@ export async function fileFields_get(assetName: string = "files"): Promise<strin
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function files_delete(id: number, assetName: string = "files"): Promise<boolean> {
-  const group = await files_getGroup(assetName);
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName);
   if (!group) {
     return false;
   }

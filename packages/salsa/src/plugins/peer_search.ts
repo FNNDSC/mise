@@ -43,7 +43,7 @@ export async function plugins_searchPeers(
   version?: string,
   peerStoreUrls: string[] = ['https://cube.chrisproject.org/api/v1/']
 ): Promise<PeerStorePlugin | null> {
-  const chrisPlugin = new ChRISPlugin();
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
 
   for (const peerStoreUrl of peerStoreUrls) {
     const result = await chrisPlugin.plugin_searchPeerStore(pluginName, version, peerStoreUrl);
@@ -71,7 +71,7 @@ export async function plugins_searchPeers(
  * // Returns: 'cube.chrisproject.org'
  * ```
  */
-function storeName_extractFromUrl(url: string): string {
+export function storeName_extractFromUrl(url: string): string {
   try {
     const urlObj: URL = new URL(url);
     return urlObj.hostname;

@@ -1,3 +1,9 @@
+/**
+ * @file Context read/write operations (full and single context) for salsa.
+ *
+ * @module
+ */
+
 import {
   Context,
   chrisContext,
@@ -9,6 +15,9 @@ import {
   Err,
 } from "@fnndsc/cumin";
 
+/**
+ * Options describing a context mutation (URL, user, feed, folder, etc.).
+ */
 export interface ContextOptions {
   ChRISurl?: string;
   ChRISuser?: string;
@@ -20,15 +29,31 @@ export interface ContextOptions {
   all?: boolean;
 }
 
+/**
+ * Returns the full current context.
+ *
+ * @returns The full context object.
+ */
 export function context_getFull(): FullContext {
   return chrisContext.fullContext_get();
 }
 
+/**
+ * Returns the single (resolved) current context.
+ *
+ * @returns Promise resolving to the single context.
+ */
 export async function context_getSingle(): Promise<SingleContext> {
   await chrisContext.currentContext_update();
   return chrisContext.singleContext;
 }
 
+/**
+ * Applies one or more context mutations.
+ *
+ * @param options - The context fields to set.
+ * @returns Result wrapping the list of applied keys.
+ */
 export async function context_set(options: ContextOptions): Promise<Result<string[]>> {
   const results: string[] = [];
 

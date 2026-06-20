@@ -27,7 +27,7 @@ import axios from 'axios';
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function plugins_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const pluginGroup = new ChRISPluginGroup();
+  const pluginGroup: ChRISPluginGroup = new ChRISPluginGroup();
 
   if (!pluginGroup) {
     return null;
@@ -43,7 +43,7 @@ export async function plugins_list(options: ListOptions): Promise<FilteredResour
  * @returns A Promise resolving to FilteredResourceData containing all matching plugins, or null.
  */
 export async function plugins_listAll(options: ListOptions = {}): Promise<FilteredResourceData | null> {
-  const pluginGroup = new ChRISPluginGroup();
+  const pluginGroup: ChRISPluginGroup = new ChRISPluginGroup();
   if (!pluginGroup) return null;
   return await pluginGroup.asset.resources_getAll(options);
 }
@@ -54,7 +54,7 @@ export async function plugins_listAll(options: ListOptions = {}): Promise<Filter
  * @returns A Promise resolving to an array of field names or null.
  */
 export async function pluginFields_get(): Promise<string[] | null> {
-  const pluginGroup = new ChRISPluginGroup();
+  const pluginGroup: ChRISPluginGroup = new ChRISPluginGroup();
 
   if (!pluginGroup) {
     return null;
@@ -71,7 +71,7 @@ export async function pluginFields_get(): Promise<string[] | null> {
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function pluginInstances_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const pluginInstanceGroup = new ChRISPluginInstanceGroup();
+  const pluginInstanceGroup: ChRISPluginInstanceGroup = new ChRISPluginInstanceGroup();
 
   if (!pluginInstanceGroup) {
     return null;
@@ -98,7 +98,7 @@ export interface PluginSearchOptions {
  * @param params - Dictionary of parameters.
  * @returns CLI-style string (e.g., "--key1 value1 --key2 value2").
  */
-function dictionary_toCLI(params: Dictionary): string {
+export function dictionary_toCLI(params: Dictionary): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) {
@@ -118,7 +118,7 @@ function dictionary_toCLI(params: Dictionary): string {
  * @returns A Promise resolving to a Dictionary representing the created plugin instance, or null if execution failed.
  */
 export async function plugin_run(searchable: string, parameters: Dictionary): Promise<Dictionary | null> {
-  const chrisPlugin = new ChRISPlugin();
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
   // Convert Dictionary to CLI-style string format expected by cumin
   const paramsString: string = dictionary_toCLI(parameters);
   return await chrisPlugin.plugin_run(searchable, paramsString);
@@ -131,7 +131,7 @@ export async function plugin_run(searchable: string, parameters: Dictionary): Pr
  * @returns A Promise resolving to an array of plugin IDs, or null if no plugins match.
  */
 export async function plugins_searchableToIDs(searchable: string | Searchable): Promise<string[] | null> {
-  const chrisPlugin = new ChRISPlugin();
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
   const queryHits: QueryHits | null = await chrisPlugin.pluginIDs_resolve(searchable);
   if (!queryHits) {
     return null;
@@ -149,7 +149,7 @@ export async function plugins_searchableToIDs(searchable: string | Searchable): 
  * @returns A Promise resolving to the README content as a string, or null if no README is found or accessible.
  */
 export async function pluginMeta_readmeContentFetch(repoUrl: string): Promise<string | null> {
-  const readmeUrls = [
+  const readmeUrls: string[] = [
     `${repoUrl}/raw/master/README.md`,
     `${repoUrl}/raw/master/README.rst`,
     `${repoUrl}/raw/main/README.md`,
@@ -176,7 +176,7 @@ export async function pluginMeta_readmeContentFetch(repoUrl: string): Promise<st
  * @returns A Promise resolving to the documentation URL as a string, or null if not found.
  */
 export async function pluginMeta_documentationUrlGet(pluginId: string): Promise<string | null> {
-  const chrisPlugin = new ChRISPlugin(); // Re-instantiate as it might not be shared
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin(); // Re-instantiate as it might not be shared
   const query: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(
     { search: `id: ${pluginId}` }, // Assuming cumin can parse this search string
     'documentation'
@@ -197,16 +197,16 @@ export async function pluginMeta_documentationUrlGet(pluginId: string): Promise<
  * @returns A Promise resolving to a plugin ID string, or null if no plugin is found or if the search is ambiguous (multiple results).
  */
 export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions): Promise<string | null> {
-  const chrisPlugin = new ChRISPlugin(); // Re-instantiate
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin(); // Re-instantiate
   const queryHits: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(options, ['id', 'name', 'version']);
   if (queryHits && queryHits.hits.length === 1) { // Assuming we want a single, unambiguous result
     return (queryHits.hits[0] as Dictionary).id as string;
   } else if (queryHits && queryHits.hits.length > 1) {
     // Optionally log a warning about ambiguity, but for library, just return null or throw.
-    const found = queryHits.hits.map(h => {
-      const plugin = h as Dictionary;
-      const byId = `"id:${plugin.id}"`;
-      const byNameAndVersion = `"name_exact:${plugin.name},version:${plugin.version}"`;
+    const found: string = queryHits.hits.map(h => {
+      const plugin: Dictionary = h as Dictionary;
+      const byId: string = `"id:${plugin.id}"`;
+      const byNameAndVersion: string = `"name_exact:${plugin.name},version:${plugin.version}"`;
       return `- ${byNameAndVersion} -OR- ${byId}`;
     }).join('\n');
     errorStack.stack_push('warning', `Multiple plugins found for search "${options.search}" -- try:\n${found}\nPlease be more specific.`);
@@ -222,7 +222,7 @@ export async function pluginMeta_pluginIDFromSearch(options: PluginSearchOptions
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function plugin_delete(id: number): Promise<boolean> {
-  const pluginGroup = new ChRISPluginGroup();
+  const pluginGroup: ChRISPluginGroup = new ChRISPluginGroup();
 
   if (!pluginGroup) {
     return false;
@@ -248,7 +248,7 @@ export async function plugins_overview(): Promise<void> {
  * @returns A Promise resolving to the README content or null.
  */
 export async function plugin_readme(pluginId: string): Promise<string | null> {
-  const docUrl = await pluginMeta_documentationUrlGet(pluginId);
+  const docUrl: string | null = await pluginMeta_documentationUrlGet(pluginId);
   if (!docUrl) {
     return null;
   }

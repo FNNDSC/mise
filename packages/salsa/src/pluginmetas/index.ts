@@ -11,7 +11,7 @@ import { ChRISPluginMetaGroup, FilteredResourceData, ListOptions } from '@fnndsc
  * @param options - Search and pagination options.
  */
 export async function pluginMetas_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const group = new ChRISPluginMetaGroup();
+  const group: ChRISPluginMetaGroup = new ChRISPluginMetaGroup();
   return await group.asset.resources_listAndFilterByOptions(options);
 }
 
@@ -21,7 +21,7 @@ export async function pluginMetas_list(options: ListOptions): Promise<FilteredRe
  * @param options - Search options (limit/offset managed internally).
  */
 export async function pluginMetas_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
-  const group = new ChRISPluginMetaGroup();
+  const group: ChRISPluginMetaGroup = new ChRISPluginMetaGroup();
   return await group.asset.resources_getAll(options);
 }
 
@@ -29,7 +29,7 @@ export async function pluginMetas_listAll(options: Partial<ListOptions> = {}): P
  * Returns available field names for plugin metas.
  */
 export async function pluginMetaFields_get(): Promise<string[] | null> {
-  const group = new ChRISPluginMetaGroup();
+  const group: ChRISPluginMetaGroup = new ChRISPluginMetaGroup();
   const result = await group.asset.resourceFields_get();
   return result ? result.fields : null;
 }

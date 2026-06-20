@@ -1,3 +1,9 @@
+/**
+ * @file Plugin registration logic, including admin-credentialed registration.
+ *
+ * @module
+ */
+
 import { ChRISPlugin, errorStack, Client, plugin_registerDirect, Result } from '@fnndsc/cumin';
 import { AdminCredentials } from './store_import.js';
 
@@ -35,15 +41,15 @@ export async function plugin_registerWithAdmin(
   computeResources: string[] = ['host'],
   adminCreds?: AdminCredentials
 ): Promise<PluginRegistrationResponse | null> {
-  const chrisPlugin = new ChRISPlugin();
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
   let adminToken: string | undefined;
 
   if (adminCreds && adminCreds.username && adminCreds.password) {
-    const client = await chrisPlugin.client_get();
+    const client: Client | null = await chrisPlugin.client_get();
     if (client) {
-      const authUrl = client.url + 'auth-token/';
+      const authUrl: string = client.url + 'auth-token/';
       try {
-        const token = await Client.getAuthToken(
+        const token: string = await Client.getAuthToken(
           authUrl,
           adminCreds.username,
           adminCreds.password
@@ -52,13 +58,13 @@ export async function plugin_registerWithAdmin(
           adminToken = token;
         }
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg: string = e instanceof Error ? e.message : String(e);
         errorStack.stack_push('warning', `Failed to get admin token: ${msg}`);
       }
     }
   }
 
-  const result = await chrisPlugin.plugin_registerWithAdmin(
+  const result: Record<string, unknown> | null = await chrisPlugin.plugin_registerWithAdmin(
     pluginData,
     computeResources,
     adminToken
@@ -111,8 +117,8 @@ export async function plugin_register(
 export async function plugin_checkExists(
   nameOrImage: string
 ): Promise<PluginRegistrationResponse | null> {
-  const chrisPlugin = new ChRISPlugin();
-  const existingPlugin = await chrisPlugin.plugin_existsInCube(nameOrImage);
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
+  const existingPlugin: Record<string, unknown> | null = await chrisPlugin.plugin_existsInCube(nameOrImage);
 
   if (existingPlugin) {
     return existingPlugin as PluginRegistrationResponse;
@@ -135,7 +141,7 @@ export async function plugin_assignToComputeResources(
   computeResources: string[]
 ): Promise<boolean> {
   try {
-    const chrisPlugin = new ChRISPlugin();
+    const chrisPlugin: ChRISPlugin = new ChRISPlugin();
 
     const currentResources: string[] = await chrisPlugin.plugin_getComputeResources(pluginId);
 

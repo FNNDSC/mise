@@ -82,7 +82,7 @@ async function procCache_build(): Promise<void> {
     return;
   }
 
-  const typedClient = client as unknown as ChrisClient;
+  const typedClient: ChrisClient = client as unknown as ChrisClient;
   let feedOffset: number = 0;
 
   while (true) {
@@ -124,7 +124,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) return;
 
-  const typedClient = client as unknown as ChrisClient;
+  const typedClient: ChrisClient = client as unknown as ChrisClient;
   const instances: RawInstance[] = [];
   let offset: number = 0;
 
@@ -175,7 +175,7 @@ async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
 // ── Aggregate status ───────────────────────────────────────────────────────
 
 /** Derives aggregate feed status from stored job counters — no API call. */
-function feedStatus_derive(feed: ProcFeed): string {
+export function feedStatus_derive(feed: ProcFeed): string {
   if (feed.erroredJobs > 0) return 'finishedWithError';
   const running: number = feed.startedJobs + feed.scheduledJobs + feed.createdJobs;
   if (running > 0) return 'running';
@@ -186,7 +186,7 @@ function feedStatus_derive(feed: ProcFeed): string {
 
 // ── Path parsing ───────────────────────────────────────────────────────────
 
-function procPath_parse(pathStr: string): {
+export function procPath_parse(pathStr: string): {
   feedID: number | null;
   instanceID: number | null;
   virtualFile: string | null;
@@ -240,6 +240,9 @@ function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
 
 // ── Provider ───────────────────────────────────────────────────────────────
 
+/**
+ * VFS provider exposing running jobs and feeds under the /proc namespace.
+ */
 export class ProcVfsProvider implements VFSProvider {
   readonly prefix: string = '/proc/jobs';
 
@@ -529,7 +532,7 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
     // Re-fetch feed metadata with job counters
     const client = await chrisConnection.client_get();
     if (client) {
-      const typedClient = client as unknown as ChrisClient;
+      const typedClient: ChrisClient = client as unknown as ChrisClient;
       const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
       const f: RawFeed | undefined = (page.data ?? [])[0];
       if (f) {

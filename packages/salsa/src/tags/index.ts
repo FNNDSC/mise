@@ -11,7 +11,7 @@ import { ChRISTagGroup, FilteredResourceData, ListOptions } from '@fnndsc/cumin'
  * @param options - Search and pagination options.
  */
 export async function tags_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const group = new ChRISTagGroup();
+  const group: ChRISTagGroup = new ChRISTagGroup();
   return await group.asset.resources_listAndFilterByOptions(options);
 }
 
@@ -21,7 +21,7 @@ export async function tags_list(options: ListOptions): Promise<FilteredResourceD
  * @param options - Search options (limit/offset managed internally).
  */
 export async function tags_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
-  const group = new ChRISTagGroup();
+  const group: ChRISTagGroup = new ChRISTagGroup();
   return await group.asset.resources_getAll(options);
 }
 
@@ -29,7 +29,7 @@ export async function tags_listAll(options: Partial<ListOptions> = {}): Promise<
  * Returns available field names for tags.
  */
 export async function tagFields_get(): Promise<string[] | null> {
-  const group = new ChRISTagGroup();
+  const group: ChRISTagGroup = new ChRISTagGroup();
   const result = await group.asset.resourceFields_get();
   return result ? result.fields : null;
 }

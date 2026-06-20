@@ -34,7 +34,7 @@ export type { FeedNote, FeedComment } from '@fnndsc/cumin';
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function feeds_list(options: ListOptions): Promise<FilteredResourceData | null> {
-  const feedGroup = new ChRISFeedGroup();
+  const feedGroup: ChRISFeedGroup = new ChRISFeedGroup();
   return await feedGroup.asset.resources_listAndFilterByOptions(options);
 }
 
@@ -45,7 +45,7 @@ export async function feeds_list(options: ListOptions): Promise<FilteredResource
  * @returns A Promise resolving to FilteredResourceData or null.
  */
 export async function feeds_listAll(options?: Partial<ListOptions>): Promise<FilteredResourceData | null> {
-  const feedGroup = new ChRISFeedGroup();
+  const feedGroup: ChRISFeedGroup = new ChRISFeedGroup();
   return await feedGroup.asset.resources_getAll(options);
 }
 
@@ -55,7 +55,7 @@ export async function feeds_listAll(options?: Partial<ListOptions>): Promise<Fil
  * @returns A Promise resolving to an array of field names or null.
  */
 export async function feedFields_get(): Promise<string[] | null> {
-  const feedGroup = new ChRISFeedGroup(); // Instantiate directly
+  const feedGroup: ChRISFeedGroup = new ChRISFeedGroup(); // Instantiate directly
 
   if (!feedGroup) {
     return null;
@@ -76,9 +76,9 @@ export async function feedFields_get(): Promise<string[] | null> {
  * @returns A Promise resolving to the created feed record, or null if creation failed.
  */
 export async function feed_create(dirs: string[], params: ChRISObjectParams = {}): Promise<SimpleRecord | null> {
-  const chrisFeed = new ChRISFeed();
+  const chrisFeed: ChRISFeed = new ChRISFeed();
   // For now, assuming dirs is passed as is or joined.
-  const dirsArg = Array.isArray(dirs) ? dirs.join(',') : dirs;
+  const dirsArg: string = Array.isArray(dirs) ? dirs.join(',') : dirs;
 
   return await chrisFeed.createFromDirs(dirsArg, params);
 }

@@ -14,8 +14,8 @@ import { ChRISPlugin } from '@fnndsc/cumin';
  * @returns Promise resolving to array of raw plugin objects.
  */
 export async function store_list(storeUrl?: string): Promise<Record<string, unknown>[]> {
-  const chrisPlugin = new ChRISPlugin();
-  const plugins = await chrisPlugin.plugin_listPeerStore(storeUrl);
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
+  const plugins: Record<string, unknown>[] | null = await chrisPlugin.plugin_listPeerStore(storeUrl);
   return plugins || [];
 }
 
@@ -27,8 +27,8 @@ export async function store_list(storeUrl?: string): Promise<Record<string, unkn
  * @returns Promise resolving to array of raw plugin objects.
  */
 export async function store_search(query: string, storeUrl?: string): Promise<Record<string, unknown>[]> {
-  const chrisPlugin = new ChRISPlugin();
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
   // Search by name
-  const plugins = await chrisPlugin.plugin_listPeerStore(storeUrl, { name: query });
+  const plugins: Record<string, unknown>[] | null = await chrisPlugin.plugin_listPeerStore(storeUrl, { name: query });
   return plugins || [];
 }

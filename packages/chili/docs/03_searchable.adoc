@@ -1,0 +1,134 @@
+= searchable
+
+== intro
+
+In `chili`, you often need to tell a command _what_ to operate on. "Run _this_ plugin." "Delete _that_ feed." "List files in _this_ directory."
+
+Usually, computer programs want cryptic ID numbers for this. "Run plugin #42." But humans are bad at remembering numbers. We prefer names. `chili` understands this and provides a powerful feature we call _searchables_.
+
+A _searchable_ is just a text string you give to a command. `chili` looks at that string and figures out what you mean.
+
+== simple search
+
+Most of the time, you just want to find something by its name. Let's say you want to run the `pl-dircopy` plugin. You don't need to look up its ID number. You just tell `chili`:
+
+```bash
+chili plugin run pl-dircopy
+```
+
+`chili` sees "pl-dircopy", realizes it's a name, finds the plugin for you, and runs it. Simple.
+
+== explicit search
+
+Sometimes, "just the name" isn't enough. Maybe there are five different versions of `pl-dircopy` and you need a specific one. Or maybe you are looking for a feed created by a specific person.
+
+In these cases, you can use a special key-value syntax. It looks like `key: value`.
+
+For example, to find a plugin with a specific version:
+
+```bash
+chili plugin run "name: pl-dircopy, version: 2.1.1"
+```
+
+Notice how we separated the two facts we know (the name and the version) with a comma. `chili` will find the single plugin that matches _both_ of these rules.
+
+You can use any filter that the ChRIS API supports. If you want to find a feed created by user `bob`:
+
+```bash
+chili feed delete "owner_username: bob"
+```
+
+NOTE: If your searchable matches multiple items, `chili` will warn you but continue using the first match. To avoid ambiguity, be as specific as possible (e.g., use `name_exact` instead of `name`, or add version constraints).
+
+== batch operations
+
+Some commands (like `delete`) support operating on multiple resources at once. Use the `++` separator to combine multiple searchables:
+
+```bash
+chili plugins delete "id:77++id:33++name:pl-test"
+```
+
+This will delete all three plugins in sequence. Each searchable is resolved independently, and if you don't use `--force`, you'll get a confirmation prompt for each one.
+
+This is useful for cleaning up multiple test resources or deleting several related items at once.
+
+== using searchables in context
+
+This gets really powerful when combined with context. Imagine you want to start a session working on a specific plugin, but you don't know its ID. You can set your context using a searchable!
+
+```bash
+chili context set --ChRISplugin "name: pl-dircopy"
+```
+
+Now `chili` finds the plugin, gets its ID, and locks your session to it. Any subsequent commands that ask "which plugin?" will automatically use `pl-dircopy`.
+
+This flexibility means you almost never have to memorize an ID number again. Just describe what you want, and let `chili` find it.
+
+== advanced: the Searchable class
+
+_For developers and advanced users:_
+
+Starting with cumin v0.4.1, searchables are implemented as a formal TypeScript class. While `chili` automatically handles string-based searchables, you can use the `Searchable` class directly for type safety and validation:
+
+```typescript
+import { Searchable } from '@fnndsc/cumin';
+
+// Create searchables explicitly
+const simple = Searchable.simple("pl-dircopy");
+const compound = Searchable.compound("name:pl-dircopy,version:1.3.2");
+const batch = Searchable.batch("id:77++id:33");
+
+// Auto-detect type
+const auto = Searchable.from("name:pl-dircopy");
+
+// Check type
+if (auto.isCompound()) {
+  console.log("This is a compound searchable");
+}
+
+// Get query parameters
+const params = compound.toQueryParams();
+// { name: "pl-dircopy", version: "1.3.2" }
+
+// Split batch into parts
+const parts = batch.toBatchSearchables();
+// [Searchable(id:77), Searchable(id:33)]
+
+// Validate format
+if (simple.validate()) {
+  console.log("Valid searchable!");
+}
+```
+
+All ChRIS operations accept both strings and `Searchable` objects, so you can use whichever is more convenient for your use case.
+
+== examples cheat sheet
+
+Here are some common ways to use searchables:
+
+|===
+| Goal | Searchable String
+
+| **Find by Name**
+| `"pl-dircopy"`
+
+| **Find by ID**
+| `"id: 14"`
+
+| **Exact Name Match**
+| `"name_exact: pl-dircopy"`
+
+| **Specific Version**
+| `"name: pl-dircopy, version: 2.0"`
+
+| **Recent Feeds**
+| `"limit: 5"` (implicitly sorts by default)
+
+| **Feed by Creator**
+| `"owner_username: bob"`
+
+| **Delete Multiple Items**
+| `"id:77++id:33++name:pl-test"`
+|===
+
+_-30-_

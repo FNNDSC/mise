@@ -1,0 +1,80 @@
+# ChELL File System Color Configuration
+#
+# This file defines color mappings for different file system object types
+# displayed in the chell REPL.
+#
+# Available colors (from chalk):
+#   black, red, green, yellow, blue, magenta, cyan, white, gray, grey
+#   blackBright, redBright, greenBright, yellowBright, blueBright,
+#   magentaBright, cyanBright, whiteBright
+#
+# Color modifiers:
+#   bold, dim, italic, underline, inverse, strikethrough
+
+# Icon configuration (Nerd Fonts required)
+icons:
+  enabled: true
+  # Nerd Font glyphs (Unicode characters)
+  dir: "\uF07C"        #
+  file: "\uF15B"       #
+  link: "\uF0C1"       #
+  plugin: "\uF013"     #
+  pipeline: "\uF013"   #  same as plugin \u2014 both are executables
+  vfs: "\uF0C8"        #
+
+# File type color mappings
+fileTypes:
+  # Directories
+  dir:
+    color: yellow
+    bold: true
+
+  # Regular files
+  file:
+    color: white
+    bold: false
+
+  # Symbolic links
+  link:
+    color: cyan
+    bold: false
+
+  # Plugin executables (virtual files in /bin)
+  plugin:
+    color: green
+    bold: true
+
+  # Pipeline executables (virtual files in /bin, distinct from plugins by color)
+  pipeline:
+    color: magenta
+    bold: true
+
+  # Virtual file system markers (directories like /bin, /usr)
+  vfs:
+    color: magenta
+    bold: true
+
+# Special path color mappings
+specialPaths:
+  # Virtual bin directory (plugins)
+  "/bin":
+    color: magenta
+    bold: true
+
+  "bin":
+    color: magenta
+    bold: true
+
+  # Virtual usr directory
+  "/usr":
+    color: magenta
+    bold: true
+
+  "usr":
+    color: magenta
+    bold: true
+
+  # Home directory indicator
+  "~":
+    color: blue
+    bold: false

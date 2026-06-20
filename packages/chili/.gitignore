@@ -1,0 +1,15 @@
+# Dependency directories
+node_modules/
+
+# Package lock file
+package-lock.json
+
+# Compiled result
+dist/
+
+# Test coverage
+coverage/
+
+# Shell history
+.chell_history
+

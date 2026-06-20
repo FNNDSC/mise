@@ -1,0 +1,168 @@
+/**
+ * @file Implements the core logic for the `ls` command in the ChRIS CLI.
+ *
+ * This module provides functionality to list files, directories, and links
+ * from a specified path within the ChRIS file system. It interacts with the
+ * `@fnndsc/salsa` and `@fnndsc/cumin` libraries to fetch and filter resource data.
+ *
+ * @module
+ */
+import { files_listAll, feeds_list, pluginInstances_list } from "@fnndsc/salsa";
+import { path_resolveChrisFs } from "../../utils/cli.js";
+import { ListingItem } from "../../models/listing.js";
+import { ChrisFileOrDirRaw } from "../../models/resource.js";
+import { list_applySort } from "../../utils/sort.js";
+import { errorStack, chrisConnection, FilteredResourceData } from "@fnndsc/cumin";
+
+/**
+ * Options for the list (ls) operation.
+ */
+export interface LsOptions {
+  path?: string;
+  sort?: string;
+  reverse?: boolean;
+  [key: string]: string | boolean | undefined;
+}
+
+/**
+ * Core logic for the 'ls' command, returning structured data.
+ *
+ * @param options - Options for the ls command, including path.
+ * @param pathStr - The path to list. Defaults to an empty string if not provided.
+ * @returns A Promise resolving to an array of ListingItem.
+ */
+export async function files_list(options: LsOptions, pathStr: string = ""): Promise<ListingItem[]> {
+  const items: ListingItem[] = [];
+  
+  // Note: If pathStr is invalid, this might throw, which is handled by caller
+  const resolvedPath: string = await path_resolveChrisFs(pathStr, {});
+
+  const fetchOpts: Record<string, string | number> = { limit: 100, offset: 0 }; // Starting options
+
+  // Fetch all resources in parallel, but allow some to fail
+  const results = await Promise.allSettled([
+    files_listAll(fetchOpts, 'dirs', resolvedPath),
+    files_listAll(fetchOpts, 'files', resolvedPath),
+    files_listAll(fetchOpts, 'links', resolvedPath)
+  ]);
+
+  // Process results: 0=dirs, 1=files, 2=links
+  const [dirsResult, filesResult, linksResult] = results;
+
+  // Helper to map raw API objects to ListingItem
+  const mapToItem = (raw: ChrisFileOrDirRaw, type: 'dir' | 'file' | 'link'): ListingItem => {
+    let name: string = raw.fname || raw.path || "";
+    if (name.includes('/')) {
+        name = name.split('/').pop() || name;
+    }
+
+    const normalizedPath: string | undefined = raw.path
+      ? (raw.path.startsWith('/') ? raw.path : `/${raw.path}`)
+      : undefined;
+
+    // For links, strip the .chrislink extension from the display name
+    if (type === 'link' && name.endsWith('.chrislink')) {
+      name = name.slice(0, -10); // Remove '.chrislink' (10 characters)
+    }
+
+    // Normalize target for all item types when a path is present
+    const target: string | undefined = normalizedPath;
+
+    return {
+      name,
+      type,
+      size: raw.fsize || 0,
+      owner: raw.owner_username || 'unknown',
+      date: raw.creation_date || '',
+      target
+    };
+  };
+
+  if (dirsResult.status === 'fulfilled') {
+    const dirs: FilteredResourceData | null = dirsResult.value;
+    if (dirs && dirs.tableData) {
+      dirs.tableData.forEach((d: ChrisFileOrDirRaw) => items.push(mapToItem(d, 'dir')));
+    }
+  } else {
+    errorStack.stack_push('error', `Failed to list directories: ${dirsResult.reason}`);
+  }
+
+  if (filesResult.status === 'fulfilled') {
+    const files: FilteredResourceData | null = filesResult.value;
+    if (files && files.tableData) {
+      files.tableData.forEach((f: ChrisFileOrDirRaw) => items.push(mapToItem(f, 'file')));
+    }
+  } else {
+    errorStack.stack_push('error', `Failed to list files: ${filesResult.reason}`);
+  }
+
+  if (linksResult.status === 'fulfilled') {
+    const links: FilteredResourceData | null = linksResult.value;
+    if (links && links.tableData) {
+      links.tableData.forEach((l: ChrisFileOrDirRaw) => items.push(mapToItem(l, 'link')));
+    }
+  } else {
+    errorStack.stack_push('error', `Failed to list links: ${linksResult.reason}`);
+  }
+
+  // Enrich items with titles for feeds and plugin instances
+  await listingItems_enrichTitles(items);
+
+  // Apply sorting (default to name if not specified)
+  const sortField: string = options.sort || 'name';
+  const sortedItems: ListingItem[] = list_applySort(items, sortField, options.reverse);
+
+  return sortedItems;
+}
+
+/**
+ * Enriches listing items with titles for feeds and plugin instances.
+ * Detects patterns: feed_XXXX and pl-<name>_XXXX
+ *
+ * @param items - Array of listing items to enrich.
+ */
+async function listingItems_enrichTitles(items: ListingItem[]): Promise<void> {
+  const enrichPromises: Promise<void>[] = items.map(async (item: ListingItem): Promise<void> => {
+    if (item.type !== 'dir') return; // Only process directories
+
+    // Pattern 1: feed_XXXX
+    const feedMatch: RegExpMatchArray | null = item.name.match(/^feed_(\d+)$/);
+    if (feedMatch) {
+      const feedId: number = parseInt(feedMatch[1], 10);
+      try {
+        const feedData: FilteredResourceData | null = await feeds_list({ id: feedId, limit: 1 });
+        if (feedData && feedData.tableData && feedData.tableData.length > 0) {
+          const feed: Record<string, unknown> = feedData.tableData[0];
+          if (feed && typeof feed['name'] === 'string') {
+            item.title = feed['name'];
+          }
+        }
+      } catch (e: unknown) {
+        // Silently ignore errors
+      }
+      return;
+    }
+
+    // Pattern 2: pl-<name>_XXXX
+    const pluginMatch: RegExpMatchArray | null = item.name.match(/^(pl-.+)_(\d+)$/);
+    if (pluginMatch) {
+      const pluginInstanceId: number = parseInt(pluginMatch[2], 10);
+      try {
+        const instanceData: FilteredResourceData | null = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
+        if (instanceData && instanceData.tableData && instanceData.tableData.length > 0) {
+          const instance: Record<string, unknown> = instanceData.tableData[0];
+          if (instance) {
+            const pluginName: string = typeof instance['plugin_name'] === 'string' ? instance['plugin_name'] : '';
+            const pluginVersion: string = typeof instance['plugin_version'] === 'string' ? instance['plugin_version'] : '';
+            item.title = pluginVersion ? `${pluginName} v${pluginVersion}` : pluginName;
+          }
+        }
+      } catch (e: unknown) {
+        // Silently ignore errors
+      }
+      return;
+    }
+  });
+
+  await Promise.all(enrichPromises);
+}

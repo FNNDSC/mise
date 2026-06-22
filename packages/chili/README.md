@@ -42,27 +42,34 @@ Designed for developers and power-users who want to script and control a ChRIS i
 2.  **[`salsa`](https://github.com/FNNDSC/salsa) (Logic)**: Shared Application Logic and Service Assets — high-level business intents.
 3.  **[`cumin`](https://github.com/FNNDSC/cumin) (Infrastructure)**: State and connection layer — authentication, context persistence, low-level API.
 
-## Installation & Development
+## Development
 
-### Full build (all layers)
+`chili` lives in the [`tui` monorepo](https://github.com/FNNDSC/tui) alongside
+`cumin`, `salsa`, and `chell`. Build the whole stack from the repository root —
+npm workspaces links the four packages together, so there is nothing to clone or
+hand-link:
 
 ```bash
-cd chili
-make meal
+git clone https://github.com/FNNDSC/tui
+cd tui
+make taco            # scrub → prep → cook → taste → serve (the full course)
 ```
 
-### Individual steps
+### Individual steps (run from the repo root)
 
 | Target | Action |
 |--------|--------|
-| `make shop` | Clone `cumin` and `salsa` if missing |
-| `make prep` | `npm install` across all packages |
-| `make cook` | Build (compile TypeScript) all packages |
-| `make taste` | Run tests |
-| `make serve` | Link packages globally |
+| `make prep` | `npm install` — install deps and link all four workspaces |
+| `make cook` | Build (compile TypeScript) all packages in dependency order |
+| `make taste` | Run the full test suite |
+| `make serve` | Link `chell` globally |
 | `make scrub` | Clean build artifacts and `node_modules` |
 
-> Use [NVM](https://github.com/nvm-sh/nvm) to avoid needing `sudo` for global links.
+To build or test just this package: `npm run build -w @fnndsc/chili` /
+`npm test -w @fnndsc/chili`.
+
+> Use [NVM](https://github.com/nvm-sh/nvm) and Node 22.x to avoid needing `sudo`
+> for the global link in `make serve`.
 
 ## Core Features
 

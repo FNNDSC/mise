@@ -27,7 +27,7 @@ import { table_display, border_draw, TableOptions } from "../screen/screen.js";
 import { options_toParams } from "../utils/cli.js";
 import archy from "archy";
 import open from "open";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import os from "os";
 import { files_downloadWithProgress, DownloadSummary } from "../commands/fs/download.js";
 
@@ -281,12 +281,18 @@ async function mermaid_renderServerSide(
 
   fs.writeFileSync(inputFile, mermaidDefinition);
 
+  // Pass args as an array (execFile, no shell) so a user-supplied --save path
+  // cannot inject shell commands. Requires `mmdc` (@mermaid-js/mermaid-cli),
+  // which is fetched on demand via npx and is not a hard dependency.
   return new Promise((resolve, reject) => {
-    exec(
-      `npx mmdc -i ${inputFile} -o ${outputFile}`,
-      (error, stdout, stderr) => {
+    execFile(
+      "npx",
+      ["mmdc", "-i", inputFile, "-o", outputFile],
+      (error) => {
         if (error) {
-          console.error(`exec error: ${error}`);
+          console.error(
+            `Mermaid render failed. Ensure @mermaid-js/mermaid-cli is available (npx mmdc): ${error.message}`
+          );
           reject(error);
           return;
         }

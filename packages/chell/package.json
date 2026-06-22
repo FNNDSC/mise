@@ -21,7 +21,10 @@
   "scripts": {
     "build": "tsc && chmod +x ./dist/index.js",
     "start": "node dist/index.js",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --forceExit"
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --forceExit",
+    "bundle": "node scripts/bundle.mjs",
+    "pkg:binaries": "pkg build/chell.cjs -t node22-linux-x64 -o build/bin/chell-linux-x64 && pkg build/chell.cjs -t node22-linux-arm64 -o build/bin/chell-linux-arm64 && pkg build/chell.cjs -t node22-macos-x64 -o build/bin/chell-macos-x64 && pkg build/chell.cjs -t node22-macos-arm64 -o build/bin/chell-macos-arm64",
+    "binaries": "npm run bundle && npm run pkg:binaries"
   },
   "keywords": [
     "chris",

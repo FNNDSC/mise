@@ -4,12 +4,12 @@ Decisions locked via design review:
 
 | # | decision | choice |
 |---|---|---|
-| 1 | repo topology | **Monorepo** (`FNNDSC/tui`), still publishes 4 standalone npm pkgs |
+| 1 | repo topology | **Monorepo** (`FNNDSC/mise`), still publishes 4 standalone npm pkgs |
 | 2 | scope | 4 stack packages only; `@fnndsc/chrisapi` stays external (consumed via npm) |
 | 3 | versioning | **Independent** per package |
 | 4 | release tooling | **Changesets** (+ npm workspaces for linking) |
 | 5 | history | **Preserve** (git-filter-repo → `packages/<name>`, namespaced tags) |
-| 6 | name / old repos | `FNNDSC/tui`; archive cumin/salsa/chili/chell **+ tui-dev** |
+| 6 | name / old repos | `FNNDSC/mise`; archive cumin/salsa/chili/chell **+ tui-dev** |
 | 7 | shared-code home | data → **cumin**, presentation → **chili** (no new package) |
 | 8 | chrisapi casts | **typed adapter in cumin** (anti-corruption layer); do NOT modify chrisapi |
 | 9 | sequencing | **migrate first (big-bang)**, then smell fixes inside the monorepo |
@@ -22,7 +22,7 @@ continue forward from the monorepo.
 ---
 
 ## Phase 0 — Monorepo migration  (prerequisite, mechanical/atomic)
-Create `FNNDSC/tui`:
+Create `FNNDSC/mise`:
 1. `git filter-repo --to-subdirectory-filter packages/<name>` on each of the 4
    (tag-rename callback → `cumin-v3.2.4`, `chell-v4.2.8`, …).
 2. Merge the four rewritten histories into a fresh monorepo; add root
@@ -33,7 +33,7 @@ Create `FNNDSC/tui`:
 4. Smoke: install + build all + **692 tests** + `npm pack` bundle install test.
 5. Archive `FNNDSC/{cumin,salsa,chili,chell,tui-dev}` with README → monorepo.
 **Risk:** med (one-time history surgery). **No npm publish** (no code change yet).
-**Exit:** monorepo green; dev = `git clone FNNDSC/tui && npm i`.
+**Exit:** monorepo green; dev = `git clone FNNDSC/mise && npm i`.
 
 ## Phase 1 — ESLint guardrail (root)
 - Drop in the flat config (already drafted: `eslint.config.base.mjs`) at monorepo
@@ -92,7 +92,7 @@ Create `FNNDSC/tui`:
 
 ## Sequencing
 ```
-0 migrate → FNNDSC/tui (no publish)
+0 migrate → FNNDSC/mise (no publish)
 1 eslint guardrail
 2 chrisapi adapter (cumin)      ┐ high-leverage core
 3 dedupe (cumin/chili)         ┘

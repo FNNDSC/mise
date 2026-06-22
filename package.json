@@ -1,8 +1,8 @@
 {
-  "name": "@fnndsc/tui",
+  "name": "@fnndsc/mise",
   "version": "0.0.0",
   "private": true,
-  "description": "Monorepo for the ChELL stack — cumin, salsa, chili, chell. Each published independently to npm.",
+  "description": "MISE Integrates the Sandwich Ecosystem — monorepo for the ChELL stack (cumin, salsa, chili, chell), each published independently to npm.",
   "workspaces": [
     "packages/*"
   ],

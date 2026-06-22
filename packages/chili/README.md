@@ -44,14 +44,14 @@ Designed for developers and power-users who want to script and control a ChRIS i
 
 ## Development
 
-`chili` lives in the [`tui` monorepo](https://github.com/FNNDSC/tui) alongside
+`chili` lives in the [`mise` monorepo](https://github.com/FNNDSC/mise) alongside
 `cumin`, `salsa`, and `chell`. Build the whole stack from the repository root —
 npm workspaces links the four packages together, so there is nothing to clone or
 hand-link:
 
 ```bash
-git clone https://github.com/FNNDSC/tui
-cd tui
+git clone https://github.com/FNNDSC/mise
+cd mise
 make taco            # scrub → prep → cook → taste → serve (the full course)
 ```
 

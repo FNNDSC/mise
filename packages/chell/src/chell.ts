@@ -97,6 +97,7 @@ import { prefetch_path, prefetch_withSpinner, PrefetchResult } from './lib/prefe
 import { segment_pipeThrough } from './lib/pipe.js';
 import { bootFlags_compute, type BootFlags } from './core/bootFlags.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import { run as chiliRun } from '@fnndsc/chili/run.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 
@@ -142,25 +143,14 @@ const chiliJson: PackageJson = depPackageJson_load('@fnndsc/chili');
  * @returns A Promise resolving when the child process exits.
  */
 export async function chiliCommand_run(command: string, args: string[]): Promise<void> {
-  // Resolve chili's entry via node module resolution (works when installed from
-  // npm); fall back to the sibling dev-tree path for local monorepo runs.
-  let chiliPath: string;
+  // Run chili in-process. chili shares this process's cumin connection/context,
+  // so there is no node subprocess to spawn and no per-command startup cost.
   try {
-    chiliPath = createRequire(import.meta.url).resolve('@fnndsc/chili');
-  } catch {
-    chiliPath = path.resolve(__dirname, '../../chili/dist/index.js');
+    await chiliRun([command, ...args]);
+  } catch (err) {
+    const message: string = err instanceof Error ? err.message : String(err);
+    console.error(chalk.red(`chili command '${command}' failed: ${message}`));
   }
-  return new Promise((resolve) => {
-    const child: ChildProcess = spawn('node', [chiliPath, command, ...args], {
-      stdio: 'inherit',
-      env: process.env
-    });
-    child.on('close', () => resolve());
-    child.on('error', (err) => {
-      console.error(chalk.red(`Failed to start chili: ${err.message}`));
-      resolve();
-    });
-  });
 }
 
 /**
@@ -592,7 +582,7 @@ async function command_dispatch(command: string, args: string[]): Promise<void> 
     }
   }
 
-  console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
+  console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
   await chiliCommand_run(command, ['-s', ...args]);
 }
 
@@ -784,7 +774,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to a spawned chili instance (slight delay expected)`));
+    console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
     await chiliCommand_run(command, ['-s', ...args]);
   });
 }

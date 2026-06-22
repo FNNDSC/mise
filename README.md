@@ -39,12 +39,26 @@ release tags live on here, under `packages/<name>/`.
 
 ## Install (end user)
 
-One command. You get the `chell` shell:
+### Standalone binary — no Node.js required
+
+Download one file for your platform, make it executable, run it. Nothing else to
+install:
+
+```bash
+curl -L https://github.com/FNNDSC/tui/releases/latest/download/chell-linux-x64 -o chell
+chmod +x chell
+./chell
+> connect --user chris --password chris1234 http://localhost:8000/api/v1/
+```
+
+Binaries are published for `linux-x64`, `linux-arm64`, `macos-x64` and
+`macos-arm64` (with a `SHA256SUMS` file) on every release.
+
+### From npm — if you already have Node.js
 
 ```bash
 npm install -g @fnndsc/chell
 chell
-> connect --user chris --password chris1234 http://localhost:8000/api/v1/
 ```
 
 Requires Node.js ≥ 20.12 (22.x recommended).

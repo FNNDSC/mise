@@ -1,0 +1,55 @@
+name: Binaries
+
+# Builds standalone `chell` executables (no Node.js required on the target) for
+# the major platforms. pkg cross-compiles every target from a single Linux
+# runner, so one job produces all of them.
+#
+#   - on push to main   -> binaries uploaded as workflow artifacts (download
+#                          them from the Actions run)
+#   - on a chell-v* tag -> binaries also attached to the GitHub Release
+#   - manual            -> via "Run workflow"
+
+on:
+  push:
+    branches: [main]
+    tags: ["chell-v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Build the whole stack (cumin -> salsa -> chili -> chell) so the bundle
+      # can inline the workspace dependencies.
+      - run: npm run build
+
+      # esbuild prebundle + pkg -> build/bin/chell-{linux,macos}-{x64,arm64}
+      - run: npm run binaries -w @fnndsc/chell
+
+      - name: Generate checksums
+        working-directory: packages/chell/build/bin
+        run: |
+          sha256sum chell-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload binaries as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chell-binaries
+          path: packages/chell/build/bin/*
+          if-no-files-found: error
+
+      - name: Attach binaries to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/chell-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/chell/build/bin/*

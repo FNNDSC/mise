@@ -130,7 +130,31 @@ function depPackageJson_load(name: string): PackageJson {
   }
 }
 
-const packageJson: PackageJson = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
+/**
+ * Build-time-injected version string. esbuild replaces `__CHELL_VERSION__` with
+ * a literal when bundling the standalone binary (where there is no package.json
+ * on disk to read). It is undefined in a normal tsc build, where we fall back to
+ * reading the package.json next to the compiled entry.
+ */
+declare const __CHELL_VERSION__: string;
+
+/**
+ * Reads chell's own package.json, or — in the bundled binary, where that file
+ * is not present on disk — uses the version injected at build time.
+ *
+ * @returns The parsed package.json (or a `{ name, version }` fallback).
+ */
+function selfPackageJson_load(): PackageJson {
+  try {
+    return JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8')) as PackageJson;
+  } catch {
+    const version: string =
+      typeof __CHELL_VERSION__ !== 'undefined' ? __CHELL_VERSION__ : 'unknown';
+    return { name: '@fnndsc/chell', version };
+  }
+}
+
+const packageJson: PackageJson = selfPackageJson_load();
 const cuminJson: PackageJson = depPackageJson_load('@fnndsc/cumin');
 const salsaJson: PackageJson = depPackageJson_load('@fnndsc/salsa');
 const chiliJson: PackageJson = depPackageJson_load('@fnndsc/chili');

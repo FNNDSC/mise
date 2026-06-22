@@ -15,7 +15,9 @@
     "release": "npm run build && changeset publish"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.27.9"
+    "@changesets/cli": "^2.27.9",
+    "@yao-pkg/pkg": "6.20.0",
+    "esbuild": "0.28.1"
   },
   "engines": {
     "node": ">=20.12"

@@ -28,7 +28,7 @@
 #   make clean   -> scrub  make link  -> serve
 
 .DEFAULT_GOAL := help
-.PHONY: help shop prep cook taste taste-flight serve scrub run \
+.PHONY: help shop prep cook taste taste-flight serve scrub run binaries \
         taco meal install build test clean link all
 
 help:
@@ -48,6 +48,7 @@ help:
 	@echo "Extras:"
 	@echo "  make taste-flight  - Tests with coverage (v8 provider)"
 	@echo "  make run           - Build chell and launch the shell"
+	@echo "  make binaries      - Build standalone chell executables (no Node needed)"
 	@echo ""
 	@echo "Aliases: install=prep  build=cook  test=taste  clean=scrub  link=serve"
 
@@ -97,6 +98,12 @@ scrub:
 run: cook
 	@echo "Launching chell..."
 	node packages/chell/dist/index.js
+
+# --- Binaries (standalone executables, no Node required on the target) ---
+binaries: cook
+	@echo "Building standalone chell executables (esbuild bundle -> pkg)..."
+	npm run binaries -w @fnndsc/chell
+	@echo "Binaries in packages/chell/build/bin/"
 
 # --- The Big One ---
 taco: scrub prep cook taste serve

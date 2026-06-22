@@ -1,0 +1,75 @@
+/**
+ * Integration test for the in-process `run()` entry (src/run.ts).
+ *
+ * `run()` exists so a host process (chell) can invoke chili commands repeatedly
+ * in the same process instead of spawning `node`. That requires two properties:
+ *   1. Re-entrancy — calling run() more than once in one process works (each
+ *      call builds a fresh Commander program, so parser state is not shared).
+ *   2. No process teardown — help/version/usage errors must NOT call
+ *      process.exit (that would kill the host REPL). run() uses .exitOverride()
+ *      and swallows the resulting CommanderError.
+ *
+ * The full chili command graph that run() wires up is laced with ESM-only
+ * constructs (`import.meta.url`, pure-ESM deps), which chili's CommonJS jest
+ * transform cannot compile. So rather than import run() into jest, we exercise
+ * the *built* module in a real Node ESM process and assert on its behaviour —
+ * a stronger, runtime-faithful proof. CI builds before testing; when the dist
+ * is absent (e.g. `npm test` without a prior build) the test is skipped.
+ */
+
+import { execFileSync } from 'child_process';
+import { existsSync, mkdtempSync, writeFileSync } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { pathToFileURL } from 'url';
+
+const distRun: string = path.resolve(__dirname, '../dist/run.js');
+const built: boolean = existsSync(distRun);
+
+if (!built) {
+  console.warn(
+    '[run.test] dist/run.js not built — skipping in-process integration test. Run `npm run build` first.'
+  );
+}
+
+(built ? describe : describe.skip)('chili in-process run() [built dist]', () => {
+  it('runs three commands back-to-back in one process without process.exit', () => {
+    const runUrl: string = pathToFileURL(distRun).href;
+    const script: string = `
+      const realExit = process.exit.bind(process);
+      process.exit = (c) => { console.log('UNEXPECTED_EXIT:' + c); realExit(99); };
+      const { run } = await import(${JSON.stringify(runUrl)});
+      await run(['--help', '-s']); console.log('MARK1');
+      await run(['--help', '-s']); console.log('MARK2');
+      await run(['__definitely_not_a_command__', '-s']); console.log('MARK3');
+      console.log('ALL_OK');
+      realExit(0);
+    `;
+    const dir: string = mkdtempSync(path.join(os.tmpdir(), 'chili-run-'));
+    const file: string = path.join(dir, 'proof.mjs');
+    writeFileSync(file, script);
+
+    let out = '';
+    let code = 0;
+    try {
+      out = execFileSync('node', [file], {
+        encoding: 'utf-8',
+        timeout: 60000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (e: unknown) {
+      const err = e as { stdout?: string; stderr?: string; status?: number };
+      out = (err.stdout ?? '') + (err.stderr ?? '');
+      code = err.status ?? 1;
+    }
+
+    // Both --help runs completed (re-entrancy), the unknown command did not
+    // tear down the process, and execution reached the end with exit 0.
+    expect(out).toContain('MARK1');
+    expect(out).toContain('MARK2');
+    expect(out).toContain('MARK3');
+    expect(out).toContain('ALL_OK');
+    expect(out).not.toContain('UNEXPECTED_EXIT');
+    expect(code).toBe(0);
+  });
+});

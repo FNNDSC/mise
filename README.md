@@ -1,14 +1,19 @@
 <div align="center">
 
 ```
- ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-   T  U  I  —  the ChELL stack
- ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+███╗   ███╗██╗███████╗███████╗
+████╗ ████║██║██╔════╝██╔════╝
+██╔████╔██║██║███████╗█████╗
+██║╚██╔╝██║██║╚════██║██╔══╝
+██║ ╚═╝ ██║██║███████║███████╗
+╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
 ```
+
+**MISE** — *MISE Integrates the Sandwich Ecosystem*
 
 **A ChRIS distributed-computing platform, presented as a Unix shell.**
 
-`cumin` · `salsa` · `chili` · `chell` — four layers, one sandwich, cooked in one kitchen.
+`cumin` · `salsa` · `chili` · `chell` — four layers, one sandwich, *mise en place* in one kitchen.
 
 </div>
 
@@ -45,7 +50,7 @@ Download one file for your platform, make it executable, run it. Nothing else to
 install:
 
 ```bash
-curl -L https://github.com/FNNDSC/tui/releases/latest/download/chell-linux-x64 -o chell
+curl -L https://github.com/FNNDSC/mise/releases/latest/download/chell-linux-x64 -o chell
 chmod +x chell
 ./chell
 > connect --user chris --password chris1234 http://localhost:8000/api/v1/
@@ -115,8 +120,8 @@ See [packages/chell/README.md](packages/chell/README.md) for the full tour
 Everything runs from one kitchen. Clone, then `make taco`:
 
 ```bash
-git clone https://github.com/FNNDSC/tui
-cd tui
+git clone https://github.com/FNNDSC/mise
+cd mise
 make taco            # scrub → prep → cook → taste → serve (the full course)
 ```
 
@@ -171,7 +176,7 @@ its own `<name>-vX.Y.Z` tag.
 ## Repository layout
 
 ```
-tui/
+mise/
 ├── Makefile                 # the kitchen (cooking-metaphor dev commands)
 ├── package.json             # npm workspaces + topological build/release scripts
 ├── .changeset/              # changesets config + pending changes

@@ -23,9 +23,11 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Ratchet floor (coverage-grind Phase 0.5). Baseline of the testable
-  // remainder; bump upward at each wave checkpoint. Target: 80.
+  // Ratchet floor. Bumped at each wave checkpoint. Target: 80.
+  // Wave 1 so far: plugin/connect/compute/feed views, utils sort/input_format.
+  // Remaining lift is in the handlers/controllers (baseGroupHandler, feed/plugin
+  // handlers, renderer, controllers, pacs handlers).
   coverageThreshold: {
-    global: { statements: 50, branches: 41, functions: 47, lines: 51 },
+    global: { statements: 55, branches: 47, functions: 54, lines: 55 },
   },
 };

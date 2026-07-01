@@ -22,11 +22,10 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Ratchet floor. Bumped at each wave checkpoint. Target: 80.
-  // Wave 1: jobOps, all intent wrappers, feeds, and the native/etc/proc/pacs
-  // providers + files/index. Remaining low files (plugins/index, *_content,
-  // executors, store_import, plugin_register, peer_search) still to do.
+  // Ratchet floor. Wave 1 (salsa) complete at 82% statements — target met.
+  // Still below the eventual per-file 60% floor: vfs/providers/pacs_content,
+  // store_import, plugin_register (pick up before lock-in).
   coverageThreshold: {
-    global: { statements: 70, branches: 57, functions: 72, lines: 69 },
+    global: { statements: 81, branches: 65, functions: 85, lines: 81 },
   },
 };

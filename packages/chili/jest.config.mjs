@@ -23,11 +23,8 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Ratchet floor. Bumped at each wave checkpoint. Target: 80.
-  // Wave 1 so far: plugin/connect/compute/feed views, utils sort/input_format.
-  // Remaining lift is in the handlers/controllers (baseGroupHandler, feed/plugin
-  // handlers, renderer, controllers, pacs handlers).
+  // Ratchet floor. Wave 1 (chili) complete at 80% statements — target met.
   coverageThreshold: {
-    global: { statements: 55, branches: 47, functions: 54, lines: 55 },
+    global: { statements: 80, branches: 65, functions: 80, lines: 80 },
   },
 };

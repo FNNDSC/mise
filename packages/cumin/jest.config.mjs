@@ -11,9 +11,8 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^chalk$': '<rootDir>/__mocks__/chalk.js',
   },
-  // FROZEN exclude-list (coverage-grind Phase 0.4). Do NOT extend without
-  // human sign-off — these are barrels / entry shims / device IO with no
-  // unit-testable logic. Everything else counts toward the 80% bar.
+  // Excluded from coverage: barrels (re-exports), the CLI entry point, and
+  // raw device IO — no unit-testable logic. Everything else is counted.
   collectCoverageFrom: [
     '<rootDir>/src/**/*.ts',
     '!<rootDir>/src/index.ts',
@@ -27,10 +26,8 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Ratchet floor. Bumped at each wave checkpoint. Target: 80.
-  // Wave 1 (pure-logic) checkpoint: chrisPath, procCache, config, jobMonitor,
-  // resource-group subclasses, chrisContext. Remaining low files are all
-  // chrisapi-coupled -> Wave 3 (post-adapter).
+  // Minimum coverage enforced by CI; raise as coverage improves. The
+  // remaining low-coverage modules are tightly coupled to the chrisapi client.
   coverageThreshold: {
     global: { statements: 38, branches: 25, functions: 52, lines: 38 },
   },

@@ -355,10 +355,10 @@ describe('Searchable Integration Tests', () => {
 
       // TypeScript should allow string literals
       const str: string = 'pl-dircopy';
-      await plugin.pluginIDs_resolve(str);
+      expect((await plugin.pluginIDs_resolve(str))?.hits).toEqual([1]);
 
       const literal = 'pl-dircopy' as const;
-      await plugin.pluginIDs_resolve(literal);
+      expect((await plugin.pluginIDs_resolve(literal))?.hits).toEqual([1]);
     });
 
     it('should accept Searchable type', async () => {
@@ -368,7 +368,7 @@ describe('Searchable Integration Tests', () => {
       } as QueryHits);
 
       const searchable: Searchable = Searchable.from('test');
-      await plugin.pluginIDs_resolve(searchable);
+      expect((await plugin.pluginIDs_resolve(searchable))?.hits).toEqual([1]);
     });
 
     it('should accept union type string | Searchable', async () => {
@@ -381,7 +381,7 @@ describe('Searchable Integration Tests', () => {
         ? 'pl-test'
         : Searchable.from('pl-test');
 
-      await plugin.pluginIDs_resolve(input);
+      expect((await plugin.pluginIDs_resolve(input))?.hits).toEqual([1]);
     });
   });
 });

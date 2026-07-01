@@ -49,6 +49,12 @@ if (!built) {
     const file: string = path.join(dir, 'proof.mjs');
     writeFileSync(file, script);
 
+    // Hermetic: point the config dir at an empty temp location so no persisted
+    // cumin session is loaded. Without a session there is no CUBE URL to reach,
+    // so bootstrap cannot make a live network call and `--help` short-circuits
+    // cleanly. (cumin's config.ts honours XDG_CONFIG_HOME.)
+    const cfgDir: string = path.join(dir, 'config');
+
     let out = '';
     let code = 0;
     try {
@@ -56,6 +62,7 @@ if (!built) {
         encoding: 'utf-8',
         timeout: 60000,
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, XDG_CONFIG_HOME: cfgDir },
       });
     } catch (e: unknown) {
       const err = e as { stdout?: string; stderr?: string; status?: number };

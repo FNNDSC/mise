@@ -25,7 +25,7 @@
   "scripts": {
     "build": "tsc && chmod +x ./dist/index.js",
     "start": "node dist/index.js",
-    "test": "jest",
+    "test": "jest --coverage",
     "test:coverage": "jest --coverage --coverageProvider=v8",
     "clean": "rm -rf dist types fnndsc-chili*tgz",
     "build:cumin": "cd ../cumin && npm run build",

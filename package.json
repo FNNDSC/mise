@@ -10,6 +10,7 @@
     "build": "npm run build -w @fnndsc/cumin && npm run build -w @fnndsc/salsa && npm run build -w @fnndsc/chili && npm run build -w @fnndsc/chell",
     "test": "npm test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
+    "lint:tests": "eslint --config eslint.tests.config.mjs \"packages/*/tests/**/*.{ts,js}\" \"packages/*/test/**/*.{ts,js}\"",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "npm run build && changeset publish"
@@ -17,7 +18,10 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
     "@yao-pkg/pkg": "6.20.0",
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "eslint": "^10.6.0",
+    "eslint-plugin-jest": "^29.15.4",
+    "typescript-eslint": "^8.62.1"
   },
   "engines": {
     "node": ">=20.12"

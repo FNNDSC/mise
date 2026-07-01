@@ -18,7 +18,7 @@
 import * as readline from 'readline';
 import * as os from 'os';
 import * as path from 'path';
-import { readFileSync, writeFileSync, appendFileSync, statSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { Writable } from 'stream';
@@ -95,6 +95,14 @@ import { settings_load } from './config/settings.js';
 import { cli_parse, ChellCLIConfig } from './core/cli.js';
 import { prefetch_path, prefetch_withSpinner, PrefetchResult } from './lib/prefetch.js';
 import { segment_pipeThrough } from './lib/pipe.js';
+import {
+  pipes_parse,
+  redirect_parse,
+  redirectTarget_resolve,
+  wildcards_expandCheck,
+  command_shellEscape_detect,
+  type RedirectInfo,
+} from './core/preprocess.js';
 import { bootFlags_compute, type BootFlags } from './core/bootFlags.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { run as chiliRun } from '@fnndsc/chili/run.js';
@@ -175,18 +183,6 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
     const message: string = err instanceof Error ? err.message : String(err);
     console.error(chalk.red(`chili command '${command}' failed: ${message}`));
   }
-}
-
-/**
- * Determines if a command should have its arguments expanded for wildcards.
- *
- * @param command - The command name.
- * @returns True if wildcards should be expanded.
- */
-function wildcards_expandCheck(command: string): boolean {
-  // Commands that benefit from wildcard expansion
-  const expandCommands: string[] = ['ls', 'rm', 'cat', 'mv', 'cp', 'du', 'tree'];
-  return expandCommands.includes(command);
 }
 
 /**
@@ -289,136 +285,6 @@ async function command_handle(line: string): Promise<void> {
  */
 interface MutableWritable extends Writable {
   muted?: boolean;
-}
-
-/**
- * Parses a command line for pipe operators and returns segments.
- *
- * @param line - The full command line.
- * @returns An array of command segments.
- */
-function pipes_parse(line: string): string[] {
-  const segments: string[] = [];
-  let currentSegment: string = '';
-  let inSingleQuote: boolean = false;
-  let inDoubleQuote: boolean = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char: string = line[i];
-
-    if (char === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-      currentSegment += char;
-    } else if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-      currentSegment += char;
-    } else if (char === '|' && !inSingleQuote && !inDoubleQuote) {
-      segments.push(currentSegment.trim());
-      currentSegment = '';
-    } else {
-      currentSegment += char;
-    }
-  }
-
-  if (currentSegment.trim()) {
-    segments.push(currentSegment.trim());
-  }
-
-  return segments;
-}
-
-/**
- * Parses a command line for output redirection operators (> or >>).
- *
- * @param line - The full command line.
- * @returns An object with the command and redirect info, or null if no redirection.
- */
-/** Parsed output-redirection: command plus target file and append/overwrite. */
-interface RedirectInfo {
-  command: string;
-  operator: '>' | '>>';
-  filePath: string;
-}
-
-function redirect_parse(line: string): RedirectInfo | null {
-  let inSingleQuote: boolean = false;
-  let inDoubleQuote: boolean = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char: string = line[i];
-
-    if (char === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-    } else if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-    } else if (!inSingleQuote && !inDoubleQuote) {
-      // Check for >>
-      if (i < line.length - 1 && line[i] === '>' && line[i + 1] === '>') {
-        const command: string = line.substring(0, i).trim();
-        const filePath: string = line.substring(i + 2).trim();
-        return { command, operator: '>>', filePath };
-      }
-      // Check for >
-      else if (line[i] === '>') {
-        const command: string = line.substring(0, i).trim();
-        const filePath: string = line.substring(i + 1).trim();
-        return { command, operator: '>', filePath };
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Resolves the final redirect target path. If the target is an existing directory
- * and the source command is `cat <file>`, resolves to `<dir>/<basename>`.
- * Returns Err (with message on errorStack) when the filename cannot be determined.
- *
- * @param filePath - The redirect target path as written by the user.
- * @param commandLine - The command whose output is being redirected.
- * @returns Ok(resolved path) or Err on failure.
- */
-function redirectTarget_resolve(filePath: string, commandLine: string): Result<string> {
-  try {
-    const stats = statSync(filePath);
-    if (!stats.isDirectory()) {
-      return Ok(filePath);
-    }
-  } catch (err: unknown) {
-    const nodeErr: NodeJS.ErrnoException = err as NodeJS.ErrnoException;
-    if (nodeErr.code === 'ENOENT') {
-      return Ok(filePath);
-    }
-    errorStack.stack_push('error', `Redirect: filesystem error for '${filePath}': ${String(err)}`);
-    return Err();
-  }
-
-  const tokens: string[] = args_tokenize(commandLine);
-  if (tokens.length === 0) {
-    errorStack.stack_push('error', `Redirect target '${filePath}' is a directory and no source command was provided.`);
-    return Err();
-  }
-
-  const [command, ...args] = tokens;
-  if (command !== 'cat') {
-    errorStack.stack_push('error', `Redirect target '${filePath}' is a directory; cannot infer filename for command '${command}'.`);
-    return Err();
-  }
-
-  const sourceArgs: string[] = args.filter((arg: string) => arg !== '--binary');
-  if (sourceArgs.length === 0) {
-    errorStack.stack_push('error', `Redirect target '${filePath}' is a directory; no source file provided to 'cat'.`);
-    return Err();
-  }
-
-  if (sourceArgs.length > 1) {
-    errorStack.stack_push('error', `Redirect target '${filePath}' is a directory; 'cat' with multiple files cannot choose a single output name.`);
-    return Err();
-  }
-
-  const sourceName: string = path.basename(sourceArgs[0]);
-  return Ok(path.join(filePath, sourceName));
 }
 
 /**
@@ -608,15 +474,6 @@ async function command_dispatch(command: string, args: string[]): Promise<void> 
 
   console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
   await chiliCommand_run(command, ['-s', ...args]);
-}
-
-/**
- * Returns true if the input line is a shell escape (starts with `!`).
- *
- * @param line - Trimmed input line.
- */
-function command_shellEscape_detect(line: string): boolean {
-  return line.startsWith('!');
 }
 
 /**

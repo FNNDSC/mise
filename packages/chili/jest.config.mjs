@@ -11,8 +11,8 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^chalk$': '<rootDir>/__mocks__/chalk.js',
   },
-  // FROZEN exclude-list (coverage-grind Phase 0.4). Do NOT extend without
-  // human sign-off. screen.ts is KEPT (table formatting is assertable).
+  // Excluded from coverage: barrels (re-exports) and the CLI entry point.
+  // screen.ts is kept — its table formatting is assertable.
   collectCoverageFrom: [
     '<rootDir>/src/**/*.ts',
     '!<rootDir>/src/index.ts',
@@ -23,7 +23,7 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Ratchet floor. Wave 1 (chili) complete at 80% statements — target met.
+  // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
     global: { statements: 80, branches: 65, functions: 80, lines: 80 },
   },

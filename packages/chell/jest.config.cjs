@@ -11,8 +11,8 @@ module.exports = {
   moduleNameMapper: {
     '^(\.{1,2}/.*)\.js$': '$1', // Handle ESM imports in tests
   },
-  // FROZEN exclude-list (coverage-grind Phase 0.4). Do NOT extend without
-  // human sign-off. chell.ts is KEPT (parse/dispatch logic; Phase 5 splits it).
+  // Excluded from coverage: barrels, REPL loop, prompt rendering and boot
+  // glue. chell.ts is kept — it holds real parse/dispatch logic.
   collectCoverageFrom: [
     '<rootDir>/src/**/*.ts',
     '!<rootDir>/src/index.ts',
@@ -31,8 +31,7 @@ module.exports = {
     '/dist/'
   ],
   coverageProvider: 'babel',
-  // Ratchet floor (coverage-grind Phase 0.5). Baseline of the testable
-  // remainder; bump upward at each wave checkpoint. Target: 70 (interactive shell).
+  // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
     global: { statements: 26, branches: 25, functions: 34, lines: 27 },
   },

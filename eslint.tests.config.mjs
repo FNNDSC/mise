@@ -1,19 +1,14 @@
 // @ts-check
 /**
- * Anti-gaming test-lint gate for the coverage grind (Phase 0.3).
- *
- * A narrow, jest-only ESLint flat config applied to test files across all four
- * packages. It enforces exactly two rules as errors so the coverage effort
- * cannot be gamed with tests that execute lines but assert nothing:
+ * @file Jest-only ESLint config for test files across all packages. Enforces
+ * that every test contains at least one assertion, so tests that execute code
+ * without asserting anything are rejected:
  *
  *   - jest/expect-expect        — every test must contain at least one assertion
  *   - jest/no-standalone-expect — assertions must live inside a test block
  *
- * This is DELIBERATELY separate from eslint.config.base.mjs (the dormant
- * TYPESCRIPT-STYLE-GUIDE guardrail, REMEDIATION Phase 1). Keeping it standalone
- * means the coverage gate can ship without turning on the wider style rules.
- *
- * Run via `npm run lint:tests`.
+ * Kept separate from eslint.config.base.mjs so it can run on its own via
+ * `npm run lint:tests` without enabling the wider style rules.
  */
 import tseslint from 'typescript-eslint';
 import jest from 'eslint-plugin-jest';

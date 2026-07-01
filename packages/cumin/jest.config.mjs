@@ -27,9 +27,11 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Ratchet floor (coverage-grind Phase 0.5). Baseline of the testable
-  // remainder; bump upward at each wave checkpoint. Target: 80.
+  // Ratchet floor. Bumped at each wave checkpoint. Target: 80.
+  // Wave 1 (pure-logic) checkpoint: chrisPath, procCache, config, jobMonitor,
+  // resource-group subclasses, chrisContext. Remaining low files are all
+  // chrisapi-coupled -> Wave 3 (post-adapter).
   coverageThreshold: {
-    global: { statements: 23, branches: 14, functions: 24, lines: 23 },
+    global: { statements: 38, branches: 25, functions: 52, lines: 38 },
   },
 };

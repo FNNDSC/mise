@@ -40,7 +40,7 @@ import { bootFlags_compute, type BootFlags } from './bootFlags.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
-import { command_handle, stopOnError_set } from '../chell.js';
+import { command_handle, stopOnError_set } from './dispatch.js';
 
 /**
  * Interface for package.json structure.

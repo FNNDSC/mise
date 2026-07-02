@@ -1,7 +1,13 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 const mockContext = jest.fn();
-jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: mockContext }));
+const mockFeedsList = jest.fn();
+const mockInstancesList = jest.fn();
+jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  context_getSingle: mockContext,
+  feeds_list: mockFeedsList,
+  pluginInstances_list: mockInstancesList,
+}));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
 
 const mockSession = {
@@ -9,12 +15,16 @@ const mockSession = {
   timingEnabled_set: jest.fn(),
   physicalMode_get: jest.fn(),
   physicalMode_set: jest.fn(),
+  getCWD: jest.fn(),
+  connection: { config: { debug: false } as { debug: boolean } | null },
 };
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: mockSession }));
 
 const { builtin_whoami, builtin_whereami } = await import('../src/builtins/sys/whoami.js');
 const { builtin_timing } = await import('../src/builtins/sys/timing.js');
 const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.js');
+const { builtin_debug } = await import('../src/builtins/debug.js');
+const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -91,5 +101,49 @@ describe('builtin_physicalmode', () => {
   it('rejects an unknown argument', async () => {
     await builtin_physicalmode(['sideways']);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown argument'));
+  });
+});
+
+describe('builtin_debug', () => {
+  let errSpy: jest.SpiedFunction<typeof console.error>;
+  beforeEach(() => {
+    mockSession.connection.config = { debug: false };
+    errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  it('errors when the connection config is missing', async () => {
+    mockSession.connection.config = null;
+    await builtin_debug([]);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('not initialized'));
+  });
+  it('shows status with no argument', async () => {
+    await builtin_debug([]);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Debug mode'));
+  });
+  it('turns debug on and off', async () => {
+    await builtin_debug(['on']);
+    expect(mockSession.connection.config?.debug).toBe(true);
+    await builtin_debug(['off']);
+    expect(mockSession.connection.config?.debug).toBe(false);
+  });
+  it('rejects an unknown argument', async () => {
+    await builtin_debug(['sideways']);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown argument'));
+  });
+});
+
+describe('builtin_pwd', () => {
+  it('prints the raw cwd without --title', async () => {
+    mockSession.getCWD.mockResolvedValue('/home/chris/uploads');
+    await builtin_pwd([]);
+    expect(logSpy).toHaveBeenCalledWith('/home/chris/uploads');
+  });
+
+  it('replaces feed and plugin segments with titles for --title', async () => {
+    mockSession.getCWD.mockResolvedValue('/home/chris/feeds/feed_123/pl-dircopy_456');
+    mockFeedsList.mockResolvedValue({ tableData: [{ name: 'Brain Study' }] });
+    mockInstancesList.mockResolvedValue({ tableData: [{ plugin_name: 'pl-dircopy', plugin_version: '2.1.1' }] });
+    await builtin_pwd(['--title']);
+    expect(logSpy).toHaveBeenCalledWith('/home/chris/feeds/Brain Study/pl-dircopy v2.1.1');
   });
 });

@@ -6,7 +6,7 @@ const Err = (): { ok: false } => ({ ok: false });
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok,
   Err,
-  errorStack: { stack_pop: jest.fn(() => undefined) },
+  errorStack: { stack_pop: jest.fn(() => undefined), stack_push: jest.fn() },
 }));
 
 // The /bin listing model is type-only at runtime.
@@ -17,8 +17,31 @@ const mockChiliRun = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: mockChiliRun }));
 
 // Session — dispatch only reads the timing toggle.
+const mockTiming = jest.fn(() => false);
 jest.unstable_mockModule('../src/session/index.js', () => ({
-  session: { timingEnabled_get: jest.fn(() => false) },
+  session: { timingEnabled_get: mockTiming },
+}));
+
+// Host shell escape (`!cmd`) spawns a child process; drive its lifecycle events.
+type SpawnHandlers = Record<string, (arg?: unknown) => void>;
+let spawnBehavior: (h: SpawnHandlers) => void = (h) => h.close?.(0);
+const mockSpawn = jest.fn(() => {
+  const handlers: SpawnHandlers = {};
+  const child = { on: (ev: string, cb: (arg?: unknown) => void) => { handlers[ev] = cb; return child; } };
+  Promise.resolve().then(() => spawnBehavior(handlers));
+  return child;
+});
+jest.unstable_mockModule('child_process', () => ({ spawn: mockSpawn }));
+
+// Redirect targets: real preprocess resolves the path (statSync), dispatch writes it.
+const mockWriteFile = jest.fn();
+const mockAppendFile = jest.fn();
+const enoent = (): never => { const e: NodeJS.ErrnoException = new Error('nope'); e.code = 'ENOENT'; throw e; };
+const mockStatSync = jest.fn(enoent);
+jest.unstable_mockModule('fs', () => ({
+  statSync: mockStatSync,
+  writeFileSync: mockWriteFile,
+  appendFileSync: mockAppendFile,
 }));
 
 // VFS — command_dispatch consults /bin for plugin/pipeline names.
@@ -67,14 +90,19 @@ jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecuta
 const mockSegmentPipe = jest.fn();
 jest.unstable_mockModule('../src/lib/pipe.js', () => ({ segment_pipeThrough: mockSegmentPipe }));
 
-const { command_dispatch, command_handle } = await import('../src/core/dispatch.js');
+const { command_dispatch, command_handle, stopOnError_set } = await import('../src/core/dispatch.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
+let errSpy: jest.SpiedFunction<typeof console.error>;
 let exitSpy: jest.SpiedFunction<typeof process.exit>;
 beforeEach(() => {
   jest.clearAllMocks();
   mockHasHelpFlag.mockReturnValue(false);
+  mockTiming.mockReturnValue(false);
+  mockStatSync.mockImplementation(enoent);
+  spawnBehavior = (h) => h.close?.(0);
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   exitSpy = jest.spyOn(process, 'exit').mockImplementation(((): never => {
     throw new Error('__exit__');
   }) as never);
@@ -129,6 +157,13 @@ describe('command_dispatch', () => {
     expect(mockChiliRun).toHaveBeenCalledWith(['pacsservers', '-s', '--query', 'x']);
   });
 
+  it('delegates the pacsqueries and pacsretrieve aliases to chili', async () => {
+    await command_dispatch('pacsqueries', ['a']);
+    expect(mockChiliRun).toHaveBeenCalledWith(['pacsqueries', '-s', 'a']);
+    await command_dispatch('pacsretrieve', ['b']);
+    expect(mockChiliRun).toHaveBeenCalledWith(['pacsretrieve', '-s', 'b']);
+  });
+
   it('exits the process on "exit"', async () => {
     await expect(command_dispatch('exit', [])).rejects.toThrow('__exit__');
     expect(exitSpy).toHaveBeenCalledWith(0);
@@ -174,5 +209,75 @@ describe('command_handle', () => {
     await command_handle('frobnicate | grep foo');
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s']);
     writeSpy.mockRestore();
+  });
+
+  it('prints elapsed time when timing is enabled', async () => {
+    mockTiming.mockReturnValue(true);
+    await command_handle('whoami');
+    expect(mockWhoami).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ms'));
+  });
+});
+
+describe('shell escape', () => {
+  it('runs a !-prefixed command on the host shell', async () => {
+    await command_handle('!echo hi');
+    expect(mockSpawn).toHaveBeenCalledWith('echo hi', expect.objectContaining({ shell: true }));
+  });
+
+  it('reports a non-zero host exit code', async () => {
+    spawnBehavior = (h) => h.close?.(3);
+    await command_handle('!false');
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('exited with code 3'));
+  });
+
+  it('reports a spawn error', async () => {
+    spawnBehavior = (h) => h.error?.(new Error('nope'));
+    await command_handle('!badcmd');
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('nope'));
+  });
+
+  it('ignores a bare "!" with no command', async () => {
+    await command_handle('!');
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
+describe('output redirection', () => {
+  it('writes captured output to the target with >', async () => {
+    await command_handle('whoami > out.txt');
+    expect(mockWhoami).toHaveBeenCalled();
+    expect(mockWriteFile).toHaveBeenCalledWith('out.txt', expect.any(Buffer));
+  });
+
+  it('appends captured output with >>', async () => {
+    await command_handle('whoami >> out.txt');
+    expect(mockAppendFile).toHaveBeenCalledWith('out.txt', expect.any(Buffer));
+  });
+
+  it('errors and skips the write when the target is a directory', async () => {
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as unknown as ReturnType<typeof mockStatSync>);
+    await command_handle('whoami > somedir');
+    expect(mockWriteFile).not.toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalled();
+  });
+});
+
+describe('command_handle — control flow', () => {
+  it('short-circuits when a simulated plugin handles the command', async () => {
+    mockPluginExecutable.mockResolvedValueOnce(true);
+    await command_handle('whoami');
+    expect(mockPluginExecutable).toHaveBeenCalledWith('whoami', []);
+    expect(mockWhoami).not.toHaveBeenCalled();
+  });
+
+  it('aborts a semicolon batch on error when stop-on-error is set', async () => {
+    mockWhoami.mockRejectedValueOnce(new Error('boom'));
+    stopOnError_set(true);
+    await command_handle('whoami; whoami');
+    // First segment throws and aborts; the second never runs.
+    expect(mockWhoami).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    stopOnError_set(false);
   });
 });

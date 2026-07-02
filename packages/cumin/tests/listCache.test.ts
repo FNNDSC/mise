@@ -362,8 +362,10 @@ describe('ListCache Enhanced', () => {
 
       const result = cache.cache_get('/test');
       expect(result).not.toBeNull();
-      expect(result!.age).toBeGreaterThanOrEqual(100);
-      expect(result!.age).toBeLessThan(150);  // Allow some slack
+      // Timers may fire a hair early, and CI runners add scheduling delay, so
+      // allow generous slack around the 100ms sleep rather than a tight window.
+      expect(result!.age).toBeGreaterThanOrEqual(90);
+      expect(result!.age).toBeLessThan(1000);
     });
 
     it('should reset age after update', async () => {

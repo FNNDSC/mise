@@ -12,11 +12,12 @@ module.exports = {
     '^(\.{1,2}/.*)\.js$': '$1', // Handle ESM imports in tests
   },
   // Excluded from coverage: barrels, REPL loop, prompt rendering and boot
-  // glue. chell.ts is kept — it holds real parse/dispatch logic.
+  // glue. The parse/dispatch logic lives in core/dispatch.ts and is covered.
   collectCoverageFrom: [
     '<rootDir>/src/**/*.ts',
     '!<rootDir>/src/index.ts',
     '!<rootDir>/src/**/*.d.ts',
+    '!<rootDir>/src/chell.ts', // re-export barrel
     '!<rootDir>/src/builtins/index.ts', // barrel
     '!<rootDir>/src/core/repl.ts', // REPL loop
     '!<rootDir>/src/core/boot.ts', // connection + REPL startup glue
@@ -34,6 +35,6 @@ module.exports = {
   coverageProvider: 'babel',
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 26, branches: 25, functions: 34, lines: 27 },
+    global: { statements: 42, branches: 37, functions: 48, lines: 42 },
   },
 };

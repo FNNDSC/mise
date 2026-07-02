@@ -19,6 +19,7 @@ module.exports = {
     '!<rootDir>/src/**/*.d.ts',
     '!<rootDir>/src/builtins/index.ts', // barrel
     '!<rootDir>/src/core/repl.ts', // REPL loop
+    '!<rootDir>/src/core/boot.ts', // connection + REPL startup glue
     '!<rootDir>/src/core/prompt/**', // prompt render (index/themes/utils)
     '!<rootDir>/src/lib/logo.ts', // terminal render
     '!<rootDir>/src/lib/spinner.ts', // terminal render

@@ -24,13 +24,23 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mk
 const mockTouchCmd = jest.fn();
 const mockTouchRender = jest.fn((p: string, ok: boolean) => `touch:${p}:${ok}`);
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({ files_touch: mockTouchCmd }));
+
+const mockCpCmd = jest.fn();
+const mockMvCmd = jest.fn();
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cp.js', () => ({ files_cp: mockCpCmd }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/mv.js', () => ({ files_mv: mockMvCmd }));
+
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   mkdir_render: mockMkdirRender,
   touch_render: mockTouchRender,
+  cp_render: jest.fn((s: string, d: string, ok: boolean) => `cp:${s}->${d}:${ok}`),
+  mv_render: jest.fn((s: string, d: string, ok: boolean) => `mv:${s}->${d}:${ok}`),
 }));
 
 const { builtin_mkdir } = await import('../src/builtins/fs/mkdir.js');
 const { builtin_touch } = await import('../src/builtins/fs/touch.js');
+const { builtin_cp } = await import('../src/builtins/fs/cp.js');
+const { builtin_mv } = await import('../src/builtins/fs/mv.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -87,5 +97,61 @@ describe('builtin_touch', () => {
     mockTouchCmd.mockResolvedValue(false);
     await builtin_touch(['bad.txt']);
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to create file'));
+  });
+});
+
+describe('builtin_cp', () => {
+  it('prints usage with fewer than two paths', async () => {
+    await builtin_cp(['only']);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: cp'));
+  });
+
+  it('copies a single source and renders the result', async () => {
+    mockCpCmd.mockResolvedValue(true);
+    await builtin_cp(['a.txt', 'b.txt']);
+    expect(mockCpCmd).toHaveBeenCalledWith('/home/chris/a.txt', '/home/chris/b.txt', { recursive: false });
+    expect(logSpy).toHaveBeenCalledWith('cp:/home/chris/a.txt->/home/chris/b.txt:true');
+    expect(mockInvalidate).toHaveBeenCalledWith('/home/chris/b.txt');
+  });
+
+  it('passes -r recursive and summarises multiple sources', async () => {
+    mockCpCmd.mockResolvedValue(true);
+    await builtin_cp(['-r', 'a', 'b', 'dest']);
+    expect(mockCpCmd).toHaveBeenCalledWith('/home/chris/a', '/home/chris/dest', { recursive: true });
+    expect(mockCpCmd).toHaveBeenCalledWith('/home/chris/b', '/home/chris/dest', { recursive: true });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Copied 2 file(s)'));
+  });
+
+  it('reports failures in the multi-source summary', async () => {
+    mockCpCmd.mockResolvedValue(false);
+    await builtin_cp(['a', 'b', 'dest']);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('failed'));
+  });
+});
+
+describe('builtin_mv', () => {
+  it('prints usage with fewer than two paths', async () => {
+    await builtin_mv(['only']);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: mv'));
+  });
+
+  it('moves a single source and invalidates source + dest', async () => {
+    mockMvCmd.mockResolvedValue(true);
+    await builtin_mv(['a.txt', 'b.txt']);
+    expect(mockMvCmd).toHaveBeenCalledWith('/home/chris/a.txt', '/home/chris/b.txt');
+    expect(logSpy).toHaveBeenCalledWith('mv:/home/chris/a.txt->/home/chris/b.txt:true');
+    expect(mockInvalidate).toHaveBeenCalledWith('/home/chris/b.txt');
+  });
+
+  it('summarises multiple moved sources', async () => {
+    mockMvCmd.mockResolvedValue(true);
+    await builtin_mv(['a', 'b', 'dest']);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Moved 2 file(s)'));
+  });
+
+  it('reports a per-source error', async () => {
+    mockMvCmd.mockRejectedValue(new Error('nope'));
+    await builtin_mv(['a.txt', 'b.txt']);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('nope'));
   });
 });

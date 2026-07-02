@@ -11,11 +11,18 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^chalk$': '<rootDir>/__mocks__/chalk.js',
   },
+  // salsa is a pure logic layer; only barrels (re-exports) are excluded.
   collectCoverageFrom: [
     '<rootDir>/src/**/*.ts',
     '!<rootDir>/src/index.ts',
     '!<rootDir>/src/**/*.d.ts',
+    '!<rootDir>/src/jobs/index.ts', // barrel
+    '!<rootDir>/src/vfs/index.ts', // barrel
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
-  coverageProvider: 'v8',
+  coverageProvider: 'babel',
+  // Minimum coverage enforced by CI; raise as coverage improves.
+  coverageThreshold: {
+    global: { statements: 81, branches: 65, functions: 85, lines: 81 },
+  },
 };

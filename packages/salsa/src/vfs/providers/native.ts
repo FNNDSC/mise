@@ -8,6 +8,7 @@
 
 import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
+import { vfsItems_sort } from "../sort.js";
 import {
   files_copy,
   files_copyRecursively,
@@ -24,37 +25,6 @@ interface ChrisFileOrDirRaw {
   fsize?: number;
   owner_username?: string;
   creation_date?: string;
-}
-
-/**
- * Standard sort utility for VFS items.
- *
- * @param items - Items list to sort.
- * @param sortField - Field to sort by.
- * @param reverse - Whether to reverse sort order.
- * @returns Sorted array.
- */
-function vfs_sortItems(
-  items: VFSItem[],
-  sortField?: "name" | "size" | "date" | "owner",
-  reverse?: boolean
-): VFSItem[] {
-  const field: keyof VFSItem = sortField || "name";
-  const sorted: VFSItem[] = [...items].sort((a: VFSItem, b: VFSItem) => {
-    const valA: string | number = a[field];
-    const valB: string | number = b[field];
-    if (typeof valA === "string" && typeof valB === "string") {
-      return valA.localeCompare(valB);
-    }
-    if (typeof valA === "number" && typeof valB === "number") {
-      return valA - valB;
-    }
-    return 0;
-  });
-  if (reverse) {
-    sorted.reverse();
-  }
-  return sorted;
 }
 
 /**
@@ -133,7 +103,7 @@ export class NativeVfsProvider implements VFSProvider {
         );
       }
 
-      const sorted: VFSItem[] = vfs_sortItems(items, options?.sort, options?.reverse);
+      const sorted: VFSItem[] = vfsItems_sort(items, options?.sort, options?.reverse);
       return Ok(sorted);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);

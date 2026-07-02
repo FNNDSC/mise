@@ -23,7 +23,7 @@ process.emitWarning = function (warning: string | Error, ...args: any[]): void {
 
 import { fileURLToPath } from 'url';
 import { realpathSync } from 'fs';
-import { chell_start } from './chell.js';
+import { chell_start } from './core/boot.js';
 
 const currentFile: string = fileURLToPath(import.meta.url);
 

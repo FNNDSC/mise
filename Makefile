@@ -78,8 +78,8 @@ taste:
 
 # Coverage flight (not part of taco)
 taste-flight:
-	@echo "Tasting flight (coverage, v8 provider)..."
-	npm test --workspaces --if-present -- --coverage --coverageProvider=v8
+	@echo "Tasting flight (coverage, istanbul provider)..."
+	npm test --workspaces --if-present -- --coverage
 
 # --- Serve (link chell globally) ---
 serve:

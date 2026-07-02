@@ -4,18 +4,8 @@
  * @module
  */
 
-import * as path from 'path';
-import {
-  ChRISEmbeddedResourceGroup,
-  errorStack,
-  FilteredResourceData,
-  Result,
-  Ok,
-  Err,
-  chrisIO,
-} from "@fnndsc/cumin";
-import { ChrisPathNode } from "@fnndsc/cumin";
-import { files_getGroup } from './index';
+import { Result, Ok, Err, chrisIO } from "@fnndsc/cumin";
+import { fileId_atPath_resolve } from './fileLookup.js';
 
 /**
  * Views content of a file in ChRIS by its ID.
@@ -42,41 +32,13 @@ async function files_view(fileId: number): Promise<Result<Buffer>> {
 export async function fileContent_getRegularStream(
   filePath: string
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-
-  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null =
-    await files_getGroup("files", dir);
-  if (!group) {
-    return Err();
-  }
-
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-    errorStack.stack_push("error", `No files found in directory: ${dir}`);
-    return Err();
-  }
-
-  const file: { id?: number; fname?: string } | undefined = results.tableData.find(
-    (f: { fname?: string }) => {
-      const fname: string = f.fname || "";
-      const basename: string = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-    }
-  );
-
-  if (!file) {
-    errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
-    return Err();
-  }
-
-  if (typeof file.id !== "number") {
-    errorStack.stack_push("error", `File has no valid ID: ${name}`);
+  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  if (!idResult.ok) {
     return Err();
   }
 
   const streamResult: Result<{ stream: unknown; size?: number; filename?: string }> =
-    await chrisIO.file_downloadStream(file.id);
+    await chrisIO.file_downloadStream(idResult.value);
   if (!streamResult.ok) {
     return Err();
   }
@@ -91,40 +53,14 @@ export async function fileContent_getRegularStream(
  * @returns A Result containing the file content as a string, or an error.
  */
 export async function fileContent_getRegular(filePath: string): Promise<Result<string>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-  
-  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
-  if (!group) {
-     return Err();
-  }
-  
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-     errorStack.stack_push("error", `No files found in directory: ${dir}`);
-     return Err();
+  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  if (!idResult.ok) {
+    return Err();
   }
 
-  const file: { id?: number, fname?: string } | undefined = results.tableData.find((f: { fname?: string }) => {
-      const fname: string = f.fname || '';
-      const basename = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-  });
-  
-  if (!file) {
-      errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
-      return Err();
-  }
-
-  if (typeof file.id !== 'number') {
-      errorStack.stack_push("error", `File has no valid ID: ${name}`);
-      return Err();
-  }
-
-  const filesViewResult: Result<Buffer> = await files_view(file.id);
+  const filesViewResult: Result<Buffer> = await files_view(idResult.value);
   if (!filesViewResult.ok) {
-      // The error is already pushed by files_view or chrisIO.file_download
-      return Err();
+    return Err();
   }
 
   return Ok(filesViewResult.value.toString('utf-8'));
@@ -139,40 +75,14 @@ export async function fileContent_getRegular(filePath: string): Promise<Result<s
  * @returns A Result containing the file content as a Buffer, or an error.
  */
 export async function fileContent_getRegularBinary(filePath: string): Promise<Result<Buffer>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-
-  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
-  if (!group) {
-     return Err();
+  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  if (!idResult.ok) {
+    return Err();
   }
 
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-     errorStack.stack_push("error", `No files found in directory: ${dir}`);
-     return Err();
-  }
-
-  const file: { id?: number, fname?: string } | undefined = results.tableData.find((f: { fname?: string }) => {
-      const fname: string = f.fname || '';
-      const basename = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-  });
-
-  if (!file) {
-      errorStack.stack_push("error", `File not found: ${name} in ${dir}`);
-      return Err();
-  }
-
-  if (typeof file.id !== 'number') {
-      errorStack.stack_push("error", `File has no valid ID: ${name}`);
-      return Err();
-  }
-
-  const filesViewResult: Result<Buffer> = await files_view(file.id);
+  const filesViewResult: Result<Buffer> = await files_view(idResult.value);
   if (!filesViewResult.ok) {
-      // The error is already pushed by files_view or chrisIO.file_download
-      return Err();
+    return Err();
   }
 
   return Ok(filesViewResult.value);

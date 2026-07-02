@@ -13,7 +13,8 @@ import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { CLIoptions, path_resolveChrisFs } from "../utils/cli.js";
 import { FileController } from "../controllers/fileController.js";
 import { files_create } from "../commands/fs/create.js";
-import { FilteredResourceData, errorStack, SimpleRecord } from "@fnndsc/cumin";
+import { FilteredResourceData, errorStack } from "@fnndsc/cumin";
+import { resourceColumns_removeDuplicates } from "../utils/resourceData.js";
 import { table_display } from "../screen/screen.js";
 import { files_fetchList } from "../commands/files/list.js";
 import { fileFields_fetch } from "../commands/files/fields.js";
@@ -67,33 +68,6 @@ export class FileGroupHandler {
   }
 
   /**
-   * Removes duplicate column headers from FilteredResourceData results.
-   * Copied from BaseGroupHandler to support local listing logic.
-   */
-  private columns_removeDuplicates(
-    results: FilteredResourceData
-  ): FilteredResourceData {
-    const uniqueHeaders: string[] = Array.from(
-      new Set(results.selectedFields)
-    ) as string[];
-
-    const uniqueTableData: SimpleRecord[] = results.tableData.map((row) =>
-      uniqueHeaders.reduce<SimpleRecord>((acc, header) => {
-        if (typeof header === "string" && header in row) {
-          acc[header] = (row as SimpleRecord)[header];
-        }
-        return acc;
-      }, {})
-    );
-
-    return {
-      ...results,
-      selectedFields: uniqueHeaders,
-      tableData: uniqueTableData,
-    };
-  }
-
-  /**
    * Lists files, links, or directories using the new command logic.
    */
   async files_list(options: CLIoptions, path?: string): Promise<void> {
@@ -110,7 +84,7 @@ export class FileGroupHandler {
       if (results.tableData.length === 0) {
         console.log(`No ${this.assetName} found matching the criteria.`);
                       } else {
-                          const uniqueResults: FilteredResourceData = this.columns_removeDuplicates(results);
+                          const uniqueResults: FilteredResourceData = resourceColumns_removeDuplicates(results);
                           // cumin returns dynamic table rows (Record<string, unknown>[]);
                           // narrow to the FileResource view model at this boundary.
                           console.log(fileList_render(

@@ -17,6 +17,7 @@ import {
   errorStack,
 } from "@fnndsc/cumin";
 import { CLIoptions, options_toParams } from "../utils/cli.js";
+import { resourceColumns_removeDuplicates } from "../utils/resourceData.js";
 import { table_display, border_draw, TableOptions } from "../screen/screen.js";
 import * as util from "util";
 import * as readline from "readline";
@@ -48,35 +49,6 @@ export class BaseGroupHandler {
     this.chrisObject = chrisObject;
     this.displayOptions = {
       title: { title: this.assetName, justification: "center" },
-    };
-  }
-
-  /**
-   * Removes duplicate column headers from FilteredResourceData results.
-   *
-   * @param results - The FilteredResourceData to process.
-   * @returns FilteredResourceData with unique headers and corresponding data.
-   */
-  private columns_removeDuplicates(
-    results: FilteredResourceData
-  ): FilteredResourceData {
-    const uniqueHeaders: string[] = Array.from(
-      new Set(results.selectedFields)
-    ) as string[];
-
-    const uniqueTableData: Record<string, unknown>[] = results.tableData.map((row) =>
-      uniqueHeaders.reduce<Record<string, unknown>>((acc, header) => {
-        if (typeof header === "string" && header in row) {
-          acc[header] = (row as Record<string, unknown>)[header];
-        }
-        return acc;
-      }, {})
-    );
-
-    return {
-      ...results,
-      selectedFields: uniqueHeaders,
-      tableData: uniqueTableData,
     };
   }
 
@@ -122,7 +94,7 @@ export class BaseGroupHandler {
       if (results.tableData.length === 0) {
         console.log(`No ${this.assetName} found matching the criteria.`);
       } else {
-        const uniqueResults: FilteredResourceData = this.columns_removeDuplicates(results);
+        const uniqueResults: FilteredResourceData = resourceColumns_removeDuplicates(results);
         
         // Construct column options based on parsed widths
         const columns = uniqueResults.selectedFields.map(field => {

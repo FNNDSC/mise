@@ -4,25 +4,13 @@
  * @module
  */
 
-import * as path from 'path';
-import {
-  ChRISEmbeddedResourceGroup,
-  errorStack,
-  FilteredResourceData,
-  Result,
-  Ok,
-  Err,
-  pacsFile_getBlob,
-  pacsFile_getText,
-} from "@fnndsc/cumin";
-import { ChrisPathNode } from "@fnndsc/cumin";
-import { files_getGroup } from './index';
+import { Result, Err, pacsFile_getBlob, pacsFile_getText } from "@fnndsc/cumin";
+import { fileId_atPath_resolve } from './fileLookup.js';
 
 /**
  * Fetches the content of a PACS file (DICOM).
  *
  * Path structure: /SERVICES/PACS/<service>/<patient>/<study>/<series>/<file>.dcm
- * Example: /SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/.../0168-1.3...dcm
  *
  * PACS files appear in directory listings but must be downloaded through
  * the PACSFile API instead of the regular file download endpoint.
@@ -31,37 +19,11 @@ import { files_getGroup } from './index';
  * @returns A Result containing the file content as a string, or an error.
  */
 export async function fileContent_getPACS(filePath: string): Promise<Result<string>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-
-  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
-  if (!group) {
-     return Err();
+  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  if (!idResult.ok) {
+    return Err();
   }
-
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-     errorStack.stack_push("error", `No files found in PACS directory: ${dir}`);
-     return Err();
-  }
-
-  const file: { id?: number, fname?: string } | undefined = results.tableData.find((f: { fname?: string }) => {
-      const fname: string = f.fname || '';
-      const basename = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-  });
-
-  if (!file) {
-      errorStack.stack_push("error", `PACS file not found: ${name} in ${dir}`);
-      return Err();
-  }
-
-  if (typeof file.id !== 'number') {
-      errorStack.stack_push("error", `PACS file has no valid ID: ${name}`);
-      return Err();
-  }
-
-  return await pacsFile_getText(file.id);
+  return await pacsFile_getText(idResult.value);
 }
 
 /**
@@ -74,35 +36,9 @@ export async function fileContent_getPACS(filePath: string): Promise<Result<stri
  * @returns A Result containing the file content as a Buffer, or an error.
  */
 export async function fileContent_getPACSBinary(filePath: string): Promise<Result<Buffer>> {
-  const dir: string = path.posix.dirname(filePath);
-  const name: string = path.posix.basename(filePath);
-
-  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup('files', dir);
-  if (!group) {
-     return Err();
+  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  if (!idResult.ok) {
+    return Err();
   }
-
-  const results: FilteredResourceData | null = await group.asset.resources_getAll();
-  if (!results || !results.tableData) {
-     errorStack.stack_push("error", `No files found in PACS directory: ${dir}`);
-     return Err();
-  }
-
-  const file: { id?: number, fname?: string } | undefined = results.tableData.find((f: { fname?: string }) => {
-      const fname: string = f.fname || '';
-      const basename = path.posix.basename(fname);
-      return basename === name || basename === `? ${name}`;
-  });
-
-  if (!file) {
-      errorStack.stack_push("error", `PACS file not found: ${name} in ${dir}`);
-      return Err();
-  }
-
-  if (typeof file.id !== 'number') {
-      errorStack.stack_push("error", `PACS file has no valid ID: ${name}`);
-      return Err();
-  }
-
-  return await pacsFile_getBlob(file.id);
+  return await pacsFile_getBlob(idResult.value);
 }

@@ -89,6 +89,11 @@ Create `FNNDSC/mise`:
   Leave split, or unify under one runner (e.g. vitest) — revisit, not load-bearing.
 - Build orchestration: TS project references vs Turborepo for cached/ordered
   builds — start with project refs; add Turbo if build time hurts.
+- Eager network on boot: chili `run()` bootstrap initialises FileGroupHandler
+  (a live CUBE call) even for `chili --help`, when a persisted session exists.
+  `--help`/`--version` should short-circuit before any network I/O. Fits Phase 5
+  (boot decomposition). Surfaced by `tests/run.test.ts` (now made hermetic via
+  XDG_CONFIG_HOME rather than relying on this behaviour).
 
 ## Sequencing
 ```

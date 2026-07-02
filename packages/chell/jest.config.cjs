@@ -20,6 +20,7 @@ module.exports = {
     '!<rootDir>/src/chell.ts', // re-export barrel
     '!<rootDir>/src/builtins/index.ts', // barrel
     '!<rootDir>/src/core/repl.ts', // REPL loop
+    '!<rootDir>/src/core/question.ts', // raw readline stdin prompts
     '!<rootDir>/src/core/boot.ts', // connection + REPL startup glue
     '!<rootDir>/src/core/prompt/**', // prompt render (index/themes/utils)
     '!<rootDir>/src/lib/logo.ts', // terminal render
@@ -35,6 +36,6 @@ module.exports = {
   coverageProvider: 'babel',
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 63, branches: 54, functions: 67, lines: 64 },
+    global: { statements: 64, branches: 55, functions: 69, lines: 65 },
   },
 };

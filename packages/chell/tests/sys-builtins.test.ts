@@ -7,11 +7,14 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
 const mockSession = {
   timingEnabled_get: jest.fn(),
   timingEnabled_set: jest.fn(),
+  physicalMode_get: jest.fn(),
+  physicalMode_set: jest.fn(),
 };
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: mockSession }));
 
 const { builtin_whoami, builtin_whereami } = await import('../src/builtins/sys/whoami.js');
 const { builtin_timing } = await import('../src/builtins/sys/timing.js');
+const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -69,6 +72,24 @@ describe('builtin_timing', () => {
   });
   it('rejects an unknown argument', async () => {
     await builtin_timing(['sideways']);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown argument'));
+  });
+});
+
+describe('builtin_physicalmode', () => {
+  it('shows status with no argument', async () => {
+    mockSession.physicalMode_get.mockReturnValue(true);
+    await builtin_physicalmode([]);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('enabled'));
+  });
+  it('turns physical mode on and off', async () => {
+    await builtin_physicalmode(['on']);
+    expect(mockSession.physicalMode_set).toHaveBeenCalledWith(true);
+    await builtin_physicalmode(['off']);
+    expect(mockSession.physicalMode_set).toHaveBeenCalledWith(false);
+  });
+  it('rejects an unknown argument', async () => {
+    await builtin_physicalmode(['sideways']);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown argument'));
   });
 });

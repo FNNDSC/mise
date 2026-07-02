@@ -8,6 +8,7 @@
 
 import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryCreateData, PACSQueryDecodedResult, PACSQueryRecord, PACSRetrieveRecord, PACSQueryStatusReport, FilteredResourceData, PACSServer } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
+import { vfsItems_sort } from "../sort.js";
 import {
   tag_extractValue,
   path_normalize,
@@ -31,33 +32,6 @@ import { files_copyRecursively } from "../../files/index.js";
 import path from "path";
 import chalk from "chalk";
 import { pacsVfs_read, pacsVfs_readBinary } from "./pacs_content.js";
-
-/**
- * Standard sort utility for VFS items.
- */
-function items_sort(
-  items: VFSItem[],
-  sortField?: "name" | "size" | "date" | "owner",
-  reverse?: boolean
-): VFSItem[] {
-  const field: keyof VFSItem = sortField || "name";
-  const sorted: VFSItem[] = [...items].sort((a: VFSItem, b: VFSItem) => {
-    const valA: VFSItem[keyof VFSItem] = a[field];
-    const valB: VFSItem[keyof VFSItem] = b[field];
-    if (typeof valA === "string" && typeof valB === "string") {
-      return valA.localeCompare(valB);
-    }
-    if (typeof valA === "number" && typeof valB === "number") {
-      return valA - valB;
-    }
-    return 0;
-  });
-  if (reverse) {
-    sorted.reverse();
-  }
-  return sorted;
-}
-
 
 
 /**
@@ -129,7 +103,7 @@ async function queries_list(options?: SortOptions): Promise<Result<VFSItem[]>> {
       date: creationDate,
     };
   });
-  return Ok(items_sort(items, options?.sort, options?.reverse));
+  return Ok(vfsItems_sort(items, options?.sort, options?.reverse));
 }
 
 function studies_list(studies: Record<string, unknown>[], options?: SortOptions): Result<VFSItem[]> {
@@ -145,7 +119,7 @@ function studies_list(studies: Record<string, unknown>[], options?: SortOptions)
       date: "",
     };
   });
-  return Ok(items_sort(items, options?.sort, options?.reverse));
+  return Ok(vfsItems_sort(items, options?.sort, options?.reverse));
 }
 
 function series_list(seriesArr: Record<string, unknown>[], options?: SortOptions): Result<VFSItem[]> {
@@ -161,7 +135,7 @@ function series_list(seriesArr: Record<string, unknown>[], options?: SortOptions
       date: "",
     };
   });
-  return Ok(items_sort(items, options?.sort, options?.reverse));
+  return Ok(vfsItems_sort(items, options?.sort, options?.reverse));
 }
 
 function seriesFiles_list(seriesObj: Record<string, unknown>): Result<VFSItem[]> {

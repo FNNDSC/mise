@@ -25,9 +25,21 @@ const mockWorkflowFields = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/commands/workflows/list.js', () => ({ workflows_fetchList: mockWorkflowsList }));
 jest.unstable_mockModule('@fnndsc/chili/commands/workflows/fields.js', () => ({ workflowFields_fetch: mockWorkflowFields }));
 
+const mockMetasList = jest.fn();
+const mockMetaFields = jest.fn();
+jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/list.js', () => ({ pluginMetas_fetchList: mockMetasList }));
+jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/fields.js', () => ({ pluginMetaFields_fetch: mockMetaFields }));
+
+const mockInstancesList = jest.fn();
+const mockInstanceFields = jest.fn();
+jest.unstable_mockModule('@fnndsc/chili/commands/plugininstances/list.js', () => ({ pluginInstances_fetchList: mockInstancesList }));
+jest.unstable_mockModule('@fnndsc/chili/commands/plugininstances/fields.js', () => ({ pluginInstanceFields_fetch: mockInstanceFields }));
+
 const { builtin_tag } = await import('../src/builtins/res/tag.js');
 const { builtin_group } = await import('../src/builtins/res/group.js');
 const { builtin_workflow } = await import('../src/builtins/res/workflow.js');
+const { builtin_pluginmeta } = await import('../src/builtins/res/pluginmeta.js');
+const { builtin_plugininstance } = await import('../src/builtins/res/plugininstance.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -60,6 +72,20 @@ const cases = [
     list: mockWorkflowsList,
     fields: mockWorkflowFields,
     listKey: 'workflows',
+  },
+  {
+    name: 'pluginmeta',
+    builtin: builtin_pluginmeta,
+    list: mockMetasList,
+    fields: mockMetaFields,
+    listKey: 'pluginMetas',
+  },
+  {
+    name: 'plugininstance',
+    builtin: builtin_plugininstance,
+    list: mockInstancesList,
+    fields: mockInstanceFields,
+    listKey: 'pluginInstances',
   },
 ] as const;
 

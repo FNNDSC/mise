@@ -81,8 +81,8 @@ describe('files_touch', () => {
 
 describe('adminCredentials_prompt', () => {
   it('collects credentials through the registered REPL functions', async () => {
-    adminPrompt_register(async () => 'admin', async () => 's3cret');
-    expect(await adminCredentials_prompt()).toEqual({ username: 'admin', password: 's3cret' });
+    adminPrompt_register(async () => 'admin', async () => 'fixture-pw');
+    expect(await adminCredentials_prompt()).toEqual({ username: 'admin', password: 'fixture-pw' });
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Admin credentials required'));
   });
 

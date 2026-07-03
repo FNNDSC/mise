@@ -5,7 +5,7 @@
  */
 
 import { chrisConnection } from '../connect/chrisConnection.js';
-import { GroupList } from '@fnndsc/chrisapi';
+import { listData_get, itemData_get, type GroupList } from '../chrisapi/adapter.js';
 import { errorStack } from '../error/errorStack.js';
 import { Result, Ok, Err } from '../utils/result.js';
 
@@ -41,7 +41,7 @@ export async function groups_getAll(): Promise<Result<ChrisGroup[]>> {
     }
 
     const groupList: GroupList = await client.getGroups({ limit: 1000 });
-    const groups: ChrisGroup[] = (groupList.data as unknown as ChrisGroup[]) || [];
+    const groups: ChrisGroup[] = listData_get<ChrisGroup>(groupList);
 
     return Ok(groups);
   } catch (error: unknown) {
@@ -65,7 +65,11 @@ export async function currentUser_get(): Promise<Result<ChrisUser>> {
     }
 
     const user = await client.getUser();
-    const userData: ChrisUser = user.data as unknown as ChrisUser;
+    const userData: ChrisUser | null = itemData_get<ChrisUser>(user);
+    if (!userData) {
+      errorStack.stack_push('error', 'Current user response carried no data.');
+      return Err();
+    }
 
     return Ok(userData);
   } catch (error: unknown) {

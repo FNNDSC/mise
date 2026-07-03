@@ -9,7 +9,7 @@
  */
 
 import { chrisConnection } from '../connect/chrisConnection.js';
-import { ComputeResourceList } from '@fnndsc/chrisapi';
+import { listData_get, type ComputeResourceList } from '../chrisapi/adapter.js';
 import { ChRISResourceGroup } from '../resources/chrisResourceGroup.js';
 import { errorStack } from '../error/errorStack.js';
 import { Result, Ok, Err } from '../utils/result.js';
@@ -63,7 +63,7 @@ export async function computeResources_validate(
     }
 
     const computeResourceList: ComputeResourceList = await client.getComputeResources();
-    const resources: ComputeResource[] = (computeResourceList.data as unknown as ComputeResource[]) || [];
+    const resources: ComputeResource[] = listData_get<ComputeResource>(computeResourceList);
 
     const availableNames: Set<string> = new Set(resources.map((r: ComputeResource) => r.name));
 
@@ -105,7 +105,7 @@ export async function computeResources_getAll(): Promise<Result<ComputeResource[
     }
 
     const computeResourceList: ComputeResourceList = await client.getComputeResources();
-    const resources: ComputeResource[] = (computeResourceList.data as unknown as ComputeResource[]) || [];
+    const resources: ComputeResource[] = listData_get<ComputeResource>(computeResourceList);
 
     return Ok(resources);
   } catch (error: unknown) {

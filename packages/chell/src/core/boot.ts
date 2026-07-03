@@ -101,6 +101,21 @@ const salsaJson: PackageJson = depPackageJson_load('@fnndsc/salsa');
 const chiliJson: PackageJson = depPackageJson_load('@fnndsc/chili');
 
 /**
+ * Builds the multi-line version report shown by `--version`: chell itself
+ * plus the sandwich layers (chili, salsa, cumin) it is running with.
+ *
+ * @returns The version report string.
+ */
+function versionReport_build(): string {
+  return [
+    `chell ${packageJson.version}`,
+    `  chili ${chiliJson.version}`,
+    `  salsa ${salsaJson.version}`,
+    `  cumin ${cuminJson.version}`,
+  ].join('\n');
+}
+
+/**
  * Extended Writable stream with muted property for password input.
  */
 interface MutableWritable extends Writable {
@@ -632,7 +647,7 @@ async function interactiveSession_run(
  * @returns A Promise that resolves when the shell exits.
  */
 export async function chell_start(): Promise<void> {
-  const config: ChellCLIConfig = await cli_parse(process.argv, packageJson.version);
+  const config: ChellCLIConfig = await cli_parse(process.argv, versionReport_build());
   const {
     isInteractiveSession,
     useAsciiBoot,

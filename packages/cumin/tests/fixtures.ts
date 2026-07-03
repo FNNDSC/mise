@@ -16,6 +16,7 @@ import { ListResource } from '@fnndsc/chrisapi';
 export function listResource_make(
   rows: Array<Record<string, unknown>>,
   resourcePath: string = 'resources',
+  hasNext: boolean = false,
 ): ListResource {
   const list: ListResource = Object.create(ListResource.prototype) as ListResource;
   Object.defineProperties(list, {
@@ -30,7 +31,7 @@ export function listResource_make(
     },
     getItems: { value: (): unknown[] => rows.map(() => ({})) },
     totalCount: { value: rows.length },
-    hasNext: { value: false },
+    hasNext: { value: hasNext },
   });
   return list;
 }

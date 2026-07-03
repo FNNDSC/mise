@@ -23,6 +23,8 @@ export default {
   coverageProvider: 'babel',
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 81, branches: 65, functions: 85, lines: 81 },
+    global: { statements: 92, branches: 78, functions: 94, lines: 93 },
+    // Per-file floor: no covered file may fall below 60% statements/lines.
+    './src/**/*.ts': { statements: 60, lines: 60 },
   },
 };

@@ -1,0 +1,252 @@
+/**
+ * @file Tests for feed operations: creation from directories, visibility,
+ * notes and comments. Connection mocked at the client boundary; the plugin
+ * lookup used by createFromDirs is mocked at the ChRISPlugin seam.
+ */
+
+let mockPluginIDsGet: jest.Mock;
+
+jest.mock('../src/connect/chrisConnection', () => ({
+  chrisConnection: { client_get: jest.fn() },
+}));
+jest.mock('../src/plugins/chrisPlugins', () => ({
+  ChRISPlugin: class {
+    pluginIDs_get(name: string): Promise<unknown> {
+      return mockPluginIDsGet(name) as Promise<unknown>;
+    }
+  },
+}));
+
+import { chrisConnection } from '../src/connect/chrisConnection';
+import {
+  ChRISFeed,
+  feed_makePublic,
+  feed_makePrivate,
+  feed_delete,
+  feed_get,
+  feedNote_get,
+  feedNote_update,
+  feedComments_list,
+  feedComment_create,
+  feedComment_delete,
+  feedComment_update,
+} from '../src/feeds/chrisFeed';
+import { errorStack } from '../src/error/errorStack';
+
+const mockClientGet: jest.Mock = chrisConnection.client_get as unknown as jest.Mock;
+
+/** Feed resource carrying a collection+json body for resourceFields_get. */
+const feedCollection = (fields: Record<string, unknown>): Record<string, unknown> => ({
+  collection: {
+    items: [{
+      data: Object.entries(fields).map(([name, value]: [string, unknown]) => ({ name, value })),
+      href: `https://cube/api/v1/feeds/${String(fields.id)}/`,
+      links: [],
+    }],
+  },
+});
+
+let pushSpy: jest.SpyInstance;
+let errSpy: jest.SpyInstance;
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockPluginIDsGet = jest.fn();
+  pushSpy = jest.spyOn(errorStack, 'stack_push').mockImplementation(() => undefined);
+  errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+});
+afterEach(() => {
+  pushSpy.mockRestore();
+  errSpy.mockRestore();
+});
+
+describe('ChRISFeed.createFromDirs', () => {
+  it('creates a dircopy instance and reports the new feed detail', async () => {
+    const createPluginInstance = jest.fn(async () => ({
+      getFeed: jest.fn(async () => feedCollection({ id: 5, name: 'My Feed', owner_username: 'chris' })),
+    }));
+    mockClientGet.mockResolvedValue({ createPluginInstance });
+    mockPluginIDsGet.mockResolvedValue({ hits: [17] });
+
+    const detail = await new ChRISFeed().createFromDirs('/home/chris/data', { params: '' });
+    expect(mockPluginIDsGet).toHaveBeenCalledWith('pl-dircopy');
+    expect(createPluginInstance).toHaveBeenCalledWith(17, expect.objectContaining({ dir: '/home/chris/data' }));
+    expect(detail).toMatchObject({ name: 'My Feed', owner_username: 'chris' });
+    expect(detail?.pluginInstance).toBeDefined();
+  });
+
+  it('fails when pl-dircopy is not registered', async () => {
+    mockClientGet.mockResolvedValue({});
+    mockPluginIDsGet.mockResolvedValue(null);
+    expect(await new ChRISFeed().createFromDirs('/d', { params: '' })).toBeNull();
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('pl-dircopy was not found'));
+  });
+
+  it('fails when not connected', async () => {
+    mockClientGet.mockResolvedValue(null);
+    expect(await new ChRISFeed().createFromDirs('/d', { params: '' })).toBeNull();
+    expect(errSpy).toHaveBeenCalled();
+  });
+
+  it('fails when instance creation throws', async () => {
+    mockClientGet.mockResolvedValue({
+      createPluginInstance: jest.fn(async () => { throw new Error('422'); }),
+    });
+    mockPluginIDsGet.mockResolvedValue({ hits: [17] });
+    expect(await new ChRISFeed().createFromDirs('/d', { params: '' })).toBeNull();
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('422'));
+  });
+
+  it('returns null when the created instance yields no feed', async () => {
+    mockClientGet.mockResolvedValue({
+      createPluginInstance: jest.fn(async () => ({ getFeed: jest.fn(async () => null) })),
+    });
+    mockPluginIDsGet.mockResolvedValue({ hits: [17] });
+    expect(await new ChRISFeed().createFromDirs('/d', { params: '' })).toBeNull();
+  });
+});
+
+describe('feed visibility and lifecycle', () => {
+  it('makes a feed public', async () => {
+    const makePublic = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ makePublic })) });
+    expect((await feed_makePublic(5)).ok).toBe(true);
+    expect(makePublic).toHaveBeenCalled();
+  });
+
+  it('makes a feed private', async () => {
+    const makeUnpublic = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ makeUnpublic })) });
+    expect((await feed_makePrivate(5)).ok).toBe(true);
+    expect(makeUnpublic).toHaveBeenCalled();
+  });
+
+  it('deletes a feed', async () => {
+    const del = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ delete: del })) });
+    expect((await feed_delete(5)).ok).toBe(true);
+    expect(del).toHaveBeenCalled();
+  });
+
+  it('fetches a feed resource', async () => {
+    const feed = { id: 5 };
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => feed) });
+    const result = await feed_get(5);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe(feed);
+  });
+
+  it('errors when the feed is missing', async () => {
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => null) });
+    expect((await feed_makePublic(5)).ok).toBe(false);
+    expect((await feed_makePrivate(5)).ok).toBe(false);
+    expect((await feed_delete(5)).ok).toBe(false);
+    expect((await feed_get(5)).ok).toBe(false);
+  });
+
+  it('errors when not connected', async () => {
+    mockClientGet.mockResolvedValue(null);
+    expect((await feed_makePublic(5)).ok).toBe(false);
+    expect((await feed_delete(5)).ok).toBe(false);
+  });
+
+  it('errors when the visibility call throws', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ makePublic: jest.fn(async () => { throw new Error('403'); }) })),
+    });
+    expect((await feed_makePublic(5)).ok).toBe(false);
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('403'));
+  });
+});
+
+describe('feed notes', () => {
+  it('reads the note title and content', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({
+        getNote: jest.fn(async () => ({ data: { title: 'Note', content: 'Body' } })),
+      })),
+    });
+    const result = await feedNote_get(5);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual({ title: 'Note', content: 'Body' });
+  });
+
+  it('defaults missing note data to empty strings', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ getNote: jest.fn(async () => ({})) })),
+    });
+    const result = await feedNote_get(5);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual({ title: '', content: '' });
+  });
+
+  it('updates the note in place', async () => {
+    const put = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ getNote: jest.fn(async () => ({ put })) })),
+    });
+    expect((await feedNote_update(5, { title: 'T' })).ok).toBe(true);
+    expect(put).toHaveBeenCalledWith({ title: 'T' });
+  });
+
+  it('errors when the feed is missing', async () => {
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => null) });
+    expect((await feedNote_get(5)).ok).toBe(false);
+    expect((await feedNote_update(5, {})).ok).toBe(false);
+  });
+});
+
+describe('feed comments', () => {
+  it('lists comments', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({
+        getComments: jest.fn(async () => ({ data: [{ id: 1, title: 'c', content: 'x', owner_username: 'u' }] })),
+      })),
+    });
+    const result = await feedComments_list(5);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toHaveLength(1);
+  });
+
+  it('creates a comment and returns the created payload', async () => {
+    const post = jest.fn(async () => ({ data: [{ id: 3, title: 'hi', content: 'there', owner_username: 'u' }] }));
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ getComments: jest.fn(async () => ({ post })) })),
+    });
+    const result = await feedComment_create(5, { title: 'hi', content: 'there' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.id).toBe(3);
+    expect(post).toHaveBeenCalledWith({ title: 'hi', content: 'there' });
+  });
+
+  it('falls back to a synthetic record when the create response is empty', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({
+        getComments: jest.fn(async () => ({ post: jest.fn(async () => ({})) })),
+      })),
+    });
+    const result = await feedComment_create(5, { title: 'hi' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual({ id: 0, title: 'hi', content: '', owner_username: '' });
+  });
+
+  it('deletes and updates a comment', async () => {
+    const del = jest.fn(async () => ({}));
+    const put = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ getComment: jest.fn(async () => ({ delete: del, put })) })),
+    });
+    expect((await feedComment_delete(5, 3)).ok).toBe(true);
+    expect(del).toHaveBeenCalled();
+    expect((await feedComment_update(5, 3, { content: 'edit' })).ok).toBe(true);
+    expect(put).toHaveBeenCalledWith({ content: 'edit' });
+  });
+
+  it('errors when the comment is missing', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ getComment: jest.fn(async () => null) })),
+    });
+    expect((await feedComment_delete(5, 3)).ok).toBe(false);
+    expect((await feedComment_update(5, 3, {})).ok).toBe(false);
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('Comment 3 not found'));
+  });
+});

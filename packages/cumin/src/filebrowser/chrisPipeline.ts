@@ -7,24 +7,20 @@
  * @module
  */
 
-import Client, { PipelineSourceFile, PipelineSourceFileList } from "@fnndsc/chrisapi";
+import {
+  items_get,
+  itemData_get,
+  type Client,
+  type PipelineSourceFile,
+  type PipelineSourceFileList,
+} from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
 
-/**
- * Runtime types for ChRIS API objects with methods/properties not in type definitions.
- */
-interface PipelineSourceFileListWithGetItems extends PipelineSourceFileList {
-  getItems(): PipelineSourceFile[];
-}
-
+/** Payload slice of a pipeline source file item. */
 interface PipelineSourceFileData {
   fname: string;
-}
-
-interface PipelineSourceFileWithData extends PipelineSourceFile {
-  data: PipelineSourceFileData;
 }
 
 /**
@@ -67,12 +63,12 @@ export async function pipelineFile_getByPath(filePath: string): Promise<Result<B
       return Err();
     }
 
-    const allItems: PipelineSourceFile[] = (pipelineSourceFileListResult as PipelineSourceFileListWithGetItems).getItems();
+    const allItems: PipelineSourceFile[] = items_get<PipelineSourceFile>(pipelineSourceFileListResult);
 
     // Filter by full fname path (API returns full path like "PIPELINES/user/file.yml")
     const matchingPipelineFiles: PipelineSourceFile[] = allItems.filter((item: PipelineSourceFile) => {
-        const itemData: PipelineSourceFileData = (item as PipelineSourceFileWithData).data;
-        return itemData.fname === expectedFname;
+        const itemData: PipelineSourceFileData | null = itemData_get<PipelineSourceFileData>(item);
+        return itemData?.fname === expectedFname;
     });
 
     if (matchingPipelineFiles.length === 0) {

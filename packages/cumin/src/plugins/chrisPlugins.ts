@@ -8,14 +8,16 @@
  * @module
  */
 
-import Client, { PluginInstance, PluginList } from "@fnndsc/chrisapi";
-
-/**
- * Extended PluginList with internal _post method (legacy API).
- */
-interface PluginListWithPost {
-  _post(data: Record<string, unknown>, uploadFileObj?: unknown, timeout?: number): Promise<{ data: Record<string, unknown> }>;
-}
+import {
+  client_create,
+  client_adminUrlEnsure,
+  listData_get,
+  itemData_get,
+  resource_call,
+  type Client,
+  type PluginInstance,
+  type PluginList,
+} from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { chrisContext, Context } from "../context/chrisContext.js";
 import {
@@ -37,12 +39,6 @@ import {
 import { Searchable } from "../utils/searchable.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
-
-/** Admin-capable slice of the ChRIS client used for plugin registration. */
-interface AdminClientSlice {
-  adminUrl?: string;
-  setUrls?(): Promise<unknown>;
-}
 
 /** Plugin descriptor uploaded as a JSON blob under the `fname` field. */
 interface PluginUploadFile {
@@ -435,7 +431,7 @@ export class ChRISPlugin {
            errorStack.stack_push('error', 'ChRIS URL not found. Cannot create admin client.');
            return null;
         }
-        client = new Client(url, { token: adminToken });
+        client = client_create(url, adminToken);
       } else {
         client = await this.client_get();
       }
@@ -446,11 +442,8 @@ export class ChRISPlugin {
       }
 
       // Verify admin URL is available — non-admin users won't have this link
-      const clientAny: AdminClientSlice = client as unknown as AdminClientSlice;
-      if (!clientAny.adminUrl && clientAny.setUrls) {
-        await clientAny.setUrls().catch(() => undefined);
-      }
-      if (!clientAny.adminUrl) {
+      const adminUrl: string | null = await client_adminUrlEnsure(client);
+      if (!adminUrl) {
         errorStack.stack_push('error', 'Admin credentials required to register plugins. Authentication failed.');
         return null;
       }
@@ -467,8 +460,10 @@ export class ChRISPlugin {
         pluginFileObj
       );
 
-      if (pluginAdmin && pluginAdmin.data) {
-        return pluginAdmin.data as unknown as Record<string, unknown>;
+      const pluginAdminData: Record<string, unknown> | null =
+        itemData_get<Record<string, unknown>>(pluginAdmin);
+      if (pluginAdminData) {
+        return pluginAdminData;
       }
 
       errorStack.stack_push('error', 'Failed to register plugin. No data in response.');
@@ -559,14 +554,16 @@ export class ChRISPlugin {
 
       // Try searching by name first
       let pluginList: PluginList = await client.getPlugins({ name_exact: nameOrImage, limit: 1 });
-      if (pluginList && pluginList.data && pluginList.data.length > 0) {
-        return pluginList.data[0] as unknown as Record<string, unknown>;
+      const byName: Record<string, unknown>[] = listData_get<Record<string, unknown>>(pluginList);
+      if (byName.length > 0) {
+        return byName[0];
       }
 
       // Try searching by dock_image
       pluginList = await client.getPlugins({ dock_image: nameOrImage, limit: 1 });
-      if (pluginList && pluginList.data && pluginList.data.length > 0) {
-        return pluginList.data[0] as unknown as Record<string, unknown>;
+      const byImage: Record<string, unknown>[] = listData_get<Record<string, unknown>>(pluginList);
+      if (byImage.length > 0) {
+        return byImage[0];
       }
 
       return null;
@@ -677,8 +674,9 @@ export class ChRISPlugin {
         return [];
       }
 
-      const computeResourceList: ComputeResourceListResponse = await plugin.getPluginComputeResources() as unknown as ComputeResourceListResponse;
-      const resources: ComputeResourceData[] = computeResourceList.data || [];
+      const computeResourceList: ComputeResourceListResponse =
+        await resource_call<ComputeResourceListResponse>(plugin, 'getPluginComputeResources');
+      const resources: ComputeResourceData[] = listData_get<ComputeResourceData>(computeResourceList);
 
       return resources.map((r: ComputeResourceData) => r.name);
     } catch (error: unknown) {
@@ -728,7 +726,8 @@ export async function plugin_registerDirect(
     }
 
     // Call the internal _post method directly (legacy API)
-    const response: { data: Record<string, unknown> } = await (pluginList as unknown as PluginListWithPost)._post(data);
+    const response: { data: Record<string, unknown> } =
+      await resource_call<{ data: Record<string, unknown> }>(pluginList, '_post', data);
 
     if (response && response.data) {
       return Ok(response.data);

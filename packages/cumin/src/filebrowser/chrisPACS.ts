@@ -8,7 +8,7 @@
  * @module
  */
 
-import Client, { PACSFile } from "@fnndsc/chrisapi";
+import type { Client, PACSFile } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";

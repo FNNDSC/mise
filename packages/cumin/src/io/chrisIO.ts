@@ -8,7 +8,13 @@
  */
 
 import { chrisConnection } from "../connect/chrisConnection.js";
-import Client, { FileBrowserFolder, UserFile } from "@fnndsc/chrisapi";
+import {
+  itemData_get,
+  resource_call,
+  type Client,
+  type FileBrowserFolder,
+  type UserFile,
+} from "../chrisapi/adapter.js";
 import { errorStack } from "../error/errorStack.js";
 import { IStorageProvider } from "./io.js";
 import { Err, Ok, Result } from "../utils/result.js";
@@ -265,7 +271,7 @@ export class ChrisIO {
 
       // ChRIS may rename the file to avoid collisions (e.g. world.txt → world_XXXXXXX.txt)
       // when the path was recently deleted and not yet committed. Detect and rename back.
-      const actualFname: string = (userFile.data as unknown as { fname?: string })?.fname ?? '';
+      const actualFname: string = itemData_get<UserFileData>(userFile)?.fname ?? '';
       const normalizedActual: string = actualFname.startsWith('/') ? actualFname.substring(1) : actualFname;
       if (normalizedActual && normalizedActual !== fullPath) {
         try {
@@ -370,7 +376,7 @@ export class ChrisIO {
         return Err<boolean>();
       }
       // chrisapi typings omit the path field, but API supports it for renames
-      await (folder as unknown as { put(body: Record<string, unknown>): Promise<unknown> }).put({ path: destPath });
+      await resource_call<unknown>(folder, 'put', { path: destPath });
       return Ok(true);
     } catch (error: unknown) {
       const errorMsg: string = error instanceof Error ? error.message : String(error);
@@ -399,7 +405,7 @@ export class ChrisIO {
         return Err<boolean>();
       }
       // chrisapi typings omit the path field, but API supports it for renames
-      await (userFile as unknown as { put(body: Record<string, unknown>): Promise<unknown> }).put({ path: destPath });
+      await resource_call<unknown>(userFile, 'put', { path: destPath });
       return Ok(true);
     } catch (error: unknown) {
       const errorMsg: string = error instanceof Error ? error.message : String(error);

@@ -21,4 +21,5 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run lint:tests
+      - run: npm run lint:seam
       - run: npm run lint --if-present

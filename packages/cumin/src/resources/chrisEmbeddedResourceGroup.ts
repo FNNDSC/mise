@@ -10,7 +10,7 @@
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { errorStack } from "../error/errorStack.js";
-import Client from "@fnndsc/chrisapi";
+import type { Client } from "../chrisapi/adapter.js";
 
 /**
  * Error thrown when the ChRIS client is not connected.

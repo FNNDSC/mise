@@ -6,7 +6,7 @@
  * @module
  */
 
-import Client from "@fnndsc/chrisapi";
+import type { Client } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 
 /**

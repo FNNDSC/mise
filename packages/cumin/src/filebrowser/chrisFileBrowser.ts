@@ -7,8 +7,7 @@
  * @module
  */
 
-import Client from "@fnndsc/chrisapi";
-import { FileBrowserFolder } from "@fnndsc/chrisapi";
+import type { Client, FileBrowserFolder } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { ChRISResource } from "../resources/chrisResources.js";
 

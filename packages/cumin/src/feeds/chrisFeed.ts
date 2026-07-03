@@ -8,11 +8,16 @@
  * @module
  */
 
-import Client from "@fnndsc/chrisapi";
-import { PluginInstance } from "@fnndsc/chrisapi";
-import { Feed } from "@fnndsc/chrisapi";
-import { CommentList } from "@fnndsc/chrisapi";
-import { Note, Comment } from "@fnndsc/chrisapi";
+import {
+  listData_get,
+  itemData_get,
+  type Client,
+  type PluginInstance,
+  type Feed,
+  type CommentList,
+  type Note,
+  type Comment,
+} from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import {
   SimpleRecord,
@@ -308,7 +313,7 @@ export async function feedNote_get(feedId: number): Promise<Result<FeedNote>> {
       return Err();
     }
     const note: Note = await feed.getNote();
-    const data: FeedNote = note.data as unknown as FeedNote;
+    const data: FeedNote | null = itemData_get<FeedNote>(note);
     return Ok({ title: data?.title ?? '', content: data?.content ?? '' });
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
@@ -368,7 +373,7 @@ export async function feedComments_list(feedId: number): Promise<Result<FeedComm
       return Err();
     }
     const commentList: CommentList = await feed.getComments({ limit: 1000 });
-    const comments: FeedComment[] = (commentList.data as unknown as FeedComment[]) || [];
+    const comments: FeedComment[] = listData_get<FeedComment>(commentList);
     return Ok(comments);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
@@ -401,7 +406,7 @@ export async function feedComment_create(
     }
     const commentList: CommentList = await feed.getComments({ limit: 1 });
     const created: CommentList = await commentList.post(data);
-    const createdData: FeedComment | undefined = (created.data as unknown as FeedComment[])?.[0];
+    const createdData: FeedComment | undefined = listData_get<FeedComment>(created)[0];
     return Ok(createdData ?? { id: 0, title: data.title ?? '', content: data.content ?? '', owner_username: '' });
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);

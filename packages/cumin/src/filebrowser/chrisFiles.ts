@@ -8,8 +8,7 @@
  */
 
 import { ChRISFileBrowser, BrowserType, BoolString } from "./chrisFileBrowser.js";
-import { FileBrowserFolder } from "@fnndsc/chrisapi";
-import Client from "@fnndsc/chrisapi";
+import type { Client, FileBrowserFolder } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 
 class ChRISConnectionError extends Error {

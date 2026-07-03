@@ -29,5 +29,7 @@ export default {
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
     global: { statements: 87, branches: 72, functions: 93, lines: 87 },
+    // Per-file floor: no covered file may fall below 60% statements/lines.
+    './src/**/*.ts': { statements: 60, lines: 60 },
   },
 };

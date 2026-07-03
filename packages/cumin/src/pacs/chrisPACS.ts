@@ -10,7 +10,14 @@ import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { FilteredResourceData, ListOptions } from "../resources/chrisResources.js";
-import Client from "@fnndsc/chrisapi";
+import {
+  listData_get,
+  itemData_get,
+  items_get,
+  client_authGet,
+  pacsRetrieve_deleteByUrl,
+  type Client,
+} from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import zlib from "zlib";
 
@@ -85,22 +92,6 @@ interface PACSRetrieveItem {
 }
 
 /**
- * Client auth object from ChRIS API.
- */
-interface ClientAuth {
-  cubeUrl?: string;
-  token: string;
-  [key: string]: unknown;
-}
-
-/**
- * Client with auth property.
- */
-interface ClientWithAuth extends Client {
-  auth: ClientAuth;
-}
-
-/**
  * Minimal shape of a PACS query record.
  */
 export interface PACSQueryRecord {
@@ -154,7 +145,7 @@ export async function pacsServer_resolve(
       identifier: pacsserver,
       limit: 5,
     });
-    const matches: PACSServer[] = Array.isArray(list.data) ? (list.data as unknown as PACSServer[]) : [];
+    const matches: PACSServer[] = listData_get<PACSServer>(list);
     if (matches.length === 1) {
       const match: PACSServer = matches[0];
       return Ok({ id: match.id, identifier: match.identifier });
@@ -276,7 +267,7 @@ export async function pacsQueries_create(
       return Err();
     }
     const query: Awaited<ReturnType<typeof client.createPACSQuery>> = await client.createPACSQuery(id, data);
-    const queryData: PACSQueryRecord | null = query.data as unknown as PACSQueryRecord | null;
+    const queryData: PACSQueryRecord | null = itemData_get<PACSQueryRecord>(query);
     const record: PACSQueryRecord = {
       id: queryData?.id as number,
       title: queryData?.title as string,
@@ -326,7 +317,7 @@ export async function pacsQuery_resultDecode(
       return Err();
     }
 
-    const queryData: PACSQueryData | null = query.data as unknown as PACSQueryData | null;
+    const queryData: PACSQueryData | null = itemData_get<PACSQueryData>(query);
     const raw: string | undefined = queryData?.result;
     if (!raw || typeof raw !== "string") {
       errorStack.stack_push("error", `PACS query ${queryId} has no result payload.`);
@@ -396,7 +387,7 @@ export async function pacsQuery_get(queryId: number): Promise<Result<PACSQueryRe
       errorStack.stack_push("error", `PACS query ${queryId} not found.`);
       return Err();
     }
-    const qData: PACSQueryRecord | null = query.data as unknown as PACSQueryRecord | null;
+    const qData: PACSQueryRecord | null = itemData_get<PACSQueryRecord>(query);
     return Ok({
       id: queryId,
       title: qData?.title as string | undefined,
@@ -449,7 +440,7 @@ export async function pacsRetrieve_create(
     }
 
     const retrieve: Awaited<ReturnType<typeof client.createPACSRetrieve>> = await client.createPACSRetrieve(queryId);
-    const retrieveData: PACSRetrieveItemData | null = retrieve.data as unknown as PACSRetrieveItemData | null;
+    const retrieveData: PACSRetrieveItemData | null = itemData_get<PACSRetrieveItemData>(retrieve);
     const record: PACSRetrieveRecord = {
       id: retrieveData?.id as number,
       pacs_query_id: queryId,
@@ -489,11 +480,7 @@ export async function pacsRetrieves_list(
     }
 
     const retrieveList: Awaited<ReturnType<NonNullable<typeof query>["getRetrieves"]>> = await query.getRetrieves(options);
-    const items: PACSRetrieveItem[] = retrieveList.getItems() as unknown as PACSRetrieveItem[];
-
-    if (!items) {
-      return Ok([]);
-    }
+    const items: PACSRetrieveItem[] = items_get<PACSRetrieveItem>(retrieveList);
 
     const records: PACSRetrieveRecord[] = items.map((item: PACSRetrieveItem): PACSRetrieveRecord => ({
       id: item.data.id,
@@ -532,17 +519,14 @@ export async function pacsRetrieve_delete(
 
     // Note: This is a simplified implementation
     // In a production system, you'd want to verify the retrieve exists first
-    const baseUrl: string = (client as ClientWithAuth).auth?.cubeUrl || "";
+    const baseUrl: string = client_authGet(client)?.cubeUrl || "";
     if (!baseUrl) {
       errorStack.stack_push("error", "Could not determine CUBE URL for delete operation.");
       return Err();
     }
 
     const retrieveUrl: string = `${baseUrl}api/v1/pacsfiles/retrieves/${retrieveId}/`;
-    const { PACSRetrieve } = await import("@fnndsc/chrisapi");
-    const retrieve: InstanceType<typeof PACSRetrieve> = new PACSRetrieve(retrieveUrl, (client as ClientWithAuth).auth);
-
-    await retrieve.delete();
+    await pacsRetrieve_deleteByUrl(retrieveUrl, client_authGet(client));
     return Ok(undefined);
   } catch (error: unknown) {
     const errorMessage: string = error instanceof Error ? error.message : String(error);
@@ -609,12 +593,13 @@ async function seriesFiles_count(
       return Ok(0);
     }
 
-    const series: { data?: { folder_path?: string } } = seriesItems[0] as unknown as { data?: { folder_path?: string } };
-    if (!series || !series.data) {
+    const seriesData: { folder_path?: string } | null =
+      itemData_get<{ folder_path?: string }>(seriesItems[0]);
+    if (!seriesData) {
       return Ok(0);
     }
 
-    const folderPath: string | undefined = series.data.folder_path;
+    const folderPath: string | undefined = seriesData.folder_path;
 
     if (!folderPath) {
       return Ok(0);

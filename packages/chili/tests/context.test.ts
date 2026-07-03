@@ -2,6 +2,30 @@ import { Command } from 'commander';
 import { contextCommand_setup } from '../src/context/contextCommand';
 import { chrisContext, Context, errorStack } from '@fnndsc/cumin';
 
+// Mock only context_getFull from salsa (drives the `get --all` table); the
+// rest of salsa runs real against the mocked cumin context.
+jest.mock('@fnndsc/salsa', () => ({
+  ...jest.requireActual('@fnndsc/salsa'),
+  context_getFull: jest.fn(() => ({
+    currentUser: 'testuser',
+    currentURL: 'http://localhost:8000/api/v1/',
+    users: {
+      testuser: {
+        urls: {
+          'http://localhost:8000/api/v1/': {
+            folder: '/home/testuser/feeds',
+            feed: '1',
+            plugin: 'pl-dircopy',
+            pacsserver: 'PACSDCM',
+            token: 'test-token',
+          },
+          'http://other:8000/api/v1/': {},
+        },
+      },
+    },
+  })),
+}));
+
 // Mock the cumin module
 jest.mock('@fnndsc/cumin', () => ({
   ...jest.requireActual('@fnndsc/cumin'),
@@ -100,5 +124,16 @@ describe('context command', () => {
     expect(logSpy.mock.calls[0][0]).toContain('table output');
     logSpy.mockRestore();
     tableSpy.mockRestore();
+  });
+
+  it('should render every user context with --all, highlighting the current one', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync(['node', 'chili', 'context', 'get', '--all']);
+
+    const output: string = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(output).toContain('User: testuser');
+    expect(output).toContain('PACSDCM');
+    expect(output).toContain('Not set');
+    logSpy.mockRestore();
   });
 });

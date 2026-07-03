@@ -36,6 +36,8 @@ module.exports = {
   coverageProvider: 'babel',
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 85, branches: 74, functions: 88, lines: 86 },
+    global: { statements: 89, branches: 77, functions: 91, lines: 90 },
+    // Per-file floor: no covered file may fall below 60% statements/lines.
+    './src/**/*.ts': { statements: 60, lines: 60 },
   },
 };

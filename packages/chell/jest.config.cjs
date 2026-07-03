@@ -36,6 +36,6 @@ module.exports = {
   coverageProvider: 'babel',
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 70, branches: 59, functions: 72, lines: 72 },
+    global: { statements: 78, branches: 69, functions: 79, lines: 79 },
   },
 };

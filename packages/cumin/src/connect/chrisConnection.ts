@@ -9,7 +9,7 @@
  * @module
  */
 
-import Client from "@fnndsc/chrisapi";
+import { Client, authToken_get as adapterAuthToken_get, client_create } from "../chrisapi/adapter.js";
 import { ConnectionConfig, config_init, connectionConfig } from "../config/config.js";
 import {
   chrisContextURL_parse,
@@ -118,7 +118,7 @@ export class ChRISConnection {
     await this._config!.context_set(user, url);
     this.tokenFile = this._config!.tokenFilepath;
     try {
-      this.authToken = await Client.getAuthToken(authUrl, user, password);
+      this.authToken = await adapterAuthToken_get(authUrl, user, password);
       if (this.authToken) {
         // console.log("Auth token: " + this.authToken);
         await this.token_saveToFile(this.tokenFile, this.authToken);
@@ -267,7 +267,7 @@ export class ChRISConnection {
     this.chrisURL = await this.chrisURL_get();
     this.authToken = await this.authToken_get(true); // Pass true directly
     if (this.chrisURL && this.authToken) {
-      this.client = new Client(this.chrisURL, { token: this.authToken });
+      this.client = client_create(this.chrisURL, this.authToken);
     }
     return this.client;
   }
@@ -284,7 +284,7 @@ export class ChRISConnection {
       this.authToken
     ) {
       if (!this.client) {
-        this.client = new Client(this.chrisURL, { token: this.authToken });
+        this.client = client_create(this.chrisURL, this.authToken);
       }
     }
     return this.client;

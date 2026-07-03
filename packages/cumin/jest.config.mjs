@@ -26,9 +26,8 @@ export default {
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
-  // Minimum coverage enforced by CI; raise as coverage improves. The
-  // remaining low-coverage modules are tightly coupled to the chrisapi client.
+  // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 38, branches: 25, functions: 52, lines: 38 },
+    global: { statements: 49, branches: 36, functions: 61, lines: 49 },
   },
 };

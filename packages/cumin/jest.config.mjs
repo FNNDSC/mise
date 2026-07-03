@@ -28,6 +28,6 @@ export default {
   coverageProvider: 'babel',
   // Minimum coverage enforced by CI; raise as coverage improves.
   coverageThreshold: {
-    global: { statements: 58, branches: 43, functions: 68, lines: 58 },
+    global: { statements: 71, branches: 56, functions: 77, lines: 71 },
   },
 };

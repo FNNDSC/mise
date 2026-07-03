@@ -12,6 +12,7 @@
  */
 
 import { chrisConnection } from "../connect/chrisConnection.js";
+import { itemData_get, items_get, resource_call } from "../chrisapi/adapter.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
@@ -20,6 +21,21 @@ import { Result, Ok, Err } from "../utils/result.js";
 interface PipelineSearchParams {
   name?: string;
   [key: string]: unknown;
+}
+
+/** Slice of a pipeline source file item as returned by the API. */
+interface PipelineSourceFileItem {
+  data: { fname: string; pipeline_name?: string };
+}
+
+/** Slice of a list resource that only exposes its items. */
+interface ItemListSlice {
+  getItems: () => unknown[];
+}
+
+/** Record slice carrying just a numeric id. */
+interface IdRecord {
+  id: number;
 }
 
 
@@ -117,11 +133,11 @@ export async function pipeline_resolve(
     }
     try {
       const pipeline = await client.getPipeline(numericId);
-      if (!pipeline) {
+      const data: PipelineRecord | null = itemData_get<PipelineRecord>(pipeline);
+      if (!data) {
         errorStack.stack_push('error', `Pipeline with ID ${numericId} not found`);
         return Err();
       }
-      const data: PipelineRecord = (pipeline as unknown as { data: PipelineRecord }).data;
       return Ok(data);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
@@ -149,21 +165,20 @@ export async function pipeline_resolve(
         const directId: number = parseInt(idSuffixMatch[1], 10);
         try {
           const pipeline = await fallbackClient.getPipeline(directId);
-          if (pipeline) {
-            return Ok((pipeline as unknown as { data: PipelineRecord }).data);
+          const directData: PipelineRecord | null = itemData_get<PipelineRecord>(pipeline);
+          if (directData) {
+            return Ok(directData);
           }
         } catch (_e: unknown) {}
       }
 
       // Slug fallback: treat nameOrId as a source file fname fragment
       try {
-        const sfList = await (fallbackClient as unknown as {
-          getPipelineSourceFiles: (o: Record<string, unknown>) => Promise<{
-            getItems: () => Array<{ data: { fname: string; pipeline_name?: string } }>;
-          }>;
-        }).getPipelineSourceFiles({ fname: nameOrId, limit: 1 });
-        const sfItems = sfList.getItems().filter(
-          (item: { data: { fname: string; pipeline_name?: string } }) => {
+        const sfList: ItemListSlice = await resource_call<ItemListSlice>(
+          fallbackClient, 'getPipelineSourceFiles', { fname: nameOrId, limit: 1 }
+        );
+        const sfItems: PipelineSourceFileItem[] = items_get<PipelineSourceFileItem>(sfList).filter(
+          (item: PipelineSourceFileItem) => {
             const base: string = item.data.fname.split('/').pop() ?? '';
             return base.replace(/\.(ya?ml)$/i, '') === nameOrId;
           }
@@ -218,27 +233,15 @@ export async function pipeline_createWorkflow(
         errorStack.stack_push('error', `Pipeline ${pipelineId} not found`);
         return Err();
       }
-      const pipelineWithPipings = pipeline as unknown as {
-        data: { parameters?: unknown };
-        getPluginPipings: (opts: Record<string, unknown>) => Promise<{
-          getItems: () => unknown[];
-        }>;
-      };
 
-      const pipingsResponse = await pipelineWithPipings.getPluginPipings({ limit: 1000 });
-      const pipings = pipingsResponse.getItems() as Array<{ data: { id: number } }>;
-      nodes_info = pipings.map((p: { data: { id: number } }) => ({ piping_id: p.data.id }));
+      const pipingsResponse: ItemListSlice = await resource_call<ItemListSlice>(
+        pipeline, 'getPluginPipings', { limit: 1000 }
+      );
+      const pipings: Array<{ data: IdRecord }> = items_get<{ data: IdRecord }>(pipingsResponse);
+      nodes_info = pipings.map((p: { data: IdRecord }) => ({ piping_id: p.data.id }));
     }
 
-    const clientWithWorkflow = client as unknown as {
-      createWorkflow: (
-        pipelineId: number,
-        data: { previous_plugin_inst_id: number; nodes_info: string },
-        timeout?: number
-      ) => Promise<unknown>;
-    };
-
-    const workflow: unknown = await clientWithWorkflow.createWorkflow(pipelineId, {
+    const workflow: object | null = await resource_call<object | null>(client, 'createWorkflow', pipelineId, {
       previous_plugin_inst_id: options.previousPluginInstId,
       nodes_info: JSON.stringify(nodes_info),
     });
@@ -248,19 +251,19 @@ export async function pipeline_createWorkflow(
       return Err();
     }
 
-    const workflowWithData = workflow as {
-      data: { id: number };
-      getPluginInstances: (opts: Record<string, unknown>) => Promise<{
-        getItems: () => Array<{ data: { id: number } }>;
-      }>;
-    };
+    const workflowRecord: IdRecord | null = itemData_get<IdRecord>(workflow);
+    if (!workflowRecord) {
+      errorStack.stack_push('error', 'createWorkflow response carried no data');
+      return Err();
+    }
+    const workflowId: number = workflowRecord.id;
 
-    const workflowId: number = workflowWithData.data.id;
-
-    const instancesResponse = await workflowWithData.getPluginInstances({ limit: 1000 });
-    const instances = instancesResponse.getItems();
+    const instancesResponse: ItemListSlice = await resource_call<ItemListSlice>(
+      workflow, 'getPluginInstances', { limit: 1000 }
+    );
+    const instances: Array<{ data: IdRecord }> = items_get<{ data: IdRecord }>(instancesResponse);
     const pluginInstanceIds: number[] = instances.map(
-      (inst: { data: { id: number } }) => inst.data.id
+      (inst: { data: IdRecord }) => inst.data.id
     );
 
     return Ok({ workflowId, pluginInstanceIds });

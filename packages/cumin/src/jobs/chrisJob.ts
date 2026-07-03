@@ -5,6 +5,7 @@
  */
 
 import { chrisConnection } from '../connect/chrisConnection.js';
+import { itemData_get } from '../chrisapi/adapter.js';
 import { errorStack } from '../error/errorStack.js';
 import { Result, Ok, Err } from '../utils/result.js';
 
@@ -75,12 +76,12 @@ export class ChRISJob {
       // or that we need to fetch the resource.
       // Looking at chrisapi docs (mental check): client.getPluginInstance(id) exists.
       const instance = await client.getPluginInstance(Number(this.instanceId));
-      if (!instance || !instance.data) {
+      const instanceData: PluginInstanceData | null = itemData_get<PluginInstanceData>(instance);
+      if (!instanceData) {
         errorStack.stack_push('error', `Job ${this.instanceId} not found`);
         return Err();
       }
 
-      const instanceData: PluginInstanceData = instance.data as unknown as PluginInstanceData;
       return Ok({
         id: this.instanceId,
         pluginName: instanceData.plugin_name,
@@ -147,8 +148,8 @@ export class ChRISJob {
         // or implement it if we can find the logs.
         
         // Let's check status.
-        if (instance && instance.data) {
-            const instanceData: PluginInstanceData = instance.data as unknown as PluginInstanceData;
+        const instanceData: PluginInstanceData | null = itemData_get<PluginInstanceData>(instance);
+        if (instanceData) {
             const status: string = instanceData.status;
             if (['completed', 'error', 'cancelled'].includes(status)) {
                 isActive = false;

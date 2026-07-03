@@ -6,7 +6,6 @@
  */
 
 import figlet from "figlet";
-import Client from "@fnndsc/chrisapi";
 import { readFileSync } from "fs";
 import { join } from "path";
 // import { chrisFileBrowser_create } from "./filebrowser/chrisFileBrowser";

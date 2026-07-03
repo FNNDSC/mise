@@ -7,8 +7,14 @@
  * @module
  */
 
-import Client from "@fnndsc/chrisapi";
-import { ListResource, Resource, ItemResource } from "@fnndsc/chrisapi";
+import {
+  resource_isList,
+  collectionItems_get,
+  type Client,
+  type ListResource,
+  type Resource,
+  type ItemResource,
+} from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { connectionConfig } from "../config/config.js";
 
@@ -149,7 +155,7 @@ export class ChRISResource {
    * @returns A Promise resolving to true on success, false otherwise.
    */
   async resourceItem_delete(id: number): Promise<boolean> {
-    if (!(this._resourceCollection instanceof ListResource)) {
+    if (!resource_isList(this._resourceCollection)) {
       return false;
     }
     const res: ItemResource = this._resourceCollection?.getItem(id) as ItemResource;
@@ -172,7 +178,7 @@ export class ChRISResource {
     if (!resources || !resources.collection) {
       return null;
     }
-    return (resources.collection as unknown as { items: Item[] }).items.map((item: Item) => ({
+    return collectionItems_get<Item>(resources).map((item: Item) => ({
       data: item.data,
       href: item.href,
       links: item.links,
@@ -226,7 +232,7 @@ export class ChRISResource {
   }
 
   get hasNextPage(): boolean {
-    if (this._resourceCollection instanceof ListResource) {
+    if (resource_isList(this._resourceCollection)) {
       return (this._resourceCollection as ListResourceWithPagination).hasNext;
     }
     return false;
@@ -303,8 +309,8 @@ export class ChRISResource {
     const results: FilteredResourceData | null = this.resources_filterByFields(
       await this.resourceFields_get(await this.resources_getList(options))
     );
-    if (results && this._resourceCollection instanceof ListResource) {
-      const total: number = (this._resourceCollection as ListResource).totalCount;
+    if (results && resource_isList(this._resourceCollection)) {
+      const total: number = this._resourceCollection.totalCount;
       if (total >= 0) results.totalCount = total;
     }
     return results;
@@ -418,7 +424,7 @@ export class ChRISResource {
       return null;
     }
     const resources: ListResource | Resource | null = await this.resourceMethod(params);
-    if (!(this._resourceCollection instanceof ListResource)) {
+    if (!resource_isList(this._resourceCollection)) {
       return null;
     }
     this._resourceArray = this._resourceCollection?.getItems() as ItemResource[] | null;
@@ -514,7 +520,7 @@ export class ChRISResource {
     }
 
     this._resourceCollection = resources;
-    if (!(this._resourceCollection instanceof ListResource)) {
+    if (!resource_isList(this._resourceCollection)) {
       return null;
     }
     this._resourceArray = this._resourceCollection?.getItems() as ItemResource[] | null;

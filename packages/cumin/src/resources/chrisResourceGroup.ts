@@ -8,7 +8,7 @@
  * @module
  */
 
-import Client, { ListResource, Resource } from "@fnndsc/chrisapi";
+import type { Client, ListResource, Resource } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { ChRISResource, ListOptions } from "../resources/chrisResources.js";
 

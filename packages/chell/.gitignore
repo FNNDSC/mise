@@ -16,3 +16,4 @@ yarn-error.log*
 
 # ChELL history
 .chell_history
+exemplars/ts/dist/

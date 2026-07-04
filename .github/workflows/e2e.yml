@@ -1,0 +1,61 @@
+name: E2E (live CUBE)
+
+# Live exemplar runs against a real CUBE. Deliberately NOT part of per-PR
+# CI: external-service flakiness must never block merges, and the runs
+# need credentials. Nightly + on demand; not a required check.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+
+jobs:
+  exemplars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CUBE_URL: ${{ secrets.CUBE_URL }}
+      CUBE_USER: ${{ secrets.CUBE_USER }}
+      CUBE_PASSWORD: ${{ secrets.CUBE_PASSWORD }}
+      CUBE_ADMIN_USER: ${{ secrets.CUBE_ADMIN_USER }}
+      CUBE_ADMIN_PASSWORD: ${{ secrets.CUBE_ADMIN_PASSWORD }}
+    steps:
+      - name: Check credentials
+        id: creds
+        run: |
+          if [ -z "$CUBE_URL" ] || [ -z "$CUBE_USER" ] || [ -z "$CUBE_PASSWORD" ]; then
+            echo "CUBE_* secrets not configured — skipping live E2E."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.configured == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          npm ci
+          npm run build
+          npm run exemplars:build --workspace @fnndsc/chell
+      - name: TS exemplars
+        if: steps.creds.outputs.configured == 'true'
+        working-directory: packages/chell
+        run: |
+          node exemplars/ts/dist/01_connect.js
+          node exemplars/ts/dist/02_fsRoundtrip.js
+          node exemplars/ts/dist/03_feedDcm2niix.js
+          node exemplars/ts/dist/04_pacsQR.js
+      # Residue-free chell scripts only: 20 pulls PACS files that need
+      # admin cleanup outside chell, so it stays a manual exemplar.
+      - name: chell scripts
+        if: steps.creds.outputs.configured == 'true'
+        working-directory: packages/chell
+        run: |
+          export XDG_CONFIG_HOME="$(mktemp -d)"
+          node dist/index.js "$CUBE_USER@$CUBE_URL" -p "$CUBE_PASSWORD" -c version
+          node dist/index.js -e -f exemplars/chell/10_fs_roundtrip.chell
+          node dist/index.js -e -f exemplars/chell/30_feed_tour.chell

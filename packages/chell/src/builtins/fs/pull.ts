@@ -121,7 +121,9 @@ async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Pr
  */
 async function task_fire(task: SeriesPullTask, pacsserver: string): Promise<void> {
   const queryData: PACSQueryCreateData = {
-    title: `pull_${task.seriesUID}`,
+    // CUBE rejects duplicate query titles per user, which used to make a
+    // re-pull of the same series fail; a timestamp keeps titles unique.
+    title: `pull_${task.seriesUID}_${Date.now().toString(36)}`,
     query: JSON.stringify({
       SeriesInstanceUID: task.seriesUID,
       StudyInstanceUID: task.studyUID,

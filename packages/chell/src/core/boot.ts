@@ -410,9 +410,15 @@ async function script_execute(scriptPath: string, stopOnError: boolean = false):
       }
       // Otherwise continue to next line
     }
+
+    // Builtins report failure through process.exitCode rather than throwing.
+    if (stopOnError && process.exitCode) {
+      console.error(chalk.red(`Stopping execution: command on line ${i + 1} failed (use without -e to continue on error)`));
+      process.exit(1);
+    }
   }
 
-  // Reset flag
+  // Reset flag; a failed command's exit code survives to process exit.
   stopOnError_set(false);
 }
 

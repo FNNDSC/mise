@@ -48,11 +48,23 @@ async function pluginNewest_resolve(name: string): Promise<number | null> {
   const plugins: Array<{ id: number; version: string }> =
     listData_get<{ id: number; version: string }>(await client.getPlugins({ name_exact: name, limit: 50 }));
   if (plugins.length === 0) return null;
+  // CUBE_DCM2NIIX_VERSION pins a specific registered version; default newest.
+  const wanted: string | undefined = process.env.CUBE_DCM2NIIX_VERSION;
+  const pinned = wanted ? plugins.find((p) => p.version === wanted) : undefined;
   const byVersion = [...plugins].sort((a, b) =>
     b.version.localeCompare(a.version, undefined, { numeric: true }));
-  console.log(`  (using ${name} v${byVersion[0].version})`);
-  return byVersion[0].id;
+  const chosen = pinned ?? byVersion[0];
+  console.log(`  (using ${name} v${chosen.version})`);
+  return chosen.id;
 }
+
+/**
+ * Canonical dcm2niix arguments, matching the settings routinely used on
+ * production CUBEs (compressed NIfTI, BIDS sidecar, no cropping).
+ */
+const DCM2NIIX_PARAMS: Record<string, string> = {
+  b: 'y', f: '%3s_%d_%c', m: '0', v: '0', x: 'n', z: 'y', d: '5',
+};
 
 /**
  * Polls a plugin instance until it reaches a terminal state.
@@ -136,7 +148,7 @@ async function main(): Promise<void> {
     if (dcm2niixId === null) return;
 
     const instance: PluginInstance | undefined | null = await plugin.plugin_runOnCUBE(
-      dcm2niixId, dircopyId, { title: `${runId}-dcm2niix` },
+      dcm2niixId, dircopyId, { title: `${runId}-dcm2niix`, ...DCM2NIIX_PARAMS },
     );
     check('dcm2niix instance created', !!instance);
     if (!instance) return;

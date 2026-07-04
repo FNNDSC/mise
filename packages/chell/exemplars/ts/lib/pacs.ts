@@ -1,10 +1,10 @@
 /**
  * @file PACS helpers shared by the Q/R exemplars.
  *
- * Wraps the cumin PACS API into the three moves every retrieval needs:
- * run a query and wait for its decoded result, locate a series inside that
- * result, and pull one series while polling until its files are registered
- * in CUBE storage.
+ * A retrieval is three moves, each a small Result-returning function:
+ * run a query and wait for its decoded result; locate a series inside
+ * that result; pull one series and wait until its files register in CUBE
+ * storage. All waiting goes through the harness `poll_until`.
  *
  * @module
  */
@@ -14,12 +14,25 @@ import {
   pacsQuery_resultDecode,
   pacsRetrieve_create,
   Result,
+  Ok,
+  Err,
   PACSQueryRecord,
   PACSQueryDecodedResult,
   PACSRetrieveRecord,
   Client,
 } from '@fnndsc/cumin';
-import { sleep, connection_active } from './harness.js';
+import { connection_active, poll_until } from './harness.js';
+
+/**
+ * A completed PACS query: its CUBE id and the decoded result payload.
+ *
+ * @property queryId - The PACSQuery id (delete it during cleanup).
+ * @property decoded - Decoded study/series payload.
+ */
+export interface QueryOutcome {
+  queryId: number;
+  decoded: PACSQueryDecodedResult;
+}
 
 /**
  * The identifying coordinates of one series inside a query result.
@@ -58,33 +71,43 @@ function tag_extract(value: unknown): string {
 /**
  * Creates a PACS query and polls until its result payload decodes.
  *
+ * Blocking by design: a PACSQuery executes on the PACS asynchronously and
+ * CUBE stores the (compressed) result when it lands, typically within a
+ * few seconds.
+ *
  * @param pacs - PACS server id or identifier.
  * @param query - DICOM matching keys (e.g. `{ AccessionNumber: '...' }`).
  * @param title - Query title (tag it with the run id for later cleanup).
  * @param timeoutMs - Give-up horizon.
- * @returns The query id and decoded result, or null on failure/timeout.
+ * @returns The query id and decoded result.
  */
 export async function query_createAndWait(
   pacs: string,
   query: Record<string, string>,
   title: string,
   timeoutMs: number = 60_000,
-): Promise<{ queryId: number; decoded: PACSQueryDecodedResult } | null> {
+): Promise<Result<QueryOutcome>> {
   const created: Result<PACSQueryRecord> = await pacsQueries_create(pacs, {
     title,
     query: JSON.stringify(query),
   });
-  if (!created.ok) return null;
+  if (!created.ok) return Err();
 
   const queryId: number = created.value.id;
-  const deadline: number = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const decoded: Result<PACSQueryDecodedResult> = await pacsQuery_resultDecode(queryId);
-    if (decoded.ok && decoded.value.json !== undefined) {
-      return { queryId, decoded: decoded.value };
-    }
-    await sleep(2_000);
-  }
+  const decoded: Result<PACSQueryDecodedResult> = await poll_until<PACSQueryDecodedResult>(
+    () => decodedResult_probe(queryId),
+    timeoutMs,
+    2_000,
+  );
+  if (!decoded.ok) return Err();
+
+  return Ok({ queryId, decoded: decoded.value });
+}
+
+/** One decode attempt: the payload, or null while the PACS is still working. */
+async function decodedResult_probe(queryId: number): Promise<PACSQueryDecodedResult | null> {
+  const decoded: Result<PACSQueryDecodedResult> = await pacsQuery_resultDecode(queryId);
+  if (decoded.ok && decoded.value.json !== undefined) return decoded.value;
   return null;
 }
 
@@ -94,42 +117,57 @@ export async function query_createAndWait(
  *
  * @param decoded - Decoded query result.
  * @param matcher - Predicate over the SeriesDescription.
- * @returns The series coordinates, or null when nothing matches.
+ * @returns The series coordinates.
  */
 export function series_findInDecode(
   decoded: PACSQueryDecodedResult,
   matcher: (description: string) => boolean,
-): SeriesTarget | null {
+): Result<SeriesTarget> {
+  for (const study of studies_ofDecode(decoded)) {
+    const found: SeriesTarget | null = series_findInStudy(study, matcher);
+    if (found) return Ok(found);
+  }
+  return Err();
+}
+
+/** Normalizes the decode payload to a study array (key spelling varies). */
+function studies_ofDecode(decoded: PACSQueryDecodedResult): Record<string, unknown>[] {
   const payload: unknown = decoded.json;
   const root: Record<string, unknown> =
     payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
   const studiesRaw: unknown = root.studies ?? root.Studies ?? root.results ?? payload;
-  const studies: Record<string, unknown>[] =
-    (Array.isArray(studiesRaw) ? studiesRaw : [studiesRaw]) as Record<string, unknown>[];
+  const studies: unknown[] = Array.isArray(studiesRaw) ? studiesRaw : [studiesRaw];
+  return studies.filter((s: unknown) => s && typeof s === 'object') as Record<string, unknown>[];
+}
 
-  for (const study of studies) {
-    if (!study || typeof study !== 'object') continue;
-    const studyUID: string = tag_extract(study.StudyInstanceUID ?? study.uid);
-    const seriesRaw: unknown = study.series ?? study.Series ?? study.results ?? [];
-    const seriesList: Record<string, unknown>[] =
-      (Array.isArray(seriesRaw) ? seriesRaw : []) as Record<string, unknown>[];
+/** Scans one study's series array for a description match. */
+function series_findInStudy(
+  study: Record<string, unknown>,
+  matcher: (description: string) => boolean,
+): SeriesTarget | null {
+  const studyUID: string = tag_extract(study.StudyInstanceUID ?? study.uid);
+  const seriesRaw: unknown = study.series ?? study.Series ?? study.results ?? [];
+  const seriesList: Record<string, unknown>[] =
+    (Array.isArray(seriesRaw) ? seriesRaw : []) as Record<string, unknown>[];
 
-    for (const series of seriesList) {
-      const description: string = tag_extract(series.SeriesDescription);
-      if (!matcher(description)) continue;
-      return {
-        seriesUID: tag_extract(series.SeriesInstanceUID ?? series.uid),
-        studyUID,
-        description,
-        fileCount: Number(tag_extract(series.NumberOfSeriesRelatedInstances)) || 0,
-      };
-    }
+  for (const series of seriesList) {
+    const description: string = tag_extract(series.SeriesDescription);
+    if (!matcher(description)) continue;
+    return {
+      seriesUID: tag_extract(series.SeriesInstanceUID ?? series.uid),
+      studyUID,
+      description,
+      fileCount: Number(tag_extract(series.NumberOfSeriesRelatedInstances)) || 0,
+    };
   }
   return null;
 }
 
 /**
- * Looks a series up in CUBE storage (registered files, not PACS).
+ * Looks a series up in CUBE storage (registered files, not the PACS).
+ *
+ * Absence is an expected state here — callers use it to decide between
+ * "already staged" and "needs a pull" — hence `null`, not `Err`.
  *
  * @param seriesUID - DICOM SeriesInstanceUID.
  * @returns The series folder and file count, or null when not in CUBE.
@@ -151,28 +189,28 @@ export async function series_locateInCube(seriesUID: string): Promise<SeriesLoca
 }
 
 /**
- * Fires a retrieve for one series and polls until its files are registered.
+ * Fires a retrieve for one series and waits until its files register.
  *
  * Creates a non-executing per-series PACSQuery (so the retrieve has a
- * precise target), then a PACSRetrieve, then polls CUBE until the series
- * folder appears with at least one file.
- *
- * The synthetic query id is reported even when the transfer times out, so
- * callers can always clean it up.
+ * precise target) and reports its id through `queryId_register` before
+ * anything can fail — the caller's cleanup plan owns it from that moment.
+ * Then a PACSRetrieve is created and CUBE polled until the series folder
+ * appears with the expected file count. Transfers routinely take minutes.
  *
  * @param pacs - PACS server id or identifier.
  * @param target - The series coordinates from `series_findInDecode`.
  * @param title - Per-series query title (tag with the run id).
- * @param timeoutMs - Give-up horizon (registration can take minutes).
- * @returns The synthetic query id and the location (null on timeout), or
- *   null when the query itself could not be created.
+ * @param queryId_register - Receives the synthetic query id immediately.
+ * @param timeoutMs - Give-up horizon.
+ * @returns The series location once registered.
  */
 export async function series_pull(
   pacs: string,
   target: SeriesTarget,
   title: string,
+  queryId_register: (queryId: number) => void,
   timeoutMs: number = 600_000,
-): Promise<{ queryId: number; location: SeriesLocation | null } | null> {
+): Promise<Result<SeriesLocation>> {
   const created: Result<PACSQueryRecord> = await pacsQueries_create(pacs, {
     title,
     query: JSON.stringify({
@@ -181,19 +219,29 @@ export async function series_pull(
     }),
     execute: false,
   });
-  if (!created.ok) return null;
-  const queryId: number = created.value.id;
+  if (!created.ok) return Err();
+  queryId_register(created.value.id);
 
-  const retrieve: Result<PACSRetrieveRecord> = await pacsRetrieve_create(queryId);
-  if (!retrieve.ok) return { queryId, location: null };
+  const retrieve: Result<PACSRetrieveRecord> = await pacsRetrieve_create(created.value.id);
+  if (!retrieve.ok) return Err();
 
-  const deadline: number = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  return seriesArrival_await(target, timeoutMs);
+}
+
+/**
+ * Waits until a series is registered in CUBE with its full file count.
+ *
+ * @param target - The awaited series.
+ * @param timeoutMs - Give-up horizon.
+ * @returns The series location.
+ */
+export async function seriesArrival_await(
+  target: SeriesTarget,
+  timeoutMs: number = 600_000,
+): Promise<Result<SeriesLocation>> {
+  const expected: number = Math.max(target.fileCount, 1);
+  return poll_until<SeriesLocation>(async () => {
     const location: SeriesLocation | null = await series_locateInCube(target.seriesUID);
-    if (location && location.fileCount >= Math.max(target.fileCount, 1)) {
-      return { queryId, location };
-    }
-    await sleep(3_000);
-  }
-  return { queryId, location: null };
+    return location && location.fileCount >= expected ? location : null;
+  }, timeoutMs, 3_000);
 }

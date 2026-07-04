@@ -1,12 +1,14 @@
 /**
  * @file Exemplar 03 — feed with a DICOM → NIfTI analysis.
  *
- * The canonical ChRIS workflow, end to end: pull an MR image series from
- * PACS, root a feed on it with pl-dircopy, chain pl-dcm2niix onto that
- * node, wait for the job to finish, and verify NIfTI output landed in the
- * feed's tree. Cleanup deletes the feed, the run's PACSQueries, and — if
- * the series was not already on the CUBE — the pulled DICOM files (admin),
- * so the instance ends exactly as it began.
+ * The canonical ChRIS workflow, end to end: stage an MR image series from
+ * PACS (pull it unless it is already in CUBE), root a feed on it with
+ * pl-dircopy, chain pl-dcm2niix onto that node, wait for the job, and
+ * verify NIfTI output landed in the feed's tree.
+ *
+ * The cleanup plan deletes the feed, the run's PACSQueries, and — when
+ * the series was pulled fresh — the DICOM files, so the CUBE ends the run
+ * exactly as it began.
  *
  * Requires CUBE_ADMIN_USER/CUBE_ADMIN_PASSWORD for PACS cleanup.
  *
@@ -17,178 +19,219 @@
 
 import {
   ChRISFeed, ChRISPlugin, feed_delete, listData_get,
-  Result, Dictionary, PluginInstance, SimpleRecord, Client,
+  Result, Ok, Err, Dictionary, PluginInstance, SimpleRecord, Client,
 } from '@fnndsc/cumin';
 import { job_statusFetch, job_logFetch, vfsDispatcher } from '@fnndsc/salsa';
 import {
-  env_load, config_isolate, cube_connect, connection_active, check, section, summary_exit,
-  sleep, runId_make, restToken_get, folderId_find, folder_deleteById, pacsQuery_deleteById, CubeEnv,
+  env_load, adminEnv_require, config_isolate, cube_connect, connection_active,
+  check, step, section, summary_exit, poll_until, runId_make, restToken_get,
+  folder_deleteAndConfirm, pacsQuery_deleteById, CleanupPlan, CubeEnv,
 } from './lib/harness.js';
 import {
-  query_createAndWait, series_findInDecode, series_locateInCube, series_pull, SeriesLocation,
+  query_createAndWait, series_findInDecode, series_locateInCube, series_pull,
+  QueryOutcome, SeriesTarget, SeriesLocation,
 } from './lib/pacs.js';
 
 /** Series description marker of a small MR image series in the test study. */
 const IMAGE_SERIES_MARKER: string = 'SAG T1';
 /** Terminal CUBE job states. */
 const TERMINAL_STATES: string[] = ['finishedSuccessfully', 'finishedWithError', 'cancelled'];
-
-/**
- * Resolves the highest registered version of a plugin by exact name.
- *
- * A plugin may be registered several times (one per version); take the
- * newest rather than whichever the API lists first.
- *
- * @param name - Exact plugin name (e.g. `pl-dcm2niix`).
- * @returns The plugin id, or null when the plugin is not registered.
- */
-async function pluginNewest_resolve(name: string): Promise<number | null> {
-  const client: Client | null = await connection_active().client_get();
-  if (!client) return null;
-  const plugins: Array<{ id: number; version: string }> =
-    listData_get<{ id: number; version: string }>(await client.getPlugins({ name_exact: name, limit: 50 }));
-  if (plugins.length === 0) return null;
-  // CUBE_DCM2NIIX_VERSION pins a specific registered version; default newest.
-  const wanted: string | undefined = process.env.CUBE_DCM2NIIX_VERSION;
-  const pinned = wanted ? plugins.find((p) => p.version === wanted) : undefined;
-  const byVersion = [...plugins].sort((a, b) =>
-    b.version.localeCompare(a.version, undefined, { numeric: true }));
-  const chosen = pinned ?? byVersion[0];
-  console.log(`  (using ${name} v${chosen.version})`);
-  return chosen.id;
-}
-
 /**
  * Canonical dcm2niix arguments, matching the settings routinely used on
- * production CUBEs (compressed NIfTI, BIDS sidecar, no cropping).
+ * production CUBEs (compressed NIfTI, BIDS sidecar, no cropping). The
+ * plugin's bare defaults fail on typical series.
  */
 const DCM2NIIX_PARAMS: Record<string, string> = {
   b: 'y', f: '%3s_%d_%c', m: '0', v: '0', x: 'n', z: 'y', d: '5',
 };
 
 /**
- * Polls a plugin instance until it reaches a terminal state.
+ * Resolves the highest registered version of a plugin by exact name;
+ * CUBE_DCM2NIIX_VERSION pins a specific one.
  *
- * @param instanceId - The plugin instance id.
- * @param timeoutMs - Give-up horizon.
- * @returns The final status string, or null on timeout.
+ * @param name - Exact plugin name (e.g. `pl-dcm2niix`).
+ * @returns The plugin id.
  */
-async function job_awaitCompletion(instanceId: number, timeoutMs: number = 600_000): Promise<string | null> {
-  const deadline: number = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const status: Result<string> = await job_statusFetch(instanceId);
-    if (status.ok && TERMINAL_STATES.includes(status.value)) {
-      return status.value;
-    }
-    await sleep(5_000);
-  }
-  return null;
+async function pluginNewest_resolve(name: string): Promise<Result<number>> {
+  const client: Client | null = await connection_active().client_get();
+  if (!client) return Err();
+
+  const plugins: Array<{ id: number; version: string }> =
+    listData_get<{ id: number; version: string }>(await client.getPlugins({ name_exact: name, limit: 50 }));
+  if (plugins.length === 0) return Err();
+
+  const wanted: string | undefined = process.env.CUBE_DCM2NIIX_VERSION;
+  const pinned: { id: number; version: string } | undefined =
+    wanted ? plugins.find((p) => p.version === wanted) : undefined;
+  const newest: { id: number; version: string } = [...plugins].sort(
+    (a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }),
+  )[0];
+  const chosen: { id: number; version: string } = pinned ?? newest;
+  console.log(`  (using ${name} v${chosen.version})`);
+  return Ok(chosen.id);
 }
 
 /**
- * Pulls an image series, runs dircopy → dcm2niix on it, verifies NIfTI
- * output, and restores the CUBE.
+ * Polls a plugin instance until it reaches a terminal state; on failure,
+ * prints the job log tail so the run is diagnosable from its output.
+ *
+ * @param instanceId - The plugin instance id.
+ * @returns Ok when the job finished successfully.
+ */
+async function job_awaitSuccess(instanceId: number): Promise<Result<string>> {
+  const finalState: Result<string> = await poll_until<string>(async () => {
+    const status: Result<string> = await job_statusFetch(instanceId);
+    return status.ok && TERMINAL_STATES.includes(status.value) ? status.value : null;
+  }, 600_000, 5_000);
+
+  if (finalState.ok && finalState.value === 'finishedSuccessfully') return finalState;
+
+  const log: Result<string> = await job_logFetch(instanceId);
+  if (log.ok) console.log(`  --- job log tail ---\n${log.value.slice(-1_500)}`);
+  return Err();
+}
+
+/**
+ * Ensures the image series is in CUBE, pulling it when absent.
+ *
+ * @param env - The CUBE environment.
+ * @param cleanup - The cleanup plan (pull query + fresh files register here).
+ * @param target - The series to stage.
+ * @returns The series location in CUBE storage.
+ */
+async function series_stage(
+  env: CubeEnv,
+  cleanup: CleanupPlan,
+  target: SeriesTarget,
+): Promise<Result<SeriesLocation>> {
+  const preexisting: SeriesLocation | null = await series_locateInCube(target.seriesUID);
+  if (preexisting) {
+    console.log(`  (series already in CUBE at ${preexisting.folderPath})`);
+    return Ok(preexisting);
+  }
+
+  const pulled: Result<SeriesLocation> = await series_pull(
+    env.pacs, target, `${runId_make()}-pull`,
+    (queryId: number) => cleanup.register(`deleted PACSQuery ${queryId}`, async () => {
+      const token: string = await restToken_get(env.url, env.user, env.password);
+      return pacsQuery_deleteById(env.url, token, queryId);
+    }),
+  );
+  if (!pulled.ok) return Err();
+
+  cleanup.register('deleted the freshly pulled series folder (admin)', async () => {
+    const adminToken: string = await restToken_get(env.url, env.adminUser!, env.adminPassword!);
+    return folder_deleteAndConfirm(env.url, adminToken, pulled.value.folderPath);
+  });
+  return pulled;
+}
+
+/**
+ * Roots a feed on the series folder with pl-dircopy.
+ *
+ * @param cleanup - The cleanup plan (feed deletion registers here).
+ * @param folderPath - CUBE path of the staged series.
+ * @returns The pl-dircopy instance id (the parent node for the analysis).
+ */
+async function feed_root(cleanup: CleanupPlan, folderPath: string): Promise<Result<number>> {
+  const feed: ChRISFeed = new ChRISFeed();
+  const detail: SimpleRecord | null = await feed.createFromDirs(folderPath, { params: '' });
+  if (!check('feed created from the series directory', detail !== null) || !detail) return Err();
+
+  const feedId: number = Number(detail.id);
+  cleanup.register(`deleted feed ${feedId}`, async () => (await feed_delete(feedId)).ok);
+
+  const plugin: ChRISPlugin = new ChRISPlugin();
+  const dircopyDict: Dictionary | null = plugin.pluginInstance_toDict(detail.pluginInstance as PluginInstance);
+  const dircopyId: number = Number(dircopyDict?.id);
+  if (!check('dircopy instance id resolved', Number.isFinite(dircopyId))) return Err();
+  return Ok(dircopyId);
+}
+
+/**
+ * Runs pl-dcm2niix on the parent node and verifies NIfTI output.
+ *
+ * @param parentId - The plugin instance to chain onto.
+ * @param runId - Run tag for the instance title.
+ */
+async function analysis_runAndVerify(parentId: number, runId: string): Promise<void> {
+  const dcm2niixId: Result<number> = await pluginNewest_resolve('pl-dcm2niix');
+  if (!check('pl-dcm2niix is registered', dcm2niixId.ok) || !dcm2niixId.ok) return;
+
+  const plugin: ChRISPlugin = new ChRISPlugin();
+  const instance: PluginInstance | undefined | null = await plugin.plugin_runOnCUBE(
+    dcm2niixId.value, parentId, { title: `${runId}-dcm2niix`, ...DCM2NIIX_PARAMS },
+  );
+  if (!check('dcm2niix instance created', !!instance) || !instance) return;
+
+  const instanceDict: Dictionary | null = plugin.pluginInstance_toDict(instance);
+  const instanceId: number = Number(instanceDict?.id);
+  const finished: Result<string> = await step('dcm2niix finished successfully', job_awaitSuccess(instanceId));
+  if (!finished.ok) return;
+
+  section('verify NIfTI output');
+  const outputPath: string = String(instanceDict?.output_path ?? '');
+  if (!check('instance reports an output path', outputPath.length > 0)) return;
+
+  const listing = await step('listed the output directory', vfsDispatcher.list(`/${outputPath}`));
+  if (!listing.ok) return;
+  const hasNii: boolean = listing.value.some((item: { name: string }) => item.name.includes('.nii'));
+  check('output contains a NIfTI file', hasNii);
+}
+
+/**
+ * Stage → feed → analysis → verify, registering every undo on the plan.
+ *
+ * @param env - The CUBE environment.
+ * @param cleanup - Undo actions, registered as resources are created.
+ */
+async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
+  const runId: string = runId_make();
+
+  section(`stage the '${IMAGE_SERIES_MARKER}' series from PACS`);
+  const queried: Result<QueryOutcome> = await step(
+    'query completed',
+    query_createAndWait(env.pacs, { AccessionNumber: env.accession }, `${runId}-query`),
+  );
+  if (!queried.ok) return;
+  cleanup.register(`deleted PACSQuery ${queried.value.queryId}`, async () => {
+    const token: string = await restToken_get(env.url, env.user, env.password);
+    return pacsQuery_deleteById(env.url, token, queried.value.queryId);
+  });
+
+  const target: Result<SeriesTarget> = series_findInDecode(
+    queried.value.decoded,
+    (d: string) => d.includes(IMAGE_SERIES_MARKER),
+  );
+  if (!check(`found the '${IMAGE_SERIES_MARKER}' series`, target.ok) || !target.ok) return;
+
+  const staged: Result<SeriesLocation> = await series_stage(env, cleanup, target.value);
+  if (!check('series staged in CUBE', staged.ok) || !staged.ok) return;
+
+  section('feed: pl-dircopy on the series folder');
+  const parentId: Result<number> = await feed_root(cleanup, staged.value.folderPath);
+  if (!parentId.ok) return;
+
+  section('analysis: pl-dcm2niix');
+  await analysis_runAndVerify(parentId.value, runId);
+}
+
+/**
+ * Program entry: connect, run the scenario, always run cleanup.
  */
 async function main(): Promise<void> {
   const env: CubeEnv = env_load();
-  if (!env.adminUser || !env.adminPassword) {
-    console.log('CUBE_ADMIN_USER and CUBE_ADMIN_PASSWORD must be set for PACS cleanup — skipping.');
-    process.exit(2);
-  }
+  adminEnv_require(env);
   config_isolate();
   await cube_connect(env);
 
-  const runId: string = runId_make();
-  const createdQueryIds: number[] = [];
-  let feedId: number | null = null;
-  let pulledFresh: SeriesLocation | null = null;
-
+  const cleanup: CleanupPlan = new CleanupPlan();
   try {
-    section(`stage the '${IMAGE_SERIES_MARKER}' series from PACS`);
-    const queried = await query_createAndWait(env.pacs, { AccessionNumber: env.accession }, `${runId}-query`);
-    check('query completed', queried !== null);
-    if (!queried) return;
-    createdQueryIds.push(queried.queryId);
-
-    const target = series_findInDecode(queried.decoded, (d: string) => d.includes(IMAGE_SERIES_MARKER));
-    check(`found the '${IMAGE_SERIES_MARKER}' series`, target !== null);
-    if (!target) return;
-
-    const preexisting: SeriesLocation | null = await series_locateInCube(target.seriesUID);
-    let location: SeriesLocation | null = preexisting;
-    if (!location) {
-      const pulledResult = await series_pull(env.pacs, target, `${runId}-pull`);
-      if (pulledResult) createdQueryIds.push(pulledResult.queryId);
-      check('series pulled into CUBE', pulledResult?.location != null);
-      if (!pulledResult?.location) return;
-      location = pulledResult.location;
-      pulledFresh = pulledResult.location;
-    } else {
-      console.log(`  (series already in CUBE at ${location.folderPath})`);
-    }
-
-    section('feed: pl-dircopy on the series folder');
-    const feed: ChRISFeed = new ChRISFeed();
-    const detail: SimpleRecord | null = await feed.createFromDirs(location.folderPath, { params: '' });
-    check('feed created from the series directory', detail !== null);
-    if (!detail) return;
-    feedId = Number(detail.id);
-    check(`feed id ${feedId} resolved`, Number.isFinite(feedId));
-
-    const plugin: ChRISPlugin = new ChRISPlugin();
-    const dircopyDict: Dictionary | null = plugin.pluginInstance_toDict(
-      detail.pluginInstance as PluginInstance,
-    );
-    const dircopyId: number = Number(dircopyDict?.id);
-    check('dircopy instance id resolved', Number.isFinite(dircopyId));
-
-    section('analysis: pl-dcm2niix');
-    const dcm2niixId: number | null = await pluginNewest_resolve('pl-dcm2niix');
-    check('pl-dcm2niix is registered', dcm2niixId !== null);
-    if (dcm2niixId === null) return;
-
-    const instance: PluginInstance | undefined | null = await plugin.plugin_runOnCUBE(
-      dcm2niixId, dircopyId, { title: `${runId}-dcm2niix`, ...DCM2NIIX_PARAMS },
-    );
-    check('dcm2niix instance created', !!instance);
-    if (!instance) return;
-    const instanceDict: Dictionary | null = plugin.pluginInstance_toDict(instance);
-    const instanceId: number = Number(instanceDict?.id);
-
-    const finalState: string | null = await job_awaitCompletion(instanceId);
-    if (!check(`dcm2niix finished (state: ${finalState ?? 'timeout'})`, finalState === 'finishedSuccessfully')) {
-      const log: Result<string> = await job_logFetch(instanceId);
-      if (log.ok) console.log(`  --- job log tail ---\n${log.value.slice(-1_500)}`);
-    }
-
-    section('verify NIfTI output');
-    const outputPath: string = String(instanceDict?.output_path ?? '');
-    check('instance reports an output path', outputPath.length > 0);
-    const listing = await vfsDispatcher.list(`/${outputPath}`);
-    check('listed the output directory', listing.ok);
-    if (listing.ok) {
-      const hasNii: boolean = listing.value.some((item: { name: string }) => item.name.includes('.nii'));
-      check('output contains a NIfTI file', hasNii);
-    }
+    await scenario_run(env, cleanup);
   } finally {
     section('cleanup — restore the CUBE');
-    if (feedId !== null && Number.isFinite(feedId)) {
-      const deleted: Result<boolean> = await feed_delete(feedId);
-      check(`deleted feed ${feedId}`, deleted.ok);
-    }
-    const userToken: string = await restToken_get(env.url, env.user, env.password);
-    for (const queryId of createdQueryIds) {
-      check(`deleted PACSQuery ${queryId}`, await pacsQuery_deleteById(env.url, userToken, queryId));
-    }
-    if (pulledFresh && env.adminUser && env.adminPassword) {
-      const adminToken: string = await restToken_get(env.url, env.adminUser, env.adminPassword);
-      const folderId: number | null = await folderId_find(env.url, adminToken, pulledFresh.folderPath);
-      if (folderId !== null) {
-        check('deleted the freshly pulled series folder (admin)', await folder_deleteById(env.url, adminToken, folderId));
-      }
-    }
+    await cleanup.run();
   }
-
   summary_exit();
 }
 

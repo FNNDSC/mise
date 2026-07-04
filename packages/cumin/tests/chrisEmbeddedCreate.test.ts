@@ -31,8 +31,8 @@ afterEach(() => {
 
 describe('context_split (module export)', () => {
   it('splits on the first delimiter only', () => {
-    expect(context_split('folder:/pacs/queries/2601_AccessionNumber:22548684'))
-      .toEqual({ type: 'folder', value: '/pacs/queries/2601_AccessionNumber:22548684' });
+    expect(context_split('folder:/pacs/queries/2601_AccessionNumber:12345678'))
+      .toEqual({ type: 'folder', value: '/pacs/queries/2601_AccessionNumber:12345678' });
   });
 
   it('throws for non-strings and missing delimiters', () => {

@@ -1,0 +1,12 @@
+{
+  "CUBE_URL": "http://your-cube:8000/api/v1/",
+  "CUBE_USER": "testuser",
+  "CUBE_PASSWORD": "replace-me",
+  "CUBE_ADMIN_USER": "admin",
+  "CUBE_ADMIN_PASSWORD": "replace-me",
+  "CUBE_PACS": "PACSDCM",
+  "CUBE_TEST_ACCESSION": "your-designated-test-accession",
+  "CUBE_DCM2NIIX_VERSION": "",
+  "CUBE_TEST_SERIESUID": "a-small-series-instance-uid",
+  "CUBE_TEST_STUDYUID": "its-study-instance-uid"
+}

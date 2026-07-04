@@ -1,17 +1,27 @@
 # Exemplar 30 — feed tour, chell style.
 #
-# Read-only walk over the feed surface: list feeds, inspect the available
-# fields, and show the /proc job view. Feed *creation* with a chained
-# pl-dcm2niix analysis needs ids captured between steps, which a static
-# script cannot do — that full workflow lives in the TS exemplar
-# (03_feedDcm2niix). This script leaves the CUBE untouched.
+# A read-only walk over the analysis surface: what feeds exist, what a
+# feed record looks like, what is running right now, and which plugins
+# are available for a new analysis. Leaves the CUBE untouched.
 #
-# Connect once first (see README "known quirks"):
-#   chell <user>@<url> -p <password> -c version
+# Feed *creation* with a chained pl-dcm2niix analysis needs ids captured
+# between steps (feed id → dircopy instance id → dcm2niix instance id),
+# which a static script cannot do — that full workflow is the TS
+# exemplar 03_feedDcm2niix.
+#
+# Connect once first (see README "known quirks"), then:
 #   chell -e -f exemplars/chell/30_feed_tour.chell
 
+# The five most recent feeds, then the fields a feed record carries
+# (useful for `feed list --fields ...` selections).
 feed list --limit 5
 feed inspect
+
+# The process view: /proc mirrors live CUBE state; /proc/jobs lists
+# plugin instances and their states (scheduled/started/finished...).
 ls /proc
 ls /proc/jobs
+
+# Which dcm2niix builds could root an analysis here? Every registered
+# plugin also appears as /bin/<name>-v<version>.
 plugin search dcm2niix

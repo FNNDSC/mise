@@ -18,6 +18,9 @@ jobs:
       CUBE_PASSWORD: ${{ secrets.CUBE_PASSWORD }}
       CUBE_ADMIN_USER: ${{ secrets.CUBE_ADMIN_USER }}
       CUBE_ADMIN_PASSWORD: ${{ secrets.CUBE_ADMIN_PASSWORD }}
+      # Pins the pl-dcm2niix version exemplar 03 runs; the newest build on
+      # a CUBE is not always the working one (repo variable, not a secret).
+      CUBE_DCM2NIIX_VERSION: ${{ vars.CUBE_DCM2NIIX_VERSION }}
     steps:
       - name: Check credentials
         id: creds

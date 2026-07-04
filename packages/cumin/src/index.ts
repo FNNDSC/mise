@@ -44,6 +44,18 @@ export * from "./pluginmetas/chrisPluginMetas";
 export * from "./workflows/chrisWorkflows";
 
 // Re-export chrisapi types so downstream packages don't import chrisapi directly
+export { listData_get, itemData_get, items_get } from "./chrisapi/adapter";
+export type {
+  ListResource,
+  Resource,
+  ItemResource,
+  PluginInstance,
+  Feed,
+  FileBrowserFolder,
+  UserFile,
+  PACSFile,
+} from "./chrisapi/adapter";
+
 /**
  * Shape of a single node (file, directory, or link) in a ChRIS path listing.
  */

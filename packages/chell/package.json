@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "tsc && chmod +x ./dist/index.js",
+    "exemplars:build": "tsc -p exemplars/ts",
     "start": "node dist/index.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest --forceExit --coverage",
     "bundle": "node scripts/bundle.mjs",

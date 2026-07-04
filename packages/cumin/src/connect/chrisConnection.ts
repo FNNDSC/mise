@@ -339,17 +339,21 @@ export class ChRISConnection {
 }
 
 /**
- * Global instance of ChRISConnection, initialized as a constant singleton.
+ * Global instance of ChRISConnection, a stable singleton.
+ *
+ * Never reassigned: ESM consumers snapshot named imports of this CJS
+ * module, so replacing the instance would leave them holding a stale,
+ * uninitialized object. `chrisConnection_init` initializes it in place.
  */
-export let chrisConnection: ChRISConnection = new ChRISConnection();
+export const chrisConnection: ChRISConnection = new ChRISConnection();
 
 /**
- * Initializes the global ChRISConnection instance.
+ * Initializes the global ChRISConnection instance in place.
  * @param storageProvider - The storage provider to use for the connection.
  */
 export async function chrisConnection_init(storageProvider: IStorageProvider): Promise<ChRISConnection> {
   await config_init(storageProvider); // This sets the global connectionConfig
-  chrisConnection = new ChRISConnection(connectionConfig, storageProvider);
+  chrisConnection.init(connectionConfig, storageProvider);
   chrisIO.storageProvider_set(storageProvider);
   return chrisConnection;
 }

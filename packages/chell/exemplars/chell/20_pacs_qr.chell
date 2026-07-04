@@ -1,0 +1,21 @@
+# Exemplar 20 — PACS query and retrieve, chell style.
+#
+# Connects to the PACS, queries the designated test accession, then pulls
+# one specific series by SeriesInstanceUID (a one-file Structured Report,
+# the smallest series in the test study). `pull` accepts a query expression
+# directly, so the script needs no run-specific paths.
+#
+# NOTE — CUBE invariant: pulled PACS files can only be deleted with admin
+# credentials, which chell does not carry. After this script, run the
+# cleanup phase of the TS exemplar (04_pacsQR) or delete the series folder
+# as the CUBE admin. See exemplars/README.md.
+#
+# Connect once first (see README "known quirks"):
+#   chell <user>@<url> -p <password> -c version
+#   chell -e -f exemplars/chell/20_pacs_qr.chell
+
+pacs connect PACSDCM
+pacs
+query AccessionNumber:12345678
+pull SeriesInstanceUID:<SeriesInstanceUID>
+cubepath SeriesInstanceUID:<SeriesInstanceUID>

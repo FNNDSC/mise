@@ -345,7 +345,13 @@ export async function builtin_query(args: string[]): Promise<void> {
 
   if (!result) {
     const errs = errorStack.stack_getAll?.() ?? [];
-    if (!errs.length) {
+    if (errs.length) {
+      // Print the stack directly: in -c/-f mode nothing else will.
+      errs.forEach((err: unknown) => {
+        const msg: string = typeof err === 'string' ? err : ((err as { message?: string }).message ?? String(err));
+        console.error(chalk.red(msg));
+      });
+    } else {
       console.error(chalk.red('query: Failed — check connection and PACS server context.'));
     }
     process.exitCode = 1;

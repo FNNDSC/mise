@@ -191,12 +191,12 @@ describe('builtin_query', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('stays quiet on failure when the error stack already has entries', async () => {
+  it('prints the stacked errors on failure', async () => {
     mockCurrentGet.mockResolvedValue('PACSDCM');
     mockCreate.mockResolvedValue(err());
-    mockGetAll.mockReturnValue([{ message: 'already reported' }]);
+    mockGetAll.mockReturnValue([{ message: 'PACS server refused the query' }]);
     await builtin_query(['PatientID:X']);
-    expect(errSpy).not.toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('PACS server refused the query'));
     expect(process.exitCode).toBe(1);
   });
 });

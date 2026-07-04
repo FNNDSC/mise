@@ -63,17 +63,23 @@ chell -e -f exemplars/chell/30_feed_tour.chell
 - Static scripts cannot capture ids between commands, so the full
   feed+dcm2niix workflow is TS-only (03); script 30 is a read-only tour.
 
-## Known upstream quirks (found by these exemplars)
+## Bugs found by these exemplars (all fixed)
 
-- Re-pulling a series through chell's `pull` fails with "retrieve(s) failed
-  to start" when a synthetic `pull_<SeriesInstanceUID>` PACSQuery already
-  exists from an earlier pull. Workaround: `pacsretrieve pull <queryId>` on
-  the existing query, or delete the stale query. The TS exemplars sidestep
-  this by tagging query titles with a per-run id.
-- A `query` with zero matches exits 1 with no output in `-c` mode.
-- A fresh connect (`chell user@url -p pw`) combined with `-c`/`-f` in the
-  same invocation leaves cumin's IO layer uninitialized ("ChRIS client is
-  not initialized") — connect first, then run commands against the stored
-  session.
-- `-e` (stop on error) does not abort `-f` scripts on a failed command,
-  and the process exits 0 even when commands failed.
+The first live runs surfaced five real defects, since fixed in the same
+change set — the argument for keeping live exemplars around:
+
+1. chell `pull` could not re-pull a series (synthetic query title
+   collision) — titles now carry a timestamp.
+2. A failed `query` exited silently in `-c` mode — it now prints the
+   error stack.
+3. A fresh connect combined with `-c`/`-f` in one invocation left cumin's
+   IO layer uninitialized — cumin's connection singleton is now
+   initialized in place instead of reassigned.
+4. `-e` did not abort `-f` scripts on failed commands — builtins report
+   through `process.exitCode`, which the script loop now honours.
+5. cumin's reassigned `export let chrisConnection` broke ESM consumers
+   (stale named-import bindings) — same in-place fix as 3.
+
+Note: pl-dcm2niix needs its canonical arguments (see `DCM2NIIX_PARAMS` in
+exemplar 03); bare defaults fail on typical series. Pin a registered
+version with `CUBE_DCM2NIIX_VERSION` if the newest is unsuitable.

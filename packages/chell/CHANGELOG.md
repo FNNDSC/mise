@@ -1,5 +1,11 @@
 # @fnndsc/chell
 
+## 4.3.1
+
+### Patch Changes
+
+- PACS query polish: a zero-match query completes in seconds through the "no studies found" path instead of spamming per-poll errors and riding the 60s timeout; browse/pull hints are suppressed when nothing matched; the spinner erases to end-of-line so shorter status messages no longer show the tail of longer ones.
+
 ## 4.3.0
 
 ### Minor Changes

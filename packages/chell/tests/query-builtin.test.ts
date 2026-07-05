@@ -202,13 +202,16 @@ describe('builtin_query', () => {
     expect(mockCurrentGet).not.toHaveBeenCalled();
   });
 
-  it('warns when the query completes with no studies', async () => {
+  it('warns without browse hints when the query completes with no studies', async () => {
     mockCurrentGet.mockResolvedValue('PACSDCM');
     mockCreate.mockResolvedValue(ok({ id: 9 }));
     mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
     mockDecode.mockResolvedValue(ok({ json: null }));
     await builtin_query(['PatientID:X']);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('no studies found'));
+    const output: string = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
+    expect(output).not.toContain('VFS path');
+    expect(output).not.toContain('pull /net/pacs');
   });
 
   it('reports a generic failure when the error stack is empty', async () => {

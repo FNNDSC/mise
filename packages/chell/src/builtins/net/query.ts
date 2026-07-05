@@ -376,13 +376,15 @@ export async function builtin_query(args: string[]): Promise<void> {
     ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
     : queryResult_render(result.decoded);
 
-  if (rendered) {
-    console.log(chalk.green(`✓ Query ${result.queryId} complete`));
-    console.log(rendered);
-  } else {
+  if (!rendered) {
+    // Nothing matched: browsing or pulling the empty query would be
+    // meaningless, so no hints.
     console.log(chalk.yellow(`⚠ Query ${result.queryId} complete — no studies found.`));
+    return;
   }
 
+  console.log(chalk.green(`✓ Query ${result.queryId} complete`));
+  console.log(rendered);
   console.log(chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`));
   console.log(chalk.gray(`  cd ${result.vfsPath}`));
   console.log(chalk.gray(`  pull ${result.vfsPath}`));

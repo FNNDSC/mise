@@ -5,3 +5,10 @@ node_modules/
 .DS_Store
 .chell_history
 packages/chili/download/
+
+# Medical imaging data must never enter the repo, anywhere in the tree.
+*.dcm
+*.DCM
+*.dicom
+*.nii
+*.nii.gz

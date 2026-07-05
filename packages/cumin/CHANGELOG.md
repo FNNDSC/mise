@@ -1,5 +1,11 @@
 # @fnndsc/cumin
 
+## 3.4.0
+
+### Minor Changes
+
+- The typed payload extractors (`listData_get`, `itemData_get`, `items_get`) and common chrisapi types (`PluginInstance`, `Feed`, `FileBrowserFolder`, ...) are re-exported from the package index. The `chrisConnection` singleton is now initialized in place instead of reassigned, fixing stale named-import bindings in ESM consumers.
+
 ## 3.3.0
 
 ### Minor Changes

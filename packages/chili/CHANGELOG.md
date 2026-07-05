@@ -1,5 +1,16 @@
 # @fnndsc/chili
 
+## 3.3.0
+
+### Minor Changes
+
+- asciidoctor 3 → 4 (dependency-free, drops the deprecated glob/inflight chain); the man renderer's `browser_open` is now async. Removed the unused `node-fetch` dependency (Node ≥ 22 global fetch).
+
+### Patch Changes
+
+- Updated dependencies
+  - @fnndsc/cumin@3.4.0
+
 ## 3.2.6
 
 ### Patch Changes

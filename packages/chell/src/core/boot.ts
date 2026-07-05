@@ -56,18 +56,31 @@ const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = path.dirname(__filename);
 
 /**
+ * Build-time-injected map of dependency versions. esbuild replaces
+ * `__CHELL_DEP_VERSIONS__` with a literal when bundling the standalone
+ * binary, where no dependency package.json exists on disk. Undefined in a
+ * normal tsc build.
+ */
+declare const __CHELL_DEP_VERSIONS__: Record<string, string>;
+
+/**
  * Loads a dependency's package.json via node module resolution, so it works
- * whether the dep is nested or hoisted to a workspace-root node_modules.
+ * whether the dep is nested or hoisted to a workspace-root node_modules. In
+ * the bundled binary it falls back to the versions inlined at build time.
  *
  * @param name - The package name (e.g. `@fnndsc/cumin`).
- * @returns The parsed package.json, or a fallback `{ name, version: 'unknown' }`.
+ * @returns The parsed package.json, or a fallback `{ name, version }`.
  */
 function depPackageJson_load(name: string): PackageJson {
   try {
     const req = createRequire(import.meta.url);
     return req(`${name}/package.json`) as PackageJson;
   } catch {
-    return { name, version: 'unknown' };
+    const version: string =
+      typeof __CHELL_DEP_VERSIONS__ !== 'undefined'
+        ? (__CHELL_DEP_VERSIONS__[name] ?? 'unknown')
+        : 'unknown';
+    return { name, version };
   }
 }
 

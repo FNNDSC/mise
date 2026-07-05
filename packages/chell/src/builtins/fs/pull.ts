@@ -341,10 +341,12 @@ async function paths_resolveToVfs(paths: string[], pacsserver: string): Promise<
     if (p.startsWith('/net/pacs')) {
       resolvedPaths.push(p);
     } else if (queryExpr_parse(rawPath)) {
-      spinner.start(`Querying PACS for ${p}...`, true);
+      // Query with the RAW expression: path resolution prefixes the CWD,
+      // which would corrupt the first DICOM key (e.g. '/AccessionNumber').
+      spinner.start(`Querying PACS for ${rawPath}...`, true);
       const qResult: Awaited<ReturnType<typeof pacsQuery_createAndWait>> = await pacsQuery_createAndWait(
-        p,
-        `pull_${p}`,
+        rawPath,
+        `pull_${rawPath}`,
         pacsserver,
         (msg: string) => spinner.updateMessage(msg),
       );
@@ -353,7 +355,7 @@ async function paths_resolveToVfs(paths: string[], pacsserver: string): Promise<
         console.log(chalk.gray(`  → ${qResult.vfsPath}`));
         resolvedPaths.push(qResult.vfsPath);
       } else {
-        console.error(chalk.red(`pull: Query failed for: ${p}`));
+        console.error(chalk.red(`pull: Query failed for: ${rawPath}`));
       }
     } else {
       console.error(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
@@ -462,8 +464,8 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
  *
  * @param args - Command arguments (VFS paths, optional flags).
  * @example
- * pull /net/pacs/queries/42_AccessionNumber:22548684
- * pull --retry 3 /net/pacs/queries/42_AccessionNumber:22548684/Study_1.2.3_US-Hips
+ * pull /net/pacs/queries/42_AccessionNumber:12345678
+ * pull --retry 3 /net/pacs/queries/42_AccessionNumber:12345678/Study_1.2.3_US-Hips
  */
 export async function builtin_pull(args: string[]): Promise<void> {
   if (args_checkHasHelpFlag(args, 'pull')) {

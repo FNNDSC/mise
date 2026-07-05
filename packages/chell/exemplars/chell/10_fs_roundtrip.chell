@@ -1,20 +1,28 @@
 # Exemplar 10 — filesystem round-trip, chell style.
 #
-# Creates a scratch directory in the home folder, writes a file with known
-# content, reads it back, then removes everything — the CUBE ends the run
-# exactly as it began.
+# Create → write → read → remove, entirely inside the CUBE filesystem.
+# Run with -e (stop on error): the script aborts on the first failed
+# command and exits non-zero, so a clean exit IS the assertion. The CUBE
+# ends the run exactly as it began.
 #
-# Connect once first (a fresh connect and a script in the same invocation
-# currently leaves the IO layer unwired — see README "known quirks"):
-#   chell <user>@<url> -p <password> -c version
+# Connect once first (see README "known quirks"), then:
 #   chell -e -f exemplars/chell/10_fs_roundtrip.chell
 
+# Start from the home directory (cd with no argument goes home).
 cd
+
+# Make a scratch directory and enter it.
 mkdir e2e-chell-scratch
 cd e2e-chell-scratch
+
+# Write a file with known content; `cat` echoes it straight back from
+# CUBE storage — the round-trip proof.
 touch --withContents "hello from the chell exemplar" hello.txt
 ls -l
 cat hello.txt
+
+# Remove the file, then the directory, and show the home listing again —
+# eyeball that e2e-chell-scratch is gone.
 rm hello.txt
 cd ..
 rm -r e2e-chell-scratch

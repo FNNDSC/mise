@@ -181,8 +181,9 @@ describe('builtin_pull guards and path resolution', () => {
   it('runs a query for an expression operand, then fires with --nowait', async () => {
     mockCreateAndWait.mockResolvedValue({ queryId: 9, vfsPath: QUERY_PATH, decoded: {} });
     await builtin_pull(['PatientID:X', '--nowait']);
+    // The RAW expression is queried — path resolution must not touch it.
     expect(mockCreateAndWait).toHaveBeenCalledWith(
-      '/home/chris/PatientID:X', 'pull_/home/chris/PatientID:X', 'PACSDCM', expect.any(Function),
+      'PatientID:X', 'pull_PatientID:X', 'PACSDCM', expect.any(Function),
     );
     expect(logged()).toContain(QUERY_PATH);
     expect(logged()).toContain('1.2.3 200');

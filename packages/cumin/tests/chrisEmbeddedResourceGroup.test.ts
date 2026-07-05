@@ -61,11 +61,11 @@ describe("context_split()", () => {
 
   it("should correctly handle context paths containing multiple colons (e.g. PACS query folders)", () => {
     const result = context_split(
-      "folder:/pacs/queries/2601_AccessionNumber:22548684/Study_1.2.840_Outside"
+      "folder:/pacs/queries/2601_AccessionNumber:12345678/Study_1.2.840_Outside"
     );
     expect(result).toEqual({
       type: "folder",
-      value: "/pacs/queries/2601_AccessionNumber:22548684/Study_1.2.840_Outside",
+      value: "/pacs/queries/2601_AccessionNumber:12345678/Study_1.2.840_Outside",
     });
   });
 

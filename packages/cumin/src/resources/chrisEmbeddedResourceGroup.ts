@@ -61,7 +61,7 @@ export interface ContextSpec {
  *
  * This function parses strings like "folder:/path/to/folder" or "plugin:123" into an object
  * containing the type (the prefix before the first delimiter) and the value (the rest of the string).
- * If the path contains extra delimiters (e.g. "/pacs/queries/2601_AccessionNumber:22548684"), this
+ * If the path contains extra delimiters (e.g. "/pacs/queries/2601_AccessionNumber:12345678"), this
  * function correctly preserves those extra delimiters in the value component.
  *
  * @param context - The context string to be split. Must be a string.

@@ -20,15 +20,23 @@ owned by the CUBE admin, so cleanup needs admin credentials.
 
 ## Configuration
 
-| variable | required | meaning |
+Instance-specific test data — URLs, logins, and above all the designated
+test accession — is **never committed**: accession numbers and DICOM UIDs
+are identifiers. It lives in `exemplars/e2e.config.json` (gitignored; copy
+`e2e.config.example.json` and fill it in). Real environment variables
+override the file, which is how CI injects its secrets.
+
+| key | required | meaning |
 |---|---|---|
 | `CUBE_URL` | yes | API base, e.g. `http://cube:8000/api/v1/` |
 | `CUBE_USER` / `CUBE_PASSWORD` | yes | regular test user |
 | `CUBE_ADMIN_USER` / `CUBE_ADMIN_PASSWORD` | for 03/04 | admin, PACS-folder cleanup only |
 | `CUBE_PACS` | no (default `PACSDCM`) | PACS server identifier |
-| `CUBE_TEST_ACCESSION` | no (default `22548684`) | designated test study |
+| `CUBE_TEST_ACCESSION` | yes | designated test study on YOUR instance |
+| `CUBE_TEST_SERIESDESC` | scripts | a small series' description in that study |
+| `CUBE_DCM2NIIX_VERSION` | no | pin when the newest build is broken |
 
-Missing required variables → the program prints a note and exits **2**
+Missing required values → the program prints a note and exits **2**
 (skipped, not failed). Config is isolated to a temp directory per run —
 your real chell session is never touched.
 
@@ -46,9 +54,12 @@ Each prints ✓/✗ per check and exits 0 only if all passed.
 
 ## chell exemplars
 
-Connect once, then run the scripts against the established session:
+chell expands `$VAR` / `${VAR}` environment references in command
+arguments, so the scripts carry no instance data. Export your config,
+connect once, then run against the established session:
 
 ```
+. exemplars/e2e-env.sh          # exports exemplars/e2e.config.json
 chell "$CUBE_USER@$CUBE_URL" -p "$CUBE_PASSWORD" -c version
 chell -e -f exemplars/chell/10_fs_roundtrip.chell
 chell -e -f exemplars/chell/20_pacs_qr.chell
@@ -81,5 +92,7 @@ change set — the argument for keeping live exemplars around:
    (stale named-import bindings) — same in-place fix as 3.
 
 Note: pl-dcm2niix needs its canonical arguments (see `DCM2NIIX_PARAMS` in
-exemplar 03); bare defaults fail on typical series. Pin a registered
-version with `CUBE_DCM2NIIX_VERSION` if the newest is unsuitable.
+exemplar 03); bare defaults fail on typical series. The newest registered
+build is not always the working one — on ekanite v2.0.0 fails where
+v1.0.2 succeeds — so pin with `CUBE_DCM2NIIX_VERSION` (in CI: the
+`CUBE_DCM2NIIX_VERSION` repo variable).

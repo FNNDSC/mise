@@ -7,8 +7,11 @@
 import { pacsVfs_read, pacsVfs_readBinary } from '../src/vfs/providers/pacs_content';
 import { errorStack, PACSQueryDecodedResult } from '@fnndsc/cumin';
 
+// Query folders use the modern `<desc>_qid:<id>[_<user>]` naming that the
+// listing provider generates — an earlier version of this suite used the
+// legacy `<id>_<desc>` form, which let a parser regression slip through.
 const SERIES_PATH: string =
-  '/net/pacs/queries/12_PatientID:X/Study_1.2_Brain/Series_1.2.3_T1/metadata.json';
+  '/net/pacs/queries/AccessionNumber:87654321_qid:12_radstar/Study_1.2_Brain/Series_1.2.3_T1/metadata.json';
 
 const decoded = (json: unknown): PACSQueryDecodedResult => ({ raw: 'r', json });
 
@@ -69,9 +72,15 @@ describe('pacsVfs_read', () => {
     expect((await pacsVfs_read('/home/chris/metadata.json', fetch_make(standardPayload))).ok).toBe(false);
   });
 
-  it('rejects a non-numeric query id', async () => {
-    const badId: string = SERIES_PATH.replace('12_PatientID:X', 'abc_desc');
-    expect((await pacsVfs_read(badId, fetch_make(standardPayload))).ok).toBe(false);
+  it('parses the query id from the modern folder name and passes it to the fetch', async () => {
+    const fetch: jest.Mock = fetch_make(standardPayload);
+    await pacsVfs_read(SERIES_PATH, fetch);
+    expect(fetch).toHaveBeenCalledWith(12);
+  });
+
+  it('rejects a folder without a qid marker (including the legacy <id>_<desc> form)', async () => {
+    const legacy: string = SERIES_PATH.replace('AccessionNumber:87654321_qid:12_radstar', '12_PatientID:X');
+    expect((await pacsVfs_read(legacy, fetch_make(standardPayload))).ok).toBe(false);
     expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('Invalid query ID'));
   });
 

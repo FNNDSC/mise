@@ -91,7 +91,7 @@ Query-level folders follow the pattern:
 |Segment |Source
 
 |`<queryDesc>`
-|Stringified DICOM key-value pairs from the query (e.g. `AccessionNumber:25162540`).
+|Stringified DICOM key-value pairs from the query (e.g. `AccessionNumber:12345678`).
 
 |`_qid:<id>`
 |Numeric PACSQuery ID from the CUBE API.
@@ -187,7 +187,7 @@ the VFS path the user can pass to `pull` or `cd`.
 
 [source]
 ----
-query AccessionNumber:25162540 --title "Brain MRI Jan 2024"
+query AccessionNumber:12345678 --title "Brain MRI Jan 2024"
 
   Query 2679 — pending
   Query 2679 — pending
@@ -196,9 +196,9 @@ query AccessionNumber:25162540 --title "Brain MRI Jan 2024"
 ✓ Query 2679 complete
   ...study/series summary...
 
-  VFS path: /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
-  cd /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
-  pull /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+  VFS path: /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar
+  cd /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar
+  pull /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar
 ----
 
 === VFS path construction
@@ -236,12 +236,12 @@ resolved CUBE paths and file counts.
 
 [source]
 ----
-pull /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar/Study_.../Series_..._AX_T2
+pull /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar/Study_.../Series_..._AX_T2
 
- AccessionNumber:25162540|MR-Brain|AX_T2_TSE [DONE]> [████████████████] 68/68
+ AccessionNumber:12345678|MR-Brain|AX_T2_TSE [DONE]> [████████████████] 68/68
 
 ✓ 1/1 series pulled successfully.
-  AX_T2_TSE  ->  /SERVICES/PACS/PACSDCM/4472875-.../00018-AX_T2_TSE-90c176c  (68 files)
+  AX_T2_TSE  ->  /SERVICES/PACS/PACSDCM/7654321-.../00018-AX_T2_TSE-90c176c  (68 files)
 ----
 
 === Synthetic query pattern
@@ -364,7 +364,7 @@ After the initial `tasks_pullWatch` call, `[NO LONK]` tasks enter a retry loop:
 
 [source]
 ----
-pull --retry 3 /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+pull --retry 3 /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar
 
  COW_TUMBLE [NO LONK]> ░░░░░░░░░░░░░░░░░░░░  0/36
  COW_ROTATE [DONE]>    ████████████████████ 36/36
@@ -395,7 +395,7 @@ more VFS paths. It is also called automatically by `pull` after retrieval comple
 
 [source]
 ----
-cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2679_rudolphpienaar
+cubepath /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar
 
   BRN_LOC_AAHScout    ->  /SERVICES/PACS/PACSDCM/.../00001-BRN_LOC_AAHScout-b46aa71  (128 files)
   AX_T2_TSE           ->  /SERVICES/PACS/PACSDCM/.../00018-AX_T2_TSE-90c176c         (68 files)
@@ -427,7 +427,7 @@ timing gap between LONK `done` and `pacsseries` DB indexing.
 `series.data.folder_path` from the CUBE API omits the leading slash:
 
 ----
-SERVICES/PACS/PACSDCM/4472875-.../00018-AX_T2_TSE-90c176c
+SERVICES/PACS/PACSDCM/7654321-.../00018-AX_T2_TSE-90c176c
 ----
 
 `series_cubePathGet` normalises this in two distinct ways:

@@ -293,7 +293,7 @@ function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string
  * @example
  * query PatientID:1234
  * query 'PatientID:1234,StudyDate:20240101' --title 'Hip DDH Jan 2024'
- * query AccessionNumber:25162540 --table
+ * query AccessionNumber:12345678 --table
  */
 export async function builtin_query(args: string[]): Promise<void> {
   if (args_checkHasHelpFlag(args, 'query')) {

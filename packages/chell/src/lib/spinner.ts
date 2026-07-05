@@ -50,8 +50,10 @@ export class Spinner {
         displayMessage = `${this.message} (${elapsedSeconds}s)`;
       }
 
-      // Note: We use chalk.gray for the message to match the existing "Fetching..." style
-      process.stdout.write(`\r${chalk.bgBlack.cyanBright.bold(frame)} ${chalk.gray(displayMessage)}`);
+      // Note: We use chalk.gray for the message to match the existing "Fetching..." style.
+      // \x1b[K erases to end-of-line so a shorter message never leaves the
+      // tail of a longer previous one behind.
+      process.stdout.write(`\r\x1b[K${chalk.bgBlack.cyanBright.bold(frame)} ${chalk.gray(displayMessage)}`);
     }, 80);
   }
 

@@ -94,8 +94,8 @@ if (!resolved.ok) return;
 const resolvedServerId: number = resolved.value.id;
 
 const createdQuery: Result<PACSQueryRecord> = await pacsQueries_create("PACSDCM", {
-  title: "PID 4456554",
-  query: JSON.stringify({ PatientID: "4456554" }),
+  title: "PID 7654321",
+  query: JSON.stringify({ PatientID: "7654321" }),
 });
 if (!createdQuery.ok) return;
 const queryId: number = createdQuery.value.id;

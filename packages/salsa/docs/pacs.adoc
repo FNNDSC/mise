@@ -26,7 +26,7 @@
 == Parameters (delegated to cumin)
 
 - `pacsserver`: identifier or numeric id; resolution/validation handled in `cumin`.
-- `PACSQueryCreateData`: `{ title: string; query: string; description?: string }` where `query` is a JSON string of DICOM tag filters (e.g., `{"PatientID":"4456554"}`).
+- `PACSQueryCreateData`: `{ title: string; query: string; description?: string }` where `query` is a JSON string of DICOM tag filters (e.g., `{"PatientID":"7654321"}`).
 - `PACSQueryListOptions`: includes `pacs_id`, `pacs_identifier`, plus standard list options.
 
 == Usage Example
@@ -51,8 +51,8 @@ if (!serversResult.ok) return;
 const servers: PACSServer[] = serversResult.value;
 
 const createdQuery: Result<PACSQueryRecord> = await pacsQueries_create("PACSDCM", {
-  title: "PID 4456554",
-  query: JSON.stringify({ PatientID: "4456554" }),
+  title: "PID 7654321",
+  query: JSON.stringify({ PatientID: "7654321" }),
 });
 if (!createdQuery.ok) return;
 const queryId: number = createdQuery.value.id;

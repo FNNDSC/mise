@@ -942,13 +942,13 @@ export const helpText: Record<string, CommandHelp> = {
     ],
     examples: [
       '# All series under a query',
-      'cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661',
+      'cubepath /net/pacs/queries/AccessionNumber:12345678_qid:2661',
       '',
       '# All series under a study',
-      'cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661/Study_1.2.3_Brain_MRI',
+      'cubepath /net/pacs/queries/AccessionNumber:12345678_qid:2661/Study_1.2.3_Brain_MRI',
       '',
       '# Single series',
-      'cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661/Study_1.2.3/Series_1.2.3.4_AX_T2',
+      'cubepath /net/pacs/queries/AccessionNumber:12345678_qid:2661/Study_1.2.3/Series_1.2.3.4_AX_T2',
     ],
   },
   query: {

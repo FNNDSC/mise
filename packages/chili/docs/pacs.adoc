@@ -21,7 +21,7 @@
 == PACS Queries
 
 - **Create**: `chili pacsqueries create "<query>" [--title <title>] [--description <desc>] [--pacsserver <pacs>]`
-  - `<query>` can be JSON (`{"PatientID":"12345"}`) or comma-separated `key:value` pairs (`PatientID:12345,StudyDate:20251003`).
+  - `<query>` can be JSON (`{"PatientID":"12345"}`) or comma-separated `key:value` pairs (`PatientID:12345,StudyDate:20240101`).
   - On success prints: `Created PACS query id=<ID> status=<status> pacs=<pacs> title="<title>"`.
 - **List**: `chili pacsqueries list [--pacsserver <pacs>] [--fields ...] [--table|--csv]`
   - Filters to current/override PACS server. Use `fieldslist` to discover columns.
@@ -64,7 +64,7 @@
 ```bash
 chili context set --pacsserver PACSDCM
 chili pacsservers list --table
-chili pacsqueries create "PatientID:4456554" --title "PID 4456554"
+chili pacsqueries create "PatientID:7654321" --title "PID 7654321"
 chili pacsqueries list --fields id,title,status,pacs_id,query
 chili pacsqueries decode <id>
 ```
@@ -76,7 +76,7 @@ chili pacsqueries decode <id>
 chili context set --pacsserver PACSDCM
 
 # 2. Create query
-chili pacsqueries create "PatientID:4456554" --title "Patient scan"
+chili pacsqueries create "PatientID:7654321" --title "Patient scan"
 # Returns: Created PACS query id=123
 
 # 3. See what's available on PACS

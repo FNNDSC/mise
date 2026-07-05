@@ -8,6 +8,7 @@
  */
 
 import { Result, Ok, Err, errorStack, PACSQueryDecodedResult } from "@fnndsc/cumin";
+import { queryId_extractFromFolder } from "./pacsHelpers.js";
 
 /**
  * Safely extracts a string value from a potentially object-wrapped DICOM tag.
@@ -55,7 +56,9 @@ export async function pacsVfs_read(
     const seriesFolder: string = parts[5];
     const filename: string = parts[6];
 
-    const queryId: number = Number(queryFolder.split("_")[0]);
+    // Query folders are named `<desc>_qid:<id>[_<user>]` (see the listing
+    // provider); the shared helper parses the id the same way everywhere.
+    const queryId: number = queryId_extractFromFolder(queryFolder);
     if (Number.isNaN(queryId)) {
       errorStack.stack_push("error", `Invalid query ID in path '${pathStr}'`);
       return Err();

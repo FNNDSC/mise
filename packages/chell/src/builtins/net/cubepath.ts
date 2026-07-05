@@ -27,7 +27,7 @@ import {
  *
  * @param args - `<vfs-path> [...] [--pacsserver <id>] [--retry]`
  * @example
- * cubepath /net/pacs/queries/AccessionNumber:25162540_qid:2661
+ * cubepath /net/pacs/queries/AccessionNumber:12345678_qid:2661
  * cubepath /net/pacs/queries/.../Series_1.2.3_AX_T2 /net/pacs/queries/.../Series_1.2.3_DWI
  */
 export async function builtin_cubepath(args: string[]): Promise<void> {

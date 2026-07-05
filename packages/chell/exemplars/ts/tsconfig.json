@@ -4,7 +4,17 @@
     "rootDir": ".",
     "outDir": "./dist",
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    "typeRoots": [
+      "../../../../node_modules/@types",
+      "../../node_modules/@types"
+    ],
+    "types": [
+      "node"
+    ]
   },
-  "include": ["lib/**/*.ts", "*.ts"]
+  "include": [
+    "lib/**/*.ts",
+    "*.ts"
+  ]
 }

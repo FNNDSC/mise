@@ -7,7 +7,7 @@
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
-import asciidoctor from "asciidoctor";
+import { convert as adoc_convert } from "asciidoctor";
 import { exec, ExecException } from "child_process";
 import url from "url";
 import os from "os";
@@ -80,9 +80,8 @@ export function projectDir_get(): string {
  * @param content - The AsciiDoc content string.
  * @returns The converted HTML string.
  */
-function adoc_htmlConvert(content: string): string {
-  const ascii: ReturnType<typeof asciidoctor> = asciidoctor();
-  let result: string = ascii.convert(content, {
+async function adoc_htmlConvert(content: string): Promise<string> {
+  let result: string = await adoc_convert(content, {
     standalone: false,
     attributes: {
       showtitle: "",
@@ -132,7 +131,7 @@ export async function asciidoc_render(
   style: "figlet" | "ascii",
   width?: number,
 ): Promise<string> {
-  let result: string = adoc_htmlConvert(content);
+  let result: string = await adoc_htmlConvert(content);
 
   function ASCII_create(text: string, style: ASCIIHeadingStyle): string {
     const transformedText: string = style.textTransform(text);
@@ -200,8 +199,7 @@ export async function asciidoc_render(
  *
  * @param filePath - The path to the file to open.
  */
-export function browser_open(filePath: string): void {
-  const ascii: ReturnType<typeof asciidoctor> = asciidoctor();
+export async function browser_open(filePath: string): Promise<void> {
   const tempHtmlPath: string = path.join(
     os.tmpdir(),
     path.basename(filePath).replace(".adoc", ".html"),
@@ -210,7 +208,7 @@ export function browser_open(filePath: string): void {
   try {
     const content: string = fs.readFileSync(filePath, "utf-8");
 
-    const html: string = ascii.convert(content, {
+    const html: string = await adoc_convert(content, {
       safe: "safe",
       standalone: true,
       attributes: { showtitle: true },

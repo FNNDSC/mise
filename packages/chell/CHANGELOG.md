@@ -1,5 +1,13 @@
 # @fnndsc/chell
 
+## 4.3.2
+
+### Patch Changes
+
+- Example accession numbers in help text replaced with clearly fake values.
+- Updated dependencies
+  - @fnndsc/salsa@3.2.6
+
 ## 4.3.1
 
 ### Patch Changes

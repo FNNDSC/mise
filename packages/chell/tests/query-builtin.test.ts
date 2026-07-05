@@ -1,6 +1,7 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 
 const mockPush = jest.fn();
+const mockPop = jest.fn();
 const mockGetAll = jest.fn(() => [] as unknown[]);
 const mockCurrentGet = jest.fn(async () => null as string | null);
 const mockQueryGet = jest.fn();
@@ -8,7 +9,7 @@ const mockDecode = jest.fn();
 const mockCreate = jest.fn();
 const mockServersList = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  errorStack: { stack_push: mockPush, stack_getAll: mockGetAll },
+  errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },
   chrisContext: { current_get: mockCurrentGet },
   Context: { PACSserver: 'PACSserver' },
   pacsQuery_get: mockQueryGet,
@@ -99,6 +100,33 @@ describe('pacsQuery_createAndWait', () => {
     await jest.advanceTimersByTimeAsync(61_000);
     expect(await pending).toBeNull();
     expect(mockPush).toHaveBeenCalledWith('error', expect.stringContaining('Timed out waiting for query 5'));
+  });
+
+  it('pops the transient decode error pushed by each poll probe', async () => {
+    jest.useFakeTimers();
+    mockCreate.mockResolvedValue(ok({ id: 5 }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'working' }));
+    mockDecode
+      .mockResolvedValueOnce(err())
+      .mockResolvedValueOnce(err())
+      .mockResolvedValue(ok({ json: [] }));
+    const pending = pacsQuery_createAndWait('PatientID:X', 'T', 'PACSDCM');
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(await pending).not.toBeNull();
+    expect(mockPop).toHaveBeenCalledTimes(2);
+  });
+
+  it('completes with an empty result when the query succeeds with no matches', async () => {
+    jest.useFakeTimers();
+    mockCreate.mockResolvedValue(ok({ id: 6 }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(err());
+    const pending = pacsQuery_createAndWait('PatientID:ghost', 'T', 'PACSDCM');
+    await jest.advanceTimersByTimeAsync(5_000);
+    const result = await pending;
+    expect(result).not.toBeNull();
+    expect(result?.decoded.json).toBeUndefined();
+    expect(mockPush).not.toHaveBeenCalledWith('error', expect.stringContaining('Timed out'));
   });
 });
 

@@ -130,6 +130,8 @@ export async function pacsQuery_createAndWait(
 
   const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
 
+  let succeededWithoutPayload: number = 0;
+
   while (Date.now() < deadline) {
     const statusResult = await pacsQuery_get(queryId);
     const status: string = statusResult.ok ? (statusResult.value.status ?? 'pending') : 'pending';
@@ -138,6 +140,18 @@ export async function pacsQuery_createAndWait(
     const decodeResult = await pacsQuery_resultDecode(queryId);
     if (decodeResult.ok && decodeResult.value.json !== undefined) {
       return { queryId, vfsPath, decoded: decodeResult.value };
+    }
+    if (!decodeResult.ok) {
+      // A missing payload is the expected state while polling; drop the
+      // error the probe pushed so the stack doesn't fill with one copy
+      // per poll tick.
+      errorStack.stack_pop();
+    }
+
+    // A succeeded query with no stored payload means the PACS matched
+    // nothing; a couple of grace polls cover result-write lag.
+    if (status === 'succeeded' && ++succeededWithoutPayload >= 2) {
+      return { queryId, vfsPath, decoded: { raw: '' } };
     }
 
     await sleep(QUERY_POLL_INTERVAL_MS);

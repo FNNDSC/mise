@@ -5,7 +5,7 @@
  * (single-chain styles keep text, double-chain styles are stripped).
  */
 const mockConvert = jest.fn();
-jest.mock('asciidoctor', () => jest.fn(() => ({ convert: mockConvert })));
+jest.mock('asciidoctor', () => ({ convert: mockConvert }));
 jest.mock('child_process');
 
 import fs from 'fs';
@@ -64,17 +64,17 @@ describe('browser_open', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it('converts the doc, writes html and launches the browser', () => {
+  it('converts the doc, writes html and launches the browser', async () => {
     readSpy.mockReturnValue('= Title\n\nBody.');
-    browser_open('/docs/topic.adoc');
+    await browser_open('/docs/topic.adoc');
     expect(writeSpy).toHaveBeenCalled();
     expect(exec).toHaveBeenCalledWith(expect.stringMatching(/(open|xdg-open|start) /), expect.any(Function));
   });
 
-  it('reports an error when the exec callback fails', () => {
+  it('reports an error when the exec callback fails', async () => {
     readSpy.mockReturnValue('= Title');
     (exec as unknown as jest.Mock).mockImplementation((_cmd: string, cb: (e: Error) => void) => cb(new Error('no browser')));
-    browser_open('/docs/topic.adoc');
+    await browser_open('/docs/topic.adoc');
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Error opening browser'), expect.anything());
   });
 

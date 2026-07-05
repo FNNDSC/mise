@@ -36,7 +36,7 @@ export async function manPage_display(options: ManPageOptions): Promise<void> {
   }
 
   if (options.browser) {
-    browser_open(docPath);
+    await browser_open(docPath);
   } else {
     const content: string = fs.readFileSync(docPath, "utf-8");
     console.log(await asciidoc_render(content, options.style, options.width));

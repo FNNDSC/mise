@@ -3,7 +3,13 @@ import * as renderer from '../../../src/man/renderer';
 import fs from 'fs';
 
 jest.mock('fs');
-jest.mock('../../../src/man/renderer');
+jest.mock('../../../src/man/renderer', () => ({
+  // Factory mock: the real module imports the ESM-only asciidoctor 4,
+  // which jest's CommonJS environment cannot parse.
+  projectDir_get: jest.fn(),
+  browser_open: jest.fn(),
+  asciidoc_render: jest.fn(),
+}));
 
 describe('commands/man/doc', () => {
   beforeEach(() => {

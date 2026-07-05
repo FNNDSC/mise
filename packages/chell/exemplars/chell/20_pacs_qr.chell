@@ -1,21 +1,67 @@
 # Exemplar 20 — PACS query and retrieve, chell style.
 #
-# Connects to the PACS, queries the designated test accession, then pulls
-# one specific series by SeriesInstanceUID (a one-file Structured Report,
-# the smallest series in the test study). `pull` accepts a query expression
-# directly, so the script needs no run-specific paths.
+# The interactive PACS workflow is: connect → query → read the query
+# output → pull what you want → verify. This script walks it start to
+# finish; every command below BLOCKS until its work is done, so when the
+# script exits cleanly the data is on the CUBE.
 #
-# NOTE — CUBE invariant: pulled PACS files can only be deleted with admin
-# credentials, which chell does not carry. After this script, run the
-# cleanup phase of the TS exemplar (04_pacsQR) or delete the series folder
-# as the CUBE admin. See exemplars/README.md.
+# Nothing instance-specific lives in this file: chell expands $VAR
+# references from the environment. Source your gitignored per-instance
+# values first (never commit accession numbers or UIDs):
 #
-# Connect once first (see README "known quirks"):
-#   chell <user>@<url> -p <password> -c version
+#   . exemplars/e2e-env.sh                     # exports exemplars/e2e.config.json
+#   chell "$CUBE_USER@$CUBE_URL" -p "$CUBE_PASSWORD" -c version
 #   chell -e -f exemplars/chell/20_pacs_qr.chell
 
-pacs connect PACSDCM
-pacs
-query AccessionNumber:12345678
-pull SeriesInstanceUID:<SeriesInstanceUID>
-cubepath SeriesInstanceUID:<SeriesInstanceUID>
+# 1. Point chell at a PACS service. `pacs` alone shows the active server;
+#    `pacs list` shows every registered one.
+pacs connect $CUBE_PACS
+
+# 2. Query by accession number. This BLOCKS while the PACS executes the
+#    query (typically seconds, up to a minute), then prints every study
+#    and series found — descriptions, modalities, file counts — followed
+#    by a VFS path like:
+#
+#      VFS path: /net/pacs/queries/AccessionNumber:<acc>_qid:<id>
+#
+#    Interactively you would now `cd` into that path and browse studies
+#    and series as directories, or `pull` the whole path (or any study or
+#    series subdirectory of it).
+query AccessionNumber:$CUBE_TEST_ACCESSION
+
+# 3. Pull ONE series rather than the whole study. `pull` accepts a query
+#    expression directly, and the expression carries the two DICOM keys
+#    that pin exactly one series: its SeriesInstanceUID and the enclosing
+#    StudyInstanceUID (the PACS C-MOVE needs both — a bare series UID is
+#    ambiguous to it). You get these UIDs from the query listing in step 2;
+#    here they come from the environment so the script stays data-free.
+#
+#    `pull` BLOCKS with a per-series progress bar and marks each series
+#    [DONE] (or [TIMEOUT]/[STALLED]/[ERROR], exiting non-zero). It ends
+#    with the completion line that IS your proof the transfer finished —
+#    the count and the CUBE storage folder the files landed in:
+#
+#      ✓ 1/1 series pulled successfully.
+#      FUJI_..._Report  ->  /SERVICES/PACS/<pacs>/<patient>/<study>/<series>  (N files)
+#
+#    That storage path is where an analysis (pl-dcm2niix, TS exemplar 03)
+#    would root itself.
+pull SeriesInstanceUID:$CUBE_TEST_SERIESUID,StudyInstanceUID:$CUBE_TEST_STUDYUID
+
+# 4. List the query folder to see the study/series tree the query built —
+#    the same view you would `cd` into and browse interactively.
+ls /net/pacs/queries
+
+# For an on-demand storage/file-count check of a pulled series, or a
+# detailed per-series status report, these two work interactively (both
+# take a value printed on screen above — a /net/pacs/queries/... path, or
+# the query id from that path's `_qid:<id>` suffix — which a static script
+# cannot capture, hence they are shown here rather than run):
+#   cubepath /net/pacs/queries/AccessionNumber:<acc>_qid:<id>/Study_.../Series_...
+#   pacsretrieve report <queryId>
+
+# Housekeeping note — this script leaves state behind, deliberately kept
+# out of a demo: (a) the pulled DICOM files (PACS folders are admin-owned;
+# see TS exemplar 04 for admin-credentialed deletion), and (b) the
+# PACSQuery records created by steps 2 and 3 (list with
+# `ls /net/pacs/queries`, remove with the REST API as in TS exemplar 04).

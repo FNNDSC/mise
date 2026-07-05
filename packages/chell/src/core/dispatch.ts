@@ -345,8 +345,32 @@ async function pipelineExecutable_handle(name: string, args: string[]): Promise<
 }
 
 /**
+ * Expands `$NAME` and `${NAME}` environment references in one token.
+ *
+ * Applied per token after parsing, so an expanded value can never inject
+ * command separators, pipes or redirects (the structural characters were
+ * already consumed). References to unset variables are left verbatim —
+ * kinder than the shell's silent empty string when a script forgets an
+ * export. Shell-escape lines (`!...`) never reach this point; bash does
+ * its own expansion there.
+ *
+ * @param token - A single parsed command token.
+ * @returns The token with set environment references substituted.
+ */
+export function envRefs_expand(token: string): string {
+  return token.replace(
+    /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
+    (match: string, braced: string | undefined, bare: string | undefined) => {
+      const value: string | undefined = process.env[braced ?? bare ?? ''];
+      return value !== undefined ? value : match;
+    },
+  );
+}
+
+/**
  * Dispatches a parsed command to its handler.
- * Checks COMMAND_HANDLERS, then /bin plugin names, then falls back to chili.
+ * Expands environment references in the arguments, then checks
+ * COMMAND_HANDLERS, then /bin plugin names, then falls back to chili.
  *
  * @param command - The command name.
  * @param args - Parsed arguments.
@@ -355,6 +379,7 @@ export async function command_dispatch(command: string, args: string[]): Promise
   if (command === 'exit') {
     process.exit(0);
   }
+  args = args.map(envRefs_expand);
 
   const handler: CommandHandler | undefined = COMMAND_HANDLERS[command];
   if (handler) {

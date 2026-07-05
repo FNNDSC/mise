@@ -61,9 +61,12 @@ shop:
 
 # --- Prep (install dependencies) ---
 # One install hydrates every workspace AND links them to each other.
+# Uses the repo-pinned npm (see "packageManager" in package.json): newer npm
+# majors regenerate the lockfile differently (breaking npm ci in CI) and
+# npm 11 prints spurious ERESOLVE peer warnings when overrides are present.
 prep:
-	@echo "Prepping all packages (npm install)..."
-	npm install
+	@echo "Prepping all packages (npm install, pinned npm)..."
+	npx --yes npm@10.9.8 install
 
 # --- Cook (build) ---
 # Root build script already enforces topological order: cumin->salsa->chili->chell.

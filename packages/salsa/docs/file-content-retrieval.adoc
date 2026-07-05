@@ -324,7 +324,7 @@ PACS files are stored in `/SERVICES/PACS/` directories and have unique API requi
 
 **Example path:**
 ```
-/SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/PET_CH_DIAG_PETCT_TORSO_Over_55KG_Adult_-AccessionNumber-20130829/00005-AC_CT_DIAG_DIAG-98d76c0/0168-1.3.12.2.1107.5.1.4.11071.30000013082915055700000002032.dcm
+/SERVICES/PACS/PACSDCM/7654321-DOE-19700101/PET_CH_DIAG_PETCT_TORSO_Over_55KG_Adult_-AccessionNumber-20240101/00005-AC_CT_DIAG_DIAG-98d76c0/0168-1.2.3.4.5.6.7.8.9.dcm
 ```
 
 == Adding New File Type Handlers
@@ -781,7 +781,7 @@ chell -c 'cat /PIPELINES/sandip.samal/PHI_detection.yml'
 # Expected: YAML content displayed
 
 # Test PACS file
-chell -c 'cat /SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/.../file.dcm'
+chell -c 'cat /SERVICES/PACS/PACSDCM/7654321-DOE-19700101/.../file.dcm'
 # Expected: DICOM binary content displayed
 
 # Test error case

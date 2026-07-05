@@ -316,7 +316,7 @@ plugins:
 Medical imaging files in `/SERVICES/PACS/PACSDCM`:
 
 ```bash
-cat /SERVICES/PACS/PACSDCM/7654321-EVANS-19861111/study/series/image.dcm
+cat /SERVICES/PACS/PACSDCM/7654321-DOE-19700101/study/series/image.dcm
 ```
 
 **Path structure:**

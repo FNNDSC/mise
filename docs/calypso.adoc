@@ -1,0 +1,330 @@
+= CALYPSO: An Intent Layer and Session Daemon for ChRIS
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-07-06: Initial draft
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: DRAFT (living document; updated as design conversation progresses)
+
+[abstract]
+== Abstract
+
+This document specifies CALYPSO, an intent interpretation layer and session daemon for the ChRIS distributed computing platform. CALYPSO transposes the results of a prior design study (ARGUS) onto production infrastructure: the CUBE backend assumes the role of sole state authority, the mise software stack (cumin, salsa, chili, chell) supplies the deterministic execution substrate, and CALYPSO itself provides natural-language intent resolution and session management above them. The design commits to a terminal-central user interface: a single shell grammar, available identically on the command line and inside a future web console, is the primary interaction surface, and graphical elements are renderings of the same session rather than a parallel control path. We argue that this architecture removes the Collection+JSON client burden from user interface development entirely, improves rather than degrades interactive latency for compound operations, and preserves the central safety doctrine of the design study: deterministic resolution precedes probabilistic interpretation, and workflow truth is always materialized platform state, never an assertion made by a language model.
+
+== Introduction
+
+ChRIS is an open-source distributed computing platform for medical imaging and analysis <<chris>>. Its backend, CUBE, exposes all platform state (feeds, plugin instances, files, pipelines) through a REST API whose wire format is Collection+JSON <<cjson>>, consumed by clients through the `@fnndsc/chrisapi` JavaScript library <<chrisapi>>. Practical experience across multiple user interface efforts has shown that this client burden is substantial. Collection+JSON traversal is verbose, the published typings lag the live API surface, and compound operations decompose into long chains of sequential requests. Each new client has historically paid this cost again.
+
+The mise project <<mise>> paid the cost once, deliberately, for the command line. Its four-layer stack (the Sandwich Model) confines every interaction with `chrisapi` to a single adapter seam in its lowest layer, and each layer above works exclusively with typed domain objects. At the top of the stack, chell presents the entire platform as a familiar Unix shell: data as a filesystem, plugins as executables, running jobs as `/proc` entries. The stack is mature and independently published, but it is presently a command-line system only. Its engine (command dispatch, session state, virtual filesystem projection) is fused to a readline loop on standard input.
+
+In parallel, the ARGUS design study <<argus>> explored, against a simulated platform, what a user interface looks like when an embedded intelligent terminal is the primary surface rather than a peripheral chat widget. The study produced a working prototype and, more durably, a set of architectural commitments and a named component: CALYPSO, the intent layer that mediates between natural language and deterministic execution. The study also inherited an earlier line of thought from the ChRIS Intent-Action Service proposal <<ias>>, which first formalized the principle that clients should speak in intent while a distinct orchestration layer resolves intents into executable action sequences.
+
+This document records the synthesis of these three lines: CALYPSO, rebuilt on the mise stack against a real CUBE, as the foundation for a terminal-central ChRIS user interface. The design study itself is concluded and its repository frozen as the record of the reasoning; what follows is the forward specification.
+
+== Background
+
+=== ChRIS and CUBE
+
+CUBE is the authoritative store for all durable platform state. A feed and its tree of plugin instances constitute a materialized computation graph: the existence of an output file at a given path within a feed is proof that the producing computation ran, and the path itself encodes lineage. This property, native to ChRIS, is foundational for everything that follows, because it means the platform already provides what the design study had to simulate: provenance-carrying, multi-client, durable state.
+
+=== The mise stack
+
+mise is a monorepo publishing four packages. cumin is the infrastructure layer and the sole importer of `chrisapi`; its adapter module is an anti-corruption seam that converts Collection+JSON responses into typed domain objects and confines all unsafe casts to one auditable file. salsa provides shared application logic, most importantly a virtual filesystem (VFS) dispatcher that projects CUBE state onto navigable paths such as `/proc` and PACS query trees. chili is the command and presentation layer, with a deliberate separation between command modules that return typed models and view modules that render them as text. chell is the interactive shell: a dispatch table of builtins, a parser handling pipes, redirection and wildcards, and a REPL. chili was designed to be driven in-process by a host without spawning a subprocess; this hosting pattern is load-bearing in the present design.
+
+=== The ARGUS design study
+
+ARGUS prototyped an operator console for a simulated federated learning platform. Because no real backend existed, the study constructed an in-memory virtual computer (filesystem, shell, plugin host) as its state substrate, and layered CALYPSO above it: a kernel that routes user input first through deterministic matching and only then through a language model, validates any model output against the vocabulary of commands and entities that actually exist, and returns a structured response envelope rendered identically by a CLI and (prospectively) a web surface. A session server exposed this core over WebSocket with a session bus broadcasting every interaction to all connected surfaces.
+
+=== Doctrine carried forward
+
+Four commitments from the study survive unchanged and govern this design. First, precedence of truth: deterministic resolution always precedes probabilistic interpretation, and language-model output is a proposal to be validated, never an action in itself. Second, data-state computation: workflow progress is proven by materialized artifacts, not asserted by any controller, and in the present design the materialized substrate is CUBE. Third, CALYPSO is the interaction layer and never the state authority. Fourth, the crash test: termination of the CALYPSO process at any moment must lose no workflow truth whatsoever; a reconnecting client re-derives everything from platform state.
+
+=== Related systems
+
+The composition specified here has, to the authors' knowledge, no direct precedent in the wild. Its components, however, are individually well proven, and this section records the nearest relatives, both as evidence for the design's soundness and as reference reading for its implementation.
+
+The closest structural relative is the Jupyter kernel architecture <<jupyter>>. A Jupyter kernel is an engine daemon serving multiple simultaneously attached frontends over a correlated message protocol, with execute and completion requests, streamed output channels, and results carried as bundles holding several representations of one value so that each frontend renders what it can. That is, point for point, the topology, streaming model, and dual rendered-plus-model envelope of this design, arrived at independently. The Jupyter messaging specification is recommended reading before the wire contract is implemented; among other things it handles interrupt delivery, a case this design has not yet addressed.
+
+The separation of typed models from rendered views has its deepest precedent in PowerShell <<monad>>, whose pipeline carries structured objects and defers rendering to the edge, and whose remoting serializes those objects across a session boundary. The projection of platform state onto a navigable filesystem is Plan 9 doctrine <<plan9>>: the modern `/proc` descends from it, and FUSE mounts of cloud services are its everyday contemporary instances. The engine-on-server, thin-surface-in-browser topology for a working tool is validated at scale by VS Code's remote server <<vscode>> and by the browser terminals of the major cloud consoles, each of which drives real infrastructure from an embedded terminal. Finally, the intent posture of the third stage, in which a language model proposes a command and a human confirms before anything consequential runs, is now shipping in mainstream AI-assisted terminals (Warp, GitHub Copilot CLI, Amazon Q); the present design is more disciplined than those, validating proposals against live platform vocabulary and gating on declared mutability, not less.
+
+What lacks precedent is the whole: a terminal-central operator console for a federated medical compute platform, with an artifact-grounded intent layer and panels rendering the same session the terminal drives. The reading of this document is that the absence reflects the sparsity of serious user interface work in this domain rather than evidence against the composition, and the component precedents above are the argument.
+
+== Architecture
+
+=== The transposed triad
+
+The design study's role vocabulary maps onto production components as follows.
+
+[cols="1,2,2",options="header"]
+|===
+| Role | Design study realization | Production realization
+
+| State authority
+| In-memory virtual filesystem owned by the session server
+| CUBE
+
+| Deterministic substrate
+| Simulated shell, commands, and plugin host
+| The mise stack (cumin, salsa, chili, chell engine)
+
+| Intent layer
+| CalypsoCore kernel within the prototype
+| CALYPSO package within mise
+
+| Surfaces
+| TUI client; web client designed but unbuilt
+| chell CLI and a future ChRIS web console, as siblings
+|===
+
+The essential observation is that mise is the substrate the design study had to fake. The study built a virtual computer so that intent resolution would have something deterministic to stand on; mise is that same shape of system, with the difference that its filesystem projection is backed by a real platform and its executables really run.
+
+.The transposed stack
+----
+        chell CLI                          web console
+        (surface)                          (surface)
+            │                                  │
+            └────────────────┬─────────────────┘
+                             │  websocket: wire contract
+                    ┌──────────────────┐
+                    │  CALYPSO daemon  │  brain: fast path, compiler, guard
+                    │                  │  switchboard: session bus
+                    └────────┬─────────┘
+                             │  in-process
+                    ┌────────┴─────────┐
+                    │   chell engine   │  dispatch, session, completion
+                    │   chili          │  commands (models) + views (text)
+                    │   salsa          │  VFS providers, application logic
+                    │   cumin          │  adapter seam to chrisapi
+                    └────────┬─────────┘
+                             │  REST: Collection+JSON, confined
+                             │        to the cumin adapter
+                    ┌────────┴─────────┐
+                    │       CUBE       │  state authority
+                    └──────────────────┘
+----
+
+=== The session daemon
+
+CALYPSO runs as a daemon hosting two concerns and deliberately excluding a third. It hosts the brain: intent interpretation, deterministic fast-path routing, language-model orchestration, guard validation, and the credentials these require. It hosts the switchboard: a WebSocket endpoint serving sessions to connected surfaces, with a session bus that broadcasts each interaction (input, resolution, response) to every surface attached to the same session, so that a command issued in the CLI is immediately visible in the web console and vice versa. It does not host durable state. Anything durable that CALYPSO produces (session transcripts, scaffolded code, workflow markers) is written through to CUBE as ordinary files in user space, where any client can inspect it with no CALYPSO involvement. The daemon's in-memory state is limited to the ephemeral interactive session: working directory, conversational context, pending operations. This is what makes the crash test passable.
+
+Reattachment follows a three-tier continuity model matching what each kind of state actually is. Working context (current directory, current feed, the CUBE connection) survives everything for free: it is already persisted through the existing context files and rehydrated on daemon start exactly as a fresh CLI launch rehydrates today, and workflow truth lives in CUBE regardless. Scrollback is a bounded in-memory courtesy: a per-session ring buffer of recent envelopes replayed to an attaching or reconnecting surface so it does not join blind; a daemon restart loses the buffer, which is correct, because scrollback is presentation rather than truth, and a durable record is available the doctrinal way, as an opt-in session transcript materialized to CUBE. Conversational context (the intent layer's anaphora window) is ephemeral by design: bounded, in memory, lost on restart at the cost of one re-phrasing. Full session persistence in the manner of a terminal multiplexer was considered and rejected; a multiplexer must persist because a shell process is state, and the entire point of this design is that the session holds no truth worth that machinery.
+
+The daemon embeds the mise stack in-process. A headless chell engine (the dispatch table, parser, session, and VFS, separated from the readline surface) executes commands exactly as the CLI does today, over cumin's existing connection and cache layers.
+
+Command execution within a session is serialized: one foreground command at a time, with subsequent submissions queued. This is shell semantics, not a concession; it is also what makes the error-drain boundary correct, keeps the session's working context coherent when several surfaces share it, and keeps the mental model of one session as one shell true. A long command blocks its session exactly as it blocks a real shell; background jobs are the eventual escape hatch and are explicitly deferred, not designed here. Concurrency across sessions is unaffected and belongs to the tenancy model.
+
+=== The command path
+
+All input enters through one prompt grammar. Input matching the chell dispatch table executes deterministically with no model involvement, at the cost of a table lookup. Input that does not match falls through to intent resolution: the kernel assembles context (current VFS position, available commands, live entity names drawn from actual platform state), consults the language model, and receives a proposed resolution. The guard then validates the proposal against the same live vocabulary: a proposed command must exist in the dispatch table, a proposed path must be resolvable, a proposed plugin must be present on the connected CUBE. Only a validated proposal is dispatched, through the identical deterministic path a directly typed command would take. The language model therefore cannot execute anything the shell could not; it can only save the user the typing.
+
+Validation proves a proposal well formed; it cannot prove the proposal matches what the user meant, and that distinction matters most when the consequence is irreversible. Each dispatch-table entry therefore declares a mutability class: read, create, or destroy. Intent-resolved read and create proposals execute immediately with their trace displayed, keeping conversation fluid where mistakes are cheap. Intent-resolved destroy proposals do not execute: the engine echoes the exact resolved command and requires confirmation through the prompt capability, on every surface. Typed commands are never gated beyond what their builtin already does; the confirmation exists only on the probabilistic path. This is the doctrine completing itself: confirmation is the deterministic layer (the human) ratifying the model's guess before it becomes an action. The classification lives in the dispatch table, declared once where the builtin is written and merely read by the guard; expensive-but-additive operations (large plugin runs) are a recognized candidate for a fourth confirmation class once compute cost is real.
+
+.The command path: precedence of truth
+----
+ input line
+     │
+     ▼
+ [ dispatch table ] ──hit────────────────────▶ [ deterministic execution ]
+     │                                                     ▲
+     │ miss                                                │
+     ▼                                                     │
+ [ context assembly ]                                      │ validated
+  cwd, command table, live vocabulary                      │ proposal
+     │                                                     │
+     ▼                                                     │
+ [ intent compiler (LLM) ] ──proposal──▶ [ guard ] ────────┘
+                                             │
+                                             │ invalid
+                                             ▼
+                                  reject + resolution trace
+----
+
+=== The wire contract
+
+The daemon's response envelope is the real API of the system and carries both renderings of every result: the text a terminal prints, and the typed structured model (a listing, a feed description, a job status) from which a graphical panel renders. This duality is cheap to supply because chili already separates model-producing command modules from text-producing view modules; the envelope simply stops discarding the model after rendering. The envelope also carries status codes and, for intent-resolved input, the resolution trace (what was proposed, what was validated, what ran), so that surfaces can make the model's mediation visible rather than hidden.
+
+.The result envelope
+----
+ CommandEnvelope
+ ┌───────────────────────────────────────────────────────────────┐
+ │ status    ok | error | ...                                     │
+ │ rendered  text for a terminal (ANSI permitted)                 │
+ │ model?    typed result: listing, feed, job status, ...         │
+ │ trace?    intent resolution record: proposed, validated, ran   │
+ └────┬────────────────┬────────────────────────┬─────────────────┘
+      │                │                        │
+      ▼                ▼                        ▼
+  terminal         graphical panel         mediation display
+  prints           renders the model       shows what the model
+  rendered                                 proposed vs what ran
+----
+
+The wire format is purpose-built JSON validated at the boundary. No Collection+JSON construct crosses it. Bulk byte transfer (file upload and download) is excluded from the command channel by design and handled out of band, either streamed or by direct authorized URL, keeping the WebSocket channel for commands and events.
+
+Rendered text always carries ANSI color, and plain text is produced by stripping at the boundaries that need it. The daemon host forces color generation on (there is no TTY to auto-detect), so remote terminals render the same visual experience as the local CLI, whose auto-detection is unchanged; a thin client simply writes the received bytes to its own terminal. The pipe and redirect boundary strips ANSI from data before feeding it onward, one small utility applied in one place. This is a deliberate, documented deviation from byte-identical CLI behavior: today piped output carries escape bytes because color detection sees the TTY regardless of capture, a latent quirk rather than a behavior worth preserving, and pipes become correctly plain. Panels consuming the typed model never touch rendered text and need no stripping.
+
+Output streams on two channels through one sink. Data writes are the command's actual output: they stream to attached surfaces live and are accumulated by dispatch into the final envelope's rendered text, so pipes, redirection, and capture consume exactly what a terminal would have shown. Status writes (spinners, progress bars, transient messages) stream live but are ephemeral: never accumulated, never piped, and safe for the daemon to conflate or debounce, since for a transient only the latest frame matters. Each command produces exactly one final envelope; on the wire this appears as output events tagged with a correlation identifier and a channel, followed by one result.
+
+Errors travel in the envelope by draining at the boundary. The stack's internal error model (the Result type plus a shared error stack) is untouched: dispatch checkpoints the error stack before a command runs and drains anything pushed above the checkpoint into the envelope's errors field afterward. A remote surface therefore receives full error detail with each result, and stale errors cannot bleed from one command into the next. One known hazard qualifies this: background work (boot-time prefetch, cache warming) pushes to and pops from the same stack outside any command boundary today, which would corrupt a drain window. Drain correctness therefore requires that background work be fenced during command execution or its stack traffic attributed, and this must be verified, not assumed, during the engine campaign.
+
+The model slot is typed at three altitudes, each doing the only thing its layer can. cumin defines the envelope with a discriminated but untyped slot (a namespaced kind string such as `fs.listing` alongside unknown data), knowing the shape of the slot but never the payloads. chili, which owns the domain models, exports the kind-to-type map and a typed accessor so in-stack consumers get full narrowing. calypso owns the wire schemas that validate every envelope at the boundary, and those schemas are the published contract a web console programs against; external consumers read calypso's contract and never import chili. Each new model kind is therefore registered twice, once in chili's map and once in calypso's schema, and that duplication is deliberate: chili's map records what the code produces, calypso's schema records what the wire promises, and divergence between them must surface as a loud test failure rather than as silently shared drift. A single shared types package was considered and rejected for exactly this reason: it dissolves the boundary by letting internal refactors mutate the public contract implicitly.
+
+Interactivity is a declared surface capability rather than an assumption about standard input. The host provides an input broker alongside the output sink: a prompt request, with hidden-input support, that the CLI host backs with readline (generalizing the existing question registration pattern) and the daemon backs with a server-to-client request message. Surfaces declare their capabilities when they attach (hidden input, local edit, tty), and a builtin requiring an absent capability fails with a clear message rather than hanging. The edit builtin is the exemplar: the engine fetches file content, hands it to the surface's local editor (the client machine's editor for a remote CLI, an editor component in a browser), and uploads the result on save; the builtin itself knows nothing of processes or standard input.
+
+The prompt line and tab completion follow the same thin-client rule. The engine computes the fully themed prompt string (only it knows the context the prompt renders) and pushes it to surfaces with each result and on any context change; clients print what they receive, so prompt themes work identically on every surface. Completion is a request/response message: the client asks on each tab press, renders candidates on reply, and discards replies that arrive after further typing, with correlation identifiers making staleness trivial to detect. The one engine-side obligation is that completion handlers answer from the local VFS cache only and never trigger a network request to CUBE; if the cache cannot answer, the engine returns what it has. This must be verified explicitly when the completer is ported, since a cold-cache tab press today may reach the network.
+
+Pipe segments are the same pattern applied to the largest security decision in the design. Today a pipeline such as `ls | grep foo` spawns the segment as a real shell command on the local machine, which is correct for a CLI and unacceptable for a daemon, where it would let any attached surface execute arbitrary commands on the daemon host. Segment execution therefore becomes a surface capability and nothing ever spawns on the daemon: the in-process CLI backs the capability with exactly the current spawn behavior, and a remote CLI backs it by running the segment on the client machine (the engine sends the segment's input down, the client pipes it through its own tools, and the engine continues the pipeline with the result, including any trailing redirect into the virtual filesystem). This is semantically stronger than daemon-side execution, since users get their own tools and privileges, and it reduces the daemon's command-execution attack surface to zero. A browser surface initially lacks the capability, failing such pipelines with a clear message; a curated set of common filters implemented inside the engine can restore everyday cases later without ever touching a shell. The recognized cost is a data round trip per external segment, governed by the same backpressure and bulk-transfer rules as all other output.
+
+=== Performance argument
+
+The path from browser to result appears longer (browser to daemon to mise stack to CUBE) but is expected to be faster in practice for the operations that dominate perceived latency. Collection+JSON makes compound operations chatty: a listing or feed inspection decomposes into many sequential REST round trips. Today each such round trip crosses the user's connection to the server. With the daemon co-located with CUBE, the chatter occurs at data-center latency and the browser pays a single round trip for the composed result. The daemon is long-lived, so cumin's caches stay warm across surfaces and reconnections, where a browser tab starts cold. Job monitoring inverts from many clients polling CUBE to one daemon watching and pushing events over the session bus. The recognized costs are that the daemon is a new single point of failure, and that a Node process serving multiple sessions must be protected against one slow command blocking others; both are addressed by the session isolation model (below).
+
+=== Placement and enabling work in mise
+
+CALYPSO enters mise as a fifth workspace package (`packages/calypso`, published as `@fnndsc/calypso`). The determining consideration is that every seam CALYPSO depends on is internal to mise: separating the chell engine from its readline surface, threading structured models through the response path, and revising cumin's session state. Placing the daemon in a separate repository would recreate precisely the cross-repository coordination cost the monorepo was created to eliminate. A future web console, by contrast, is a consumer of the published wire contract and may reasonably live elsewhere.
+
+Three pieces of enabling work are identified. First, the engine and surface split in chell: the dispatch, session, and VFS modules become a hostable core with two hosts, the existing CLI REPL and the daemon. Second, the structured response path: command results retain their typed models alongside rendered text through dispatch. These first two are in practice one campaign, because they meet at the same seam. Chell is text-only not because the data is absent (chili's command modules already produce typed models, flattened only in its view modules) but because output leaves the system as direct console writes to process stdout. A hosted engine cannot print to stdout at all, so hostability forces every builtin's output through a returned envelope or an injected output sink; once output flows through a sink, carrying the typed model alongside the rendered text is a small additional step, and the view layer ceases to be a destructive one. Third, session scoping in cumin: the current module-level singletons (context, connection, configuration, and the error stack) assume one user per process and one configuration tree on disk. This is correct for the CLI and acceptable for a single-operator daemon, but it is not scalable to a multi-user service. The candidate resolutions are session-scoped instances within one process, or process-per-session with a lightweight multiplexer in front; the choice is deferred to the multi-user milestone but recorded here as a known debt, together with its companion question of per-session CUBE credential custody within the daemon.
+
+=== Construction order
+
+The design decomposes into three stages, each independently useful and each deliverable without the next. The first stage is the hostable chell engine together with the structured response envelope, a single campaign of internal refactoring (as argued above, the two share one seam) that benefits the CLI on its own. The cumin singleton work is deliberately excluded from this stage and from the next: it blocks only the multi-user milestone, the single-operator daemon tolerates the singletons because one daemon process is one session, and process-per-session behind a small multiplexer remains available as a bridge that requires no cumin surgery at all. The deep fix is scheduled when multi-user service is actually in reach, informed by operational experience with the daemon rather than speculation. The second stage is the remote terminal: the daemon hosting the engine over WebSocket, giving a browser an embedded ChRIS shell with zero language-model involvement. The third stage is the intent layer proper, arriving as an interception on the same prompt. This ordering is not merely pragmatic; the safety doctrine requires the deterministic path to exist and be solid before the probabilistic layer is added, since the latter is defined entirely in terms of validation against the former.
+
+The language model behind the intent layer is replaceable, contained, and dieted. Replaceable: the intent compiler consumes a narrow provider adapter (assembled context and input go in, a proposed command line comes out), with concrete providers selected by daemon configuration; which provider ships first is a config entry, not an architectural decision, and a locally hosted model is an explicit later option for deployments where data must not leave the machine. Contained: the provider key lives in daemon configuration only, under the same custody as the attach token, touched by exactly one module so the exposure is auditable the way the chrisapi seam is. Dieted: prompts may carry vocabulary (command names and help text, the working directory, plugin names, feed titles) and the user's typed input verbatim, but never file contents or anything read from CUBE storage. On a medical platform even path names can carry patient identifiers, so the vocabulary policy is subject to a redaction review before any deployment with real patient-derived naming, and intent-enabled sessions state at boot which provider is configured.
+
+== Results
+
+No implementation results have materialized yet. This section will record, as the stages above are built: latency measurements comparing compound operations through the daemon against the same operations issued directly from a browser client; verification results from exemplar-style end-to-end scenarios driven through the assistant interface with assertions made against CUBE state; and observed behavior of the guard layer (proposals accepted, proposals rejected, and why).
+
+== Discussion
+
+The transposition dissolves two standing problems rather than merely avoiding them. The first is cumin's filesystem assumption. Its configuration and context persistence were written for a Node process with a home directory, and the browser storage provider intended to bridge this was never completed beyond a non-persisting stub. In the present architecture no mise code runs in a browser at all; the filesystem assumption lands on a daemon's local disk, where it is conventional, and the browser stub becomes deletable. The second is the Collection+JSON burden on user interface developers. The web console programs against the CALYPSO wire contract and stands four layers removed from `chrisapi`; the adapter seam that relieved the CLI stack now relieves the web equally.
+
+The transposition also introduces obligations. The daemon is a single point of failure and a tenancy question, discussed above as known debt. The wire contract, once a web console exists against it, becomes a versioned public interface and must be treated with corresponding care. The versioning discipline exists from the first daemon release: the contract version is the calypso package's major version, carried by the client in the attach handshake and refused by the daemon on mismatch, with no silent degradation. Within a major, changes are additive only (new message types, new optional fields, new model kinds), and boundary validation tolerates unknown additions from a newer minor while rejecting structural violations; anything that removes or re-types forces a major. The boundary schemas are the single source of truth, with the human-readable protocol description checked against them so that contract drift between code and documentation is structurally impossible. And the disposition of the design study should be stated plainly: the ARGUS repository is frozen, not mined. Its CALYPSO implementation is entangled with the scaffolding the study required (the in-memory filesystem, the manifest engine, the simulated federation) and follows idioms local to that codebase. The durable assets (the kernel discipline, the protocol shape, the session bus semantics, the response envelope) are ported into mise by re-implementation under mise conventions, with the study's documents cited as the record of why.
+
+=== The federated corollary
+
+The architecture acquires its strongest justification in federated operation, where a user sits centrally but execution and data are confined to a spoke's trust boundary. Two properties carry the weight. First, because the engine and the surface are separable, the engine can live where the data must stay: a CALYPSO daemon runs at the spoke, inside the boundary, embedding an engine connected to the spoke's CUBE, and the central user attaches a thin surface over a tunnel. A Python application running on spoke data is then observable centrally (its process status, its logs, its materialized outputs) while the engine doing the observing never leaves the spoke. This inverts the daemon's status: for a single operator the daemon is a convenience over an in-process engine, but for federation it is necessary, since the engine must be co-located with data precisely because the user cannot be. Second, the wire contract is a typed egress choke point. What crosses the boundary is not a screen share or a file mount but envelopes whose contents are classified by kind and channel, so a spoke can attach egress policy mechanically: job status and log tails may leave, file contents may not, or only after review. This is the trusted-research-environment pattern (code goes in, only vetted outputs come out) with the vetting surface provided by the protocol itself rather than bolted on. Two honest limits temper the claim. Classification by model kind is necessary but not sufficient: the rendered text of a command such as cat is the file content, so an enclave profile must apply content-aware policy to the data channel itself, not only to kind tags. And the genuinely hard parts of trusted research environments are disclosure control and governance process, which no wire format solves; the protocol supplies the interception surface, not the policy.
+
+Three earlier decisions are conditional under this posture and are recorded as such. Client-side pipe execution becomes an egress path (piping a spoke file through a central client's grep ships the content across the boundary) and inverts at a spoke to in-engine filters or denial; the capability model absorbs this as a deployment-time grant rather than a redesign. Out-of-band bulk download becomes denied or vetted rather than direct. Scrollback replay and transcripts are egress like any other output. The design therefore needs one added concept, cheap now and expensive to retrofit: an egress class alongside the mutability class, with deployment profiles (open for a single-operator local daemon, enclave for a spoke daemon) selecting which model kinds, channels, and capabilities may cross. Profiles are stage-four-adjacent work, but naming the concept now prevents earlier stages from hard-coding the open posture.
+
+A companion essay (docs/surfaces.adoc) develops a consequence of the wire contract for user interface construction: with server-state synchronization deleted from the client, framework choice is demoted from architecture to taste, and all surfaces, framework-based or bespoke, attach to the daemon as siblings.
+
+One conceptual note completes the picture. In the study's vocabulary, ARGUS named the watchman role: distributed state made legible to an operator. That role is not discarded with the prototype; it migrates, and federation makes it literal. A ChRIS web console whose panels are live renderings of CUBE state, organized around an embedded CALYPSO terminal, is the ARGUS role re-founded on a real platform; a central operator attached to one session per spoke daemon is the watchman with an eye on each spoke.
+
+== Conclusion
+
+CALYPSO on mise is the design study collapsed onto production infrastructure with its doctrine intact. CUBE holds the truth. The mise stack makes the truth navigable and operable deterministically. CALYPSO makes the deterministic layer conversational without ever being allowed to outrank it. The terminal, on the command line today and inside the web console next, is the single interaction grammar over all of it. The construction path is incremental, each stage useful alone, and the first stage is ordinary refactoring already owed to the codebase.
+
+[appendix]
+== Engineering plan (sketch)
+
+The construction order of the architecture section decomposes into four stages of engineering work. This appendix records the sketch; it is a plan of intent, not a schedule.
+
+The zeroth stage is contract definition. The result envelope (typed model, rendered text, status) is defined in cumin alongside the existing Result type before any builtin is touched, since it is the type everything later converges on. The wire protocol (execute, complete, output events, session events, correlation identifiers) is sketched on paper from the design study's protocol shape but not implemented. This stage changes no behavior.
+
+.Stage zero: contract sketch
+----
+ client to daemon                     daemon to client
+ ┌───────────────────────┐           ┌────────────────────────────────┐
+ │ attach   {session}    │           │ result   {id, envelopes}       │
+ │ execute  {id, line}   │           │ complete {id, candidates}      │
+ │ complete {id, prefix} │           │ output   {envelope}       push │
+ └───────────────────────┘           │ session  {surface, envelope}   │
+                                     └────────────────────────────────┘
+----
+
+The first stage is the chell campaign: engine and surface split together with the output sink, as one effort. An output sink interface is introduced and owned by the REPL host, so dispatch ceases to be the place where text reaches the screen. Builtins are converted incrementally from printing to returning envelopes, with a compatibility shim allowing converted and unconverted builtins to coexist so the work lands as a series of small changes. Pipes and redirection are re-plumbed to consume the envelope's rendered text, replacing the existing capture machinery rather than running alongside it. Finally the engine facade is extracted (creation and wiring, line execution returning envelopes, completion), and the REPL shrinks to a thin host around it. The exit criteria are a green unit suite, green live exemplars, and byte-identical CLI behavior. This stage has the largest regression surface of the plan, and the ongoing test coverage effort is its safety net.
+
+.Stage one: output path, before and after
+----
+ before:
+   stdin ─▶ REPL ─▶ dispatch ─▶ builtins ─▶ console.log ─▶ stdout
+                    (engine fused to surface; rendering is destructive)
+
+ after:
+                            line               ┌────────────────┐
+   stdin ─▶ [ REPL host ] ───────────────────▶ │  chell engine  │
+                 │                             │  dispatch      │
+              sink to         envelopes        │  builtins      │
+              stdout   ◀────────────────────── │  (no stdout)   │
+                                               └────────────────┘
+----
+
+The second stage is the daemon, arriving as the fifth workspace package. A WebSocket server hosts a single engine instance, speaking the stage-zero protocol with schema validation at the boundary, and a session bus broadcasts every envelope to all attached surfaces. Authentication in this version is the CLI's model unchanged: one process, one operator, one CUBE session, singletons intact. The attach perimeter is the proven local-daemon model: the daemon binds the loopback interface only, generates a random token at startup (printed, and written to a user-readable file for same-user auto-discovery), and requires the token in every attach handshake, compared in constant time. Remote access is deliberately an operator concern (an SSH tunnel or TLS-terminating proxy in front, with the token still gating attach inside it). CUBE credentials never cross the wire: the daemon establishes its CUBE session from its own configuration exactly as the CLI does, and surfaces authenticate to the daemon, not to CUBE. Per-user authentication and session ownership belong to the multi-user stage and are not half-built here. The sibling-surfaces claim is proven cheaply by giving chell a remote flag so the same REPL can drive either an in-process engine or a daemon; two shells attached to one daemon, each seeing the other's commands, validates the topology. A minimal browser terminal page serves as an embedding smoke test; a real web console is out of scope. Exit criteria are exemplars passing through the daemon and a demonstrated crash test.
+
+.Stage two: one daemon, sibling surfaces
+----
+   chell --remote                    browser terminal page
+         \                                  /
+          \  websocket                     /  websocket
+           ▼                              ▼
+   ┌────────────────────────────────────────────┐
+   │               CALYPSO daemon               │
+   │   session bus: every envelope broadcast    │
+   │   to all attached surfaces                 │
+   │              [ chell engine ]              │
+   └─────────────────────┬──────────────────────┘
+                         │
+                         ▼
+                     [ CUBE ]
+----
+
+The third stage is the intent layer itself. Interception happens on the same prompt: dispatch-table matches execute deterministically as before, and only misses fall through to resolution. The components are built in dependency order: context assembly from live state (working directory, command table and help text, plugin names, resolvable paths), the intent compiler behind a provider adapter, and the guard that validates every proposal against the same live vocabulary before dispatch. The resolution trace enters the envelope so surfaces can render the mediation. Testing transposes the design study's oracle method: scenarios phrased in natural language, assertions made against CUBE state through the exemplars harness. This stage begins populating the Results section of this document.
+
+.Stage three: interception on the same prompt
+----
+ "ls /proc/feeds"           "which of my jobs failed overnight?"
+         \                            /
+          ▼                          ▼
+        [ one prompt, one grammar ]
+                     │
+                     ▼
+        [ dispatch table ] ──hit──▶ execute       (stages one and two)
+                     │
+                     │ miss                       (stage three adds)
+                     ▼
+        [ compiler ] ──▶ [ guard ] ──valid──▶ dispatch
+                             │
+                             └──invalid──▶ reject + trace
+----
+
+The fourth stage, deliberately deferred, is multi-user service: process-per-session behind a small multiplexer as the bridge, and the cumin session-scoping refactor only when a real multi-user deployment is in sight, together with the design of per-session credential custody.
+
+.Stage four: multi-user bridge, process per session
+----
+   user A surfaces           user B surfaces
+       │     │                   │     │
+       └──┬──┘                   └──┬──┘
+          │  websocket              │  websocket
+          ▼                         ▼
+   ┌────────────────────────────────────────┐
+   │              multiplexer               │
+   └──────┬─────────────────────────┬───────┘
+          │                         │
+          ▼                         ▼
+   [ daemon process A ]      [ daemon process B ]
+    engine + singletons       engine + singletons
+    scoped per session        scoped per session
+          \                         /
+           ▼                       ▼
+                   [ CUBE ]
+----
+
+Decisions recorded as open at the time of writing: the exact home of the envelope type (cumin favored); whether the remote client lives inside chell or as a separate small package (inside chell favored, as the change is a transport swap); the language-model provider for the third stage (unblocking, since an adapter interface is required regardless); and interrupt semantics, that is, what a cancel keystroke does to a remote foreground command, a case flagged by comparison with the Jupyter protocol and to be designed during the daemon stage.
+
+[bibliography]
+== References
+
+* [[[chris]]] The ChRIS Project. Boston Children's Hospital / FNNDSC. https://chrisproject.org
+* [[[cjson]]] M. Amundsen. Collection+JSON media type. http://amundsen.com/media-types/collection/
+* [[[chrisapi]]] `@fnndsc/chrisapi`: JavaScript client for the ChRIS API. https://github.com/FNNDSC/fnndsc
+* [[[mise]]] MISE: monorepo for the ChELL stack (cumin, salsa, chili, chell). https://github.com/FNNDSC/mise
+* [[[argus]]] ARGUS: ATLAS Resource Guided User System. Design study, FNNDSC, 2025-2026. Frozen repository; see in particular its architectural principles, agentic safety foundations, and oracle testing methodology documents.
+* [[[ias]]] ChRIS Intent-Action Service proposal. https://github.com/FNNDSC/intent-server
+* [[[jupyter]]] Messaging in Jupyter: the Jupyter kernel wire protocol. https://jupyter-client.readthedocs.io/en/latest/messaging.html
+* [[[monad]]] J. Snover. The Monad Manifesto. Microsoft, 2002.
+* [[[plan9]]] R. Pike, D. Presotto, K. Thompson, H. Trickey, P. Winterbottom. The Use of Name Spaces in Plan 9. Operating Systems Review, 1993.
+* [[[vscode]]] Visual Studio Code Remote Development and the VS Code Server. https://code.visualstudio.com/docs/remote/vscode-server

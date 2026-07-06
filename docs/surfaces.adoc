@@ -1,0 +1,72 @@
+= Surfaces: User Interfaces Above a Session Contract
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-07-06: Initial draft
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: DRAFT (companion essay to calypso.adoc)
+
+[abstract]
+== Abstract
+
+This document argues a consequence of the CALYPSO architecture <<calypso>> for user interface construction: once durable state lives in CUBE, interactive state lives in a session daemon, and updates arrive as typed envelopes over one ordered connection, the client-side state problem that modern UI frameworks exist to manage largely disappears. Framework choice is thereby demoted from an architectural decision to a cosmetic one. We develop the argument, examine what remains genuinely hard on the client, and conclude that a fully bespoke design language (specifically an LCARS-lineage console built on web components without a framework) is not only possible but cheap to attempt and safe to fail, because the session contract makes all surfaces siblings: a framework-based interface and a bespoke one can attach to the same daemon and coexist indefinitely.
+
+== Introduction
+
+The ChRIS user interface is built on React, and the ARGUS design study <<argus>> was built on nothing at all: plain TypeScript, custom elements, and a compiler. The question this document answers is whether that second construction style remains a prototype expedient or becomes, under the CALYPSO architecture, a legitimate way to build the production console. The answer requires being precise about what UI frameworks actually do for applications of this shape, and what this architecture leaves for them to do.
+
+== Background: what the framework is for
+
+A modern data-driven web application spends its complexity budget in two places. The first is view reconciliation: keeping the document tree consistent with changing state without hand-written bookkeeping. This is the problem React was created to solve, and its founding formula (the interface is a function of the state) is a genuine insight. The second place is larger and newer: server-state synchronization. An interface fronting a REST backend must reconstruct a coherent picture of remote truth from request and response fragments, and so it accumulates fetching layers, caches, invalidation rules, staleness heuristics, refetch-on-focus policies, optimistic updates, and polling loops. An entire ecosystem (query libraries, store middleware) exists because this reconstruction is genuinely difficult. It is worth stating plainly that in most working applications the second category, not the first, is where the engineering lives.
+
+== The argument
+
+The CALYPSO architecture deletes the second category. A surface attaches to a session and receives typed envelopes over one ordered connection: results carry both rendered text and a kind-tagged model, and the session bus broadcasts every interaction to every attached surface. A panel never fetches, never caches, never wonders whether it is stale, and never reconciles divergent copies, because there are no copies: there is a session, and the panel is a projection of it. What remains on the client is presentation state (which panel is open, what is selected, where the scroll sits), and presentation state is trivial under any construction method.
+
+This is, ironically, a purer realization of the framework's own formula than most framework applications achieve. The state really is a single coherent thing (the session), updates really are semantic events (envelopes with kinds), and the view really is a function. The machinery that frameworks provide to approximate this situation atop request-response backends is machinery this architecture does not need.
+
+The conclusion is deliberately narrow. The architecture does not indicate against React; it indicates that the framework decision no longer matters architecturally. A React surface consuming envelopes is a perfectly good surface. What has changed is that the framework is no longer load-bearing, and a construction style without one is no longer swimming against the current.
+
+.All surfaces are siblings above the contract
+----
+   React console        LCARS console         chell CLI
+   (existing UI)        (web components)      (terminal)
+        │                     │                    │
+        └─────────────┬───────┴────────────────────┘
+                      │  one wire contract: envelopes,
+                      │  session bus, capabilities
+             ┌────────┴────────┐
+             │  CALYPSO daemon │
+             └────────┬────────┘
+                      │
+                  [ CUBE ]
+----
+
+== The bespoke case
+
+For an LCARS-lineage console specifically, three further facts tilt toward the bespoke style. First, a custom design language forfeits the framework's component ecosystem anyway: there is no off-the-shelf LCARS theme for any component library, so every visual element is hand-built regardless, and the framework would be retained only for reconciliation. Second, the design study is an existence proof: some thirty-four thousand lines of framework-free TypeScript, rendering an LCARS console through custom elements, built by a small effort and working. Third, the centerpiece of the console is the terminal itself, and the standard terminal component (xterm.js) is framework-free and is wrapped by frameworks rather than served by them.
+
+There is also a doctrinal closure worth recording. The LCARS premise, interface as instrumentation, was aesthetic in the design study because the instruments rendered simulated state. Above the session contract it becomes architecturally honest: the panels are instruments over materialized platform truth, and nothing on the screen is an assertion. The design language and the architecture finally agree.
+
+== What remains hard
+
+Honesty requires naming what the bespoke style does not get for free. Large live collections are the real cost center: a table of a thousand feeds with sorting, filtering, and virtualized scrolling is painful in hand-rolled document manipulation, and this is the one place reconciliation machinery earns its keep. The mitigation is proportionate rather than total: a rendering micro-library (efficient templating and re-render, a few kilobytes, no lifecycle framework) covers exactly this gap and coexists with web components. Second, team economics: framework developers are hireable and bespoke codebases carry a bus factor, the same people-shaped risk that dominates the rest of the project's risk register. Third, the existing React interface is a large working investment, and nothing in this argument requires defeating it.
+
+== Coexistence, not conquest
+
+The last point generalizes into the practical conclusion. Because the wire contract is framework-agnostic JSON, surfaces are siblings: the existing React interface can attach to the daemon as one surface while a bespoke LCARS console attaches as another, both rendering the same live session. The bespoke console is therefore something to be built as an additional surface, without migrating anyone, without winning an argument, and without betting the platform. If it proves superior it earns its place; if it does not, its failure strands nothing. That property, cheap to attempt and safe to fail, is the strongest form of viable and is a direct consequence of the architecture rather than of any framework position.
+
+== Conclusion
+
+Frameworks earn their complexity where clients own significant mutable state. Above the CALYPSO session contract the client owns presentation state only, so the framework decision becomes taste and team economics rather than architecture. For a console whose design language is bespoke anyway, whose centerpiece component is framework-free, and whose precedent codebase already works without one, the bespoke style is a sound default. And because all surfaces are siblings above one contract, this position never needs to be argued to completion: build the console as a sibling surface and let use decide.
+
+[bibliography]
+== References
+
+* [[[calypso]]] CALYPSO: An Intent Layer and Session Daemon for ChRIS. This repository, docs/calypso.adoc.
+* [[[argus]]] ARGUS: ATLAS Resource Guided User System. Design study, FNNDSC, 2025-2026. Frozen repository.
+* [[[xterm]]] xterm.js: a terminal for the web. https://xtermjs.org
+* [[[lit]]] lit-html: efficient, expressive, extensible HTML templates. https://lit.dev

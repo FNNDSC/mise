@@ -34,6 +34,7 @@ export * from "./io/node_io";
 export * from "./utils/keypair";
 export * from "./utils/searchable";
 export * from "./utils/result";
+export * from "./utils/envelope";
 export * from "./cache";
 export * from "./path/chrisPath";
 export * from "./pipelines/chrisPipeline";

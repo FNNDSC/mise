@@ -19,9 +19,11 @@ export async function builtin_debug(args: string[]): Promise<CommandEnvelope> {
   const config: ConnectionConfig | undefined = session.connection.config;
 
   if (!config) {
-    return envelope_error('', [
-      { type: 'error', message: 'Error: Connection configuration not initialized.' },
-    ]);
+    return envelope_error(
+      '',
+      [{ type: 'error', message: 'Error: Connection configuration not initialized.' }],
+      `${chalk.red('Error: Connection configuration not initialized.')}\n`,
+    );
   }
 
   if (!subcommand) {

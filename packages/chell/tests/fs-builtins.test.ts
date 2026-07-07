@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Deps of builtins/utils + the builtins themselves, so real commandArgs_process
 // and path_resolve run.
@@ -15,6 +16,14 @@ const mockStackPop = jest.fn(() => null);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   listCache_get: () => ({ cache_invalidate: mockInvalidate }),
   errorStack: { stack_pop: mockStackPop },
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
+    const envelope: Record<string, unknown> = { status: 'error', rendered };
+    if (errors !== undefined) envelope.errors = errors;
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
 }));
 
 const mockMkdirCmd = jest.fn();
@@ -51,38 +60,43 @@ beforeEach(() => {
 });
 
 describe('builtin_mkdir', () => {
-  it('prints usage with no arguments', async () => {
-    await builtin_mkdir([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: mkdir'));
+  it('reports usage with no arguments', async () => {
+    const envelope: CommandEnvelope = await builtin_mkdir([]);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('Usage: mkdir');
   });
 
   it('creates a directory and invalidates the parent cache', async () => {
     mockMkdirCmd.mockResolvedValue(true);
-    await builtin_mkdir(['newdir']);
+    const envelope: CommandEnvelope = await builtin_mkdir(['newdir']);
     expect(mockMkdirCmd).toHaveBeenCalledWith('/home/chris/newdir');
-    expect(logSpy).toHaveBeenCalledWith('mkdir:/home/chris/newdir:true');
+    expect(envelope.rendered).toContain('mkdir:/home/chris/newdir:true');
+    expect(envelope.model?.kind).toBe('fs.mkdir');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
   });
 
   it('reports a per-path error without aborting the loop', async () => {
     mockMkdirCmd.mockRejectedValueOnce(new Error('exists')).mockResolvedValueOnce(true);
-    await builtin_mkdir(['a', 'b']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('exists'));
+    const envelope: CommandEnvelope = await builtin_mkdir(['a', 'b']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('exists');
     expect(mockMkdirCmd).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('builtin_touch', () => {
-  it('prints usage with no file argument', async () => {
-    await builtin_touch([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: touch'));
+  it('reports usage with no file argument', async () => {
+    const envelope: CommandEnvelope = await builtin_touch([]);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('Usage: touch');
   });
 
   it('creates a file and invalidates the parent cache', async () => {
     mockTouchCmd.mockResolvedValue(true);
-    await builtin_touch(['note.txt']);
+    const envelope: CommandEnvelope = await builtin_touch(['note.txt']);
     expect(mockTouchCmd).toHaveBeenCalledWith('/home/chris/note.txt', {});
-    expect(logSpy).toHaveBeenCalledWith('touch:/home/chris/note.txt:true');
+    expect(envelope.rendered).toContain('touch:/home/chris/note.txt:true');
+    expect(envelope.model?.kind).toBe('fs.touch');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
   });
 
@@ -95,8 +109,9 @@ describe('builtin_touch', () => {
 
   it('reports a failure via the error stack', async () => {
     mockTouchCmd.mockResolvedValue(false);
-    await builtin_touch(['bad.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to create file'));
+    const envelope: CommandEnvelope = await builtin_touch(['bad.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('Failed to create file');
   });
 });
 

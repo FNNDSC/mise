@@ -1,11 +1,12 @@
 /**
  * @file Builtin cd command.
- * Changes the current working directory.
+ * Changes the current working directory, reported as a command envelope.
  */
 import chalk from 'chalk';
 import { session } from '../../session/index.js';
 import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
-import type { Result, StackMessage, Client } from '@fnndsc/cumin';
+import { envelope_ok, envelope_error } from '@fnndsc/cumin';
+import type { CommandEnvelope, Result, StackMessage, Client } from '@fnndsc/cumin';
 import type { VFSItem } from '@fnndsc/salsa';
 
 /**
@@ -66,16 +67,28 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
 }
 
 /**
+ * Builds the success envelope for a completed directory change.
+ *
+ * @param newCwd - The working directory that is now current.
+ * @param rendered - Any stdout text (debug traces) produced along the way.
+ * @returns An ok envelope carrying the fs.cwd model.
+ */
+function cdSuccess_envelope(newCwd: string, rendered: string): CommandEnvelope {
+  return envelope_ok(rendered, { kind: 'fs.cwd', data: { path: newCwd } });
+}
+
+/**
  * Handles `cd` into a virtual (VFS) path: structural containers are accepted
  * directly, deeper VFS paths are validated and their listing cached.
  *
  * @param cleanPath - The normalized virtual path.
  * @param pathArg - The original user-supplied path (for error messages).
+ * @returns The command envelope for the attempt.
  */
-async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<void> {
+async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<CommandEnvelope> {
   if (vfsPath_isStructural(cleanPath)) {
     await session.setCWD(cleanPath);
-    return;
+    return cdSuccess_envelope(cleanPath, '');
   }
 
   // For deeper VFS paths (e.g. /net/pacs/queries/<id>), validate and cache the
@@ -86,14 +99,14 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<voi
     const { errorStack } = await import('@fnndsc/cumin');
     const lastError: StackMessage | undefined = errorStack.stack_pop();
     const detail: string = lastError ? error_stripDebugPrefix(lastError.message) : 'No such file or directory';
-    console.error(chalk.red(`cd: ${pathArg}: ${detail}`));
-    return;
+    return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: ${detail}`)}\n`);
   }
 
   const { listCache_get } = await import('@fnndsc/cumin');
   listCache_get().cache_set(cleanPath, listResult.value);
 
   await session.setCWD(cleanPath);
+  return cdSuccess_envelope(cleanPath, '');
 }
 
 /**
@@ -103,13 +116,16 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<voi
  *
  * @param logicalPath - The resolved logical path.
  * @param pathArg - The original user-supplied path (for error messages).
+ * @returns The command envelope for the attempt.
  */
-async function cdReal_handle(logicalPath: string, pathArg: string): Promise<void> {
+async function cdReal_handle(logicalPath: string, pathArg: string): Promise<CommandEnvelope> {
   const client: Client | null = await session.connection.client_get();
   if (!client) {
-    console.error(chalk.red('Not connected to ChRIS.'));
-    return;
+    return envelope_error('', undefined, `${chalk.red('Not connected to ChRIS.')}\n`);
   }
+
+  const debugEnabled: boolean = session.connection.config?.debug === true;
+  let rendered: string = '';
 
   let validationPath: string;
   if (session.physicalMode_get()) {
@@ -118,50 +134,53 @@ async function cdReal_handle(logicalPath: string, pathArg: string): Promise<void
     const { logical_toPhysical } = await import('@fnndsc/chili/utils');
     const physicalResult: Result<string> = await logical_toPhysical(logicalPath);
     if (!physicalResult.ok) {
-      console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
-      if (session.connection.config?.debug) {
-        console.error(chalk.gray(`  Logical path: ${logicalPath}`));
+      let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
+      if (debugEnabled) {
+        renderedErr += `${chalk.gray(`  Logical path: ${logicalPath}`)}\n`;
       }
-      return;
+      return envelope_error('', undefined, renderedErr);
     }
     validationPath = physicalResult.value;
   }
 
-  if (session.connection.config?.debug) {
-    console.log(chalk.gray(`cd: ${pathArg} → logical: ${logicalPath} → validation: ${validationPath}`));
+  if (debugEnabled) {
+    rendered += `${chalk.gray(`cd: ${pathArg} → logical: ${logicalPath} → validation: ${validationPath}`)}\n`;
   }
 
   const cwdPath: string = session.physicalMode_get() ? validationPath : logicalPath;
   const currentCwd: string = await session.getCWD();
 
   if (currentCwd === cwdPath) {
-    if (session.connection.config?.debug) {
-      console.log(chalk.gray(`  Already in target directory, skipping validation`));
+    if (debugEnabled) {
+      rendered += `${chalk.gray(`  Already in target directory, skipping validation`)}\n`;
     }
-    return;
+    return cdSuccess_envelope(cwdPath, rendered);
   }
 
   try {
     const folder: FileBrowserFolder | null | undefined = (await client.getFileBrowserFolderByPath(validationPath)) as FileBrowserFolder | null | undefined;
     if (folder_verifyPathMatch(folder, validationPath)) {
       await session.setCWD(cwdPath);
-    } else {
-      console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
-      if (session.connection.config?.debug) {
-        if (!folder) {
-          console.error(chalk.gray(`  API returned null for path: ${validationPath}`));
-        } else {
-          const folderPath: string | undefined = folder.data?.path || folder.path;
-          console.error(chalk.gray(`  API returned mismatched folder path: ${folderPath} (expected: ${validationPath})`));
-        }
+      return cdSuccess_envelope(cwdPath, rendered);
+    }
+    let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
+    if (debugEnabled) {
+      if (!folder) {
+        renderedErr += `${chalk.gray(`  API returned null for path: ${validationPath}`)}\n`;
+      } else {
+        const folderPath: string | undefined = folder.data?.path || folder.path;
+        renderedErr += `${chalk.gray(`  API returned mismatched folder path: ${folderPath} (expected: ${validationPath})`)}\n`;
       }
     }
+    const envelope: CommandEnvelope = envelope_error(rendered, undefined, renderedErr);
+    return envelope;
   } catch (apiError: unknown) {
-    console.error(chalk.red(`cd: ${pathArg}: No such file or directory`));
-    if (session.connection.config?.debug) {
+    let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
+    if (debugEnabled) {
       const msg: string = apiError instanceof Error ? apiError.message : String(apiError);
-      console.error(chalk.gray(`  API error: ${msg}`));
+      renderedErr += `${chalk.gray(`  API error: ${msg}`)}\n`;
     }
+    return envelope_error(rendered, undefined, renderedErr);
   }
 }
 
@@ -170,9 +189,9 @@ async function cdReal_handle(logicalPath: string, pathArg: string): Promise<void
  * Validates the existence of the target path before setting it.
  *
  * @param args - An array containing the target path as the first element.
- * @returns A Promise that resolves when the operation is complete.
+ * @returns An envelope carrying the new working directory on success.
  */
-export async function builtin_cd(args: string[]): Promise<void> {
+export async function builtin_cd(args: string[]): Promise<CommandEnvelope> {
   const pathArg: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
   // 'cd' with no args goes to home
@@ -197,13 +216,12 @@ export async function builtin_cd(args: string[]): Promise<void> {
       vfsDispatcher.provider_get(cleanPath).prefix !== '';
 
     if (isVirtual) {
-      await cdVirtual_handle(cleanPath, pathArg);
-      return;
+      return cdVirtual_handle(cleanPath, pathArg);
     }
 
-    await cdReal_handle(logicalPath, pathArg);
+    return cdReal_handle(logicalPath, pathArg);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red(`Failed to cd: ${msg}`));
+    return envelope_error('', undefined, `${chalk.red(`Failed to cd: ${msg}`)}\n`);
   }
 }

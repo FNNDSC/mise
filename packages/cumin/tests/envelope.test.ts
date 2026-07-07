@@ -68,6 +68,17 @@ describe('CommandEnvelope', () => {
       const envelope: CommandEnvelope = envelope_error('partial line\n');
       expect(envelope.rendered).toBe('partial line\n');
     });
+
+    it('should carry error-stream text separately from data output', () => {
+      const envelope: CommandEnvelope = envelope_error(
+        '',
+        undefined,
+        'cd: /nope: No such file or directory\n',
+      );
+      expect(envelope.renderedErr).toBe('cd: /nope: No such file or directory\n');
+      expect(envelope.rendered).toBe('');
+      expect(envelope.errors).toBeUndefined();
+    });
   });
 
   describe('envelope_isOk()', () => {

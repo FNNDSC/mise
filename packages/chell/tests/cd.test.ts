@@ -9,6 +9,16 @@
 import { jest, describe, it, expect } from '@jest/globals';
 
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
+    const envelope: Record<string, unknown> = { status: 'error', rendered };
+    if (errors !== undefined) envelope.errors = errors;
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
+}));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   path_resolve: jest.fn(),
   path_resolveLinks: jest.fn(),

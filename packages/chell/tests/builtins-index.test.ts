@@ -67,6 +67,10 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 
 // Mock cumin
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string, errors?: unknown) =>
+    errors === undefined ? { status: 'error', rendered } : { status: 'error', rendered, errors },
   listCache_get: () => ({
     cache_get: jest.fn(),
     cache_set: jest.fn(),
@@ -347,12 +351,13 @@ describe('Builtins - Core Functions', () => {
   });
 
   describe('builtin_pwd()', () => {
-    it('should print current working directory', async () => {
+    it('should report the current working directory in its envelope', async () => {
       mockGetCWD.mockResolvedValue('/home/user/data');
 
-      await builtin_pwd();
+      const envelope = await builtin_pwd();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('/home/user/data');
+      expect(envelope.status).toBe('ok');
+      expect(envelope.rendered).toBe('/home/user/data\n');
     });
   });
 

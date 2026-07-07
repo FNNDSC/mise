@@ -7,10 +7,12 @@
  * (a terminal for the CLI REPL, a capture buffer for pipes, a connection for
  * a remote surface).
  *
- * Two channels are distinguished. Data is the command's actual output: it is
- * accumulated into the command's result envelope and is what capture, piping
- * and redirection consume. Status is ephemeral (spinners, progress,
- * transient messages): displayed live, never accumulated, never piped.
+ * Three channels are distinguished. Data is the command's actual output: it
+ * is accumulated into the command's result envelope and is what capture,
+ * piping and redirection consume. Err is the error stream: presented to the
+ * user, never piped, never captured. Status is ephemeral (spinners,
+ * progress, transient messages): displayed live, never accumulated, never
+ * piped.
  *
  * This module also provides delivery helpers that bridge envelope-returning
  * builtins into the existing dispatch table, so conversion can proceed one
@@ -20,8 +22,7 @@
  * @module
  */
 
-import chalk from 'chalk';
-import type { CommandEnvelope, StackMessage } from '@fnndsc/cumin';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 /**
  * Destination for command output, installed by the host.
@@ -33,6 +34,13 @@ export interface OutputSink {
    * @param chunk - Printable text (ANSI permitted) or raw bytes.
    */
   data_write(chunk: string | Buffer): void;
+
+  /**
+   * Writes error-stream output (the err channel).
+   *
+   * @param chunk - Printable text (ANSI permitted) or raw bytes.
+   */
+  err_write(chunk: string | Buffer): void;
 
   /**
    * Writes an ephemeral status line (the status channel).
@@ -55,6 +63,11 @@ export class StdoutSink implements OutputSink {
   }
 
   /** @inheritdoc */
+  public err_write(chunk: string | Buffer): void {
+    process.stderr.write(chunk);
+  }
+
+  /** @inheritdoc */
   public status_write(text: string): void {
     process.stdout.write(text);
   }
@@ -72,6 +85,14 @@ export class BufferSink implements OutputSink {
   /** @inheritdoc */
   public data_write(chunk: string | Buffer): void {
     this.chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
+  }
+
+  /** @inheritdoc */
+  public err_write(chunk: string | Buffer): void {
+    // The err channel is never captured: today's pipe and redirect paths
+    // inherit stderr, so error output must keep reaching the terminal even
+    // while data is being buffered.
+    process.stderr.write(chunk);
   }
 
   /** @inheritdoc */
@@ -125,8 +146,10 @@ export function sink_set(sink: OutputSink): OutputSink {
 /**
  * Delivers a completed envelope to the active sink.
  *
- * Rendered text goes to the data channel; error detail is reported on the
- * process error stream in the shell's established style.
+ * Rendered text goes to the data channel and error-stream text to the err
+ * channel. The structured errors field is machine-facing and is not
+ * presented here: its terminal presentation, when any, travels in
+ * renderedErr.
  *
  * @param envelope - The completed command envelope.
  */
@@ -134,10 +157,8 @@ export function envelope_deliver(envelope: CommandEnvelope): void {
   if (envelope.rendered.length > 0) {
     activeSink.data_write(envelope.rendered);
   }
-  if (envelope.errors) {
-    envelope.errors.forEach((entry: StackMessage): void => {
-      console.error(chalk.red(entry.message));
-    });
+  if (envelope.renderedErr !== undefined && envelope.renderedErr.length > 0) {
+    activeSink.err_write(envelope.renderedErr);
   }
 }
 

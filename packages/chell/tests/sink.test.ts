@@ -76,15 +76,50 @@ describe('envelope_deliver', () => {
     expect(buffer.text_get()).toBe('');
   });
 
-  it('reports error detail on the process error stream', () => {
+  it('writes renderedErr to the err channel, not the data channel', () => {
+    const buffer: BufferSink = new BufferSink();
+    sink_set(buffer);
+    const errSpy: jest.SpiedFunction<typeof process.stderr.write> = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    envelope_deliver({
+      status: 'error',
+      rendered: '',
+      renderedErr: 'cd: /nope: No such file or directory\n',
+    });
+    expect(buffer.text_get()).toBe('');
+    expect(errSpy).toHaveBeenCalledWith('cd: /nope: No such file or directory\n');
+  });
+
+  it('does not present the structured errors field', () => {
     const errSpy: jest.SpiedFunction<typeof console.error> = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     sink_set(new BufferSink());
     envelope_deliver({
       status: 'error',
       rendered: '',
-      errors: [{ type: 'error', message: 'it broke' }],
+      errors: [{ type: 'error', message: 'machine detail' }],
     });
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('it broke'));
+    expect(errSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('err channel', () => {
+  it('StdoutSink routes err_write to process.stderr', () => {
+    const errSpy: jest.SpiedFunction<typeof process.stderr.write> = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    new StdoutSink().err_write('boom\n');
+    expect(errSpy).toHaveBeenCalledWith('boom\n');
+  });
+
+  it('BufferSink passes err_write through to process.stderr without capturing', () => {
+    const errSpy: jest.SpiedFunction<typeof process.stderr.write> = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    const sink: BufferSink = new BufferSink();
+    sink.err_write('warn\n');
+    expect(errSpy).toHaveBeenCalledWith('warn\n');
+    expect(sink.text_get()).toBe('');
   });
 });
 

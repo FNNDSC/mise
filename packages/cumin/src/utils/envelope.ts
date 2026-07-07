@@ -77,15 +77,19 @@ export interface ResolutionTrace {
  *
  * @property status - Terminal status of the command.
  * @property rendered - Accumulated printable output (ANSI permitted).
+ * @property renderedErr - Printable error-stream output (ANSI permitted),
+ *   exactly what a terminal host writes to stderr. Kept separate from
+ *   `rendered` so pipes and capture consume only the data stream.
  * @property model - Optional typed result for structural consumers.
- * @property errors - Error detail drained from the errorStack at the
- *   dispatch boundary. Present when status is not `ok`, and possibly
- *   present alongside `ok` for warnings.
+ * @property errors - Structured error detail drained from the errorStack at
+ *   the dispatch boundary, for machine consumers; presentation of errors on
+ *   a terminal travels in `renderedErr`.
  * @property trace - Resolution record for intent-derived commands.
  */
 export interface CommandEnvelope {
   status: EnvelopeStatus;
   rendered: string;
+  renderedErr?: string;
   model?: EnvelopeModel;
   errors?: StackMessage[];
   trace?: ResolutionTrace;
@@ -110,13 +114,21 @@ export function envelope_ok(rendered: string, model?: EnvelopeModel): CommandEnv
  * Creates a failed envelope.
  *
  * @param rendered - Any printable output produced before failure.
- * @param errors - Error detail drained from the errorStack for this command.
+ * @param errors - Structured error detail drained from the errorStack.
+ * @param renderedErr - Printable error-stream output (ANSI permitted).
  * @returns An envelope with `error` status.
  */
-export function envelope_error(rendered: string, errors?: StackMessage[]): CommandEnvelope {
+export function envelope_error(
+  rendered: string,
+  errors?: StackMessage[],
+  renderedErr?: string,
+): CommandEnvelope {
   const envelope: CommandEnvelope = { status: "error", rendered };
   if (errors !== undefined) {
     envelope.errors = errors;
+  }
+  if (renderedErr !== undefined) {
+    envelope.renderedErr = renderedErr;
   }
   return envelope;
 }

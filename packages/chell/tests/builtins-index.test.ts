@@ -70,8 +70,12 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
-  envelope_error: (rendered: string, errors?: unknown) =>
-    errors === undefined ? { status: 'error', rendered } : { status: 'error', rendered, errors },
+  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
+    const envelope: Record<string, unknown> = { status: 'error', rendered };
+    if (errors !== undefined) envelope.errors = errors;
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
   listCache_get: () => ({
     cache_get: jest.fn(),
     cache_set: jest.fn(),
@@ -392,9 +396,10 @@ describe('Builtins - Core Functions', () => {
       mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: mockGetFileBrowserFolderByPath });
       mockGetFileBrowserFolderByPath.mockResolvedValue(null);
 
-      await builtin_cd(['/nonexistent']);
+      const envelope: CommandEnvelope = await builtin_cd(['/nonexistent']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No such file or directory'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('No such file or directory');
       expect(mockSetCWD).not.toHaveBeenCalled();
     });
 
@@ -402,18 +407,20 @@ describe('Builtins - Core Functions', () => {
       mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: mockGetFileBrowserFolderByPath });
       mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/SHARED/entry' });
 
-      await builtin_cd(['/ent']);
+      const envelope: CommandEnvelope = await builtin_cd(['/ent']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No such file or directory'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('No such file or directory');
       expect(mockSetCWD).not.toHaveBeenCalled();
     });
 
     it('should error when not connected', async () => {
       mockClientGet.mockResolvedValue(null);
 
-      await builtin_cd(['/home/user']);
+      const envelope: CommandEnvelope = await builtin_cd(['/home/user']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Not connected'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('Not connected');
     });
   });
 

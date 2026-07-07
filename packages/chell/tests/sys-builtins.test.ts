@@ -12,8 +12,12 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
-  envelope_error: (rendered: string, errors?: unknown) =>
-    errors === undefined ? { status: 'error', rendered } : { status: 'error', rendered, errors },
+  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
+    const envelope: Record<string, unknown> = { status: 'error', rendered };
+    if (errors !== undefined) envelope.errors = errors;
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
 }));
 
 const mockSession = {

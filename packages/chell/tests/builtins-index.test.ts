@@ -762,10 +762,11 @@ describe('Builtins - Core Functions', () => {
       mockChefsRm.mockResolvedValue({ success: true });
       mockRmRender.mockReturnValue('Removed');
 
-      await builtin_rm(['/home/user/file.txt']);
+      const envelope: CommandEnvelope = await builtin_rm(['/home/user/file.txt']);
 
       expect(mockChefsRm).toHaveBeenCalledWith('/home/user/file.txt', { recursive: false, force: false });
-      expect(consoleLogSpy).toHaveBeenCalledWith('Removed');
+      expect(envelope.rendered).toContain('Removed');
+      expect(envelope.model?.kind).toBe('fs.rm');
     });
 
     it('should handle -r flag for recursive removal', async () => {
@@ -793,33 +794,36 @@ describe('Builtins - Core Functions', () => {
     });
 
     it('should error without path argument', async () => {
-      await builtin_rm([]);
+      const envelope: CommandEnvelope = await builtin_rm([]);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Usage:'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('Usage:');
     });
 
     it('should prevent removing /bin directory', async () => {
-      await builtin_rm(['/bin/pl-dircopy']);
+      const envelope: CommandEnvelope = await builtin_rm(['/bin/pl-dircopy']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('virtual /bin directory'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('virtual /bin directory');
       expect(mockChefsRm).not.toHaveBeenCalled();
     });
 
     it('should handle removal failures', async () => {
       mockChefsRm.mockResolvedValue({ success: false, error: 'Permission denied' });
 
-      await builtin_rm(['/home/user/file.txt']);
+      const envelope: CommandEnvelope = await builtin_rm(['/home/user/file.txt']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Permission denied'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('Permission denied');
     });
 
     it('should handle multiple files', async () => {
       mockChefsRm.mockResolvedValue({ success: true });
 
-      await builtin_rm(['file1.txt', 'file2.txt']);
+      const envelope: CommandEnvelope = await builtin_rm(['file1.txt', 'file2.txt']);
 
       expect(mockChefsRm).toHaveBeenCalledTimes(2);
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Successfully removed 2 items'));
+      expect(envelope.rendered).toContain('Successfully removed 2 items');
     });
   });
 

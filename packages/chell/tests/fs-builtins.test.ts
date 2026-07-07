@@ -116,57 +116,63 @@ describe('builtin_touch', () => {
 });
 
 describe('builtin_cp', () => {
-  it('prints usage with fewer than two paths', async () => {
-    await builtin_cp(['only']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: cp'));
+  it('reports usage with fewer than two paths', async () => {
+    const envelope: CommandEnvelope = await builtin_cp(['only']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('Usage: cp');
   });
 
   it('copies a single source and renders the result', async () => {
     mockCpCmd.mockResolvedValue(true);
-    await builtin_cp(['a.txt', 'b.txt']);
+    const envelope: CommandEnvelope = await builtin_cp(['a.txt', 'b.txt']);
     expect(mockCpCmd).toHaveBeenCalledWith('/home/chris/a.txt', '/home/chris/b.txt', { recursive: false });
-    expect(logSpy).toHaveBeenCalledWith('cp:/home/chris/a.txt->/home/chris/b.txt:true');
+    expect(envelope.rendered).toContain('cp:/home/chris/a.txt->/home/chris/b.txt:true');
+    expect(envelope.model?.kind).toBe('fs.cp');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris/b.txt');
   });
 
   it('passes -r recursive and summarises multiple sources', async () => {
     mockCpCmd.mockResolvedValue(true);
-    await builtin_cp(['-r', 'a', 'b', 'dest']);
+    const envelope: CommandEnvelope = await builtin_cp(['-r', 'a', 'b', 'dest']);
     expect(mockCpCmd).toHaveBeenCalledWith('/home/chris/a', '/home/chris/dest', { recursive: true });
     expect(mockCpCmd).toHaveBeenCalledWith('/home/chris/b', '/home/chris/dest', { recursive: true });
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Copied 2 file(s)'));
+    expect(envelope.rendered).toContain('Copied 2 file(s)');
   });
 
   it('reports failures in the multi-source summary', async () => {
     mockCpCmd.mockResolvedValue(false);
-    await builtin_cp(['a', 'b', 'dest']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('failed'));
+    const envelope: CommandEnvelope = await builtin_cp(['a', 'b', 'dest']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('failed');
   });
 });
 
 describe('builtin_mv', () => {
-  it('prints usage with fewer than two paths', async () => {
-    await builtin_mv(['only']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: mv'));
+  it('reports usage with fewer than two paths', async () => {
+    const envelope: CommandEnvelope = await builtin_mv(['only']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('Usage: mv');
   });
 
   it('moves a single source and invalidates source + dest', async () => {
     mockMvCmd.mockResolvedValue(true);
-    await builtin_mv(['a.txt', 'b.txt']);
+    const envelope: CommandEnvelope = await builtin_mv(['a.txt', 'b.txt']);
     expect(mockMvCmd).toHaveBeenCalledWith('/home/chris/a.txt', '/home/chris/b.txt');
-    expect(logSpy).toHaveBeenCalledWith('mv:/home/chris/a.txt->/home/chris/b.txt:true');
+    expect(envelope.rendered).toContain('mv:/home/chris/a.txt->/home/chris/b.txt:true');
+    expect(envelope.model?.kind).toBe('fs.mv');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris/b.txt');
   });
 
   it('summarises multiple moved sources', async () => {
     mockMvCmd.mockResolvedValue(true);
-    await builtin_mv(['a', 'b', 'dest']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Moved 2 file(s)'));
+    const envelope: CommandEnvelope = await builtin_mv(['a', 'b', 'dest']);
+    expect(envelope.rendered).toContain('Moved 2 file(s)');
   });
 
   it('reports a per-source error', async () => {
     mockMvCmd.mockRejectedValue(new Error('nope'));
-    await builtin_mv(['a.txt', 'b.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('nope'));
+    const envelope: CommandEnvelope = await builtin_mv(['a.txt', 'b.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('nope');
   });
 });

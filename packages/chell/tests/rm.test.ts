@@ -10,7 +10,17 @@ import { jest, describe, it, expect } from '@jest/globals';
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({ rm_render: jest.fn() }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({ listCache_get: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  listCache_get: jest.fn(),
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
+    const envelope: Record<string, unknown> = { status: 'error', rendered };
+    if (errors !== undefined) envelope.errors = errors;
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
+}));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({ path_resolve: jest.fn() }));
 
 const { rmArgs_parse, rmSummary_format } = await import('../src/builtins/fs/rm.js');

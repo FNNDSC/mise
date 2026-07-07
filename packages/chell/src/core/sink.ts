@@ -32,14 +32,14 @@ export interface OutputSink {
    *
    * @param chunk - Printable text (ANSI permitted) or raw bytes.
    */
-  data(chunk: string | Buffer): void;
+  data_write(chunk: string | Buffer): void;
 
   /**
    * Writes an ephemeral status line (the status channel).
    *
    * @param text - Transient text; consumers may overwrite or drop it.
    */
-  status(text: string): void;
+  status_write(text: string): void;
 }
 
 /**
@@ -50,12 +50,12 @@ export interface OutputSink {
  */
 export class StdoutSink implements OutputSink {
   /** @inheritdoc */
-  public data(chunk: string | Buffer): void {
+  public data_write(chunk: string | Buffer): void {
     process.stdout.write(chunk);
   }
 
   /** @inheritdoc */
-  public status(text: string): void {
+  public status_write(text: string): void {
     process.stdout.write(text);
   }
 }
@@ -70,12 +70,12 @@ export class BufferSink implements OutputSink {
   private chunks: Buffer[] = [];
 
   /** @inheritdoc */
-  public data(chunk: string | Buffer): void {
+  public data_write(chunk: string | Buffer): void {
     this.chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
   }
 
   /** @inheritdoc */
-  public status(_text: string): void {
+  public status_write(_text: string): void {
     // Status is ephemeral by contract: never accumulated.
   }
 
@@ -132,7 +132,7 @@ export function sink_set(sink: OutputSink): OutputSink {
  */
 export function envelope_deliver(envelope: CommandEnvelope): void {
   if (envelope.rendered.length > 0) {
-    activeSink.data(envelope.rendered);
+    activeSink.data_write(envelope.rendered);
   }
   if (envelope.errors) {
     envelope.errors.forEach((entry: StackMessage): void => {

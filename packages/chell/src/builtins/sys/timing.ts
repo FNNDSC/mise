@@ -1,40 +1,49 @@
 /**
  * @file Builtin timing command.
- * Toggles execution timing.
+ * Toggles execution timing, reported as a command envelope.
  */
 import chalk from 'chalk';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 
 /**
  * Toggles or displays command timing mode.
  *
  * @param args - Command line arguments: 'on', 'off', or empty to display status.
+ * @returns An envelope describing the (possibly updated) timing state.
  */
-export async function builtin_timing(args: string[]): Promise<void> {
+export async function builtin_timing(args: string[]): Promise<CommandEnvelope> {
   const subcommand: string | undefined = args[0];
 
   if (!subcommand) {
-    const status: string = session.timingEnabled_get() ? 'enabled' : 'disabled';
-    console.log(`Command timing: ${chalk.yellow(status)}`);
-    if (session.timingEnabled_get()) {
-      console.log(chalk.gray('  Execution times will be displayed after each command.'));
-    } else {
-      console.log(chalk.gray('  Execution times are hidden.'));
-    }
-    console.log(chalk.gray('\nUsage: timing [on|off]'));
-    return;
+    const enabled: boolean = session.timingEnabled_get();
+    const status: string = enabled ? 'enabled' : 'disabled';
+    const detail: string = enabled
+      ? chalk.gray('  Execution times will be displayed after each command.')
+      : chalk.gray('  Execution times are hidden.');
+    return envelope_ok(
+      `Command timing: ${chalk.yellow(status)}\n${detail}\n${chalk.gray('\nUsage: timing [on|off]')}\n`,
+      { kind: 'sys.timing', data: { enabled } },
+    );
   }
 
   if (subcommand === 'on') {
     session.timingEnabled_set(true);
-    console.log(chalk.green('[+] Command timing enabled'));
-    console.log(chalk.gray('    Execution times will be displayed after each command.'));
-  } else if (subcommand === 'off') {
-    session.timingEnabled_set(false);
-    console.log(chalk.gray('[-] Command timing disabled'));
-    console.log(chalk.gray('    Execution times will no longer be displayed.'));
-  } else {
-    console.log(chalk.red(`Unknown argument: ${subcommand}`));
-    console.log(chalk.gray('Usage: timing [on|off]'));
+    return envelope_ok(
+      `${chalk.green('[+] Command timing enabled')}\n${chalk.gray('    Execution times will be displayed after each command.')}\n`,
+      { kind: 'sys.timing', data: { enabled: true } },
+    );
   }
+
+  if (subcommand === 'off') {
+    session.timingEnabled_set(false);
+    return envelope_ok(
+      `${chalk.gray('[-] Command timing disabled')}\n${chalk.gray('    Execution times will no longer be displayed.')}\n`,
+      { kind: 'sys.timing', data: { enabled: false } },
+    );
+  }
+
+  return envelope_error(
+    `${chalk.red(`Unknown argument: ${subcommand}`)}\n${chalk.gray('Usage: timing [on|off]')}\n`,
+  );
 }

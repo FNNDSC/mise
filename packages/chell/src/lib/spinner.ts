@@ -5,6 +5,7 @@
  */
 
 import chalk from 'chalk';
+import { sink_get } from '../core/sink.js';
 
 /**
  * Terminal spinner indicating progress of async work.
@@ -38,7 +39,7 @@ export class Spinner {
     this.startTime = Date.now();
 
     // Hide cursor
-    process.stdout.write('\x1B[?25l');
+    sink_get().status_write('\x1B[?25l');
 
     this.interval = setInterval(() => {
       const frame: string = this.frames[this.frameIndex = (this.frameIndex + 1) % this.frames.length];
@@ -53,7 +54,7 @@ export class Spinner {
       // Note: We use chalk.gray for the message to match the existing "Fetching..." style.
       // \x1b[K erases to end-of-line so a shorter message never leaves the
       // tail of a longer previous one behind.
-      process.stdout.write(`\r\x1b[K${chalk.bgBlack.cyanBright.bold(frame)} ${chalk.gray(displayMessage)}`);
+      sink_get().status_write(`\r\x1b[K${chalk.bgBlack.cyanBright.bold(frame)} ${chalk.gray(displayMessage)}`);
     }, 80);
   }
 
@@ -64,10 +65,10 @@ export class Spinner {
     }
     if (this.spinnerActive) {
       if (clearLine) {
-        process.stdout.write('\r\x1b[K'); // Clear line
+        sink_get().status_write('\r\x1b[K'); // Clear line
       }
       // Show cursor
-      process.stdout.write('\x1B[?25h');
+      sink_get().status_write('\x1B[?25h');
       this.spinnerActive = false;
     }
   }

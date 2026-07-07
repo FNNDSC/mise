@@ -726,34 +726,38 @@ describe('Builtins - Core Functions', () => {
       mockChefsCat.mockResolvedValue(Ok('file content here'));
       mockCatRender.mockReturnValue('rendered content');
 
-      await builtin_cat(['/home/user/test.txt']);
+      const envelope: CommandEnvelope = await builtin_cat(['/home/user/test.txt']);
 
       expect(mockChefsCat).toHaveBeenCalledWith('/home/user/test.txt');
-      expect(consoleLogSpy).toHaveBeenCalledWith('rendered content');
+      expect(envelope.rendered).toContain('rendered content');
+      expect(envelope.model?.kind).toBe('fs.cat');
     });
 
     it('should error without file argument', async () => {
-      await builtin_cat([]);
+      const envelope: CommandEnvelope = await builtin_cat([]);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Usage:'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('Usage:');
     });
 
     it('should error on /bin files', async () => {
       mockChefsCat.mockResolvedValueOnce(Err(new Error('Cannot cat plugins')));
       errorStack.stack_pop.mockReturnValueOnce({ type: 'error', message: 'Cannot cat plugins yet: pl-dircopy' });
 
-      await builtin_cat(['/bin/pl-dircopy']);
+      const envelope: CommandEnvelope = await builtin_cat(['/bin/pl-dircopy']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Cannot cat plugins'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('Cannot cat plugins');
     });
 
     it('should handle cat errors', async () => {
       mockChefsCat.mockResolvedValue(Err(new Error('File not found')));
       errorStack.stack_pop.mockReturnValueOnce({ type: 'error', message: 'File not found' });
 
-      await builtin_cat(['/tmp/missing.txt']);
+      const envelope: CommandEnvelope = await builtin_cat(['/tmp/missing.txt']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('File not found'));
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('File not found');
     });
   });
 

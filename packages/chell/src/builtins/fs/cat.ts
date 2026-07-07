@@ -1,13 +1,14 @@
 /**
  * @file Builtin cat command.
- * Displays file contents.
+ * Displays file contents, reported as a command envelope.
  */
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { files_cat as chefs_cat_cmd, files_catBinary as chefs_catBinary_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { cat_render } from '@fnndsc/chili/views/fs.js';
-import { help_show } from '../help.js';
-import { errorStack, Result, StackMessage } from '@fnndsc/cumin';
+import { errorStack, Result, StackMessage, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import type { CommandEnvelope } from '@fnndsc/cumin';
+import { sink_get } from '../../core/sink.js';
 import * as path from 'path';
 
 /** File extensions that receive syntax highlighting. */
@@ -181,22 +182,29 @@ async function buffer_writeToStdout(buffer: Buffer): Promise<void> {
   });
 }
 
+/** Outcome of one cat target, for the envelope model. */
+interface CatOutcome {
+  path: string;
+  ok: boolean;
+  binary: boolean;
+  bytes?: number;
+}
+
 /**
  * Displays the content of one or more files.
  *
  * Supports multiple files and concatenates their output. Binary mode is applied
  * consistently to all files if any file is detected as binary or --binary is specified.
+ * Text content and errors are buffered into the envelope; binary content streams
+ * to the terminal directly with backpressure (raw bytes are not envelope text),
+ * and the binary auto-detection notice is emitted live on the err channel so it
+ * precedes the bytes it describes.
  *
  * @param args - Command line arguments (file paths and optional --binary flag).
- *
- * @example
- * ```typescript
- * await builtin_cat(['file1.txt', 'file2.txt']);
- * await builtin_cat(['--binary', 'image.dcm']);
- * await builtin_cat(['*.json']);  // After wildcard expansion
- * ```
+ * @returns An envelope whose rendered text carries the (highlighted) file
+ *   contents and whose model lists per-file outcomes.
  */
-export async function builtin_cat(args: string[]): Promise<void> {
+export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
   let binaryMode: boolean = false;
   const filePaths: string[] = [];
 
@@ -209,9 +217,13 @@ export async function builtin_cat(args: string[]): Promise<void> {
   }
 
   if (filePaths.length === 0) {
-     console.error(chalk.red('Usage: cat [--binary] <file> [file...]'));
-     return;
+    return envelope_error('', undefined, `${chalk.red('Usage: cat [--binary] <file> [file...]')}\n`);
   }
+
+  let rendered: string = '';
+  let renderedErr: string = '';
+  const outcomes: CatOutcome[] = [];
+  let anyFailed: boolean = false;
 
   for (let i: number = 0; i < filePaths.length; i++) {
     const pathArg: string = filePaths[i];
@@ -220,40 +232,55 @@ export async function builtin_cat(args: string[]): Promise<void> {
     // Auto-detect binary files
     const isBinaryFile: boolean = extension_isBinary(target);
 
-    // Inform user about auto-detection only if in interactive mode (stdout is TTY)
-    // Don't show warning when piping, as it would corrupt the binary output
-    // Only show on first file to avoid spam
+    // Inform user about auto-detection only if in interactive mode (stdout is TTY).
+    // Emitted live (not buffered) so the notice precedes the raw bytes it announces.
+    // Only show on first file to avoid spam.
     if (i === 0 && isBinaryFile && !binaryMode && process.stdout.isTTY) {
-       console.error(chalk.cyan(`Info: ${pathArg} detected as binary file (${path.extname(target)}), using binary mode.`));
-       console.error(chalk.cyan('Tip: Use "cat --binary <file>" to explicitly request binary mode.'));
-       console.error('');
+      sink_get().err_write(`${chalk.cyan(`Info: ${pathArg} detected as binary file (${path.extname(target)}), using binary mode.`)}\n`);
+      sink_get().err_write(`${chalk.cyan('Tip: Use "cat --binary <file>" to explicitly request binary mode.')}\n`);
+      sink_get().err_write('\n');
     }
 
     // Use binary mode if requested OR if file is detected as binary
     if (binaryMode || isBinaryFile) {
-       const result: Result<Buffer> = await chefs_catBinary_cmd(target);
+      const result: Result<Buffer> = await chefs_catBinary_cmd(target);
 
-       if (!result.ok) {
-          const error: StackMessage | undefined = errorStack.stack_pop();
-          console.error(chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`));
-          process.exitCode = 1;
-          continue;
-       }
+      if (!result.ok) {
+        const error: StackMessage | undefined = errorStack.stack_pop();
+        renderedErr += `${chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`)}\n`;
+        outcomes.push({ path: pathArg, ok: false, binary: true });
+        anyFailed = true;
+        process.exitCode = 1;
+        continue;
+      }
 
-       // Output raw buffer to stdout with backpressure handling
-       await buffer_writeToStdout(result.value);
+      // Output raw buffer to stdout with backpressure handling
+      await buffer_writeToStdout(result.value);
+      outcomes.push({ path: pathArg, ok: true, binary: true, bytes: result.value.length });
     } else {
-       const result: Result<string> = await chefs_cat_cmd(target);
+      const result: Result<string> = await chefs_cat_cmd(target);
 
-       if (!result.ok) {
-          const error: StackMessage | undefined = errorStack.stack_pop();
-          console.error(chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`));
-          process.exitCode = 1;
-          continue;
-       }
+      if (!result.ok) {
+        const error: StackMessage | undefined = errorStack.stack_pop();
+        renderedErr += `${chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`)}\n`;
+        outcomes.push({ path: pathArg, ok: false, binary: false });
+        anyFailed = true;
+        process.exitCode = 1;
+        continue;
+      }
 
-       const highlighted: string = content_highlight(result.value, target);
-       console.log(cat_render(highlighted, pathArg));
+      const highlighted: string = content_highlight(result.value, target);
+      rendered += `${cat_render(highlighted, pathArg)}\n`;
+      outcomes.push({ path: pathArg, ok: true, binary: false });
     }
   }
+
+  const model: { kind: string; data: CatOutcome[] } = { kind: 'fs.cat', data: outcomes };
+  if (anyFailed) {
+    const envelope: CommandEnvelope = envelope_error(rendered, undefined, renderedErr || undefined);
+    envelope.model = model;
+    return envelope;
+  }
+  const envelope: CommandEnvelope = envelope_ok(rendered, model);
+  return envelope;
 }

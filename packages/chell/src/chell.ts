@@ -9,9 +9,16 @@
  */
 export {
   chiliCommand_run,
-  command_handle,
   command_dispatch,
   COMMAND_HANDLERS,
   COMMAND_HANDLERS_KEYS,
-  stopOnError_set,
 } from './core/dispatch.js';
+export {
+  engine_create,
+  line_execute,
+  line_complete,
+  command_handle,
+  stopOnError_set,
+  type ChellEngine,
+  type CompletionResult,
+} from './core/engine.js';

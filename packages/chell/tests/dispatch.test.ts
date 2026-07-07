@@ -22,28 +22,6 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   session: { timingEnabled_get: mockTiming },
 }));
 
-// Host shell escape (`!cmd`) spawns a child process; drive its lifecycle events.
-type SpawnHandlers = Record<string, (arg?: unknown) => void>;
-let spawnBehavior: (h: SpawnHandlers) => void = (h) => h.close?.(0);
-const mockSpawn = jest.fn(() => {
-  const handlers: SpawnHandlers = {};
-  const child = { on: (ev: string, cb: (arg?: unknown) => void) => { handlers[ev] = cb; return child; } };
-  Promise.resolve().then(() => spawnBehavior(handlers));
-  return child;
-});
-jest.unstable_mockModule('child_process', () => ({ spawn: mockSpawn }));
-
-// Redirect targets: real preprocess resolves the path (statSync), dispatch writes it.
-const mockWriteFile = jest.fn();
-const mockAppendFile = jest.fn();
-const enoent = (): never => { const e: NodeJS.ErrnoException = new Error('nope'); e.code = 'ENOENT'; throw e; };
-const mockStatSync = jest.fn(enoent);
-jest.unstable_mockModule('fs', () => ({
-  statSync: mockStatSync,
-  writeFileSync: mockWriteFile,
-  appendFileSync: mockAppendFile,
-}));
-
 // VFS — command_dispatch consults /bin for plugin/pipeline names.
 const mockDataGet = jest.fn();
 jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: mockDataGet } }));
@@ -53,6 +31,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: mock
 const mockLs = jest.fn();
 const mockWhoami = jest.fn();
 const mockPipeline = jest.fn();
+const mockUpload = jest.fn();
 const BUILTIN_NAMES = [
   'builtin_cd', 'builtin_ls', 'builtin_pwd', 'builtin_connect', 'builtin_logout',
   'builtin_cat', 'builtin_cp', 'builtin_mv', 'builtin_upload', 'builtin_pacs',
@@ -71,6 +50,7 @@ jest.unstable_mockModule('../src/builtins/index.js', () => {
   exports.builtin_ls = mockLs;
   exports.builtin_whoami = mockWhoami;
   exports.builtin_pipeline = mockPipeline;
+  exports.builtin_upload = mockUpload;
   exports.error_stripDebugPrefix = (s: string): string => s;
   return exports;
 });
@@ -87,10 +67,7 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_show: mockHelp
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
 
-const mockSegmentPipe = jest.fn();
-jest.unstable_mockModule('../src/lib/pipe.js', () => ({ segment_pipeThrough: mockSegmentPipe }));
-
-const { command_dispatch, command_handle, stopOnError_set, envRefs_expand } = await import('../src/core/dispatch.js');
+const { command_dispatch, command_dispatchEnvelope, envRefs_expand } = await import('../src/core/dispatch.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -99,8 +76,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockHasHelpFlag.mockReturnValue(false);
   mockTiming.mockReturnValue(false);
-  mockStatSync.mockImplementation(enoent);
-  spawnBehavior = (h) => h.close?.(0);
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   exitSpy = jest.spyOn(process, 'exit').mockImplementation(((): never => {
@@ -171,15 +146,44 @@ describe('command_dispatch', () => {
 
   it('delegates an unknown command to chili with -s', async () => {
     mockDataGet.mockResolvedValue(Ok([]));
+    // The fallback runs through the capture bridge: the delegation notice is
+    // captured into the envelope and delivered via the sink, not console.log.
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await command_dispatch('frobnicate', ['x']);
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('delegating to chili'));
+    expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('delegating to chili'));
+    writeSpy.mockRestore();
+  });
+
+  it('returns the fallback delegation notice in the envelope', async () => {
+    mockDataGet.mockResolvedValue(Ok([]));
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const envelope = await command_dispatchEnvelope('frobnicate', ['x']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('delegating to chili');
+    writeSpy.mockRestore();
+  });
+
+  it('yields a placeholder envelope for an unconverted handler', async () => {
+    const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
+    expect(envelope).toEqual({ status: 'ok', rendered: '' });
+  });
+
+  it('marks the placeholder envelope as failed when the handler sets a nonzero exit code', async () => {
+    const previousExitCode: number | string | undefined = process.exitCode;
+    process.exitCode = 0;
+    mockUpload.mockImplementationOnce(async () => { process.exitCode = 1; });
+    const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
+    expect(envelope.status).toBe('error');
+    process.exitCode = previousExitCode;
   });
 
   it('delegates to chili when the /bin lookup fails', async () => {
     mockDataGet.mockResolvedValue(Err());
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await command_dispatch('frobnicate', []);
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s']);
+    writeSpy.mockRestore();
   });
 
   it('delegates the pacsservers alias to chili', async () => {
@@ -200,114 +204,5 @@ describe('command_dispatch', () => {
   });
 });
 
-describe('command_handle', () => {
-  it('ignores a blank line', async () => {
-    await command_handle('   ');
-    expect(mockLs).not.toHaveBeenCalled();
-    expect(mockChiliRun).not.toHaveBeenCalled();
-  });
-
-  it('dispatches a plain command end-to-end', async () => {
-    await command_handle('whoami');
-    expect(mockWhoami).toHaveBeenCalledWith([]);
-  });
-
-  it('short-circuits on a --help flag without dispatching', async () => {
-    mockHasHelpFlag.mockReturnValue(true);
-    await command_handle('ls --help');
-    expect(mockHelpShow).toHaveBeenCalledWith('ls');
-    expect(mockLs).not.toHaveBeenCalled();
-  });
-
-  it('runs each command in a semicolon-separated list', async () => {
-    await command_handle('whoami; whoami');
-    expect(mockWhoami).toHaveBeenCalledTimes(2);
-  });
-
-  it('captures the first segment and pipes it through the rest', async () => {
-    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    mockSegmentPipe.mockResolvedValue(Buffer.from('piped'));
-    await command_handle('whoami | grep foo');
-    expect(mockWhoami).toHaveBeenCalled();
-    expect(mockSegmentPipe).toHaveBeenCalledWith('grep foo', expect.any(Buffer));
-    writeSpy.mockRestore();
-  });
-
-  it('delegates an unknown piped command to chili during capture', async () => {
-    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    mockSegmentPipe.mockResolvedValue(Buffer.from(''));
-    await command_handle('frobnicate | grep foo');
-    expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s']);
-    writeSpy.mockRestore();
-  });
-
-  it('prints elapsed time when timing is enabled', async () => {
-    mockTiming.mockReturnValue(true);
-    await command_handle('whoami');
-    expect(mockWhoami).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ms'));
-  });
-});
-
-describe('shell escape', () => {
-  it('runs a !-prefixed command on the host shell', async () => {
-    await command_handle('!echo hi');
-    expect(mockSpawn).toHaveBeenCalledWith('echo hi', expect.objectContaining({ shell: true }));
-  });
-
-  it('reports a non-zero host exit code', async () => {
-    spawnBehavior = (h) => h.close?.(3);
-    await command_handle('!false');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('exited with code 3'));
-  });
-
-  it('reports a spawn error', async () => {
-    spawnBehavior = (h) => h.error?.(new Error('nope'));
-    await command_handle('!badcmd');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('nope'));
-  });
-
-  it('ignores a bare "!" with no command', async () => {
-    await command_handle('!');
-    expect(mockSpawn).not.toHaveBeenCalled();
-  });
-});
-
-describe('output redirection', () => {
-  it('writes captured output to the target with >', async () => {
-    await command_handle('whoami > out.txt');
-    expect(mockWhoami).toHaveBeenCalled();
-    expect(mockWriteFile).toHaveBeenCalledWith('out.txt', expect.any(Buffer));
-  });
-
-  it('appends captured output with >>', async () => {
-    await command_handle('whoami >> out.txt');
-    expect(mockAppendFile).toHaveBeenCalledWith('out.txt', expect.any(Buffer));
-  });
-
-  it('errors and skips the write when the target is a directory', async () => {
-    mockStatSync.mockReturnValue({ isDirectory: () => true } as unknown as ReturnType<typeof mockStatSync>);
-    await command_handle('whoami > somedir');
-    expect(mockWriteFile).not.toHaveBeenCalled();
-    expect(errSpy).toHaveBeenCalled();
-  });
-});
-
-describe('command_handle — control flow', () => {
-  it('short-circuits when a simulated plugin handles the command', async () => {
-    mockPluginExecutable.mockResolvedValueOnce(true);
-    await command_handle('whoami');
-    expect(mockPluginExecutable).toHaveBeenCalledWith('whoami', []);
-    expect(mockWhoami).not.toHaveBeenCalled();
-  });
-
-  it('aborts a semicolon batch on error when stop-on-error is set', async () => {
-    mockWhoami.mockRejectedValueOnce(new Error('boom'));
-    stopOnError_set(true);
-    await command_handle('whoami; whoami');
-    // First segment throws and aborts; the second never runs.
-    expect(mockWhoami).toHaveBeenCalledTimes(1);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
-    stopOnError_set(false);
-  });
-});
+// Line-level orchestration (shell escape, semicolon batching, redirects,
+// pipes) is tested through the engine facade in engine.test.ts.

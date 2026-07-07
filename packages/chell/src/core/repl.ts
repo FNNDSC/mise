@@ -1,7 +1,9 @@
 /**
  * @file REPL Logic.
  *
- * Manages the Read-Eval-Print Loop using Node.js readline.
+ * The CLI host around the chell engine: a readline loop that reads lines,
+ * hands them to the engine, and owns the terminal-facing concerns (prompt,
+ * history, output sink, interactive questions).
  *
  * @module
  */
@@ -9,7 +11,6 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
-import { input_complete } from '../lib/completer/index.js';
 import { settings } from '../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
@@ -17,33 +18,41 @@ import { prompt_render, type PromptContext } from './prompt/index.js';
 import { repl_questionRegister } from './question.js';
 import { sink_set, StdoutSink } from './sink.js';
 import { procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
+import type { ChellEngine, CompletionResult } from './engine.js';
 
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
  */
 export class REPL {
   private rl: readline.Interface;
+  private engine: ChellEngine;
   private isOpen: boolean = true;
   private lastCommandDurationMs: number = 0;
   private lastExitCode: number = 0;
 
   /**
-   * Initializes the REPL interface.
+   * Initializes the REPL interface around an engine.
+   *
+   * @param engine - The engine that executes lines and answers completions.
    */
-  constructor() {
+  constructor(engine: ChellEngine) {
+    this.engine = engine;
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
       prompt: '> ',
-      completer: input_complete,
+      completer: (line: string, callback: (err: Error | null, result: [string[], string]) => void): void => {
+        this.engine.line_complete(line)
+          .then((result: CompletionResult) => callback(null, [result.candidates, result.prefix]))
+          .catch(() => callback(null, [[], line]));
+      },
     });
   }
 
   /**
-   * Starts the REPL loop.
-   * @param commandHandler - Async function to process each input line.
+   * Starts the REPL loop, executing each input line through the engine.
    */
-  async start(commandHandler: (line: string) => Promise<void>): Promise<void> {
+  async start(): Promise<void> {
     // The REPL is the host that owns the output destination: command output
     // reaches the terminal through the sink it installs, not by builtins
     // assuming a terminal exists.
@@ -82,7 +91,7 @@ export class REPL {
 
       const startMs: number = Date.now();
       process.exitCode = 0;
-      await commandHandler(line);
+      await this.engine.line_execute(line);
       this.lastCommandDurationMs = Date.now() - startMs;
       this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
 

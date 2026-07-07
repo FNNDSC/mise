@@ -4,7 +4,7 @@
  * Holds the process-lifecycle glue that sits around the command dispatcher:
  * - self/dependency package.json loading and the boot info panels
  * - password prompting and ChRIS connection establishment (CLI args or saved session)
- * - VFS provider registration and cache prefetch
+ * - engine creation and cache prefetch
  * - the interactive session runner and `chell_start` entrypoint
  *
  * The parse/dispatch logic it drives lives in `../chell.js`.
@@ -40,7 +40,7 @@ import { bootFlags_compute, type BootFlags } from './bootFlags.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
-import { command_handle, stopOnError_set } from './dispatch.js';
+import { engine_create, stopOnError_set, type ChellEngine } from './engine.js';
 
 /**
  * Interface for package.json structure.
@@ -376,16 +376,17 @@ function localTime_withOffset(): string {
  * Reads the file line by line, ignoring comments and blank lines.
  * Supports shebang (#!) on first line.
  *
+ * @param engine - The engine that executes each line.
  * @param scriptPath - Path to the script file.
  * @param stopOnError - Whether to stop execution on first error (default: false).
  * @returns A Promise that resolves when script execution completes.
  *
  * @example
  * ```typescript
- * await script_execute('/path/to/script.chell', false);
+ * await script_execute(engine, '/path/to/script.chell', false);
  * ```
  */
-async function script_execute(scriptPath: string, stopOnError: boolean = false): Promise<void> {
+async function script_execute(engine: ChellEngine, scriptPath: string, stopOnError: boolean = false): Promise<void> {
   if (!existsSync(scriptPath)) {
     console.error(chalk.red(`Error: Script file not found: ${scriptPath}`));
     process.exit(1);
@@ -412,7 +413,7 @@ async function script_execute(scriptPath: string, stopOnError: boolean = false):
 
     // Execute the line
     try {
-      await command_handle(line);
+      await engine.line_execute(line);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
       console.error(chalk.red(`Error on line ${i + 1}: ${msg}`));
@@ -583,40 +584,18 @@ async function connection_establish(
 }
 
 /**
- * Registers the static VFS providers and the logical→physical path resolver
- * hook on the shared salsa vfsDispatcher.
- */
-async function vfsProviders_register(): Promise<void> {
-  const { vfsDispatcher } = await import('@fnndsc/salsa');
-  const { StaticVfsProvider } = await import('../lib/vfs/providers/static.js');
-  vfsDispatcher.provider_register(new StaticVfsProvider('/bin'));
-  vfsDispatcher.provider_register(new StaticVfsProvider('/usr'));
-  vfsDispatcher.provider_register(new StaticVfsProvider('/usr/bin'));
-
-  vfsDispatcher.pathResolver_register(async (logicalPath: string): Promise<string> => {
-    if (session.physicalMode_get()) {
-      return logicalPath;
-    }
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const res: Result<string> = await logical_toPhysical(logicalPath);
-    if (res.ok) {
-      return res.value;
-    }
-    throw new Error(`Logical-to-physical resolution failed for path: ${logicalPath}`);
-  });
-}
-
-/**
  * Runs the interactive session: prefetches the boot cache, renders the boot
  * panels and greeting, kicks off non-blocking topology warm-up, and enters the
  * REPL loop.
  *
+ * @param engine - The engine the REPL hosts.
  * @param config - The parsed CLI config.
  * @param currentContext - The resolved session context.
  * @param flags - Prefetch/interactivity boot flags.
  * @param boot - The boot logger, or null when non-interactive.
  */
 async function interactiveSession_run(
+  engine: ChellEngine,
   config: ChellCLIConfig,
   currentContext: SingleContext,
   flags: Pick<BootFlags, 'prefetchPlugins' | 'prefetchFeeds' | 'prefetchPublicFeeds' | 'prefetchJobs' | 'isInteractiveSession' | 'useAsciiBoot'>,
@@ -655,8 +634,8 @@ async function interactiveSession_run(
     procTopology_warmup().catch(() => { /* non-fatal */ });
   }
 
-  const repl: REPL = new REPL();
-  await repl.start(command_handle);
+  const repl: REPL = new REPL(engine);
+  await repl.start();
 }
 
 /**
@@ -692,10 +671,8 @@ export async function chell_start(): Promise<void> {
   await settings_load();
 
   spinner.start('Initializing session components');
-  await session.init();
+  const engine: ChellEngine = await engine_create();
   spinner.stop();
-
-  await vfsProviders_register();
 
   if (isInteractiveSession) {
     console.log(chalk.green('[+] Session initialized.'));
@@ -730,20 +707,21 @@ export async function chell_start(): Promise<void> {
     if (config.stopOnError) {
       stopOnError_set(true);
     }
-    await command_handle(config.commandToExecute);
+    await engine.line_execute(config.commandToExecute);
     process.exit(process.exitCode ?? 0);
   }
 
   // --- Script Mode ---
 
   if (config.mode === 'script' && config.scriptFile) {
-    await script_execute(config.scriptFile, config.stopOnError || false);
+    await script_execute(engine, config.scriptFile, config.stopOnError || false);
     process.exit(0);
   }
 
   // --- Interactive Mode ---
 
   await interactiveSession_run(
+    engine,
     config,
     currentContext,
     { prefetchPlugins, prefetchFeeds, prefetchPublicFeeds, prefetchJobs, isInteractiveSession, useAsciiBoot },

@@ -119,6 +119,59 @@ export class BufferSink implements OutputSink {
   }
 }
 
+/**
+ * Sink that captures the data and err channels while passing status through
+ * to a live sink, so transients (spinners, progress) remain visible while a
+ * legacy printing command's output is being gathered into an envelope.
+ */
+export class CaptureSink implements OutputSink {
+  private dataChunks: Buffer[] = [];
+  private errChunks: Buffer[] = [];
+  private live: OutputSink;
+
+  /**
+   * Initializes the capture around a live sink for status passthrough.
+   *
+   * @param live - The sink that continues to receive status writes.
+   */
+  constructor(live: OutputSink) {
+    this.live = live;
+  }
+
+  /** @inheritdoc */
+  public data_write(chunk: string | Buffer): void {
+    this.dataChunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
+  }
+
+  /** @inheritdoc */
+  public err_write(chunk: string | Buffer): void {
+    this.errChunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
+  }
+
+  /** @inheritdoc */
+  public status_write(text: string): void {
+    this.live.status_write(text);
+  }
+
+  /**
+   * Returns the captured data channel as UTF-8 text.
+   *
+   * @returns The captured data text.
+   */
+  public dataText_get(): string {
+    return Buffer.concat(this.dataChunks).toString('utf-8');
+  }
+
+  /**
+   * Returns the captured err channel as UTF-8 text.
+   *
+   * @returns The captured error-stream text.
+   */
+  public errText_get(): string {
+    return Buffer.concat(this.errChunks).toString('utf-8');
+  }
+}
+
 /** The active sink. Defaults to stdout so every entry point behaves as the CLI always has. */
 let activeSink: OutputSink = new StdoutSink();
 
@@ -183,5 +236,77 @@ export function envelopeHandler_wrap(
       return;
     }
     envelope_deliver(envelope);
+  };
+}
+
+/**
+ * Adapts a legacy printing builtin to the envelope-returning shape.
+ *
+ * This is the capture bridge for commands whose rendering lives below the
+ * seam (chili's table display prints internally): the handler runs with the
+ * data and err channels captured, console printing redirected into the
+ * capture, and status passed through live so spinners stay visible. The
+ * result is an envelope carrying the exact bytes each stream would have
+ * shown, with the status derived from the process exit code the handler set.
+ *
+ * Bridged commands gain envelope semantics without typed models; native
+ * conversion (models, streamed data) remains the end state for commands
+ * where a structural consumer exists.
+ *
+ * @param handler - A legacy printing command handler.
+ * @returns An envelope-returning handler with identical observable output.
+ */
+export function printingHandler_wrap(
+  handler: (args: string[]) => Promise<void>,
+): (args: string[]) => Promise<CommandEnvelope> {
+  return async (args: string[]): Promise<CommandEnvelope> => {
+    const capture: CaptureSink = new CaptureSink(activeSink);
+    const previousSink: OutputSink = sink_set(capture);
+
+    const originalLog: typeof console.log = console.log;
+    const originalError: typeof console.error = console.error;
+    const originalStdoutWrite: typeof process.stdout.write = process.stdout.write.bind(process.stdout);
+    const exitCodeBefore: number = typeof process.exitCode === 'number' ? process.exitCode : 0;
+
+    console.log = (...logArgs: unknown[]): void => {
+      const text: string = logArgs
+        .map((arg: unknown): string => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+        .join(' ');
+      capture.data_write(`${text}\n`);
+    };
+    console.error = (...logArgs: unknown[]): void => {
+      const text: string = logArgs
+        .map((arg: unknown): string => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+        .join(' ');
+      capture.err_write(`${text}\n`);
+    };
+    process.stdout.write = ((chunk: unknown): boolean => {
+      if (typeof chunk === 'string' || Buffer.isBuffer(chunk)) {
+        capture.data_write(chunk);
+      } else if (chunk instanceof Uint8Array) {
+        capture.data_write(Buffer.from(chunk));
+      }
+      return true;
+    }) as typeof process.stdout.write;
+
+    try {
+      await handler(args);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      process.stdout.write = originalStdoutWrite;
+      sink_set(previousSink);
+    }
+
+    const exitCodeAfter: number = typeof process.exitCode === 'number' ? process.exitCode : 0;
+    const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
+    const rendered: string = capture.dataText_get();
+    const renderedErr: string = capture.errText_get();
+
+    const envelope: CommandEnvelope = { status: failed ? 'error' : 'ok', rendered };
+    if (renderedErr.length > 0) {
+      envelope.renderedErr = renderedErr;
+    }
+    return envelope;
   };
 }

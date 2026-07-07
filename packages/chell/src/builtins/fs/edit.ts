@@ -8,6 +8,7 @@ import { tmpdir } from 'os';
 import { join, extname, posix } from 'path';
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { capability_require, CapabilityError } from '../../core/surface.js';
 import { files_cat } from '@fnndsc/chili/commands/fs/cat.js';
 import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.js';
 import { errorStack, Result, StackMessage, listCache_get } from '@fnndsc/cumin';
@@ -27,6 +28,19 @@ const BINARY_EXTENSIONS: Set<string> = new Set([
 export async function builtin_edit(args: string[]): Promise<void> {
   if (args.length === 0) {
     console.error(chalk.red('Usage: edit <file>'));
+    process.exitCode = 1;
+    return;
+  }
+
+  // edit opens the file in a local editor: it needs a surface that can do
+  // that. A surface without the capability (a headless or browser host)
+  // fails here with a clear message instead of trying to spawn an editor
+  // against a terminal that is not there.
+  try {
+    capability_require('localEdit', 'edit: this surface cannot open a local editor.');
+  } catch (err: unknown) {
+    const message: string = err instanceof CapabilityError ? err.message : String(err);
+    console.error(chalk.red(message));
     process.exitCode = 1;
     return;
   }

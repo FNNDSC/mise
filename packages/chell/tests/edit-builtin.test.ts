@@ -25,6 +25,17 @@ const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
 
 const { builtin_edit } = await import('../src/builtins/fs/edit.js');
+const { surface_set } = await import('../src/core/surface.js');
+import type { Surface, SurfaceCapabilities } from '../src/core/surface.js';
+
+/** Installs a surface with the given capabilities for a test. */
+function surface_install(capabilities: SurfaceCapabilities): void {
+  const surface: Surface = {
+    capabilities,
+    prompt: async (): Promise<string> => '',
+  };
+  surface_set(surface);
+}
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -32,6 +43,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   mockSpawnSync.mockReturnValue({});
+  // The CLI host can edit locally; install a surface that says so.
+  surface_install({ hiddenInput: true, localEdit: true, tty: true });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -41,6 +54,14 @@ describe('builtin_edit', () => {
     await builtin_edit([]);
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: edit'));
     expect(process.exitCode).toBe(1);
+  });
+
+  it('fails clearly when the surface cannot edit locally', async () => {
+    surface_install({ hiddenInput: false, localEdit: false, tty: false });
+    await builtin_edit(['notes.txt']);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('cannot open a local editor'));
+    expect(process.exitCode).toBe(1);
+    expect(mockCat).not.toHaveBeenCalled();
   });
 
   it('refuses to edit a binary file', async () => {

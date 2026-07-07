@@ -1,4 +1,5 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Mock dependencies BEFORE imports
 const mockGetCWD = jest.fn();
@@ -354,7 +355,7 @@ describe('Builtins - Core Functions', () => {
     it('should report the current working directory in its envelope', async () => {
       mockGetCWD.mockResolvedValue('/home/user/data');
 
-      const envelope = await builtin_pwd();
+      const envelope: CommandEnvelope = await builtin_pwd();
 
       expect(envelope.status).toBe('ok');
       expect(envelope.rendered).toBe('/home/user/data\n');

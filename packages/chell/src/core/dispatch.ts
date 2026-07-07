@@ -259,6 +259,9 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   pwd: builtin_pwd,
   whoami: builtin_whoami,
   whereami: builtin_whereami,
+  timing: builtin_timing,
+  physicalmode: builtin_physicalmode,
+  debug: builtin_debug,
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
@@ -284,12 +287,12 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   edit: builtin_edit,
   context: builtin_context,
   parametersofplugin: builtin_parametersofplugin,
-  physicalmode: builtin_physicalmode,
+  physicalmode: envelopeHandler_wrap(builtin_physicalmode),
   prompt: builtin_prompt,
-  timing: builtin_timing,
+  timing: envelopeHandler_wrap(builtin_timing),
   whoami: envelopeHandler_wrap(builtin_whoami),
   whereami: envelopeHandler_wrap(builtin_whereami),
-  debug: builtin_debug,
+  debug: envelopeHandler_wrap(builtin_debug),
   help: builtin_help,
   proc: builtin_proc,
   tree: builtin_tree,

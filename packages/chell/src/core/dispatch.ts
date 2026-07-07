@@ -257,6 +257,9 @@ type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
  */
 export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   cd: builtin_cd,
+  cp: builtin_cp,
+  mv: builtin_mv,
+  rm: builtin_rm,
   mkdir: builtin_mkdir,
   touch: builtin_touch,
   pwd: builtin_pwd,
@@ -274,9 +277,9 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   ls: builtin_ls,
   pwd: envelopeHandler_wrap(builtin_pwd),
   cat: builtin_cat,
-  rm: builtin_rm,
-  cp: builtin_cp,
-  mv: builtin_mv,
+  rm: envelopeHandler_wrap(builtin_rm),
+  cp: envelopeHandler_wrap(builtin_cp),
+  mv: envelopeHandler_wrap(builtin_mv),
   touch: envelopeHandler_wrap(builtin_touch),
   mkdir: envelopeHandler_wrap(builtin_mkdir),
   upload: builtin_upload,

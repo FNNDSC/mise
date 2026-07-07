@@ -1,14 +1,16 @@
 /**
  * @file Builtin rm command.
- * Removes files or directories.
+ * Removes files or directories, reported as a command envelope.
  */
 import chalk from 'chalk';
 import path from 'path';
 import * as readline from 'readline';
+import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import type { ListCache } from '@fnndsc/cumin';
 import { path_resolve } from '../utils.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { rm_render } from '@fnndsc/chili/views/fs.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { sink_get } from '../../core/sink.js';
 
 /**
  * Prompts the user for confirmation.
@@ -96,30 +98,72 @@ export function rmSummary_format(successCount: number, failCount: number): strin
   return chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`);
 }
 
+/** Outcome of one removal target, for the envelope model. */
+interface RmOutcome {
+  path: string;
+  removed: boolean;
+  skipped: boolean;
+}
 
 /**
  * Removes one or more files or directories.
  *
+ * In interactive mode (-i) output is streamed live through the sink so each
+ * confirmation prompt appears in sequence with its result; the envelope then
+ * carries only the model. Otherwise output is buffered into the envelope.
+ *
  * @param args - Command line arguments (flags and paths).
+ * @returns An envelope whose model lists per-target outcomes.
  */
-export async function builtin_rm(args: string[]): Promise<void> {
+export async function builtin_rm(args: string[]): Promise<CommandEnvelope> {
   const { recursive, force, interactive, paths }: RmArgs = rmArgs_parse(args);
 
   if (paths.length === 0) {
-    console.error(chalk.red('Usage: rm [-rf] <path> [path...]'));
-    return;
+    return envelope_error('', undefined, `${chalk.red('Usage: rm [-rf] <path> [path...]')}\n`);
   }
 
   const options: RmOptions = { recursive, force };
   let successCount: number = 0;
   let failCount: number = 0;
+  let rendered: string = '';
+  let renderedErr: string = '';
+  const outcomes: RmOutcome[] = [];
+
+  /**
+   * Emits one line of stdout output: streamed live in interactive mode,
+   * buffered into the envelope otherwise.
+   *
+   * @param line - The line to emit (without trailing newline).
+   */
+  const out_emit = (line: string): void => {
+    if (interactive) {
+      sink_get().data_write(`${line}\n`);
+    } else {
+      rendered += `${line}\n`;
+    }
+  };
+
+  /**
+   * Emits one line of error output: streamed live in interactive mode,
+   * buffered into the envelope otherwise.
+   *
+   * @param line - The line to emit (without trailing newline).
+   */
+  const err_emit = (line: string): void => {
+    if (interactive) {
+      sink_get().err_write(`${line}\n`);
+    } else {
+      renderedErr += `${line}\n`;
+    }
+  };
 
   for (const pathArg of paths) {
     try {
       const target: string = await path_resolve(pathArg);
 
       if (target.startsWith('/bin/')) {
-        console.error(chalk.red(`rm: cannot remove '${pathArg}': virtual /bin directory`));
+        err_emit(chalk.red(`rm: cannot remove '${pathArg}': virtual /bin directory`));
+        outcomes.push({ path: pathArg, removed: false, skipped: false });
         failCount++;
         continue;
       }
@@ -127,7 +171,8 @@ export async function builtin_rm(args: string[]): Promise<void> {
       if (interactive) {
         const confirmed: boolean = await prompt_confirm(`rm: remove '${pathArg}'? (y/n): `);
         if (!confirmed) {
-          console.log(chalk.gray(`skipped '${pathArg}'`));
+          out_emit(chalk.gray(`skipped '${pathArg}'`));
+          outcomes.push({ path: pathArg, removed: false, skipped: true });
           continue;
         }
       }
@@ -136,22 +181,25 @@ export async function builtin_rm(args: string[]): Promise<void> {
 
       if (result.success) {
         if (paths.length > 1) {
-          console.log(chalk.gray(`removed '${pathArg}'`));
+          out_emit(chalk.gray(`removed '${pathArg}'`));
         } else {
-          console.log(rm_render(result));
+          out_emit(rm_render(result));
         }
+        outcomes.push({ path: pathArg, removed: true, skipped: false });
         successCount++;
 
-        const listCache = listCache_get();
+        const listCache: ListCache = listCache_get();
         const parentDir: string = path.posix.dirname(target);
         listCache.cache_invalidate(parentDir);
       } else {
-        console.error(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));
+        err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));
+        outcomes.push({ path: pathArg, removed: false, skipped: false });
         failCount++;
       }
     } catch (e: unknown) {
       const msg: string = e instanceof Error ? e.message : String(e);
-      console.error(chalk.red(`rm: cannot remove '${pathArg}': ${msg}`));
+      err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${msg}`));
+      outcomes.push({ path: pathArg, removed: false, skipped: false });
       failCount++;
     }
   }
@@ -159,8 +207,17 @@ export async function builtin_rm(args: string[]): Promise<void> {
   if (paths.length > 1) {
     const summary: string | null = rmSummary_format(successCount, failCount);
     if (summary) {
-      console.log('');
-      console.log(summary);
+      out_emit('');
+      out_emit(summary);
     }
   }
+
+  const model: { kind: string; data: RmOutcome[] } = { kind: 'fs.rm', data: outcomes };
+  if (failCount > 0) {
+    const envelope: CommandEnvelope = envelope_error(rendered, undefined, renderedErr || undefined);
+    envelope.model = model;
+    return envelope;
+  }
+  const envelope: CommandEnvelope = envelope_ok(rendered, model);
+  return envelope;
 }

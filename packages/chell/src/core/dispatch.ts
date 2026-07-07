@@ -1,19 +1,20 @@
 /**
- * @file Command parsing and dispatch for the ChELL shell.
+ * @file Command dispatch for the ChELL shell.
  *
- * Turns a line of user input into an executed command:
- * - preprocessing (inline shell escape, semicolon batching, redirects, pipes, wildcards, help)
+ * Turns one parsed command into an executed command with an envelope result:
  * - the built-in command table and dispatch to built-ins, simulated plugin exec, or `chili`
  * - output capture for the redirect/pipe paths
+ * - envelope-producing execution used by the engine facade
  *
- * The startup/connection/REPL glue that drives this layer lives in `./boot.js`.
+ * Line-level orchestration (shell escape, semicolon batching, redirect and
+ * pipe detection) lives in `./engine.js`; the startup/connection/REPL glue
+ * lives in `./boot.js`.
  *
  * @module
  */
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
 import { spawn, ChildProcess } from 'child_process';
-import { session } from '../session/index.js';
 import {
   builtin_cd,
   builtin_ls,
@@ -66,17 +67,13 @@ import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import { envelopeHandler_wrap, printingHandler_wrap, ansi_strip } from './sink.js';
+import { envelopeHandler_wrap, printingHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
-import { semicolons_parse } from '../lib/semicolonParser.js';
 import { segment_pipeThrough } from '../lib/pipe.js';
 import {
-  pipes_parse,
-  redirect_parse,
   redirectTarget_resolve,
   wildcards_expandCheck,
-  command_shellEscape_detect,
   type RedirectInfo,
 } from './preprocess.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
@@ -104,10 +101,10 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
  * Executes a shell command on the host system (shell escape with ! prefix).
  *
  * @param shellCommand - The command to execute on the host shell.
- * @returns A Promise that resolves when the command completes.
+ * @returns A Promise resolving to the command's exit code (1 on spawn failure).
  */
-async function shellCommand_execute(shellCommand: string): Promise<void> {
-  return new Promise((resolve) => {
+export async function shellCommand_execute(shellCommand: string): Promise<number> {
+  return new Promise((resolve: (code: number) => void) => {
     const child: ChildProcess = spawn(shellCommand, {
       shell: true,
       stdio: 'inherit',
@@ -118,81 +115,14 @@ async function shellCommand_execute(shellCommand: string): Promise<void> {
       if (code !== null && code !== 0) {
         console.error(chalk.red(`Shell command exited with code ${code}`));
       }
-      resolve();
+      resolve(code ?? 0);
     });
 
     child.on('error', (err: Error) => {
       console.error(chalk.red(`Failed to execute shell command: ${err.message}`));
-      resolve();
+      resolve(1);
     });
   });
-}
-
-/**
- * Handles a command entered by the user.
- *
- * @param line - The input line.
- * @returns A Promise that resolves once the command has been processed.
- */
-export async function command_handle(line: string): Promise<void> {
-  const trimmedLine: string = line.trim();
-  if (!trimmedLine) return;
-
-  // Start timing if enabled
-  const timingEnabled: boolean = session.timingEnabled_get();
-  const startTime: number = timingEnabled ? performance.now() : 0;
-
-  if (command_shellEscape_detect(trimmedLine)) {
-    await shellEscape_handle(trimmedLine, startTime, timingEnabled);
-    return;
-  }
-
-  const semicolonResult: Result<boolean> = await semicolons_handle(trimmedLine, startTime, timingEnabled);
-  if (!semicolonResult.ok) {
-    return;
-  }
-  if (semicolonResult.value) return;
-
-  const redirectResult: Result<boolean> = await redirect_handle(trimmedLine, startTime, timingEnabled);
-  if (!redirectResult.ok) {
-    return;
-  }
-  if (redirectResult.value) return;
-
-  const pipeResult: Result<boolean> = await pipe_handle(trimmedLine, startTime, timingEnabled);
-  if (!pipeResult.ok) {
-    return;
-  }
-  if (pipeResult.value) return;
-
-  const tokens: string[] = args_tokenize(trimmedLine);
-  if (tokens.length === 0) return;
-  let [command, ...args]: string[] = tokens;
-
-  // Check for --help flag before any processing
-  const helpResult: Result<boolean> = help_showMaybe(command, args);
-  if (helpResult.ok && helpResult.value) {
-    return;
-  }
-
-  // Expand wildcards for commands that support it
-  const expandResult: Result<string[]> = await wildcards_expand(command, args);
-  if (!expandResult.ok) {
-    return;
-  }
-  args = expandResult.value;
-
-  // Attempt to handle as a simulated plugin execution
-  if (await pluginExecutable_handle(command, args)) {
-    // Display timing if enabled
-    command_timingMaybePrint(startTime, timingEnabled);
-    return;
-  }
-
-  await command_dispatch(command, args);
-
-  // Display timing if enabled
-  command_timingMaybePrint(startTime, timingEnabled);
 }
 
 /**
@@ -397,7 +327,7 @@ export { COMMAND_HANDLERS_KEYS } from '../command-keys.js';
  * @param startTime - Timestamp from `performance.now()` at command start.
  * @param enabled - Whether timing display is active.
  */
-function command_timingMaybePrint(startTime: number, enabled: boolean): void {
+export function command_timingMaybePrint(startTime: number, enabled: boolean): void {
   if (!enabled) return;
   const elapsed: number = performance.now() - startTime;
   console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
@@ -447,23 +377,73 @@ export function envRefs_expand(token: string): string {
 }
 
 /**
- * Dispatches a parsed command to its handler.
+ * Reads the current process exit code as a number.
+ *
+ * @returns The exit code, treating an unset code as zero.
+ */
+function exitCode_read(): number {
+  return typeof process.exitCode === 'number' ? process.exitCode : 0;
+}
+
+/**
+ * Runs a legacy printing handler uncaptured and derives an envelope from the
+ * exit-code delta.
+ *
+ * This is the passthrough for commands that cannot be captured yet: the
+ * interactive holdouts (their prompts must reach the terminal) and the
+ * progress writers (their live updates must stay live). The handler prints
+ * exactly as it always has; the placeholder envelope records only the
+ * outcome, with no rendered text, so envelope consumers never re-print what
+ * the terminal already showed.
+ *
+ * @param handler - A legacy printing command handler.
+ * @param args - Parsed arguments.
+ * @returns A placeholder envelope carrying the command's outcome.
+ */
+async function handler_runDirect(handler: CommandHandler, args: string[]): Promise<CommandEnvelope> {
+  const exitCodeBefore: number = exitCode_read();
+  await handler(args);
+  const exitCodeAfter: number = exitCode_read();
+  const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
+  return { status: failed ? 'error' : 'ok', rendered: '' };
+}
+
+/**
+ * Dispatches a parsed command to its handler and returns its envelope.
  * Expands environment references in the arguments, then checks
- * COMMAND_HANDLERS, then /bin plugin names, then falls back to chili.
+ * ENVELOPE_HANDLERS, then unconverted COMMAND_HANDLERS, then /bin
+ * plugin/pipeline names, then falls back to chili through the capture
+ * bridge.
+ *
+ * Envelope-speaking handlers are delivered through the active sink here, so
+ * direct execution prints exactly as it always has; unconverted handlers
+ * print for themselves and yield a placeholder envelope.
  *
  * @param command - The command name.
  * @param args - Parsed arguments.
+ * @returns The envelope of the executed command.
  */
-export async function command_dispatch(command: string, args: string[]): Promise<void> {
+export async function command_dispatchEnvelope(command: string, args: string[]): Promise<CommandEnvelope> {
   if (command === 'exit') {
     process.exit(0);
   }
   args = args.map(envRefs_expand);
 
+  const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
+  if (envelopeHandler) {
+    // A handler that resolves without an envelope (as stubbed handlers in
+    // tests do) is treated as having produced no output.
+    const envelope: CommandEnvelope | undefined = await envelopeHandler(args);
+    if (!envelope) {
+      return { status: 'ok', rendered: '' };
+    }
+    envelope_deliver(envelope);
+    return envelope;
+  }
+
   const handler: CommandHandler | undefined = COMMAND_HANDLERS[command];
   if (handler) {
-    await handler(args);
-    return;
+    return handler_runDirect(handler, args);
   }
 
   const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
@@ -472,117 +452,59 @@ export async function command_dispatch(command: string, args: string[]): Promise
     const pipelineItem: ListingItem | undefined = binResult.value.find(item => item.name === command && item.type === 'pipeline');
 
     if (pluginItem) {
-      await builtin_executePlugin(command, args);
-      return;
+      return handler_runDirect((pluginArgs: string[]): Promise<void> => builtin_executePlugin(command, pluginArgs), args);
     }
 
     if (pipelineItem) {
-      await pipelineExecutable_handle(command, args);
-      return;
+      return handler_runDirect((pipelineArgs: string[]): Promise<void> => pipelineExecutable_handle(command, pipelineArgs), args);
     }
   }
 
-  console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
-  await chiliCommand_run(command, ['-s', ...args]);
+  const fallback: EnvelopeHandler = printingHandler_wrap(async (fallbackArgs: string[]): Promise<void> => {
+    console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
+    await chiliCommand_run(command, ['-s', ...fallbackArgs]);
+  });
+  const envelope: CommandEnvelope = await fallback(args);
+  envelope_deliver(envelope);
+  return envelope;
 }
 
 /**
- * Executes a shell-escaped command and prints timing if enabled.
+ * Dispatches a parsed command to its handler.
  *
- * @param line - Full input line including the leading `!`.
- * @param startTime - Timing reference from `performance.now()`.
- * @param timingEnabled - Whether to print elapsed time after execution.
+ * Compatibility shape over {@link command_dispatchEnvelope} for callers that
+ * do not consume envelopes.
+ *
+ * @param command - The command name.
+ * @param args - Parsed arguments.
+ * @returns A Promise that resolves once the command has been dispatched.
  */
-async function shellEscape_handle(line: string, startTime: number, timingEnabled: boolean): Promise<void> {
-  const shellCommand: string = line.substring(1).trim();
-  if (!shellCommand) return;
-  await shellCommand_execute(shellCommand);
-  command_timingMaybePrint(startTime, timingEnabled);
+export async function command_dispatch(command: string, args: string[]): Promise<void> {
+  await command_dispatchEnvelope(command, args);
 }
 
 /**
- * Splits a semicolon-separated command line and executes each segment in sequence.
- * Returns Ok(true) if the line contained semicolons and was handled, Ok(false) if not.
+ * Executes a redirected command (`>` / `>>`): captures the command's output
+ * and writes it to the target file.
  *
- * @param line - Full input line.
- * @param startTime - Timing reference.
- * @param timingEnabled - Whether to print total elapsed time after all segments.
+ * @param redirectInfo - The parsed redirection (command, operator, target).
+ * @returns An envelope recording the outcome; rendered text stays empty
+ *   because the output went to the file, not the terminal.
  */
-async function semicolons_handle(line: string, startTime: number, timingEnabled: boolean): Promise<Result<boolean>> {
-  const commands: string[] = semicolons_parse(line);
-  if (commands.length <= 1) {
-    return Ok(false);
-  }
-  for (const cmd of commands) {
-    try {
-      await command_handle(cmd);
-    } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Command error: ${msg}`));
-      if (stopOnError) {
-        return Err();
-      }
-    }
-  }
-  if (timingEnabled) {
-    const elapsed: number = performance.now() - startTime;
-    console.log(chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`));
-  }
-  return Ok(true);
-}
-
-/**
- * Handles output redirection (`>` / `>>`). Captures command output and writes to the target file.
- * Returns Ok(true) if redirection was detected and handled, Ok(false) if not.
- *
- * @param line - Full input line.
- * @param startTime - Timing reference.
- * @param timingEnabled - Whether to print elapsed time after execution.
- */
-async function redirect_handle(line: string, startTime: number, timingEnabled: boolean): Promise<Result<boolean>> {
-  const redirectInfo: RedirectInfo | null = redirect_parse(line);
-  if (!redirectInfo) {
-    return Ok(false);
-  }
+export async function redirect_execute(redirectInfo: RedirectInfo): Promise<CommandEnvelope> {
   const { buffer } = await chellCommand_executeAndCapture(redirectInfo.command);
   const targetResult: Result<string> = redirectTarget_resolve(redirectInfo.filePath, redirectInfo.command);
   if (!targetResult.ok) {
     const lastError: StackMessage | undefined = errorStack.stack_pop();
     console.error(chalk.red(lastError ? lastError.message : 'Redirect error'));
-    return Err();
+    return { status: 'error', rendered: '' };
   }
   if (redirectInfo.operator === '>') {
     writeFileSync(targetResult.value, buffer);
   } else {
     appendFileSync(targetResult.value, buffer);
   }
-  command_timingMaybePrint(startTime, timingEnabled);
-  return Ok(true);
-}
-
-/**
- * Handles pipe chains (`cmd1 | cmd2 | ...`). Executes the first segment in chell and
- * pipes the output through subsequent host-shell processes.
- * Returns Ok(true) if a pipe was detected and handled, Ok(false) if not.
- *
- * @param line - Full input line.
- * @param startTime - Timing reference.
- * @param timingEnabled - Whether to print elapsed time after the chain completes.
- */
-async function pipe_handle(line: string, startTime: number, timingEnabled: boolean): Promise<Result<boolean>> {
-  const segments: string[] = pipes_parse(line);
-  if (segments.length <= 1) {
-    return Ok(false);
-  }
-  try {
-    await pipe_execute(segments);
-  } catch (error: unknown) {
-    const msg: string = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red(`Pipe error: ${msg}`));
-    return Err();
-  }
-  command_timingMaybePrint(startTime, timingEnabled);
-  return Ok(true);
+  return { status: 'ok', rendered: '' };
 }
 
 /**
@@ -693,46 +615,79 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
 }
 
 /**
- * Executes a pipe chain by running the first command in chell and piping through local tools.
+ * Executes a pipe chain by running the first command in chell and piping
+ * through local tools, delivering the final output on the data channel.
  *
  * @param segments - Array of command segments separated by pipes.
- * @returns A Promise that resolves when the pipe chain completes.
+ * @returns An envelope whose rendered text is the chain's final output.
  */
-async function pipe_execute(segments: string[]): Promise<void> {
-  if (segments.length === 0) return;
+export async function pipe_execute(segments: string[]): Promise<CommandEnvelope> {
+  if (segments.length === 0) {
+    return { status: 'ok', rendered: '' };
+  }
 
   // Execute first segment in chell and capture output
   const firstCommand: string = segments[0];
   const { buffer } = await chellCommand_executeAndCapture(firstCommand);
 
-  if (segments.length === 1) {
-    // No pipes, just output the result
-    process.stdout.write(buffer);
-    return;
-  }
-
   // Chain remaining segments as spawned processes
   let currentInput: Buffer = buffer;
-  for (let i = 1; i < segments.length; i++) {
+  for (let i: number = 1; i < segments.length; i++) {
     currentInput = await segment_pipeThrough(segments[i], currentInput);
   }
 
   // Output final result
-  process.stdout.write(currentInput);
+  sink_get().data_write(currentInput);
+  return { status: 'ok', rendered: currentInput.toString('utf-8') };
 }
 
 /**
- * Whether a batch (semicolon list, script) should abort on the first error.
- * Read by {@link semicolons_handle}; set by the boot layer for `-e` / script modes.
- */
-let stopOnError: boolean = false;
-
-/**
- * Sets the shared stop-on-error flag. Exposed so the boot layer (which owns the
- * `-e` flag and script execution) can drive the flag that the dispatch layer reads.
+ * Executes one plain command line (no shell escape, batch, redirect or pipe)
+ * and returns its envelope.
  *
- * @param value - `true` to abort a batch on the first error.
+ * Mirrors the historical direct-execution order exactly: help flag
+ * short-circuit, wildcard expansion, simulated plugin execution, then table
+ * dispatch. Timing is printed at the same points the shell always printed
+ * it (after plugin execution or dispatch; never after help or a wildcard
+ * failure).
+ *
+ * @param trimmedLine - The trimmed command line.
+ * @param startTime - Timing reference from `performance.now()`.
+ * @param timingEnabled - Whether to print elapsed time after execution.
+ * @returns The command's envelope, or null when the line held no tokens.
  */
-export function stopOnError_set(value: boolean): void {
-  stopOnError = value;
+export async function command_executeToEnvelope(
+  trimmedLine: string,
+  startTime: number,
+  timingEnabled: boolean,
+): Promise<CommandEnvelope | null> {
+  const tokens: string[] = args_tokenize(trimmedLine);
+  if (tokens.length === 0) return null;
+  let [command, ...args]: string[] = tokens;
+
+  // Check for --help flag before any processing
+  const helpResult: Result<boolean> = help_showMaybe(command, args);
+  if (helpResult.ok && helpResult.value) {
+    return { status: 'ok', rendered: '' };
+  }
+
+  // Expand wildcards for commands that support it
+  const expandResult: Result<string[]> = await wildcards_expand(command, args);
+  if (!expandResult.ok) {
+    return { status: 'error', rendered: '' };
+  }
+  args = expandResult.value;
+
+  // Attempt to handle as a simulated plugin execution
+  const exitCodeBefore: number = exitCode_read();
+  if (await pluginExecutable_handle(command, args)) {
+    command_timingMaybePrint(startTime, timingEnabled);
+    const exitCodeAfter: number = exitCode_read();
+    const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
+    return { status: failed ? 'error' : 'ok', rendered: '' };
+  }
+
+  const envelope: CommandEnvelope = await command_dispatchEnvelope(command, args);
+  command_timingMaybePrint(startTime, timingEnabled);
+  return envelope;
 }

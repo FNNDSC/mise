@@ -256,6 +256,7 @@ type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
  * receive the structured result.
  */
 export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
+  cat: builtin_cat,
   cd: builtin_cd,
   cp: builtin_cp,
   mv: builtin_mv,
@@ -276,7 +277,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   cd: envelopeHandler_wrap(builtin_cd),
   ls: builtin_ls,
   pwd: envelopeHandler_wrap(builtin_pwd),
-  cat: builtin_cat,
+  cat: envelopeHandler_wrap(builtin_cat),
   rm: envelopeHandler_wrap(builtin_rm),
   cp: envelopeHandler_wrap(builtin_cp),
   mv: envelopeHandler_wrap(builtin_mv),

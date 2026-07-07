@@ -4,7 +4,17 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({ errorStack: { stack_pop: mockStackPop } }));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  errorStack: { stack_pop: mockStackPop },
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
+    const envelope: Record<string, unknown> = { status: 'error', rendered };
+    if (errors !== undefined) envelope.errors = errors;
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
+}));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: jest.fn(async () => '/home/chris') } }));
 
@@ -32,23 +42,25 @@ beforeEach(() => {
 });
 
 describe('builtin_cat', () => {
-  it('prints usage with no file argument', async () => {
-    await builtin_cat([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: cat'));
+  it('reports usage with no file argument', async () => {
+    const envelope = await builtin_cat([]);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('Usage: cat');
   });
 
   it('renders a text file', async () => {
     mockCat.mockResolvedValue(ok('hello world'));
-    await builtin_cat(['notes.txt']);
+    const envelope = await builtin_cat(['notes.txt']);
     expect(mockCat).toHaveBeenCalledWith('/home/chris/notes.txt');
-    expect(logSpy).toHaveBeenCalledWith('RENDERED');
+    expect(envelope.rendered).toContain('RENDERED');
   });
 
   it('reports a text read error and sets a non-zero exit code', async () => {
     mockCat.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'not found' });
-    await builtin_cat(['ghost.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('cat: ghost.txt'));
+    const envelope = await builtin_cat(['ghost.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('cat: ghost.txt');
     expect(process.exitCode).toBe(1);
   });
 
@@ -73,8 +85,9 @@ describe('builtin_cat', () => {
   it('reports a binary read error', async () => {
     mockCatBinary.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'io error' });
-    await builtin_cat(['--binary', 'data.bin']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('io error'));
+    const envelope = await builtin_cat(['--binary', 'data.bin']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('io error');
     expect(process.exitCode).toBe(1);
   });
 });

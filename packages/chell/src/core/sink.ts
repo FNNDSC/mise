@@ -310,3 +310,22 @@ export function printingHandler_wrap(
     return envelope;
   };
 }
+
+/** Matches ANSI escape sequences (SGR colors, cursor movement, erase). */
+const ANSI_PATTERN: RegExp = /\x1b\[[0-9;?]*[a-zA-Z]/g;
+
+/**
+ * Strips ANSI escape sequences from text.
+ *
+ * Applied at the pipe and redirect boundary so downstream consumers receive
+ * plain text, the way programs behind a real shell pipe see no color. This
+ * is a deliberate, documented deviation from the historical behavior, in
+ * which escape bytes leaked into pipes because color detection saw the
+ * terminal regardless of capture.
+ *
+ * @param text - Text possibly containing ANSI sequences.
+ * @returns The text with all ANSI sequences removed.
+ */
+export function ansi_strip(text: string): string {
+  return text.replace(ANSI_PATTERN, '');
+}

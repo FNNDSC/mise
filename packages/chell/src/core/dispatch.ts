@@ -66,7 +66,7 @@ import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import { envelopeHandler_wrap, printingHandler_wrap } from './sink.js';
+import { envelopeHandler_wrap, printingHandler_wrap, ansi_strip } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
@@ -650,11 +650,33 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
     args = expandResult.value;
   }
 
-  return output_capture(async () => {
-    if (command === 'exit') {
-      process.exit(0);
-    }
+  if (command === 'exit') {
+    process.exit(0);
+  }
 
+  // Envelope-speaking commands feed pipes and redirects from their envelope:
+  // rendered text with ANSI stripped (plain pipes, the documented deviation),
+  // error-stream text passed live to stderr exactly as the inherit behavior
+  // always did. Direct stdout writers (binary cat) are still captured; their
+  // bytes precede the envelope's rendered text if a command mixes both.
+  const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
+  if (envelopeHandler) {
+    let envelope: CommandEnvelope | undefined;
+    const { buffer: directBuffer } = await output_capture(async (): Promise<void> => {
+      envelope = await envelopeHandler(args);
+    });
+    if (!envelope) {
+      return { text: '', buffer: Buffer.alloc(0) };
+    }
+    if (envelope.renderedErr !== undefined && envelope.renderedErr.length > 0) {
+      process.stderr.write(envelope.renderedErr);
+    }
+    const plain: string = ansi_strip(envelope.rendered);
+    const buffer: Buffer = Buffer.concat([directBuffer, Buffer.from(plain, 'utf-8')]);
+    return { text: buffer.toString('utf-8'), buffer };
+  }
+
+  return output_capture(async () => {
     if (await pluginExecutable_handle(command, args, { piped: true })) {
       return;
     }

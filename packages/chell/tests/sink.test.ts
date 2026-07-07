@@ -4,6 +4,7 @@
 import { jest, describe, it, expect, afterEach } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import {
+  ansi_strip,
   StdoutSink,
   BufferSink,
   CaptureSink,
@@ -252,5 +253,19 @@ describe('printingHandler_wrap', () => {
     };
     await printingHandler_wrap(handler)(['--limit', '2']);
     expect(seen).toEqual([['--limit', '2']]);
+  });
+});
+
+describe('ansi_strip', () => {
+  it('removes SGR color sequences', () => {
+    expect(ansi_strip('\x1b[32mgreen\x1b[0m plain')).toBe('green plain');
+  });
+
+  it('removes cursor and erase sequences', () => {
+    expect(ansi_strip('\x1b[K\x1b[2Jtext\x1b[1;31mred')).toBe('textred');
+  });
+
+  it('leaves plain text untouched', () => {
+    expect(ansi_strip('just text\n')).toBe('just text\n');
   });
 });

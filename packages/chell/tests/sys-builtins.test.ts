@@ -8,7 +8,12 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feeds_list: mockFeedsList,
   pluginInstances_list: mockInstancesList,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string, errors?: unknown) =>
+    errors === undefined ? { status: 'error', rendered } : { status: 'error', rendered, errors },
+}));
 
 const mockSession = {
   timingEnabled_get: jest.fn(),
@@ -34,29 +39,35 @@ beforeEach(() => {
 });
 
 describe('builtin_whoami', () => {
-  it('prints the connected user', async () => {
+  it('reports the connected user in the envelope', async () => {
     mockContext.mockResolvedValue({ user: 'chris' });
-    await builtin_whoami([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('chris'));
+    const envelope = await builtin_whoami([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('chris');
+    expect(envelope.model).toEqual({ kind: 'session.identity', data: { user: 'chris' } });
     expect(process.exitCode).toBe(0);
   });
   it('reports not-connected with a non-zero exit code', async () => {
     mockContext.mockResolvedValue({ user: null });
-    await builtin_whoami([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('not connected'));
+    const envelope = await builtin_whoami([]);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('not connected');
     expect(process.exitCode).toBe(1);
   });
 });
 
 describe('builtin_whereami', () => {
-  it('prints the CUBE URL', async () => {
+  it('reports the CUBE URL in the envelope', async () => {
     mockContext.mockResolvedValue({ URL: 'http://c/api/' });
-    await builtin_whereami([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('http://c/api/'));
+    const envelope = await builtin_whereami([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('http://c/api/');
+    expect(envelope.model).toEqual({ kind: 'session.cube', data: { url: 'http://c/api/' } });
   });
   it('reports not-connected when no URL', async () => {
     mockContext.mockResolvedValue({ URL: null });
-    await builtin_whereami([]);
+    const envelope = await builtin_whereami([]);
+    expect(envelope.status).toBe('error');
     expect(process.exitCode).toBe(1);
   });
 });
@@ -133,17 +144,19 @@ describe('builtin_debug', () => {
 });
 
 describe('builtin_pwd', () => {
-  it('prints the raw cwd without --title', async () => {
+  it('reports the raw cwd without --title', async () => {
     mockSession.getCWD.mockResolvedValue('/home/chris/uploads');
-    await builtin_pwd([]);
-    expect(logSpy).toHaveBeenCalledWith('/home/chris/uploads');
+    const envelope = await builtin_pwd([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toBe('/home/chris/uploads\n');
+    expect(envelope.model?.kind).toBe('fs.cwd');
   });
 
   it('replaces feed and plugin segments with titles for --title', async () => {
     mockSession.getCWD.mockResolvedValue('/home/chris/feeds/feed_123/pl-dircopy_456');
     mockFeedsList.mockResolvedValue({ tableData: [{ name: 'Brain Study' }] });
     mockInstancesList.mockResolvedValue({ tableData: [{ plugin_name: 'pl-dircopy', plugin_version: '2.1.1' }] });
-    await builtin_pwd(['--title']);
-    expect(logSpy).toHaveBeenCalledWith('/home/chris/feeds/Brain Study/pl-dircopy v2.1.1');
+    const envelope = await builtin_pwd(['--title']);
+    expect(envelope.rendered).toBe('/home/chris/feeds/Brain Study/pl-dircopy v2.1.1\n');
   });
 });

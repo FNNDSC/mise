@@ -1,29 +1,24 @@
 /**
  * @file Builtin pwd command.
- * Prints the current working directory.
+ * Reports the current working directory as a command envelope.
  */
 import { session } from '../../session/index.js';
-import { FilteredResourceData } from '@fnndsc/cumin';
+import { FilteredResourceData, CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
 
 /**
- * Prints the current working directory in the ChRIS filesystem context.
+ * Reports the current working directory in the ChRIS filesystem context.
  *
  * @param args - Command arguments (--title flag supported).
- * @returns A Promise that resolves when the directory is printed.
+ * @returns An envelope whose rendered text is the directory (with feed and
+ *   plugin segments replaced by titles under --title) and whose model
+ *   carries the raw path.
  */
-export async function builtin_pwd(args: string[] = []): Promise<void> {
+export async function builtin_pwd(args: string[] = []): Promise<CommandEnvelope> {
   const showTitles: boolean = args.includes('--title');
   const cwd: string = await session.getCWD();
-
-  if (!showTitles) {
-    console.log(cwd);
-    return;
-  }
-
-  // Replace feed and plugin patterns with titles
-  const titlePath: string = await path_withTitles(cwd);
-  console.log(titlePath);
+  const shown: string = showTitles ? await path_withTitles(cwd) : cwd;
+  return envelope_ok(`${shown}\n`, { kind: 'fs.cwd', data: { path: cwd, shown } });
 }
 
 /**

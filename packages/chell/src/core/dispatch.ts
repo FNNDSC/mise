@@ -65,6 +65,8 @@ import { wildcards_expandAll } from '../builtins/wildcard.js';
 import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
+import type { CommandEnvelope } from '@fnndsc/cumin';
+import { envelopeHandler_wrap } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
@@ -240,12 +242,31 @@ async function output_capture(fn: () => Promise<void>): Promise<{ text: string; 
 
 type CommandHandler = (args: string[]) => Promise<void>;
 
+/**
+ * Shape of a converted builtin: returns its outcome as an envelope instead
+ * of printing. The engine layer will consume these directly; the dispatch
+ * table below consumes them through {@link envelopeHandler_wrap}.
+ */
+type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
+
+/**
+ * Builtins that have been converted to return envelopes, keyed by command
+ * name. Entries here are also present in COMMAND_HANDLERS in wrapped form;
+ * this registry exists so envelope-aware hosts can bypass the wrapper and
+ * receive the structured result.
+ */
+export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
+  pwd: builtin_pwd,
+  whoami: builtin_whoami,
+  whereami: builtin_whereami,
+};
+
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   connect: builtin_connect,
   logout: builtin_logout,
   cd: builtin_cd,
   ls: builtin_ls,
-  pwd: builtin_pwd,
+  pwd: envelopeHandler_wrap(builtin_pwd),
   cat: builtin_cat,
   rm: builtin_rm,
   cp: builtin_cp,
@@ -266,8 +287,8 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   physicalmode: builtin_physicalmode,
   prompt: builtin_prompt,
   timing: builtin_timing,
-  whoami: builtin_whoami,
-  whereami: builtin_whereami,
+  whoami: envelopeHandler_wrap(builtin_whoami),
+  whereami: envelopeHandler_wrap(builtin_whereami),
   debug: builtin_debug,
   help: builtin_help,
   proc: builtin_proc,

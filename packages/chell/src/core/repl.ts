@@ -15,6 +15,7 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { prompt_render, type PromptContext } from './prompt/index.js';
 import { repl_questionRegister } from './question.js';
+import { sink_set, StdoutSink } from './sink.js';
 import { procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
 
 /**
@@ -43,6 +44,11 @@ export class REPL {
    * @param commandHandler - Async function to process each input line.
    */
   async start(commandHandler: (line: string) => Promise<void>): Promise<void> {
+    // The REPL is the host that owns the output destination: command output
+    // reaches the terminal through the sink it installs, not by builtins
+    // assuming a terminal exists.
+    sink_set(new StdoutSink());
+
     repl_questionRegister(
       (prompt: string): Promise<string> =>
         new Promise((resolve: (answer: string) => void) => {

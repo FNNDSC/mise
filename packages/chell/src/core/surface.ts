@@ -1,0 +1,154 @@
+/**
+ * @file Surface capabilities: the input/interaction seam a host provides.
+ *
+ * The output sink (`./sink.js`) lets a host decide where a command's output
+ * goes. This module is its input-side counterpart: it lets a host declare
+ * what *interaction* it can offer — prompting for a line, reading a secret
+ * without echo, opening a local editor — and lets a builtin ask for a
+ * capability and fail with a clear message when the attached surface cannot
+ * provide it, rather than hanging on a standard input that is not there.
+ *
+ * The CLI host backs this with readline and the local `$EDITOR`; a future
+ * daemon backs it with request messages to a remote surface, and a surface
+ * that cannot (say) open a local editor simply declares `localEdit: false`.
+ *
+ * Capabilities the surface can act on directly (prompting) are methods here;
+ * capabilities a builtin still performs itself (local editing, whose editor
+ * mechanics remain in the `edit` builtin until a remote surface needs its
+ * own implementation) are declared as flags a builtin gates on via
+ * {@link capability_require}. This module is deliberately free of Node
+ * built-ins so it stays trivially testable and host-agnostic; the readline
+ * implementation lives in `./cliSurface.js`.
+ *
+ * @see docs/calypso.adoc — "Interactivity is a declared surface capability".
+ * @module
+ */
+
+/**
+ * What interaction an attached surface can provide.
+ *
+ * @property hiddenInput - The surface can read a line without echoing it
+ *   (password entry).
+ * @property localEdit - The surface can open content in a local editor and
+ *   return the edited result.
+ * @property tty - The surface is an interactive terminal (as opposed to a
+ *   pipe, a script, or a headless host).
+ */
+export interface SurfaceCapabilities {
+  hiddenInput: boolean;
+  localEdit: boolean;
+  tty: boolean;
+}
+
+/**
+ * A request to prompt the user for a line of input.
+ *
+ * @property message - The prompt text to display.
+ * @property hidden - When true, the entered text is not echoed; requires the
+ *   `hiddenInput` capability.
+ */
+export interface PromptRequest {
+  message: string;
+  hidden?: boolean;
+}
+
+/**
+ * The interaction seam a host installs. Builtins reach it through
+ * {@link surface_get}; hosts declare their capabilities and back the
+ * prompt operation with whatever their surface supports.
+ */
+export interface Surface {
+  /** What this surface can do; read by builtins before they interact. */
+  readonly capabilities: SurfaceCapabilities;
+
+  /**
+   * Prompts for a line of input.
+   *
+   * @param request - The prompt message and whether to hide the input.
+   * @returns The entered line, trimmed.
+   * @throws {CapabilityError} When hidden input is requested but the surface
+   *   lacks the `hiddenInput` capability, or the surface cannot prompt.
+   */
+  prompt(request: PromptRequest): Promise<string>;
+}
+
+/**
+ * Raised when a builtin requests an interaction the attached surface cannot
+ * provide. Carries the capability name so a host can present it uniformly.
+ */
+export class CapabilityError extends Error {
+  /** The capability that was required but absent. */
+  public readonly capability: keyof SurfaceCapabilities;
+
+  /**
+   * @param capability - The missing capability.
+   * @param message - Human-readable explanation.
+   */
+  constructor(capability: keyof SurfaceCapabilities, message: string) {
+    super(message);
+    this.name = 'CapabilityError';
+    this.capability = capability;
+  }
+}
+
+/**
+ * The default surface for a host that has not installed one: it can do
+ * nothing interactive and says so clearly. This is the correct default for
+ * an unknown host — a CLI host replaces it (see `./cliSurface.js`), and any
+ * attempt to prompt or edit before a real surface is installed fails loudly
+ * instead of hanging.
+ */
+export class HeadlessSurface implements Surface {
+  /** @inheritdoc */
+  public readonly capabilities: SurfaceCapabilities = {
+    hiddenInput: false,
+    localEdit: false,
+    tty: false,
+  };
+
+  /** @inheritdoc */
+  public prompt(_request: PromptRequest): Promise<string> {
+    throw new CapabilityError('tty', 'This surface cannot prompt for input.');
+  }
+}
+
+/** The active surface. Defaults to headless until a host installs one. */
+let activeSurface: Surface = new HeadlessSurface();
+
+/**
+ * Returns the currently installed surface.
+ *
+ * @returns The active surface.
+ */
+export function surface_get(): Surface {
+  return activeSurface;
+}
+
+/**
+ * Installs a surface. Called by the host that owns the interaction channel.
+ *
+ * @param surface - The surface to install.
+ * @returns The previously installed surface, so callers can restore it.
+ */
+export function surface_set(surface: Surface): Surface {
+  const previous: Surface = activeSurface;
+  activeSurface = surface;
+  return previous;
+}
+
+/**
+ * Asserts that the active surface has a capability, throwing a
+ * {@link CapabilityError} with a clear message when it does not.
+ *
+ * @param capability - The capability the caller needs.
+ * @param message - The message to present when it is absent.
+ * @throws {CapabilityError} When the active surface lacks the capability.
+ */
+export function capability_require(
+  capability: keyof SurfaceCapabilities,
+  message: string,
+): void {
+  if (!activeSurface.capabilities[capability]) {
+    throw new CapabilityError(capability, message);
+  }
+}

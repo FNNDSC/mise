@@ -15,7 +15,8 @@ import { settings } from '../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { prompt_render, type PromptContext } from './prompt/index.js';
-import { repl_questionRegister } from './question.js';
+import { surface_set } from './surface.js';
+import { cliSurface_create } from './cliSurface.js';
 import { sink_set, StdoutSink } from './sink.js';
 import { procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
 import type { ChellEngine, CompletionResult } from './engine.js';
@@ -53,35 +54,12 @@ export class REPL {
    * Starts the REPL loop, executing each input line through the engine.
    */
   async start(): Promise<void> {
-    // The REPL is the host that owns the output destination: command output
-    // reaches the terminal through the sink it installs, not by builtins
-    // assuming a terminal exists.
+    // The REPL is the host that owns the interaction channels: command output
+    // reaches the terminal through the sink it installs, and interactive
+    // prompts run through the surface it installs — both backed by the REPL's
+    // single readline interface, so builtins never assume a terminal exists.
     sink_set(new StdoutSink());
-
-    repl_questionRegister(
-      (prompt: string): Promise<string> =>
-        new Promise((resolve: (answer: string) => void) => {
-          this.rl.question(prompt, (answer: string) => resolve(answer.trim()));
-        }),
-      (prompt: string): Promise<string> => {
-        // Suppress echo by intercepting readline's internal _writeToOutput.
-        // This keeps a single readline interface on stdin — no raw mode, no
-        // second interface, no leaked keystrokes back to the REPL command handler.
-        type RlInternal = { _writeToOutput(str: string): void };
-        const rlInternal: RlInternal = this.rl as unknown as RlInternal;
-        const origWrite: (str: string) => void = rlInternal._writeToOutput.bind(this.rl);
-        rlInternal._writeToOutput = (_str: string): void => { /* suppress echo */ };
-
-        process.stdout.write(prompt);
-        return new Promise((resolve: (answer: string) => void) => {
-          this.rl.question('', (answer: string) => {
-            rlInternal._writeToOutput = origWrite;
-            process.stdout.write('\n');
-            resolve(answer.trim());
-          });
-        });
-      }
-    );
+    surface_set(cliSurface_create(this.rl));
 
     await this.history_load();
     await this.prompt_update();

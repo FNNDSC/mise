@@ -41,6 +41,8 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 import { engine_create, stopOnError_set, type ChellEngine } from './engine.js';
+import { surface_set } from './surface.js';
+import { cliSurface_create } from './cliSurface.js';
 
 /**
  * Interface for package.json structure.
@@ -669,6 +671,11 @@ export async function chell_start(): Promise<void> {
   }
 
   await settings_load();
+
+  // Install the CLI surface so builtins can prompt in every mode. The REPL
+  // reinstalls a surface backed by its persistent readline interface for
+  // interactive use; execute and script modes keep this one-shot surface.
+  surface_set(cliSurface_create());
 
   spinner.start('Initializing session components');
   const engine: ChellEngine = await engine_create();

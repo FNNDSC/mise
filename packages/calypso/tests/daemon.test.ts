@@ -241,6 +241,60 @@ describe('CalypsoDaemon', () => {
   });
 });
 
+/** Polls until a predicate holds, or throws after ~2s. */
+async function until(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (predicate()) return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('condition not met in time');
+}
+
+describe('CalypsoDaemon prompt line push', () => {
+  it('pushes the prompt on attach and after each command', async () => {
+    const engine = stubEngine_create();
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN, promptProvider: () => 'PROMPT> ' });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.length >= 2);
+      expect(got[0].type).toBe('attached');
+      expect(got[1]).toEqual({ type: 'promptline', text: 'PROMPT> ' });
+
+      send(ws, { type: 'execute', id: '1', line: 'pwd' });
+      await until(() => got.length >= 4);
+      expect(got[2].type).toBe('result');
+      expect(got[3]).toEqual({ type: 'promptline', text: 'PROMPT> ' });
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('does not push a prompt when no provider is configured', async () => {
+    const engine = stubEngine_create();
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.length >= 1);
+      // Give any stray push a chance to arrive, then assert none did.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(got.every((m) => m.type !== 'promptline')).toBe(true);
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon prompt over the wire', () => {
   it('routes a prompt raised during a command to the executing surface', async () => {
     let daemonRef: CalypsoDaemon | undefined;

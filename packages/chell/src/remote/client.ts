@@ -58,6 +58,10 @@ export async function remote_run(): Promise<void> {
   console.log(chalk.green(`[+] Attached to CALYPSO daemon at ${discovery.url}`));
   console.log(chalk.gray("    Type 'exit' to detach.\n"));
 
-  const repl: REPL = new REPL(engine, { promptText: 'chell(remote) ❯ ' });
+  // The daemon pushes the themed prompt string; the REPL renders whatever the
+  // daemon last sent, falling back until the first push arrives.
+  const repl: REPL = new REPL(engine, {
+    promptText: (): string => engine.promptLine() || 'chell(remote) ❯ ',
+  });
   await repl.start();
 }

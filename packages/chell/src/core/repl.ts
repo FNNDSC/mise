@@ -12,13 +12,10 @@ import * as fs from 'fs';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { settings } from '../config/settings.js';
-import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext } from '@fnndsc/cumin';
-import { prompt_render, type PromptContext } from './prompt/index.js';
+import { sessionPrompt_render } from './prompt/session.js';
 import { surface_set } from './surface.js';
 import { cliSurface_create } from './cliSurface.js';
 import { sink_set, StdoutSink } from './sink.js';
-import { procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
 import type { ChellEngine, CompletionResult } from './engine.js';
 
 /**
@@ -27,12 +24,14 @@ import type { ChellEngine, CompletionResult } from './engine.js';
 /**
  * Options for the REPL host.
  *
- * @property promptText - A fixed prompt string to display instead of the
- *   locally-rendered themed prompt. Used by the remote client, whose session
- *   context lives in the daemon; the themed, pushed prompt arrives later.
+ * @property promptText - A prompt to display instead of the locally-rendered
+ *   themed prompt: a fixed string, or a provider called on each redraw. The
+ *   remote client passes a provider that returns the latest prompt string the
+ *   daemon pushed, so a remote surface shows the same themed prompt as a local
+ *   session.
  */
 export interface ReplOptions {
-  promptText?: string;
+  promptText?: string | (() => string);
 }
 
 /**
@@ -44,7 +43,7 @@ export class REPL {
   private isOpen: boolean = true;
   private lastCommandDurationMs: number = 0;
   private lastExitCode: number = 0;
-  private promptText: string | undefined;
+  private promptText: string | (() => string) | undefined;
 
   /**
    * Initializes the REPL interface around an engine.
@@ -115,10 +114,12 @@ export class REPL {
   async prompt_update(): Promise<void> {
     if (!this.isOpen) return;
 
-    // A fixed prompt (the remote client) skips local context rendering: the
-    // session lives in the daemon, not this process.
+    // An injected prompt (the remote client) skips local context rendering:
+    // the session lives in the daemon, not this process. It may be a fixed
+    // string or a provider returning the latest daemon-pushed prompt.
     if (this.promptText !== undefined) {
-      this.rl.setPrompt(this.promptText);
+      const text: string = typeof this.promptText === 'function' ? this.promptText() : this.promptText;
+      this.rl.setPrompt(text);
       try {
         this.rl.prompt();
       } catch (e: unknown) {
@@ -127,28 +128,11 @@ export class REPL {
       return;
     }
 
-    const context: SingleContext = await context_getSingle();
-    const cwd: string = await session.getCWD();
-    const isOffline: boolean = session.offline;
-
-    const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
-    const procWarmup: { loaded: number } | undefined =
-      warmupRaw.active ? { loaded: warmupRaw.loaded } : undefined;
-
-    const ctx: PromptContext = {
-      user:                 isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
-      uri:                  isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
-      cwd:                  isOffline ? '/'            : cwd,
-      pacsserver:           context.pacsserver ?? null,
-      physicalMode:         session.physicalMode_get(),
-      terminalWidth:        process.stdout.columns || 80,
-      lastExitCode:         this.lastExitCode,
+    const rendered: string = await sessionPrompt_render({
+      lastExitCode: this.lastExitCode,
       lastCommandDurationMs: this.lastCommandDurationMs,
-      p10kSegments:         settings.config.p10kSegments,
-      procWarmup,
-    };
-
-    this.rl.setPrompt(prompt_render(settings.config.promptTheme, ctx));
+    });
+    this.rl.setPrompt(rendered);
     try {
       this.rl.prompt();
     } catch (e: unknown) {

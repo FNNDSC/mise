@@ -44,6 +44,7 @@ export class RemoteEngine implements ChellEngine {
   private readonly pending: Map<string, Pending> = new Map<string, Pending>();
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
   private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
+  private latestPrompt: string = '';
   private nextId: number = 0;
 
   /**
@@ -162,6 +163,9 @@ export class RemoteEngine implements ChellEngine {
       case 'prompt':
         void this.prompt_answer(message.promptId, message.message, message.hidden);
         break;
+      case 'promptline':
+        this.latestPrompt = message.text;
+        break;
       case 'error':
         if (message.id !== undefined) {
           this.pending_settle(message.id, (p: Pending) => p.reject(new Error(message.reason)));
@@ -198,6 +202,16 @@ export class RemoteEngine implements ChellEngine {
       this.pending.delete(id);
       settle(pending);
     }
+  }
+
+  /**
+   * The latest themed prompt string the daemon pushed, or empty before the
+   * first push.
+   *
+   * @returns The current prompt string.
+   */
+  public promptLine(): string {
+    return this.latestPrompt;
   }
 
   /**

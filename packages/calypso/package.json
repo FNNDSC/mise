@@ -42,12 +42,14 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.10",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
     "typescript": "^5.0.0"
   },
   "dependencies": {
     "@fnndsc/cumin": "^3.4.0",
+    "ws": "^8.18.0",
     "zod": "^3.23.8"
   }
 }

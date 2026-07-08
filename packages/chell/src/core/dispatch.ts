@@ -409,11 +409,51 @@ async function handler_runDirect(handler: CommandHandler, args: string[]): Promi
 }
 
 /**
- * Dispatches a parsed command to its handler and returns its envelope.
- * Expands environment references in the arguments, then checks
- * ENVELOPE_HANDLERS, then unconverted COMMAND_HANDLERS, then /bin
- * plugin/pipeline names, then falls back to chili through the capture
- * bridge.
+ * Drains the errorStack from a checkpoint into an envelope's structured
+ * `errors` field, and escalates status to `error` when an error-type message
+ * was drained.
+ *
+ * This is the per-command error boundary: it captures exactly the messages a
+ * command left on the stack, so a remote surface receives full error detail
+ * with each result and stale errors cannot bleed into the next command.
+ * Escalating status from a drained error is a reliable per-command failure
+ * signal, independent of whether the command happened to change
+ * `process.exitCode`.
+ *
+ * @param checkpoint - A checkpoint from `errorStack.checkpoint_mark()`.
+ * @param envelope - The envelope to attach drained errors to.
+ * @returns The same envelope, with errors and possibly status updated.
+ */
+function envelope_drainErrorsInto(checkpoint: number, envelope: CommandEnvelope): CommandEnvelope {
+  const drained: StackMessage[] = errorStack.checkpoint_drain(checkpoint);
+  if (drained.length > 0) {
+    envelope.errors = drained;
+    if (envelope.status === 'ok' && drained.some((message: StackMessage): boolean => message.type === 'error')) {
+      envelope.status = 'error';
+    }
+  }
+  return envelope;
+}
+
+/**
+ * Dispatches a parsed command to its handler and returns its envelope, with
+ * any errors the command left on the stack drained into the envelope.
+ *
+ * @param command - The command name.
+ * @param args - Parsed arguments.
+ * @returns The envelope of the executed command.
+ */
+export async function command_dispatchEnvelope(command: string, args: string[]): Promise<CommandEnvelope> {
+  const checkpoint: number = errorStack.checkpoint_mark();
+  const envelope: CommandEnvelope = await commandDispatchEnvelope_run(command, args);
+  return envelope_drainErrorsInto(checkpoint, envelope);
+}
+
+/**
+ * Runs the dispatch itself (without the error drain). Expands environment
+ * references in the arguments, then checks ENVELOPE_HANDLERS, then
+ * unconverted COMMAND_HANDLERS, then /bin plugin/pipeline names, then falls
+ * back to chili through the capture bridge.
  *
  * Envelope-speaking handlers are delivered through the active sink here, so
  * direct execution prints exactly as it always has; unconverted handlers
@@ -423,7 +463,7 @@ async function handler_runDirect(handler: CommandHandler, args: string[]): Promi
  * @param args - Parsed arguments.
  * @returns The envelope of the executed command.
  */
-export async function command_dispatchEnvelope(command: string, args: string[]): Promise<CommandEnvelope> {
+async function commandDispatchEnvelope_run(command: string, args: string[]): Promise<CommandEnvelope> {
   if (command === 'exit') {
     process.exit(0);
   }
@@ -678,13 +718,15 @@ export async function command_executeToEnvelope(
   }
   args = expandResult.value;
 
-  // Attempt to handle as a simulated plugin execution
+  // Attempt to handle as a simulated plugin execution. This path bypasses
+  // command_dispatchEnvelope, so it drains the errorStack itself.
+  const checkpoint: number = errorStack.checkpoint_mark();
   const exitCodeBefore: number = exitCode_read();
   if (await pluginExecutable_handle(command, args)) {
     command_timingMaybePrint(startTime, timingEnabled);
     const exitCodeAfter: number = exitCode_read();
     const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
-    return { status: failed ? 'error' : 'ok', rendered: '' };
+    return envelope_drainErrorsInto(checkpoint, { status: failed ? 'error' : 'ok', rendered: '' });
   }
 
   const envelope: CommandEnvelope = await command_dispatchEnvelope(command, args);

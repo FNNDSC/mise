@@ -3,10 +3,17 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 // Minimal cumin surface used by the dispatch layer (Result helpers + error stack).
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
+const mockCheckpointDrain = jest.fn((): { type: string; message: string }[] => []);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok,
   Err,
-  errorStack: { stack_pop: jest.fn(() => undefined), stack_push: jest.fn() },
+  errorStack: {
+    stack_pop: jest.fn(() => undefined),
+    stack_push: jest.fn(),
+    checkpoint_mark: jest.fn(() => 0),
+    checkpoint_drain: mockCheckpointDrain,
+    scope_run: (fn: () => unknown) => fn(),
+  },
 }));
 
 // The /bin listing model is type-only at runtime.
@@ -74,6 +81,7 @@ let errSpy: jest.SpiedFunction<typeof console.error>;
 let exitSpy: jest.SpiedFunction<typeof process.exit>;
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCheckpointDrain.mockReturnValue([]);
   mockHasHelpFlag.mockReturnValue(false);
   mockTiming.mockReturnValue(false);
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -176,6 +184,22 @@ describe('command_dispatch', () => {
     const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
     expect(envelope.status).toBe('error');
     process.exitCode = previousExitCode;
+  });
+
+  it('drains errorStack messages into the envelope and escalates status', async () => {
+    // A command that left an error on the stack but did not change exitCode:
+    // the drain still records it and the envelope reads error.
+    mockCheckpointDrain.mockReturnValueOnce([{ type: 'error', message: 'boom from ls' }]);
+    const envelope = await command_dispatchEnvelope('ls', []);
+    expect(envelope.status).toBe('error');
+    expect(envelope.errors).toEqual([{ type: 'error', message: 'boom from ls' }]);
+  });
+
+  it('attaches drained warnings without escalating status', async () => {
+    mockCheckpointDrain.mockReturnValueOnce([{ type: 'warning', message: 'heads up' }]);
+    const envelope = await command_dispatchEnvelope('ls', []);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.errors).toEqual([{ type: 'warning', message: 'heads up' }]);
   });
 
   it('delegates to chili when the /bin lookup fails', async () => {

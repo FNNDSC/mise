@@ -187,9 +187,13 @@ export class VFS {
     // If we served stale cache, show indicator and refresh in background
     if (wasStale) {
       console.log(chalk.gray('(cached, refreshing...)'));
-      // Trigger background refresh - don't await
-      this.refreshInBackground(effectivePath, options).catch(() => {
-        // Silently ignore refresh errors - user has moved on
+      // Trigger background refresh - don't await. Fenced in its own error-stack
+      // scope so its pushes/pops cannot corrupt a concurrent foreground
+      // command's error-drain window.
+      errorStack.scope_run(() => {
+        this.refreshInBackground(effectivePath, options).catch(() => {
+          // Silently ignore refresh errors - user has moved on
+        });
       });
     }
   }

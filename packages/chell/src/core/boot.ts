@@ -632,8 +632,12 @@ async function interactiveSession_run(
 
   // Fire instance topology warm-up — does NOT block the REPL.
   // Progress is shown in the prompt as [proc: N/total] until complete.
+  // Fenced in its own error-stack scope so its background pushes cannot land
+  // in a concurrent foreground command's drain window.
   if (!session.offline && flags.prefetchJobs) {
-    procTopology_warmup().catch(() => { /* non-fatal */ });
+    errorStack.scope_run(() => {
+      procTopology_warmup().catch(() => { /* non-fatal */ });
+    });
   }
 
   const repl: REPL = new REPL(engine);

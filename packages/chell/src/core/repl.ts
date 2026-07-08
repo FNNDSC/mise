@@ -24,20 +24,37 @@ import type { ChellEngine, CompletionResult } from './engine.js';
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
  */
+/**
+ * Options for the REPL host.
+ *
+ * @property promptText - A fixed prompt string to display instead of the
+ *   locally-rendered themed prompt. Used by the remote client, whose session
+ *   context lives in the daemon; the themed, pushed prompt arrives later.
+ */
+export interface ReplOptions {
+  promptText?: string;
+}
+
+/**
+ * Handles the Read-Eval-Print Loop (REPL) interaction.
+ */
 export class REPL {
   private rl: readline.Interface;
   private engine: ChellEngine;
   private isOpen: boolean = true;
   private lastCommandDurationMs: number = 0;
   private lastExitCode: number = 0;
+  private promptText: string | undefined;
 
   /**
    * Initializes the REPL interface around an engine.
    *
    * @param engine - The engine that executes lines and answers completions.
+   * @param options - Optional host settings (e.g. a fixed prompt string).
    */
-  constructor(engine: ChellEngine) {
+  constructor(engine: ChellEngine, options?: ReplOptions) {
     this.engine = engine;
+    this.promptText = options?.promptText;
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -97,6 +114,18 @@ export class REPL {
    */
   async prompt_update(): Promise<void> {
     if (!this.isOpen) return;
+
+    // A fixed prompt (the remote client) skips local context rendering: the
+    // session lives in the daemon, not this process.
+    if (this.promptText !== undefined) {
+      this.rl.setPrompt(this.promptText);
+      try {
+        this.rl.prompt();
+      } catch (e: unknown) {
+        // Interface might be closed
+      }
+      return;
+    }
 
     const context: SingleContext = await context_getSingle();
     const cwd: string = await session.getCWD();

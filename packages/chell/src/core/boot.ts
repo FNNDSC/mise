@@ -676,6 +676,15 @@ export async function chell_start(): Promise<void> {
 
   await settings_load();
 
+  // --- Remote Mode ---
+  // A remote surface attaches to a daemon and drives it with the ordinary
+  // REPL; it needs no local engine, session, or CUBE connection.
+  if (config.mode === 'remote') {
+    const { remote_run } = await import('../remote/client.js');
+    await remote_run();
+    return;
+  }
+
   // Install the CLI surface so builtins can prompt in every mode. The REPL
   // reinstalls a surface backed by its persistent readline interface for
   // interactive use; execute and script modes keep this one-shot surface.
@@ -710,6 +719,14 @@ export async function chell_start(): Promise<void> {
     logo_animatePulse();
   }
 
+
+  // --- Daemon Mode ---
+  // Host the connected engine over WebSocket and stay alive on the server.
+  if (config.mode === 'daemon') {
+    const { daemon_launch } = await import('../daemon/launch.js');
+    await daemon_launch(engine);
+    return;
+  }
 
   // --- Execution Mode ---
 

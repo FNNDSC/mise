@@ -48,7 +48,8 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "minimatch": "^10.1.1",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "@fnndsc/calypso": "^0.1.0"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",

@@ -195,4 +195,75 @@ describe('CalypsoDaemon', () => {
     expect(msg.type).toBe('error');
     expect(String(msg.reason)).toContain('malformed JSON');
   });
+
+  it('broadcasts a command to sibling surfaces but not the originator', async () => {
+    const a = await client_attach(port);
+    const b = await client_attach(port);
+    clients.push(a, b);
+    const aReply = message_next(a);
+    const bEvent = message_next(b);
+    send(a, { type: 'execute', id: '1', line: 'ls' });
+    const [aMsg, bMsg] = await Promise.all([aReply, bEvent]);
+    // The originator gets the correlated result; the sibling gets a session event.
+    expect(aMsg.type).toBe('result');
+    expect(bMsg.type).toBe('session');
+    expect(bMsg.envelope).toEqual({ status: 'ok', rendered: 'ran: ls' });
+    expect(typeof bMsg.surface).toBe('string');
+  });
+
+  it('replays scrollback to a newly attached surface', async () => {
+    const a = await client_attach(port);
+    clients.push(a);
+    const aReply = message_next(a);
+    send(a, { type: 'execute', id: '1', line: 'pwd' });
+    await aReply;
+
+    const b = await client_open(port);
+    clients.push(b);
+    const collected = messages_collect(b, 2); // attached ack, then the replay
+    send(b, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+    const [attached, replayed] = await collected;
+    expect(attached.type).toBe('attached');
+    expect(replayed.type).toBe('session');
+    expect(replayed.envelope).toEqual({ status: 'ok', rendered: 'ran: pwd' });
+  });
+
+  it('drops a surface from the bus when it closes', async () => {
+    const a = await client_attach(port);
+    const b = await client_attach(port);
+    clients.push(b);
+    const closed = new Promise<void>((resolve) => a.once('close', () => resolve()));
+    a.terminate();
+    await closed;
+    const bReply = message_next(b);
+    send(b, { type: 'execute', id: '1', line: 'ls' });
+    expect((await bReply).type).toBe('result');
+  });
+});
+
+describe('CalypsoDaemon scrollback bound', () => {
+  it('retains only the most recent envelopes up to the size', async () => {
+    const engine = stubEngine_create();
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN, scrollbackSize: 2 });
+    const port = await daemon.start();
+    try {
+      const a = await client_attach(port);
+      for (const line of ['one', 'two', 'three']) {
+        const replied = message_next(a);
+        send(a, { type: 'execute', id: line, line });
+        await replied;
+      }
+      const c = await client_open(port);
+      const collected = messages_collect(c, 3); // attached + 2 replayed
+      send(c, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      const messages = await collected;
+      a.terminate();
+      c.terminate();
+      expect(messages[0].type).toBe('attached');
+      const rendered = messages.slice(1).map((m) => (m.envelope as { rendered: string }).rendered);
+      expect(rendered).toEqual(['ran: two', 'ran: three']);
+    } finally {
+      await daemon.stop();
+    }
+  });
 });

@@ -1,18 +1,26 @@
 /**
- * @file The CALYPSO daemon: a WebSocket host over one engine.
+ * @file The CALYPSO daemon: a WebSocket host over one engine, with a session
+ * bus.
  *
  * The daemon binds the loopback interface only and hosts a single hosted
  * engine. A surface attaches with the contract version and the attach token
- * (compared in constant time); once attached, it drives the engine with
+ * (compared in constant time); once attached it drives the engine with
  * `execute` and `complete` messages and receives `result` and completion
  * replies. Command execution is serialized per connection — shell semantics,
  * and what keeps each command's error boundary correct.
  *
- * This first slice returns each command's final result envelopes. Live output
- * streaming and the cross-surface session bus build on it (see the session-bus
- * work). CUBE credentials never cross the wire: the engine the daemon hosts
- * holds its own CUBE session, established by the launcher exactly as the CLI
- * does; surfaces authenticate to the daemon, not to CUBE.
+ * All attached surfaces share one session. A **session bus** broadcasts every
+ * result envelope to the *other* attached surfaces (tagged with the surface
+ * that produced it), so a command issued in one surface is immediately
+ * visible in the rest. A bounded **scrollback** ring buffer of recent
+ * envelopes is replayed to an attaching surface so it does not join blind;
+ * scrollback is presentation, not truth — a daemon restart loses it, which is
+ * correct, and the durable record is an opt-in transcript materialized to
+ * CUBE.
+ *
+ * CUBE credentials never cross the wire: the engine the daemon hosts holds its
+ * own CUBE session, established by the launcher exactly as the CLI does;
+ * surfaces authenticate to the daemon, not to CUBE.
  *
  * @module
  */
@@ -30,6 +38,21 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 type ExecuteMessage = z.infer<typeof executeMessageSchema>;
 type CompleteRequest = z.infer<typeof completeRequestSchema>;
 
+/** An attached surface: its socket and the id it is tagged with on the bus. */
+interface Surface {
+  socket: WebSocket;
+  id: string;
+}
+
+/** One scrollback entry: an envelope and the surface that produced it. */
+interface SessionEntry {
+  surface: string;
+  envelope: CommandEnvelope;
+}
+
+/** The default number of envelopes retained for scrollback replay. */
+const SCROLLBACK_DEFAULT: number = 200;
+
 /**
  * Options for creating a daemon.
  *
@@ -37,33 +60,43 @@ type CompleteRequest = z.infer<typeof completeRequestSchema>;
  * @property token - The attach token a surface must present.
  * @property port - The port to bind; 0 (default) picks an ephemeral port.
  * @property host - The interface to bind; loopback (`127.0.0.1`) by default.
+ * @property scrollbackSize - How many recent envelopes to retain for replay
+ *   to an attaching surface; defaults to 200.
  */
 export interface DaemonOptions {
   engine: HostedEngine;
   token: string;
   port?: number;
   host?: string;
+  scrollbackSize?: number;
 }
 
 /**
- * A WebSocket daemon hosting one engine for attached surfaces.
+ * A WebSocket daemon hosting one engine for attached surfaces, with a session
+ * bus broadcasting activity across them.
  */
 export class CalypsoDaemon {
   private readonly engine: HostedEngine;
   private readonly token: string;
   private readonly port: number;
   private readonly host: string;
+  private readonly scrollbackSize: number;
+  /** The one session all surfaces share; returned in each attach ack. */
+  private readonly sessionId: string = randomBytes(8).toString('hex');
+  private readonly surfaces: Set<Surface> = new Set<Surface>();
+  private readonly scrollback: SessionEntry[] = [];
   private wss: WebSocketServer | null = null;
 
   /**
-   * @param options - The engine to host, the attach token, and the bind
-   *   address.
+   * @param options - The engine to host, the attach token, the bind address,
+   *   and the scrollback size.
    */
   constructor(options: DaemonOptions) {
     this.engine = options.engine;
     this.token = options.token;
     this.port = options.port ?? 0;
     this.host = options.host ?? '127.0.0.1';
+    this.scrollbackSize = options.scrollbackSize ?? SCROLLBACK_DEFAULT;
   }
 
   /**
@@ -102,12 +135,12 @@ export class CalypsoDaemon {
 
   /**
    * Handles one surface connection: an attach handshake, then serialized
-   * command dispatch.
+   * command dispatch, with the surface removed from the bus on close.
    *
    * @param socket - The connected surface.
    */
   private connection_handle(socket: WebSocket): void {
-    let attached: boolean = false;
+    let surface: Surface | null = null;
     // Serializes execution: one foreground command at a time, the rest queued.
     let queue: Promise<void> = Promise.resolve();
 
@@ -121,8 +154,8 @@ export class CalypsoDaemon {
         return;
       }
 
-      if (!attached) {
-        attached = this.attach_handle(socket, parsed);
+      if (!surface) {
+        surface = this.attach_handle(socket, parsed);
         return;
       }
 
@@ -132,60 +165,109 @@ export class CalypsoDaemon {
         return;
       }
       const value = message.value;
+      const attached: Surface = surface;
       if (value.type === 'execute') {
-        queue = queue.then(() => this.execute_run(socket, value));
+        queue = queue.then(() => this.execute_run(attached, value));
       } else if (value.type === 'complete') {
         void this.complete_run(socket, value);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
     });
+
+    socket.on('close', () => {
+      if (surface) {
+        this.surfaces.delete(surface);
+      }
+    });
   }
 
   /**
    * Validates an attach handshake: contract version, then constant-time
-   * token check. On success the surface is acknowledged; on failure it is
-   * told why and disconnected.
+   * token check. On success the surface is acknowledged, registered on the
+   * bus, and replayed the scrollback so it does not join blind; on failure it
+   * is told why and disconnected.
    *
    * @param socket - The connecting surface.
    * @param raw - The first message received.
-   * @returns True when the surface is now attached.
+   * @returns The registered surface, or null when the attach was refused.
    */
-  private attach_handle(socket: WebSocket, raw: unknown): boolean {
+  private attach_handle(socket: WebSocket, raw: unknown): Surface | null {
     const attach = attach_parse(raw);
     if (!attach.ok || attach.value === undefined) {
       this.send(socket, { type: 'error', reason: attach.error ?? 'invalid attach' });
       socket.close();
-      return false;
+      return null;
     }
     if (!token_matches(this.token, attach.value.token)) {
       this.send(socket, { type: 'error', reason: 'invalid token' });
       socket.close();
-      return false;
+      return null;
     }
-    const session: string = attach.value.session ?? randomBytes(8).toString('hex');
-    this.send(socket, { type: 'attached', session, protocolVersion: CONTRACT_VERSION });
-    return true;
+    // Each connection is a distinct surface (its own bus tag); all attach to
+    // the one shared session returned in the ack.
+    const surface: Surface = { socket, id: randomBytes(8).toString('hex') };
+    this.surfaces.add(surface);
+    this.send(socket, { type: 'attached', session: this.sessionId, protocolVersion: CONTRACT_VERSION });
+    this.scrollback_replay(socket);
+    return surface;
   }
 
   /**
-   * Runs one execute request and sends its result, or an error.
+   * Replays the retained scrollback to a freshly attached surface as session
+   * events, so it arrives seeing recent activity rather than blank.
    *
-   * @param socket - The surface to reply to.
+   * @param socket - The surface to replay to.
+   */
+  private scrollback_replay(socket: WebSocket): void {
+    for (const entry of this.scrollback) {
+      this.send(socket, { type: 'session', surface: entry.surface, envelope: entry.envelope });
+    }
+  }
+
+  /**
+   * Records an envelope in scrollback (trimming to the retention bound) and
+   * broadcasts it to every attached surface except the one that produced it,
+   * which already received it as the correlated `result`.
+   *
+   * @param origin - The surface that produced the envelope.
+   * @param envelope - The envelope to publish.
+   */
+  private bus_publish(origin: Surface, envelope: CommandEnvelope): void {
+    this.scrollback.push({ surface: origin.id, envelope });
+    if (this.scrollback.length > this.scrollbackSize) {
+      this.scrollback.splice(0, this.scrollback.length - this.scrollbackSize);
+    }
+    for (const surface of this.surfaces) {
+      if (surface !== origin) {
+        this.send(surface.socket, { type: 'session', surface: origin.id, envelope });
+      }
+    }
+  }
+
+  /**
+   * Runs one execute request: replies to the requester with the result, and
+   * publishes each envelope to the session bus.
+   *
+   * @param origin - The surface that submitted the request.
    * @param message - The execute request.
    */
-  private async execute_run(socket: WebSocket, message: ExecuteMessage): Promise<void> {
+  private async execute_run(origin: Surface, message: ExecuteMessage): Promise<void> {
     try {
       const envelopes: CommandEnvelope[] = await this.engine.line_execute(message.line);
-      this.send(socket, { type: 'result', id: message.id, envelopes });
+      this.send(origin.socket, { type: 'result', id: message.id, envelopes });
+      for (const envelope of envelopes) {
+        this.bus_publish(origin, envelope);
+      }
     } catch (err: unknown) {
       const reason: string = err instanceof Error ? err.message : String(err);
-      this.send(socket, { type: 'error', id: message.id, reason });
+      this.send(origin.socket, { type: 'error', id: message.id, reason });
     }
   }
 
   /**
-   * Runs one completion request and sends its reply, or an error.
+   * Runs one completion request and sends its reply, or an error. Completion
+   * is a read and is not broadcast.
    *
    * @param socket - The surface to reply to.
    * @param message - The completion request.

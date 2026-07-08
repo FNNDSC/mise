@@ -196,7 +196,13 @@ The language model behind the intent layer is replaceable, contained, and dieted
 
 == Results
 
-No implementation results have materialized yet. This section will record, as the stages above are built: latency measurements comparing compound operations through the daemon against the same operations issued directly from a browser client; verification results from exemplar-style end-to-end scenarios driven through the assistant interface with assertions made against CUBE state; and observed behavior of the guard layer (proposals accepted, proposals rejected, and why).
+=== Stage one: the hostable chell engine (complete)
+
+The first stage — the hostable chell engine and the structured response envelope — is complete and merged. Its work decomposed into the result envelope and output sink (defined in cumin and chell), incremental conversion of the builtins, envelope-consuming pipes and redirection, and finally the engine facade with the REPL reduced to a thin host. On top of that seam three further pieces landed: interactivity became a declared surface capability (a host advertises what interaction it can offer, and a builtin fails clearly when the surface cannot provide it, rather than assuming standard input); the error stack became async-context aware, so each command drains exactly its own errors into the envelope while fire-and-forget background work is fenced in its own scope; and the progress-reporting builtins were assessed, with their conversion to structured status-channel events deferred to the stage where a non-terminal surface exists to consume them.
+
+The stage met its three exit criteria. The unit suites pass across all four packages (cumin, salsa, chili, chell), verified by exit code. The live end-to-end exemplars pass against a real CUBE: connection and PACS visibility, a filesystem round trip, a feed running dcm2niix with the NIfTI output verified, and a PACS query/retrieve with state restored afterward. And observable command-line behavior is byte-identical to the pre-campaign shell, with the single documented exception that piping and redirection now strip ANSI so downstream tools receive plain text.
+
+The later stages (the session daemon, the intent layer, multi-user service) will record here, as they are built: latency measurements comparing compound operations through the daemon against the same operations issued directly from a browser client; verification results from exemplar-style end-to-end scenarios driven through the assistant interface; and observed behavior of the guard layer (proposals accepted, proposals rejected, and why).
 
 == Discussion
 

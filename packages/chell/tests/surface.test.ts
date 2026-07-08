@@ -17,7 +17,8 @@ function fullSurface_create(): Surface & { prompts: string[] } {
   const prompts: string[] = [];
   return {
     prompts,
-    capabilities: { hiddenInput: true, localEdit: true, tty: true },
+    capabilities: { hiddenInput: true, localEdit: true, tty: true, pipeSegments: true },
+    pipeSegment: async (_c: string, i: Buffer): Promise<Buffer> => i,
     prompt: async (request): Promise<string> => {
       prompts.push(request.message);
       return 'answer';
@@ -64,7 +65,7 @@ describe('capability_require', () => {
 describe('HeadlessSurface', () => {
   it('cannot prompt and says so', () => {
     const surface: HeadlessSurface = new HeadlessSurface();
-    expect(surface.capabilities).toEqual({ hiddenInput: false, localEdit: false, tty: false });
+    expect(surface.capabilities).toEqual({ hiddenInput: false, localEdit: false, tty: false, pipeSegments: false });
     expect(() => surface.prompt({ message: 'x' })).toThrow(CapabilityError);
   });
 });

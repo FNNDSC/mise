@@ -70,7 +70,7 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, printingHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
-import { segment_pipeThrough } from '../lib/pipe.js';
+import { surface_get, capability_require } from './surface.js';
 import {
   redirectTarget_resolve,
   wildcards_expandCheck,
@@ -666,14 +666,21 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
     return { status: 'ok', rendered: '' };
   }
 
+  // The first segment is a chell command run in-engine; the rest run through
+  // the surface, so nothing spawns on a daemon host — a surface without the
+  // capability (a browser) fails the pipeline with a clear message.
+  if (segments.length > 1) {
+    capability_require('pipeSegments', 'this surface cannot run pipeline segments');
+  }
+
   // Execute first segment in chell and capture output
   const firstCommand: string = segments[0];
   const { buffer } = await chellCommand_executeAndCapture(firstCommand);
 
-  // Chain remaining segments as spawned processes
+  // Chain remaining segments through the surface's own tools.
   let currentInput: Buffer = buffer;
   for (let i: number = 1; i < segments.length; i++) {
-    currentInput = await segment_pipeThrough(segments[i], currentInput);
+    currentInput = await surface_get().pipeSegment(segments[i], currentInput);
   }
 
   // Output final result

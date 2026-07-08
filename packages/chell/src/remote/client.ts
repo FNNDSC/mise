@@ -43,6 +43,10 @@ export async function remote_run(): Promise<void> {
         // The REPL has installed the CLI surface (readline-backed) by the time
         // a prompt can arrive, so this reads from the local terminal.
         surface_get().prompt({ message, hidden }),
+      onPipe: (command: string, input: Buffer): Promise<Buffer> =>
+        // Pipeline segments run on this machine, through the client's own
+        // tools — never on the daemon host.
+        surface_get().pipeSegment(command, input),
       onClose: (): void => {
         console.log(chalk.yellow('\n[!] Daemon disconnected.'));
         process.exit(0);

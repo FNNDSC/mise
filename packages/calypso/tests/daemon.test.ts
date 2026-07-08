@@ -241,6 +241,57 @@ describe('CalypsoDaemon', () => {
   });
 });
 
+describe('CalypsoDaemon prompt over the wire', () => {
+  it('routes a prompt raised during a command to the executing surface', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        if (line === '__prompt__') {
+          const answer: string = await (daemonRef as CalypsoDaemon).prompt_current('Password:', true);
+          return [{ status: 'ok', rendered: `got: ${answer}` }];
+        }
+        return [{ status: 'ok', rendered: `ran: ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port = await daemon.start();
+    try {
+      const ws = await client_attach(port);
+      const prompted = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '__prompt__' });
+      const prompt = await prompted;
+      expect(prompt.type).toBe('prompt');
+      expect(prompt.message).toBe('Password:');
+      expect(prompt.hidden).toBe(true);
+
+      const replied = message_next(ws);
+      send(ws, { type: 'promptAnswer', promptId: prompt.promptId as string, answer: 'secret' });
+      const result = await replied;
+      expect(result.type).toBe('result');
+      expect((result.envelopes as { rendered: string }[])[0].rendered).toBe('got: secret');
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('rejects prompt_current when no command is executing', async () => {
+    const engine: HostedEngine = {
+      line_execute: async () => [],
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    await daemon.start();
+    try {
+      await expect(daemon.prompt_current('x', false)).rejects.toThrow('no active command');
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon scrollback bound', () => {
   it('retains only the most recent envelopes up to the size', async () => {
     const engine = stubEngine_create();

@@ -15,6 +15,7 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine } from './remoteEngine.js';
 import { discovery_read, type Discovery } from './discovery.js';
+import { surface_get } from '../core/surface.js';
 
 /**
  * Runs the remote client: discovers a daemon, attaches, and enters the REPL.
@@ -38,6 +39,10 @@ export async function remote_run(): Promise<void> {
           process.stdout.write(`\n${chalk.gray(`[surface ${surface.slice(0, 6)}]`)}\n${envelope.rendered}`);
         }
       },
+      onPrompt: (message: string, hidden: boolean): Promise<string> =>
+        // The REPL has installed the CLI surface (readline-backed) by the time
+        // a prompt can arrive, so this reads from the local terminal.
+        surface_get().prompt({ message, hidden }),
       onClose: (): void => {
         console.log(chalk.yellow('\n[!] Daemon disconnected.'));
         process.exit(0);

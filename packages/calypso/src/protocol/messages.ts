@@ -41,11 +41,19 @@ export const completeRequestSchema = z.object({
   prefix: z.string(),
 });
 
+/** Answers a prompt the daemon requested during a command, correlated by `promptId`. */
+export const promptAnswerMessageSchema = z.object({
+  type: z.literal('promptAnswer'),
+  promptId: z.string(),
+  answer: z.string(),
+});
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
   executeMessageSchema,
   completeRequestSchema,
+  promptAnswerMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -97,6 +105,18 @@ export const errorMessageSchema = z.object({
   reason: z.string(),
 });
 
+/**
+ * A prompt request the daemon raises during a command: the surface that
+ * submitted the command must answer it (with `promptAnswer`) before the
+ * command can proceed. `hidden` requests no-echo entry (password).
+ */
+export const promptMessageSchema = z.object({
+  type: z.literal('prompt'),
+  promptId: z.string(),
+  message: z.string(),
+  hidden: z.boolean(),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -105,6 +125,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   outputMessageSchema,
   sessionMessageSchema,
   errorMessageSchema,
+  promptMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

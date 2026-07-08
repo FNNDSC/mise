@@ -15,6 +15,7 @@ import chalk from 'chalk';
 import { CalypsoDaemon, token_generate } from '@fnndsc/calypso';
 import type { ChellEngine } from '../core/engine.js';
 import { sink_set, type OutputSink } from '../core/sink.js';
+import { surface_set, type Surface, type PromptRequest } from '../core/surface.js';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
 
 /**
@@ -47,6 +48,17 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
 
   const token: string = token_generate();
   const daemon: CalypsoDaemon = new CalypsoDaemon({ engine, token, host: '127.0.0.1', port: 0 });
+
+  // Interactivity is a surface capability: a builtin that prompts reaches the
+  // surface running the command through the daemon's input broker, over the
+  // wire, without knowing the transport.
+  const surface: Surface = {
+    capabilities: { hiddenInput: true, localEdit: false, tty: true },
+    prompt: (request: PromptRequest): Promise<string> =>
+      daemon.prompt_current(request.message, request.hidden ?? false),
+  };
+  surface_set(surface);
+
   const port: number = await daemon.start();
   const url: string = `ws://127.0.0.1:${port}`;
   discovery_write({ url, token });

@@ -100,6 +100,8 @@ export class CalypsoDaemon {
   private currentOrigin: Surface | null = null;
   private readonly pendingPrompts: Map<string, (answer: string) => void> = new Map<string, (answer: string) => void>();
   private promptSeq: number = 0;
+  private readonly pendingPipes: Map<string, (output: Buffer) => void> = new Map<string, (output: Buffer) => void>();
+  private pipeSeq: number = 0;
 
   /**
    * @param options - The engine to host, the attach token, the bind address,
@@ -186,6 +188,8 @@ export class CalypsoDaemon {
         void this.complete_run(socket, value);
       } else if (value.type === 'promptAnswer') {
         this.promptAnswer_settle(value.promptId, value.answer);
+      } else if (value.type === 'pipeResult') {
+        this.pipeResult_settle(value.pipeId, value.output);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -352,6 +356,49 @@ export class CalypsoDaemon {
     if (resolve) {
       this.pendingPrompts.delete(promptId);
       resolve(answer);
+    }
+  }
+
+  /**
+   * Runs a pipeline segment on the surface running the current command,
+   * returning its output. The host installs a `pipeSegment` on its engine-side
+   * surface that calls this, so a pipeline's segments run on the client and
+   * never on the daemon host. Data crosses the wire base64-encoded.
+   *
+   * @param command - The segment command line.
+   * @param input - The bytes to feed the segment.
+   * @returns The segment's output bytes.
+   * @throws {Error} When no command is executing or the surface disconnects.
+   */
+  public pipe_current(command: string, input: Buffer): Promise<Buffer> {
+    const origin: Surface | null = this.currentOrigin;
+    if (!origin) {
+      return Promise.reject(new Error('no active command to run a pipe segment for'));
+    }
+    const pipeId: string = `x${this.pipeSeq++}`;
+    return new Promise((resolve: (output: Buffer) => void, reject: (err: Error) => void) => {
+      this.pendingPipes.set(pipeId, resolve);
+      const onClose = (): void => {
+        if (this.pendingPipes.delete(pipeId)) {
+          reject(new Error('surface disconnected before returning pipe output'));
+        }
+      };
+      origin.socket.once('close', onClose);
+      this.send(origin.socket, { type: 'pipe', pipeId, command, input: input.toString('base64') });
+    });
+  }
+
+  /**
+   * Resolves a pending pipe segment with the surface's output.
+   *
+   * @param pipeId - The pipe correlation id.
+   * @param output - The base64-encoded segment output.
+   */
+  private pipeResult_settle(pipeId: string, output: string): void {
+    const resolve: ((output: Buffer) => void) | undefined = this.pendingPipes.get(pipeId);
+    if (resolve) {
+      this.pendingPipes.delete(pipeId);
+      resolve(Buffer.from(output, 'base64'));
     }
   }
 

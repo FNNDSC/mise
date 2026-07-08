@@ -32,6 +32,8 @@ export interface RemoteEngineOptions {
   onSession?: (surface: string, envelope: CommandEnvelope) => void;
   /** Answers a prompt the daemon raised during a command (password, confirmation). */
   onPrompt?: (message: string, hidden: boolean) => Promise<string>;
+  /** Runs a pipeline segment on this machine and returns its output. */
+  onPipe?: (command: string, input: Buffer) => Promise<Buffer>;
   /** Called when the connection closes unexpectedly. */
   onClose?: () => void;
 }
@@ -44,6 +46,7 @@ export class RemoteEngine implements ChellEngine {
   private readonly pending: Map<string, Pending> = new Map<string, Pending>();
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
   private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
+  private readonly onPipe: ((command: string, input: Buffer) => Promise<Buffer>) | undefined;
   private latestPrompt: string = '';
   private nextId: number = 0;
 
@@ -55,6 +58,7 @@ export class RemoteEngine implements ChellEngine {
     this.ws = ws;
     this.onSession = options.onSession;
     this.onPrompt = options.onPrompt;
+    this.onPipe = options.onPipe;
   }
 
   /**
@@ -166,6 +170,9 @@ export class RemoteEngine implements ChellEngine {
       case 'promptline':
         this.latestPrompt = message.text;
         break;
+      case 'pipe':
+        void this.pipe_run(message.pipeId, message.command, message.input);
+        break;
       case 'error':
         if (message.id !== undefined) {
           this.pending_settle(message.id, (p: Pending) => p.reject(new Error(message.reason)));
@@ -188,6 +195,21 @@ export class RemoteEngine implements ChellEngine {
   private async prompt_answer(promptId: string, message: string, hidden: boolean): Promise<void> {
     const answer: string = this.onPrompt ? await this.onPrompt(message, hidden) : '';
     this.ws.send(JSON.stringify({ type: 'promptAnswer', promptId, answer }));
+  }
+
+  /**
+   * Runs a pipeline segment the daemon asked for on this machine and returns
+   * its output. Data crosses the wire base64-encoded. With no pipe handler,
+   * returns the input unchanged so the pipeline does not hang.
+   *
+   * @param pipeId - The pipe correlation id.
+   * @param command - The segment command line.
+   * @param input - The base64-encoded input bytes.
+   */
+  private async pipe_run(pipeId: string, command: string, input: string): Promise<void> {
+    const inputBytes: Buffer = Buffer.from(input, 'base64');
+    const output: Buffer = this.onPipe ? await this.onPipe(command, inputBytes) : inputBytes;
+    this.ws.send(JSON.stringify({ type: 'pipeResult', pipeId, output: output.toString('base64') }));
   }
 
   /**

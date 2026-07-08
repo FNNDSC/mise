@@ -58,13 +58,16 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
     promptProvider: (): Promise<string> => sessionPrompt_render(),
   });
 
-  // Interactivity is a surface capability: a builtin that prompts reaches the
-  // surface running the command through the daemon's input broker, over the
-  // wire, without knowing the transport.
+  // Interactivity is a surface capability: a builtin that prompts, or a
+  // pipeline segment, reaches the surface running the command through the
+  // daemon's brokers, over the wire, without knowing the transport — and
+  // nothing ever spawns on the daemon host.
   const surface: Surface = {
-    capabilities: { hiddenInput: true, localEdit: false, tty: true },
+    capabilities: { hiddenInput: true, localEdit: false, tty: true, pipeSegments: true },
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current(request.message, request.hidden ?? false),
+    pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
+      daemon.pipe_current(command, input),
   };
   surface_set(surface);
 

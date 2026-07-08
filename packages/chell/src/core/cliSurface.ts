@@ -16,6 +16,7 @@
 import * as readline from 'readline';
 import { Writable } from 'stream';
 import type { Surface, SurfaceCapabilities, PromptRequest } from './surface.js';
+import { segment_pipeThrough } from '../lib/pipe.js';
 
 /** Minimal view of readline's internal echo hook, used to suppress echo. */
 interface ReadlineEchoInternal {
@@ -108,12 +109,17 @@ export function cliSurface_create(rl?: readline.Interface): Surface {
     hiddenInput: true,
     localEdit: true,
     tty: !!process.stdout.isTTY,
+    pipeSegments: true,
   };
 
   return {
     capabilities,
     prompt(request: PromptRequest): Promise<string> {
       return rl ? persistentPrompt_ask(rl, request) : oneShotPrompt_ask(request);
+    },
+    pipeSegment(command: string, input: Buffer): Promise<Buffer> {
+      // The local CLI runs pipe segments in-process, exactly as before.
+      return segment_pipeThrough(command, input);
     },
   };
 }

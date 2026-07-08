@@ -33,11 +33,17 @@
  *   return the edited result.
  * @property tty - The surface is an interactive terminal (as opposed to a
  *   pipe, a script, or a headless host).
+ * @property pipeSegments - The surface can run a pipeline's non-first
+ *   segments (`... | grep foo`) through its own tools. Nothing ever spawns on
+ *   a daemon host: the local CLI runs segments in-process, a remote CLI runs
+ *   them on the client machine, and a browser surface lacks the capability
+ *   and fails such pipelines with a clear message.
  */
 export interface SurfaceCapabilities {
   hiddenInput: boolean;
   localEdit: boolean;
   tty: boolean;
+  pipeSegments: boolean;
 }
 
 /**
@@ -70,6 +76,19 @@ export interface Surface {
    *   lacks the `hiddenInput` capability, or the surface cannot prompt.
    */
   prompt(request: PromptRequest): Promise<string>;
+
+  /**
+   * Runs one pipeline segment against an input, returning its output. Where
+   * this runs is the surface's business — in-process for the local CLI, on
+   * the client machine for a remote CLI — but never on a daemon host.
+   *
+   * @param command - The segment command line (e.g. `grep foo`).
+   * @param input - The bytes to feed the segment on stdin.
+   * @returns The segment's stdout.
+   * @throws {CapabilityError} When the surface lacks the `pipeSegments`
+   *   capability.
+   */
+  pipeSegment(command: string, input: Buffer): Promise<Buffer>;
 }
 
 /**
@@ -104,11 +123,17 @@ export class HeadlessSurface implements Surface {
     hiddenInput: false,
     localEdit: false,
     tty: false,
+    pipeSegments: false,
   };
 
   /** @inheritdoc */
   public prompt(_request: PromptRequest): Promise<string> {
     throw new CapabilityError('tty', 'This surface cannot prompt for input.');
+  }
+
+  /** @inheritdoc */
+  public pipeSegment(_command: string, _input: Buffer): Promise<Buffer> {
+    throw new CapabilityError('pipeSegments', 'This surface cannot run pipeline segments.');
   }
 }
 

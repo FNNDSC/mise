@@ -48,12 +48,20 @@ export const promptAnswerMessageSchema = z.object({
   answer: z.string(),
 });
 
+/** Returns the output of a pipeline segment the daemon asked the surface to run, correlated by `pipeId`. */
+export const pipeResultMessageSchema = z.object({
+  type: z.literal('pipeResult'),
+  pipeId: z.string(),
+  output: z.string(),
+});
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
   executeMessageSchema,
   completeRequestSchema,
   promptAnswerMessageSchema,
+  pipeResultMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -128,6 +136,18 @@ export const promptLineMessageSchema = z.object({
   text: z.string(),
 });
 
+/**
+ * Asks the surface to run a pipeline segment on its own machine (never on the
+ * daemon host) and return the output. `input` and the reply's `output` are
+ * base64, since segment data is arbitrary bytes.
+ */
+export const pipeMessageSchema = z.object({
+  type: z.literal('pipe'),
+  pipeId: z.string(),
+  command: z.string(),
+  input: z.string(),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -138,6 +158,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   errorMessageSchema,
   promptMessageSchema,
   promptLineMessageSchema,
+  pipeMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

@@ -346,6 +346,43 @@ describe('CalypsoDaemon prompt over the wire', () => {
   });
 });
 
+describe('CalypsoDaemon pipe segments over the wire', () => {
+  it('routes a pipe segment to the executing surface and returns its output', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        if (line === '__pipe__') {
+          const out: Buffer = await (daemonRef as CalypsoDaemon).pipe_current('grep foo', Buffer.from('input'));
+          return [{ status: 'ok', rendered: `piped: ${out.toString('utf-8')}` }];
+        }
+        return [{ status: 'ok', rendered: `ran: ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port = await daemon.start();
+    try {
+      const ws = await client_attach(port);
+      const asked = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '__pipe__' });
+      const pipe = await asked;
+      expect(pipe.type).toBe('pipe');
+      expect(pipe.command).toBe('grep foo');
+      expect(Buffer.from(pipe.input as string, 'base64').toString('utf-8')).toBe('input');
+
+      const replied = message_next(ws);
+      send(ws, { type: 'pipeResult', pipeId: pipe.pipeId as string, output: Buffer.from('OUTPUT').toString('base64') });
+      const result = await replied;
+      expect(result.type).toBe('result');
+      expect((result.envelopes as { rendered: string }[])[0].rendered).toBe('piped: OUTPUT');
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon scrollback bound', () => {
   it('retains only the most recent envelopes up to the size', async () => {
     const engine = stubEngine_create();

@@ -104,6 +104,8 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_show: mockHelp
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
 
+// Pipe segments now run through the active surface; the test installs a
+// surface whose pipeSegment delegates to this mock.
 const mockSegmentPipe = jest.fn();
 jest.unstable_mockModule('../src/lib/pipe.js', () => ({ segment_pipeThrough: mockSegmentPipe }));
 
@@ -133,6 +135,7 @@ const {
   engine_create,
   stopOnError_set,
 } = await import('../src/core/engine.js');
+const { surface_set } = await import('../src/core/surface.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -142,6 +145,12 @@ beforeEach(() => {
   mockTiming.mockReturnValue(false);
   mockStatSync.mockImplementation(enoent);
   spawnBehavior = (h) => h.close?.(0);
+  // Install a surface that can run pipe segments, delegating to the mock.
+  surface_set({
+    capabilities: { hiddenInput: false, localEdit: false, tty: false, pipeSegments: true },
+    prompt: async (): Promise<string> => '',
+    pipeSegment: (command: string, input: Buffer): Promise<Buffer> => mockSegmentPipe(command, input) as Promise<Buffer>,
+  });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -191,6 +200,18 @@ describe('line_execute', () => {
     await line_execute('frobnicate | grep foo');
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s']);
     writeSpy.mockRestore();
+  });
+
+  it('fails a pipeline clearly when the surface cannot run segments', async () => {
+    surface_set({
+      capabilities: { hiddenInput: false, localEdit: false, tty: false, pipeSegments: false },
+      prompt: async (): Promise<string> => '',
+      pipeSegment: (_c: string, i: Buffer): Promise<Buffer> => Promise.resolve(i),
+    });
+    const envelopes = await line_execute('whoami | grep foo');
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('cannot run pipeline segments'));
+    expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
+    expect(mockSegmentPipe).not.toHaveBeenCalled();
   });
 
   it('yields an error envelope when a pipe segment fails', async () => {

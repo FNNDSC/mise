@@ -30,6 +30,8 @@ export interface RemoteEngineOptions {
   token: string;
   /** Called with each session-bus broadcast from another surface. */
   onSession?: (surface: string, envelope: CommandEnvelope) => void;
+  /** Answers a prompt the daemon raised during a command (password, confirmation). */
+  onPrompt?: (message: string, hidden: boolean) => Promise<string>;
   /** Called when the connection closes unexpectedly. */
   onClose?: () => void;
 }
@@ -41,15 +43,17 @@ export class RemoteEngine implements ChellEngine {
   private readonly ws: WebSocket;
   private readonly pending: Map<string, Pending> = new Map<string, Pending>();
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
+  private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
   private nextId: number = 0;
 
   /**
    * @param ws - An open, already-attached socket to the daemon.
-   * @param onSession - Callback for session-bus broadcasts.
+   * @param options - The callbacks for session broadcasts and prompts.
    */
-  private constructor(ws: WebSocket, onSession?: (surface: string, envelope: CommandEnvelope) => void) {
+  private constructor(ws: WebSocket, options: RemoteEngineOptions) {
     this.ws = ws;
-    this.onSession = onSession;
+    this.onSession = options.onSession;
+    this.onPrompt = options.onPrompt;
   }
 
   /**
@@ -86,7 +90,7 @@ export class RemoteEngine implements ChellEngine {
             ws.close();
             return;
           }
-          const engine: RemoteEngine = new RemoteEngine(ws, options.onSession);
+          const engine: RemoteEngine = new RemoteEngine(ws, options);
           ws.on('message', (payload: Buffer) => engine.message_handle(payload));
           if (options.onClose) {
             ws.on('close', () => options.onClose?.());
@@ -155,6 +159,9 @@ export class RemoteEngine implements ChellEngine {
         // does not reflect. Narrow at this single boundary.
         if (this.onSession) this.onSession(message.surface, message.envelope as CommandEnvelope);
         break;
+      case 'prompt':
+        void this.prompt_answer(message.promptId, message.message, message.hidden);
+        break;
       case 'error':
         if (message.id !== undefined) {
           this.pending_settle(message.id, (p: Pending) => p.reject(new Error(message.reason)));
@@ -163,6 +170,20 @@ export class RemoteEngine implements ChellEngine {
       default:
         break;
     }
+  }
+
+  /**
+   * Answers a prompt the daemon raised: asks the local surface and sends the
+   * answer back. With no prompt handler, answers empty so the command does not
+   * hang.
+   *
+   * @param promptId - The prompt correlation id.
+   * @param message - The prompt text.
+   * @param hidden - Whether the entry should be hidden (a password).
+   */
+  private async prompt_answer(promptId: string, message: string, hidden: boolean): Promise<void> {
+    const answer: string = this.onPrompt ? await this.onPrompt(message, hidden) : '';
+    this.ws.send(JSON.stringify({ type: 'promptAnswer', promptId, answer }));
   }
 
   /**

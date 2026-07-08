@@ -86,6 +86,15 @@ export class CalypsoDaemon {
   private readonly surfaces: Set<Surface> = new Set<Surface>();
   private readonly scrollback: SessionEntry[] = [];
   private wss: WebSocketServer | null = null;
+  /**
+   * Execution is serialized across the whole session (one foreground command
+   * at a time), so a prompt raised mid-command has one unambiguous surface to
+   * ask — the one running the current command.
+   */
+  private queue: Promise<void> = Promise.resolve();
+  private currentOrigin: Surface | null = null;
+  private readonly pendingPrompts: Map<string, (answer: string) => void> = new Map<string, (answer: string) => void>();
+  private promptSeq: number = 0;
 
   /**
    * @param options - The engine to host, the attach token, the bind address,
@@ -141,8 +150,6 @@ export class CalypsoDaemon {
    */
   private connection_handle(socket: WebSocket): void {
     let surface: Surface | null = null;
-    // Serializes execution: one foreground command at a time, the rest queued.
-    let queue: Promise<void> = Promise.resolve();
 
     socket.on('message', (data: RawData) => {
       let parsed: unknown;
@@ -167,9 +174,12 @@ export class CalypsoDaemon {
       const value = message.value;
       const attached: Surface = surface;
       if (value.type === 'execute') {
-        queue = queue.then(() => this.execute_run(attached, value));
+        // One shared queue: commands from every surface run one at a time.
+        this.queue = this.queue.then(() => this.execute_run(attached, value));
       } else if (value.type === 'complete') {
         void this.complete_run(socket, value);
+      } else if (value.type === 'promptAnswer') {
+        this.promptAnswer_settle(value.promptId, value.answer);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -253,6 +263,9 @@ export class CalypsoDaemon {
    * @param message - The execute request.
    */
   private async execute_run(origin: Surface, message: ExecuteMessage): Promise<void> {
+    // The command runs with this surface as the prompt target, so any prompt
+    // the engine raises is asked of the surface that submitted the command.
+    this.currentOrigin = origin;
     try {
       const envelopes: CommandEnvelope[] = await this.engine.line_execute(message.line);
       this.send(origin.socket, { type: 'result', id: message.id, envelopes });
@@ -262,6 +275,51 @@ export class CalypsoDaemon {
     } catch (err: unknown) {
       const reason: string = err instanceof Error ? err.message : String(err);
       this.send(origin.socket, { type: 'error', id: message.id, reason });
+    } finally {
+      this.currentOrigin = null;
+    }
+  }
+
+  /**
+   * Raises a prompt on the surface running the current command, returning its
+   * answer. The host installs an engine-side input broker that calls this; the
+   * engine therefore prompts through the wire without knowing the transport.
+   *
+   * @param message - The prompt text to show.
+   * @param hidden - Whether to request no-echo entry (a password).
+   * @returns The surface's answer.
+   * @throws {Error} When no command is executing (nothing to prompt for) or the
+   *   surface disconnects before answering.
+   */
+  public prompt_current(message: string, hidden: boolean): Promise<string> {
+    const origin: Surface | null = this.currentOrigin;
+    if (!origin) {
+      return Promise.reject(new Error('no active command to prompt for'));
+    }
+    const promptId: string = `p${this.promptSeq++}`;
+    return new Promise((resolve: (answer: string) => void, reject: (err: Error) => void) => {
+      this.pendingPrompts.set(promptId, resolve);
+      const onClose = (): void => {
+        if (this.pendingPrompts.delete(promptId)) {
+          reject(new Error('surface disconnected before answering'));
+        }
+      };
+      origin.socket.once('close', onClose);
+      this.send(origin.socket, { type: 'prompt', promptId, message, hidden });
+    });
+  }
+
+  /**
+   * Resolves a pending prompt with the surface's answer.
+   *
+   * @param promptId - The prompt correlation id.
+   * @param answer - The answer the surface supplied.
+   */
+  private promptAnswer_settle(promptId: string, answer: string): void {
+    const resolve: ((answer: string) => void) | undefined = this.pendingPrompts.get(promptId);
+    if (resolve) {
+      this.pendingPrompts.delete(promptId);
+      resolve(answer);
     }
   }
 

@@ -42,6 +42,31 @@ release tags live on here, under `packages/<name>/`.
 
 ---
 
+## Why *mise*?
+
+*Mise en place* — "everything in its place" — is the chef's discipline of prepping
+and arranging every ingredient before the cooking starts, so service runs clean.
+This project is built the same way: the messy work of talking to ChRIS is done
+once, prepped, and set in its place at the bottom of the stack, so every layer
+above cooks with clean, typed ingredients.
+
+That messy work is real. ChRIS exposes everything through a REST API whose wire
+format (Collection+JSON) is verbose to traverse, whose typings lag the live API,
+and whose compound operations fan out into long chains of requests — every client
+that speaks to it directly pays that cost again. **cumin** pays it once (it is the
+only layer that ever touches `chrisapi`) and hands everything above it typed domain
+objects. By the top of the stack, ChRIS is just a filesystem you already know how
+to drive.
+
+The kitchen runs through the naming: the layers season upward — **cumin** →
+**salsa** → **chili** → **chell**, the shell you cook in (yes, a *Taco Chell*) —
+and the dev workflow is a recipe (`prep`, `cook`, `taste`, `serve`, or `make taco`
+for the full course). It's a **sandwich** because the layering is strict: each
+layer talks only to the one below it, so a web app or a script bites in at whatever
+layer it needs and ignores the rest.
+
+---
+
 ## Install (end user)
 
 ### Standalone binary — no Node.js required
@@ -112,6 +137,41 @@ which maps API resources onto paths:
 See [packages/chell/README.md](packages/chell/README.md) for the full tour
 (running plugins, pipelines, the store, job monitoring) and
 [packages/salsa/README.md](packages/salsa/README.md) for the VFS internals.
+
+---
+
+## Where this is going
+
+Today chell is a terminal program — but its engine (dispatch, session, the
+filesystem projection) is being separated from the terminal it prints to, so the
+*same* deterministic command layer can back more than one surface.
+
+The forward design, **CALYPSO**, makes the terminal the interface everywhere: a
+session daemon hosts the chell engine and serves it over a WebSocket to attached
+surfaces — the CLI today, a web console next — each rendering the same session.
+Because the engine can run apart from the surface, it can live where the data must
+stay (inside a spoke's trust boundary) while an operator drives it over a thin
+client. A later stage adds a natural-language layer that *proposes* commands,
+always validated against the live platform before anything runs — the deterministic
+shell is never outranked by a language model.
+
+**CALYPSO** — **C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive
+**S**cientific **O**utcomes — is that intent layer. The name is a harbor reference.
+In the *Odyssey*, Calypso keeps the island where the voyager finds haven; the name
+is the Greek word for "to conceal," which the project keeps but turns around.
+**HARBOR** is that haven for the ChRIS operator, and CALYPSO is the keeper at its
+edge — the layer between you and the open water: the Collection+JSON sprawl, the
+complexity of a federated backend. What CALYPSO conceals is the friction, never the
+outcome. A harbor shelters without holding: the work is left as materialized,
+verifiable state, yours to leave and return to — CALYPSO the harbor you pass
+through, never the ground you stand on.
+
+This is design-in-progress, not shipped. The full specification and reasoning:
+
+- **[docs/calypso.adoc](docs/calypso.adoc)** — the intent layer and session daemon:
+  doctrine, architecture, the wire contract, and the staged build plan.
+- **[docs/surfaces.adoc](docs/surfaces.adoc)** — a companion essay on what the wire
+  contract means for building user interfaces.
 
 ---
 

@@ -1,14 +1,16 @@
 /**
  * @file Builtin edit command.
- * Fetches a ChRIS file, opens it in $EDITOR, then deletes and re-uploads on save.
+ * Fetches a ChRIS file, opens it in the surface's local editor, then
+ * re-uploads on save. The editor mechanics live in the surface, so this
+ * builtin knows nothing of processes or terminals — it fetches, hands the
+ * content to the surface, and uploads the result.
  */
-import { spawnSync, SpawnSyncReturns } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
+import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, extname, posix } from 'path';
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
-import { capability_require, CapabilityError } from '../../core/surface.js';
+import { surface_get, capability_require, CapabilityError, type LocalEditResult } from '../../core/surface.js';
 import { files_cat } from '@fnndsc/chili/commands/fs/cat.js';
 import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.js';
 import { errorStack, Result, StackMessage, listCache_get } from '@fnndsc/cumin';
@@ -20,8 +22,8 @@ const BINARY_EXTENSIONS: Set<string> = new Set([
 ]);
 
 /**
- * Opens a ChRIS file in $EDITOR. On save, replaces the original via
- * delete + re-upload. No-ops if content is unchanged.
+ * Opens a ChRIS file in the surface's local editor. On save, replaces the
+ * original via delete + re-upload. No-ops if content is unchanged.
  *
  * @param args - [filePath, ...]
  */
@@ -32,10 +34,9 @@ export async function builtin_edit(args: string[]): Promise<void> {
     return;
   }
 
-  // edit opens the file in a local editor: it needs a surface that can do
-  // that. A surface without the capability (a headless or browser host)
-  // fails here with a clear message instead of trying to spawn an editor
-  // against a terminal that is not there.
+  // Editing needs a surface that can open a local editor. A surface without
+  // the capability (a headless or browser host) fails here with a clear
+  // message instead of assuming a terminal exists.
   try {
     capability_require('localEdit', 'edit: this surface cannot open a local editor.');
   } catch (err: unknown) {
@@ -62,29 +63,27 @@ export async function builtin_edit(args: string[]): Promise<void> {
     return;
   }
 
-  const originalContent: string = catResult.value;
+  // Hand the content to the surface's editor.
+  let edit: LocalEditResult;
+  try {
+    edit = await surface_get().localEdit({ content: catResult.value, extension: ext || '.txt' });
+  } catch (err: unknown) {
+    console.error(chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!edit.changed) {
+    console.log(chalk.gray('(no changes)'));
+    return;
+  }
+
+  // Upload the edited content: write it to a temp file the replace command
+  // reads, and preserve that file (reporting its path) if the save fails.
   const tmpPath: string = join(tmpdir(), `chell-edit-${Date.now()}${ext || '.txt'}`);
   let keepTmp: boolean = false;
-
   try {
-    writeFileSync(tmpPath, originalContent, 'utf8');
-
-    const editor: string = process.env.EDITOR || process.env.VISUAL || 'vi';
-    const spawn: SpawnSyncReturns<Buffer> = spawnSync(editor, [tmpPath], { stdio: 'inherit' });
-
-    if (spawn.error) {
-      console.error(chalk.red(`edit: Failed to launch '${editor}': ${spawn.error.message}`));
-      process.exitCode = 1;
-      return;
-    }
-
-    const editedContent: string = readFileSync(tmpPath, 'utf8');
-
-    if (editedContent === originalContent) {
-      console.log(chalk.gray('(no changes)'));
-      return;
-    }
-
+    writeFileSync(tmpPath, edit.content, 'utf8');
     const result: EditResult = await file_replaceContent(target, tmpPath);
     listCache_get().cache_invalidate(posix.dirname(target));
     if (result.success) {

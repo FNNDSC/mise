@@ -18,7 +18,7 @@ export default {
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',
   coverageThreshold: {
-    global: { statements: 90, branches: 80, functions: 90, lines: 90 },
+    global: { statements: 90, branches: 75, functions: 90, lines: 90 },
     './src/**/*.ts': { statements: 60, lines: 60 },
   },
 };

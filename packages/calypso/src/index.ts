@@ -44,4 +44,4 @@ export {
 } from './protocol/validate.js';
 export { type HostedEngine, type CompletionResult } from './daemon/engine.js';
 export { token_generate, token_writeFile, token_matches } from './daemon/token.js';
-export { CalypsoDaemon, type DaemonOptions } from './daemon/server.js';
+export { CalypsoDaemon, type DaemonOptions, type EditOutcome } from './daemon/server.js';

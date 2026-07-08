@@ -15,7 +15,7 @@ import chalk from 'chalk';
 import { CalypsoDaemon, token_generate } from '@fnndsc/calypso';
 import type { ChellEngine } from '../core/engine.js';
 import { sink_set, type OutputSink } from '../core/sink.js';
-import { surface_set, type Surface, type PromptRequest } from '../core/surface.js';
+import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '../core/surface.js';
 import { sessionPrompt_render } from '../core/prompt/session.js';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
 
@@ -63,11 +63,13 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
   // daemon's brokers, over the wire, without knowing the transport — and
   // nothing ever spawns on the daemon host.
   const surface: Surface = {
-    capabilities: { hiddenInput: true, localEdit: false, tty: true, pipeSegments: true },
+    capabilities: { hiddenInput: true, localEdit: true, tty: true, pipeSegments: true },
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current(request.message, request.hidden ?? false),
     pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
       daemon.pipe_current(command, input),
+    localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
+      daemon.edit_current(request.content, request.extension),
   };
   surface_set(surface);
 

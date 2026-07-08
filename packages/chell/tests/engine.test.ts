@@ -150,6 +150,7 @@ beforeEach(() => {
     capabilities: { hiddenInput: false, localEdit: false, tty: false, pipeSegments: true },
     prompt: async (): Promise<string> => '',
     pipeSegment: (command: string, input: Buffer): Promise<Buffer> => mockSegmentPipe(command, input) as Promise<Buffer>,
+    localEdit: async (r: { content: string }): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
   });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);

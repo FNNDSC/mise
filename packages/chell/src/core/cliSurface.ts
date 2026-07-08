@@ -15,7 +15,11 @@
  */
 import * as readline from 'readline';
 import { Writable } from 'stream';
-import type { Surface, SurfaceCapabilities, PromptRequest } from './surface.js';
+import { spawnSync, type SpawnSyncReturns } from 'child_process';
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from './surface.js';
 import { segment_pipeThrough } from '../lib/pipe.js';
 
 /** Minimal view of readline's internal echo hook, used to suppress echo. */
@@ -97,6 +101,35 @@ function oneShotPrompt_ask(request: PromptRequest): Promise<string> {
 }
 
 /**
+ * Opens content in the local `$EDITOR` and returns the edited result. Writes
+ * the content to a temp file, launches the editor against it, reads it back,
+ * and removes the temp file — the whole editor lifecycle is the surface's
+ * business, so builtins never touch a process or a terminal.
+ *
+ * @param request - The content to edit and an optional extension.
+ * @returns The edited content and whether it changed.
+ * @throws {Error} When the editor fails to launch.
+ */
+function localEdit_run(request: LocalEditRequest): Promise<LocalEditResult> {
+  const ext: string = request.extension && request.extension.length > 0 ? request.extension : '.txt';
+  const tmpPath: string = join(tmpdir(), `chell-edit-${Date.now()}${ext}`);
+  try {
+    writeFileSync(tmpPath, request.content, 'utf8');
+    const editor: string = process.env.EDITOR || process.env.VISUAL || 'vi';
+    const spawn: SpawnSyncReturns<Buffer> = spawnSync(editor, [tmpPath], { stdio: 'inherit' });
+    if (spawn.error) {
+      throw new Error(`failed to launch '${editor}': ${spawn.error.message}`);
+    }
+    const edited: string = readFileSync(tmpPath, 'utf8');
+    return Promise.resolve({ content: edited, changed: edited !== request.content });
+  } finally {
+    if (existsSync(tmpPath)) {
+      try { unlinkSync(tmpPath); } catch { /* ignore */ }
+    }
+  }
+}
+
+/**
  * Creates the CLI host's surface.
  *
  * @param rl - The REPL's persistent readline interface, when running
@@ -120,6 +153,9 @@ export function cliSurface_create(rl?: readline.Interface): Surface {
     pipeSegment(command: string, input: Buffer): Promise<Buffer> {
       // The local CLI runs pipe segments in-process, exactly as before.
       return segment_pipeThrough(command, input);
+    },
+    localEdit(request: LocalEditRequest): Promise<LocalEditResult> {
+      return localEdit_run(request);
     },
   };
 }

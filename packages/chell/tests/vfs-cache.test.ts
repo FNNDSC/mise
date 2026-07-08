@@ -22,7 +22,13 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   }),
   Ok: <T>(value: T) => ({ ok: true as const, value }),
   Err: () => ({ ok: false as const }),
-  errorStack: { stack_push: mockStackPush, stack_pop: jest.fn(() => ({ message: 'listing failed' })) },
+  errorStack: {
+    stack_push: mockStackPush,
+    stack_pop: jest.fn(() => ({ message: 'listing failed' })),
+    checkpoint_mark: jest.fn(() => 0),
+    checkpoint_drain: jest.fn(() => []),
+    scope_run: (fn: () => unknown) => fn(),
+  },
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));

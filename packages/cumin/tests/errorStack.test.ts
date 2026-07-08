@@ -90,10 +90,69 @@ describe('ErrorStack', () => {
     errorStack.stack_push('error', 'Test config with short width');
     const messages1 = errorStack.stack_getAll();
     expect(messages1.length).toBeGreaterThan(0);
-    
+
     errorStack_configure({ functionNamePadWidth: 50 });
     errorStack.stack_push('error', 'Test config with large width');
     const messages2 = errorStack.stack_getAll();
     expect(messages2.length).toBeGreaterThan(messages1.length);
+  });
+
+  describe('checkpoint and drain', () => {
+    it('drains only messages pushed since the checkpoint', () => {
+      errorStack.stack_push('error', 'before checkpoint');
+      const checkpoint: number = errorStack.checkpoint_mark();
+      errorStack.stack_push('error', 'command error one');
+      errorStack.stack_push('warning', 'command warning');
+      const drained = errorStack.checkpoint_drain(checkpoint);
+      expect(drained).toHaveLength(2);
+      expect(drained[0].message).toContain('command error one');
+      expect(drained[1].message).toContain('command warning');
+      // The pre-checkpoint message survives; the drained ones are gone.
+      const remaining = errorStack.stack_getAll();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].message).toContain('before checkpoint');
+    });
+
+    it('drains empty when nothing was pushed since the checkpoint', () => {
+      errorStack.stack_push('error', 'pre-existing');
+      const checkpoint: number = errorStack.checkpoint_mark();
+      expect(errorStack.checkpoint_drain(checkpoint)).toEqual([]);
+    });
+  });
+
+  describe('scope_run isolation (background fencing)', () => {
+    it('keeps scoped pushes off the shared stack', () => {
+      errorStack.scope_run(() => {
+        errorStack.stack_push('error', 'background-only message');
+        expect(errorStack.stack_getAll()).toHaveLength(1);
+      });
+      // Nothing from the scope reached the shared stack.
+      expect(errorStack.stack_getAll()).toHaveLength(0);
+    });
+
+    it('a background push interleaved in a foreground drain window does not corrupt the drain', async () => {
+      // Reproduction of the hazard: a foreground command marks the stack and
+      // awaits; a fire-and-forget background task (in its own scope) pushes an
+      // error during that await. Without the scope the background message would
+      // land above the checkpoint and be misattributed to the command; with it,
+      // the drain sees only the command's own message.
+      const checkpoint: number = errorStack.checkpoint_mark();
+
+      // Fire-and-forget background work, fenced in its own scope.
+      const background: Promise<void> = errorStack.scope_run(async () => {
+        await Promise.resolve();
+        errorStack.stack_push('error', 'background refresh failed');
+      });
+
+      // Foreground command runs across an await, then pushes its own error.
+      await Promise.resolve();
+      errorStack.stack_push('error', 'foreground command failed');
+      await background;
+
+      const drained = errorStack.checkpoint_drain(checkpoint);
+      expect(drained).toHaveLength(1);
+      expect(drained[0].message).toContain('foreground command failed');
+      expect(drained.some((m) => m.message.includes('background refresh failed'))).toBe(false);
+    });
   });
 });

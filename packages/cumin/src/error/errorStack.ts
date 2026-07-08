@@ -1,9 +1,19 @@
 /**
  * @file Process-wide error/message stack for deferred, structured reporting.
  *
+ * The stack is a process singleton, but it is *async-context aware*: work run
+ * inside {@link ErrorStack.scope_run} pushes to and pops from its own isolated
+ * stack rather than the shared one. This lets fire-and-forget background work
+ * (cache warming, background refreshes) keep its error traffic off the shared
+ * stack, so a foreground command that checkpoints the stack and drains it
+ * afterward (see {@link ErrorStack.checkpoint_mark} /
+ * {@link ErrorStack.checkpoint_drain}) captures only its own messages and is
+ * never corrupted by a background push landing in its drain window.
+ *
  * @module
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 
 type MessageType = "error" | "warning";
 
@@ -66,8 +76,60 @@ class ErrorStack {
   private stack: StackMessage[] = [];
   private functionNamePadWidth: number;
 
+  /**
+   * Holds the isolated stack for work running inside {@link scope_run}. When
+   * a store is present, all operations target it instead of the shared stack.
+   */
+  private scopeStorage: AsyncLocalStorage<StackMessage[]> = new AsyncLocalStorage<StackMessage[]>();
+
   private constructor(options: ErrorStackOptions = {}) {
     this.functionNamePadWidth = options.functionNamePadWidth || 45; // Default to 45 if not specified
+  }
+
+  /**
+   * Returns the stack the current async context should operate on: the
+   * isolated stack when inside a {@link scope_run}, otherwise the shared one.
+   *
+   * @returns The active stack array.
+   */
+  private stack_active(): StackMessage[] {
+    return this.scopeStorage.getStore() ?? this.stack;
+  }
+
+  /**
+   * Runs a function with an isolated error stack that the shared stack — and
+   * any foreground command draining it — never sees. Fire-and-forget
+   * background work wraps its body in this so its error traffic cannot land
+   * in a concurrent foreground command's drain window. The isolation follows
+   * the whole async causal chain started inside `fn`.
+   *
+   * @param fn - The work to run against a fresh, isolated stack.
+   * @returns Whatever `fn` returns.
+   */
+  public scope_run<T>(fn: () => T): T {
+    return this.scopeStorage.run([], fn);
+  }
+
+  /**
+   * Marks the current depth of the active stack, for a later
+   * {@link checkpoint_drain}.
+   *
+   * @returns An opaque checkpoint (the current stack depth).
+   */
+  public checkpoint_mark(): number {
+    return this.stack_active().length;
+  }
+
+  /**
+   * Removes and returns every message pushed above a checkpoint, so a command
+   * boundary can drain exactly the messages produced since it marked the
+   * stack. Messages the command's own code already popped are simply absent.
+   *
+   * @param checkpoint - A checkpoint from {@link checkpoint_mark}.
+   * @returns The drained messages, oldest first.
+   */
+  public checkpoint_drain(checkpoint: number): StackMessage[] {
+    return this.stack_active().splice(checkpoint);
   }
 
   /**
@@ -98,7 +160,7 @@ class ErrorStack {
       this.functionNamePadWidth
     );
     const enhancedMessage: string = `[${paddedFunctionName}] | ${message}`;
-    this.stack.push({ type, message: enhancedMessage });
+    this.stack_active().push({ type, message: enhancedMessage });
   }
 
   /**
@@ -107,7 +169,7 @@ class ErrorStack {
    * @returns The last message object or undefined if the stack is empty.
    */
   public stack_pop(): StackMessage | undefined {
-    return this.stack.pop();
+    return this.stack_active().pop();
   }
 
   /**
@@ -117,11 +179,11 @@ class ErrorStack {
    * @returns An array of formatted strings matching the search.
    */
   public stack_getAll(): StackMessage[] {
-    return [...this.stack];
+    return [...this.stack_active()];
   }
 
   public stack_search(substring: string): string[] {
-    return this.stack
+    return this.stack_active()
       .filter((item) =>
         item.message.toLowerCase().includes(substring.toLowerCase())
       )
@@ -135,7 +197,7 @@ class ErrorStack {
    * @returns An array of message strings.
    */
   public allOfType_get(type: MessageType): string[] {
-    return this.stack
+    return this.stack_active()
       .filter((item) => item.type === type)
       .map((item) => item.message);
   }
@@ -148,7 +210,7 @@ class ErrorStack {
    * @returns An array of matching message strings.
    */
   public messagesOfType_search(type: MessageType, substring: string): string[] {
-    return this.stack
+    return this.stack_active()
       .filter(
         (item) =>
           item.type === type &&
@@ -161,7 +223,8 @@ class ErrorStack {
    * Clear all messages from the stack.
    */
   public stack_clear(): void {
-    this.stack = [];
+    const active: StackMessage[] = this.stack_active();
+    active.length = 0;
   }
 
   /**
@@ -170,7 +233,10 @@ class ErrorStack {
    * @param type - The message type to clear.
    */
   public type_clear(type: MessageType): void {
-    this.stack = this.stack.filter((item) => item.type !== type);
+    const active: StackMessage[] = this.stack_active();
+    const kept: StackMessage[] = active.filter((item) => item.type !== type);
+    active.length = 0;
+    active.push(...kept);
   }
 
   /**
@@ -179,7 +245,7 @@ class ErrorStack {
    * @returns True if the stack is not empty, false otherwise.
    */
   public messages_has(): boolean {
-    return this.stack.length > 0;
+    return this.stack_active().length > 0;
   }
 
   /**
@@ -189,7 +255,7 @@ class ErrorStack {
    * @returns True if messages of the given type exist, false otherwise.
    */
   public messagesOfType_has(type: MessageType): boolean {
-    return this.stack.some((item) => item.type === type);
+    return this.stack_active().some((item) => item.type === type);
   }
 }
 

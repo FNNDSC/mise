@@ -11,7 +11,13 @@ const Err = (): { ok: false } => ({ ok: false });
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok,
   Err,
-  errorStack: { stack_pop: jest.fn(() => undefined), stack_push: jest.fn() },
+  errorStack: {
+    stack_pop: jest.fn(() => undefined),
+    stack_push: jest.fn(),
+    checkpoint_mark: jest.fn(() => 0),
+    checkpoint_drain: jest.fn(() => []),
+    scope_run: (fn: () => unknown) => fn(),
+  },
 }));
 
 // The /bin listing model is type-only at runtime.

@@ -14,7 +14,7 @@ import chalk from 'chalk';
  * Parsed chell CLI configuration.
  */
 export interface ChellCLIConfig {
-  mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute' | 'script';
+  mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute' | 'script' | 'daemon' | 'remote';
   physicalFS?: boolean;
   prefetchPlugins?: boolean;
   prefetchFeeds?: boolean;
@@ -49,6 +49,8 @@ export interface CliActionOptions {
   prefetchJobs?: boolean;
   asciiBoot?: boolean;
   logo?: boolean;
+  daemon?: boolean;
+  remote?: boolean;
 }
 
 /**
@@ -85,7 +87,13 @@ export function cliConfig_fromArgs(
   }
 
   let config: ChellCLIConfig;
-  if (options.file) {
+  if (options.remote) {
+    // A remote surface attaches to a daemon; it needs no local engine,
+    // connection, or CUBE credentials.
+    config = { mode: 'remote' };
+  } else if (options.daemon) {
+    config = { mode: 'daemon', physicalFS: options.physicalFS, connectConfig };
+  } else if (options.file) {
     config = { mode: 'script', scriptFile: options.file, stopOnError: options.e || false, physicalFS: options.physicalFS, connectConfig };
   } else if (options.command) {
     config = { mode: 'execute', commandToExecute: options.command, stopOnError: options.e || false, physicalFS: options.physicalFS, connectConfig };
@@ -206,6 +214,8 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--no-prefetch-jobs', 'Skip /proc/jobs job cache prefetch at startup')
     .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
     .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
+    .option('--daemon', 'Run as a CALYPSO session daemon, hosting the engine over WebSocket')
+    .option('--remote', 'Attach to a running CALYPSO daemon as a remote surface')
     .addHelpText('after', `
 ${chalk.bold.cyan('INTERACTIVE COMMANDS')}
   ${chalk.bold.green('connect')}     Connect to a ChRIS CUBE

@@ -24,6 +24,10 @@ In parallel, the ARGUS design study <<argus>> explored, against a simulated plat
 
 This document records the synthesis of these three lines: CALYPSO, rebuilt on the mise stack against a real CUBE, as the foundation for a terminal-central ChRIS user interface. The design study itself is concluded and its repository frozen as the record of the reasoning; what follows is the forward specification.
 
+=== The name
+
+CALYPSO expands to _Cognitive Algorithms & Logic Yielding Predictive Scientific Outcomes_, but the name is chosen for its harbor sense. In the _Odyssey_, Calypso keeps the island where the voyager finds haven; the name is the Greek word for "to conceal," which this project keeps but turns around. HARBOR — the operational effort this design serves — is that haven for the ChRIS operator, and CALYPSO is the keeper at its edge: the layer between the operator and the open water, the Collection+JSON sprawl and the complexity of a federated backend. What CALYPSO conceals is the friction, never the outcome. A harbor shelters without holding: the work is left as materialized, verifiable state, free to leave and return to — CALYPSO the harbor one passes through, never the ground one stands on. That last line is not ornament but the governing constraint restated: CALYPSO is the interaction layer and CUBE is the state authority, and the two are never confused.
+
 == Background
 
 === ChRIS and CUBE

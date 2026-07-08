@@ -1,0 +1,24 @@
+# mise design docs
+
+Forward-looking design and reasoning for the mise stack — where the project is
+going and why. This is not user documentation; for using the shell and the
+packages, see the per-package READMEs (start with
+[packages/chell](../packages/chell/README.md)).
+
+- **[calypso.adoc](calypso.adoc)** — **CALYPSO**: an intent-interpretation layer
+  and session daemon that separates the chell engine from its display and serves
+  it over a WebSocket, so remote and web surfaces can drive the same deterministic
+  ChRIS command layer — with an eventual natural-language layer that only ever
+  *proposes* commands the deterministic shell validates and runs. Includes the
+  doctrine, the wire contract, and the staged engineering plan.
+
+- **[surfaces.adoc](surfaces.adoc)** — a companion essay: once server-state
+  synchronization is deleted from the client, UI framework choice is demoted from
+  architecture to taste, and every surface — framework-based or bespoke — attaches
+  to the daemon as a sibling.
+
+The name **CALYPSO** (_Cognitive Algorithms & Logic Yielding Predictive Scientific
+Outcomes_) is a harbor reference: in the _Odyssey_, Calypso keeps the island where
+the voyager finds haven, and the name is the Greek word for "to conceal." HARBOR is
+that haven for the ChRIS operator; CALYPSO keeps its edge, concealing the friction
+and never the outcome. See calypso.adoc for the full grounding.

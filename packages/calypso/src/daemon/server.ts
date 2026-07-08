@@ -50,6 +50,12 @@ interface SessionEntry {
   envelope: CommandEnvelope;
 }
 
+/** The result of a surface's local edit, returned by {@link CalypsoDaemon.edit_current}. */
+export interface EditOutcome {
+  content: string;
+  changed: boolean;
+}
+
 /** The default number of envelopes retained for scrollback replay. */
 const SCROLLBACK_DEFAULT: number = 200;
 
@@ -102,6 +108,8 @@ export class CalypsoDaemon {
   private promptSeq: number = 0;
   private readonly pendingPipes: Map<string, (output: Buffer) => void> = new Map<string, (output: Buffer) => void>();
   private pipeSeq: number = 0;
+  private readonly pendingEdits: Map<string, (result: EditOutcome) => void> = new Map<string, (result: EditOutcome) => void>();
+  private editSeq: number = 0;
 
   /**
    * @param options - The engine to host, the attach token, the bind address,
@@ -190,6 +198,8 @@ export class CalypsoDaemon {
         this.promptAnswer_settle(value.promptId, value.answer);
       } else if (value.type === 'pipeResult') {
         this.pipeResult_settle(value.pipeId, value.output);
+      } else if (value.type === 'editResult') {
+        this.editResult_settle(value.editId, { content: value.content, changed: value.changed });
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -399,6 +409,49 @@ export class CalypsoDaemon {
     if (resolve) {
       this.pendingPipes.delete(pipeId);
       resolve(Buffer.from(output, 'base64'));
+    }
+  }
+
+  /**
+   * Opens content in the editor of the surface running the current command
+   * and returns the edited result. The host installs a `localEdit` on its
+   * engine-side surface that calls this, so `edit` opens the operator's own
+   * editor and never one on the daemon host.
+   *
+   * @param content - The content to edit.
+   * @param extension - An optional filename extension for syntax mode.
+   * @returns The edited content and whether it changed.
+   * @throws {Error} When no command is executing or the surface disconnects.
+   */
+  public edit_current(content: string, extension: string | undefined): Promise<EditOutcome> {
+    const origin: Surface | null = this.currentOrigin;
+    if (!origin) {
+      return Promise.reject(new Error('no active command to edit for'));
+    }
+    const editId: string = `e${this.editSeq++}`;
+    return new Promise((resolve: (result: EditOutcome) => void, reject: (err: Error) => void) => {
+      this.pendingEdits.set(editId, resolve);
+      const onClose = (): void => {
+        if (this.pendingEdits.delete(editId)) {
+          reject(new Error('surface disconnected before returning the edit'));
+        }
+      };
+      origin.socket.once('close', onClose);
+      this.send(origin.socket, { type: 'edit', editId, content, extension });
+    });
+  }
+
+  /**
+   * Resolves a pending edit with the surface's result.
+   *
+   * @param editId - The edit correlation id.
+   * @param outcome - The edited content and changed flag.
+   */
+  private editResult_settle(editId: string, outcome: EditOutcome): void {
+    const resolve: ((result: EditOutcome) => void) | undefined = this.pendingEdits.get(editId);
+    if (resolve) {
+      this.pendingEdits.delete(editId);
+      resolve(outcome);
     }
   }
 

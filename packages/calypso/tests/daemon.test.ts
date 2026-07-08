@@ -383,6 +383,43 @@ describe('CalypsoDaemon pipe segments over the wire', () => {
   });
 });
 
+describe('CalypsoDaemon local edit over the wire', () => {
+  it('routes an edit to the executing surface and returns the edited content', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        if (line === '__edit__') {
+          const edit = await (daemonRef as CalypsoDaemon).edit_current('before', '.txt');
+          return [{ status: 'ok', rendered: `edited(${edit.changed}): ${edit.content}` }];
+        }
+        return [{ status: 'ok', rendered: `ran: ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port = await daemon.start();
+    try {
+      const ws = await client_attach(port);
+      const asked = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '__edit__' });
+      const edit = await asked;
+      expect(edit.type).toBe('edit');
+      expect(edit.content).toBe('before');
+      expect(edit.extension).toBe('.txt');
+
+      const replied = message_next(ws);
+      send(ws, { type: 'editResult', editId: edit.editId as string, content: 'after', changed: true });
+      const result = await replied;
+      expect(result.type).toBe('result');
+      expect((result.envelopes as { rendered: string }[])[0].rendered).toBe('edited(true): after');
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon scrollback bound', () => {
   it('retains only the most recent envelopes up to the size', async () => {
     const engine = stubEngine_create();

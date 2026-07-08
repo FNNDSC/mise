@@ -47,6 +47,9 @@ export async function remote_run(): Promise<void> {
         // Pipeline segments run on this machine, through the client's own
         // tools — never on the daemon host.
         surface_get().pipeSegment(command, input),
+      onEdit: (content: string, extension: string | undefined): Promise<{ content: string; changed: boolean }> =>
+        // Editing happens in this machine's editor.
+        surface_get().localEdit({ content, extension }),
       onClose: (): void => {
         console.log(chalk.yellow('\n[!] Daemon disconnected.'));
         process.exit(0);

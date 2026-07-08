@@ -59,9 +59,32 @@ export interface PromptRequest {
 }
 
 /**
+ * Content handed to a surface's local editor.
+ *
+ * @property content - The text to open in the editor.
+ * @property extension - Optional filename extension (e.g. `.txt`, `.json`) so
+ *   the editor can apply the right syntax mode.
+ */
+export interface LocalEditRequest {
+  content: string;
+  extension?: string;
+}
+
+/**
+ * The outcome of a local edit.
+ *
+ * @property content - The content after editing.
+ * @property changed - Whether the content differs from what was opened.
+ */
+export interface LocalEditResult {
+  content: string;
+  changed: boolean;
+}
+
+/**
  * The interaction seam a host installs. Builtins reach it through
  * {@link surface_get}; hosts declare their capabilities and back the
- * prompt operation with whatever their surface supports.
+ * prompt and local-edit operations with whatever their surface supports.
  */
 export interface Surface {
   /** What this surface can do; read by builtins before they interact. */
@@ -89,6 +112,19 @@ export interface Surface {
    *   capability.
    */
   pipeSegment(command: string, input: Buffer): Promise<Buffer>;
+
+  /**
+   * Opens content in the surface's local editor and returns the result. The
+   * editor mechanics are the surface's business — a temp file and `$EDITOR`
+   * for the local CLI, the client's editor for a remote CLI, an editor
+   * component in a browser.
+   *
+   * @param request - The content to edit and an optional extension.
+   * @returns The edited content and whether it changed.
+   * @throws {CapabilityError} When the surface lacks the `localEdit`
+   *   capability.
+   */
+  localEdit(request: LocalEditRequest): Promise<LocalEditResult>;
 }
 
 /**
@@ -134,6 +170,11 @@ export class HeadlessSurface implements Surface {
   /** @inheritdoc */
   public pipeSegment(_command: string, _input: Buffer): Promise<Buffer> {
     throw new CapabilityError('pipeSegments', 'This surface cannot run pipeline segments.');
+  }
+
+  /** @inheritdoc */
+  public localEdit(_request: LocalEditRequest): Promise<LocalEditResult> {
+    throw new CapabilityError('localEdit', 'This surface cannot open a local editor.');
   }
 }
 

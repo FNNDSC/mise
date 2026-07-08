@@ -34,6 +34,8 @@ export interface RemoteEngineOptions {
   onPrompt?: (message: string, hidden: boolean) => Promise<string>;
   /** Runs a pipeline segment on this machine and returns its output. */
   onPipe?: (command: string, input: Buffer) => Promise<Buffer>;
+  /** Opens content in this machine's editor and returns the edited result. */
+  onEdit?: (content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>;
   /** Called when the connection closes unexpectedly. */
   onClose?: () => void;
 }
@@ -47,6 +49,7 @@ export class RemoteEngine implements ChellEngine {
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
   private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
   private readonly onPipe: ((command: string, input: Buffer) => Promise<Buffer>) | undefined;
+  private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private latestPrompt: string = '';
   private nextId: number = 0;
 
@@ -59,6 +62,7 @@ export class RemoteEngine implements ChellEngine {
     this.onSession = options.onSession;
     this.onPrompt = options.onPrompt;
     this.onPipe = options.onPipe;
+    this.onEdit = options.onEdit;
   }
 
   /**
@@ -173,6 +177,9 @@ export class RemoteEngine implements ChellEngine {
       case 'pipe':
         void this.pipe_run(message.pipeId, message.command, message.input);
         break;
+      case 'edit':
+        void this.edit_run(message.editId, message.content, message.extension);
+        break;
       case 'error':
         if (message.id !== undefined) {
           this.pending_settle(message.id, (p: Pending) => p.reject(new Error(message.reason)));
@@ -210,6 +217,22 @@ export class RemoteEngine implements ChellEngine {
     const inputBytes: Buffer = Buffer.from(input, 'base64');
     const output: Buffer = this.onPipe ? await this.onPipe(command, inputBytes) : inputBytes;
     this.ws.send(JSON.stringify({ type: 'pipeResult', pipeId, output: output.toString('base64') }));
+  }
+
+  /**
+   * Opens content in this machine's editor (the daemon asked for it) and
+   * returns the edited result. With no edit handler, returns the content
+   * unchanged so the command does not hang.
+   *
+   * @param editId - The edit correlation id.
+   * @param content - The content to edit.
+   * @param extension - An optional filename extension.
+   */
+  private async edit_run(editId: string, content: string, extension: string | undefined): Promise<void> {
+    const result: { content: string; changed: boolean } = this.onEdit
+      ? await this.onEdit(content, extension)
+      : { content, changed: false };
+    this.ws.send(JSON.stringify({ type: 'editResult', editId, content: result.content, changed: result.changed }));
   }
 
   /**

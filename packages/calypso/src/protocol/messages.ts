@@ -55,6 +55,14 @@ export const pipeResultMessageSchema = z.object({
   output: z.string(),
 });
 
+/** Returns the edited content from a local-edit the daemon requested, correlated by `editId`. */
+export const editResultMessageSchema = z.object({
+  type: z.literal('editResult'),
+  editId: z.string(),
+  content: z.string(),
+  changed: z.boolean(),
+});
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
@@ -62,6 +70,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   completeRequestSchema,
   promptAnswerMessageSchema,
   pipeResultMessageSchema,
+  editResultMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -148,6 +157,17 @@ export const pipeMessageSchema = z.object({
   input: z.string(),
 });
 
+/**
+ * Asks the surface to open content in its local editor (never on the daemon
+ * host) and return the edited result.
+ */
+export const editMessageSchema = z.object({
+  type: z.literal('edit'),
+  editId: z.string(),
+  content: z.string(),
+  extension: z.string().optional(),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -159,6 +179,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   promptMessageSchema,
   promptLineMessageSchema,
   pipeMessageSchema,
+  editMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

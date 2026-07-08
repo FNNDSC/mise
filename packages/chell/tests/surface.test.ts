@@ -19,6 +19,7 @@ function fullSurface_create(): Surface & { prompts: string[] } {
     prompts,
     capabilities: { hiddenInput: true, localEdit: true, tty: true, pipeSegments: true },
     pipeSegment: async (_c: string, i: Buffer): Promise<Buffer> => i,
+    localEdit: async (r): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
     prompt: async (request): Promise<string> => {
       prompts.push(request.message);
       return 'answer';

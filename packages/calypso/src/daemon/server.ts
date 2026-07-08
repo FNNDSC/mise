@@ -62,6 +62,9 @@ const SCROLLBACK_DEFAULT: number = 200;
  * @property host - The interface to bind; loopback (`127.0.0.1`) by default.
  * @property scrollbackSize - How many recent envelopes to retain for replay
  *   to an attaching surface; defaults to 200.
+ * @property promptProvider - Renders the current session's themed prompt
+ *   string, which the daemon pushes to surfaces after each command and on
+ *   attach. Omitted when a host does not push a prompt (e.g. tests).
  */
 export interface DaemonOptions {
   engine: HostedEngine;
@@ -69,6 +72,7 @@ export interface DaemonOptions {
   port?: number;
   host?: string;
   scrollbackSize?: number;
+  promptProvider?: () => string | Promise<string>;
 }
 
 /**
@@ -81,6 +85,7 @@ export class CalypsoDaemon {
   private readonly port: number;
   private readonly host: string;
   private readonly scrollbackSize: number;
+  private readonly promptProvider: (() => string | Promise<string>) | undefined;
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
   private readonly surfaces: Set<Surface> = new Set<Surface>();
@@ -106,6 +111,7 @@ export class CalypsoDaemon {
     this.port = options.port ?? 0;
     this.host = options.host ?? '127.0.0.1';
     this.scrollbackSize = options.scrollbackSize ?? SCROLLBACK_DEFAULT;
+    this.promptProvider = options.promptProvider;
   }
 
   /**
@@ -220,7 +226,30 @@ export class CalypsoDaemon {
     this.surfaces.add(surface);
     this.send(socket, { type: 'attached', session: this.sessionId, protocolVersion: CONTRACT_VERSION });
     this.scrollback_replay(socket);
+    // The newcomer shows the right prompt immediately, before any command.
+    void this.promptline_push(surface);
     return surface;
+  }
+
+  /**
+   * Renders the current prompt (when the host supplies a provider) and pushes
+   * it to a surface, or to all surfaces when none is given. Called after each
+   * command — the context may have changed — and on attach.
+   *
+   * @param target - The surface to push to; omitted to push to all.
+   */
+  private async promptline_push(target?: Surface): Promise<void> {
+    if (!this.promptProvider) {
+      return;
+    }
+    const text: string = await this.promptProvider();
+    if (target) {
+      this.send(target.socket, { type: 'promptline', text });
+      return;
+    }
+    for (const surface of this.surfaces) {
+      this.send(surface.socket, { type: 'promptline', text });
+    }
   }
 
   /**
@@ -278,6 +307,9 @@ export class CalypsoDaemon {
     } finally {
       this.currentOrigin = null;
     }
+    // The command may have changed session context (cwd, connection); push the
+    // refreshed prompt to every surface.
+    await this.promptline_push();
   }
 
   /**

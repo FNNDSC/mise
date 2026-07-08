@@ -117,6 +117,17 @@ export const promptMessageSchema = z.object({
   hidden: z.boolean(),
 });
 
+/**
+ * The themed prompt string, pushed by the daemon with each result and on any
+ * context change. Only the daemon knows the session context the prompt
+ * renders; a surface prints what it receives, so prompt themes work
+ * identically everywhere.
+ */
+export const promptLineMessageSchema = z.object({
+  type: z.literal('promptline'),
+  text: z.string(),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -126,6 +137,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   sessionMessageSchema,
   errorMessageSchema,
   promptMessageSchema,
+  promptLineMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

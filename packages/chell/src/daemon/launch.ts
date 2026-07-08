@@ -16,6 +16,7 @@ import { CalypsoDaemon, token_generate } from '@fnndsc/calypso';
 import type { ChellEngine } from '../core/engine.js';
 import { sink_set, type OutputSink } from '../core/sink.js';
 import { surface_set, type Surface, type PromptRequest } from '../core/surface.js';
+import { sessionPrompt_render } from '../core/prompt/session.js';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
 
 /**
@@ -47,7 +48,15 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
   sink_set(new NullSink());
 
   const token: string = token_generate();
-  const daemon: CalypsoDaemon = new CalypsoDaemon({ engine, token, host: '127.0.0.1', port: 0 });
+  const daemon: CalypsoDaemon = new CalypsoDaemon({
+    engine,
+    token,
+    host: '127.0.0.1',
+    port: 0,
+    // Only the daemon holds the session context, so it renders the themed
+    // prompt and pushes it to surfaces.
+    promptProvider: (): Promise<string> => sessionPrompt_render(),
+  });
 
   // Interactivity is a surface capability: a builtin that prompts reaches the
   // surface running the command through the daemon's input broker, over the

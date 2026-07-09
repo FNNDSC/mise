@@ -13,7 +13,7 @@
 
 **A ChRIS distributed-computing platform, presented as a Unix shell.**
 
-`cumin` · `salsa` · `chili` · `chell` — four layers, one sandwich, *mise en place* in one kitchen.
+`cumin` · `salsa` · `chili` · `chell` · `calypso` — one sandwich, one daemon, *mise en place* in one kitchen.
 
 </div>
 
@@ -32,13 +32,17 @@ cat /proc/feeds/feed_123/pl-fshack_789/status   # watch it run
 ```
 
 If you know `bash` or `zsh`, you already know most of ChELL. Behind that shell
-sits a clean, four-layer stack — the **Sandwich Model** — and each layer is its
-own independently-published npm package, reusable on its own (a web client can
-import the lower layers without ever touching the shell).
+sits a clean, four-layer command substrate — the **Sandwich Model** — and each
+layer is its own independently-published npm package, reusable on its own (a web
+client can import the lower layers without ever touching the shell). Above and
+around that substrate, **CALYPSO** adds the session daemon and wire contract that
+lets remote and future web surfaces drive the same engine.
 
-This repository is the **monorepo** that houses all four. They were once four
-separate repos (`FNNDSC/{cumin,salsa,chili,chell}`); their full git history and
-release tags live on here, under `packages/<name>/`.
+This repository is the **monorepo** that houses all five packages. The original
+four sandwich packages were once separate repos
+(`FNNDSC/{cumin,salsa,chili,chell}`); their full git history and release tags
+live on here, under `packages/<name>/`. CALYPSO was added here because its seams
+are internal to the hosted chell engine and the daemon wire contract.
 
 ---
 
@@ -58,12 +62,13 @@ only layer that ever touches `chrisapi`) and hands everything above it typed dom
 objects. By the top of the stack, ChRIS is just a filesystem you already know how
 to drive.
 
-The kitchen runs through the naming: the layers season upward — **cumin** →
-**salsa** → **chili** → **chell**, the shell you cook in (yes, a *Taco Chell*) —
-and the dev workflow is a recipe (`prep`, `cook`, `taste`, `serve`, or `make taco`
-for the full course). It's a **sandwich** because the layering is strict: each
-layer talks only to the one below it, so a web app or a script bites in at whatever
-layer it needs and ignores the rest.
+The kitchen runs through the naming: the deterministic layers season upward —
+**cumin** → **salsa** → **chili** → **chell**, the shell you cook in (yes, a
+*Taco Chell*) — and **CALYPSO** is the harbor/daemon that can host that shell
+engine for sibling surfaces. The dev workflow is still a recipe (`prep`, `cook`,
+`taste`, `serve`, or `make taco` for the full course). It's a **sandwich** because
+the command substrate is strict: each layer talks only to the one below it, so a
+web app or a script bites in at whatever layer it needs and ignores the rest.
 
 ---
 
@@ -99,6 +104,9 @@ Requires Node.js ≥ 20.12 (22.x recommended).
 
 ```text
    ┌────────────────────────────────────────────────────────────┐
+   │  calypso  @fnndsc/calypso  daemon · session bus · wire     │  <- surfaces attach here
+   │                              contract · future intent      │
+   ├────────────────────────────────────────────────────────────┤
    │  chell    @fnndsc/chell    REPL · builtins · completion    │  <- you type here
    ├────────────────────────────────────────────────────────────┤
    │  chili    @fnndsc/chili    typed commands · views · CLI    │  controller
@@ -111,11 +119,17 @@ Requires Node.js ≥ 20.12 (22.x recommended).
    └────────────────────────────────────────────────────────────┘
 ```
 
-Each layer talks **only** to the one below it. Frontends other than the shell
-(`chili` as a scriptable CLI, a future web app) tap in at the layer they need.
+The four lower packages are the strict Sandwich Model: each layer talks **only**
+to the one below it. CALYPSO is the session/daemon layer above that substrate:
+it hosts one chell engine, validates a typed WebSocket protocol, and lets
+surfaces attach without learning CUBE's Collection+JSON API.
+
+Frontends other than the shell (`chili` as a scriptable CLI, a future web app, or
+a remote CALYPSO surface) tap in at the layer they need.
 
 | Package | Backronym | Role | README |
 |---------|-----------|------|--------|
+| **calypso** | **C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive **S**cientific **O**utcomes | Session daemon and wire contract — hosts a chell engine for remote/web surfaces; future intent layer | [packages/calypso](packages/calypso/README.md) |
 | **chell** | **C**hELL **E**xecutes **L**ayered **L**ogic | The interactive shell — REPL, builtins, tab-completion, scripting | [packages/chell](packages/chell/README.md) |
 | **chili** | **ChILI** handles **I**ntelligent **L**ine **I**nteractions | Controller + standalone CLI — headless commands return typed models; views render them | [packages/chili](packages/chili/README.md) |
 | **salsa** | **S**alsa **A**bstracts **L**ogic **S**ervice **A**ssets | Frontend-agnostic logic — high-level intents and the Virtual Filesystem dispatcher | [packages/salsa](packages/salsa/README.md) |
@@ -142,8 +156,8 @@ See [packages/chell/README.md](packages/chell/README.md) for the full tour
 
 ## Where this is going
 
-Today chell is a terminal program — but its engine (dispatch, session, the
-filesystem projection) is being separated from the terminal it prints to, so the
+chell began as a terminal program, but its engine (dispatch, session, the
+filesystem projection) has been split from the terminal it prints to, so the
 *same* deterministic command layer can back more than one surface.
 
 The forward design, **CALYPSO**, makes the terminal the interface everywhere: a
@@ -191,20 +205,22 @@ no more cloning siblings or hand-linking, npm workspaces does it:
 | `make` | does | under the hood |
 |--------|------|----------------|
 | `shop` | freshen the pantry | `git pull` |
-| `prep` | install deps (links all four workspaces) | `npm install` |
-| `cook` | build all, in dependency order | `npm run build` (cumin→salsa→chili→chell) |
+| `prep` | install deps (links all workspaces) | `npm install` |
+| `cook` | build all, in dependency order | `npm run build` (cumin→calypso→salsa→chili→chell) |
 | `taste` | run the full test suite | `npm test` |
 | `taste-flight` | tests with coverage | `--coverage --coverageProvider=v8` |
 | `serve` | link `chell` globally | `npm link` |
 | `scrub` | clean the kitchen | remove `dist/` + `node_modules` |
 | `run` | build + launch the shell | `node packages/chell/dist/index.js` |
+| `daemon` | build + run CALYPSO daemon | `node packages/chell/dist/calypso.js` |
+| `remote` | build + attach to daemon | `node packages/chell/dist/index.js --remote` |
 | `taco` / `meal` | the full course | scrub → prep → cook → taste → serve |
 
 Standard aliases also work: `make install` `build` `test` `clean` `link`.
 
 ### The dev loop
 
-One `make prep` (or `npm install`) links all four workspaces to each other. Edit
+One `make prep` (or `npm install`) links all workspaces to each other. Edit
 any layer, rebuild just that layer, and the layers above pick it up through the
 workspace symlink — no republish, no relink:
 
@@ -243,10 +259,11 @@ mise/
 ├── .github/workflows/       # ci.yml (build+test) · release.yml (changesets publish)
 ├── eslint.config.base.mjs   # shared flat config enforcing the style guide
 └── packages/
+    ├── calypso/ @fnndsc/calypso  daemon wire contract
     ├── cumin/   @fnndsc/cumin    infrastructure
     ├── salsa/   @fnndsc/salsa    logic + VFS
     ├── chili/   @fnndsc/chili    controller + CLI
-    └── chell/   @fnndsc/chell    the shell
+    └── chell/   @fnndsc/chell    the shell + daemon launcher/remote client
 ```
 
 Each package directory carries its **own full git history** (preserved through

@@ -14,7 +14,7 @@ import { WebSocket } from 'ws';
 import { serverMessage_parse, CONTRACT_VERSION, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { ChellEngine, CompletionResult } from '../core/engine.js';
-import { envelope_deliver } from '../core/sink.js';
+import { envelope_deliver, sink_get } from '../core/sink.js';
 
 /** A pending request awaiting its correlated reply. */
 interface Pending {
@@ -173,6 +173,12 @@ export class RemoteEngine implements ChellEngine {
         break;
       case 'promptline':
         this.latestPrompt = message.text;
+        break;
+      case 'progress':
+        {
+          const { type: _type, id: _id, ...event } = message;
+          sink_get().progress_write(event);
+        }
         break;
       case 'pipe':
         void this.pipe_run(message.pipeId, message.command, message.input);

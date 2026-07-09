@@ -33,6 +33,18 @@ describe('StdoutSink', () => {
     new StdoutSink().status_write('\rspinning');
     expect(writeSpy).toHaveBeenCalledWith('\rspinning');
   });
+
+  it('renders progress to process.stdout', () => {
+    const writeSpy: jest.SpiedFunction<typeof process.stdout.write> = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    new StdoutSink().progress_write({ operation: 'upload', phase: 'transferring', current: 1, total: 2, unit: 'files', status: 'running' });
+    expect(writeSpy).toHaveBeenCalledWith('upload running 1/2 files\n');
+  });
+
+  it('renders progress with a label and an unknown total', () => {
+    const writeSpy: jest.SpiedFunction<typeof process.stdout.write> = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    new StdoutSink().progress_write({ operation: 'download', phase: 'transferring', label: 'file.dcm', current: 9, unit: 'bytes' });
+    expect(writeSpy).toHaveBeenCalledWith('download file.dcm 9 bytes\n');
+  });
 });
 
 describe('BufferSink', () => {
@@ -46,6 +58,12 @@ describe('BufferSink', () => {
   it('drops status writes', () => {
     const sink: BufferSink = new BufferSink();
     sink.status_write('transient');
+    expect(sink.text_get()).toBe('');
+  });
+
+  it('drops progress writes', () => {
+    const sink: BufferSink = new BufferSink();
+    sink.progress_write({ operation: 'download', phase: 'transferring', current: 1, total: 2, unit: 'files' });
     expect(sink.text_get()).toBe('');
   });
 });
@@ -175,10 +193,25 @@ describe('CaptureSink', () => {
       data_write: (chunk: string | Buffer): void => live.data_write(chunk),
       err_write: (chunk: string | Buffer): void => live.err_write(chunk),
       status_write: (text: string): void => { statusSeen.push(text); },
+      progress_write: (): void => { /* not used */ },
     };
     const capture: CaptureSink = new CaptureSink(liveSpy);
     capture.status_write('\rspinning');
     expect(statusSeen).toEqual(['\rspinning']);
+    expect(capture.dataText_get()).toBe('');
+  });
+
+  it('passes progress through to the live sink', () => {
+    const progressSeen: string[] = [];
+    const liveSpy: OutputSink = {
+      data_write: (): void => { /* not used */ },
+      err_write: (): void => { /* not used */ },
+      status_write: (): void => { /* not used */ },
+      progress_write: (event): void => { progressSeen.push(event.operation); },
+    };
+    const capture: CaptureSink = new CaptureSink(liveSpy);
+    capture.progress_write({ operation: 'pull', phase: 'watching', status: 'running' });
+    expect(progressSeen).toEqual(['pull']);
     expect(capture.dataText_get()).toBe('');
   });
 });
@@ -210,6 +243,15 @@ describe('printingHandler_wrap', () => {
     };
     const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
     expect(envelope.rendered).toBe('raw chunk');
+  });
+
+  it('captures Uint8Array stdout writes', async () => {
+    sink_set(new BufferSink());
+    const handler = async (_args: string[]): Promise<void> => {
+      process.stdout.write(new Uint8Array(Buffer.from('raw bytes')) as unknown as string);
+    };
+    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
+    expect(envelope.rendered).toBe('raw bytes');
   });
 
   it('serializes non-string console arguments', async () => {

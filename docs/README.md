@@ -17,6 +17,10 @@ packages, see the per-package READMEs (start with
   architecture to taste, and every surface — framework-based or bespoke — attaches
   to the daemon as a sibling.
 
+- **[structured-progress.md](structured-progress.md)** — the implementation
+  contract for CALYPSO structured progress: progress events are facts emitted
+  through the sink and daemon wire; terminal bars are renderings of those facts.
+
 The name **CALYPSO** (_Cognitive Algorithms & Logic Yielding Predictive Scientific
 Outcomes_) is a harbor reference: in the _Odyssey_, Calypso keeps the island where
 the voyager finds haven, and the name is the Greek word for "to conceal." HARBOR is

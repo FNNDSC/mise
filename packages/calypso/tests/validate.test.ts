@@ -51,6 +51,7 @@ describe('serverMessage_parse', () => {
 
   it('accepts output, session, complete reply, attached and error', () => {
     expect(serverMessage_parse({ type: 'output', id: '1', channel: 'status', chunk: '...' }).ok).toBe(true);
+    expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'transferring', current: 1, total: 2, unit: 'files', status: 'running' }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'session', surface: 'cli', envelope: { status: 'ok', rendered: 'x' } }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'complete', id: '2', prefix: 'l', candidates: ['ls'] }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'attached', session: 's', protocolVersion: CONTRACT_VERSION }).ok).toBe(true);
@@ -59,6 +60,12 @@ describe('serverMessage_parse', () => {
 
   it('rejects an output on an unknown channel', () => {
     expect(serverMessage_parse({ type: 'output', id: '1', channel: 'sideband', chunk: 'x' }).ok).toBe(false);
+  });
+
+  it('rejects malformed progress fields', () => {
+    expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'transferring', current: -1 }).ok).toBe(false);
+    expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'transferring', percent: 101 }).ok).toBe(false);
+    expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'nope' }).ok).toBe(false);
   });
 });
 

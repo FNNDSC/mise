@@ -142,6 +142,46 @@ describe('CalypsoDaemon', () => {
     expect(engine.executed).toEqual(['pwd']);
   });
 
+  it('forwards progress from the running command to the origin surface', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const progressEngine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        (daemonRef as CalypsoDaemon).progress_current({
+          operation: 'upload',
+          kind: 'transfer',
+          phase: 'transferring',
+          current: 1,
+          total: 2,
+          unit: 'files',
+          status: 'running',
+        });
+        return [{ status: 'ok', rendered: 'done' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    await daemon.stop();
+    daemon = new CalypsoDaemon({ engine: progressEngine, token: TOKEN });
+    daemonRef = daemon;
+    port = await daemon.start();
+
+    const ws = await client_attach(port);
+    clients.push(ws);
+    const messages = messages_collect(ws, 2);
+    send(ws, { type: 'execute', id: 'p1', line: 'upload x y' });
+    const [progress, result] = await messages;
+    expect(progress).toEqual(expect.objectContaining({
+      type: 'progress',
+      id: 'p1',
+      operation: 'upload',
+      phase: 'transferring',
+      current: 1,
+      total: 2,
+      unit: 'files',
+      status: 'running',
+    }));
+    expect(result).toEqual(expect.objectContaining({ type: 'result', id: 'p1' }));
+  });
+
   it('answers a completion request', async () => {
     const ws = await client_attach(port);
     clients.push(ws);

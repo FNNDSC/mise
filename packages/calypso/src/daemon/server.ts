@@ -31,7 +31,7 @@ import type { HostedEngine, CompletionResult } from './engine.js';
 import { token_matches } from './token.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
 import { clientMessage_parse, attach_parse } from '../protocol/validate.js';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema } from '../protocol/messages.js';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, ProgressEvent } from '../protocol/messages.js';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
@@ -104,6 +104,7 @@ export class CalypsoDaemon {
    */
   private queue: Promise<void> = Promise.resolve();
   private currentOrigin: Surface | null = null;
+  private currentId: string | null = null;
   private readonly pendingPrompts: Map<string, (answer: string) => void> = new Map<string, (answer: string) => void>();
   private promptSeq: number = 0;
   private readonly pendingPipes: Map<string, (output: Buffer) => void> = new Map<string, (output: Buffer) => void>();
@@ -309,6 +310,7 @@ export class CalypsoDaemon {
     // The command runs with this surface as the prompt target, so any prompt
     // the engine raises is asked of the surface that submitted the command.
     this.currentOrigin = origin;
+    this.currentId = message.id;
     try {
       const envelopes: CommandEnvelope[] = await this.engine.line_execute(message.line);
       this.send(origin.socket, { type: 'result', id: message.id, envelopes });
@@ -320,6 +322,7 @@ export class CalypsoDaemon {
       this.send(origin.socket, { type: 'error', id: message.id, reason });
     } finally {
       this.currentOrigin = null;
+      this.currentId = null;
     }
     // The command may have changed session context (cwd, connection); push the
     // refreshed prompt to every surface.
@@ -353,6 +356,24 @@ export class CalypsoDaemon {
       origin.socket.once('close', onClose);
       this.send(origin.socket, { type: 'prompt', promptId, message, hidden });
     });
+  }
+
+  /**
+   * Streams structured progress from the executing command to its origin
+   * surface. Progress is live-only; when no command is active or the surface is
+   * gone, the event is dropped.
+   *
+   * @param event - The structured progress facts.
+   * @returns True when the event was sent to a surface.
+   */
+  public progress_current(event: ProgressEvent): boolean {
+    const origin: Surface | null = this.currentOrigin;
+    const id: string | null = this.currentId;
+    if (!origin || !id || origin.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    this.send(origin.socket, { type: 'progress', id, ...event });
+    return true;
   }
 
   /**

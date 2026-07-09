@@ -23,6 +23,7 @@
  */
 
 import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { ProgressEvent } from './progress.js';
 
 /**
  * Destination for command output, installed by the host.
@@ -48,6 +49,8 @@ export interface OutputSink {
    * @param text - Transient text; consumers may overwrite or drop it.
    */
   status_write(text: string): void;
+
+  progress_write(event: ProgressEvent): void;
 }
 
 /**
@@ -70,6 +73,19 @@ export class StdoutSink implements OutputSink {
   /** @inheritdoc */
   public status_write(text: string): void {
     process.stdout.write(text);
+  }
+
+  public progress_write(event: ProgressEvent): void {
+    const parts: string[] = [event.operation];
+    if (event.label) parts.push(event.label);
+    if (event.status) parts.push(event.status);
+    if (event.current !== undefined && event.total !== undefined) {
+      parts.push(`${event.current}/${event.total}`);
+    } else if (event.current !== undefined) {
+      parts.push(`${event.current}`);
+    }
+    if (event.unit) parts.push(event.unit);
+    process.stdout.write(`${parts.join(' ')}\n`);
   }
 }
 
@@ -98,6 +114,10 @@ export class BufferSink implements OutputSink {
   /** @inheritdoc */
   public status_write(_text: string): void {
     // Status is ephemeral by contract: never accumulated.
+  }
+
+  public progress_write(_event: ProgressEvent): void {
+    // Progress is ephemeral by contract: never accumulated.
   }
 
   /**
@@ -151,6 +171,10 @@ export class CaptureSink implements OutputSink {
   /** @inheritdoc */
   public status_write(text: string): void {
     this.live.status_write(text);
+  }
+
+  public progress_write(event: ProgressEvent): void {
+    this.live.progress_write(event);
   }
 
   /**

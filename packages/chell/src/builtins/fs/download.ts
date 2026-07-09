@@ -10,6 +10,7 @@ import {
   DownloadSummary,
   bytes_format
 } from '@fnndsc/chili/commands/fs/download.js';
+import { sink_get } from '../../core/sink.js';
 
 /**
  * Downloads a remote ChRIS file or directory to the local filesystem.
@@ -32,7 +33,10 @@ export async function builtin_download(args: string[]): Promise<void> {
   const targetLocal: string = path.resolve(localPathArg);
 
   try {
-    const summary: DownloadSummary = await chefs_download_cmd(targetRemote, targetLocal, { force });
+    const summary: DownloadSummary = await chefs_download_cmd(targetRemote, targetLocal, {
+      force,
+      onProgress: event => sink_get().progress_write(event),
+    });
 
     console.log('');
     if (summary.failedCount === 0) {

@@ -7,6 +7,7 @@ import { path_resolve } from '../utils.js';
 import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import { listCache_get } from '@fnndsc/cumin';
 import path from 'path';
+import { sink_get } from '../../core/sink.js';
 
 /**
  * Uploads a local file or directory to ChRIS.
@@ -24,7 +25,9 @@ export async function builtin_upload(args: string[]): Promise<void> {
   const targetRemote: string = await path_resolve(remotePath);
 
   try {
-    const summary: UploadSummary = await chefs_upload_cmd(localPath, targetRemote);
+    const summary: UploadSummary = await chefs_upload_cmd(localPath, targetRemote, {
+      onProgress: event => sink_get().progress_write(event),
+    });
 
     console.log('');
     if (summary.failedCount === 0) {

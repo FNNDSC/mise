@@ -13,13 +13,14 @@
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "chell": "./dist/index.js"
+    "chell": "./dist/index.js",
+    "calypso": "./dist/calypso.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc && chmod +x ./dist/index.js",
+    "build": "tsc && chmod +x ./dist/index.js ./dist/calypso.js",
     "exemplars:build": "tsc -p exemplars/ts",
     "start": "node dist/index.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --forceExit --coverage",

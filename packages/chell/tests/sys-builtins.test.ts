@@ -35,6 +35,8 @@ const { builtin_timing } = await import('../src/builtins/sys/timing.js');
 const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.js');
 const { builtin_debug } = await import('../src/builtins/debug.js');
 const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
+const { builtin_version } = await import('../src/builtins/sys/version.js');
+const { versions_get, versionReport_build } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -172,5 +174,30 @@ describe('builtin_pwd', () => {
     mockInstancesList.mockResolvedValue({ tableData: [{ plugin_name: 'pl-dircopy', plugin_version: '2.1.1' }] });
     const envelope: CommandEnvelope = await builtin_pwd(['--title']);
     expect(envelope.rendered).toBe('/home/chris/feeds/Brain Study/pl-dircopy v2.1.1\n');
+  });
+});
+
+describe('builtin_version', () => {
+  it('resolves a version for every stack layer', () => {
+    const versions: Record<string, string> = versions_get();
+    for (const layer of ['chell', 'chili', 'salsa', 'cumin']) {
+      expect(typeof versions[layer]).toBe('string');
+      expect(versions[layer].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('builds a report naming chell and each sandwich layer', () => {
+    const report: string = versionReport_build();
+    for (const layer of ['chell', 'chili', 'salsa', 'cumin']) {
+      expect(report).toContain(layer);
+    }
+  });
+
+  it('yields an ok envelope carrying the report and a typed model', async () => {
+    const envelope: CommandEnvelope = await builtin_version([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('chell');
+    expect(envelope.model?.kind).toBe('sys.version');
+    expect((envelope.model?.data as { cumin: string }).cumin).toBe(versions_get().cumin);
   });
 });

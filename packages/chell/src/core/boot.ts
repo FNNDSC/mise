@@ -13,10 +13,7 @@
  */
 import * as readline from 'readline';
 import * as os from 'os';
-import * as path from 'path';
 import { readFileSync, existsSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
 import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
@@ -43,92 +40,7 @@ import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 import { engine_create, stopOnError_set, type ChellEngine } from './engine.js';
 import { surface_set } from './surface.js';
 import { cliSurface_create } from './cliSurface.js';
-
-/**
- * Interface for package.json structure.
- */
-interface PackageJson {
-  name: string;
-  version: string;
-  description?: string;
-  [key: string]: unknown;
-}
-
-const __filename: string = fileURLToPath(import.meta.url);
-const __dirname: string = path.dirname(__filename);
-
-/**
- * Build-time-injected map of dependency versions. esbuild replaces
- * `__CHELL_DEP_VERSIONS__` with a literal when bundling the standalone
- * binary, where no dependency package.json exists on disk. Undefined in a
- * normal tsc build.
- */
-declare const __CHELL_DEP_VERSIONS__: Record<string, string>;
-
-/**
- * Loads a dependency's package.json via node module resolution, so it works
- * whether the dep is nested or hoisted to a workspace-root node_modules. In
- * the bundled binary it falls back to the versions inlined at build time.
- *
- * @param name - The package name (e.g. `@fnndsc/cumin`).
- * @returns The parsed package.json, or a fallback `{ name, version }`.
- */
-function depPackageJson_load(name: string): PackageJson {
-  try {
-    const req = createRequire(import.meta.url);
-    return req(`${name}/package.json`) as PackageJson;
-  } catch {
-    const version: string =
-      typeof __CHELL_DEP_VERSIONS__ !== 'undefined'
-        ? (__CHELL_DEP_VERSIONS__[name] ?? 'unknown')
-        : 'unknown';
-    return { name, version };
-  }
-}
-
-/**
- * Build-time-injected version string. esbuild replaces `__CHELL_VERSION__` with
- * a literal when bundling the standalone binary (where there is no package.json
- * on disk to read). It is undefined in a normal tsc build, where we fall back to
- * reading the package.json next to the compiled entry.
- */
-declare const __CHELL_VERSION__: string;
-
-/**
- * Reads chell's own package.json, or — in the bundled binary, where that file
- * is not present on disk — uses the version injected at build time.
- *
- * @returns The parsed package.json (or a `{ name, version }` fallback).
- */
-function selfPackageJson_load(): PackageJson {
-  try {
-    return JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8')) as PackageJson;
-  } catch {
-    const version: string =
-      typeof __CHELL_VERSION__ !== 'undefined' ? __CHELL_VERSION__ : 'unknown';
-    return { name: '@fnndsc/chell', version };
-  }
-}
-
-const packageJson: PackageJson = selfPackageJson_load();
-const cuminJson: PackageJson = depPackageJson_load('@fnndsc/cumin');
-const salsaJson: PackageJson = depPackageJson_load('@fnndsc/salsa');
-const chiliJson: PackageJson = depPackageJson_load('@fnndsc/chili');
-
-/**
- * Builds the multi-line version report shown by `--version`: chell itself
- * plus the sandwich layers (chili, salsa, cumin) it is running with.
- *
- * @returns The version report string.
- */
-function versionReport_build(): string {
-  return [
-    `chell ${packageJson.version}`,
-    `  chili ${chiliJson.version}`,
-    `  salsa ${salsaJson.version}`,
-    `  cumin ${cuminJson.version}`,
-  ].join('\n');
-}
+import { versionReport_build, versions_get, type StackVersions } from './version.js';
 
 /**
  * Extended Writable stream with muted property for password input.
@@ -302,11 +214,12 @@ function bootPanels_render(
   cache: BootCache,
   useAsciiBoot: boolean,
 ): void {
+  const versions: StackVersions = versions_get();
   const headerItems: BootInfoItem3[] = [
-    { app: 'chell', name: 'ChELL Executes Layered Logic',                    version: packageJson.version },
-    { app: 'chili', name: 'ChILI handles Intelligent Line Interactions',     version: chiliJson.version   },
-    { app: 'salsa', name: 'Salsa Abstracts Logic Service Assets',            version: salsaJson.version   },
-    { app: 'cumin', name: 'Cumin Underpins Management Infrastructure Needs', version: cuminJson.version   },
+    { app: 'chell', name: 'ChELL Executes Layered Logic',                    version: versions.chell },
+    { app: 'chili', name: 'ChILI handles Intelligent Line Interactions',     version: versions.chili },
+    { app: 'salsa', name: 'Salsa Abstracts Logic Service Assets',            version: versions.salsa },
+    { app: 'cumin', name: 'Cumin Underpins Management Infrastructure Needs', version: versions.cumin },
   ];
 
   const localItems: BootInfoItem[] = [
@@ -648,10 +561,12 @@ async function interactiveSession_run(
  * Starts the ChELL REPL.
  * Initializes connection and enters the command loop.
  *
+ * @param argv - The argument vector to parse. Defaults to `process.argv`; the
+ *   `calypso` entry passes an argv with daemon mode forced in.
  * @returns A Promise that resolves when the shell exits.
  */
-export async function chell_start(): Promise<void> {
-  const config: ChellCLIConfig = await cli_parse(process.argv, versionReport_build());
+export async function chell_start(argv: string[] = process.argv): Promise<void> {
+  const config: ChellCLIConfig = await cli_parse(argv, versionReport_build());
   const {
     isInteractiveSession,
     useAsciiBoot,

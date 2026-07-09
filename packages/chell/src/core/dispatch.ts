@@ -53,6 +53,7 @@ import {
   builtin_timing,
   builtin_whoami,
   builtin_whereami,
+  builtin_version,
   builtin_debug,
   builtin_help,
   builtin_tree,
@@ -211,6 +212,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   timing: builtin_timing,
   physicalmode: builtin_physicalmode,
   debug: builtin_debug,
+  version: builtin_version,
   // Bridged (captured) handlers: envelope semantics without typed models.
   // plugin is deliberately absent: its add flow prompts for admin
   // credentials through readline, which capture would make invisible.

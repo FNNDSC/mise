@@ -83,6 +83,16 @@ export class REPL {
     this.rl.on('line', async (line: string) => {
       await this.history_append(line);
 
+      // `exit` quits this shell, never the engine. Closing readline runs the
+      // 'close' handler (goodbye, then process exit). Crucially, for a remote
+      // surface this detaches the client and leaves the daemon — and its other
+      // surfaces — running; forwarding `exit` to the engine would instead reach
+      // dispatch's process.exit on the daemon and tear every surface down.
+      if (line.trim().split(/\s+/)[0] === 'exit') {
+        this.rl.close();
+        return;
+      }
+
       const startMs: number = Date.now();
       process.exitCode = 0;
       await this.engine.line_execute(line);

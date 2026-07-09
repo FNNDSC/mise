@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Mock dependencies BEFORE imports
@@ -320,6 +320,10 @@ const {
   builtin_workflow,
 } = await import('../src/builtins/index.js');
 
+afterEach(() => {
+  process.exitCode = 0;
+});
+
 describe('Builtins - Core Functions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -518,7 +522,9 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_upload(['./local.txt', 'remote.txt']);
 
-      expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt');
+      expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt', expect.objectContaining({
+        onProgress: expect.any(Function),
+      }));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Successfully uploaded 1 file'));
     });
 
@@ -550,7 +556,10 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_download(['/remote/file.txt', './local.txt']);
 
-      expect(mockDownload).toHaveBeenCalled();
+      expect(mockDownload).toHaveBeenCalledWith('/remote/file.txt', expect.stringContaining('local.txt'), expect.objectContaining({
+        force: false,
+        onProgress: expect.any(Function),
+      }));
     });
   });
 

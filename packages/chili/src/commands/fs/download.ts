@@ -6,10 +6,9 @@ import { fileContent_getBinaryStream, files_listRecursive, FsItem } from "@fnnds
 import { path_resolveChrisFs } from "../../utils/cli.js";
 import fs from "fs";
 import path from "path";
-import cliProgress from "cli-progress";
 import chalk from "chalk";
 import { pipeline } from "stream/promises";
-import { bytes_format, eta_format, rate_format } from "./upload.js";
+import { bytes_format } from "./upload.js";
 import { prompt_confirmOrThrow } from "../../utils/input_format.js";
 
 export { bytes_format };
@@ -26,6 +25,25 @@ export interface DownloadSummary {
   transferSize: number;
   duration: number;
   speed: number;
+}
+
+/** Download progress fact emitted to callers that want to render progress. */
+export interface DownloadProgressEvent {
+  operation: "download";
+  kind: "transfer";
+  phase: "scanning" | "transferring" | "complete" | "failed";
+  label?: string;
+  current?: number;
+  total?: number;
+  percent?: number;
+  unit?: "files" | "bytes";
+  status?: "running" | "done" | "error";
+}
+
+/** Options for download execution. */
+export interface DownloadOptions {
+  force?: boolean;
+  onProgress?: (event: DownloadProgressEvent) => void;
 }
 
 /**
@@ -53,7 +71,7 @@ async function chrisPath_isDirectory(chrisPath: string): Promise<boolean> {
 }
 
 /**
- * Downloads files from ChRIS with a progress bar display.
+ * Downloads files from ChRIS and optionally emits structured progress events.
  * @param chrisPath - Remote ChRIS path (file or directory).
  * @param localPath - Local filesystem path.
  * @param options - Download options.
@@ -62,7 +80,7 @@ async function chrisPath_isDirectory(chrisPath: string): Promise<boolean> {
 export async function files_downloadWithProgress(
   chrisPath: string,
   localPath: string,
-  options: { force?: boolean } = {}
+  options: DownloadOptions = {}
 ): Promise<DownloadSummary> {
   const resolvedChris: string = await path_resolveChrisFs(chrisPath, {});
 
@@ -133,56 +151,24 @@ export async function files_downloadWithProgress(
       const parentDir: string = path.dirname(finalLocalPath);
       await directory_ensureExists(parentDir);
 
-      const showProgress: boolean = !!process.stdout.isTTY;
-      const progressBar: cliProgress.SingleBar | null =
-        typeof size === "number" && showProgress
-          ? new cliProgress.SingleBar(
-              {
-                format:
-                  "Downloading [{bar}] {percentage}% | ETA: {etaHuman} | Rate: {rate} | {bytes}/{totalBytes}",
-              },
-              cliProgress.Presets.shades_classic
-            )
-          : null;
-
-      if (progressBar) {
-        progressBar.start(size!, 0, {
-          etaHuman: "--",
-          rate: "--",
-          bytes: bytes_format(0),
-          totalBytes: bytes_format(size!),
-        });
-      }
-
       let transferred: number = 0;
       const writeStream: fs.WriteStream = fs.createWriteStream(finalLocalPath);
       stream.on("data", (chunk: Buffer) => {
         transferred += chunk.length;
-        if (progressBar) {
-          const elapsedSeconds: number = Math.max(
-            1e-6,
-            (Date.now() - summary.startTime) / 1000
-          );
-          const rateCurrent: number = transferred / elapsedSeconds;
-          const remainingBytes: number = Math.max(0, (size ?? transferred) - transferred);
-          const etaSeconds: number | null =
-            rateCurrent > 0 ? remainingBytes / rateCurrent : null;
-
-          progressBar.update(Math.min(transferred, size || transferred), {
-            etaHuman: eta_format(etaSeconds),
-            rate: rate_format(rateCurrent),
-            bytes: bytes_format(transferred),
-            totalBytes: bytes_format(size ?? transferred),
-          });
-        }
+        options.onProgress?.({
+          operation: "download",
+          kind: "transfer",
+          phase: "transferring",
+          label: `Downloading ${path.basename(finalLocalPath)}`,
+          current: transferred,
+          total: size,
+          percent: typeof size === "number" && size > 0 ? (Math.min(transferred, size) / size) * 100 : undefined,
+          unit: "bytes",
+          status: "running",
+        });
       });
 
       await pipeline(stream, writeStream);
-
-      if (progressBar) {
-        progressBar.update(size || transferred);
-        progressBar.stop();
-      }
 
       summary.totalFiles = 1;
       summary.transferredCount = 1;
@@ -192,20 +178,45 @@ export async function files_downloadWithProgress(
       summary.duration = (summary.endTime - summary.startTime) / 1000;
       summary.speed = summary.duration > 0 ? summary.transferSize / summary.duration : 0;
 
+      options.onProgress?.({
+        operation: "download",
+        kind: "transfer",
+        phase: "complete",
+        label: "Download complete",
+        current: transferred,
+        total: size,
+        percent: typeof size === "number" && size > 0 ? 100 : undefined,
+        unit: "bytes",
+        status: "done",
+      });
+
       return summary;
     } catch (error: unknown) {
       summary.failedCount = 1;
+      options.onProgress?.({
+        operation: "download",
+        kind: "transfer",
+        phase: "failed",
+        label: "Download failed",
+        status: "error",
+      });
       throw error;
     }
   }
 
   // Download directory
   console.log(chalk.cyan("Scanning files to download..."));
+  options.onProgress?.({
+    operation: "download",
+    kind: "transfer",
+    phase: "scanning",
+    label: "Scanning files to download",
+    status: "running",
+  });
   const items: FsItem[] = await files_listRecursive(resolvedChris);
   const files: FsItem[] = items.filter((item: FsItem) => item.type === 'file');
 
   summary.totalFiles = files.length;
-  const totalSize: number = files.reduce((sum: number, f: FsItem) => sum + (f.size || 0), 0);
 
   // Apply Unix semantics: trailing slash determines merge behavior
   const targetDir: string = resolvedChris.endsWith('/')
@@ -234,25 +245,17 @@ export async function files_downloadWithProgress(
   // Ensure target directory exists
   await directory_ensureExists(targetDir);
 
-  const showProgress: boolean = !!process.stdout.isTTY;
-  const progressBar: cliProgress.SingleBar | null = showProgress
-    ? new cliProgress.SingleBar(
-        {
-          format:
-            "Downloading [{bar}] {percentage}% | ETA: {etaHuman} | Rate: {rate} | {value}/{total} files | {bytes}/{totalBytes}",
-        },
-        cliProgress.Presets.shades_classic
-      )
-    : null;
-
-  if (progressBar) {
-    progressBar.start(files.length, 0, {
-      bytes: bytes_format(0),
-      totalBytes: bytes_format(totalSize),
-      etaHuman: "--",
-      rate: "--",
-    });
-  }
+  options.onProgress?.({
+    operation: "download",
+    kind: "transfer",
+    phase: "transferring",
+    label: "Downloading files",
+    current: 0,
+    total: files.length,
+    percent: files.length === 0 ? 100 : 0,
+    unit: "files",
+    status: "running",
+  });
 
   // Download each file
   for (const [index, file] of files.entries()) {
@@ -293,28 +296,34 @@ export async function files_downloadWithProgress(
       console.log(chalk.red(`\nError downloading ${file.path}: ${msg}`));
     }
 
-    const elapsedSeconds: number = Math.max(1e-6, (Date.now() - summary.startTime) / 1000);
-    const rateCurrent: number =
-      summary.transferSize > 0 ? summary.transferSize / elapsedSeconds : 0;
-    const remainingBytes: number = Math.max(0, totalSize - summary.transferSize);
-    const etaSeconds: number | null = rateCurrent > 0 ? remainingBytes / rateCurrent : null;
-
-    if (progressBar) {
-      progressBar.update(index + 1, {
-        bytes: bytes_format(summary.transferSize),
-        etaHuman: eta_format(etaSeconds),
-        rate: rate_format(rateCurrent),
-      });
-    }
-  }
-
-  if (progressBar) {
-    progressBar.stop();
+    options.onProgress?.({
+      operation: "download",
+      kind: "transfer",
+      phase: "transferring",
+      label: "Downloading files",
+      current: index + 1,
+      total: files.length,
+      percent: files.length === 0 ? 100 : ((index + 1) / files.length) * 100,
+      unit: "files",
+      status: "running",
+    });
   }
 
   summary.endTime = Date.now();
   summary.duration = (summary.endTime - summary.startTime) / 1000;
   summary.speed = summary.duration > 0 ? summary.transferSize / summary.duration : 0;
+
+  options.onProgress?.({
+    operation: "download",
+    kind: "transfer",
+    phase: summary.failedCount === 0 ? "complete" : "failed",
+    label: "Download complete",
+    current: summary.transferredCount,
+    total: summary.totalFiles,
+    percent: summary.totalFiles === 0 ? 100 : (summary.transferredCount / summary.totalFiles) * 100,
+    unit: "files",
+    status: summary.failedCount === 0 ? "done" : "error",
+  });
 
   return summary;
 }

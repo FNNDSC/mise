@@ -1,5 +1,7 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { EventEmitter } from 'events';
+import type { OutputSink } from '../src/core/sink.js';
+import type { ProgressEvent } from '../src/core/progress.js';
 
 // LONK WebSocket stand-in. 'open' (or a connect error) fires synchronously at
 // listener registration so tests never race the connection handshake; message
@@ -22,20 +24,6 @@ class MockWebSocket extends EventEmitter {
   }
 }
 jest.unstable_mockModule('ws', () => ({ default: MockWebSocket }));
-
-interface FakeBar { update: jest.Mock; setTotal: jest.Mock }
-const bars: FakeBar[] = [];
-class MockMultiBar {
-  create(): FakeBar {
-    const bar: FakeBar = { update: jest.fn(), setTotal: jest.fn() };
-    bars.push(bar);
-    return bar;
-  }
-  stop(): void { /* no-op */ }
-}
-jest.unstable_mockModule('cli-progress', () => ({
-  default: { MultiBar: MockMultiBar, Presets: { shades_classic: {} } },
-}));
 
 const mockQueriesCreate = jest.fn();
 const mockRetrieveCreate = jest.fn();
@@ -78,6 +66,7 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
 
+const { sink_set, StdoutSink } = await import('../src/core/sink.js');
 const { builtin_pull } = await import('../src/builtins/fs/pull.js');
 
 const QUERY_PATH: string = '/net/pacs/queries/q_qid:1';
@@ -108,12 +97,20 @@ const flush = async (): Promise<void> => {
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
+const progressEvents: ProgressEvent[] = [];
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   wsOpenMode = 'open';
   wsInstances.length = 0;
-  bars.length = 0;
+  progressEvents.length = 0;
+  const progressSink: OutputSink = {
+    data_write: (): void => { /* not used */ },
+    err_write: (): void => { /* not used */ },
+    status_write: (): void => { /* not used */ },
+    progress_write: (event: ProgressEvent): void => { progressEvents.push(event); },
+  };
+  sink_set(progressSink);
   mockServerResolve.mockResolvedValue('PACSDCM');
   mockClientGet.mockResolvedValue(fakeClient);
   mockQueriesCreate.mockResolvedValue(ok({ id: 100 }));
@@ -126,6 +123,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   jest.useRealTimers();
+  sink_set(new StdoutSink());
+  process.exitCode = 0;
 });
 
 const logged = (): string => logSpy.mock.calls.map(c => c.join(' ')).join('\n');
@@ -223,6 +222,10 @@ describe('builtin_pull watch loop', () => {
     await pull;
     expect(logged()).toContain('0/1 series complete');
     expect(logged()).toContain('1 retrieve(s) failed to start');
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
+      expect.objectContaining({ operation: 'pull', phase: 'failed', unit: 'series', status: 'error' }),
+    ]));
     expect(process.exitCode).toBe(1);
     expect(wsInstances[0].close).toHaveBeenCalled();
   });
@@ -246,8 +249,11 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(2_000);
     await pull;
 
-    expect(bars[0].update).toHaveBeenCalledWith(2);
-    expect(bars[0].update).toHaveBeenCalledWith(2, { label: expect.stringContaining('[DONE]') });
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: 'pull', itemId: '1.2.3', current: 1, status: 'running' }),
+      expect.objectContaining({ operation: 'pull', itemId: '1.2.3', current: 2, status: 'done' }),
+      expect.objectContaining({ operation: 'pull', phase: 'complete', unit: 'series', status: 'done' }),
+    ]));
     expect(logged()).toContain('1/1 series pulled successfully');
     expect(mockCubepath).toHaveBeenCalledWith([QUERY_PATH, '--retry']);
     expect(process.exitCode).toBe(0);
@@ -290,6 +296,9 @@ describe('builtin_pull watch loop', () => {
     await pull;
 
     expect(logged()).toContain('[STALLED]');
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: '1.2.3', status: 'stalled' }),
+    ]));
     expect(process.exitCode).toBe(1);
   });
 
@@ -306,6 +315,9 @@ describe('builtin_pull watch loop', () => {
     await pull;
 
     expect(logged()).toContain('[TIMEOUT]');
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: '1.2.3', status: 'timeout' }),
+    ]));
     expect(process.exitCode).toBe(1);
   });
 
@@ -318,6 +330,10 @@ describe('builtin_pull watch loop', () => {
 
     expect(logged()).toContain('0/1 series complete');
     expect(logged()).toContain('[ERROR]');
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
+      expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
+    ]));
     expect(process.exitCode).toBe(1);
   });
 
@@ -330,6 +346,9 @@ describe('builtin_pull watch loop', () => {
     await pull;
 
     expect(mockCubePathGet).toHaveBeenCalledWith('1.2.3', fakeClient, 1, 0);
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
+    ]));
     expect(logged()).toContain('1/1 series pulled successfully');
     expect(process.exitCode).toBe(0);
   });

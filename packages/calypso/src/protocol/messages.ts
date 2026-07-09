@@ -108,6 +108,40 @@ export const outputMessageSchema = z.object({
   chunk: z.string(),
 });
 
+/** The operation producing structured progress. */
+export const progressOperationSchema = z.enum(['upload', 'download', 'pull', 'workflow']);
+
+/** Broad class of progress producer. */
+export const progressKindSchema = z.enum(['transfer', 'retrieve', 'workflow']);
+
+/** Lifecycle phase of a progress operation. */
+export const progressPhaseSchema = z.enum(['scanning', 'transferring', 'watching', 'retrying', 'complete', 'failed']);
+
+/** Unit used by the primary progress counter. */
+export const progressUnitSchema = z.enum(['files', 'bytes', 'series', 'jobs', 'nodes']);
+
+/** State of the operation or item being reported. */
+export const progressStatusSchema = z.enum(['running', 'done', 'unconfirmed', 'stalled', 'timeout', 'error', 'unknown']);
+
+/** A structured progress event correlated to a command. */
+export const progressMessageSchema = z.object({
+  type: z.literal('progress'),
+  id: z.string(),
+  operation: progressOperationSchema,
+  kind: progressKindSchema.optional(),
+  phase: progressPhaseSchema,
+  label: z.string().optional(),
+  itemId: z.string().optional(),
+  current: z.number().nonnegative().optional(),
+  total: z.number().nonnegative().optional(),
+  percent: z.number().min(0).max(100).optional(),
+  unit: progressUnitSchema.optional(),
+  status: progressStatusSchema.optional(),
+});
+
+/** The progress payload before command correlation is added by the daemon. */
+export type ProgressEvent = Omit<z.infer<typeof progressMessageSchema>, 'type' | 'id'>;
+
 /** A session-bus broadcast: an envelope tagged with its originating surface. */
 export const sessionMessageSchema = z.object({
   type: z.literal('session'),
@@ -174,6 +208,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   resultMessageSchema,
   completeReplySchema,
   outputMessageSchema,
+  progressMessageSchema,
   sessionMessageSchema,
   errorMessageSchema,
   promptMessageSchema,

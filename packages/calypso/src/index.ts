@@ -29,10 +29,17 @@ export {
   resultMessageSchema,
   completeReplySchema,
   outputMessageSchema,
+  progressOperationSchema,
+  progressKindSchema,
+  progressPhaseSchema,
+  progressUnitSchema,
+  progressStatusSchema,
+  progressMessageSchema,
   sessionMessageSchema,
   errorMessageSchema,
   serverMessageSchema,
   type ClientMessage,
+  type ProgressEvent,
   type ServerMessage,
 } from './protocol/messages.js';
 export {

@@ -1,7 +1,7 @@
 /**
  * @file Builtin pull command.
  *
- * Blocking PACS series retrieve with parallel execution and per-series MultiBar progress.
+ * Blocking PACS series retrieve with parallel execution and per-series structured progress.
  * Accepts one or more `/net/pacs/queries/...` VFS paths (query, study, or series level)
  * and materialises the matching DICOM series into ChRIS storage.
  *
@@ -12,7 +12,6 @@
  */
 
 import chalk from 'chalk';
-import cliProgress from 'cli-progress';
 import WebSocket from 'ws';
 import {
   errorStack,
@@ -36,6 +35,8 @@ import {
 } from '../net/pacsUtils.js';
 import { builtin_cubepath } from '../net/cubepath.js';
 import { pullArgs_parse, type PullArgs } from './pull.args.js';
+import { sink_get } from '../../core/sink.js';
+import type { ProgressStatus } from '../../core/progress.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -43,6 +44,12 @@ const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
 const CHECKER_INTERVAL_MS: number = 2_000;
 
 type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error';
+
+function progressStatus_fromSeries(status: SeriesStatus, lonkConfirmed: boolean): ProgressStatus {
+  if (status === 'pulled') return lonkConfirmed ? 'done' : 'unconfirmed';
+  if (status === 'pending' || status === 'pulling') return 'running';
+  return status;
+}
 
 /**
  * Runtime state for a single series being pulled.
@@ -77,6 +84,38 @@ interface SeriesPullTask {
   startTime: number;
   lonkConfirmed: boolean;
   cubePathDir: string | null;
+}
+
+function pullProgress_emit(task: SeriesPullTask, status?: ProgressStatus, phase: 'watching' | 'retrying' = 'watching'): void {
+  const current: number = task.actualFiles;
+  const total: number = task.expectedFiles > 0 ? Math.max(task.expectedFiles, current, 1) : Math.max(current, 1);
+  sink_get().progress_write({
+    operation: 'pull',
+    kind: 'retrieve',
+    phase,
+    itemId: task.seriesUID,
+    label: task.label,
+    current,
+    total,
+    percent: total > 0 ? Math.min(100, (current / total) * 100) : undefined,
+    unit: 'files',
+    status: status ?? progressStatus_fromSeries(task.status, task.lonkConfirmed),
+  });
+}
+
+function pullProgress_complete(allTasks: SeriesPullTask[], failed: boolean): void {
+  const done: number = allTasks.filter((t: SeriesPullTask) => t.status === 'pulled').length;
+  sink_get().progress_write({
+    operation: 'pull',
+    kind: 'retrieve',
+    phase: failed ? 'failed' : 'complete',
+    label: failed ? 'Pull incomplete' : 'Pull complete',
+    current: done,
+    total: allTasks.length,
+    percent: allTasks.length > 0 ? (done / allTasks.length) * 100 : 100,
+    unit: 'series',
+    status: failed ? 'error' : 'done',
+  });
 }
 
 /**
@@ -202,27 +241,15 @@ async function tasks_pullWatch(
   const firingErrors: number = tasks.length - fired.length;
 
   if (fired.length === 0) {
+    for (const t of tasks) {
+      if (t.status === 'error') pullProgress_emit(t, 'error');
+    }
     ws.close();
     return firingErrors;
   }
 
-  const multiBar: cliProgress.MultiBar = new cliProgress.MultiBar(
-    {
-      format: ' {label}> [{bar}] {value}/{total}',
-      barCompleteChar: '█',
-      barIncompleteChar: '░',
-      hideCursor: true,
-      clearOnComplete: false,
-      stopOnComplete: false,
-      noTTYOutput: true,
-    },
-    cliProgress.Presets.shades_classic,
-  );
-
-  const barMap: Map<SeriesPullTask, cliProgress.SingleBar> = new Map();
   for (const t of tasks) {
-    const bar: cliProgress.SingleBar = multiBar.create(Math.max(t.expectedFiles, 1), 0, { label: t.label });
-    barMap.set(t, bar);
+    pullProgress_emit(t, t.status === 'error' ? 'error' : 'running');
   }
 
   const taskByUID: Map<string, SeriesPullTask> = new Map(
@@ -248,24 +275,23 @@ async function tasks_pullWatch(
           continue;
         }
         allTerminal = false;
-        const bar: cliProgress.SingleBar | undefined = barMap.get(t);
 
         if (t.startTime > 0 && now - t.startTime > SERIES_TIMEOUT_MS) {
           t.status = 'timeout';
-          bar?.update(t.actualFiles, { label: `${t.label} [TIMEOUT]` });
+          pullProgress_emit(t, 'timeout');
           continue;
         }
 
         if (t.actualFiles > 0 && now - t.lastProgressTime > STALL_TIMEOUT_MS) {
           t.status = 'stalled';
-          bar?.update(t.actualFiles, { label: `${t.label} [STALLED]` });
+          pullProgress_emit(t, 'stalled');
           continue;
         }
 
         if (t.startTime > 0 && t.actualFiles === 0 && now - t.startTime > NO_ACTIVITY_TIMEOUT_MS) {
           t.status = 'pulled';
           t.lonkConfirmed = false;
-          bar?.update(Math.max(t.expectedFiles, 1), { label: `${t.label} [NO LONK]` });
+          pullProgress_emit(t, 'unconfirmed');
           continue;
         }
       }
@@ -283,7 +309,6 @@ async function tasks_pullWatch(
 
         const t: SeriesPullTask | undefined = taskByUID.get(seriesUID);
         if (!t) return;
-        const bar: cliProgress.SingleBar | undefined = barMap.get(t);
 
         if ('ndicom' in message && typeof message.ndicom === 'number') {
           const n: number = message.ndicom;
@@ -291,18 +316,15 @@ async function tasks_pullWatch(
           t.lastProgressFiles = n;
           t.lastProgressTime = Date.now();
           if (t.status === 'pending') t.status = 'pulling';
-          const total: number = t.expectedFiles > 0 ? t.expectedFiles : Math.max(n, 1);
-          bar?.setTotal(total);
-          bar?.update(n);
+          pullProgress_emit(t, 'running');
         } else if ('done' in message && message.done === true) {
           t.status = 'pulled';
           t.lonkConfirmed = true;
-          const finalTotal: number = t.expectedFiles > 0 ? t.expectedFiles : t.actualFiles || 1;
-          bar?.setTotal(finalTotal);
-          bar?.update(finalTotal, { label: `${t.label} [DONE]` });
+          if (t.actualFiles < t.expectedFiles) t.actualFiles = t.expectedFiles;
+          pullProgress_emit(t, 'done');
         } else if ('error' in message && typeof message.error === 'string') {
           t.status = 'error';
-          bar?.update(t.actualFiles, { label: `${t.label} [ERROR]` });
+          pullProgress_emit(t, 'error');
         }
       } catch {
         // Malformed message — ignore
@@ -313,7 +335,7 @@ async function tasks_pullWatch(
       for (const t of fired) {
         if (t.status === 'pending' || t.status === 'pulling') {
           t.status = 'error';
-          barMap.get(t)?.update(t.actualFiles, { label: `${t.label} [WS ERROR]` });
+          pullProgress_emit(t, 'error');
         }
       }
       done();
@@ -322,7 +344,6 @@ async function tasks_pullWatch(
     ws.on('close', () => { done(); });
   });
 
-  multiBar.stop();
   return firingErrors;
 }
 
@@ -411,6 +432,7 @@ async function pullRetryLoop(
       t.lonkConfirmed = false;
       t.syntheticQueryId = null;
       t.retrieveId = null;
+      pullProgress_emit(t, 'running', 'retrying');
     }
 
     extraFiringErrors += await tasks_pullWatch(retryCandidates, pacsserver, client);
@@ -422,6 +444,7 @@ async function pullRetryLoop(
 
   for (const t of retryCandidates) {
     t.status = 'error';
+    pullProgress_emit(t, 'error');
   }
   return extraFiringErrors;
 }
@@ -451,13 +474,15 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
     console.log(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
     process.exitCode = 1;
   }
+
+  pullProgress_complete(allTasks, failures.length > 0 || totalFiringErrors > 0);
 }
 
 
 /**
  * Pulls one or more `/net/pacs/queries/...` VFS paths into ChRIS storage.
  *
- * Blocking by default: shows per-series MultiBar progress via LONK WebSocket,
+ * Blocking by default: emits per-series structured progress via LONK WebSocket,
  * exits non-zero on partial failure.
  * With `--nowait`: fires retrieves and prints `<seriesUID> <retrieveId>` per line, then returns.
  * With `--retry N`: re-fires retrieves for [NO LONK] series up to N additional times.

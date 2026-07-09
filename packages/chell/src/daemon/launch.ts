@@ -15,6 +15,7 @@ import chalk from 'chalk';
 import { CalypsoDaemon, token_generate } from '@fnndsc/calypso';
 import type { ChellEngine } from '../core/engine.js';
 import { sink_set, type OutputSink } from '../core/sink.js';
+import type { ProgressEvent } from '../core/progress.js';
 import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '../core/surface.js';
 import { sessionPrompt_render } from '../core/prompt/session.js';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
@@ -25,12 +26,16 @@ import { discovery_write, discovery_path } from '../remote/discovery.js';
  * envelope. Errors still reach the daemon's stderr for operability.
  */
 class NullSink implements OutputSink {
+  constructor(private readonly daemon: CalypsoDaemon) {}
+
   /** @inheritdoc */
   public data_write(_chunk: string | Buffer): void { /* discarded */ }
   /** @inheritdoc */
   public err_write(chunk: string | Buffer): void { process.stderr.write(chunk); }
   /** @inheritdoc */
   public status_write(_text: string): void { /* discarded */ }
+  /** @inheritdoc */
+  public progress_write(event: ProgressEvent): void { this.daemon.progress_current(event); }
 }
 
 /**
@@ -45,8 +50,6 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
   if (chalk.level < 1) {
     chalk.level = 3;
   }
-  sink_set(new NullSink());
-
   const token: string = token_generate();
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
@@ -57,6 +60,7 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
     // prompt and pushes it to surfaces.
     promptProvider: (): Promise<string> => sessionPrompt_render(),
   });
+  sink_set(new NullSink(daemon));
 
   // Interactivity is a surface capability: a builtin that prompts, or a
   // pipeline segment, reaches the surface running the command through the

@@ -24,6 +24,7 @@
 
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { ProgressEvent } from './progress.js';
+import { TerminalProgressRenderer } from './progressRenderer.js';
 
 /**
  * Destination for command output, installed by the host.
@@ -69,6 +70,12 @@ function sink_streamsEnvelopeOutput(sink: OutputSink): sink is LiveEnvelopeOutpu
  * historical behavior exactly.
  */
 export class StdoutSink implements OutputSink {
+  private readonly progressRenderer: TerminalProgressRenderer;
+
+  constructor(progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer()) {
+    this.progressRenderer = progressRenderer;
+  }
+
   /** @inheritdoc */
   public data_write(chunk: string | Buffer): void {
     process.stdout.write(chunk);
@@ -85,16 +92,7 @@ export class StdoutSink implements OutputSink {
   }
 
   public progress_write(event: ProgressEvent): void {
-    const parts: string[] = [event.operation];
-    if (event.label) parts.push(event.label);
-    if (event.status) parts.push(event.status);
-    if (event.current !== undefined && event.total !== undefined) {
-      parts.push(`${event.current}/${event.total}`);
-    } else if (event.current !== undefined) {
-      parts.push(`${event.current}`);
-    }
-    if (event.unit) parts.push(event.unit);
-    process.stdout.write(`${parts.join(' ')}\n`);
+    this.progressRenderer.write(event);
   }
 }
 

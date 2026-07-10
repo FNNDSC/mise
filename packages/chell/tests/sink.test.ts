@@ -15,6 +15,7 @@ import {
   printingHandler_wrap,
   type OutputSink,
 } from '../src/core/sink.js';
+import { TerminalProgressRenderer } from '../src/core/progressRenderer.js';
 
 afterEach(() => {
   sink_set(new StdoutSink());
@@ -34,16 +35,12 @@ describe('StdoutSink', () => {
     expect(writeSpy).toHaveBeenCalledWith('\rspinning');
   });
 
-  it('renders progress to process.stdout', () => {
-    const writeSpy: jest.SpiedFunction<typeof process.stdout.write> = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    new StdoutSink().progress_write({ operation: 'upload', phase: 'transferring', current: 1, total: 2, unit: 'files', status: 'running' });
-    expect(writeSpy).toHaveBeenCalledWith('upload running 1/2 files\n');
-  });
-
-  it('renders progress with a label and an unknown total', () => {
-    const writeSpy: jest.SpiedFunction<typeof process.stdout.write> = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    new StdoutSink().progress_write({ operation: 'download', phase: 'transferring', label: 'file.dcm', current: 9, unit: 'bytes' });
-    expect(writeSpy).toHaveBeenCalledWith('download file.dcm 9 bytes\n');
+  it('delegates progress to its renderer', () => {
+    const write = jest.fn();
+    const renderer = { write } as unknown as TerminalProgressRenderer;
+    const event = { operation: 'upload', phase: 'transferring', current: 1, total: 2, unit: 'files', status: 'running' } as const;
+    new StdoutSink(renderer).progress_write(event);
+    expect(write).toHaveBeenCalledWith(event);
   });
 });
 

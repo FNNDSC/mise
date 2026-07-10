@@ -11,6 +11,28 @@ Date: 2026-07-07. Repo: `/home/rudolph/src/mise`, branch `main`, clean.
 > session daemon** (see "Deferred to stage 2" below and calypso.adoc appendix
 > "stage two"). The component sections below are kept as the stage-1 record.
 
+## CURRENT — #71 stage-2 exit gate
+
+Dedicated daemon exemplar added: `packages/chell/exemplars/ts/05_calypsoDaemon.ts`.
+It starts a real `chell --daemon`, attaches over the CALYPSO WebSocket, drives
+live commands through the daemon-hosted engine, restarts the daemon against the
+same isolated config directory, verifies context/identity rehydrate from the
+context files, and runs a generated headless-Chromium browser page that attaches
+and executes `version`.
+
+Verified live against ekanite:
+- `05_calypsoDaemon`: PASS 7/7.
+- `04_pacsQR`: exposed a real destructive-restore edge. The pre-existing
+  `FUJI Basic Text SR` series was deleted, the exemplar restore timed out, and a
+  standalone repair retrieve immediately restored it with 1 file. The exemplar
+  restore path now retries with a fresh single-series query before failing.
+  Treat PACS restore as the highest-risk live test edge; never stop after a
+  failed restore without proving/repairing the series in CUBE.
+
+Observed daemon-surface defect: remote PTY `ls` rendered duplicate listing text
+once during manual testing. Command results and CUBE state were correct; this is
+a display/replay issue to keep in the follow-up queue if it repeats.
+
 **Deferred to stage 2 (daemon):**
 - **Structured progress over the daemon wire** (from #59): cli-progress emits
   terminal escape frames — wrong shape for a remote surface, which needs

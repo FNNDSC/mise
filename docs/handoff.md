@@ -101,14 +101,13 @@ callbacks from chili helpers, adapted by chell into the active sink. Progress is
 live-only, origin-surface-only, and excluded from pipes, redirects, capture, and
 final envelopes. Full contract: `docs/structured-progress.md`.
 
-Follow-ups split from #70: #82 live remote stdout/stderr streaming (save current
-WIP there; do not mix it into #70), and #83 terminal progress-bar parity after
-structured events are source of truth. NOTE: full live verification of
-progress/upload needs CUBE re-auth + a scratch CUBE path.
+Follow-ups split from #70: #82 live remote stdout/stderr streaming, and #83
+terminal progress-bar parity after structured events are source of truth. NOTE:
+full live verification of progress/upload needs CUBE re-auth + a scratch CUBE
+path.
 
 Sub-issues (dependency order): #65 ✅ (#73) → #66 ✅ (#74) → #67 ✅ (#75) →
-#68 ✅ (#76) → #69 ✅ (#77/#78/#79) → **#70 structured progress (IN PROGRESS —
-remote editing done PR #80; structured progress remains)** → #71 exit gate
+#68 ✅ (#76) → #69 ✅ (#77/#78/#79) → #70 ✅ (#84) → #71 exit gate
 (exemplars through the daemon + crash test + browser smoke). On board 26.
 
 Open decision still to settle in-stage: interrupt semantics (what a cancel

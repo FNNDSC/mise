@@ -214,6 +214,24 @@ describe('CaptureSink', () => {
     expect(progressSeen).toEqual(['pull']);
     expect(capture.dataText_get()).toBe('');
   });
+
+  it('optionally forwards captured data and err to the live sink', () => {
+    const liveData: string[] = [];
+    const liveErr: string[] = [];
+    const liveSpy: OutputSink = {
+      data_write: (chunk: string | Buffer): void => { liveData.push(chunk.toString()); },
+      err_write: (chunk: string | Buffer): void => { liveErr.push(chunk.toString()); },
+      status_write: (): void => { /* not used */ },
+      progress_write: (): void => { /* not used */ },
+    };
+    const capture: CaptureSink = new CaptureSink(liveSpy, { forwardEnvelopeOutput: true });
+    capture.data_write('out');
+    capture.err_write('err');
+    expect(capture.dataText_get()).toBe('out');
+    expect(capture.errText_get()).toBe('err');
+    expect(liveData).toEqual(['out']);
+    expect(liveErr).toEqual(['err']);
+  });
 });
 
 describe('printingHandler_wrap', () => {
@@ -243,6 +261,28 @@ describe('printingHandler_wrap', () => {
     };
     const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
     expect(envelope.rendered).toBe('raw chunk');
+  });
+
+  it('streams captured output live when the active sink opts in', async () => {
+    const liveData: string[] = [];
+    const liveErr: string[] = [];
+    const liveSink: OutputSink & { liveEnvelopeOutput: true } = {
+      liveEnvelopeOutput: true,
+      data_write: (chunk: string | Buffer): void => { liveData.push(chunk.toString()); },
+      err_write: (chunk: string | Buffer): void => { liveErr.push(chunk.toString()); },
+      status_write: (): void => { /* not used */ },
+      progress_write: (): void => { /* not used */ },
+    };
+    sink_set(liveSink);
+    const handler = async (_args: string[]): Promise<void> => {
+      console.log('live row');
+      console.error('live err');
+    };
+    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
+    expect(envelope.rendered).toBe('live row\n');
+    expect(envelope.renderedErr).toBe('live err\n');
+    expect(liveData).toEqual(['live row\n']);
+    expect(liveErr).toEqual(['live err\n']);
   });
 
   it('captures Uint8Array stdout writes', async () => {

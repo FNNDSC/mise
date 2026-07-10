@@ -182,6 +182,37 @@ describe('CalypsoDaemon', () => {
     expect(result).toEqual(expect.objectContaining({ type: 'result', id: 'p1' }));
   });
 
+  it('forwards live output from the running command only to the origin surface', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const outputEngine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        (daemonRef as CalypsoDaemon).output_current('data', 'live stdout\n');
+        (daemonRef as CalypsoDaemon).output_current('err', 'live stderr\n');
+        return [{ status: 'ok', rendered: 'final' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    await daemon.stop();
+    daemon = new CalypsoDaemon({ engine: outputEngine, token: TOKEN });
+    daemonRef = daemon;
+    port = await daemon.start();
+
+    const origin = await client_attach(port);
+    const sibling = await client_attach(port);
+    clients.push(origin, sibling);
+    const originMessages = messages_collect(origin, 3);
+    const siblingMessages = messages_collect(sibling, 1);
+    send(origin, { type: 'execute', id: 'o1', line: 'live' });
+
+    const [stdout, stderr, result] = await originMessages;
+    expect(stdout).toEqual({ type: 'output', id: 'o1', channel: 'data', chunk: 'live stdout\n' });
+    expect(stderr).toEqual({ type: 'output', id: 'o1', channel: 'err', chunk: 'live stderr\n' });
+    expect(result).toEqual(expect.objectContaining({ type: 'result', id: 'o1' }));
+
+    const [siblingMessage] = await siblingMessages;
+    expect(siblingMessage).toEqual(expect.objectContaining({ type: 'session' }));
+  });
+
   it('answers a completion request', async () => {
     const ws = await client_attach(port);
     clients.push(ws);

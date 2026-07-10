@@ -377,6 +377,25 @@ export class CalypsoDaemon {
   }
 
   /**
+   * Streams an opaque live output chunk from the executing command to its
+   * origin surface. Output is live telemetry, distinct from final envelopes;
+   * when no command is active or the origin surface is gone, it is dropped.
+   *
+   * @param channel - The output channel that produced the chunk.
+   * @param chunk - The text chunk to forward.
+   * @returns True when the chunk was sent to a surface.
+   */
+  public output_current(channel: 'data' | 'err' | 'status', chunk: string): boolean {
+    const origin: Surface | null = this.currentOrigin;
+    const id: string | null = this.currentId;
+    if (!origin || !id || origin.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    this.send(origin.socket, { type: 'output', id, channel, chunk });
+    return true;
+  }
+
+  /**
    * Resolves a pending prompt with the surface's answer.
    *
    * @param promptId - The prompt correlation id.

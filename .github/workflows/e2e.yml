@@ -52,6 +52,7 @@ jobs:
           node exemplars/ts/dist/02_fsRoundtrip.js
           node exemplars/ts/dist/03_feedDcm2niix.js
           node exemplars/ts/dist/04_pacsQR.js
+          node exemplars/ts/dist/05_calypsoDaemon.js
       # Residue-free chell scripts only: 20 pulls PACS files that need
       # admin cleanup outside chell, so it stays a manual exemplar.
       - name: chell scripts

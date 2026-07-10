@@ -2,14 +2,14 @@
  * @file Exemplar 05 — CALYPSO daemon exit-gate smoke against a live CUBE.
  *
  * Starts a real `chell --daemon`, attaches over the WebSocket protocol, drives
- * live shell commands through that remote surface, restarts the daemon against
- * the same isolated config directory, and proves a minimal browser page can
- * attach to the daemon and execute a command.
+ * live shell commands through that remote surface, and restarts the daemon
+ * against the same isolated config directory.
  *
  * This is intentionally a smoke, not a duplicate of every destructive TS
  * exemplar. The PACS/feed truth is covered by 03/04; this program proves the
- * stage-2 topology: daemon-hosted engine, remote surface, restart rehydrate,
- * and browser embeddability.
+ * stage-2 topology: daemon-hosted engine, remote surface, and restart
+ * rehydrate. Browser compatibility is covered independently in calypso's
+ * ordinary CI suite, without live CUBE credentials.
  *
  *   node exemplars/ts/dist/05_calypsoDaemon.js
  *
@@ -20,7 +20,7 @@ import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir, userInfo } from 'os';
 import * as path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { WebSocket } from 'ws';
 import {
   CONTRACT_VERSION,
@@ -49,9 +49,6 @@ const PACKAGE_ROOT: string = path.resolve(path.dirname(fileURLToPath(import.meta
 const DISCOVERY_PATH: string = path.join(tmpdir(), `chell-calypso-${userInfo().username}.json`);
 /** Isolated config directory shared across daemon restart within this exemplar. */
 const STABLE_CONFIG_DIR: string = mkdtempSync(path.join(tmpdir(), 'chell-calypso-exitgate-'));
-/** Generated browser smoke files live outside the repo and are removed. */
-const BROWSER_DIR: string = mkdtempSync(path.join(tmpdir(), 'chell-calypso-browser-'));
-
 let originalDiscovery: string | null = null;
 let originalDiscoveryExists: boolean = false;
 
@@ -141,7 +138,7 @@ async function daemon_stop(handle: DaemonHandle): Promise<void> {
 }
 
 /**
- * Minimal raw CALYPSO client used by both Node and browser smoke paths.
+ * Minimal raw CALYPSO client used by the live daemon smoke.
  */
 class CalypsoClient {
   private readonly ws: WebSocket;
@@ -291,87 +288,6 @@ async function filesystemRoundtrip_run(client: CalypsoClient): Promise<void> {
 }
 
 /**
- * Generates and runs a minimal browser page that attaches to the daemon.
- *
- * @param discovery - Current daemon discovery.
- */
-async function browserSmoke_run(discovery: Discovery): Promise<boolean> {
-  const htmlPath: string = path.join(BROWSER_DIR, 'calypso-browser-smoke.html');
-  writeFileSync(htmlPath, browserSmoke_html(discovery), { mode: 0o600 });
-  const chromium: string = process.env.CHROME_BIN ?? '/usr/bin/chromium';
-  const result: { stdout: string; code: number | null } = await process_capture(chromium, [
-    '--headless',
-    '--disable-gpu',
-    '--no-sandbox',
-    '--dump-dom',
-    '--virtual-time-budget=12000',
-    pathToFileURL(htmlPath).href,
-  ]);
-  return result.code === 0 && result.stdout.includes('CALYPSO_BROWSER_SMOKE_PASS');
-}
-
-/**
- * Browser smoke HTML. Token is embedded only in a temp file with 0600 mode.
- *
- * @param discovery - Daemon endpoint and attach token.
- */
-function browserSmoke_html(discovery: Discovery): string {
-  return `<!doctype html>
-<meta charset="utf-8">
-<title>pending</title>
-<body>pending</body>
-<script>
-const ws = new WebSocket(${JSON.stringify(discovery.url)});
-const token = ${JSON.stringify(discovery.token)};
-let done = false;
-function pass() {
-  done = true;
-  document.title = 'pass';
-  document.body.textContent = 'CALYPSO_BROWSER_SMOKE_PASS';
-}
-function fail(reason) {
-  if (done) return;
-  document.title = 'fail';
-  document.body.textContent = 'CALYPSO_BROWSER_SMOKE_FAIL ' + reason;
-}
-ws.onerror = () => fail('socket');
-ws.onopen = () => ws.send(JSON.stringify({
-  type: 'attach',
-  protocolVersion: ${CONTRACT_VERSION},
-  token,
-}));
-ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-  if (message.type === 'attached') {
-    ws.send(JSON.stringify({ type: 'execute', id: 'browser-1', line: 'version' }));
-  }
-  if (message.type === 'result' && JSON.stringify(message.envelopes).includes('chell')) {
-    pass();
-  }
-  if (message.type === 'error') fail(message.reason);
-};
-setTimeout(() => fail('timeout'), 10000);
-</script>
-`;
-}
-
-/**
- * Captures one child process invocation.
- *
- * @param command - Executable path.
- * @param args - Arguments.
- */
-function process_capture(command: string, args: string[]): Promise<{ stdout: string; code: number | null }> {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { env: process.env });
-    let stdout: string = '';
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
-    child.stderr.on('data', () => undefined);
-    child.on('close', (code: number | null) => resolve({ stdout, code }));
-  });
-}
-
-/**
  * Removes attach tokens from daemon diagnostics.
  *
  * @param output - Raw daemon output.
@@ -428,14 +344,11 @@ async function main(): Promise<void> {
     await command_expect(client, 'working directory survived daemon restart via context files', 'pwd', '/SERVICES');
     await command_expect(client, 'restarted daemon re-derived CUBE identity', 'whoami', env.user);
 
-    section('browser embedding smoke');
-    check('headless browser attached and executed through the daemon', await browserSmoke_run(daemon.discovery));
   } finally {
     client?.close();
     if (daemon) await daemon_stop(daemon);
     discovery_restore();
     rmSync(STABLE_CONFIG_DIR, { recursive: true, force: true });
-    rmSync(BROWSER_DIR, { recursive: true, force: true });
   }
 
   summary_exit();
@@ -445,6 +358,5 @@ main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   discovery_restore();
   rmSync(STABLE_CONFIG_DIR, { recursive: true, force: true });
-  rmSync(BROWSER_DIR, { recursive: true, force: true });
   process.exit(1);
 });

@@ -156,7 +156,7 @@ a remote CALYPSO surface) tap in at the layer they need.
 
 | Package | Backronym | Role | README |
 |---------|-----------|------|--------|
-| **calypso** | **C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive **S**cientific **O**utcomes | Session daemon and wire contract — sits between remote/web surfaces and a hosted chell engine | [packages/calypso](packages/calypso/README.md) |
+| **calypso** | **CALYPSO** **A**ccepts **L**anguage, **Y**ielding **P**ermitted **S**hell **O**perations | Session daemon and wire contract — sits between remote/web surfaces and a hosted chell engine | [packages/calypso](packages/calypso/README.md) |
 | **chell** | **C**hELL **E**xecutes **L**ayered **L**ogic | The interactive shell — REPL, builtins, tab-completion, scripting | [packages/chell](packages/chell/README.md) |
 | **chili** | **ChILI** handles **I**ntelligent **L**ine **I**nteractions | Controller + standalone CLI — headless commands return typed models; views render them | [packages/chili](packages/chili/README.md) |
 | **salsa** | **S**alsa **A**bstracts **L**ogic **S**ervice **A**ssets | Frontend-agnostic logic — high-level intents and the Virtual Filesystem dispatcher | [packages/salsa](packages/salsa/README.md) |
@@ -196,8 +196,8 @@ client. A later stage adds a natural-language layer that *proposes* commands,
 always validated against the live platform before anything runs — the deterministic
 shell is never outranked by a language model.
 
-**CALYPSO** — **C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive
-**S**cientific **O**utcomes — is that intent layer. The name is a harbor reference.
+**CALYPSO** — **CALYPSO** **A**ccepts **L**anguage, **Y**ielding **P**ermitted
+**S**hell **O**perations — is that intent layer. The name is a harbor reference.
 In the *Odyssey*, Calypso keeps the island where the voyager finds haven; the name
 is the Greek word for "to conceal," which the project keeps but turns around.
 **HARBOR** is that haven for the ChRIS operator, and CALYPSO is the keeper at its

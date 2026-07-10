@@ -103,12 +103,33 @@ Requires Node.js ≥ 20.12 (22.x recommended).
 ## The Sandwich Model
 
 ```text
+   Surfaces / hosts
+   ════════════════
+
+   local terminal
+        │
+        ▼
    ┌────────────────────────────────────────────────────────────┐
-   │  calypso  @fnndsc/calypso  daemon · session bus · wire     │  <- surfaces attach here
-   │                              contract · future intent      │
-   ├────────────────────────────────────────────────────────────┤
-   │  chell    @fnndsc/chell    REPL · builtins · completion    │  <- you type here
-   ├────────────────────────────────────────────────────────────┤
+   │  chell    @fnndsc/chell    shell engine · REPL · builtins  │
+   └────────────────────────────────────────────────────────────┘
+
+   remote terminal / future web surface
+        │
+        ▼
+   ┌────────────────────────────────────────────────────────────┐
+   │  calypso  @fnndsc/calypso  daemon · session bus · wire     │
+   │                              contract · surface routing    │
+   └────────────────────────────────────────────────────────────┘
+        │
+        ▼
+   ┌────────────────────────────────────────────────────────────┐
+   │  chell    @fnndsc/chell    hosted shell engine             │
+   └────────────────────────────────────────────────────────────┘
+
+   Shared command substrate
+   ════════════════════════
+
+   ┌────────────────────────────────────────────────────────────┐
    │  chili    @fnndsc/chili    typed commands · views · CLI    │  controller
    ├────────────────────────────────────────────────────────────┤
    │  salsa    @fnndsc/salsa    business logic · VFS · intents  │  logic
@@ -119,17 +140,19 @@ Requires Node.js ≥ 20.12 (22.x recommended).
    └────────────────────────────────────────────────────────────┘
 ```
 
-The four lower packages are the strict Sandwich Model: each layer talks **only**
-to the one below it. CALYPSO is the session/daemon layer above that substrate:
-it hosts one chell engine, validates a typed WebSocket protocol, and lets
-surfaces attach without learning CUBE's Collection+JSON API.
+The four original packages are the strict Sandwich Model: each layer talks
+**only** to the one below it. CALYPSO is not a fifth layer stacked above chell;
+it is the session/daemon boundary between non-local surfaces and a hosted chell
+engine. Local chell can run without CALYPSO. Remote and future web surfaces go
+through CALYPSO to drive the same engine without learning CUBE's Collection+JSON
+API.
 
 Frontends other than the shell (`chili` as a scriptable CLI, a future web app, or
 a remote CALYPSO surface) tap in at the layer they need.
 
 | Package | Backronym | Role | README |
 |---------|-----------|------|--------|
-| **calypso** | **C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive **S**cientific **O**utcomes | Session daemon and wire contract — hosts a chell engine for remote/web surfaces; future intent layer | [packages/calypso](packages/calypso/README.md) |
+| **calypso** | **C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive **S**cientific **O**utcomes | Session daemon and wire contract — sits between remote/web surfaces and a hosted chell engine | [packages/calypso](packages/calypso/README.md) |
 | **chell** | **C**hELL **E**xecutes **L**ayered **L**ogic | The interactive shell — REPL, builtins, tab-completion, scripting | [packages/chell](packages/chell/README.md) |
 | **chili** | **ChILI** handles **I**ntelligent **L**ine **I**nteractions | Controller + standalone CLI — headless commands return typed models; views render them | [packages/chili](packages/chili/README.md) |
 | **salsa** | **S**alsa **A**bstracts **L**ogic **S**ervice **A**ssets | Frontend-agnostic logic — high-level intents and the Virtual Filesystem dispatcher | [packages/salsa](packages/salsa/README.md) |

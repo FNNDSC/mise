@@ -14,7 +14,7 @@ import { WebSocket } from 'ws';
 import { serverMessage_parse, CONTRACT_VERSION, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { ChellEngine, CompletionResult } from '../core/engine.js';
-import { envelope_deliver, sink_get } from '../core/sink.js';
+import { envelope_deliver, sink_get, type OutputSink } from '../core/sink.js';
 
 /** A pending request awaiting its correlated reply. */
 interface Pending {
@@ -52,6 +52,7 @@ export class RemoteEngine implements ChellEngine {
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private latestPrompt: string = '';
   private nextId: number = 0;
+  private readonly liveEnvelopeChannels: Map<string, Set<'data' | 'err'>> = new Map<string, Set<'data' | 'err'>>();
 
   /**
    * @param ws - An open, already-attached socket to the daemon.
@@ -112,11 +113,18 @@ export class RemoteEngine implements ChellEngine {
 
   /** @inheritdoc */
   public async line_execute(line: string): Promise<CommandEnvelope[]> {
-    const envelopes: CommandEnvelope[] = await this.request<CommandEnvelope[]>('execute', { line });
+    const id: string = String(this.nextId++);
+    const envelopes: CommandEnvelope[] = await this.request<CommandEnvelope[]>('execute', { line }, id);
+    const liveChannels: Set<'data' | 'err'> | undefined = this.liveEnvelopeChannels.get(id);
+    this.liveEnvelopeChannels.delete(id);
     // Deliver to the active sink exactly as the in-process engine delivers
     // live, so the REPL host renders remote output without any change.
     for (const envelope of envelopes) {
-      envelope_deliver(envelope);
+      envelope_deliver(liveChannels ? {
+        ...envelope,
+        rendered: liveChannels.has('data') ? '' : envelope.rendered,
+        renderedErr: liveChannels.has('err') ? undefined : envelope.renderedErr,
+      } : envelope);
     }
     return envelopes;
   }
@@ -133,8 +141,8 @@ export class RemoteEngine implements ChellEngine {
    * @param fields - The message fields besides `type` and `id`.
    * @returns The reply payload.
    */
-  private request<T>(type: 'execute' | 'complete', fields: Record<string, string>): Promise<T> {
-    const id: string = String(this.nextId++);
+  private request<T>(type: 'execute' | 'complete', fields: Record<string, string>, requestId?: string): Promise<T> {
+    const id: string = requestId ?? String(this.nextId++);
     return new Promise((resolve: (value: unknown) => void, reject: (err: Error) => void) => {
       this.pending.set(id, { resolve, reject });
       this.ws.send(JSON.stringify({ type, id, ...fields }));
@@ -179,6 +187,14 @@ export class RemoteEngine implements ChellEngine {
           const { type: _type, id: _id, ...event } = message;
           sink_get().progress_write(event);
         }
+        break;
+      case 'output':
+        if (message.channel === 'data' || message.channel === 'err') {
+          const channels: Set<'data' | 'err'> = this.liveEnvelopeChannels.get(message.id) ?? new Set<'data' | 'err'>();
+          channels.add(message.channel);
+          this.liveEnvelopeChannels.set(message.id, channels);
+        }
+        this.output_render(message.channel, message.chunk);
         break;
       case 'pipe':
         void this.pipe_run(message.pipeId, message.command, message.input);
@@ -239,6 +255,23 @@ export class RemoteEngine implements ChellEngine {
       ? await this.onEdit(content, extension)
       : { content, changed: false };
     this.ws.send(JSON.stringify({ type: 'editResult', editId, content: result.content, changed: result.changed }));
+  }
+
+  /**
+   * Renders a streamed output chunk to the local sink on its channel.
+   *
+   * @param channel - The sink channel the chunk belongs to.
+   * @param chunk - The streamed text.
+   */
+  private output_render(channel: 'data' | 'err' | 'status', chunk: string): void {
+    const sink: OutputSink = sink_get();
+    if (channel === 'data') {
+      sink.data_write(chunk);
+    } else if (channel === 'err') {
+      sink.err_write(chunk);
+    } else {
+      sink.status_write(chunk);
+    }
   }
 
   /**

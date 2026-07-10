@@ -6,8 +6,8 @@
  * cannot: color is forced on (a daemon has no TTY, so chalk would otherwise
  * strip it, and the rendered text must carry color for a remote terminal to
  * reproduce the local experience), and the engine's live sink output is
- * silenced on the daemon's own console — the rendered text still travels in
- * each command's result envelope to attached surfaces.
+ * routed through the command's origin surface rather than rendered on the
+ * daemon's own console.
  *
  * @module
  */
@@ -20,22 +20,25 @@ import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, t
 import { sessionPrompt_render } from '../core/prompt/session.js';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
 
-/**
- * A sink that discards command output. The daemon does not render to its own
- * console; each command's rendered text reaches surfaces in its result
- * envelope. Errors still reach the daemon's stderr for operability.
- */
-class NullSink implements OutputSink {
+/** The daemon sink forwards live command output to the executing surface. */
+class DaemonSink implements OutputSink {
+  public readonly liveEnvelopeOutput = true;
+
   constructor(private readonly daemon: CalypsoDaemon) {}
 
   /** @inheritdoc */
-  public data_write(_chunk: string | Buffer): void { /* discarded */ }
+  public data_write(chunk: string | Buffer): void { this.output_write('data', chunk); }
   /** @inheritdoc */
-  public err_write(chunk: string | Buffer): void { process.stderr.write(chunk); }
+  public err_write(chunk: string | Buffer): void { this.output_write('err', chunk); }
   /** @inheritdoc */
-  public status_write(_text: string): void { /* discarded */ }
+  public status_write(text: string): void { this.daemon.output_current('status', text); }
   /** @inheritdoc */
   public progress_write(event: ProgressEvent): void { this.daemon.progress_current(event); }
+
+  private output_write(channel: 'data' | 'err', chunk: string | Buffer): void {
+    const text: string = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+    this.daemon.output_current(channel, text);
+  }
 }
 
 /**
@@ -60,7 +63,7 @@ export async function daemon_launch(engine: ChellEngine): Promise<void> {
     // prompt and pushes it to surfaces.
     promptProvider: (): Promise<string> => sessionPrompt_render(),
   });
-  sink_set(new NullSink(daemon));
+  sink_set(new DaemonSink(daemon));
 
   // Interactivity is a surface capability: a builtin that prompts, or a
   // pipeline segment, reaches the surface running the command through the

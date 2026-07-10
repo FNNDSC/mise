@@ -53,6 +53,15 @@ export interface OutputSink {
   progress_write(event: ProgressEvent): void;
 }
 
+/** Optional marker for hosts that stream captured envelope output live. */
+interface LiveEnvelopeOutputSink extends OutputSink {
+  liveEnvelopeOutput: true;
+}
+
+function sink_streamsEnvelopeOutput(sink: OutputSink): sink is LiveEnvelopeOutputSink {
+  return (sink as { liveEnvelopeOutput?: unknown }).liveEnvelopeOutput === true;
+}
+
 /**
  * Sink that writes both channels to the process's standard output.
  *
@@ -148,24 +157,32 @@ export class CaptureSink implements OutputSink {
   private dataChunks: Buffer[] = [];
   private errChunks: Buffer[] = [];
   private live: OutputSink;
+  private readonly forwardEnvelopeOutput: boolean;
 
   /**
    * Initializes the capture around a live sink for status passthrough.
    *
    * @param live - The sink that continues to receive status writes.
    */
-  constructor(live: OutputSink) {
+  constructor(live: OutputSink, options: { forwardEnvelopeOutput?: boolean } = {}) {
     this.live = live;
+    this.forwardEnvelopeOutput = options.forwardEnvelopeOutput ?? false;
   }
 
   /** @inheritdoc */
   public data_write(chunk: string | Buffer): void {
     this.dataChunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
+    if (this.forwardEnvelopeOutput) {
+      this.live.data_write(chunk);
+    }
   }
 
   /** @inheritdoc */
   public err_write(chunk: string | Buffer): void {
     this.errChunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
+    if (this.forwardEnvelopeOutput) {
+      this.live.err_write(chunk);
+    }
   }
 
   /** @inheritdoc */
@@ -284,7 +301,9 @@ export function printingHandler_wrap(
   handler: (args: string[]) => Promise<void>,
 ): (args: string[]) => Promise<CommandEnvelope> {
   return async (args: string[]): Promise<CommandEnvelope> => {
-    const capture: CaptureSink = new CaptureSink(activeSink);
+    const capture: CaptureSink = new CaptureSink(activeSink, {
+      forwardEnvelopeOutput: sink_streamsEnvelopeOutput(activeSink),
+    });
     const previousSink: OutputSink = sink_set(capture);
 
     const originalLog: typeof console.log = console.log;

@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: '17 6 * * *'
 
+# Two runs must not race on the fixed PACS fixture: absence at the start of a
+# retrieve is what grants the run ownership of the materialized folder.
+concurrency:
+  group: mise-live-cube-e2e
+  cancel-in-progress: false
+
 jobs:
   exemplars:
     runs-on: ubuntu-latest

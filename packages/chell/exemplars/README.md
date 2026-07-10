@@ -14,12 +14,13 @@ They are **not** part of `npm test` and never run in per-PR CI.
 ## The invariant
 
 Every exemplar restores the CUBE to its pre-run state: feeds and scratch
-files are deleted, PACSQueries removed, and pulled DICOM series folders
-deleted (or re-pulled, when they existed before the run). PACS folders are
-owned by the CUBE admin, so cleanup needs admin credentials. PACS restore is
-the riskiest cleanup path: a retrieve can stall even when a fresh retrieve
-works, so exemplar 04 retries restore with a new single-series query before
-declaring failure.
+files are deleted, PACSQueries removed, and DICOM series folders are deleted
+only when the exemplar proved they were absent before its own retrieve.
+Pre-existing PACS materialization is verified and left untouched; scheduled
+automation never deletes and restores it. Fresh PACS folders are owned by the
+CUBE admin, so cleanup of test-created retrievals needs admin credentials.
+Testing delete-and-restore recovery requires an explicit manual run against a
+disposable fixture; it is intentionally absent from scheduled automation.
 
 ## Configuration
 
@@ -50,7 +51,7 @@ npm run exemplars:build          # once, from packages/chell
 node exemplars/ts/dist/01_connect.js
 node exemplars/ts/dist/02_fsRoundtrip.js
 node exemplars/ts/dist/03_feedDcm2niix.js   # pull → dircopy → dcm2niix → verify .nii → cleanup
-node exemplars/ts/dist/04_pacsQR.js         # query → pull → verify → delete/restore → cleanup
+node exemplars/ts/dist/04_pacsQR.js         # query → verify existing OR pull fresh → cleanup owned artifacts
 node exemplars/ts/dist/05_calypsoDaemon.js  # live daemon WS surface → restart/context rehydrate
 ```
 

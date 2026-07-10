@@ -1,16 +1,16 @@
 /**
- * @file Exemplar 04 — PACS query/retrieve with the after-equals-before invariant.
+ * @file Exemplar 04 — non-destructive PACS query/retrieve.
  *
  * The workflow: query the designated test accession, locate its smallest
- * series (a one-file Structured Report), pull it, and verify the files
- * registered in CUBE. The test then proves deletability — pulled PACS
- * folders are admin-owned — by deleting the folder and confirming it is
- * gone.
+ * series (a one-file Structured Report), and inspect its CUBE state. If the
+ * series is absent, the exemplar pulls it, verifies the registered files, and
+ * deletes only that test-created folder during cleanup. If the series already
+ * exists, the exemplar verifies it and never retrieves, deletes, or restores
+ * it.
  *
- * The cleanup plan restores the CUBE: if the series existed before the
- * run it is re-pulled; every PACSQuery the run created is removed (only
- * after any restore retrieve has finished — deleting a query cascades to
- * its in-flight retrieve).
+ * Every PACSQuery the run creates is removed. A fresh-series cleanup action is
+ * registered before retrieval, so a timed-out partial materialization is also
+ * removed without making any pre-existing series part of a recovery path.
  *
  * Requires CUBE_ADMIN_USER/CUBE_ADMIN_PASSWORD for the folder deletion.
  *
@@ -32,27 +32,6 @@ import {
 
 /** Series description marker of the one-file test series. */
 const SMALL_SERIES_MARKER: string = 'FUJI Basic Text SR';
-/** Restore pulls can lag ordinary pulls on real PACS backends. */
-const RESTORE_TIMEOUT_MS: number = 20 * 60 * 1000;
-/** A first restore retrieve can stall on real PACS; retry with a fresh query. */
-const RESTORE_ATTEMPTS_MAX: number = 2;
-
-/**
- * Runs one restore retrieve attempt, returning its query id for later cleanup.
- *
- * @param env - The CUBE environment.
- * @param target - The series to restore.
- */
-async function restore_attempt(env: CubeEnv, target: SeriesTarget): Promise<{ ok: boolean; queryId: number }> {
-  let restoreQueryId: number = 0;
-  const arrived: Result<SeriesLocation> = await series_pull(
-    env.pacs, target, `restore-${Date.now().toString(36)}`,
-    (queryId: number) => { restoreQueryId = queryId; },
-    RESTORE_TIMEOUT_MS,
-  );
-  return { ok: arrived.ok, queryId: restoreQueryId };
-}
-
 /**
  * Registers deletion of a PACSQuery on the cleanup plan.
  *
@@ -68,38 +47,27 @@ function queryCleanup_register(env: CubeEnv, cleanup: CleanupPlan, queryId: numb
 }
 
 /**
- * Registers the re-pull that restores a series the run is about to delete.
+ * Registers cleanup for a series that was absent before this run.
  *
- * The restore uses a fresh single-series query of its own (re-firing a
- * retrieve on the earlier query proved unreliable) and removes that query
- * once the series is back. Registered before the deletion so that, in
- * LIFO order, the restore runs ahead of the other query deletions.
+ * Registered before retrieval so a partial materialization is cleaned after a
+ * timeout. Callers must prove absence first; this action must never own a
+ * pre-existing series.
  *
  * @param env - The CUBE environment.
  * @param cleanup - The cleanup plan.
- * @param target - The series to restore.
+ * @param target - The series whose test-created materialization may be removed.
  */
-function restoreCleanup_register(env: CubeEnv, cleanup: CleanupPlan, target: SeriesTarget): void {
-  cleanup.register('restored the series to its pre-run state', async () => {
-    const token: string = await restToken_get(env.url, env.user, env.password);
-    const restoreQueryIds: number[] = [];
-    for (let attempt: number = 0; attempt < RESTORE_ATTEMPTS_MAX; attempt++) {
-      const restored: { ok: boolean; queryId: number } = await restore_attempt(env, target);
-      if (restored.queryId > 0) restoreQueryIds.push(restored.queryId);
-      if (restored.ok) {
-        let deletedAll: boolean = true;
-        for (const queryId of restoreQueryIds) {
-          deletedAll = (await pacsQuery_deleteById(env.url, token, queryId)) && deletedAll;
-        }
-        return deletedAll;
-      }
-    }
-    return false;
+function freshSeriesCleanup_register(env: CubeEnv, cleanup: CleanupPlan, target: SeriesTarget): void {
+  cleanup.register(`deleted test-created series ${target.seriesUID} folder (admin)`, async () => {
+    const location: SeriesLocation | null = await series_locateInCube(target.seriesUID);
+    if (!location) return true;
+    const token: string = await restToken_get(env.url, env.adminUser!, env.adminPassword!);
+    return folder_deleteAndConfirm(env.url, token, location.folderPath);
   });
 }
 
 /**
- * Queries, pulls, verifies, deletes — registering every undo on the plan.
+ * Queries and verifies, retrieving only when the target is absent.
  *
  * @param env - The CUBE environment.
  * @param cleanup - Undo actions, registered as resources are created.
@@ -121,11 +89,17 @@ async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
   );
   if (!check(`found the '${SMALL_SERIES_MARKER}' series`, target.ok) || !target.ok) return;
 
-  section('retrieve');
+  section('CUBE materialization');
   const preexisting: SeriesLocation | null = await series_locateInCube(target.value.seriesUID);
-  console.log(preexisting
-    ? `  (series already in CUBE at ${preexisting.folderPath} — the cleanup plan will restore it)`
-    : '  (series not in CUBE — clean pull)');
+  const expected: number = Math.max(target.value.fileCount, 1);
+  if (preexisting) {
+    console.log(`  (series already in CUBE at ${preexisting.folderPath} — leaving it untouched)`);
+    check(`pre-existing file count is at least ${expected}`, preexisting.fileCount >= expected);
+    return;
+  }
+
+  console.log('  (series absent from CUBE — retrieving a test-owned materialization)');
+  freshSeriesCleanup_register(env, cleanup, target.value);
 
   const pulled: Result<SeriesLocation> = await step(
     'series pulled and registered in CUBE',
@@ -133,16 +107,7 @@ async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
       (queryId: number) => queryCleanup_register(env, cleanup, queryId)),
   );
   if (!pulled.ok) return;
-  const expected: number = Math.max(target.value.fileCount, 1);
   check(`file count is ${expected}`, pulled.value.fileCount >= expected);
-
-  section('delete the pulled files (admin)');
-  if (preexisting) restoreCleanup_register(env, cleanup, target.value);
-  const adminToken: string = await restToken_get(env.url, env.adminUser!, env.adminPassword!);
-  check(
-    'series folder deleted and confirmed gone',
-    await folder_deleteAndConfirm(env.url, adminToken, pulled.value.folderPath),
-  );
 }
 
 /**
@@ -158,7 +123,7 @@ async function main(): Promise<void> {
   try {
     await scenario_run(env, cleanup);
   } finally {
-    section('cleanup — restore the CUBE');
+    section('cleanup — remove test-owned artifacts');
     await cleanup.run();
   }
   summary_exit();

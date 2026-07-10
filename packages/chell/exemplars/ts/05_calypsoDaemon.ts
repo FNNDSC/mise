@@ -1,0 +1,450 @@
+/**
+ * @file Exemplar 05 — CALYPSO daemon exit-gate smoke against a live CUBE.
+ *
+ * Starts a real `chell --daemon`, attaches over the WebSocket protocol, drives
+ * live shell commands through that remote surface, restarts the daemon against
+ * the same isolated config directory, and proves a minimal browser page can
+ * attach to the daemon and execute a command.
+ *
+ * This is intentionally a smoke, not a duplicate of every destructive TS
+ * exemplar. The PACS/feed truth is covered by 03/04; this program proves the
+ * stage-2 topology: daemon-hosted engine, remote surface, restart rehydrate,
+ * and browser embeddability.
+ *
+ *   node exemplars/ts/dist/05_calypsoDaemon.js
+ *
+ * @module
+ */
+
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir, userInfo } from 'os';
+import * as path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { WebSocket } from 'ws';
+import {
+  CONTRACT_VERSION,
+  serverMessage_parse,
+  type ServerMessage,
+} from '@fnndsc/calypso';
+import type { CommandEnvelope } from '@fnndsc/cumin';
+import {
+  env_load, config_isolate, check, section, summary_exit, runId_make, sleep,
+  CubeEnv,
+} from './lib/harness.js';
+
+interface Discovery {
+  url: string;
+  token: string;
+}
+
+interface DaemonHandle {
+  process: ChildProcessWithoutNullStreams;
+  discovery: Discovery;
+}
+
+/** Package root, from `exemplars/ts/dist` at runtime. */
+const PACKAGE_ROOT: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+/** Same path as `src/remote/discovery.ts`, repeated to avoid importing TS source. */
+const DISCOVERY_PATH: string = path.join(tmpdir(), `chell-calypso-${userInfo().username}.json`);
+/** Isolated config directory shared across daemon restart within this exemplar. */
+const STABLE_CONFIG_DIR: string = mkdtempSync(path.join(tmpdir(), 'chell-calypso-exitgate-'));
+/** Generated browser smoke files live outside the repo and are removed. */
+const BROWSER_DIR: string = mkdtempSync(path.join(tmpdir(), 'chell-calypso-browser-'));
+
+let originalDiscovery: string | null = null;
+let originalDiscoveryExists: boolean = false;
+
+/**
+ * Starts a daemon process and waits for its same-user discovery file.
+ *
+ * @param env - Live CUBE configuration.
+ * @param useSavedSession - When true, start from the saved context instead of
+ *   passing credentials again; this is the restart/crash-rehydrate path.
+ */
+async function daemon_start(env: CubeEnv, useSavedSession: boolean): Promise<DaemonHandle> {
+  rmSync(DISCOVERY_PATH, { force: true });
+  const args: string[] = ['dist/index.js'];
+  if (!useSavedSession) {
+    args.push(`${env.user}@${env.url}`, '-p', env.password);
+  }
+  args.push('--daemon', '--no-logo', '--no-prefetch-feeds', '--no-prefetch-plugins', '--no-prefetch-jobs');
+
+  const child: ChildProcessWithoutNullStreams = spawn(process.execPath, args, {
+    cwd: PACKAGE_ROOT,
+    env: { ...process.env, XDG_CONFIG_HOME: STABLE_CONFIG_DIR },
+  });
+  const output: string[] = [];
+  child.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString('utf-8')));
+  child.stderr.on('data', (chunk: Buffer) => output.push(chunk.toString('utf-8')));
+
+  const discovery: Discovery | null = await wait_forDiscovery(child, output);
+  if (!discovery) {
+    child.kill('SIGTERM');
+    throw new Error(`daemon did not publish discovery\n${daemonOutput_sanitize(output.join(''))}`);
+  }
+  return { process: child, discovery };
+}
+
+/**
+ * Waits until the daemon writes a discovery file or exits.
+ *
+ * @param child - Daemon process.
+ * @param output - Captured daemon output, for diagnostics.
+ */
+async function wait_forDiscovery(
+  child: ChildProcessWithoutNullStreams,
+  output: string[],
+): Promise<Discovery | null> {
+  const deadline: number = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) return null;
+    const discovery: Discovery | null = discovery_read();
+    if (discovery) return discovery;
+    await sleep(250);
+  }
+  if (output.length > 0) return discovery_read();
+  return null;
+}
+
+/**
+ * Reads daemon discovery, validating only the shape needed by this exemplar.
+ */
+function discovery_read(): Discovery | null {
+  if (!existsSync(DISCOVERY_PATH)) return null;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(DISCOVERY_PATH, 'utf-8'));
+    if (
+      parsed && typeof parsed === 'object' &&
+      typeof (parsed as Discovery).url === 'string' &&
+      typeof (parsed as Discovery).token === 'string'
+    ) {
+      return parsed as Discovery;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Stops a daemon and waits briefly for process exit.
+ *
+ * @param handle - Daemon to stop.
+ */
+async function daemon_stop(handle: DaemonHandle): Promise<void> {
+  if (handle.process.exitCode !== null) return;
+  handle.process.kill('SIGTERM');
+  const deadline: number = Date.now() + 5_000;
+  while (Date.now() < deadline && handle.process.exitCode === null) await sleep(100);
+  if (handle.process.exitCode === null) handle.process.kill('SIGKILL');
+}
+
+/**
+ * Minimal raw CALYPSO client used by both Node and browser smoke paths.
+ */
+class CalypsoClient {
+  private readonly ws: WebSocket;
+  private readonly pending: Map<string, {
+    resolve: (envelopes: CommandEnvelope[]) => void;
+    reject: (err: Error) => void;
+  }> = new Map();
+  private nextId: number = 0;
+
+  private constructor(ws: WebSocket) {
+    this.ws = ws;
+    this.ws.on('message', (payload: Buffer) => this.message_handle(payload));
+  }
+
+  /**
+   * Attaches to a daemon.
+   *
+   * @param discovery - URL and attach token from the daemon discovery file.
+   */
+  public static connect(discovery: Discovery): Promise<CalypsoClient> {
+    return new Promise((resolve, reject) => {
+      const ws: WebSocket = new WebSocket(discovery.url);
+      ws.once('error', reject);
+      ws.once('open', () => {
+        ws.send(JSON.stringify({
+          type: 'attach',
+          protocolVersion: CONTRACT_VERSION,
+          token: discovery.token,
+        }));
+      });
+      ws.once('message', (payload: Buffer) => {
+        const message: ServerMessage | null = serverMessage_fromPayload(payload);
+        if (!message) {
+          reject(new Error('invalid attach response'));
+          ws.close();
+          return;
+        }
+        if (message.type === 'error') {
+          reject(new Error(message.reason));
+          ws.close();
+          return;
+        }
+        if (message.type !== 'attached') {
+          reject(new Error(`unexpected attach response ${message.type}`));
+          ws.close();
+          return;
+        }
+        resolve(new CalypsoClient(ws));
+      });
+    });
+  }
+
+  /**
+   * Executes one command line through the daemon.
+   *
+   * @param line - ChELL input line.
+   */
+  public execute(line: string): Promise<CommandEnvelope[]> {
+    const id: string = `e2e-${this.nextId++}`;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify({ type: 'execute', id, line }));
+    });
+  }
+
+  /** Closes the WebSocket. */
+  public close(): void {
+    this.ws.close();
+  }
+
+  /**
+   * Routes server messages to pending command promises.
+   *
+   * @param payload - Raw WebSocket payload.
+   */
+  private message_handle(payload: Buffer): void {
+    const message: ServerMessage | null = serverMessage_fromPayload(payload);
+    if (!message) return;
+    if (message.type === 'result') {
+      this.pending.get(message.id)?.resolve(message.envelopes as CommandEnvelope[]);
+      this.pending.delete(message.id);
+    }
+    if (message.type === 'error' && message.id) {
+      this.pending.get(message.id)?.reject(new Error(message.reason));
+      this.pending.delete(message.id);
+    }
+  }
+}
+
+/**
+ * Parses and validates a daemon message.
+ *
+ * @param payload - Raw WebSocket payload.
+ */
+function serverMessage_fromPayload(payload: Buffer): ServerMessage | null {
+  try {
+    const parsed = serverMessage_parse(JSON.parse(payload.toString('utf-8')));
+    return parsed.ok && parsed.value ? parsed.value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Concatenates stdout/stderr renderings from returned command envelopes.
+ *
+ * @param envelopes - Command result envelopes.
+ */
+function rendered_join(envelopes: CommandEnvelope[]): string {
+  return envelopes.map((e: CommandEnvelope) => `${e.rendered ?? ''}${e.renderedErr ?? ''}`).join('\n');
+}
+
+/**
+ * Executes a command and asserts its rendered text includes a marker.
+ *
+ * @param client - Attached daemon client.
+ * @param description - Check text.
+ * @param line - ChELL command line.
+ * @param marker - Expected rendered substring.
+ */
+async function command_expect(
+  client: CalypsoClient,
+  description: string,
+  line: string,
+  marker: string,
+): Promise<void> {
+  const output: string = rendered_join(await client.execute(line));
+  check(description, output.includes(marker));
+}
+
+/**
+ * Drives a safe live filesystem round-trip through the daemon.
+ *
+ * @param client - Attached daemon client.
+ */
+async function filesystemRoundtrip_run(client: CalypsoClient): Promise<void> {
+  const runId: string = runId_make();
+  const dirname: string = `${runId}-calypso`;
+  await client.execute('cd');
+  await client.execute(`mkdir ${dirname}`);
+  await client.execute(`cd ${dirname}`);
+  await client.execute('touch --withContents "hello from the calypso daemon exemplar" hello.txt');
+  await command_expect(client, 'daemon filesystem round-trip read back content', 'cat hello.txt', 'hello from the calypso daemon exemplar');
+  await client.execute('rm hello.txt');
+  await client.execute('cd ..');
+  await client.execute(`rm -r ${dirname}`);
+}
+
+/**
+ * Generates and runs a minimal browser page that attaches to the daemon.
+ *
+ * @param discovery - Current daemon discovery.
+ */
+async function browserSmoke_run(discovery: Discovery): Promise<boolean> {
+  const htmlPath: string = path.join(BROWSER_DIR, 'calypso-browser-smoke.html');
+  writeFileSync(htmlPath, browserSmoke_html(discovery), { mode: 0o600 });
+  const chromium: string = process.env.CHROME_BIN ?? '/usr/bin/chromium';
+  const result: { stdout: string; code: number | null } = await process_capture(chromium, [
+    '--headless',
+    '--disable-gpu',
+    '--no-sandbox',
+    '--dump-dom',
+    '--virtual-time-budget=12000',
+    pathToFileURL(htmlPath).href,
+  ]);
+  return result.code === 0 && result.stdout.includes('CALYPSO_BROWSER_SMOKE_PASS');
+}
+
+/**
+ * Browser smoke HTML. Token is embedded only in a temp file with 0600 mode.
+ *
+ * @param discovery - Daemon endpoint and attach token.
+ */
+function browserSmoke_html(discovery: Discovery): string {
+  return `<!doctype html>
+<meta charset="utf-8">
+<title>pending</title>
+<body>pending</body>
+<script>
+const ws = new WebSocket(${JSON.stringify(discovery.url)});
+const token = ${JSON.stringify(discovery.token)};
+let done = false;
+function pass() {
+  done = true;
+  document.title = 'pass';
+  document.body.textContent = 'CALYPSO_BROWSER_SMOKE_PASS';
+}
+function fail(reason) {
+  if (done) return;
+  document.title = 'fail';
+  document.body.textContent = 'CALYPSO_BROWSER_SMOKE_FAIL ' + reason;
+}
+ws.onerror = () => fail('socket');
+ws.onopen = () => ws.send(JSON.stringify({
+  type: 'attach',
+  protocolVersion: ${CONTRACT_VERSION},
+  token,
+}));
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  if (message.type === 'attached') {
+    ws.send(JSON.stringify({ type: 'execute', id: 'browser-1', line: 'version' }));
+  }
+  if (message.type === 'result' && JSON.stringify(message.envelopes).includes('chell')) {
+    pass();
+  }
+  if (message.type === 'error') fail(message.reason);
+};
+setTimeout(() => fail('timeout'), 10000);
+</script>
+`;
+}
+
+/**
+ * Captures one child process invocation.
+ *
+ * @param command - Executable path.
+ * @param args - Arguments.
+ */
+function process_capture(command: string, args: string[]): Promise<{ stdout: string; code: number | null }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { env: process.env });
+    let stdout: string = '';
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
+    child.stderr.on('data', () => undefined);
+    child.on('close', (code: number | null) => resolve({ stdout, code }));
+  });
+}
+
+/**
+ * Removes attach tokens from daemon diagnostics.
+ *
+ * @param output - Raw daemon output.
+ */
+function daemonOutput_sanitize(output: string): string {
+  return output.replace(/token:\s+[0-9a-f]+/gi, 'token: <redacted>');
+}
+
+/**
+ * Saves any pre-existing discovery file so this exemplar can restore it.
+ */
+function discovery_preserve(): void {
+  originalDiscoveryExists = existsSync(DISCOVERY_PATH);
+  originalDiscovery = originalDiscoveryExists ? readFileSync(DISCOVERY_PATH, 'utf-8') : null;
+  rmSync(DISCOVERY_PATH, { force: true });
+}
+
+/**
+ * Restores the discovery file that existed before this run.
+ */
+function discovery_restore(): void {
+  if (originalDiscoveryExists && originalDiscovery !== null) {
+    writeFileSync(DISCOVERY_PATH, originalDiscovery, { mode: 0o600 });
+  } else {
+    rmSync(DISCOVERY_PATH, { force: true });
+  }
+}
+
+/**
+ * Program entry.
+ */
+async function main(): Promise<void> {
+  const env: CubeEnv = env_load();
+  config_isolate();
+  discovery_preserve();
+
+  let daemon: DaemonHandle | null = null;
+  let client: CalypsoClient | null = null;
+  try {
+    section('daemon surface over live CUBE');
+    daemon = await daemon_start(env, false);
+    client = await CalypsoClient.connect(daemon.discovery);
+    await command_expect(client, 'remote surface reports chell version', 'version', 'chell');
+    await command_expect(client, 'remote surface uses the live CUBE identity', 'whoami', env.user);
+    await filesystemRoundtrip_run(client);
+    await command_expect(client, 'remote surface can inspect process tree', 'ls /proc', 'jobs');
+
+    section('crash/restart rehydrate');
+    await client.execute('cd /SERVICES');
+    client.close();
+    await daemon_stop(daemon);
+    daemon = await daemon_start(env, true);
+    client = await CalypsoClient.connect(daemon.discovery);
+    await command_expect(client, 'working directory survived daemon restart via context files', 'pwd', '/SERVICES');
+    await command_expect(client, 'restarted daemon re-derived CUBE identity', 'whoami', env.user);
+
+    section('browser embedding smoke');
+    check('headless browser attached and executed through the daemon', await browserSmoke_run(daemon.discovery));
+  } finally {
+    client?.close();
+    if (daemon) await daemon_stop(daemon);
+    discovery_restore();
+    rmSync(STABLE_CONFIG_DIR, { recursive: true, force: true });
+    rmSync(BROWSER_DIR, { recursive: true, force: true });
+  }
+
+  summary_exit();
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  discovery_restore();
+  rmSync(STABLE_CONFIG_DIR, { recursive: true, force: true });
+  rmSync(BROWSER_DIR, { recursive: true, force: true });
+  process.exit(1);
+});

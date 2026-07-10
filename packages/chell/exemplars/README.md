@@ -16,7 +16,10 @@ They are **not** part of `npm test` and never run in per-PR CI.
 Every exemplar restores the CUBE to its pre-run state: feeds and scratch
 files are deleted, PACSQueries removed, and pulled DICOM series folders
 deleted (or re-pulled, when they existed before the run). PACS folders are
-owned by the CUBE admin, so cleanup needs admin credentials.
+owned by the CUBE admin, so cleanup needs admin credentials. PACS restore is
+the riskiest cleanup path: a retrieve can stall even when a fresh retrieve
+works, so exemplar 04 retries restore with a new single-series query before
+declaring failure.
 
 ## Configuration
 
@@ -48,6 +51,7 @@ node exemplars/ts/dist/01_connect.js
 node exemplars/ts/dist/02_fsRoundtrip.js
 node exemplars/ts/dist/03_feedDcm2niix.js   # pull → dircopy → dcm2niix → verify .nii → cleanup
 node exemplars/ts/dist/04_pacsQR.js         # query → pull → verify → delete/restore → cleanup
+node exemplars/ts/dist/05_calypsoDaemon.js  # daemon WS surface → restart → browser attach smoke
 ```
 
 Each prints ✓/✗ per check and exits 0 only if all passed.
@@ -96,3 +100,8 @@ exemplar 03); bare defaults fail on typical series. The newest registered
 build is not always the working one — on ekanite v2.0.0 fails where
 v1.0.2 succeeds — so pin with `CUBE_DCM2NIIX_VERSION` (in CI: the
 `CUBE_DCM2NIIX_VERSION` repo variable).
+
+Stage-2 daemon exit-gate note: exemplar 05 is the topology proof. It starts
+the daemon, attaches over WebSocket, drives live commands through the
+daemon-hosted engine, restarts the daemon to prove context rehydrate, and
+runs a generated headless-browser page against the same wire contract.

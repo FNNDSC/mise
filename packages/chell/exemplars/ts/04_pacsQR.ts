@@ -32,6 +32,26 @@ import {
 
 /** Series description marker of the one-file test series. */
 const SMALL_SERIES_MARKER: string = 'FUJI Basic Text SR';
+/** Restore pulls can lag ordinary pulls on real PACS backends. */
+const RESTORE_TIMEOUT_MS: number = 20 * 60 * 1000;
+/** A first restore retrieve can stall on real PACS; retry with a fresh query. */
+const RESTORE_ATTEMPTS_MAX: number = 2;
+
+/**
+ * Runs one restore retrieve attempt, returning its query id for later cleanup.
+ *
+ * @param env - The CUBE environment.
+ * @param target - The series to restore.
+ */
+async function restore_attempt(env: CubeEnv, target: SeriesTarget): Promise<{ ok: boolean; queryId: number }> {
+  let restoreQueryId: number = 0;
+  const arrived: Result<SeriesLocation> = await series_pull(
+    env.pacs, target, `restore-${Date.now().toString(36)}`,
+    (queryId: number) => { restoreQueryId = queryId; },
+    RESTORE_TIMEOUT_MS,
+  );
+  return { ok: arrived.ok, queryId: restoreQueryId };
+}
 
 /**
  * Registers deletion of a PACSQuery on the cleanup plan.
@@ -61,15 +81,20 @@ function queryCleanup_register(env: CubeEnv, cleanup: CleanupPlan, queryId: numb
  */
 function restoreCleanup_register(env: CubeEnv, cleanup: CleanupPlan, target: SeriesTarget): void {
   cleanup.register('restored the series to its pre-run state', async () => {
-    let restoreQueryId: number = 0;
-    const arrived: Result<SeriesLocation> = await series_pull(
-      env.pacs, target, `restore-${Date.now().toString(36)}`,
-      (queryId: number) => { restoreQueryId = queryId; },
-    );
-    if (!arrived.ok) return false;
-
     const token: string = await restToken_get(env.url, env.user, env.password);
-    return pacsQuery_deleteById(env.url, token, restoreQueryId);
+    const restoreQueryIds: number[] = [];
+    for (let attempt: number = 0; attempt < RESTORE_ATTEMPTS_MAX; attempt++) {
+      const restored: { ok: boolean; queryId: number } = await restore_attempt(env, target);
+      if (restored.queryId > 0) restoreQueryIds.push(restored.queryId);
+      if (restored.ok) {
+        let deletedAll: boolean = true;
+        for (const queryId of restoreQueryIds) {
+          deletedAll = (await pacsQuery_deleteById(env.url, token, queryId)) && deletedAll;
+        }
+        return deletedAll;
+      }
+    }
+    return false;
   });
 }
 

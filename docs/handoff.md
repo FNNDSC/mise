@@ -1,11 +1,11 @@
 # Active project handoff
 
 - Last updated: 2026-07-10
-- Last verified against `main`: `3bf26e7`
-- Working branch: `agent/stage2-operational-closure`
+- Last verified against `main`: `1fe14d3`
+- Working branch: `agent/non-destructive-pacs-e2e`
 - Current milestone: Stage 2 operational closure
-- Current issue: [#90](https://github.com/FNNDSC/mise/issues/90)
-- Next action: merge #90, then make scheduled PACS coverage non-destructive in #91
+- Current issue: [#91](https://github.com/FNNDSC/mise/issues/91)
+- Next action: merge #91, then classify the remote output observation in #92
 
 ## Current truth
 
@@ -24,7 +24,7 @@
 
 ## Active work
 
-Issue #90 separates two independent proofs:
+Issue #90 separated two independent proofs and merged in PR #93:
 
 - An actual headless browser attaches to a local `CalypsoDaemon` backed by a
   stub `HostedEngine`. This belongs in ordinary required CI and needs no CUBE
@@ -33,8 +33,15 @@ Issue #90 separates two independent proofs:
   belongs in the scheduled/manual, non-release-blocking E2E workflow and no
   longer launches Chromium.
 
-This branch also records the recursive expansion **CALYPSO Accepts Language,
-Yielding Permitted Shell Operations** in the canonical documentation.
+Issue #91 makes scheduled PACS validation non-destructive. Exemplar 04 now
+verifies pre-existing CUBE materialization without retrieving, deleting, or
+restoring it. It retrieves only a series proven absent at the start of the run,
+and registers cleanup for that test-created folder before retrieval begins.
+The live preserve path passed 4/4 against the configured CUBE: the existing
+one-file series remained untouched and only the run's PACSQuery was deleted.
+
+The recursive expansion **CALYPSO Accepts Language, Yielding Permitted Shell
+Operations** is now canonical.
 
 ## Release state
 
@@ -52,12 +59,16 @@ not a package-release gate.
 
 ## Follow-ups and risks
 
-- [#91](https://github.com/FNNDSC/mise/issues/91): scheduled PACS coverage must
-  stop deleting/restoring series that existed before the test. Scheduled runs
-  may clean up only test-owned artifacts.
+- [#91](https://github.com/FNNDSC/mise/issues/91): active. Scheduled PACS
+  coverage must clean up only materialization created by the current run.
 - [#92](https://github.com/FNNDSC/mise/issues/92): one manual remote PTY run
   appeared to display an `ls` listing twice. This is unconfirmed. Reproduce and
   classify it; do not treat a hypothesis as a known defect.
+- [#94](https://github.com/FNNDSC/mise/issues/94): materialize the missing live
+  proof for structured `pull` progress and LONK/CUBE truth. Exemplar 04 has
+  always used lower-level PACS helpers, so it does not currently observe chell
+  progress events. The proof requires a disposable, test-owned PACS fixture and
+  is blocked by #91's ownership policy.
 - The repository's live E2E job skips when `CUBE_*` secrets are absent. A green
   skipped job is not evidence that live exemplars ran; inspect step outcomes.
 - Remote interrupt/cancellation semantics remain undesigned and are not part of

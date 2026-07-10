@@ -11,7 +11,8 @@
 
 **MISE** — *MISE Integrates the Sandwich Ecosystem*
 
-**A ChRIS distributed-computing platform, presented as a Unix shell.**
+**A Unix-shell interface for ChRIS: a platform for storing data, running analysis
+plugins, and tracking scientific workflows.**
 
 `cumin` · `salsa` · `chili` · `chell` · `calypso` — one sandwich, one daemon, *mise en place* in one kitchen.
 
@@ -21,8 +22,11 @@
 
 ## What is this?
 
-ChRIS stores data, analysis tools, and results behind a REST API. **ChELL** maps
-all of it onto paths you already know:
+ChRIS is a distributed scientific-computing platform: it keeps data, analysis
+plugins, workflow state, and results behind a REST API so computation can run
+where the data lives. **MISE** turns that platform into a Unix-shaped working
+environment. **ChELL**, the shell in this repo, maps ChRIS onto paths and
+commands you already know:
 
 ```bash
 cd /home/chris/uploads/SAG-anon       # your data is a filesystem

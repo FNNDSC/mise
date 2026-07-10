@@ -51,7 +51,7 @@ node exemplars/ts/dist/01_connect.js
 node exemplars/ts/dist/02_fsRoundtrip.js
 node exemplars/ts/dist/03_feedDcm2niix.js   # pull → dircopy → dcm2niix → verify .nii → cleanup
 node exemplars/ts/dist/04_pacsQR.js         # query → pull → verify → delete/restore → cleanup
-node exemplars/ts/dist/05_calypsoDaemon.js  # daemon WS surface → restart → browser attach smoke
+node exemplars/ts/dist/05_calypsoDaemon.js  # live daemon WS surface → restart/context rehydrate
 ```
 
 Each prints ✓/✗ per check and exits 0 only if all passed.
@@ -103,5 +103,8 @@ v1.0.2 succeeds — so pin with `CUBE_DCM2NIIX_VERSION` (in CI: the
 
 Stage-2 daemon exit-gate note: exemplar 05 is the topology proof. It starts
 the daemon, attaches over WebSocket, drives live commands through the
-daemon-hosted engine, restarts the daemon to prove context rehydrate, and
-runs a generated headless-browser page against the same wire contract.
+daemon-hosted engine, and restarts the daemon to prove context rehydrate.
+Browser compatibility is a separate ordinary-CI smoke in
+`packages/calypso/tests/browser.test.ts`: an actual headless browser attaches
+to a local daemon backed by a stub engine, so that proof needs no CUBE
+credentials and cannot destabilize live-CUBE automation.

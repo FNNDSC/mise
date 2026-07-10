@@ -1,6 +1,6 @@
 # @fnndsc/calypso
 
-**C**ognitive **A**lgorithms & **L**ogic **Y**ielding **P**redictive **S**cientific **O**utcomes — the intent layer and session daemon of the [mise](../../README.md) stack.
+**CALYPSO** **A**ccepts **L**anguage, **Y**ielding **P**ermitted **S**hell **O**perations — the intent layer and session daemon of the [mise](../../README.md) stack.
 
 The name is a harbor reference. In the *Odyssey*, Calypso keeps the island where the voyager finds haven; the name is the Greek word for "to conceal," which the project keeps but turns around. **HARBOR** is that haven for the ChRIS operator, and CALYPSO is the keeper at its edge — the layer between you and the open water: the Collection+JSON sprawl, the complexity of a federated backend. What CALYPSO conceals is the friction, never the outcome. A harbor shelters without holding: the work is left as materialized, verifiable state, yours to leave and return to — CALYPSO the harbor you pass through, never the ground you stand on.
 

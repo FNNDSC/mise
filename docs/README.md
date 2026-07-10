@@ -21,8 +21,13 @@ packages, see the per-package READMEs (start with
   contract for CALYPSO structured progress: progress events are facts emitted
   through the sink and daemon wire; terminal bars are renderings of those facts.
 
-The name **CALYPSO** (_Cognitive Algorithms & Logic Yielding Predictive Scientific
-Outcomes_) is a harbor reference: in the _Odyssey_, Calypso keeps the island where
+- **[handoff.md](handoff.md)** — the concise active project state: current
+  milestone, release state, known risks, and next action. Architectural,
+  release, and project-state PRs keep it current; completed campaign detail is
+  retained under `history/`.
+
+The name **CALYPSO** (_CALYPSO Accepts Language, Yielding Permitted Shell
+Operations_) is a harbor reference: in the _Odyssey_, Calypso keeps the island where
 the voyager finds haven, and the name is the Greek word for "to conceal." HARBOR is
 that haven for the ChRIS operator; CALYPSO keeps its edge, concealing the friction
 and never the outcome. See calypso.adoc for the full grounding.

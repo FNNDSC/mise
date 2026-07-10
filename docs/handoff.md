@@ -1,11 +1,11 @@
 # Active project handoff
 
 - Last updated: 2026-07-10
-- Last verified against `main`: `1fe14d3`
-- Working branch: `agent/non-destructive-pacs-e2e`
+- Last verified against `main`: `fc9093a`
+- Working branch: `agent/classify-remote-output`
 - Current milestone: Stage 2 operational closure
-- Current issue: [#91](https://github.com/FNNDSC/mise/issues/91)
-- Next action: merge #91, then classify the remote output observation in #92
+- Current issue: [#92](https://github.com/FNNDSC/mise/issues/92)
+- Next action: merge #92, then verify and merge the changesets release PR #45
 
 ## Current truth
 
@@ -33,7 +33,7 @@ Issue #90 separated two independent proofs and merged in PR #93:
   belongs in the scheduled/manual, non-release-blocking E2E workflow and no
   longer launches Chromium.
 
-Issue #91 makes scheduled PACS validation non-destructive. Exemplar 04 now
+Issue #91 made scheduled PACS validation non-destructive and merged in PR #95. Exemplar 04 now
 verifies pre-existing CUBE materialization without retrieving, deleting, or
 restoring it. It retrieves only a series proven absent at the start of the run,
 and registers cleanup for that test-created folder before retrieval begins.
@@ -59,11 +59,15 @@ not a package-release gate.
 
 ## Follow-ups and risks
 
-- [#91](https://github.com/FNNDSC/mise/issues/91): active. Scheduled PACS
-  coverage must clean up only materialization created by the current run.
+- [#91](https://github.com/FNNDSC/mise/issues/91): closed by PR #95. Scheduled
+  PACS coverage cleans up only materialization created by the current run.
 - [#92](https://github.com/FNNDSC/mise/issues/92): one manual remote PTY run
-  appeared to display an `ls` listing twice. This is unconfirmed. Reproduce and
-  classify it; do not treat a hypothesis as a known defect.
+  appeared to display an `ls` listing twice. The observation remains
+  unconfirmed: the interactive reproduction was obscured by terminal-image
+  redraw traffic. The transport has suppressed repeated final-envelope text
+  since PR #85. Focused client coverage proves a streamed channel is delivered
+  once, while daemon coverage independently proves live output goes only to the
+  origin surface and sibling surfaces receive the session envelope.
 - [#94](https://github.com/FNNDSC/mise/issues/94): materialize the missing live
   proof for structured `pull` progress and LONK/CUBE truth. Exemplar 04 has
   always used lower-level PACS helpers, so it does not currently observe chell

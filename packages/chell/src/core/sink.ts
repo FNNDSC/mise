@@ -22,9 +22,9 @@
  * @module
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import type { ProgressEvent } from './progress.js';
-import { TerminalProgressRenderer } from './progressRenderer.js';
+import { type ProgressEvent, type ProgressRenderer, NullProgressRenderer } from './progress.js';
 
 /**
  * Destination for command output, installed by the host.
@@ -70,9 +70,9 @@ function sink_streamsEnvelopeOutput(sink: OutputSink): sink is LiveEnvelopeOutpu
  * historical behavior exactly.
  */
 export class StdoutSink implements OutputSink {
-  private readonly progressRenderer: TerminalProgressRenderer;
+  private readonly progressRenderer: ProgressRenderer;
 
-  constructor(progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer()) {
+  constructor(progressRenderer: ProgressRenderer = new NullProgressRenderer()) {
     this.progressRenderer = progressRenderer;
   }
 
@@ -211,27 +211,49 @@ export class CaptureSink implements OutputSink {
   }
 }
 
-/** The active sink. Defaults to stdout so every entry point behaves as the CLI always has. */
-let activeSink: OutputSink = new StdoutSink();
+/**
+ * The host sink: the process-wide default installed by whoever owns the output
+ * destination (the CLI REPL, the daemon). Defaults to stdout so every entry
+ * point behaves as the CLI always has.
+ */
+let hostSink: OutputSink = new StdoutSink();
 
 /**
- * Returns the currently installed sink.
+ * Per-invocation sink scope.
+ *
+ * A captured command runs inside {@link AsyncLocalStorage#run}, so its sink
+ * follows the async call chain and is isolated from any other command running
+ * concurrently in the same process. Outside a scope the store is undefined and
+ * the host sink applies. This is what lets one process host several sessions
+ * at once without their output stomping a shared global.
+ */
+const sinkScope: AsyncLocalStorage<OutputSink> = new AsyncLocalStorage<OutputSink>();
+
+/**
+ * Returns the sink in effect for the current async context.
+ *
+ * Inside a captured command this is that command's capture sink; otherwise it
+ * is the host sink.
  *
  * @returns The active output sink.
  */
 export function sink_get(): OutputSink {
-  return activeSink;
+  return sinkScope.getStore() ?? hostSink;
 }
 
 /**
- * Installs a sink. Called by the host that owns the output destination.
+ * Installs the host sink. Called by the host that owns the output destination.
+ *
+ * This sets the process-wide default, not the per-invocation scope, so a host
+ * installs it once at startup. Capture scopes established during command
+ * execution take precedence over it via {@link sink_get}.
  *
  * @param sink - The sink to install.
- * @returns The previously installed sink, so callers can restore it.
+ * @returns The previously installed host sink, so callers can restore it.
  */
 export function sink_set(sink: OutputSink): OutputSink {
-  const previous: OutputSink = activeSink;
-  activeSink = sink;
+  const previous: OutputSink = hostSink;
+  hostSink = sink;
   return previous;
 }
 
@@ -246,11 +268,12 @@ export function sink_set(sink: OutputSink): OutputSink {
  * @param envelope - The completed command envelope.
  */
 export function envelope_deliver(envelope: CommandEnvelope): void {
+  const sink: OutputSink = sink_get();
   if (envelope.rendered.length > 0) {
-    activeSink.data_write(envelope.rendered);
+    sink.data_write(envelope.rendered);
   }
   if (envelope.renderedErr !== undefined && envelope.renderedErr.length > 0) {
-    activeSink.err_write(envelope.renderedErr);
+    sink.err_write(envelope.renderedErr);
   }
 }
 
@@ -299,11 +322,16 @@ export function printingHandler_wrap(
   handler: (args: string[]) => Promise<void>,
 ): (args: string[]) => Promise<CommandEnvelope> {
   return async (args: string[]): Promise<CommandEnvelope> => {
-    const capture: CaptureSink = new CaptureSink(activeSink, {
-      forwardEnvelopeOutput: sink_streamsEnvelopeOutput(activeSink),
+    const live: OutputSink = sink_get();
+    const capture: CaptureSink = new CaptureSink(live, {
+      forwardEnvelopeOutput: sink_streamsEnvelopeOutput(live),
     });
-    const previousSink: OutputSink = sink_set(capture);
 
+    // The command's sink is scoped to this async context, so sink_get() (used
+    // by spinners, progress and directly-writing builtins) resolves to this
+    // capture without a shared global that concurrent commands would stomp.
+    // The console/stdout redirect below remains per-invocation: removing it in
+    // favour of envelope-returning builtins is tracked separately (#98).
     const originalLog: typeof console.log = console.log;
     const originalError: typeof console.error = console.error;
     const originalStdoutWrite: typeof process.stdout.write = process.stdout.write.bind(process.stdout);
@@ -331,12 +359,13 @@ export function printingHandler_wrap(
     }) as typeof process.stdout.write;
 
     try {
-      await handler(args);
+      await sinkScope.run(capture, async (): Promise<void> => {
+        await handler(args);
+      });
     } finally {
       console.log = originalLog;
       console.error = originalError;
       process.stdout.write = originalStdoutWrite;
-      sink_set(previousSink);
     }
 
     const exitCodeAfter: number = typeof process.exitCode === 'number' ? process.exitCode : 0;

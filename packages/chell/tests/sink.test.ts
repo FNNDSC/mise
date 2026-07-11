@@ -324,6 +324,25 @@ describe('printingHandler_wrap', () => {
     expect(sink_get()).toBe(buffer);
   });
 
+  it('isolates concurrent captures so their output never cross-contaminates', async () => {
+    sink_set(new BufferSink());
+    // Each handler writes through sink_get() and yields between writes, so the
+    // two runs interleave. With a per-session sink scope each sees only its own
+    // capture; a shared module-global sink would let the later run's install
+    // stomp the earlier one and mix the output.
+    const slow = async (label: string, delayMs: number): Promise<void> => {
+      sink_get().data_write(`${label}1`);
+      await new Promise<void>((resolve): void => { setTimeout(resolve, delayMs); });
+      sink_get().data_write(`${label}2`);
+    };
+    const [envA, envB]: CommandEnvelope[] = await Promise.all([
+      printingHandler_wrap((): Promise<void> => slow('A', 15))([]),
+      printingHandler_wrap((): Promise<void> => slow('B', 5))([]),
+    ]);
+    expect(envA.rendered).toBe('A1A2');
+    expect(envB.rendered).toBe('B1B2');
+  });
+
   it('passes arguments through to the wrapped handler', async () => {
     sink_set(new BufferSink());
     const seen: string[][] = [];

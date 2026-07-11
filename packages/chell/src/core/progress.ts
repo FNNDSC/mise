@@ -25,3 +25,32 @@ export interface ProgressEvent {
   unit?: ProgressUnit;
   status?: ProgressStatus;
 }
+
+/**
+ * Renders progress events for a frontend.
+ *
+ * The engine emits {@link ProgressEvent}s and knows nothing about how they are
+ * shown. Each frontend supplies its own implementation: a terminal draws bars,
+ * a daemon forwards the events over its wire, a headless host drops them.
+ */
+export interface ProgressRenderer {
+  /**
+   * Renders a single progress event.
+   *
+   * @param event - The progress telemetry to render.
+   */
+  write(event: ProgressEvent): void;
+}
+
+/**
+ * Progress renderer that drops every event.
+ *
+ * The engine's default when no frontend has supplied a live renderer, so
+ * headless hosts incur no terminal coupling.
+ */
+export class NullProgressRenderer implements ProgressRenderer {
+  /** @inheritdoc */
+  public write(_event: ProgressEvent): void {
+    // Progress is live telemetry: with no frontend to render it, it is dropped.
+  }
+}

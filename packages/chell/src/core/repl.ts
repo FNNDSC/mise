@@ -16,6 +16,7 @@ import { sessionPrompt_render } from './prompt/session.js';
 import { surface_set } from './surface.js';
 import { cliSurface_create } from './cliSurface.js';
 import { sink_set, StdoutSink } from './sink.js';
+import { TerminalProgressRenderer } from './progressRenderer.js';
 import type { ChellEngine, CompletionResult } from './engine.js';
 
 /**
@@ -74,7 +75,7 @@ export class REPL {
     // reaches the terminal through the sink it installs, and interactive
     // prompts run through the surface it installs — both backed by the REPL's
     // single readline interface, so builtins never assume a terminal exists.
-    sink_set(new StdoutSink());
+    sink_set(new StdoutSink(new TerminalProgressRenderer()));
     surface_set(cliSurface_create(this.rl));
 
     await this.history_load();

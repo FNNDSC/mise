@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @fnndsc/cumin && npm run build -w @fnndsc/calypso && npm run build -w @fnndsc/salsa && npm run build -w @fnndsc/chili && npm run build -w @fnndsc/chell",
+    "build": "npm run build -w @fnndsc/cumin && npm run build -w @fnndsc/salsa && npm run build -w @fnndsc/chili && npm run build -w @fnndsc/brasa && npm run build -w @fnndsc/calypso && npm run build -w @fnndsc/chell",
     "test": "npm test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "lint:tests": "eslint --config eslint.tests.config.mjs \"packages/*/tests/**/*.{ts,js}\" \"packages/*/test/**/*.{ts,js}\"",

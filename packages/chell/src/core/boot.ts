@@ -17,11 +17,11 @@ import { readFileSync, existsSync } from 'fs';
 import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
-import { session } from '../session/index.js';
-import { error_stripDebugPrefix } from '../builtins/index.js';
+import { session } from '@fnndsc/brasa';
+import { error_stripDebugPrefix } from '@fnndsc/brasa';
 import { Result, errorStack, Ok, Err, StackMessage, Client } from '@fnndsc/cumin';
-import { vfs } from '../lib/vfs/vfs.js';
-import { spinner } from '../lib/spinner.js';
+import { vfs } from '@fnndsc/brasa';
+import { spinner } from '@fnndsc/brasa';
 import { logo_print, logo_animatePulse, logo_animateStop } from '../lib/logo.js';
 import {
   BootInfoItem,
@@ -32,15 +32,16 @@ import {
 } from '../lib/bootsequence.js';
 import { settings_load } from '../config/settings.js';
 import { cli_parse, ChellCLIConfig } from './cli.js';
-import { prefetch_path, prefetch_withSpinner, PrefetchResult } from '../lib/prefetch.js';
+import { prefetch_path, prefetch_withSpinner, PrefetchResult } from '@fnndsc/brasa';
 import { bootFlags_compute, type BootFlags } from './bootFlags.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
-import { engine_create, stopOnError_set, type ChellEngine } from './engine.js';
-import { surface_set } from './surface.js';
+import { engine_create, stopOnError_set, type BrasaEngine } from '@fnndsc/brasa';
+import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
-import { versionReport_build, versions_get, type StackVersions } from './version.js';
+import { surfaceLine_execute } from './surfaceDispatch.js';
+import { versionReport_build, versions_get, type StackVersions } from '@fnndsc/brasa';
 
 /**
  * Extended Writable stream with muted property for password input.
@@ -301,7 +302,7 @@ function localTime_withOffset(): string {
  * await script_execute(engine, '/path/to/script.chell', false);
  * ```
  */
-async function script_execute(engine: ChellEngine, scriptPath: string, stopOnError: boolean = false): Promise<void> {
+async function script_execute(engine: BrasaEngine, scriptPath: string, stopOnError: boolean = false): Promise<void> {
   if (!existsSync(scriptPath)) {
     console.error(chalk.red(`Error: Script file not found: ${scriptPath}`));
     process.exit(1);
@@ -328,7 +329,7 @@ async function script_execute(engine: ChellEngine, scriptPath: string, stopOnErr
 
     // Execute the line
     try {
-      await engine.line_execute(line);
+      await surfaceLine_execute(engine, line);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
       console.error(chalk.red(`Error on line ${i + 1}: ${msg}`));
@@ -510,7 +511,7 @@ async function connection_establish(
  * @param boot - The boot logger, or null when non-interactive.
  */
 async function interactiveSession_run(
-  engine: ChellEngine,
+  engine: BrasaEngine,
   config: ChellCLIConfig,
   currentContext: SingleContext,
   flags: Pick<BootFlags, 'prefetchPlugins' | 'prefetchFeeds' | 'prefetchPublicFeeds' | 'prefetchJobs' | 'isInteractiveSession' | 'useAsciiBoot'>,
@@ -606,7 +607,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   surface_set(cliSurface_create());
 
   spinner.start('Initializing session components');
-  const engine: ChellEngine = await engine_create();
+  const engine: BrasaEngine = await engine_create();
   spinner.stop();
 
   if (isInteractiveSession) {
@@ -650,7 +651,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     if (config.stopOnError) {
       stopOnError_set(true);
     }
-    await engine.line_execute(config.commandToExecute);
+    await surfaceLine_execute(engine, config.commandToExecute);
     process.exit(process.exitCode ?? 0);
   }
 

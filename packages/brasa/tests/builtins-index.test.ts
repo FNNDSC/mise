@@ -39,8 +39,6 @@ const mockPluginFieldsFetch = jest.fn().mockResolvedValue([]);
 const mockFeedFieldsFetch = jest.fn().mockResolvedValue([]);
 const mockPipelineFieldsFetch = jest.fn().mockResolvedValue([]);
 const mockComputeFieldsFetch = jest.fn().mockResolvedValue([]);
-const mockSettingsSave = jest.fn().mockResolvedValue(undefined);
-const mockSettings = { config: { promptTheme: 'default', p10kSegments: {} } };
 const STORE_DEFAULT = 'https://default/api/v1/';
 let mockStoreUrl: string | undefined;
 const mockStorePersist = jest.fn().mockResolvedValue(undefined);
@@ -226,7 +224,6 @@ jest.unstable_mockModule('@fnndsc/chili/commands/plugins/fields.js', () => ({ pl
 jest.unstable_mockModule('@fnndsc/chili/commands/feeds/fields.js', () => ({ feedFields_fetch: mockFeedFieldsFetch }));
 jest.unstable_mockModule('@fnndsc/chili/commands/pipeline/fields.js', () => ({ pipelineFields_fetch: mockPipelineFieldsFetch }));
 jest.unstable_mockModule('@fnndsc/chili/commands/compute/fields.js', () => ({ computeFields_fetch: mockComputeFieldsFetch }));
-jest.unstable_mockModule('../src/config/settings.js', () => ({ settings: mockSettings, settings_save: mockSettingsSave }));
 jest.unstable_mockModule('../src/config/storeConfig.js', () => ({
   DEFAULT_STORE_URL: STORE_DEFAULT,
   storeUrl_get: (): string => mockStoreUrl ?? STORE_DEFAULT,
@@ -298,7 +295,7 @@ jest.unstable_mockModule('../src/builtins/parametersofplugin.js', () => ({
 }));
 
 // Mock chell
-jest.unstable_mockModule('../src/chell.js', () => ({
+jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({
   chiliCommand_run: mockChiliCommandRun
 }));
 

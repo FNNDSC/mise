@@ -1,5 +1,5 @@
 /**
- * @file The remote engine: a `ChellEngine` backed by a daemon over the wire.
+ * @file The remote engine: a `BrasaEngine` backed by a daemon over the wire.
  *
  * This is the transport swap that lets the same REPL drive either an in-process
  * engine or a CALYPSO daemon. It implements the engine interface by sending
@@ -13,8 +13,8 @@
 import { WebSocket } from 'ws';
 import { serverMessage_parse, CONTRACT_VERSION, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import type { ChellEngine, CompletionResult } from '../core/engine.js';
-import { envelope_deliver, sink_get, type OutputSink } from '../core/sink.js';
+import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
+import { envelope_deliver, sink_get, type OutputSink } from '@fnndsc/brasa';
 
 /** A pending request awaiting its correlated reply. */
 interface Pending {
@@ -41,9 +41,9 @@ export interface RemoteEngineOptions {
 }
 
 /**
- * A `ChellEngine` implementation that drives a remote daemon.
+ * A `BrasaEngine` implementation that drives a remote daemon.
  */
-export class RemoteEngine implements ChellEngine {
+export class RemoteEngine implements BrasaEngine {
   private readonly ws: WebSocket;
   private readonly pending: Map<string, Pending> = new Map<string, Pending>();
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;

@@ -38,6 +38,7 @@
   "author": "FNNDSC <dev@babyMRI.org>",
   "license": "MIT",
   "dependencies": {
+    "@fnndsc/brasa": "^0.1.0",
     "@fnndsc/chili": "^3.3.0",
     "@fnndsc/cumin": "^3.5.0",
     "@fnndsc/salsa": "^3.2.6",

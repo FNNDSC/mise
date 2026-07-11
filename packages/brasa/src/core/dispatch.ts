@@ -49,7 +49,6 @@ import {
   builtin_context,
   builtin_parametersofplugin,
   builtin_physicalmode,
-  builtin_prompt,
   builtin_timing,
   builtin_whoami,
   builtin_whereami,
@@ -78,25 +77,9 @@ import {
   type RedirectInfo,
 } from './preprocess.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { run as chiliRun } from '@fnndsc/chili/run.js';
+import { chiliCommand_run } from './chiliDelegate.js';
 
-/**
- * Spawns the `chili` CLI as a child process.
- *
- * @param command - The command to run (e.g., "feeds").
- * @param args - The arguments to pass to the command.
- * @returns A Promise resolving when the child process exits.
- */
-export async function chiliCommand_run(command: string, args: string[]): Promise<void> {
-  // Run chili in-process. chili shares this process's cumin connection/context,
-  // so there is no node subprocess to spawn and no per-command startup cost.
-  try {
-    await chiliRun([command, ...args]);
-  } catch (err) {
-    const message: string = err instanceof Error ? err.message : String(err);
-    console.error(chalk.red(`chili command '${command}' failed: ${message}`));
-  }
-}
+export { chiliCommand_run };
 
 /**
  * Executes a shell command on the host system (shell escape with ! prefix).
@@ -275,7 +258,6 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   context: printingBridge_wrap(builtin_context),
   parametersofplugin: printingBridge_wrap(builtin_parametersofplugin),
   physicalmode: envelopeHandler_wrap(builtin_physicalmode),
-  prompt: builtin_prompt,
   timing: envelopeHandler_wrap(builtin_timing),
   whoami: envelopeHandler_wrap(builtin_whoami),
   whereami: envelopeHandler_wrap(builtin_whereami),

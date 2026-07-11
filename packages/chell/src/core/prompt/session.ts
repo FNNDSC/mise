@@ -9,7 +9,7 @@
  *
  * @module
  */
-import { session } from '../../session/index.js';
+import { session } from '@fnndsc/brasa';
 import { settings } from '../../config/settings.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext, procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';

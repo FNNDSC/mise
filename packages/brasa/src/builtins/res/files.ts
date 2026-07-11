@@ -8,7 +8,7 @@ import { files_fetchList } from '@fnndsc/chili/commands/files/list.js';
 import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
 import { FilteredResourceData, errorStack } from '@fnndsc/cumin';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
-import { chiliCommand_run } from '../../chell.js';
+import { chiliCommand_run } from '../../core/chiliDelegate.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**

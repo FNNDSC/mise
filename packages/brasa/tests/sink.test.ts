@@ -15,7 +15,7 @@ import {
   printingHandler_wrap,
   type OutputSink,
 } from '../src/core/sink.js';
-import { TerminalProgressRenderer } from '../src/core/progressRenderer.js';
+import type { ProgressRenderer } from '../src/core/progress.js';
 
 afterEach(() => {
   sink_set(new StdoutSink());
@@ -37,7 +37,7 @@ describe('StdoutSink', () => {
 
   it('delegates progress to its renderer', () => {
     const write = jest.fn();
-    const renderer = { write } as unknown as TerminalProgressRenderer;
+    const renderer = { write } as unknown as ProgressRenderer;
     const event = { operation: 'upload', phase: 'transferring', current: 1, total: 2, unit: 'files', status: 'running' } as const;
     new StdoutSink(renderer).progress_write(event);
     expect(write).toHaveBeenCalledWith(event);

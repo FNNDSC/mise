@@ -13,10 +13,10 @@
  */
 import chalk from 'chalk';
 import { CalypsoDaemon, token_generate } from '@fnndsc/calypso';
-import type { ChellEngine } from '../core/engine.js';
-import { sink_set, type OutputSink } from '../core/sink.js';
-import type { ProgressEvent } from '../core/progress.js';
-import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '../core/surface.js';
+import type { BrasaEngine } from '@fnndsc/brasa';
+import { sink_set, type OutputSink } from '@fnndsc/brasa';
+import type { ProgressEvent } from '@fnndsc/brasa';
+import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import { sessionPrompt_render } from '../core/prompt/session.js';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
 
@@ -48,7 +48,7 @@ class DaemonSink implements OutputSink {
  * @returns A promise that resolves once the daemon is listening; the process
  *   then stays alive on the WebSocket server.
  */
-export async function daemon_launch(engine: ChellEngine): Promise<void> {
+export async function daemon_launch(engine: BrasaEngine): Promise<void> {
   // Force color into the engine's rendered text: no TTY here to auto-detect.
   if (chalk.level < 1) {
     chalk.level = 3;

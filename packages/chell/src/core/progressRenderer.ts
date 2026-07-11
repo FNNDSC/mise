@@ -8,7 +8,7 @@
  * @module
  */
 import cliProgress from 'cli-progress';
-import type { ProgressEvent, ProgressOperation, ProgressStatus, ProgressRenderer } from './progress.js';
+import type { ProgressEvent, ProgressOperation, ProgressStatus, ProgressRenderer } from '@fnndsc/brasa';
 
 type ProgressBar = {
   update(value: number, payload?: Record<string, string>): void;

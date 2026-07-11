@@ -19,7 +19,7 @@ import {
   storeUrl_set,
   storeUrlOverride_get,
   storeConfigPersist_install,
-} from './storeConfig.js';
+} from '@fnndsc/brasa';
 
 /**
  * User-configurable chell settings.

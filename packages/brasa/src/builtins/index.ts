@@ -27,7 +27,6 @@ export * from './net/cubepath.js';
 
 export * from './sys/context.js';
 export * from './sys/physicalmode.js';
-export * from './sys/prompt.js';
 export * from './sys/timing.js';
 export * from './sys/version.js';
 export * from './sys/whoami.js';

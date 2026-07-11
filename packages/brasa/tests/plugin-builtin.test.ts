@@ -29,7 +29,7 @@ const mockTableDisplay = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay }));
 
 const mockChiliRun = jest.fn();
-jest.unstable_mockModule('../src/chell.js', () => ({ chiliCommand_run: mockChiliRun }));
+jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn() } }));
 jest.unstable_mockModule('@fnndsc/chili/utils/admin_prompt.js', () => ({ adminPrompt_register: jest.fn() }));
 jest.unstable_mockModule('../src/core/question.js', () => ({ repl_question: jest.fn(), repl_questionHidden: jest.fn() }));

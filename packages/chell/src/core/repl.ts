@@ -10,14 +10,15 @@
 import * as readline from 'readline';
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { session } from '../session/index.js';
+import { session } from '@fnndsc/brasa';
 import { settings } from '../config/settings.js';
 import { sessionPrompt_render } from './prompt/session.js';
-import { surface_set } from './surface.js';
+import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
-import { sink_set, StdoutSink } from './sink.js';
+import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
-import type { ChellEngine, CompletionResult } from './engine.js';
+import { surfaceLine_execute } from './surfaceDispatch.js';
+import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
@@ -40,7 +41,7 @@ export interface ReplOptions {
  */
 export class REPL {
   private rl: readline.Interface;
-  private engine: ChellEngine;
+  private engine: BrasaEngine;
   private isOpen: boolean = true;
   private lastCommandDurationMs: number = 0;
   private lastExitCode: number = 0;
@@ -52,7 +53,7 @@ export class REPL {
    * @param engine - The engine that executes lines and answers completions.
    * @param options - Optional host settings (e.g. a fixed prompt string).
    */
-  constructor(engine: ChellEngine, options?: ReplOptions) {
+  constructor(engine: BrasaEngine, options?: ReplOptions) {
     this.engine = engine;
     this.promptText = options?.promptText;
     this.rl = readline.createInterface({
@@ -96,7 +97,7 @@ export class REPL {
 
       const startMs: number = Date.now();
       process.exitCode = 0;
-      await this.engine.line_execute(line);
+      await surfaceLine_execute(this.engine, line);
       this.lastCommandDurationMs = Date.now() - startMs;
       this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
 

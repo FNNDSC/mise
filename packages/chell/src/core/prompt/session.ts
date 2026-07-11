@@ -9,10 +9,8 @@
  *
  * @module
  */
-import { session } from '@fnndsc/brasa';
+import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { settings } from '../../config/settings.js';
-import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext, procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
 import { prompt_render, type PromptContext } from './index.js';
 
 /**
@@ -30,32 +28,36 @@ export interface SessionPromptOptions {
 }
 
 /**
- * Renders the themed prompt string for the current session context.
+ * Renders a themed prompt string from an engine prompt context.
+ *
+ * Combines the engine-known facts with this surface's own rendering inputs
+ * (theme, enabled segments, terminal width) and renders. Used both for the
+ * local session and for a context pushed by a remote daemon, so every surface
+ * themes the prompt its own way from the same facts.
+ *
+ * @param context - The engine-known prompt facts.
+ * @param terminalWidth - The rendering width (default local stdout columns, or 80).
+ * @returns The rendered prompt string.
+ */
+export function promptFromContext_render(context: SessionPromptContext, terminalWidth?: number): string {
+  const ctx: PromptContext = {
+    ...context,
+    terminalWidth: terminalWidth ?? (process.stdout.columns || 80),
+    p10kSegments:  settings.config.p10kSegments,
+  };
+  return prompt_render(settings.config.promptTheme, ctx);
+}
+
+/**
+ * Renders the themed prompt string for the current local session context.
  *
  * @param options - The last-command and width inputs.
  * @returns The rendered prompt string.
  */
 export async function sessionPrompt_render(options: SessionPromptOptions = {}): Promise<string> {
-  const context: SingleContext = await context_getSingle();
-  const cwd: string = await session.getCWD();
-  const isOffline: boolean = session.offline;
-
-  const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
-  const procWarmup: { loaded: number } | undefined =
-    warmupRaw.active ? { loaded: warmupRaw.loaded } : undefined;
-
-  const ctx: PromptContext = {
-    user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
-    uri:                   isOffline ? 'no-cube'      : (context.URL  ?? 'no-cube'),
-    cwd:                   isOffline ? '/'            : cwd,
-    pacsserver:            context.pacsserver ?? null,
-    physicalMode:          session.physicalMode_get(),
-    terminalWidth:         options.terminalWidth ?? (process.stdout.columns || 80),
-    lastExitCode:          options.lastExitCode ?? 0,
-    lastCommandDurationMs: options.lastCommandDurationMs ?? 0,
-    p10kSegments:          settings.config.p10kSegments,
-    procWarmup,
-  };
-
-  return prompt_render(settings.config.promptTheme, ctx);
+  const context: SessionPromptContext = await sessionPromptContext_build({
+    lastExitCode:          options.lastExitCode,
+    lastCommandDurationMs: options.lastCommandDurationMs,
+  });
+  return promptFromContext_render(context, options.terminalWidth);
 }

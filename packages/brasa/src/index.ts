@@ -15,6 +15,7 @@ export * from './core/preprocess.js';
 export * from './core/sink.js';
 export * from './core/progress.js';
 export * from './core/surface.js';
+export * from './core/promptContext.js';
 export * from './core/question.js';
 export * from './core/version.js';
 export * from './command-keys.js';

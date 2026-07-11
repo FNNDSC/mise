@@ -18,11 +18,11 @@ module.exports = {
     '!<rootDir>/src/index.ts',
     '!<rootDir>/src/**/*.d.ts',
     '!<rootDir>/src/chell.ts', // re-export barrel
-    '!<rootDir>/src/builtins/index.ts', // barrel
     '!<rootDir>/src/core/repl.ts', // REPL loop
-    '!<rootDir>/src/core/question.ts', // raw readline stdin prompts
     '!<rootDir>/src/core/boot.ts', // connection + REPL startup glue
     '!<rootDir>/src/core/prompt/**', // prompt render (index/themes/utils)
+    '!<rootDir>/src/config/settings.ts', // config file load/save I/O glue
+    '!<rootDir>/src/daemon/launch.ts', // daemon startup glue
     '!<rootDir>/src/lib/logo.ts', // terminal render
     '!<rootDir>/src/lib/spinner.ts', // terminal render
     '!<rootDir>/src/lib/bootsequence.ts', // boot shim

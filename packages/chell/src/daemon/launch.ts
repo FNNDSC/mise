@@ -17,7 +17,7 @@ import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
-import { sessionPrompt_render } from '../core/prompt/session.js';
+import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { discovery_write, discovery_path } from '../remote/discovery.js';
 
 /** The daemon sink forwards live command output to the executing surface. */
@@ -61,7 +61,7 @@ export async function daemon_launch(engine: BrasaEngine): Promise<void> {
     port: 0,
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces.
-    promptProvider: (): Promise<string> => sessionPrompt_render(),
+    promptProvider: (): Promise<SessionPromptContext> => sessionPromptContext_build(),
   });
   sink_set(new DaemonSink(daemon));
 

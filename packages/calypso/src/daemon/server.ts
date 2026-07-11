@@ -31,7 +31,7 @@ import type { HostedEngine, CompletionResult } from './engine.js';
 import { token_matches } from './token.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
 import { clientMessage_parse, attach_parse } from '../protocol/validate.js';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, ProgressEvent } from '../protocol/messages.js';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
@@ -68,9 +68,10 @@ const SCROLLBACK_DEFAULT: number = 200;
  * @property host - The interface to bind; loopback (`127.0.0.1`) by default.
  * @property scrollbackSize - How many recent envelopes to retain for replay
  *   to an attaching surface; defaults to 200.
- * @property promptProvider - Renders the current session's themed prompt
- *   string, which the daemon pushes to surfaces after each command and on
- *   attach. Omitted when a host does not push a prompt (e.g. tests).
+ * @property promptProvider - Supplies the current session's prompt context,
+ *   which the daemon pushes to surfaces after each command and on attach; each
+ *   surface renders it with its own theme. Omitted when a host does not push a
+ *   prompt (e.g. tests).
  */
 export interface DaemonOptions {
   engine: HostedEngine;
@@ -78,7 +79,7 @@ export interface DaemonOptions {
   port?: number;
   host?: string;
   scrollbackSize?: number;
-  promptProvider?: () => string | Promise<string>;
+  promptProvider?: () => PromptContext | Promise<PromptContext>;
 }
 
 /**
@@ -91,7 +92,7 @@ export class CalypsoDaemon {
   private readonly port: number;
   private readonly host: string;
   private readonly scrollbackSize: number;
-  private readonly promptProvider: (() => string | Promise<string>) | undefined;
+  private readonly promptProvider: (() => PromptContext | Promise<PromptContext>) | undefined;
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
   private readonly surfaces: Set<Surface> = new Set<Surface>();
@@ -257,13 +258,13 @@ export class CalypsoDaemon {
     if (!this.promptProvider) {
       return;
     }
-    const text: string = await this.promptProvider();
+    const context: PromptContext = await this.promptProvider();
     if (target) {
-      this.send(target.socket, { type: 'promptline', text });
+      this.send(target.socket, { type: 'promptline', context });
       return;
     }
     for (const surface of this.surfaces) {
-      this.send(surface.socket, { type: 'promptline', text });
+      this.send(surface.socket, { type: 'promptline', context });
     }
   }
 

@@ -38,6 +38,7 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 import { engine_create, stopOnError_set, type BrasaEngine } from '@fnndsc/brasa';
+import { sessionConnect_fromSaved, type SavedSessionResult } from '@fnndsc/brasa';
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
@@ -412,63 +413,47 @@ async function connection_fromSavedSession(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<SingleContext> {
-  spinner.start('Checking for previous context');
+  const verbose: boolean = config.mode !== 'execute' && config.mode !== 'script';
+
+  spinner.start('Validating saved session');
+  const result: SavedSessionResult = await sessionConnect_fromSaved();
   spinner.stop();
 
-  const ctx: SingleContext = await context_getSingle();
-
-  if (!ctx.user || !ctx.URL) {
-    if (config.mode !== 'execute' && config.mode !== 'script') {
-      console.log(chalk.yellow('[!] No previous context found'));
-    }
-    return ctx;
-  }
-
-  if (config.mode !== 'execute' && config.mode !== 'script') {
-    console.log(chalk.green('[+] Previous context detected'));
-    console.log(chalk.gray(`    User: ${chalk.cyan(ctx.user)}`));
-    console.log(chalk.gray(`    URL:  ${chalk.cyan(ctx.URL)}`));
-  }
-
-  spinner.start('Validating existing token');
-  const token: string | null = await session.connection.authToken_get(true);
-  spinner.stop();
-
-  if (!token) {
-    console.log(chalk.yellow('[!] No token found'));
-    console.log(chalk.yellow('[!] Running in disconnected mode'));
-    session.offline = true;
+  const ctx: SingleContext = result.context;
+  const reconnectHint = (): void =>
     console.log(chalk.gray(`    Use: connect --user ${ctx.user} --password <pwd> ${ctx.URL}`));
-    boot?.log('skip', 'Session', 'No saved token; offline');
-    return ctx;
-  }
 
-  spinner.start(`Testing connection to ${ctx.URL}`);
-  try {
-    const client: Client | null = await session.connection.client_get();
-    if (!client) {
-      spinner.stop();
+  switch (result.status) {
+    case 'no-context':
+      if (verbose) console.log(chalk.yellow('[!] No previous context found'));
+      break;
+    case 'no-token':
+      console.log(chalk.yellow('[!] No token found'));
+      console.log(chalk.yellow('[!] Running in disconnected mode'));
+      reconnectHint();
+      boot?.log('skip', 'Session', 'No saved token; offline');
+      break;
+    case 'no-client':
       console.log(chalk.yellow('[!] Failed to create client'));
       console.log(chalk.yellow('[!] Running in disconnected mode'));
-      session.offline = true;
-      console.log(chalk.gray(`    Use: connect --user ${ctx.user} --password <pwd> ${ctx.URL}`));
-      return ctx;
-    }
-    await client.getUser();
-    spinner.stop();
-    if (config.mode !== 'execute' && config.mode !== 'script') {
-      console.log(chalk.green('[+] Token validated with server'));
-      console.log(chalk.green('[+] Session restored'));
-      boot?.log('ok', 'Session', `Restored ${ctx.user}@${ctx.URL}`);
-    }
-  } catch (error: unknown) {
-    spinner.stop();
-    const msg: string = error instanceof Error ? error.message : String(error);
-    console.log(chalk.yellow('[!] Token expired or invalid'));
-    console.log(chalk.gray(`    Error: ${msg}`));
-    console.log(chalk.yellow('[!] Running in disconnected mode'));
-    session.offline = true;
-    console.log(chalk.gray(`    Use: connect --user ${ctx.user} --password <pwd> ${ctx.URL}`));
+      reconnectHint();
+      break;
+    case 'invalid-token':
+      console.log(chalk.yellow('[!] Token expired or invalid'));
+      if (result.error) console.log(chalk.gray(`    Error: ${result.error}`));
+      console.log(chalk.yellow('[!] Running in disconnected mode'));
+      reconnectHint();
+      break;
+    case 'restored':
+      if (verbose) {
+        console.log(chalk.green('[+] Previous context detected'));
+        console.log(chalk.gray(`    User: ${chalk.cyan(ctx.user)}`));
+        console.log(chalk.gray(`    URL:  ${chalk.cyan(ctx.URL)}`));
+        console.log(chalk.green('[+] Token validated with server'));
+        console.log(chalk.green('[+] Session restored'));
+        boot?.log('ok', 'Session', `Restored ${ctx.user}@${ctx.URL}`);
+      }
+      break;
   }
 
   return ctx;
@@ -639,7 +624,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // --- Daemon Mode ---
   // Host the connected engine over WebSocket and stay alive on the server.
   if (config.mode === 'daemon') {
-    const { daemon_launch } = await import('../daemon/launch.js');
+    const { daemon_launch } = await import('@fnndsc/calypso');
     await daemon_launch(engine);
     return;
   }

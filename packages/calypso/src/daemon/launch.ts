@@ -12,13 +12,14 @@
  * @module
  */
 import chalk from 'chalk';
-import { CalypsoDaemon, token_generate } from '@fnndsc/calypso';
+import { CalypsoDaemon } from './server.js';
+import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
-import { discovery_write, discovery_path } from '../remote/discovery.js';
+import { discovery_write, discovery_path } from './discovery.js';
 
 /** The daemon sink forwards live command output to the executing surface. */
 class DaemonSink implements OutputSink {

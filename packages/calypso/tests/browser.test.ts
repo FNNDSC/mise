@@ -8,6 +8,7 @@
  *
  * @module
  */
+import { jest } from '@jest/globals';
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { existsSync, mkdtempSync, rmSync } from 'fs';
 import {

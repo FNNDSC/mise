@@ -249,6 +249,14 @@ describe('browser surface', () => {
         stdout: expect.stringContaining(PASS_MARKER),
         stderr: '',
       });
+      // The browser's execute round-trips over the WebSocket asynchronously, so
+      // the daemon may record the command a turn or two after the browser
+      // process exits. Wait for it before asserting (bounded well under the
+      // jest timeout) rather than assuming the exit implies the round-trip.
+      const deadline: number = Date.now() + 5_000;
+      while (executed.length === 0 && Date.now() < deadline) {
+        await new Promise<void>((resolve): void => { setTimeout(resolve, 25); });
+      }
       expect(executed).toEqual(['version']);
     } finally {
       await pageServer?.close();

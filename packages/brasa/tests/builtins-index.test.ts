@@ -703,7 +703,7 @@ describe('Builtins - Core Functions', () => {
       await builtin_files(['list']);
 
       expect(mockFilesFetchList).toHaveBeenCalledWith(expect.anything(), 'files', undefined);
-      expect(mockTableDisplay).toHaveBeenCalled();
+      expect(mockTableRender).toHaveBeenCalled();
     });
 
     it('should list fields for files', async () => {
@@ -712,7 +712,7 @@ describe('Builtins - Core Functions', () => {
       await builtin_files(['fieldslist']);
 
       expect(mockFileFieldsFetch).toHaveBeenCalledWith('files');
-      expect(mockTableDisplay).toHaveBeenCalled();
+      expect(mockTableRender).toHaveBeenCalled();
     });
 
     it('should list links', async () => {
@@ -734,9 +734,9 @@ describe('Builtins - Core Functions', () => {
     it('should handle null results', async () => {
       mockFilesFetchList.mockResolvedValue(null);
 
-      await builtin_files(['list']);
+      const envelope = await builtin_files(['list']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No files resources found'));
+      expect(envelope.renderedErr).toContain('No files resources found');
     });
   });
 

@@ -227,9 +227,9 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   jobs: builtin_plugininstance,
   workflow: builtin_workflow,
   workflows: builtin_workflow,
-  files: printingHandler_wrap(builtin_files),
-  links: printingHandler_wrap(builtin_links),
-  dirs: printingHandler_wrap(builtin_dirs),
+  files: builtin_files,
+  links: builtin_links,
+  dirs: builtin_dirs,
   context: builtin_context,
   parametersofplugin: printingHandler_wrap(builtin_parametersofplugin),
 };
@@ -289,9 +289,9 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   jobs: envelopeHandler_wrap(builtin_plugininstance),
   workflow: envelopeHandler_wrap(builtin_workflow),
   workflows: envelopeHandler_wrap(builtin_workflow),
-  files: printingBridge_wrap(builtin_files),
-  links: printingBridge_wrap(builtin_links),
-  dirs: printingBridge_wrap(builtin_dirs),
+  files: envelopeHandler_wrap(builtin_files),
+  links: envelopeHandler_wrap(builtin_links),
+  dirs: envelopeHandler_wrap(builtin_dirs),
   pacsservers: async (args: string[]): Promise<void> => {
     await chiliCommand_run('pacsservers', ['-s', ...args]);
   },

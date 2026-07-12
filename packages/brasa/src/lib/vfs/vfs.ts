@@ -13,7 +13,7 @@ import * as path from 'path';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
-import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { listCache_get, Result, Ok, Err, errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
 import { error_stripDebugPrefix } from '../../builtins/utils.js';
 
@@ -130,7 +130,7 @@ export class VFS {
    * @param targetPath - The path to list. If empty, uses CWD.
    * @param options - Listing options (long, human, sort, reverse, directory).
    */
-  async list(targetPath?: string, options: { long?: boolean, human?: boolean, oneColumn?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<void> {
+  async list(targetPath?: string, options: { long?: boolean, human?: boolean, oneColumn?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<CommandEnvelope> {
     // Resolve effective path for cache checking
     const cwd: string = await session.getCWD();
     const effectivePath: string = targetPath
@@ -167,26 +167,22 @@ export class VFS {
 
     if (!result.ok) {
       const lastError = errorStack.stack_pop();
-      if (lastError) {
-        console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
-      }
-      return;
+      const renderedErr: string = lastError ? `${chalk.red(error_stripDebugPrefix(lastError.message))}\n` : '';
+      return envelope_error('', undefined, renderedErr);
     }
 
     if (result.value.length === 0) {
-      return;
+      return envelope_ok('');
     }
 
     // Render based on options
-    if (options.long) {
-      console.log(long_render(result.value, { human: !!options.human }));
-    } else {
-      console.log(grid_render(result.value, { oneColumn: !!options.oneColumn }));
-    }
+    let rendered: string = options.long
+      ? `${long_render(result.value, { human: !!options.human })}\n`
+      : `${grid_render(result.value, { oneColumn: !!options.oneColumn })}\n`;
 
-    // If we served stale cache, show indicator and refresh in background
+    // If we served stale cache, note it and refresh in background.
     if (wasStale) {
-      console.log(chalk.gray('(cached, refreshing...)'));
+      rendered += `${chalk.gray('(cached, refreshing...)')}\n`;
       // Trigger background refresh - don't await. Fenced in its own error-stack
       // scope so its pushes/pops cannot corrupt a concurrent foreground
       // command's error-drain window.
@@ -196,6 +192,8 @@ export class VFS {
         });
       });
     }
+
+    return envelope_ok(rendered);
   }
 
   /**

@@ -67,7 +67,7 @@ import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import { envelopeHandler_wrap, printingHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
+import { envelopeHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
 import { surface_get, capability_require } from './surface.js';
@@ -169,17 +169,6 @@ type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
  * this registry exists so envelope-aware hosts can bypass the wrapper and
  * receive the structured result.
  */
-/**
- * Composes the capture bridge with envelope delivery, so a legacy printing
- * handler participates in the dispatch table with envelope semantics and
- * unchanged observable output.
- *
- * @param handler - A legacy printing command handler.
- * @returns A wrapped handler for the dispatch table.
- */
-function printingBridge_wrap(handler: CommandHandler): CommandHandler {
-  return envelopeHandler_wrap(printingHandler_wrap(handler));
-}
 
 export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   cat: builtin_cat,
@@ -199,46 +188,48 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   // Bridged (captured) handlers: envelope semantics without typed models.
   // plugin is deliberately absent: its add flow prompts for admin
   // credentials through readline, which capture would make invisible.
-  ls: printingHandler_wrap(builtin_ls),
-  tree: printingHandler_wrap(builtin_tree),
-  du: printingHandler_wrap(builtin_du),
-  help: printingHandler_wrap(builtin_help),
-  proc: printingHandler_wrap(builtin_proc),
-  logout: printingHandler_wrap(builtin_logout),
-  cubepath: printingHandler_wrap(builtin_cubepath),
-  query: printingHandler_wrap(builtin_query),
-  feed: printingHandler_wrap(builtin_feed),
-  feeds: printingHandler_wrap(builtin_feed),
-  compute: printingHandler_wrap(builtin_compute),
-  computes: printingHandler_wrap(builtin_compute),
-  tag: printingHandler_wrap(builtin_tag),
-  tags: printingHandler_wrap(builtin_tag),
-  group: printingHandler_wrap(builtin_group),
-  groups: printingHandler_wrap(builtin_group),
-  pluginmeta: printingHandler_wrap(builtin_pluginmeta),
-  pluginmetas: printingHandler_wrap(builtin_pluginmeta),
-  meta: printingHandler_wrap(builtin_pluginmeta),
-  metas: printingHandler_wrap(builtin_pluginmeta),
-  plugininstance: printingHandler_wrap(builtin_plugininstance),
-  plugininstances: printingHandler_wrap(builtin_plugininstance),
-  instance: printingHandler_wrap(builtin_plugininstance),
-  instances: printingHandler_wrap(builtin_plugininstance),
-  job: printingHandler_wrap(builtin_plugininstance),
-  jobs: printingHandler_wrap(builtin_plugininstance),
-  workflow: printingHandler_wrap(builtin_workflow),
-  workflows: printingHandler_wrap(builtin_workflow),
-  files: printingHandler_wrap(builtin_files),
-  links: printingHandler_wrap(builtin_links),
-  dirs: printingHandler_wrap(builtin_dirs),
-  context: printingHandler_wrap(builtin_context),
-  parametersofplugin: printingHandler_wrap(builtin_parametersofplugin),
+  ls: builtin_ls,
+  tree: builtin_tree,
+  du: builtin_du,
+  help: builtin_help,
+  proc: builtin_proc,
+  logout: builtin_logout,
+  cubepath: builtin_cubepath,
+  query: builtin_query,
+  feed: builtin_feed,
+  feeds: builtin_feed,
+  compute: builtin_compute,
+  computes: builtin_compute,
+  tag: builtin_tag,
+  tags: builtin_tag,
+  group: builtin_group,
+  groups: builtin_group,
+  pluginmeta: builtin_pluginmeta,
+  pluginmetas: builtin_pluginmeta,
+  meta: builtin_pluginmeta,
+  metas: builtin_pluginmeta,
+  plugininstance: builtin_plugininstance,
+  plugininstances: builtin_plugininstance,
+  instance: builtin_plugininstance,
+  instances: builtin_plugininstance,
+  job: builtin_plugininstance,
+  jobs: builtin_plugininstance,
+  workflow: builtin_workflow,
+  workflows: builtin_workflow,
+  files: builtin_files,
+  links: builtin_links,
+  dirs: builtin_dirs,
+  context: builtin_context,
+  parametersofplugin: builtin_parametersofplugin,
+  plugin: builtin_plugin,
+  plugins: builtin_plugin,
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   connect: builtin_connect,
-  logout: printingBridge_wrap(builtin_logout),
+  logout: envelopeHandler_wrap(builtin_logout),
   cd: envelopeHandler_wrap(builtin_cd),
-  ls: printingBridge_wrap(builtin_ls),
+  ls: envelopeHandler_wrap(builtin_ls),
   pwd: envelopeHandler_wrap(builtin_pwd),
   cat: envelopeHandler_wrap(builtin_cat),
   rm: envelopeHandler_wrap(builtin_rm),
@@ -251,47 +242,47 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   pipeline: builtin_pipeline,
   pipelines: builtin_pipeline,
   pull: builtin_pull,
-  query: printingBridge_wrap(builtin_query),
-  cubepath: printingBridge_wrap(builtin_cubepath),
+  query: envelopeHandler_wrap(builtin_query),
+  cubepath: envelopeHandler_wrap(builtin_cubepath),
   download: builtin_download,
   edit: builtin_edit,
-  context: printingBridge_wrap(builtin_context),
-  parametersofplugin: printingBridge_wrap(builtin_parametersofplugin),
+  context: envelopeHandler_wrap(builtin_context),
+  parametersofplugin: envelopeHandler_wrap(builtin_parametersofplugin),
   physicalmode: envelopeHandler_wrap(builtin_physicalmode),
   timing: envelopeHandler_wrap(builtin_timing),
   whoami: envelopeHandler_wrap(builtin_whoami),
   whereami: envelopeHandler_wrap(builtin_whereami),
   debug: envelopeHandler_wrap(builtin_debug),
-  help: printingBridge_wrap(builtin_help),
-  proc: printingBridge_wrap(builtin_proc),
-  tree: printingBridge_wrap(builtin_tree),
-  du: printingBridge_wrap(builtin_du),
+  help: envelopeHandler_wrap(builtin_help),
+  proc: envelopeHandler_wrap(builtin_proc),
+  tree: envelopeHandler_wrap(builtin_tree),
+  du: envelopeHandler_wrap(builtin_du),
   store: builtin_store,
-  plugin: builtin_plugin,
-  plugins: builtin_plugin,
-  feed: printingBridge_wrap(builtin_feed),
-  feeds: printingBridge_wrap(builtin_feed),
-  compute: printingBridge_wrap(builtin_compute),
-  computes: printingBridge_wrap(builtin_compute),
-  tag: printingBridge_wrap(builtin_tag),
-  tags: printingBridge_wrap(builtin_tag),
-  group: printingBridge_wrap(builtin_group),
-  groups: printingBridge_wrap(builtin_group),
-  pluginmeta: printingBridge_wrap(builtin_pluginmeta),
-  pluginmetas: printingBridge_wrap(builtin_pluginmeta),
-  meta: printingBridge_wrap(builtin_pluginmeta),
-  metas: printingBridge_wrap(builtin_pluginmeta),
-  plugininstance: printingBridge_wrap(builtin_plugininstance),
-  plugininstances: printingBridge_wrap(builtin_plugininstance),
-  instance: printingBridge_wrap(builtin_plugininstance),
-  instances: printingBridge_wrap(builtin_plugininstance),
-  job: printingBridge_wrap(builtin_plugininstance),
-  jobs: printingBridge_wrap(builtin_plugininstance),
-  workflow: printingBridge_wrap(builtin_workflow),
-  workflows: printingBridge_wrap(builtin_workflow),
-  files: printingBridge_wrap(builtin_files),
-  links: printingBridge_wrap(builtin_links),
-  dirs: printingBridge_wrap(builtin_dirs),
+  plugin: envelopeHandler_wrap(builtin_plugin),
+  plugins: envelopeHandler_wrap(builtin_plugin),
+  feed: envelopeHandler_wrap(builtin_feed),
+  feeds: envelopeHandler_wrap(builtin_feed),
+  compute: envelopeHandler_wrap(builtin_compute),
+  computes: envelopeHandler_wrap(builtin_compute),
+  tag: envelopeHandler_wrap(builtin_tag),
+  tags: envelopeHandler_wrap(builtin_tag),
+  group: envelopeHandler_wrap(builtin_group),
+  groups: envelopeHandler_wrap(builtin_group),
+  pluginmeta: envelopeHandler_wrap(builtin_pluginmeta),
+  pluginmetas: envelopeHandler_wrap(builtin_pluginmeta),
+  meta: envelopeHandler_wrap(builtin_pluginmeta),
+  metas: envelopeHandler_wrap(builtin_pluginmeta),
+  plugininstance: envelopeHandler_wrap(builtin_plugininstance),
+  plugininstances: envelopeHandler_wrap(builtin_plugininstance),
+  instance: envelopeHandler_wrap(builtin_plugininstance),
+  instances: envelopeHandler_wrap(builtin_plugininstance),
+  job: envelopeHandler_wrap(builtin_plugininstance),
+  jobs: envelopeHandler_wrap(builtin_plugininstance),
+  workflow: envelopeHandler_wrap(builtin_workflow),
+  workflows: envelopeHandler_wrap(builtin_workflow),
+  files: envelopeHandler_wrap(builtin_files),
+  links: envelopeHandler_wrap(builtin_links),
+  dirs: envelopeHandler_wrap(builtin_dirs),
   pacsservers: async (args: string[]): Promise<void> => {
     await chiliCommand_run('pacsservers', ['-s', ...args]);
   },
@@ -484,13 +475,14 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     }
   }
 
-  const fallback: EnvelopeHandler = printingHandler_wrap(async (fallbackArgs: string[]): Promise<void> => {
+  // Unknown commands delegate to chili, which prints for itself — the same
+  // print-direct contract as the other unconverted handlers routed through
+  // handler_runDirect (upload, pacs, download, ...). No per-invocation console
+  // capture is installed here.
+  return handler_runDirect(async (fallbackArgs: string[]): Promise<void> => {
     console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
     await chiliCommand_run(command, ['-s', ...fallbackArgs]);
-  });
-  const envelope: CommandEnvelope = await fallback(args);
-  envelope_deliver(envelope);
-  return envelope;
+  }, args);
 }
 
 /**

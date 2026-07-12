@@ -10,7 +10,7 @@ import { vfs } from '../../lib/vfs/vfs.js';
 import { spinner } from '../../lib/spinner.js';
 import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
-import type { Result } from '@fnndsc/cumin';
+import type { Result, CommandEnvelope } from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 
 /**
@@ -156,24 +156,25 @@ function dirUsage_render(
   dirSizes: Map<string, number>,
   targetPath: string,
   opts: DuOptions
-): void {
+): string {
   if (opts.summarize) {
     const size: number = dirSizes.get(targetPath) || 0;
-    console.log(`${duSize_format(size, opts.humanReadable)}\t${targetPath}`);
-    return;
+    return `${duSize_format(size, opts.humanReadable)}\t${targetPath}\n`;
   }
 
   const entries: Array<[string, number]> = Array.from(dirSizes.entries());
   entries.sort((a, b) => a[0].localeCompare(b[0]));
 
+  let out: string = '';
   for (const [dirPath, dirSize] of entries) {
     if (opts.maxDepth !== undefined) {
       const rel: string = path.posix.relative(targetPath, dirPath);
       const depth: number = rel === '' ? 0 : rel.split('/').length;
       if (depth > opts.maxDepth) continue;
     }
-    console.log(`${duSize_format(dirSize, opts.humanReadable)}\t${dirPath}`);
+    out += `${duSize_format(dirSize, opts.humanReadable)}\t${dirPath}\n`;
   }
+  return out;
 }
 
 /**
@@ -194,7 +195,7 @@ function dirUsage_render(
  * du -d 2                 # Max depth of 2 levels
  * ```
  */
-export async function builtin_du(args: string[]): Promise<void> {
+export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const opts: DuOptions = duOptions_parse(parsed);
   const pathArgs: string[] = parsed._ as string[];
@@ -208,6 +209,8 @@ export async function builtin_du(args: string[]): Promise<void> {
   }
 
   let grandTotal: number = 0;
+  let rendered: string = '';
+  let errOut: string = '';
 
   try {
     for (const targetPath of resolvedTargets) {
@@ -217,14 +220,14 @@ export async function builtin_du(args: string[]): Promise<void> {
       const stat: TargetStat | string = await targetStat_resolve(targetPath);
       if (typeof stat === 'string') {
         spinner.stop();
-        console.error(chalk.red(stat));
+        errOut += `${chalk.red(stat)}\n`;
         continue;
       }
 
       if (!stat.isDirectory) {
         grandTotal += stat.fileSize;
         spinner.stop();
-        console.log(`${duSize_format(stat.fileSize, opts.humanReadable)}\t${targetPath}`);
+        rendered += `${duSize_format(stat.fileSize, opts.humanReadable)}\t${targetPath}\n`;
         continue;
       }
 
@@ -247,12 +250,17 @@ export async function builtin_du(args: string[]): Promise<void> {
       grandTotal += scanResult.totalSize;
       spinner.stop();
 
-      dirUsage_render(dirSizes, targetPath, opts);
+      rendered += dirUsage_render(dirSizes, targetPath, opts);
     }
 
     if (opts.showTotal && rawTargets.length > 0) {
-      console.log(`${duSize_format(grandTotal, opts.humanReadable)}\ttotal`);
+      rendered += `${duSize_format(grandTotal, opts.humanReadable)}\ttotal\n`;
     }
+    const envelope: CommandEnvelope = { status: 'ok', rendered };
+    if (errOut.length > 0) {
+      envelope.renderedErr = errOut;
+    }
+    return envelope;
   } finally {
     spinner.stop();
     await session.setCWD(originalFolder);

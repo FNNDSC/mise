@@ -1,10 +1,18 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Real commandArgs helpers (path_resolve) run; stub the load-time boundary.
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string): CommandEnvelope => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): CommandEnvelope => {
+    const envelope: CommandEnvelope = { status: 'error', rendered };
+    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
+    return envelope;
+  },
+}));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
 const mockClientGet = jest.fn(async () => ({}) as unknown);
@@ -24,47 +32,45 @@ jest.unstable_mockModule('../src/builtins/net/pacsUtils.js', () => ({
 
 const { builtin_cubepath } = await import('../src/builtins/net/cubepath.js');
 
-let logSpy: jest.SpiedFunction<typeof console.log>;
-let errSpy: jest.SpiedFunction<typeof console.error>;
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   mockClientGet.mockResolvedValue({});
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-  errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 describe('builtin_cubepath', () => {
-  it('shows help for --help', async () => {
-    await builtin_cubepath(['--help']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('USAGE'));
+  it('returns help for --help', async () => {
+    const envelope: CommandEnvelope = await builtin_cubepath(['--help']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('USAGE');
   });
 
   it('requires at least one path', async () => {
-    await builtin_cubepath([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Missing path'));
+    const envelope: CommandEnvelope = await builtin_cubepath([]);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('Missing path');
     expect(process.exitCode).toBe(1);
   });
 
   it('errors when no PACS server can be resolved', async () => {
     mockServerResolve.mockResolvedValue(null);
-    await builtin_cubepath(['/net/pacs/queries/x']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No PACS server available'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/net/pacs/queries/x']);
+    expect(envelope.renderedErr).toContain('No PACS server available');
     expect(process.exitCode).toBe(1);
   });
 
   it('rejects a non-PACS VFS path', async () => {
     mockServerResolve.mockResolvedValue('PACSDCM');
-    await builtin_cubepath(['/home/chris/data']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Not a PACS VFS path'));
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No series found'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/home/chris/data']);
+    expect(envelope.renderedErr).toContain('Not a PACS VFS path');
+    expect(envelope.renderedErr).toContain('No series found');
   });
 
   it('notes when no series are found under the path', async () => {
     mockServerResolve.mockResolvedValue('PACSDCM');
     mockSeriesCollect.mockResolvedValue([]);
-    await builtin_cubepath(['/net/pacs/queries/empty']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No series found'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/net/pacs/queries/empty']);
+    expect(envelope.renderedErr).toContain('No series found');
     expect(process.exitCode).toBe(1);
   });
 
@@ -72,8 +78,8 @@ describe('builtin_cubepath', () => {
     mockServerResolve.mockResolvedValue('PACSDCM');
     mockSeriesCollect.mockResolvedValue([{ seriesUID: '1.2', seriesLabel: 'AX_T2' }]);
     mockClientGet.mockResolvedValue(null);
-    await builtin_cubepath(['/net/pacs/queries/s']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Not connected'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/net/pacs/queries/s']);
+    expect(envelope.renderedErr).toContain('Not connected');
     expect(process.exitCode).toBe(1);
   });
 
@@ -81,26 +87,27 @@ describe('builtin_cubepath', () => {
     mockServerResolve.mockResolvedValue('PACSDCM');
     mockSeriesCollect.mockResolvedValue([{ seriesUID: '1.2', seriesLabel: 'AX_T2' }]);
     mockCubePathGet.mockResolvedValue({ folderPath: '/cube/data/series', fileCount: 5 });
-    await builtin_cubepath(['/net/pacs/queries/s']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('5 files'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('/cube/data/series'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/net/pacs/queries/s']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('5 files');
+    expect(envelope.rendered).toContain('/cube/data/series');
   });
 
   it('flags a series with zero pulled files', async () => {
     mockServerResolve.mockResolvedValue('PACSDCM');
     mockSeriesCollect.mockResolvedValue([{ seriesUID: '1.2', seriesLabel: 'AX_T2' }]);
     mockCubePathGet.mockResolvedValue({ folderPath: '/cube/data/series', fileCount: 0 });
-    await builtin_cubepath(['/net/pacs/queries/s']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('may not be pulled'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/net/pacs/queries/s']);
+    expect(envelope.rendered).toContain('may not be pulled');
   });
 
   it('reports series that are not in CUBE, with a summary', async () => {
     mockServerResolve.mockResolvedValue('PACSDCM');
     mockSeriesCollect.mockResolvedValue([{ seriesUID: '1.2', seriesLabel: 'AX_T2' }]);
     mockCubePathGet.mockResolvedValue(null);
-    await builtin_cubepath(['/net/pacs/queries/s', '--retry']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('not in CUBE'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1/1 series not found'));
+    const envelope: CommandEnvelope = await builtin_cubepath(['/net/pacs/queries/s', '--retry']);
+    expect(envelope.rendered).toContain('not in CUBE');
+    expect(envelope.rendered).toContain('1/1 series not found');
   });
 
   it('honours an explicit --pacsserver override', async () => {

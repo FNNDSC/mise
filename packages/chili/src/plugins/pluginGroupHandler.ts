@@ -8,8 +8,8 @@ import { Command } from "commander";
 import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { CLIoptions, options_toParams } from "../utils/cli.js";
 import { PluginContextController } from "../controllers/pluginContextController.js";
-import { pluginParameters_renderMan } from "../views/pluginParameters.js";
-import { FilteredResourceData, ChRISEmbeddedResourceGroup } from "@fnndsc/cumin";
+import { pluginParameters_renderMan, pluginParameters_manRender } from "../views/pluginParameters.js";
+import { FilteredResourceData, ChRISEmbeddedResourceGroup, type CommandEnvelope, envelope_ok, envelope_error } from "@fnndsc/cumin";
 
 class InitializationError extends Error {
   constructor(message: string) {
@@ -95,6 +95,48 @@ export class PluginContextGroupHandler {
       if (this.baseGroupHandler) {
           await this.baseGroupHandler.resourceFields_list();
       }
+  }
+
+  /**
+   * Renders plugin parameters in "man page" style as an envelope.
+   *
+   * Sans-I/O counterpart to {@link parameters_listMan}.
+   *
+   * @param options - CLI options for filtering.
+   * @returns An envelope carrying the rendered parameters or an error.
+   */
+  async parameters_listManRender(options: CLIoptions): Promise<CommandEnvelope> {
+    try {
+      const asset = this.controller.chrisObject.asset;
+
+      if (!asset || typeof asset.resources_listAndFilterByOptions !== 'function') {
+        return envelope_error('', undefined, "Underlying resource does not support listing.\n");
+      }
+
+      const params = options_toParams(options);
+      const results: FilteredResourceData | null = await asset.resources_listAndFilterByOptions(params);
+
+      if (results) {
+        return envelope_ok(`${pluginParameters_manRender(results)}\n`);
+      }
+      return envelope_ok("No parameters found.\n");
+    } catch (error: unknown) {
+      return envelope_error('', undefined, `Error listing parameters: ${error}\n`);
+    }
+  }
+
+  /**
+   * Renders available fields for the current plugin context resource as an envelope.
+   *
+   * Sans-I/O counterpart to {@link parameters_fieldsList}.
+   *
+   * @returns An envelope carrying the field listing.
+   */
+  async parameters_fieldsRender(): Promise<CommandEnvelope> {
+    if (this.baseGroupHandler) {
+      return this.baseGroupHandler.resourceFields_render();
+    }
+    return envelope_ok('');
   }
 
   /**

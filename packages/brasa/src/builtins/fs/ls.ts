@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { listCache_get, type CommandEnvelope } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
 
@@ -18,7 +18,7 @@ type LsSortField = 'name' | 'size' | 'date' | 'owner';
  * @param args - An array containing target paths (optional).
  * @returns A Promise that resolves when the directory contents are listed.
  */
-export async function builtin_ls(args: string[]): Promise<void> {
+export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgsRaw: string[] = parsed._ as string[];
 
@@ -50,36 +50,47 @@ export async function builtin_ls(args: string[]): Promise<void> {
     directory: !!parsed['d']
   };
 
+  let rendered: string = '';
+  let renderedErr: string = '';
+
   if (shouldRefresh) {
     const listCache = listCache_get();
     if (pathArgs.length === 0) {
       const cwd: string = await session.getCWD();
-      console.log(chalk.gray(`[Cache] Invalidating: ${cwd}`));
+      rendered += `${chalk.gray(`[Cache] Invalidating: ${cwd}`)}\n`;
       listCache.cache_invalidate(cwd);
       listCache.cache_invalidate();
     } else {
       for (const pathArg of pathArgs) {
         const resolvedPath: string = await path_resolve(pathArg);
-        console.log(chalk.gray(`[Cache] Invalidating: ${resolvedPath}`));
+        rendered += `${chalk.gray(`[Cache] Invalidating: ${resolvedPath}`)}\n`;
         listCache.cache_invalidate(resolvedPath);
       }
       listCache.cache_invalidate();
     }
   }
 
+  // One or more listings, in argument order; each returns its own envelope.
+  const targets: Array<string | undefined> = [];
   if (pathArgs.length === 0) {
-    await vfs.list(undefined, options);
-    return;
+    targets.push(undefined);
+  } else {
+    for (const pathArg of pathArgs) {
+      targets.push(await path_resolve(pathArg));
+    }
   }
 
-  if (pathArgs.length === 1) {
-    const target: string = await path_resolve(pathArgs[0]);
-    await vfs.list(target, options);
-    return;
+  for (const target of targets) {
+    const envelope: CommandEnvelope = await vfs.list(target, options);
+    rendered += envelope.rendered;
+    if (envelope.renderedErr !== undefined) {
+      renderedErr += envelope.renderedErr;
+    }
   }
 
-  for (const pathArg of pathArgs) {
-    const target: string = await path_resolve(pathArg);
-    await vfs.list(target, options);
+  const result: CommandEnvelope = { status: 'ok', rendered };
+  if (renderedErr.length > 0) {
+    result.renderedErr = renderedErr;
   }
+  return result;
 }

@@ -31,10 +31,24 @@ interface PluginParameter {
  * @param data - The filtered resource data containing plugin parameters.
  */
 export function pluginParameters_renderMan(data: FilteredResourceData): void {
+  console.log(pluginParameters_manRender(data));
+}
+
+/**
+ * Builds the "man page" style rendering of plugin parameters as a string.
+ *
+ * Same format as {@link pluginParameters_renderMan} but returns the text
+ * instead of printing it, so hosted surfaces can carry it in an envelope.
+ *
+ * @param data - The filtered resource data containing plugin parameters.
+ * @returns The rendered parameter listing.
+ */
+export function pluginParameters_manRender(data: FilteredResourceData): string {
   if (!data.tableData || data.tableData.length === 0) {
-    console.log("No parameters found.");
-    return;
+    return "No parameters found.";
   }
+
+  const lines: string[] = [];
 
   data.tableData.forEach((param: PluginParameter) => {
     // 1. Construct the first line: Flags and Value
@@ -71,32 +85,28 @@ export function pluginParameters_renderMan(data: FilteredResourceData): void {
     if (param.default !== undefined && param.default !== null && param.default !== "") {
       line1Parts.push(chalk.gray(`(default: ${param.default})`));
     }
-    
+
     if (line1Parts.length > 0) {
-      console.log(line1Parts.join(' '));
-    } else {
-      // Fallback if both are suppressed (e.g. name 'v', no flag)?
-      // In strict adherence, we show nothing on line 1, which is weird.
-      // But assuming a valid plugin definition, one of them should appear.
-      // If name is 'v', it implies it should probably have a flag '-v'.
-      // If not, we might want to show '--v' anyway despite the rule, or '-v'.
-      // For safety, if line1 is empty but we have a name, show it as long flag to avoid invisible params.
-      if (param.name) {
-         console.log(chalk.bold(`--${param.name}`) + ' ' + chalk.gray('(implicit)')); 
-      }
+      lines.push(line1Parts.join(' '));
+    } else if (param.name) {
+      // Fallback: if line1 is empty but we have a name, show it as a long flag
+      // to avoid invisible params.
+      lines.push(chalk.bold(`--${param.name}`) + ' ' + chalk.gray('(implicit)'));
     }
 
     // 2. Type line
     if (param.type) {
-      console.log(`Type: ${chalk.yellow(param.type)}`);
+      lines.push(`Type: ${chalk.yellow(param.type)}`);
     }
 
     // 3. Help description
     if (param.help) {
-      console.log(chalk.white(param.help));
+      lines.push(chalk.white(param.help));
     }
 
-    // Separator (newline)
-    console.log('');
+    // Separator (blank line)
+    lines.push('');
   });
+
+  return lines.join('\n');
 }

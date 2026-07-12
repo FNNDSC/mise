@@ -15,6 +15,8 @@ const mockCacheSet = jest.fn((key: string, data: unknown) => { cacheStore.set(ke
 const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); });
 const mockStackPush = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => ({
     cache_get: (key: string): CacheEntry | undefined => cacheStore.get(key),
     cache_set: mockCacheSet,
@@ -135,31 +137,31 @@ describe('VFS.data_get -d (directory entry)', () => {
 describe('VFS.list rendering and refresh', () => {
   it('renders a grid by default and long format with --long', async () => {
     cacheStore.set('/home/chris', { data: [item('a')], fresh: true });
-    await new VFS().list();
-    expect(logSpy).toHaveBeenCalledWith('GRID');
+    const grid = await new VFS().list();
+    expect(grid.rendered).toContain('GRID');
 
-    await new VFS().list(undefined, { long: true, human: true });
-    expect(logSpy).toHaveBeenCalledWith('LONG');
+    const long = await new VFS().list(undefined, { long: true, human: true });
+    expect(long.rendered).toContain('LONG');
     expect(mockLongRender).toHaveBeenCalledWith([item('a')], { human: true });
   });
 
-  it('prints nothing for an empty listing', async () => {
+  it('renders nothing for an empty listing', async () => {
     cacheStore.set('/home/chris', { data: [], fresh: true });
-    await new VFS().list();
-    expect(logSpy).not.toHaveBeenCalled();
+    const envelope = await new VFS().list();
+    expect(envelope.rendered).toBe('');
   });
 
   it('reports errors from the stack', async () => {
     mockDispatcherList.mockResolvedValue(err());
-    await new VFS().list('/nope');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('listing failed'));
+    const envelope = await new VFS().list('/nope');
+    expect(envelope.renderedErr).toContain('listing failed');
   });
 
   it('serves stale cache with an indicator and refreshes in the background', async () => {
     cacheStore.set('/home/chris', { data: [item('a')], fresh: false });
     mockDispatcherList.mockResolvedValue(ok([item('a')]));
-    await new VFS().list();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('(cached, refreshing...)'));
+    const envelope = await new VFS().list();
+    expect(envelope.rendered).toContain('(cached, refreshing...)');
     // Let the un-awaited background refresh run.
     await new Promise((r: (v: unknown) => void) => setImmediate(r));
     expect(mockCacheInvalidate).toHaveBeenCalledWith('/home/chris');

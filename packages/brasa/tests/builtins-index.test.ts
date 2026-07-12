@@ -7,7 +7,7 @@ const mockSetCWD = jest.fn();
 const mockUserGet = jest.fn();
 const mockClientGet = jest.fn();
 const mockGetFileBrowserFolderByPath = jest.fn();
-const mockVfsList = jest.fn();
+const mockVfsList = jest.fn(() => ({ status: 'ok', rendered: '' }));
 const mockContextGetSingle = jest.fn();
 const mockConnectLogin = jest.fn();
 const mockConnectLogout = jest.fn();
@@ -23,6 +23,7 @@ const mockChefsUpload = jest.fn();
 const mockChefsCat = jest.fn();
 const mockChefsRm = jest.fn();
 const mockTableDisplay = jest.fn();
+const mockTableRender = jest.fn(() => '');
 const mockPluginListRender = jest.fn();
 const mockPluginRunRender = jest.fn();
 const mockFeedListRender = jest.fn();
@@ -57,6 +58,7 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
 // Mock chili screen
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_display: mockTableDisplay,
+  table_render: mockTableRender,
   border_draw: jest.fn(),
   screen: { print: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
@@ -608,19 +610,19 @@ describe('Builtins - Core Functions', () => {
       mockConnectLogout.mockResolvedValue(undefined);
       mockLogoutRender.mockReturnValue('Logged out');
 
-      await builtin_logout();
+      const envelope = await builtin_logout();
 
       expect(mockConnectLogout).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Logged out');
+      expect(envelope.rendered).toContain('Logged out');
     });
 
     it('should handle logout errors', async () => {
       mockConnectLogout.mockRejectedValue(new Error('Logout failed'));
       mockLogoutRender.mockReturnValue('Logout failed');
 
-      await builtin_logout();
+      const envelope = await builtin_logout();
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Logout failed'));
+      expect(envelope.renderedErr).toContain('Logout failed');
     });
   });
 
@@ -629,40 +631,41 @@ describe('Builtins - Core Functions', () => {
       mockPluginsFetchList.mockResolvedValue({ plugins: [], selectedFields: [] });
       mockPluginListRender.mockReturnValue('Plugin list');
 
-      await builtin_plugin(['list']);
+      const envelope = await builtin_plugin(['list']);
 
       expect(mockPluginsFetchList).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Plugin list');
+      expect(envelope.rendered).toContain('Plugin list');
     });
 
     it('should run a plugin', async () => {
       mockPluginExecute.mockResolvedValue({ id: 123 });
       mockPluginRunRender.mockReturnValue('Plugin running');
 
-      await builtin_plugin(['run', 'pl-dircopy', '--arg', 'value']);
+      const envelope = await builtin_plugin(['run', 'pl-dircopy', '--arg', 'value']);
 
       expect(mockPluginExecute).toHaveBeenCalledWith('pl-dircopy', '--arg value');
-      expect(consoleLogSpy).toHaveBeenCalledWith('Plugin running');
+      expect(envelope.rendered).toContain('Plugin running');
     });
 
     it('should error when plugin execution fails', async () => {
       mockPluginExecute.mockResolvedValue(null);
 
-      await builtin_plugin(['run', 'pl-dircopy']);
+      const envelope = await builtin_plugin(['run', 'pl-dircopy']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('execution failed'));
+      expect(envelope.renderedErr).toContain('execution failed');
     });
 
-    it('should delegate unknown subcommands to chili', async () => {
-      await builtin_plugin(['delete', 'id:123']);
+    it('should return an error envelope for unknown subcommands', async () => {
+      const envelope = await builtin_plugin(['delete', 'id:123']);
 
-      expect(mockChiliCommandRun).toHaveBeenCalledWith('plugins', ['-s', 'delete', 'id:123']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+      expect(envelope.renderedErr).toContain('Unknown subcommand');
     });
 
     it('should error with no subcommand', async () => {
-      await builtin_plugin([]);
+      const envelope = await builtin_plugin([]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Usage:'));
+      expect(envelope.rendered).toContain('Usage:');
     });
   });
 
@@ -671,26 +674,27 @@ describe('Builtins - Core Functions', () => {
       mockFeedsFetchList.mockResolvedValue({ feeds: [], selectedFields: [] });
       mockFeedListRender.mockReturnValue('Feed list');
 
-      await builtin_feed(['list']);
+      const envelope = await builtin_feed(['list']);
 
       expect(mockFeedsFetchList).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Feed list');
+      expect(envelope.rendered).toContain('Feed list');
     });
 
     it('should create a feed', async () => {
       mockFeedCreate.mockResolvedValue({ id: 456, name: 'Test Feed' });
       mockFeedCreateRender.mockReturnValue('Feed created');
 
-      await builtin_feed(['create', '--dirs', '/data']);
+      const envelope = await builtin_feed(['create', '--dirs', '/data']);
 
       expect(mockFeedCreate).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Feed created');
+      expect(envelope.rendered).toContain('Feed created');
     });
 
-    it('should delegate unknown subcommands to chili', async () => {
-      await builtin_feed(['delete', 'id:456']);
+    it('should return an error envelope for unknown subcommands', async () => {
+      const envelope = await builtin_feed(['delete', 'id:456']);
 
-      expect(mockChiliCommandRun).toHaveBeenCalledWith('feeds', ['-s', 'delete', 'id:456']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+      expect(envelope.renderedErr).toContain('Unknown subcommand');
     });
   });
 
@@ -701,7 +705,7 @@ describe('Builtins - Core Functions', () => {
       await builtin_files(['list']);
 
       expect(mockFilesFetchList).toHaveBeenCalledWith(expect.anything(), 'files', undefined);
-      expect(mockTableDisplay).toHaveBeenCalled();
+      expect(mockTableRender).toHaveBeenCalled();
     });
 
     it('should list fields for files', async () => {
@@ -710,7 +714,7 @@ describe('Builtins - Core Functions', () => {
       await builtin_files(['fieldslist']);
 
       expect(mockFileFieldsFetch).toHaveBeenCalledWith('files');
-      expect(mockTableDisplay).toHaveBeenCalled();
+      expect(mockTableRender).toHaveBeenCalled();
     });
 
     it('should list links', async () => {
@@ -732,9 +736,9 @@ describe('Builtins - Core Functions', () => {
     it('should handle null results', async () => {
       mockFilesFetchList.mockResolvedValue(null);
 
-      await builtin_files(['list']);
+      const envelope = await builtin_files(['list']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No files resources found'));
+      expect(envelope.renderedErr).toContain('No files resources found');
     });
   });
 
@@ -860,7 +864,7 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_context([]);
 
-      expect(mockTableDisplay).toHaveBeenCalledWith(
+      expect(mockTableRender).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ Context: 'ChRIS User', Value: 'chris' }),
           expect.objectContaining({ Context: 'ChRIS URL', Value: 'http://localhost:8000' })

@@ -21,10 +21,13 @@ import {
   PACSQueryCreateData,
   PACSQueryDecodedResult,
   PACSQueryRecord,
+  type CommandEnvelope,
+  envelope_ok,
+  envelope_error,
 } from '@fnndsc/cumin';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
-import { args_checkHasHelpFlag, help_show } from '../help.js';
+import { args_checkHasHelpFlag, help_render } from '../help.js';
 
 const QUERY_POLL_INTERVAL_MS: number = 2_000;
 const QUERY_TIMEOUT_MS: number = 60_000;
@@ -295,10 +298,9 @@ function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string
  * query 'PatientID:1234,StudyDate:20240101' --title 'Hip DDH Jan 2024'
  * query AccessionNumber:12345678 --table
  */
-export async function builtin_query(args: string[]): Promise<void> {
+export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   if (args_checkHasHelpFlag(args, 'query')) {
-    help_show('query');
-    return;
+    return envelope_ok(help_render('query'));
   }
 
   let title: string = `Query ${Date.now()}`;
@@ -319,18 +321,16 @@ export async function builtin_query(args: string[]): Promise<void> {
   }
 
   if (positional.length === 0) {
-    console.error(chalk.red('query: Missing query expression. Usage: query <Key:Value[,...]> [--title <title>]'));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red('query: Missing query expression. Usage: query <Key:Value[,...]> [--title <title>]')}\n`);
   }
 
   const queryExpr: string = positional.join(' ');
 
   // Validate expression early
   if (!queryExpr_parse(queryExpr)) {
-    console.error(chalk.red(`query: Invalid expression: "${queryExpr}". Use Key:Value pairs (e.g. PatientID:1234) or JSON.`));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red(`query: Invalid expression: "${queryExpr}". Use Key:Value pairs (e.g. PatientID:1234) or JSON.`)}\n`);
   }
 
   // Resolve PACS server
@@ -340,9 +340,8 @@ export async function builtin_query(args: string[]): Promise<void> {
     if (serversResult.ok && serversResult.value.length > 0) {
       pacsserver = String(serversResult.value[0].id);
     } else {
-      console.error(chalk.red('query: No PACS server available. Set one with: pacs connect <id>'));
       process.exitCode = 1;
-      return;
+      return envelope_error('', undefined, `${chalk.red('query: No PACS server available. Set one with: pacs connect <id>')}\n`);
     }
   }
 
@@ -358,34 +357,35 @@ export async function builtin_query(args: string[]): Promise<void> {
   spinner.stop();
 
   if (!result) {
+    let errOut: string = '';
     const errs = errorStack.stack_getAll?.() ?? [];
     if (errs.length) {
-      // Print the stack directly: in -c/-f mode nothing else will.
+      // Carry the stack directly: in -c/-f mode nothing else will.
       errs.forEach((err: unknown) => {
         const msg: string = typeof err === 'string' ? err : ((err as { message?: string }).message ?? String(err));
-        console.error(chalk.red(msg));
+        errOut += `${chalk.red(msg)}\n`;
       });
     } else {
-      console.error(chalk.red('query: Failed — check connection and PACS server context.'));
+      errOut += `${chalk.red('query: Failed — check connection and PACS server context.')}\n`;
     }
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, errOut);
   }
 
-  const rendered: string | null = tableMode
+  const renderedResult: string | null = tableMode
     ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
     : queryResult_render(result.decoded);
 
-  if (!rendered) {
+  if (!renderedResult) {
     // Nothing matched: browsing or pulling the empty query would be
     // meaningless, so no hints.
-    console.log(chalk.yellow(`⚠ Query ${result.queryId} complete — no studies found.`));
-    return;
+    return envelope_ok(`${chalk.yellow(`⚠ Query ${result.queryId} complete — no studies found.`)}\n`);
   }
 
-  console.log(chalk.green(`✓ Query ${result.queryId} complete`));
-  console.log(rendered);
-  console.log(chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`));
-  console.log(chalk.gray(`  cd ${result.vfsPath}`));
-  console.log(chalk.gray(`  pull ${result.vfsPath}`));
+  let rendered: string = `${chalk.green(`✓ Query ${result.queryId} complete`)}\n`;
+  rendered += `${renderedResult}\n`;
+  rendered += `${chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`)}\n`;
+  rendered += `${chalk.gray(`  cd ${result.vfsPath}`)}\n`;
+  rendered += `${chalk.gray(`  pull ${result.vfsPath}`)}\n`;
+  return envelope_ok(rendered);
 }

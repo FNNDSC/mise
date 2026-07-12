@@ -4,6 +4,8 @@ const mockGet = jest.fn(async () => null as string | null);
 const mockSet = jest.fn(async () => true);
 const mockServersList = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { PACSserver_get: mockGet, PACSserver_set: mockSet },
   pacsServers_list: mockServersList,
 }));

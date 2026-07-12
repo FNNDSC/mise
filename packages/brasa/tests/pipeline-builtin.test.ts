@@ -4,6 +4,8 @@ const mockPluginGet = jest.fn(async () => null as string | null);
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 const mockResolve = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { ChRISplugin_get: mockPluginGet },
   errorStack: { stack_pop: mockStackPop },
   pipeline_resolve: mockResolve,

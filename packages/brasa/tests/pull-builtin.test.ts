@@ -28,6 +28,8 @@ jest.unstable_mockModule('ws', () => ({ default: MockWebSocket }));
 const mockQueriesCreate = jest.fn();
 const mockRetrieveCreate = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: jest.fn(), stack_getAll: jest.fn(() => []) },
   pacsQueries_create: mockQueriesCreate,
   pacsRetrieve_create: mockRetrieveCreate,

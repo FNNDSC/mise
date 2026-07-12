@@ -10,6 +10,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 const mockStackClear = jest.fn();
 const mockAllOfType = jest.fn(() => [] as string[]);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_clear: mockStackClear, allOfType_get: mockAllOfType },
 }));
 
@@ -26,7 +28,8 @@ const mockListRender = jest.fn(() => 'PLUGIN_LIST');
 const mockRunRender = jest.fn(() => 'PLUGIN_RUN');
 jest.unstable_mockModule('@fnndsc/chili/views/plugin.js', () => ({ pluginList_render: mockListRender, pluginRun_render: mockRunRender }));
 const mockTableDisplay = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay }));
+const mockTableRender = jest.fn(() => 'FIELDS_TABLE');
+jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay, table_render: mockTableRender }));
 
 const mockChiliRun = jest.fn();
 jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
@@ -47,46 +50,47 @@ beforeEach(() => {
 });
 
 describe('builtin_plugin', () => {
-  it('prints usage with no subcommand', async () => {
-    await builtin_plugin([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: plugin'));
+  it('renders usage with no subcommand', async () => {
+    const env = await builtin_plugin([]);
+    expect(env.rendered).toContain('Usage: plugin');
   });
 
   it('lists plugins and shows a pagination hint', async () => {
     mockFetchList.mockResolvedValue({ plugins: [{ id: 1 }], selectedFields: ['id'], totalCount: 10 });
-    await builtin_plugin(['list']);
-    expect(logSpy).toHaveBeenCalledWith('PLUGIN_LIST');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('showing 1 of 10'));
+    const env = await builtin_plugin(['list']);
+    expect(env.rendered).toContain('PLUGIN_LIST');
+    expect(env.rendered).toContain('showing 1 of 10');
   });
 
   it('runs a plugin and renders the instance', async () => {
     mockExecute.mockResolvedValue({ id: 5 });
-    await builtin_plugin(['run', 'pl-dircopy', '--dir', '/a']);
+    const env = await builtin_plugin(['run', 'pl-dircopy', '--dir', '/a']);
     expect(mockExecute).toHaveBeenCalledWith('pl-dircopy', '--dir /a');
-    expect(logSpy).toHaveBeenCalledWith('PLUGIN_RUN');
+    expect(env.rendered).toContain('PLUGIN_RUN');
   });
 
   it('requires a plugin name for run', async () => {
-    await builtin_plugin(['run']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: plugin run'));
+    const env = await builtin_plugin(['run']);
+    expect(env.rendered).toContain('Usage: plugin run');
   });
 
   it('reports a failed run', async () => {
     mockExecute.mockResolvedValue(null);
-    await builtin_plugin(['run', 'pl-x']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('execution failed'));
+    const env = await builtin_plugin(['run', 'pl-x']);
+    expect(env.renderedErr).toContain('execution failed');
   });
 
-  it('inspects fields via table_display', async () => {
+  it('inspects fields via table_render', async () => {
     mockFieldsFetch.mockResolvedValue(['id', 'name']);
-    await builtin_plugin(['inspect']);
-    expect(mockTableDisplay).toHaveBeenCalled();
+    const env = await builtin_plugin(['inspect']);
+    expect(mockTableRender).toHaveBeenCalled();
+    expect(env.rendered).toContain('FIELDS_TABLE');
   });
 
   it('notes empty fields on inspect', async () => {
     mockFieldsFetch.mockResolvedValue([]);
-    await builtin_plugin(['inspect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No fields'));
+    const env = await builtin_plugin(['inspect']);
+    expect(env.rendered).toContain('No fields');
   });
 
   it('routes search to a filtered list', async () => {
@@ -95,43 +99,44 @@ describe('builtin_plugin', () => {
     expect(mockFetchList).toHaveBeenCalled();
   });
 
-  it('delegates an unknown subcommand to chili', async () => {
-    await builtin_plugin(['frobnicate']);
-    expect(mockChiliRun).toHaveBeenCalledWith('plugins', expect.arrayContaining(['-s']));
+  it('returns an error envelope for an unknown subcommand', async () => {
+    const env = await builtin_plugin(['frobnicate']);
+    expect(mockChiliRun).not.toHaveBeenCalled();
+    expect(env.renderedErr).toContain('Unknown subcommand');
   });
 
   it('reports an error from a handler', async () => {
     mockFetchList.mockRejectedValue(new Error('boom'));
-    await builtin_plugin(['list']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    const env = await builtin_plugin(['list']);
+    expect(env.renderedErr).toContain('boom');
   });
 });
 
 describe('plugin_addInteractive', () => {
   it('requires a plugin name', async () => {
-    await plugin_addInteractive({ _: ['add'] } as never);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: plugin add'));
+    const env = await plugin_addInteractive({ _: ['add'] } as never);
+    expect(env.rendered).toContain('Usage: plugin add');
   });
 
   it('reports a successful install', async () => {
     mockAdd.mockResolvedValue('installed');
-    await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('SUCCESS'));
+    const env = await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
+    expect(env.rendered).toContain('SUCCESS');
   });
 
   it('reports an already-registered plugin', async () => {
     mockAdd.mockResolvedValue('already_exists');
-    await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('already registered'));
+    const env = await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
+    expect(env.rendered).toContain('already registered');
   });
 
   it('reports a failure with collected errors and warnings', async () => {
     mockAdd.mockResolvedValue('failed');
     mockAllOfType.mockImplementation((type: string) => type === 'error' ? ['[x] | bad thing'] : ['[y] | heads up']);
-    await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
+    const env = await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
     expect(process.exitCode).toBe(1);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('bad thing'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('heads up'));
+    expect(env.rendered).toContain('FAILED');
+    expect(env.rendered).toContain('bad thing');
+    expect(env.rendered).toContain('heads up');
   });
 });

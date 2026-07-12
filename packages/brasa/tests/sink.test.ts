@@ -12,7 +12,6 @@ import {
   sink_set,
   envelope_deliver,
   envelopeHandler_wrap,
-  printingHandler_wrap,
   type OutputSink,
 } from '../src/core/sink.js';
 import type { ProgressRenderer } from '../src/core/progress.js';
@@ -228,129 +227,6 @@ describe('CaptureSink', () => {
     expect(capture.errText_get()).toBe('err');
     expect(liveData).toEqual(['out']);
     expect(liveErr).toEqual(['err']);
-  });
-});
-
-describe('printingHandler_wrap', () => {
-  it('captures console.log output into the envelope rendered text', async () => {
-    sink_set(new BufferSink());
-    const handler = async (_args: string[]): Promise<void> => {
-      console.log('table row');
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toBe('table row\n');
-  });
-
-  it('captures console.error output into renderedErr', async () => {
-    sink_set(new BufferSink());
-    const handler = async (_args: string[]): Promise<void> => {
-      console.error('bad thing');
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.renderedErr).toBe('bad thing\n');
-  });
-
-  it('captures direct process.stdout.write output', async () => {
-    sink_set(new BufferSink());
-    const handler = async (_args: string[]): Promise<void> => {
-      process.stdout.write('raw chunk');
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.rendered).toBe('raw chunk');
-  });
-
-  it('streams captured output live when the active sink opts in', async () => {
-    const liveData: string[] = [];
-    const liveErr: string[] = [];
-    const liveSink: OutputSink & { liveEnvelopeOutput: true } = {
-      liveEnvelopeOutput: true,
-      data_write: (chunk: string | Buffer): void => { liveData.push(chunk.toString()); },
-      err_write: (chunk: string | Buffer): void => { liveErr.push(chunk.toString()); },
-      status_write: (): void => { /* not used */ },
-      progress_write: (): void => { /* not used */ },
-    };
-    sink_set(liveSink);
-    const handler = async (_args: string[]): Promise<void> => {
-      console.log('live row');
-      console.error('live err');
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.rendered).toBe('live row\n');
-    expect(envelope.renderedErr).toBe('live err\n');
-    expect(liveData).toEqual(['live row\n']);
-    expect(liveErr).toEqual(['live err\n']);
-  });
-
-  it('captures Uint8Array stdout writes', async () => {
-    sink_set(new BufferSink());
-    const handler = async (_args: string[]): Promise<void> => {
-      process.stdout.write(new Uint8Array(Buffer.from('raw bytes')) as unknown as string);
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.rendered).toBe('raw bytes');
-  });
-
-  it('serializes non-string console arguments', async () => {
-    sink_set(new BufferSink());
-    const handler = async (_args: string[]): Promise<void> => {
-      console.log('count:', 3);
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.rendered).toBe('count: 3\n');
-  });
-
-  it('derives error status from a handler-set exit code', async () => {
-    sink_set(new BufferSink());
-    const previousExitCode: number = typeof process.exitCode === 'number' ? process.exitCode : 0;
-    process.exitCode = 0;
-    const handler = async (_args: string[]): Promise<void> => {
-      process.exitCode = 1;
-    };
-    const envelope: CommandEnvelope = await printingHandler_wrap(handler)([]);
-    expect(envelope.status).toBe('error');
-    process.exitCode = previousExitCode;
-  });
-
-  it('restores console and sink even when the handler throws', async () => {
-    const buffer: BufferSink = new BufferSink();
-    sink_set(buffer);
-    const originalLog: typeof console.log = console.log;
-    const handler = async (_args: string[]): Promise<void> => {
-      throw new Error('boom');
-    };
-    await expect(printingHandler_wrap(handler)([])).rejects.toThrow('boom');
-    expect(console.log).toBe(originalLog);
-    expect(sink_get()).toBe(buffer);
-  });
-
-  it('isolates concurrent captures so their output never cross-contaminates', async () => {
-    sink_set(new BufferSink());
-    // Each handler writes through sink_get() and yields between writes, so the
-    // two runs interleave. With a per-session sink scope each sees only its own
-    // capture; a shared module-global sink would let the later run's install
-    // stomp the earlier one and mix the output.
-    const slow = async (label: string, delayMs: number): Promise<void> => {
-      sink_get().data_write(`${label}1`);
-      await new Promise<void>((resolve): void => { setTimeout(resolve, delayMs); });
-      sink_get().data_write(`${label}2`);
-    };
-    const [envA, envB]: CommandEnvelope[] = await Promise.all([
-      printingHandler_wrap((): Promise<void> => slow('A', 15))([]),
-      printingHandler_wrap((): Promise<void> => slow('B', 5))([]),
-    ]);
-    expect(envA.rendered).toBe('A1A2');
-    expect(envB.rendered).toBe('B1B2');
-  });
-
-  it('passes arguments through to the wrapped handler', async () => {
-    sink_set(new BufferSink());
-    const seen: string[][] = [];
-    const handler = async (args: string[]): Promise<void> => {
-      seen.push(args);
-    };
-    await printingHandler_wrap(handler)(['--limit', '2']);
-    expect(seen).toEqual([['--limit', '2']]);
   });
 });
 

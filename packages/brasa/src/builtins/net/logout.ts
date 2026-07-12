@@ -3,21 +3,24 @@
  * Disconnects from ChRIS.
  */
 import chalk from 'chalk';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
 import { logout_render } from '@fnndsc/chili/views/connect.js';
 
 /**
  * Logs out from the current ChRIS CUBE session.
  *
- * @returns A Promise that resolves when the logout operation is complete.
+ * @returns An envelope carrying the logout notice; on failure the data channel
+ *   still reports the logout and the error channel carries the reason.
  */
-export async function builtin_logout(): Promise<void> {
+export async function builtin_logout(): Promise<CommandEnvelope> {
   try {
     await connect_logout();
-    console.log(logout_render(true));
+    return envelope_ok(`${logout_render(true)}\n`);
   } catch (error: unknown) {
-    console.log(logout_render(false));
     const msg: string = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red(`Logout failed: ${msg}`));
+    const envelope: CommandEnvelope = envelope_ok(`${logout_render(false)}\n`);
+    envelope.renderedErr = `${chalk.red(`Logout failed: ${msg}`)}\n`;
+    return envelope;
   }
 }

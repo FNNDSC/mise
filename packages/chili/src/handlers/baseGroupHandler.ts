@@ -15,10 +15,13 @@ import {
   QueryHits,
   record_extract,
   errorStack,
+  type CommandEnvelope,
+  envelope_ok,
+  envelope_error,
 } from "@fnndsc/cumin";
 import { CLIoptions, options_toParams } from "../utils/cli.js";
 import { resourceColumns_removeDuplicates } from "../utils/resourceData.js";
-import { table_display, border_draw, TableOptions } from "../screen/screen.js";
+import { table_display, table_render, border_draw, TableOptions } from "../screen/screen.js";
 import * as util from "util";
 import * as readline from "readline";
 import { title } from "process";
@@ -172,6 +175,32 @@ export class BaseGroupHandler {
       }
     } catch (error: unknown) {
       console.log(errorStack.stack_search(this.assetName)[0]);
+    }
+  }
+
+  /**
+   * Renders available fields for the current ChRIS resource type as an envelope.
+   *
+   * Sans-I/O counterpart to {@link resourceFields_list} — returns the rendered
+   * text instead of printing it, so hosted surfaces can carry it over the wire.
+   *
+   * @returns An envelope carrying the field listing or an error.
+   */
+  async resourceFields_render(): Promise<CommandEnvelope> {
+    try {
+      const results = await this.chrisObject.asset.resourceFields_get();
+
+      if (!results) {
+        return envelope_error('', undefined, `An error occurred while fetching resource fields for ${this.assetName}.\n`);
+      }
+
+      if (results.fields.length === 0) {
+        return envelope_ok(`No resource fields found for ${this.assetName}.\n`);
+      }
+      return envelope_ok(table_render(results.fields, ["fields"]));
+    } catch (error: unknown) {
+      const stacked: string | undefined = errorStack.stack_search(this.assetName)[0];
+      return envelope_error('', undefined, `${stacked ?? String(error)}\n`);
     }
   }
 

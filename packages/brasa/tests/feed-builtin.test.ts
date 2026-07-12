@@ -2,7 +2,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 // builtins/utils deps (for real commandArgs_process).
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('@fnndsc/chili/models/feed.js', () => ({}));
@@ -40,7 +42,8 @@ jest.unstable_mockModule('@fnndsc/chili/views/feed.js', () => ({
   feedComments_render: jest.fn(() => 'FEED_COMMENTS'),
 }));
 const mockTableDisplay = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay }));
+const mockTableRender = jest.fn(() => 'FIELDS_TABLE');
+jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay, table_render: mockTableRender }));
 jest.unstable_mockModule('../src/builtins/res/feed.notes.js', () => ({
   noteEditBody_format: jest.fn(() => 'ORIGINAL BODY'),
   noteEditBody_parse: jest.fn(() => ({ title: 'Parsed', content: 'Body' })),
@@ -65,56 +68,57 @@ beforeEach(() => {
 });
 
 describe('builtin_feed', () => {
-  it('prints usage with no subcommand', async () => {
-    await builtin_feed([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed'));
+  it('renders usage with no subcommand', async () => {
+    const env = await builtin_feed([]);
+    expect(env.rendered).toContain('Usage: feed');
   });
 
   it('lists feeds', async () => {
     mockFeedsList.mockResolvedValue({ feeds: [{ id: 1 }], selectedFields: ['id'], totalCount: 1 });
-    await builtin_feed(['list']);
-    expect(logSpy).toHaveBeenCalledWith('FEED_LIST');
+    const env = await builtin_feed(['list']);
+    expect(env.rendered).toContain('FEED_LIST');
   });
 
   it('creates a feed and renders the result', async () => {
     mockFeedCreate.mockResolvedValue({ id: 5, name: 'f' });
-    await builtin_feed(['create', '--dirs', '/a']);
-    expect(logSpy).toHaveBeenCalledWith('FEED_CREATED');
+    const env = await builtin_feed(['create', '--dirs', '/a']);
+    expect(env.rendered).toContain('FEED_CREATED');
   });
 
   it('inspects fields', async () => {
     mockFeedFields.mockResolvedValue(['id', 'name']);
-    await builtin_feed(['inspect']);
-    // table_display is called via feedInspect_handle; success == no throw
-    expect(errSpy).not.toHaveBeenCalled();
+    const env = await builtin_feed(['inspect']);
+    expect(env.rendered).toContain('FIELDS_TABLE');
+    expect(env.renderedErr).toBeUndefined();
   });
 
   it('lists comments for a feed', async () => {
     mockCommentsList.mockResolvedValue({ ok: true, value: [{ id: 1 }] });
-    await builtin_feed(['comments', '3']);
-    expect(logSpy).toHaveBeenCalledWith('FEED_COMMENTS');
+    const env = await builtin_feed(['comments', '3']);
+    expect(env.rendered).toContain('FEED_COMMENTS');
   });
 
   it('rejects a non-numeric comments feed id', async () => {
-    await builtin_feed(['comments', 'abc']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed comments'));
+    const env = await builtin_feed(['comments', 'abc']);
+    expect(env.renderedErr).toContain('Usage: feed comments');
   });
 
-  it('delegates an unknown subcommand to chili', async () => {
-    await builtin_feed(['frobnicate']);
-    expect(mockChiliRun).toHaveBeenCalledWith('feeds', expect.arrayContaining(['-s']));
+  it('returns an error envelope for an unknown subcommand', async () => {
+    const env = await builtin_feed(['frobnicate']);
+    expect(mockChiliRun).not.toHaveBeenCalled();
+    expect(env.renderedErr).toContain('Unknown subcommand');
   });
 
   it('reports an error from a handler', async () => {
     mockFeedsList.mockRejectedValue(new Error('boom'));
-    await builtin_feed(['list']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    const env = await builtin_feed(['list']);
+    expect(env.renderedErr).toContain('boom');
   });
 
   it('hints at pagination when the listing is truncated', async () => {
     mockFeedsList.mockResolvedValue({ feeds: [{ id: 1 }], selectedFields: ['id'], totalCount: 5 });
-    await builtin_feed(['list']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('showing 1 of 5'));
+    const env = await builtin_feed(['list']);
+    expect(env.rendered).toContain('showing 1 of 5');
   });
 
   it('routes search to a filtered list', async () => {
@@ -125,26 +129,26 @@ describe('builtin_feed', () => {
 
   it('reports empty inspect results', async () => {
     mockFeedFields.mockResolvedValue(null);
-    await builtin_feed(['inspect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No fields found'));
+    const env = await builtin_feed(['inspect']);
+    expect(env.rendered).toContain('No fields found');
   });
 
   it('shows a feed note', async () => {
     mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'C' }));
-    await builtin_feed(['note', '5']);
-    expect(logSpy).toHaveBeenCalledWith('FEED_NOTE');
+    const env = await builtin_feed(['note', '5']);
+    expect(env.rendered).toContain('FEED_NOTE');
   });
 
   it('updates a note from flags', async () => {
     mockNoteUpdate.mockResolvedValue(ok(true));
-    await builtin_feed(['note', '5', '--title', 'New']);
+    const env = await builtin_feed(['note', '5', '--title', 'New']);
     expect(mockNoteUpdate).toHaveBeenCalledWith(5, { title: 'New', content: undefined });
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Note updated on feed 5'));
+    expect(env.rendered).toContain('Note updated on feed 5');
   });
 
   it('rejects malformed note commands and reports failures', async () => {
-    await builtin_feed(['note', 'abc']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed note'));
+    const usage = await builtin_feed(['note', 'abc']);
+    expect(usage.renderedErr).toContain('Usage: feed note');
 
     mockNoteGet.mockResolvedValue(err());
     await builtin_feed(['note', '5']);
@@ -165,14 +169,14 @@ describe('builtin_feed', () => {
   it('reports no changes when the editor leaves the note untouched', async () => {
     mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
     // default spawnSync leaves the temp file as formatted
-    await builtin_feed(['note', 'edit', '5']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('(no changes)'));
+    const env = await builtin_feed(['note', 'edit', '5']);
+    expect(env.rendered).toContain('(no changes)');
     expect(mockNoteUpdate).not.toHaveBeenCalled();
   });
 
   it('rejects a non-numeric note edit id and reports a failed fetch', async () => {
-    await builtin_feed(['note', 'edit', 'abc']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed note edit'));
+    const usage = await builtin_feed(['note', 'edit', 'abc']);
+    expect(usage.renderedErr).toContain('Usage: feed note edit');
 
     mockNoteGet.mockResolvedValue(err());
     await builtin_feed(['note', 'edit', '5']);
@@ -181,30 +185,30 @@ describe('builtin_feed', () => {
 
   it('adds, edits and deletes comments', async () => {
     mockCommentCreate.mockResolvedValue(ok({ id: 3 }));
-    await builtin_feed(['comment', 'add', '5', '--content', 'hi']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Comment added (id: 3)'));
+    const added = await builtin_feed(['comment', 'add', '5', '--content', 'hi']);
+    expect(added.rendered).toContain('Comment added (id: 3)');
 
     mockCommentUpdate.mockResolvedValue(ok(true));
     await builtin_feed(['comment', 'edit', '5', '3', '--content', 'edit']);
     expect(mockCommentUpdate).toHaveBeenCalledWith(5, 3, { title: undefined, content: 'edit' });
 
     mockCommentDelete.mockResolvedValue(ok(true));
-    await builtin_feed(['comment', 'delete', '5', '3']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Comment 3 deleted'));
+    const deleted = await builtin_feed(['comment', 'delete', '5', '3']);
+    expect(deleted.rendered).toContain('Comment 3 deleted');
   });
 
   it('rejects malformed and unknown comment operations', async () => {
-    await builtin_feed(['comment', 'add', 'abc']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed comment'));
+    const add = await builtin_feed(['comment', 'add', 'abc']);
+    expect(add.renderedErr).toContain('Usage: feed comment');
 
-    await builtin_feed(['comment', 'delete', '5', 'abc']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed comment delete'));
+    const del = await builtin_feed(['comment', 'delete', '5', 'abc']);
+    expect(del.renderedErr).toContain('Usage: feed comment delete');
 
-    await builtin_feed(['comment', 'edit', '5', 'abc']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: feed comment edit'));
+    const edit = await builtin_feed(['comment', 'edit', '5', 'abc']);
+    expect(edit.renderedErr).toContain('Usage: feed comment edit');
 
-    await builtin_feed(['comment', 'frob', '5']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown comment op'));
+    const frob = await builtin_feed(['comment', 'frob', '5']);
+    expect(frob.renderedErr).toContain('Unknown comment op');
     expect(process.exitCode).toBe(1);
   });
 

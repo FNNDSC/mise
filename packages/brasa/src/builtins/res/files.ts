@@ -6,9 +6,8 @@ import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { files_fetchList } from '@fnndsc/chili/commands/files/list.js';
 import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
-import { FilteredResourceData, errorStack } from '@fnndsc/cumin';
-import { table_display } from '@fnndsc/chili/screen/screen.js';
-import { chiliCommand_run } from '../../core/chiliDelegate.js';
+import { FilteredResourceData, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**
@@ -16,14 +15,14 @@ import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
  *
  * @param args - command arguments.
  * @param assetName - the asset type ('files', 'links', 'dirs').
+ * @returns An envelope carrying the listing or fields.
  */
-async function builtin_fileGroup(args: string[], assetName: string): Promise<void> {
+async function builtin_fileGroup(args: string[], assetName: string): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand: string = parsed._[0];
 
   if (!subcommand) {
-     console.log(chalk.red(`Usage: ${assetName} <list|search|inspect> ...`));
-     return;
+     return envelope_ok(`${chalk.red(`Usage: ${assetName} <list|search|inspect> ...`)}\n`);
   }
 
   try {
@@ -32,36 +31,36 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
        const results: FilteredResourceData | null = await files_fetchList(parsed as unknown as CLIoptions, assetName, path);
 
        if (!results) {
-          console.error(`No ${assetName} resources found. Perhaps check your current context?`);
-          return;
+          return envelope_error('', undefined, `No ${assetName} resources found. Perhaps check your current context?\n`);
        }
 
        if (results.tableData.length === 0) {
-          console.log(`No ${assetName} found matching the criteria.`);
-       } else {
-          table_display(
-             results.tableData,
-             results.selectedFields,
-             {
-               title: { title: assetName, justification: "center" },
-               pagination: results.totalCount !== undefined ? { shown: results.tableData.length, total: results.totalCount } : undefined,
-             }
-          );
+          return envelope_ok(`No ${assetName} found matching the criteria.\n`);
        }
+       return envelope_ok(table_render(
+          results.tableData,
+          results.selectedFields,
+          {
+            title: { title: assetName, justification: "center" },
+            pagination: results.totalCount !== undefined ? { shown: results.tableData.length, total: results.totalCount } : undefined,
+          }
+       ));
+    } else if (subcommand === 'search') {
+       const query: string = (parsed._[1] as string | undefined) ?? '';
+       return builtin_fileGroup([...args.filter((a: string) => a !== subcommand), '--search', query], assetName);
     } else if (subcommand === 'inspect' || subcommand === 'fieldslist') {
        const fields: string[] | null = await fileFields_fetch(assetName);
        if (fields && fields.length > 0) {
-          table_display(fields.map(f => ({ fields: f })), ["fields"]);
-       } else {
-          console.log(`No resource fields found for ${assetName}.`);
+          return envelope_ok(table_render(fields.map(f => ({ fields: f })), ["fields"]));
        }
-    } else {
-       console.log(chalk.yellow('Directive not handled by chell... spawning chili directly'));
-       await chiliCommand_run(assetName, ['-s', ...args]);
+       return envelope_ok(`No resource fields found for ${assetName}.\n`);
     }
+    process.exitCode = 1;
+    return envelope_error(`${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: ${assetName} <list|search|inspect>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    console.error(chalk.red(`${assetName} error: ${msg}`));
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`${assetName} error: ${msg}`)}\n`);
   }
 }
 
@@ -69,25 +68,28 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<voi
  * Handles files commands.
  *
  * @param args - command arguments.
+ * @returns An envelope carrying the files listing or fields.
  */
-export async function builtin_files(args: string[]): Promise<void> {
-  await builtin_fileGroup(args, 'files');
+export async function builtin_files(args: string[]): Promise<CommandEnvelope> {
+  return builtin_fileGroup(args, 'files');
 }
 
 /**
  * Handles links commands.
  *
  * @param args - command arguments.
+ * @returns An envelope carrying the links listing or fields.
  */
-export async function builtin_links(args: string[]): Promise<void> {
-  await builtin_fileGroup(args, 'links');
+export async function builtin_links(args: string[]): Promise<CommandEnvelope> {
+  return builtin_fileGroup(args, 'links');
 }
 
 /**
  * Handles dirs commands.
  *
  * @param args - command arguments.
+ * @returns An envelope carrying the dirs listing or fields.
  */
-export async function builtin_dirs(args: string[]): Promise<void> {
-  await builtin_fileGroup(args, 'dirs');
+export async function builtin_dirs(args: string[]): Promise<CommandEnvelope> {
+  return builtin_fileGroup(args, 'dirs');
 }

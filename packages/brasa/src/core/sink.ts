@@ -54,15 +54,6 @@ export interface OutputSink {
   progress_write(event: ProgressEvent): void;
 }
 
-/** Optional marker for hosts that stream captured envelope output live. */
-interface LiveEnvelopeOutputSink extends OutputSink {
-  liveEnvelopeOutput: true;
-}
-
-function sink_streamsEnvelopeOutput(sink: OutputSink): sink is LiveEnvelopeOutputSink {
-  return (sink as { liveEnvelopeOutput?: unknown }).liveEnvelopeOutput === true;
-}
-
 /**
  * Sink that writes both channels to the process's standard output.
  *
@@ -298,86 +289,6 @@ export function envelopeHandler_wrap(
       return;
     }
     envelope_deliver(envelope);
-  };
-}
-
-/**
- * Adapts a legacy printing builtin to the envelope-returning shape.
- *
- * This is the capture bridge for commands whose rendering lives below the
- * seam (chili's table display prints internally): the handler runs with the
- * data and err channels captured, console printing redirected into the
- * capture, and status passed through live so spinners stay visible. The
- * result is an envelope carrying the exact bytes each stream would have
- * shown, with the status derived from the process exit code the handler set.
- *
- * Bridged commands gain envelope semantics without typed models; native
- * conversion (models, streamed data) remains the end state for commands
- * where a structural consumer exists.
- *
- * @param handler - A legacy printing command handler.
- * @returns An envelope-returning handler with identical observable output.
- */
-export function printingHandler_wrap(
-  handler: (args: string[]) => Promise<void>,
-): (args: string[]) => Promise<CommandEnvelope> {
-  return async (args: string[]): Promise<CommandEnvelope> => {
-    const live: OutputSink = sink_get();
-    const capture: CaptureSink = new CaptureSink(live, {
-      forwardEnvelopeOutput: sink_streamsEnvelopeOutput(live),
-    });
-
-    // The command's sink is scoped to this async context, so sink_get() (used
-    // by spinners, progress and directly-writing builtins) resolves to this
-    // capture without a shared global that concurrent commands would stomp.
-    // The console/stdout redirect below remains per-invocation: removing it in
-    // favour of envelope-returning builtins is tracked separately (#98).
-    const originalLog: typeof console.log = console.log;
-    const originalError: typeof console.error = console.error;
-    const originalStdoutWrite: typeof process.stdout.write = process.stdout.write.bind(process.stdout);
-    const exitCodeBefore: number = typeof process.exitCode === 'number' ? process.exitCode : 0;
-
-    console.log = (...logArgs: unknown[]): void => {
-      const text: string = logArgs
-        .map((arg: unknown): string => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
-        .join(' ');
-      capture.data_write(`${text}\n`);
-    };
-    console.error = (...logArgs: unknown[]): void => {
-      const text: string = logArgs
-        .map((arg: unknown): string => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
-        .join(' ');
-      capture.err_write(`${text}\n`);
-    };
-    process.stdout.write = ((chunk: unknown): boolean => {
-      if (typeof chunk === 'string' || Buffer.isBuffer(chunk)) {
-        capture.data_write(chunk);
-      } else if (chunk instanceof Uint8Array) {
-        capture.data_write(Buffer.from(chunk));
-      }
-      return true;
-    }) as typeof process.stdout.write;
-
-    try {
-      await sinkScope.run(capture, async (): Promise<void> => {
-        await handler(args);
-      });
-    } finally {
-      console.log = originalLog;
-      console.error = originalError;
-      process.stdout.write = originalStdoutWrite;
-    }
-
-    const exitCodeAfter: number = typeof process.exitCode === 'number' ? process.exitCode : 0;
-    const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
-    const rendered: string = capture.dataText_get();
-    const renderedErr: string = capture.errText_get();
-
-    const envelope: CommandEnvelope = { status: failed ? 'error' : 'ok', rendered };
-    if (renderedErr.length > 0) {
-      envelope.renderedErr = renderedErr;
-    }
-    return envelope;
   };
 }
 

@@ -291,11 +291,9 @@ describe('VFS', () => {
       mockGetCWD.mockResolvedValue('/');
       mockPlugins_listAll.mockRejectedValue(new Error('API error'));
 
-      await vfs.list('/bin');
+      const envelope = await vfs.list('/bin');
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Mocked Error Message')
-      );
+      expect(envelope.renderedErr).toContain('Mocked Error Message');
     });
 
     it('should render in long format when requested', async () => {
@@ -397,11 +395,9 @@ describe('VFS', () => {
       mockGetCWD.mockResolvedValue('/home');
       mockFiles_list.mockRejectedValue(new Error('Permission denied'));
 
-      await vfs.list('/home');
+      const envelope = await vfs.list('/home');
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Mocked Error Message')
-      );
+      expect(envelope.renderedErr).toContain('Mocked Error Message');
     });
 
     it('should use long format when requested', async () => {

@@ -7,7 +7,7 @@ const mockSetCWD = jest.fn();
 const mockUserGet = jest.fn();
 const mockClientGet = jest.fn();
 const mockGetFileBrowserFolderByPath = jest.fn();
-const mockVfsList = jest.fn();
+const mockVfsList = jest.fn(() => ({ status: 'ok', rendered: '' }));
 const mockContextGetSingle = jest.fn();
 const mockConnectLogin = jest.fn();
 const mockConnectLogout = jest.fn();

@@ -199,7 +199,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   // Bridged (captured) handlers: envelope semantics without typed models.
   // plugin is deliberately absent: its add flow prompts for admin
   // credentials through readline, which capture would make invisible.
-  ls: printingHandler_wrap(builtin_ls),
+  ls: builtin_ls,
   tree: builtin_tree,
   du: builtin_du,
   help: builtin_help,
@@ -238,7 +238,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   connect: builtin_connect,
   logout: envelopeHandler_wrap(builtin_logout),
   cd: envelopeHandler_wrap(builtin_cd),
-  ls: printingBridge_wrap(builtin_ls),
+  ls: envelopeHandler_wrap(builtin_ls),
   pwd: envelopeHandler_wrap(builtin_pwd),
   cat: envelopeHandler_wrap(builtin_cat),
   rm: envelopeHandler_wrap(builtin_rm),

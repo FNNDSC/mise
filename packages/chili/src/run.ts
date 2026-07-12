@@ -36,7 +36,7 @@ import {
   errorStack_getAllOfType,
 } from "@fnndsc/cumin";
 import { FileGroupHandler } from "./filesystem/fileGroupHandler.js";
-import { chiliErrLog, chiliLog } from "./screen/output.js";
+import { chiliErrLog, chiliLog, chili_capture, type ChiliCaptured } from "./screen/output.js";
 
 /**
  * Suppress the DEP0169 (`url.parse()`) warning emitted transitively by
@@ -236,4 +236,19 @@ export async function run(argv: string[]): Promise<void> {
     }
     throw err;
   }
+}
+
+/**
+ * Executes a single chili command with its output captured instead of printed.
+ *
+ * Runs {@link run} inside {@link chili_capture}, so everything the command
+ * would have written to the output and error channels is collected and
+ * returned. This is how an in-process host (the brasa engine) drives chili
+ * headless and carries the result in an envelope, with no console monkeypatch.
+ *
+ * @param argv - The chili arguments, e.g. `["feeds", "list", "-s"]`.
+ * @returns The captured output and error text.
+ */
+export async function run_capture(argv: string[]): Promise<ChiliCaptured> {
+  return chili_capture((): Promise<void> => run(argv));
 }

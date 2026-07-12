@@ -1128,7 +1128,28 @@ export function commandHelp_get(command: string): string | undefined {
 }
 
 /**
+ * Renders a command's help text as a string.
+ *
+ * The string form used by envelope-returning builtins: they return this rather
+ * than printing, so no console capture is needed. {@link help_show} is the
+ * printing wrapper for callers not yet converted.
+ *
+ * @param command - The command to render help for.
+ * @returns The help text, terminated with a newline.
+ */
+export function help_render(command: string): string {
+  const helpStr: string | undefined = commandHelp_get(command);
+  if (helpStr !== undefined) {
+    return `${helpStr}\n`;
+  }
+  return `${chalk.yellow(`No help available for '${command}'`)}\n${chalk.gray('Type "help" to see all available commands.')}\n`;
+}
+
+/**
  * Displays help text for a command.
+ *
+ * Retained for builtins not yet converted to return envelopes; converted
+ * builtins use {@link help_render} instead.
  *
  * @param command - The command to display help for.
  */

@@ -9,9 +9,9 @@
  */
 
 import chalk from 'chalk';
-import { Client } from '@fnndsc/cumin';
+import { Client, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
-import { args_checkHasHelpFlag, help_show } from '../help.js';
+import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { path_resolve } from '../utils.js';
 import {
   ChRISPACSClient,
@@ -30,10 +30,9 @@ import {
  * cubepath /net/pacs/queries/AccessionNumber:12345678_qid:2661
  * cubepath /net/pacs/queries/.../Series_1.2.3_AX_T2 /net/pacs/queries/.../Series_1.2.3_DWI
  */
-export async function builtin_cubepath(args: string[]): Promise<void> {
+export async function builtin_cubepath(args: string[]): Promise<CommandEnvelope> {
   if (args_checkHasHelpFlag(args, 'cubepath')) {
-    help_show('cubepath');
-    return;
+    return envelope_ok(help_render('cubepath'));
   }
 
   let pacsserverOverride: string | null = null;
@@ -51,24 +50,25 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
   }
 
   if (positional.length === 0) {
-    console.error(chalk.red('cubepath: Missing path. Usage: cubepath <vfs-path> [...]'));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red('cubepath: Missing path. Usage: cubepath <vfs-path> [...]')}\n`);
   }
 
   const pacsIdentifier: string | null = await pacsServer_resolve(pacsserverOverride);
   if (!pacsIdentifier) {
-    console.error(chalk.red('cubepath: No PACS server available. Set one with: pacs connect <id>'));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red('cubepath: No PACS server available. Set one with: pacs connect <id>')}\n`);
   }
+
+  // Warnings accumulate on the err channel; result lines on the data channel.
+  let errOut: string = '';
 
   // Collect series from all paths
   const allSeries: PACSSeriesInfo[] = [];
   for (const rawPath of positional) {
     const vfsPath: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
     if (!vfsPath.startsWith('/net/pacs')) {
-      console.error(chalk.red(`cubepath: Not a PACS VFS path: ${rawPath}`));
+      errOut += `${chalk.red(`cubepath: Not a PACS VFS path: ${rawPath}`)}\n`;
       continue;
     }
     const found: PACSSeriesInfo[] = await pacs_seriesCollect(vfsPath, pacsIdentifier, 'cubepath');
@@ -76,16 +76,14 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
   }
 
   if (allSeries.length === 0) {
-    console.error(chalk.yellow('cubepath: No series found under that path.'));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${errOut}${chalk.yellow('cubepath: No series found under that path.')}\n`);
   }
 
   const client: Client | null = await session.connection.client_get();
   if (!client) {
-    console.error(chalk.red('cubepath: Not connected to ChRIS.'));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${errOut}${chalk.red('cubepath: Not connected to ChRIS.')}\n`);
   }
 
   const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
@@ -105,6 +103,7 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
 
   const maxLabelLen: number = Math.max(...results.map((r: SeriesResult) => r.info.seriesLabel.length));
 
+  let rendered: string = '';
   let notInCube: number = 0;
   for (const { info, cubePath } of results) {
     const label: string = info.seriesLabel.padEnd(maxLabelLen);
@@ -113,14 +112,20 @@ export async function builtin_cubepath(args: string[]): Promise<void> {
       const countStr: string = cubePath.fileCount > 0
         ? chalk.green(`(${cubePath.fileCount} files)`)
         : chalk.yellow('(0 files — may not be pulled)');
-      console.log(`  ${chalk.white(label)}  ${arrow}  ${chalk.cyan(cubePath.folderPath)}  ${countStr}`);
+      rendered += `  ${chalk.white(label)}  ${arrow}  ${chalk.cyan(cubePath.folderPath)}  ${countStr}\n`;
     } else {
-      console.log(`  ${chalk.white(label)}  ${arrow}  ${chalk.gray('(not in CUBE)')}`);
+      rendered += `  ${chalk.white(label)}  ${arrow}  ${chalk.gray('(not in CUBE)')}\n`;
       notInCube++;
     }
   }
 
   if (notInCube > 0) {
-    console.log(chalk.gray(`\n  ${notInCube}/${results.length} series not found in CUBE — use pull to retrieve.`));
+    rendered += `${chalk.gray(`\n  ${notInCube}/${results.length} series not found in CUBE — use pull to retrieve.`)}\n`;
   }
+
+  const envelope: CommandEnvelope = envelope_ok(rendered);
+  if (errOut.length > 0) {
+    envelope.renderedErr = errOut;
+  }
+  return envelope;
 }

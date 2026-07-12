@@ -134,28 +134,28 @@ describe('pacsQuery_createAndWait', () => {
 
 describe('builtin_query', () => {
   it('shows help for --help', async () => {
-    await builtin_query(['--help']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('USAGE'));
+    const envelope = await builtin_query(['--help']);
+    expect(envelope.rendered).toContain('USAGE');
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('requires a query expression', async () => {
-    await builtin_query([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Missing query expression'));
+    const envelope = await builtin_query([]);
+    expect(envelope.renderedErr).toContain('Missing query expression');
     expect(process.exitCode).toBe(1);
   });
 
   it('rejects an invalid expression before creating anything', async () => {
-    await builtin_query(['nocolon']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid expression'));
+    const envelope = await builtin_query(['nocolon']);
+    expect(envelope.renderedErr).toContain('Invalid expression');
     expect(mockCreate).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
   it('errors when no PACS server can be resolved', async () => {
     mockServersList.mockResolvedValue(ok([]));
-    await builtin_query(['PatientID:X']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No PACS server available'));
+    const envelope = await builtin_query(['PatientID:X']);
+    expect(envelope.renderedErr).toContain('No PACS server available');
     expect(process.exitCode).toBe(1);
   });
 
@@ -173,8 +173,7 @@ describe('builtin_query', () => {
     mockCreate.mockResolvedValue(ok({ id: 9, owner_username: 'chris' }));
     mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
     mockDecode.mockResolvedValue(ok({ json: studyPayload }));
-    await builtin_query(['PatientID:X']);
-    const output = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
+    const { rendered: output } = await builtin_query(['PatientID:X']);
     expect(output).toContain('Query 9 complete');
     expect(output).toContain('Brain Study');
     expect(output).toContain('T1 MPRAGE');
@@ -186,12 +185,12 @@ describe('builtin_query', () => {
     mockCreate.mockResolvedValue(ok({ id: 9 }));
     mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
     mockDecode.mockResolvedValue(ok({ json: studyPayload }));
-    await builtin_query(['PatientID:X', '--table', '--title', 'My Query']);
+    const envelope = await builtin_query(['PatientID:X', '--table', '--title', 'My Query']);
     expect(mockTable).toHaveBeenCalledWith(
       [expect.objectContaining({ Description: 'T1 MPRAGE', Modality: 'MR', Files: '176' })],
       expect.anything(),
     );
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('TABLE_OUT'));
+    expect(envelope.rendered).toContain('TABLE_OUT');
     expect(mockCreate).toHaveBeenCalledWith('PACSDCM', expect.objectContaining({ title: 'My Query' }));
   });
 
@@ -209,9 +208,8 @@ describe('builtin_query', () => {
     mockCreate.mockResolvedValue(ok({ id: 9 }));
     mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
     mockDecode.mockResolvedValue(ok({ json: null }));
-    await builtin_query(['PatientID:X']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('no studies found'));
-    const output: string = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
+    const { rendered: output } = await builtin_query(['PatientID:X']);
+    expect(output).toContain('no studies found');
     expect(output).not.toContain('VFS path');
     expect(output).not.toContain('pull /net/pacs');
   });
@@ -219,8 +217,8 @@ describe('builtin_query', () => {
   it('reports a generic failure when the error stack is empty', async () => {
     mockCurrentGet.mockResolvedValue('PACSDCM');
     mockCreate.mockResolvedValue(err());
-    await builtin_query(['PatientID:X']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('query: Failed'));
+    const envelope = await builtin_query(['PatientID:X']);
+    expect(envelope.renderedErr).toContain('query: Failed');
     expect(process.exitCode).toBe(1);
   });
 
@@ -228,8 +226,8 @@ describe('builtin_query', () => {
     mockCurrentGet.mockResolvedValue('PACSDCM');
     mockCreate.mockResolvedValue(err());
     mockGetAll.mockReturnValue([{ message: 'PACS server refused the query' }]);
-    await builtin_query(['PatientID:X']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('PACS server refused the query'));
+    const envelope = await builtin_query(['PatientID:X']);
+    expect(envelope.renderedErr).toContain('PACS server refused the query');
     expect(process.exitCode).toBe(1);
   });
 });

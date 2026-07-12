@@ -9,8 +9,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
 // Shared screen + per-resource chili command modules.
-const mockTable = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTable }));
+const mockTable = jest.fn(() => 'TABLE');
+jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTable, table_render: mockTable }));
 
 const mockTagsList = jest.fn();
 const mockTagFields = jest.fn();
@@ -108,15 +108,15 @@ describe.each(cases)('builtin_$name', ({ builtin, list, fields, listKey }) => {
 
   it('notes an empty listing', async () => {
     list.mockResolvedValue({ [listKey]: [], selectedFields: [], totalCount: 0 });
-    await builtin(['list']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No '));
+    const envelope = await builtin(['list']);
+    expect(envelope.rendered).toContain('No ');
   });
 
   it('reports a listing error and sets a non-zero exit code', async () => {
     list.mockRejectedValue(new Error('boom'));
-    await builtin(['list']);
+    const envelope = await builtin(['list']);
     expect(process.exitCode).toBe(1);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    expect(envelope.renderedErr).toContain('boom');
   });
 
   it('inspects fields', async () => {
@@ -127,8 +127,8 @@ describe.each(cases)('builtin_$name', ({ builtin, list, fields, listKey }) => {
 
   it('notes empty fields on inspect', async () => {
     fields.mockResolvedValue([]);
-    await builtin(['inspect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No fields'));
+    const envelope = await builtin(['inspect']);
+    expect(envelope.rendered).toContain('No fields');
   });
 
   it('rejects an unknown subcommand with a non-zero exit code', async () => {
@@ -137,23 +137,23 @@ describe.each(cases)('builtin_$name', ({ builtin, list, fields, listKey }) => {
   });
 
   it('handles the search subcommand', async () => {
-    await expect(builtin(['search', 'foo'])).resolves.toBeUndefined();
+    await expect(builtin(['search', 'foo'])).resolves.toBeDefined();
   });
 });
 
 describe('builtin_compute', () => {
   it('lists compute resources via computeList_render', async () => {
     mockComputeList.mockResolvedValue({ resources: [{ id: 1 }] });
-    await builtin_compute([]);
+    const envelope = await builtin_compute([]);
     expect(mockComputeRender).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith('COMPUTE_RENDER');
+    expect(envelope.rendered).toContain('COMPUTE_RENDER');
   });
 
   it('reports a listing error with a non-zero exit code', async () => {
     mockComputeList.mockRejectedValue(new Error('boom'));
-    await builtin_compute(['list']);
+    const envelope = await builtin_compute(['list']);
     expect(process.exitCode).toBe(1);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    expect(envelope.renderedErr).toContain('boom');
   });
 
   it('inspects fields, or notes none', async () => {
@@ -161,8 +161,8 @@ describe('builtin_compute', () => {
     await builtin_compute(['inspect']);
     expect(mockTable).toHaveBeenCalled();
     mockComputeFields.mockResolvedValue([]);
-    await builtin_compute(['inspect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No fields'));
+    const envelope = await builtin_compute(['inspect']);
+    expect(envelope.rendered).toContain('No fields');
   });
 
   it('rejects an unknown subcommand', async () => {

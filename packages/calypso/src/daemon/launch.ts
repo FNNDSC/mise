@@ -23,8 +23,6 @@ import { discovery_write, discovery_path } from './discovery.js';
 
 /** The daemon sink forwards live command output to the executing surface. */
 class DaemonSink implements OutputSink {
-  public readonly liveEnvelopeOutput = true;
-
   constructor(private readonly daemon: CalypsoDaemon) {}
 
   /** @inheritdoc */

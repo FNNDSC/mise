@@ -67,7 +67,7 @@ import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import { envelopeHandler_wrap, printingHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
+import { envelopeHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
 import { surface_get, capability_require } from './surface.js';
@@ -475,13 +475,14 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     }
   }
 
-  const fallback: EnvelopeHandler = printingHandler_wrap(async (fallbackArgs: string[]): Promise<void> => {
+  // Unknown commands delegate to chili, which prints for itself — the same
+  // print-direct contract as the other unconverted handlers routed through
+  // handler_runDirect (upload, pacs, download, ...). No per-invocation console
+  // capture is installed here.
+  return handler_runDirect(async (fallbackArgs: string[]): Promise<void> => {
     console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
     await chiliCommand_run(command, ['-s', ...fallbackArgs]);
-  });
-  const envelope: CommandEnvelope = await fallback(args);
-  envelope_deliver(envelope);
-  return envelope;
+  }, args);
 }
 
 /**

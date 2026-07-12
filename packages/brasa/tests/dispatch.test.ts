@@ -156,22 +156,23 @@ describe('command_dispatch', () => {
 
   it('delegates an unknown command to chili with -s', async () => {
     mockDataGet.mockResolvedValue(Ok([]));
-    // The fallback runs through the capture bridge: the delegation notice is
-    // captured into the envelope and delivered via the sink, not console.log.
-    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    // The fallback prints its delegation notice for itself and lets chili print
+    // directly — the same print-direct contract as the other unconverted
+    // handlers routed through handler_runDirect.
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     await command_dispatch('frobnicate', ['x']);
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
-    expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('delegating to chili'));
-    writeSpy.mockRestore();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('delegating to chili'));
+    logSpy.mockRestore();
   });
 
-  it('returns the fallback delegation notice in the envelope', async () => {
+  it('yields a placeholder envelope for the chili fallback', async () => {
     mockDataGet.mockResolvedValue(Ok([]));
-    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     const envelope = await command_dispatchEnvelope('frobnicate', ['x']);
-    expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toContain('delegating to chili');
-    writeSpy.mockRestore();
+    expect(envelope).toEqual({ status: 'ok', rendered: '' });
+    expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
+    logSpy.mockRestore();
   });
 
   it('yields a placeholder envelope for an unconverted handler', async () => {

@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { session } from '../../session/index.js';
 import { spinner } from '../../lib/spinner.js';
-import { errorStack } from '@fnndsc/cumin';
+import { errorStack, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { scan_do, archyTree_create, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 
@@ -24,7 +24,7 @@ import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
  * tree --follow           # Follow symbolic links
  * ```
  */
-export async function builtin_tree(args: string[]): Promise<void> {
+export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
   const pathMode: boolean = !!parsed['path'];
@@ -56,30 +56,28 @@ export async function builtin_tree(args: string[]): Promise<void> {
     if (!scanResult) {
       spinner.stop();
       const lastError = errorStack.stack_pop();
-      if (lastError) {
-        console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
-      } else {
-        console.error(chalk.red('Failed to scan directory tree.'));
-      }
-      return;
+      process.exitCode = 1;
+      const message: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Failed to scan directory tree.';
+      return envelope_error('', undefined, `${chalk.red(message)}\n`);
     }
 
     spinner.stop();
 
+    let rendered: string = '';
     if (pathMode) {
       // --path: emit one full chrisPath per entry — grep-friendly
       for (const item of scanResult.fileInfo) {
-        console.log(item.chrisPath);
+        rendered += `${item.chrisPath}\n`;
       }
     } else {
       // Default: ASCII tree
-      const treeOutput: string = archyTree_create(scanResult.fileInfo);
-      console.log(treeOutput);
+      rendered += `${archyTree_create(scanResult.fileInfo)}\n`;
     }
 
     // Display summary
-    console.log(chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`));
-    console.log(chalk.gray(`${scanResult.fileInfo.length} items`));
+    rendered += `${chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`)}\n`;
+    rendered += `${chalk.gray(`${scanResult.fileInfo.length} items`)}\n`;
+    return envelope_ok(rendered);
 
   } finally {
     // Restore original path

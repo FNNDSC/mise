@@ -39,19 +39,19 @@ beforeEach(() => {
 describe('builtin_tree', () => {
   it('renders an ASCII tree with a size summary', async () => {
     mockScanDo.mockResolvedValue({ fileInfo: [{ chrisPath: '/a' }], totalSize: 2048 });
-    await builtin_tree([]);
+    const envelope = await builtin_tree([]);
     expect(mockArchy).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith('TREE_OUTPUT');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('2 KB'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 items'));
+    expect(envelope.rendered).toContain('TREE_OUTPUT');
+    expect(envelope.rendered).toContain('2 KB');
+    expect(envelope.rendered).toContain('1 items');
   });
 
   it('emits one chrisPath per entry in --path mode', async () => {
     mockScanDo.mockResolvedValue({ fileInfo: [{ chrisPath: '/a' }, { chrisPath: '/b' }], totalSize: 0 });
-    await builtin_tree(['--path']);
+    const envelope = await builtin_tree(['--path']);
     expect(mockArchy).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith('/a');
-    expect(logSpy).toHaveBeenCalledWith('/b');
+    expect(envelope.rendered).toContain('/a');
+    expect(envelope.rendered).toContain('/b');
   });
 
   it('temporarily changes directory for an explicit path and restores it', async () => {
@@ -65,15 +65,15 @@ describe('builtin_tree', () => {
     mockScanDo.mockResolvedValue(null);
     const { errorStack } = await import('@fnndsc/cumin');
     (errorStack.stack_pop as jest.Mock).mockReturnValue({ message: 'scan blew up' });
-    await builtin_tree([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('scan blew up'));
+    const envelope = await builtin_tree([]);
+    expect(envelope.renderedErr).toContain('scan blew up');
   });
 
   it('reports a generic failure when the stack is empty', async () => {
     mockScanDo.mockResolvedValue(null);
     const { errorStack } = await import('@fnndsc/cumin');
     (errorStack.stack_pop as jest.Mock).mockReturnValue(undefined);
-    await builtin_tree([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to scan'));
+    const envelope = await builtin_tree([]);
+    expect(envelope.renderedErr).toContain('Failed to scan');
   });
 });

@@ -200,7 +200,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   // plugin is deliberately absent: its add flow prompts for admin
   // credentials through readline, which capture would make invisible.
   ls: printingHandler_wrap(builtin_ls),
-  tree: printingHandler_wrap(builtin_tree),
+  tree: builtin_tree,
   du: printingHandler_wrap(builtin_du),
   help: builtin_help,
   proc: builtin_proc,
@@ -264,7 +264,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   debug: envelopeHandler_wrap(builtin_debug),
   help: envelopeHandler_wrap(builtin_help),
   proc: envelopeHandler_wrap(builtin_proc),
-  tree: printingBridge_wrap(builtin_tree),
+  tree: envelopeHandler_wrap(builtin_tree),
   du: printingBridge_wrap(builtin_du),
   store: builtin_store,
   plugin: builtin_plugin,

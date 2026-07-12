@@ -673,26 +673,27 @@ describe('Builtins - Core Functions', () => {
       mockFeedsFetchList.mockResolvedValue({ feeds: [], selectedFields: [] });
       mockFeedListRender.mockReturnValue('Feed list');
 
-      await builtin_feed(['list']);
+      const envelope = await builtin_feed(['list']);
 
       expect(mockFeedsFetchList).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Feed list');
+      expect(envelope.rendered).toContain('Feed list');
     });
 
     it('should create a feed', async () => {
       mockFeedCreate.mockResolvedValue({ id: 456, name: 'Test Feed' });
       mockFeedCreateRender.mockReturnValue('Feed created');
 
-      await builtin_feed(['create', '--dirs', '/data']);
+      const envelope = await builtin_feed(['create', '--dirs', '/data']);
 
       expect(mockFeedCreate).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Feed created');
+      expect(envelope.rendered).toContain('Feed created');
     });
 
-    it('should delegate unknown subcommands to chili', async () => {
-      await builtin_feed(['delete', 'id:456']);
+    it('should return an error envelope for unknown subcommands', async () => {
+      const envelope = await builtin_feed(['delete', 'id:456']);
 
-      expect(mockChiliCommandRun).toHaveBeenCalledWith('feeds', ['-s', 'delete', 'id:456']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+      expect(envelope.renderedErr).toContain('Unknown subcommand');
     });
   });
 

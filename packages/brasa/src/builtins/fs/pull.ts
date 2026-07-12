@@ -20,9 +20,12 @@ import {
   PACSQueryCreateData,
   PACSRetrieveRecord,
   Client,
+  type CommandEnvelope,
+  envelope_ok,
+  envelope_error,
 } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
-import { args_checkHasHelpFlag, help_show } from '../help.js';
+import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
 import { spinner } from '../../lib/spinner.js';
 import { path_resolve } from '../utils.js';
@@ -35,7 +38,7 @@ import {
 } from '../net/pacsUtils.js';
 import { builtin_cubepath } from '../net/cubepath.js';
 import { pullArgs_parse, type PullArgs } from './pull.args.js';
-import { sink_get } from '../../core/sink.js';
+import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import type { ProgressStatus } from '../../core/progress.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
@@ -373,13 +376,13 @@ async function paths_resolveToVfs(paths: string[], pacsserver: string): Promise<
       );
       spinner.stop();
       if (qResult) {
-        console.log(chalk.gray(`  → ${qResult.vfsPath}`));
+        sink_dataLine(chalk.gray(`  → ${qResult.vfsPath}`));
         resolvedPaths.push(qResult.vfsPath);
       } else {
-        console.error(chalk.red(`pull: Query failed for: ${rawPath}`));
+        sink_errLine(chalk.red(`pull: Query failed for: ${rawPath}`));
       }
     } else {
-      console.error(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
+      sink_errLine(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
     }
   }
   return resolvedPaths;
@@ -419,7 +422,7 @@ async function pullRetryLoop(
     retryCandidates = retryCandidates.filter((t: SeriesPullTask) => !t.lonkConfirmed);
     if (retryCandidates.length === 0) break;
 
-    console.log(chalk.yellow(
+    sink_dataLine(chalk.yellow(
       `\nRetry ${attempt}/${retryMax} for ${retryCandidates.length} unconfirmed series...`,
     ));
 
@@ -461,17 +464,17 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
   const failures: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'pulled');
 
   if (failures.length === 0) {
-    console.log(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
+    sink_dataLine(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
   } else {
-    console.log(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
+    sink_dataLine(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
     for (const f of failures) {
-      console.log(chalk.red(`  ✗ ${f.label} [${f.status.toUpperCase()}]`));
+      sink_dataLine(chalk.red(`  ✗ ${f.label} [${f.status.toUpperCase()}]`));
     }
     process.exitCode = 1;
   }
 
   if (totalFiringErrors > 0) {
-    console.log(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
+    sink_dataLine(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
     process.exitCode = 1;
   }
 
@@ -492,25 +495,24 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
  * pull /net/pacs/queries/42_AccessionNumber:12345678
  * pull --retry 3 /net/pacs/queries/42_AccessionNumber:12345678/Study_1.2.3_US-Hips
  */
-export async function builtin_pull(args: string[]): Promise<void> {
+export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   if (args_checkHasHelpFlag(args, 'pull')) {
-    help_show('pull');
-    return;
+    return envelope_ok(help_render('pull'));
   }
 
   const { nowait, retryMax, paths }: PullArgs = pullArgs_parse(args);
 
   if (paths.length === 0) {
-    console.error(chalk.red('pull: No paths specified. Usage: pull [--nowait] [--retry N] <vfs-path> [...]'));
+    sink_errLine(chalk.red('pull: No paths specified. Usage: pull [--nowait] [--retry N] <vfs-path> [...]'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
 
   const pacsIdentifier: string | null = await pacsServer_resolve();
   if (!pacsIdentifier) {
-    console.error(chalk.red('pull: No PACS server available. Set one with: pacs connect <id>'));
+    sink_errLine(chalk.red('pull: No PACS server available. Set one with: pacs connect <id>'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
   const pacsserver: string = pacsIdentifier;
 
@@ -520,22 +522,22 @@ export async function builtin_pull(args: string[]): Promise<void> {
   for (const p of resolvedPaths) {
     const tasks: SeriesPullTask[] = await path_seriesCollect(p, pacsIdentifier);
     if (tasks.length === 0) {
-      console.error(chalk.yellow(`pull: No series found under: ${p}`));
+      sink_errLine(chalk.yellow(`pull: No series found under: ${p}`));
     }
     allTasks.push(...tasks);
   }
 
   if (allTasks.length === 0) {
-    console.error(chalk.red('pull: No series to retrieve.'));
+    sink_errLine(chalk.red('pull: No series to retrieve.'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
 
   const client: Client | null = await session.connection.client_get();
   if (!client) {
-    console.error(chalk.red('pull: Not connected to ChRIS.'));
+    sink_errLine(chalk.red('pull: Not connected to ChRIS.'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
 
   // --nowait: fire retrieves and exit without watching
@@ -543,13 +545,13 @@ export async function builtin_pull(args: string[]): Promise<void> {
     for (const t of allTasks) {
       await task_fire(t, pacsserver);
       if (t.retrieveId !== null) {
-        console.log(`${t.seriesUID} ${t.retrieveId}`);
+        sink_dataLine(`${t.seriesUID} ${t.retrieveId}`);
       } else {
-        console.log(`${t.seriesUID} ERROR`);
+        sink_dataLine(`${t.seriesUID} ERROR`);
         process.exitCode = 1;
       }
     }
-    return;
+    return envelope_ok('');
   }
 
   let totalFiringErrors: number = await tasks_pullWatch(allTasks, pacsserver, client);
@@ -558,7 +560,10 @@ export async function builtin_pull(args: string[]): Promise<void> {
   pullSummary_print(allTasks, totalFiringErrors);
 
   // Report CUBE paths via cubepath; --retry handles pacsseries DB lag post-pull
-  await builtin_cubepath([...resolvedPaths, '--retry']);
+  const cubeEnvelope: CommandEnvelope = await builtin_cubepath([...resolvedPaths, '--retry']);
+  if (cubeEnvelope.rendered.length > 0) sink_get().data_write(cubeEnvelope.rendered);
+  if (cubeEnvelope.renderedErr !== undefined && cubeEnvelope.renderedErr.length > 0) sink_get().err_write(cubeEnvelope.renderedErr);
 
-  console.log(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
+  sink_dataLine(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
+  return envelope_ok('');
 }

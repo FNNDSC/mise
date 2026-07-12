@@ -10,68 +10,69 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   pacsServers_list: mockServersList,
 }));
 
-const mockQuery = jest.fn();
-const mockPull = jest.fn();
+const mockQuery = jest.fn(async () => ({ status: 'ok', rendered: '' }));
+const mockPull = jest.fn(async () => ({ status: 'ok', rendered: '' }));
 jest.unstable_mockModule('../src/builtins/net/query.js', () => ({ builtin_query: mockQuery }));
 jest.unstable_mockModule('../src/builtins/fs/pull.js', () => ({ builtin_pull: mockPull }));
+
+// pacs streams its output through the sink line writers.
+const mockDataLine = jest.fn();
+const mockErrLine = jest.fn();
+jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_dataLine: mockDataLine, sink_errLine: mockErrLine }));
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 
 const { builtin_pacs } = await import('../src/builtins/net/pacs.js');
 
-let logSpy: jest.SpiedFunction<typeof console.log>;
-let errSpy: jest.SpiedFunction<typeof console.error>;
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   mockGet.mockResolvedValue(null);
   mockSet.mockResolvedValue(true);
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-  errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 describe('builtin_pacs', () => {
-  it('shows help for --help', async () => {
-    await builtin_pacs(['--help']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('USAGE'));
+  it('returns help for --help', async () => {
+    const env = await builtin_pacs(['--help']);
+    expect(env.rendered).toContain('USAGE');
   });
 
   it('shows the active server with no subcommand', async () => {
     mockGet.mockResolvedValue('PACSDCM');
     await builtin_pacs([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Active PACS server'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('Active PACS server'));
   });
 
   it('notes when no server is set', async () => {
     mockGet.mockResolvedValue(null);
     await builtin_pacs([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No PACS server set'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('No PACS server set'));
   });
 
   it('lists servers, marking the active one, on bare connect', async () => {
     mockGet.mockResolvedValue('PACSDCM');
     mockServersList.mockResolvedValue(ok([{ id: 1, identifier: 'PACSDCM' }, { id: 2, identifier: 'ORTHANC' }]));
     await builtin_pacs(['connect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('active'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('active'));
   });
 
   it('notes when no servers are registered', async () => {
     mockServersList.mockResolvedValue(ok([]));
     await builtin_pacs(['connect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No PACS servers registered'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('No PACS servers registered'));
   });
 
   it('sets the active server', async () => {
     mockSet.mockResolvedValue(true);
     await builtin_pacs(['connect', 'ORTHANC']);
     expect(mockSet).toHaveBeenCalledWith('ORTHANC');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("set to 'ORTHANC'"));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining("set to 'ORTHANC'"));
   });
 
   it('reports a failure to set the server', async () => {
     mockSet.mockResolvedValue(false);
     await builtin_pacs(['connect', 'ghost']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to set'));
+    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('Failed to set'));
     expect(process.exitCode).toBe(1);
   });
 
@@ -79,13 +80,13 @@ describe('builtin_pacs', () => {
     mockSet.mockResolvedValue(true);
     await builtin_pacs(['disconnect']);
     expect(mockSet).toHaveBeenCalledWith('');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('cleared'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('cleared'));
   });
 
   it('reports a failure to disconnect', async () => {
     mockSet.mockResolvedValue(false);
     await builtin_pacs(['disconnect']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to clear'));
+    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('Failed to clear'));
     expect(process.exitCode).toBe(1);
   });
 
@@ -107,7 +108,7 @@ describe('builtin_pacs', () => {
 
   it('rejects an unknown subcommand', async () => {
     await builtin_pacs(['frobnicate']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("Unknown subcommand 'frobnicate'"));
+    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining("Unknown subcommand 'frobnicate'"));
     expect(process.exitCode).toBe(1);
   });
 });

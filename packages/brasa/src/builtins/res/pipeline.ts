@@ -18,6 +18,9 @@ import {
   chrisContext,
   errorStack,
   pipeline_resolve,
+  type CommandEnvelope,
+  envelope_ok,
+  envelope_error,
 } from '@fnndsc/cumin';
 import {
   pipelines_list,
@@ -25,8 +28,9 @@ import {
   pipeline_sourceGet,
 } from '@fnndsc/salsa';
 import { pipelineFields_fetch } from '@fnndsc/chili/commands/pipeline/fields.js';
-import { table_display } from '@fnndsc/chili/screen/screen.js';
-import { args_checkHasHelpFlag, help_show } from '../help.js';
+import { table_render } from '@fnndsc/chili/screen/screen.js';
+import { args_checkHasHelpFlag, help_render } from '../help.js';
+import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
 import { session } from '../../session/index.js';
 
@@ -38,7 +42,7 @@ import { session } from '../../session/index.js';
 async function pipelineNodes_print(pipelineId: number): Promise<void> {
   const client = await session.connection.client_get();
   if (!client) {
-    console.error(chalk.red('pipeline info: not connected to ChRIS'));
+    sink_errLine(chalk.red('pipeline info: not connected to ChRIS'));
     return;
   }
 
@@ -53,18 +57,18 @@ async function pipelineNodes_print(pipelineId: number): Promise<void> {
     }).getPipeline(pipelineId);
 
     if (!pipelineObj) {
-      console.error(chalk.red(`pipeline info: pipeline ${pipelineId} not found`));
+      sink_errLine(chalk.red(`pipeline info: pipeline ${pipelineId} not found`));
       return;
     }
 
     const pipingsResponse = await pipelineObj.getPluginPipings({ limit: 1000 });
     const pipings = pipingsResponse.getItems();
 
-    console.log(chalk.bold.blue('\nNodes:\n'));
-    console.log(
+    sink_dataLine(chalk.bold.blue('\nNodes:\n'));
+    sink_dataLine(
       `  ${chalk.bold('ID'.padEnd(6))}${chalk.bold('Title'.padEnd(30))}${chalk.bold('Plugin')}`
     );
-    console.log(`  ${chalk.gray('─'.repeat(70))}`);
+    sink_dataLine(`  ${chalk.gray('─'.repeat(70))}`);
 
     for (const piping of pipings) {
       const d: Record<string, unknown> = piping.data;
@@ -72,12 +76,12 @@ async function pipelineNodes_print(pipelineId: number): Promise<void> {
       const title: string = String(d.title ?? '(untitled)').padEnd(30);
       const plugin: string = String(d.plugin_name ?? '') + ' v' + String(d.plugin_version ?? '');
       const previous: string = d.previous_id ? chalk.gray(` ← node ${d.previous_id}`) : chalk.gray(' (root)');
-      console.log(`  ${chalk.cyan(id)}${chalk.white(title)}${chalk.yellow(plugin)}${previous}`);
+      sink_dataLine(`  ${chalk.cyan(id)}${chalk.white(title)}${chalk.yellow(plugin)}${previous}`);
     }
-    console.log('');
+    sink_dataLine('');
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red(`pipeline info: ${msg}`));
+    sink_errLine(chalk.red(`pipeline info: ${msg}`));
   }
 }
 
@@ -90,22 +94,22 @@ async function pipelineList_handle(args: string[]): Promise<void> {
   const search: string | undefined = args[1];
   const data = await pipelines_list(search);
   if (!data || data.tableData.length === 0) {
-    console.log(chalk.yellow('No pipelines registered.'));
+    sink_dataLine(chalk.yellow('No pipelines registered.'));
     return;
   }
-  console.log('');
-  console.log(
+  sink_dataLine('');
+  sink_dataLine(
     `  ${chalk.bold('ID'.padEnd(6))}${chalk.bold('Name'.padEnd(40))}${chalk.bold('Category'.padEnd(16))}${chalk.bold('Authors')}`
   );
-  console.log(`  ${chalk.gray('─'.repeat(80))}`);
+  sink_dataLine(`  ${chalk.gray('─'.repeat(80))}`);
   for (const row of data.tableData) {
     const id: string = String(row.id ?? '').padEnd(6);
     const name: string = String(row.name ?? '').padEnd(40);
     const cat: string = String(row.category ?? '').padEnd(16);
     const authors: string = String(row.authors ?? '');
-    console.log(`  ${chalk.cyan(id)}${chalk.magenta(name)}${chalk.gray(cat)}${chalk.gray(authors)}`);
+    sink_dataLine(`  ${chalk.cyan(id)}${chalk.magenta(name)}${chalk.gray(cat)}${chalk.gray(authors)}`);
   }
-  console.log('');
+  sink_dataLine('');
 }
 
 /**
@@ -116,24 +120,24 @@ async function pipelineList_handle(args: string[]): Promise<void> {
 async function pipelineInfo_handle(args: string[]): Promise<void> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
-    console.error(chalk.red('Usage: pipeline info <name|id>'));
+    sink_errLine(chalk.red('Usage: pipeline info <name|id>'));
     process.exitCode = 1;
     return;
   }
   const result = await pipeline_resolve(nameOrId);
   if (!result.ok) {
     const err = errorStack.stack_pop();
-    console.error(chalk.red(`pipeline info: ${err?.message ?? 'not found'}`));
+    sink_errLine(chalk.red(`pipeline info: ${err?.message ?? 'not found'}`));
     process.exitCode = 1;
     return;
   }
   const p = result.value;
-  console.log('');
-  console.log(`${chalk.bold.magenta(p.name)}  ${chalk.gray(`[id: ${p.id}]`)}`);
-  if (p.description) console.log(chalk.white(`  ${p.description}`));
-  if (p.authors)     console.log(chalk.gray(`  Authors: ${p.authors}`));
-  if (p.category)    console.log(chalk.gray(`  Category: ${p.category}`));
-  console.log(chalk.gray(`  Locked: ${p.locked ? 'yes' : 'no'}`));
+  sink_dataLine('');
+  sink_dataLine(`${chalk.bold.magenta(p.name)}  ${chalk.gray(`[id: ${p.id}]`)}`);
+  if (p.description) sink_dataLine(chalk.white(`  ${p.description}`));
+  if (p.authors)     sink_dataLine(chalk.gray(`  Authors: ${p.authors}`));
+  if (p.category)    sink_dataLine(chalk.gray(`  Category: ${p.category}`));
+  sink_dataLine(chalk.gray(`  Locked: ${p.locked ? 'yes' : 'no'}`));
   await pipelineNodes_print(p.id);
 }
 
@@ -149,14 +153,14 @@ async function pipelineRun_previousInstId(previousOverride: number | undefined):
 
   const contextStr: string | null = await chrisContext.ChRISplugin_get();
   if (!contextStr) {
-    console.error(chalk.red('pipeline run: no plugin instance in context.'));
-    console.error(chalk.gray('  Navigate to a feed node first, or use --previous <id>'));
+    sink_errLine(chalk.red('pipeline run: no plugin instance in context.'));
+    sink_errLine(chalk.gray('  Navigate to a feed node first, or use --previous <id>'));
     process.exitCode = 1;
     return null;
   }
   const previousInstId: number = parseInt(contextStr, 10);
   if (isNaN(previousInstId)) {
-    console.error(chalk.red(`pipeline run: invalid context instance '${contextStr}'`));
+    sink_errLine(chalk.red(`pipeline run: invalid context instance '${contextStr}'`));
     process.exitCode = 1;
     return null;
   }
@@ -171,7 +175,7 @@ async function pipelineRun_previousInstId(previousOverride: number | undefined):
 async function pipelineRun_handle(args: string[]): Promise<void> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
-    console.error(chalk.red('Usage: pipeline run <name|id> [--compute <resource>] [--previous <inst_id>]'));
+    sink_errLine(chalk.red('Usage: pipeline run <name|id> [--compute <resource>] [--previous <inst_id>]'));
     process.exitCode = 1;
     return;
   }
@@ -184,24 +188,24 @@ async function pipelineRun_handle(args: string[]): Promise<void> {
   const pipelineResult = await pipeline_resolve(nameOrId);
   if (!pipelineResult.ok) {
     const err = errorStack.stack_pop();
-    console.error(chalk.red(`pipeline run: ${err?.message ?? 'pipeline not found'}`));
+    sink_errLine(chalk.red(`pipeline run: ${err?.message ?? 'pipeline not found'}`));
     process.exitCode = 1;
     return;
   }
 
-  console.log(chalk.gray(`Running pipeline '${pipelineResult.value.name}' on instance ${previousInstId}...`));
+  sink_dataLine(chalk.gray(`Running pipeline '${pipelineResult.value.name}' on instance ${previousInstId}...`));
 
   const runResult = await pipeline_run(nameOrId, previousInstId, computeOverride);
   if (!runResult.ok) {
     const err = errorStack.stack_pop();
-    console.error(chalk.red(`pipeline run: ${err?.message ?? 'workflow creation failed'}`));
+    sink_errLine(chalk.red(`pipeline run: ${err?.message ?? 'workflow creation failed'}`));
     process.exitCode = 1;
     return;
   }
 
   const { workflowId, pluginInstanceIds } = runResult.value;
-  console.log(chalk.green(`✓ Workflow ${workflowId} created — ${pluginInstanceIds.length} node(s) queued`));
-  console.log(chalk.gray(`  Instance IDs: ${pluginInstanceIds.join(', ')}`));
+  sink_dataLine(chalk.green(`✓ Workflow ${workflowId} created — ${pluginInstanceIds.length} node(s) queued`));
+  sink_dataLine(chalk.gray(`  Instance IDs: ${pluginInstanceIds.join(', ')}`));
 }
 
 /**
@@ -212,18 +216,18 @@ async function pipelineRun_handle(args: string[]): Promise<void> {
 async function pipelineSource_handle(args: string[]): Promise<void> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
-    console.error(chalk.red('Usage: pipeline source <name|id>'));
+    sink_errLine(chalk.red('Usage: pipeline source <name|id>'));
     process.exitCode = 1;
     return;
   }
   const sourceResult = await pipeline_sourceGet(nameOrId);
   if (!sourceResult.ok) {
     const err = errorStack.stack_pop();
-    console.error(chalk.red(`pipeline source: ${err?.message ?? 'source not found'}`));
+    sink_errLine(chalk.red(`pipeline source: ${err?.message ?? 'source not found'}`));
     process.exitCode = 1;
     return;
   }
-  console.log(sourceResult.value);
+  sink_dataLine(sourceResult.value);
 }
 
 /**
@@ -232,9 +236,9 @@ async function pipelineSource_handle(args: string[]): Promise<void> {
 async function pipelineInspect_handle(): Promise<void> {
   const fields: string[] | null = await pipelineFields_fetch();
   if (fields && fields.length > 0) {
-    table_display(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Pipeline fields', justification: 'center' } });
+    sink_get().data_write(table_render(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Pipeline fields', justification: 'center' } }));
   } else {
-    console.log(chalk.gray('No fields found.'));
+    sink_dataLine(chalk.gray('No fields found.'));
   }
 }
 
@@ -243,45 +247,44 @@ async function pipelineInspect_handle(): Promise<void> {
  *
  * @param args - Command arguments.
  */
-export async function builtin_pipeline(args: string[]): Promise<void> {
+export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope> {
   if (args_checkHasHelpFlag(args, 'pipeline')) {
-    help_show('pipeline');
-    return;
+    return envelope_ok(help_render('pipeline'));
   }
 
   const subcommand: string | undefined = args[0];
 
   if (!subcommand) {
     const current: string | null = await chrisContext.ChRISplugin_get();
-    console.log(chalk.gray('Usage: pipeline <list|info|run|source> [args]'));
+    sink_dataLine(chalk.gray('Usage: pipeline <list|info|run|source> [args]'));
     if (current) {
-      console.log(chalk.gray(`  Current context node: instance ${current}`));
+      sink_dataLine(chalk.gray(`  Current context node: instance ${current}`));
     }
-    return;
+    return envelope_ok('');
   }
 
   switch (subcommand) {
     case 'list':
       await pipelineList_handle(args);
-      return;
+      return envelope_ok('');
     case 'info':
       await pipelineInfo_handle(args);
-      return;
+      return envelope_ok('');
     case 'run':
       await pipelineRun_handle(args);
-      return;
+      return envelope_ok('');
     case 'source':
       await pipelineSource_handle(args);
-      return;
+      return envelope_ok('');
     case 'inspect':
       await pipelineInspect_handle();
-      return;
+      return envelope_ok('');
     case 'search':
-      await builtin_pipeline(['list', args[1] ?? '']);
-      return;
+      return builtin_pipeline(['list', args[1] ?? '']);
     default:
-      console.error(chalk.red(`pipeline: unknown subcommand '${subcommand}'`));
-      console.log(chalk.gray('  Subcommands: list, search, inspect, info, run, source'));
+      sink_errLine(chalk.red(`pipeline: unknown subcommand '${subcommand}'`));
+      sink_dataLine(chalk.gray('  Subcommands: list, search, inspect, info, run, source'));
       process.exitCode = 1;
+      return envelope_error('');
   }
 }

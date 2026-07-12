@@ -116,72 +116,6 @@ function extension_isBinary(filePath: string): boolean {
   return BINARY_EXTENSIONS.has(ext);
 }
 
-/**
- * Writes a buffer to stdout with proper backpressure handling.
- *
- * Splits large buffers into 64KB chunks and waits for drain events when the
- * output buffer is full. This prevents data loss when piping large binary files
- * to external commands. Waits for all data to be flushed before resolving.
- *
- * @param buffer - The buffer to write to stdout.
- * @returns A Promise that resolves when all data has been written and flushed.
- *
- * @example
- * ```typescript
- * const dicomData: Buffer = await fetchDicomFile();
- * await buffer_writeToStdout(dicomData);
- * ```
- */
-async function buffer_writeToStdout(buffer: Buffer): Promise<void> {
-  return new Promise<void>((resolve: (value: void) => void, reject: (reason: Error) => void) => {
-    if (buffer.length === 0) {
-      resolve();
-      return;
-    }
-
-    let offset: number = 0;
-    const chunkSize: number = 64 * 1024; // 64KB chunks
-
-    /**
-     * Recursively writes the next chunk of data to stdout.
-     * Handles backpressure by waiting for drain events when buffer is full.
-     */
-    const chunk_writeNext = (): void => {
-      try {
-        while (offset < buffer.length) {
-          const end: number = Math.min(offset + chunkSize, buffer.length);
-          const chunk: Buffer = buffer.subarray(offset, end);
-          offset = end;
-
-          const canContinue: boolean = process.stdout.write(chunk);
-
-          if (!canContinue) {
-            // Buffer is full, wait for drain event
-            process.stdout.once('drain', chunk_writeNext);
-            return;
-          }
-        }
-
-        // All chunks written - ensure stdout is flushed before resolving
-        // Writing an empty string forces a flush check. If write() returns false,
-        // the buffer is full and we must wait for drain. This prevents truncation
-        // when piping to external processes, as Node.js won't exit until we resolve.
-        if (process.stdout.write('')) {
-          // Buffer has space, all data is flushed
-          resolve();
-        } else {
-          // Buffer is full, wait for final drain before resolving
-          process.stdout.once('drain', () => resolve());
-        }
-      } catch (err: unknown) {
-        reject(err as Error);
-      }
-    };
-
-    chunk_writeNext();
-  });
-}
-
 /** Outcome of one cat target, for the envelope model. */
 interface CatOutcome {
   path: string;
@@ -254,8 +188,9 @@ export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
         continue;
       }
 
-      // Output raw buffer to stdout with backpressure handling
-      await buffer_writeToStdout(result.value);
+      // Raw bytes go to the active sink: the terminal for a direct cat, or the
+      // pipe/redirect capture buffer (kept byte-for-byte) when piped.
+      sink_get().data_write(result.value);
       outcomes.push({ path: pathArg, ok: true, binary: true, bytes: result.value.length });
     } else {
       const result: Result<string> = await chefs_cat_cmd(target);

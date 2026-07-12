@@ -67,7 +67,7 @@ import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import { envelopeHandler_wrap, ansi_strip, envelope_deliver, sink_get } from './sink.js';
+import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
 import { surface_get, capability_require } from './surface.js';
@@ -107,51 +107,6 @@ export async function shellCommand_execute(shellCommand: string): Promise<number
       resolve(1);
     });
   });
-}
-
-/**
- * Captures console output during command execution.
- *
- * @param fn - The function to execute while capturing output.
- * @returns The captured output as a string and buffer.
- */
-async function output_capture(fn: () => Promise<void>): Promise<{ text: string; buffer: Buffer }> {
-  const chunks: Buffer[] = [];
-  const originalLog = console.log;
-  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
-
-  // Override console.log and console.error
-  console.log = (...args: unknown[]): void => {
-    const text: string = args.map(arg =>
-      typeof arg === 'string' ? arg : JSON.stringify(arg)
-    ).join(' ') + '\n';
-    chunks.push(Buffer.from(text, 'utf-8'));
-  };
-
-  // Override process.stdout.write to capture binary data
-  process.stdout.write = ((chunk: unknown): boolean => {
-    if (typeof chunk === 'string') {
-      chunks.push(Buffer.from(chunk, 'utf-8'));
-    } else if (Buffer.isBuffer(chunk)) {
-      chunks.push(chunk);
-    } else if (chunk instanceof Uint8Array) {
-      chunks.push(Buffer.from(chunk));
-    }
-    return true;
-  }) as typeof process.stdout.write;
-
-  try {
-    await fn();
-  } finally {
-    // Restore original console methods and stdout.write
-    console.log = originalLog;
-    process.stdout.write = originalStdoutWrite;
-  }
-
-  const buffer: Buffer = Buffer.concat(chunks);
-  const text: string = buffer.toString('utf-8');
-
-  return { text, buffer };
 }
 
 type CommandHandler = (args: string[]) => Promise<void>;
@@ -228,6 +183,10 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   download: builtin_download,
   store: builtin_store,
   edit: builtin_edit,
+  pacs: builtin_pacs,
+  pull: builtin_pull,
+  pipeline: builtin_pipeline,
+  pipelines: builtin_pipeline,
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
@@ -243,10 +202,10 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   touch: envelopeHandler_wrap(builtin_touch),
   mkdir: envelopeHandler_wrap(builtin_mkdir),
   upload: envelopeHandler_wrap(builtin_upload),
-  pacs: builtin_pacs,
-  pipeline: builtin_pipeline,
-  pipelines: builtin_pipeline,
-  pull: builtin_pull,
+  pacs: envelopeHandler_wrap(builtin_pacs),
+  pipeline: envelopeHandler_wrap(builtin_pipeline),
+  pipelines: envelopeHandler_wrap(builtin_pipeline),
+  pull: envelopeHandler_wrap(builtin_pull),
   query: envelopeHandler_wrap(builtin_query),
   cubepath: envelopeHandler_wrap(builtin_cubepath),
   download: envelopeHandler_wrap(builtin_download),
@@ -593,29 +552,22 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
     process.exit(0);
   }
 
-  // Envelope-speaking commands feed pipes and redirects from their envelope:
-  // rendered text with ANSI stripped (plain pipes, the documented deviation),
-  // error-stream text passed live to stderr exactly as the inherit behavior
-  // always did. Direct stdout writers (binary cat) are still captured; their
-  // bytes precede the envelope's rendered text if a command mixes both.
-  const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
-  if (envelopeHandler) {
-    let envelope: CommandEnvelope | undefined;
-    const { buffer: directBuffer } = await output_capture(async (): Promise<void> => {
-      envelope = await envelopeHandler(args);
-    });
-    if (!envelope) {
-      return { text: '', buffer: Buffer.alloc(0) };
+  // The command runs with its output captured into a pipe sink scoped to this
+  // async context — no console monkeypatch. Envelope handlers deliver their
+  // rendered text through the sink (ANSI-stripped for the plain-pipe contract);
+  // streaming commands and binary cat write to the same sink directly (raw
+  // bytes kept byte-for-byte). The err channel passes through to stderr live.
+  const pipeSink: PipeCaptureSink = new PipeCaptureSink();
+  await sinkScope_run(pipeSink, async (): Promise<void> => {
+    const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
+    if (envelopeHandler) {
+      const envelope: CommandEnvelope | undefined = await envelopeHandler(args);
+      if (envelope) {
+        envelope_deliver(envelope);
+      }
+      return;
     }
-    if (envelope.renderedErr !== undefined && envelope.renderedErr.length > 0) {
-      process.stderr.write(envelope.renderedErr);
-    }
-    const plain: string = ansi_strip(envelope.rendered);
-    const buffer: Buffer = Buffer.concat([directBuffer, Buffer.from(plain, 'utf-8')]);
-    return { text: buffer.toString('utf-8'), buffer };
-  }
 
-  return output_capture(async () => {
     if (await pluginExecutable_handle(command, args, { piped: true })) {
       return;
     }
@@ -626,15 +578,12 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
-    const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
-    if (chiliEnvelope.rendered.length > 0) {
-      process.stdout.write(chiliEnvelope.rendered);
-    }
-    if (chiliEnvelope.renderedErr !== undefined && chiliEnvelope.renderedErr.length > 0) {
-      process.stderr.write(chiliEnvelope.renderedErr);
-    }
+    sink_get().data_write(`${chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`)}\n`);
+    envelope_deliver(await chiliCommand_run(command, ['-s', ...args]));
   });
+
+  const buffer: Buffer = pipeSink.buffer_get();
+  return { text: buffer.toString('utf-8'), buffer };
 }
 
 /**

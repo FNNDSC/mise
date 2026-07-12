@@ -169,17 +169,6 @@ type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
  * this registry exists so envelope-aware hosts can bypass the wrapper and
  * receive the structured result.
  */
-/**
- * Composes the capture bridge with envelope delivery, so a legacy printing
- * handler participates in the dispatch table with envelope semantics and
- * unchanged observable output.
- *
- * @param handler - A legacy printing command handler.
- * @returns A wrapped handler for the dispatch table.
- */
-function printingBridge_wrap(handler: CommandHandler): CommandHandler {
-  return envelopeHandler_wrap(printingHandler_wrap(handler));
-}
 
 export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   cat: builtin_cat,
@@ -231,7 +220,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   links: builtin_links,
   dirs: builtin_dirs,
   context: builtin_context,
-  parametersofplugin: printingHandler_wrap(builtin_parametersofplugin),
+  parametersofplugin: builtin_parametersofplugin,
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
@@ -256,7 +245,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   download: builtin_download,
   edit: builtin_edit,
   context: envelopeHandler_wrap(builtin_context),
-  parametersofplugin: printingBridge_wrap(builtin_parametersofplugin),
+  parametersofplugin: envelopeHandler_wrap(builtin_parametersofplugin),
   physicalmode: envelopeHandler_wrap(builtin_physicalmode),
   timing: envelopeHandler_wrap(builtin_timing),
   whoami: envelopeHandler_wrap(builtin_whoami),

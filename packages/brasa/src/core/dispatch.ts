@@ -230,6 +230,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   upload: builtin_upload,
   download: builtin_download,
   store: builtin_store,
+  edit: builtin_edit,
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
@@ -252,7 +253,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   query: envelopeHandler_wrap(builtin_query),
   cubepath: envelopeHandler_wrap(builtin_cubepath),
   download: envelopeHandler_wrap(builtin_download),
-  edit: builtin_edit,
+  edit: envelopeHandler_wrap(builtin_edit),
   context: envelopeHandler_wrap(builtin_context),
   parametersofplugin: envelopeHandler_wrap(builtin_parametersofplugin),
   physicalmode: envelopeHandler_wrap(builtin_physicalmode),

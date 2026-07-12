@@ -1,16 +1,16 @@
 # ChELL Stack Makefile
 #
-# One kitchen for the whole sandwich: cumin, salsa, chili, chell.
+# One kitchen for the whole sandwich: cumin, salsa, chili, brasa, calypso, chell.
 #
 # In the old poly-repo days each package had its own Makefile that ran around
-# cloning siblings and hand-linking them. In the monorepo all four live in
+# cloning siblings and hand-linking them. In the monorepo all six live in
 # packages/ and npm workspaces wires them together — so the metaphor stays, but
 # the plumbing is now a single `npm install` at the root.
 #
 # The Menu (main commands):
 #   make shop    - Freshen the pantry (git pull)
-#   make prep    - Install dependencies (one install links all four workspaces)
-#   make cook    - Build all packages in dependency order (cumin->salsa->chili->chell)
+#   make prep    - Install dependencies (one install links all workspaces)
+#   make cook    - Build all packages in dependency order (cumin->salsa->chili->brasa->calypso->chell)
 #   make taste   - Run the full test suite (all workspaces)
 #   make serve   - Link `chell` globally so you can run it from anywhere
 #   make scrub   - Clean the kitchen (remove dist/ and node_modules)
@@ -44,7 +44,7 @@ help:
 	@echo ""
 	@echo "The Menu:"
 	@echo "  make shop          - Freshen the pantry (git pull)"
-	@echo "  make prep          - Install dependencies (links all four workspaces)"
+	@echo "  make prep          - Install dependencies (links all workspaces)"
 	@echo "  make cook          - Build all packages in dependency order"
 	@echo "  make taste         - Run the full test suite"
 	@echo "  make serve         - Link 'chell' globally"
@@ -81,7 +81,7 @@ prep:
 	npx --yes npm@10.9.8 install
 
 # --- Cook (build) ---
-# Root build script already enforces topological order: cumin->salsa->chili->chell.
+# Root build script already enforces topological order: cumin->salsa->chili->brasa->calypso->chell.
 cook:
 	@echo "Cooking the whole stack (dependency order)..."
 	npm run build
@@ -127,7 +127,7 @@ login connect: cook
 # (URL + attach token). Attach from another terminal with `make remote`.
 daemon: cook
 	@echo "Starting the CALYPSO session daemon (attach with 'make remote')..."
-	node packages/chell/dist/calypso.js
+	node packages/calypso/dist/calypso.js
 
 # --- Remote (build + attach to a running daemon) ---
 # Reads the daemon's discovery file and attaches as a remote surface. Run

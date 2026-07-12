@@ -9,6 +9,7 @@
 import fs from "fs";
 import path from "path";
 import { projectDir_get, browser_open, asciidoc_render } from "../../man/renderer.js";
+import { chiliErrLog, chiliLog } from "../../screen/output.js";
 
 /**
  * Options for rendering a man page.
@@ -31,7 +32,7 @@ export async function manPage_display(options: ManPageOptions): Promise<void> {
   const docPath: string = path.join(docDir, `${options.topic}.adoc`);
 
   if (!fs.existsSync(docPath)) {
-    console.error(`Documentation for '${options.topic}' not found.`);
+    chiliErrLog(`Documentation for '${options.topic}' not found.`);
     return;
   }
 
@@ -39,6 +40,6 @@ export async function manPage_display(options: ManPageOptions): Promise<void> {
     await browser_open(docPath);
   } else {
     const content: string = fs.readFileSync(docPath, "utf-8");
-    console.log(await asciidoc_render(content, options.style, options.width));
+    chiliLog(await asciidoc_render(content, options.style, options.width));
   }
 }

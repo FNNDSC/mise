@@ -6,6 +6,7 @@
 
 import { table, getBorderCharacters, TableUserConfig } from "table";
 import chalk from "chalk";
+import { chiliLog, chiliErrLog } from "./output.js";
 
 /**
  * A chalk-style color function mapping a string to a styled string.
@@ -135,7 +136,7 @@ function tableContent_pack(
       headers.map((field) => (row[field] !== undefined ? row[field] : ""))
     );
   } else {
-    console.error("Invalid table data");
+    chiliErrLog("Invalid table data");
     return null;
   }
 
@@ -303,11 +304,11 @@ export function table_display(
   };
 
   const result: string = screen.table_output(processedTableData, tableOptions);
-  console.log(result);
+  chiliLog(result);
 
   if (options.pagination && options.pagination.shown < options.pagination.total) {
     const { shown, total } = options.pagination;
-    console.log(
+    chiliLog(
       chalk.dim(`  ↓ showing ${shown} of ${total}  ·  --all to fetch all  ·  --limit <n> for page size`)
     );
   }
@@ -320,19 +321,19 @@ export function table_display(
  */
 export class Screen {
   log(...args: unknown[]): void {
-    console.log(...args);
+    chiliLog(...args);
   }
 
   error(...args: unknown[]): void {
-    console.error(chalk.red(...args));
+    chiliErrLog(chalk.red(...args));
   }
 
   warn(...args: unknown[]): void {
-    console.warn(chalk.yellow(...args));
+    chiliErrLog(chalk.yellow(...args));
   }
 
   info(...args: unknown[]): void {
-    console.info(chalk.blue(...args));
+    chiliLog(chalk.blue(...args));
   }
 
   /**
@@ -379,7 +380,7 @@ export class Screen {
         ? border_draw(titleString, { bottom: false }) + "\n" + output
         : output;
     } catch (error: unknown) {
-      console.error("Error in table_output method:", error);
+      chiliErrLog("Error in table_output method:", error);
       return "Error generating table";
     }
   }

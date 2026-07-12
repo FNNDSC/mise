@@ -6,6 +6,7 @@
 
 import { Command } from "commander";
 import { FileGroupHandler, FileMemberHandler } from "./fileGroupHandler.js";
+import { chiliErrLog } from "../screen/output.js";
 
 /**
  * Sets up the 'inode' command for interacting with ChRIS filesystem resources.
@@ -31,7 +32,7 @@ export async function inodeCommand_setup(program: Command): Promise<void> {
         fileMemberHandler.fileMemberCommand_setup(fileProgram);
         await fileProgram.parseAsync(args);
       } else {
-        console.error("Usage: chili inode <path> <files|file> [options]");
+        chiliErrLog("Usage: chili inode <path> <files|file> [options]");
         command.help();
       }
     });

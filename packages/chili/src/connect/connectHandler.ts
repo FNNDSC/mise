@@ -13,6 +13,7 @@ import { login_render, logout_render } from "../views/connect.js";
 import { ConnectOptions } from "@fnndsc/salsa";
 import { CLIoptions } from "../utils/cli.js";
 import chalk from "chalk";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /**
  * Sets up the 'connect' and 'logout' commands for the CLI program.
@@ -36,11 +37,11 @@ export function connectCommand_setup(program: Command): void {
       
       try {
         const success: boolean = await connect_login(connectOptions);
-        console.log(login_render(success, url, user));
+        chiliLog(login_render(success, url, user));
       } catch (error: unknown) {
-        console.log(login_render(false, url, user));
+        chiliLog(login_render(false, url, user));
         const msg: string = error instanceof Error ? error.message : String(error);
-        console.error(chalk.red(`Error: ${msg}`));
+        chiliErrLog(chalk.red(`Error: ${msg}`));
       }
     });
 
@@ -50,11 +51,11 @@ export function connectCommand_setup(program: Command): void {
     .action(async () => {
       try {
         await connect_logout();
-        console.log(logout_render(true));
+        chiliLog(logout_render(true));
       } catch (error: unknown) {
-        console.log(logout_render(false));
+        chiliLog(logout_render(false));
         const msg: string = error instanceof Error ? error.message : String(error);
-        console.error(chalk.red(`Error: ${msg}`));
+        chiliErrLog(chalk.red(`Error: ${msg}`));
       }
     });
 }

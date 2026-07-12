@@ -15,6 +15,7 @@ import {
   fileContent_get,
   FileShareOptions
 } from "@fnndsc/salsa";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 // Helper interface to access internal property safely
 interface ChRISFileSystemGroupWithFolder extends ChRISEmbeddedResourceGroup<ChrisPathNode> {
@@ -91,7 +92,7 @@ export class FileController extends BaseController {
   async files_share(options: CLIoptions): Promise<void> {
     const fileId: unknown = options.fileId; // Assuming CLIoptions has a fileId property
     if (fileId === undefined) {
-      console.error("Error: fileId is required for sharing.");
+      chiliErrLog("Error: fileId is required for sharing.");
       return;
     }
     const shareOptions: FileShareOptions = { ...options }; // Pass all CLI options as share options for now
@@ -108,10 +109,10 @@ export class FileController extends BaseController {
     const result: Result<string> = await fileContent_get(filePath);
     if (!result.ok) {
         const error = errorStack.stack_pop();
-        console.error(chalk.red(`Error viewing file: ${error?.message || 'Unknown error'}`));
+        chiliErrLog(chalk.red(`Error viewing file: ${error?.message || 'Unknown error'}`));
         return;
     }
-    console.log(result.value);
+    chiliLog(result.value);
   }
 
   /**

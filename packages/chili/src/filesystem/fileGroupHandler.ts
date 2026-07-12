@@ -22,6 +22,7 @@ import { files_searchByTerm, files_deleteById } from "../commands/files/delete.j
 import { prompt_confirm } from "../utils/ui.js";
 import { files_viewContent } from "../commands/file/view.js";
 import { fileList_render, FileResource } from "../views/file.js";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /**
  * Handles commands related to groups of ChRIS files, links, or directories.
@@ -75,19 +76,19 @@ export class FileGroupHandler {
       const results: FilteredResourceData | null = await files_fetchList(options, this.assetName, path);
 
       if (!results) {
-        console.error(
+        chiliErrLog(
           `No ${this.assetName} resources found. Perhaps check your current context?`
         );
         return;
       }
 
       if (results.tableData.length === 0) {
-        console.log(`No ${this.assetName} found matching the criteria.`);
+        chiliLog(`No ${this.assetName} found matching the criteria.`);
                       } else {
                           const uniqueResults: FilteredResourceData = resourceColumns_removeDuplicates(results);
                           // cumin returns dynamic table rows (Record<string, unknown>[]);
                           // narrow to the FileResource view model at this boundary.
-                          console.log(fileList_render(
+                          chiliLog(fileList_render(
                               uniqueResults.tableData as FileResource[],
                               uniqueResults.selectedFields,
                               { table: options.table, csv: options.csv }
@@ -95,10 +96,10 @@ export class FileGroupHandler {
                       }    } catch (error: unknown) {
       const errors: string[] = errorStack.stack_search(this.assetName);
       if (errors.length > 0) {
-        console.log(errors[0]);
+        chiliLog(errors[0]);
       } else {
         const msg: string = error instanceof Error ? error.message : String(error);
-        console.error(`Error: ${msg}`);
+        chiliErrLog(`Error: ${msg}`);
 
         interface AxiosLikeError {
           response?: {
@@ -108,10 +109,10 @@ export class FileGroupHandler {
         }
         const errObj: AxiosLikeError = error as AxiosLikeError;
         if (msg.includes("Internal server error") || (errObj && errObj.response && errObj.response.status === 500)) {
-            console.error(chalk.yellow("\nHint: This indicates a problem on the ChRIS server (CUBE)."));
-            console.error(chalk.yellow("      Please contact your system administrator or check the CUBE logs."));
-            console.error(chalk.yellow("      To see full debug output, run the command again with CHILI_DEBUG=true:"));
-            console.error(chalk.yellow("      CHILI_DEBUG=true chili ..."));
+            chiliErrLog(chalk.yellow("\nHint: This indicates a problem on the ChRIS server (CUBE)."));
+            chiliErrLog(chalk.yellow("      Please contact your system administrator or check the CUBE logs."));
+            chiliErrLog(chalk.yellow("      To see full debug output, run the command again with CHILI_DEBUG=true:"));
+            chiliErrLog(chalk.yellow("      CHILI_DEBUG=true chili ..."));
         }
       }
     }
@@ -126,10 +127,10 @@ export class FileGroupHandler {
       if (fields && fields.length > 0) {
         table_display(fields, ["fields"]);
       } else {
-        console.log(`No resource fields found for ${this.assetName}.`);
+        chiliLog(`No resource fields found for ${this.assetName}.`);
       }
     } catch (error: unknown) {
-      console.log(errorStack.stack_search(this.assetName)[0]);
+      chiliLog(errorStack.stack_search(this.assetName)[0]);
     }
   }
 
@@ -141,18 +142,18 @@ export class FileGroupHandler {
     for (const searchPart of searchParts) {
       const items: Record<string, unknown>[] = await files_searchByTerm(searchPart, this.assetName);
       if (items.length === 0) {
-        console.log(`No ${this.assetName} found matching: ${searchPart}`);
+        chiliLog(`No ${this.assetName} found matching: ${searchPart}`);
         continue;
       }
 
       for (const item of items) {
         const displayName: unknown = item.fname || item.path || item.id;
         if (!item.id) {
-             console.error(`Cannot delete item without ID. Details: ${JSON.stringify(item)}`);
+             chiliErrLog(`Cannot delete item without ID. Details: ${JSON.stringify(item)}`);
              continue;
         }
 
-        console.log(`Preparing to delete ${this.assetName}: ID=${item.id}, Name=${displayName}`);
+        chiliLog(`Preparing to delete ${this.assetName}: ID=${item.id}, Name=${displayName}`);
 
         if (!options.force) {
            const confirmed: boolean = await prompt_confirm(`Are you sure you want to delete ${this.assetName} ${displayName} (ID: ${item.id})?`);
@@ -161,9 +162,9 @@ export class FileGroupHandler {
 
         const success: boolean = await files_deleteById(item.id as number, this.assetName);
         if (success) {
-            console.log(`Deleted ${this.assetName} ${item.id}`);
+            chiliLog(`Deleted ${this.assetName} ${item.id}`);
         } else {
-            console.error(`Failed to delete ${this.assetName} ${item.id}`);
+            chiliErrLog(`Failed to delete ${this.assetName} ${item.id}`);
         }
       }
     }
@@ -176,16 +177,16 @@ export class FileGroupHandler {
    */
   async files_share(options: CLIoptions): Promise<void> {
     try {
-      console.log(`Sharing ${this.assetName} from ${this.controller.path_get}...`);
+      chiliLog(`Sharing ${this.assetName} from ${this.controller.path_get}...`);
       if (options.force) {
-        console.log("Force sharing enabled");
+        chiliLog("Force sharing enabled");
       }
       await this.controller.files_share(options);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        console.error(`Error sharing ${this.assetName}: ${error.message}`);
+        chiliErrLog(`Error sharing ${this.assetName}: ${error.message}`);
       } else {
-        console.error(
+        chiliErrLog(
           `An unknown error occurred while sharing the ${this.assetName}`
         );
       }
@@ -297,13 +298,13 @@ export class FileMemberHandler {
       const success: boolean = await files_create(fileIdentifier, options);
       if (success) {
         const resolvedChRISPath: string = await path_resolveChrisFs(fileIdentifier, options);
-        console.log(`File created successfully at: ${resolvedChRISPath}`);
+        chiliLog(`File created successfully at: ${resolvedChRISPath}`);
       }
       // If success is false, files_create would have thrown an error which is caught below.
     } catch (error: unknown) {
       // Log the error from files_create
       const message: string = error instanceof Error ? error.message : String(error);
-      console.error(message);
+      chiliErrLog(message);
     }
   }
 
@@ -356,7 +357,7 @@ export class FileMemberHandler {
             await this.file_cat(options);
         });
 
-    console.log("FileMemberHandler commands set up successfully");
+    chiliLog("FileMemberHandler commands set up successfully");
   }
 
     /**
@@ -367,19 +368,19 @@ export class FileMemberHandler {
     async file_cat(options: CLIoptions): Promise<void> {
       try {
         const path: string = this.controller.path_get;
-        console.log(`Viewing file at ${path}`);
+        chiliLog(`Viewing file at ${path}`);
         
         const content: string | null = await files_viewContent(path);
         
         if (content !== null) {
-          console.log(content);
+          chiliLog(content);
         } else {
-          console.error("Failed to view file content (empty or error).");
+          chiliErrLog("Failed to view file content (empty or error).");
         }
       }
       catch (error: unknown) {
         const message: string = error instanceof Error ? error.message : String(error);
-        console.error(`Error viewing file: ${message}`);
+        chiliErrLog(`Error viewing file: ${message}`);
       }
     }
 }

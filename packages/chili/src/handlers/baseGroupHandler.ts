@@ -26,6 +26,7 @@ import * as util from "util";
 import * as readline from "readline";
 import { title } from "process";
 import { Table } from "cli-table3";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /**
  * Base handler for groups of ChRIS resources.
@@ -88,14 +89,14 @@ export class BaseGroupHandler {
         await this.chrisObject.asset.resources_listAndFilterByOptions(params);
 
       if (!results) {
-        console.error(
+        chiliErrLog(
           `No ${this.assetName} resources found. Perhaps check your current context?`
         );
         return;
       }
 
       if (results.tableData.length === 0) {
-        console.log(`No ${this.assetName} found matching the criteria.`);
+        chiliLog(`No ${this.assetName} found matching the criteria.`);
       } else {
         const uniqueResults: FilteredResourceData = resourceColumns_removeDuplicates(results);
         
@@ -114,7 +115,7 @@ export class BaseGroupHandler {
                return `"${String(val !== undefined ? val : '').split('"').join('""')}"`;
              }).join(',');
           }).join('\n');
-          console.log(header + '\n' + rows);
+          chiliLog(header + '\n' + rows);
         } else if (options.table) {
           // Explicit Table format (with borders and title)
           table_display(
@@ -150,7 +151,7 @@ export class BaseGroupHandler {
         }
       }
     } catch (error: unknown) {
-      console.log(errorStack.stack_search(this.assetName)[0]);
+      chiliLog(errorStack.stack_search(this.assetName)[0]);
     }
   }
 
@@ -162,19 +163,19 @@ export class BaseGroupHandler {
       const results = await this.chrisObject.asset.resourceFields_get();
 
       if (!results) {
-        console.error(
+        chiliErrLog(
           `An error occurred while fetching resource fields for ${this.assetName}.`
         );
         return;
       }
 
       if (results.fields.length === 0) {
-        console.log(`No resource fields found for ${this.assetName}.`);
+        chiliLog(`No resource fields found for ${this.assetName}.`);
       } else {
         table_display(results.fields, ["fields"]);
       }
     } catch (error: unknown) {
-      console.log(errorStack.stack_search(this.assetName)[0]);
+      chiliLog(errorStack.stack_search(this.assetName)[0]);
     }
   }
 
@@ -305,7 +306,7 @@ export class BaseGroupHandler {
           await this.chrisObject.asset.resources_listAndFilterByOptions({
             id: id,
           });
-        console.log(
+        chiliLog(
           border_draw(
             `checking ${this.assetName} id ${id} ... ${this.msg_OKorNot(
               searchResults
@@ -323,7 +324,7 @@ export class BaseGroupHandler {
           `deleting ${this.assetName} id ${id} ... ${this.msg_OKorNot(true)}`
         );
       } catch (error: unknown) {
-        console.error(`${error}`);
+        chiliErrLog(`${error}`);
         return false;
       }
     }
@@ -359,7 +360,7 @@ export class BaseGroupHandler {
     let nIDs: number[] | null;
     nIDs = await this.IDs_getFromSearch(options);
     if (!nIDs) {
-      console.error(`No ${this.assetName} matched the search criteria.`);
+      chiliErrLog(`No ${this.assetName} matched the search criteria.`);
       return;
     }
     if (nIDs) {
@@ -429,7 +430,7 @@ export class BaseGroupHandler {
       )
       .action(async (searchable: string, options: CLIoptions) => {
         const searchParts: string[] = searchable.split("++").map((part) => part.trim());
-        // console.log(`searchParts = ${searchParts}`);
+        // chiliLog(`searchParts = ${searchParts}`);
         for (const searchPart of searchParts) {
           const currentOptions: CLIoptions = {
             ...options,

@@ -21,6 +21,7 @@ import { prompt_confirm } from "../utils/ui.js";
 import { feed_create as feed_create_command } from "../commands/feed/create.js"; // Original name
 import { feedCreate_render } from "../views/feed.js"; // Still needed for feedCreate_render
 import { Feed } from "../models/feed.js";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 // import { FeedListResult } from "../commands/feeds/list.js"; // No longer needed
 
 /**
@@ -45,10 +46,10 @@ export class FeedGroupHandler {
   // async feeds_list(options: CLIoptions): Promise<void> {
   //   try {
   //     const { feeds, selectedFields }: FeedListResult = await feeds_fetchList(options);
-  //     console.log(feedList_render(feeds, selectedFields, { table: options.table, csv: options.csv }));
+  //     chiliLog(feedList_render(feeds, selectedFields, { table: options.table, csv: options.csv }));
   //   } catch (error: unknown) {
   //     const msg = error instanceof Error ? error.message : String(error);
-  //     console.error(chalk.red(`Error listing feeds: ${msg}`));
+  //     chiliErrLog(chalk.red(`Error listing feeds: ${msg}`));
   //   }
   // }
 
@@ -61,10 +62,10 @@ export class FeedGroupHandler {
       if (fields && fields.length > 0) {
         table_display(fields, ["fields"]);
       } else {
-        console.log(`No resource fields found for ${this.assetName}.`);
+        chiliLog(`No resource fields found for ${this.assetName}.`);
       }
     } catch (error: unknown) {
-      console.log(errorStack.stack_search(this.assetName)[0]);
+      chiliLog(errorStack.stack_search(this.assetName)[0]);
     }
   }
 
@@ -79,18 +80,18 @@ export class FeedGroupHandler {
     for (const searchPart of searchParts) {
       const feedIds: number[] | null = await this.baseGroupHandler.IDs_getFromSearch({ search: searchPart });
       if (!feedIds || feedIds.length === 0) {
-        console.log(`No feeds found matching: ${searchPart}`);
+        chiliLog(`No feeds found matching: ${searchPart}`);
         continue;
       }
 
       for (const feedId of feedIds) {
-        console.log(`Sharing feed ID: ${feedId}...`);
+        chiliLog(`Sharing feed ID: ${feedId}...`);
         const shareOptions: FeedShareOptions = { is_public: options.is_public === true };
         const success: boolean = await feed_shareById(Number(feedId), shareOptions);
         if (success) {
-          console.log(`Feed ID ${feedId} shared successfully.`);
+          chiliLog(`Feed ID ${feedId} shared successfully.`);
         } else {
-          console.error(`Failed to share feed ID ${feedId}.`);
+          chiliErrLog(`Failed to share feed ID ${feedId}.`);
         }
       }
     }
@@ -106,12 +107,12 @@ export class FeedGroupHandler {
     for (const searchPart of searchParts) {
       const items: Record<string, unknown>[] = await feeds_searchByTerm(searchPart);
       if (items.length === 0) {
-        console.log(`No feeds found matching: ${searchPart}`);
+        chiliLog(`No feeds found matching: ${searchPart}`);
         continue;
       }
 
       for (const item of items) {
-        console.log(`Preparing to delete Feed: ID=${item.id}, Name=${item.name}`);
+        chiliLog(`Preparing to delete Feed: ID=${item.id}, Name=${item.name}`);
 
         if (!options.force) {
            const confirmed: boolean = await prompt_confirm(`Are you sure you want to delete feed ${item.name} (ID: ${item.id})?`);
@@ -121,9 +122,9 @@ export class FeedGroupHandler {
         const id: number = typeof item.id === "number" ? item.id : Number(item.id);
         const success: boolean = await feed_deleteById(id);
         if (success) {
-            console.log(`Deleted feed ${item.id}`);
+            chiliLog(`Deleted feed ${item.id}`);
         } else {
-            console.error(`Failed to delete feed ${item.id}`);
+            chiliErrLog(`Failed to delete feed ${item.id}`);
         }
       }
     }
@@ -199,19 +200,19 @@ export class FeedMemberHandler {
     try {
       const feed: Feed | null = await feed_create_command(options);
       if (feed) {
-        console.log(feedCreate_render(feed));
+        chiliLog(feedCreate_render(feed));
         return feed;
       }
-      console.error(chalk.red("Feed creation returned null result."));
+      chiliErrLog(chalk.red("Feed creation returned null result."));
       const errors: string[] = errorStack.allOfType_get('error'); // Keep error reporting
       if (errors.length > 0) {
-          console.error(chalk.red('Errors:'));
-          errors.forEach(e => console.error(chalk.red(`  - ${e}`)));
+          chiliErrLog(chalk.red('Errors:'));
+          errors.forEach(e => chiliErrLog(chalk.red(`  - ${e}`)));
       }
       return null;
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Error: ${message}`));
+      chiliErrLog(chalk.red(`Error: ${message}`));
       return null;
     }
   }
@@ -242,7 +243,7 @@ export class FeedMemberHandler {
           await this.feed_create(options);
         });
     } else {
-      console.error(
+      chiliErrLog(
         `Failed to find '${this.assetName}' command. The 'new' subcommand was not added.`
       );
     }

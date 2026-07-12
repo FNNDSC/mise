@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import { prompt_confirmOrThrow } from "../../utils/input_format.js";
+import { chiliLog } from "../../screen/output.js";
 
 /**
  * File information for upload tracking.
@@ -161,7 +162,7 @@ export async function files_uploadWithProgress(
   const resolvedRemote: string = await path_resolveChrisFs(remotePath, {});
 
   // Scan files
-  console.log(chalk.cyan("Scanning files to upload..."));
+  chiliLog(chalk.cyan("Scanning files to upload..."));
   options.onProgress?.({
     operation: "upload",
     kind: "transfer",
@@ -241,11 +242,11 @@ export async function files_uploadWithProgress(
         summary.transferSize += fileContent.length;
       } else {
         summary.failedCount++;
-        console.log(chalk.yellow(`Failed to upload: ${file.hostPath}`));
+        chiliLog(chalk.yellow(`Failed to upload: ${file.hostPath}`));
       }
     } catch (error: unknown) {
       summary.failedCount++;
-      console.log(
+      chiliLog(
         chalk.red(
           `Error uploading ${file.hostPath}: ${error instanceof Error ? error.message : String(error)}`
         )

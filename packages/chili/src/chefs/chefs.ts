@@ -20,6 +20,7 @@ import { files_cp, CpOptions } from '../commands/fs/cp.js';
 import { files_mv, MvOptions } from '../commands/fs/mv.js';
 import { mkdir_render, touch_render, upload_render, cat_render, rm_render, cp_render, mv_render } from '../views/fs.js';
 import { path_resolveChrisFs } from '../utils/cli.js';
+import { chiliLog } from "../screen/output.js";
 
 /**
  * Lists directory contents.
@@ -35,9 +36,9 @@ async function chefs_ls(options: LsOptions, pathStr: string = ""): Promise<void>
   }
 
   if (options.long) {
-    console.log(long_render(items, { human: !!options.human }));
+    chiliLog(long_render(items, { human: !!options.human }));
   } else {
-    console.log(grid_render(items));
+    chiliLog(grid_render(items));
   }
 }
 
@@ -50,7 +51,7 @@ async function chefs_ls(options: LsOptions, pathStr: string = ""): Promise<void>
  */
 async function chefs_cp(src: string, dest: string, options: CpOptions): Promise<void> {
   const success: boolean = await files_cp(src, dest, options);
-  console.log(cp_render(src, dest, success));
+  chiliLog(cp_render(src, dest, success));
 }
 
 /**
@@ -62,7 +63,7 @@ async function chefs_cp(src: string, dest: string, options: CpOptions): Promise<
  */
 async function chefs_mv(src: string, dest: string, _options: MvOptions): Promise<void> {
   const success: boolean = await files_mv(src, dest);
-  console.log(mv_render(src, dest, success));
+  chiliLog(mv_render(src, dest, success));
 }
 
 /**
@@ -72,7 +73,7 @@ async function chefs_mv(src: string, dest: string, _options: MvOptions): Promise
  */
 async function chefs_mkdir(dirPath: string): Promise<void> {
   const success: boolean = await files_mkdir(dirPath);
-  console.log(mkdir_render(dirPath, success));
+  chiliLog(mkdir_render(dirPath, success));
 }
 
 /**
@@ -82,7 +83,7 @@ async function chefs_mkdir(dirPath: string): Promise<void> {
  */
 async function chefs_touch(filePath: string): Promise<void> {
   const success: boolean = await files_touch(filePath);
-  console.log(touch_render(filePath, success));
+  chiliLog(touch_render(filePath, success));
 }
 
 /**
@@ -92,9 +93,9 @@ async function chefs_touch(filePath: string): Promise<void> {
  * @param remotePath - Remote ChRIS path.
  */
 async function chefs_upload(localPath: string, remotePath: string): Promise<void> {
-  console.log(`Uploading ${localPath} to ${remotePath}...`);
+  chiliLog(`Uploading ${localPath} to ${remotePath}...`);
   const success: boolean = await files_upload(localPath, remotePath);
-  console.log(upload_render(localPath, remotePath, success));
+  chiliLog(upload_render(localPath, remotePath, success));
 }
 
 /**
@@ -116,7 +117,7 @@ async function chefs_cd(path?: string): Promise<void> {
  */
 async function chefs_pwd(): Promise<void> {
   const current: string | null = await chrisContext.current_get(Context.ChRISfolder);
-  console.log(current || "/");
+  chiliLog(current || "/");
 }
 
 /**
@@ -127,7 +128,7 @@ async function chefs_pwd(): Promise<void> {
 async function chefs_cat(filePath: string): Promise<void> {
   const result: Result<string> = await files_cat(filePath);
   const content: string | null = result.ok ? result.value : null;
-  console.log(cat_render(content, filePath));
+  chiliLog(cat_render(content, filePath));
 }
 
 /**
@@ -138,7 +139,7 @@ async function chefs_cat(filePath: string): Promise<void> {
  */
 async function chefs_rm(targetPath: string, options: RmOptions): Promise<void> {
   const result: RmResult = await files_rm(targetPath, options);
-  console.log(rm_render(result));
+  chiliLog(rm_render(result));
 }
 
 /**

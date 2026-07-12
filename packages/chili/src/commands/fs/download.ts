@@ -10,6 +10,7 @@ import chalk from "chalk";
 import { pipeline } from "stream/promises";
 import { bytes_format } from "./upload.js";
 import { prompt_confirmOrThrow } from "../../utils/input_format.js";
+import { chiliLog } from "../../screen/output.js";
 
 export { bytes_format };
 
@@ -205,7 +206,7 @@ export async function files_downloadWithProgress(
   }
 
   // Download directory
-  console.log(chalk.cyan("Scanning files to download..."));
+  chiliLog(chalk.cyan("Scanning files to download..."));
   options.onProgress?.({
     operation: "download",
     kind: "transfer",
@@ -263,7 +264,7 @@ export async function files_downloadWithProgress(
       const result = await fileContent_getBinaryStream(file.path);
       if (!result.ok) {
         summary.failedCount++;
-        console.log(chalk.yellow(`\nFailed to download: ${file.path}`));
+        chiliLog(chalk.yellow(`\nFailed to download: ${file.path}`));
         continue;
       }
 
@@ -293,7 +294,7 @@ export async function files_downloadWithProgress(
     } catch (error: unknown) {
       summary.failedCount++;
       const msg: string = error instanceof Error ? error.message : String(error);
-      console.log(chalk.red(`\nError downloading ${file.path}: ${msg}`));
+      chiliLog(chalk.red(`\nError downloading ${file.path}: ${msg}`));
     }
 
     options.onProgress?.({

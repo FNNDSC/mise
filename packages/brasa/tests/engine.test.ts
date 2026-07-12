@@ -26,8 +26,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
 // chili delegation target.
-const mockChiliRun = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: mockChiliRun }));
+const mockChiliRun = jest.fn(async () => ({ out: '', err: '' }));
+jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockChiliRun }));
 
 // Session — the engine reads the timing toggle and initializes on creation.
 const mockTiming = jest.fn(() => false);

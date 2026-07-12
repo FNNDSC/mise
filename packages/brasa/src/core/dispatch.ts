@@ -223,6 +223,9 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   parametersofplugin: builtin_parametersofplugin,
   plugin: builtin_plugin,
   plugins: builtin_plugin,
+  pacsservers: (args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsservers', ['-s', ...args]),
+  pacsqueries: (args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsqueries', ['-s', ...args]),
+  pacsretrieve: (args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsretrieve', ['-s', ...args]),
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
@@ -283,15 +286,9 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   files: envelopeHandler_wrap(builtin_files),
   links: envelopeHandler_wrap(builtin_links),
   dirs: envelopeHandler_wrap(builtin_dirs),
-  pacsservers: async (args: string[]): Promise<void> => {
-    await chiliCommand_run('pacsservers', ['-s', ...args]);
-  },
-  pacsqueries: async (args: string[]): Promise<void> => {
-    await chiliCommand_run('pacsqueries', ['-s', ...args]);
-  },
-  pacsretrieve: async (args: string[]): Promise<void> => {
-    await chiliCommand_run('pacsretrieve', ['-s', ...args]);
-  }
+  pacsservers: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsservers', ['-s', ...args])),
+  pacsqueries: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsqueries', ['-s', ...args])),
+  pacsretrieve: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsretrieve', ['-s', ...args])),
 };
 
 export { COMMAND_HANDLERS_KEYS } from '../command-keys.js';
@@ -475,14 +472,16 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     }
   }
 
-  // Unknown commands delegate to chili, which prints for itself — the same
-  // print-direct contract as the other unconverted handlers routed through
-  // handler_runDirect (upload, pacs, download, ...). No per-invocation console
-  // capture is installed here.
-  return handler_runDirect(async (fallbackArgs: string[]): Promise<void> => {
-    console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
-    await chiliCommand_run(command, ['-s', ...fallbackArgs]);
-  }, args);
+  // Unknown commands delegate to chili, whose output is captured through its
+  // own seam and returned as an envelope — no console capture here.
+  const notice: string = `${chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`)}\n`;
+  const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
+  const envelope: CommandEnvelope = { status: chiliEnvelope.status, rendered: notice + chiliEnvelope.rendered };
+  if (chiliEnvelope.renderedErr !== undefined) {
+    envelope.renderedErr = chiliEnvelope.renderedErr;
+  }
+  envelope_deliver(envelope);
+  return envelope;
 }
 
 /**
@@ -626,7 +625,13 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
     }
 
     console.log(chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`));
-    await chiliCommand_run(command, ['-s', ...args]);
+    const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
+    if (chiliEnvelope.rendered.length > 0) {
+      process.stdout.write(chiliEnvelope.rendered);
+    }
+    if (chiliEnvelope.renderedErr !== undefined && chiliEnvelope.renderedErr.length > 0) {
+      process.stderr.write(chiliEnvelope.renderedErr);
+    }
   });
 }
 

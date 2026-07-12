@@ -15,9 +15,18 @@ import * as path from 'path';
 import * as os from 'os';
 import type { ThemeName, P10kSegmentConfig } from '../core/prompt/index.js';
 import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS } from '../core/prompt/index.js';
+import {
+  storeUrl_set,
+  storeUrlOverride_get,
+  storeConfigPersist_install,
+} from '@fnndsc/brasa';
 
 /**
  * User-configurable chell settings.
+ *
+ * This is the CLI surface's own configuration (history and prompt theming).
+ * Engine configuration such as the peer store URL lives in the engine's store
+ * config; this module owns only where it is persisted, not the value.
  */
 export interface Settings {
   config: {
@@ -27,8 +36,6 @@ export interface Settings {
     promptTheme: ThemeName;
     /** Which optional p10k segments are enabled. */
     p10kSegments: P10kSegmentConfig;
-    /** Peer store URL. Undefined means use the built-in default. */
-    storeUrl?: string;
   };
 }
 
@@ -87,7 +94,7 @@ export async function settings_load(): Promise<void> {
         }
       }
       if (typeof obj.storeUrl === 'string') {
-        settings.config.storeUrl = obj.storeUrl;
+        storeUrl_set(obj.storeUrl);
       }
     }
   } catch {
@@ -101,13 +108,18 @@ export async function settings_load(): Promise<void> {
 export async function settings_save(): Promise<void> {
   try {
     await fs.promises.mkdir(configDir_get(), { recursive: true });
+    const storeUrl: string | undefined = storeUrlOverride_get();
     const data: Record<string, unknown> = {
       promptTheme: settings.config.promptTheme,
       p10kSegments: settings.config.p10kSegments,
-      ...(settings.config.storeUrl !== undefined ? { storeUrl: settings.config.storeUrl } : {}),
+      ...(storeUrl !== undefined ? { storeUrl } : {}),
     };
     await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(data, null, 2) + '\n');
   } catch {
     // Silently fail
   }
 }
+
+// The CLI persists engine store configuration into the same settings file, so
+// a `store set`/`store reset` is written through this module's saver.
+storeConfigPersist_install(settings_save);

@@ -8,9 +8,14 @@ import { store_listPlugins, store_searchPlugins } from '@fnndsc/chili/commands/s
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { spinner } from '../lib/spinner.js';
 import { plugin_addInteractive } from './res/plugin.js';
-import { settings, settings_save } from '../config/settings.js';
-
-const DEFAULT_STORE_URL: string = 'https://cube.chrisproject.org/api/v1/';
+import {
+  DEFAULT_STORE_URL,
+  storeUrl_get,
+  storeUrl_isDefault,
+  storeUrl_set,
+  storeUrl_clear,
+  storeConfig_persist,
+} from '../config/storeConfig.js';
 
 /**
  * Handles store commands.
@@ -80,8 +85,8 @@ export async function builtin_store(args: string[]): Promise<void> {
        await plugin_addInteractive(installParsed);
     } else if (subcommand === 'inspect') {
        spinner.stop();
-       const current: string = settings.config.storeUrl ?? DEFAULT_STORE_URL;
-       const isDefault: boolean = settings.config.storeUrl === undefined;
+       const current: string = storeUrl_get();
+       const isDefault: boolean = storeUrl_isDefault();
        console.log(`${chalk.bold('Peer store URL:')} ${chalk.blue(current)}${isDefault ? chalk.gray(' (default)') : chalk.yellow(' (custom)')}`);
     } else if (subcommand === 'set') {
        spinner.stop();
@@ -91,13 +96,13 @@ export async function builtin_store(args: string[]): Promise<void> {
          process.exitCode = 1;
          return;
        }
-       settings.config.storeUrl = url;
-       await settings_save();
+       storeUrl_set(url);
+       await storeConfig_persist();
        console.log(chalk.green(`Store URL set to: ${chalk.blue(url)}`));
     } else if (subcommand === 'reset') {
        spinner.stop();
-       delete settings.config.storeUrl;
-       await settings_save();
+       storeUrl_clear();
+       await storeConfig_persist();
        console.log(chalk.green(`Store URL reset to default: ${chalk.blue(DEFAULT_STORE_URL)}`));
     } else {
        spinner.stop();

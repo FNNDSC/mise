@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, afterEach } from '@jest/globals';
 import { rmSync, writeFileSync } from 'fs';
-import { discovery_path, discovery_write, discovery_read } from '../src/remote/discovery.js';
+import { discovery_path, discovery_write, discovery_read } from '../src/daemon/discovery.js';
 
 afterEach(() => {
   rmSync(discovery_path(), { force: true });

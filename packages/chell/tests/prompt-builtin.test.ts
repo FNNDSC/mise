@@ -16,12 +16,13 @@ jest.unstable_mockModule('../src/core/prompt/index.js', () => ({
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn(async () => ({ pacsserver: null })) }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
-jest.unstable_mockModule('../src/session/index.js', () => ({
-  session: { getCWD: jest.fn(async () => '/home/chris'), offline: false, physicalMode_get: jest.fn(() => false) },
-}));
 
 const mockQuestion = jest.fn(async () => '');
-jest.unstable_mockModule('../src/core/question.js', () => ({ repl_question: mockQuestion }));
+// session and repl_question now live in the brasa engine package.
+jest.unstable_mockModule('@fnndsc/brasa', () => ({
+  session: { getCWD: jest.fn(async () => '/home/chris'), offline: false, physicalMode_get: jest.fn(() => false) },
+  repl_question: mockQuestion,
+}));
 jest.unstable_mockModule('../src/builtins/sys/prompt.helpers.js', () => ({
   promptContext_build: jest.fn(() => ({})),
   segmentTokens_parse: (s: string): string[] => s.split(/\s+/).filter(Boolean),

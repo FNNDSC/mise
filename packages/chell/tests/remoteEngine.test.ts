@@ -1,8 +1,8 @@
 import { EventEmitter } from 'events';
 import { jest } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import { sink_set, StdoutSink, type OutputSink } from '../src/core/sink.js';
-import type { ProgressEvent } from '../src/core/progress.js';
+import type { OutputSink } from '@fnndsc/brasa';
+import type { ProgressEvent } from '@fnndsc/brasa';
 
 type Scenario = (ws: FakeWebSocket, sent: Record<string, unknown>) => void;
 
@@ -49,7 +49,33 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   serverMessage_parse: (value: unknown) => ({ ok: true, value }),
 }));
 
+// Isolate this surface unit from the engine barrel: provide just the sink
+// boundary remoteEngine and this test share (installed sink, delivery).
+let activeSink: OutputSink;
+jest.unstable_mockModule('@fnndsc/brasa', () => ({
+  sink_set: (sink: OutputSink): OutputSink => { const prev: OutputSink = activeSink; activeSink = sink; return prev; },
+  sink_get: (): OutputSink => activeSink,
+  // Imported transitively via prompt/session (promptFromContext_render); the
+  // remote client renders a pushed context, it never builds one.
+  sessionPromptContext_build: jest.fn(),
+  // Imported transitively via config/settings (store-config persistence hook).
+  storeUrl_set: jest.fn(),
+  storeUrlOverride_get: jest.fn(),
+  storeConfigPersist_install: jest.fn(),
+  envelope_deliver: (envelope: CommandEnvelope): void => {
+    if (envelope.rendered.length > 0) activeSink.data_write(envelope.rendered);
+    if (envelope.renderedErr !== undefined && envelope.renderedErr.length > 0) activeSink.err_write(envelope.renderedErr);
+  },
+  StdoutSink: class {
+    public data_write(): void { /* discard */ }
+    public err_write(): void { /* discard */ }
+    public status_write(): void { /* discard */ }
+    public progress_write(): void { /* discard */ }
+  },
+}));
+
 const { RemoteEngine } = await import('../src/remote/remoteEngine.js');
+const { sink_set, StdoutSink } = await import('@fnndsc/brasa');
 
 describe('RemoteEngine live output', () => {
   let remote: InstanceType<typeof RemoteEngine> | undefined;

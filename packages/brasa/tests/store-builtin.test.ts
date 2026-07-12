@@ -25,9 +25,17 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: moc
 const mockAddInteractive = jest.fn();
 jest.unstable_mockModule('../src/builtins/res/plugin.js', () => ({ plugin_addInteractive: mockAddInteractive }));
 
-const mockSettingsSave = jest.fn();
-const settings: { config: { storeUrl?: string } } = { config: {} };
-jest.unstable_mockModule('../src/config/settings.js', () => ({ settings, settings_save: mockSettingsSave }));
+const mockPersist = jest.fn();
+let storeUrl: string | undefined;
+const STORE_DEFAULT = 'https://default/api/v1/';
+jest.unstable_mockModule('../src/config/storeConfig.js', () => ({
+  DEFAULT_STORE_URL: STORE_DEFAULT,
+  storeUrl_get: (): string => storeUrl ?? STORE_DEFAULT,
+  storeUrl_isDefault: (): boolean => storeUrl === undefined,
+  storeUrl_set: (url: string): void => { storeUrl = url; },
+  storeUrl_clear: (): void => { storeUrl = undefined; },
+  storeConfig_persist: mockPersist,
+}));
 
 const { builtin_store } = await import('../src/builtins/store.js');
 
@@ -35,7 +43,7 @@ let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
 beforeEach(() => {
   jest.clearAllMocks();
-  settings.config = {};
+  storeUrl = undefined;
   process.exitCode = 0;
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -97,8 +105,8 @@ describe('builtin_store', () => {
 
   it('sets a custom store URL and saves', async () => {
     await builtin_store(['set', 'http://custom/api/']);
-    expect(settings.config.storeUrl).toBe('http://custom/api/');
-    expect(mockSettingsSave).toHaveBeenCalled();
+    expect(storeUrl).toBe('http://custom/api/');
+    expect(mockPersist).toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Store URL set'));
   });
 
@@ -109,10 +117,10 @@ describe('builtin_store', () => {
   });
 
   it('resets the store URL and saves', async () => {
-    settings.config.storeUrl = 'http://custom/';
+    storeUrl = 'http://custom/';
     await builtin_store(['reset']);
-    expect(settings.config.storeUrl).toBeUndefined();
-    expect(mockSettingsSave).toHaveBeenCalled();
+    expect(storeUrl).toBeUndefined();
+    expect(mockPersist).toHaveBeenCalled();
   });
 
   it('rejects an unknown subcommand', async () => {

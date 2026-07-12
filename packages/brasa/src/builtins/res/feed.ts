@@ -17,7 +17,7 @@ import { feed_commentsList, feed_commentCreate, feed_commentDelete, feed_comment
 import type { FeedComment } from '@fnndsc/chili/commands/feed/comments.js';
 import { feedList_render, feedCreate_render, feedNote_render, feedComments_render } from '@fnndsc/chili/views/feed.js';
 import { Feed } from '@fnndsc/chili/models/feed.js';
-import { chiliCommand_run } from '../../chell.js';
+import { chiliCommand_run } from '../../core/chiliDelegate.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { Result } from '@fnndsc/cumin';

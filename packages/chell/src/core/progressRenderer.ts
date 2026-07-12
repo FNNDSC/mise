@@ -8,7 +8,7 @@
  * @module
  */
 import cliProgress from 'cli-progress';
-import type { ProgressEvent, ProgressOperation, ProgressStatus } from './progress.js';
+import type { ProgressEvent, ProgressOperation, ProgressStatus, ProgressRenderer } from '@fnndsc/brasa';
 
 type ProgressBar = {
   update(value: number, payload?: Record<string, string>): void;
@@ -106,7 +106,7 @@ function fallback_line(event: ProgressEvent): string {
 /**
  * Renders semantic progress to a terminal.
  */
-export class TerminalProgressRenderer {
+export class TerminalProgressRenderer implements ProgressRenderer {
   private readonly stream: NodeJS.WriteStream;
   private readonly isTTY: boolean;
   private readonly factory: ProgressBarFactory;

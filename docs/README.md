@@ -5,6 +5,12 @@ going and why. This is not user documentation; for using the shell and the
 packages, see the per-package READMEs (start with
 [packages/chell](../packages/chell/README.md)).
 
+- **[history.adoc](history.adoc)** — the narrative history of the stack: how mise
+  grew from a single adapter that tamed Collection+JSON into a layered command
+  substrate, then a shell, then a hostable engine a daemon can serve to many
+  surfaces — and why each layer exists. Start here for the story; the documents
+  below are the forward design.
+
 - **[calypso.adoc](calypso.adoc)** — **CALYPSO**: an intent-interpretation layer
   and session daemon that separates the chell engine from its display and serves
   it over a WebSocket, so remote and web surfaces can drive the same deterministic

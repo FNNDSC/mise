@@ -15,7 +15,7 @@ import {
   printingHandler_wrap,
   type OutputSink,
 } from '../src/core/sink.js';
-import { TerminalProgressRenderer } from '../src/core/progressRenderer.js';
+import type { ProgressRenderer } from '../src/core/progress.js';
 
 afterEach(() => {
   sink_set(new StdoutSink());
@@ -37,7 +37,7 @@ describe('StdoutSink', () => {
 
   it('delegates progress to its renderer', () => {
     const write = jest.fn();
-    const renderer = { write } as unknown as TerminalProgressRenderer;
+    const renderer = { write } as unknown as ProgressRenderer;
     const event = { operation: 'upload', phase: 'transferring', current: 1, total: 2, unit: 'files', status: 'running' } as const;
     new StdoutSink(renderer).progress_write(event);
     expect(write).toHaveBeenCalledWith(event);
@@ -322,6 +322,25 @@ describe('printingHandler_wrap', () => {
     await expect(printingHandler_wrap(handler)([])).rejects.toThrow('boom');
     expect(console.log).toBe(originalLog);
     expect(sink_get()).toBe(buffer);
+  });
+
+  it('isolates concurrent captures so their output never cross-contaminates', async () => {
+    sink_set(new BufferSink());
+    // Each handler writes through sink_get() and yields between writes, so the
+    // two runs interleave. With a per-session sink scope each sees only its own
+    // capture; a shared module-global sink would let the later run's install
+    // stomp the earlier one and mix the output.
+    const slow = async (label: string, delayMs: number): Promise<void> => {
+      sink_get().data_write(`${label}1`);
+      await new Promise<void>((resolve): void => { setTimeout(resolve, delayMs); });
+      sink_get().data_write(`${label}2`);
+    };
+    const [envA, envB]: CommandEnvelope[] = await Promise.all([
+      printingHandler_wrap((): Promise<void> => slow('A', 15))([]),
+      printingHandler_wrap((): Promise<void> => slow('B', 5))([]),
+    ]);
+    expect(envA.rendered).toBe('A1A2');
+    expect(envB.rendered).toBe('B1B2');
   });
 
   it('passes arguments through to the wrapped handler', async () => {

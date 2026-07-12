@@ -19,8 +19,8 @@ import { spawnSync, type SpawnSyncReturns } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from './surface.js';
-import { segment_pipeThrough } from '../lib/pipe.js';
+import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
+import { segment_pipeThrough } from '@fnndsc/brasa';
 
 /** Minimal view of readline's internal echo hook, used to suppress echo. */
 interface ReadlineEchoInternal {

@@ -1,0 +1,188 @@
+= mise: a history
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+1.0, 2026-07-11
+:doctype: article
+:toc: left
+:toclevels: 2
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+This is the narrative history of the mise stack: how a Unix-shaped interface to
+ChRIS grew from a single adapter that tamed a verbose wire format into a layered
+command substrate, then into a shell, and finally into a hosted engine that a
+daemon can serve to many surfaces at once. It is written as a story rather than
+a specification; the forward design lives in link:calypso.adoc[calypso.adoc] and
+link:surfaces.adoc[surfaces.adoc], and the per-stage engineering record lives
+under `history/`. The purpose here is to explain _why_ each layer exists, so the
+shape of the whole reads as a sequence of decisions rather than an accident.
+
+== The platform and its burden
+
+ChRIS is a distributed platform for scientific computing — originally medical
+imaging — that keeps data, analysis plugins, workflow state, and results behind
+a backend called CUBE. CUBE is the authoritative store of everything durable: a
+feed and its tree of plugin instances are a materialized computation graph, and
+the mere existence of an output file at a path within a feed is proof that the
+computation that produced it ran. Provenance is not bolted on; it is the shape of
+the data. This property matters for everything that follows, because it means the
+platform already answers the question "did this work actually happen?" with state
+rather than with a claim.
+
+CUBE exposes all of this through a REST API whose wire format is Collection+JSON,
+consumed by clients through the `@fnndsc/chrisapi` JavaScript library. In
+principle this is a clean contract. In practice, across several user-interface
+efforts, the same cost was paid again and again. Collection+JSON traversal is
+verbose; the published typings lag the live API surface; and compound operations
+— the ordinary act of "stage this series, make a feed, run an analysis, read the
+result" — decompose into long chains of sequential requests, each dependent on
+the last. Every new client that spoke to CUBE directly re-implemented that
+traversal, re-derived those types, and re-orchestrated those chains. The burden
+was not any single hard problem; it was the same medium-hard problem, repeated,
+at the base of every interface anyone tried to build.
+
+== The sandwich
+
+mise began as a deliberate refusal to pay that cost more than once. The idea was
+to build the tedious part — talking to CUBE — a single time, for TypeScript
+clients, so that neither a command line nor a future web application would ever
+have to reinvent Collection+JSON handling. What emerged is the *Sandwich Model*:
+a strict stack in which each layer speaks only to the one below it, and any
+consumer bites in at whatever layer it needs.
+
+*cumin* is the bottom slice, and the only layer that ever touches `chrisapi`. Its
+adapter is an anti-corruption seam: Collection+JSON comes in, typed domain objects
+go out, and every unsafe cast is confined to one auditable file. cumin brought
+order to the wire's verbosity so that nothing above it would have to. Everything
+higher works with clean, typed ingredients — _mise en place_, the discipline the
+whole project is named for.
+
+*salsa* sits above cumin as the shared application-logic layer. It is where
+intent becomes action: most importantly, a virtual filesystem that projects CUBE
+state onto navigable paths, so that "the feeds" or "a PACS query" or the running
+process table become directories one can list and traverse rather than endpoints
+one must assemble. salsa is the reason the layers above can think in terms of
+_places_ and _operations_ instead of requests and responses.
+
+*chili* is the command-and-presentation layer, with a deliberate split between
+command modules that return typed models and view modules that render them as
+text — logic separated from its display from the start. *chell* is the top slice:
+a shell. It maps ChRIS onto a grammar an operator already knows — data is a
+filesystem, every plugin is an executable in `/bin`, a running job is an entry
+under `/proc` — with a parser for pipes, redirection, and wildcards, and a
+read-eval-print loop over it all.
+
+Crucially, the sandwich was always meant to feed two mouths. The lower layers were
+built to be imported on their own; a web client could consume cumin, salsa, and
+chili without ever touching the shell. The command line came first because it was
+the fastest way to exercise the substrate against a real backend — but the intent,
+from the base of the stack up, was a substrate that could power both a CLI and a
+graphical client without either reinventing the other's foundation.
+
+== The shell that was also an engine
+
+There was, however, a fusion at the top that the early design did not examine
+closely. chell was two things wearing one name. It was a *surface* — a readline
+loop, terminal rendering, prompt themes, the tactile experience of a shell. And
+it was an *engine* — the parser, the dispatch table, the session state, the
+virtual-filesystem projection, the machinery that turns a typed line into a
+sequence of validated ChRIS operations. These lived together in one package,
+fused to standard input. For a command-line tool that was not merely acceptable;
+it was efficient. But it meant that anything wanting the engine had to take the
+terminal with it. The engine was separable in principle and inseparable in
+practice: there was no seam another consumer could enter through.
+
+== The pressure to split
+
+The reason to look harder at that fusion came from outside the code. A new funding
+opportunity projected needs that a monolithic shell could not meet on its own —
+and, with it, a sharper idea about what the interface should _be_. The concept was
+a terminal that is central but not solitary: an interface that is genuinely
+terminal-powered, where a shell grammar is the primary way to drive the system,
+yet fully GUI-aware, where graphical panels are renderings of the same live
+session rather than a second, parallel control path. One grammar, available
+identically on a command line and inside a web console; the pixels are a view of
+the session, never a competing way to change it.
+
+That concept does not fit inside a package whose engine is welded to a readline
+loop. If the terminal is to be central to _every_ client, and if a browser panel
+is to reflect the same session an operator drives from a shell, then the engine
+has to be a thing in its own right — hostable, drivable from more than one place,
+with its display made a choice rather than an assumption. The monolith had to be
+reconsidered.
+
+== A known shape
+
+The reassuring part is that this shape is not novel. The separation of a language
+engine from the surfaces that drive it is one of the most reused ideas in
+developer tooling. Jupyter splits a computational _kernel_ from the notebook,
+console, or web front-end that talks to it over a protocol; the Language Server
+Protocol splits a language's intelligence from every editor that consumes it; the
+Debug Adapter Protocol does the same for debuggers. In each case one engine,
+addressable over a wire, serves many heterogeneous frontends, and no frontend
+re-implements the engine. Recognising mise's problem as an instance of that
+pattern was clarifying: the work was not to invent an architecture but to apply a
+proven one — to pull chell's engine out into a kernel and let the shell become one
+frontend among eventual several.
+
+== The extraction
+
+So the engine was lifted out. The command substrate — parser, dispatch, pipes,
+builtins, session, output — became *brasa*, a package with no terminal of its own:
+_BRASA Runs Abstracted Shell Actions_, the coals under the kitchen. chell kept
+what a surface should keep — the readline loop, terminal rendering, prompt themes,
+the remote client — and became a consumer of brasa rather than its container. The
+engine that had been inseparable in practice became a published dependency, and
+the shell became, honestly, _a_ shell rather than _the_ shell.
+
+The migration was done by relocation, not rewrite. The engine's logic barely
+changed; it moved, behind a small number of surgical seams cut one commit at a
+time — output routing made multi-session-safe, the terminal progress renderer
+decoupled behind an interface, engine configuration split from surface preference,
+the prompt reduced to context the daemon ships and each surface themes for itself.
+The value was structural, and the risk stayed low precisely because the logic was
+exposed rather than reimagined.
+
+== The lever
+
+Taken to its conclusion, a hostable kernel wants a server. That server is
+*CALYPSO* — the daemon that hosts a brasa engine and serves it to surfaces over a
+WebSocket, with a session bus so that several surfaces can attach to one live
+session, a validated wire contract at the boundary, and a session that outlives
+any single client. With CALYPSO, the terminal-central concept becomes real: the
+engine can run where the data is, and thin surfaces — a remote shell, a future
+web console — attach from wherever the operator happens to be. A local shell still
+talks to brasa directly, in-process, paying no tax for a boundary it does not
+need; the daemon is a boundary one inserts only when a surface and the engine must
+be pulled apart.
+
+CALYPSO is also where a further lever becomes possible, and the name has always
+pointed at it: _CALYPSO Accepts Language, Yielding Permitted Shell Operations_.
+Because every command already crosses one validated boundary, the daemon is the
+natural seat for an embedded language-assist layer — natural language in,
+_permitted_ shell operations out. The governing rule is that generation and
+authorization stay separate: a language model proposes, and the same contract that
+governs every other client permits or rejects the proposal, so an untrusted model
+reading arbitrary data can never authorize its own actions. And because the model's
+output is shell commands rather than opaque API calls, the terminal becomes the
+shared, legible ledger between human intent, machine translation, and engine
+execution — visible, editable, and vetoable in the same grammar the operator
+already reads. The full doctrine of that layer — deterministic resolution before
+probabilistic interpretation, workflow truth always materialized as CUBE state —
+is set out in link:calypso.adoc[calypso.adoc]; the point here is only that it is a
+lever the extraction made reachable, not a layer bolted on.
+
+== Where it stands
+
+At the time of writing, the extraction is complete and proven: brasa hosts the
+engine, chell is the CLI surface, CALYPSO is a self-contained daemon that can be
+launched with no shell in sight, and both drive paths — local in-process and
+remote over the wire — are validated end to end against a live CUBE. What has been
+built is not a new feature but a new degree of freedom: the ability to add
+surfaces and consumers without touching the engine, to run the engine near the
+data while driving it from afar, and to place a language layer at a boundary that
+was designed, from its name onward, to permit exactly that. The web console and
+the language-assist layer are the next chapters; before this work they required a
+rewrite, and after it they require only a client.

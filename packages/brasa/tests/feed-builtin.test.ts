@@ -9,7 +9,7 @@ jest.unstable_mockModule('@fnndsc/chili/models/feed.js', () => ({}));
 
 // chell entry (chiliCommand_run) — mocked so the whole shell isn't loaded.
 const mockChiliRun = jest.fn();
-jest.unstable_mockModule('../src/chell.js', () => ({ chiliCommand_run: mockChiliRun }));
+jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
 
 const mockFeedsList = jest.fn();
 const mockFeedFields = jest.fn();

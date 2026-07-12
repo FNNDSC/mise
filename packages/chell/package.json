@@ -13,14 +13,13 @@
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "chell": "./dist/index.js",
-    "calypso": "./dist/calypso.js"
+    "chell": "./dist/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc && chmod +x ./dist/index.js ./dist/calypso.js",
+    "build": "tsc && chmod +x ./dist/index.js",
     "exemplars:build": "tsc -p exemplars/ts",
     "start": "node dist/index.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --forceExit --coverage",
@@ -38,6 +37,7 @@
   "author": "FNNDSC <dev@babyMRI.org>",
   "license": "MIT",
   "dependencies": {
+    "@fnndsc/brasa": "^0.1.0",
     "@fnndsc/chili": "^3.3.0",
     "@fnndsc/cumin": "^3.5.0",
     "@fnndsc/salsa": "^3.2.6",

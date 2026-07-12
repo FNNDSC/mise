@@ -12,13 +12,13 @@ export {
   command_dispatch,
   COMMAND_HANDLERS,
   COMMAND_HANDLERS_KEYS,
-} from './core/dispatch.js';
+} from '@fnndsc/brasa';
 export {
   engine_create,
   line_execute,
   line_complete,
   command_handle,
   stopOnError_set,
-  type ChellEngine,
+  type BrasaEngine,
   type CompletionResult,
-} from './core/engine.js';
+} from '@fnndsc/brasa';

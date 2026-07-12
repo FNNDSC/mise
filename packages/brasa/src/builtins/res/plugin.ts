@@ -20,7 +20,7 @@ import { plugin_add, PluginAddOutcome } from '@fnndsc/chili/commands/plugins/add
 import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.js';
 import { table_display } from '@fnndsc/chili/screen/screen.js';
 import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
-import { chiliCommand_run } from '../../chell.js';
+import { chiliCommand_run } from '../../core/chiliDelegate.js';
 import { spinner } from '../../lib/spinner.js';
 import { errorStack } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';

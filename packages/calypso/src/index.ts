@@ -52,3 +52,5 @@ export {
 export { type HostedEngine, type CompletionResult } from './daemon/engine.js';
 export { token_generate, token_writeFile, token_matches } from './daemon/token.js';
 export { CalypsoDaemon, type DaemonOptions, type EditOutcome } from './daemon/server.js';
+export { daemon_launch } from './daemon/launch.js';
+export { discovery_read, discovery_write, discovery_path, type Discovery } from './daemon/discovery.js';

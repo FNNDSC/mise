@@ -324,7 +324,11 @@ async function until(predicate: () => boolean): Promise<void> {
 describe('CalypsoDaemon prompt line push', () => {
   it('pushes the prompt on attach and after each command', async () => {
     const engine = stubEngine_create();
-    const daemon = new CalypsoDaemon({ engine, token: TOKEN, promptProvider: () => 'PROMPT> ' });
+    const promptContext = {
+      user: 'chris', uri: 'http://cube/', cwd: '/', pacsserver: null,
+      physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN, promptProvider: () => promptContext });
     const port = await daemon.start();
     try {
       const ws = await client_open(port);
@@ -334,12 +338,12 @@ describe('CalypsoDaemon prompt line push', () => {
       send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
       await until(() => got.length >= 2);
       expect(got[0].type).toBe('attached');
-      expect(got[1]).toEqual({ type: 'promptline', text: 'PROMPT> ' });
+      expect(got[1]).toEqual({ type: 'promptline', context: promptContext });
 
       send(ws, { type: 'execute', id: '1', line: 'pwd' });
       await until(() => got.length >= 4);
       expect(got[2].type).toBe('result');
-      expect(got[3]).toEqual({ type: 'promptline', text: 'PROMPT> ' });
+      expect(got[3]).toEqual({ type: 'promptline', context: promptContext });
       ws.terminate();
     } finally {
       await daemon.stop();

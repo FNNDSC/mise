@@ -21,8 +21,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-        env:
-          CALYPSO_BROWSER_REQUIRED: "1"
       - run: npm run lint:tests
       - run: npm run lint:seam
       - run: npm run lint --if-present

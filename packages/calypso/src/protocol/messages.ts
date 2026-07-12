@@ -169,14 +169,35 @@ export const promptMessageSchema = z.object({
 });
 
 /**
- * The themed prompt string, pushed by the daemon with each result and on any
- * context change. Only the daemon knows the session context the prompt
- * renders; a surface prints what it receives, so prompt themes work
- * identically everywhere.
+ * The engine-known facts a prompt reflects, independent of any theme.
+ *
+ * The daemon knows the session context but not how a given surface renders it,
+ * so it ships these facts and each surface themes them with its own settings.
+ * Rendering inputs a surface owns (theme, segments, terminal width) are not
+ * carried here.
+ */
+export const promptContextSchema = z.object({
+  user: z.string(),
+  uri: z.string(),
+  cwd: z.string(),
+  pacsserver: z.string().nullable(),
+  physicalMode: z.boolean(),
+  lastExitCode: z.number(),
+  lastCommandDurationMs: z.number(),
+  procWarmup: z.object({ loaded: z.number() }).optional(),
+});
+
+export type PromptContext = z.infer<typeof promptContextSchema>;
+
+/**
+ * The prompt context, pushed by the daemon with each result and on any context
+ * change. The daemon knows the session context; each surface renders it with
+ * its own theme, so prompt themes are a per-surface choice rather than the
+ * daemon's.
  */
 export const promptLineMessageSchema = z.object({
   type: z.literal('promptline'),
-  text: z.string(),
+  context: promptContextSchema,
 });
 
 /**

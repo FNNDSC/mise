@@ -17,11 +17,11 @@ import { readFileSync, existsSync } from 'fs';
 import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
-import { session } from '../session/index.js';
-import { error_stripDebugPrefix } from '../builtins/index.js';
+import { session } from '@fnndsc/brasa';
+import { error_stripDebugPrefix } from '@fnndsc/brasa';
 import { Result, errorStack, Ok, Err, StackMessage, Client } from '@fnndsc/cumin';
-import { vfs } from '../lib/vfs/vfs.js';
-import { spinner } from '../lib/spinner.js';
+import { vfs } from '@fnndsc/brasa';
+import { spinner } from '@fnndsc/brasa';
 import { logo_print, logo_animatePulse, logo_animateStop } from '../lib/logo.js';
 import {
   BootInfoItem,
@@ -32,15 +32,17 @@ import {
 } from '../lib/bootsequence.js';
 import { settings_load } from '../config/settings.js';
 import { cli_parse, ChellCLIConfig } from './cli.js';
-import { prefetch_path, prefetch_withSpinner, PrefetchResult } from '../lib/prefetch.js';
+import { prefetch_path, prefetch_withSpinner, PrefetchResult } from '@fnndsc/brasa';
 import { bootFlags_compute, type BootFlags } from './bootFlags.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
-import { engine_create, stopOnError_set, type ChellEngine } from './engine.js';
-import { surface_set } from './surface.js';
+import { engine_create, stopOnError_set, type BrasaEngine } from '@fnndsc/brasa';
+import { sessionConnect_fromSaved, type SavedSessionResult } from '@fnndsc/brasa';
+import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
-import { versionReport_build, versions_get, type StackVersions } from './version.js';
+import { surfaceLine_execute } from './surfaceDispatch.js';
+import { versionReport_build, versions_get, type StackVersions } from '@fnndsc/brasa';
 
 /**
  * Extended Writable stream with muted property for password input.
@@ -301,7 +303,7 @@ function localTime_withOffset(): string {
  * await script_execute(engine, '/path/to/script.chell', false);
  * ```
  */
-async function script_execute(engine: ChellEngine, scriptPath: string, stopOnError: boolean = false): Promise<void> {
+async function script_execute(engine: BrasaEngine, scriptPath: string, stopOnError: boolean = false): Promise<void> {
   if (!existsSync(scriptPath)) {
     console.error(chalk.red(`Error: Script file not found: ${scriptPath}`));
     process.exit(1);
@@ -328,7 +330,7 @@ async function script_execute(engine: ChellEngine, scriptPath: string, stopOnErr
 
     // Execute the line
     try {
-      await engine.line_execute(line);
+      await surfaceLine_execute(engine, line);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
       console.error(chalk.red(`Error on line ${i + 1}: ${msg}`));
@@ -411,63 +413,47 @@ async function connection_fromSavedSession(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<SingleContext> {
-  spinner.start('Checking for previous context');
+  const verbose: boolean = config.mode !== 'execute' && config.mode !== 'script';
+
+  spinner.start('Validating saved session');
+  const result: SavedSessionResult = await sessionConnect_fromSaved();
   spinner.stop();
 
-  const ctx: SingleContext = await context_getSingle();
-
-  if (!ctx.user || !ctx.URL) {
-    if (config.mode !== 'execute' && config.mode !== 'script') {
-      console.log(chalk.yellow('[!] No previous context found'));
-    }
-    return ctx;
-  }
-
-  if (config.mode !== 'execute' && config.mode !== 'script') {
-    console.log(chalk.green('[+] Previous context detected'));
-    console.log(chalk.gray(`    User: ${chalk.cyan(ctx.user)}`));
-    console.log(chalk.gray(`    URL:  ${chalk.cyan(ctx.URL)}`));
-  }
-
-  spinner.start('Validating existing token');
-  const token: string | null = await session.connection.authToken_get(true);
-  spinner.stop();
-
-  if (!token) {
-    console.log(chalk.yellow('[!] No token found'));
-    console.log(chalk.yellow('[!] Running in disconnected mode'));
-    session.offline = true;
+  const ctx: SingleContext = result.context;
+  const reconnectHint = (): void =>
     console.log(chalk.gray(`    Use: connect --user ${ctx.user} --password <pwd> ${ctx.URL}`));
-    boot?.log('skip', 'Session', 'No saved token; offline');
-    return ctx;
-  }
 
-  spinner.start(`Testing connection to ${ctx.URL}`);
-  try {
-    const client: Client | null = await session.connection.client_get();
-    if (!client) {
-      spinner.stop();
+  switch (result.status) {
+    case 'no-context':
+      if (verbose) console.log(chalk.yellow('[!] No previous context found'));
+      break;
+    case 'no-token':
+      console.log(chalk.yellow('[!] No token found'));
+      console.log(chalk.yellow('[!] Running in disconnected mode'));
+      reconnectHint();
+      boot?.log('skip', 'Session', 'No saved token; offline');
+      break;
+    case 'no-client':
       console.log(chalk.yellow('[!] Failed to create client'));
       console.log(chalk.yellow('[!] Running in disconnected mode'));
-      session.offline = true;
-      console.log(chalk.gray(`    Use: connect --user ${ctx.user} --password <pwd> ${ctx.URL}`));
-      return ctx;
-    }
-    await client.getUser();
-    spinner.stop();
-    if (config.mode !== 'execute' && config.mode !== 'script') {
-      console.log(chalk.green('[+] Token validated with server'));
-      console.log(chalk.green('[+] Session restored'));
-      boot?.log('ok', 'Session', `Restored ${ctx.user}@${ctx.URL}`);
-    }
-  } catch (error: unknown) {
-    spinner.stop();
-    const msg: string = error instanceof Error ? error.message : String(error);
-    console.log(chalk.yellow('[!] Token expired or invalid'));
-    console.log(chalk.gray(`    Error: ${msg}`));
-    console.log(chalk.yellow('[!] Running in disconnected mode'));
-    session.offline = true;
-    console.log(chalk.gray(`    Use: connect --user ${ctx.user} --password <pwd> ${ctx.URL}`));
+      reconnectHint();
+      break;
+    case 'invalid-token':
+      console.log(chalk.yellow('[!] Token expired or invalid'));
+      if (result.error) console.log(chalk.gray(`    Error: ${result.error}`));
+      console.log(chalk.yellow('[!] Running in disconnected mode'));
+      reconnectHint();
+      break;
+    case 'restored':
+      if (verbose) {
+        console.log(chalk.green('[+] Previous context detected'));
+        console.log(chalk.gray(`    User: ${chalk.cyan(ctx.user)}`));
+        console.log(chalk.gray(`    URL:  ${chalk.cyan(ctx.URL)}`));
+        console.log(chalk.green('[+] Token validated with server'));
+        console.log(chalk.green('[+] Session restored'));
+        boot?.log('ok', 'Session', `Restored ${ctx.user}@${ctx.URL}`);
+      }
+      break;
   }
 
   return ctx;
@@ -510,7 +496,7 @@ async function connection_establish(
  * @param boot - The boot logger, or null when non-interactive.
  */
 async function interactiveSession_run(
-  engine: ChellEngine,
+  engine: BrasaEngine,
   config: ChellCLIConfig,
   currentContext: SingleContext,
   flags: Pick<BootFlags, 'prefetchPlugins' | 'prefetchFeeds' | 'prefetchPublicFeeds' | 'prefetchJobs' | 'isInteractiveSession' | 'useAsciiBoot'>,
@@ -606,7 +592,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   surface_set(cliSurface_create());
 
   spinner.start('Initializing session components');
-  const engine: ChellEngine = await engine_create();
+  const engine: BrasaEngine = await engine_create();
   spinner.stop();
 
   if (isInteractiveSession) {
@@ -638,7 +624,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // --- Daemon Mode ---
   // Host the connected engine over WebSocket and stay alive on the server.
   if (config.mode === 'daemon') {
-    const { daemon_launch } = await import('../daemon/launch.js');
+    const { daemon_launch } = await import('@fnndsc/calypso');
     await daemon_launch(engine);
     return;
   }
@@ -650,7 +636,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     if (config.stopOnError) {
       stopOnError_set(true);
     }
-    await engine.line_execute(config.commandToExecute);
+    await surfaceLine_execute(engine, config.commandToExecute);
     process.exit(process.exitCode ?? 0);
   }
 

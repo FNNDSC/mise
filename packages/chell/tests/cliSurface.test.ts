@@ -24,6 +24,11 @@ const mockCreateInterface = jest.fn((opts: { output?: unknown; terminal?: boolea
   return rl;
 });
 jest.unstable_mockModule('readline', () => ({ createInterface: mockCreateInterface }));
+// Isolate this surface unit from the engine: cliSurface uses only
+// segment_pipeThrough from brasa at runtime (the rest are erased types).
+jest.unstable_mockModule('@fnndsc/brasa', () => ({
+  segment_pipeThrough: jest.fn(async (): Promise<Buffer> => Buffer.from('')),
+}));
 
 const { cliSurface_create } = await import('../src/core/cliSurface.js');
 

@@ -8,7 +8,7 @@
  * installs an output sink, and drives it one line at a time:
  *
  * ```
- * const engine: ChellEngine = await engine_create();
+ * const engine: BrasaEngine = await engine_create();
  * const envelopes: CommandEnvelope[] = await engine.line_execute('ls; pwd');
  * ```
  *
@@ -62,7 +62,7 @@ export interface CompletionResult {
  * output destination (via the sink) and the input source (a readline loop,
  * a socket); the engine owns everything between.
  */
-export interface ChellEngine {
+export interface BrasaEngine {
   /**
    * Executes one input line and returns one envelope per executed command.
    *
@@ -284,7 +284,7 @@ async function vfsProviders_register(): Promise<void> {
  *
  * @returns The engine facade.
  */
-export async function engine_create(): Promise<ChellEngine> {
+export async function engine_create(): Promise<BrasaEngine> {
   await session.init();
   await vfsProviders_register();
   return { line_execute, line_complete };

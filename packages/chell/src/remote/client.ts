@@ -14,8 +14,8 @@ import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine } from './remoteEngine.js';
-import { discovery_read, type Discovery } from './discovery.js';
-import { surface_get } from '../core/surface.js';
+import { discovery_read, type Discovery } from '@fnndsc/calypso';
+import { surface_get } from '@fnndsc/brasa';
 
 /**
  * Runs the remote client: discovers a daemon, attaches, and enters the REPL.

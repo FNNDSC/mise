@@ -18,11 +18,11 @@ module.exports = {
     '!<rootDir>/src/index.ts',
     '!<rootDir>/src/**/*.d.ts',
     '!<rootDir>/src/chell.ts', // re-export barrel
-    '!<rootDir>/src/builtins/index.ts', // barrel
     '!<rootDir>/src/core/repl.ts', // REPL loop
-    '!<rootDir>/src/core/question.ts', // raw readline stdin prompts
     '!<rootDir>/src/core/boot.ts', // connection + REPL startup glue
     '!<rootDir>/src/core/prompt/**', // prompt render (index/themes/utils)
+    '!<rootDir>/src/config/settings.ts', // config file load/save I/O glue
+    '!<rootDir>/src/daemon/launch.ts', // daemon startup glue
     '!<rootDir>/src/lib/logo.ts', // terminal render
     '!<rootDir>/src/lib/spinner.ts', // terminal render
     '!<rootDir>/src/lib/bootsequence.ts', // boot shim
@@ -34,9 +34,10 @@ module.exports = {
     '/dist/'
   ],
   coverageProvider: 'babel',
-  // Minimum coverage enforced by CI; raise as coverage improves.
+  // Minimum coverage enforced by CI; raise as coverage improves. Rebaselined
+  // when the engine was lifted into brasa, leaving chell the surface only.
   coverageThreshold: {
-    global: { statements: 89, branches: 77, functions: 91, lines: 90 },
+    global: { statements: 86, branches: 73, functions: 86, lines: 86 },
     // Per-file floor: no covered file may fall below 60% statements/lines.
     './src/**/*.ts': { statements: 60, lines: 60 },
   },

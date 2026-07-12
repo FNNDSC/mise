@@ -11,8 +11,8 @@ import { settings, settings_save } from '../../config/settings.js';
 import { THEME_NAMES, P10K_OPTIONAL_SEGMENTS, prompt_render, type ThemeName, type P10kSegmentConfig, type PromptContext } from '../../core/prompt/index.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
-import { session } from '../../session/index.js';
-import { repl_question } from '../../core/question.js';
+import { session } from '@fnndsc/brasa';
+import { repl_question } from '@fnndsc/brasa';
 import { promptContext_build, segmentTokens_parse } from './prompt.helpers.js';
 
 /** All segments in display order, with metadata. */

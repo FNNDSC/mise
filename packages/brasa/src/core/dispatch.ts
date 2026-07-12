@@ -185,9 +185,6 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   physicalmode: builtin_physicalmode,
   debug: builtin_debug,
   version: builtin_version,
-  // Bridged (captured) handlers: envelope semantics without typed models.
-  // plugin is deliberately absent: its add flow prompts for admin
-  // credentials through readline, which capture would make invisible.
   ls: builtin_ls,
   tree: builtin_tree,
   du: builtin_du,

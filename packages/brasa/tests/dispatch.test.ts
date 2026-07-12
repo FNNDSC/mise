@@ -173,16 +173,19 @@ describe('command_dispatch', () => {
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
   });
 
-  it('yields a placeholder envelope for an unconverted handler', async () => {
-    const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
+  it('yields a placeholder envelope for a direct-run handler', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-x', type: 'plugin' }]));
+    mockExecutePlugin.mockResolvedValueOnce(undefined);
+    const envelope = await command_dispatchEnvelope('pl-x', []);
     expect(envelope).toEqual({ status: 'ok', rendered: '' });
   });
 
   it('marks the placeholder envelope as failed when the handler sets a nonzero exit code', async () => {
     const previousExitCode: number | string | undefined = process.exitCode;
     process.exitCode = 0;
-    mockUpload.mockImplementationOnce(async () => { process.exitCode = 1; });
-    const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-x', type: 'plugin' }]));
+    mockExecutePlugin.mockImplementationOnce(async () => { process.exitCode = 1; });
+    const envelope = await command_dispatchEnvelope('pl-x', []);
     expect(envelope.status).toBe('error');
     process.exitCode = previousExitCode;
   });

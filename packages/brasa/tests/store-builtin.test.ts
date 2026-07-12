@@ -52,69 +52,70 @@ beforeEach(() => {
 });
 
 describe('builtin_store', () => {
-  it('prints usage with no subcommand', async () => {
-    await builtin_store([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: store'));
+  it('renders usage with no subcommand', async () => {
+    const env = await builtin_store([]);
+    expect(env.rendered).toContain('Usage: store');
   });
 
   it('lists store plugins with the grid view', async () => {
     mockListPlugins.mockResolvedValue([{ name: 'pl-a' }]);
-    await builtin_store(['list']);
+    const env = await builtin_store(['list']);
     expect(mockGrid).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith('GRID');
+    expect(env.rendered).toContain('GRID');
   });
 
   it('uses the long view with -l', async () => {
     mockListPlugins.mockResolvedValue([{ name: 'pl-a' }]);
-    await builtin_store(['list', '-l']);
+    const env = await builtin_store(['list', '-l']);
     expect(mockLong).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith('LONG');
+    expect(env.rendered).toContain('LONG');
   });
 
   it('notes an empty listing', async () => {
     mockListPlugins.mockResolvedValue([]);
-    await builtin_store(['list']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No plugins found'));
+    const env = await builtin_store(['list']);
+    expect(env.rendered).toContain('No plugins found');
   });
 
   it('requires a query for search', async () => {
-    await builtin_store(['search']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: store search'));
+    const env = await builtin_store(['search']);
+    expect(env.rendered).toContain('Usage: store search');
   });
 
   it('searches the store', async () => {
     mockSearchPlugins.mockResolvedValue([{ name: 'pl-b' }]);
-    await builtin_store(['search', 'brain']);
+    const env = await builtin_store(['search', 'brain']);
     expect(mockSearchPlugins).toHaveBeenCalledWith('brain', expect.anything());
-    expect(logSpy).toHaveBeenCalledWith('GRID');
+    expect(env.rendered).toContain('GRID');
   });
 
   it('notes no search matches', async () => {
     mockSearchPlugins.mockResolvedValue([]);
-    await builtin_store(['search', 'nope']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("matching 'nope'"));
+    const env = await builtin_store(['search', 'nope']);
+    expect(env.rendered).toContain("matching 'nope'");
   });
 
   it('installs via plugin_addInteractive', async () => {
+    mockAddInteractive.mockResolvedValue({ status: 'ok', rendered: '' });
     await builtin_store(['install', 'pl-c']);
     expect(mockAddInteractive).toHaveBeenCalled();
   });
 
   it('inspects the current store URL', async () => {
-    await builtin_store(['inspect']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Peer store URL'));
+    const env = await builtin_store(['inspect']);
+    expect(env.rendered).toContain('Peer store URL');
   });
 
   it('sets a custom store URL and saves', async () => {
-    await builtin_store(['set', 'http://custom/api/']);
+    const env = await builtin_store(['set', 'http://custom/api/']);
     expect(storeUrl).toBe('http://custom/api/');
     expect(mockPersist).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Store URL set'));
+    expect(env.rendered).toContain('Store URL set');
   });
 
   it('rejects set with no URL', async () => {
-    await builtin_store(['set']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: store set'));
+    const env = await builtin_store(['set']);
+    expect(env.renderedErr).toContain('Usage: store set');
     expect(process.exitCode).toBe(1);
   });
 
@@ -126,13 +127,13 @@ describe('builtin_store', () => {
   });
 
   it('rejects an unknown subcommand', async () => {
-    await builtin_store(['frobnicate']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown subcommand'));
+    const env = await builtin_store(['frobnicate']);
+    expect(env.renderedErr).toContain('Unknown subcommand');
   });
 
   it('reports an error from the store command', async () => {
     mockListPlugins.mockRejectedValue(new Error('boom'));
-    await builtin_store(['list']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    const env = await builtin_store(['list']);
+    expect(env.renderedErr).toContain('boom');
   });
 });

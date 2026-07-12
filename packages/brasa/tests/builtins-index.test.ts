@@ -631,40 +631,41 @@ describe('Builtins - Core Functions', () => {
       mockPluginsFetchList.mockResolvedValue({ plugins: [], selectedFields: [] });
       mockPluginListRender.mockReturnValue('Plugin list');
 
-      await builtin_plugin(['list']);
+      const envelope = await builtin_plugin(['list']);
 
       expect(mockPluginsFetchList).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Plugin list');
+      expect(envelope.rendered).toContain('Plugin list');
     });
 
     it('should run a plugin', async () => {
       mockPluginExecute.mockResolvedValue({ id: 123 });
       mockPluginRunRender.mockReturnValue('Plugin running');
 
-      await builtin_plugin(['run', 'pl-dircopy', '--arg', 'value']);
+      const envelope = await builtin_plugin(['run', 'pl-dircopy', '--arg', 'value']);
 
       expect(mockPluginExecute).toHaveBeenCalledWith('pl-dircopy', '--arg value');
-      expect(consoleLogSpy).toHaveBeenCalledWith('Plugin running');
+      expect(envelope.rendered).toContain('Plugin running');
     });
 
     it('should error when plugin execution fails', async () => {
       mockPluginExecute.mockResolvedValue(null);
 
-      await builtin_plugin(['run', 'pl-dircopy']);
+      const envelope = await builtin_plugin(['run', 'pl-dircopy']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('execution failed'));
+      expect(envelope.renderedErr).toContain('execution failed');
     });
 
-    it('should delegate unknown subcommands to chili', async () => {
-      await builtin_plugin(['delete', 'id:123']);
+    it('should return an error envelope for unknown subcommands', async () => {
+      const envelope = await builtin_plugin(['delete', 'id:123']);
 
-      expect(mockChiliCommandRun).toHaveBeenCalledWith('plugins', ['-s', 'delete', 'id:123']);
+      expect(mockChiliCommandRun).not.toHaveBeenCalled();
+      expect(envelope.renderedErr).toContain('Unknown subcommand');
     });
 
     it('should error with no subcommand', async () => {
-      await builtin_plugin([]);
+      const envelope = await builtin_plugin([]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Usage:'));
+      expect(envelope.rendered).toContain('Usage:');
     });
   });
 

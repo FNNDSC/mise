@@ -18,11 +18,10 @@ import { pluginFields_fetch } from '@fnndsc/chili/commands/plugins/fields.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
 import { plugin_add, PluginAddOutcome } from '@fnndsc/chili/commands/plugins/add.js';
 import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.js';
-import { table_display } from '@fnndsc/chili/screen/screen.js';
+import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
-import { chiliCommand_run } from '../../core/chiliDelegate.js';
 import { spinner } from '../../lib/spinner.js';
-import { errorStack } from '@fnndsc/cumin';
+import { errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { adminPrompt_register } from '@fnndsc/chili/utils/admin_prompt.js';
 import { repl_question, repl_questionHidden } from '../../core/question.js';
@@ -31,55 +30,54 @@ import { repl_question, repl_questionHidden } from '../../core/question.js';
  * Handles plugin commands.
  *
  * @param args - command arguments.
+ * @returns An envelope carrying the rendered plugin output.
  */
-export async function builtin_plugin(args: string[]): Promise<void> {
+export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const subcommand: string = parsed._[0];
 
   if (!subcommand) {
-     console.log(chalk.red("Usage: plugin <list|run|add> ..."));
-     return;
+     return envelope_ok(`${chalk.red("Usage: plugin <list|run|add> ...")}\n`);
   }
 
   try {
     if (subcommand === 'list') {
        const { plugins, selectedFields, totalCount } = await plugins_fetchList(parsed as unknown as CLIoptions);
-       console.log(pluginList_render(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv }));
+       let rendered: string = `${pluginList_render(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv })}\n`;
        if (totalCount !== undefined && plugins.length < totalCount) {
-         console.log(chalk.dim(`  ↓ showing ${plugins.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`));
+         rendered += `${chalk.dim(`  ↓ showing ${plugins.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`)}\n`;
        }
+       return envelope_ok(rendered);
     } else if (subcommand === 'run') {
        const searchable: string = parsed._[1];
        if (!searchable) {
-          console.log(chalk.red("Usage: plugin run <plugin> [args...]"));
-          return;
+          return envelope_ok(`${chalk.red("Usage: plugin run <plugin> [args...]")}\n`);
        }
        const params: string = args.slice(2).join(' ');
        const instance: PluginInstance | null = await plugin_execute(searchable, params);
        if (instance) {
-          console.log(pluginRun_render(instance));
-       } else {
-          console.error(chalk.red("Plugin execution failed."));
+          return envelope_ok(`${pluginRun_render(instance)}\n`);
        }
+       process.exitCode = 1;
+       return envelope_error('', undefined, `${chalk.red("Plugin execution failed.")}\n`);
     } else if (subcommand === 'add') {
-       await plugin_addInteractive(parsed);
+       return await plugin_addInteractive(parsed);
     } else if (subcommand === 'inspect') {
        const fields: string[] | null = await pluginFields_fetch();
        if (fields && fields.length > 0) {
-         table_display(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Plugin fields', justification: 'center' } });
-       } else {
-         console.log(chalk.gray('No fields found.'));
+         return envelope_ok(table_render(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Plugin fields', justification: 'center' } }));
        }
+       return envelope_ok(`${chalk.gray('No fields found.')}\n`);
     } else if (subcommand === 'search') {
        const query: string = parsed._[1] ?? '';
-       await builtin_plugin(['list', `--search`, query]);
-    } else {
-       console.log(chalk.yellow('Directive not handled by chell... spawning chili directly'));
-       await chiliCommand_run('plugins', ['-s', ...args]);
+       return await builtin_plugin(['list', `--search`, query]);
     }
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: plugin <list|run|add|inspect|search>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    console.error(chalk.red(`Plugin error: ${msg}`));
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`Plugin error: ${msg}`)}\n`);
   }
 }
 
@@ -87,13 +85,14 @@ export async function builtin_plugin(args: string[]): Promise<void> {
  * Interactive plugin add command with spinner and colored output.
  *
  * @param parsed - Parsed command arguments.
+ * @returns An envelope carrying the add outcome. The spinner streams live via
+ *   the status channel; the result summary is carried in the envelope.
  */
-export async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
+export async function plugin_addInteractive(parsed: ParsedArgs): Promise<CommandEnvelope> {
   const pluginInput: string = parsed._[1];
 
   if (!pluginInput) {
-    console.log(chalk.red('Usage: plugin add <name|image|url> [--compute <resources>] [--store <url>]'));
-    return;
+    return envelope_ok(`${chalk.red('Usage: plugin add <name|image|url> [--compute <resources>] [--store <url>]')}\n`);
   }
 
   const options = {
@@ -107,38 +106,42 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<void> {
   errorStack.stack_clear();
   adminPrompt_register(repl_question, repl_questionHidden);
 
-  console.log(chalk.cyan(`\nAdding plugin: ${pluginInput}\n`));
+  let rendered: string = `${chalk.cyan(`\nAdding plugin: ${pluginInput}\n`)}\n`;
 
   const outcome: PluginAddOutcome = await plugin_add(pluginInput, options);
 
   spinner.stop();
 
   if (outcome === 'installed') {
-    console.log(chalk.green('\n[SUCCESS] Plugin added successfully!\n'));
+    rendered += `${chalk.green('\n[SUCCESS] Plugin added successfully!\n')}\n`;
+    return envelope_ok(rendered);
   } else if (outcome === 'already_exists') {
-    console.log(chalk.yellow(`\n[INFO] '${pluginInput}' is already registered in this CUBE.\n`));
-  } else {
-    process.exitCode = 1;
-    console.log(chalk.red('\n[FAILED] Failed to add plugin.\n'));
-
-    const errors: string[] = errorStack.allOfType_get('error');
-    if (errors.length > 0) {
-      console.log(chalk.red('Errors:'));
-      errors.forEach((error: string) => {
-        const cleanError: string = error.replace(/^\[.*?\]\s+\|\s+/, '');
-        console.log(chalk.red(`  - ${cleanError}`));
-      });
-      console.log('');
-    }
-
-    const warnings: string[] = errorStack.allOfType_get('warning');
-    if (warnings.length > 0) {
-      console.log(chalk.yellow('Warnings:'));
-      warnings.forEach((warning: string) => {
-        const cleanWarning: string = warning.replace(/^\[.*?\]\s+\|\s+/, '');
-        console.log(chalk.yellow(`  [WARNING] ${cleanWarning}`));
-      });
-      console.log('');
-    }
+    rendered += `${chalk.yellow(`\n[INFO] '${pluginInput}' is already registered in this CUBE.\n`)}\n`;
+    return envelope_ok(rendered);
   }
+
+  process.exitCode = 1;
+  rendered += `${chalk.red('\n[FAILED] Failed to add plugin.\n')}\n`;
+
+  const errors: string[] = errorStack.allOfType_get('error');
+  if (errors.length > 0) {
+    rendered += `${chalk.red('Errors:')}\n`;
+    errors.forEach((error: string) => {
+      const cleanError: string = error.replace(/^\[.*?\]\s+\|\s+/, '');
+      rendered += `${chalk.red(`  - ${cleanError}`)}\n`;
+    });
+    rendered += '\n';
+  }
+
+  const warnings: string[] = errorStack.allOfType_get('warning');
+  if (warnings.length > 0) {
+    rendered += `${chalk.yellow('Warnings:')}\n`;
+    warnings.forEach((warning: string) => {
+      const cleanWarning: string = warning.replace(/^\[.*?\]\s+\|\s+/, '');
+      rendered += `${chalk.yellow(`  [WARNING] ${cleanWarning}`)}\n`;
+    });
+    rendered += '\n';
+  }
+
+  return envelope_ok(rendered);
 }

@@ -221,6 +221,8 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   dirs: builtin_dirs,
   context: builtin_context,
   parametersofplugin: builtin_parametersofplugin,
+  plugin: builtin_plugin,
+  plugins: builtin_plugin,
 };
 
 export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
@@ -256,8 +258,8 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   tree: envelopeHandler_wrap(builtin_tree),
   du: envelopeHandler_wrap(builtin_du),
   store: builtin_store,
-  plugin: builtin_plugin,
-  plugins: builtin_plugin,
+  plugin: envelopeHandler_wrap(builtin_plugin),
+  plugins: envelopeHandler_wrap(builtin_plugin),
   feed: envelopeHandler_wrap(builtin_feed),
   feeds: envelopeHandler_wrap(builtin_feed),
   compute: envelopeHandler_wrap(builtin_compute),

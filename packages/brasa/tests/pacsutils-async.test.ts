@@ -5,6 +5,8 @@ const mockDecode = jest.fn();
 const mockServersList = jest.fn();
 const mockCurrentGet = jest.fn(async () => null as string | null);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush },
   pacsQuery_resultDecode: mockDecode,
   pacsServers_list: mockServersList,

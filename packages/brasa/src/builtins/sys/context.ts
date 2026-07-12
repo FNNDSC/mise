@@ -5,8 +5,8 @@
 import chalk from 'chalk';
 import { context_getSingle } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
-import { SingleContext } from '@fnndsc/cumin';
-import { table_display } from '@fnndsc/chili/screen/screen.js';
+import { SingleContext, CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
+import { table_render } from '@fnndsc/chili/screen/screen.js';
 
 /** A single context key/value row for tabular display. */
 interface ContextRow {
@@ -21,7 +21,7 @@ interface ContextRow {
  *
  * @param args - Command line arguments (optional flags).
  */
-export async function builtin_context(args: string[]): Promise<void> {
+export async function builtin_context(_args: string[]): Promise<CommandEnvelope> {
   const context: SingleContext = await context_getSingle();
 
   const tableData: ContextRow[] = [
@@ -55,11 +55,9 @@ export async function builtin_context(args: string[]): Promise<void> {
     },
   ];
 
-  table_display(
-    tableData,
-    ['Context', 'Value'],
-    {
+  return envelope_ok(
+    table_render(tableData, ['Context', 'Value'], {
       title: { title: 'ChRIS Context', justification: 'center' },
-    }
+    }),
   );
 }

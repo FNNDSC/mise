@@ -23,6 +23,7 @@ const mockChefsUpload = jest.fn();
 const mockChefsCat = jest.fn();
 const mockChefsRm = jest.fn();
 const mockTableDisplay = jest.fn();
+const mockTableRender = jest.fn(() => '');
 const mockPluginListRender = jest.fn();
 const mockPluginRunRender = jest.fn();
 const mockFeedListRender = jest.fn();
@@ -57,6 +58,7 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
 // Mock chili screen
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_display: mockTableDisplay,
+  table_render: mockTableRender,
   border_draw: jest.fn(),
   screen: { print: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
@@ -608,19 +610,19 @@ describe('Builtins - Core Functions', () => {
       mockConnectLogout.mockResolvedValue(undefined);
       mockLogoutRender.mockReturnValue('Logged out');
 
-      await builtin_logout();
+      const envelope = await builtin_logout();
 
       expect(mockConnectLogout).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith('Logged out');
+      expect(envelope.rendered).toContain('Logged out');
     });
 
     it('should handle logout errors', async () => {
       mockConnectLogout.mockRejectedValue(new Error('Logout failed'));
       mockLogoutRender.mockReturnValue('Logout failed');
 
-      await builtin_logout();
+      const envelope = await builtin_logout();
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Logout failed'));
+      expect(envelope.renderedErr).toContain('Logout failed');
     });
   });
 
@@ -860,7 +862,7 @@ describe('Builtins - Core Functions', () => {
 
       await builtin_context([]);
 
-      expect(mockTableDisplay).toHaveBeenCalledWith(
+      expect(mockTableRender).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ Context: 'ChRIS User', Value: 'chris' }),
           expect.objectContaining({ Context: 'ChRIS URL', Value: 'http://localhost:8000' })

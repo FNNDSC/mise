@@ -9,6 +9,8 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   Ok,
   Err,
   errorStack: {

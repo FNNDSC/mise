@@ -9,6 +9,8 @@ const mockDecode = jest.fn();
 const mockCreate = jest.fn();
 const mockServersList = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },
   chrisContext: { current_get: mockCurrentGet },
   Context: { PACSserver: 'PACSserver' },

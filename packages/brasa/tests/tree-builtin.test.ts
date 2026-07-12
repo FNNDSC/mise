@@ -4,7 +4,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({ errorStack: { stack_pop: jest.fn(() => undefined) } }));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }), errorStack: { stack_pop: jest.fn(() => undefined) } }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
 const mockGetCWD = jest.fn(async () => '/home/chris');

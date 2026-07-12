@@ -200,6 +200,68 @@ function firstColumnSettings_apply(columns: ColumnOptions[]): ColumnOptions[] {
  * @param options - Optional table display options.
  * @returns The `TableContent` object or null on error.
  */
+/**
+ * Renders a table to a string, the string form of {@link table_display}.
+ *
+ * Envelope-returning callers use this to return their output rather than
+ * printing it; table_display remains the printing form for callers not yet
+ * converted. Returns an empty string when there is no table to render.
+ *
+ * @param tableData - The rows to render.
+ * @param headers - Column headers.
+ * @param options - Table formatting options.
+ * @returns The rendered table (with a trailing newline), or an empty string.
+ */
+export function table_render(
+  tableData: TableDataRow[] | string[][] | string[],
+  headers: string[] | string,
+  options: TableOptions = {}
+): string {
+  const { processedTableData, processedHeaders } = tableInput_process(
+    tableData,
+    headers
+  );
+
+  const tableObj: TableContent | null = tableContent_pack(
+    processedTableData,
+    processedHeaders
+  );
+
+  if (!tableObj) {
+    return "";
+  }
+
+  const columns: ColumnOptions[] = tableObj.headers.map((_, index) => {
+    const existingCol: ColumnOptions = options.columns?.[index] || {};
+    return {
+      justification: "left" as const,
+      ...existingCol,
+    };
+  });
+  const updatedColumns: ColumnOptions[] = firstColumnSettings_apply(columns);
+
+  const tableOptions: TableOptions = {
+    ...options,
+    head: processedHeaders,
+    columns: updatedColumns,
+    typeColors: {
+      string: "green",
+      number: "yellow",
+      boolean: "cyan",
+      object: "magenta",
+    },
+  };
+
+  let out: string = `${screen.table_output(processedTableData, tableOptions)}\n`;
+
+  if (options.pagination && options.pagination.shown < options.pagination.total) {
+    const { shown, total } = options.pagination;
+    out += `${chalk.dim(`  ↓ showing ${shown} of ${total}  ·  --all to fetch all  ·  --limit <n> for page size`)}\n`;
+  }
+
+  return out;
+}
+
 export function table_display(
   tableData: TableDataRow[] | string[][] | string[],
   headers: string[] | string,

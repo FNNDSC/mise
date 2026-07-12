@@ -10,6 +10,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 const mockStackClear = jest.fn();
 const mockAllOfType = jest.fn(() => [] as string[]);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_clear: mockStackClear, allOfType_get: mockAllOfType },
 }));
 

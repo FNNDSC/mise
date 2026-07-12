@@ -6,6 +6,7 @@
  * @module
  */
 import chalk from 'chalk';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 interface CommandHelp {
   usage: string;
@@ -1195,20 +1196,20 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
  *
  * @param args - Command arguments (optional command name).
  */
-export async function builtin_help(args: string[]): Promise<void> {
+export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const commandName: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
-  // If a specific command is requested, show its help
+  // If a specific command is requested, return its help
   if (commandName) {
-    help_show(commandName);
-    return;
+    return { status: 'ok', rendered: help_render(commandName) };
   }
 
   // Otherwise, list all available commands
-  console.log('');
-  console.log(chalk.bold.cyan('ChELL - Available Commands'));
-  console.log(chalk.gray('─'.repeat(60)));
-  console.log('');
+  let rendered: string = '';
+  rendered += '\n';
+  rendered += `${chalk.bold.cyan('ChELL - Available Commands')}\n`;
+  rendered += `${chalk.gray('─'.repeat(60))}\n`;
+  rendered += '\n';
 
   // Group commands by category
   const categories: Record<string, string[]> = {
@@ -1225,26 +1226,28 @@ export async function builtin_help(args: string[]): Promise<void> {
 
   // Display commands by category
   for (const [category, commands] of Object.entries(categories)) {
-    console.log(chalk.bold.yellow(category));
+    rendered += `${chalk.bold.yellow(category)}\n`;
     commands.forEach((cmd: string) => {
       const help: CommandHelp | undefined = helpText[cmd];
       if (help) {
-        console.log(`  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}`);
+        rendered += `  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}\n`;
       }
     });
-    console.log('');
+    rendered += '\n';
   }
 
   // Display Shell Features
-  console.log(chalk.bold.yellow('Shell Features'));
-  console.log(`  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l')}`);
-  console.log(`  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}`);
-  console.log(`  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}`);
-  console.log('');
+  rendered += `${chalk.bold.yellow('Shell Features')}\n`;
+  rendered += `  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l')}\n`;
+  rendered += `  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}\n`;
+  rendered += `  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}\n`;
+  rendered += '\n';
 
-  console.log(chalk.gray('Type "help <command>" for detailed information about a command.'));
-  console.log(chalk.gray('Type "<command> --help" for quick help on any command.'));
-  console.log('');
+  rendered += `${chalk.gray('Type "help <command>" for detailed information about a command.')}\n`;
+  rendered += `${chalk.gray('Type "<command> --help" for quick help on any command.')}\n`;
+  rendered += '\n';
+
+  return { status: 'ok', rendered };
 }
 
 /**

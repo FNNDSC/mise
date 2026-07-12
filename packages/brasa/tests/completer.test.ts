@@ -38,6 +38,8 @@ const mockListCache = {
 };
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,
   errorStack: { stack_push: jest.fn(), stack_pop: jest.fn() },
   Ok: (val) => ({ ok: true, value: val }),

@@ -2,7 +2,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 // Satisfy builtins/utils' heavy imports so the real commandArgs_process loads.
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({}));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 

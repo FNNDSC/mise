@@ -15,6 +15,8 @@ const mockCacheSet = jest.fn((key: string, data: unknown) => { cacheStore.set(ke
 const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); });
 const mockStackPush = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => ({
     cache_get: (key: string): CacheEntry | undefined => cacheStore.get(key),
     cache_set: mockCacheSet,

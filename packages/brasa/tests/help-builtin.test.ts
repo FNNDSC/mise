@@ -86,13 +86,13 @@ describe('args_checkHasHelpFlag', () => {
 
 describe('builtin_help', () => {
   it('lists commands by category with no argument', async () => {
-    await builtin_help([]);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Available Commands'));
+    const envelope = await builtin_help([]);
+    expect(envelope.rendered).toContain('Available Commands');
   });
 
   it('shows a specific command help when named', async () => {
-    await builtin_help(['ls']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('USAGE'));
+    const envelope = await builtin_help(['ls']);
+    expect(envelope.rendered).toContain('USAGE');
   });
 });
 

@@ -42,7 +42,7 @@ import { sessionConnect_fromSaved, type SavedSessionResult } from '@fnndsc/brasa
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
-import { versionReport_build, versions_get, type StackVersions } from '@fnndsc/brasa';
+import { versionReport_build, infoReport_build, stackInfo_get, type PackageInfo } from '@fnndsc/brasa';
 
 /**
  * Extended Writable stream with muted property for password input.
@@ -216,13 +216,9 @@ function bootPanels_render(
   cache: BootCache,
   useAsciiBoot: boolean,
 ): void {
-  const versions: StackVersions = versions_get();
-  const headerItems: BootInfoItem3[] = [
-    { app: 'chell', name: 'ChELL Executes Layered Logic',                    version: versions.chell },
-    { app: 'chili', name: 'ChILI handles Intelligent Line Interactions',     version: versions.chili },
-    { app: 'salsa', name: 'Salsa Abstracts Logic Service Assets',            version: versions.salsa },
-    { app: 'cumin', name: 'Cumin Underpins Management Infrastructure Needs', version: versions.cumin },
-  ];
+  const headerItems: BootInfoItem3[] = stackInfo_get().map(
+    (i: PackageInfo): BootInfoItem3 => ({ app: i.pkg, name: i.name, version: i.version }),
+  );
 
   const localItems: BootInfoItem[] = [
     { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },
@@ -552,7 +548,7 @@ async function interactiveSession_run(
  * @returns A Promise that resolves when the shell exits.
  */
 export async function chell_start(argv: string[] = process.argv): Promise<void> {
-  const config: ChellCLIConfig = await cli_parse(argv, versionReport_build());
+  const config: ChellCLIConfig = await cli_parse(argv, versionReport_build(), infoReport_build());
   const {
     isInteractiveSession,
     useAsciiBoot,
@@ -564,7 +560,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   }: BootFlags = bootFlags_compute(config, !!process.stdout.isTTY);
   const boot: ReturnType<typeof bootLogger_create> | null = isInteractiveSession ? bootLogger_create('ChELL Boot', useAsciiBoot) : null;
 
-  if (config.mode === 'help' || config.mode === 'version') {
+  if (config.mode === 'help' || config.mode === 'version' || config.mode === 'info') {
     if (config.output) console.log(config.output);
     return;
   }

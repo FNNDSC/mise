@@ -18,12 +18,13 @@ const version = JSON.parse(
   readFileSync(resolve(pkgRoot, 'package.json'), 'utf-8')
 ).version;
 
-// The sandwich layers' versions, inlined so the standalone binary can
-// report them: there are no package.json files on disk at runtime.
-const depVersions = {};
-for (const layer of ['cumin', 'salsa', 'chili']) {
-  depVersions[`@fnndsc/${layer}`] = JSON.parse(
-    readFileSync(resolve(pkgRoot, '..', layer, 'package.json'), 'utf-8')
+// Every stack package's version, inlined so the standalone binary can report
+// them: there are no package.json files on disk at runtime. Keyed by package
+// name to match version.ts's __STACK_VERSIONS__ lookup.
+const stackVersions = {};
+for (const pkg of ['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']) {
+  stackVersions[`@fnndsc/${pkg}`] = JSON.parse(
+    readFileSync(resolve(pkgRoot, '..', pkg, 'package.json'), 'utf-8')
   ).version;
 }
 
@@ -40,8 +41,7 @@ await build({
   },
   define: {
     'import.meta.url': '__import_meta_url',
-    __CHELL_VERSION__: JSON.stringify(version),
-    __CHELL_DEP_VERSIONS__: JSON.stringify(depVersions),
+    __STACK_VERSIONS__: JSON.stringify(stackVersions),
   },
   logLevel: 'info',
 });

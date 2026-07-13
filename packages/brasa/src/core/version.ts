@@ -1,11 +1,11 @@
 /**
- * @file Version reporting for chell and its sandwich layers.
+ * @file Version reporting for the mise stack.
  *
- * Reads chell's own package.json and those of the cumin/salsa/chili layers, so
- * the boot panel, the `version` command, and `--version` all report a
- * consistent set of versions. In the standalone bundled binary — where no
- * package.json exists on disk — the versions esbuild injected at build time are
- * used instead.
+ * Reads brasa's own package.json (this module lives in brasa) and those of the
+ * surfaces (chell, calypso) and engine layers (chili, salsa, cumin), so the
+ * boot panel, the `version` command, and `--version` all report a consistent
+ * set of versions. In the standalone bundled binary — where no package.json
+ * exists on disk — the versions esbuild injected at build time are used instead.
  *
  * @module
  */
@@ -24,91 +24,175 @@ interface PackageJson {
 const moduleDir: string = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Build-time-injected version string. esbuild replaces `__CHELL_VERSION__` with
- * a literal when bundling the standalone binary (no package.json on disk).
- * Undefined in a normal tsc build.
+ * Build-time-injected map of stack versions, the bundled-binary counterpart to
+ * reading each package's package.json. esbuild replaces it with a literal when
+ * bundling the standalone binary (no package.json on disk). Undefined under tsc.
  */
-declare const __CHELL_VERSION__: string;
+declare const __STACK_VERSIONS__: Record<string, string>;
 
 /**
- * Build-time-injected map of dependency versions, the bundled-binary
- * counterpart to reading each dependency's package.json. Undefined under tsc.
- */
-declare const __CHELL_DEP_VERSIONS__: Record<string, string>;
-
-/**
- * Reads chell's own package.json, falling back to the build-time version in the
- * bundled binary where that file is not present on disk.
- *
- * @returns The parsed package.json (or a `{ name, version }` fallback).
- */
-function selfPackageJson_load(): PackageJson {
-  try {
-    return JSON.parse(readFileSync(path.resolve(moduleDir, '../../package.json'), 'utf-8')) as PackageJson;
-  } catch {
-    const version: string = typeof __CHELL_VERSION__ !== 'undefined' ? __CHELL_VERSION__ : 'unknown';
-    return { name: '@fnndsc/chell', version };
-  }
-}
-
-/**
- * Loads a dependency's package.json via node module resolution, so it works
- * whether the dep is nested or hoisted to a workspace-root node_modules. In the
- * bundled binary it falls back to the versions inlined at build time.
+ * The bundled-binary fallback version for a package, from the map esbuild
+ * inlined at build time.
  *
  * @param name - The package name (e.g. `@fnndsc/cumin`).
- * @returns The parsed package.json, or a fallback `{ name, version }`.
+ * @returns The injected version, or `'unknown'` if none was inlined.
  */
-function depPackageJson_load(name: string): PackageJson {
+function injectedVersion_get(name: string): string {
+  return typeof __STACK_VERSIONS__ !== 'undefined' ? (__STACK_VERSIONS__[name] ?? 'unknown') : 'unknown';
+}
+
+/**
+ * Reads brasa's own version. This module lives in brasa, so its package.json is
+ * two levels up from the compiled module; in the bundled binary that file is
+ * absent and the build-time-injected version is used instead.
+ *
+ * @returns The brasa version string.
+ */
+function brasaVersion_load(): string {
   try {
-    const req = createRequire(import.meta.url);
-    return req(`${name}/package.json`) as PackageJson;
+    return (JSON.parse(readFileSync(path.resolve(moduleDir, '../../package.json'), 'utf-8')) as PackageJson).version;
   } catch {
-    const version: string =
-      typeof __CHELL_DEP_VERSIONS__ !== 'undefined' ? (__CHELL_DEP_VERSIONS__[name] ?? 'unknown') : 'unknown';
-    return { name, version };
+    return injectedVersion_get('@fnndsc/brasa');
   }
 }
 
-const chellJson: PackageJson = selfPackageJson_load();
-const cuminJson: PackageJson = depPackageJson_load('@fnndsc/cumin');
-const salsaJson: PackageJson = depPackageJson_load('@fnndsc/salsa');
-const chiliJson: PackageJson = depPackageJson_load('@fnndsc/chili');
+/**
+ * Loads a package's version via node module resolution, so it works whether the
+ * package is nested or hoisted to a workspace-root node_modules. The surfaces
+ * (chell, calypso) sit above brasa in the dependency tree but resolve as hoisted
+ * siblings; in the bundled binary this falls back to the inlined versions.
+ *
+ * @param name - The package name (e.g. `@fnndsc/cumin`).
+ * @returns The resolved version string, or the injected/`'unknown'` fallback.
+ */
+function packageVersion_load(name: string): string {
+  try {
+    const req = createRequire(import.meta.url);
+    return (req(`${name}/package.json`) as PackageJson).version;
+  } catch {
+    return injectedVersion_get(name);
+  }
+}
 
-/** The resolved version of every layer of the stack, in sandwich order. */
+/** The architectural role a package plays in the stack. */
+export type PackageRole = 'surface' | 'engine' | 'layer';
+
+/** A package's short name, full (backronym) name, and role — its version-less identity. */
+interface PackageDescriptor {
+  pkg: string;
+  name: string;
+  role: PackageRole;
+}
+
+/** That identity with a resolved version attached. */
+export interface PackageInfo extends PackageDescriptor {
+  version: string;
+}
+
+/**
+ * The canonical description of every package in the stack, in the order the
+ * flat `--version` report lists them: the chell surface, the brasa engine, its
+ * chili/salsa/cumin layers, and the calypso sibling surface. This is the single
+ * source of truth the version report, the `--info` table, and the boot panel
+ * all draw from.
+ */
+const STACK: readonly PackageDescriptor[] = [
+  { pkg: 'chell',   name: 'ChELL Executes Layered Logic',                                  role: 'surface' },
+  { pkg: 'brasa',   name: 'BRASA Runs Abstracted Shell Actions',                           role: 'engine'  },
+  { pkg: 'chili',   name: 'ChILI handles Intelligent Line Interactions',                   role: 'layer'   },
+  { pkg: 'salsa',   name: 'Salsa Abstracts Logic Service Assets',                          role: 'layer'   },
+  { pkg: 'cumin',   name: 'Cumin Underpins Management Infrastructure Needs',               role: 'layer'   },
+  { pkg: 'calypso', name: 'CALYPSO Accepts Language, Yielding Permitted Shell Operations', role: 'surface' },
+];
+
+/**
+ * Resolves the running version of a descriptor's package. brasa reads its own
+ * package.json directly (this module lives in it); every other package resolves
+ * by name.
+ *
+ * @param descriptor - The package to resolve.
+ * @returns The descriptor with its version attached.
+ */
+function packageInfo_resolve(descriptor: PackageDescriptor): PackageInfo {
+  const version: string =
+    descriptor.pkg === 'brasa' ? brasaVersion_load() : packageVersion_load(`@fnndsc/${descriptor.pkg}`);
+  return { ...descriptor, version };
+}
+
+/**
+ * The resolved identity and version of every package in the stack, in canonical
+ * order.
+ *
+ * @returns One {@link PackageInfo} per package.
+ */
+export function stackInfo_get(): PackageInfo[] {
+  return STACK.map(packageInfo_resolve);
+}
+
+/** The resolved version of every package in the stack, keyed by short name. */
 export interface StackVersions {
   chell: string;
+  brasa: string;
   chili: string;
   salsa: string;
   cumin: string;
+  calypso: string;
 }
 
 /**
- * The resolved version of every layer of the stack.
+ * The resolved version of every package in the stack, keyed by short name.
  *
- * @returns The chell/chili/salsa/cumin version strings.
+ * @returns The version strings, keyed by package.
  */
 export function versions_get(): StackVersions {
+  const byPkg: Record<string, string> = Object.fromEntries(stackInfo_get().map((i: PackageInfo) => [i.pkg, i.version]));
   return {
-    chell: chellJson.version,
-    chili: chiliJson.version,
-    salsa: salsaJson.version,
-    cumin: cuminJson.version,
+    chell: byPkg.chell,
+    brasa: byPkg.brasa,
+    chili: byPkg.chili,
+    salsa: byPkg.salsa,
+    cumin: byPkg.cumin,
+    calypso: byPkg.calypso,
   };
 }
 
 /**
- * Builds the multi-line version report shown by the `version` command and
- * `--version`: chell itself plus the sandwich layers it runs with.
+ * Builds the terse `--version` report: one aligned `name  version` line per
+ * package, versions in a single column.
  *
  * @returns The version report string.
  */
 export function versionReport_build(): string {
-  const versions: StackVersions = versions_get();
-  return [
-    `chell ${versions.chell}`,
-    `  chili ${versions.chili}`,
-    `  salsa ${versions.salsa}`,
-    `  cumin ${versions.cumin}`,
-  ].join('\n');
+  const info: PackageInfo[] = stackInfo_get();
+  const pkgWidth: number = Math.max(...info.map((i: PackageInfo) => i.pkg.length));
+  return info.map((i: PackageInfo) => `${i.pkg.padEnd(pkgWidth)}  ${i.version}`).join('\n');
+}
+
+/** Human-readable heading for each role, in the order `--info` groups them. */
+const ROLE_HEADINGS: readonly { role: PackageRole; heading: string }[] = [
+  { role: 'surface', heading: 'SURFACES' },
+  { role: 'engine',  heading: 'ENGINE'   },
+  { role: 'layer',   heading: 'LAYERS'   },
+];
+
+/**
+ * Builds the detailed `--info` report: packages grouped by role (surfaces,
+ * engine, layers) under a heading, each row an aligned `pkg  name  version`.
+ *
+ * @returns The info table string.
+ */
+export function infoReport_build(): string {
+  const info: PackageInfo[] = stackInfo_get();
+  const pkgWidth: number = Math.max(...info.map((i: PackageInfo) => i.pkg.length));
+  const nameWidth: number = Math.max(...info.map((i: PackageInfo) => i.name.length));
+  const lines: string[] = [];
+  for (const { role, heading } of ROLE_HEADINGS) {
+    const rows: PackageInfo[] = info.filter((i: PackageInfo) => i.role === role);
+    if (rows.length === 0) continue;
+    lines.push(heading);
+    for (const row of rows) {
+      lines.push(`  ${row.pkg.padEnd(pkgWidth)}  ${row.name.padEnd(nameWidth)}  ${row.version}`);
+    }
+  }
+  return lines.join('\n');
 }

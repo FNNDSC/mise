@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/chili",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "ChILI handles Intelligent Line Interactions: A CLI and library for ChRIS, acting as the controller layer for business logic and user presentation.",
   "repository": {
     "type": "git",

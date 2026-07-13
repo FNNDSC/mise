@@ -33,7 +33,6 @@ import { PACSRetrieveGroupHandler } from "./pacs/pacsRetrieveHandler.js";
 import {
   chrisConnection_init,
   NodeStorageProvider,
-  errorStack_getAllOfType,
 } from "@fnndsc/cumin";
 import { FileGroupHandler } from "./filesystem/fileGroupHandler.js";
 import { chiliErrLog, chiliLog, chili_capture, type ChiliCaptured } from "./screen/output.js";
@@ -102,61 +101,32 @@ async function handlers_initialize(program: Command): Promise<void> {
   const pluginMemberHandler: PluginMemberHandler = new PluginMemberHandler();
   pluginMemberHandler.pluginCommand_setup(program);
 
-  try {
-    const filesGroupHandler: FileGroupHandler =
-      await FileGroupHandler.handler_create("files");
-    filesGroupHandler.fileGroupCommand_setup(program);
-
-    const linksGroupHandler: FileGroupHandler =
-      await FileGroupHandler.handler_create("links");
-    linksGroupHandler.fileGroupCommand_setup(program);
-
-    const dirsGroupHandler: FileGroupHandler =
-      await FileGroupHandler.handler_create("dirs");
-    dirsGroupHandler.fileGroupCommand_setup(program);
-  } catch (e: unknown) {
-    const err: string = e instanceof Error ? e.message : String(e);
-    const errors: string[] = errorStack_getAllOfType("error");
-    const warnings: string[] = errorStack_getAllOfType("warning");
-    chiliLog(
-      `Note: File group commands (files, dirs, links) are unavailable. Reason: ${err}`
-    );
-    if (errors.length > 0) {
-      chiliLog("Errors:");
-      errors.forEach((msg) => chiliLog(`  - ${msg}`));
-    }
-    if (warnings.length > 0) {
-      chiliLog("Warnings:");
-      warnings.forEach((msg) => chiliLog(`  - ${msg}`));
-    }
+  // File-group and plugin-context commands register with no ChRIS context: each
+  // handler resolves its context lazily, only when one of its actions runs. This
+  // keeps setup free of network work, so an unrelated command (or a directory
+  // that is not a ChRIS folder) pays no file-context cost and produces no
+  // context-init noise.
+  for (const assetName of ["files", "links", "dirs"]) {
+    FileGroupHandler.handler_create(assetName).fileGroupCommand_setup(program);
   }
-
-  try {
-    const computesOfPluginHandler: PluginContextGroupHandler =
-      await PluginContextGroupHandler.handler_create("computesofplugin");
-    computesOfPluginHandler.pluginContextGroupCommand_setup(program);
-
-    const pluginInstancesHandler: PluginContextGroupHandler =
-      await PluginContextGroupHandler.handler_create("instancesofplugin");
-    pluginInstancesHandler.pluginContextGroupCommand_setup(program);
-
-    const pluginParametersHandler: PluginContextGroupHandler =
-      await PluginContextGroupHandler.handler_create("parametersofplugin");
-    pluginParametersHandler.pluginContextGroupCommand_setup(program);
-  } catch (e: unknown) {
-    const err: string = e instanceof Error ? e.message : String(e);
-    const errors: string[] = errorStack_getAllOfType("error");
-    const warnings: string[] = errorStack_getAllOfType("warning");
-    chiliLog(`Note: Plugin context commands are unavailable. Reason: ${err}`);
-    if (errors.length > 0) {
-      chiliLog("Errors:");
-      errors.forEach((msg) => chiliLog(`  - ${msg}`));
-    }
-    if (warnings.length > 0) {
-      chiliLog("Warnings:");
-      warnings.forEach((msg) => chiliLog(`  - ${msg}`));
-    }
+  for (const assetName of ["computesofplugin", "instancesofplugin", "parametersofplugin"]) {
+    PluginContextGroupHandler.handler_create(assetName).pluginContextGroupCommand_setup(program);
   }
+}
+
+/**
+ * The set of top-level chili command names. Builds a fresh program and registers
+ * every handler — now a cheap, network-free operation — then reads the
+ * registered command names. A host (the brasa engine) uses this to decide
+ * whether an unknown chell command is worth delegating to chili at all.
+ *
+ * @returns The registered top-level command names.
+ */
+export async function commandNames_get(): Promise<Set<string>> {
+  const program: Command = new Command();
+  connectCommand_setup(program);
+  await handlers_initialize(program);
+  return new Set(program.commands.map((cmd: Command): string => cmd.name()));
 }
 
 /**

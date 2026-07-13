@@ -65,7 +65,7 @@ import { builtin_proc } from '../builtins/proc.js';
 import { wildcards_expandAll } from '../builtins/wildcard.js';
 import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
-import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/cumin';
+import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
@@ -77,9 +77,36 @@ import {
   type RedirectInfo,
 } from './preprocess.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { chiliCommand_run } from './chiliDelegate.js';
+import { chiliCommand_run, chiliCommand_exists, chiliDelegationNotice_build } from './chiliDelegate.js';
 
 export { chiliCommand_run };
+
+/**
+ * Handles a command chell does not recognize. If chili has no such command
+ * either, reports `command not found` on the error channel and does not
+ * delegate — no chili run, no context init. Otherwise emits the hand-off notice
+ * on the live sink *before* running chili, so the notice appears ahead of
+ * chili's (possibly slow) output rather than being glued on after it returns.
+ *
+ * @param command - The unrecognized command name.
+ * @param args - The command's arguments.
+ * @returns The delivered envelope (chili's result, or a not-found error).
+ */
+async function unknownCommand_delegate(command: string, args: string[]): Promise<CommandEnvelope> {
+  if (!(await chiliCommand_exists(command))) {
+    const envelope: CommandEnvelope = envelope_error(
+      '',
+      undefined,
+      `${chalk.red(`chell: command not found: ${command}`)}\n`,
+    );
+    envelope_deliver(envelope);
+    return envelope;
+  }
+  sink_get().data_write(chiliDelegationNotice_build(command));
+  const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
+  envelope_deliver(chiliEnvelope);
+  return chiliEnvelope;
+}
 
 /**
  * Executes a shell command on the host system (shell escape with ! prefix).
@@ -433,16 +460,9 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     }
   }
 
-  // Unknown commands delegate to chili, whose output is captured through its
-  // own seam and returned as an envelope — no console capture here.
-  const notice: string = `${chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`)}\n`;
-  const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
-  const envelope: CommandEnvelope = { status: chiliEnvelope.status, rendered: notice + chiliEnvelope.rendered };
-  if (chiliEnvelope.renderedErr !== undefined) {
-    envelope.renderedErr = chiliEnvelope.renderedErr;
-  }
-  envelope_deliver(envelope);
-  return envelope;
+  // Unknown commands are guarded, then delegated to chili — its output is
+  // captured through its own seam, with no console capture here.
+  return unknownCommand_delegate(command, args);
 }
 
 /**
@@ -578,8 +598,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    sink_get().data_write(`${chalk.yellow(`Unknown chell command '${command}' -- delegating to chili`)}\n`);
-    envelope_deliver(await chiliCommand_run(command, ['-s', ...args]));
+    await unknownCommand_delegate(command, args);
   });
 
   const buffer: Buffer = pipeSink.buffer_get();

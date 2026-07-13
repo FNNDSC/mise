@@ -22,7 +22,7 @@ export async function inodeCommand_setup(program: Command): Promise<void> {
       const subcommand: string = args[0];
 
       if (subcommand === "files") {
-        const fileGroupHandler: FileGroupHandler = await FileGroupHandler.handler_create("files", path);
+        const fileGroupHandler: FileGroupHandler = FileGroupHandler.handler_create("files", path);
         const filesProgram: Command = new Command();
         fileGroupHandler.fileGroupCommand_setup(filesProgram);
         await filesProgram.parseAsync(args);

@@ -1,13 +1,14 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 const mockRunCapture = jest.fn<(argv: string[]) => Promise<{ out: string; err: string }>>();
-jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockRunCapture }));
+const mockCommandNames = jest.fn<() => Promise<Set<string>>>();
+jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockRunCapture, commandNames_get: mockCommandNames }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
 }));
 
-const { chiliCommand_run } = await import('../src/core/chiliDelegate.js');
+const { chiliCommand_run, chiliCommand_exists } = await import('../src/core/chiliDelegate.js');
 
 describe('chiliCommand_run', () => {
   beforeEach(() => {
@@ -36,5 +37,14 @@ describe('chiliCommand_run', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain("chili command 'feeds' failed");
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('chiliCommand_exists', () => {
+  it('is true for a command chili exposes and false otherwise', async () => {
+    mockCommandNames.mockResolvedValue(new Set(['feeds', 'plugins', 'files']));
+    expect(await chiliCommand_exists('feeds')).toBe(true);
+    expect(await chiliCommand_exists('files')).toBe(true);
+    expect(await chiliCommand_exists('fortune')).toBe(false);
   });
 });

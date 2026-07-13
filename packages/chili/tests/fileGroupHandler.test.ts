@@ -50,9 +50,10 @@ describe('FileGroupHandler.handler_create', () => {
   it('creates a handler', async () => {
     expect(await group()).toBeInstanceOf(FileGroupHandler);
   });
-  it('throws when the controller cannot be created', async () => {
+  it('resolves no controller at construction (lazy)', () => {
     (FileController.handler_create as jest.Mock).mockResolvedValue(null);
-    await expect(FileGroupHandler.handler_create('files')).rejects.toThrow('Failed to initialize');
+    expect(FileGroupHandler.handler_create('files')).toBeInstanceOf(FileGroupHandler);
+    expect(FileController.handler_create).not.toHaveBeenCalled();
   });
 });
 
@@ -112,6 +113,12 @@ describe('FileGroupHandler.files_share', () => {
   it('delegates to the controller', async () => {
     await (await group()).files_share({ force: true });
     expect(fakeController.files_share).toHaveBeenCalled();
+  });
+  it('reports cleanly when no ChRIS context is available', async () => {
+    (FileController.handler_create as jest.Mock).mockResolvedValue(null);
+    await (await group()).files_share({ force: true });
+    expect(fakeController.files_share).not.toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('no ChRIS context'));
   });
 });
 

@@ -27,6 +27,8 @@ export * from './net/cubepath.js';
 
 export * from './sys/context.js';
 export * from './sys/physicalmode.js';
+export * from './sys/cal.js';
+export * from './sys/date.js';
 export * from './sys/fortune.js';
 export * from './sys/timing.js';
 export * from './sys/version.js';

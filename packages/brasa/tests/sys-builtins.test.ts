@@ -38,6 +38,8 @@ const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
 const { builtin_version } = await import('../src/builtins/sys/version.js');
 const { builtin_fortune } = await import('../src/builtins/sys/fortune.js');
 const { FORTUNES } = await import('../src/builtins/sys/fortunes.data.js');
+const { builtin_date, date_format } = await import('../src/builtins/sys/date.js');
+const { builtin_cal } = await import('../src/builtins/sys/cal.js');
 const { versions_get, versionReport_build, infoReport_build, stackInfo_get } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
@@ -218,6 +220,59 @@ describe('builtin_fortune', () => {
     const chosen = (envelope.model?.data as { fortune: string }).fortune;
     expect(FORTUNES).toContain(chosen);
     expect(envelope.rendered).toBe(`${chosen}\n`);
+  });
+});
+
+describe('builtin_date', () => {
+  const fixed = new Date('2026-07-13T22:24:05Z');
+
+  it('formats strftime specifiers in UTC', () => {
+    expect(date_format(fixed, '%Y-%m-%d', true)).toBe('2026-07-13');
+    expect(date_format(fixed, '%H:%M:%S', true)).toBe('22:24:05');
+    expect(date_format(fixed, '%A %B %e', true)).toBe('Monday July 13');
+    expect(date_format(fixed, '100%%', true)).toBe('100%');
+    expect(date_format(fixed, '%F %Z', true)).toBe('2026-07-13 UTC');
+  });
+
+  it('returns an ok envelope with the default format and a typed model', async () => {
+    const envelope: CommandEnvelope = await builtin_date([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered.trim().length).toBeGreaterThan(0);
+    expect(envelope.model?.kind).toBe('sys.date');
+    expect(typeof (envelope.model?.data as { iso: string }).iso).toBe('string');
+  });
+
+  it('honours a +FORMAT argument', async () => {
+    const envelope: CommandEnvelope = await builtin_date(['-u', '+%Y']);
+    expect(envelope.rendered).toBe(`${new Date().getUTCFullYear()}\n`);
+  });
+});
+
+describe('builtin_cal', () => {
+  it('renders the current month with the weekday header', async () => {
+    const envelope: CommandEnvelope = await builtin_cal([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('Su Mo Tu We Th Fr Sa');
+    expect(envelope.model?.kind).toBe('sys.cal');
+  });
+
+  it('renders a specific month, including a leap-year February', async () => {
+    const envelope: CommandEnvelope = await builtin_cal(['2', '2024']);
+    expect(envelope.rendered).toContain('February 2024');
+    expect(envelope.rendered).toContain('29');
+  });
+
+  it('renders a full year as a grid', async () => {
+    const envelope: CommandEnvelope = await builtin_cal(['2026']);
+    expect(envelope.rendered).toContain('January');
+    expect(envelope.rendered).toContain('December');
+    expect(envelope.model?.data as { year: number }).toEqual({ year: 2026 });
+  });
+
+  it('rejects an invalid month', async () => {
+    const envelope: CommandEnvelope = await builtin_cal(['13', '2026']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('not a month number');
   });
 });
 

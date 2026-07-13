@@ -592,6 +592,12 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Print the currently authenticated ChRIS username',
     examples: ['whoami'],
   },
+  fortune: {
+    usage: 'fortune',
+    summary: 'Print a random fortune cookie',
+    description: 'Prints a random fortune — the classic UNIX fortune cookie, bundled and self-contained.',
+    examples: ['fortune'],
+  },
   whereami: {
     usage: 'whereami',
     description: 'Print the current CUBE URL',
@@ -1202,7 +1208,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
-    General: ['help', 'exit', '!'],
+    General: ['help', 'fortune', 'exit', '!'],
   };
 
   // Display commands by category

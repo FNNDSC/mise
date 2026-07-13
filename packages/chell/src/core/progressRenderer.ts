@@ -45,6 +45,16 @@ interface BarState {
   total: number;
 }
 
+/** A pull series bar, plus the last facts needed to re-pad its label on realign. */
+interface PullBarState {
+  bar: ProgressBar;
+  total: number;
+  base: string;
+  status: string;
+  value: number;
+  unit: string;
+}
+
 const TERMINAL_STATUSES: Set<ProgressStatus> = new Set<ProgressStatus>([
   'done',
   'unconfirmed',
@@ -85,6 +95,17 @@ function status_label(status: ProgressStatus | undefined): string {
   return '';
 }
 
+/**
+ * Width of the status column, so the bars line up whatever the status. Sized to
+ * the widest label ({@link status_label}) — `[UNCONFIRMED]` — and reserved even
+ * while a series has no terminal status yet, so the bar never shifts.
+ */
+const PULL_STATUS_WIDTH: number = Math.max(
+  ...(['done', 'unconfirmed', 'stalled', 'timeout', 'error'] as ProgressStatus[]).map(
+    (s: ProgressStatus): number => status_label(s).length,
+  ),
+);
+
 function fallback_shouldPrint(event: ProgressEvent): boolean {
   if (event.phase === 'complete' || event.phase === 'failed') return true;
   return event.status !== undefined && TERMINAL_STATUSES.has(event.status);
@@ -111,8 +132,9 @@ export class TerminalProgressRenderer implements ProgressRenderer {
   private readonly isTTY: boolean;
   private readonly factory: ProgressBarFactory;
   private readonly transferBars: Map<ProgressOperation, BarState> = new Map<ProgressOperation, BarState>();
-  private readonly pullBars: Map<string, BarState> = new Map<string, BarState>();
+  private readonly pullBars: Map<string, PullBarState> = new Map<string, PullBarState>();
   private pullMultiBar: MultiBarInstance | null = null;
+  private pullBaseWidth: number = 0;
 
   constructor(options: ProgressRendererOptions = {}) {
     this.stream = options.stream ?? process.stdout;
@@ -135,6 +157,7 @@ export class TerminalProgressRenderer implements ProgressRenderer {
         this.pullMultiBar?.stop();
         this.pullMultiBar = null;
         this.pullBars.clear();
+        this.pullBaseWidth = 0;
       }
       return;
     }
@@ -150,6 +173,7 @@ export class TerminalProgressRenderer implements ProgressRenderer {
     this.pullMultiBar?.stop();
     this.pullMultiBar = null;
     this.pullBars.clear();
+    this.pullBaseWidth = 0;
   }
 
   private transfer_write(event: ProgressEvent): void {
@@ -198,22 +222,46 @@ export class TerminalProgressRenderer implements ProgressRenderer {
     }
 
     const key: string = event.itemId as string;
+    const base: string = event.label ?? event.operation;
+    const status: string = status_label(event.status);
     const total: number = event_total(event);
-    let state: BarState | undefined = this.pullBars.get(key);
+    const value: number = event_current(event);
+    const unit: string = event.unit ?? '';
+
+    // Grow the shared name column so every bar starts at the same column; when it
+    // grows, re-pad the already-drawn bars (including finished ones) to match.
+    const grew: boolean = base.length > this.pullBaseWidth;
+    if (grew) this.pullBaseWidth = base.length;
+
+    const state: PullBarState | undefined = this.pullBars.get(key);
     if (!state) {
-      const bar: ProgressBar = this.pullMultiBar.create(total, event_current(event), {
-        label: event_label(event),
-        unit: event.unit ?? '',
-      });
-      state = { bar, total };
-      this.pullBars.set(key, state);
-      return;
+      const bar: ProgressBar = this.pullMultiBar.create(total, value, { label: this.pull_label(base, status), unit });
+      this.pullBars.set(key, { bar, total, base, status, value, unit });
+    } else {
+      if (total !== state.total) {
+        state.bar.setTotal(total);
+        state.total = total;
+      }
+      state.base = base;
+      state.status = status;
+      state.value = value;
+      state.unit = unit;
+      state.bar.update(value, { label: this.pull_label(base, status), unit });
     }
 
-    if (total !== state.total) {
-      state.bar.setTotal(total);
-      state.total = total;
+    if (grew) this.pullBars_realign(key);
+  }
+
+  /** Formats a pull label as fixed-width `name` + `status` columns, so bars align. */
+  private pull_label(base: string, status: string): string {
+    return `${base.padEnd(this.pullBaseWidth)} ${status.padEnd(PULL_STATUS_WIDTH)}`;
+  }
+
+  /** Re-renders every pull bar except `exceptKey` at the current column width. */
+  private pullBars_realign(exceptKey: string): void {
+    for (const [key, state] of this.pullBars) {
+      if (key === exceptKey) continue;
+      state.bar.update(state.value, { label: this.pull_label(state.base, state.status), unit: state.unit });
     }
-    state.bar.update(event_current(event), { label: event_label(event), unit: event.unit ?? '' });
   }
 }

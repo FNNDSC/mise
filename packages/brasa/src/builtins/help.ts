@@ -598,6 +598,22 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Prints a random fortune — the classic UNIX fortune cookie, bundled and self-contained.',
     examples: ['fortune'],
   },
+  date: {
+    usage: 'date [-u] [+FORMAT]',
+    summary: 'Print the current date and time',
+    description: 'Prints the current date and time, in the spirit of UNIX date. Use -u for UTC and +FORMAT for a strftime-style format string. Reports the time only; it never sets the clock.',
+    options: [
+      '  -u, --utc         Print (or interpret) time in UTC',
+      '  +FORMAT           strftime-style format (e.g. +%Y-%m-%d, +%H:%M:%S)',
+    ],
+    examples: ['date', 'date -u', 'date +%Y-%m-%d', 'date "+%A, %B %e %Y"'],
+  },
+  cal: {
+    usage: 'cal [[month] year]',
+    summary: 'Print a calendar',
+    description: 'Prints a month or year calendar with today highlighted, in the spirit of UNIX cal.',
+    examples: ['cal', 'cal 2026', 'cal 7 2026'],
+  },
   whereami: {
     usage: 'whereami',
     description: 'Print the current CUBE URL',
@@ -1208,7 +1224,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
-    General: ['help', 'fortune', 'exit', '!'],
+    General: ['help', 'date', 'cal', 'fortune', 'exit', '!'],
   };
 
   // Display commands by category

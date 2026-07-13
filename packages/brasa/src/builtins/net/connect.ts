@@ -7,15 +7,15 @@ import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
 import { login_render } from '@fnndsc/chili/views/connect.js';
 import { session } from '../../session/index.js';
-import { chrisContext } from '@fnndsc/cumin';
+import { chrisContext, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 
 /**
  * Connects to a ChRIS CUBE instance using provided credentials.
  *
  * @param args - An array of arguments containing user, password, and URL.
- * @returns A Promise that resolves when the connection attempt is complete.
+ * @returns An envelope carrying the login result.
  */
-export async function builtin_connect(args: string[]): Promise<void> {
+export async function builtin_connect(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const user: string = parsed.user as string;
   const password: string = parsed.password as string;
@@ -29,13 +29,12 @@ export async function builtin_connect(args: string[]): Promise<void> {
         // Refresh context to update prompt with new user/url
         await chrisContext.currentContext_update();
       }
-      console.log(login_render(success, url, user));
+      return envelope_ok(`${login_render(success, url, user)}\n`);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
-      console.log(login_render(false, url, user));
-      console.error(chalk.red(`Connection failed: ${msg}`));
+      process.exitCode = 1;
+      return envelope_error(`${login_render(false, url, user)}\n`, undefined, `${chalk.red(`Connection failed: ${msg}`)}\n`);
     }
-  } else {
-    console.log(chalk.red('Usage: connect --user <username> --password <password> <url>'));
   }
+  return envelope_ok(`${chalk.red('Usage: connect --user <username> --password <password> <url>')}\n`);
 }

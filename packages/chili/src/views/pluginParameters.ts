@@ -6,6 +6,7 @@
 
 import chalk from 'chalk';
 import { FilteredResourceData } from '@fnndsc/cumin';
+import { chiliLog } from "../screen/output.js";
 
 /**
  * Plugin parameter object structure.
@@ -31,7 +32,7 @@ interface PluginParameter {
  * @param data - The filtered resource data containing plugin parameters.
  */
 export function pluginParameters_renderMan(data: FilteredResourceData): void {
-  console.log(pluginParameters_manRender(data));
+  chiliLog(pluginParameters_manRender(data));
 }
 
 /**

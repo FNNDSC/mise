@@ -9,6 +9,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Command } from 'commander';
+import { table_render } from "../screen/screen.js";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /** Local filesystem entry with size (KB) and creation time. */
 interface DetailedFile {
@@ -32,9 +34,9 @@ export async function dirContents_list(filepath: string) {
       return { filename: file, "size(KB)": size, created_at: birthtime };
     });
     const detailedFiles: DetailedFile[] = await Promise.all(detailedFilesPromises);
-    console.table(detailedFiles);
+    chiliLog(table_render(detailedFiles as unknown as import("../screen/screen.js").TableDataRow[], ["filename", "size(KB)", "created_at"]));
   } catch (error: unknown) {
-    console.error("Error occurred while reading the directory!", error);
+    chiliErrLog("Error occurred while reading the directory!", error);
   }
 }
 
@@ -46,7 +48,7 @@ export async function dirContents_list(filepath: string) {
 export function dir_create(filepath: string) {
   if (!fs.existsSync(filepath)) {
     fs.mkdirSync(filepath);
-    console.log("The directory has been created successfully");
+    chiliLog("The directory has been created successfully");
   }
 }
 
@@ -57,7 +59,7 @@ export function dir_create(filepath: string) {
  */
 export function file_create(filepath: string) {
   fs.openSync(filepath, "w");
-  console.log("An empty file has been created");
+  chiliLog("An empty file has been created");
 }
 
 /**

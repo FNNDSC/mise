@@ -530,34 +530,34 @@ describe('Builtins - Core Functions', () => {
         actualTargetPath: '/home/user/remote.txt',
       });
 
-      await builtin_upload(['./local.txt', 'remote.txt']);
+      const envelope = await builtin_upload(['./local.txt', 'remote.txt']);
 
       expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt', expect.objectContaining({
         onProgress: expect.any(Function),
       }));
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Successfully uploaded 1 file'));
+      expect(envelope.rendered).toContain('Successfully uploaded 1 file');
     });
 
     it('should error with insufficient args', async () => {
-      await builtin_upload(['local.txt']);
+      const envelope = await builtin_upload(['local.txt']);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Usage:'));
+      expect(envelope.rendered).toContain('Usage:');
     });
 
     it('should handle upload errors', async () => {
       mockChefsUpload.mockRejectedValue(new Error('Network error'));
 
-      await builtin_upload(['local.txt', 'remote.txt']);
+      const envelope = await builtin_upload(['local.txt', 'remote.txt']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Upload error: Network error'));
+      expect(envelope.renderedErr).toContain('Upload error: Network error');
     });
   });
 
   describe('builtin_download()', () => {
     it('should show usage with insufficient args', async () => {
-      await builtin_download(['remote.txt']);
+      const envelope = await builtin_download(['remote.txt']);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: download'));
+      expect(envelope.rendered).toContain('Usage: download');
     });
 
     it('should invoke chili download helper', async () => {
@@ -578,7 +578,7 @@ describe('Builtins - Core Functions', () => {
       mockConnectLogin.mockResolvedValue(true);
       mockLoginRender.mockReturnValue('Connected successfully');
 
-      await builtin_connect(['--user', 'chris', '--password', 'chris1234', 'http://localhost:8000']);
+      const envelope = await builtin_connect(['--user', 'chris', '--password', 'chris1234', 'http://localhost:8000']);
 
       expect(mockConnectLogin).toHaveBeenCalledWith({
         user: 'chris',
@@ -586,22 +586,22 @@ describe('Builtins - Core Functions', () => {
         url: 'http://localhost:8000',
         debug: false
       });
-      expect(consoleLogSpy).toHaveBeenCalledWith('Connected successfully');
+      expect(envelope.rendered).toContain('Connected successfully');
     });
 
     it('should error with missing credentials', async () => {
-      await builtin_connect(['http://localhost:8000']);
+      const envelope = await builtin_connect(['http://localhost:8000']);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Usage:'));
+      expect(envelope.rendered).toContain('Usage:');
     });
 
     it('should handle connection errors', async () => {
       mockConnectLogin.mockRejectedValue(new Error('Auth failed'));
       mockLoginRender.mockReturnValue('Connection failed');
 
-      await builtin_connect(['--user', 'chris', '--password', 'wrong', 'http://localhost:8000']);
+      const envelope = await builtin_connect(['--user', 'chris', '--password', 'wrong', 'http://localhost:8000']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Auth failed'));
+      expect(envelope.renderedErr).toContain('Auth failed');
     });
   });
 
@@ -941,12 +941,10 @@ describe('Builtins - Subcommand dispatch', () => {
   });
 
   describe('store subcommands', () => {
-    it('inspect prints store URL without chili', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-      await (await import('../src/builtins/store.js')).builtin_store(['inspect']);
-      expect(consoleSpy).toHaveBeenCalled();
+    it('inspect renders the store URL without chili', async () => {
+      const envelope = await (await import('../src/builtins/store.js')).builtin_store(['inspect']);
+      expect(envelope.rendered).toContain('Peer store URL');
       expect(mockChiliCommandRun).not.toHaveBeenCalled();
-      consoleSpy.mockRestore();
     });
 
     it('set saves the store URL through the engine store config', async () => {

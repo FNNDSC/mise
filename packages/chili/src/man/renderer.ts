@@ -11,6 +11,7 @@ import { convert as adoc_convert } from "asciidoctor";
 import { exec, ExecException } from "child_process";
 import url from "url";
 import os from "os";
+import { chiliErrLog } from "../screen/output.js";
 
 interface ASCIIHeadingStyle {
   regex: RegExp;
@@ -225,11 +226,11 @@ export async function browser_open(filePath: string): Promise<void> {
 
     exec(`${command} ${tempHtmlPath}`, (error: ExecException | null) => {
       if (error) {
-        console.error("Error opening browser:", error);
+        chiliErrLog("Error opening browser:", error);
       }
     });
   } catch (error: unknown) {
-    console.error(
+    chiliErrLog(
       "Error opening documentation in browser:",
       error instanceof Error ? error.message : String(error),
     );

@@ -19,6 +19,7 @@ import {
   pluginMeta_pluginIDFromSearch,
   PluginSearchOptions
 } from "@fnndsc/salsa";
+import { chiliErrLog } from "../screen/output.js";
 
 /**
  * Controller for managing ChRIS plugins.
@@ -71,7 +72,7 @@ export class PluginController extends BaseController {
     try {
       parsedParams = dictionary_fromCLI(params);
     } catch (e: unknown) {
-      console.error("Error parsing plugin parameters:", e);
+      chiliErrLog("Error parsing plugin parameters:", e);
       return null;
     }
     return await salsaPlugin_run(searchable, parsedParams);

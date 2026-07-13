@@ -36,6 +36,7 @@ import {
   errorStack_getAllOfType,
 } from "@fnndsc/cumin";
 import { FileGroupHandler } from "./filesystem/fileGroupHandler.js";
+import { chiliErrLog, chiliLog, chili_capture, type ChiliCaptured } from "./screen/output.js";
 
 /**
  * Suppress the DEP0169 (`url.parse()`) warning emitted transitively by
@@ -117,16 +118,16 @@ async function handlers_initialize(program: Command): Promise<void> {
     const err: string = e instanceof Error ? e.message : String(e);
     const errors: string[] = errorStack_getAllOfType("error");
     const warnings: string[] = errorStack_getAllOfType("warning");
-    console.log(
+    chiliLog(
       `Note: File group commands (files, dirs, links) are unavailable. Reason: ${err}`
     );
     if (errors.length > 0) {
-      console.log("Errors:");
-      errors.forEach((msg) => console.log(`  - ${msg}`));
+      chiliLog("Errors:");
+      errors.forEach((msg) => chiliLog(`  - ${msg}`));
     }
     if (warnings.length > 0) {
-      console.log("Warnings:");
-      warnings.forEach((msg) => console.log(`  - ${msg}`));
+      chiliLog("Warnings:");
+      warnings.forEach((msg) => chiliLog(`  - ${msg}`));
     }
   }
 
@@ -146,14 +147,14 @@ async function handlers_initialize(program: Command): Promise<void> {
     const err: string = e instanceof Error ? e.message : String(e);
     const errors: string[] = errorStack_getAllOfType("error");
     const warnings: string[] = errorStack_getAllOfType("warning");
-    console.log(`Note: Plugin context commands are unavailable. Reason: ${err}`);
+    chiliLog(`Note: Plugin context commands are unavailable. Reason: ${err}`);
     if (errors.length > 0) {
-      console.log("Errors:");
-      errors.forEach((msg) => console.log(`  - ${msg}`));
+      chiliLog("Errors:");
+      errors.forEach((msg) => chiliLog(`  - ${msg}`));
     }
     if (warnings.length > 0) {
-      console.log("Warnings:");
-      warnings.forEach((msg) => console.log(`  - ${msg}`));
+      chiliLog("Warnings:");
+      warnings.forEach((msg) => chiliLog(`  - ${msg}`));
     }
   }
 }
@@ -198,7 +199,7 @@ export async function run(argv: string[]): Promise<void> {
   if (context) {
     const contextSetSuccess: boolean = await connection.context_set(context);
     if (!contextSetSuccess) {
-      console.error("Failed to set context.");
+      chiliErrLog("Failed to set context.");
       return;
     }
     fullArgv = newArgs;
@@ -220,8 +221,8 @@ export async function run(argv: string[]): Promise<void> {
   program.parseOptions(fullArgv);
   const options = program.opts();
   if (!options.nosplash) {
-    console.log(figlet.textSync("ChILI"));
-    console.log("ChILI handles Intelligent Line Interactions");
+    chiliLog(figlet.textSync("ChILI"));
+    chiliLog("ChILI handles Intelligent Line Interactions");
   }
 
   try {
@@ -235,4 +236,19 @@ export async function run(argv: string[]): Promise<void> {
     }
     throw err;
   }
+}
+
+/**
+ * Executes a single chili command with its output captured instead of printed.
+ *
+ * Runs {@link run} inside {@link chili_capture}, so everything the command
+ * would have written to the output and error channels is collected and
+ * returned. This is how an in-process host (the brasa engine) drives chili
+ * headless and carries the result in an envelope, with no console monkeypatch.
+ *
+ * @param argv - The chili arguments, e.g. `["feeds", "list", "-s"]`.
+ * @returns The captured output and error text.
+ */
+export async function run_capture(argv: string[]): Promise<ChiliCaptured> {
+  return chili_capture((): Promise<void> => run(argv));
 }

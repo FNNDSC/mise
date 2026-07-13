@@ -13,7 +13,7 @@ import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { surface_get, capability_require, CapabilityError, type LocalEditResult } from '../../core/surface.js';
 import { files_cat } from '@fnndsc/chili/commands/fs/cat.js';
 import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.js';
-import { errorStack, Result, StackMessage, listCache_get } from '@fnndsc/cumin';
+import { errorStack, Result, StackMessage, listCache_get, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 
 const BINARY_EXTENSIONS: Set<string> = new Set([
   '.dcm', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico',
@@ -26,12 +26,12 @@ const BINARY_EXTENSIONS: Set<string> = new Set([
  * original via delete + re-upload. No-ops if content is unchanged.
  *
  * @param args - [filePath, ...]
+ * @returns An envelope carrying the edit outcome.
  */
-export async function builtin_edit(args: string[]): Promise<void> {
+export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   if (args.length === 0) {
-    console.error(chalk.red('Usage: edit <file>'));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red('Usage: edit <file>')}\n`);
   }
 
   // Editing needs a surface that can open a local editor. A surface without
@@ -41,26 +41,23 @@ export async function builtin_edit(args: string[]): Promise<void> {
     capability_require('localEdit', 'edit: this surface cannot open a local editor.');
   } catch (err: unknown) {
     const message: string = err instanceof CapabilityError ? err.message : String(err);
-    console.error(chalk.red(message));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red(message)}\n`);
   }
 
   const target: string = await path_resolve(args[0]);
   const ext: string = extname(target).toLowerCase();
 
   if (BINARY_EXTENSIONS.has(ext)) {
-    console.error(chalk.red(`edit: ${args[0]}: binary file (${ext}), cannot edit as text`));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red(`edit: ${args[0]}: binary file (${ext}), cannot edit as text`)}\n`);
   }
 
   const catResult: Result<string> = await files_cat(target);
   if (!catResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
-    console.error(chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : 'Failed to read file'}`));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : 'Failed to read file'}`)}\n`);
   }
 
   // Hand the content to the surface's editor.
@@ -68,14 +65,12 @@ export async function builtin_edit(args: string[]): Promise<void> {
   try {
     edit = await surface_get().localEdit({ content: catResult.value, extension: ext || '.txt' });
   } catch (err: unknown) {
-    console.error(chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`));
     process.exitCode = 1;
-    return;
+    return envelope_error('', undefined, `${chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
   }
 
   if (!edit.changed) {
-    console.log(chalk.gray('(no changes)'));
-    return;
+    return envelope_ok(`${chalk.gray('(no changes)')}\n`);
   }
 
   // Upload the edited content: write it to a temp file the replace command
@@ -87,15 +82,15 @@ export async function builtin_edit(args: string[]): Promise<void> {
     const result: EditResult = await file_replaceContent(target, tmpPath);
     listCache_get().cache_invalidate(posix.dirname(target));
     if (result.success) {
-      console.log(chalk.green(`Saved: ${args[0]}`));
-    } else {
-      const apiErr: StackMessage | undefined = errorStack.stack_pop();
-      console.error(chalk.red(`edit: Save failed — ${result.error}`));
-      if (apiErr) console.error(chalk.red(`  API error: ${error_stripDebugPrefix(apiErr.message)}`));
-      console.error(chalk.yellow(`Your edits are preserved at: ${tmpPath}`));
-      keepTmp = true;
-      process.exitCode = 1;
+      return envelope_ok(`${chalk.green(`Saved: ${args[0]}`)}\n`);
     }
+    const apiErr: StackMessage | undefined = errorStack.stack_pop();
+    let renderedErr: string = `${chalk.red(`edit: Save failed — ${result.error}`)}\n`;
+    if (apiErr) renderedErr += `${chalk.red(`  API error: ${error_stripDebugPrefix(apiErr.message)}`)}\n`;
+    renderedErr += `${chalk.yellow(`Your edits are preserved at: ${tmpPath}`)}\n`;
+    keepTmp = true;
+    process.exitCode = 1;
+    return envelope_error('', undefined, renderedErr);
   } finally {
     if (!keepTmp && existsSync(tmpPath)) {
       try { unlinkSync(tmpPath); } catch { /* ignore */ }

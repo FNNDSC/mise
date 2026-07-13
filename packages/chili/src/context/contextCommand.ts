@@ -20,6 +20,7 @@ import {
 import chalk from "chalk";
 // import Table from "cli-table3";
 import { screen, border_draw, table_display, TableDataRow } from "../screen/screen.js";
+import { chiliLog } from "../screen/output.js";
 
 /** A single context key/value row for tabular display. */
 interface ContextRow {
@@ -133,7 +134,7 @@ async function context_displaySingle(options: ContextOptions): Promise<string> {
       },
     ];
 
-    console.log(
+    chiliLog(
       screen.table_output(tableData, {
         head: ["Context", "Value"],
         columns: [
@@ -239,7 +240,7 @@ export async function contextCommand_setup(program: Command): Promise<void> {
     .option("--all", "get all contexts for current session")
     .action(async (options) => {
       const result: string = await context_get(options);
-      console.log(result);
+      chiliLog(result);
     });
 
   contextCommand

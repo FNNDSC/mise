@@ -25,6 +25,7 @@ import { pluginRun_render } from "../views/plugin.js"; // Still needed for plugi
 import { Plugin, PluginInstance } from "../models/plugin.js";
 import chalk from "chalk";
 import { pluginReadme_render } from "../commands/plugin/readme.js";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /**
  * Handles commands related to groups of ChRIS plugins.
@@ -55,10 +56,10 @@ export class PluginGroupHandler {
   // async plugins_list(options: CLIoptions): Promise<void> {
   //   try {
   //     const { plugins, selectedFields } = await plugins_fetchList(options);
-  //     console.log(pluginList_render(plugins, selectedFields, { table: options.table, csv: options.csv }));
+  //     chiliLog(pluginList_render(plugins, selectedFields, { table: options.table, csv: options.csv }));
   //   } catch (error: unknown) {
   //     const msg = error instanceof Error ? error.message : String(error);
-  //     console.error(msg);
+  //     chiliErrLog(msg);
   //   }
   // }
 
@@ -71,10 +72,10 @@ export class PluginGroupHandler {
       if (fields && fields.length > 0) {
         table_display(fields, ["fields"]);
       } else {
-        console.log(`No resource fields found for ${this.assetName}.`);
+        chiliLog(`No resource fields found for ${this.assetName}.`);
       }
     } catch (error: unknown) {
-      console.log(errorStack.stack_search(this.assetName)[0]);
+      chiliLog(errorStack.stack_search(this.assetName)[0]);
     }
   }
 
@@ -89,13 +90,13 @@ export class PluginGroupHandler {
     for (const search of searchables) {
       const items: Record<string, unknown>[] = await plugins_searchByTerm(search.raw);
       if (items.length === 0) {
-        console.log(`No plugins found matching: ${search.raw}`);
+        chiliLog(`No plugins found matching: ${search.raw}`);
         continue;
       }
 
       for (const item of items) {
         // Show item info - reusing table_display for single item details if possible, or simple log
-        console.log(`Preparing to delete Plugin: ID=${item.id}, Name=${item.name}, Version=${item.version}`);
+        chiliLog(`Preparing to delete Plugin: ID=${item.id}, Name=${item.name}, Version=${item.version}`);
 
         if (!options.force) {
            const confirmed: boolean = await prompt_confirm(`Are you sure you want to delete plugin ${item.name} (ID: ${item.id})?`);
@@ -104,9 +105,9 @@ export class PluginGroupHandler {
 
         const success: boolean = await plugin_deleteById(item.id as number);
         if (success) {
-            console.log(`Deleted plugin ${item.id}`);
+            chiliLog(`Deleted plugin ${item.id}`);
         } else {
-            console.error(`Failed to delete plugin ${item.id}`);
+            chiliErrLog(`Failed to delete plugin ${item.id}`);
         }
       }
     }
@@ -218,10 +219,10 @@ export class PluginMemberHandler {
   async readme_print(repoUrl: string): Promise<void> {
     const content: string | null = await this.controller.readmeContent_fetch(repoUrl);
     if (content) {
-      console.log(chalk.green.bold("\nREADME Content:"));
-      console.log(pluginReadme_render(content));
+      chiliLog(chalk.green.bold("\nREADME Content:"));
+      chiliLog(pluginReadme_render(content));
     } else {
-      console.log(chalk.red("README not found in the repository."));
+      chiliLog(chalk.red("README not found in the repository."));
     }
   }
 
@@ -233,19 +234,19 @@ export class PluginMemberHandler {
    */
   async plugin_readme(pluginId: string): Promise<string | null> {
     try {
-      console.log(`Fetching info for plugin with ID: ${pluginId}`);
+      chiliLog(`Fetching info for plugin with ID: ${pluginId}`);
       const documentation: string | null = await this.controller.documentationUrl_get(pluginId);
       if (!documentation) {
         return null;
       }
-      console.log(documentation);
+      chiliLog(documentation);
       await this.readme_print(documentation);
       return documentation;
     } catch (error: unknown) {
       if (error instanceof Error) {
-        console.error(`Error fetching plugin info: ${error.message}`);
+        chiliErrLog(`Error fetching plugin info: ${error.message}`);
       } else {
-        console.error("An unknown error occurred while fetching plugin info");
+        chiliErrLog("An unknown error occurred while fetching plugin info");
       }
     }
     return null;
@@ -271,15 +272,15 @@ export class PluginMemberHandler {
     try {
       const instance: PluginInstance | null = await plugin_execute(searchable, params);
       if (!instance) {
-        console.log(errorStack.messagesOfType_search("error", "plugin"));
+        chiliLog(errorStack.messagesOfType_search("error", "plugin"));
         return null;
       }
 
-      console.log(pluginRun_render(instance));
+      chiliLog(pluginRun_render(instance));
       return instance.id;
     } catch (e: unknown) {
       const message: string = e instanceof Error ? e.message : String(e);
-      console.error(message);
+      chiliErrLog(message);
       return null;
     }
   }
@@ -292,7 +293,7 @@ export class PluginMemberHandler {
     if (!hits) {
       return null;
     }
-    console.log(hits);
+    chiliLog(hits);
     return hits;
   }
 
@@ -334,9 +335,9 @@ export class PluginMemberHandler {
             } else {
               const warnings: string[] = errorStack_getAllOfType('warning');
               if (warnings && warnings.length > 0) {
-                warnings.forEach(warning => console.error(chalk.yellow(warning)));
+                warnings.forEach(warning => chiliErrLog(chalk.yellow(warning)));
               } else {
-                console.error(chalk.red("Plugin not found."));
+                chiliErrLog(chalk.red("Plugin not found."));
               }
             }
           }
@@ -362,7 +363,7 @@ export class PluginMemberHandler {
           this.plugin_searchableToIDs(searchable);
         });
     } else {
-      console.error(
+      chiliErrLog(
         `Failed to find '${this.assetName}' command. The 'readme' subcommand was not added.`
       );
     }

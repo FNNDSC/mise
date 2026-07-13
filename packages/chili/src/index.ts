@@ -13,6 +13,7 @@
 import omelette from "omelette";
 
 import { run } from "./run.js";
+import { chiliErrLog, chiliLog } from "./screen/output.js";
 
 /**
  * Sets up shell command completion for the standalone chili CLI using omelette.
@@ -54,7 +55,7 @@ function commandCompletion_setup(): void {
   });
 
   completion.on("man.doc", ({ reply }) => {
-    console.log("Autocomplete triggered for man doc command");
+    chiliLog("Autocomplete triggered for man doc command");
     reply([]);
   });
 
@@ -74,7 +75,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("An error occurred:", error);
+  chiliErrLog("An error occurred:", error);
   process.exit(1);
 });
 

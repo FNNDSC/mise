@@ -53,31 +53,31 @@ beforeEach(() => {
 });
 
 describe('builtin_edit', () => {
-  it('prints usage with no file', async () => {
-    await builtin_edit([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: edit'));
+  it('reports usage with no file', async () => {
+    const env = await builtin_edit([]);
+    expect(env.renderedErr).toContain('Usage: edit');
     expect(process.exitCode).toBe(1);
   });
 
   it('fails clearly when the surface cannot edit locally', async () => {
     surface_install({ hiddenInput: false, localEdit: false, tty: false, pipeSegments: false });
-    await builtin_edit(['notes.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('cannot open a local editor'));
+    const env = await builtin_edit(['notes.txt']);
+    expect(env.renderedErr).toContain('cannot open a local editor');
     expect(process.exitCode).toBe(1);
     expect(mockCat).not.toHaveBeenCalled();
   });
 
   it('refuses to edit a binary file', async () => {
-    await builtin_edit(['image.png']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('binary file'));
+    const env = await builtin_edit(['image.png']);
+    expect(env.renderedErr).toContain('binary file');
     expect(process.exitCode).toBe(1);
   });
 
   it('reports a read failure', async () => {
     mockCat.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'no such file' });
-    await builtin_edit(['notes.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('no such file'));
+    const env = await builtin_edit(['notes.txt']);
+    expect(env.renderedErr).toContain('no such file');
     expect(process.exitCode).toBe(1);
   });
 
@@ -91,16 +91,16 @@ describe('builtin_edit', () => {
   it('does nothing when the content is unchanged', async () => {
     mockCat.mockResolvedValue(ok('original'));
     mockLocalEdit.mockResolvedValue({ content: 'original', changed: false });
-    await builtin_edit(['notes.txt']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('no changes'));
+    const env = await builtin_edit(['notes.txt']);
+    expect(env.rendered).toContain('no changes');
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('reports an editor failure', async () => {
     mockCat.mockResolvedValue(ok('original'));
     mockLocalEdit.mockRejectedValue(new Error("failed to launch 'vi'"));
-    await builtin_edit(['notes.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('failed to launch'));
+    const env = await builtin_edit(['notes.txt']);
+    expect(env.renderedErr).toContain('failed to launch');
     expect(process.exitCode).toBe(1);
     expect(mockReplace).not.toHaveBeenCalled();
   });
@@ -109,19 +109,19 @@ describe('builtin_edit', () => {
     mockCat.mockResolvedValue(ok('original'));
     mockLocalEdit.mockResolvedValue({ content: 'EDITED CONTENT', changed: true });
     mockReplace.mockResolvedValue({ success: true });
-    await builtin_edit(['notes.txt']);
+    const env = await builtin_edit(['notes.txt']);
     expect(mockReplace).toHaveBeenCalled();
     expect(mockInvalidate).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Saved'));
+    expect(env.rendered).toContain('Saved');
   });
 
   it('preserves the edited content when the save fails', async () => {
     mockCat.mockResolvedValue(ok('original'));
     mockLocalEdit.mockResolvedValue({ content: 'EDITED CONTENT', changed: true });
     mockReplace.mockResolvedValue({ success: false, error: 'server rejected' });
-    await builtin_edit(['notes.txt']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Save failed'));
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('preserved at'));
+    const env = await builtin_edit(['notes.txt']);
+    expect(env.renderedErr).toContain('Save failed');
+    expect(env.renderedErr).toContain('preserved at');
     expect(process.exitCode).toBe(1);
   });
 });

@@ -10,6 +10,7 @@
 
 import * as readline from 'readline';
 import { Writable } from 'stream';
+import { chiliLog, chiliWrite } from "../screen/output.js";
 
 /**
  * Interface for admin credentials.
@@ -53,12 +54,12 @@ export async function adminCredentials_prompt(
   maxAttempts: number = 3
 ): Promise<AdminCredentials | null> {
   if (attempt === 1) {
-    console.log('\nAdmin credentials required to register plugins.');
-    console.log('You can provide these via --adminUser and --adminPassword flags.');
-    console.log('');
+    chiliLog('\nAdmin credentials required to register plugins.');
+    chiliLog('You can provide these via --adminUser and --adminPassword flags.');
+    chiliLog('');
   } else {
-    console.log(`\nAuthentication failed. Attempt ${attempt} of ${maxAttempts}.`);
-    console.log('');
+    chiliLog(`\nAuthentication failed. Attempt ${attempt} of ${maxAttempts}.`);
+    chiliLog('');
   }
 
   const askFn: (prompt: string) => Promise<string> = _askFn ?? ask_fallback;
@@ -66,13 +67,13 @@ export async function adminCredentials_prompt(
 
   const username: string = await askFn('Username: ');
   if (!username) {
-    console.log('Username cannot be empty.');
+    chiliLog('Username cannot be empty.');
     return null;
   }
 
   const password: string = await askHiddenFn('Password: ');
   if (!password) {
-    console.log('Password cannot be empty.');
+    chiliLog('Password cannot be empty.');
     return null;
   }
 
@@ -105,9 +106,9 @@ function askHidden_fallback(prompt: string): Promise<string> {
       output: muted,
       terminal: true,
     });
-    process.stdout.write(prompt);
+    chiliWrite(prompt);
     rl.question('', (answer: string) => {
-      process.stdout.write('\n');
+      chiliWrite('\n');
       rl.close();
       resolve(answer.trim());
     });

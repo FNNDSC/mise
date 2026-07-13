@@ -14,6 +14,8 @@ import {
   ResourcesByFields,
   BrowserType,
 } from "@fnndsc/cumin";
+import { table_render } from "../screen/screen.js";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 interface FSCLIoptions {
   page?: string;
@@ -35,7 +37,7 @@ async function inodeResources_list(
 ): Promise<void> {
   const chrisInode: ChRISinode | null = await ChRISinode_create(path);
   if (!chrisInode) {
-    console.error(`Could not find path '${path}' in the CUBE filesystem.`);
+    chiliErrLog(`Could not find path '${path}' in the CUBE filesystem.`);
     return;
   }
   const params: ListOptions = listParams_fromOptions({
@@ -55,7 +57,7 @@ async function inodeResources_list(
   for (const browserType of browserTypes) {
     const browser = chrisInode.browser_get(browserType);
     if (!browser) {
-      console.error(
+      chiliErrLog(
         `WARNING: ${browserType} browser is not available`
       );
       continue;
@@ -63,7 +65,7 @@ async function inodeResources_list(
     try {
       const resourceGet = browser.resource_get; 
       if (!resourceGet) { 
-        console.error(`WARNING: ${browserType} resource is null`);
+        chiliErrLog(`WARNING: ${browserType} resource is null`);
         continue;
       }
 
@@ -75,13 +77,13 @@ async function inodeResources_list(
       const results: FilteredResourceData | null = resourceGet.resources_filterByFields(resourceFields);
 
       if (results) {
-        console.log(`${browserType} resources:`);
-        console.table(results.tableData, results.selectedFields);
+        chiliLog(`${browserType} resources:`);
+        chiliLog(table_render(results.tableData, results.selectedFields));
       } else {
-        console.error(`${browserType} resources: not found or could not be filtered`);
+        chiliErrLog(`${browserType} resources: not found or could not be filtered`);
       }
     } catch (error: unknown) {
-      console.error(`${browserType} resources: not found`);
+      chiliErrLog(`${browserType} resources: not found`);
     }
   }
 }
@@ -95,12 +97,12 @@ async function inodeResources_list(
  */
 function inodeFields_list(inodeType: string, dataObj: ResourcesByFields | null): boolean { 
   if (!dataObj) {
-    console.log("No " + inodeType + " at this path");
+    chiliLog("No " + inodeType + " at this path");
     return false;
   }
   if (dataObj.fields) {
-    console.log(inodeType);
-    console.table(dataObj.fields);
+    chiliLog(inodeType);
+    chiliLog(table_render(dataObj.fields as unknown as string[], ["fields"]));
     return true;
   }
   return false;
@@ -114,7 +116,7 @@ function inodeFields_list(inodeType: string, dataObj: ResourcesByFields | null):
 async function inodeResourceFields_list(path: string = ""): Promise<void> {
   const chrisFiles: ChRISinode | null = await ChRISinode_create(path);
   if (!chrisFiles) { 
-    console.error(`Could not create ChRISinode for path: ${path}`);
+    chiliErrLog(`Could not create ChRISinode for path: ${path}`);
     return;
   }
 

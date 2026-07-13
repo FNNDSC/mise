@@ -63,7 +63,7 @@ import {
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { builtin_proc } from '../builtins/proc.js';
 import { wildcards_expandAll } from '../builtins/wildcard.js';
-import { help_show, args_checkHasHelpFlag } from '../builtins/help.js';
+import { help_render, args_checkHasHelpFlag } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -504,18 +504,21 @@ export async function redirect_execute(redirectInfo: RedirectInfo): Promise<Comm
 }
 
 /**
- * Shows help for a command if `--help` or `-h` is present in args.
- * Returns Ok(true) if help was displayed, Ok(false) otherwise.
+ * Builds a help envelope for a command if `--help` or `-h` is present in its
+ * args, delivering it through the sink so the output reaches the active surface
+ * (a remote client over the daemon) rather than the daemon's own terminal.
  *
  * @param command - The command name (used to look up help text).
  * @param args - Parsed argument list.
+ * @returns The delivered help envelope, or null if no help flag was present.
  */
-function help_showMaybe(command: string, args: string[]): Result<boolean> {
-  if (args_checkHasHelpFlag(args, command)) {
-    help_show(command);
-    return Ok(true);
+function helpEnvelope_maybe(command: string, args: string[]): CommandEnvelope | null {
+  if (!args_checkHasHelpFlag(args, command)) {
+    return null;
   }
-  return Ok(false);
+  const envelope: CommandEnvelope = { status: 'ok', rendered: help_render(command) };
+  envelope_deliver(envelope);
+  return envelope;
 }
 
 /**
@@ -663,10 +666,11 @@ export async function command_executeToEnvelope(
   if (tokens.length === 0) return null;
   let [command, ...args]: string[] = tokens;
 
-  // Check for --help flag before any processing
-  const helpResult: Result<boolean> = help_showMaybe(command, args);
-  if (helpResult.ok && helpResult.value) {
-    return { status: 'ok', rendered: '' };
+  // Check for --help flag before any processing. The help text travels in the
+  // envelope and through the sink, so it reaches the surface that asked for it.
+  const helpEnvelope: CommandEnvelope | null = helpEnvelope_maybe(command, args);
+  if (helpEnvelope) {
+    return helpEnvelope;
   }
 
   // Expand wildcards for commands that support it

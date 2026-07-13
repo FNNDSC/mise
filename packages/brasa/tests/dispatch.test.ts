@@ -71,14 +71,14 @@ jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_ex
 jest.unstable_mockModule('../src/builtins/proc.js', () => ({ builtin_proc: jest.fn() }));
 jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expandAll: jest.fn(async (a: string[]) => Ok(a)) }));
 
-const mockHelpShow = jest.fn();
+const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
-jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_show: mockHelpShow, args_checkHasHelpFlag: mockHasHelpFlag }));
+jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_render: mockHelpRender, args_checkHasHelpFlag: mockHasHelpFlag }));
 
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
 
-const { command_dispatch, command_dispatchEnvelope, envRefs_expand } = await import('../src/core/dispatch.js');
+const { command_dispatch, command_dispatchEnvelope, command_executeToEnvelope, envRefs_expand } = await import('../src/core/dispatch.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -185,6 +185,21 @@ describe('command_dispatch', () => {
     expect(mockChiliRun).not.toHaveBeenCalled();
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('command not found');
+  });
+
+  it('carries --help output in an envelope through the sink, not the console', async () => {
+    // A --help flag must route the help text through the envelope/sink so it
+    // reaches the surface (a remote client), never printing to a daemon's
+    // terminal via console.log.
+    mockHasHelpFlag.mockReturnValueOnce(true);
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const envelope = await command_executeToEnvelope('feeds --help', 0, false);
+    expect(mockHelpRender).toHaveBeenCalledWith('feeds');
+    expect(envelope?.status).toBe('ok');
+    expect(envelope?.rendered).toContain('HELP:feeds');
+    // Delivered through the sink (default StdoutSink -> process.stdout).
+    expect(writeSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('HELP:feeds');
+    writeSpy.mockRestore();
   });
 
   it('yields a placeholder envelope for a direct-run handler', async () => {

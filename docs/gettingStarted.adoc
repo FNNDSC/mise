@@ -1,0 +1,267 @@
+= Getting started with mise
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+This guide walks through installing and running **chell**, the shell surface of
+mise, three ways: a standalone release binary, an npm install, or a build from
+source. It then covers connecting to a ChRIS CUBE, and the two ways chell runs
+the engine — *local* (the engine in-process) and *daemon* (the engine hosted
+over a WebSocket for one or more attached surfaces), including how the daemon
+authenticates to CUBE. For what mise is and why it is shaped this way, see
+link:../README.md[the README] and link:history.adoc[history.adoc].
+
+TIP: The thing you install and run is **chell** — the shell. mise is the framework
+underneath it (see link:intent-kernel.adoc[intent-kernel.adoc]); this guide is
+about driving it from a terminal.
+
+== Install
+
+Pick one of three. If you just want to try it, the release binary needs nothing
+else installed.
+
+=== Release binary (no Node.js required)
+
+Each release publishes a single self-contained executable per platform, plus a
+`SHA256SUMS` file. Download one, make it executable, run it:
+
+[source,bash]
+----
+# linux-x64 shown; also: linux-arm64, macos-x64, macos-arm64
+curl -L https://github.com/FNNDSC/mise/releases/latest/download/chell-linux-x64 -o chell
+chmod +x chell
+./chell
+----
+
+Verify the download against the published checksums (optional but recommended):
+
+[source,bash]
+----
+curl -LO https://github.com/FNNDSC/mise/releases/latest/download/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+----
+
+=== From npm
+
+If you already have Node.js (≥ 20.12; 22.x recommended):
+
+[source,bash]
+----
+npm install -g @fnndsc/chell
+chell
+----
+
+This installs the `chell` binary. The daemon binary, `calypso`, ships in a
+separate package if you want to run the daemon standalone (see
+<<daemon-mode>>): `npm install -g @fnndsc/calypso`.
+
+=== From source (the `make` kitchen)
+
+The repository is an npm-workspaces monorepo built in dependency order. The dev
+workflow is a cooking metaphor; the one command that does everything is
+`make taco`:
+
+[source,bash]
+----
+git clone https://github.com/FNNDSC/mise
+cd mise
+make taco            # scrub -> prep -> cook -> taste -> serve (the full course)
+----
+
+`make taco` cleans, installs, builds every package in order
+(`cumin -> salsa -> chili -> brasa -> calypso -> chell`), runs the test suite,
+and links `chell` globally so you can run it from anywhere. The individual steps:
+
+[cols="1,3,3",options="header"]
+|===
+|`make` |does |under the hood
+
+|`shop`   |freshen the pantry                       |`git pull`
+|`prep`   |install deps (links all workspaces)      |`npm install`
+|`cook`   |build all, in dependency order           |`npm run build`
+|`taste`  |run the full test suite                  |`npm test`
+|`serve`  |link `chell` globally                    |`npm link`
+|`scrub`  |clean the kitchen                        |remove `dist/` + `node_modules`
+|`run`    |build + launch the shell                 |`node packages/chell/dist/index.js`
+|`daemon` |build + run the CALYPSO daemon           |`node packages/calypso/dist/calypso.js`
+|`remote` |build + attach to a running daemon       |`node packages/chell/dist/index.js --remote`
+|===
+
+Standard aliases work too: `make install` / `build` / `test` / `clean` / `link`.
+
+**The dev loop.** One `make prep` links every workspace to the others, so editing
+a layer and rebuilding just that layer is enough — the layers above pick it up
+through the workspace symlink, no republish:
+
+[source,bash]
+----
+npm run build -w @fnndsc/cumin   # rebuild just cumin
+make run                         # chell sees the change immediately
+----
+
+NOTE: Use https://github.com/nvm-sh/nvm[nvm] and Node 22.x to avoid needing `sudo`
+for the global link in `make serve`.
+
+== Connecting to a CUBE
+
+chell talks to a ChRIS backend ("CUBE") identified by its API URL, which ends in
+`/api/v1/`. The public instance is `https://cube.chrisproject.org/api/v1/`; a
+local development CUBE is typically `http://localhost:8000/api/v1/`.
+
+=== The preferred form: `chell <user>@<url>`
+
+Pass the target as a positional `user@url`. chell splits on `@`, prompts for the
+password, connects, and drops you into the interactive shell:
+
+[source,bash]
+----
+chell chris@https://cube.chrisproject.org/api/v1/
+----
+
+[IMPORTANT]
+====
+Include the URL scheme. If you omit `http://` / `https://`, chell prepends
+`http://`. The public cloud is HTTPS, so write the scheme:
+`chris@https://cube.chrisproject.org/api/v1/`.
+====
+
+=== Other ways to connect
+
+[cols="2,3",options="header"]
+|===
+|Form |Effect
+
+|`chell -u chris -p <pwd> <url>`
+|Username and password as flags (`--user` / `--password`).
+
+|`chell <url>`
+|URL only; chell prompts for user and password.
+
+|`chell` then `connect --user chris --password <pwd> <url>`
+|Start the shell first, connect from inside it with the `connect` builtin.
+
+|`chell`
+|With a valid *saved session* on disk, plain `chell` restores it and connects
+ automatically (see below).
+|===
+
+=== Saved sessions
+
+A successful connect writes a session (URL, user, token) to disk. On the next
+launch, `chell` with no target validates and restores it, so you do not re-enter
+credentials each time. If the token has expired you drop into disconnected mode
+with a hint to reconnect. `logout` clears the saved session. This saved session
+is also what lets the daemon authenticate headlessly — see <<daemon-mode>>.
+
+== Running modes
+
+chell runs the engine in one of two ways. Both drive the exact same brasa engine
+and the same commands; they differ only in *where* the engine lives.
+
+=== Local mode: the engine in-process
+
+This is the default. A plain `chell` creates a brasa engine **inside the same
+process** and drives it directly — no daemon, no socket. chell is, in effect, a
+program that embeds the engine as a library, with a readline REPL on top. It is
+the fastest path and pays no cost for a boundary it does not need.
+
+[source,bash]
+----
+chell chris@https://cube.chrisproject.org/api/v1/    # connect + interactive REPL, engine in-process
+chell -c "ls /bin"                                   # run one command and exit
+chell script.chell                                   # run a script file
+----
+
+NOTE: To embed the engine in *your own* program rather than run chell, import
+`@fnndsc/brasa` directly — see link:intent-kernel.adoc[intent-kernel.adoc].
+
+[[daemon-mode]]
+=== Daemon mode: the engine hosted over a socket
+
+In daemon mode the engine runs in a long-lived **CALYPSO** daemon and is served
+over a local WebSocket. Thin surfaces attach to it and drive the same session;
+the session (current directory, context, connection) outlives any single client,
+and several surfaces can share it at once. CUBE credentials live in the daemon
+and never cross the wire.
+
+==== Starting the daemon
+
+There are two ways to start it, differing only in how the daemon logs into CUBE.
+
+*With chell, logging in fresh.* `chell --daemon` boots the engine, establishes a
+CUBE session from the credentials you pass (exactly like a local connect), then
+hosts it:
+
+[source,bash]
+----
+chell --daemon chris@https://cube.chrisproject.org/api/v1/ -p <pwd>
+----
+
+*Standalone, from a saved session.* The `calypso` binary (and `make daemon`) is
+non-interactive: it creates an engine, **restores the session you already saved**
+with chell, and hosts it. If there is no saved session it starts disconnected and
+tells you to log in with chell first. So connect once, then run the daemon:
+
+[source,bash]
+----
+chell chris@https://cube.chrisproject.org/api/v1/   # connect once — saves the session
+exit
+calypso                                             # daemon restores that session, headless
+# or, from a source checkout:
+make daemon
+----
+
+Either way, the daemon writes a per-user discovery file (its URL and a fresh
+attach token, readable only by you) so a local surface can find it.
+
+==== Attaching to the daemon
+
+From another terminal, attach a chell surface as a remote client. It needs no
+local engine and no CUBE credentials — it drives the hosted session:
+
+[source,bash]
+----
+chell --remote
+# or, from a source checkout:
+make remote
+----
+
+The remote surface discovers the running daemon through that per-user file and
+presents the daemon's live session. Because credentials stay in the daemon, the
+remote surface never handles them.
+
+NOTE: The daemon is a *personal, single-session* host: one engine, one CUBE
+identity, many surfaces sharing it. It is not multi-user. See
+link:calypso.adoc[calypso.adoc] for the wire contract and design.
+
+== A first tour
+
+Once connected, drive ChRIS as a filesystem:
+
+[source,bash]
+----
+> ls                       # your files and feeds, as a directory
+> feed list                # every analysis you've run
+> ls /bin                  # every plugin, as a virtual executable
+> plugin search dircopy    # find an analysis
+> pl-dircopy /home/<you>/uploads    # run one by name
+> ls /proc/feeds           # watch running jobs, live
+----
+
+For the full command tour — running plugins and pipelines, the plugin store, PACS,
+job monitoring — see link:../packages/chell/README.md[the chell README], and
+link:../packages/salsa/README.md[the salsa README] for how the virtual filesystem
+maps API resources onto paths.
+
+== See also
+
+* link:../README.md[README] — what mise is, and why.
+* link:history.adoc[history.adoc] — the narrative history of the stack.
+* link:intent-kernel.adoc[intent-kernel.adoc] — building a client on the engine.
+* link:calypso.adoc[calypso.adoc] — the daemon and wire contract.

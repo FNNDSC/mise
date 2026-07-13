@@ -85,6 +85,11 @@ Prefer a single file with no Node.js? See **[Install](#install-end-user)** for
 standalone binaries. Pointing at your own CUBE instead of the public cloud? Use
 its `…/api/v1/` URL in `connect`.
 
+**Full guide — [docs/gettingStarted.adoc](docs/gettingStarted.adoc):** building
+from source (the `make` kitchen), every way to connect (`chell <user>@<url>` and
+friends), and running the engine locally (in-process) or as a hosted **daemon**
+(including how the daemon logs into CUBE).
+
 ---
 
 ## Why *mise*?

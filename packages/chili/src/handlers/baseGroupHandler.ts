@@ -35,11 +35,15 @@ import { chiliErrLog, chiliLog } from "../screen/output.js";
 export class BaseGroupHandler {
   assetName: string = "";
   displayOptions: TableOptions;
+  // Null while a handler is registered but its ChRIS context has not yet been
+  // resolved (lazy handlers build commands first and resolve the context only
+  // when an action runs). Command registration never reads it; actions do.
   chrisObject:
     | ChRISPluginGroup
     | ChRISFeedGroup
     | ChRISEmbeddedResourceGroup<unknown>
-    | ChRISPACSGroup;
+    | ChRISPACSGroup
+    | null;
 
   constructor(
     assetName: string,
@@ -48,12 +52,31 @@ export class BaseGroupHandler {
       | ChRISFeedGroup
       | ChRISEmbeddedResourceGroup<unknown>
       | ChRISPACSGroup
+      | null = null
   ) {
     this.assetName = assetName;
     this.chrisObject = chrisObject;
     this.displayOptions = {
       title: { title: this.assetName, justification: "center" },
     };
+  }
+
+  /**
+   * The resolved ChRIS context, for use inside actions. Throws if read before
+   * the context has been set — a lazy handler must resolve its context before
+   * an action dereferences it.
+   */
+  private get chrisObjectResolved():
+    | ChRISPluginGroup
+    | ChRISFeedGroup
+    | ChRISEmbeddedResourceGroup<unknown>
+    | ChRISPACSGroup {
+    if (!this.chrisObject) {
+      throw new Error(
+        `ChRIS context for '${this.assetName}' is not available in the current context.`
+      );
+    }
+    return this.chrisObject;
   }
 
   /**
@@ -86,7 +109,7 @@ export class BaseGroupHandler {
 
       const params: ListOptions = options_toParams(options);
       const results: FilteredResourceData | null =
-        await this.chrisObject.asset.resources_listAndFilterByOptions(params);
+        await this.chrisObjectResolved.asset.resources_listAndFilterByOptions(params);
 
       if (!results) {
         chiliErrLog(
@@ -160,7 +183,7 @@ export class BaseGroupHandler {
    */
   async resourceFields_list(): Promise<void> {
     try {
-      const results = await this.chrisObject.asset.resourceFields_get();
+      const results = await this.chrisObjectResolved.asset.resourceFields_get();
 
       if (!results) {
         chiliErrLog(
@@ -189,7 +212,7 @@ export class BaseGroupHandler {
    */
   async resourceFields_render(): Promise<CommandEnvelope> {
     try {
-      const results = await this.chrisObject.asset.resourceFields_get();
+      const results = await this.chrisObjectResolved.asset.resourceFields_get();
 
       if (!results) {
         return envelope_error('', undefined, `An error occurred while fetching resource fields for ${this.assetName}.\n`);
@@ -303,7 +326,7 @@ export class BaseGroupHandler {
     for (const id of IDs) {
       try {
         const searchResults: FilteredResourceData | null =
-          await this.chrisObject.asset.resources_listAndFilterByOptions({
+          await this.chrisObjectResolved.asset.resources_listAndFilterByOptions({
             id: id,
           });
         chiliLog(
@@ -319,7 +342,7 @@ export class BaseGroupHandler {
             continue;
           }
         }
-        delop = await this.chrisObject.asset.resourceItem_delete(id);
+        delop = await this.chrisObjectResolved.asset.resourceItem_delete(id);
         border_draw(
           `deleting ${this.assetName} id ${id} ... ${this.msg_OKorNot(true)}`
         );
@@ -340,7 +363,7 @@ export class BaseGroupHandler {
   async IDs_getFromSearch(options: CLIoptions): Promise<number[] | null> {
     const params: ListOptions = options_toParams(options);
     const searchResults: FilteredResourceData | null =
-      await this.chrisObject.asset.resources_listAndFilterByOptions(params);
+      await this.chrisObjectResolved.asset.resources_listAndFilterByOptions(params);
     if (!searchResults) {
       return null;
     }

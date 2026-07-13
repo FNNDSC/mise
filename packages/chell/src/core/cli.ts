@@ -14,7 +14,7 @@ import chalk from 'chalk';
  * Parsed chell CLI configuration.
  */
 export interface ChellCLIConfig {
-  mode: 'interactive' | 'connect' | 'help' | 'version' | 'execute' | 'script' | 'daemon' | 'remote';
+  mode: 'interactive' | 'connect' | 'help' | 'version' | 'info' | 'execute' | 'script' | 'daemon' | 'remote';
   physicalFS?: boolean;
   prefetchPlugins?: boolean;
   prefetchFeeds?: boolean;
@@ -51,6 +51,7 @@ export interface CliActionOptions {
   logo?: boolean;
   daemon?: boolean;
   remote?: boolean;
+  info?: boolean;
 }
 
 /**
@@ -216,6 +217,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
     .option('--daemon', 'Run as a CALYPSO session daemon, hosting the engine over WebSocket')
     .option('--remote', 'Attach to a running CALYPSO daemon as a remote surface')
+    .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
     .addHelpText('after', `
 ${chalk.bold.cyan('INTERACTIVE COMMANDS')}
   ${chalk.bold.green('connect')}     Connect to a ChRIS CUBE
@@ -253,10 +255,11 @@ ${chalk.bold.cyan('EXAMPLES')}
  * Parses command line arguments and extracts configuration for the Chell interactive shell.
  *
  * @param argv - The command line arguments (typically process.argv).
- * @param version - The version string of the package.
+ * @param version - The version report shown by `--version`.
+ * @param info - The detailed stack table shown by `--info`.
  * @returns A Promise resolving to a ChellCLIConfig containing the parsed parameters.
  */
-export function cli_parse(argv: string[], version: string): Promise<ChellCLIConfig> {
+export function cli_parse(argv: string[], version: string, info: string = ''): Promise<ChellCLIConfig> {
   return new Promise((resolve) => {
     const program: Command = cliProgram_build(version);
     let config: ChellCLIConfig = { mode: 'interactive' };
@@ -264,7 +267,7 @@ export function cli_parse(argv: string[], version: string): Promise<ChellCLIConf
 
     program
       .action((target: string | undefined, options: CliActionOptions) => {
-        config = cliConfig_fromArgs(target, options, existsSync);
+        config = options.info ? { mode: 'info', output: info } : cliConfig_fromArgs(target, options, existsSync);
       });
 
     // Capture help/version output instead of writing to stdout

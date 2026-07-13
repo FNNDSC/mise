@@ -21,9 +21,11 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 // The /bin listing model is type-only at runtime.
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
-// chili delegation target: chiliCommand_run captures via run_capture.
+// chili delegation target: chiliCommand_run captures via run_capture, and
+// commandNames_get backs the "is this even a chili command?" guard.
 const mockChiliRun = jest.fn(async () => ({ out: '', err: '' }));
-jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockChiliRun }));
+const mockCommandNames = jest.fn(async () => new Set<string>(['frobnicate', 'feeds']));
+jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockChiliRun, commandNames_get: mockCommandNames }));
 
 // Session — dispatch only reads the timing toggle.
 const mockTiming = jest.fn(() => false);
@@ -154,23 +156,35 @@ describe('command_dispatch', () => {
     expect(mockPipeline).toHaveBeenCalledWith(['source', 'myPipe']);
   });
 
-  it('delegates an unknown command to chili with -s', async () => {
+  it('delegates a known chili command with -s, emitting the notice before running it', async () => {
     mockDataGet.mockResolvedValue(Ok([]));
-    // The fallback delegates to chili, captures its output through chili's
-    // seam, and returns the notice plus that output in the envelope.
-    const envelope = await command_dispatchEnvelope('frobnicate', ['x']);
+    // The notice goes to the live sink *before* chili runs, so it is written to
+    // stdout rather than glued onto the returned envelope.
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await command_dispatchEnvelope('frobnicate', ['x']);
+    const written: string = writeSpy.mock.calls.map((c) => String(c[0])).join('');
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
-    expect(envelope.rendered).toContain('delegating to chili');
+    expect(written).toContain('delegating to chili');
+    writeSpy.mockRestore();
   });
 
   it('carries the captured chili output in the fallback envelope', async () => {
     mockDataGet.mockResolvedValue(Ok([]));
     mockChiliRun.mockResolvedValueOnce({ out: 'CHILI_SAYS_HI\n', err: '' });
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const envelope = await command_dispatchEnvelope('frobnicate', ['x']);
     expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toContain('delegating to chili');
     expect(envelope.rendered).toContain('CHILI_SAYS_HI');
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
+    writeSpy.mockRestore();
+  });
+
+  it('reports "command not found" for a command chili does not know, without delegating', async () => {
+    mockDataGet.mockResolvedValue(Ok([]));
+    const envelope = await command_dispatchEnvelope('definitelynotacommand', ['x']);
+    expect(mockChiliRun).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('command not found');
   });
 
   it('yields a placeholder envelope for a direct-run handler', async () => {

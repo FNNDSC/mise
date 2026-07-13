@@ -36,7 +36,7 @@ const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.
 const { builtin_debug } = await import('../src/builtins/debug.js');
 const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
 const { builtin_version } = await import('../src/builtins/sys/version.js');
-const { versions_get, versionReport_build } = await import('../src/core/version.js');
+const { versions_get, versionReport_build, infoReport_build, stackInfo_get } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -180,15 +180,15 @@ describe('builtin_pwd', () => {
 describe('builtin_version', () => {
   it('resolves a version for every stack layer', () => {
     const versions: Record<string, string> = versions_get();
-    for (const layer of ['chell', 'chili', 'salsa', 'cumin']) {
+    for (const layer of ['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']) {
       expect(typeof versions[layer]).toBe('string');
       expect(versions[layer].length).toBeGreaterThan(0);
     }
   });
 
-  it('builds a report naming chell and each sandwich layer', () => {
+  it('builds a report naming chell, the brasa engine, its layers, and calypso', () => {
     const report: string = versionReport_build();
-    for (const layer of ['chell', 'chili', 'salsa', 'cumin']) {
+    for (const layer of ['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']) {
       expect(report).toContain(layer);
     }
   });
@@ -199,5 +199,29 @@ describe('builtin_version', () => {
     expect(envelope.rendered).toContain('chell');
     expect(envelope.model?.kind).toBe('sys.version');
     expect((envelope.model?.data as { cumin: string }).cumin).toBe(versions_get().cumin);
+  });
+});
+
+describe('stackInfo_get / infoReport_build', () => {
+  it('describes every package with a role and resolved version', () => {
+    const info = stackInfo_get();
+    const packages: string[] = info.map((i: { pkg: string }) => i.pkg);
+    expect(packages).toEqual(['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']);
+    for (const item of info) {
+      expect(['surface', 'engine', 'layer']).toContain(item.role);
+      expect(item.name.length).toBeGreaterThan(0);
+      expect(item.version.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('groups the info report by role, naming each package and version', () => {
+    const report: string = infoReport_build();
+    for (const heading of ['SURFACES', 'ENGINE', 'LAYERS']) {
+      expect(report).toContain(heading);
+    }
+    for (const item of stackInfo_get()) {
+      expect(report).toContain(item.name);
+      expect(report).toContain(item.version);
+    }
   });
 });

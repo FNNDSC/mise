@@ -12,52 +12,56 @@ import { pluginParameters_renderMan, pluginParameters_manRender } from "../views
 import { FilteredResourceData, ChRISEmbeddedResourceGroup, type CommandEnvelope, envelope_ok, envelope_error } from "@fnndsc/cumin";
 import { chiliErrLog, chiliLog } from "../screen/output.js";
 
-class InitializationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InitializationError";
-  }
-}
-
 /**
  * Handles commands related to groups of plugin contexts (computes, instances, parameters).
  */
 export class PluginContextGroupHandler {
-  private baseGroupHandler: BaseGroupHandler | null = null;
-  private controller: PluginContextController;
+  // Registration-only: built with no ChRIS context; its context is filled in by
+  // controller_ensure() before any action reads it.
+  private baseGroupHandler: BaseGroupHandler;
+  // Resolved lazily on first action.
+  private controller: PluginContextController | null = null;
   readonly assetName: string;
+  private readonly id?: number | null;
 
-  private constructor(
-    controller: PluginContextController,
-    assetName: string
-  ) {
-    this.controller = controller;
+  private constructor(assetName: string, id?: number | null) {
     this.assetName = assetName;
-    // Cast ChRISEmbeddedResourceGroup to ChRISEmbeddedResourceGroup<unknown> safely.
-    this.baseGroupHandler = new BaseGroupHandler(
-      this.assetName,
-      this.controller.chrisObject as unknown as ChRISEmbeddedResourceGroup<unknown>
-    );
+    this.id = id;
+    this.baseGroupHandler = new BaseGroupHandler(this.assetName);
   }
 
   /**
-   * Factory method to create a new PluginContextGroupHandler instance.
+   * Creates a PluginContextGroupHandler for an asset type. This performs no
+   * network work and resolves no plugin context — command registration needs
+   * only the asset name; the controller is resolved lazily on first action (see
+   * {@link controller_ensure}).
    *
-   * @param assetName - The type of plugin context to handle ('computesofplugin', 'instancesofplugin', 'parametersofplugin').
-   * @param id - Optional plugin ID. Defaults to current ChRIS plugin context.
-   * @returns A Promise resolving to a new PluginContextGroupHandler instance.
-   * @throws InitializationError if an unsupported asset type is provided.
+   * @param assetName - The type of plugin context ('computesofplugin', 'instancesofplugin', 'parametersofplugin').
+   * @param id - Optional plugin ID the context binds to; defaults to the current plugin context.
+   * @returns A new PluginContextGroupHandler instance.
    */
-  static async handler_create(
-    assetName: string,
-    id?: number | null
-  ): Promise<PluginContextGroupHandler> {
-    try {
-        const controller: PluginContextController = await PluginContextController.controller_create(assetName, id);
-        return new PluginContextGroupHandler(controller, assetName);
-    } catch (error: unknown) {
-        throw new InitializationError(`Failed to initialize PluginContextGroupHandler: ${error}`);
+  static handler_create(assetName: string, id?: number | null): PluginContextGroupHandler {
+    return new PluginContextGroupHandler(assetName, id);
+  }
+
+  /**
+   * Lazily resolves and memoizes the plugin-context controller against the bound
+   * plugin id (or the current ChRIS context), wiring it into the
+   * registration-only base handler so its actions can read the context.
+   *
+   * @returns The controller, or null if the context cannot be resolved here.
+   */
+  private async controller_ensure(): Promise<PluginContextController | null> {
+    if (!this.controller) {
+      try {
+        this.controller = await PluginContextController.controller_create(this.assetName, this.id);
+        this.baseGroupHandler.chrisObject =
+          this.controller.chrisObject as unknown as ChRISEmbeddedResourceGroup<unknown>;
+      } catch {
+        this.controller = null;
+      }
     }
+    return this.controller;
   }
 
   /**
@@ -68,9 +72,14 @@ export class PluginContextGroupHandler {
    */
   async parameters_listMan(options: CLIoptions): Promise<void> {
     try {
+      const controller: PluginContextController | null = await this.controller_ensure();
+      if (!controller) {
+        chiliErrLog(`No plugin context is available for ${this.assetName} in the current context.`);
+        return;
+      }
       // We access the asset directly from the controller
-      const asset = this.controller.chrisObject.asset;
-      
+      const asset = controller.chrisObject.asset;
+
       if (!asset || typeof asset.resources_listAndFilterByOptions !== 'function') {
          chiliErrLog("Underlying resource does not support listing.");
          return;
@@ -93,9 +102,12 @@ export class PluginContextGroupHandler {
    * Lists available fields for the current plugin context resource.
    */
   async parameters_fieldsList(): Promise<void> {
-      if (this.baseGroupHandler) {
-          await this.baseGroupHandler.resourceFields_list();
-      }
+    const controller: PluginContextController | null = await this.controller_ensure();
+    if (!controller) {
+      chiliErrLog(`No plugin context is available for ${this.assetName} in the current context.`);
+      return;
+    }
+    await this.baseGroupHandler.resourceFields_list();
   }
 
   /**
@@ -108,7 +120,11 @@ export class PluginContextGroupHandler {
    */
   async parameters_listManRender(options: CLIoptions): Promise<CommandEnvelope> {
     try {
-      const asset = this.controller.chrisObject.asset;
+      const controller: PluginContextController | null = await this.controller_ensure();
+      if (!controller) {
+        return envelope_error('', undefined, `No plugin context is available for ${this.assetName} in the current context.\n`);
+      }
+      const asset = controller.chrisObject.asset;
 
       if (!asset || typeof asset.resources_listAndFilterByOptions !== 'function') {
         return envelope_error('', undefined, "Underlying resource does not support listing.\n");
@@ -134,10 +150,11 @@ export class PluginContextGroupHandler {
    * @returns An envelope carrying the field listing.
    */
   async parameters_fieldsRender(): Promise<CommandEnvelope> {
-    if (this.baseGroupHandler) {
-      return this.baseGroupHandler.resourceFields_render();
+    const controller: PluginContextController | null = await this.controller_ensure();
+    if (!controller) {
+      return envelope_ok('');
     }
-    return envelope_ok('');
+    return this.baseGroupHandler.resourceFields_render();
   }
 
   /**
@@ -146,12 +163,6 @@ export class PluginContextGroupHandler {
    * @param program - The Commander.js program instance.
    */
   pluginContextGroupCommand_setup(program: Command): void {
-    if (this.baseGroupHandler) {
-      this.baseGroupHandler.command_setup(program);
-    }
-
-    const fileGroupCommand: Command | undefined = program.commands.find(
-      (cmd) => cmd.name() === this.assetName
-    );
+    this.baseGroupHandler.command_setup(program);
   }
 }

@@ -25,6 +25,13 @@ describe('CLI Parser', () => {
     expect(config.output).toBe(VERSION);
   });
 
+  it('should handle --info', async () => {
+    const INFO = 'SURFACES\n  chell  ...  5.0.2';
+    const config = await cli_parse(['node', 'chell', '--info'], VERSION, INFO);
+    expect(config.mode).toBe('info');
+    expect(config.output).toBe(INFO);
+  });
+
   it('should parse connection args', async () => {
     const args = ['node', 'chell', 'http://cube.example.org', '-u', 'testuser', '-p', 'testpass'];
     const config = await cli_parse(args, VERSION);

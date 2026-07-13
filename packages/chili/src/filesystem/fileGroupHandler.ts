@@ -28,44 +28,49 @@ import { chiliErrLog, chiliLog } from "../screen/output.js";
  * Handles commands related to groups of ChRIS files, links, or directories.
  */
 export class FileGroupHandler {
-  private baseGroupHandler: BaseGroupHandler; // Needs to be non-null for other commands
-  private controller: FileController;
+  // Resolved lazily: only `share` needs a controller; list/fields/delete
+  // re-resolve their context through standalone salsa helpers.
+  private controller: FileController | null = null;
   readonly assetName: string;
+  private readonly path?: string;
 
-  private constructor(
-    controller: FileController,
-    assetName: string
-  ) {
-    this.controller = controller;
+  private constructor(assetName: string, path?: string) {
     this.assetName = assetName;
-    // baseGroupHandler will be used for fieldslist, delete, share until those are refactored
-    this.baseGroupHandler = new BaseGroupHandler(
-      this.assetName,
-      this.controller.chrisObject
-    );
+    this.path = path;
   }
 
   /**
-   * Factory method to create a new FileGroupHandler instance.
+   * Creates a FileGroupHandler for an asset type. This performs no network work
+   * and resolves no ChRIS context — command registration needs only the asset
+   * name, and the controller is resolved lazily on first use (see
+   * {@link controller_ensure}). Keeping setup cheap means an unrelated command
+   * (or a directory that is not a ChRIS folder) pays no file-context cost.
    *
    * @param assetName - The type of asset to handle ('files', 'links', 'dirs').
-   * @param path - Optional path within ChRIS FS. Defaults to current ChRIS folder context.
-   * @returns A Promise resolving to a new FileGroupHandler instance.
+   * @param path - Optional path within ChRIS FS the controller binds to;
+   *   defaults to the current ChRIS folder context.
+   * @returns A new FileGroupHandler instance.
    */
-  static async handler_create(
-    assetName: string,
-    path?: string
-  ): Promise<FileGroupHandler> {
-    try {
-      const controller: FileController | null = await FileController.handler_create(assetName, path);
-      if (controller === null) {
-        throw new Error(`Failed to create FileController for asset type: ${assetName}`);
+  static handler_create(assetName: string, path?: string): FileGroupHandler {
+    return new FileGroupHandler(assetName, path);
+  }
+
+  /**
+   * Lazily resolves and memoizes the FileController for this asset against the
+   * bound path (or the current ChRIS context).
+   *
+   * @returns The controller, or null if the context cannot be resolved here
+   *   (e.g. the current directory is not a ChRIS folder).
+   */
+  private async controller_ensure(): Promise<FileController | null> {
+    if (!this.controller) {
+      try {
+        this.controller = await FileController.handler_create(this.assetName, this.path);
+      } catch {
+        this.controller = null;
       }
-      return new FileGroupHandler(controller, assetName);
-    } catch (error: unknown) {
-      const errorMessage: string = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to initialize FileGroupHandler for ${assetName}: ${errorMessage}`);
     }
+    return this.controller;
   }
 
   /**
@@ -176,12 +181,19 @@ export class FileGroupHandler {
    * @param options - CLI options for sharing files.
    */
   async files_share(options: CLIoptions): Promise<void> {
+    const controller: FileController | null = await this.controller_ensure();
+    if (!controller) {
+      chiliErrLog(
+        `Cannot share ${this.assetName}: no ChRIS context is available in the current directory.`
+      );
+      return;
+    }
     try {
-      chiliLog(`Sharing ${this.assetName} from ${this.controller.path_get}...`);
+      chiliLog(`Sharing ${this.assetName} from ${controller.path_get}...`);
       if (options.force) {
         chiliLog("Force sharing enabled");
       }
-      await this.controller.files_share(options);
+      await controller.files_share(options);
     } catch (error: unknown) {
       if (error instanceof Error) {
         chiliErrLog(`Error sharing ${this.assetName}: ${error.message}`);
@@ -203,7 +215,9 @@ export class FileGroupHandler {
       .command(this.assetName)
       .description(`Interact with a group of ChRIS ${this.assetName}`);
 
-    const listCommand: Command = this.baseGroupHandler.baseListCommand_create(
+    // The list command only needs the asset name to register; a context-less
+    // BaseGroupHandler is enough to build it (its actions re-resolve context).
+    const listCommand: Command = new BaseGroupHandler(this.assetName).baseListCommand_create(
       async (options: CLIoptions) => {
         await this.files_list(options);
       }

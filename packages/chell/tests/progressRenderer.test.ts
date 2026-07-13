@@ -110,8 +110,24 @@ describe('TerminalProgressRenderer', () => {
     expect(FakeMultiBar.instances[0].bars).toHaveLength(2);
     expect(FakeMultiBar.instances[0].bars[0].updates.at(-1)).toEqual({
       value: 3,
-      payload: { label: 'T1 [UNCONFIRMED]', unit: 'files' },
+      payload: { label: `T1 ${'[UNCONFIRMED]'.padEnd(13)}`, unit: 'files' },
     });
+  });
+
+  it('pads pull labels into fixed columns so the bars align, realigning on a longer name', () => {
+    const renderer = new TerminalProgressRenderer({ stream: stream_create(true), isTTY: true, factory: fakeFactory_create() });
+
+    renderer.write({ operation: 'pull', phase: 'watching', itemId: 'a', label: 'short', current: 0, total: 2, unit: 'files', status: 'running' });
+    renderer.write({ operation: 'pull', phase: 'watching', itemId: 'b', label: 'a-much-longer-series-name', current: 2, total: 2, unit: 'files', status: 'done' });
+
+    const bars = FakeMultiBar.instances[0].bars;
+    const labelA: string = bars[0].updates.at(-1)!.payload!.label;
+    const labelB: string = bars[1].updates.at(-1)!.payload!.label;
+    // The shorter name's bar was re-padded when the longer one arrived: equal
+    // label widths mean the [bar] token starts at the same column on both rows.
+    expect(labelA.length).toBe(labelB.length);
+    expect(labelA.startsWith('short ')).toBe(true);
+    expect(labelB.startsWith('a-much-longer-series-name ')).toBe(true);
   });
 
   it('stops the pull multibar on aggregate completion', () => {
@@ -132,7 +148,7 @@ describe('TerminalProgressRenderer', () => {
     expect(FakeMultiBar.instances[0].stopped).toBe(false);
     expect(FakeMultiBar.instances[0].bars[0].updates.at(-1)).toEqual({
       value: 1,
-      payload: { label: 'T1 [ERROR]', unit: 'files' },
+      payload: { label: `T1 ${'[ERROR]'.padEnd(13)}`, unit: 'files' },
     });
   });
 

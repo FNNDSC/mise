@@ -36,6 +36,8 @@ const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.
 const { builtin_debug } = await import('../src/builtins/debug.js');
 const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
 const { builtin_version } = await import('../src/builtins/sys/version.js');
+const { builtin_fortune } = await import('../src/builtins/sys/fortune.js');
+const { FORTUNES } = await import('../src/builtins/sys/fortunes.data.js');
 const { versions_get, versionReport_build, infoReport_build, stackInfo_get } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
@@ -199,6 +201,23 @@ describe('builtin_version', () => {
     expect(envelope.rendered).toContain('chell');
     expect(envelope.model?.kind).toBe('sys.version');
     expect((envelope.model?.data as { cumin: string }).cumin).toBe(versions_get().cumin);
+  });
+});
+
+describe('builtin_fortune', () => {
+  it('bundles a non-empty set of fortunes', () => {
+    expect(FORTUNES.length).toBeGreaterThan(0);
+    expect(FORTUNES.every((f: string) => f.length > 0)).toBe(true);
+  });
+
+  it('returns an ok envelope carrying a bundled fortune and typed model', async () => {
+    const envelope: CommandEnvelope = await builtin_fortune([]);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered.length).toBeGreaterThan(0);
+    expect(envelope.model?.kind).toBe('sys.fortune');
+    const chosen = (envelope.model?.data as { fortune: string }).fortune;
+    expect(FORTUNES).toContain(chosen);
+    expect(envelope.rendered).toBe(`${chosen}\n`);
   });
 });
 

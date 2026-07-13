@@ -1,92 +1,114 @@
 # Active project handoff
 
-- Last updated: 2026-07-10
-- Last verified against `main`: `fc9093a`
-- Working branch: `agent/classify-remote-output`
-- Current milestone: Stage 2 operational closure
-- Current issue: [#92](https://github.com/FNNDSC/mise/issues/92)
-- Next action: merge #92, then verify and merge the changesets release PR #45
+- Last updated: 2026-07-13
+- Last verified against `main`: `96bb6d3`
+- Working branch: none — `main` is clean, **0 open PRs**
+- Current milestone: engine fully sans-I/O + published; docs reframed around the intent kernel
+- Next action: **envelope Phase 2** — give every command a typed `model` (see `envelope-model.adoc`)
+
+## Orientation (read this first if you are new)
+
+**mise is the framework whose core is an _intent kernel_ for ChRIS.** ChRIS is a
+cloud platform for scientific/medical-image analysis behind a Collection+JSON
+REST API; mise turns that API into a driveable system. **Do not call mise "a
+CLI"** — that conflates the framework with one surface. Taxonomy:
+
+- `cumin` — the only layer that touches `@fnndsc/chrisapi` (the CJ adapter).
+- `salsa` — intent assembly over cumin (the VFS + high-level operations).
+- `chili` — typed commands + view renderers, and a scriptable CLI.
+- **`brasa`** — the **intent kernel** (engine): parse → dispatch → execute → `CommandEnvelope`. No terminal of its own.
+- **`chell`** — the **shell surface** you run (REPL, rendering, `--remote` client).
+- **`calypso`** — the **daemon** that hosts a brasa engine over WebSocket for attached surfaces.
+
+A web console and an LLM agent are designed peer surfaces on the same kernel.
+Scale: ~42k lines TS / 289 files / 6 packages / ~2k tests. Not small.
+
+Deeper: `docs/history.adoc` (the story), `docs/intent-kernel.adoc` (client
+reference), `docs/envelope-model.adoc` (the Phase-2 contract),
+`docs/gettingStarted.adoc` (install/connect/run), `docs/calypso.adoc` (daemon +
+wire + forward doctrine). Persistent context: the memory index at
+`~/.claude/projects/-home-rudolph-src-mise/memory/MEMORY.md` (start with
+`mise-intent-kernel-docs.md` and `brasa-engine-split-decision.md`).
 
 ## Current truth
 
-- Stage 1, the hostable chell engine and structured command envelope, is
-  complete. Epic [#55](https://github.com/FNNDSC/mise/issues/55) is closed.
-- Stage 2, the single-operator CALYPSO daemon and sibling-surface topology, is
-  complete. Epic [#64](https://github.com/FNNDSC/mise/issues/64) is closed.
-- The Stage 2 exit gate passed locally against the configured live CUBE:
-  daemon execution, safe filesystem materialization, `/proc` inspection,
-  restart/context rehydration, and an actual-browser attach smoke.
-- Stage 3, natural-language intent resolution, has not started. It has no epic,
-  provider selection, adapter, compiler, or guard implementation. Run a
-  separate design grill before creating that work.
-- CUBE is durable truth. Daemon scrollback, progress, and conversational state
-  are presentation or ephemeral context, never workflow authority.
+- **The engine is fully sans-I/O.** Both console monkeypatches are gone:
+  `printingHandler_wrap` (per-command, removed with #104) and the pipe-path
+  `output_capture` (removed with #110). Every command returns a `CommandEnvelope`;
+  no layer below a surface prints. chili has its own output seam
+  (`screen/output.ts`) with a default that delegates to the console, so its
+  standalone CLI is unchanged.
+- **Published (2026-07-13), verified live on npm:** `brasa` 0.3.0 · `chili` 3.5.0
+  · `calypso` 0.3.2 · `chell` 5.0.2 · `cumin` 3.5.0.
+- **Invariant verified true:** `cumin` is the sole importer of `@fnndsc/chrisapi`
+  (one file: `cumin/src/chrisapi/adapter.ts`; a dependency of cumin alone). The
+  boundary check must grep imports (`from '@fnndsc/chrisapi'`), not string
+  mentions — a comment once caused a false "leak."
+- **calypso is single-tenant / personal:** one engine, one CUBE identity, many
+  surfaces sharing one session; same-user discovery + one attach token. It is
+  **not multi-user**. CUBE credentials live in the daemon, never on the wire.
+- **CUBE is durable truth.** Daemon scrollback, progress, and conversational
+  state are presentation or ephemeral context, never workflow authority.
 
-## Active work
+## Next action — envelope Phase 2 (typed models)
 
-Issue #90 separated two independent proofs and merged in PR #93:
+Phase 1 (envelope-of-text) is done: every command returns an envelope. Phase 2:
+every command also carries a typed `model` (`{ kind, data }`), with `rendered`
+demoted to one view derived from it. Today only ~6/43 builtins set `.model` (the
+`fs` mutations + `cat`); the rest are text-only.
 
-- An actual headless browser attaches to a local `CalypsoDaemon` backed by a
-  stub `HostedEngine`. This belongs in ordinary required CI and needs no CUBE
-  credentials.
-- `05_calypsoDaemon` exercises a real daemon and restart against live CUBE. It
-  belongs in the scheduled/manual, non-release-blocking E2E workflow and no
-  longer launches Chromium.
+- Contract, kind namespace, and the "rendered = view(model)" rule:
+  `docs/envelope-model.adoc`.
+- Worked examples to copy: `ls → fs.listing`, `feed list → feed.listing`.
+- Recipe: name the model type in chili (add its arm to the `kind → type` union);
+  build the typed object first; render from it; return `envelope_ok(rendered,
+  model)`; keep observable text byte-identical.
 
-Issue #91 made scheduled PACS validation non-destructive and merged in PR #95. Exemplar 04 now
-verifies pre-existing CUBE materialization without retrieving, deleting, or
-restoring it. It retrieves only a series proven absent at the start of the run,
-and registers cleanup for that test-created folder before retrieval begins.
-The live preserve path passed 4/4 against the configured CUBE: the existing
-one-file series remained untouched and only the run's PACSQuery was deleted.
+Why it matters: a typed `model` over the wire is what lets a web console or an
+agent consume mise **without ever touching Collection+JSON** — the same unlock
+serves the forward agentic (HARBOR) layer, where `model` + `status` + `trace`
+are the "truth outside the model" receipt.
 
-The recursive expansion **CALYPSO Accepts Language, Yielding Permitted Shell
-Operations** is now canonical.
+## Conventions and hard rules
 
-## Release state
-
-Changesets release PR [#45](https://github.com/FNNDSC/mise/pull/45) is open and
-intends to publish:
-
-- `@fnndsc/calypso` 0.2.0
-- `@fnndsc/chell` 4.4.0
-- `@fnndsc/cumin` 3.5.0
-
-GitHub currently marks that PR blocked and it has not run the normal Node 22/24
-CI checks. The CI workflow gains a manual trigger in #90 so the release branch
-can be verified explicitly after this PR merges. Live CUBE remains informative,
-not a package-release gate.
+- `main` is protected: PR + strict CI (`check (22)`/`check (24)`) + enforce_admins.
+  Branch for every change.
+- **No Co-Authored-By / AI attribution** on commits or PRs.
+- **MANDATORY** before writing source: the per-package `TYPESCRIPT-STYLE-GUIDE.md`
+  (RPN `<object>_<method>` naming, explicit types, pervasive JSDoc). No process
+  jargon (Phase/Wave/REMEDIATION) in source or config comments.
+- Coverage provider is istanbul; there are per-file floors — new modules need
+  their own tests (a new seam that drops a file below 60% will fail CI).
+- Release: changesets. A merged PR → bot "Version Packages" PR; that bot PR does
+  **not** get the required CI checks until nudged with an empty commit on its
+  branch, then merging it publishes to npm in dependency order. Merging the
+  Version Packages PR is the irreversible publish.
 
 ## Follow-ups and risks
 
-- [#91](https://github.com/FNNDSC/mise/issues/91): closed by PR #95. Scheduled
-  PACS coverage cleans up only materialization created by the current run.
-- [#92](https://github.com/FNNDSC/mise/issues/92): one manual remote PTY run
-  appeared to display an `ls` listing twice. The observation remains
-  unconfirmed: the interactive reproduction was obscured by terminal-image
-  redraw traffic. The transport has suppressed repeated final-envelope text
-  since PR #85. Focused client coverage proves a streamed channel is delivered
-  once, while daemon coverage independently proves live output goes only to the
-  origin surface and sibling surfaces receive the session envelope.
-- [#94](https://github.com/FNNDSC/mise/issues/94): materialize the missing live
-  proof for structured `pull` progress and LONK/CUBE truth. Exemplar 04 has
-  always used lower-level PACS helpers, so it does not currently observe chell
-  progress events. The proof requires a disposable, test-owned PACS fixture and
-  is blocked by #91's ownership policy.
-- The repository's live E2E job skips when `CUBE_*` secrets are absent. A green
-  skipped job is not evidence that live exemplars ran; inspect step outcomes.
-- Remote interrupt/cancellation semantics remain undesigned and are not part of
-  the completed Stage 2 exit criteria.
-
-The detailed Stage 1/2 campaign record, including historical implementation
-notes and live-test observations, is preserved in
-[history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md).
+- [#107](https://github.com/FNNDSC/mise/issues/107): the CALYPSO real-browser
+  smoke skips in CI (env-flaky headless Chrome). Harden it so it can gate CI
+  again; runs locally / nightly, or with `CALYPSO_BROWSER_REQUIRED=1`.
+- [#94](https://github.com/FNNDSC/mise/issues/94): materialize live proof for
+  structured `pull` progress and LONK/CUBE truth in E2E; needs a disposable,
+  test-owned PACS fixture.
+- [#104](https://github.com/FNNDSC/mise/issues/104) (console monkeypatch) and
+  [#105](https://github.com/FNNDSC/mise/issues/105) (brasa extraction epic) are
+  **complete and shipped but still open** — candidates to close.
+- The live E2E job skips when `CUBE_*` secrets are absent; a green *skipped* job
+  is not evidence exemplars ran — inspect step outcomes.
+- Forward, not started: the language-assist layer in calypso (NL → validated
+  intent; determinism boundary at the surface/engine seam) and multi-user
+  calypso (needs per-user auth, N sessions/engines, removal of cumin process
+  globals, wiring the dormant ALS `sinkScope` per `line_execute`, and credential
+  brokering). Theory backbone: `~/Projects/intent-server` (the IAS and
+  "agents will always lie" papers).
 
 ## Freshness contract
 
-Every architectural, release, or project-state PR must update this file. Update
-the verified main commit, date, current milestone, release state, and next
-action. Routine dependency and typo-only PRs need not touch it. When an epic
-closes, archive its detailed campaign record under `docs/history/` and reset
-this file to the new current state. The PR author is responsible for semantic
-freshness; CI cannot determine whether a handoff is truthful.
+Every architectural, release, or project-state PR must update this file: the
+verified `main` commit, date, current milestone, release state, and next action.
+Routine dependency and typo-only PRs need not touch it. When an epic closes,
+archive its detailed campaign record under `docs/history/` and reset this file
+to the new current state. The PR author is responsible for semantic freshness;
+CI cannot determine whether a handoff is truthful.

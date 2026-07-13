@@ -1,0 +1,189 @@
+= The intent kernel: a reference for client authors
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+This is an orientation for anyone building a client on mise — a web console, an
+agent, a script, or a service — rather than using the shell. It describes what
+mise offers a client: a single contract in which you express *intent* and receive
+a structured *receipt*, so that no client ever has to speak ChRIS's raw
+Collection+JSON. It states what exists today and what is still forward work, and
+marks the two plainly, so a client author knows what to build against now and
+what to design toward.
+
+NOTE: Parts of this document describe a direction of travel, not a shipped API.
+Sections and paragraphs that describe forward work are marked *(forward)*.
+Everything else describes the engine as it stands.
+
+== What mise offers a client
+
+ChRIS exposes its platform (CUBE) as a Collection+JSON hypermedia API: it models
+resources and their relationships, not operations. That is resilient and
+self-describing, but it means every client must re-derive intent from many
+low-level calls. mise pays that cost once, in one layer (cumin), and offers
+clients an *intent kernel* instead: you say *what you want* as a command, and the
+kernel compiles it into validated, deterministic action over ChRIS and returns a
+receipt of what actually happened. The kernel executes only a bounded vocabulary
+of validated intents — never arbitrary API sequences — and its result is produced
+by the engine, not asserted by the caller.
+
+For the story of how this came to be, see link:history.adoc[history.adoc]; for the
+formal argument that a platform like ChRIS *needs* such a layer, see the companion
+paper _Completing the ChRIS Architecture: An Intent-Action Service_.
+
+== The contract
+
+A client submits a command line and receives one `CommandEnvelope` per command in
+that line:
+
+[source,typescript]
+----
+const envelopes: CommandEnvelope[] = await engine.line_execute('feed list --mine');
+----
+
+The envelope is the entire contract surface. Its fields (defined in cumin):
+
+[cols="1,3",options="header"]
+|===
+|Field |Meaning for a client
+
+|`status`      |The engine's ground truth: `'ok'` or `'error'`. Not a claim — the
+                outcome the engine actually observed.
+|`rendered`    |Printable output, a *terminal view*. A GUI or agent normally ignores
+                this in favour of `model`.
+|`renderedErr` |Printable error-stream output, when present.
+|`model`       |The *typed result* — `{ kind, data }`, the object a GUI or agent
+                consumes. The source of truth from which `rendered` is derived.
+|`errors`      |Structured error detail for machine consumers.
+|`trace`       |Present when the command came from intent resolution: what the user
+                said, what was proposed, whether it validated, and what ran.
+|===
+
+The `model` slot and the "rendered is a view of the model" rule are specified in
+link:envelope-model.adoc[envelope-model.adoc]. *(Forward: today most commands
+populate only `rendered`; filling `model` for every command is the active work
+that makes a data-consuming client fully possible.)*
+
+== Two front doors
+
+The same kernel is reachable two ways. A client picks by whether it needs an
+interactive, stateful session or a one-shot call, and by whether it runs in the
+same process as the engine.
+
+=== In-process: brasa as a library
+
+Any Node process can embed the engine directly:
+
+[source,typescript]
+----
+import { engine_create } from '@fnndsc/brasa';
+
+const engine = engine_create(/* host sink, surface, config */);
+const envelopes = await engine.line_execute('ls /home/chris/uploads');
+----
+
+This is the purest form of the kernel: no wire, no daemon, structured results in
+hand. It suits a backend-for-frontend, a test harness, a batch script, or a
+one-shot intent handler.
+
+[IMPORTANT]
+====
+The engine runs in *Node*, not the browser: it transitively depends on the ChRIS
+client, authentication, and HTTP. "A web app uses brasa as a library" therefore
+means *a Node backend* uses brasa; the browser talks to that backend. A browser
+never imports the engine.
+====
+
+=== Hosted: the calypso session over the wire
+
+For interactive, stateful, or remote use, calypso hosts a brasa engine as a
+daemon and serves it over a WebSocket. The session — current directory, ChRIS
+context, connection, the running-process view — lives in the daemon and outlives
+any single client; several surfaces can attach to one live session. This is the
+Jupyter-kernel shape: one engine, addressable over a wire, serving many
+frontends. The wire contract is described in link:calypso.adoc[calypso.adoc].
+
+*(Forward)* The intended client of the wire is a typed client SDK that speaks the
+protocol and hands a GUI first-class objects (the `model`), so a web console is a
+pure kernel client. That SDK is the natural next surface after model-completeness.
+
+=== One-shot HTTP *(forward)*
+
+For machine integration — webhooks, other services, serverless, a single agent
+call — a thin stateless HTTP facade can wrap the in-process engine: one request
+builds an intent, drives a short-lived engine, and returns the envelope as JSON.
+This is the task-oriented, `POST /intents/...` shape argued for in the companion
+paper. It is a secondary, integration surface: mise is fundamentally a *shell*
+and therefore stateful, so the interactive path is the session (calypso), and the
+stateless facade is reserved for callers that genuinely want one-shot, context-free
+execution.
+
+== How each kind of client consumes the kernel
+
+[cols="1,3",options="header"]
+|===
+|Client |What it reads
+
+|Terminal (chell)   |`rendered` / `renderedErr` — the text views, verbatim.
+|Web console        |`model` (typed objects) and `status`; renders natively, and
+                     never parses a terminal string or a Collection+JSON response.
+|Agent              |`model` + `status` + `trace` — its *receipt*. It selects among
+                     the kernel's bounded intents; it does not construct API calls.
+|Machine / one-shot |A single envelope as JSON from the HTTP facade *(forward)*.
+|===
+
+== The determinism boundary
+
+The kernel draws a hard line, and a client should respect it:
+
+* *Above the line — interpretation.* A human types a command, or *(forward)* a
+  language model translates a natural-language request into a proposed command.
+  This side is fuzzy: humans mistype, models are probabilistic.
+* *Below the line — execution.* The engine parses the command, validates it against
+  the live command vocabulary, executes it deterministically, and materializes the
+  result as a receipt.
+
+The boundary is the surface/engine seam. For a language-model client this is not a
+convenience but a safety property, and it is the forward horizon rather than a
+shipped feature: a generative model must be used only to *choose* an intent, never
+to *assemble* a workflow. The kernel supports exactly that — a bounded set of
+validated intents to choose from, and a receipt (`status` + `model`) the model can
+read but cannot invent, so a client can show "you asked X, I proposed `feed list
+--mine`, it ran, here is what is actually there," all vetoable in the same grammar.
+
+== The invariant a client can rely on
+
+*A client never speaks Collection+JSON.* It speaks intent to mise, and only mise
+(specifically cumin) speaks to CUBE. One precision so the invariant is honest: a
+client may still fetch a file's raw bytes directly from a URL — but it obtains that
+URL *from an envelope's model*, never by traversing a hypermedia link. mise
+mediates intent and navigation; direct bulk transfer to URLs the kernel hands you
+is consistent with never consuming the API.
+
+== Status at a glance
+
+[cols="2,1,3",options="header"]
+|===
+|Capability |State |Notes
+
+|Every command returns a `CommandEnvelope`     |Available |Console removed from the engine end to end.
+|In-process engine (`engine_create` / `line_execute`) |Available |Node only.
+|Calypso session over the wire                 |Available |WebSocket, stateful, multi-surface.
+|Typed `model` on every command                |Partial   |A minority of commands today; see link:envelope-model.adoc[envelope-model.adoc].
+|Models shipped over the wire + typed SDK       |Forward   |The web-console client.
+|Stateless HTTP / intent facade                |Forward   |Machine integration.
+|Language-assist (NL → intent) in calypso        |Forward   |The HARBOR horizon; determinism boundary above.
+|===
+
+== See also
+
+* link:history.adoc[history.adoc] — why the kernel exists.
+* link:envelope-model.adoc[envelope-model.adoc] — the typed-model contract and migration.
+* link:calypso.adoc[calypso.adoc] — the daemon and wire.
+* link:surfaces.adoc[surfaces.adoc] — the surface abstraction.

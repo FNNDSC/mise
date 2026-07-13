@@ -2,7 +2,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import {
   text_boxFormat,
   commandHelp_get,
-  help_show,
+  help_render,
   args_checkHasHelpFlag,
   builtin_help,
   builtinCommands_list,
@@ -49,15 +49,13 @@ describe('commandHelp_get', () => {
   });
 });
 
-describe('help_show', () => {
-  it('prints the rendered help for a known command', () => {
-    help_show('ls');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('USAGE'));
+describe('help_render', () => {
+  it('returns the rendered help for a known command', () => {
+    expect(help_render('ls')).toContain('USAGE');
   });
 
   it('notes when no help exists', () => {
-    help_show('nonexistentcmd');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No help available'));
+    expect(help_render('nonexistentcmd')).toContain('No help available');
   });
 });
 

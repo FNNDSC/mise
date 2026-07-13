@@ -100,9 +100,9 @@ jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_ex
 jest.unstable_mockModule('../src/builtins/proc.js', () => ({ builtin_proc: jest.fn() }));
 jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expandAll: jest.fn(async (a: string[]) => Ok(a)) }));
 
-const mockHelpShow = jest.fn();
+const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
-jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_show: mockHelpShow, args_checkHasHelpFlag: mockHasHelpFlag }));
+jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_render: mockHelpRender, args_checkHasHelpFlag: mockHasHelpFlag }));
 
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
@@ -174,12 +174,14 @@ describe('line_execute', () => {
     expect(envelopes[0].status).toBe('ok');
   });
 
-  it('short-circuits on a --help flag without dispatching', async () => {
+  it('short-circuits on a --help flag, returning the help envelope without dispatching', async () => {
     mockHasHelpFlag.mockReturnValue(true);
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const envelopes = await line_execute('ls --help');
-    expect(mockHelpShow).toHaveBeenCalledWith('ls');
+    expect(mockHelpRender).toHaveBeenCalledWith('ls');
     expect(mockLs).not.toHaveBeenCalled();
-    expect(envelopes).toEqual([{ status: 'ok', rendered: '' }]);
+    expect(envelopes).toEqual([{ status: 'ok', rendered: 'HELP:ls\n' }]);
+    writeSpy.mockRestore();
   });
 
   it('runs each command in a semicolon-separated list, one envelope per segment', async () => {

@@ -10,6 +10,7 @@ import { CLIoptions, options_toParams } from "../utils/cli.js";
 import { PluginContextController } from "../controllers/pluginContextController.js";
 import { pluginParameters_renderMan, pluginParameters_manRender } from "../views/pluginParameters.js";
 import { FilteredResourceData, ChRISEmbeddedResourceGroup, type CommandEnvelope, envelope_ok, envelope_error } from "@fnndsc/cumin";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 class InitializationError extends Error {
   constructor(message: string) {
@@ -71,7 +72,7 @@ export class PluginContextGroupHandler {
       const asset = this.controller.chrisObject.asset;
       
       if (!asset || typeof asset.resources_listAndFilterByOptions !== 'function') {
-         console.error("Underlying resource does not support listing.");
+         chiliErrLog("Underlying resource does not support listing.");
          return;
       }
 
@@ -81,10 +82,10 @@ export class PluginContextGroupHandler {
       if (results) {
         pluginParameters_renderMan(results);
       } else {
-        console.log("No parameters found.");
+        chiliLog("No parameters found.");
       }
     } catch (error: unknown) {
-      console.error(`Error listing parameters: ${error}`);
+      chiliErrLog(`Error listing parameters: ${error}`);
     }
   }
 

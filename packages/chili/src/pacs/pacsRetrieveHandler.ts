@@ -19,6 +19,7 @@ import {
   pacsRetrieve_statusForQuery,
 } from "@fnndsc/salsa";
 import { border_draw } from "../screen/screen.js";
+import { chiliLog } from "../screen/output.js";
 
 /**
  * Handler for PACS retrieve commands.
@@ -69,7 +70,7 @@ export class PACSRetrieveGroupHandler {
   private async retrieve_pull(queryIdStr: string): Promise<void> {
     const queryId: number = Number(queryIdStr);
     if (Number.isNaN(queryId)) {
-      console.log(border_draw("Query ID must be a number."));
+      chiliLog(border_draw("Query ID must be a number."));
       return;
     }
 
@@ -78,9 +79,9 @@ export class PACSRetrieveGroupHandler {
     if (!result.ok) {
       const errors: string[] = errorStack_getAllOfType("error");
       if (errors.length) {
-        errors.forEach((msg: string) => console.log(border_draw(msg)));
+        errors.forEach((msg: string) => chiliLog(border_draw(msg)));
       } else {
-        console.log(border_draw(`Failed to create PACS retrieve for query ${queryId}.`));
+        chiliLog(border_draw(`Failed to create PACS retrieve for query ${queryId}.`));
       }
       return;
     }
@@ -92,7 +93,7 @@ export class PACSRetrieveGroupHandler {
       `query=${queryId}`,
       `status=${record.status || "created"}`,
     ].join(" ");
-    console.log(border_draw(msg));
+    chiliLog(border_draw(msg));
   }
 
   /**
@@ -103,7 +104,7 @@ export class PACSRetrieveGroupHandler {
   private async retrieve_report(queryIdStr: string): Promise<void> {
     const queryId: number = Number(queryIdStr);
     if (Number.isNaN(queryId)) {
-      console.log(border_draw("Query ID must be a number."));
+      chiliLog(border_draw("Query ID must be a number."));
       return;
     }
 
@@ -112,16 +113,16 @@ export class PACSRetrieveGroupHandler {
     if (!result.ok) {
       const errors: string[] = errorStack_getAllOfType("error");
       if (errors.length) {
-        errors.forEach((msg: string) => console.log(border_draw(msg)));
+        errors.forEach((msg: string) => chiliLog(border_draw(msg)));
       } else {
-        console.log(border_draw(`Failed to generate status report for query ${queryId}.`));
+        chiliLog(border_draw(`Failed to generate status report for query ${queryId}.`));
       }
       return;
     }
 
     const report: PACSQueryStatusReport = result.value;
     const rendered: string = this.report_render(report);
-    console.log(border_draw(rendered));
+    chiliLog(border_draw(rendered));
   }
 
   /**
@@ -132,7 +133,7 @@ export class PACSRetrieveGroupHandler {
   private async retrieve_cancel(retrieveIdStr: string): Promise<void> {
     const retrieveId: number = Number(retrieveIdStr);
     if (Number.isNaN(retrieveId)) {
-      console.log(border_draw("Retrieve ID must be a number."));
+      chiliLog(border_draw("Retrieve ID must be a number."));
       return;
     }
 
@@ -141,14 +142,14 @@ export class PACSRetrieveGroupHandler {
     if (!result.ok) {
       const errors: string[] = errorStack_getAllOfType("error");
       if (errors.length) {
-        errors.forEach((msg: string) => console.log(border_draw(msg)));
+        errors.forEach((msg: string) => chiliLog(border_draw(msg)));
       } else {
-        console.log(border_draw(`Failed to cancel PACS retrieve ${retrieveId}.`));
+        chiliLog(border_draw(`Failed to cancel PACS retrieve ${retrieveId}.`));
       }
       return;
     }
 
-    console.log(border_draw(`PACS retrieve ${retrieveId} cancelled.`));
+    chiliLog(border_draw(`PACS retrieve ${retrieveId} cancelled.`));
   }
 
   /**

@@ -97,22 +97,25 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 50; i++) await Promise.resolve();
 };
 
-let logSpy: jest.SpiedFunction<typeof console.log>;
-let errSpy: jest.SpiedFunction<typeof console.error>;
 const progressEvents: ProgressEvent[] = [];
+let sinkData: string = '';
+let sinkErr: string = '';
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   wsOpenMode = 'open';
   wsInstances.length = 0;
   progressEvents.length = 0;
+  sinkData = '';
+  sinkErr = '';
   const progressSink: OutputSink = {
-    data_write: (): void => { /* not used */ },
-    err_write: (): void => { /* not used */ },
+    data_write: (c: string | Buffer): void => { sinkData += typeof c === 'string' ? c : c.toString('utf-8'); },
+    err_write: (c: string | Buffer): void => { sinkErr += typeof c === 'string' ? c : c.toString('utf-8'); },
     status_write: (): void => { /* not used */ },
     progress_write: (event: ProgressEvent): void => { progressEvents.push(event); },
   };
   sink_set(progressSink);
+  mockCubepath.mockResolvedValue({ status: 'ok', rendered: '' });
   mockServerResolve.mockResolvedValue('PACSDCM');
   mockClientGet.mockResolvedValue(fakeClient);
   mockQueriesCreate.mockResolvedValue(ok({ id: 100 }));
@@ -120,8 +123,6 @@ beforeEach(() => {
   mockCollect.mockResolvedValue([info()]);
   mockCubePathGet.mockResolvedValue(null);
   mockPathResolve.mockImplementation(async (p: string) => `/home/chris/${p}`);
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-  errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -129,46 +130,45 @@ afterEach(() => {
   process.exitCode = 0;
 });
 
-const logged = (): string => logSpy.mock.calls.map(c => c.join(' ')).join('\n');
 
 describe('builtin_pull guards and path resolution', () => {
-  it('shows help for --help', async () => {
-    await builtin_pull(['--help']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('USAGE'));
+  it('returns help for --help', async () => {
+    const env = await builtin_pull(['--help']);
+    expect(env.rendered).toContain('USAGE');
     expect(mockCollect).not.toHaveBeenCalled();
   });
 
   it('requires at least one path', async () => {
     await builtin_pull([]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No paths specified'));
+    expect(sinkErr).toContain(('No paths specified'));
     expect(process.exitCode).toBe(1);
   });
 
   it('errors when no PACS server is available', async () => {
     mockServerResolve.mockResolvedValue(null);
     await builtin_pull([QUERY_PATH]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No PACS server available'));
+    expect(sinkErr).toContain(('No PACS server available'));
     expect(process.exitCode).toBe(1);
   });
 
   it('rejects an operand that is neither a PACS path nor a query', async () => {
     await builtin_pull(['/home/chris/feeds']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Not a PACS VFS path'));
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No series to retrieve'));
+    expect(sinkErr).toContain(('Not a PACS VFS path'));
+    expect(sinkErr).toContain(('No series to retrieve'));
     expect(process.exitCode).toBe(1);
   });
 
   it('warns when a path yields no series', async () => {
     mockCollect.mockResolvedValue([]);
     await builtin_pull([QUERY_PATH]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining(`No series found under: ${QUERY_PATH}`));
+    expect(sinkErr).toContain((`No series found under: ${QUERY_PATH}`));
     expect(process.exitCode).toBe(1);
   });
 
   it('errors when not connected to ChRIS', async () => {
     mockClientGet.mockResolvedValue(null);
     await builtin_pull([QUERY_PATH]);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Not connected'));
+    expect(sinkErr).toContain(('Not connected'));
     expect(process.exitCode).toBe(1);
   });
 
@@ -186,23 +186,23 @@ describe('builtin_pull guards and path resolution', () => {
     expect(mockCreateAndWait).toHaveBeenCalledWith(
       'PatientID:X', 'pull_PatientID:X', 'PACSDCM', expect.any(Function),
     );
-    expect(logged()).toContain(QUERY_PATH);
-    expect(logged()).toContain('1.2.3 200');
+    expect(sinkData).toContain(QUERY_PATH);
+    expect(sinkData).toContain('1.2.3 200');
     expect(mockQueriesCreate).toHaveBeenCalledWith('PACSDCM', expect.objectContaining({ execute: false }));
   });
 
   it('reports a failed query expression', async () => {
     mockCreateAndWait.mockResolvedValue(null);
     await builtin_pull(['PatientID:X']);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('Query failed for'));
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('No series to retrieve'));
+    expect(sinkErr).toContain(('Query failed for'));
+    expect(sinkErr).toContain(('No series to retrieve'));
     expect(process.exitCode).toBe(1);
   });
 
   it('prints seriesUID ERROR when a --nowait retrieve fails to fire', async () => {
     mockQueriesCreate.mockResolvedValue(err());
     await builtin_pull([QUERY_PATH, '--nowait']);
-    expect(logged()).toContain('1.2.3 ERROR');
+    expect(sinkData).toContain('1.2.3 ERROR');
     expect(process.exitCode).toBe(1);
   });
 });
@@ -222,8 +222,8 @@ describe('builtin_pull watch loop', () => {
     const pull = builtin_pull([QUERY_PATH]);
     await flush();
     await pull;
-    expect(logged()).toContain('0/1 series complete');
-    expect(logged()).toContain('1 retrieve(s) failed to start');
+    expect(sinkData).toContain('0/1 series complete');
+    expect(sinkData).toContain('1 retrieve(s) failed to start');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
       expect.objectContaining({ operation: 'pull', phase: 'failed', unit: 'series', status: 'error' }),
@@ -256,7 +256,7 @@ describe('builtin_pull watch loop', () => {
       expect.objectContaining({ operation: 'pull', itemId: '1.2.3', current: 2, status: 'done' }),
       expect.objectContaining({ operation: 'pull', phase: 'complete', unit: 'series', status: 'done' }),
     ]));
-    expect(logged()).toContain('1/1 series pulled successfully');
+    expect(sinkData).toContain('1/1 series pulled successfully');
     expect(mockCubepath).toHaveBeenCalledWith([QUERY_PATH, '--retry']);
     expect(process.exitCode).toBe(0);
   });
@@ -272,8 +272,8 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(2_000);
     await pull;
 
-    expect(logged()).toContain('1/2 series complete');
-    expect(logged()).toContain('[ERROR]');
+    expect(sinkData).toContain('1/2 series complete');
+    expect(sinkData).toContain('[ERROR]');
     expect(process.exitCode).toBe(1);
   });
 
@@ -285,7 +285,7 @@ describe('builtin_pull watch loop', () => {
     await flush();
     await pull;
 
-    expect(logged()).toContain('0/1 series complete');
+    expect(sinkData).toContain('0/1 series complete');
     expect(process.exitCode).toBe(1);
   });
 
@@ -297,7 +297,7 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(34_000);
     await pull;
 
-    expect(logged()).toContain('[STALLED]');
+    expect(sinkData).toContain('[STALLED]');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'stalled' }),
     ]));
@@ -316,7 +316,7 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(4_000);
     await pull;
 
-    expect(logged()).toContain('[TIMEOUT]');
+    expect(sinkData).toContain('[TIMEOUT]');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'timeout' }),
     ]));
@@ -330,8 +330,8 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(20_000);
     await pull;
 
-    expect(logged()).toContain('0/1 series complete');
-    expect(logged()).toContain('[ERROR]');
+    expect(sinkData).toContain('0/1 series complete');
+    expect(sinkData).toContain('[ERROR]');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
       expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
@@ -351,7 +351,7 @@ describe('builtin_pull watch loop', () => {
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
     ]));
-    expect(logged()).toContain('1/1 series pulled successfully');
+    expect(sinkData).toContain('1/1 series pulled successfully');
     expect(process.exitCode).toBe(0);
   });
 
@@ -362,13 +362,13 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(20_000);
     await flush();
 
-    expect(logged()).toContain('Retry 1/1 for 1 unconfirmed series');
+    expect(sinkData).toContain('Retry 1/1 for 1 unconfirmed series');
     expect(wsInstances).toHaveLength(2);
     wsInstances[1].emit('message', lonk('1.2.3', { done: true }));
     await jest.advanceTimersByTimeAsync(4_000);
     await pull;
 
-    expect(logged()).toContain('1/1 series pulled successfully');
+    expect(sinkData).toContain('1/1 series pulled successfully');
     expect(process.exitCode).toBe(0);
   });
 });

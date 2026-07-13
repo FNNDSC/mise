@@ -11,19 +11,20 @@ import {
   bytes_format
 } from '@fnndsc/chili/commands/fs/download.js';
 import { sink_get } from '../../core/sink.js';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 
 /**
  * Downloads a remote ChRIS file or directory to the local filesystem.
  *
  * @param args - [remotePath, localPath] plus optional -f/--force to overwrite.
+ * @returns An envelope carrying the download summary.
  */
-export async function builtin_download(args: string[]): Promise<void> {
+export async function builtin_download(args: string[]): Promise<CommandEnvelope> {
   const force: boolean = args.includes('-f') || args.includes('--force');
   const cleanArgs: string[] = args.filter(arg => arg !== '-f' && arg !== '--force');
 
   if (cleanArgs.length < 2) {
-    console.log(chalk.red('Usage: download <remote_path> <local_path> [-f|--force]'));
-    return;
+    return envelope_ok(`${chalk.red('Usage: download <remote_path> <local_path> [-f|--force]')}\n`);
   }
 
   const remotePathArg: string = cleanArgs[0];
@@ -38,15 +39,17 @@ export async function builtin_download(args: string[]): Promise<void> {
       onProgress: event => sink_get().progress_write(event),
     });
 
-    console.log('');
+    let rendered: string = '\n';
     if (summary.failedCount === 0) {
-      console.log(chalk.green(`✓ Successfully downloaded ${summary.transferredCount} file(s)`));
+      rendered += `${chalk.green(`✓ Successfully downloaded ${summary.transferredCount} file(s)`)}\n`;
     } else {
-      console.log(chalk.yellow(`⚠ Downloaded ${summary.transferredCount} file(s), ${summary.failedCount} failed`));
+      rendered += `${chalk.yellow(`⚠ Downloaded ${summary.transferredCount} file(s), ${summary.failedCount} failed`)}\n`;
     }
-    console.log(chalk.gray(`  Total: ${bytes_format(summary.transferSize)} in ${summary.duration.toFixed(1)}s (${bytes_format(summary.speed)}/s)`));
+    rendered += `${chalk.gray(`  Total: ${bytes_format(summary.transferSize)} in ${summary.duration.toFixed(1)}s (${bytes_format(summary.speed)}/s)`)}\n`;
+    return envelope_ok(rendered);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    console.error(chalk.red(`Download error: ${msg}`));
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`Download error: ${msg}`)}\n`);
   }
 }

@@ -1,27 +1,40 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
-const mockRun = jest.fn<(argv: string[]) => Promise<void>>();
-jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: mockRun }));
+const mockRunCapture = jest.fn<(argv: string[]) => Promise<{ out: string; err: string }>>();
+jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockRunCapture }));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
+}));
 
 const { chiliCommand_run } = await import('../src/core/chiliDelegate.js');
 
 describe('chiliCommand_run', () => {
-  let errSpy: jest.SpiedFunction<typeof console.error>;
   beforeEach(() => {
     jest.clearAllMocks();
-    errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.exitCode = 0;
   });
 
-  it('forwards the command and args to chili', async () => {
-    mockRun.mockResolvedValue(undefined);
-    await chiliCommand_run('feeds', ['-s', 'x']);
-    expect(mockRun).toHaveBeenCalledWith(['feeds', '-s', 'x']);
-    expect(errSpy).not.toHaveBeenCalled();
+  it('forwards the command and args to chili and returns the captured output', async () => {
+    mockRunCapture.mockResolvedValue({ out: 'FEED_TABLE\n', err: '' });
+    const envelope = await chiliCommand_run('feeds', ['-s', 'x']);
+    expect(mockRunCapture).toHaveBeenCalledWith(['feeds', '-s', 'x']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toBe('FEED_TABLE\n');
+    expect(envelope.renderedErr).toBeUndefined();
   });
 
-  it('reports a failure without throwing', async () => {
-    mockRun.mockRejectedValue(new Error('boom'));
-    await expect(chiliCommand_run('feeds', [])).resolves.toBeUndefined();
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("chili command 'feeds' failed"));
+  it('carries captured error output in renderedErr', async () => {
+    mockRunCapture.mockResolvedValue({ out: '', err: 'bad thing\n' });
+    const envelope = await chiliCommand_run('feeds', []);
+    expect(envelope.renderedErr).toBe('bad thing\n');
+  });
+
+  it('reports a thrown failure without throwing', async () => {
+    mockRunCapture.mockRejectedValue(new Error('boom'));
+    const envelope = await chiliCommand_run('feeds', []);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain("chili command 'feeds' failed");
+    expect(process.exitCode).toBe(1);
   });
 });

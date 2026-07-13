@@ -23,6 +23,7 @@ import { CLIoptions } from "../utils/cli.js";
 import { border_draw } from "../screen/screen.js";
 import { pacsQueryResult_renderPretty } from "./pacsResultRender.js";
 import { pacsQueryPayload_build } from "./pacsQueryPayload.js";
+import { chiliLog } from "../screen/output.js";
 
 /**
  * Handler for PACS queries commands.
@@ -100,7 +101,7 @@ export class PACSQueryGroupHandler {
           options.pacsserver
         );
         if (!pacsserver) {
-          console.log(
+          chiliLog(
             border_draw("No PACS server in context. Use --pacsserver or set via context.")
           );
           return;
@@ -168,7 +169,7 @@ export class PACSQueryGroupHandler {
           options.description
         );
         if (!payload) {
-          console.log(
+          chiliLog(
             border_draw("Invalid query format. Provide JSON or comma-separated key:value pairs.")
           );
           return;
@@ -178,9 +179,9 @@ export class PACSQueryGroupHandler {
         if (!result.ok) {
           const errors: string[] = errorStack_getAllOfType("error");
           if (errors.length) {
-            errors.forEach((msg: string) => console.log(border_draw(msg)));
+            errors.forEach((msg: string) => chiliLog(border_draw(msg)));
           } else {
-            console.log(border_draw("Failed to create PACS query."));
+            chiliLog(border_draw("Failed to create PACS query."));
           }
           return;
         }
@@ -192,7 +193,7 @@ export class PACSQueryGroupHandler {
           `pacs=${pacsserver}`,
           `title="${created.title ?? options.title ?? ""}"`,
         ].join(" ");
-        console.log(border_draw(msg.trim()));
+        chiliLog(border_draw(msg.trim()));
       });
   }
 
@@ -209,16 +210,16 @@ export class PACSQueryGroupHandler {
       .action(async (queryId: string, options: { raw?: boolean }) => {
         const idNum: number = Number(queryId);
         if (Number.isNaN(idNum)) {
-          console.log(border_draw("queryId must be a number."));
+          chiliLog(border_draw("queryId must be a number."));
           return;
         }
         const result: Result<PACSQueryDecodedResult> = await pacsQuery_resultDecode(idNum);
         if (!result.ok) {
           const errors: string[] = errorStack_getAllOfType("error");
           if (errors.length) {
-            errors.forEach((msg: string) => console.log(border_draw(msg)));
+            errors.forEach((msg: string) => chiliLog(border_draw(msg)));
           } else {
-            console.log(border_draw(`Failed to decode PACS query result for ${idNum}.`));
+            chiliLog(border_draw(`Failed to decode PACS query result for ${idNum}.`));
           }
           return;
         }
@@ -226,20 +227,20 @@ export class PACSQueryGroupHandler {
         // Prefer JSON, then text, else indicate base64 length
         if (decoded.json !== undefined) {
           if (options.raw) {
-            console.log(border_draw(JSON.stringify(decoded.json, null, 2)));
+            chiliLog(border_draw(JSON.stringify(decoded.json, null, 2)));
             return;
           }
           const pretty: string | null = this.pacsResult_renderPretty(decoded.json);
           if (pretty) {
-            console.log(border_draw(pretty));
+            chiliLog(border_draw(pretty));
           } else {
-            console.log(border_draw(JSON.stringify(decoded.json, null, 2)));
+            chiliLog(border_draw(JSON.stringify(decoded.json, null, 2)));
           }
         } else if (decoded.text) {
-          console.log(border_draw(decoded.text));
+          chiliLog(border_draw(decoded.text));
         } else {
           const len: number = decoded.raw.length;
-          console.log(
+          chiliLog(
             border_draw(`Decoded payload available (base64 length ${len}), but not printable.`)
           );
         }

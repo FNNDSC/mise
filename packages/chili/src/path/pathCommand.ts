@@ -30,6 +30,7 @@ import open from "open";
 import { execFile } from "child_process";
 import os from "os";
 import { files_downloadWithProgress, DownloadSummary } from "../commands/fs/download.js";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 interface TransferCLI {
   hostpath: string;
@@ -290,7 +291,7 @@ async function mermaid_renderServerSide(
       ["mmdc", "-i", inputFile, "-o", outputFile],
       (error) => {
         if (error) {
-          console.error(
+          chiliErrLog(
             `Mermaid render failed. Ensure @mermaid-js/mermaid-cli is available (npx mmdc): ${error.message}`
           );
           reject(error);
@@ -609,9 +610,9 @@ async function scanResult_render(scanResult: ScanRecord, options: CLIscan): Prom
       try {
         const outputFile: string = path.resolve(options.save);
         const savedFilePath: string = await mermaid_renderServerSide(mermaidDefinition, outputFile);
-        console.log(`Mermaid diagram saved to: ${savedFilePath}`);
+        chiliLog(`Mermaid diagram saved to: ${savedFilePath}`);
       } catch (error: unknown) {
-        console.error(`Failed to save Mermaid diagram: ${error}`);
+        chiliErrLog(`Failed to save Mermaid diagram: ${error}`);
       }
     } else {
       await mermaid_renderInBrowser(mermaidDefinition);
@@ -619,15 +620,15 @@ async function scanResult_render(scanResult: ScanRecord, options: CLIscan): Prom
     return;
   }
   if (options.tree) {
-    console.log(archyTree_create(scanResult.fileInfo));
+    chiliLog(archyTree_create(scanResult.fileInfo));
     return;
   }
   if (!options.silent) {
     for (const file of scanResult.fileInfo) {
       if (file.isLink && !options.follow) {
-        console.log(`${file.chrisPath} -> ${file.linkTarget}`);
+        chiliLog(`${file.chrisPath} -> ${file.linkTarget}`);
       } else {
-        console.log(`${file.chrisPath}`);
+        chiliLog(`${file.chrisPath}`);
       }
     }
   }
@@ -644,24 +645,24 @@ export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
     Context.ChRISfolder
   );
   if (!chrisFolder) {
-    console.error(chalk.red("No ChRIS folder context set. Use 'folder=' to set a context."));
+    chiliErrLog(chalk.red("No ChRIS folder context set. Use 'folder=' to set a context."));
     return null;
   }
   if (!options.silent) {
-    console.log(chalk.cyan(`Scanning for ${options.dirsOnly ? "directories" : "all files"} recursively from ${chrisFolder}`));
+    chiliLog(chalk.cyan(`Scanning for ${options.dirsOnly ? "directories" : "all files"} recursively from ${chrisFolder}`));
   }
   const hostBasePath: string = options.hostpath || process.cwd();
   const scanResult: ScanRecord | null = await chrisFS_scan(chrisFolder, hostBasePath, options.follow, options.dirsOnly);
   if (!scanResult) {
-    console.error(chalk.red("Failed to scan ChRIS filesystem."));
+    chiliErrLog(chalk.red("Failed to scan ChRIS filesystem."));
     return null;
   }
   const filtered: ScanRecord = scanResult_filter(scanResult, options);
   await scanResult_render(filtered, options);
   if (!options.silent) {
-    console.log(chalk.green(`Total size: ${bytes_format(filtered.totalSize)}`));
+    chiliLog(chalk.green(`Total size: ${bytes_format(filtered.totalSize)}`));
     if (options.filter || options.endsWith) {
-      console.log(chalk.cyan(`Filtered results: ${filtered.fileInfo.length} items`));
+      chiliLog(chalk.cyan(`Filtered results: ${filtered.fileInfo.length} items`));
     }
   }
   return filtered;
@@ -725,7 +726,7 @@ async function localFS_scan(options: TransferCLI): Promise<ScanRecord | null> {
   await chrisContext.currentContext_update();
   const folder: string | null = chrisContext.singleContext.folder;
   if (!folder) {
-    console.error("ChRIS folder context is undefined, cannot initialize chrisIO.");
+    chiliErrLog("ChRIS folder context is undefined, cannot initialize chrisIO.");
     return null;
   }
 
@@ -733,11 +734,11 @@ async function localFS_scan(options: TransferCLI): Promise<ScanRecord | null> {
   try {
     const testGroup: ChRISEmbeddedResourceGroup<unknown> | null = await objContext_create("ChRISDirsContext", `folder:${folder}`);
     if (!testGroup) {
-      console.error(chalk.red(`Folder context '${folder}' does not exist in CUBE. Please specify an existing directory.`));
+      chiliErrLog(chalk.red(`Folder context '${folder}' does not exist in CUBE. Please specify an existing directory.`));
       return null;
     }
   } catch (error: unknown) {
-    console.error(chalk.red(`Folder context '${folder}' does not exist in CUBE. Please specify an existing directory.`));
+    chiliErrLog(chalk.red(`Folder context '${folder}' does not exist in CUBE. Please specify an existing directory.`));
     return null;
   }
 
@@ -745,7 +746,7 @@ async function localFS_scan(options: TransferCLI): Promise<ScanRecord | null> {
   // (init() tries to CREATE the folder which will fail if it already exists)
   chrisIO.chrisFolder = folder;
 
-  console.log(border_draw(chalk.cyan("Scanning files to upload...")));
+  chiliLog(border_draw(chalk.cyan("Scanning files to upload...")));
   const filesToUpload: FileInfo[] = await filesToUpload_get(
     options.hostpath,
     folder as string
@@ -875,11 +876,11 @@ async function chris_pull(
         summary.transferSize += fileBuffer.length;
       } else {
         summary.failedCount++;
-        console.log(chalk.yellow(`Failed to download: ${file.hostPath}`));
+        chiliLog(chalk.yellow(`Failed to download: ${file.hostPath}`));
       }
     } catch (error: unknown) {
       summary.failedCount++;
-      console.log(
+      chiliLog(
         chalk.red(
           `Error downloading ${file.hostPath}: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -933,11 +934,11 @@ async function chris_push(
         summary.transferSize += fileContent.length;
       } else {
         summary.failedCount++;
-        console.log(chalk.yellow(`Failed to upload: ${file.hostPath}`));
+        chiliLog(chalk.yellow(`Failed to upload: ${file.hostPath}`));
       }
     } catch (error: unknown) {
       summary.failedCount++;
-      console.log(
+      chiliLog(
         chalk.red(
           `Error uploading ${file.hostPath}: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -968,7 +969,7 @@ async function download_handle(options: TransferCLI): Promise<boolean> { // Rena
   await chrisContext.currentContext_update();
   const folder: string | null = chrisContext.singleContext.folder;
   if (!folder) {
-    console.error(chalk.red("No ChRIS folder context set. Use 'connect' to establish a session."));
+    chiliErrLog(chalk.red("No ChRIS folder context set. Use 'connect' to establish a session."));
     return false;
   }
 
@@ -983,7 +984,7 @@ async function download_handle(options: TransferCLI): Promise<boolean> { // Rena
     return summary.failedCount === 0;
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red(`Download failed: ${msg}`));
+    chiliErrLog(chalk.red(`Download failed: ${msg}`));
     return false;
   }
 }
@@ -1053,7 +1054,7 @@ export async function pathCommand_setup(program: Command): Promise<void> {
         hostpath: hostpath || process.cwd(),
         force: options.force,
       });
-      console.log(result);
+      chiliLog(result);
     });
 
   pathCommand

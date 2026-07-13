@@ -21,9 +21,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 // The /bin listing model is type-only at runtime.
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
-// chili delegation target.
-const mockChiliRun = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: mockChiliRun }));
+// chili delegation target: chiliCommand_run captures via run_capture.
+const mockChiliRun = jest.fn(async () => ({ out: '', err: '' }));
+jest.unstable_mockModule('@fnndsc/chili/run.js', () => ({ run: jest.fn(), run_capture: mockChiliRun }));
 
 // Session — dispatch only reads the timing toggle.
 const mockTiming = jest.fn(() => false);
@@ -156,35 +156,36 @@ describe('command_dispatch', () => {
 
   it('delegates an unknown command to chili with -s', async () => {
     mockDataGet.mockResolvedValue(Ok([]));
-    // The fallback prints its delegation notice for itself and lets chili print
-    // directly — the same print-direct contract as the other unconverted
-    // handlers routed through handler_runDirect.
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    await command_dispatch('frobnicate', ['x']);
-    expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('delegating to chili'));
-    logSpy.mockRestore();
-  });
-
-  it('yields a placeholder envelope for the chili fallback', async () => {
-    mockDataGet.mockResolvedValue(Ok([]));
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    // The fallback delegates to chili, captures its output through chili's
+    // seam, and returns the notice plus that output in the envelope.
     const envelope = await command_dispatchEnvelope('frobnicate', ['x']);
-    expect(envelope).toEqual({ status: 'ok', rendered: '' });
     expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
-    logSpy.mockRestore();
+    expect(envelope.rendered).toContain('delegating to chili');
   });
 
-  it('yields a placeholder envelope for an unconverted handler', async () => {
-    const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
+  it('carries the captured chili output in the fallback envelope', async () => {
+    mockDataGet.mockResolvedValue(Ok([]));
+    mockChiliRun.mockResolvedValueOnce({ out: 'CHILI_SAYS_HI\n', err: '' });
+    const envelope = await command_dispatchEnvelope('frobnicate', ['x']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('delegating to chili');
+    expect(envelope.rendered).toContain('CHILI_SAYS_HI');
+    expect(mockChiliRun).toHaveBeenCalledWith(['frobnicate', '-s', 'x']);
+  });
+
+  it('yields a placeholder envelope for a direct-run handler', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-x', type: 'plugin' }]));
+    mockExecutePlugin.mockResolvedValueOnce(undefined);
+    const envelope = await command_dispatchEnvelope('pl-x', []);
     expect(envelope).toEqual({ status: 'ok', rendered: '' });
   });
 
   it('marks the placeholder envelope as failed when the handler sets a nonzero exit code', async () => {
     const previousExitCode: number | string | undefined = process.exitCode;
     process.exitCode = 0;
-    mockUpload.mockImplementationOnce(async () => { process.exitCode = 1; });
-    const envelope = await command_dispatchEnvelope('upload', ['/tmp/x']);
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-x', type: 'plugin' }]));
+    mockExecutePlugin.mockImplementationOnce(async () => { process.exitCode = 1; });
+    const envelope = await command_dispatchEnvelope('pl-x', []);
     expect(envelope.status).toBe('error');
     process.exitCode = previousExitCode;
   });

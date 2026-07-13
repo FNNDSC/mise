@@ -46,6 +46,7 @@ import {
   adminCredentials_prompt,
   AdminCredentials,
 } from '../../utils/admin_prompt.js';
+import { chiliErrLog, chiliLog } from "../../screen/output.js";
 
 /**
  * Describes the shape of the JSON object returned by a ChRIS plugin's
@@ -82,7 +83,7 @@ async function computeResources_resolve(
     const validationResult: Result<string[]> = await computeResources_validate(names);
     if (!validationResult.ok) {
       const errors: string[] = errorStack.allOfType_get('error');
-      errors.forEach((err: string) => console.error(err));
+      errors.forEach((err: string) => chiliErrLog(err));
       return { ok: false };
     }
     return { ok: true, value: names };
@@ -90,7 +91,7 @@ async function computeResources_resolve(
   const allResult: Result<ComputeResource[]> = await computeResources_getAll();
   if (allResult.ok && allResult.value.length > 0) {
     const names: string[] = allResult.value.map((r: ComputeResource) => r.name);
-    console.log(`Using compute resources: ${names.join(', ')}`);
+    chiliLog(`Using compute resources: ${names.join(', ')}`);
     return { ok: true, value: names };
   }
   return { ok: true, value: ['host'] };
@@ -108,14 +109,14 @@ export async function plugin_add(
   options: PluginAddOptions
 ): Promise<PluginAddOutcome> {
   const detected: DetectedFormat = input_detectFormat(input);
-  console.log(`Detected input format: ${detected.format}`);
+  chiliLog(`Detected input format: ${detected.format}`);
 
   const resourcesResult: Result<string[]> = await computeResources_resolve(options);
   if (!resourcesResult.ok) return 'failed';
   const computeResources: string[] = resourcesResult.value;
 
   // Phase 1: Check if plugin exists in current CUBE
-  console.log('\n=== Phase 1: Checking current CUBE ===');
+  chiliLog('\n=== Phase 1: Checking current CUBE ===');
   const searchTerm: string = detected.format === PluginInputFormat.DOCKER_IMAGE
     ? detected.pluginName || detected.value
     : detected.value;
@@ -125,11 +126,11 @@ export async function plugin_add(
     return 'already_exists';
   }
 
-  console.log('Plugin not found in current CUBE.');
+  chiliLog('Plugin not found in current CUBE.');
 
   // Phase 2: Search peer stores (skip if input is store URL)
   if (detected.format !== PluginInputFormat.STORE_URL) {
-    console.log('\n=== Phase 2: Searching peer stores ===');
+    chiliLog('\n=== Phase 2: Searching peer stores ===');
     const peerStoreUrls: string[] = options.store
       ? [options.store]
       : ['https://cube.chrisproject.org/api/v1/'];
@@ -144,7 +145,7 @@ export async function plugin_add(
 
     const peerResult: PeerStorePlugin | null = await plugins_searchPeers(searchName, searchVersion, peerStoreUrls);
     if (peerResult) {
-      console.log(`Found plugin in peer store: ${peerResult.storeName}`);
+      chiliLog(`Found plugin in peer store: ${peerResult.storeName}`);
       const ok: boolean = await pluginFromStore_register(
         peerResult.plugin,
         computeResources,
@@ -153,12 +154,12 @@ export async function plugin_add(
       return ok ? 'installed' : 'failed';
     }
 
-    console.log('Plugin not found in peer stores.');
+    chiliLog('Plugin not found in peer stores.');
   }
 
   // Phase 3: Docker extraction (only for Docker images or plugin names)
   if (detected.format !== PluginInputFormat.STORE_URL) {
-    console.log('\n=== Phase 3: Docker extraction ===');
+    chiliLog('\n=== Phase 3: Docker extraction ===');
     const dockerImage: string = detected.format === PluginInputFormat.DOCKER_IMAGE
       ? detected.value
       : `${detected.value}:latest`;  // Assume latest tag for plugin names
@@ -168,7 +169,7 @@ export async function plugin_add(
   }
 
   // If we get here with a store URL, we couldn't process it
-  console.error('Store URL import not yet fully supported.');
+  chiliErrLog('Store URL import not yet fully supported.');
   return 'failed';
 }
 
@@ -187,7 +188,7 @@ async function pluginFromStore_register(
   computeResources: string[],
   options: PluginAddOptions
 ): Promise<boolean> {
-  console.log('Importing plugin from peer store...');
+  chiliLog('Importing plugin from peer store...');
 
   const initialCreds: AdminCredentials | undefined = 
     options.adminUser && options.adminPassword 
@@ -203,12 +204,12 @@ async function pluginFromStore_register(
   );
 
   if (result.success) {
-    console.log(`Plugin '${result.plugin?.name}' registered successfully.`);
+    chiliLog(`Plugin '${result.plugin?.name}' registered successfully.`);
     return true;
   }
 
   if (!result.requiresAuth) {
-    console.error(result.errorMessage || 'Failed to import plugin from store.');
+    chiliErrLog(result.errorMessage || 'Failed to import plugin from store.');
     return false;
   }
 
@@ -222,17 +223,17 @@ async function pluginFromStore_register(
   );
 
   if (!retrySuccess) {
-    console.error('Failed to import plugin from store (authentication failed or rejected).');
+    chiliErrLog('Failed to import plugin from store (authentication failed or rejected).');
     const errors: string[] = errorStack.allOfType_get('error');
     if (errors.length > 0) {
-      console.error('Errors:');
-      errors.forEach((e: string) => console.error(`- ${e}`));
+      chiliErrLog('Errors:');
+      errors.forEach((e: string) => chiliErrLog(`- ${e}`));
     }
 
     const warnings: string[] = errorStack.allOfType_get('warning');
     if (warnings.length > 0) {
-      console.error('Warnings:');
-      warnings.forEach((e: string) => console.error(`- ${e}`));
+      chiliErrLog('Warnings:');
+      warnings.forEach((e: string) => chiliErrLog(`- ${e}`));
     }
   }
 
@@ -264,11 +265,11 @@ async function pluginFromDocker_register(
     return false;
   }
 
-  console.log('Extracting plugin descriptor from image...');
+  chiliLog('Extracting plugin descriptor from image...');
   const pluginData: PluginInfo | null = await pluginJSON_extractFromImage(image, options);
   if (!pluginData) {
     const msg: string = 'Failed to extract plugin descriptor from image.';
-    console.error(msg);
+    chiliErrLog(msg);
     errorStack.stack_push('error', msg);
     return false;
   }
@@ -282,7 +283,7 @@ async function pluginFromDocker_register(
       : undefined;
 
   // Register with admin API
-  console.log('Registering plugin with ChRIS CUBE...');
+  chiliLog('Registering plugin with ChRIS CUBE...');
   const registered: PluginRegistrationResponse | null = await plugin_registerWithAdmin(
     pluginData as unknown as PluginRegistrationData, 
     computeResources,
@@ -290,7 +291,7 @@ async function pluginFromDocker_register(
   );
 
   if (registered) {
-    console.log(`Plugin '${registered.name}' registered successfully.`);
+    chiliLog(`Plugin '${registered.name}' registered successfully.`);
     return true;
   }
 
@@ -307,7 +308,7 @@ async function pluginFromDocker_register(
   });
 
   if (!authError) {
-    console.error('Failed to register plugin.');
+    chiliErrLog('Failed to register plugin.');
     return false;
   }
 
@@ -360,17 +361,17 @@ async function pluginJSON_extractFromImage(
   ];
 
   for (const method of methods) {
-    console.log(`Trying ${method.name}...`);
+    chiliLog(`Trying ${method.name}...`);
     const jsonString: string | null = await method.fn();
 
     if (jsonString && jsonString.trim() !== '') {
       try {
         const parsed: PluginInfo = JSON.parse(jsonString) as PluginInfo;
-        console.log(`Successfully extracted plugin descriptor using ${method.name}`);
+        chiliLog(`Successfully extracted plugin descriptor using ${method.name}`);
         return parsed;
       } catch (e: unknown) {
         const msg: string = `Failed to parse JSON from ${method.name}`;
-        console.error(msg);
+        chiliErrLog(msg);
         errorStack.stack_push('error', msg);
       }
     }
@@ -459,7 +460,7 @@ async function pluginJSON_tryOldChrisapp(image: string): Promise<string | null> 
   }
 
   const command: string = `docker run --rm ${image} ${cmd[0]} --json`;
-  console.log(`  Running: ${cmd[0]} --json`);
+  chiliLog(`  Running: ${cmd[0]} --json`);
   const result: { stdout: string; stderr: string; success: boolean; error?: string } = await shellCommand_runWithDetails(command);
 
   if (!result.success || !result.stdout || result.stdout.trim() === '') {
@@ -492,21 +493,21 @@ function pluginData_inferMissingFields(
   if (!pluginData.name) {
     const imageNameWithoutTag: string = image.split(':')[0];
     pluginData.name = path.basename(imageNameWithoutTag);
-    console.log(`Inferred plugin name: ${pluginData.name}`);
+    chiliLog(`Inferred plugin name: ${pluginData.name}`);
   }
 
   if (!pluginData.dock_image) {
     pluginData.dock_image = image;
-    console.log(`Inferred dock_image: ${pluginData.dock_image}`);
+    chiliLog(`Inferred dock_image: ${pluginData.dock_image}`);
   }
 
   if (!pluginData.public_repo && options.public_repo) {
     pluginData.public_repo = options.public_repo;
-    console.log(`Using provided public_repo: ${pluginData.public_repo}`);
+    chiliLog(`Using provided public_repo: ${pluginData.public_repo}`);
   } else if (!pluginData.public_repo && image.includes('/')) {
     const repoGuess: string = image.split('/')[0] + '/' + path.basename(image.split(':')[0]);
     pluginData.public_repo = `https://github.com/${repoGuess}`;
-    console.log(`Inferred public_repo: ${pluginData.public_repo}`);
+    chiliLog(`Inferred public_repo: ${pluginData.public_repo}`);
   }
 }
 
@@ -539,7 +540,7 @@ async function registrationWithAuth_retry(
     const creds: AdminCredentials | null = await adminCredentials_prompt(attempt, MAX_ATTEMPTS);
 
     if (!creds) {
-      console.log('Authentication cancelled.');
+      chiliLog('Authentication cancelled.');
       return false;
     }
 
@@ -549,10 +550,10 @@ async function registrationWithAuth_retry(
     }
 
     if (attempt < MAX_ATTEMPTS) {
-      console.log('Authentication failed.');
+      chiliLog('Authentication failed.');
     }
   }
 
-  console.error(`Authentication failed after ${MAX_ATTEMPTS} attempts.`);
+  chiliErrLog(`Authentication failed after ${MAX_ATTEMPTS} attempts.`);
   return false;
 }

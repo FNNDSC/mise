@@ -203,6 +203,50 @@ export class CaptureSink implements OutputSink {
 }
 
 /**
+ * Sink that captures the data channel for a pipe or redirect.
+ *
+ * Text writes (a command's rendered envelope output) are ANSI-stripped, the
+ * documented plain-pipe deviation; binary writes (a raw `cat` of a DICOM file)
+ * are kept byte-for-byte. The err channel passes through to stderr live, since
+ * a pipe never carries the error stream. Status and progress are ephemeral.
+ */
+export class PipeCaptureSink implements OutputSink {
+  private chunks: Buffer[] = [];
+
+  /** @inheritdoc */
+  public data_write(chunk: string | Buffer): void {
+    this.chunks.push(typeof chunk === 'string'
+      ? Buffer.from(ansi_strip(chunk), 'utf-8')
+      : chunk);
+  }
+
+  /** @inheritdoc */
+  public err_write(chunk: string | Buffer): void {
+    // The err channel is never piped: pass it straight to stderr, exactly as
+    // the historical inherit behavior did.
+    process.stderr.write(chunk);
+  }
+
+  /** @inheritdoc */
+  public status_write(_text: string): void {
+    // Status is ephemeral by contract.
+  }
+
+  public progress_write(_event: ProgressEvent): void {
+    // Progress is ephemeral by contract.
+  }
+
+  /**
+   * Returns everything captured on the data channel so far.
+   *
+   * @returns The captured bytes (stripped text and raw binary, in write order).
+   */
+  public buffer_get(): Buffer {
+    return Buffer.concat(this.chunks);
+  }
+}
+
+/**
  * The host sink: the process-wide default installed by whoever owns the output
  * destination (the CLI REPL, the daemon). Defaults to stdout so every entry
  * point behaves as the CLI always has.
@@ -249,6 +293,23 @@ export function sink_set(sink: OutputSink): OutputSink {
 }
 
 /**
+ * Runs `fn` with `sink` installed as the active sink for its async context.
+ *
+ * Command execution inside the callback resolves {@link sink_get} to `sink`,
+ * isolated from any other command running concurrently in the same process.
+ * This is how the pipe and redirect paths capture a command's output without
+ * touching the global console, and how a multi-tenant host would scope a
+ * session's sink around one `line_execute`.
+ *
+ * @param sink - The sink to scope.
+ * @param fn - The work to run within the scope.
+ * @returns Whatever `fn` resolves to.
+ */
+export function sinkScope_run<T>(sink: OutputSink, fn: () => Promise<T>): Promise<T> {
+  return sinkScope.run(sink, fn);
+}
+
+/**
  * Delivers a completed envelope to the active sink.
  *
  * Rendered text goes to the data channel and error-stream text to the err
@@ -266,6 +327,31 @@ export function envelope_deliver(envelope: CommandEnvelope): void {
   if (envelope.renderedErr !== undefined && envelope.renderedErr.length > 0) {
     sink.err_write(envelope.renderedErr);
   }
+}
+
+/**
+ * Writes a line to the active sink's data channel (appending a newline).
+ *
+ * The `console.log` replacement for streaming builtins — commands that emit
+ * incremental output over their lifetime (a blocking pull with per-series
+ * progress) rather than a single final envelope. In a pipe or redirect this
+ * lands in the capture buffer; on a daemon it streams to the remote surface.
+ *
+ * @param text - The line to write (a newline is appended).
+ */
+export function sink_dataLine(text: string): void {
+  sink_get().data_write(`${text}\n`);
+}
+
+/**
+ * Writes a line to the active sink's error channel (appending a newline).
+ *
+ * The `console.error` replacement for streaming builtins.
+ *
+ * @param text - The line to write (a newline is appended).
+ */
+export function sink_errLine(text: string): void {
+  sink_get().err_write(`${text}\n`);
 }
 
 /**

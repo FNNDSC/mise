@@ -9,13 +9,14 @@
  */
 
 import chalk from 'chalk';
-import { chrisContext, pacsServers_list, PACSServer } from '@fnndsc/cumin';
+import { chrisContext, pacsServers_list, PACSServer, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { builtin_query } from './query.js';
 import { builtin_pull } from '../fs/pull.js';
-import { args_checkHasHelpFlag, help_show } from '../help.js';
+import { args_checkHasHelpFlag, help_render } from '../help.js';
+import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 
 /**
- * Prints the list of registered PACS servers, marking the active one.
+ * Streams the list of registered PACS servers, marking the active one.
  *
  * @param active - Current active PACS server identifier or null.
  */
@@ -23,11 +24,11 @@ async function servers_print(active: string | null): Promise<void> {
   const result = await pacsServers_list();
 
   if (!result.ok || result.value.length === 0) {
-    console.log(chalk.yellow('No PACS servers registered in CUBE.'));
+    sink_dataLine(chalk.yellow('No PACS servers registered in CUBE.'));
     return;
   }
 
-  console.log('');
+  sink_dataLine('');
   for (const srv of result.value) {
     const label: string = srv.identifier ?? srv.name ?? String(srv.id);
     const isActive: boolean =
@@ -35,11 +36,11 @@ async function servers_print(active: string | null): Promise<void> {
       (label === active || String(srv.id) === active);
     const marker: string = isActive ? chalk.green(' ✓ active') : '';
     const idStr: string = chalk.gray(`[${srv.id}]`);
-    console.log(`  ${idStr}  ${chalk.cyan(label.padEnd(20))}${marker}`);
+    sink_dataLine(`  ${idStr}  ${chalk.cyan(label.padEnd(20))}${marker}`);
   }
-  console.log('');
-  console.log(chalk.gray('  Use: pacs connect <name|id>'));
-  console.log('');
+  sink_dataLine('');
+  sink_dataLine(chalk.gray('  Use: pacs connect <name|id>'));
+  sink_dataLine('');
 }
 
 /**
@@ -55,11 +56,12 @@ async function servers_print(active: string | null): Promise<void> {
  *   pacs pull <vfs-path...>   — pull DICOM series into ChRIS storage
  *
  * @param args - Command arguments (subcommand + its own args).
+ * @returns An envelope; streaming subcommands carry empty rendered text and
+ *   emit their output live, while query/pull return their own envelopes.
  */
-export async function builtin_pacs(args: string[]): Promise<void> {
+export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
   if (args_checkHasHelpFlag(args, 'pacs')) {
-    help_show('pacs');
-    return;
+    return envelope_ok(help_render('pacs'));
   }
 
   const subcommand: string | undefined = args[0];
@@ -68,15 +70,15 @@ export async function builtin_pacs(args: string[]): Promise<void> {
   if (!subcommand) {
     const active: string | null = await chrisContext.PACSserver_get();
     if (active) {
-      console.log(`Active PACS server: ${chalk.cyan(active)}`);
-      console.log(chalk.gray('  pacs connect         — list all servers'));
-      console.log(chalk.gray('  pacs disconnect      — clear active server'));
+      sink_dataLine(`Active PACS server: ${chalk.cyan(active)}`);
+      sink_dataLine(chalk.gray('  pacs connect         — list all servers'));
+      sink_dataLine(chalk.gray('  pacs disconnect      — clear active server'));
     } else {
-      console.log(chalk.yellow('No PACS server set.'));
-      console.log(chalk.gray('  pacs connect         — list available servers'));
-      console.log(chalk.gray('  pacs connect <id>    — set active server'));
+      sink_dataLine(chalk.yellow('No PACS server set.'));
+      sink_dataLine(chalk.gray('  pacs connect         — list available servers'));
+      sink_dataLine(chalk.gray('  pacs connect <id>    — set active server'));
     }
-    return;
+    return envelope_ok('');
   }
 
   switch (subcommand) {
@@ -85,47 +87,46 @@ export async function builtin_pacs(args: string[]): Promise<void> {
       if (!target) {
         const active: string | null = await chrisContext.PACSserver_get();
         await servers_print(active);
-        return;
+        return envelope_ok('');
       }
       const ok: boolean = await chrisContext.PACSserver_set(target);
       if (ok) {
-        console.log(chalk.green(`[+] PACS server set to '${target}'`));
-      } else {
-        console.error(chalk.red(`pacs connect: Failed to set server '${target}'`));
-        process.exitCode = 1;
+        sink_dataLine(chalk.green(`[+] PACS server set to '${target}'`));
+        return envelope_ok('');
       }
-      return;
+      sink_errLine(chalk.red(`pacs connect: Failed to set server '${target}'`));
+      process.exitCode = 1;
+      return envelope_error('');
     }
 
     case 'disconnect': {
       const ok: boolean = await chrisContext.PACSserver_set('');
       if (ok) {
-        console.log(chalk.green('[-] PACS server context cleared.'));
-      } else {
-        console.error(chalk.red('pacs disconnect: Failed to clear PACS server context.'));
-        process.exitCode = 1;
+        sink_dataLine(chalk.green('[-] PACS server context cleared.'));
+        return envelope_ok('');
       }
-      return;
+      sink_errLine(chalk.red('pacs disconnect: Failed to clear PACS server context.'));
+      process.exitCode = 1;
+      return envelope_error('');
     }
 
     case 'list': {
       const active: string | null = await chrisContext.PACSserver_get();
       await servers_print(active);
-      return;
+      return envelope_ok('');
     }
 
     case 'query':
-      await builtin_query(args.slice(1));
-      return;
+      return builtin_query(args.slice(1));
 
     case 'pull':
-      await builtin_pull(args.slice(1));
-      return;
+      return builtin_pull(args.slice(1));
 
     default:
-      console.error(chalk.red(`pacs: Unknown subcommand '${subcommand}'`));
-      console.log(chalk.gray('  Subcommands: connect, disconnect, list, query, pull'));
-      console.log(chalk.gray('  Try: help pacs'));
+      sink_errLine(chalk.red(`pacs: Unknown subcommand '${subcommand}'`));
+      sink_dataLine(chalk.gray('  Subcommands: connect, disconnect, list, query, pull'));
+      sink_dataLine(chalk.gray('  Try: help pacs'));
       process.exitCode = 1;
+      return envelope_error('');
   }
 }

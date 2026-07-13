@@ -8,8 +8,12 @@ import {
   StdoutSink,
   BufferSink,
   CaptureSink,
+  PipeCaptureSink,
   sink_get,
   sink_set,
+  sink_dataLine,
+  sink_errLine,
+  sinkScope_run,
   envelope_deliver,
   envelopeHandler_wrap,
   type OutputSink,
@@ -227,6 +231,63 @@ describe('CaptureSink', () => {
     expect(capture.errText_get()).toBe('err');
     expect(liveData).toEqual(['out']);
     expect(liveErr).toEqual(['err']);
+  });
+});
+
+describe('PipeCaptureSink', () => {
+  it('ANSI-strips text writes and keeps binary writes raw, in order', () => {
+    const pipe: PipeCaptureSink = new PipeCaptureSink();
+    pipe.data_write('\x1b[32mgreen\x1b[0m ');
+    pipe.data_write(Buffer.from([0x00, 0x01, 0xff]));
+    const buffer: Buffer = pipe.buffer_get();
+    expect(buffer.subarray(0, 6).toString('utf-8')).toBe('green ');
+    expect(Array.from(buffer.subarray(6))).toEqual([0x00, 0x01, 0xff]);
+  });
+
+  it('passes the err channel through to stderr and drops status/progress', () => {
+    const pipe: PipeCaptureSink = new PipeCaptureSink();
+    const errSpy: jest.SpiedFunction<typeof process.stderr.write> = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    pipe.err_write('oops\n');
+    pipe.status_write('spinner');
+    pipe.progress_write({} as never);
+    expect(errSpy).toHaveBeenCalledWith('oops\n');
+    expect(pipe.buffer_get().length).toBe(0);
+  });
+});
+
+describe('sink line writers', () => {
+  it('sink_dataLine writes a line to the active data channel', () => {
+    const buffer: BufferSink = new BufferSink();
+    sink_set(buffer);
+    sink_dataLine('hello');
+    expect(buffer.text_get()).toBe('hello\n');
+  });
+
+  it('sink_errLine writes a line to the active err channel', () => {
+    const errSpy: jest.SpiedFunction<typeof process.stderr.write> = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    sink_set(new BufferSink());
+    sink_errLine('bad');
+    expect(errSpy).toHaveBeenCalledWith('bad\n');
+  });
+});
+
+describe('sinkScope_run', () => {
+  it('scopes the sink for the callback and restores it afterwards', async () => {
+    const host: BufferSink = new BufferSink();
+    sink_set(host);
+    const scoped: BufferSink = new BufferSink();
+    const seen: OutputSink = await sinkScope_run(scoped, async (): Promise<OutputSink> => {
+      sink_get().data_write('inside');
+      return sink_get();
+    });
+    expect(seen).toBe(scoped);
+    expect(scoped.text_get()).toBe('inside');
+    expect(host.text_get()).toBe('');
+    expect(sink_get()).toBe(host);
   });
 });
 

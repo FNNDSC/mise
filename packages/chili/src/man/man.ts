@@ -9,6 +9,7 @@
 import { Command } from "commander";
 import { topics_list } from "../commands/man/topics.js";
 import { manPage_display, ManPageOptions } from "../commands/man/doc.js";
+import { chiliLog } from "../screen/output.js";
 
 /**
  * Sets up the 'man' command for displaying ChILI manual and help pages.
@@ -36,8 +37,8 @@ export function manCommand_setup(program: Command): void {
     .description("List the available manual page topics")
     .action(async () => {
       const files: string[] = await topics_list();
-      console.log("\n\nThe following topics are available:");
-      console.log("(read more with 'chili man doc <topic>')\n");
-      console.log(files.join("\n"));
+      chiliLog("\n\nThe following topics are available:");
+      chiliLog("(read more with 'chili man doc <topic>')\n");
+      chiliLog(files.join("\n"));
     });
 }

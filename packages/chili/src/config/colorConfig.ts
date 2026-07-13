@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
+import { chiliErrLog } from "../screen/output.js";
 
 /**
  * Interface for color style configuration.
@@ -79,7 +80,7 @@ function colorConfig_load(): ColorConfig {
     return cachedConfig;
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    console.error(`Warning: Could not load color config: ${msg}`);
+    chiliErrLog(`Warning: Could not load color config: ${msg}`);
 
     return {
       icons: {

@@ -7,6 +7,7 @@
  * @module
  */
 import { exec } from "child_process";
+import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /**
  * Promisified version of child_process.exec.
@@ -34,12 +35,12 @@ export async function shellCommand_run(command: string): Promise<string | null> 
   try {
     const { stdout, stderr } = await childProcess_exec(command);
     if (stderr) {
-      // console.warn(`Command stderr: ${stderr.trim()}`); // Log stderr as warning, not necessarily an error
+      // chiliErrLog(`Command stderr: ${stderr.trim()}`); // Log stderr as warning, not necessarily an error
     }
     return stdout.trim();
   } catch (error: unknown) {
-    // console.error(`Command failed: ${command}`);
-    // console.error(`Error: ${error.message}`);
+    // chiliErrLog(`Command failed: ${command}`);
+    // chiliErrLog(`Error: ${error.message}`);
     return null;
   }
 }
@@ -83,8 +84,8 @@ export async function docker_checkAvailability(): Promise<boolean> {
   if (result === "OK") {
     return true;
   }
-  console.error("Error: Docker is not installed or not running.");
-  console.error("Please ensure Docker is properly set up on your system to add plugins.");
+  chiliErrLog("Error: Docker is not installed or not running.");
+  chiliErrLog("Please ensure Docker is properly set up on your system to add plugins.");
   return false;
 }
 
@@ -120,20 +121,20 @@ export async function docker_imageExistsLocally(image: string): Promise<boolean>
 export async function docker_pullImage(image: string, quiet: boolean = true): Promise<boolean> {
   const existsLocally: boolean = await docker_imageExistsLocally(image);
   if (existsLocally) {
-    console.log(`Docker image ${image} already exists locally.`);
+    chiliLog(`Docker image ${image} already exists locally.`);
     return true;
   }
 
-  console.log(`Pulling Docker image: ${image}...`);
+  chiliLog(`Pulling Docker image: ${image}...`);
   const quietFlag: string = quiet ? '--quiet' : '';
   const result: string | null = await shellCommand_run(`docker pull ${quietFlag} ${image}`);
 
   if (result !== null) {
-    console.log(`Successfully pulled ${image}`);
+    chiliLog(`Successfully pulled ${image}`);
     return true;
   }
 
-  console.error(`Failed to pull Docker image: ${image}`);
+  chiliErrLog(`Failed to pull Docker image: ${image}`);
   return false;
 }
 

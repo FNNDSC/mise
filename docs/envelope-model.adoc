@@ -1,0 +1,221 @@
+= The command envelope: from text to typed models
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+Every command in the engine returns a `CommandEnvelope` — a structured outcome
+rather than printed text. Today most envelopes carry only a *rendered* string,
+the same characters a terminal would show. This document specifies the second
+move: giving every envelope a typed *model*, and demoting the rendered text to
+one view of that model. The result is that a single command can feed a terminal,
+a web console, and an agent at once, and that no client ever has to consume ChRIS
+through Collection+JSON. This is a design and migration guide, not a proposal;
+the envelope and its model slot already exist, and a handful of commands already
+populate them.
+
+== Where this fits
+
+The engine (brasa) executes an intent and returns a `CommandEnvelope`. The
+`CommandEnvelope` and its model slot live in cumin, at the base of the stack, so
+every layer can produce and consume them without an upward dependency. The two
+moves that turn the engine into a data-returning kernel are:
+
+* *Move one (done).* Remove the console from the engine. Every command returns an
+  envelope; no layer below a surface prints. Output is data a surface routes —
+  to a terminal, a pipe, or a wire.
+* *Move two (this document).* Fill the typed `model` slot for every command, and
+  make `rendered` a projection of it.
+
+For the consumer's view of the whole kernel, see
+link:intent-kernel.adoc[intent-kernel.adoc]; for the narrative, see
+link:history.adoc[history.adoc].
+
+== The contract
+
+=== The envelope
+
+The envelope is defined in cumin. Its shape (abbreviated):
+
+[source,typescript]
+----
+interface CommandEnvelope {
+  status: EnvelopeStatus;      // 'ok' | 'error' — the engine's ground truth
+  rendered: string;            // printable output (a terminal VIEW)
+  renderedErr?: string;        // printable error-stream output
+  model?: EnvelopeModel;       // the typed result — the SOURCE OF TRUTH
+  errors?: StackMessage[];     // structured error detail for machine consumers
+  trace?: ResolutionTrace;     // how an intent was resolved (see intent-kernel.adoc)
+}
+
+interface EnvelopeModel {
+  kind: string;                // namespaced identifier, e.g. 'fs.listing'
+  data: unknown;               // the typed payload; narrowed by `kind`
+}
+----
+
+=== The governing rule
+
+[IMPORTANT]
+====
+`model.data` is the source of truth. `rendered` is a *view derived from it* — not
+a second, parallel output. Build the data first; render from it.
+====
+
+A command must not compute a string and then reverse-engineer data from it. It
+computes its typed result, sets `model`, and produces `rendered` by passing that
+same data through a view function. The terminal string and the structured object
+can never disagree, because one is a projection of the other.
+
+=== The kind namespace
+
+`kind` is a dotted, namespaced identifier owned by the layer that produces the
+model — never by cumin, which keeps `data` opaque. The namespace mirrors the
+command domains:
+
+[cols="1,3",options="header"]
+|===
+|Prefix |Domains
+
+|`fs.*`      |filesystem: `fs.listing`, `fs.cat`, `fs.stat`
+|`feed.*`    |feeds: `feed.listing`, `feed.detail`, `feed.note`
+|`plugin.*`  |plugins and instances: `plugin.listing`, `plugin.run`, `plugin.params`
+|`pacs.*`    |PACS: `pacs.servers`, `pacs.query`, `pacs.series`
+|`pipeline.*`|pipelines: `pipeline.listing`, `pipeline.run`
+|`sys.*`     |session/context: `sys.context`, `sys.whoami`, `sys.proc`
+|===
+
+A models layer (chili) publishes the `kind → type` map as a discriminated union,
+so a typed client narrows `data` by switching on `model.kind`:
+
+[source,typescript]
+----
+type FsListing   = { kind: 'fs.listing';   data: ListingData };
+type FeedListing = { kind: 'feed.listing'; data: FeedListData };
+// … one arm per kind …
+type ChrisModel  = FsListing | FeedListing | /* … */ ;
+----
+
+== Worked examples
+
+Both commands below already *compute* their typed data internally and currently
+throw the structure away at render time. Move two is, mostly, the discipline of
+not discarding it. The helper `envelope_ok(rendered, model?)` already accepts a
+model — the `cat` command uses it today (`{ kind: 'fs.cat', data: outcomes }`).
+
+=== `ls` → `fs.listing`
+
+`ls` already builds `ListingItem[]` (`{ name, type, size, owner, date, target?,
+version?, status? }`) and feeds it only to a view renderer. The model keeps that
+array:
+
+[source,typescript]
+----
+interface DirListing { path: string; entries: ListingItem[]; stale: boolean }
+interface ListingData { cwd: string; listings: DirListing[] }  // ls may list several targets
+----
+
+Inside the VFS listing, build the data, then render from it:
+
+[source,typescript]
+----
+const entries: ListingItem[] = result.value;                       // already computed
+const data: DirListing = { path: effectivePath, entries, stale: !!wasStale };
+const rendered = options.long ? `${long_render(entries, …)}\n`      // rendered = view(data)
+                              : `${grid_render(entries, …)}\n`;
+return envelope_ok(rendered, { kind: 'fs.listing', data });         // the only real change
+----
+
+`builtin_ls` aggregates per-target listings into one model, unchanged rendered
+text alongside:
+
+[source,typescript]
+----
+const listings: DirListing[] = [];
+for (const target of targets) {
+  const env = await vfs.list(target, options);
+  rendered += env.rendered;
+  if (env.model?.kind === 'fs.listing') listings.push(...(env.model.data as ListingData).listings);
+}
+return envelope_ok(rendered, { kind: 'fs.listing', data: { cwd, listings } });
+----
+
+What each consumer gets from the *same* `ls`:
+
+* *Terminal:* `envelope.rendered` — the grid string, unchanged.
+* *Web console:* `envelope.model.data.listings[0].entries` — real `ListingItem`s;
+  render a native file grid, click a `dir` to `cd`, a `plugin` to inspect.
+* *Agent:* `entries` + `status` — ground truth of what is actually there, not a
+  narrated claim.
+
+=== `feed list` → `feed.listing`
+
+`feeds_fetchList` already returns `{ feeds: Feed[], selectedFields, totalCount }`.
+The handler stringifies it today; the model keeps it:
+
+[source,typescript]
+----
+interface FeedListData { feeds: Feed[]; fields: string[]; shown: number; total?: number }
+----
+
+[source,typescript]
+----
+const { feeds, selectedFields, totalCount } = await feeds_fetchList(parsed as CLIoptions);
+const data: FeedListData = { feeds, fields: selectedFields, shown: feeds.length, total: totalCount };
+
+let rendered = `${feedList_render(feeds, selectedFields, {…})}\n`;   // rendered = view(data.feeds)
+if (totalCount !== undefined && feeds.length < totalCount)
+  rendered += `${chalk.dim(`  ↓ showing ${feeds.length} of ${totalCount} …`)}\n`;
+
+return envelope_ok(rendered, { kind: 'feed.listing', data });        // the change
+----
+
+* *Terminal:* the ASCII table + pagination hint, unchanged.
+* *Web console:* `model.data.feeds` — real `Feed` objects; a sortable table or
+  cards, each row a link into that feed; pagination from `shown`/`total`.
+* *Agent:* `feeds` + `status` — "the list succeeded; here are N feeds," as a
+  receipt.
+
+== Migration recipe
+
+The change to any one command is small and mechanical. For each command:
+
+. *Name the model type* in the producing layer (chili), e.g. `PluginRunData`, and
+  add its arm to the `kind → type` union.
+. *Build the data first.* Wherever the command currently constructs a string from
+  typed values, construct the typed object first.
+. *Render from the data.* Make the existing view function take the typed object,
+  so `rendered = view(data)`.
+. *Return both.* `return envelope_ok(rendered, { kind, data });` (or
+  `envelope_error(rendered, errors, renderedErr)` with the model attached for
+  partial results, as `cat` does on failure).
+. *Do not change observable text.* The terminal output must be byte-identical;
+  only a new, additive `model` appears.
+
+A command is "done" for move two when its rendered text is provably a function of
+its model and nothing else.
+
+== Progress and scope
+
+The envelope infrastructure is complete; the model slot is populated for a
+minority of commands. The filesystem mutation commands (`cat`, `cp`, `mv`, `rm`,
+`mkdir`, `touch`) already carry typed models; the listing and resource commands
+mostly carry rendered text only. Move two is a per-command grind across the
+remaining commands, plus publishing the `kind → type` union — additive, and
+verifiable command by command against the "rendered is a view" rule.
+
+Two things move two unlocks together, which is why it is the pivot for both the
+web and the agentic horizons:
+
+* *Models over the wire.* When calypso ships the `model` (not just the rendered
+  text) and a typed client SDK deserializes it, a web console is a pure kernel
+  client consuming typed objects; Collection+JSON never appears. See
+  link:calypso.adoc[calypso.adoc] for the wire.
+* *The agentic receipt.* A typed `model`, a ground-truth `status`, and the
+  `trace` of how an intent was resolved are exactly what an agent needs to act on
+  fact rather than on its own narration. See link:intent-kernel.adoc[intent-kernel.adoc].

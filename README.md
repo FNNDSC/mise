@@ -11,8 +11,12 @@
 
 **MISE** — *MISE Integrates the Sandwich Ecosystem*
 
-**A Unix-shell interface for ChRIS: a platform for storing data, running analysis
-plugins, and tracking scientific workflows.**
+**Drive ChRIS — a cloud platform for scientific analysis — like a computer, not a web API.**
+
+![packages](https://img.shields.io/badge/packages-6-blue)
+![source](https://img.shields.io/badge/source-42k_LOC-blue)
+![tests](https://img.shields.io/badge/tests-~2k-brightgreen)
+![license](https://img.shields.io/badge/license-MIT-green)
 
 `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso` — one sandwich, one engine, one daemon, *mise en place* in one kitchen.
 
@@ -20,13 +24,21 @@ plugins, and tracking scientific workflows.**
 
 ---
 
-## What is this?
+## What this is
 
-ChRIS is a distributed scientific-computing platform: it keeps data, analysis
-plugins, workflow state, and results behind a REST API so computation can run
-where the data lives. **MISE** turns that platform into a Unix-shaped working
-environment. **ChELL**, the shell in this repo, maps ChRIS onto paths and
-commands you already know:
+ChRIS is a cloud platform for scientific analysis. It stores research data — it
+grew up processing hospital brain-imaging studies — and runs containerized
+analysis programs ("plugins") on that data wherever the compute lives, keeping a
+precise record of what ran to produce every result. It's powerful, but you reach
+it through a low-level web API, where one useful task — *find this scan, run this
+pipeline, fetch the result* — unfolds into a long chain of dependent calls.
+Historically, every tool built on ChRIS re-implemented that plumbing from
+scratch, and most stalled under the weight of it.
+
+mise builds that plumbing once and hands you ChRIS as something you *operate*
+directly. What you run is **chell**, a shell: your data appears as folders and
+files, every analysis plugin is a command in `/bin`, and a running job is a live
+entry under `/proc`. Instead of writing API code, you drive it:
 
 ```bash
 cd /home/chris/uploads/SAG-anon       # your data is a filesystem
@@ -35,27 +47,43 @@ pl-fshack-v1.2.0 --inputFile brain.mgz   # run an analysis by name
 cat /proc/feeds/feed_123/pl-fshack_789/status   # watch it run
 ```
 
-If you know `bash` or `zsh`, you already know most of ChELL. But ChELL is now
-only the *surface* — the readline loop and the terminal rendering. Behind it sits
-**brasa**, the hostable shell *engine* (parsing, dispatch, builtins, session),
-which in turn sits on a clean command substrate — the **Sandwich Model**. Each
-layer is its own independently-published npm package, reusable on its own (a web
-client can import the lower layers without ever touching the shell). And because
-the engine is separable from any surface, **CALYPSO** — the session daemon and
-wire contract — can host that same engine and serve it to remote and future web
-surfaces.
+If you've used a terminal, you already know most of it.
 
-This repository is the **monorepo** that houses all the packages. The original
-four sandwich packages were once separate repos
-(`FNNDSC/{cumin,salsa,chili,chell}`); their full git history and release tags
-live on here, under `packages/<name>/`. CALYPSO was added here because its seams
-are internal to the hosted chell engine and the daemon wire contract, and
-**brasa** — the hostable engine lifted out of chell — followed for the same reason.
+Underneath, mise is more than the shell. It's a mature, layered stack of six
+focused packages whose core is a reusable engine — an *intent kernel* — that
+turns *what you want* into validated ChRIS actions and hands back structured
+results. chell is just its first surface; the same engine is built to be driven
+by a web console or an AI agent, none of them ever touching the raw ChRIS API.
+**mise is the framework; chell is the shell you run today.** See
+**[docs/intent-kernel.adoc](docs/intent-kernel.adoc)** for the client's view and
+**[docs/history.adoc](docs/history.adoc)** for how it got here.
 
-For the story of how the stack came to be — from the Collection+JSON burden that
-every ChRIS client used to re-pay, to a single adapter that tamed it, to a shell,
-to a hostable kernel a daemon can serve to many surfaces (and the language-assist
-lever that makes possible) — see **[docs/history.adoc](docs/history.adoc)**.
+---
+
+## Get started
+
+The fastest way in — install the shell and point it at the public ChRIS instance:
+
+```bash
+npm install -g @fnndsc/chell        # or grab a standalone binary (see Install)
+chell
+> connect --user <you> --password <••••> https://cube.chrisproject.org/api/v1/
+```
+
+Then drive it:
+
+```bash
+> ls                       # your files and feeds, as a directory
+> feed list                # every analysis you've run
+> ls /bin                  # every plugin, as a virtual executable
+> plugin search dircopy    # find an analysis
+> pl-dircopy /home/<you>/uploads    # run one by name
+> ls /proc/feeds           # watch running jobs, live
+```
+
+Prefer a single file with no Node.js? See **[Install](#install-end-user)** for
+standalone binaries. Pointing at your own CUBE instead of the public cloud? Use
+its `…/api/v1/` URL in `connect`.
 
 ---
 

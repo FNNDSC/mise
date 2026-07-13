@@ -11,6 +11,18 @@ packages, see the per-package READMEs (start with
   surfaces — and why each layer exists. Start here for the story; the documents
   below are the forward design.
 
+- **[intent-kernel.adoc](intent-kernel.adoc)** — a reference for client authors:
+  what mise offers a client that is not the shell — a single contract of *intent
+  in, receipt out*, reachable in-process (brasa as a library) or over the wire
+  (a calypso session), so no client ever speaks Collection+JSON. Marks what exists
+  today versus what is forward work.
+
+- **[envelope-model.adoc](envelope-model.adoc)** — the contract that makes the
+  above real: every command returns a `CommandEnvelope`, and the move from
+  envelopes that carry *text* to envelopes that carry a typed *model* — with the
+  rendered string demoted to one view. Includes worked examples (`ls`,
+  `feed list`) and the per-command migration recipe.
+
 - **[calypso.adoc](calypso.adoc)** — **CALYPSO**: an intent-interpretation layer
   and session daemon that separates the chell engine from its display and serves
   it over a WebSocket, so remote and web surfaces can drive the same deterministic

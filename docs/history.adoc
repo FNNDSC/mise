@@ -174,15 +174,82 @@ probabilistic interpretation, workflow truth always materialized as CUBE state �
 is set out in link:calypso.adoc[calypso.adoc]; the point here is only that it is a
 lever the extraction made reachable, not a layer bolted on.
 
+== The name for the thing
+
+It is worth naming what the extraction produced, because the name is more
+foundational than "a shell" or "a daemon." What sits at the centre of mise is an
+*intent kernel*: a component that takes an expression of intent and compiles it
+into validated, deterministic action over ChRIS, returning a receipt of what
+actually happened. brasa is that kernel; cumin and salsa are the front end that
+manufactures intent from Collection+JSON; calypso is the host that turns the
+kernel into a service; a surface is whatever renders the receipt.
+
+The pattern is not unique to mise, and it has an independent formal treatment. A
+companion paper by the same author — _Completing the ChRIS Architecture: An
+Intent-Action Service_ — argues from software-engineering first principles that a
+declarative hypermedia API like CUBE's cannot, on its own, satisfy procedural
+clients: the client ecosystem stagnates because every client must re-derive the
+same orchestration. Its remedy is an external layer that exposes task-oriented
+intents rather than resource primitives. mise is a realization of that thesis,
+with one refinement: rather than a single stateless service in front of CUBE, the
+orchestration lives in a layered engine, exposed through two front doors — an
+in-process library any Node client can call, and a hosted session over the wire.
+The boundary that matters is the same one the paper draws: probabilistic or
+human interpretation on one side, deterministic execution on the other, with the
+line drawn exactly at the surface/engine seam.
+
+That boundary is also why the kernel matters for a language model, and it is the
+forward horizon rather than a shipped feature. A second companion paper argues,
+with a short graph-theoretic proof, that a generative model asked to *assemble*
+workflows over a large tool space has an error probability that grows with
+workflow depth and cannot be driven to zero — and that the only structural remedy
+is to collapse that space to a small set of prevalidated intents and to let the
+model select among them rather than construct procedures. Two properties make
+that remedy real, and mise already has both: a bounded, typed command vocabulary
+(the kernel executes only validated intents, never arbitrary API sequences), and
+execution truth that is *materialized outside the model* — the receipt, produced
+by the engine, that an agent can read but cannot invent. This is what makes the
+terminal a legible ledger between human intent, machine translation, and engine
+execution: what was asked, what was proposed, and what actually ran, all in the
+same grammar, all vetoable.
+
+== From text to data
+
+The receipt is the current frontier, and it is arriving in two moves. The first
+is done: the console was removed from the engine. Every command now returns a
+`CommandEnvelope` — a structured outcome carrying a terminal status, the rendered
+text, and a slot for a typed result — and no layer below a surface prints
+anything; output is data that a surface decides how to present, whether that is a
+terminal, a pipe, or a connection to a remote client. The second move is
+underway: filling that typed slot. Today most envelopes carry only rendered text,
+the same string a terminal would show; the work ahead is that every command also
+carries its *model* — the typed data it already computes internally and currently
+discards — with the rendered text demoted to one view of that model.
+
+The consequence is the point. Once a command's result is a typed model with the
+terminal string as merely one projection of it, the same command feeds three
+consumers at once: a terminal renders the text, a web console consumes the model
+as first-class objects, and an agent consumes the model together with the status
+and the resolution trace as its receipt. And the destination is the strongest
+form of the original promise: Collection+JSON becomes an implementation detail
+private to cumin that no client — command line, browser, or agent — ever sees
+again. The shape of that contract is set out in
+link:envelope-model.adoc[envelope-model.adoc], and the consumer's view of the
+whole kernel in link:intent-kernel.adoc[intent-kernel.adoc].
+
 == Where it stands
 
 At the time of writing, the extraction is complete and proven: brasa hosts the
 engine, chell is the CLI surface, CALYPSO is a self-contained daemon that can be
 launched with no shell in sight, and both drive paths — local in-process and
-remote over the wire — are validated end to end against a live CUBE. What has been
-built is not a new feature but a new degree of freedom: the ability to add
-surfaces and consumers without touching the engine, to run the engine near the
-data while driving it from afar, and to place a language layer at a boundary that
-was designed, from its name onward, to permit exactly that. The web console and
-the language-assist layer are the next chapters; before this work they required a
-rewrite, and after it they require only a client.
+remote over the wire — are validated end to end against a live CUBE. The console
+has been removed from the engine end to end, so every command already speaks in
+envelopes. What has been built is not a new feature but a new degree of freedom:
+the ability to add surfaces and consumers without touching the engine, to run the
+engine near the data while driving it from afar, and to place a language layer at
+a boundary that was designed, from its name onward, to permit exactly that. Three
+chapters remain, and each is now a client-side or additive effort rather than a
+rewrite: the typed models that let any client consume intent without ever
+touching Collection+JSON, the web console that consumes them, and the
+language-assist layer that treats the kernel as the deterministic ground beneath
+a probabilistic interpreter.

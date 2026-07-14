@@ -363,9 +363,13 @@ export const helpText: Record<string, CommandHelp> = {
       '  comment add <feedId>             Add a comment (--title, --content)',
       '  comment edit <feedId> <commentId>  Edit a comment (--title, --content)',
       '  comment delete <feedId> <commentId>  Delete a comment',
+      '  tree <feedId>                    Render the feed\'s plugin-instance DAG',
+      '  tree <feedId> --focus <id>       Scope the tree to one node\'s subtree',
+      '  tree <feedId> --max-nodes <n>    Cap rendered nodes (0 = all)',
     ],
     examples: [
       'feed create /home/user/uploads/MRI-data',
+      'feed tree 1669',
       'feed note 42',
       'feed note 42 --title "QC passed" --content "No artefacts found"',
       'feed comments 42',

@@ -22,3 +22,4 @@ export * from './jobs/index.js';
 export { procCache_refresh, procTopology_warmup, procFeed_ensureLoaded } from './vfs/providers/proc.js';
 export { feedGraph_build, signature_compute } from './dag/feedGraph.js';
 export type { FeedGraph, FeedNode } from './dag/feedGraph.js';
+export { feedJoins_ensure, nodeJoins_resolve } from './dag/feedJoins.js';

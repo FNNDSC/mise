@@ -33,6 +33,7 @@ interface RawInstance {
   feed_id: number;
   previous_id: number | null;
   plugin_name: string;
+  plugin_type?: string;
   status: string;
   [key: string]: unknown;
 }
@@ -148,6 +149,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
       feedID: Number(inst.feed_id),
       parentID: prevID,
       pluginName: String(inst.plugin_name),
+      pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
       params: null,
       status: String(inst.status ?? 'unknown'),
     });
@@ -544,6 +546,7 @@ export async function procTopology_warmup(): Promise<void> {
         feedID,
         parentID: prevID,
         pluginName: String(inst.plugin_name),
+        pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
         params: null,
         status: String(inst.status ?? 'unknown'),
       });

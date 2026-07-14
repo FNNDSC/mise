@@ -42,6 +42,12 @@ export interface ProcInstance {
   /** null for root nodes (direct children of a feed). */
   parentID: number | null;
   pluginName: string;
+  /**
+   * Plugin type (`fs` | `ds` | `ts`), immutable. Authoritative for detecting a
+   * topological-join node (`ts`). Optional — absent for nodes added before this was
+   * tracked; callers should fall back to a name match when undefined.
+   */
+  pluginType?: string;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
   /**

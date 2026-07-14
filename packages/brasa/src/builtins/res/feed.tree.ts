@@ -25,6 +25,7 @@ export async function feedTree_handle(
   feedId: number,
   focusId: number | undefined,
   maxNodes: number,
+  flat: boolean = false,
 ): Promise<CommandEnvelope> {
   await procCache_refresh(feedId);
   await feedJoins_ensure(feedId);
@@ -35,7 +36,7 @@ export async function feedTree_handle(
     return envelope_error('', undefined, `${chalk.red(`Feed ${feedId} not found.`)}\n`);
   }
 
-  const result: FeedTreeRender = feedTree_render(graph, focusId, maxNodes);
+  const result: FeedTreeRender = feedTree_render(graph, focusId, maxNodes, flat);
   if (result.error) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(result.error)}\n`);

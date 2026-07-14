@@ -55,3 +55,33 @@ describe('feedTree_render', () => {
     expect(r.rendered).toBe('');
   });
 });
+
+function fanout_fixture(): FeedGraph {
+  const nodes = [{ id: 1, pluginName: 'pl-root', parentID: null, signature: 'r', joinParentIDs: [], status: 'finishedSuccessfully' }];
+  for (let i = 0; i < 5; i++) {
+    const status = i === 0 ? 'finishedWithError' : i === 1 ? 'started' : 'finishedSuccessfully';
+    nodes.push({ id: 100 + i, pluginName: 'pl-dcm2niix', parentID: 1, signature: 'A', joinParentIDs: [], status });
+  }
+  return { feedID: 7, title: 'fan', feedStatus: 'finishedWithError', total: nodes.length, shown: nodes.length, truncated: false, rootIDs: [1], nodes } as FeedGraph;
+}
+
+describe('feedTree_render collapse', () => {
+  it('collapses isomorphic siblings into a ×N group with bar, counts, and anomaly ids', () => {
+    const out = strip(feedTree_render(fanout_fixture(), undefined, 0).rendered);
+    expect(out).toContain('pl-dcm2niix ×5');
+    expect(out).toContain('█');            // status bar
+    expect(out).toContain('3✓');           // done count
+    expect(out).toContain('1✗');           // error count
+    expect(out).toContain('⚠ 100');        // errored member id surfaced (error first)
+    expect(out).toMatch(/[╞╘]═/);          // double-line gutter for the group
+    expect(out).not.toContain('pl-dcm2niix_101'); // individual members not drawn
+  });
+
+  it('flat mode draws every node and labels the header', () => {
+    const out = strip(feedTree_render(fanout_fixture(), undefined, 0, true).rendered);
+    expect(out).toContain('[flat]');
+    expect(out).toContain('pl-dcm2niix_100');
+    expect(out).toContain('pl-dcm2niix_104');
+    expect(out).not.toContain('×5');
+  });
+});

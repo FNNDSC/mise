@@ -1,10 +1,9 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
-const procCache_refresh = jest.fn(async (_id: number): Promise<void> => undefined);
-const feedJoins_ensure = jest.fn(async (_id: number): Promise<void> => undefined);
+const feedGraphData_ensure = jest.fn(async (_id: number): Promise<void> => undefined);
 const feedGraph_build = jest.fn();
 
-jest.unstable_mockModule('@fnndsc/salsa', () => ({ procCache_refresh, feedJoins_ensure, feedGraph_build }));
+jest.unstable_mockModule('@fnndsc/salsa', () => ({ feedGraphData_ensure, feedGraph_build }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
@@ -35,8 +34,7 @@ beforeEach(() => {
 describe('feedTree_handle', () => {
   it('loads metadata + joins then returns a feed.tree envelope', async () => {
     const env = await feedTree_handle(5, undefined, 0) as { status: string; rendered: string; model: { kind: string; data: { total: number } } };
-    expect(procCache_refresh).toHaveBeenCalledWith(5);
-    expect(feedJoins_ensure).toHaveBeenCalledWith(5);
+    expect(feedGraphData_ensure).toHaveBeenCalledWith(5);
     expect(env.status).toBe('ok');
     expect(env.model.kind).toBe('feed.tree');
     expect(env.model.data.total).toBe(2);

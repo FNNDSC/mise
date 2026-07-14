@@ -26,6 +26,7 @@ import {
   procTopology_warmup,
   procCache_refresh,
   procFeed_ensureLoaded,
+  feedMeta_ensure,
 } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
@@ -311,6 +312,30 @@ describe('cache build / warmup / refresh', () => {
     );
     await procCache_refresh(5);
     expect(cache.feed_get(5)?.title).toBe('new');
+  });
+
+  it('feedMeta_ensure skips fetching when real metadata is already cached', async () => {
+    cache.feed_add(feed({ id: 5, title: 'known', creationDate: '2026-01-01', finishedJobs: 1 }));
+    const client = pagingClient([{ id: 5, name: 'fresh', finished_jobs: 9 }], []);
+    mockClientGet.mockResolvedValue(client);
+    await feedMeta_ensure(5);
+    expect(client.getFeeds).not.toHaveBeenCalled();
+    expect(cache.feed_get(5)?.title).toBe('known');
+  });
+
+  it('feedMeta_ensure fetches counters for a missing feed', async () => {
+    mockClientGet.mockResolvedValue(pagingClient([{ id: 8, name: 'new', finished_jobs: 3, creation_date: '2026-01-01' }], []));
+    await feedMeta_ensure(8);
+    expect(cache.feed_get(8)?.title).toBe('new');
+    expect(cache.feed_get(8)?.finishedJobs).toBe(3);
+  });
+
+  it('feedMeta_ensure refreshes a zero-counter placeholder feed', async () => {
+    cache.feed_add(feed({ id: 8, title: 'placeholder', creationDate: '' }));
+    mockClientGet.mockResolvedValue(pagingClient([{ id: 8, name: 'real', finished_jobs: 2, creation_date: '2026-01-01' }], []));
+    await feedMeta_ensure(8);
+    expect(cache.feed_get(8)?.title).toBe('real');
+    expect(cache.feed_get(8)?.finishedJobs).toBe(2);
   });
 
   it('procCache_refresh() rebuilds the whole feed index', async () => {

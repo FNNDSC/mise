@@ -8,13 +8,13 @@
  * @module
  */
 import chalk from 'chalk';
-import { procCache_refresh, feedJoins_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
+import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { feedTree_render, FeedTreeRender } from './feed.tree.render.js';
 
 /**
- * Handles `feed tree <feedId> [--focus <id>] [--max-nodes <n>]`. Loads feed metadata
- * (counters → feed status) + topology, resolves join edges, then renders the tree.
+ * Handles `feed tree <feedId> [--focus <id>] [--max-nodes <n>] [--flat]`. Prepares the
+ * feed's DAG cache-first (reusing warm ProcCache), then renders the tree.
  *
  * @param feedId - Feed to render.
  * @param focusId - Optional subtree root to scope the render to.
@@ -27,8 +27,8 @@ export async function feedTree_handle(
   maxNodes: number,
   flat: boolean = false,
 ): Promise<CommandEnvelope> {
-  await procCache_refresh(feedId);
-  await feedJoins_ensure(feedId);
+  // Cache-first: reuse warm ProcCache, fetch only what's missing (see feedGraphData_ensure).
+  await feedGraphData_ensure(feedId);
 
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {

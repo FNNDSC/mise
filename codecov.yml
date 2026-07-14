@@ -1,0 +1,16 @@
+# Codecov configuration.
+# Monorepo: coverage is aggregated across all packages' lcov reports.
+# Statuses are informational so Codecov never blocks a PR (CI already enforces
+# per-package Jest coverage thresholds).
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "reach, diff, files"
+  require_changes: true

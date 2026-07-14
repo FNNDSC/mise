@@ -1,5 +1,33 @@
 # @fnndsc/brasa
 
+## 0.7.0
+
+### Minor Changes
+
+- b8ae635: `feed tree` now collapses isomorphic sibling subtrees by default. Structurally-identical
+  branches merge into one `×N` template node showing a proportional status bar, per-category
+  counts (`97✓ 2⋯ 1✗`), and the ids of any non-done members (error first) so failures stay
+  addressable. Collapsed groups use a double-line connector to signal multiplicity. Pass
+  `--flat` to draw every node individually.
+- ca63e8b: Add `feed tree <feedId>` — renders a feed's plugin-instance DAG as an annotated text
+  tree. The anchor tree is drawn with box-drawing connectors; topological-join (`ts`) nodes
+  are annotated inline with the extra sources they merge (`⋈ joins ...`). Supports
+  `--focus <id>` to scope to a subtree and `--max-nodes <n>` to cap output (0 = all). The
+  envelope carries a typed `feed.tree` FeedGraph model.
+
+### Patch Changes
+
+- 01ab743: `feed tree` now builds the DAG **cache-first** from the warm ProcCache instead of
+  re-crawling the feed on every call. It reuses already-loaded topology, fetches feed
+  metadata only when missing or a placeholder, refreshes volatile status cheaply (one
+  feed-scoped list call, active nodes only) when reusing a warm cache, and resolves join
+  edges lazily. New salsa exports: `feedGraphData_ensure`, `feedMeta_ensure`,
+  `feedInstances_ensureLoaded`, `feedStatus_refresh`.
+- Updated dependencies [a1f6694]
+- Updated dependencies [01ab743]
+  - @fnndsc/cumin@3.7.0
+  - @fnndsc/salsa@3.4.0
+
 ## 0.6.1
 
 ### Patch Changes

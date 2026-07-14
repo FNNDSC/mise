@@ -201,7 +201,7 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       const focusId: number | undefined = focusRaw !== undefined ? parseInt(String(focusRaw), 10) : undefined;
       const maxRaw: string | undefined = parsed['max-nodes'] as string | undefined;
       const maxNodes: number = maxRaw !== undefined ? parseInt(String(maxRaw), 10) : 0;
-      return await feedTree_handle(feedId, focusId, isNaN(maxNodes) ? 0 : maxNodes);
+      return await feedTree_handle(feedId, focusId, isNaN(maxNodes) ? 0 : maxNodes, !!parsed.flat);
     }
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree>`)}\n`);

@@ -3,8 +3,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 // builtins/utils deps (for real commandArgs_process).
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(),
-  procCache_refresh: jest.fn(),
-  feedJoins_ensure: jest.fn(),
+  feedGraphData_ensure: jest.fn(),
   feedGraph_build: jest.fn(),
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({

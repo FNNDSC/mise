@@ -163,7 +163,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
  * Per-feed loads proceed immediately even while the global sweep is running —
  * instance_add is idempotent so concurrent additions are safe.
  */
-async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
+export async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   if (cache.topologyLoaded_has(feedID)) return;
 
@@ -479,6 +479,40 @@ export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
  *
  * @param feedID - Feed whose instance statuses should be refreshed.
  */
+/**
+ * Ensures a feed's metadata (title + job counters, needed for aggregate status) is cached
+ * with real values. No-op when the feed is already present with real metadata; fetches one
+ * `getFeeds({id})` only when the feed is missing or a zero-counter placeholder. Does NOT
+ * touch instance topology — reuse of the warm cache is the whole point.
+ *
+ * @param feedID - Feed whose metadata to ensure.
+ */
+export async function feedMeta_ensure(feedID: number): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  const existing: ProcFeed | undefined = cache.feed_get(feedID);
+  if (existing && existing.creationDate !== '') return;
+
+  const client = await chrisConnection.client_get();
+  if (!client) return;
+
+  const typedClient: ChrisClient = client as unknown as ChrisClient;
+  const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
+  const f: RawFeed | undefined = (page.data ?? [])[0];
+  if (!f) return;
+
+  cache.feed_add({
+    id: Number(f.id),
+    title: String(f.name),
+    creationDate:   String(f.creation_date ?? ''),
+    finishedJobs:   Number(f.finished_jobs  ?? 0),
+    erroredJobs:    Number(f.errored_jobs    ?? 0),
+    startedJobs:    Number(f.started_jobs    ?? 0),
+    scheduledJobs:  Number(f.scheduled_jobs  ?? 0),
+    cancelledJobs:  Number(f.cancelled_jobs  ?? 0),
+    createdJobs:    Number(f.created_jobs    ?? 0),
+  });
+}
+
 export async function feedStatus_refresh(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   const client = await chrisConnection.client_get();

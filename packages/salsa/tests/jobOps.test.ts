@@ -179,7 +179,7 @@ describe('jobs_statusBatch', () => {
 describe('jobs_find', () => {
   it('uses the in-memory cache once warm-up is complete', async () => {
     const cache = procCache_get();
-    cache.instance_add({ id: 5, feedID: 9, parentID: null, pluginName: 'pl-fshack', params: null });
+    cache.instance_add({ id: 5, feedID: 9, parentID: null, pluginName: 'pl-fshack', params: null, status: 'finishedSuccessfully' });
     cache.warmup_complete();
 
     const r = await jobs_find('pl-fshack');
@@ -189,7 +189,7 @@ describe('jobs_find', () => {
 
   it('returns an exact-ID cache hit during partial warm-up', async () => {
     const cache = procCache_get();
-    cache.instance_add({ id: 42, feedID: 1, parentID: null, pluginName: 'pl-x', params: null });
+    cache.instance_add({ id: 42, feedID: 1, parentID: null, pluginName: 'pl-x', params: null, status: 'finishedSuccessfully' });
 
     const r = await jobs_find('42');
     expect(r.ok && r.value).toEqual([{ id: 42, feedID: 1, pluginName: 'pl-x' }]);

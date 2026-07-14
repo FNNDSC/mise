@@ -33,7 +33,8 @@ export interface ProcFeed {
 }
 
 /**
- * Topology-only instance entry. Status is never stored — always fetched live.
+ * Instance entry. Topology (id/feedID/parentID/pluginName) is permanent.
+ * Status is cached only once terminal (settled); active status is refreshed live.
  */
 export interface ProcInstance {
   id: number;
@@ -43,6 +44,32 @@ export interface ProcInstance {
   pluginName: string;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
+  /**
+   * Last known job status. Terminal statuses (see {@link PROC_TERMINAL_STATUSES})
+   * are immutable and kept permanently; active statuses are refreshed live.
+   * null when topology is known but status has not been observed yet.
+   */
+  status: string | null;
+}
+
+/**
+ * Job statuses that never change once reached. An instance in one of these states
+ * is settled — its status can be cached permanently rather than re-fetched.
+ */
+export const PROC_TERMINAL_STATUSES: ReadonlySet<string> = new Set<string>([
+  'finishedSuccessfully',
+  'finishedWithError',
+  'cancelled',
+]);
+
+/**
+ * Reports whether a status is terminal (settled) and therefore safe to cache.
+ *
+ * @param status - Job status string, or null/undefined when unknown.
+ * @returns True if the status is terminal and immutable.
+ */
+export function status_isTerminal(status: string | null | undefined): boolean {
+  return status != null && PROC_TERMINAL_STATUSES.has(status);
 }
 
 /**
@@ -198,6 +225,20 @@ export class ProcCache {
     if (inst) inst.params = params;
   }
 
+  /**
+   * Updates the cached status for an instance. Terminal (settled) statuses are
+   * never overwritten — once finished, a job's status is immutable.
+   *
+   * @param id - Instance ID.
+   * @param status - Fresh status observed from the API.
+   */
+  status_update(id: number, status: string): void {
+    const inst: ProcInstance | undefined = this.instances.get(id);
+    if (!inst) return;
+    if (status_isTerminal(inst.status)) return;
+    inst.status = status;
+  }
+
   // ── Topology loaded tracking ───────────────────────────────────────────────
 
   topologyLoaded_mark(feedID: number): void {
@@ -317,7 +358,7 @@ export class ProcCache {
  * ```typescript
  * const cache = procCache_get();
  * cache.instance_add({ id: 789, feedID: 123, parentID: 456,
- *                      pluginName: 'pl-fshack', params: null });
+ *                      pluginName: 'pl-fshack', params: null, status: 'scheduled' });
  * ```
  */
 export function procCache_get(): ProcCache {

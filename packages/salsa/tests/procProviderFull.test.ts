@@ -109,16 +109,35 @@ describe('ProcVfsProvider.list', () => {
     expect(items.find((i) => i.name === 'feed_2')?.status).toBe('finishedWithError');
   });
 
-  it('lists root instances + virtual files for a feed', async () => {
+  it('lists root instances from cache; terminal status needs no API call', async () => {
     cache.feed_add(feed({ id: 5 }));
-    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-dircopy', params: null });
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-dircopy', params: null, status: 'finishedSuccessfully' });
     cache.topologyLoaded_mark(5);
-    mockJobs.jobs_statusBatch.mockResolvedValue(new Map([[10, 'running']]));
+    const client = pagingClient([], []);
+    mockClientGet.mockResolvedValue(client);
 
     const r = await provider.list('/proc/feeds/feed_5');
     const items = r.ok ? r.value : [];
     expect(items.filter((i) => i.type === 'file').map((i) => i.name)).toEqual(['status', 'title']);
-    expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-dircopy_10', status: 'running' });
+    expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-dircopy_10', status: 'finishedSuccessfully' });
+    expect(client.getPluginInstances).not.toHaveBeenCalled();
+    expect(mockJobs.jobs_statusBatch).not.toHaveBeenCalled();
+  });
+
+  it('refreshes active status via one feed-scoped list call, freezing terminal', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-dircopy', params: null, status: 'started' });
+    cache.topologyLoaded_mark(5);
+    const client = pagingClient([], [
+      { id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-dircopy', status: 'finishedSuccessfully' },
+    ]);
+    mockClientGet.mockResolvedValue(client);
+
+    const r = await provider.list('/proc/feeds/feed_5');
+    const items = r.ok ? r.value : [];
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(1);
+    expect(mockJobs.jobs_statusBatch).not.toHaveBeenCalled();
+    expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-dircopy_10', status: 'finishedSuccessfully' });
   });
 
   it('returns [] for an unknown feed', async () => {
@@ -127,17 +146,19 @@ describe('ProcVfsProvider.list', () => {
     expect(r.ok && r.value).toEqual([]);
   });
 
-  it('lists children + virtual files for an instance', async () => {
+  it('lists children from cache; terminal status needs no API call', async () => {
     cache.feed_add(feed({ id: 5 }));
-    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null });
-    cache.instance_add({ id: 11, feedID: 5, parentID: 10, pluginName: 'pl-child', params: null });
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+    cache.instance_add({ id: 11, feedID: 5, parentID: 10, pluginName: 'pl-child', params: null, status: 'finishedSuccessfully' });
     cache.topologyLoaded_mark(5);
-    mockJobs.jobs_statusBatch.mockResolvedValue(new Map([[11, 'finishedSuccessfully']]));
+    const client = pagingClient([], []);
+    mockClientGet.mockResolvedValue(client);
 
     const r = await provider.list('/proc/feeds/feed_5/pl-root_10');
     const items = r.ok ? r.value : [];
     expect(items.filter((i) => i.type === 'file').map((i) => i.name)).toEqual(['status', 'params', 'log']);
     expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-child_11', status: 'finishedSuccessfully' });
+    expect(client.getPluginInstances).not.toHaveBeenCalled();
   });
 });
 
@@ -145,7 +166,7 @@ describe('ProcVfsProvider.read', () => {
   beforeEach(() => {
     cache.built_set();
     cache.feed_add(feed({ id: 5, title: 'brain', finishedJobs: 1 }));
-    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-x', params: null });
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-x', params: null, status: 'started' });
     cache.topologyLoaded_mark(5);
   });
 
@@ -156,13 +177,28 @@ describe('ProcVfsProvider.read', () => {
     expect(t.ok && t.value).toBe('brain');
   });
 
-  it('reads instance status live', async () => {
+  it('reads active instance status live and caches it', async () => {
     mockJobs.job_statusFetch.mockResolvedValue(Ok('running'));
     const r = await provider.read('/proc/feeds/feed_5/pl-x_10/status');
     expect(r.ok && r.value).toBe('running');
+    expect(cache.instance_get(10)?.status).toBe('running');
   });
 
-  it('falls back to "unknown" when status fetch fails', async () => {
+  it('returns a cached terminal status without any API call', async () => {
+    cache.status_update(10, 'finishedSuccessfully');
+    const r = await provider.read('/proc/feeds/feed_5/pl-x_10/status');
+    expect(r.ok && r.value).toBe('finishedSuccessfully');
+    expect(mockJobs.job_statusFetch).not.toHaveBeenCalled();
+  });
+
+  it('falls back to last-known status when a live fetch fails', async () => {
+    mockJobs.job_statusFetch.mockResolvedValue(Err());
+    const r = await provider.read('/proc/feeds/feed_5/pl-x_10/status');
+    expect(r.ok && r.value).toBe('started');
+  });
+
+  it('falls back to "unknown" when status is unknown and the fetch fails', async () => {
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-x', params: null, status: null });
     mockJobs.job_statusFetch.mockResolvedValue(Err());
     const r = await provider.read('/proc/feeds/feed_5/pl-x_10/status');
     expect(r.ok && r.value).toBe('unknown');
@@ -198,7 +234,7 @@ describe('ProcVfsProvider.rm', () => {
   beforeEach(() => {
     cache.built_set();
     cache.feed_add(feed({ id: 5 }));
-    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-x', params: null });
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-x', params: null, status: 'running' });
     cache.topologyLoaded_mark(5);
   });
 

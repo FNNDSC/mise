@@ -3,6 +3,7 @@ import {
   ProcCache,
   ProcFeed,
   ProcInstance,
+  status_isTerminal,
 } from '../src/cache/procCache';
 
 function feed(id: number, title = `feed ${id}`): ProcFeed {
@@ -23,9 +24,10 @@ function inst(
   id: number,
   feedID: number,
   parentID: number | null,
-  pluginName = `pl-${id}`
+  pluginName = `pl-${id}`,
+  status: string | null = 'scheduled'
 ): ProcInstance {
-  return { id, feedID, parentID, pluginName, params: null };
+  return { id, feedID, parentID, pluginName, params: null, status };
 }
 
 describe('ProcCache', () => {
@@ -238,6 +240,35 @@ describe('ProcCache', () => {
       expect(cache.instances_find('dcm').map((i) => i.id)).toEqual([2]);
       // '12abc' is not a clean integer -> name search, no match
       expect(cache.instances_find('12abc')).toEqual([]);
+    });
+  });
+
+  describe('status', () => {
+    it('status_isTerminal recognizes settled states only', () => {
+      expect(status_isTerminal('finishedSuccessfully')).toBe(true);
+      expect(status_isTerminal('finishedWithError')).toBe(true);
+      expect(status_isTerminal('cancelled')).toBe(true);
+      expect(status_isTerminal('started')).toBe(false);
+      expect(status_isTerminal('scheduled')).toBe(false);
+      expect(status_isTerminal(null)).toBe(false);
+      expect(status_isTerminal(undefined)).toBe(false);
+    });
+
+    it('status_update advances an active status', () => {
+      cache.instance_add(inst(10, 1, null, 'pl-x', 'scheduled'));
+      cache.status_update(10, 'started');
+      expect(cache.instance_get(10)?.status).toBe('started');
+    });
+
+    it('status_update never overwrites a terminal status', () => {
+      cache.instance_add(inst(10, 1, null, 'pl-x', 'finishedSuccessfully'));
+      cache.status_update(10, 'started');
+      expect(cache.instance_get(10)?.status).toBe('finishedSuccessfully');
+    });
+
+    it('status_update is a no-op for an unknown instance', () => {
+      cache.status_update(999, 'started');
+      expect(cache.instance_get(999)).toBeUndefined();
     });
   });
 

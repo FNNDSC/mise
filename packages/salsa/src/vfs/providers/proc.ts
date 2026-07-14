@@ -19,6 +19,7 @@ import {
   ProcCache,
   ProcInstance,
   ProcFeed,
+  status_isTerminal,
   Result,
   Ok,
   Err,
@@ -148,6 +149,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
       parentID: prevID,
       pluginName: String(inst.plugin_name),
       params: null,
+      status: String(inst.status ?? 'unknown'),
     });
   }
 
@@ -276,15 +278,18 @@ export class ProcVfsProvider implements VFSProvider {
 
     // /proc/jobs/feed_N — list root instances + feed virtual files
     if (feedID !== null && instanceID === null) {
+      const wasLoaded: boolean = cache.topologyLoaded_has(feedID);
       await feedInstances_ensureLoaded(feedID);
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
       if (!feed) return Ok([]);
 
-      // Collect all root instance IDs to batch-fetch statuses
       const rootIDs: number[] = cache.feedRoots_get(feedID);
-      const statuses: Map<number, string> = rootIDs.length > 0
-        ? await jobs_statusBatch(rootIDs)
-        : new Map();
+      // The initial load already carried live status; only re-fetch when revisiting
+      // a feed that still has active (non-terminal) nodes among those shown. One
+      // feed-scoped list call updates all of them — no per-node detail fetches.
+      if (wasLoaded && rootIDs.some((id: number) => !status_isTerminal(cache.instance_get(id)?.status))) {
+        await feedStatus_refresh(feedID);
+      }
 
       const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
@@ -299,7 +304,7 @@ export class ProcVfsProvider implements VFSProvider {
           size: 0,
           owner: '',
           date: '',
-          status: statuses.get(rootID) ?? 'unknown',
+          status: inst.status ?? 'unknown',
         });
       }
       return Ok(items);
@@ -307,14 +312,15 @@ export class ProcVfsProvider implements VFSProvider {
 
     // /proc/jobs/feed_N/plugin_ID — list children + virtual files
     if (feedID !== null && instanceID !== null) {
+      const wasLoaded: boolean = cache.topologyLoaded_has(feedID);
       await feedInstances_ensureLoaded(feedID);
       const inst: ProcInstance | undefined = cache.instance_get(instanceID);
       if (!inst) return Ok([]);
 
       const childIDs: number[] = cache.children_get(instanceID);
-      const statuses: Map<number, string> = childIDs.length > 0
-        ? await jobs_statusBatch(childIDs)
-        : new Map();
+      if (wasLoaded && childIDs.some((id: number) => !status_isTerminal(cache.instance_get(id)?.status))) {
+        await feedStatus_refresh(feedID);
+      }
 
       const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
@@ -330,7 +336,7 @@ export class ProcVfsProvider implements VFSProvider {
           size: 0,
           owner: '',
           date: '',
-          status: statuses.get(childID) ?? 'unknown',
+          status: child.status ?? 'unknown',
         });
       }
       return Ok(items);
@@ -361,8 +367,11 @@ export class ProcVfsProvider implements VFSProvider {
       if (!inst) return Ok('');
 
       if (virtualFile === 'status') {
+        // Settled jobs never change — return the cached terminal status, no call.
+        if (status_isTerminal(inst.status)) return Ok(inst.status as string);
         const fresh: Result<string> = await job_statusFetch(instanceID);
-        return Ok(fresh.ok ? fresh.value : 'unknown');
+        if (fresh.ok) cache.status_update(instanceID, fresh.value);
+        return Ok(fresh.ok ? fresh.value : (inst.status ?? 'unknown'));
       }
 
       if (virtualFile === 'params') {
@@ -406,7 +415,7 @@ export class ProcVfsProvider implements VFSProvider {
       const statusMap: Map<number, string> = await jobs_statusBatch(allIDs);
       await Promise.all(allIDs.map(async (id: number) => {
         const s: string = statusMap.get(id) ?? '';
-        if (!['finishedSuccessfully', 'finishedWithError', 'cancelled'].includes(s)) {
+        if (!status_isTerminal(s)) {
           await job_cancel(id);
         }
       }));
@@ -417,7 +426,7 @@ export class ProcVfsProvider implements VFSProvider {
     if (instanceID !== null) {
       const statusResult: Result<string> = await job_statusFetch(instanceID);
       const status: string = statusResult.ok ? statusResult.value : '';
-      const isTerminal: boolean = ['finishedSuccessfully', 'finishedWithError', 'cancelled'].includes(status);
+      const isTerminal: boolean = status_isTerminal(status);
 
       let result: Result<boolean>;
       if (!isTerminal) {
@@ -458,6 +467,36 @@ export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
+
+/**
+ * Refreshes volatile job status for one feed via a single paginated LIST sweep.
+ *
+ * The plugin-instance list response carries `status`, so one feed-scoped list call
+ * updates every node — far cheaper than per-node detail fetches. Terminal statuses
+ * are frozen by {@link ProcCache.status_update} and never regress.
+ *
+ * @param feedID - Feed whose instance statuses should be refreshed.
+ */
+export async function feedStatus_refresh(feedID: number): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  const client = await chrisConnection.client_get();
+  if (!client) return;
+
+  const typedClient: ChrisClient = client as unknown as ChrisClient;
+  let offset: number = 0;
+
+  while (true) {
+    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
+      feed_id: feedID, limit: PAGE, offset,
+    });
+    const chunk: RawInstance[] = page.data ?? [];
+    for (const inst of chunk) {
+      cache.status_update(Number(inst.id), String(inst.status ?? 'unknown'));
+    }
+    if (chunk.length < PAGE) break;
+    offset += PAGE;
+  }
+}
 
 /**
  * Background topology warm-up — single paginated sweep of all plugin instances
@@ -506,6 +545,7 @@ export async function procTopology_warmup(): Promise<void> {
         parentID: prevID,
         pluginName: String(inst.plugin_name),
         params: null,
+        status: String(inst.status ?? 'unknown'),
       });
       seenFeedIDs.add(feedID);
       loaded++;

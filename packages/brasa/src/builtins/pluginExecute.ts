@@ -155,11 +155,11 @@ export async function builtin_executePlugin(
       });
       procCache_get().instance_add({
         id: result.dircopyInstanceID, feedID: result.feedID,
-        parentID: null, pluginName: 'pl-dircopy', params: null,
+        parentID: null, pluginName: 'pl-dircopy', params: null, status: 'scheduled',
       });
       procCache_get().instance_add({
         id: result.pluginInstanceID, feedID: result.feedID,
-        parentID: result.dircopyInstanceID, pluginName: result.pluginName, params: null,
+        parentID: result.dircopyInstanceID, pluginName: result.pluginName, params: null, status: 'scheduled',
       });
     } else if (result.parentID !== null) {
       // Continue feed: push just the new instance
@@ -170,7 +170,7 @@ export async function builtin_executePlugin(
       if (feedID !== null) {
         procCache_get().instance_add({
           id: result.pluginInstanceID, feedID,
-          parentID: result.parentID, pluginName: result.pluginName, params: null,
+          parentID: result.parentID, pluginName: result.pluginName, params: null, status: 'scheduled',
         });
       }
     }

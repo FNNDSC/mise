@@ -21,6 +21,7 @@ import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { Result, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { noteEditBody_format, noteEditBody_parse } from './feed.notes.js';
+import { feedTree_handle } from './feed.tree.js';
 
 /**
  * Handles `feed list`: fetches and renders the feed table.
@@ -168,7 +169,7 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
   const subcommand: string | undefined = parsed._[0];
 
   if (!subcommand) {
-    return envelope_ok(`${chalk.red("Usage: feed <list|create> ...")}\n`);
+    return envelope_ok(`${chalk.red("Usage: feed <list|create|inspect|search|note|comments|comment|tree> ...")}\n`);
   }
 
   try {
@@ -193,9 +194,17 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       return envelope_error('', undefined, `${chalk.red(`Failed to list comments for feed ${feedId}.`)}\n`);
     } else if (subcommand === 'comment') {
       return await feedComment_handle(parsed);
+    } else if (subcommand === 'tree') {
+      const feedId: number = parseInt(String(parsed._[1]), 10);
+      if (isNaN(feedId)) { return envelope_error('', undefined, `${chalk.red('Usage: feed tree <feedId> [--focus <id>] [--max-nodes <n>]')}\n`); }
+      const focusRaw: string | undefined = parsed.focus as string | undefined;
+      const focusId: number | undefined = focusRaw !== undefined ? parseInt(String(focusRaw), 10) : undefined;
+      const maxRaw: string | undefined = parsed['max-nodes'] as string | undefined;
+      const maxNodes: number = maxRaw !== undefined ? parseInt(String(maxRaw), 10) : 0;
+      return await feedTree_handle(feedId, focusId, isNaN(maxNodes) ? 0 : maxNodes);
     }
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment>`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     process.exitCode = 1;

@@ -153,6 +153,9 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: mockContextGetSingle,
+  procCache_refresh: jest.fn(),
+  feedJoins_ensure: jest.fn(),
+  feedGraph_build: jest.fn(),
   files_listAll: jest.fn().mockResolvedValue(null),
   files_copy: jest.fn().mockResolvedValue(true),
   files_copyRecursively: jest.fn().mockResolvedValue(true),

@@ -16,6 +16,7 @@
 ![packages](https://img.shields.io/badge/packages-6-blue)
 ![source](https://img.shields.io/badge/source-42k_LOC-blue)
 ![tests](https://img.shields.io/badge/tests-~2k-brightgreen)
+[![codecov](https://codecov.io/gh/FNNDSC/mise/branch/main/graph/badge.svg)](https://codecov.io/gh/FNNDSC/mise)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso` — one sandwich, one engine, one daemon, *mise en place* in one kitchen.

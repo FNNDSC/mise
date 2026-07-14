@@ -272,6 +272,40 @@ describe('ProcCache', () => {
     });
   });
 
+  describe('join parents', () => {
+    it('joinParents_update records ids and joinParents_get reads them', () => {
+      cache.instance_add(inst(10, 1, null, 'pl-ts'));
+      cache.joinParents_update(10, [3, 7]);
+      expect(cache.joinParents_get(10)).toEqual([3, 7]);
+    });
+
+    it('joinParents_get defaults to [] when unresolved', () => {
+      cache.instance_add(inst(10, 1, null));
+      expect(cache.joinParents_get(10)).toEqual([]);
+      expect(cache.joinParents_get(999)).toEqual([]);
+    });
+
+    it('joinParents_update is a no-op for an unknown instance', () => {
+      cache.joinParents_update(999, [1]);
+      expect(cache.joinParents_get(999)).toEqual([]);
+    });
+  });
+
+  describe('feedInstanceIDs_get', () => {
+    it('walks the anchor tree breadth-first from roots', () => {
+      cache.feed_add(feed(1));
+      cache.instance_add(inst(10, 1, null));
+      cache.instance_add(inst(11, 1, 10));
+      cache.instance_add(inst(12, 1, 10));
+      cache.instance_add(inst(13, 1, 11));
+      expect(cache.feedInstanceIDs_get(1).sort((a, b) => a - b)).toEqual([10, 11, 12, 13]);
+    });
+
+    it('returns [] for a feed with no roots', () => {
+      expect(cache.feedInstanceIDs_get(42)).toEqual([]);
+    });
+  });
+
   it('cache_clear resets everything', () => {
     cache.feed_add(feed(1));
     cache.instance_add(inst(10, 1, null));

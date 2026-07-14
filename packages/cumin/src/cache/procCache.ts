@@ -42,6 +42,12 @@ export interface ProcInstance {
   /** null for root nodes (direct children of a feed). */
   parentID: number | null;
   pluginName: string;
+  /**
+   * Plugin type (`fs` | `ds` | `ts`), immutable. Authoritative for detecting a
+   * topological-join node (`ts`). Optional — absent for nodes added before this was
+   * tracked; callers should fall back to a name match when undefined.
+   */
+  pluginType?: string;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
   /**
@@ -50,6 +56,13 @@ export interface ProcInstance {
    * null when topology is known but status has not been observed yet.
    */
   status: string | null;
+  /**
+   * Extra parent instance IDs for a topological-join (`ts`) node — the sources it
+   * merges beyond its anchor {@link ProcInstance.parentID}. Immutable once a feed has
+   * run; populated lazily (only ts nodes have any). Absent/undefined = not yet
+   * resolved; empty array = resolved, no joins. See the feed-DAG design notes.
+   */
+  joinParentIDs?: number[];
 }
 
 /**
@@ -202,6 +215,24 @@ export class ProcCache {
   }
 
   /**
+   * Returns every instance ID belonging to a feed, walking the anchor tree from its
+   * roots (breadth-first). Order is roots-first, then descendants.
+   *
+   * @param feedID - Feed to enumerate.
+   * @returns All instance IDs in the feed's anchor tree.
+   */
+  feedInstanceIDs_get(feedID: number): number[] {
+    const result: number[] = [];
+    const queue: number[] = [...this.feedRoots_get(feedID)];
+    while (queue.length > 0) {
+      const id: number = queue.shift()!;
+      result.push(id);
+      queue.push(...this.children_get(id));
+    }
+    return result;
+  }
+
+  /**
    * Removes an instance from the topology cache.
    */
   instance_remove(id: number): void {
@@ -237,6 +268,29 @@ export class ProcCache {
     if (!inst) return;
     if (status_isTerminal(inst.status)) return;
     inst.status = status;
+  }
+
+  /**
+   * Records the resolved topological-join parent IDs for a `ts` instance. Immutable
+   * data — set once when the feed's join edges are first fetched.
+   *
+   * @param id - Instance ID of the join (ts) node.
+   * @param ids - Source instance IDs it merges (beyond its anchor parent).
+   */
+  joinParents_update(id: number, ids: number[]): void {
+    const inst: ProcInstance | undefined = this.instances.get(id);
+    if (inst) inst.joinParentIDs = ids;
+  }
+
+  /**
+   * Returns the resolved join parent IDs for an instance, or an empty array when the
+   * node has none or they have not been resolved yet.
+   *
+   * @param id - Instance ID.
+   * @returns Source instance IDs, or `[]`.
+   */
+  joinParents_get(id: number): number[] {
+    return this.instances.get(id)?.joinParentIDs ?? [];
   }
 
   // ── Topology loaded tracking ───────────────────────────────────────────────

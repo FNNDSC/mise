@@ -1,0 +1,263 @@
+= The Feed DAG Viewer: Feeds as Pipelines, Rendered as Diagrams
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-07-14: Initial draft
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: DRAFT (living document; updated as design conversation progresses)
+
+[abstract]
+== Abstract
+
+This document specifies the feed DAG viewer for the mise stack: the machinery that
+projects a ChRIS feed's plugin-instance topology into a typed graph model and renders it,
+first as an annotated terminal tree and ultimately as a routed diagram. It records three
+results established by design and by live prototype against a real CUBE. First, the graph
+is built as a projection of the warm `/proc` cache, not by re-crawling the backend.
+Second, a feed and a ChRIS *pipeline* are the same structure at different scales — a feed
+is an instantiated pipeline, the pipeline is the feed collapsed to its template — so the
+canonical intermediate representation is the ChRIS `plugin_tree`, which CUBE itself can
+extract from a feed. Third, that representation maps onto the SignalFlow ASCII/SVG routing
+engine, joins included, via a specific node-reuse recipe; the mapping was proven end to
+end on a live feed. The presentation surface (compact terminal tree vs. wide routed
+diagram) is a downstream rendering choice over one shared model.
+
+== The model: FeedGraph as a projection of `/proc`
+
+A ChRIS *feed* is a directed acyclic graph of *plugin instances*. Each instance carries a
+single `previous_id` (its anchor parent), so the common case is a rooted tree; topological
+(`ts`) plugins introduce additional parents and make it a genuine DAG (see
+<<joins>>).
+
+mise already reflects this topology in `ProcCache` (in `cumin`), the session-scoped store
+behind the `/proc` virtual filesystem. `ProcCache` holds the permanent facts — instance
+id, feed id, anchor parent, plugin name and type — plus, since the settled-status work,
+terminal job status (immutable once reached) and, lazily, parameters and join edges.
+
+The viewer's model, `FeedGraph` (in `salsa`, `dag/feedGraph.ts`), is a *flat projection*
+of that cache:
+
+[source]
+----
+FeedGraph { feedID, title, feedStatus, total, shown, truncated, rootIDs, nodes[] }
+FeedNode  { id, pluginName, parentID, signature, joinParentIDs[], status }
+----
+
+Two properties matter:
+
+* **Flat, not nested.** Nodes are a list; edges are the `parentID` pointers plus the
+  `joinParentIDs` overlay. This mirrors `ProcCache`'s adjacency exactly, keeps the payload
+  small, and makes `--focus <id>` lookups trivial.
+* **Signatures carry the aggregation *mechanism*, not the *policy*.** Each node has a
+  recursive topology signature — `hash(pluginName + sorted child signatures)`, with status
+  excluded and children hashed as a multiset — so any surface can group isomorphic siblings
+  with one pass. The decision of *whether* to collapse stays with the surface.
+
+=== Cache-first, never re-crawl
+
+The viewer reads the warm cache; it does not re-fetch a feed on every call. `feed tree`
+prepares data through `feedGraphData_ensure`, which reuses already-loaded topology,
+fetches feed metadata only when missing or a placeholder, refreshes volatile status
+cheaply (one feed-scoped list call, active nodes only, terminal status frozen) only when
+reusing a warm cache, and resolves join edges lazily. A cold invocation loads once; a warm
+one is near-instant. This is a hard design rule: *the FeedGraph is a projection of the
+cache, not a crawl of the backend.*
+
+[[joins]]
+== Topological joins
+
+A `ts` node's extra parents are not on the instance object. They live in its
+`plugininstances` string parameter — a comma-separated list of source instance ids that
+*includes* the anchor parent — reachable only through the instance's `parameters/`
+sub-resource. Plugin type is authoritative (`plugin.meta.type == 'ts'`) and is carried on
+the instance object, so join nodes are detected without a name heuristic.
+
+The viewer therefore keeps two edge sets:
+
+* the **anchor tree** (single `previous_id` per node), which drives the signature, the
+  layout, and collapse; and
+* the **join overlay** (`joinParentIDs` = the `plugininstances` sources minus the anchor),
+  which is excluded from the signature so that parallel fan-out branches ending in a join
+  still collapse together.
+
+Join edges are resolved lazily, per feed, for `ts` nodes only (`dag/feedJoins.ts`).
+
+*Verified live* against a real feed: `pl-topologicalcopy` instance had
+`plugininstances = "121297,120731"`; with anchor `121297`, the recorded overlay was
+`[120731]`.
+
+== The terminal renderer (shipped)
+
+`feed tree <feedId>` renders the DAG as a text tree. By default it **collapses**
+isomorphic siblings: structurally identical branches merge into one `×N` template node
+carrying
+
+* a proportional **status bar** (green done / cyan running / red error; error always
+  gets at least one cell),
+* per-category **counts** (`97✓ 2⋯ 1✗`), and
+* the ids of any **anomalous members** (error first), so failures remain addressable.
+
+Collapsed groups use a double-line connector to signal multiplicity; `ts` nodes are
+annotated inline with the sources they merge (`⋈ joins ...`). `--flat` draws every node;
+`--focus <id>` scopes to a subtree; `--max-nodes <n>` caps output. The command emits a
+typed `feed.tree` envelope carrying the `FeedGraph` model, so a richer surface can
+re-render the same data structurally.
+
+The text tree draws a spanning tree and *annotates* joins rather than drawing them — a
+tree layout cannot faithfully represent a DAG. Drawing join edges is the job of the
+diagram renderer.
+
+== Feeds are pipelines at a different scale
+
+A ChRIS **pipeline** is a reusable DAG *template* — plugins, connections, and parameter
+defaults, with no runtime. A **feed** is a *run* of such a template: concrete instances
+with status, data, and timestamps. The two are:
+
+* **structurally isomorphic** — same plugins, same edges, same parameters, same `ts`
+  semantics; and
+* **ontologically distinct** — a pipeline is design/intent (static, reusable, defaults
+  meant to be overridden); a feed is execution (stateful, concrete).
+
+The consequence is a single axis of representation. Full expansion is the feed; full
+collapse is the pipeline that would produce it; every collapse level in between is a valid
+graph in the same language. Aggregation is not a rendering trick — it is movement along
+the template↔instance axis.
+
+=== CUBE extracts pipelines from feeds natively
+
+CUBE already implements feed→pipeline. `POST /pipelines/` with a `plugin_inst_id` walks
+that instance's tree (`PipelineSerializer._build_tree_dict_from_instance`) and **creates
+and persists a new Pipeline**. It is thorough: parameter defaults are taken from each
+instance's actual parameter values, and `ts` joins are resolved by rewriting
+`plugininstances` from comma-separated *instance ids* to comma-separated *tree indices*
+(`_resolve_instance_tree_ts_indices`).
+
+Two facts constrain how this is used:
+
+* It is a **write with a durable side effect** — one persisted pipeline per call. It is a
+  way to *save* a feed as a reusable pipeline, not a way to *read* topology. `/proc`
+  cannot be built from it; the instance tree is primary and the pipeline is derived from
+  it.
+* It **rejects duplicate or empty titles**. A fan-out feed — many same-plugin instances
+  with blank titles — is refused. Which yields the closing observation: **collapsing a
+  feed to its `×1` template is exactly what makes it a valid, unique-title, runnable
+  pipeline.** Collapse recovers the pipeline.
+
+=== The canonical IR: `plugin_tree`
+
+Both rendering and export target the ChRIS `plugin_tree`:
+
+[source]
+----
+{ root_index, tree: [
+    { plugin_name, title, cpu_limit, memory_limit, number_of_workers, gpu_limit,
+      plugin_parameter_defaults: [ {name, default} ],
+      child_indices: [ ... ] } ] }
+----
+
+It is a flat, index-addressed, forward-only list; edges are `child_indices`; `ts` joins
+are index references in the `plugininstances` default. mise can build this **locally from
+`ProcCache`** — it already holds the topology (`child_indices` from the `children` map),
+the parameters (fetched for join resolution), and the join ids — with no POST, no side
+effect, and no title constraint. CUBE's write endpoint is reserved for the deliberate
+"save this feed as a pipeline" action.
+
+== Rendering the DAG with SignalFlow
+
+SignalFlow (`~/src/signalflow`) is a deterministic ASCII/SVG routing engine: nodes become
+boxes, edges become routed wires, and fan-in/fan-out/crossings are handled by a geometry
+solver. It reads a YAML (or JSON — JSON is valid YAML) call-graph and emits ASCII to
+stdout or SVG/PNG to a file. It is the renderer that *draws* joins, where the terminal
+tree only annotates them.
+
+=== The impedance, measured
+
+SignalFlow's model is a *nested call graph* — `module`/`func` nodes with `calls[]`, and
+edges expressed as **named signals** (a parent `output_ports` signal matched to a child
+`input_ports` signal). CUBE's `plugin_tree` is a *flat, index-addressed, unnamed-edge*
+forward DAG. The adapter is therefore:
+
+* nest the flat tree from `child_indices` — trivial;
+* **mint a signal name per edge** (SignalFlow has no unnamed edges) — mechanical;
+* drop parameters and resource limits (SignalFlow does not render them) — lossy but
+  harmless;
+* express `ts` joins — the one non-mechanical part (<<join-recipe>>).
+
+A linear or simple-fan-out feed maps nearly one-to-one; `SignalFlow`'s own `pipeline.yaml`
+example *is* a linear feed under different labels.
+
+[[join-recipe]]
+=== The join recipe (proven)
+
+SignalFlow has no multi-parent node in raw nesting. A join is one canonical chip that
+several parents converge on, resolved by `module::func` identity. The working recipe for a
+`ts` node with parents `[anchor, B, C, ...]`:
+
+* nest the `ts` node under **each** of its parents;
+* declare it **fully once** — `input_ports` listing one signal per parent, and
+  `chip_io: {input: {explicit: true}}` — and as a **bare reference** under the other
+  parents (a bare occurrence must not redefine metadata, or SignalFlow raises
+  `conflicting_reuse_declaration`);
+* have each parent emit the matching `output_ports` signal.
+
+SignalFlow merges the occurrences into a single chip with fan-in from every parent.
+
+*The gotcha, found by prototype:* wiring a join by matching signal names across
+*non-adjacent* chips (without the reuse nesting) draws the ports but leaves the wire
+**unrouted** — stubs, no line. A join must be a **tree edge via node reuse**, not a
+floating signal match.
+
+=== Prototype result
+
+`FeedGraph → SignalFlow` was implemented and run against a live feed. A minimal
+parallel-branch join (`C` merging siblings `A` and `B`) rendered as one chip with two
+converging wires. Feed 1669's long-range `ts` join (`120731 → 127339`, across the chain)
+also routed as real wires, not stubs. The bridge — CUBE feed to SignalFlow diagram, joins
+included — is established.
+
+SignalFlow spends horizontal space deliberately to resolve clean geometry (a seven-node
+feed renders hundreds of columns wide). This is a **presentation** matter, addressed
+downstream by a scrollable/pannable viewport and by choosing ASCII vs. SVG per surface —
+not an impedance limit.
+
+== The rendering split
+
+One model, two renderers, chosen by surface:
+
+* **Terminal → the text tree.** Compact, collapse-first, always available, join-annotated.
+  The default `feed tree`.
+* **Web → SignalFlow SVG.** Routed, joins drawn, width unconstrained by the terminal; the
+  same `plugin_tree`/`FeedGraph` fed through the adapter with `-o out.svg`. A scrollable
+  terminal pane can host SignalFlow ASCII where desired.
+
+SignalFlow augments rather than replaces the terminal tree.
+
+== Build status
+
+[cols="1,3,1",options="header"]
+|===
+| Increment | Scope | Status
+| 0 | Settled-status cache in `/proc` | Shipped (`cumin` 3.7.0, `salsa` 3.4.0)
+| 1+2 | `FeedGraph` projection, signatures, `ts` join edges | Shipped (`brasa` 0.7.0)
+| 3 | `feed tree` command + typed envelope | Shipped
+| 4 | Collapse (`×N`, status bar, anomaly ids, gutter) | Shipped
+| — | Cache-first data preparation | Shipped
+| 5 | `plugin_tree` projection + SignalFlow adapter + calypso sidecar | Designed; adapter + join recipe prototyped
+|===
+
+== Open questions and deferred work
+
+* **`feed export <id>`** — emit the `plugin_tree` as pipeline YAML, and optionally
+  `createPipeline(plugin_inst_id)` to persist it in CUBE; collapse-to-template makes
+  fan-out feeds exportable.
+* **`--expand <group>`** — unfold a collapsed `×N` group to its members.
+* **Interactive size guard** — `feed tree` currently truncates only on explicit
+  `--max-nodes`; the interactive "feed has N nodes — wait / focus / truncate?" prompt is
+  unbuilt.
+* **Out-of-band freshness** — the cache learns of feeds it did not create only on a full
+  rebuild; there is no poll or TTL. Parked.
+* **Live status** — the diagram is a one-shot snapshot; live updates would re-render the
+  reduced subgraph as status transitions arrive on the progress channel.

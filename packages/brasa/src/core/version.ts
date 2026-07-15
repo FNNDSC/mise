@@ -2,10 +2,11 @@
  * @file Version reporting for the mise stack.
  *
  * Reads brasa's own package.json (this module lives in brasa) and those of the
- * surfaces (chell, calypso) and engine layers (chili, salsa, cumin), so the
- * boot panel, the `version` command, and `--version` all report a consistent
- * set of versions. In the standalone bundled binary — where no package.json
- * exists on disk — the versions esbuild injected at build time are used instead.
+ * surface (chell), session host (calypso), and engine layers (chili, salsa,
+ * cumin), so the boot panel, the `version` command, and `--version` all report
+ * a consistent set of versions. In the standalone bundled binary — where no
+ * package.json exists on disk — the versions esbuild injected at build time
+ * are used instead.
  *
  * @module
  */
@@ -58,9 +59,9 @@ function brasaVersion_load(): string {
 
 /**
  * Loads a package's version via node module resolution, so it works whether the
- * package is nested or hoisted to a workspace-root node_modules. The surfaces
- * (chell, calypso) sit above brasa in the dependency tree but resolve as hoisted
- * siblings; in the bundled binary this falls back to the inlined versions.
+ * package is nested or hoisted to a workspace-root node_modules. ChELL and
+ * CALYPSO sit above brasa in the dependency tree but resolve as hoisted siblings;
+ * in the bundled binary this falls back to the inlined versions.
  *
  * @param name - The package name (e.g. `@fnndsc/cumin`).
  * @returns The resolved version string, or the injected/`'unknown'` fallback.
@@ -75,7 +76,7 @@ function packageVersion_load(name: string): string {
 }
 
 /** The architectural role a package plays in the stack. */
-export type PackageRole = 'surface' | 'engine' | 'layer';
+export type PackageRole = 'surface' | 'sessionHost' | 'engine' | 'layer';
 
 /** A package's short name, full (backronym) name, and role — its version-less identity. */
 interface PackageDescriptor {
@@ -92,9 +93,9 @@ export interface PackageInfo extends PackageDescriptor {
 /**
  * The canonical description of every package in the stack, in the order the
  * flat `--version` report lists them: the chell surface, the brasa engine, its
- * chili/salsa/cumin layers, and the calypso sibling surface. This is the single
- * source of truth the version report, the `--info` table, and the boot panel
- * all draw from.
+ * chili/salsa/cumin layers, and the calypso assisted session host. This is the
+ * single source of truth the version report, the `--info` table, and the boot
+ * panel all draw from.
  */
 const STACK: readonly PackageDescriptor[] = [
   { pkg: 'chell',   name: 'ChELL Executes Layered Logic',                                  role: 'surface' },
@@ -102,7 +103,7 @@ const STACK: readonly PackageDescriptor[] = [
   { pkg: 'chili',   name: 'ChILI handles Intelligent Line Interactions',                   role: 'layer'   },
   { pkg: 'salsa',   name: 'Salsa Abstracts Logic Service Assets',                          role: 'layer'   },
   { pkg: 'cumin',   name: 'Cumin Underpins Management Infrastructure Needs',               role: 'layer'   },
-  { pkg: 'calypso', name: 'CALYPSO Accepts Language, Yielding Permitted Shell Operations', role: 'surface' },
+  { pkg: 'calypso', name: 'CALYPSO Accepts Language, Yielding Permitted Shell Operations', role: 'sessionHost' },
 ];
 
 /**
@@ -170,14 +171,16 @@ export function versionReport_build(): string {
 
 /** Human-readable heading for each role, in the order `--info` groups them. */
 const ROLE_HEADINGS: readonly { role: PackageRole; heading: string }[] = [
-  { role: 'surface', heading: 'SURFACES' },
-  { role: 'engine',  heading: 'ENGINE'   },
-  { role: 'layer',   heading: 'LAYERS'   },
+  { role: 'surface',     heading: 'SURFACES'     },
+  { role: 'sessionHost', heading: 'SESSION HOST' },
+  { role: 'engine',      heading: 'ENGINE'       },
+  { role: 'layer',       heading: 'LAYERS'       },
 ];
 
 /**
  * Builds the detailed `--info` report: packages grouped by role (surfaces,
- * engine, layers) under a heading, each row an aligned `pkg  name  version`.
+ * session host, engine, layers) under a heading, each row an aligned
+ * `pkg  name  version`.
  *
  * @returns The info table string.
  */

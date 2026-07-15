@@ -253,7 +253,10 @@ Once connected, drive ChRIS as a filesystem:
 > pl-dircopy /home/<you>/uploads    # run one by name
 > ls /proc/feeds           # watch running jobs, live
 > feed tree 1669           # a feed's plugin-instance DAG, collapsed and status-coloured
+> feed diagram 1669        # the same shallow view under the diagram command
 > feed diagram --signalflow 1669 | signalflow -   # emit the DAG, render it with your tools
+> pipeline diagram brain-segmentation              # draw a registered pipeline template
+> brain-segmentation --diagram --withargs           # /bin alias, including stored defaults
 ----
 
 The feed DAG viewer (`feed tree`, `feed diagram`) is described in

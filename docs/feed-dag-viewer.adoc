@@ -235,9 +235,13 @@ One model, two renderers, chosen by surface:
 
 SignalFlow augments rather than replaces the terminal tree.
 
-=== `feed diagram`: emit, don't render (shipped)
+=== `feed diagram`: shallow locally, emit for external rendering (shipped)
 
-`feed diagram --signalflow <id>` builds the graph cache-first, collapses it (a `×N` group
+Bare `feed diagram [<specifier>]` is an exact shallow alias of `feed tree`; both accept a
+numeric ID, `feed_N`, exact title, or unambiguous title search. When invoked from anywhere
+beneath a `feed_N` directory (including `/proc/jobs/feed_N`), the specifier may be omitted.
+
+`feed diagram --signalflow [<specifier>]` builds the graph cache-first, collapses it (a `×N` group
 becomes one *named* chip), adapts it to a SignalFlow document (`feed.tree.signalflow.ts`,
 the sole SignalFlow-shaped code — a replaceable leaf off `FeedGraph`), and **emits that
 document as YAML to stdout**. It renders nothing and presumes nothing. Rendering is the
@@ -266,6 +270,20 @@ deployment question dissolves: the `pkg` binary release stays Python-free with n
 bundle, no `SIGNALFLOW_BIN`, no PyInstaller tax. A user who wants a picture brings their own
 `signalflow` (or, eventually, a native-TS renderer consumes the same emitted graph).
 
+=== `pipeline diagram`: the authored template (shipped)
+
+`pipeline diagram <id|name|search>` projects CUBE's registered plugin pipings into the
+same nested diagram model used after feed collapse. Bare invocation draws the shared
+shallow tree; `--signalflow` sends the same nodes through the same SignalFlow emitter.
+There is no second tree walk, join adapter, or rendering implementation.
+
+Pipeline nodes retain their authored title and piping ID and are never aggregated: a
+registered pipeline is already the template, and similar sibling pipings may carry
+different defaults. `--withargs` appends every non-null stored plugin default in CUBE
+order using shell-safe quoting. It applies only to shallow output. Pipelines exposed in
+`/bin` route `<pipeline> --diagram`, `--diagram --withargs`, and
+`--diagram --signalflow` through the same command handler.
+
 == Build status
 
 [cols="1,3,1",options="header"]
@@ -277,6 +295,7 @@ bundle, no `SIGNALFLOW_BIN`, no PyInstaller tax. A user who wants a picture brin
 | 4 | Collapse (`×N`, status bar, anomaly ids, gutter) | Shipped
 | — | Cache-first data preparation | Shipped
 | 5 | `feed diagram --signalflow` — emit SignalFlow YAML to stdout (compose with pipes) | Shipped (emit-only; no renderer bundled)
+| 6 | `pipeline diagram` + `/bin` alias — shallow tree or shared SignalFlow emitter | Shipped
 |===
 
 == Open questions and deferred work

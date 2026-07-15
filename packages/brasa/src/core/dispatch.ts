@@ -305,21 +305,32 @@ export function command_timingMaybePrint(startTime: number, enabled: boolean): v
 /**
  * Handles a pipeline name invoked directly as an executable from /bin.
  * Routes flag combinations to the appropriate pipeline subcommand:
+ *   --diagram             → pipeline diagram (preserving renderer flags)
  *   --nodes / --parameters → pipeline info
  *   --source / --readme    → pipeline source
  *   (bare or --compute)    → pipeline run
  *
  * @param name - The pipeline name as typed.
  * @param args - Arguments following the pipeline name.
+ * @returns The pipeline builtin's envelope, preserving diagram models and text.
  */
-async function pipelineExecutable_handle(name: string, args: string[]): Promise<void> {
-  if (args.includes('--nodes') || args.includes('--parameters')) {
-    await builtin_pipeline(['info', name]);
+async function pipelineExecutable_handle(name: string, args: string[]): Promise<CommandEnvelope> {
+  const exitCodeBefore: number = exitCode_read();
+  let envelope: CommandEnvelope | undefined;
+  if (args.includes('--diagram')) {
+    const diagramArgs: string[] = args.filter((argument: string): boolean => argument !== '--diagram');
+    envelope = await builtin_pipeline(['diagram', name, ...diagramArgs]);
+  } else if (args.includes('--nodes') || args.includes('--parameters')) {
+    envelope = await builtin_pipeline(['info', name]);
   } else if (args.includes('--source') || args.includes('--readme')) {
-    await builtin_pipeline(['source', name]);
+    envelope = await builtin_pipeline(['source', name]);
   } else {
-    await builtin_pipeline(['run', name, ...args]);
+    envelope = await builtin_pipeline(['run', name, ...args]);
   }
+  const result: CommandEnvelope = envelope ?? { status: 'ok', rendered: '' };
+  const exitCodeAfter: number = exitCode_read();
+  if (exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore) result.status = 'error';
+  return result;
 }
 
 /**
@@ -465,7 +476,9 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     }
 
     if (pipelineItem) {
-      return handler_runDirect((pipelineArgs: string[]): Promise<void> => pipelineExecutable_handle(command, pipelineArgs), args);
+      const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
+      envelope_deliver(envelope);
+      return envelope;
     }
   }
 

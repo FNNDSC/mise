@@ -84,7 +84,9 @@ export function path_extractPluginInstanceID(dirPath: string): number | null {
 /**
  * Extracts the feed ID from a path.
  *
- * Looks for the pattern: /feeds/feed_<numeric-id>/ in the path.
+ * Looks for a `feed_<numeric-id>` directory segment anywhere in the path. This
+ * covers both data paths such as `/home/user/feeds/feed_123` and the job-history
+ * projection at `/proc/jobs/feed_123`.
  *
  * @param dirPath - The directory path to analyze.
  * @returns The feed ID as a number, or null if not found.
@@ -96,8 +98,7 @@ export function path_extractPluginInstanceID(dirPath: string): number | null {
  * ```
  */
 export function path_extractFeedID(dirPath: string): number | null {
-  // Pattern: /feeds/feed_<digits>/
-  const feedPattern: RegExp = /\/feeds\/feed_(\d+)\//;
+  const feedPattern: RegExp = /(?:^|\/)feed_(\d+)(?:\/|$)/;
   const match: RegExpMatchArray | null = dirPath.match(feedPattern);
 
   if (match) {

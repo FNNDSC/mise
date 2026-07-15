@@ -60,6 +60,12 @@ describe('path_extractFeedID()', () => {
     expect(path_extractFeedID('/home/chris/feeds/feed_123/pl-dircopy_456/data/')).toBe(123);
   });
 
+  it('extracts a feed id from any feed directory segment', () => {
+    expect(path_extractFeedID('/proc/jobs/feed_123')).toBe(123);
+    expect(path_extractFeedID('/proc/jobs/feed_123/pl-dircopy_456')).toBe(123);
+    expect(path_extractFeedID('/home/chris/feeds/feed_123')).toBe(123);
+  });
+
   it('returns null when there is no feed segment', () => {
     expect(path_extractFeedID('/home/chris/uploads/data/')).toBeNull();
   });

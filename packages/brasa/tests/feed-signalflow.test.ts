@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { collapse_build } from '../src/builtins/res/feed.tree.collapse.js';
+import { feedDiagramNodes_build } from '../src/builtins/res/feed.tree.render.js';
 import { signalflowDoc_build, SfNode } from '../src/builtins/res/feed.tree.signalflow.js';
 import type { FeedGraph, FeedNode } from '@fnndsc/salsa';
 
@@ -10,7 +10,9 @@ function graph(nodes: FeedNode[], rootIDs: number[]): FeedGraph {
   return { feedID: 9, title: 'demo', feedStatus: 'x', total: nodes.length, shown: nodes.length, truncated: false, rootIDs, nodes };
 }
 function doc(nodes: FeedNode[], rootIDs: number[]) {
-  return signalflowDoc_build(collapse_build(graph(nodes, rootIDs), rootIDs), { feedID: 9, title: 'demo' });
+  return signalflowDoc_build(feedDiagramNodes_build(graph(nodes, rootIDs), rootIDs), {
+    subject: 'feed', subjectID: 9, title: 'demo',
+  });
 }
 /** Depth-first find a chip by func. */
 function find(root: SfNode, func: string): SfNode | undefined {

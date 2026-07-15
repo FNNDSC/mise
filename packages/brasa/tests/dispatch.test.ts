@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Minimal cumin surface used by the dispatch layer (Result helpers + error stack).
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
@@ -154,6 +155,30 @@ describe('command_dispatch', () => {
     mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
     await command_dispatch('myPipe', ['--source']);
     expect(mockPipeline).toHaveBeenCalledWith(['source', 'myPipe']);
+  });
+
+  it('routes pipeline executable diagram flags through pipeline diagram', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+
+    await command_dispatch('myPipe', ['--diagram']);
+    await command_dispatch('myPipe', ['--diagram', '--withargs']);
+    await command_dispatch('myPipe', ['--diagram', '--signalflow']);
+
+    expect(mockPipeline).toHaveBeenNthCalledWith(1, ['diagram', 'myPipe']);
+    expect(mockPipeline).toHaveBeenNthCalledWith(2, ['diagram', 'myPipe', '--withargs']);
+    expect(mockPipeline).toHaveBeenNthCalledWith(3, ['diagram', 'myPipe', '--signalflow']);
+  });
+
+  it('returns the pipeline diagram envelope from the executable alias', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+    mockPipeline.mockResolvedValue({
+      status: 'ok', rendered: 'PIPELINE TREE\n', model: { kind: 'pipeline.diagram', data: { pipelineID: 7 } },
+    });
+
+    const envelope: CommandEnvelope = await command_dispatchEnvelope('myPipe', ['--diagram']);
+
+    expect(envelope.rendered).toBe('PIPELINE TREE\n');
+    expect(envelope.model).toMatchObject({ kind: 'pipeline.diagram' });
   });
 
   it('delegates a known chili command with -s, emitting the notice before running it', async () => {

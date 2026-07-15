@@ -24,6 +24,7 @@ import {
   feed_makePrivate,
   feed_delete,
   feed_get,
+  feed_resolve,
   feedNote_get,
   feedNote_update,
   feedComments_list,
@@ -32,6 +33,8 @@ import {
   feedComment_update,
 } from '../src/feeds/chrisFeed';
 import { errorStack } from '../src/error/errorStack';
+import type { FeedRecord } from '../src/feeds/chrisFeed';
+import type { Result } from '../src/utils/result';
 
 const mockClientGet: jest.Mock = chrisConnection.client_get as unknown as jest.Mock;
 
@@ -106,6 +109,45 @@ describe('ChRISFeed.createFromDirs', () => {
 });
 
 describe('feed visibility and lifecycle', () => {
+  it('resolves numeric and feed-directory specifiers directly', async () => {
+    const getFeed: jest.Mock = jest.fn(async (id: number) => ({ data: { id, name: `Feed ${id}` } }));
+    mockClientGet.mockResolvedValue({ getFeed });
+
+    const numeric: Result<FeedRecord> = await feed_resolve('5');
+    const directory: Result<FeedRecord> = await feed_resolve('feed_6');
+
+    expect(numeric.ok && numeric.value).toMatchObject({ id: 5, name: 'Feed 5' });
+    expect(directory.ok && directory.value).toMatchObject({ id: 6, name: 'Feed 6' });
+    expect(getFeed).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves an exact or unambiguous feed-title search', async () => {
+    const getFeeds: jest.Mock = jest.fn(async ({ name }: { name: string }) => ({
+      data: name === 'Brain Run'
+        ? [{ id: 8, name: 'Brain Run' }, { id: 9, name: 'Brain Run extended' }]
+        : [{ id: 10, name: 'Unique reconstruction' }],
+    }));
+    mockClientGet.mockResolvedValue({ getFeeds });
+
+    const exact: Result<FeedRecord> = await feed_resolve('Brain Run');
+    const unique: Result<FeedRecord> = await feed_resolve('reconstruction');
+
+    expect(exact.ok && exact.value.id).toBe(8);
+    expect(unique.ok && unique.value.id).toBe(10);
+  });
+
+  it('rejects ambiguous feed-title searches', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeeds: jest.fn(async () => ({
+        data: [{ id: 8, name: 'Brain A' }, { id: 9, name: 'Brain B' }],
+      })),
+    });
+
+    expect((await feed_resolve('Brain')).ok).toBe(false);
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('8'));
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('9'));
+  });
+
   it('makes a feed public', async () => {
     const makePublic = jest.fn(async () => ({}));
     mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ makePublic })) });

@@ -124,8 +124,9 @@ export async function pipelines_list(
 export async function pipeline_resolve(
   nameOrId: string
 ): Promise<Result<PipelineRecord>> {
-  const numericId: number = parseInt(nameOrId, 10);
-  if (!isNaN(numericId)) {
+  const isNumericID: boolean = /^\d+$/.test(nameOrId);
+  if (isNumericID) {
+    const numericId: number = parseInt(nameOrId, 10);
     const client = await chrisConnection.client_get();
     if (!client) {
       errorStack.stack_push('error', 'Not connected to ChRIS');

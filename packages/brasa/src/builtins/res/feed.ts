@@ -19,10 +19,76 @@ import { feedList_render, feedCreate_render, feedNote_render, feedComments_rende
 import { Feed } from '@fnndsc/chili/models/feed.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
-import { Result, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import {
+  Err,
+  Ok,
+  Result,
+  errorStack,
+  feed_resolve,
+  path_extractFeedID,
+  type CommandEnvelope,
+  type FeedRecord,
+  envelope_ok,
+  envelope_error,
+} from '@fnndsc/cumin';
 import { noteEditBody_format, noteEditBody_parse } from './feed.notes.js';
 import { feedTree_handle } from './feed.tree.js';
 import { feedDiagram_handle } from './feed.diagram.js';
+import { session } from '../../session/index.js';
+
+/**
+ * Resolves an explicit feed specifier or, when omitted, the `feed_N` segment of
+ * the current working directory.
+ *
+ * @param specifier - Numeric ID, `feed_N`, title, title fragment, or undefined.
+ * @returns The resolved numeric feed ID.
+ */
+async function feedID_resolve(specifier: string | undefined): Promise<Result<number>> {
+  if (specifier === undefined || specifier.length === 0) {
+    const cwd: string = await session.getCWD();
+    const contextualID: number | null = path_extractFeedID(cwd);
+    if (contextualID !== null) return Ok(contextualID);
+    errorStack.stack_push('error', 'Not currently inside a feed directory.');
+    return Err();
+  }
+
+  if (/^\d+$/.test(specifier)) return Ok(parseInt(specifier, 10));
+  const directoryID: number | null = path_extractFeedID(specifier);
+  if (directoryID !== null) return Ok(directoryID);
+
+  const resolved: Result<FeedRecord> = await feed_resolve(specifier);
+  return resolved.ok ? Ok(resolved.value.id) : Err();
+}
+
+/** Joins positional words into one feed title/search specifier. */
+function feedSpecifier_join(words: string[]): string | undefined {
+  const joined: string = words.join(' ').trim();
+  return joined.length > 0 ? joined : undefined;
+}
+
+/** Returns a command error for a failed feed resolution. */
+function feedResolution_error(usage: string): CommandEnvelope {
+  const problem: { message: string } | undefined = errorStack.stack_pop();
+  process.exitCode = 1;
+  const detail: string = problem?.message ?? 'Feed not found.';
+  return envelope_error('', undefined, `${chalk.red(detail)}\n${chalk.gray(usage)}\n`);
+}
+
+/** Parsed rendering options shared by `feed tree` and shallow `feed diagram`. */
+interface FeedTreeOptions {
+  focusID: number | undefined;
+  maxNodes: number;
+  flat: boolean;
+}
+
+/** Reads the common shallow feed-tree options from parsed command arguments. */
+function feedTreeOptions_parse(parsed: ParsedArgs): FeedTreeOptions {
+  const focusRaw: string | undefined = parsed.focus as string | undefined;
+  const focusID: number | undefined = focusRaw !== undefined ? parseInt(String(focusRaw), 10) : undefined;
+  const maxRaw: string | undefined = parsed['max-nodes'] as string | undefined;
+  const parsedMax: number = maxRaw !== undefined ? parseInt(String(maxRaw), 10) : 0;
+  return { focusID, maxNodes: isNaN(parsedMax) ? 0 : parsedMax, flat: !!parsed.flat };
+}
 
 /**
  * Handles `feed list`: fetches and renders the feed table.
@@ -196,23 +262,19 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
     } else if (subcommand === 'comment') {
       return await feedComment_handle(parsed);
     } else if (subcommand === 'tree') {
-      const feedId: number = parseInt(String(parsed._[1]), 10);
-      if (isNaN(feedId)) { return envelope_error('', undefined, `${chalk.red('Usage: feed tree <feedId> [--focus <id>] [--max-nodes <n>]')}\n`); }
-      const focusRaw: string | undefined = parsed.focus as string | undefined;
-      const focusId: number | undefined = focusRaw !== undefined ? parseInt(String(focusRaw), 10) : undefined;
-      const maxRaw: string | undefined = parsed['max-nodes'] as string | undefined;
-      const maxNodes: number = maxRaw !== undefined ? parseInt(String(maxRaw), 10) : 0;
-      return await feedTree_handle(feedId, focusId, isNaN(maxNodes) ? 0 : maxNodes, !!parsed.flat);
+      const feedResult: Result<number> = await feedID_resolve(feedSpecifier_join(parsed._.slice(1)));
+      if (!feedResult.ok) return feedResolution_error('Usage: feed tree [<feed>] [--focus <id>] [--max-nodes <n>]');
+      const options: FeedTreeOptions = feedTreeOptions_parse(parsed);
+      return await feedTree_handle(feedResult.value, options.focusID, options.maxNodes, options.flat);
     } else if (subcommand === 'diagram') {
-      // `--signalflow` selects the dialect; the feed id may be positional
-      // (`diagram 42 --signalflow`) or captured as the flag's value (`diagram --signalflow 42`).
       const wantSignalflow: boolean = parsed.signalflow !== undefined && parsed.signalflow !== false;
-      const rawId: string | undefined = parsed._[1] ?? (typeof parsed.signalflow === 'string' ? parsed.signalflow : undefined);
-      const feedId: number = parseInt(String(rawId), 10);
-      if (isNaN(feedId) || !wantSignalflow) {
-        return envelope_error('', undefined, `${chalk.red('Usage: feed diagram --signalflow <feedId>   (emits SignalFlow YAML to stdout; pipe to `signalflow`)')}\n`);
-      }
-      return await feedDiagram_handle(feedId, 'signalflow');
+      const captured: string[] = typeof parsed.signalflow === 'string' ? [parsed.signalflow] : [];
+      const specifier: string | undefined = feedSpecifier_join([...captured, ...parsed._.slice(1)]);
+      const feedResult: Result<number> = await feedID_resolve(specifier);
+      if (!feedResult.ok) return feedResolution_error('Usage: feed diagram [--signalflow] [<feed>]');
+      if (wantSignalflow) return await feedDiagram_handle(feedResult.value, 'signalflow');
+      const options: FeedTreeOptions = feedTreeOptions_parse(parsed);
+      return await feedTree_handle(feedResult.value, options.focusID, options.maxNodes, options.flat);
     }
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree|diagram>`)}\n`);

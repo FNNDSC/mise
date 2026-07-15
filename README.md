@@ -257,6 +257,9 @@ This is design-in-progress, not shipped. The full specification and reasoning:
   doctrine, architecture, the wire contract, and the staged build plan.
 - **[docs/surfaces.adoc](docs/surfaces.adoc)** — a companion essay on what the wire
   contract means for building user interfaces.
+- **[docs/feed-dag-viewer.adoc](docs/feed-dag-viewer.adoc)** — projecting a feed's DAG
+  from `/proc`, the feed↔pipeline equivalence, and rendering it (terminal tree today,
+  SignalFlow diagrams next).
 
 ---
 

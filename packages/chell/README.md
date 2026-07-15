@@ -175,6 +175,11 @@ cat /proc/feeds/feed_123/pl-fshack_789/status   # live status fetch
 cat /proc/feeds/feed_123/pl-fshack_789/log      # stdout/stderr
 cat /proc/feeds/feed_123/pl-fshack_789/params   # what it ran with
 
+# The whole feed as one DAG view
+feed tree 123                         # collapsed, status-coloured tree (⋈ marks joins)
+feed tree 123 --focus 789             # scope to one node's subtree
+feed diagram --signalflow 123 | signalflow -   # emit the DAG; render with your own tools
+
 # Search across all jobs
 tree /proc/feeds | grep 789           # find instance 789 and see its full lineage
 

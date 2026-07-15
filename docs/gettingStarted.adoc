@@ -252,7 +252,12 @@ Once connected, drive ChRIS as a filesystem:
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name
 > ls /proc/feeds           # watch running jobs, live
+> feed tree 1669           # a feed's plugin-instance DAG, collapsed and status-coloured
+> feed diagram --signalflow 1669 | signalflow -   # emit the DAG, render it with your tools
 ----
+
+The feed DAG viewer (`feed tree`, `feed diagram`) is described in
+link:feed-dag-viewer.adoc[feed-dag-viewer.adoc].
 
 For the full command tour — running plugins and pipelines, the plugin store, PACS,
 job monitoring — see link:../packages/chell/README.md[the chell README], and

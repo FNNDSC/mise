@@ -235,25 +235,36 @@ One model, two renderers, chosen by surface:
 
 SignalFlow augments rather than replaces the terminal tree.
 
-=== `feed diagram` and the deployment stance (shipped)
+=== `feed diagram`: emit, don't render (shipped)
 
-`feed diagram <id>` builds the graph cache-first, collapses it (a `×N` group becomes one
-*named* chip), adapts it to a SignalFlow document (`feed.tree.signalflow.ts`, the sole
-SignalFlow-shaped code — a replaceable leaf off `FeedGraph`), shells out to the renderer,
-and **writes the result to a host file** (ASCII by default, `--svg` for SVG; `--out` to
-choose the path, `--stdout` to pipe). Because the diagram is deliberately wide, it lives on
-disk to be opened in a wide editor or a scroll-capable pager (`less -S`) rather than
-squeezed into the terminal — a deliberate non-goal is an embedded viewport.
+`feed diagram --signalflow <id>` builds the graph cache-first, collapses it (a `×N` group
+becomes one *named* chip), adapts it to a SignalFlow document (`feed.tree.signalflow.ts`,
+the sole SignalFlow-shaped code — a replaceable leaf off `FeedGraph`), and **emits that
+document as YAML to stdout**. It renders nothing and presumes nothing. Rendering is the
+user's business and composes with pipes:
 
-The renderer is **optional and degrades gracefully**: it is discovered via `SIGNALFLOW_BIN`
-or `signalflow` on `PATH`, and when absent the command points the user at `feed tree`
-instead of failing. This is the settled deployment position — *degrade now, defer the tax*.
-The binary release ships a self-contained `pkg`-built `chell` with no Python; bundling a
-SignalFlow executable into that release (PyInstaller per OS, since it cannot cross-compile
-the way `pkg` does) is a real toolchain cost that is **deferred** until the feature proves
-its worth and the SignalFlow-vs-native-TS-renderer question resolves — a native TS
-force-directed renderer would need none of that packaging. Dev, daemon, and power users get
-the diagram immediately via their SignalFlow install.
+[source,console]
+----
+feed diagram --signalflow 1669 | signalflow -            # ASCII (signalflow reads stdin via `-`)
+feed diagram --signalflow 1669 | signalflow - -o x.svg   # SVG
+feed diagram --signalflow 1669 > feed-1669.yaml          # keep it
+----
+
+This deliberately avoids the invisible behaviors an in-command renderer would need — a
+hidden subprocess, an executable discovery/`SIGNALFLOW_BIN` dance, a temp file, a magic
+output path, and a graceful-degrade branch. There is nothing to degrade: the command emits
+first-class text, and whether the user pipes it into SignalFlow (or a future renderer, or a
+file) is theirs to decide. `--signalflow` names the dialect, leaving room for `--json`
+(raw graph), `--dot`, etc. as further emitters.
+
+The output is **YAML, not JSON**: SignalFlow loads input with `yaml.safe_load` and has no
+JSON code path — JSON only parses incidentally because PyYAML accepts it, so YAML is the
+correct, robust contract.
+
+Because mise only *emits the representation* and never runs a renderer, the entire
+deployment question dissolves: the `pkg` binary release stays Python-free with nothing to
+bundle, no `SIGNALFLOW_BIN`, no PyInstaller tax. A user who wants a picture brings their own
+`signalflow` (or, eventually, a native-TS renderer consumes the same emitted graph).
 
 == Build status
 
@@ -265,7 +276,7 @@ the diagram immediately via their SignalFlow install.
 | 3 | `feed tree` command + typed envelope | Shipped
 | 4 | Collapse (`×N`, status bar, anomaly ids, gutter) | Shipped
 | — | Cache-first data preparation | Shipped
-| 5 | `feed diagram` — SignalFlow adapter + subprocess render to file, graceful degrade | Shipped (render leaf); binary bundling deferred
+| 5 | `feed diagram --signalflow` — emit SignalFlow YAML to stdout (compose with pipes) | Shipped (emit-only; no renderer bundled)
 |===
 
 == Open questions and deferred work

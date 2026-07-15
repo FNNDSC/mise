@@ -83,7 +83,7 @@ command domains:
 |Prefix |Domains
 
 |`fs.*`      |filesystem: `fs.listing`, `fs.cat`, `fs.stat`
-|`feed.*`    |feeds: `feed.listing`, `feed.detail`, `feed.note`
+|`feed.*`    |feeds: `feed.listing`, `feed.detail`, `feed.note`, `feed.tree`, `feed.diagram`
 |`plugin.*`  |plugins and instances: `plugin.listing`, `plugin.run`, `plugin.params`
 |`pacs.*`    |PACS: `pacs.servers`, `pacs.query`, `pacs.series`
 |`pipeline.*`|pipelines: `pipeline.listing`, `pipeline.run`

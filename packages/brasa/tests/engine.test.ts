@@ -102,7 +102,12 @@ jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expan
 
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
-jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_render: mockHelpRender, args_checkHasHelpFlag: mockHasHelpFlag }));
+jest.unstable_mockModule('../src/builtins/help.js', () => ({
+  help_render: mockHelpRender,
+  commandHelp_get: jest.fn(() => 'known help'),
+  pipelineExecutableHelp_render: jest.fn((name: string): string => `PIPELINE HELP:${name}\n`),
+  args_checkHasHelpFlag: mockHasHelpFlag,
+}));
 
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
@@ -198,6 +203,18 @@ describe('line_execute', () => {
     expect(mockSegmentPipe).toHaveBeenCalledWith('grep foo', expect.any(Buffer));
     expect(envelopes).toEqual([{ status: 'ok', rendered: 'piped' }]);
     writeSpy.mockRestore();
+  });
+
+  it('pipes SignalFlow YAML from a pipeline executable alias', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+    mockPipeline.mockResolvedValue({ status: 'ok', rendered: 'pipeline: myPipe\n' });
+    mockSegmentPipe.mockImplementation(async (_command: string, input: Buffer): Promise<Buffer> => input);
+
+    const envelopes = await line_execute('myPipe --signalflow | signalflow -');
+
+    expect(mockPipeline).toHaveBeenCalledWith(['diagram', 'myPipe', '--signalflow']);
+    expect(mockSegmentPipe).toHaveBeenCalledWith('signalflow -', Buffer.from('pipeline: myPipe\n'));
+    expect(envelopes).toEqual([{ status: 'ok', rendered: 'pipeline: myPipe\n' }]);
   });
 
   it('delegates an unknown piped command to chili during capture', async () => {

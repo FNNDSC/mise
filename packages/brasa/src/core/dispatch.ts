@@ -66,7 +66,12 @@ import {
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { builtin_proc } from '../builtins/proc.js';
 import { wildcards_expandAll } from '../builtins/wildcard.js';
-import { help_render, args_checkHasHelpFlag } from '../builtins/help.js';
+import {
+  help_render,
+  commandHelp_get,
+  pipelineExecutableHelp_render,
+  args_checkHasHelpFlag,
+} from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -306,6 +311,8 @@ export function command_timingMaybePrint(startTime: number, enabled: boolean): v
  * Handles a pipeline name invoked directly as an executable from /bin.
  * Routes flag combinations to the appropriate pipeline subcommand:
  *   --diagram             → pipeline diagram (preserving renderer flags)
+ *   --signalflow          → pipeline diagram --signalflow
+ *   --help / -h           → contextual pipeline-executable help
  *   --nodes / --parameters → pipeline info
  *   --source / --readme    → pipeline source
  *   (bare or --compute)    → pipeline run
@@ -317,9 +324,13 @@ export function command_timingMaybePrint(startTime: number, enabled: boolean): v
 async function pipelineExecutable_handle(name: string, args: string[]): Promise<CommandEnvelope> {
   const exitCodeBefore: number = exitCode_read();
   let envelope: CommandEnvelope | undefined;
-  if (args.includes('--diagram')) {
+  if (args.includes('--help') || args.includes('-h')) {
+    envelope = { status: 'ok', rendered: pipelineExecutableHelp_render(name) };
+  } else if (args.includes('--diagram')) {
     const diagramArgs: string[] = args.filter((argument: string): boolean => argument !== '--diagram');
     envelope = await builtin_pipeline(['diagram', name, ...diagramArgs]);
+  } else if (args.includes('--signalflow')) {
+    envelope = await builtin_pipeline(['diagram', name, '--signalflow']);
   } else if (args.includes('--nodes') || args.includes('--parameters')) {
     envelope = await builtin_pipeline(['info', name]);
   } else if (args.includes('--source') || args.includes('--readme')) {
@@ -331,6 +342,32 @@ async function pipelineExecutable_handle(name: string, args: string[]): Promise<
   const exitCodeAfter: number = exitCode_read();
   if (exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore) result.status = 'error';
   return result;
+}
+
+interface BinExecutableMatches {
+  plugin: ListingItem | undefined;
+  pipeline: ListingItem | undefined;
+}
+
+/**
+ * Finds exact plugin and pipeline executable matches in the virtual `/bin`.
+ *
+ * @param command - Executable name as typed.
+ * @returns Matching dynamic executable entries, if the listing is available.
+ */
+async function binExecutableMatches_get(command: string): Promise<BinExecutableMatches> {
+  const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
+  if (!binResult.ok) {
+    return { plugin: undefined, pipeline: undefined };
+  }
+  return {
+    plugin: binResult.value.find(
+      (item: ListingItem): boolean => item.name === command && item.type === 'plugin',
+    ),
+    pipeline: binResult.value.find(
+      (item: ListingItem): boolean => item.name === command && item.type === 'pipeline',
+    ),
+  };
 }
 
 /**
@@ -466,20 +503,15 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     return handler_runDirect(handler, args);
   }
 
-  const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
-  if (binResult.ok) {
-    const pluginItem: ListingItem | undefined = binResult.value.find(item => item.name === command && item.type === 'plugin');
-    const pipelineItem: ListingItem | undefined = binResult.value.find(item => item.name === command && item.type === 'pipeline');
+  const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
+  if (binMatches.plugin) {
+    return handler_runDirect((pluginArgs: string[]): Promise<void> => builtin_executePlugin(command, pluginArgs), args);
+  }
 
-    if (pluginItem) {
-      return handler_runDirect((pluginArgs: string[]): Promise<void> => builtin_executePlugin(command, pluginArgs), args);
-    }
-
-    if (pipelineItem) {
-      const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
-      envelope_deliver(envelope);
-      return envelope;
-    }
+  if (binMatches.pipeline) {
+    const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
+    envelope_deliver(envelope);
+    return envelope;
   }
 
   // Unknown commands are guarded, then delegated to chili — its output is
@@ -533,12 +565,22 @@ export async function redirect_execute(redirectInfo: RedirectInfo): Promise<Comm
  * @param command - The command name (used to look up help text).
  * @param args - Parsed argument list.
  * @returns The delivered help envelope, or null if no help flag was present.
+ * The promise resolves after dynamic `/bin` pipeline discovery when needed.
  */
-function helpEnvelope_maybe(command: string, args: string[]): CommandEnvelope | null {
+async function helpEnvelope_maybe(command: string, args: string[]): Promise<CommandEnvelope | null> {
   if (!args_checkHasHelpFlag(args, command)) {
     return null;
   }
-  const envelope: CommandEnvelope = { status: 'ok', rendered: help_render(command) };
+  let rendered: string;
+  if (commandHelp_get(command) !== undefined) {
+    rendered = help_render(command);
+  } else {
+    const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
+    rendered = binMatches.pipeline
+      ? pipelineExecutableHelp_render(command)
+      : help_render(command);
+  }
+  const envelope: CommandEnvelope = { status: 'ok', rendered };
   envelope_deliver(envelope);
   return envelope;
 }
@@ -623,6 +665,13 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
+    const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
+    if (binMatches.pipeline) {
+      const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
+      envelope_deliver(envelope);
+      return;
+    }
+
     await unknownCommand_delegate(command, args);
   });
 
@@ -690,7 +739,7 @@ export async function command_executeToEnvelope(
 
   // Check for --help flag before any processing. The help text travels in the
   // envelope and through the sink, so it reaches the surface that asked for it.
-  const helpEnvelope: CommandEnvelope | null = helpEnvelope_maybe(command, args);
+  const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
   if (helpEnvelope) {
     return helpEnvelope;
   }

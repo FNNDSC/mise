@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/chell",
-  "version": "5.1.4",
+  "version": "5.2.0",
   "description": "ChELL Executes Layered Logic - Interactive ChRIS REPL Shell",
   "repository": {
     "type": "git",
@@ -50,7 +50,7 @@
     "marked-terminal": "^7.3.0",
     "minimatch": "^10.1.1",
     "ws": "^8.21.0",
-    "@fnndsc/calypso": "^0.3.7"
+    "@fnndsc/calypso": "^0.4.0"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",

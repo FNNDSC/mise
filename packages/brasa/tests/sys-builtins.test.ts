@@ -279,10 +279,17 @@ describe('builtin_cal', () => {
 describe('stackInfo_get / infoReport_build', () => {
   it('describes every package with a role and resolved version', () => {
     const info = stackInfo_get();
-    const packages: string[] = info.map((i: { pkg: string }) => i.pkg);
-    expect(packages).toEqual(['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']);
+    expect(info.map((item: { pkg: string; role: string }): [string, string] => [item.pkg, item.role])).toEqual([
+      ['chell', 'surface'],
+      ['brasa', 'engine'],
+      ['chili', 'layer'],
+      ['salsa', 'layer'],
+      ['cumin', 'layer'],
+      ['calypso', 'sessionHost'],
+    ]);
+    expect(info.find((item: { pkg: string }) => item.pkg === 'calypso')?.name)
+      .toBe('CALYPSO Accepts Language, Yielding Permitted Shell Operations');
     for (const item of info) {
-      expect(['surface', 'engine', 'layer']).toContain(item.role);
       expect(item.name.length).toBeGreaterThan(0);
       expect(item.version.length).toBeGreaterThan(0);
     }
@@ -290,9 +297,11 @@ describe('stackInfo_get / infoReport_build', () => {
 
   it('groups the info report by role, naming each package and version', () => {
     const report: string = infoReport_build();
-    for (const heading of ['SURFACES', 'ENGINE', 'LAYERS']) {
+    for (const heading of ['SURFACES', 'SESSION HOST', 'ENGINE', 'LAYERS']) {
       expect(report).toContain(heading);
     }
+    expect(report.indexOf('calypso')).toBeGreaterThan(report.indexOf('SESSION HOST'));
+    expect(report.indexOf('calypso')).toBeLessThan(report.indexOf('ENGINE'));
     for (const item of stackInfo_get()) {
       expect(report).toContain(item.name);
       expect(report).toContain(item.version);

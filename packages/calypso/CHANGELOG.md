@@ -1,5 +1,14 @@
 # @fnndsc/calypso
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [e630f79]
+- Updated dependencies [e630f79]
+  - @fnndsc/brasa@0.9.0
+  - @fnndsc/cumin@3.8.0
+
 ## 0.4.0
 
 ### Minor Changes

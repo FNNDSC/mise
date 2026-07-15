@@ -366,6 +366,9 @@ export const helpText: Record<string, CommandHelp> = {
       '  tree <feedId>                    Render the feed\'s plugin-instance DAG',
       '  tree <feedId> --focus <id>       Scope the tree to one node\'s subtree',
       '  tree <feedId> --max-nodes <n>    Cap rendered nodes (0 = all)',
+      '  diagram <feedId>                 Render the DAG (SignalFlow) to a host file',
+      '  diagram <feedId> --svg           Render as SVG instead of ASCII',
+      '  diagram <feedId> --out <path>    Write to a specific path',
     ],
     examples: [
       'feed create /home/user/uploads/MRI-data',

@@ -22,6 +22,7 @@ import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { Result, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { noteEditBody_format, noteEditBody_parse } from './feed.notes.js';
 import { feedTree_handle } from './feed.tree.js';
+import { feedDiagram_handle } from './feed.diagram.js';
 
 /**
  * Handles `feed list`: fetches and renders the feed table.
@@ -202,9 +203,14 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       const maxRaw: string | undefined = parsed['max-nodes'] as string | undefined;
       const maxNodes: number = maxRaw !== undefined ? parseInt(String(maxRaw), 10) : 0;
       return await feedTree_handle(feedId, focusId, isNaN(maxNodes) ? 0 : maxNodes, !!parsed.flat);
+    } else if (subcommand === 'diagram') {
+      const feedId: number = parseInt(String(parsed._[1]), 10);
+      if (isNaN(feedId)) { return envelope_error('', undefined, `${chalk.red('Usage: feed diagram <feedId> [--svg] [--out <path>] [--stdout]')}\n`); }
+      const out: string | undefined = parsed.out as string | undefined;
+      return await feedDiagram_handle(feedId, { svg: !!parsed.svg, toStdout: !!parsed.stdout, out });
     }
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree>`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree|diagram>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     process.exitCode = 1;

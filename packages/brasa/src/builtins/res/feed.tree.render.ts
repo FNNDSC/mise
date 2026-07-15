@@ -11,6 +11,12 @@
 import chalk from 'chalk';
 import type { FeedGraph, FeedNode } from '@fnndsc/salsa';
 import { collapse_build, CollapsedNode, StatusTally } from './feed.tree.collapse.js';
+import {
+  diagramTopology_nest,
+  diagramTree_walk,
+  type DiagramNode,
+  type DiagramTreeWalk,
+} from './diagram.tree.js';
 
 /** Max anomalous ids listed on a collapsed group line before eliding. */
 const MAX_ANOMALY_IDS: number = 3;
@@ -60,77 +66,69 @@ function anomaly_label(anomalies: CollapsedNode['anomalies']): string {
 function collapsedNode_label(node: CollapsedNode): string {
   if (node.count === 1) {
     const status: string = status_paint(node.anomalies.length > 0 ? node.anomalies[0].status : 'finishedSuccessfully');
-    const join: string = node.joinParentIDs.length > 0 ? chalk.magenta(`  ⋈ joins ${node.joinParentIDs.join(',')}`) : '';
-    return `${node.pluginName}_${node.memberIds[0]}  ${status}${join}`;
+    return `${node.pluginName}_${node.memberIds[0]}  ${status}`;
   }
-  const join: string = node.hasJoin ? chalk.magenta('  ⋈') : '';
-  return `${chalk.bold(`${node.pluginName} ×${node.count}`)}  ${status_bar(node.tally)}  ${tally_label(node.tally)}${anomaly_label(node.anomalies)}${join}`;
+  return `${chalk.bold(`${node.pluginName} ×${node.count}`)}  ${status_bar(node.tally)}  ${tally_label(node.tally)}${anomaly_label(node.anomalies)}`;
 }
 
-/** Result of a bounded tree walk. */
-interface TreeWalk {
-  lines: string[];
-  shown: number;
-  truncated: boolean;
+/** Builds nested diagram nodes for an uncollapsed feed. */
+function feedFlatNodes_build(graph: FeedGraph, roots: number[]): DiagramNode[] {
+  return diagramTopology_nest<FeedNode>(
+    graph.nodes,
+    roots,
+    (node: FeedNode, children: DiagramNode[]): DiagramNode => {
+      const status: string = status_paint(node.status);
+      return {
+        memberIDs: [node.id],
+        pluginName: node.pluginName,
+        functionName: `${node.pluginName}_${node.id}`,
+        signalName: `${node.pluginName}_${node.id}`,
+        label: `${node.pluginName}_${node.id}  ${status}`,
+        multiplicity: 1,
+        hasJoin: node.joinParentIDs.length > 0,
+        joinParentIDs: node.joinParentIDs,
+        arguments: [],
+        children,
+      };
+    },
+  );
 }
 
-/** Walks the anchor tree from the given roots, emitting box-drawing lines up to `maxNodes`. */
-function tree_walk(graph: FeedGraph, roots: number[], maxNodes: number): TreeWalk {
-  const byId: Map<number, FeedNode> = new Map(graph.nodes.map((n: FeedNode): [number, FeedNode] => [n.id, n]));
-  const children: Map<number, number[]> = new Map<number, number[]>();
-  for (const n of graph.nodes) {
-    if (n.parentID !== null) {
-      const kids: number[] = children.get(n.parentID) ?? [];
-      kids.push(n.id);
-      children.set(n.parentID, kids);
-    }
-  }
-
-  const lines: string[] = [];
-  let shown: number = 0;
-  let truncated: boolean = false;
-
-  const flat_label = (node: FeedNode): string => {
-    const status: string = status_paint(node.status);
-    const join: string = node.joinParentIDs.length > 0 ? chalk.magenta(`  ⋈ joins ${node.joinParentIDs.join(',')}`) : '';
-    return `${node.pluginName}_${node.id}  ${status}${join}`;
+/** Converts one collapsed feed node into the shared diagram model. */
+function collapsedNode_toDiagram(node: CollapsedNode): DiagramNode {
+  const functionName: string = node.count === 1
+    ? `${node.pluginName}_${node.memberIds[0]}`
+    : `${node.pluginName}_x${node.count}_${node.memberIds[0]}`;
+  return {
+    memberIDs: node.memberIds,
+    pluginName: node.pluginName,
+    functionName,
+    signalName: functionName,
+    label: collapsedNode_label(node),
+    multiplicity: node.count,
+    hasJoin: node.hasJoin,
+    joinParentIDs: node.joinParentIDs,
+    arguments: [],
+    children: node.children.map((child: CollapsedNode): DiagramNode => collapsedNode_toDiagram(child)),
   };
-
-  const emit = (id: number, prefix: string, isLast: boolean, isRoot: boolean): void => {
-    if (shown >= maxNodes) { truncated = true; return; }
-    const node: FeedNode | undefined = byId.get(id);
-    if (!node) return;
-    const connector: string = isRoot ? '' : isLast ? '└─ ' : '├─ ';
-    lines.push(`${prefix}${connector}${flat_label(node)}`);
-    shown++;
-    const kids: number[] = children.get(id) ?? [];
-    const childPrefix: string = isRoot ? '' : prefix + (isLast ? '   ' : '│  ');
-    kids.forEach((kid: number, i: number): void => emit(kid, childPrefix, i === kids.length - 1, false));
-  };
-
-  roots.forEach((rootID: number, i: number): void => emit(rootID, '', i === roots.length - 1, roots.length === 1));
-  return { lines, shown, truncated };
 }
 
-/** Walks the collapsed tree, using double-line connectors for `×N` groups. */
-function collapsed_walk(roots: CollapsedNode[], maxNodes: number): TreeWalk {
-  const lines: string[] = [];
-  let shown: number = 0;
-  let truncated: boolean = false;
-
-  const emit = (node: CollapsedNode, prefix: string, isLast: boolean, isRoot: boolean): void => {
-    if (shown >= maxNodes) { truncated = true; return; }
-    const group: boolean = node.count > 1;
-    const connector: string = isRoot ? '' : group ? (isLast ? '╘═ ' : '╞═ ') : (isLast ? '└─ ' : '├─ ');
-    lines.push(`${prefix}${connector}${collapsedNode_label(node)}`);
-    shown++;
-    const childPrefix: string = isRoot ? '' : prefix + (isLast ? '   ' : '│  ');
-    node.children.forEach((child: CollapsedNode, i: number): void =>
-      emit(child, childPrefix, i === node.children.length - 1, false));
-  };
-
-  roots.forEach((root: CollapsedNode, i: number): void => emit(root, '', i === roots.length - 1, roots.length === 1));
-  return { lines, shown, truncated };
+/**
+ * Adapts a feed graph to the shared nested diagram model.
+ *
+ * @param graph - Feed graph projection.
+ * @param roots - Feed roots or focused subtree root.
+ * @param flat - Whether to bypass sibling collapse.
+ * @returns Nested diagram nodes for shallow or SignalFlow rendering.
+ */
+export function feedDiagramNodes_build(
+  graph: FeedGraph,
+  roots: number[],
+  flat: boolean = false,
+): DiagramNode[] {
+  return flat
+    ? feedFlatNodes_build(graph, roots)
+    : collapse_build(graph, roots).map((node: CollapsedNode): DiagramNode => collapsedNode_toDiagram(node));
 }
 
 /** Outcome of the pure render: the tree text plus the counts, or a user error. */
@@ -162,16 +160,17 @@ export function feedTree_render(
   }
 
   const roots: number[] = focusId !== undefined ? [focusId] : graph.rootIDs;
-  const cap: number = maxNodes > 0 ? maxNodes : Number.MAX_SAFE_INTEGER;
-  const { lines, shown, truncated }: TreeWalk = flat
-    ? tree_walk(graph, roots, cap)
-    : collapsed_walk(collapse_build(graph, roots), cap);
+  const walk: DiagramTreeWalk = diagramTree_walk(feedDiagramNodes_build(graph, roots, flat), maxNodes);
 
   const mode: string = flat ? chalk.dim(' [flat]') : '';
   const header: string =
     `${chalk.bold(`feed ${graph.feedID}`)} ${chalk.gray(`"${graph.title}"`)} — ` +
     `${status_paint(graph.feedStatus)} · ${graph.total} nodes${mode}` +
-    (truncated ? chalk.yellow(`  (showing ${shown}; --max-nodes 0 for all, --focus <id> to scope)`) : '');
+    (walk.truncated ? chalk.yellow(`  (showing ${walk.shown}; --max-nodes 0 for all, --focus <id> to scope)`) : '');
 
-  return { rendered: `${header}\n${lines.join('\n')}\n`, shown, truncated };
+  return {
+    rendered: `${header}\n${walk.rendered}\n`,
+    shown: walk.shown,
+    truncated: walk.truncated,
+  };
 }

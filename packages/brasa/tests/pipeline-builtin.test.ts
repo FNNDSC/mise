@@ -1,10 +1,11 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 const mockPluginGet = jest.fn(async () => null as string | null);
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 const mockResolve = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { ChRISplugin_get: mockPluginGet },
   errorStack: { stack_pop: mockStackPop },
@@ -14,10 +15,12 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 const mockList = jest.fn();
 const mockRun = jest.fn();
 const mockSourceGet = jest.fn();
+const mockDiagramGet: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipelines_list: mockList,
   pipeline_run: mockRun,
   pipeline_sourceGet: mockSourceGet,
+  pipelineDiagram_get: mockDiagramGet,
 }));
 
 const mockFieldsFetch = jest.fn();
@@ -51,6 +54,26 @@ beforeEach(() => {
   process.exitCode = 0;
   mockPluginGet.mockResolvedValue(null);
   mockClientGet.mockResolvedValue(null);
+  mockDiagramGet.mockResolvedValue(ok({
+    pipelineID: 7,
+    name: 'Brain Segmentation',
+    rootIDs: [31],
+    nodes: [
+      {
+        id: 31, title: 'input', pluginName: 'pl-mri-convert', parentID: null,
+        joinParentIDs: [],
+        arguments: [
+          { name: 'threshold', value: 0 },
+          { name: 'label', value: 'T1 weighted' },
+          { name: 'unused', value: null },
+        ],
+      },
+      {
+        id: 32, title: 'segment', pluginName: 'pl-segment', parentID: 31,
+        joinParentIDs: [], arguments: [{ name: 'normalize', value: false }],
+      },
+    ],
+  }));
 });
 
 describe('builtin_pipeline', () => {
@@ -153,6 +176,55 @@ describe('builtin_pipeline', () => {
     mockList.mockResolvedValue({ tableData: [] });
     await builtin_pipeline(['search', 'brain']);
     expect(mockList).toHaveBeenCalledWith('brain');
+  });
+
+  it('draws a pipeline as a shallow tree from a multi-word specifier', async () => {
+    const env: CommandEnvelope = await builtin_pipeline(['diagram', 'Brain', 'Segmentation']);
+    expect(mockDiagramGet).toHaveBeenCalledWith('Brain Segmentation');
+    expect(env.rendered).toContain('pipeline 7');
+    expect(env.rendered).toContain('input');
+    expect(env.rendered).toContain('pl-mri-convert');
+    expect(env.rendered).toContain('[piping 31]');
+    expect(env.rendered).not.toContain('--threshold');
+  });
+
+  it('adds concrete pipeline defaults with --withargs', async () => {
+    const env: CommandEnvelope = await builtin_pipeline(['diagram', '--withargs', 'Brain', 'Segmentation']);
+    expect(env.rendered).toContain("--threshold 0 --label 'T1 weighted'");
+    expect(env.rendered).toContain('--normalize false');
+    expect(env.rendered).not.toContain('--unused');
+  });
+
+  it('keeps similar authored pipings distinct and annotates joins', async () => {
+    mockDiagramGet.mockResolvedValue(ok({
+      pipelineID: 8, name: 'Fan in', rootIDs: [1], nodes: [
+        { id: 1, title: 'input', pluginName: 'pl-root', parentID: null, joinParentIDs: [], arguments: [] },
+        { id: 2, title: 'left', pluginName: 'pl-same', parentID: 1, joinParentIDs: [], arguments: [] },
+        { id: 3, title: 'right', pluginName: 'pl-same', parentID: 1, joinParentIDs: [], arguments: [] },
+        { id: 4, title: 'combine', pluginName: 'pl-ts', parentID: 2, joinParentIDs: [3], arguments: [] },
+      ],
+    }));
+
+    const env: CommandEnvelope = await builtin_pipeline(['diagram', 'Fan in']);
+
+    expect(env.rendered).toContain('left');
+    expect(env.rendered).toContain('right');
+    expect(env.rendered).not.toContain('×2');
+    expect(env.rendered).toContain('⋈ joins 3');
+  });
+
+  it('emits pipeline SignalFlow YAML', async () => {
+    const env: CommandEnvelope = await builtin_pipeline(['diagram', '--signalflow', 'Brain', 'Segmentation']);
+    expect(env.rendered).toContain('tree:');
+    expect(env.rendered).toContain('input');
+    expect(env.model).toMatchObject({ kind: 'pipeline.diagram', data: { pipelineID: 7, dialect: 'signalflow' } });
+  });
+
+  it('rejects --withargs with --signalflow', async () => {
+    const env: CommandEnvelope = await builtin_pipeline(['diagram', '--withargs', '--signalflow', 'Brain']);
+    expect(env.status).toBe('error');
+    expect(env.renderedErr).toContain('--withargs is only available for shallow rendering');
+    expect(mockDiagramGet).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown subcommand', async () => {

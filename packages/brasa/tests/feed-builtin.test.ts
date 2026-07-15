@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // builtins/utils deps (for real commandArgs_process).
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -6,10 +7,22 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feedGraphData_ensure: jest.fn(),
   feedGraph_build: jest.fn(),
 }));
+const mockFeedResolve: jest.Mock = jest.fn();
+const mockStackPop: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  Ok: <T>(value: T) => ({ ok: true, value }),
+  Err: () => ({ ok: false }),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
-  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),}));
-jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
+  feed_resolve: mockFeedResolve,
+  path_extractFeedID: (path: string): number | null => {
+    const match: RegExpMatchArray | null = path.match(/(?:^|\/)feed_(\d+)(?:\/|$)/);
+    return match ? Number(match[1]) : null;
+  },
+  errorStack: { stack_pop: mockStackPop },
+}));
+const mockCwdGet = jest.fn(async (): Promise<string> => '/');
+jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: mockCwdGet } }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('@fnndsc/chili/models/feed.js', () => ({}));
 
@@ -55,6 +68,11 @@ jest.unstable_mockModule('../src/builtins/res/feed.notes.js', () => ({
 const mockSpawnSync = jest.fn(() => ({}));
 jest.unstable_mockModule('child_process', () => ({ spawnSync: mockSpawnSync }));
 
+const mockFeedTreeHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `TREE ${id}` }));
+const mockFeedDiagramHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `SIGNALFLOW ${id}` }));
+jest.unstable_mockModule('../src/builtins/res/feed.tree.js', () => ({ feedTree_handle: mockFeedTreeHandle }));
+jest.unstable_mockModule('../src/builtins/res/feed.diagram.js', () => ({ feedDiagram_handle: mockFeedDiagramHandle }));
+
 const { writeFileSync } = await import('fs');
 const { builtin_feed } = await import('../src/builtins/res/feed.js');
 
@@ -67,6 +85,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   mockSpawnSync.mockReset().mockReturnValue({});
+  mockCwdGet.mockResolvedValue('/');
+  mockFeedResolve.mockResolvedValue(ok({ id: 12, name: 'Brain Run' }));
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -129,6 +149,38 @@ describe('builtin_feed', () => {
     mockFeedsList.mockResolvedValue({ feeds: [], selectedFields: [], totalCount: 0 });
     await builtin_feed(['search', 'brain']);
     expect(mockFeedsList).toHaveBeenCalledWith(expect.objectContaining({ search: 'brain' }));
+  });
+
+  it('draws a shallow feed diagram through the tree handler', async () => {
+    const env: CommandEnvelope = await builtin_feed(['diagram', 'feed_12']);
+    expect(mockFeedTreeHandle).toHaveBeenCalledWith(12, undefined, 0, false);
+    expect(env.rendered).toBe('TREE 12');
+  });
+
+  it('passes tree rendering options through the shallow diagram alias', async () => {
+    await builtin_feed(['diagram', 'feed_12', '--focus', '31', '--max-nodes', '8', '--flat']);
+
+    expect(mockFeedTreeHandle).toHaveBeenCalledWith(12, 31, 8, true);
+  });
+
+  it('resolves a feed title for tree and SignalFlow diagram output', async () => {
+    await builtin_feed(['tree', 'Brain', 'Run']);
+    await builtin_feed(['diagram', '--signalflow', 'Brain', 'Run']);
+
+    expect(mockFeedResolve).toHaveBeenCalledWith('Brain Run');
+    expect(mockFeedTreeHandle).toHaveBeenCalledWith(12, undefined, 0, false);
+    expect(mockFeedDiagramHandle).toHaveBeenCalledWith(12, 'signalflow');
+  });
+
+  it('resolves an omitted feed specifier from the current directory', async () => {
+    mockCwdGet.mockResolvedValue('/proc/jobs/feed_44/pl-root_90');
+
+    await builtin_feed(['tree']);
+    await builtin_feed(['diagram']);
+    await builtin_feed(['diagram', '--signalflow']);
+
+    expect(mockFeedTreeHandle).toHaveBeenCalledWith(44, undefined, 0, false);
+    expect(mockFeedDiagramHandle).toHaveBeenCalledWith(44, 'signalflow');
   });
 
   it('reports empty inspect results', async () => {

@@ -12,6 +12,7 @@ import {
   listData_get,
   itemData_get,
   type Client,
+  type ListResource,
   type PluginInstance,
   type Feed,
   type CommentList,
@@ -40,6 +41,13 @@ export class ChRISFeedGroup extends ChRISResourceGroup {
   constructor() {
     super("Feeds", "getFeeds");
   }
+}
+
+/** Minimal feed identity used by command specifier resolution. */
+export interface FeedRecord {
+  id: number;
+  name: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -135,6 +143,56 @@ export class ChRISFeed {
       "name",
       "owner_username",
     ]);
+  }
+}
+
+/**
+ * Resolves a feed from a numeric ID, `feed_N` directory name, exact title, or
+ * unambiguous title search.
+ *
+ * @param specifier - Feed ID, VFS directory name, title, or title fragment.
+ * @returns The resolved feed identity, or Err when absent or ambiguous.
+ */
+export async function feed_resolve(specifier: string): Promise<Result<FeedRecord>> {
+  const directMatch: RegExpMatchArray | null = specifier.match(/^(?:feed_)?(\d+)$/);
+  const client: Client | null = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push('error', 'Not connected to ChRIS. Cannot resolve feed.');
+    return Err();
+  }
+
+  try {
+    if (directMatch) {
+      const feedID: number = parseInt(directMatch[1], 10);
+      const feed: Feed | null = await client.getFeed(feedID);
+      const record: FeedRecord | null = itemData_get<FeedRecord>(feed);
+      if (record) return Ok(record);
+      errorStack.stack_push('error', `Feed with ID ${feedID} not found.`);
+      return Err();
+    }
+
+    const list: ListResource = await client.getFeeds({ name: specifier, limit: 1000 });
+    const matches: FeedRecord[] = listData_get<FeedRecord>(list);
+    const exact: FeedRecord[] = matches.filter((feed: FeedRecord): boolean => feed.name === specifier);
+    const candidates: FeedRecord[] = exact.length > 0 ? exact : matches;
+    if (candidates.length === 1) return Ok(candidates[0]);
+    if (candidates.length === 0) {
+      errorStack.stack_push('error', `No feed matching '${specifier}'.`);
+      return Err();
+    }
+
+    const choices: string = candidates
+      .map((feed: FeedRecord): string => `${feed.id} (${feed.name})`)
+      .join(', ');
+    errorStack.stack_push(
+      'error',
+      `Ambiguous feed '${specifier}': ${choices}. Use an ID or full unique title.`,
+    );
+    return Err();
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('error', `feed_resolve: ${msg}`);
+    return Err();
   }
 }
 

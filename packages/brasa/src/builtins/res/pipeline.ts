@@ -6,6 +6,7 @@
  * - `info`   — show a pipeline's nodes and default parameters
  * - `run`    — instantiate a pipeline as a workflow on the current context node
  * - `source` — display the pipeline's YAML source file
+ * - `diagram` — render the registered pipeline as a shallow tree or SignalFlow YAML
  *
  * Pipelines also appear as executables in `/bin` (colored distinctly from plugins)
  * and can be invoked directly by name. `cat /bin/<name>` returns the YAML source.
@@ -32,6 +33,7 @@ import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
+import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
 import { session } from '../../session/index.js';
 
 /**
@@ -242,6 +244,43 @@ async function pipelineInspect_handle(): Promise<void> {
   }
 }
 
+/** Parsed arguments for `pipeline diagram`. */
+interface PipelineDiagramArgs {
+  specifier: string;
+  withArguments: boolean;
+  signalflow: boolean;
+}
+
+/** Parses diagram flags while preserving every non-flag word as the search specifier. */
+function pipelineDiagramArgs_parse(args: string[]): PipelineDiagramArgs {
+  const words: string[] = [];
+  let withArguments: boolean = false;
+  let signalflow: boolean = false;
+  for (const argument of args.slice(1)) {
+    if (argument === '--withargs') withArguments = true;
+    else if (argument === '--signalflow') signalflow = true;
+    else words.push(argument);
+  }
+  return { specifier: words.join(' ').trim(), withArguments, signalflow };
+}
+
+/** Handles shallow and SignalFlow pipeline diagram output. */
+async function pipelineDiagramCommand_handle(args: string[]): Promise<CommandEnvelope> {
+  const parsed: PipelineDiagramArgs = pipelineDiagramArgs_parse(args);
+  if (!parsed.specifier) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('Usage: pipeline diagram [--withargs | --signalflow] <name|id>')}\n`);
+  }
+  if (parsed.withArguments && parsed.signalflow) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('pipeline diagram: --withargs is only available for shallow rendering')}\n`);
+  }
+  const mode: PipelineDiagramMode = parsed.signalflow
+    ? 'signalflow'
+    : parsed.withArguments ? 'shallow-withargs' : 'shallow';
+  return pipelineDiagram_handle(parsed.specifier, mode);
+}
+
 /**
  * Manages ChRIS pipeline registration, inspection, and execution.
  *
@@ -256,7 +295,7 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
 
   if (!subcommand) {
     const current: string | null = await chrisContext.ChRISplugin_get();
-    sink_dataLine(chalk.gray('Usage: pipeline <list|info|run|source> [args]'));
+    sink_dataLine(chalk.gray('Usage: pipeline <list|info|run|source|diagram> [args]'));
     if (current) {
       sink_dataLine(chalk.gray(`  Current context node: instance ${current}`));
     }
@@ -276,6 +315,8 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
     case 'source':
       await pipelineSource_handle(args);
       return envelope_ok('');
+    case 'diagram':
+      return pipelineDiagramCommand_handle(args);
     case 'inspect':
       await pipelineInspect_handle();
       return envelope_ok('');
@@ -283,7 +324,7 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
       return builtin_pipeline(['list', args[1] ?? '']);
     default:
       sink_errLine(chalk.red(`pipeline: unknown subcommand '${subcommand}'`));
-      sink_dataLine(chalk.gray('  Subcommands: list, search, inspect, info, run, source'));
+      sink_dataLine(chalk.gray('  Subcommands: list, search, inspect, info, run, source, diagram'));
       process.exitCode = 1;
       return envelope_error('');
   }

@@ -1,8 +1,8 @@
 /**
  * @file Adapter: a collapsed feed DAG → a SignalFlow document.
  *
- * Pure (no network, no salsa runtime — consumes the {@link CollapsedNode} tree from the
- * collapse pass). Produces a SignalFlow doc object that serializes to JSON (valid YAML)
+ * Pure (no network, no salsa runtime — consumes the shared {@link DiagramNode} tree).
+ * Produces a SignalFlow doc object that serializes to JSON (valid YAML)
  * for the SignalFlow renderer. SignalFlow is a replaceable rendering leaf: the render IR
  * is the feed graph, and this converter is the only SignalFlow-shaped code.
  *
@@ -16,7 +16,7 @@
  *
  * @module
  */
-import type { CollapsedNode } from './feed.tree.collapse.js';
+import type { DiagramNode } from './diagram.tree.js';
 
 /** A SignalFlow port (forward-only: signal, no return). */
 interface SfPort { signal: string; }
@@ -41,32 +41,31 @@ export interface SfDoc {
 
 /** Options for {@link signalflowDoc_build}. */
 export interface SignalflowDocOptions {
-  feedID: number;
+  subject: 'feed' | 'pipeline';
+  subjectID: number;
   title: string;
 }
 
 /** Unique, human-readable chip identity for a collapsed node. */
-function node_func(n: CollapsedNode): string {
-  return n.count === 1
-    ? `${n.pluginName}_${n.memberIds[0]}`
-    : `${n.pluginName}_x${n.count}_${n.memberIds[0]}`;
+function node_func(n: DiagramNode): string {
+  return n.functionName;
 }
 
 /** Signal name for the anchor edge into a node. */
-function edge_signal(n: CollapsedNode): string {
-  return `e_${node_func(n)}`;
+function edge_signal(n: DiagramNode): string {
+  return `e_${n.signalName}`;
 }
 
 /** Signal name for a join edge from `source` into `join` node. */
-function join_signal(join: CollapsedNode, source: CollapsedNode): string {
-  return `j_${node_func(join)}_${node_func(source)}`;
+function join_signal(join: DiagramNode, source: DiagramNode): string {
+  return `j_${join.signalName}_${source.signalName}`;
 }
 
 /** Precomputed join wiring: input signals per join node, and bare refs + output signals per source. */
 interface JoinWiring {
-  inputSignals: Map<CollapsedNode, string[]>;
-  bareRefs: Map<CollapsedNode, CollapsedNode[]>;
-  outputSignals: Map<CollapsedNode, string[]>;
+  inputSignals: Map<DiagramNode, string[]>;
+  bareRefs: Map<DiagramNode, DiagramNode[]>;
+  outputSignals: Map<DiagramNode, string[]>;
 }
 
 /**
@@ -76,29 +75,29 @@ interface JoinWiring {
  * @param options - Feed id and title for the document header.
  * @returns A SignalFlow document object (serialize to JSON for the renderer).
  */
-export function signalflowDoc_build(roots: CollapsedNode[], options: SignalflowDocOptions): SfDoc {
+export function signalflowDoc_build(roots: DiagramNode[], options: SignalflowDocOptions): SfDoc {
   // Index every node and map member instance ids → the node that holds them (a join
   // source may live inside a collapsed group).
-  const allNodes: CollapsedNode[] = [];
-  const memberToNode: Map<number, CollapsedNode> = new Map<number, CollapsedNode>();
-  const collect = (n: CollapsedNode): void => {
+  const allNodes: DiagramNode[] = [];
+  const memberToNode: Map<number, DiagramNode> = new Map<number, DiagramNode>();
+  const collect = (n: DiagramNode): void => {
     allNodes.push(n);
-    for (const id of n.memberIds) memberToNode.set(id, n);
+    for (const id of n.memberIDs) memberToNode.set(id, n);
     for (const c of n.children) collect(c);
   };
   for (const r of roots) collect(r);
 
   const wiring: JoinWiring = {
-    inputSignals: new Map<CollapsedNode, string[]>(),
-    bareRefs: new Map<CollapsedNode, CollapsedNode[]>(),
-    outputSignals: new Map<CollapsedNode, string[]>(),
+    inputSignals: new Map<DiagramNode, string[]>(),
+    bareRefs: new Map<DiagramNode, DiagramNode[]>(),
+    outputSignals: new Map<DiagramNode, string[]>(),
   };
   const push = <K, V>(m: Map<K, V[]>, k: K, v: V): void => { m.set(k, [...(m.get(k) ?? []), v]); };
 
   for (const join of allNodes) {
-    if (join.count !== 1 || join.joinParentIDs.length === 0) continue;
+    if (join.multiplicity !== 1 || join.joinParentIDs.length === 0) continue;
     for (const sourceId of join.joinParentIDs) {
-      const source: CollapsedNode | undefined = memberToNode.get(sourceId);
+      const source: DiagramNode | undefined = memberToNode.get(sourceId);
       if (!source || source === join) continue;
       const sig: string = join_signal(join, source);
       push(wiring.inputSignals, join, sig);
@@ -107,7 +106,7 @@ export function signalflowDoc_build(roots: CollapsedNode[], options: SignalflowD
     }
   }
 
-  const buildFull = (n: CollapsedNode, hasAnchorParent: boolean): SfNode => {
+  const buildFull = (n: DiagramNode, hasAnchorParent: boolean): SfNode => {
     const func: string = node_func(n);
     const inputs: SfPort[] = [];
     if (hasAnchorParent) inputs.push({ signal: edge_signal(n) });
@@ -117,7 +116,7 @@ export function signalflowDoc_build(roots: CollapsedNode[], options: SignalflowD
     for (const c of n.children) outputs.push({ signal: edge_signal(c) });
     for (const sig of wiring.outputSignals.get(n) ?? []) outputs.push({ signal: sig });
 
-    const calls: SfNode[] = n.children.map((c: CollapsedNode): SfNode => buildFull(c, true));
+    const calls: SfNode[] = n.children.map((c: DiagramNode): SfNode => buildFull(c, true));
     for (const ref of wiring.bareRefs.get(n) ?? []) {
       calls.push({ module: `${ref.pluginName}.plugin`, func: node_func(ref), calls: [] });
     }
@@ -134,15 +133,15 @@ export function signalflowDoc_build(roots: CollapsedNode[], options: SignalflowD
     tree = buildFull(roots[0], false);
   } else {
     tree = {
-      module: 'feed.root',
-      func: `feed_${options.feedID}`,
-      output_ports: roots.map((r: CollapsedNode): SfPort => ({ signal: edge_signal(r) })),
-      calls: roots.map((r: CollapsedNode): SfNode => buildFull(r, true)),
+      module: `${options.subject}.root`,
+      func: `${options.subject}_${options.subjectID}`,
+      output_ports: roots.map((r: DiagramNode): SfPort => ({ signal: edge_signal(r) })),
+      calls: roots.map((r: DiagramNode): SfNode => buildFull(r, true)),
     };
   }
 
   return {
-    title: `feed ${options.feedID}: ${options.title}`,
+    title: `${options.subject} ${options.subjectID}: ${options.title}`,
     config: { channelWidth: 6, verticalChipPadding: 1 },
     world: { sense: 'west_to_east', occupancy_policy: 'strip', packing_policy: 'monotone' },
     tree,

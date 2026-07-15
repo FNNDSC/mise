@@ -24,6 +24,13 @@ import {
   pipeline_createWorkflow,
   pipelineFile_getTextByPath,
 } from '@fnndsc/cumin';
+
+export {
+  pipelineDiagram_get,
+  type PipelineDiagram,
+  type PipelineDiagramArgument,
+  type PipelineDiagramNode,
+} from './diagram.js';
 import axios from 'axios';
 
 export type { PipelineRecord, WorkflowResult };

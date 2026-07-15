@@ -122,6 +122,22 @@ describe('pipeline_resolve', () => {
     if (result.ok) expect(result.value.name).toBe('Foo');
   });
 
+  it('searches a numeric-leading name instead of treating it as an ID', async () => {
+    const getPipeline: jest.Mock = jest.fn();
+    mockClientGet.mockResolvedValue({
+      getPipeline,
+      getPipelines: jest.fn(async () => listResource_make([
+        { id: 3, name: '3D segmentation' },
+      ])),
+    });
+
+    const result: Result<PipelineRecord> = await pipeline_resolve('3D segmentation');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.id).toBe(3);
+    expect(getPipeline).not.toHaveBeenCalled();
+  });
+
   it('rejects an ambiguous name', async () => {
     mockClientGet.mockResolvedValue({
       getPipelines: jest.fn(async () => listResource_make([

@@ -18,7 +18,7 @@ import chalk from 'chalk';
 import { dump as yamlDump } from 'js-yaml';
 import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { collapse_build } from './feed.tree.collapse.js';
+import { feedDiagramNodes_build } from './feed.tree.render.js';
 import { signalflowDoc_build } from './feed.tree.signalflow.js';
 
 /** Supported emit dialects. */
@@ -40,7 +40,11 @@ export async function feedDiagram_handle(feedId: number, dialect: DiagramDialect
     return envelope_error('', undefined, `${chalk.red(`Feed ${feedId} not found.`)}\n`);
   }
 
-  const doc = signalflowDoc_build(collapse_build(graph, graph.rootIDs), { feedID: feedId, title: graph.title });
+  const doc = signalflowDoc_build(feedDiagramNodes_build(graph, graph.rootIDs), {
+    subject: 'feed',
+    subjectID: feedId,
+    title: graph.title,
+  });
   const yaml: string = yamlDump(doc, { lineWidth: -1, noRefs: true });
 
   return envelope_ok(yaml, { kind: 'feed.diagram', data: { feedID: feedId, dialect, nodes: graph.total } });

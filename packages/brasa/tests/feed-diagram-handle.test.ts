@@ -1,7 +1,5 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { existsSync, readFileSync, rmSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { load as yamlLoad } from 'js-yaml';
 
 const feedGraphData_ensure = jest.fn(async (_id: number): Promise<void> => undefined);
 const feedGraph_build = jest.fn();
@@ -27,55 +25,33 @@ function graph_fixture() {
   };
 }
 
-const saved = process.env.SIGNALFLOW_BIN;
 beforeEach(() => { jest.clearAllMocks(); process.exitCode = 0; feedGraph_build.mockReturnValue(graph_fixture()); });
-afterEach(() => { if (saved === undefined) delete process.env.SIGNALFLOW_BIN; else process.env.SIGNALFLOW_BIN = saved; });
 
 describe('feedDiagram_handle', () => {
-  it('degrades gracefully when SignalFlow is not found', async () => {
-    process.env.SIGNALFLOW_BIN = '/no/such/signalflow-xyz';
-    const env = await feedDiagram_handle(5, {}) as { status: string; rendered: string };
+  it('emits a valid SignalFlow YAML document to stdout', async () => {
+    const env = await feedDiagram_handle(5, 'signalflow') as { status: string; rendered: string; model: { kind: string; data: { dialect: string; nodes: number } } };
+    expect(feedGraphData_ensure).toHaveBeenCalledWith(5);
     expect(env.status).toBe('ok');
-    expect(strip(env.rendered)).toContain('not found');
-    expect(strip(env.rendered)).toContain('feed tree 5');
+    expect(env.model.kind).toBe('feed.diagram');
+    expect(env.model.data).toMatchObject({ feedID: 5, dialect: 'signalflow', nodes: 2 });
+
+    // The rendered text is parseable YAML describing a SignalFlow doc.
+    const doc = yamlLoad(env.rendered) as { world: unknown; tree: { func: string; calls: Array<{ func: string }> } };
+    expect(doc.world).toBeDefined();
+    expect(doc.tree.func).toBe('pl-a_1');
+    expect(doc.tree.calls[0].func).toBe('pl-b_2');
   });
 
-  it('writes an ASCII diagram to a file via the renderer', async () => {
-    process.env.SIGNALFLOW_BIN = 'cat'; // stand-in: echoes the input doc as "render"
-    const out = join(tmpdir(), `feed-test-${Date.now()}.txt`);
-    const env = await feedDiagram_handle(5, { out }) as { status: string; rendered: string; model: { data: { outPath: string } } };
-    expect(env.status).toBe('ok');
-    expect(strip(env.rendered)).toContain('Wrote diagram (2 nodes)');
-    expect(env.model.data.outPath).toBe(out);
-    expect(existsSync(out)).toBe(true);
-    expect(readFileSync(out, 'utf8')).toContain('"tree"'); // the SignalFlow doc round-tripped
-    rmSync(out, { force: true });
-  });
-
-  it('returns the ASCII inline in --stdout mode', async () => {
-    process.env.SIGNALFLOW_BIN = 'cat';
-    const env = await feedDiagram_handle(5, { toStdout: true }) as { status: string; rendered: string };
-    expect(env.rendered).toContain('"module"'); // doc content, not a "wrote to" message
-    expect(env.rendered).not.toContain('Wrote diagram');
-  });
-
-  it('reports an SVG write', async () => {
-    process.env.SIGNALFLOW_BIN = 'true'; // exits 0, writes nothing
-    const env = await feedDiagram_handle(5, { svg: true, out: '/tmp/x.svg' }) as { status: string; rendered: string };
-    expect(strip(env.rendered)).toContain('Wrote SVG diagram');
-  });
-
-  it('surfaces a SignalFlow non-zero exit as an error', async () => {
-    process.env.SIGNALFLOW_BIN = 'false'; // exits 1
-    const env = await feedDiagram_handle(5, {}) as { status: string; renderedErr: string };
-    expect(env.status).toBe('error');
-    expect(strip(env.renderedErr)).toContain('SignalFlow error');
-    expect(process.exitCode).toBe(1);
+  it('does not shell out — no renderer invoked, just text', async () => {
+    const env = await feedDiagram_handle(5, 'signalflow') as { rendered: string };
+    // Pure data: no "wrote to", no path, no degrade notice.
+    expect(env.rendered).not.toMatch(/wrote|not found|signalflow renderer/i);
+    expect(env.rendered).toContain('tree:');
   });
 
   it('errors when the feed is not found', async () => {
     feedGraph_build.mockReturnValue(null);
-    const env = await feedDiagram_handle(999, {}) as { status: string; renderedErr: string };
+    const env = await feedDiagram_handle(999, 'signalflow') as { status: string; renderedErr: string };
     expect(env.status).toBe('error');
     expect(strip(env.renderedErr)).toContain('not found');
     expect(process.exitCode).toBe(1);

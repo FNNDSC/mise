@@ -204,10 +204,15 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       const maxNodes: number = maxRaw !== undefined ? parseInt(String(maxRaw), 10) : 0;
       return await feedTree_handle(feedId, focusId, isNaN(maxNodes) ? 0 : maxNodes, !!parsed.flat);
     } else if (subcommand === 'diagram') {
-      const feedId: number = parseInt(String(parsed._[1]), 10);
-      if (isNaN(feedId)) { return envelope_error('', undefined, `${chalk.red('Usage: feed diagram <feedId> [--svg] [--out <path>] [--stdout]')}\n`); }
-      const out: string | undefined = parsed.out as string | undefined;
-      return await feedDiagram_handle(feedId, { svg: !!parsed.svg, toStdout: !!parsed.stdout, out });
+      // `--signalflow` selects the dialect; the feed id may be positional
+      // (`diagram 42 --signalflow`) or captured as the flag's value (`diagram --signalflow 42`).
+      const wantSignalflow: boolean = parsed.signalflow !== undefined && parsed.signalflow !== false;
+      const rawId: string | undefined = parsed._[1] ?? (typeof parsed.signalflow === 'string' ? parsed.signalflow : undefined);
+      const feedId: number = parseInt(String(rawId), 10);
+      if (isNaN(feedId) || !wantSignalflow) {
+        return envelope_error('', undefined, `${chalk.red('Usage: feed diagram --signalflow <feedId>   (emits SignalFlow YAML to stdout; pipe to `signalflow`)')}\n`);
+      }
+      return await feedDiagram_handle(feedId, 'signalflow');
     }
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree|diagram>`)}\n`);

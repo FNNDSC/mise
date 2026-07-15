@@ -578,7 +578,12 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // REPL; it needs no local engine, session, or CUBE connection.
   if (config.mode === 'remote') {
     const { remote_run } = await import('../remote/client.js');
-    await remote_run();
+    const { identity_forSession } = await import('@fnndsc/calypso');
+    const cc: { user?: string; url?: string } | undefined = config.connectConfig;
+    // A `<user>@<url>` target names the identity to attach to; a bare `--remote`
+    // resolves the sole/most-suitable berth (identity undefined).
+    const identity: string | undefined = cc?.user && cc?.url ? identity_forSession(cc.user, cc.url) : undefined;
+    await remote_run(identity);
     return;
   }
 
@@ -620,6 +625,8 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // --- Daemon Mode ---
   // Host the connected engine over WebSocket and stay alive on the server.
   if (config.mode === 'daemon') {
+    // The duplicate-identity guard lives in daemon_launch, so both this path and
+    // the standalone calypso binary are protected by one check.
     const { daemon_launch } = await import('@fnndsc/calypso');
     await daemon_launch(engine);
     return;

@@ -54,3 +54,20 @@ export { token_generate, token_writeFile, token_matches } from './daemon/token.j
 export { CalypsoDaemon, type DaemonOptions, type EditOutcome } from './daemon/server.js';
 export { daemon_launch } from './daemon/launch.js';
 export { discovery_read, discovery_write, discovery_path, type Discovery } from './daemon/discovery.js';
+export {
+  identity_normalise,
+  identity_forSession,
+  DISCONNECTED_IDENTITY,
+  berthKey_compute,
+  berthDir_path,
+  berth_path,
+  berth_write,
+  berth_read,
+  berthAll_read,
+  berth_remove,
+  berthUrl_isAlive,
+  LocalBerthResolver,
+  type Berth,
+  type BerthResolver,
+  type BerthLivenessProbe,
+} from './daemon/berth.js';

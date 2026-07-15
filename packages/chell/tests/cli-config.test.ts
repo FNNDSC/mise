@@ -50,4 +50,15 @@ describe('cliConfig_fromArgs', () => {
     expect(c.showLogo).toBe(false);
     expect(c.asciiBoot).toBe(true);
   });
+
+  it('carries the identity into remote mode when a user@url target is given', () => {
+    const c = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { remote: true }, noFile);
+    expect(c.mode).toBe('remote');
+    expect(c.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
+  });
+
+  it('leaves remote mode without a connectConfig for a bare --remote', () => {
+    const c = cliConfig_fromArgs(undefined, { remote: true }, noFile);
+    expect(c).toEqual({ mode: 'remote', connectConfig: undefined });
+  });
 });

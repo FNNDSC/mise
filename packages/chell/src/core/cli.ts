@@ -90,8 +90,9 @@ export function cliConfig_fromArgs(
   let config: ChellCLIConfig;
   if (options.remote) {
     // A remote surface attaches to a daemon; it needs no local engine,
-    // connection, or CUBE credentials.
-    config = { mode: 'remote' };
+    // connection, or CUBE credentials — but a `<user>@<url>` target names which
+    // identity's daemon to attach to when several run on this machine.
+    config = { mode: 'remote', connectConfig };
   } else if (options.daemon) {
     config = { mode: 'daemon', physicalFS: options.physicalFS, connectConfig };
   } else if (options.file) {

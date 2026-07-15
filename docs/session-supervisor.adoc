@@ -1,0 +1,308 @@
+= Identity-keyed daemons: many sessions on one machine, and the road to a server
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+Today calypso is a *personal, single-session* daemon: one engine, one CUBE
+identity, many surfaces sharing it, discovered through a single per-OS-user file.
+This document specifies how to run *several* daemons on one machine — one per CUBE
+identity — so one operator can hold two logins, or two trusted operators can share
+a box, each with an isolated session, driven by the same
+`chell --daemon <user>@<url>` they already type. It does this without touching the
+engine: the daemon process is the isolation boundary, and multiplicity is a matter
+of *keying* berths by identity and *resolving* them behind one interface.
+
+The design is deliberately staged in two tiers that share one seam:
+
+* *Tier 1 (this document, buildable now).* Local, identity-keyed berths. No new
+  package, no new network surface, no new auth — edits to calypso's discovery and
+  chell's remote client. Ships alone with full value for the
+  many-identities-on-one-box job.
+* *Tier 2 (future, gated on the web surface).* A reachable *porter* — a new
+  package: a server/dispatch front that many clients on many machines attach to,
+  with auth at the door. Not built now; noted so tier 1 leaves the door open.
+
+The one thing tier 1 must get right so tier 2 needs no rework: the *berth resolver
+seam*.
+
+== The two jobs (they are different)
+
+It is easy to conflate these; they are not the same job, and only the first is on
+the table.
+
+[cols="1,2,2",options="header"]
+|===
+|Job |Covered by |Reach
+
+|Several CUBE identities, one machine, one OS user
+|*Tier 1*
+|Local berth files, `0600`, same host
+
+|Different humans, different machines, a browser that cannot run a local engine
+|*Tier 2 (porter)*
+|Network listener + auth (the *server*)
+|===
+
+Tier 1 fully solves job one. It *cannot* reach job two — no network listener, no
+cross-host auth. Tier 2 is not "more of tier 1"; it is a different perimeter. Build
+tier 1 now; build tier 2 only when the web surface (argus,
+link:surfaces.adoc[the surfaces model]) forces it.
+
+== The invariant: the process is the isolation boundary
+
+Multiplicity costs almost nothing because `chell --daemon` hosts a brasa engine
+*in its own process*, and a brasa engine encapsulates one whole single-user world
+— one `chrisConnection`, one session (cwd, context), one ProcCache. Two identities
+means two `chell --daemon` processes; the OS gives the isolation for free.
+
+[IMPORTANT]
+====
+Because every identity is a *separate OS process*, module-level state in
+brasa/cumin/salsa (the sink set by `sink_set`, the surface set by `surface_set`,
+any ProcCache or connection singleton) is *per process* — it physically cannot
+cross-wire between identities. This holds in tier 2 as well: the porter spawns one
+calypso *child process* per identity and hosts no engine itself. Process-per-identity
+is the isolation mechanism in both tiers; there is no shared-state engine to design
+and no request-time identity to thread through the engine.
+====
+
+== User perspective
+
+Unchanged verbs; the identity becomes the key.
+
+[source,bash]
+----
+# two identities (two logins, or two operators sharing a box) on the same host
+chell --daemon me@https://cube.example.org/api/v1/ -p <pwd>       # my daemon (foreground)
+chell --daemon them@https://cube.example.org/api/v1/ -p <pwd>     # their daemon (foreground)
+# → two calypso daemons, fully isolated. Neither sees the other's session.
+
+# attach later, by identity
+chell --remote me@https://cube.example.org/api/v1/               # finds MY daemon
+chell --remote                                                    # sole berth attaches; picker if several
+----
+
+The identity string `<user>@<url>` is the key everything routes on.
+
+== Tier 1: identity-keyed berths
+
+=== What exists today
+
+`packages/calypso/src/daemon/discovery.ts` records one berth in one file keyed by
+*OS user only*:
+
+[source,typescript]
+----
+interface Discovery { url: string; token: string }
+// path today: ${tmpdir}/chell-calypso-${username}.json   ← one per OS user
+----
+
+`launch.ts` calls `discovery_write({ url, token })`; the chell remote client
+(`packages/chell/src/remote/client.ts`) calls `discovery_read()`. Exactly one
+daemon can advertise per OS user — the single-session assumption, made physical.
+
+=== The berth
+
+Key the berth by *identity*, and store the full identity inside it so a resolve can
+verify an exact match (never route on a hash alone).
+
+[source,typescript]
+----
+interface Berth {
+  identity: string;   // full "<user>@<cubeUrl>", stored for exact-match verify + list display
+  url: string;        // the daemon's WebSocket address (ws://127.0.0.1:<port>)
+  token: string;      // the attach token (liveness/handshake; see trust boundary)
+}
+----
+
+*Identity normalisation (lexical only, no I/O).* The berth key is a hash of a
+normalised identity:
+
+* lowercase the URL scheme and host (`HTTP://Ekanite` -> `http://ekanite`);
+* *keep the trailing slash* — CUBE requires it;
+* keep the port exactly as written; do not infer default ports;
+* keep the user's case exactly — CUBE usernames may be case-sensitive.
+
+[NOTE]
+====
+Normalisation is *lexical only*. `http://ekanite:3223/api/v1/` and
+`http://ekanite.tch.harvard.edu:3223/api/v1/` are treated as *different*
+identities, because merging them is DNS resolution, not string rewriting — and a
+berth key that depends on DNS breaks under load balancers, IP churn, and
+split-horizon DNS. The identity is the *connection coordinate you typed*, not the
+physical CUBE behind it. Rule: **same string, same daemon.** Operators should adopt
+one canonical URL per CUBE by convention; `list()` shows each berth's full identity
+so any accidental duplicate is visible, never silent.
+====
+
+[source,typescript]
+----
+function identity_normalise(user: string, cubeUrl: string): string; // lexical rules above
+function berthKey_compute(identity: string): string;                // sha256(identity), short hex
+----
+
+=== Where berths live
+
+A berth is runtime state holding a secret, so it belongs in the runtime directory,
+not `/tmp`, and in an owned subdirectory:
+
+[source,text]
+----
+${XDG_RUNTIME_DIR:-<tmpdir>}/calypso/berth-<berthKey>.json    # dir 0700, files 0600
+----
+
+* `$XDG_RUNTIME_DIR` (Linux `/run/user/UID`, `0700` tmpfs) is used when set — it is
+  per-user and auto-cleared on logout.
+* Fallback is `tmpdir()` (macOS `TMPDIR` is already per-user-private; Linux `/tmp`).
+* `list()` globs `${runtimeDir}/calypso/berth-*.json`.
+
+A berth's lifetime should match its daemon's; both die around reboot/logout, and any
+straggler self-heals on next access (see liveness). No migration from the old
+single-file discovery is needed — a stale old file is simply ignored and reaped.
+
+=== The resolver seam
+
+[IMPORTANT]
+====
+Put *all* berth lookup behind one interface from day one:
+
+[source,typescript]
+----
+interface BerthResolver {
+  resolve(identity: string): Promise<Berth | null>;   // find a live berth for one identity
+  list(): Promise<Berth[]>;                            // live berths, for bare --remote + picker
+}
+----
+
+Tier 1 ships a `LocalBerthResolver` that reads the identity-keyed files. Tier 2
+ships a `PorterBerthResolver` that asks the porter over the network. *The surface
+code (`--remote`, `--daemon`) depends only on `BerthResolver`* and never learns
+which backs it. The interface lives in calypso (chell already imports calypso; the
+tier-2 porter imports calypso to spawn it) — no new shared package, no cycle.
+====
+
+If tier 1 instead hard-codes "berth = local file" at the call sites, tier 2 is a
+rewrite. With the seam, tier 2 is a new implementation of an existing interface —
+additive, no surface rework.
+
+=== Liveness: a berth file is a claim, not a guarantee
+
+A berth file can outlive its daemon (crash, reboot). Every read verifies before
+trusting:
+
+. *Fast pre-filter (optional).* If the berth records a pid, `kill(pid, 0)` rejects
+  the obviously-dead without a network round-trip.
+. *Authoritative probe.* Attempt the WebSocket handshake against the berth `url`
+  with its token. Success = live (use it); failure = stale.
+. *Passive reap.* On a failed probe, `unlink` the berth file inline. There is no
+  reaper process and no timer; every path that reads a berth cleans the dead one it
+  finds. Worst case is a dead file sitting untouched until the next `--remote`,
+  which is harmless.
+
+=== `--daemon`: find-or-host (foreground) with a duplicate guard
+
+`chell --daemon <user>@<url>` hosts in the foreground exactly as today (that
+terminal becomes the daemon). The only new behaviour is a guard: before hosting, it
+resolves the identity's berth and probes it. If a *live* daemon already exists for
+that identity, it prints where to find it and exits rather than starting a
+split-brain second daemon:
+
+[source,text]
+----
+daemon for me@https://cube.example.org/api/v1/ already running at ws://127.0.0.1:54321
+attach with:  chell --remote me@https://cube.example.org/api/v1/
+----
+
+Otherwise it hosts and writes the identity-keyed berth. (Detached/background start
+is a later ergonomic follow-up; it changes how the process starts, not the berth
+semantics, so deferring it costs nothing.) The standalone `calypso` binary likewise
+writes an identity-keyed berth from the session it restores.
+
+=== `--remote`: resolve by identity, pick on ambiguity
+
+[cols="2,3",options="header"]
+|===
+|Invocation |Behaviour
+
+|`chell --remote <user>@<url>` |Resolve that identity's berth directly; never a menu.
+|`chell --remote` — no live berth |Error: no daemon running (today's behaviour).
+|`chell --remote` — one live berth |Attach directly (do not menu a single choice).
+|`chell --remote` — several, TTY |Interactive picker over `list()`; choose identity, attach.
+|`chell --remote` — several, non-TTY |Error + list; the caller must be explicit.
+|===
+
+There is no backwards-compatibility burden: the picker only triggers on bare
+`--remote` with several live berths, and non-interactive callers simply pass the
+identity.
+
+=== Trust boundary
+
+Tier 1's trust boundary is *the OS user*. Berth files are `0600` inside a `0700`
+runtime directory, so another Unix user cannot read a token or reach a daemon
+(loopback-bound). Within one OS login, all of that user's own berths are mutually
+readable — which is correct: anyone sharing your OS login already holds your ssh
+keys and saved CUBE session; the attach token is a *liveness/handshake* token, not
+a defence against your own account. Walling two *humans* apart is precisely tier-2
+porter's job (auth at the door). Two humans who must not see each other today use
+two OS logins; filesystem permissions isolate them.
+
+== Tier 2: the porter (future, gated on the web surface)
+
+When a browser surface must attach — it cannot spawn a local engine — a reachable
+front is required. `porter` is a thin new package: a registry + a spawner + an auth
+gate. It is *not* an engine, and it hosts none; it spawns one calypso child process
+per identity, exactly as tier 1's isolation model requires.
+
+[source,text]
+----
+surface ──handshake(user@url, cube-token)──▶ porter
+                                             │ validate token via CUBE whoami   (ride CUBE as IdP)
+                                             │ find-or-spawn calypso child for identity
+                                             │ registry: identity → { addr, token, pid }
+              ◀──── berth (addr + attach token) ┘
+surface ─────────────attach WS─────────────▶ calypso  (that identity's child daemon)
+----
+
+What tier 2 *adds* on top of tier 1 (all additive):
+
+* *Auth at the door.* Ride CUBE as the identity provider — validate a presented
+  CUBE token via `whoami`, bind a berth to it, honour CUBE's TTL. The porter holds
+  live tokens, never passwords, and invents no parallel user database.
+* *Network perimeter.* TLS on the wire; per-identity attach tokens minted after
+  auth (the single-host `0600` perimeter does not survive network exposure);
+  per-session event/progress topics so one identity never sees another's job bars.
+* *Lifecycle.* Idle-daemon eviction, token-expiry reaping, crash restart — the
+  porter owns the fleet.
+
+What tier 2 *reuses* unchanged: the calypso daemon, the engine, the `Berth` concept
+(addr + attach token), the `<user>@<url>` identity key, and — through the resolver
+seam — the surface's attach path (`PorterBerthResolver` replaces
+`LocalBerthResolver`).
+
+== Scope and staging
+
+[cols="1,3",options="header"]
+|===
+|Stage |Content
+
+|*Tier 1* |Identity-keyed `Berth` + lexical normalisation; `BerthResolver` +
+ `LocalBerthResolver` (XDG runtime dir, WS-probe liveness, passive reap);
+ `--daemon` foreground duplicate-guard; `--remote <id>@<url>` resolution with
+ picker/non-TTY fallback; standalone `calypso` writes an identity-keyed berth. No
+ new package — edits to calypso discovery + chell remote client. Ships alone.
+|*Tier 2* |`porter` package: `PorterBerthResolver`, auth-at-door (CUBE IdP), TLS +
+ per-identity tokens, per-session topics, lifecycle. Built only when the web
+ surface lands.
+|===
+
+== See also
+
+* link:calypso.adoc[calypso.adoc] — the single-session daemon and wire contract this builds on.
+* link:gettingStarted.adoc[gettingStarted.adoc] — `--daemon` / `--remote` today.
+* link:surfaces.adoc[surfaces.adoc] — the surface model; the web surface drives tier 2.

@@ -19,7 +19,8 @@ import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
-import { discovery_write, discovery_path } from './discovery.js';
+import { chrisContext } from '@fnndsc/cumin';
+import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 
 /** The daemon sink forwards live command output to the executing surface. */
 class DaemonSink implements OutputSink {
@@ -52,6 +53,27 @@ export async function daemon_launch(engine: BrasaEngine): Promise<void> {
   if (chalk.level < 1) {
     chalk.level = 3;
   }
+
+  // Key the berth by the CUBE identity this daemon hosts, so several daemons —
+  // one per identity — can advertise on one machine. A daemon with no restored
+  // session (disconnected standalone start) falls back to a sentinel identity,
+  // matching the disconnected prompt context, so it stays discoverable.
+  const cubeUrl: string | null = await chrisContext.ChRISURL_get();
+  const cubeUser: string | null = await chrisContext.ChRISuser_get();
+  const identity: string = identity_forSession(cubeUser, cubeUrl);
+
+  // Guard against a split-brain second daemon for this identity: if one is
+  // already live, point the operator at it and refuse rather than host a rival
+  // and orphan the running one's berth. This covers both launch paths (chell
+  // --daemon and the standalone calypso binary), since both land here.
+  const existing: Berth | null = berth_read(identity);
+  if (existing && (await berthUrl_isAlive(existing.url))) {
+    const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
+    console.error(chalk.red(`[!] A CALYPSO daemon for ${identity} is already running at ${existing.url}`));
+    console.error(chalk.gray(`    attach with:  chell --remote${attachHint}`));
+    process.exit(1);
+  }
+
   const token: string = token_generate();
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
@@ -81,10 +103,13 @@ export async function daemon_launch(engine: BrasaEngine): Promise<void> {
 
   const port: number = await daemon.start();
   const url: string = `ws://127.0.0.1:${port}`;
-  discovery_write({ url, token });
+  const berth: Berth = { identity, url, token };
+  berth_write(berth);
 
+  const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
   console.log(chalk.green(`[+] CALYPSO daemon listening on ${url}`));
+  console.log(chalk.gray(`    identity:  ${identity}`));
   console.log(chalk.gray(`    token:     ${token}`));
-  console.log(chalk.gray(`    discovery: ${discovery_path()}`));
-  console.log(chalk.gray('    attach a surface with:  chell --remote'));
+  console.log(chalk.gray(`    berth:     ${berth_path(identity)}`));
+  console.log(chalk.gray(`    attach a surface with:  chell --remote${attachHint}`));
 }

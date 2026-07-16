@@ -66,6 +66,7 @@ const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log'])
 /** Virtual filenames inside each feed directory. */
 const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 
+const PROC_JOBS_PREFIX: string = '/proc/jobs';
 const PAGE: number = 100;
 
 // ── Cache build ────────────────────────────────────────────────────────────
@@ -195,7 +196,13 @@ export function procPath_parse(pathStr: string): {
   instanceID: number | null;
   virtualFile: string | null;
 } {
-  const parts: string[] = pathStr.replace(/^\/proc\/feeds\/?/, '').split('/').filter(Boolean);
+  let relativePath: string = pathStr;
+  if (pathStr === PROC_JOBS_PREFIX) {
+    relativePath = '';
+  } else if (pathStr.startsWith(`${PROC_JOBS_PREFIX}/`)) {
+    relativePath = pathStr.slice(PROC_JOBS_PREFIX.length + 1);
+  }
+  const parts: string[] = relativePath.split('/').filter(Boolean);
   let feedID: number | null = null;
   let instanceID: number | null = null;
   let virtualFile: string | null = null;
@@ -248,7 +255,7 @@ function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
  * VFS provider exposing running jobs and feeds under the /proc namespace.
  */
 export class ProcVfsProvider implements VFSProvider {
-  readonly prefix: string = '/proc/jobs';
+  readonly prefix: string = PROC_JOBS_PREFIX;
 
   async list(
     pathStr: string,
@@ -259,7 +266,7 @@ export class ProcVfsProvider implements VFSProvider {
     const clean: string = pathStr.replace(/\/$/, '');
 
     // /proc/jobs — list all feeds with aggregate status from counters
-    if (clean === '/proc/jobs') {
+    if (clean === PROC_JOBS_PREFIX) {
       const items: VFSItem[] = cache.feedIDs_get().map((feedID: number): VFSItem => {
         const feed: ProcFeed | undefined = cache.feed_get(feedID);
         const status: string = feed ? feedStatus_derive(feed) : 'unknown';

@@ -55,6 +55,13 @@ export const pipeResultMessageSchema = z.object({
   output: z.string(),
 });
 
+/** Returns a pipeline-segment failure to the daemon, correlated by `pipeId`. */
+export const pipeErrorMessageSchema = z.object({
+  type: z.literal('pipeError'),
+  pipeId: z.string(),
+  reason: z.string(),
+});
+
 /** Returns the edited content from a local-edit the daemon requested, correlated by `editId`. */
 export const editResultMessageSchema = z.object({
   type: z.literal('editResult'),
@@ -70,6 +77,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   completeRequestSchema,
   promptAnswerMessageSchema,
   pipeResultMessageSchema,
+  pipeErrorMessageSchema,
   editResultMessageSchema,
 ]);
 

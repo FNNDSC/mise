@@ -240,8 +240,13 @@ export class RemoteEngine implements BrasaEngine {
    */
   private async pipe_run(pipeId: string, command: string, input: string): Promise<void> {
     const inputBytes: Buffer = Buffer.from(input, 'base64');
-    const output: Buffer = this.onPipe ? await this.onPipe(command, inputBytes) : inputBytes;
-    this.ws.send(JSON.stringify({ type: 'pipeResult', pipeId, output: output.toString('base64') }));
+    try {
+      const output: Buffer = this.onPipe ? await this.onPipe(command, inputBytes) : inputBytes;
+      this.ws.send(JSON.stringify({ type: 'pipeResult', pipeId, output: output.toString('base64') }));
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.ws.send(JSON.stringify({ type: 'pipeError', pipeId, reason }));
+    }
   }
 
   /**

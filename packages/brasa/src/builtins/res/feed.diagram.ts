@@ -5,8 +5,8 @@
  * collapses it, adapts it to a SignalFlow document, and writes that document as **YAML to
  * stdout**. Rendering is the user's business and composes with pipes:
  *
- *   feed diagram --signalflow 1669 | signalflow            # ASCII (signalflow reads stdin)
- *   feed diagram --signalflow 1669 | signalflow -o x.svg   # SVG
+ *   feed diagram --signalflow 1669 | signalflow -            # ASCII (read stdin via `-`)
+ *   feed diagram --signalflow 1669 | signalflow - -o x.svg   # SVG
  *   feed diagram --signalflow 1669 > feed-1669.yaml        # keep it
  *
  * SignalFlow is a replaceable rendering leaf; mise only emits the representation. Additional

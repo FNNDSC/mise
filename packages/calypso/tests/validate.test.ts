@@ -11,6 +11,7 @@ describe('clientMessage_parse', () => {
     expect(clientMessage_parse({ type: 'attach', protocolVersion: CONTRACT_VERSION, token: 't' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'execute', id: '1', line: 'ls' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'complete', id: '2', prefix: 'l' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'pipeError', pipeId: 'p1', reason: 'failed' }).ok).toBe(true);
   });
 
   it('rejects an unknown message type with a reason', () => {

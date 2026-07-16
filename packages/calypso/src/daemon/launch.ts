@@ -45,10 +45,15 @@ class DaemonSink implements OutputSink {
  * Starts the daemon over an engine and advertises it for same-user discovery.
  *
  * @param engine - The engine to host (already created and connected by boot).
+ * @param beforeListen - Optional host preparation run after the duplicate guard
+ *   and before the socket binds or the berth is published.
  * @returns A promise that resolves once the daemon is listening; the process
  *   then stays alive on the WebSocket server.
  */
-export async function daemon_launch(engine: BrasaEngine): Promise<void> {
+export async function daemon_launch(
+  engine: BrasaEngine,
+  beforeListen?: () => Promise<void>,
+): Promise<void> {
   // Force color into the engine's rendered text: no TTY here to auto-detect.
   if (chalk.level < 1) {
     chalk.level = 3;
@@ -72,6 +77,10 @@ export async function daemon_launch(engine: BrasaEngine): Promise<void> {
     console.error(chalk.red(`[!] A CALYPSO daemon for ${identity} is already running at ${existing.url}`));
     console.error(chalk.gray(`    attach with:  chell --remote${attachHint}`));
     process.exit(1);
+  }
+
+  if (beforeListen) {
+    await beforeListen();
   }
 
   const token: string = token_generate();

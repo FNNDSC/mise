@@ -24,6 +24,8 @@ export {
   attachMessageSchema,
   executeMessageSchema,
   completeRequestSchema,
+  pipeResultMessageSchema,
+  pipeErrorMessageSchema,
   clientMessageSchema,
   attachedMessageSchema,
   resultMessageSchema,

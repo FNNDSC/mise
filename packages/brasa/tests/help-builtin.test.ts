@@ -3,6 +3,7 @@ import {
   text_boxFormat,
   commandHelp_get,
   help_render,
+  pipelineExecutableHelp_render,
   args_checkHasHelpFlag,
   builtin_help,
   builtinCommands_list,
@@ -56,6 +57,14 @@ describe('help_render', () => {
 
   it('notes when no help exists', () => {
     expect(help_render('nonexistentcmd')).toContain('No help available');
+  });
+
+  it('renders dynamic pipeline executable operations', () => {
+    const help: string = pipelineExecutableHelp_render('US_DICOM_id127');
+    expect(help).toContain('US_DICOM_id127');
+    expect(help).toContain('--diagram --withargs');
+    expect(help).toContain('--signalflow');
+    expect(help).toContain('--source, --readme');
   });
 });
 

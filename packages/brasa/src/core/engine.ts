@@ -163,7 +163,9 @@ async function batch_execute(
  * Line-level constructs are recognized in the shell's historical order:
  * shell escape first (the whole line goes to the host shell), then
  * semicolon batching (each segment recurses through this function), then
- * output redirection, then pipes, then plain dispatch. Output reaches the
+ * pipes, then standalone output redirection, then plain dispatch. A redirect
+ * in the final pipe segment therefore runs on the originating surface along
+ * with that segment. Output reaches the
  * active sink as each command completes.
  *
  * @param line - The raw input line.
@@ -186,15 +188,6 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
     return batch_execute(batch, startTime, timingEnabled);
   }
 
-  const redirectInfo: RedirectInfo | null = redirect_parse(trimmedLine);
-  if (redirectInfo) {
-    const envelope: CommandEnvelope = await redirect_execute(redirectInfo);
-    if (envelope.status === 'ok') {
-      command_timingMaybePrint(startTime, timingEnabled);
-    }
-    return [envelope];
-  }
-
   const pipeSegments: string[] = pipes_parse(trimmedLine);
   if (pipeSegments.length > 1) {
     try {
@@ -206,6 +199,15 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
       console.error(chalk.red(`Pipe error: ${msg}`));
       return [{ status: 'error', rendered: '' }];
     }
+  }
+
+  const redirectInfo: RedirectInfo | null = redirect_parse(trimmedLine);
+  if (redirectInfo) {
+    const envelope: CommandEnvelope = await redirect_execute(redirectInfo);
+    if (envelope.status === 'ok') {
+      command_timingMaybePrint(startTime, timingEnabled);
+    }
+    return [envelope];
   }
 
   const envelope: CommandEnvelope | null = await command_executeToEnvelope(trimmedLine, startTime, timingEnabled);

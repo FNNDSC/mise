@@ -74,7 +74,14 @@ jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expan
 
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
-jest.unstable_mockModule('../src/builtins/help.js', () => ({ help_render: mockHelpRender, args_checkHasHelpFlag: mockHasHelpFlag }));
+const mockCommandHelpGet = jest.fn((): string | undefined => 'known help');
+const mockPipelineExecutableHelpRender = jest.fn((name: string): string => `PIPELINE HELP:${name}\n`);
+jest.unstable_mockModule('../src/builtins/help.js', () => ({
+  help_render: mockHelpRender,
+  args_checkHasHelpFlag: mockHasHelpFlag,
+  commandHelp_get: mockCommandHelpGet,
+  pipelineExecutableHelp_render: mockPipelineExecutableHelpRender,
+}));
 
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
@@ -88,6 +95,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCheckpointDrain.mockReturnValue([]);
   mockHasHelpFlag.mockReturnValue(false);
+  mockCommandHelpGet.mockReturnValue('known help');
   mockTiming.mockReturnValue(false);
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -167,6 +175,38 @@ describe('command_dispatch', () => {
     expect(mockPipeline).toHaveBeenNthCalledWith(1, ['diagram', 'myPipe']);
     expect(mockPipeline).toHaveBeenNthCalledWith(2, ['diagram', 'myPipe', '--withargs']);
     expect(mockPipeline).toHaveBeenNthCalledWith(3, ['diagram', 'myPipe', '--signalflow']);
+  });
+
+  it('routes bare pipeline --signalflow through the diagram emitter', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+
+    await command_dispatch('myPipe', ['--signalflow']);
+
+    expect(mockPipeline).toHaveBeenCalledWith(['diagram', 'myPipe', '--signalflow']);
+  });
+
+  it('renders contextual help for a pipeline executable', async () => {
+    mockHasHelpFlag.mockReturnValue(true);
+    mockCommandHelpGet.mockReturnValue(undefined);
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+
+    const envelope: CommandEnvelope | null = await command_executeToEnvelope('myPipe --help', 0, false);
+
+    expect(envelope?.rendered).toBe('PIPELINE HELP:myPipe\n');
+    expect(mockPipelineExecutableHelpRender).toHaveBeenCalledWith('myPipe');
+    expect(mockPipeline).not.toHaveBeenCalled();
+  });
+
+  it('retains generic help for an unknown command', async () => {
+    mockHasHelpFlag.mockReturnValue(true);
+    mockCommandHelpGet.mockReturnValue(undefined);
+    mockDataGet.mockResolvedValue(Ok([]));
+
+    const envelope: CommandEnvelope | null = await command_executeToEnvelope('missing --help', 0, false);
+
+    expect(envelope?.rendered).toBe('HELP:missing\n');
+    expect(mockHelpRender).toHaveBeenCalledWith('missing');
+    expect(mockPipelineExecutableHelpRender).not.toHaveBeenCalled();
   });
 
   it('returns the pipeline diagram envelope from the executable alias', async () => {

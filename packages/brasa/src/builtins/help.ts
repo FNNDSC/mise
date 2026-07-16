@@ -368,7 +368,7 @@ export const helpText: Record<string, CommandHelp> = {
       '  tree [<feed>] --max-nodes <n>     Cap rendered nodes (0 = all)',
       '  diagram [<feed>]                  Shallow alias of feed tree',
       '  diagram --signalflow [<feed>]     Emit the DAG as SignalFlow YAML to stdout',
-      '                                   (pipe it: feed diagram --signalflow 42 | signalflow)',
+      '                                   (pipe it: feed diagram --signalflow 42 | signalflow -)',
       '',
       '  <feed> accepts an ID, feed_N directory name, exact title, or unique search.',
       '  Omit it while inside a feed_N path to use the current directory\'s feed.',
@@ -461,7 +461,8 @@ export const helpText: Record<string, CommandHelp> = {
       '  <PipelineName> --nodes      Show DAG structure (alias: --parameters)',
       '  <PipelineName> --source     Show YAML source (alias: --readme)',
       '  <PipelineName> --diagram    Draw the shallow pipeline topology',
-      '    --withargs / --signalflow  Select arguments or SignalFlow YAML',
+      '  <PipelineName> --signalflow Emit SignalFlow YAML directly',
+      '    --withargs                Include arguments with --diagram',
       '  cat /bin/<PipelineName>     Same as pipeline source',
     ],
     examples: [
@@ -480,6 +481,7 @@ export const helpText: Record<string, CommandHelp> = {
       'PHI_detection --nodes                  # Show node structure',
       'PHI_detection --source                 # Show YAML source',
       'PHI_detection --diagram                # Draw the authored DAG',
+      'PHI_detection --signalflow             # Emit SignalFlow YAML',
       'cat /bin/PHI_detection                 # Same as --source',
     ],
   },
@@ -1082,16 +1084,8 @@ export function text_boxFormat(str: string, width: number = 78, indent: number =
   return lines.join('\n');
 }
 
-/**
- * @returns The formatted help text string, or undefined if no help exists.
- */
-export function commandHelp_get(command: string): string | undefined {
-  const help: CommandHelp | undefined = helpText[command];
-
-  if (!help) {
-    return undefined;
-  }
-
+/** Formats one command-help descriptor. */
+function commandHelp_render(command: string, help: CommandHelp): string {
   const lines: string[] = [];
   lines.push('');
   lines.push(chalk.bold.magenta(command.toUpperCase()));
@@ -1168,6 +1162,53 @@ export function commandHelp_get(command: string): string | undefined {
 
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Gets the formatted help text for a registered command.
+ *
+ * @param command - Registered builtin command name.
+ * @returns The formatted help text string, or undefined if no help exists.
+ */
+export function commandHelp_get(command: string): string | undefined {
+  const help: CommandHelp | undefined = helpText[command];
+  return help ? commandHelp_render(command, help) : undefined;
+}
+
+/**
+ * Renders contextual help for one registered pipeline executable.
+ *
+ * @param name - Pipeline executable name as exposed in `/bin`.
+ * @returns Pipeline-specific help text, terminated with a newline.
+ */
+export function pipelineExecutableHelp_render(name: string): string {
+  const help: CommandHelp = {
+    usage: `${name} [run options]`,
+    description: 'Run or inspect this registered CUBE pipeline.',
+    options: [
+      'DIAGRAM OUTPUT:',
+      '  --diagram               Draw the shallow pipeline topology',
+      '  --diagram --withargs    Include stored non-null defaults inline',
+      '  --signalflow            Emit SignalFlow YAML',
+      '  --diagram --signalflow  Compatible explicit SignalFlow spelling',
+      '',
+      'INSPECTION:',
+      '  --nodes, --parameters   Show pipeline nodes and parameters',
+      '  --source, --readme      Show the pipeline YAML source',
+      '',
+      'EXECUTION:',
+      '  --compute <resource>    Override the compute resource',
+      '  --previous <inst_id>    Attach to an explicit plugin instance',
+    ],
+    examples: [
+      `${name} --diagram`,
+      `${name} --diagram --withargs`,
+      `${name} --signalflow | signalflow -`,
+      `${name} --source`,
+      `${name} --previous 123`,
+    ],
+  };
+  return `${commandHelp_render(name, help)}\n`;
 }
 
 /**

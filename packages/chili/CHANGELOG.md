@@ -1,5 +1,14 @@
 # @fnndsc/chili
 
+## 3.6.1
+
+### Patch Changes
+
+- 6f0833a: Release the coordinated ChELL stack with deterministic `/proc` topology progress, complete visible-feed indexing, safe warm-up query gating, remote one-shot command completion, and refreshed daemon documentation.
+- Updated dependencies [6f0833a]
+  - @fnndsc/cumin@3.8.1
+  - @fnndsc/salsa@3.5.1
+
 ## 3.6.0
 
 ### Minor Changes

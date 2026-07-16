@@ -1,5 +1,14 @@
 # @fnndsc/calypso
 
+## 0.4.3
+
+### Patch Changes
+
+- 6f0833a: Release the coordinated ChELL stack with deterministic `/proc` topology progress, complete visible-feed indexing, safe warm-up query gating, remote one-shot command completion, and refreshed daemon documentation.
+- Updated dependencies [6f0833a]
+  - @fnndsc/cumin@3.8.1
+  - @fnndsc/brasa@0.9.2
+
 ## 0.4.2
 
 ### Patch Changes

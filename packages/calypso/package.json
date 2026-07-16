@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/calypso",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "The CALYPSO wire contract: typed protocol schemas and boundary validation for the ChRIS session daemon",
   "repository": {
     "type": "git",
@@ -51,8 +51,8 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@fnndsc/brasa": "^0.9.1",
-    "@fnndsc/cumin": "^3.8.0",
+    "@fnndsc/brasa": "^0.9.2",
+    "@fnndsc/cumin": "^3.8.1",
     "chalk": "^4.1.2",
     "ws": "^8.18.0",
     "zod": "^3.23.8"

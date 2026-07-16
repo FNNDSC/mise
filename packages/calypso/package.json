@@ -31,7 +31,7 @@
   "scripts": {
     "build": "rm -fr dist && tsc && chmod +x ./dist/calypso.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "test -f dist/index.js && test -f dist/index.d.ts"
   },
   "keywords": [
     "chris",

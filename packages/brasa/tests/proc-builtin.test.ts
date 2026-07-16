@@ -38,6 +38,7 @@ const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 let mockFeeds: TestFeed[] = [];
 let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
+let mockLifecycle: { phase: string; checkpointAt?: string } = { phase: 'empty' };
 const mockCache = {
   cache_clear: jest.fn((): void => {
     mockWarmup = { loaded: 0, total: 0, active: false };
@@ -52,6 +53,7 @@ const mockCache = {
   path_build: jest.fn((id: number): string => `/proc/jobs/feed_1/pl-test_${id}`),
   topologyLoaded_has: jest.fn((): boolean => true),
   warmupProgress_get: jest.fn(() => ({ ...mockWarmup })),
+  lifecycle_get: jest.fn(() => ({ ...mockLifecycle })),
   get warmupComplete(): boolean { return mockWarmupComplete; },
 };
 
@@ -108,6 +110,7 @@ describe('builtin_proc warm-up policy', () => {
     mockCache.cache_clear();
     mockFeeds = [];
     mockTopologyStatus = { state: 'idle' };
+    mockLifecycle = { phase: 'empty' };
     jest.clearAllMocks();
     process.exitCode = undefined;
   });
@@ -126,6 +129,36 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.renderedErr).toContain('proc jobs list --force');
     expect(process.exitCode).toBe(1);
     expect(procTopologyAwait_mock).not.toHaveBeenCalled();
+  });
+
+  it('serves a restored checkpoint while CUBE reconciliation runs', async () => {
+    mockWarmup = { loaded: 25, total: 100, active: true };
+    mockTopologyStatus = { state: 'running' };
+    mockLifecycle = { phase: 'reconciling', checkpointAt: '2026-07-16T00:00:00Z' };
+    mockFeeds = [{
+      id: 5, title: 'restored brain', ownerUsername: 'me', public: false,
+      creationDate: '', finishedJobs: 2, erroredJobs: 0, startedJobs: 0,
+      scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+    }];
+
+    const envelope: TestEnvelope = await builtin_proc(['jobs', 'list']);
+
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('restored brain');
+  });
+
+  it('still waits for authoritative reconciliation when a restored query is forced', async () => {
+    mockWarmup = { loaded: 25, total: 100, active: true };
+    mockTopologyStatus = { state: 'running' };
+    mockLifecycle = { phase: 'reconciling', checkpointAt: '2026-07-16T00:00:00Z' };
+    procTopologyAwait_mock.mockImplementationOnce(async (): Promise<void> => {
+      mockWarmup = { loaded: 100, total: 100, active: false };
+      mockWarmupComplete = true;
+      mockTopologyStatus = { state: 'complete' };
+    });
+
+    expect((await builtin_proc(['jobs', 'list', '--force'])).status).toBe('ok');
+    expect(procTopologyAwait_mock).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a plugin-name search while the index is warming', async () => {

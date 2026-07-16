@@ -20,12 +20,12 @@ The design separates two concerns with different freshness requirements:
 | `ProcCache.feeds`
 
 | Instance topology (id, parentID, pluginName)
-| Permanent once written — loaded lazily, never stale
-| `ProcCache.instances`
+| Restored locally, then reconciled against CUBE in the background
+| `ProcCache.instances` plus an identity-scoped checkpoint
 
 | Instance status
-| Always live — never stored
-| API call on every read
+| Terminal states persist; active states refresh on read
+| Checkpoint for terminal states, CUBE for active states
 
 | Instance params
 | Immutable — cached on first read
@@ -37,7 +37,7 @@ The design separates two concerns with different freshness requirements:
 [source]
 ----
 /proc/
-└── feeds/
+└── jobs/
     └── feed_<N>/               ← type=job, aggregate status from counters
         ├── status               ← derived from feed.finished_jobs etc.
         ├── title                ← feed name
@@ -94,9 +94,8 @@ interface ProcInstance {
 }
 ----
 
-NOTE: `status` and `statusIsTerminal` are **not** stored. Status is always
-fetched live from the API. This ensures `ls -l` and `cat status` never show
-stale data.
+NOTE: Terminal status is immutable and is checkpointed. Non-terminal status is
+discarded on restore and fetched from CUBE when read. Logs are never cached.
 
 === State tracking fields
 
@@ -130,7 +129,22 @@ stale data.
 
 | `warmupProgress: { loaded: number; total: number }`
 | Drives the `[proc: N/total]` prompt segment during warm-up.
+
+| `lifecycle: empty | restored | reconciling | current | failed`
+| Distinguishes usable checkpoint data from a CUBE-current index.
 |===
+
+=== Persistent daemon checkpoint
+
+The daemon writes a versioned JSON checkpoint below the XDG cache directory,
+keyed by the normalized CUBE URL and username. Files are mode `0600` and are
+replaced atomically. The checkpoint stores normalized feed and topology data;
+it does not materialize VFS paths, logs, or cached parameters.
+
+At restart the daemon restores this checkpoint first, fetches the current
+visible-feed index from CUBE, and removes feeds the identity can no longer see.
+Only then is the daemon advertised. The expensive global instance sweep merges
+in the background and prunes topology absent from the authoritative result.
 
 === Aggregate feed status derivation
 
@@ -154,24 +168,25 @@ else                                   → 'finishedSuccessfully'
 Runs during the boot sequence before the REPL starts — blocks briefly
 (~5–30s depending on feed count).
 
-=== Phase 2: Instance topology (background, batched)
+=== Phase 2: Instance topology (background, paginated)
 
-`procTopology_warmup()` runs as a fire-and-forget after `repl.start()`.
-Loads instance topology for all feeds in batches of **10 concurrent feeds**.
+`procTopology_warmup()` performs one paginated global plugin-instance sweep.
+With a restored checkpoint, global queries remain available while this sweep
+reconciles against CUBE.
 
 [source,typescript]
 ----
 // Pseudo-code
-const feedIDs = cache.feedIDs_get();
-for (let i = 0; i < feedIDs.length; i += BATCH_SIZE) {
-  const batch = feedIDs.slice(i, i + BATCH_SIZE);
-  await Promise.all(batch.map(feedID => feedInstances_load(feedID)));
-  cache.warmup_progress(i + batch.length, feedIDs.length);
+for (const page of getPluginInstancesPaginated()) {
+  for (const instance of page) cache.instance_add(instance);
+  cache.warmup_progress(seen.size, page.totalCount);
 }
+cache.topology_reconcile(seen);
 cache.warmup_complete();
 ----
 
-Warm-up progress is visible in the prompt: `[proc: 342/1275]`.
+Warm-up progress is visible in the prompt: `[proc: 342/1275]`. A restored
+daemon reports `[proc: cached, syncing 342/1275]`.
 The indicator disappears when `warmupComplete = true`.
 
 === Phase 3: Per-feed lazy loading (on navigation)
@@ -202,9 +217,10 @@ If both the background loader and a user navigation arrive at the same feed
 simultaneously, the second caller awaits the existing promise rather than
 firing a redundant API call.
 
-== Status: Always Live
+== Status Freshness
 
-Per-node status is **never cached**. Every read goes to the API:
+Terminal per-node status is immutable and returned from cache. Active status
+is refreshed from the API when read:
 
 * `cat /proc/jobs/feed_N/<instance>/status` → `getPluginInstance(id)`
 * `ls -l /proc/jobs/feed_N` → `jobs_statusBatch(allNodeIDs)` — one
@@ -223,21 +239,21 @@ Per-node status is **never cached**. Every read goes to the API:
 
 === proc refresh
 
-Resets the cache and re-triggers both phases:
+Revalidates the feed index and re-triggers topology reconciliation:
 
 [source,bash]
 ----
-proc refresh              # reset all — rebuilds feed index, restarts warm-up
+proc refresh              # refresh feed visibility, restart reconciliation
 proc refresh feed_123     # scoped — reloads one feed's topology and job counts
 proc refresh 123          # same
 ----
 
 Behaviour:
 
-. Calls `cache.cache_clear()` (or scoped equivalent)
-. Re-fetches feed index synchronously
+. Retains usable restored/current topology during the replacement sweep
+. Re-fetches and reconciles feed visibility synchronously
 . Re-triggers background topology warm-up (fire-and-forget)
-. Returns immediately — prompt warm-up indicator reappears
+. Atomically checkpoints the result after successful completion
 
 === proc find
 

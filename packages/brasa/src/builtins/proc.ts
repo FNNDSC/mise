@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
-import { procCache_get, type ProcFeed, type ProcFeedScopeCounts, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
@@ -25,8 +25,10 @@ type ProcCache = ReturnType<typeof procCache_get>;
  * @returns An error envelope when blocked, otherwise null.
  */
 async function procWarmup_guard(command: string, force: boolean): Promise<CommandEnvelope | null> {
-  const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
+  const cache: ProcCache = procCache_get();
+  const progress: ProcWarmupProgress = cache.warmupProgress_get();
   const topology: ProcTopologyStatus = procTopology_status();
+  if (cache.lifecycle_get().checkpointAt && !force) return null;
   if (!progress.active && topology.state !== 'running' && topology.state !== 'failed') return null;
 
   if (topology.state === 'failed') {
@@ -339,6 +341,7 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
   if (!feedArg) {
     const warmup: ProcWarmupProgress = cache.warmupProgress_get();
     const topology: ProcTopologyStatus = procTopology_status();
+    const lifecycle: ProcCacheLifecycle = cache.lifecycle_get();
     const context: SingleContext = await context_getSingle();
     const counts: ProcFeedScopeCounts = cache.feedScopeCounts_get(context.user ?? '');
     const warmupLine: string = topology.state === 'failed'
@@ -361,6 +364,8 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
     rendered += `    shared       : ${chalk.cyan(String(counts.shared))}\n`;
     rendered += `  jobs loaded    : ${chalk.cyan(jobCount)}\n`;
     rendered += `  topology sweep : ${warmupLine}\n`;
+    rendered += `  cache state    : ${chalk.cyan(lifecycle.phase)}\n`;
+    if (lifecycle.checkpointAt) rendered += `  checkpoint     : ${chalk.cyan(lifecycle.checkpointAt)}\n`;
     return envelope_ok(rendered);
   }
 

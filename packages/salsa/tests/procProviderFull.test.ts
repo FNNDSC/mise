@@ -373,6 +373,7 @@ describe('cache build / warmup / refresh', () => {
 
   it('procTopology_warmup sweeps instances and completes', async () => {
     cache.built_set();
+    cache.feed_add(feed({ id: 5 }));
     mockClientGet.mockResolvedValue(
       pagingClient([], [{ id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 's' }])
     );
@@ -386,7 +387,7 @@ describe('cache build / warmup / refresh', () => {
   it('procTopology_warmup bails when not connected', async () => {
     cache.built_set();
     mockClientGet.mockResolvedValue(null);
-    await procTopology_warmup();
+    await expect(procTopology_warmup()).rejects.toThrow('not connected');
     expect(cache.warmupComplete).toBe(false);
   });
 
@@ -507,7 +508,7 @@ describe('cache build / warmup / refresh', () => {
     const { errorStack } = jest.requireActual('@fnndsc/cumin');
     errorStack.stack_clear();
     mockClientGet.mockResolvedValue(null);
-    await procCache_refresh();
+    await expect(procCache_refresh()).rejects.toThrow('not connected');
     expect(errorStack.stack_search('not connected').length).toBeGreaterThan(0);
   });
 });

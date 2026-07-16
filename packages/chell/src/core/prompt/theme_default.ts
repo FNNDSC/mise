@@ -40,7 +40,7 @@ export class ThemeDefault implements PromptTheme {
 
     const glyph: string = ctx.lastExitCode !== 0 ? chalk.red('$ ') : chalk.green('$ ');
     const warmup: string = ctx.procWarmup
-      ? chalk.dim(` [proc: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`)
+      ? chalk.dim(` [proc: ${ctx.procWarmup.restored ? 'cached, syncing ' : ''}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`)
       : '';
     return (
       modePrefix +

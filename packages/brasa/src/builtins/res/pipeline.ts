@@ -19,6 +19,7 @@ import {
   chrisContext,
   errorStack,
   pipeline_resolve,
+  procCache_get,
   type CommandEnvelope,
   envelope_ok,
   envelope_error,
@@ -27,6 +28,7 @@ import {
   pipelines_list,
   pipeline_run,
   pipeline_sourceGet,
+  procCache_refresh,
 } from '@fnndsc/salsa';
 import { pipelineFields_fetch } from '@fnndsc/chili/commands/pipeline/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -206,6 +208,14 @@ async function pipelineRun_handle(args: string[]): Promise<void> {
   }
 
   const { workflowId, pluginInstanceIds } = runResult.value;
+  const feedID: number | undefined = procCache_get().instance_get(previousInstId)?.feedID;
+  if (feedID !== undefined) {
+    try {
+      await procCache_refresh(feedID);
+    } catch {
+      // Workflow creation succeeded; the background/full reconciliation remains authoritative.
+    }
+  }
   sink_dataLine(chalk.green(`✓ Workflow ${workflowId} created — ${pluginInstanceIds.length} node(s) queued`));
   sink_dataLine(chalk.gray(`  Instance IDs: ${pluginInstanceIds.join(', ')}`));
 }

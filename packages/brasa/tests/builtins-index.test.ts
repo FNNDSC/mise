@@ -85,6 +85,14 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     cache_invalidate: jest.fn(),
     cache_markDirty: jest.fn(),
   }),
+  procCache_get: () => ({
+    instance_get: jest.fn(),
+    lifecycle_get: jest.fn(() => ({ phase: 'empty' })),
+    warmupProgress_get: jest.fn(() => ({ loaded: 0, total: 0, active: false })),
+    feedIDs_get: jest.fn(() => []),
+    feedScopeCounts_get: jest.fn(() => ({ user: 0, public: 0, shared: 0, total: 0 })),
+    get warmupComplete(): boolean { return false; },
+  }),
   connectionConfig: { debug: false },
   errorStack: errorStack,
   Result: {},
@@ -154,6 +162,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: mockContextGetSingle,
+  procCache_refresh: jest.fn().mockResolvedValue(undefined),
   feedGraphData_ensure: jest.fn(),
   feedGraph_build: jest.fn(),
   files_listAll: jest.fn().mockResolvedValue(null),

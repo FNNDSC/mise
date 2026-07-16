@@ -140,7 +140,7 @@ Providers implement a common interface: `list(path)` → `Result<VFSItem[]>` and
         └── …
 ```
 
-The cache (`ProcCache` in cumin) holds two flat maps (`instances`, `children`/`feedRoots`) for O(1) lookup and O(depth) path reconstruction. Structure is permanent; only status of non-terminal nodes is refreshed on read.
+The cache (`ProcCache` in cumin) holds flat topology maps for O(1) lookup and O(depth) path reconstruction. The daemon restores this normalized graph from an identity-scoped local checkpoint, validates visible feeds, then reconciles it with a paginated CUBE sweep. Terminal status persists; active status and logs remain live.
 
 ## Development
 

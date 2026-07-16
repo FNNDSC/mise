@@ -87,8 +87,10 @@ The current release branch completes the operational follow-up:
   daemon publication ordering. Strict Node 22/24 CI passed before merge.
 - The current release branch adds capped-pagination, public-feed union,
   warm-up lifecycle/failure, prompt progress, command gating, and remote
-  one-shot regression coverage. All package builds and full package suites are
-  rerun before publication.
+  one-shot regression coverage. The dependency-ordered build, full workspace
+  test suite (including permitted loopback daemon tests), and lint all pass;
+  lint reports only four pre-existing unused-disable warnings. Independent
+  standards and behavior audits report no remaining findings.
 - Package builds are run in dependency order; parallel downstream builds race
   workspace declaration regeneration and are not valid verification.
 - Before PR #140 merged, public read-only CUBE resources verified pipeline 244's

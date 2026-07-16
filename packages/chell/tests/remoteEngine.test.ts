@@ -280,6 +280,43 @@ describe('RemoteEngine live output', () => {
     expect(closed).toBe(true);
   });
 
+  it('returns a pipe error when the local segment fails', async () => {
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      const id: string = String(sent.id);
+      process.nextTick(() => {
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'pipe',
+          pipeId: 'pipe1',
+          command: 'signalflow',
+          input: Buffer.from('pipeline: test').toString('base64'),
+        })));
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'result',
+          id,
+          envelopes: [{ status: 'error', rendered: '' }],
+        })));
+      });
+    };
+
+    remote = await RemoteEngine.connect({
+      url: 'ws://127.0.0.1:1',
+      token: 'token',
+      onPipe: async (): Promise<Buffer> => {
+        throw new Error("Command 'signalflow' exited with code 1");
+      },
+    });
+    await remote.line_execute('pipeline --signalflow | signalflow');
+    await new Promise<void>((resolve: () => void): void => process.nextTick(resolve));
+
+    expect(FakeWebSocket.instances[0].sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'pipeError',
+        pipeId: 'pipe1',
+        reason: "Command 'signalflow' exited with code 1",
+      }),
+    ]));
+  });
+
   it('rejects attach errors', async () => {
     attachResponse = { type: 'error', reason: 'invalid token' };
 

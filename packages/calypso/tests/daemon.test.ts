@@ -456,6 +456,44 @@ describe('CalypsoDaemon pipe segments over the wire', () => {
       await daemon.stop();
     }
   });
+
+  it('returns a surface pipe failure to the executing engine', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        try {
+          await (daemonRef as CalypsoDaemon).pipe_current('signalflow', Buffer.from('pipeline: test'));
+          return [{ status: 'ok', rendered: '' }];
+        } catch (error: unknown) {
+          const message: string = error instanceof Error ? error.message : String(error);
+          return [{ status: 'error', rendered: message }];
+        }
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port: number = await daemon.start();
+    try {
+      const ws: WebSocket = await client_attach(port);
+      const asked: Promise<Record<string, unknown>> = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '__pipe_error__' });
+      const pipe: Record<string, unknown> = await asked;
+
+      const replied: Promise<Record<string, unknown>> = message_next(ws);
+      send(ws, { type: 'pipeError', pipeId: pipe.pipeId as string, reason: "Command 'signalflow' exited with code 1" });
+      const result: Record<string, unknown> = await replied;
+
+      expect(result.type).toBe('result');
+      expect((result.envelopes as CommandEnvelope[])[0]).toEqual({
+        status: 'error',
+        rendered: "Command 'signalflow' exited with code 1",
+      });
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
 });
 
 describe('CalypsoDaemon local edit over the wire', () => {

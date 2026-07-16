@@ -50,6 +50,12 @@ interface SessionEntry {
   envelope: CommandEnvelope;
 }
 
+/** Promise callbacks for one pipeline segment executing on a surface. */
+interface PendingPipe {
+  resolve: (output: Buffer) => void;
+  reject: (error: Error) => void;
+}
+
 /** The result of a surface's local edit, returned by {@link CalypsoDaemon.edit_current}. */
 export interface EditOutcome {
   content: string;
@@ -108,7 +114,7 @@ export class CalypsoDaemon {
   private currentId: string | null = null;
   private readonly pendingPrompts: Map<string, (answer: string) => void> = new Map<string, (answer: string) => void>();
   private promptSeq: number = 0;
-  private readonly pendingPipes: Map<string, (output: Buffer) => void> = new Map<string, (output: Buffer) => void>();
+  private readonly pendingPipes: Map<string, PendingPipe> = new Map<string, PendingPipe>();
   private pipeSeq: number = 0;
   private readonly pendingEdits: Map<string, (result: EditOutcome) => void> = new Map<string, (result: EditOutcome) => void>();
   private editSeq: number = 0;
@@ -200,6 +206,8 @@ export class CalypsoDaemon {
         this.promptAnswer_settle(value.promptId, value.answer);
       } else if (value.type === 'pipeResult') {
         this.pipeResult_settle(value.pipeId, value.output);
+      } else if (value.type === 'pipeError') {
+        this.pipeError_settle(value.pipeId, value.reason);
       } else if (value.type === 'editResult') {
         this.editResult_settle(value.editId, { content: value.content, changed: value.changed });
       } else {
@@ -428,7 +436,7 @@ export class CalypsoDaemon {
     }
     const pipeId: string = `x${this.pipeSeq++}`;
     return new Promise((resolve: (output: Buffer) => void, reject: (err: Error) => void) => {
-      this.pendingPipes.set(pipeId, resolve);
+      this.pendingPipes.set(pipeId, { resolve, reject });
       const onClose = (): void => {
         if (this.pendingPipes.delete(pipeId)) {
           reject(new Error('surface disconnected before returning pipe output'));
@@ -446,10 +454,24 @@ export class CalypsoDaemon {
    * @param output - The base64-encoded segment output.
    */
   private pipeResult_settle(pipeId: string, output: string): void {
-    const resolve: ((output: Buffer) => void) | undefined = this.pendingPipes.get(pipeId);
-    if (resolve) {
+    const pending: PendingPipe | undefined = this.pendingPipes.get(pipeId);
+    if (pending) {
       this.pendingPipes.delete(pipeId);
-      resolve(Buffer.from(output, 'base64'));
+      pending.resolve(Buffer.from(output, 'base64'));
+    }
+  }
+
+  /**
+   * Rejects a pending pipeline segment with the surface's failure.
+   *
+   * @param pipeId - The pipe correlation id.
+   * @param reason - Human-readable command failure.
+   */
+  private pipeError_settle(pipeId: string, reason: string): void {
+    const pending: PendingPipe | undefined = this.pendingPipes.get(pipeId);
+    if (pending) {
+      this.pendingPipes.delete(pipeId);
+      pending.reject(new Error(reason));
     }
   }
 

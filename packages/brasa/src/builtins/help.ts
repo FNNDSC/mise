@@ -368,7 +368,7 @@ export const helpText: Record<string, CommandHelp> = {
       '  tree [<feed>] --max-nodes <n>     Cap rendered nodes (0 = all)',
       '  diagram [<feed>]                  Shallow alias of feed tree',
       '  diagram --signalflow [<feed>]     Emit the DAG as SignalFlow YAML to stdout',
-      '                                   (pipe it: feed diagram --signalflow 42 | signalflow)',
+      '                                   (pipe it: feed diagram --signalflow 42 | signalflow -)',
       '',
       '  <feed> accepts an ID, feed_N directory name, exact title, or unique search.',
       '  Omit it while inside a feed_N path to use the current directory\'s feed.',

@@ -1,10 +1,10 @@
 # Active project handoff
 
 - Last updated: 2026-07-16
-- Last verified against `main`: `1896be7`
-- Working branch: `agent/proc-warmup-release`
-- Current milestone: deterministic `/proc` warm-up and remote one-shot release
-- Next action: merge the feature PR, then merge and publish the coordinated Version Packages PR
+- Last verified against `main`: `3efbdae`
+- Working branch: `main`
+- Current milestone: deterministic `/proc` warm-up and remote one-shot release complete
+- Next action: start a clean session and select the next milestone
 
 ## Current truth
 
@@ -59,7 +59,7 @@ PR #142 (`71a6cd4`) completed the executable and daemon follow-up:
   before binding and publishing its berth. A failed warm-up is reported
   explicitly; the daemon still starts and loads that data lazily.
 
-The current release branch completes the operational follow-up:
+PR #144 (`6f0833a`) completed the operational follow-up:
 
 - `/proc` indexes the union of owned/shared and public CUBE feeds, deduplicates
   overlaps, retains ownership/public metadata, and tracks the deterministic
@@ -85,7 +85,7 @@ The current release branch completes the operational follow-up:
 - PR #142 added coverage for executable utility routing, contextual help,
   remote pipe failures, surface-owned redirection, shared startup warming, and
   daemon publication ordering. Strict Node 22/24 CI passed before merge.
-- The current release branch adds capped-pagination, public-feed union,
+- PR #144 adds capped-pagination, public-feed union,
   warm-up lifecycle/failure, prompt progress, command gating, and remote
   one-shot regression coverage. The dependency-ordered build, full workspace
   test suite (including permitted loopback daemon tests), and lint all pass;
@@ -101,17 +101,21 @@ The current release branch completes the operational follow-up:
 
 ## Published release state
 
-Published from `1896be7` by Version Packages PR #143:
+Published from Version Packages PR #145 (`c79731f`), with the Calypso retry
+completed after release-infrastructure PR #146 (`3efbdae`):
 
-- `@fnndsc/chell` 5.2.2
-- `@fnndsc/calypso` 0.4.2
-- `@fnndsc/brasa` 0.9.1
-- `@fnndsc/chili` 3.6.0
-- `@fnndsc/cumin` 3.8.0
-- `@fnndsc/salsa` 3.5.0
+- `@fnndsc/chell` 5.2.3
+- `@fnndsc/calypso` 0.4.3
+- `@fnndsc/brasa` 0.9.2
+- `@fnndsc/chili` 3.6.1
+- `@fnndsc/cumin` 3.8.1
+- `@fnndsc/salsa` 3.5.1
 
-The coordinated patch changeset targets chell 5.2.3, calypso 0.4.3, brasa
-0.9.2, chili 3.6.1, cumin 3.8.1, and salsa 3.5.1.
+The first publish run released five packages but Calypso's concurrent
+`prepublishOnly` rebuild raced Cumin's declaration rebuild. PR #146 made the
+root dependency-ordered build authoritative and changed both package hooks to
+non-mutating artifact checks; the retry published Calypso 0.4.3. npm versions,
+GitHub releases, Binaries, and post-merge Node 22/24 CI are verified green.
 
 ## Follow-ups and risks
 

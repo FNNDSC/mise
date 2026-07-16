@@ -282,14 +282,22 @@ describe('ProcVfsProvider.rm', () => {
 
 describe('cache build / warmup / refresh', () => {
   it('indexes every feed when the server caps pages below the requested limit', async () => {
-    const rows = [
+    const privateRows = [
       { id: 1, name: 'mine', owner_username: 'chris', public: false },
-      { id: 2, name: 'public', owner_username: 'other', public: true },
+      { id: 2, name: 'shared-public', owner_username: 'other', public: true },
+    ];
+    const publicRows = [
+      { id: 2, name: 'shared-public', owner_username: 'other', public: true },
+      { id: 3, name: 'public-only', owner_username: 'another', public: true },
     ];
     const client = {
       getFeeds: jest.fn().mockImplementation(({ offset }: { offset: number }) => ({
-        data: rows.slice(offset, offset + 1),
-        totalCount: rows.length,
+        data: privateRows.slice(offset, offset + 1),
+        totalCount: privateRows.length,
+      })),
+      getPublicFeeds: jest.fn().mockImplementation(({ offset }: { offset: number }) => ({
+        data: publicRows.slice(offset, offset + 1),
+        totalCount: publicRows.length,
       })),
       getPluginInstances: jest.fn(),
     };
@@ -297,10 +305,12 @@ describe('cache build / warmup / refresh', () => {
 
     await procCache_refresh();
 
-    expect(cache.feedIDs_get().sort()).toEqual([1, 2]);
+    expect(cache.feedIDs_get().sort()).toEqual([1, 2, 3]);
     expect(cache.feed_get(1)).toMatchObject({ ownerUsername: 'chris', public: false });
     expect(cache.feed_get(2)).toMatchObject({ ownerUsername: 'other', public: true });
+    expect(cache.feed_get(3)).toMatchObject({ ownerUsername: 'another', public: true });
     expect(client.getFeeds).toHaveBeenCalledTimes(2);
+    expect(client.getPublicFeeds).toHaveBeenCalledTimes(2);
   });
 
   it('joins the active topology sweep without starting another', async () => {

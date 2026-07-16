@@ -22,7 +22,10 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine } from './remoteEngine.js';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { surface_get } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, surface_get, surface_set } from '@fnndsc/brasa';
+import { cliSurface_create } from '../core/cliSurface.js';
+import { TerminalProgressRenderer } from '../core/progressRenderer.js';
+import { surfaceLine_execute } from '../core/surfaceDispatch.js';
 
 /**
  * Probes whether a berth's daemon is reachable, by performing the real attach
@@ -111,24 +114,29 @@ async function berth_select(identity: string | undefined): Promise<Berth | null>
  *
  * @param identity - The normalised `<user>@<url>` to attach to, or undefined to
  *   resolve the sole/most-suitable berth.
+ * @param commandToExecute - An optional one-shot command. When present, execute
+ *   it and detach without creating an interactive REPL.
  * @returns A promise that resolves when the client session ends.
  */
-export async function remote_run(identity?: string): Promise<void> {
+export async function remote_run(identity?: string, commandToExecute?: string): Promise<void> {
   const berth: Berth | null = await berth_select(identity);
   if (!berth) {
     process.exit(1);
   }
 
   let engine: RemoteEngine;
+  let intentionalClose: boolean = false;
   try {
     engine = await RemoteEngine.connect({
       url: berth.url,
       token: berth.token,
-      onSession: (surface: string, envelope: CommandEnvelope): void => {
-        if (envelope.rendered.length > 0) {
-          process.stdout.write(`\n${chalk.gray(`[surface ${surface.slice(0, 6)}]`)}\n${envelope.rendered}`);
-        }
-      },
+      onSession: commandToExecute === undefined
+        ? (surface: string, envelope: CommandEnvelope): void => {
+            if (envelope.rendered.length > 0) {
+              process.stdout.write(`\n${chalk.gray(`[surface ${surface.slice(0, 6)}]`)}\n${envelope.rendered}`);
+            }
+          }
+        : undefined,
       onPrompt: (message: string, hidden: boolean): Promise<string> =>
         // The REPL has installed the CLI surface (readline-backed) by the time
         // a prompt can arrive, so this reads from the local terminal.
@@ -141,6 +149,7 @@ export async function remote_run(identity?: string): Promise<void> {
         // Editing happens in this machine's editor.
         surface_get().localEdit({ content, extension }),
       onClose: (): void => {
+        if (intentionalClose) return;
         console.log(chalk.yellow('\n[!] Daemon disconnected.'));
         process.exit(0);
       },
@@ -149,6 +158,23 @@ export async function remote_run(identity?: string): Promise<void> {
     const message: string = err instanceof Error ? err.message : String(err);
     console.error(chalk.red(`[!] Could not attach to the daemon: ${message}`));
     process.exit(1);
+    return;
+  }
+
+  if (commandToExecute !== undefined) {
+    sink_set(new StdoutSink(new TerminalProgressRenderer()));
+    surface_set(cliSurface_create());
+    try {
+      const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, commandToExecute);
+      process.exitCode = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error') ? 1 : 0;
+    } catch (error: unknown) {
+      const message: string = error instanceof Error ? error.message : String(error);
+      process.exitCode = 1;
+      console.error(chalk.red(`Command error: ${message}`));
+    } finally {
+      intentionalClose = true;
+      engine.close();
+    }
     return;
   }
 

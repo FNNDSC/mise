@@ -465,7 +465,10 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     // A `<user>@<url>` target names the identity to attach to; a bare `--remote`
     // resolves the sole/most-suitable berth (identity undefined).
     const identity: string | undefined = cc?.user && cc?.url ? identity_forSession(cc.user, cc.url) : undefined;
-    await remote_run(identity);
+    await remote_run(identity, config.commandToExecute);
+    if (config.commandToExecute !== undefined) {
+      process.exit(process.exitCode ?? 0);
+    }
     return;
   }
 

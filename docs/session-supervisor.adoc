@@ -9,27 +9,26 @@ Rudolph Pienaar <rudolph.pienaar@gmail.com>
 [abstract]
 == Abstract
 
-Today calypso is a *personal, single-session* daemon: one engine, one CUBE
-identity, many surfaces sharing it, discovered through a single per-OS-user file.
-This document specifies how to run *several* daemons on one machine — one per CUBE
-identity — so one operator can hold two logins, or two trusted operators can share
-a box, each with an isolated session, driven by the same
+CALYPSO now supports *several* personal daemons on one machine — one engine and
+one CUBE identity per daemon, with many surfaces sharing each isolated session.
+An operator can hold two logins, or two trusted operators can share a box, each
+driven by the same
 `chell --daemon <user>@<url>` they already type. It does this without touching the
 engine: the daemon process is the isolation boundary, and multiplicity is a matter
 of *keying* berths by identity and *resolving* them behind one interface.
 
 The design is deliberately staged in two tiers that share one seam:
 
-* *Tier 1 (this document, buildable now).* Local, identity-keyed berths. No new
+* *Tier 1 (shipped).* Local, identity-keyed berths. No new
   package, no new network surface, no new auth — edits to calypso's discovery and
-  chell's remote client. Ships alone with full value for the
+  chell's remote client. It shipped with full value for the
   many-identities-on-one-box job.
 * *Tier 2 (future, gated on the web surface).* A reachable *porter* — a new
   package: a server/dispatch front that many clients on many machines attach to,
   with auth at the door. Not built now; noted so tier 1 leaves the door open.
 
-The one thing tier 1 must get right so tier 2 needs no rework: the *berth resolver
-seam*.
+The one thing tier 1 had to get right so tier 2 needs no rework was the *berth
+resolver seam*.
 
 == The two jobs (they are different)
 
@@ -51,7 +50,7 @@ the table.
 
 Tier 1 fully solves job one. It *cannot* reach job two — no network listener, no
 cross-host auth. Tier 2 is not "more of tier 1"; it is a different perimeter. Build
-tier 1 now; build tier 2 only when the web surface (argus,
+tier 2 only when the web surface (argus,
 link:surfaces.adoc[the surfaces model]) forces it.
 
 == The invariant: the process is the isolation boundary
@@ -92,20 +91,21 @@ The identity string `<user>@<url>` is the key everything routes on.
 
 == Tier 1: identity-keyed berths
 
-=== What exists today
+=== Before tier 1
 
-`packages/calypso/src/daemon/discovery.ts` records one berth in one file keyed by
-*OS user only*:
+The original `packages/calypso/src/daemon/discovery.ts` recorded one berth in one
+file keyed by *OS user only*:
 
 [source,typescript]
 ----
 interface Discovery { url: string; token: string }
-// path today: ${tmpdir}/chell-calypso-${username}.json   ← one per OS user
+// legacy path: ${tmpdir}/chell-calypso-${username}.json   ← one per OS user
 ----
 
-`launch.ts` calls `discovery_write({ url, token })`; the chell remote client
-(`packages/chell/src/remote/client.ts`) calls `discovery_read()`. Exactly one
-daemon can advertise per OS user — the single-session assumption, made physical.
+`launch.ts` called `discovery_write({ url, token })`; the chell remote client
+called `discovery_read()`. Exactly one daemon could advertise per OS user — the
+single-session assumption, made physical. This is retained as the before-state;
+current discovery uses the identity-keyed berth described below.
 
 === The berth
 
@@ -180,11 +180,11 @@ interface BerthResolver {
 }
 ----
 
-Tier 1 ships a `LocalBerthResolver` that reads the identity-keyed files. Tier 2
-ships a `PorterBerthResolver` that asks the porter over the network. *The surface
+Tier 1 uses a `LocalBerthResolver` that reads the identity-keyed files. Tier 2
+would supply a `PorterBerthResolver` that asks the porter over the network. *The surface
 code (`--remote`, `--daemon`) depends only on `BerthResolver`* and never learns
-which backs it. The interface lives in calypso (chell already imports calypso; the
-tier-2 porter imports calypso to spawn it) — no new shared package, no cycle.
+which backs it. The interface lives in calypso (chell already imports calypso; a
+tier-2 porter would import calypso to spawn it) — no new shared package, no cycle.
 ====
 
 If tier 1 instead hard-codes "berth = local file" at the call sites, tier 2 is a
@@ -231,7 +231,7 @@ writes an identity-keyed berth from the session it restores.
 |Invocation |Behaviour
 
 |`chell --remote <user>@<url>` |Resolve that identity's berth directly; never a menu.
-|`chell --remote` — no live berth |Error: no daemon running (today's behaviour).
+|`chell --remote` — no live berth |Error: no daemon running.
 |`chell --remote` — one live berth |Attach directly (do not menu a single choice).
 |`chell --remote` — several, TTY |Interactive picker over `list()`; choose identity, attach.
 |`chell --remote` — several, non-TTY |Error + list; the caller must be explicit.
@@ -291,11 +291,11 @@ seam — the surface's attach path (`PorterBerthResolver` replaces
 |===
 |Stage |Content
 
-|*Tier 1* |Identity-keyed `Berth` + lexical normalisation; `BerthResolver` +
+|*Tier 1 (shipped)* |Identity-keyed `Berth` + lexical normalisation; `BerthResolver` +
  `LocalBerthResolver` (XDG runtime dir, WS-probe liveness, passive reap);
  `--daemon` foreground duplicate-guard; `--remote <id>@<url>` resolution with
  picker/non-TTY fallback; standalone `calypso` writes an identity-keyed berth. No
- new package — edits to calypso discovery + chell remote client. Ships alone.
+ new package — edits to calypso discovery + chell remote client.
 |*Tier 2* |`porter` package: `PorterBerthResolver`, auth-at-door (CUBE IdP), TLS +
  per-identity tokens, per-session topics, lifecycle. Built only when the web
  surface lands.
@@ -303,6 +303,6 @@ seam — the surface's attach path (`PorterBerthResolver` replaces
 
 == See also
 
-* link:calypso.adoc[calypso.adoc] — the single-session daemon and wire contract this builds on.
-* link:gettingStarted.adoc[gettingStarted.adoc] — `--daemon` / `--remote` today.
+* link:calypso.adoc[calypso.adoc] — the daemon and wire contract this builds on.
+* link:gettingStarted.adoc[gettingStarted.adoc] — current `--daemon` / `--remote` usage.
 * link:surfaces.adoc[surfaces.adoc] — the surface model; the web surface drives tier 2.

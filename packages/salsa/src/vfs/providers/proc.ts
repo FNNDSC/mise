@@ -62,7 +62,10 @@ interface ChrisListResource<T> {
 interface ChrisClient {
   getPluginInstances(params?: Record<string, unknown>): Promise<ChrisListResource<RawInstance>>;
   getFeeds(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
+  getPublicFeeds?(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
 }
+
+type FeedPageFetch = (params: Record<string, unknown>) => Promise<ChrisListResource<RawFeed>>;
 
 /** Virtual filenames inside each instance directory. */
 const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log']);
@@ -106,10 +109,32 @@ function procFeed_create(feed: RawFeed): ProcFeed {
   };
 }
 
+/** Indexes one complete paginated CUBE feed collection into the shared cache. */
+async function procFeeds_index(cache: ProcCache, page_fetch: FeedPageFetch): Promise<void> {
+  let offset: number = 0;
+  let total: number = 0;
+  const seenFeedIDs: Set<number> = new Set();
+
+  while (true) {
+    const page: ChrisListResource<RawFeed> = await page_fetch({ limit: PAGE, offset });
+    const chunk: RawFeed[] = page.data ?? [];
+    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+      total = page.totalCount;
+    }
+    for (const feed of chunk) {
+      cache.feed_add(procFeed_create(feed));
+      seenFeedIDs.add(Number(feed.id));
+    }
+    if (chunk.length === 0 || (total > 0 && seenFeedIDs.size >= total)) break;
+    if (total === 0 && chunk.length < PAGE) break;
+    offset += chunk.length;
+  }
+}
+
 // ── Cache build ────────────────────────────────────────────────────────────
 
 /**
- * Builds the feed index (fast). Fetches all feeds with job counters.
+ * Builds the feed index (fast). Fetches owned/shared and public feeds with job counters.
  * Instance topology is loaded separately via procTopology_warmup().
  */
 async function procCache_build(): Promise<void> {
@@ -123,23 +148,9 @@ async function procCache_build(): Promise<void> {
   }
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
-  let feedOffset: number = 0;
-  let feedTotal: number = 0;
-  const seenFeedIDs: Set<number> = new Set();
-
-  while (true) {
-    const feedPage: ChrisListResource<RawFeed> = await typedClient.getFeeds({ limit: PAGE, offset: feedOffset });
-    const chunk: RawFeed[] = feedPage.data ?? [];
-    if (feedOffset === 0 && typeof feedPage.totalCount === 'number' && feedPage.totalCount >= 0) {
-      feedTotal = feedPage.totalCount;
-    }
-    for (const f of chunk) {
-      cache.feed_add(procFeed_create(f));
-      seenFeedIDs.add(Number(f.id));
-    }
-    if (chunk.length === 0 || (feedTotal > 0 && seenFeedIDs.size >= feedTotal)) break;
-    if (feedTotal === 0 && chunk.length < PAGE) break;
-    feedOffset += chunk.length;
+  await procFeeds_index(cache, typedClient.getFeeds.bind(typedClient));
+  if (typedClient.getPublicFeeds) {
+    await procFeeds_index(cache, typedClient.getPublicFeeds.bind(typedClient));
   }
 
   cache.built_set();

@@ -57,6 +57,16 @@ describe('cliConfig_fromArgs', () => {
     expect(c.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
   });
 
+  it('retains a one-shot command in remote mode', () => {
+    const c = cliConfig_fromArgs(
+      'chris@https://cube.example.org/api/v1/',
+      { remote: true, command: 'pwd' },
+      noFile,
+    );
+    expect(c.mode).toBe('remote');
+    expect(c.commandToExecute).toBe('pwd');
+  });
+
   it('leaves remote mode without a connectConfig for a bare --remote', () => {
     const c = cliConfig_fromArgs(undefined, { remote: true }, noFile);
     expect(c).toEqual({ mode: 'remote', connectConfig: undefined });

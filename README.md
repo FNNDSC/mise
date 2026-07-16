@@ -193,8 +193,9 @@ engine but the session/daemon boundary: it hosts the same brasa engine and serve
 it to remote and future web surfaces, so they drive it without ever learning
 CUBE's Collection+JSON API.
 
-Frontends other than the shell (`chili` as a scriptable CLI, a future web app, or
-a remote CALYPSO surface) tap in at the layer they need.
+Frontends other than the local shell (`chili` as a scriptable CLI, a future web
+app, or a remote ChELL surface attached through CALYPSO) tap in at the layer they
+need. CALYPSO is the assisted session host, not itself a user-facing surface.
 
 | Package | Backronym | Role | README |
 |---------|-----------|------|--------|
@@ -241,7 +242,8 @@ always validated against the live platform before anything runs — the determin
 shell is never outranked by a language model.
 
 **CALYPSO** — **CALYPSO** **A**ccepts **L**anguage, **Y**ielding **P**ermitted
-**S**hell **O**perations — is that intent layer. The name is a harbor reference.
+**S**hell **O**perations — is the session host and the home of that future
+internal intent assist. The name is a harbor reference.
 In the *Odyssey*, Calypso keeps the island where the voyager finds haven; the name
 is the Greek word for "to conceal," which the project keeps but turns around.
 **HARBOR** is that haven for the ChRIS operator, and CALYPSO is the keeper at its
@@ -251,15 +253,17 @@ outcome. A harbor shelters without holding: the work is left as materialized,
 verifiable state, yours to leave and return to — CALYPSO the harbor you pass
 through, never the ground you stand on.
 
-This is design-in-progress, not shipped. The full specification and reasoning:
+The deterministic session host is shipped; natural-language assistance remains
+forward work. The full specification and reasoning:
 
 - **[docs/calypso.adoc](docs/calypso.adoc)** — the intent layer and session daemon:
   doctrine, architecture, the wire contract, and the staged build plan.
+- **[docs/session-supervisor.adoc](docs/session-supervisor.adoc)** — shipped
+  identity-keyed local daemons and the deferred network-facing server tier.
 - **[docs/surfaces.adoc](docs/surfaces.adoc)** — a companion essay on what the wire
   contract means for building user interfaces.
-- **[docs/feed-dag-viewer.adoc](docs/feed-dag-viewer.adoc)** — projecting a feed's DAG
-  from `/proc`, the feed↔pipeline equivalence, and rendering it (terminal tree today,
-  SignalFlow diagrams next).
+- **[docs/feed-dag-viewer.adoc](docs/feed-dag-viewer.adoc)** — projecting feed and
+  registered-pipeline DAGs into shared shallow trees and emitted SignalFlow YAML.
 
 ---
 

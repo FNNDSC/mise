@@ -1,8 +1,8 @@
-# mise design docs
+# mise architecture and project docs
 
-Forward-looking design and reasoning for the mise stack — where the project is
-going and why. This is not user documentation; for using the shell and the
-packages, see the per-package READMEs (start with
+Architecture, design reasoning, and active project context for the mise stack —
+what has shipped, where the project is going, and why. This is not primarily user
+documentation; for using the shell and the packages, see the per-package READMEs (start with
 [packages/chell](../packages/chell/README.md)).
 
 - **[history.adoc](history.adoc)** — the narrative history of the stack: how mise
@@ -38,6 +38,14 @@ packages, see the per-package READMEs (start with
 - **[structured-progress.md](structured-progress.md)** — the implementation
   contract for CALYPSO structured progress: progress events are facts emitted
   through the sink and daemon wire; terminal bars are renderings of those facts.
+
+- **[session-supervisor.adoc](session-supervisor.adoc)** — the shipped
+  identity-keyed local daemon model and the deferred network-facing `porter`
+  tier: one isolated CALYPSO process per CUBE identity, resolved through berths.
+
+- **[feed-dag-viewer.adoc](feed-dag-viewer.adoc)** — the shipped cache-first
+  feed and pipeline diagram model, including shallow trees, topological joins,
+  SignalFlow YAML emission, and dynamic `/bin` pipeline aliases.
 
 - **[handoff.md](handoff.md)** — the concise active project state: current
   milestone, release state, known risks, and next action. Architectural,

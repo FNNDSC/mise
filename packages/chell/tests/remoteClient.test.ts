@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { RemoteEngineOptions } from '../src/remote/remoteEngine.js';
 
 interface TestBerth {
   identity: string;
@@ -17,21 +18,11 @@ interface TestBerth {
 
 interface TestRemoteEngine {
   close(): void;
-  promptLine?: (line: string) => string;
-}
-
-interface TestConnectOptions {
-  url: string;
-  token: string;
-  onSession?: (surface: string, envelope: CommandEnvelope) => void;
-  onPrompt: (message: string, hidden: boolean) => Promise<string>;
-  onPipe: (command: string, stdin: Buffer) => Promise<Buffer>;
-  onEdit: (content: string, extension: string) => Promise<{ content: string; changed: boolean }>;
-  onClose: () => void;
+  promptLine?: () => string;
 }
 
 const remoteClose_mock = jest.fn<() => void>();
-const remoteConnect_mock = jest.fn<(options: TestConnectOptions) => Promise<TestRemoteEngine>>();
+const remoteConnect_mock = jest.fn<(options: RemoteEngineOptions) => Promise<TestRemoteEngine>>();
 const replStart_mock = jest.fn(async (): Promise<void> => undefined);
 const surfaceLineExecute_mock = jest.fn<(engine: unknown, line: string) => Promise<CommandEnvelope[]>>();
 const sinkSet_mock = jest.fn<(sink: unknown) => void>();
@@ -202,14 +193,22 @@ describe('remote_run', () => {
     localEdit_mock.mockResolvedValue({ content: 'edited', changed: true });
 
     await remote_run(berth.identity);
-    const options: TestConnectOptions = remoteConnect_mock.mock.calls[0][0];
+    const options: RemoteEngineOptions = remoteConnect_mock.mock.calls[0][0];
+    const session_dispatch = options.onSession;
+    const prompt_dispatch = options.onPrompt;
+    const pipe_dispatch = options.onPipe;
+    const edit_dispatch = options.onEdit;
+    const close_dispatch = options.onClose;
+    if (!session_dispatch || !prompt_dispatch || !pipe_dispatch || !edit_dispatch || !close_dispatch) {
+      throw new Error('interactive callbacks were not connected');
+    }
 
-    options.onSession('abcdef123', { status: 'ok', rendered: 'background output\n' });
-    options.onSession('abcdef123', { status: 'ok', rendered: '' });
-    await expect(options.onPrompt('Question?', false)).resolves.toBe('answer');
-    await expect(options.onPipe('wc -l', Buffer.from('input'))).resolves.toEqual(Buffer.from('output'));
-    await expect(options.onEdit('before', '.txt')).resolves.toEqual({ content: 'edited', changed: true });
-    expect(() => options.onClose()).toThrow('daemon disconnected');
+    session_dispatch('abcdef123', { status: 'ok', rendered: 'background output\n' });
+    session_dispatch('abcdef123', { status: 'ok', rendered: '' });
+    await expect(prompt_dispatch('Question?', false)).resolves.toBe('answer');
+    await expect(pipe_dispatch('wc -l', Buffer.from('input'))).resolves.toEqual(Buffer.from('output'));
+    await expect(edit_dispatch('before', '.txt')).resolves.toEqual({ content: 'edited', changed: true });
+    expect(() => close_dispatch()).toThrow('daemon disconnected');
 
     expect(stdout_spy).toHaveBeenCalledWith(expect.stringContaining('background output'));
     expect(prompt_mock).toHaveBeenCalledWith({ message: 'Question?', hidden: false });

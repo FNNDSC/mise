@@ -45,7 +45,7 @@ The ChELL filesystem has two kinds of paths:
 | `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`, …) |
 | `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | VFS | PACS query result sets |
-| `/proc/feeds/` | VFS | Job monitoring — live status of all plugin instances |
+| `/proc/jobs/` | VFS | Job monitoring — live status of all plugin instances |
 
 ```bash
 cd /etc
@@ -150,12 +150,12 @@ The `--previous_id` here is the feed node to attach the first pipeline step to �
 
 ---
 
-## Monitoring Jobs: `/proc/feeds/`
+## Monitoring Jobs: `/proc/jobs/`
 
-Because every plugin runs asynchronously in ChRIS, `/proc/feeds/` is where you come back to see what happened. It exposes all your visible feeds and their plugin instances as a navigable DAG — the same tree structure the computation actually ran in.
+Because every plugin runs asynchronously in ChRIS, `/proc/jobs/` is where you come back to see what happened. It exposes all your visible feeds and their plugin instances as a navigable DAG — the same tree structure the computation actually ran in.
 
 ```
-/proc/feeds/
+/proc/jobs/
 └── feed_123/
     ├── status                        ← aggregate feed status
     ├── title                         ← feed name
@@ -170,10 +170,10 @@ Because every plugin runs asynchronously in ChRIS, `/proc/feeds/` is where you c
 ```
 
 ```bash
-ls -l /proc/feeds/feed_123            # see all nodes with colour-coded status
-cat /proc/feeds/feed_123/pl-fshack_789/status   # live status fetch
-cat /proc/feeds/feed_123/pl-fshack_789/log      # stdout/stderr
-cat /proc/feeds/feed_123/pl-fshack_789/params   # what it ran with
+ls -l /proc/jobs/feed_123            # see all nodes with colour-coded status
+cat /proc/jobs/feed_123/pl-fshack_789/status   # live status fetch
+cat /proc/jobs/feed_123/pl-fshack_789/log      # stdout/stderr
+cat /proc/jobs/feed_123/pl-fshack_789/params   # what it ran with
 
 # The whole feed as one DAG view
 feed tree 123                         # collapsed, status-coloured tree (⋈ marks joins)
@@ -184,18 +184,20 @@ brain-segmentation --diagram --withargs  # /bin alias with stored defaults
 brain-segmentation --signalflow | signalflow - # direct SignalFlow alias
 
 # Search across all jobs
-tree /proc/feeds | grep 789           # find instance 789 and see its full lineage
+tree /proc/jobs | grep 789           # find instance 789 and see its full lineage
 
 # Cancel a running job
-rm /proc/feeds/feed_123/pl-fshack_789
+rm /proc/jobs/feed_123/pl-fshack_789
 
 # Cancel all jobs in a feed (requires -r)
-rm -r /proc/feeds/feed_123
+rm -r /proc/jobs/feed_123
 ```
 
 Status colours in `ls -l`: green = `finishedSuccessfully`, yellow = `started`/`running`, gray = `scheduled`/`cancelled`, red = `finishedWithError`.
 
-The cache is built lazily on first access to `/proc`. Rebuild explicitly after external activity (other users, web GUI):
+Connected startup indexes the visible feed list and warms job topology in the
+background. If startup prefetch is disabled, first access builds the index
+lazily. Rebuild explicitly after external activity (other users, web GUI):
 
 ```bash
 proc refresh              # rebuild all and start one replacement topology sweep
@@ -205,7 +207,7 @@ proc refresh feed_123     # scope to one feed
 Since `/proc` paths encode the instance ID, you can also **continue an analysis from any node** just by `cd`-ing into it:
 
 ```bash
-cd /proc/feeds/feed_123/pl-dircopy_456
+cd /proc/jobs/feed_123/pl-dircopy_456
 pl-fshack-v1.2.0 --inputFile brain.mgz   # attaches here, no --previous_id needed
 ```
 

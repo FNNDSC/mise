@@ -144,7 +144,7 @@ Paths that work:
 * Absolute: `/home/alice/feeds/feed_123`
 * Relative: `data/2024` or `../results`
 * Home: `~` or `~/uploads`
-* VFS: `/bin`, `/etc`, `/proc/feeds`, `/net/pacs/queries`
+* VFS: `/bin`, `/etc`, `/proc/jobs`, `/net/pacs/queries`
 
 === pwd
 
@@ -181,7 +181,7 @@ Type characters in long format:
 | `p`  | Plugin (in `/bin`)
 | `P`  | Pipeline
 | `v`  | VFS entry
-| `j`  | Job/instance node (in `/proc/feeds`)
+| `j`  | Job/instance node (in `/proc/jobs`)
 |===
 
 For `j` (job) entries, the size column is replaced by the colour-coded execution
@@ -193,7 +193,7 @@ status string: `finishedSuccessfully`, `started`, `scheduled`, `finishedWithErro
 ls
 ls -l
 ls -lh
-ls /proc/feeds/feed_1107
+ls /proc/jobs/feed_1107
 ls -l /bin              # list registered plugins
 ls /etc                 # list virtual config files
 ----
@@ -210,7 +210,7 @@ tree [path]
 [source,bash]
 ----
 tree
-tree /proc/feeds/feed_1107   # full DAG of a feed's jobs
+tree /proc/jobs/feed_1107   # full DAG of a feed's jobs
 tree /home/alice/data
 ----
 
@@ -239,9 +239,9 @@ Use `--binary` to force.
 ----
 cat readme.txt
 cat /etc/compute.yaml
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/log
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/params
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/log
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/params
 ----
 
 === edit
@@ -284,8 +284,8 @@ rm [options] <path> [path...]
 rm old_file.txt
 rm -r old_dir/
 rm -rf temp_*
-rm /proc/feeds/feed_123/pl-fshack_789   # cancel/delete a job
-rm -r /proc/feeds/feed_123              # cancel all jobs in feed
+rm /proc/jobs/feed_123/pl-fshack_789   # cancel/delete a job
+rm -r /proc/jobs/feed_123              # cancel all jobs in feed
 ----
 
 === mkdir
@@ -355,7 +355,7 @@ ChELL presents a unified path tree mixing CFS (real ChRIS storage) and VFS
 | `/usr/bin`              | VFS | Built-in shell commands (`whoami`, `whereami`)
 | `/etc/`                 | VFS | Config files (see below)
 | `/net/pacs/queries/`    | VFS | PACS query result sets
-| `/proc/feeds/`          | VFS | Job monitoring DAG (see <<job-monitoring>>)
+| `/proc/jobs/`          | VFS | Job monitoring DAG (see <<job-monitoring>>)
 |===
 
 === /etc files
@@ -424,11 +424,11 @@ pl-segmentation-v1.0.0 --threshold 0.5
 # → attaches to instance 456, no --previous_id needed
 ----
 
-Works identically from a `/proc/feeds` path:
+Works identically from a `/proc/jobs` path:
 
 [source,bash]
 ----
-cd /proc/feeds/feed_123/pl-dircopy_456
+cd /proc/jobs/feed_123/pl-dircopy_456
 pl-segmentation-v1.0.0 --threshold 0.5
 ----
 
@@ -642,16 +642,16 @@ pluginmetas list [--all]
 pluginmeta inspect <id>
 ----
 
-== Job Monitoring: /proc/feeds
+== Job Monitoring: /proc/jobs
 
-`/proc/feeds/` surfaces all visible plugin instances as a navigable DAG.
+`/proc/jobs/` surfaces all visible plugin instances as a navigable DAG.
 Each feed is a directory; each plugin instance within it is a subdirectory.
 
 === Structure
 
 [source]
 ----
-/proc/feeds/
+/proc/jobs/
 └── feed_1107/
     ├── status          ← aggregate: running|finishedSuccessfully|finishedWithError|…
     ├── title           ← feed name
@@ -671,25 +671,25 @@ Each feed is a directory; each plugin instance within it is a subdirectory.
 [source,bash]
 ----
 # List all feeds with aggregate status
-ls -l /proc/feeds
+ls -l /proc/jobs
 
 # See full DAG of a feed
-tree /proc/feeds/feed_1107
+tree /proc/jobs/feed_1107
 
 # Read live status of a specific node
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
 
 # Read log output
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/log
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/log
 
 # Read what params a job ran with
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/params
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/params
 
 # Cancel a running job
-rm /proc/feeds/feed_1107/pl-shexec_64295
+rm /proc/jobs/feed_1107/pl-shexec_64295
 
 # Cancel all jobs in a feed
-rm -r /proc/feeds/feed_1107
+rm -r /proc/jobs/feed_1107
 ----
 
 === proc command
@@ -708,7 +708,7 @@ proc find <instance_id>   # return full /proc path for any instance ID
 [source,bash]
 ----
 proc find 64306
-# → /proc/feeds/feed_1107/pl-dircopy_64267/.../pl-neurofiles-push_64306
+# → /proc/jobs/feed_1107/pl-dircopy_64267/.../pl-neurofiles-push_64306
 
 # Then read status directly:
 cat $(proc find 64306)/status
@@ -716,7 +716,7 @@ cat $(proc find 64306)/status
 
 === /proc cache behaviour
 
-* Built lazily on first access to any `/proc/feeds` path.
+* Built lazily on first access to any `/proc/jobs` path.
 * `proc refresh` rebuilds the feed index (fast, feeds only).
 * Instance nodes within a feed are loaded on first access to that feed's directory.
 * Status of non-terminal nodes is always fetched live from the API on `cat status`.
@@ -762,14 +762,14 @@ help [command]            # show help
 cd /home/alice/uploads/study
 pl-fshack-v1.2.0 --inputFile brain.mgz
 # Note the instance ID from the output, then:
-# (in a loop externally) cat /proc/feeds/<feed>/pl-fshack_<id>/status
+# (in a loop externally) cat /proc/jobs/<feed>/pl-fshack_<id>/status
 ----
 
 === Continue analysis from a known node
 
 [source,bash]
 ----
-cd /proc/feeds/feed_123/pl-dircopy_456
+cd /proc/jobs/feed_123/pl-dircopy_456
 pl-segmentation-v1.0.0 --threshold 0.5
 ----
 
@@ -778,7 +778,7 @@ pl-segmentation-v1.0.0 --threshold 0.5
 [source,bash]
 ----
 proc find 64306
-cat /proc/feeds/feed_1107/pl-dircopy_64267/pl-shexec_64295/pl-dcm2mha_cnvtr_64296/pl-lld_inference_64297/pl-topologicalcopy_64304/pl-markimg_64305/pl-neurofiles-push_64306/status
+cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/pl-dcm2mha_cnvtr_64296/pl-lld_inference_64297/pl-topologicalcopy_64304/pl-markimg_64305/pl-neurofiles-push_64306/status
 ----
 
 === Upload data and run analysis

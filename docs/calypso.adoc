@@ -305,7 +305,7 @@ The third stage is the intent layer itself. Interception happens on the same pro
 
 .Stage three: interception on the same prompt
 ----
- "ls /proc/feeds"           "which of my jobs failed overnight?"
+ "ls /proc/jobs"           "which of my jobs failed overnight?"
          \                            /
           ▼                          ▼
         [ one prompt, one grammar ]

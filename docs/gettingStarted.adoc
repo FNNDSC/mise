@@ -267,7 +267,7 @@ Once connected, drive ChRIS as a filesystem:
 > ls /bin                  # every plugin, as a virtual executable
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name
-> ls /proc/feeds           # watch running jobs, live
+> ls /proc/jobs           # watch running jobs, live
 > feed tree 1669           # a feed's plugin-instance DAG, collapsed and status-coloured
 > feed diagram 1669        # the same shallow view under the diagram command
 > feed diagram --signalflow 1669 | signalflow -   # emit the DAG, render it with your tools

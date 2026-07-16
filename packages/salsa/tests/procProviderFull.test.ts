@@ -353,7 +353,11 @@ describe('cache build / warmup / refresh', () => {
 
   it('clears active prompt progress when a later topology page fails', async () => {
     cache.built_set();
-    const page_fetch = jest.fn()
+    interface TestInstancePage {
+      data: unknown[];
+      totalCount: number;
+    }
+    const page_fetch = jest.fn<Promise<TestInstancePage>, [{ offset: number }]>()
       .mockResolvedValueOnce({
         data: [{ id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 'started' }],
         totalCount: 2,

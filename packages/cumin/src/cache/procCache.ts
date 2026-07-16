@@ -108,7 +108,9 @@ export function status_isTerminal(status: string | null | undefined): boolean {
 /**
  * Warm-up progress counters for the prompt indicator.
  * total is zero until the server reports the visible plugin-instance count.
- * active transitions false→true when sweep starts, true→false when done.
+ * active becomes true when observable page progress begins, and false when the
+ * sweep completes or aborts. Use the topology lifecycle to detect an earlier
+ * running phase before the first page arrives.
  */
 export interface ProcWarmupProgress {
   loaded: number;

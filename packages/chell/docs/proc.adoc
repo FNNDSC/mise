@@ -5,7 +5,7 @@
 
 == Overview
 
-`/proc/feeds/` is a read-mostly Virtual Filesystem that surfaces ChRIS plugin
+`/proc/jobs/` is a read-mostly Virtual Filesystem that surfaces ChRIS plugin
 instances (jobs) as a navigable DAG. It mirrors the computation graph of every
 feed visible to the current user.
 
@@ -50,8 +50,8 @@ The design separates two concerns with different freshness requirements:
 === Path rules
 
 * `/proc` → synthetic VFS container (no provider owns it; dispatcher synthesises)
-* `/proc/feeds` → `ProcVfsProvider` prefix
-* `cd /proc` and `cd /proc/feeds` both work — both are in `structuralVfsPaths`
+* `/proc/jobs` → `ProcVfsProvider` prefix
+* `cd /proc` and `cd /proc/jobs` both work — both are in `structuralVfsPaths`
 * Instance directories have `type=job` in `VFSItem` — rendered cyan/bold with trailing `/`
 
 === Type characters in `ls -l`
@@ -134,7 +134,7 @@ stale data.
 
 === Aggregate feed status derivation
 
-`/proc/feeds/feed_N/status` is derived from `ProcFeed` job counters — no
+`/proc/jobs/feed_N/status` is derived from `ProcFeed` job counters — no
 per-instance API calls needed:
 
 [source,typescript]
@@ -176,7 +176,7 @@ The indicator disappears when `warmupComplete = true`.
 
 === Phase 3: Per-feed lazy loading (on navigation)
 
-When the user navigates to `/proc/feeds/feed_N` before the background
+When the user navigates to `/proc/jobs/feed_N` before the background
 loader reaches that feed, `feedInstances_ensureLoaded(N)` triggers an
 immediate load. Uses the in-flight map to prevent duplicate fetches.
 
@@ -206,8 +206,8 @@ firing a redundant API call.
 
 Per-node status is **never cached**. Every read goes to the API:
 
-* `cat /proc/feeds/feed_N/<instance>/status` → `getPluginInstance(id)`
-* `ls -l /proc/feeds/feed_N` → `jobs_statusBatch(allNodeIDs)` — one
+* `cat /proc/jobs/feed_N/<instance>/status` → `getPluginInstance(id)`
+* `ls -l /proc/jobs/feed_N` → `jobs_statusBatch(allNodeIDs)` — one
   `Promise.all` across all nodes in the feed (~10–20 parallel calls)
 
 `jobs_statusBatch(ids)` in `salsa/src/jobs/jobOps.ts` returns
@@ -215,7 +215,7 @@ Per-node status is **never cached**. Every read goes to the API:
 
 === Feed aggregate status
 
-`/proc/feeds/feed_N/status` is derived from `ProcFeed` job counters
+`/proc/jobs/feed_N/status` is derived from `ProcFeed` job counters
 (stored at cache-build time). No per-node API calls. Refreshed on
 `proc refresh`.
 
@@ -273,12 +273,12 @@ reconstruct full `/proc` paths.
 |===
 | Target | Behaviour
 
-| `/proc/feeds/feed_N/<instance>`
+| `/proc/jobs/feed_N/<instance>`
 | Non-terminal → `job_cancel(id)` (PUT `status=cancelled`).
   Terminal → `job_delete(id)` (DELETE).
   Updates cache: removes instance or updates nothing (status not stored).
 
-| `/proc/feeds/feed_N`
+| `/proc/jobs/feed_N`
 | Requires `-r`. Cancels all non-terminal instances, removes from cache.
 |===
 

@@ -52,6 +52,8 @@ export interface StartupWarmupReporter {
  * @param user - Authenticated username used to construct the feed path.
  * @param interactive - Whether progress may use an interactive spinner.
  * @param reporter - Host status logger, or null for silent status reporting.
+ * @param reportTopologySettlement - Whether to report the asynchronous topology
+ *   result; daemon hosts enable this, while interactive hosts use prompt progress.
  * @returns Cache counts and the labels of any failed warm-up operations.
  */
 export async function startupWarmup_run(
@@ -59,6 +61,7 @@ export async function startupWarmup_run(
   user: string | undefined,
   interactive: boolean,
   reporter: StartupWarmupReporter | null,
+  reportTopologySettlement: boolean = false,
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [] };
 
@@ -157,22 +160,26 @@ export async function startupWarmup_run(
       reporter?.log('ok', 'Jobs', `Indexed ${jobsResult.count ?? 0} feed(s) — topology warming in background`);
       errorStack.scope_run((): void => {
         const topologySweep: Promise<void> = procTopology_warmup();
-        void topologySweep.then(
-          (): void => {
-            const topology: ProcTopologyStatus = procTopology_status();
-            if (topology.state !== 'complete') {
-              reporter?.log('fail', 'Topology', `Warm-up failed: ${topology.failure ?? 'the topology index did not complete'}`);
-              return;
-            }
-            const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
-            const total: number = progress.total > 0 ? progress.total : progress.loaded;
-            reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${total} job(s) indexed`);
-          },
-          (error: unknown): void => {
-            const message: string = error instanceof Error ? error.message : String(error);
-            reporter?.log('fail', 'Topology', `Warm-up failed: ${message}`);
-          },
-        );
+        if (reportTopologySettlement) {
+          void topologySweep.then(
+            (): void => {
+              const topology: ProcTopologyStatus = procTopology_status();
+              if (topology.state !== 'complete') {
+                reporter?.log('fail', 'Topology', `Warm-up failed: ${topology.failure ?? 'the topology index did not complete'}`);
+                return;
+              }
+              const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
+              const total: number = progress.total > 0 ? progress.total : progress.loaded;
+              reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${total} job(s) indexed`);
+            },
+            (error: unknown): void => {
+              const message: string = error instanceof Error ? error.message : String(error);
+              reporter?.log('fail', 'Topology', `Warm-up failed: ${message}`);
+            },
+          );
+        } else {
+          void topologySweep.catch((): void => { /* failure is visible through proc lifecycle state */ });
+        }
       });
     } else {
       result.failures.push('Jobs');
@@ -204,7 +211,7 @@ export async function daemonSession_run(
   reporter: StartupWarmupReporter,
 ): Promise<void> {
   await daemon_launch(engine, async (): Promise<void> => {
-    const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter);
+    const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
     if (cache.failures.length === 0) {
       reporter.log('ok', 'Engine', 'Ready');
     } else {

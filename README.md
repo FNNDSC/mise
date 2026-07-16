@@ -45,7 +45,7 @@ entry under `/proc`. Instead of writing API code, you drive it:
 cd /home/chris/uploads/SAG-anon       # your data is a filesystem
 ls /bin                               # every plugin is a virtual executable
 pl-fshack-v1.2.0 --inputFile brain.mgz   # run an analysis by name
-cat /proc/feeds/feed_123/pl-fshack_789/status   # watch it run
+cat /proc/jobs/feed_123/pl-fshack_789/status   # watch it run
 ```
 
 If you've used a terminal, you already know most of it.
@@ -79,7 +79,7 @@ Then drive it:
 > ls /bin                  # every plugin, as a virtual executable
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name
-> ls /proc/feeds           # watch running jobs, live
+> ls /proc/jobs           # watch running jobs, live
 ```
 
 Prefer a single file with no Node.js? See **[Install](#install-end-user)** for
@@ -217,7 +217,7 @@ which maps API resources onto paths:
 | `/bin` | Every plugin registered in this CUBE (virtual executables) |
 | `/etc` | Config — compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | PACS query result sets |
-| `/proc/feeds/` | Live job monitoring as a navigable DAG |
+| `/proc/jobs/` | Live job monitoring as a navigable DAG |
 
 See [packages/chell/README.md](packages/chell/README.md) for the full tour
 (running plugins, pipelines, the store, job monitoring) and

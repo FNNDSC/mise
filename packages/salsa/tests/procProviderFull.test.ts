@@ -24,9 +24,13 @@ import {
   feedStatus_derive,
   procPath_parse,
   procTopology_warmup,
+  procTopology_status,
+  procTopology_await,
   procCache_refresh,
   procFeed_ensureLoaded,
+  feedInstances_ensureLoaded,
   feedMeta_ensure,
+  feedStatus_refresh,
 } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
@@ -36,14 +40,15 @@ function feed(over: Partial<ProcFeed> = {}): ProcFeed {
   return {
     id: 1, title: 'f', creationDate: '', finishedJobs: 0, erroredJobs: 0,
     startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0, ...over,
+    ownerUsername: over.ownerUsername ?? '', public: over.public ?? false,
   };
 }
 
 /** Fake chrisapi client that paginates a fixed set of rows. */
 function pagingClient(feeds: unknown[] = [], instances: unknown[] = []) {
   return {
-    getFeeds: jest.fn().mockResolvedValue({ data: feeds }),
-    getPluginInstances: jest.fn().mockResolvedValue({ data: instances }),
+    getFeeds: jest.fn().mockResolvedValue({ data: feeds, totalCount: feeds.length }),
+    getPluginInstances: jest.fn().mockResolvedValue({ data: instances, totalCount: instances.length }),
     getPluginInstance: jest.fn(),
   };
 }
@@ -276,6 +281,66 @@ describe('ProcVfsProvider.rm', () => {
 });
 
 describe('cache build / warmup / refresh', () => {
+  it('indexes every feed when the server caps pages below the requested limit', async () => {
+    const rows = [
+      { id: 1, name: 'mine', owner_username: 'chris', public: false },
+      { id: 2, name: 'public', owner_username: 'other', public: true },
+    ];
+    const client = {
+      getFeeds: jest.fn().mockImplementation(({ offset }: { offset: number }) => ({
+        data: rows.slice(offset, offset + 1),
+        totalCount: rows.length,
+      })),
+      getPluginInstances: jest.fn(),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    await procCache_refresh();
+
+    expect(cache.feedIDs_get().sort()).toEqual([1, 2]);
+    expect(cache.feed_get(1)).toMatchObject({ ownerUsername: 'chris', public: false });
+    expect(cache.feed_get(2)).toMatchObject({ ownerUsername: 'other', public: true });
+    expect(client.getFeeds).toHaveBeenCalledTimes(2);
+  });
+
+  it('joins the active topology sweep without starting another', async () => {
+    cache.built_set();
+    let releasePage: ((page: { data: unknown[]; totalCount: number }) => void) | undefined;
+    const page: Promise<{ data: unknown[]; totalCount: number }> = new Promise((resolve) => {
+      releasePage = resolve;
+    });
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: [] }),
+      getPluginInstances: jest.fn().mockReturnValue(page),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    const sweep: Promise<void> = procTopology_warmup();
+    const waiter: Promise<void> = procTopology_await();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(1);
+    expect(procTopology_status()).toEqual({ state: 'running', failure: undefined });
+    expect(cache.warmupProgress_get().active).toBe(false);
+    releasePage?.({ data: [], totalCount: 0 });
+    await Promise.all([sweep, waiter]);
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(1);
+    expect(procTopology_status()).toEqual({ state: 'complete', failure: undefined });
+  });
+
+  it('preserves a failure that occurs before the first topology page', async () => {
+    cache.built_set();
+    const client = {
+      getPluginInstances: jest.fn().mockRejectedValue(new Error('connection lost')),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    await expect(procTopology_warmup()).rejects.toThrow('connection lost');
+
+    expect(cache.warmupProgress_get().active).toBe(false);
+    expect(procTopology_status()).toEqual({ state: 'failed', failure: 'connection lost' });
+  });
+
   it('procTopology_warmup sweeps instances and completes', async () => {
     cache.built_set();
     mockClientGet.mockResolvedValue(
@@ -283,6 +348,7 @@ describe('cache build / warmup / refresh', () => {
     );
     await procTopology_warmup();
     expect(cache.warmupComplete).toBe(true);
+    expect(cache.warmupProgress_get()).toEqual({ loaded: 1, total: 1, active: false });
     expect(cache.instance_get(10)).toBeDefined();
     expect(cache.feed_get(5)).toBeDefined();
   });
@@ -302,6 +368,54 @@ describe('cache build / warmup / refresh', () => {
     await procFeed_ensureLoaded(7);
     expect(cache.feed_get(7)).toBeDefined();
     expect(cache.instance_get(20)).toBeDefined();
+  });
+
+  it('loads complete targeted feed topology when server pages are capped', async () => {
+    cache.built_set();
+    const rows = [
+      { id: 20, feed_id: 7, previous_id: null, plugin_name: 'pl-root', status: 'started' },
+      { id: 21, feed_id: 7, previous_id: 20, plugin_name: 'pl-child', status: 'scheduled' },
+    ];
+    const client = {
+      getPluginInstances: jest.fn().mockImplementation(({ offset }: { offset: number }) => ({
+        data: rows.slice(offset, offset + 1),
+        totalCount: rows.length,
+      })),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    await feedInstances_ensureLoaded(7);
+
+    expect(cache.instance_get(20)).toBeDefined();
+    expect(cache.instance_get(21)).toBeDefined();
+    expect(cache.topologyLoaded_has(7)).toBe(true);
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes every targeted status when server pages are capped', async () => {
+    cache.instance_add({
+      id: 20, feedID: 7, parentID: null, pluginName: 'pl-root', params: null, status: 'started',
+    });
+    cache.instance_add({
+      id: 21, feedID: 7, parentID: 20, pluginName: 'pl-child', params: null, status: 'scheduled',
+    });
+    const rows = [
+      { id: 20, feed_id: 7, previous_id: null, plugin_name: 'pl-root', status: 'finishedSuccessfully' },
+      { id: 21, feed_id: 7, previous_id: 20, plugin_name: 'pl-child', status: 'started' },
+    ];
+    const client = {
+      getPluginInstances: jest.fn().mockImplementation(({ offset }: { offset: number }) => ({
+        data: rows.slice(offset, offset + 1),
+        totalCount: rows.length,
+      })),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    await feedStatus_refresh(7);
+
+    expect(cache.instance_get(20)?.status).toBe('finishedSuccessfully');
+    expect(cache.instance_get(21)?.status).toBe('started');
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(2);
   });
 
   it('procCache_refresh(feedID) re-fetches a single feed', async () => {

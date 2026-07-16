@@ -42,6 +42,8 @@ interface RawInstance {
 interface RawFeed {
   id: number;
   name: string;
+  owner_username?: string;
+  public?: boolean;
   creation_date?: string;
   finished_jobs?: number;
   errored_jobs?: number;
@@ -54,6 +56,7 @@ interface RawFeed {
 
 interface ChrisListResource<T> {
   data: T[] | null;
+  totalCount?: number;
 }
 
 interface ChrisClient {
@@ -68,6 +71,40 @@ const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 
 const PROC_JOBS_PREFIX: string = '/proc/jobs';
 const PAGE: number = 100;
+let procTopologyPromise: Promise<void> | null = null;
+let procTopologyState: ProcTopologyState = 'idle';
+let procTopologyFailure: string | undefined;
+
+/** Lifecycle states for the session's global topology sweep. */
+export type ProcTopologyState = 'idle' | 'running' | 'complete' | 'failed';
+
+/**
+ * Observable lifecycle of the session's global topology sweep.
+ *
+ * @property state - Current topology sweep lifecycle state.
+ * @property failure - Failure reason when `state` is `failed`.
+ */
+export interface ProcTopologyStatus {
+  state: ProcTopologyState;
+  failure?: string;
+}
+
+/** Converts a CUBE feed row into the cache's feed model. */
+function procFeed_create(feed: RawFeed): ProcFeed {
+  return {
+    id: Number(feed.id),
+    title: String(feed.name),
+    ownerUsername: String(feed.owner_username ?? ''),
+    public: Boolean(feed.public ?? false),
+    creationDate: String(feed.creation_date ?? ''),
+    finishedJobs: Number(feed.finished_jobs ?? 0),
+    erroredJobs: Number(feed.errored_jobs ?? 0),
+    startedJobs: Number(feed.started_jobs ?? 0),
+    scheduledJobs: Number(feed.scheduled_jobs ?? 0),
+    cancelledJobs: Number(feed.cancelled_jobs ?? 0),
+    createdJobs: Number(feed.created_jobs ?? 0),
+  };
+}
 
 // ── Cache build ────────────────────────────────────────────────────────────
 
@@ -87,25 +124,22 @@ async function procCache_build(): Promise<void> {
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
   let feedOffset: number = 0;
+  let feedTotal: number = 0;
+  const seenFeedIDs: Set<number> = new Set();
 
   while (true) {
     const feedPage: ChrisListResource<RawFeed> = await typedClient.getFeeds({ limit: PAGE, offset: feedOffset });
     const chunk: RawFeed[] = feedPage.data ?? [];
-    for (const f of chunk) {
-      cache.feed_add({
-        id: Number(f.id),
-        title: String(f.name),
-        creationDate:   String(f.creation_date ?? ''),
-        finishedJobs:   Number(f.finished_jobs  ?? 0),
-        erroredJobs:    Number(f.errored_jobs    ?? 0),
-        startedJobs:    Number(f.started_jobs    ?? 0),
-        scheduledJobs:  Number(f.scheduled_jobs  ?? 0),
-        cancelledJobs:  Number(f.cancelled_jobs  ?? 0),
-        createdJobs:    Number(f.created_jobs    ?? 0),
-      });
+    if (feedOffset === 0 && typeof feedPage.totalCount === 'number' && feedPage.totalCount >= 0) {
+      feedTotal = feedPage.totalCount;
     }
-    if (chunk.length < PAGE) break;
-    feedOffset += PAGE;
+    for (const f of chunk) {
+      cache.feed_add(procFeed_create(f));
+      seenFeedIDs.add(Number(f.id));
+    }
+    if (chunk.length === 0 || (feedTotal > 0 && seenFeedIDs.size >= feedTotal)) break;
+    if (feedTotal === 0 && chunk.length < PAGE) break;
+    feedOffset += chunk.length;
   }
 
   cache.built_set();
@@ -128,20 +162,25 @@ async function feedInstances_load(feedID: number): Promise<void> {
   if (!client) return;
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
-  const instances: RawInstance[] = [];
+  const instances: Map<number, RawInstance> = new Map();
   let offset: number = 0;
+  let total: number = 0;
 
   while (true) {
     const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
       feed_id: feedID, limit: PAGE, offset,
     });
     const chunk: RawInstance[] = page.data ?? [];
-    instances.push(...chunk);
-    if (chunk.length < PAGE) break;
-    offset += PAGE;
+    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+      total = page.totalCount;
+    }
+    for (const instance of chunk) instances.set(Number(instance.id), instance);
+    if (chunk.length === 0 || (total > 0 && instances.size >= total)) break;
+    if (total === 0 && chunk.length < PAGE) break;
+    offset += chunk.length;
   }
 
-  for (const inst of instances) {
+  for (const inst of instances.values()) {
     const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
       ? Number(inst.previous_id)
       : null;
@@ -467,7 +506,7 @@ export async function procFeed_ensureLoaded(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   if (!cache.feed_get(feedID)) {
     cache.feed_add({
-      id: feedID, title: `feed_${feedID}`, creationDate: '',
+      id: feedID, title: `feed_${feedID}`, ownerUsername: '', public: false, creationDate: '',
       finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
       scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
     });
@@ -507,17 +546,7 @@ export async function feedMeta_ensure(feedID: number): Promise<void> {
   const f: RawFeed | undefined = (page.data ?? [])[0];
   if (!f) return;
 
-  cache.feed_add({
-    id: Number(f.id),
-    title: String(f.name),
-    creationDate:   String(f.creation_date ?? ''),
-    finishedJobs:   Number(f.finished_jobs  ?? 0),
-    erroredJobs:    Number(f.errored_jobs    ?? 0),
-    startedJobs:    Number(f.started_jobs    ?? 0),
-    scheduledJobs:  Number(f.scheduled_jobs  ?? 0),
-    cancelledJobs:  Number(f.cancelled_jobs  ?? 0),
-    createdJobs:    Number(f.created_jobs    ?? 0),
-  });
+  cache.feed_add(procFeed_create(f));
 }
 
 export async function feedStatus_refresh(feedID: number): Promise<void> {
@@ -527,17 +556,25 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
   let offset: number = 0;
+  let total: number = 0;
+  const seenInstanceIDs: Set<number> = new Set();
 
   while (true) {
     const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
       feed_id: feedID, limit: PAGE, offset,
     });
     const chunk: RawInstance[] = page.data ?? [];
-    for (const inst of chunk) {
-      cache.status_update(Number(inst.id), String(inst.status ?? 'unknown'));
+    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+      total = page.totalCount;
     }
-    if (chunk.length < PAGE) break;
-    offset += PAGE;
+    for (const inst of chunk) {
+      const instanceID: number = Number(inst.id);
+      cache.status_update(instanceID, String(inst.status ?? 'unknown'));
+      seenInstanceIDs.add(instanceID);
+    }
+    if (chunk.length === 0 || (total > 0 && seenInstanceIDs.size >= total)) break;
+    if (total === 0 && chunk.length < PAGE) break;
+    offset += chunk.length;
   }
 }
 
@@ -549,17 +586,16 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
  * feedInstances_ensureLoaded call waits for this sweep rather than launching
  * its own per-feed API call.
  */
-export async function procTopology_warmup(): Promise<void> {
+async function procTopology_run(): Promise<void> {
   await cache_ensure();
   const cache: ProcCache = procCache_get();
   const client = await chrisConnection.client_get();
   if (!client) return;
 
-  cache.warmup_progress(0, 0);
-
   const typedClient: ChrisClient = client as unknown as ChrisClient;
   let offset: number = 0;
-  let loaded: number = 0;
+  let total: number = 0;
+  const seenInstanceIDs: Set<number> = new Set();
   const seenFeedIDs: Set<number> = new Set();
 
   while (true) {
@@ -567,8 +603,13 @@ export async function procTopology_warmup(): Promise<void> {
       limit: PAGE, offset,
     });
     const chunk: RawInstance[] = page.data ?? [];
+    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+      total = page.totalCount;
+      if (total > 0) cache.warmup_progress(0, total);
+    }
 
     for (const inst of chunk) {
+      const instanceID: number = Number(inst.id);
       const feedID: number = Number(inst.feed_id);
       const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
         ? Number(inst.previous_id)
@@ -576,14 +617,14 @@ export async function procTopology_warmup(): Promise<void> {
 
       if (!cache.feed_get(feedID)) {
         cache.feed_add({
-          id: feedID, title: `feed_${feedID}`, creationDate: '',
+          id: feedID, title: `feed_${feedID}`, ownerUsername: '', public: false, creationDate: '',
           finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
           scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
         });
       }
 
       cache.instance_add({
-        id: Number(inst.id),
+        id: instanceID,
         feedID,
         parentID: prevID,
         pluginName: String(inst.plugin_name),
@@ -591,19 +632,74 @@ export async function procTopology_warmup(): Promise<void> {
         params: null,
         status: String(inst.status ?? 'unknown'),
       });
+      seenInstanceIDs.add(instanceID);
       seenFeedIDs.add(feedID);
-      loaded++;
     }
 
-    cache.warmup_progress(loaded, 0);
-    if (chunk.length < PAGE) break;
-    offset += PAGE;
+    if (total > 0) cache.warmup_progress(seenInstanceIDs.size, total);
+    if (chunk.length === 0 || (total > 0 && seenInstanceIDs.size >= total)) break;
+    if (total === 0 && chunk.length < PAGE) break;
+    offset += chunk.length;
   }
 
   for (const feedID of seenFeedIDs) {
     cache.topologyLoaded_mark(feedID);
   }
+  if (total === 0) cache.warmup_progress(seenInstanceIDs.size, seenInstanceIDs.size);
   cache.warmup_complete();
+}
+
+/**
+ * Starts or joins the session's global plugin-instance topology sweep.
+ *
+ * @returns The single in-flight sweep promise.
+ */
+export function procTopology_warmup(): Promise<void> {
+  if (procTopologyPromise) return procTopologyPromise;
+
+  procTopologyState = 'running';
+  procTopologyFailure = undefined;
+  const sweep: Promise<void> = procTopology_run();
+  procTopologyPromise = sweep;
+  sweep.then(
+    (): void => {
+      if (procTopologyPromise !== sweep) return;
+      procTopologyPromise = null;
+      if (procCache_get().warmupComplete) {
+        procTopologyState = 'complete';
+      } else {
+        procTopologyState = 'failed';
+        procTopologyFailure = 'the topology sweep ended before the index completed';
+      }
+    },
+    (error: unknown): void => {
+      if (procTopologyPromise !== sweep) return;
+      procTopologyPromise = null;
+      procTopologyState = 'failed';
+      procTopologyFailure = error instanceof Error ? error.message : String(error);
+    },
+  );
+  return sweep;
+}
+
+/**
+ * Reports the session topology sweep lifecycle.
+ *
+ * @returns A snapshot of the lifecycle state and any failure reason.
+ */
+export function procTopology_status(): ProcTopologyStatus {
+  return { state: procTopologyState, failure: procTopologyFailure };
+}
+
+/**
+ * Waits for the active topology sweep without starting another.
+ *
+ * @returns A promise that resolves when the active sweep finishes, or
+ * immediately when no sweep is running.
+ */
+export async function procTopology_await(): Promise<void> {
+  const sweep: Promise<void> | null = procTopologyPromise;
+  if (sweep) await sweep;
 }
 
 /**
@@ -620,17 +716,7 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
       const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
       const f: RawFeed | undefined = (page.data ?? [])[0];
       if (f) {
-        cache.feed_add({
-          id: Number(f.id),
-          title: String(f.name),
-          creationDate:   String(f.creation_date ?? ''),
-          finishedJobs:   Number(f.finished_jobs  ?? 0),
-          erroredJobs:    Number(f.errored_jobs    ?? 0),
-          startedJobs:    Number(f.started_jobs    ?? 0),
-          scheduledJobs:  Number(f.scheduled_jobs  ?? 0),
-          cancelledJobs:  Number(f.cancelled_jobs  ?? 0),
-          createdJobs:    Number(f.created_jobs    ?? 0),
-        });
+        cache.feed_add(procFeed_create(f));
       }
     }
     await feedInstances_ensureLoaded(feedID);

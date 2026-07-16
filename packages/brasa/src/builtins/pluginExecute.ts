@@ -149,6 +149,7 @@ export async function builtin_executePlugin(
       const feedTitle: string = cwd.split('/').pop() || `feed_${result.feedID}`;
       procCache_get().feed_add({
         id: result.feedID, title: feedTitle,
+        ownerUsername: cwd.split('/')[2] ?? '', public: false,
         creationDate: new Date().toISOString(),
         finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
         scheduledJobs: 2, cancelledJobs: 0, createdJobs: 0,

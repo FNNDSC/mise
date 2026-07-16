@@ -19,10 +19,15 @@
 
 /**
  * Feed-level metadata including job count fields for aggregate status.
+ *
+ * @property ownerUsername - Username that owns the feed.
+ * @property public - Whether the feed is publicly visible.
  */
 export interface ProcFeed {
   id: number;
   title: string;
+  ownerUsername: string;
+  public: boolean;
   creationDate: string;   // ISO string — used to filter warmup to recent feeds
   finishedJobs: number;
   erroredJobs: number;
@@ -30,6 +35,21 @@ export interface ProcFeed {
   scheduledJobs: number;
   cancelledJobs: number;
   createdJobs: number;
+}
+
+/**
+ * Exclusive feed counts by how the current identity can see each feed.
+ *
+ * @property user - Feeds owned by the current identity.
+ * @property public - Public feeds owned by another identity.
+ * @property shared - Non-public feeds shared by another identity.
+ * @property total - Unique visible feeds across all three buckets.
+ */
+export interface ProcFeedScopeCounts {
+  user: number;
+  public: number;
+  shared: number;
+  total: number;
 }
 
 /**
@@ -152,6 +172,25 @@ export class ProcCache {
 
   feedIDs_get(): number[] {
     return Array.from(this.feeds.keys());
+  }
+
+  /**
+   * Counts visible feeds in exclusive ownership, sharing, and public buckets.
+   *
+   * Ownership takes precedence over public visibility so the buckets sum to
+   * the unique feed total.
+   *
+   * @param username - Authenticated username whose owned feeds form `user`.
+   * @returns Exclusive scope counts whose components sum to `total`.
+   */
+  feedScopeCounts_get(username: string): ProcFeedScopeCounts {
+    const counts: ProcFeedScopeCounts = { user: 0, public: 0, shared: 0, total: this.feeds.size };
+    for (const feed of this.feeds.values()) {
+      if (feed.ownerUsername === username) counts.user++;
+      else if (feed.public) counts.public++;
+      else counts.shared++;
+    }
+    return counts;
   }
 
   feedRoots_get(feedID: number): number[] {
@@ -321,7 +360,7 @@ export class ProcCache {
 
   warmup_complete(): void {
     this._warmupComplete = true;
-    this._warmupProgress = { loaded: this._warmupProgress.loaded, total: 0, active: false };
+    this._warmupProgress = { ...this._warmupProgress, active: false };
   }
 
   warmup_progress(loaded: number, total: number): void {

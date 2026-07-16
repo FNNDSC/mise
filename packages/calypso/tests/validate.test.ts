@@ -59,6 +59,19 @@ describe('serverMessage_parse', () => {
     expect(serverMessage_parse({ type: 'error', reason: 'bad token' }).ok).toBe(true);
   });
 
+  it('accepts additive proc totals and legacy loaded-only prompt progress', () => {
+    const context = {
+      user: 'chris', uri: 'http://cube/', cwd: '/', pacsserver: null,
+      physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+    };
+    expect(serverMessage_parse({
+      type: 'promptline', context: { ...context, procWarmup: { loaded: 25, total: 100 } },
+    }).ok).toBe(true);
+    expect(serverMessage_parse({
+      type: 'promptline', context: { ...context, procWarmup: { loaded: 25 } },
+    }).ok).toBe(true);
+  });
+
   it('rejects an output on an unknown channel', () => {
     expect(serverMessage_parse({ type: 'output', id: '1', channel: 'sideband', chunk: 'x' }).ok).toBe(false);
   });

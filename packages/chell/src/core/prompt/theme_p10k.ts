@@ -15,7 +15,7 @@
 
 import chalk from 'chalk';
 import type { PromptContext, PromptTheme } from './index.js';
-import { ansi_visibleLength, path_truncate } from './utils.js';
+import { ansi_visibleLength, path_truncate, procProgress_format } from './utils.js';
 
 /** Powerline right-arrow separator (Nerd Font U+E0B0). */
 const POWERLINE: string = '';
@@ -155,7 +155,7 @@ export class ThemeP10k implements PromptTheme {
     }
 
     if (ctx.procWarmup) {
-      trailing.push({ text: `⚙ proc: ${ctx.procWarmup.loaded}`, color: C.TIME });
+      trailing.push({ text: `⚙ proc: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`, color: C.TIME });
     }
 
     // Compute path budget: terminal limit minus fixed + trailing segment overhead + dir overhead

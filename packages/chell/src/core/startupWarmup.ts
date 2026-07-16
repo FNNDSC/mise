@@ -3,8 +3,8 @@
  *
  * Warms the VFS and process caches, reports each outcome through a small host
  * seam, and starts non-blocking job-topology warming after the jobs index is
- * available. Daemon startup additionally waits for this work before publishing
- * its listening berth.
+ * available. Daemon startup waits for the blocking cache indexes before
+ * publishing its listening berth, then reports topology settlement separately.
  *
  * @module
  */

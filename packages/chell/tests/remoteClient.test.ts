@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import type { RemoteEngineOptions } from '../src/remote/remoteEngine.js';
 
 interface TestBerth {
@@ -29,7 +30,7 @@ const sinkSet_mock = jest.fn<(sink: unknown) => void>();
 const surfaceSet_mock = jest.fn<(surface: unknown) => void>();
 const prompt_mock = jest.fn<(options: { message: string; hidden: boolean }) => Promise<string>>();
 const pipeSegment_mock = jest.fn<(command: string, stdin: Buffer) => Promise<Buffer>>();
-const localEdit_mock = jest.fn<(request: { content: string; extension: string }) => Promise<{ content: string; changed: boolean }>>();
+const localEdit_mock = jest.fn<(request: LocalEditRequest) => Promise<LocalEditResult>>();
 const resolverResolve_mock = jest.fn<(identity: string) => Promise<TestBerth | null>>();
 const resolverList_mock = jest.fn<() => Promise<TestBerth[]>>();
 

@@ -28,12 +28,13 @@ interface TestFeed {
   createdJobs: number;
 }
 
-const mockProcTopologyAwait = jest.fn(async (): Promise<void> => undefined);
+const procTopologyAwait_mock = jest.fn(async (): Promise<void> => undefined);
 let mockTopologyStatus: { state: 'idle' | 'running' | 'complete' | 'failed'; failure?: string } = { state: 'idle' };
-const mockJobsFind = jest.fn(async () => ({ ok: true, value: [] }));
-const mockContextGetSingle = jest.fn(async () => ({ user: 'me' }));
-const mockProcCacheRefresh = jest.fn(async (): Promise<void> => undefined);
-const mockProcFeedEnsureLoaded = jest.fn(async (): Promise<void> => undefined);
+const jobsFind_mock = jest.fn(async () => ({ ok: true, value: [] }));
+const contextGetSingle_mock = jest.fn(async () => ({ user: 'me' }));
+const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
+const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
+const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 let mockFeeds: TestFeed[] = [];
 let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
@@ -65,11 +66,12 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
-  context_getSingle: mockContextGetSingle,
-  jobs_find: mockJobsFind,
-  procCache_refresh: mockProcCacheRefresh,
-  procFeed_ensureLoaded: mockProcFeedEnsureLoaded,
-  procTopology_await: mockProcTopologyAwait,
+  context_getSingle: contextGetSingle_mock,
+  jobs_find: jobsFind_mock,
+  procCache_refresh: procCacheRefresh_mock,
+  procFeed_ensureLoaded: procFeedEnsureLoaded_mock,
+  procTopology_await: procTopologyAwait_mock,
+  procTopology_warmup: procTopologyWarmup_mock,
   procTopology_status: jest.fn(() => ({ ...mockTopologyStatus })),
 }));
 
@@ -79,10 +81,10 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   commandArgs_process: jest.fn((args: string[]) => {
-    const parsed: Record<string, unknown> = { _: [] as string[] };
+    const parsed: Record<string, unknown> & { _: string[] } = { _: [] };
     for (const arg of args) {
       if (arg.startsWith('--')) parsed[arg.slice(2)] = true;
-      else (parsed['_'] as string[]).push(arg);
+      else parsed._.push(arg);
     }
     return parsed;
   }),
@@ -123,7 +125,7 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.renderedErr).toContain('visible-job index is still warming (25/100, 25%)');
     expect(envelope.renderedErr).toContain('proc jobs list --force');
     expect(process.exitCode).toBe(1);
-    expect(mockProcTopologyAwait).not.toHaveBeenCalled();
+    expect(procTopologyAwait_mock).not.toHaveBeenCalled();
   });
 
   it('refuses a plugin-name search while the index is warming', async () => {
@@ -134,7 +136,7 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('visible-job index is still warming (25/100, 25%)');
     expect(envelope.renderedErr).toContain('proc find dircopy --force');
-    expect(mockJobsFind).not.toHaveBeenCalled();
+    expect(jobsFind_mock).not.toHaveBeenCalled();
   });
 
   it('refuses a feed-title search while the index is warming', async () => {
@@ -150,7 +152,7 @@ describe('builtin_proc warm-up policy', () => {
 
   it('waits for the existing warm-up when a global query is forced', async () => {
     mockWarmup = { loaded: 25, total: 100, active: true };
-    mockProcTopologyAwait.mockImplementationOnce(async (): Promise<void> => {
+    procTopologyAwait_mock.mockImplementationOnce(async (): Promise<void> => {
       mockWarmup = { loaded: 100, total: 100, active: false };
       mockWarmupComplete = true;
       mockTopologyStatus = { state: 'complete' };
@@ -158,13 +160,13 @@ describe('builtin_proc warm-up policy', () => {
 
     const envelope: TestEnvelope = await builtin_proc(['jobs', 'list', '--force']);
 
-    expect(mockProcTopologyAwait).toHaveBeenCalledTimes(1);
+    expect(procTopologyAwait_mock).toHaveBeenCalledTimes(1);
     expect(envelope.status).toBe('ok');
   });
 
   it('reports a failed forced wait as a command error', async () => {
     mockWarmup = { loaded: 25, total: 100, active: true };
-    mockProcTopologyAwait.mockRejectedValueOnce(new Error('connection lost'));
+    procTopologyAwait_mock.mockRejectedValueOnce(new Error('connection lost'));
 
     const envelope: TestEnvelope = await builtin_proc(['jobs', 'list', '--force']);
 
@@ -209,7 +211,7 @@ describe('builtin_proc warm-up policy', () => {
 
     const envelope: TestEnvelope = await builtin_proc(['jobs', 'list', '--force']);
 
-    expect(mockProcTopologyAwait).toHaveBeenCalledTimes(1);
+    expect(procTopologyAwait_mock).toHaveBeenCalledTimes(1);
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('the topology sweep did not complete');
     expect(process.exitCode).toBe(1);
@@ -217,7 +219,7 @@ describe('builtin_proc warm-up policy', () => {
 
   it('allows a targeted numeric instance lookup while warming', async () => {
     mockWarmup = { loaded: 25, total: 100, active: true };
-    mockJobsFind.mockResolvedValueOnce({
+    jobsFind_mock.mockResolvedValueOnce({
       ok: true,
       value: [{ id: 123, feedID: 1, pluginName: 'pl-test' }],
     });
@@ -226,7 +228,7 @@ describe('builtin_proc warm-up policy', () => {
 
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('/proc/jobs/feed_1/pl-test_123');
-    expect(mockProcTopologyAwait).not.toHaveBeenCalled();
+    expect(procTopologyAwait_mock).not.toHaveBeenCalled();
   });
 
   it('allows proc stat while warming', async () => {
@@ -237,7 +239,7 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('in progress');
     expect(envelope.rendered).toContain('25/100');
-    expect(mockProcTopologyAwait).not.toHaveBeenCalled();
+    expect(procTopologyAwait_mock).not.toHaveBeenCalled();
   });
 
   it('reports zero loaded jobs deterministically after an empty sweep', async () => {
@@ -316,7 +318,16 @@ describe('builtin_proc warm-up policy', () => {
 
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('feed_5');
-    expect(mockProcCacheRefresh).toHaveBeenCalledWith(5);
+    expect(procCacheRefresh_mock).toHaveBeenCalledWith(5);
+    expect(procTopologyWarmup_mock).not.toHaveBeenCalled();
+  });
+
+  it('starts one replacement topology sweep after a full refresh', async () => {
+    const envelope: TestEnvelope = await builtin_proc(['refresh']);
+
+    expect(envelope.status).toBe('ok');
+    expect(procCacheRefresh_mock).toHaveBeenCalledWith(undefined);
+    expect(procTopologyWarmup_mock).toHaveBeenCalledTimes(1);
   });
 
   it('inspects available job fields without requiring warm-up', async () => {
@@ -325,6 +336,6 @@ describe('builtin_proc warm-up policy', () => {
     const envelope: TestEnvelope = await builtin_proc(['jobs', 'inspect']);
 
     expect(envelope.status).toBe('ok');
-    expect(mockProcTopologyAwait).not.toHaveBeenCalled();
+    expect(procTopologyAwait_mock).not.toHaveBeenCalled();
   });
 });

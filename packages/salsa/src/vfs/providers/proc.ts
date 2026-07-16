@@ -75,7 +75,6 @@ const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 const PROC_JOBS_PREFIX: string = '/proc/jobs';
 const PAGE: number = 100;
 let procTopologyPromise: Promise<void> | null = null;
-let procTopologyState: ProcTopologyState = 'idle';
 let procTopologyFailure: string | undefined;
 
 /** Lifecycle states for the session's global topology sweep. */
@@ -668,7 +667,6 @@ async function procTopology_run(): Promise<void> {
 export function procTopology_warmup(): Promise<void> {
   if (procTopologyPromise) return procTopologyPromise;
 
-  procTopologyState = 'running';
   procTopologyFailure = undefined;
   const sweep: Promise<void> = procTopology_run();
   procTopologyPromise = sweep;
@@ -677,16 +675,15 @@ export function procTopology_warmup(): Promise<void> {
       if (procTopologyPromise !== sweep) return;
       procTopologyPromise = null;
       if (procCache_get().warmupComplete) {
-        procTopologyState = 'complete';
+        procTopologyFailure = undefined;
       } else {
-        procTopologyState = 'failed';
         procTopologyFailure = 'the topology sweep ended before the index completed';
       }
     },
     (error: unknown): void => {
       if (procTopologyPromise !== sweep) return;
       procTopologyPromise = null;
-      procTopologyState = 'failed';
+      procCache_get().warmup_abort();
       procTopologyFailure = error instanceof Error ? error.message : String(error);
     },
   );
@@ -699,7 +696,10 @@ export function procTopology_warmup(): Promise<void> {
  * @returns A snapshot of the lifecycle state and any failure reason.
  */
 export function procTopology_status(): ProcTopologyStatus {
-  return { state: procTopologyState, failure: procTopologyFailure };
+  if (procTopologyPromise) return { state: 'running', failure: undefined };
+  if (procTopologyFailure !== undefined) return { state: 'failed', failure: procTopologyFailure };
+  if (procCache_get().warmupComplete) return { state: 'complete', failure: undefined };
+  return { state: 'idle', failure: undefined };
 }
 
 /**
@@ -732,6 +732,16 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
     }
     await feedInstances_ensureLoaded(feedID);
   } else {
+    const activeSweep: Promise<void> | null = procTopologyPromise;
+    if (activeSweep) {
+      try {
+        await activeSweep;
+      } catch {
+        // A full refresh replaces any failed sweep with a new idle lifecycle.
+      }
+    }
+    procTopologyPromise = null;
+    procTopologyFailure = undefined;
     await procCache_build();
   }
 }

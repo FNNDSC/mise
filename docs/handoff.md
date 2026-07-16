@@ -69,6 +69,9 @@ The current release branch completes the operational follow-up:
 - Global `proc` queries refuse partial results while warming or after failure;
   `--force` joins the existing sweep without starting another. Targeted numeric
   lookup and navigation remain available.
+- A full `proc refresh` resets the old topology lifecycle and starts exactly one
+  replacement sweep. Failed sweeps clear prompt progress, and daemon output
+  reports the eventual `Topology` ready/failure result.
 - `chell --remote -c '<command>'` now executes once through the attached daemon,
   returns the remote status, closes the transport, and exits instead of entering
   or leaving behind an interactive attachment.

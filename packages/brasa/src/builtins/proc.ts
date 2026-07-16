@@ -3,7 +3,7 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_status, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { procCache_get, type ProcFeed, type ProcFeedScopeCounts, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
@@ -222,6 +222,9 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
 
   try {
     await procCache_refresh(feedID);
+    if (feedID === undefined) {
+      void procTopology_warmup().catch((): void => { /* surfaced by proc topology status */ });
+    }
     spinner.stop();
     return envelope_ok(`${chalk.green(`/proc cache refreshed (${scope})`)}\n`);
   } catch (error: unknown) {
@@ -241,7 +244,7 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
  */
 async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args.slice(1));
-  const query: string | undefined = (parsed['_'] as string[])[0];
+  const query: string | undefined = parsed._[0];
   if (!query) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red('Usage: proc find <instance_id | plugin_name_substring>')}\n`);
@@ -298,7 +301,7 @@ async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
  */
 async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args.slice(1));
-  const query: string | undefined = (parsed['_'] as string[])[0];
+  const query: string | undefined = parsed._[0];
   if (!query) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red('Usage: proc feeds <title_substring>')}\n`);

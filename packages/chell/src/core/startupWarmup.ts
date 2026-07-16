@@ -18,9 +18,9 @@ import {
   type PrefetchResult,
 } from '@fnndsc/brasa';
 import { daemon_launch } from '@fnndsc/calypso';
-import { errorStack, procCache_get, type Result, type StackMessage } from '@fnndsc/cumin';
+import { errorStack, procCache_get, type ProcWarmupProgress, type Result, type StackMessage } from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
+import { procCache_refresh, procTopology_status, procTopology_warmup, type ProcTopologyStatus } from '@fnndsc/salsa';
 import type { BootStatus } from '../lib/bootsequence.js';
 
 /** Startup cache selections shared by interactive and daemon modes. */
@@ -156,7 +156,23 @@ export async function startupWarmup_run(
     if (jobsResult.ok) {
       reporter?.log('ok', 'Jobs', `Indexed ${jobsResult.count ?? 0} feed(s) — topology warming in background`);
       errorStack.scope_run((): void => {
-        procTopology_warmup().catch((): void => { /* non-fatal */ });
+        const topologySweep: Promise<void> = procTopology_warmup();
+        void topologySweep.then(
+          (): void => {
+            const topology: ProcTopologyStatus = procTopology_status();
+            if (topology.state !== 'complete') {
+              reporter?.log('fail', 'Topology', `Warm-up failed: ${topology.failure ?? 'the topology index did not complete'}`);
+              return;
+            }
+            const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
+            const total: number = progress.total > 0 ? progress.total : progress.loaded;
+            reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${total} job(s) indexed`);
+          },
+          (error: unknown): void => {
+            const message: string = error instanceof Error ? error.message : String(error);
+            reporter?.log('fail', 'Topology', `Warm-up failed: ${message}`);
+          },
+        );
       });
     } else {
       result.failures.push('Jobs');

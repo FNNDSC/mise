@@ -198,7 +198,7 @@ Status colours in `ls -l`: green = `finishedSuccessfully`, yellow = `started`/`r
 The cache is built lazily on first access to `/proc`. Rebuild explicitly after external activity (other users, web GUI):
 
 ```bash
-proc refresh              # rebuild all
+proc refresh              # rebuild all and start one replacement topology sweep
 proc refresh feed_123     # scope to one feed
 ```
 
@@ -257,7 +257,7 @@ whoami                  # current user and CUBE URL
 whereami                # current working directory
 connect --user <u> --password <p> <url>
 logout
-proc refresh            # rebuild /proc job cache
+proc refresh            # rebuild /proc job cache and restart topology warm-up
 proc refresh feed_123   # scope rebuild to one feed
 ```
 

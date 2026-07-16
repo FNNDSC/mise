@@ -107,7 +107,7 @@ export function status_isTerminal(status: string | null | undefined): boolean {
 
 /**
  * Warm-up progress counters for the prompt indicator.
- * total is always 0 during global sweep (unknown upfront).
+ * total is zero until the server reports the visible plugin-instance count.
  * active transitions false→true when sweep starts, true→false when done.
  */
 export interface ProcWarmupProgress {
@@ -360,6 +360,16 @@ export class ProcCache {
 
   warmup_complete(): void {
     this._warmupComplete = true;
+    this._warmupProgress = { ...this._warmupProgress, active: false };
+  }
+
+  /**
+   * Stops an unsuccessful warm-up without marking its topology complete.
+   *
+   * @returns Nothing.
+   */
+  warmup_abort(): void {
+    this._warmupComplete = false;
     this._warmupProgress = { ...this._warmupProgress, active: false };
   }
 

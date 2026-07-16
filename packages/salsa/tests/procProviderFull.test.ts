@@ -351,6 +351,22 @@ describe('cache build / warmup / refresh', () => {
     expect(procTopology_status()).toEqual({ state: 'failed', failure: 'connection lost' });
   });
 
+  it('clears active prompt progress when a later topology page fails', async () => {
+    cache.built_set();
+    const page_fetch = jest.fn()
+      .mockResolvedValueOnce({
+        data: [{ id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 'started' }],
+        totalCount: 2,
+      })
+      .mockRejectedValueOnce(new Error('second page lost'));
+    mockClientGet.mockResolvedValue({ getPluginInstances: page_fetch });
+
+    await expect(procTopology_warmup()).rejects.toThrow('second page lost');
+
+    expect(cache.warmupProgress_get()).toEqual({ loaded: 1, total: 2, active: false });
+    expect(procTopology_status()).toEqual({ state: 'failed', failure: 'second page lost' });
+  });
+
   it('procTopology_warmup sweeps instances and completes', async () => {
     cache.built_set();
     mockClientGet.mockResolvedValue(
@@ -467,6 +483,20 @@ describe('cache build / warmup / refresh', () => {
     await procCache_refresh();
     expect(cache.built).toBe(true);
     expect(cache.feed_get(1)).toBeDefined();
+  });
+
+  it('resets completed topology lifecycle before a full cache rebuild', async () => {
+    cache.built_set();
+    mockClientGet.mockResolvedValue(pagingClient([], []));
+    await procTopology_warmup();
+    expect(procTopology_status().state).toBe('complete');
+
+    mockClientGet.mockResolvedValue(pagingClient([{ id: 2, name: 'fresh' }], []));
+    await procCache_refresh();
+
+    expect(procTopology_status()).toEqual({ state: 'idle', failure: undefined });
+    expect(cache.warmupComplete).toBe(false);
+    expect(cache.feed_get(2)).toBeDefined();
   });
 
   it('procCache_build (via refresh) records an error when not connected', async () => {

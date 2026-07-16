@@ -12,6 +12,7 @@
 
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine } from '@fnndsc/brasa';
+import chalk from 'chalk';
 import { builtin_prompt } from '../builtins/sys/prompt.js';
 
 /** Commands the CLI surface runs locally and never forwards to the engine. */
@@ -34,4 +35,26 @@ export async function surfaceLine_execute(engine: BrasaEngine, line: string): Pr
     return [];
   }
   return engine.line_execute(line);
+}
+
+/**
+ * Executes an interactive line without allowing an engine rejection to escape
+ * the readline event callback and terminate the ChELL process.
+ *
+ * Script and one-shot callers continue to use {@link surfaceLine_execute} so
+ * they can apply their own stop-on-error policy.
+ *
+ * @param engine - The local or remote engine to execute through.
+ * @param line - The raw interactive command line.
+ * @returns The engine envelopes, or one error envelope when execution rejects.
+ */
+export async function surfaceLine_executeSafely(engine: BrasaEngine, line: string): Promise<CommandEnvelope[]> {
+  try {
+    return await surfaceLine_execute(engine, line);
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    process.exitCode = 1;
+    console.error(chalk.red(`Command error: ${message}`));
+    return [{ status: 'error', rendered: '' }];
+  }
 }

@@ -217,6 +217,22 @@ describe('line_execute', () => {
     expect(envelopes).toEqual([{ status: 'ok', rendered: 'pipeline: myPipe\n' }]);
   });
 
+  it('keeps output redirection in the final local pipe segment', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+    mockPipeline.mockResolvedValue({ status: 'ok', rendered: 'pipeline: myPipe\n' });
+    mockSegmentPipe.mockResolvedValue(Buffer.alloc(0));
+
+    const envelopes = await line_execute('myPipe --signalflow | signalflow - > ~/tmp/pipeline.txt');
+
+    expect(mockPipeline).toHaveBeenCalledWith(['diagram', 'myPipe', '--signalflow']);
+    expect(mockSegmentPipe).toHaveBeenCalledWith(
+      'signalflow - > ~/tmp/pipeline.txt',
+      Buffer.from('pipeline: myPipe\n'),
+    );
+    expect(mockWriteFile).not.toHaveBeenCalled();
+    expect(envelopes).toEqual([{ status: 'ok', rendered: '' }]);
+  });
+
   it('delegates an unknown piped command to chili during capture', async () => {
     const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     mockSegmentPipe.mockResolvedValue(Buffer.from(''));

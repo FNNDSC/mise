@@ -17,7 +17,7 @@ import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
-import { surfaceLine_execute } from './surfaceDispatch.js';
+import { surfaceLine_executeSafely } from './surfaceDispatch.js';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 
 /**
@@ -97,7 +97,7 @@ export class REPL {
 
       const startMs: number = Date.now();
       process.exitCode = 0;
-      await surfaceLine_execute(this.engine, line);
+      await surfaceLine_executeSafely(this.engine, line);
       this.lastCommandDurationMs = Date.now() - startMs;
       this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
 

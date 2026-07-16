@@ -27,7 +27,7 @@
   "scripts": {
     "build": "rm -fr dist types && tsc && chmod +x ./dist/cli.js",
     "test": "jest --coverage",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "test -f dist/index.js && test -f dist/index.d.ts"
   },
   "bin": {
     "cumin": "./dist/cli.js"

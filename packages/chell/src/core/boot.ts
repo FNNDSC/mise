@@ -18,9 +18,7 @@ import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
 import { session } from '@fnndsc/brasa';
-import { error_stripDebugPrefix } from '@fnndsc/brasa';
-import { Result, errorStack, Ok, Err, StackMessage, Client } from '@fnndsc/cumin';
-import { vfs } from '@fnndsc/brasa';
+import { Result, Ok, Err, Client } from '@fnndsc/cumin';
 import { spinner } from '@fnndsc/brasa';
 import { logo_print, logo_animatePulse, logo_animateStop } from '../lib/logo.js';
 import {
@@ -32,10 +30,8 @@ import {
 } from '../lib/bootsequence.js';
 import { settings_load } from '../config/settings.js';
 import { cli_parse, ChellCLIConfig } from './cli.js';
-import { prefetch_path, prefetch_withSpinner, PrefetchResult } from '@fnndsc/brasa';
 import { bootFlags_compute, type BootFlags } from './bootFlags.js';
-import { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { context_getSingle, procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
+import { context_getSingle } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 import { engine_create, stopOnError_set, type BrasaEngine } from '@fnndsc/brasa';
 import { sessionConnect_fromSaved, type SavedSessionResult } from '@fnndsc/brasa';
@@ -43,6 +39,12 @@ import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
 import { versionReport_build, infoReport_build, stackInfo_get, type PackageInfo } from '@fnndsc/brasa';
+import {
+  daemonSession_run,
+  startupWarmup_run,
+  type StartupWarmupCache,
+  type StartupWarmupFlags,
+} from './startupWarmup.js';
 
 /**
  * Extended Writable stream with muted property for password input.
@@ -86,122 +88,6 @@ async function password_prompt(user: string, url: string): Promise<string> {
   });
 }
 
-interface BootCache {
-  plugins?: number;
-  pipelines?: number;
-  feeds?: number;
-  public?: number;
-}
-
-interface PrefetchFlags {
-  plugins: boolean;
-  feeds: boolean;
-  publicFeeds: boolean;
-  jobs: boolean;
-}
-
-/**
- * Warm the VFS cache for plugins, feeds, and jobs.
- *
- * @param flags       - Which resource types to prefetch.
- * @param user        - Authenticated ChRIS username (for feed path construction).
- * @param isInteractive - Whether to show spinners vs plain log lines.
- * @param boot        - Boot logger; null in non-interactive modes.
- * @returns Counts for each prefetched resource type.
- */
-async function cache_prefetch(
-  flags: PrefetchFlags,
-  user: string | undefined,
-  isInteractive: boolean,
-  boot: BootLogger | null,
-): Promise<BootCache> {
-  const result: BootCache = {};
-
-  // --- Plugins & Pipelines ---
-  if (!session.offline && flags.plugins) {
-    const r: PrefetchResult = await prefetch_withSpinner('Plugins', 'Prefetching /bin for completions', isInteractive, async () => {
-      const vfsResult: Result<ListingItem[]> = await vfs.data_get('/bin');
-      if (vfsResult.ok) {
-        return {
-          ok: true,
-          count: vfsResult.value.filter((i: { type: string }) => i.type === 'plugin').length,
-          pipelineCount: vfsResult.value.filter((i: { type: string }) => i.type === 'pipeline').length,
-        };
-      }
-      const err: StackMessage | undefined = errorStack.stack_pop();
-      return { ok: false, message: err ? error_stripDebugPrefix(err.message) : 'Failed to prefetch /bin' };
-    });
-    if (r.ok) {
-      result.plugins = r.count;
-      result.pipelines = r.pipelineCount;
-      boot?.log('ok', 'Plugins',   `Cached ${r.count         ?? 0} plugin(s)`);
-      boot?.log('ok', 'Pipelines', `Cached ${r.pipelineCount ?? 0} pipeline(s)`);
-    } else {
-      boot?.log('fail', 'Plugins', r.message || 'Failed to prefetch /bin');
-    }
-  } else if (!session.offline) {
-    boot?.log('skip', 'Plugins',   'Prefetch disabled');
-    boot?.log('skip', 'Pipelines', 'Prefetch disabled');
-  } else {
-    boot?.log('skip', 'Plugins',   'Offline mode');
-    boot?.log('skip', 'Pipelines', 'Offline mode');
-  }
-
-  // --- Feeds ---
-  if (!session.offline && flags.feeds) {
-    const feedPath: string | undefined = user ? `/home/${user}/feeds` : undefined;
-    if (feedPath) {
-      const r: PrefetchResult = await prefetch_withSpinner('Feeds', 'Prefetching user feeds', isInteractive, () => prefetch_path(feedPath));
-      if (r.ok) {
-        result.feeds = r.count;
-        boot?.log('ok',   'Feeds', `Cached ${r.count ?? 0} item(s) from ${feedPath}`);
-      } else {
-        boot?.log('fail', 'Feeds', r.message || `Prefetch failed for ${feedPath}`);
-      }
-    } else {
-      boot?.log('skip', 'Feeds', 'No user context');
-    }
-    if (flags.publicFeeds) {
-      const r: PrefetchResult = await prefetch_withSpinner('Public', 'Prefetching public feeds', isInteractive, () => prefetch_path('/PUBLIC'));
-      if (r.ok) {
-        result.public = r.count;
-        boot?.log('ok',   'Public', `Cached ${r.count ?? 0} item(s) from /PUBLIC`);
-      } else {
-        boot?.log('fail', 'Public', r.message || 'Prefetch failed for /PUBLIC');
-      }
-    }
-  } else if (!session.offline) {
-    boot?.log('skip', 'Feeds', 'Prefetch disabled');
-  } else {
-    boot?.log('skip', 'Feeds', 'Offline mode');
-  }
-
-  // --- Jobs ---
-  if (!session.offline && flags.jobs) {
-    const r: PrefetchResult = await prefetch_withSpinner('Jobs', 'Indexing /proc/jobs (feed list)...', isInteractive, async () => {
-      try {
-        await procCache_refresh();
-        const { procCache_get } = await import('@fnndsc/cumin');
-        return { ok: true, count: procCache_get().feedIDs_get().length };
-      } catch (err: unknown) {
-        const msg: string = err instanceof Error ? err.message : String(err);
-        return { ok: false, message: msg };
-      }
-    });
-    if (r.ok) {
-      boot?.log('ok',   'Jobs', `Indexed ${r.count ?? 0} feed(s) — topology warming in background`);
-    } else {
-      boot?.log('fail', 'Jobs', r.message || 'Failed to index /proc/jobs');
-    }
-  } else if (!session.offline) {
-    boot?.log('skip', 'Jobs', 'Prefetch disabled');
-  } else {
-    boot?.log('skip', 'Jobs', 'Offline mode');
-  }
-
-  return result;
-}
-
 /**
  * Assemble and render the Neofetch-style boot info panels.
  *
@@ -213,7 +99,7 @@ async function cache_prefetch(
 function bootPanels_render(
   context: SingleContext,
   mode: string,
-  cache: BootCache,
+  cache: StartupWarmupCache,
   useAsciiBoot: boolean,
 ): void {
   const headerItems: BootInfoItem3[] = stackInfo_get().map(
@@ -498,8 +384,14 @@ async function interactiveSession_run(
   flags: Pick<BootFlags, 'prefetchPlugins' | 'prefetchFeeds' | 'prefetchPublicFeeds' | 'prefetchJobs' | 'isInteractiveSession' | 'useAsciiBoot'>,
   boot: ReturnType<typeof bootLogger_create> | null,
 ): Promise<void> {
-  const cache: BootCache = await cache_prefetch(
-    { plugins: flags.prefetchPlugins, feeds: flags.prefetchFeeds, publicFeeds: flags.prefetchPublicFeeds, jobs: flags.prefetchJobs },
+  const warmupFlags: StartupWarmupFlags = {
+    plugins: flags.prefetchPlugins,
+    feeds: flags.prefetchFeeds,
+    publicFeeds: flags.prefetchPublicFeeds,
+    jobs: flags.prefetchJobs,
+  };
+  const cache: StartupWarmupCache = await startupWarmup_run(
+    warmupFlags,
     currentContext.user ?? undefined,
     flags.isInteractiveSession,
     boot,
@@ -523,16 +415,6 @@ async function interactiveSession_run(
     }
     console.log(chalk.gray("Tip: type 'help' for available commands."));
     console.log('');
-  }
-
-  // Fire instance topology warm-up — does NOT block the REPL.
-  // Progress is shown in the prompt as [proc: N/total] until complete.
-  // Fenced in its own error-stack scope so its background pushes cannot land
-  // in a concurrent foreground command's drain window.
-  if (!session.offline && flags.prefetchJobs) {
-    errorStack.scope_run(() => {
-      procTopology_warmup().catch(() => { /* non-fatal */ });
-    });
   }
 
   const repl: REPL = new REPL(engine);
@@ -625,10 +507,19 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // --- Daemon Mode ---
   // Host the connected engine over WebSocket and stay alive on the server.
   if (config.mode === 'daemon') {
-    // The duplicate-identity guard lives in daemon_launch, so both this path and
-    // the standalone calypso binary are protected by one check.
-    const { daemon_launch } = await import('@fnndsc/calypso');
-    await daemon_launch(engine);
+    const warmupFlags: StartupWarmupFlags = {
+      plugins: prefetchPlugins,
+      feeds: prefetchFeeds,
+      publicFeeds: prefetchPublicFeeds,
+      jobs: prefetchJobs,
+    };
+    await daemonSession_run(
+      engine,
+      currentContext.user ?? undefined,
+      warmupFlags,
+      isInteractiveSession,
+      boot ?? bootLogger_create('ChELL Boot', useAsciiBoot),
+    );
     return;
   }
 

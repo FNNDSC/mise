@@ -107,7 +107,7 @@ describe('nodeJoins_resolve', () => {
 describe('feedJoins_ensure', () => {
   it('resolves every unresolved ts node in the feed', async () => {
     cache.feed_add({
-      id: 5, title: 'f', creationDate: '', finishedJobs: 0, erroredJobs: 0,
+      id: 5, title: 'f', ownerUsername: '', public: false, creationDate: '', finishedJobs: 0, erroredJobs: 0,
       startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
     });
     add(10, null, 'pl-root');

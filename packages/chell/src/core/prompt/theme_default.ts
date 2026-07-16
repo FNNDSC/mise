@@ -13,7 +13,7 @@
 
 import chalk from 'chalk';
 import type { PromptContext, PromptTheme } from './index.js';
-import { ansi_visibleLength, path_truncate } from './utils.js';
+import { ansi_visibleLength, path_truncate, procProgress_format } from './utils.js';
 
 /** Fraction of terminal width allowed before path truncation kicks in. */
 const FILL_RATIO: number = 0.8;
@@ -40,7 +40,7 @@ export class ThemeDefault implements PromptTheme {
 
     const glyph: string = ctx.lastExitCode !== 0 ? chalk.red('$ ') : chalk.green('$ ');
     const warmup: string = ctx.procWarmup
-      ? chalk.dim(` [proc: ${ctx.procWarmup.loaded}]`)
+      ? chalk.dim(` [proc: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`)
       : '';
     return (
       modePrefix +

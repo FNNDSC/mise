@@ -1,10 +1,10 @@
 # Active project handoff
 
-- Last updated: 2026-07-15
-- Last verified against `main`: `d7c332b`
-- Working branch: `agent/pipeline-diagram`
-- Current milestone: pipeline-template diagrams and contextual feed diagrams
-- Next action: commit the reviewed implementation; open the feature PR when requested
+- Last updated: 2026-07-16
+- Last verified against `main`: `1896be7`
+- Working branch: `agent/proc-warmup-release`
+- Current milestone: deterministic `/proc` warm-up and remote one-shot release
+- Next action: merge the feature PR, then merge and publish the coordinated Version Packages PR
 
 ## Current truth
 
@@ -23,17 +23,17 @@
 - Stage 3 natural-language intent remains undesigned. Do not create its epic or
   choose a provider without a separate design grill.
 
-## Current branch
+## Recently completed
 
-This branch makes registered CUBE pipeline templates visible through the same
-diagram machinery already used for instantiated feed DAGs:
+PR #140 (`e630f79`) made registered CUBE pipeline templates visible through the
+same diagram machinery already used for instantiated feed DAGs:
 
 - `pipeline diagram <id|name|search>` draws the authored pipings as a shallow
   tree. `--withargs` appends non-null stored plugin defaults; `--signalflow`
   emits SignalFlow YAML.
 - Pipelines exposed through `/bin` accept `--diagram`, optionally followed by
-  `--withargs` or `--signalflow`, and return the same structured envelope as the
-  explicit command.
+  `--withargs` or `--signalflow`; bare `--signalflow` is the direct SignalFlow
+  alias. They return the same structured envelope as the explicit command.
 - Pipeline pipings are never collapsed: every authored title/default set stays
   visible. Feed collapse remains unchanged.
 - `feed diagram [<specifier>]` is an exact shallow alias of `feed tree`.
@@ -47,41 +47,74 @@ diagram machinery already used for instantiated feed DAGs:
 The detailed model and rendering rationale lives in
 [feed-dag-viewer.adoc](feed-dag-viewer.adoc).
 
+PR #142 (`71a6cd4`) completed the executable and daemon follow-up:
+
+- Dynamic pipeline executables provide contextual `--help`, and bare
+  `<pipeline> --signalflow` routes to the pipeline SignalFlow emitter.
+- Remote pipe-segment failures propagate back to the engine without killing the
+  interactive client. Final redirection stays on the originating surface, so
+  shell expansion and local paths have local meaning.
+- Interactive and daemon hosts share startup warming. Daemon mode reports
+  Plugins, Pipelines, Feeds, Public, and Jobs status, then reports `Engine Ready`
+  before binding and publishing its berth. A failed warm-up is reported
+  explicitly; the daemon still starts and loads that data lazily.
+
+The current release branch completes the operational follow-up:
+
+- `/proc` indexes the union of owned/shared and public CUBE feeds, deduplicates
+  overlaps, retains ownership/public metadata, and tracks the deterministic
+  plugin-instance total during topology warm-up.
+- Prompt progress renders `N/M f%` without presenting 100% while work is active.
+  `proc stat` reports exclusive U/P/S feed scope and explicit topology lifecycle.
+- Global `proc` queries refuse partial results while warming or after failure;
+  `--force` joins the existing sweep without starting another. Targeted numeric
+  lookup and navigation remain available.
+- A full `proc refresh` resets the old topology lifecycle and starts exactly one
+  replacement sweep. Failed sweeps clear prompt progress, and daemon output
+  reports the eventual `Topology` ready/failure result.
+- `chell --remote -c '<command>'` now executes once through the attached daemon,
+  returns the remote status, closes the transport, and exits instead of entering
+  or leaving behind an interactive attachment.
+
 ## Verification state
 
-- Focused cumin and brasa tests are green, including path extraction, feed
-  resolution, shallow/SignalFlow output, pipeline arguments/joins, and `/bin`
-  envelope equivalence.
-- A clean `make taco` completed successfully. After review fixes, the affected
-  full suites also pass: cumin 605 tests, salsa 362 tests, and brasa 660 tests;
-  cumin, salsa, and brasa compile in dependency order.
+- The pipeline feature passed focused and full cumin, salsa, and brasa suites,
+  including path extraction, feed resolution, shallow/SignalFlow output,
+  pipeline arguments/joins, and `/bin` envelope equivalence. A clean `make taco`
+  completed successfully before PR #140 merged.
+- PR #142 added coverage for executable utility routing, contextual help,
+  remote pipe failures, surface-owned redirection, shared startup warming, and
+  daemon publication ordering. Strict Node 22/24 CI passed before merge.
+- The current release branch adds capped-pagination, public-feed union,
+  warm-up lifecycle/failure, prompt progress, command gating, and remote
+  one-shot regression coverage. The dependency-ordered build, full workspace
+  test suite (including permitted loopback daemon tests), and lint all pass;
+  lint reports only four pre-existing unused-disable warnings. Independent
+  standards and behavior audits report no remaining findings.
 - Package builds are run in dependency order; parallel downstream builds race
   workspace declaration regeneration and are not valid verification.
-- The configured ekanite token is expired, so an authenticated ChELL invocation
-  could not run. Public read-only CUBE resources verified pipeline 244's live
-  pipings/default-parameter shape, including `pl-topologicalcopy` with
-  `plugininstances = "1445,1447,1450"` (stored piping IDs). No CUBE state was
-  changed.
+- Before PR #140 merged, public read-only CUBE resources verified pipeline 244's
+  live pipings/default-parameter shape, including `pl-topologicalcopy` with
+  `plugininstances = "1445,1447,1450"` (stored piping IDs). Subsequent operator
+  invocations exercised authenticated pipeline executables on ekanite. No CUBE
+  state was changed by the verification.
 
 ## Published release state
 
-Published from `d7c332b`:
+Published from `1896be7` by Version Packages PR #143:
 
-- `@fnndsc/chell` 5.2.0
-- `@fnndsc/calypso` 0.4.0
-- `@fnndsc/brasa` 0.8.0
+- `@fnndsc/chell` 5.2.2
+- `@fnndsc/calypso` 0.4.2
+- `@fnndsc/brasa` 0.9.1
 - `@fnndsc/chili` 3.6.0
-- `@fnndsc/cumin` 3.7.0
-- `@fnndsc/salsa` 3.4.0
+- `@fnndsc/cumin` 3.8.0
+- `@fnndsc/salsa` 3.5.0
 
-This branch carries a changeset for minor releases of cumin, salsa, and brasa.
-The normal Version Packages PR and strict Node 22/24 checks apply after merge.
+The coordinated patch changeset targets chell 5.2.3, calypso 0.4.3, brasa
+0.9.2, chili 3.6.1, cumin 3.8.1, and salsa 3.5.1.
 
 ## Follow-ups and risks
 
-- The authenticated live command proof should be repeated after reconnecting to
-  ekanite; the public endpoint proof validates wire shape but not local stored
-  authentication/session configuration.
 - `packages/calypso/src/daemon/discovery.ts` is legacy single-file discovery;
   chell no longer uses it, but removal is separate cleanup.
 - [#107](https://github.com/FNNDSC/mise/issues/107): restore the CALYPSO browser

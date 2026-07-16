@@ -39,3 +39,19 @@ export function path_truncate(path: string, maxLen: number): string {
   const budget: number = maxLen - 3;
   return '...' + leaf.slice(-Math.max(budget, 0));
 }
+
+/**
+ * Formats active `/proc` warm-up progress for prompt themes.
+ *
+ * Active work is capped at 99%; completion removes the prompt segment instead
+ * of briefly presenting a misleading 100% while the sweep is still settling.
+ *
+ * @param loaded - Number of unique plugin instances loaded.
+ * @param total - Server-reported visible plugin-instance total.
+ * @returns Compact `N/M f%` progress text, or `N/?` before total is known.
+ */
+export function procProgress_format(loaded: number, total: number): string {
+  if (total <= 0) return `${loaded}/?`;
+  const percent: number = Math.min(99, Math.floor((loaded / total) * 100));
+  return `${loaded}/${total} ${percent}%`;
+}

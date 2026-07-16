@@ -11,6 +11,7 @@ function feed(id: number, over: Partial<ProcFeed> = {}): ProcFeed {
   return {
     id, title: `feed ${id}`, creationDate: '', finishedJobs: 0, erroredJobs: 0,
     startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0, ...over,
+    ownerUsername: over.ownerUsername ?? '', public: over.public ?? false,
   };
 }
 

@@ -192,7 +192,7 @@ export const promptContextSchema = z.object({
   physicalMode: z.boolean(),
   lastExitCode: z.number(),
   lastCommandDurationMs: z.number(),
-  procWarmup: z.object({ loaded: z.number() }).optional(),
+  procWarmup: z.object({ loaded: z.number(), total: z.number().optional() }).optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;

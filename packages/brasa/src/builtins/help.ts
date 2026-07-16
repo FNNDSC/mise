@@ -644,7 +644,7 @@ export const helpText: Record<string, CommandHelp> = {
   proc: {
     usage: 'proc <jobs|stat|feeds|refresh|find> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
-    description: '/proc/jobs is a job history inspector. Every computation ever run in ChRIS is a plugin instance — a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. cd into a feed to see what ran. ls -l shows job status at a glance. tree shows the full execution DAG. cat status, cat log, cat params give you CUBE data as plain text — no API queries to write, no UI to open. The in-memory cache makes this instant: built at login from the feed index, warmed in the background across all plugin instances. Once warm, all navigation, search, and path reconstruction are zero-cost in-memory operations.',
+    description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. cd into a feed to see what ran. ls -l shows job status at a glance. tree shows the full execution DAG. cat status, cat log, cat params give you CUBE data as plain text — no API queries to write, no UI to open. The in-memory cache is built at login and warmed across all visible plugin instances. Global queries refuse incomplete results during warm-up; add --force to wait for the existing sweep. Targeted numeric lookups and proc stat remain available immediately.',
     subcommands: [
       'jobs list                               List all feeds with full counter fields (default 20)',
       'jobs list --fields id,title,erroredJobs Select columns',
@@ -653,13 +653,15 @@ export const helpText: Record<string, CommandHelp> = {
       'jobs list --csv                         CSV output',
       'jobs list --all                         All feeds (no limit)',
       'jobs list --search failed               Filter by title substring',
+      'jobs list --force                       Wait for warm-up, then list complete results',
       'jobs inspect                            Show all available field names',
       'stat                                   Show cache summary',
       'stat <feed_id>                         Show raw counters + topology state for one feed',
-      'feeds <title>                          Search feed titles; returns /proc/jobs/feed_N paths',
+      'feeds <title> [--force]                Search feed titles; --force waits for warm-up',
       'refresh                                Rebuild entire proc cache',
       'refresh <feed_id>                      Rebuild cache for one feed only',
-      'find <id|name>                         Find instance by ID or plugin name substring',
+      'find <id>                              Targeted instance lookup; available during warm-up',
+      'find <name> [--force]                  Name search; --force waits for warm-up',
     ],
     examples: [
       'proc jobs list',

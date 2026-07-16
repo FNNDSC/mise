@@ -205,7 +205,7 @@ export async function builtin_cd(args: string[]): Promise<CommandEnvelope> {
     const { vfsDispatcher } = await import('@fnndsc/salsa');
     const cleanPath: string = vfsPath_normalize(logicalPath);
     // Treat the path as virtual if it is, or is a parent of, any registered
-    // provider prefix (e.g. /proc is parent of /proc/feeds).
+    // provider prefix (e.g. /proc is parent of /proc/jobs).
     const isParentOfVfs: boolean = vfsDispatcher.providers_get().some(
       (p: { prefix: string }) => p.prefix.startsWith(cleanPath + '/')
     );

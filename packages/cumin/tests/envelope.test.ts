@@ -95,13 +95,13 @@ describe('CommandEnvelope', () => {
     it('should record an executed intent resolution', () => {
       const trace: ResolutionTrace = {
         input: 'show me my running jobs',
-        proposed: 'ls /proc/feeds',
+        proposed: 'ls /proc/jobs',
         validated: true,
-        executed: 'ls /proc/feeds',
+        executed: 'ls /proc/jobs',
       };
       const envelope: CommandEnvelope = { ...envelope_ok('feed_1\n'), trace };
       expect(envelope.trace?.validated).toBe(true);
-      expect(envelope.trace?.executed).toBe('ls /proc/feeds');
+      expect(envelope.trace?.executed).toBe('ls /proc/jobs');
     });
 
     it('should record a rejected proposal without an executed command', () => {

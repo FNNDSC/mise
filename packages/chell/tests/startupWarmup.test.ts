@@ -5,6 +5,7 @@
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import type { BrasaEngine } from '@fnndsc/brasa';
+import type { StartupWarmupReporter } from '../src/core/startupWarmup.js';
 
 const mockDataGet = jest.fn();
 const mockSession: { offline: boolean } = { offline: false };
@@ -32,6 +33,7 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procCache_refresh: mockProcCacheRefresh,
+  procTopology_status: jest.fn(() => ({ state: 'complete', failure: undefined })),
   procTopology_warmup: mockTopologyWarmup,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
@@ -39,7 +41,14 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     stack_pop: mockStackPop,
     scope_run: (callback: () => void): void => callback(),
   },
-  procCache_get: jest.fn(() => ({ feedIDs_get: (): number[] => [1, 2, 3] })),
+  procCache_get: jest.fn(() => ({
+    feedIDs_get: (): number[] => [1, 2, 3],
+    warmupProgress_get: (): { loaded: number; total: number; active: boolean } => ({
+      loaded: 12,
+      total: 12,
+      active: false,
+    }),
+  })),
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({ daemon_launch: mockDaemonLaunch }));
 
@@ -86,11 +95,33 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 item(s) from /PUBLIC');
     expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feed(s) — topology warming in background');
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
+    expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 job(s) indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
     expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function));
 
     const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
     expect(readyOrder).toBeLessThan(mockDaemonListen.mock.invocationCallOrder[0]);
+  });
+
+  it('reports a background topology failure after publishing engine readiness', async () => {
+    mockTopologyWarmup.mockRejectedValueOnce(new Error('topology connection lost'));
+    const statusLog_mock = jest.fn<StartupWarmupReporter['log']>();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(engine, 'rudolph', {
+      plugins: true,
+      feeds: true,
+      publicFeeds: true,
+      jobs: true,
+    }, false, { log: statusLog_mock });
+    await Promise.resolve();
+
+    expect(statusLog_mock).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
+    expect(statusLog_mock).toHaveBeenCalledWith('fail', 'Topology', 'Warm-up failed: topology connection lost');
+    expect(mockDaemonListen).toHaveBeenCalledTimes(1);
   });
 
   it('reports incomplete readiness while still publishing a lazily loadable daemon', async () => {
@@ -158,6 +189,21 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('skip', 'Feeds', 'Offline mode');
     expect(report).toHaveBeenCalledWith('skip', 'Jobs', 'Offline mode');
     expect(mockDataGet).not.toHaveBeenCalled();
+  });
+
+  it('keeps asynchronous topology settlement out of the interactive logger', async () => {
+    const statusLog_mock = jest.fn<StartupWarmupReporter['log']>();
+
+    await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: true,
+    }, 'rudolph', true, { log: statusLog_mock });
+    await Promise.resolve();
+
+    expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
+    expect(statusLog_mock.mock.calls.some((call: unknown[]) => call[1] === 'Topology')).toBe(false);
   });
 
   it('skips private feeds without a user while still warming public feeds', async () => {

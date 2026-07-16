@@ -10,6 +10,8 @@ function feed(id: number, title = `feed ${id}`): ProcFeed {
   return {
     id,
     title,
+    ownerUsername: '',
+    public: false,
     creationDate: '2026-01-01T00:00:00Z',
     finishedJobs: 0,
     erroredJobs: 0,
@@ -44,6 +46,20 @@ describe('ProcCache', () => {
   });
 
   describe('feeds', () => {
+    it('counts visible feeds in exclusive user, shared, and public scopes', () => {
+      cache.feed_add({ ...feed(1), ownerUsername: 'me', public: false });
+      cache.feed_add({ ...feed(2), ownerUsername: 'me', public: true });
+      cache.feed_add({ ...feed(3), ownerUsername: 'other', public: false });
+      cache.feed_add({ ...feed(4), ownerUsername: 'other', public: true });
+
+      expect(cache.feedScopeCounts_get('me')).toEqual({
+        user: 2,
+        shared: 1,
+        public: 1,
+        total: 4,
+      });
+    });
+
     it('adds, gets, and lists feeds', () => {
       cache.feed_add(feed(1));
       cache.feed_add(feed(2));
@@ -177,7 +193,7 @@ describe('ProcCache', () => {
 
       cache.warmup_complete();
       expect(cache.warmupComplete).toBe(true);
-      expect(cache.warmupProgress_get()).toEqual({ loaded: 3, total: 0, active: false });
+      expect(cache.warmupProgress_get()).toEqual({ loaded: 3, total: 10, active: false });
     });
 
     it('warmupProgress_get returns a copy, not the internal object', () => {

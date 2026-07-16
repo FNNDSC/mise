@@ -1,11 +1,9 @@
 /**
- * @file Same-user daemon discovery.
+ * @file Legacy single-file same-user daemon discovery.
  *
- * The daemon writes its URL and attach token to a user-only-readable file so a
- * `chell --remote` client running as the same user can find it without the
- * token crossing any other channel. This mirrors the local-daemon model: the
- * perimeter is the loopback bind plus a token whose only distribution is a
- * 0600 file on the same machine.
+ * Retained for compatibility and its direct tests; current daemon launch and
+ * ChELL attachment use identity-keyed berths from `berth.ts`. This older model
+ * records only one daemon per OS user in a 0600 file.
  *
  * @module
  */
@@ -21,7 +19,7 @@ export interface Discovery {
 }
 
 /**
- * The per-user discovery file path.
+ * The legacy per-user discovery file path.
  *
  * @returns The path the daemon writes and a client reads.
  */

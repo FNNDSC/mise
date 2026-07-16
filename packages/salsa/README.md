@@ -119,17 +119,17 @@ See [Key Modules](#key-modules) for the full intent catalogue.
 | `/usr/bin` | `UsrBinVfsProvider` | Built-in shell commands (`whoami`, `whereami`) |
 | `/etc` | `EtcVfsProvider` | Config files (`compute.yaml`, `group`, `passwd`, `cube`) |
 | `/net/pacs/queries/` | `PacsVfsProvider` | PACS query results |
-| `/proc/feeds/` | `ProcVfsProvider` | Job monitoring DAG (backed by `ProcCache` in cumin) |
+| `/proc/jobs/` | `ProcVfsProvider` | Job monitoring DAG (backed by `ProcCache` in cumin) |
 | `*.chrislink` | resolved by dispatcher | Symlinks to other ChRIS paths |
 
 Providers implement a common interface: `list(path)` → `Result<VFSItem[]>` and `read(path)` → `Result<string>`.
 
-### `/proc/feeds/` — Job Monitoring
+### `/proc/jobs/` — Job Monitoring
 
 `ProcVfsProvider` mirrors the computation DAG of every visible feed. Each plugin instance is a directory; virtual files inside expose live status, params, and log:
 
 ```
-/proc/feeds/feed_123/
+/proc/jobs/feed_123/
 ├── status                  ← aggregate: running | finishedSuccessfully | finishedWithError
 ├── title
 └── pl-dircopy_456/         ← type=job in VFSItem; ls -l shows colour-coded status

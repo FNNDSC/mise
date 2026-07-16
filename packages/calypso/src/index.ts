@@ -1,11 +1,11 @@
 /**
  * @file The CALYPSO wire contract: public surface.
  *
- * calypso is the fifth mise package: the session daemon that hosts a chell
- * engine and serves it to surfaces over a WebSocket. This first slice is the
- * wire contract — the typed protocol schemas and the boundary validation
- * that every message crosses. The daemon, session bus, and remote client
- * build on it.
+ * calypso is the session host that serves a brasa engine to surfaces over a
+ * WebSocket. Its public API includes the typed wire contract and boundary
+ * validation, the daemon and launch path, structured session messages, and
+ * identity-keyed local berth discovery. Natural-language intent assistance is
+ * future work built above this deterministic session boundary.
  *
  * @see docs/calypso.adoc for the governing design.
  * @module

@@ -217,8 +217,19 @@ calypso                                             # daemon restores that sessi
 make daemon
 ----
 
-Either way, the daemon writes a per-user discovery file (its URL and a fresh
-attach token, readable only by you) so a local surface can find it.
+Before publishing its socket, daemon mode warms the same Plugins, Pipelines,
+Feeds, Public, and Jobs caches as interactive startup and reports each result.
+`Engine Ready` appears before the listening address: once the address is printed,
+the blocking warm-up is complete (job topology may continue warming in the
+background). The daemon later reports `Topology Ready — N/N job(s) indexed`, or
+an explicit `Topology Warm-up failed` status, when that background sweep settles.
+If part of the blocking warm-up fails, the daemon reports the incomplete labels
+explicitly and still starts; those resources remain lazily loadable.
+
+Either way, the daemon writes an identity-keyed berth containing its URL and a
+fresh attach token, readable only by the current OS user, under
+`$XDG_RUNTIME_DIR/calypso/` (or the platform temporary directory as fallback).
+This lets several daemons for different CUBE identities coexist on one machine.
 
 ==== Attaching to the daemon
 
@@ -228,16 +239,21 @@ local engine and no CUBE credentials — it drives the hosted session:
 [source,bash]
 ----
 chell --remote
+# choose one explicitly when several identity berths exist:
+chell --remote chris@https://cube.chrisproject.org/api/v1/
 # or, from a source checkout:
 make remote
 ----
 
-The remote surface discovers the running daemon through that per-user file and
-presents the daemon's live session. Because credentials stay in the daemon, the
-remote surface never handles them.
+The remote surface resolves a live berth and presents that daemon's session.
+Bare `--remote` attaches directly when exactly one berth is live, offers a picker
+when several are live in a terminal, and requires an explicit identity when
+several are live in a non-interactive context. Because credentials stay in the
+daemon, the remote surface never handles them.
 
-NOTE: The daemon is a *personal, single-session* host: one engine, one CUBE
-identity, many surfaces sharing it. It is not multi-user. See
+NOTE: Each daemon is a *personal, single-session* host: one engine, one CUBE
+identity, many surfaces sharing it. An OS account may run several such daemons,
+keyed by CUBE identity; this is not a network-facing multi-user service. See
 link:calypso.adoc[calypso.adoc] for the wire contract and design.
 
 == A first tour
@@ -251,7 +267,7 @@ Once connected, drive ChRIS as a filesystem:
 > ls /bin                  # every plugin, as a virtual executable
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name
-> ls /proc/feeds           # watch running jobs, live
+> ls /proc/jobs           # watch running jobs, live
 > feed tree 1669           # a feed's plugin-instance DAG, collapsed and status-coloured
 > feed diagram 1669        # the same shallow view under the diagram command
 > feed diagram --signalflow 1669 | signalflow -   # emit the DAG, render it with your tools

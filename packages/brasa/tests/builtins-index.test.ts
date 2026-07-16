@@ -184,7 +184,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
       { prefix: '/bin' },
       { prefix: '/usr/bin' },
       { prefix: '/etc' },
-      { prefix: '/proc/feeds' },
+      { prefix: '/proc/jobs' },
     ]),
     list: jest.fn().mockResolvedValue({ ok: true, value: [] })
   },

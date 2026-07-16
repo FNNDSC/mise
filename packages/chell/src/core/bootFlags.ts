@@ -32,7 +32,8 @@ export interface BootFlags {
  * @returns The resolved boot flags.
  */
 export function bootFlags_compute(config: ChellCLIConfig, isTTY: boolean): BootFlags {
-  const isInteractiveSession: boolean = config.mode !== 'execute' && config.mode !== 'script';
+  const isRemoteOneShot: boolean = config.mode === 'remote' && config.commandToExecute !== undefined;
+  const isInteractiveSession: boolean = config.mode !== 'execute' && config.mode !== 'script' && !isRemoteOneShot;
   const useAsciiBoot: boolean = (config.asciiBoot ?? false) || !isTTY;
   const prefetchFeeds: boolean = isInteractiveSession && (config.prefetchFeeds ?? true);
   return {

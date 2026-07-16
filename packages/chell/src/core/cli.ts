@@ -93,6 +93,9 @@ export function cliConfig_fromArgs(
     // connection, or CUBE credentials — but a `<user>@<url>` target names which
     // identity's daemon to attach to when several run on this machine.
     config = { mode: 'remote', connectConfig };
+    if (options.command !== undefined) {
+      config.commandToExecute = options.command;
+    }
   } else if (options.daemon) {
     config = { mode: 'daemon', physicalFS: options.physicalFS, connectConfig };
   } else if (options.file) {

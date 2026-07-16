@@ -31,7 +31,7 @@ export interface SessionPromptContext {
   lastExitCode: number;
   lastCommandDurationMs: number;
   /** Present while /proc topology warm-up is in progress. */
-  procWarmup?: { loaded: number };
+  procWarmup?: { loaded: number; total?: number };
 }
 
 /**
@@ -59,8 +59,8 @@ export async function sessionPromptContext_build(
   const isOffline: boolean = session.offline;
 
   const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
-  const procWarmup: { loaded: number } | undefined =
-    warmupRaw.active ? { loaded: warmupRaw.loaded } : undefined;
+  const procWarmup: { loaded: number; total: number } | undefined =
+    warmupRaw.active ? { loaded: warmupRaw.loaded, total: warmupRaw.total } : undefined;
 
   return {
     user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),

@@ -3,8 +3,8 @@
  *
  * Warms the VFS and process caches, reports each outcome through a small host
  * seam, and starts non-blocking job-topology warming after the jobs index is
- * available. Daemon startup additionally waits for this work before publishing
- * its listening berth.
+ * available. Daemon startup waits for the blocking cache indexes before
+ * publishing its listening berth, then reports topology settlement separately.
  *
  * @module
  */
@@ -18,9 +18,9 @@ import {
   type PrefetchResult,
 } from '@fnndsc/brasa';
 import { daemon_launch } from '@fnndsc/calypso';
-import { errorStack, procCache_get, type Result, type StackMessage } from '@fnndsc/cumin';
+import { errorStack, procCache_get, type ProcWarmupProgress, type Result, type StackMessage } from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
-import { procCache_refresh, procTopology_warmup } from '@fnndsc/salsa';
+import { procCache_refresh, procTopology_status, procTopology_warmup, type ProcTopologyStatus } from '@fnndsc/salsa';
 import type { BootStatus } from '../lib/bootsequence.js';
 
 /** Startup cache selections shared by interactive and daemon modes. */
@@ -52,6 +52,8 @@ export interface StartupWarmupReporter {
  * @param user - Authenticated username used to construct the feed path.
  * @param interactive - Whether progress may use an interactive spinner.
  * @param reporter - Host status logger, or null for silent status reporting.
+ * @param reportTopologySettlement - Whether to report the asynchronous topology
+ *   result; daemon hosts enable this, while interactive hosts use prompt progress.
  * @returns Cache counts and the labels of any failed warm-up operations.
  */
 export async function startupWarmup_run(
@@ -59,6 +61,7 @@ export async function startupWarmup_run(
   user: string | undefined,
   interactive: boolean,
   reporter: StartupWarmupReporter | null,
+  reportTopologySettlement: boolean = false,
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [] };
 
@@ -156,7 +159,27 @@ export async function startupWarmup_run(
     if (jobsResult.ok) {
       reporter?.log('ok', 'Jobs', `Indexed ${jobsResult.count ?? 0} feed(s) — topology warming in background`);
       errorStack.scope_run((): void => {
-        procTopology_warmup().catch((): void => { /* non-fatal */ });
+        const topologySweep: Promise<void> = procTopology_warmup();
+        if (reportTopologySettlement) {
+          void topologySweep.then(
+            (): void => {
+              const topology: ProcTopologyStatus = procTopology_status();
+              if (topology.state !== 'complete') {
+                reporter?.log('fail', 'Topology', `Warm-up failed: ${topology.failure ?? 'the topology index did not complete'}`);
+                return;
+              }
+              const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
+              const total: number = progress.total > 0 ? progress.total : progress.loaded;
+              reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${total} job(s) indexed`);
+            },
+            (error: unknown): void => {
+              const message: string = error instanceof Error ? error.message : String(error);
+              reporter?.log('fail', 'Topology', `Warm-up failed: ${message}`);
+            },
+          );
+        } else {
+          void topologySweep.catch((): void => { /* failure is visible through proc lifecycle state */ });
+        }
       });
     } else {
       result.failures.push('Jobs');
@@ -188,7 +211,7 @@ export async function daemonSession_run(
   reporter: StartupWarmupReporter,
 ): Promise<void> {
   await daemon_launch(engine, async (): Promise<void> => {
-    const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter);
+    const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
     if (cache.failures.length === 0) {
       reporter.log('ok', 'Engine', 'Ready');
     } else {

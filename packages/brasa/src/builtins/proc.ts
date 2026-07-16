@@ -3,8 +3,8 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { procCache_refresh, procFeed_ensureLoaded, jobs_find } from '@fnndsc/salsa';
-import { procCache_get, type ProcFeed, type ProcWarmupProgress, type Result, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { procCache_get, type ProcFeed, type ProcFeedScopeCounts, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
@@ -16,6 +16,62 @@ import {
 } from './proc.helpers.js';
 
 type ProcCache = ReturnType<typeof procCache_get>;
+
+/**
+ * Refuses a global cache query while topology warm-up is incomplete.
+ *
+ * @param command - Command the user can repeat with `--force`.
+ * @param force - Whether to await the active warm-up instead of refusing.
+ * @returns An error envelope when blocked, otherwise null.
+ */
+async function procWarmup_guard(command: string, force: boolean): Promise<CommandEnvelope | null> {
+  const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
+  const topology: ProcTopologyStatus = procTopology_status();
+  if (!progress.active && topology.state !== 'running' && topology.state !== 'failed') return null;
+
+  if (topology.state === 'failed') {
+    process.exitCode = 1;
+    const reason: string = topology.failure ? `: ${topology.failure}` : '';
+    return envelope_error('', undefined,
+      `${chalk.red(`proc: the visible-job index failed to warm${reason}.`)}\n` +
+      'Global queries are disabled to avoid incomplete results. Restart the session daemon to retry.\n'
+    );
+  }
+
+  if (force) {
+    spinner.start('Waiting for the complete /proc job index...');
+    try {
+      await procTopology_await();
+      const cache: ProcCache = procCache_get();
+      const settled: ProcTopologyStatus = procTopology_status();
+      if (settled.state !== 'complete' || cache.warmupProgress_get().active || !cache.warmupComplete) {
+        throw new Error('the topology sweep did not complete');
+      }
+      spinner.stop();
+      return null;
+    } catch (error: unknown) {
+      spinner.stop();
+      const message: string = error instanceof Error ? error.message : String(error);
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(`proc warm-up failed: ${message}`)}\n`);
+    }
+  }
+
+  const percent: number = progress.total > 0
+    ? Math.min(99, Math.floor((progress.loaded / progress.total) * 100))
+    : 0;
+  const count: string = progress.total > 0
+    ? `${progress.loaded}/${progress.total}, ${percent}%`
+    : 'initializing';
+  process.exitCode = 1;
+  return envelope_error('', undefined,
+    `${chalk.yellow(`proc: the visible-job index is still warming (${count}).`)}\n` +
+    'This query could return incomplete results.\n\n' +
+    'Wait for warm-up to finish, or run:\n' +
+    `  ${command} --force\n\n` +
+    '--force waits for the complete index and may take some time.\n'
+  );
+}
 
 // ── proc jobs ─────────────────────────────────────────────────────────────────
 
@@ -108,6 +164,8 @@ async function jobs_subcmd(args: string[]): Promise<CommandEnvelope> {
 
   const listArgs: string[] = second === 'list' ? args.slice(1) : args;
   const parsed: ParsedArgs = commandArgs_process(listArgs);
+  const blocked: CommandEnvelope | null = await procWarmup_guard('proc jobs list', !!parsed['force']);
+  if (blocked) return blocked;
 
   let entries: ProcJobEntry[] = procEntries_fromCache(procCache_get());
   entries = procEntries_filterBySearch(entries, String(parsed['search'] ?? ''));
@@ -164,6 +222,9 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
 
   try {
     await procCache_refresh(feedID);
+    if (feedID === undefined) {
+      void procTopology_warmup().catch((): void => { /* surfaced by proc topology status */ });
+    }
     spinner.stop();
     return envelope_ok(`${chalk.green(`/proc cache refreshed (${scope})`)}\n`);
   } catch (error: unknown) {
@@ -182,10 +243,18 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
  * @returns An envelope carrying the matched paths.
  */
 async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
-  const query: string | undefined = args[1];
+  const parsed: ParsedArgs = commandArgs_process(args.slice(1));
+  const query: string | undefined = parsed._[0];
   if (!query) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red('Usage: proc find <instance_id | plugin_name_substring>')}\n`);
+  }
+
+  const numeric: number = parseInt(query, 10);
+  const isInstanceID: boolean = !isNaN(numeric) && String(numeric) === query;
+  if (!isInstanceID) {
+    const blocked: CommandEnvelope | null = await procWarmup_guard(`proc find ${query}`, !!parsed['force']);
+    if (blocked) return blocked;
   }
 
   spinner.start(`Finding "${query}"...`);
@@ -231,11 +300,15 @@ async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
  * @returns An envelope carrying the matched feeds.
  */
 async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
-  const query: string | undefined = args[1];
+  const parsed: ParsedArgs = commandArgs_process(args.slice(1));
+  const query: string | undefined = parsed._[0];
   if (!query) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red('Usage: proc feeds <title_substring>')}\n`);
   }
+
+  const blocked: CommandEnvelope | null = await procWarmup_guard(`proc feeds ${query}`, !!parsed['force']);
+  if (blocked) return blocked;
 
   const cache: ProcCache = procCache_get();
   const matches: ProcFeed[] = cache.feeds_find(query);
@@ -265,15 +338,28 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
 
   if (!feedArg) {
     const warmup: ProcWarmupProgress = cache.warmupProgress_get();
-    const warmupLine: string = warmup.active
-      ? chalk.yellow(`in progress (${warmup.loaded} instances loaded)`)
+    const topology: ProcTopologyStatus = procTopology_status();
+    const context: SingleContext = await context_getSingle();
+    const counts: ProcFeedScopeCounts = cache.feedScopeCounts_get(context.user ?? '');
+    const warmupLine: string = topology.state === 'failed'
+      ? chalk.red(`failed${topology.failure ? `: ${topology.failure}` : ''}`)
+      : topology.state === 'running' || warmup.active
+        ? chalk.yellow(warmup.active ? 'in progress' : 'initializing')
+        : cache.warmupComplete
+          ? chalk.green('complete')
+          : chalk.dim('not started');
+    const jobCount: string = warmup.total > 0
+      ? `${warmup.loaded}/${warmup.total}`
       : cache.warmupComplete
-        ? chalk.green('complete')
-        : chalk.dim('not started');
+        ? `${warmup.loaded}/0`
+        : `${warmup.loaded}/?`;
 
     let rendered: string = `${chalk.bold('proc cache summary')}\n`;
-    rendered += `  feeds known    : ${chalk.cyan(String(cache.feedIDs_get().length))}\n`;
-    rendered += `  instances      : ${chalk.cyan(String(cache.instances_count()))}\n`;
+    rendered += `  visible feeds  : ${chalk.cyan(String(counts.total))}\n`;
+    rendered += `    user         : ${chalk.cyan(String(counts.user))}\n`;
+    rendered += `    public       : ${chalk.cyan(String(counts.public))}\n`;
+    rendered += `    shared       : ${chalk.cyan(String(counts.shared))}\n`;
+    rendered += `  jobs loaded    : ${chalk.cyan(jobCount)}\n`;
     rendered += `  topology sweep : ${warmupLine}\n`;
     return envelope_ok(rendered);
   }

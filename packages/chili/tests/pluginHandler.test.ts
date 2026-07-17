@@ -80,23 +80,25 @@ describe('PluginGroupHandler', () => {
 
 describe('PluginMemberHandler', () => {
   it('readme_print renders content or notes not-found', async () => {
-    const fetchSpy = jest.spyOn(PluginController.prototype, 'readmeContent_fetch').mockResolvedValue('README');
+    const document = { content: 'README', format: 'markdown', sourceUrl: 'http://r/raw/main/README.md' } as const;
+    const fetchSpy = jest.spyOn(PluginController.prototype, 'readmeDocument_fetch').mockResolvedValue(document);
     await new PluginMemberHandler().readme_print('http://r');
-    expect(mockReadmeRender).toHaveBeenCalledWith('README');
+    expect(mockReadmeRender).toHaveBeenCalledWith(document);
     fetchSpy.mockResolvedValue(null);
     await new PluginMemberHandler().readme_print('http://r');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('README not found'));
   });
 
-  it('plugin_readme resolves docs then prints, or returns null', async () => {
-    const docSpy = jest.spyOn(PluginController.prototype, 'documentationUrl_get').mockResolvedValue('http://d');
-    jest.spyOn(PluginController.prototype, 'readmeContent_fetch').mockResolvedValue('README');
-    expect(await new PluginMemberHandler().plugin_readme('5')).toBe('http://d');
+  it('plugin_readme fetches and renders the format-aware document', async () => {
+    const document = { content: 'README', format: 'markdown', sourceUrl: 'http://repo/README.md' };
+    mockReadmeFetch.mockResolvedValue(document);
+    expect(await new PluginMemberHandler().plugin_readme('5')).toBe(document.sourceUrl);
+    expect(mockReadmeRender).toHaveBeenCalledWith(document);
 
-    docSpy.mockResolvedValue(null);
+    mockReadmeFetch.mockResolvedValue(null);
     expect(await new PluginMemberHandler().plugin_readme('5')).toBeNull();
 
-    docSpy.mockRejectedValue(new Error('boom'));
+    mockReadmeFetch.mockRejectedValue(new Error('boom'));
     expect(await new PluginMemberHandler().plugin_readme('5')).toBeNull();
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
   });

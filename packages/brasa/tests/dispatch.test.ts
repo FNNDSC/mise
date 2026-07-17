@@ -76,10 +76,12 @@ const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
 const mockCommandHelpGet = jest.fn((): string | undefined => 'known help');
 const mockPipelineExecutableHelpRender = jest.fn((name: string): string => `PIPELINE HELP:${name}\n`);
+const mockPluginExecutableHelpRender = jest.fn((name: string): string => `PLUGIN HELP:${name}\n`);
 jest.unstable_mockModule('../src/builtins/help.js', () => ({
   help_render: mockHelpRender,
   args_checkHasHelpFlag: mockHasHelpFlag,
   commandHelp_get: mockCommandHelpGet,
+  pluginExecutableHelp_render: mockPluginExecutableHelpRender,
   pipelineExecutableHelp_render: mockPipelineExecutableHelpRender,
 }));
 
@@ -264,6 +266,18 @@ describe('command_dispatch', () => {
     expect(envelope?.rendered).toContain('HELP:feeds');
     // Delivered through the sink (default StdoutSink -> process.stdout).
     expect(writeSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('HELP:feeds');
+    writeSpy.mockRestore();
+  });
+
+  it('carries plugin executable output in an envelope through the sink', async () => {
+    mockPluginExecutable.mockResolvedValueOnce({ status: 'ok', rendered: 'PLUGIN HELP:pl-x-v1\n' });
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const envelope = await command_executeToEnvelope('pl-x-v1 --help', 0, false);
+
+    expect(envelope?.rendered).toBe('PLUGIN HELP:pl-x-v1\n');
+    expect(writeSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('PLUGIN HELP:pl-x-v1');
+    expect(logSpy).not.toHaveBeenCalled();
     writeSpy.mockRestore();
   });
 

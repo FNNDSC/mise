@@ -12,6 +12,7 @@ import { CLIoptions } from "../utils/cli.js";
 import { table_display } from "../screen/screen.js";
 import { PluginController } from "../controllers/pluginController.js";
 import { Context, chrisContext, errorStack, errorStack_getAllOfType, FilteredResourceData, Searchable } from "@fnndsc/cumin";
+import type { PluginReadmeDocument } from "@fnndsc/salsa";
 // import { plugins_fetchList, PluginListResult } from "../commands/plugins/list.js"; // No longer needed
 import { pluginFields_fetch } from "../commands/plugins/fields.js";
 import { plugins_searchByTerm, plugin_deleteById } from "../commands/plugins/delete.js";
@@ -217,10 +218,10 @@ export class PluginMemberHandler {
    * @param repoUrl - The base URL of the plugin repository.
    */
   async readme_print(repoUrl: string): Promise<void> {
-    const content: string | null = await this.controller.readmeContent_fetch(repoUrl);
-    if (content) {
+    const document: PluginReadmeDocument | null = await this.controller.readmeDocument_fetch(repoUrl);
+    if (document) {
       chiliLog(chalk.green.bold("\nREADME Content:"));
-      chiliLog(pluginReadme_render(content));
+      chiliLog(pluginReadme_render(document));
     } else {
       chiliLog(chalk.red("README not found in the repository."));
     }
@@ -235,13 +236,14 @@ export class PluginMemberHandler {
   async plugin_readme(pluginId: string): Promise<string | null> {
     try {
       chiliLog(`Fetching info for plugin with ID: ${pluginId}`);
-      const documentation: string | null = await this.controller.documentationUrl_get(pluginId);
-      if (!documentation) {
+      const document: PluginReadmeDocument | null = await pluginReadme_fetch(pluginId);
+      if (!document) {
         return null;
       }
-      chiliLog(documentation);
-      await this.readme_print(documentation);
-      return documentation;
+      chiliLog(document.sourceUrl);
+      chiliLog(chalk.green.bold("\nREADME Content:"));
+      chiliLog(pluginReadme_render(document));
+      return document.sourceUrl;
     } catch (error: unknown) {
       if (error instanceof Error) {
         chiliErrLog(`Error fetching plugin info: ${error.message}`);

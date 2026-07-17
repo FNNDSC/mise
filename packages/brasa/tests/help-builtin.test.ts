@@ -3,6 +3,7 @@ import {
   text_boxFormat,
   commandHelp_get,
   help_render,
+  pluginExecutableHelp_render,
   pipelineExecutableHelp_render,
   args_checkHasHelpFlag,
   builtin_help,
@@ -66,6 +67,13 @@ describe('help_render', () => {
     expect(help).toContain('--signalflow');
     expect(help).toContain('--source, --readme');
   });
+
+  it('renders dynamic plugin executable operations', () => {
+    const help: string = pluginExecutableHelp_render('pl-dircopy-v2.1.3');
+    expect(help).toContain('pl-dircopy-v2.1.3');
+    expect(help).toContain('--parameters');
+    expect(help).toContain('--readme --raw');
+  });
 });
 
 describe('args_checkHasHelpFlag', () => {
@@ -100,6 +108,12 @@ describe('builtin_help', () => {
   it('shows a specific command help when named', async () => {
     const envelope = await builtin_help(['ls']);
     expect(envelope.rendered).toContain('USAGE');
+  });
+
+  it('shows plugin executable help when a versioned plugin is named', async () => {
+    const envelope = await builtin_help(['pl-dircopy-v2.1.3']);
+    expect(envelope.rendered).toContain('pl-dircopy-v2.1.3');
+    expect(envelope.rendered).toContain('--parameters');
   });
 });
 

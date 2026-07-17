@@ -6,7 +6,10 @@
  *
  * @module
  */
-import { plugin_readme as salsaPlugin_readme } from "@fnndsc/salsa";
+import {
+  pluginReadmeDocument_fetch as salsaPluginReadmeDocument_fetch,
+  type PluginReadmeDocument,
+} from "@fnndsc/salsa";
 import { marked } from "marked";
 import TerminalRenderer from "marked-terminal";
 import chalk from "chalk";
@@ -38,18 +41,24 @@ marked.setOptions({
  * Fetches the raw README content for a plugin.
  *
  * @param pluginId - The ID of the plugin.
- * @returns A Promise resolving to the README content as a string, or `null` if not available.
+ * @returns README content with format metadata, or `null` if not available.
  */
-export async function pluginReadme_fetch(pluginId: string): Promise<string | null> {
-  return await salsaPlugin_readme(pluginId);
+export async function pluginReadme_fetch(pluginId: string): Promise<PluginReadmeDocument | null> {
+  return await salsaPluginReadmeDocument_fetch(pluginId);
 }
 
 /**
  * Renders raw README markdown/rst content for terminal display.
  *
- * @param content - Raw README string.
- * @returns ANSI-styled string ready for console output.
+ * reStructuredText is deliberately preserved: feeding it through a Markdown
+ * parser corrupts its structure. Markdown receives terminal styling.
+ *
+ * @param document - Raw README and its source format.
+ * @returns A terminal display string; Markdown is styled and RST is preserved.
  */
-export function pluginReadme_render(content: string): string {
-  return marked(content) as string;
+export function pluginReadme_render(document: PluginReadmeDocument): string {
+  if (document.format === 'rst') {
+    return document.content;
+  }
+  return marked(document.content) as string;
 }

@@ -320,11 +320,11 @@ describe('output redirection', () => {
 
 describe('line_execute — control flow', () => {
   it('short-circuits when a simulated plugin handles the command', async () => {
-    mockPluginExecutable.mockResolvedValueOnce(true);
+    mockPluginExecutable.mockResolvedValueOnce({ status: 'ok', rendered: 'PLUGIN OUTPUT\n' });
     const envelopes = await line_execute('whoami');
     expect(mockPluginExecutable).toHaveBeenCalledWith('whoami', []);
     expect(mockWhoami).not.toHaveBeenCalled();
-    expect(envelopes).toEqual([{ status: 'ok', rendered: '' }]);
+    expect(envelopes).toEqual([{ status: 'ok', rendered: 'PLUGIN OUTPUT\n' }]);
   });
 
   it('aborts a semicolon batch on error when stop-on-error is set', async () => {

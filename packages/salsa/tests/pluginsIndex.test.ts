@@ -33,6 +33,7 @@ import {
   plugin_run,
   plugins_searchableToIDs,
   pluginMeta_readmeContentFetch,
+  pluginReadmeDocument_fetch,
   pluginMeta_documentationUrlGet,
   pluginMeta_pluginIDFromSearch,
   plugin_delete,
@@ -136,10 +137,33 @@ describe('misc', () => {
     await expect(plugins_overview()).resolves.toBeUndefined();
   });
 
-  it('plugin_readme fetches docs then readme', async () => {
-    mockPlugin.pluginData_getFromSearch.mockResolvedValue({ hits: ['http://docs'] });
+  it('plugin_readme retains its string compatibility wrapper', async () => {
+    mockPlugin.pluginData_getFromSearch.mockResolvedValue({ hits: [{ public_repo: 'http://repo' }] });
     mockGet.mockResolvedValue({ status: 200, data: 'README' });
     expect(await plugin_readme('5')).toBe('README');
+  });
+
+  it('pluginReadmeDocument_fetch prefers public_repo and preserves RST format', async () => {
+    mockPlugin.pluginData_getFromSearch.mockResolvedValue({
+      hits: [{
+        public_repo: 'https://github.com/FNNDSC/pl-pfdo_med2img',
+        documentation: 'http://wiki',
+      }],
+    });
+    mockGet
+      .mockRejectedValueOnce(new Error('404'))
+      .mockResolvedValueOnce({ status: 200, data: 'pfdo_med2img\n============' });
+
+    expect(await pluginReadmeDocument_fetch('270')).toEqual({
+      content: 'pfdo_med2img\n============',
+      format: 'rst',
+      sourceUrl: 'https://github.com/FNNDSC/pl-pfdo_med2img/raw/master/README.rst',
+    });
+    expect(mockPlugin.pluginData_getFromSearch).toHaveBeenCalledWith(
+      { search: 'id: 270' },
+      ['public_repo', 'documentation'],
+    );
+    expect(mockGet).not.toHaveBeenCalledWith(expect.stringContaining('http://wiki'));
   });
 
   it('plugin_readme returns null when no doc url', async () => {

@@ -11,6 +11,7 @@ const mockSalsa = {
   plugin_run: jest.fn(),
   plugins_searchableToIDs: jest.fn(),
   pluginMeta_readmeContentFetch: jest.fn(),
+  pluginReadme_fetchFromRepository: jest.fn(),
   pluginMeta_documentationUrlGet: jest.fn(),
   pluginMeta_pluginIDFromSearch: jest.fn(),
 };
@@ -142,6 +143,9 @@ describe('PluginController', () => {
     expect(await c.plugin_searchableToIDs('pl')).toEqual(['1']);
     mockSalsa.pluginMeta_readmeContentFetch.mockResolvedValue('README');
     expect(await c.readmeContent_fetch('http://r')).toBe('README');
+    const document = { content: 'README', format: 'markdown', sourceUrl: 'README.md' };
+    mockSalsa.pluginReadme_fetchFromRepository.mockResolvedValue(document);
+    expect(await c.readmeDocument_fetch('http://r')).toEqual(document);
     mockSalsa.pluginMeta_documentationUrlGet.mockResolvedValue('http://d');
     expect(await c.documentationUrl_get('5')).toBe('http://d');
     mockSalsa.pluginMeta_pluginIDFromSearch.mockResolvedValue('7');

@@ -92,6 +92,13 @@ export interface PluginSearchOptions {
   [key: string]: unknown; // Allow for arbitrary key-value pairs initially
 }
 
+/** README content together with the source format needed by presentation layers. */
+export interface PluginReadmeDocument {
+  content: string;
+  format: 'markdown' | 'rst';
+  sourceUrl: string;
+}
+
 /**
  * Converts a Dictionary to CLI-style parameter string.
  *
@@ -149,6 +156,17 @@ export async function plugins_searchableToIDs(searchable: string | Searchable): 
  * @returns A Promise resolving to the README content as a string, or null if no README is found or accessible.
  */
 export async function pluginMeta_readmeContentFetch(repoUrl: string): Promise<string | null> {
+  const document: PluginReadmeDocument | null = await pluginReadme_fetchFromRepository(repoUrl);
+  return document?.content ?? null;
+}
+
+/**
+ * Fetch a README while retaining its source URL and markup format.
+ *
+ * @param repoUrl - The base URL of the plugin's Git repository.
+ * @returns README content and format metadata, or null when none is reachable.
+ */
+export async function pluginReadme_fetchFromRepository(repoUrl: string): Promise<PluginReadmeDocument | null> {
   const readmeUrls: string[] = [
     `${repoUrl}/raw/master/README.md`,
     `${repoUrl}/raw/master/README.rst`,
@@ -160,10 +178,47 @@ export async function pluginMeta_readmeContentFetch(repoUrl: string): Promise<st
     try {
       const response = await axios.get(url);
       if (response.status === 200) {
-        return response.data;
+        return {
+          content: String(response.data),
+          format: url.endsWith('.rst') ? 'rst' : 'markdown',
+          sourceUrl: url,
+        };
       }
     } catch (error: unknown) {
       // Continue to next URL
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch the README for an installed plugin using its repository metadata.
+ *
+ * `public_repo` is the canonical source. `documentation` remains a fallback
+ * for older CUBE records which stored the repository URL in that field.
+ *
+ * @param pluginId - The installed plugin ID.
+ * @returns README content and format metadata, or null.
+ */
+export async function pluginReadmeDocument_fetch(pluginId: string): Promise<PluginReadmeDocument | null> {
+  const chrisPlugin: ChRISPlugin = new ChRISPlugin();
+  const query: QueryHits | null = await chrisPlugin.pluginData_getFromSearch(
+    { search: `id: ${pluginId}` },
+    ['public_repo', 'documentation'],
+  );
+  if (!query || !query.hits.length) {
+    return null;
+  }
+
+  const metadata: Dictionary = query.hits[0] as Dictionary;
+  const repositoryUrls: string[] = [metadata.public_repo, metadata.documentation]
+    .filter((url: unknown): url is string => typeof url === 'string' && url.trim().length > 0)
+    .filter((url: string, index: number, urls: string[]) => urls.indexOf(url) === index);
+
+  for (const repositoryUrl of repositoryUrls) {
+    const document: PluginReadmeDocument | null = await pluginReadme_fetchFromRepository(repositoryUrl.replace(/\/$/, ''));
+    if (document) {
+      return document;
     }
   }
   return null;
@@ -248,11 +303,8 @@ export async function plugins_overview(): Promise<void> {
  * @returns A Promise resolving to the README content or null.
  */
 export async function plugin_readme(pluginId: string): Promise<string | null> {
-  const docUrl: string | null = await pluginMeta_documentationUrlGet(pluginId);
-  if (!docUrl) {
-    return null;
-  }
-  return await pluginMeta_readmeContentFetch(docUrl);
+  const document: PluginReadmeDocument | null = await pluginReadmeDocument_fetch(pluginId);
+  return document?.content ?? null;
 }
 
 // Re-export other utility functions or classes if needed, following the RPN style.

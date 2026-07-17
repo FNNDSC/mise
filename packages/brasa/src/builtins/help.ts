@@ -1214,6 +1214,30 @@ export function pipelineExecutableHelp_render(name: string): string {
 }
 
 /**
+ * Renders contextual help for one versioned plugin executable.
+ *
+ * @param name - Plugin executable name as exposed in `/bin`.
+ * @returns Plugin-specific help text, terminated with a newline.
+ */
+export function pluginExecutableHelp_render(name: string): string {
+  const help: CommandHelp = {
+    usage: `${name} <operation>`,
+    description: 'Inspect this registered CUBE plugin version.',
+    options: [
+      '  --parameters   Show parameter definitions for this plugin version',
+      '  --readme       Show the rendered plugin README',
+      '  --readme --raw Output raw README markdown for piping',
+    ],
+    examples: [
+      `${name} --parameters`,
+      `${name} --readme`,
+      `${name} --readme --raw | glow -`,
+    ],
+  };
+  return `${commandHelp_render(name, help)}\n`;
+}
+
+/**
  * Renders a command's help text as a string.
  *
  * The help text is returned as a string so callers can carry it in an envelope
@@ -1267,6 +1291,9 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
 
   // If a specific command is requested, return its help
   if (commandName) {
+    if (/-v[^/]+$/.test(commandName)) {
+      return { status: 'ok', rendered: pluginExecutableHelp_render(commandName) };
+    }
     return { status: 'ok', rendered: help_render(commandName) };
   }
 

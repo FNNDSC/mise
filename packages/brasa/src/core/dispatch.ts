@@ -655,7 +655,9 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    if (await pluginExecutable_handle(command, args, { piped: true })) {
+    const pluginEnvelope: CommandEnvelope | null = await pluginExecutable_handle(command, args);
+    if (pluginEnvelope) {
+      envelope_deliver(pluginEnvelope);
       return;
     }
 
@@ -755,11 +757,16 @@ export async function command_executeToEnvelope(
   // command_dispatchEnvelope, so it drains the errorStack itself.
   const checkpoint: number = errorStack.checkpoint_mark();
   const exitCodeBefore: number = exitCode_read();
-  if (await pluginExecutable_handle(command, args)) {
+  const pluginEnvelope: CommandEnvelope | null = await pluginExecutable_handle(command, args);
+  if (pluginEnvelope) {
+    envelope_deliver(pluginEnvelope);
     command_timingMaybePrint(startTime, timingEnabled);
     const exitCodeAfter: number = exitCode_read();
     const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
-    return envelope_drainErrorsInto(checkpoint, { status: failed ? 'error' : 'ok', rendered: '' });
+    const result: CommandEnvelope = failed
+      ? { ...pluginEnvelope, status: 'error' }
+      : pluginEnvelope;
+    return envelope_drainErrorsInto(checkpoint, result);
   }
 
   const envelope: CommandEnvelope = await command_dispatchEnvelope(command, args);

@@ -118,19 +118,6 @@ export interface ProcWarmupProgress {
   active: boolean;
 }
 
-/**
- * Prompt-facing progress for cache restoration and reconciliation.
- *
- * @property loaded - Plugin instances currently available.
- * @property total - Authoritative total when CUBE has reported one.
- * @property restored - Whether the available instances came from a checkpoint.
- */
-export interface ProcPromptProgress {
-  loaded: number;
-  total?: number;
-  restored?: boolean;
-}
-
 /** Availability and freshness states for the persistent process cache. */
 export type ProcCacheState = 'empty' | 'restored' | 'reconciling' | 'current' | 'failed';
 

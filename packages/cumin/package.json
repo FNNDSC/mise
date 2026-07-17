@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/cumin",
-  "version": "3.8.1",
+  "version": "3.8.2",
   "description": "Utility library for ChILI and other ChRIS-related JavaScript applications",
   "repository": {
     "type": "git",
@@ -21,6 +21,11 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js"
+    },
+    "./proc-prompt": {
+      "import": "./dist/cache/procPrompt.js",
+      "types": "./dist/cache/procPrompt.d.ts",
+      "require": "./dist/cache/procPrompt.js"
     },
     "./package.json": "./package.json"
   },

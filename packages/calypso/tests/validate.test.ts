@@ -72,6 +72,24 @@ describe('serverMessage_parse', () => {
     }).ok).toBe(true);
   });
 
+  it('preserves proc cache state across the prompt wire contract', (): void => {
+    expect(serverMessage_parse({
+      type: 'promptline',
+      context: {
+        user: 'chris', uri: 'http://cube/', cwd: '/', pacsserver: null,
+        physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+        procWarmup: { loaded: 25, total: 100, restored: true, state: 'cached' },
+      },
+    }).value).toEqual({
+      type: 'promptline',
+      context: {
+        user: 'chris', uri: 'http://cube/', cwd: '/', pacsserver: null,
+        physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+        procWarmup: { loaded: 25, total: 100, restored: true, state: 'cached' },
+      },
+    });
+  });
+
   it('rejects an output on an unknown channel', () => {
     expect(serverMessage_parse({ type: 'output', id: '1', channel: 'sideband', chunk: 'x' }).ok).toBe(false);
   });

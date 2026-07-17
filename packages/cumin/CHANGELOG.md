@@ -1,5 +1,13 @@
 # @fnndsc/cumin
 
+## 3.8.2
+
+### Patch Changes
+
+- Carry cold, cached-refresh, and failed `/proc` lifecycle state through the
+  CALYPSO prompt contract; reorder p10k segments and render distinct lifecycle
+  clues for local and remote surfaces.
+
 ## 3.8.1
 
 ### Patch Changes

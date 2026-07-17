@@ -13,7 +13,14 @@
 
 import { session } from '../session/index.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext, procCache_get, type ProcCacheLifecycle, type ProcPromptProgress, type ProcWarmupProgress } from '@fnndsc/cumin';
+import {
+  SingleContext,
+  procCache_get,
+  type ProcCacheLifecycle,
+  type ProcPromptProgress,
+  type ProcPromptState,
+  type ProcWarmupProgress,
+} from '@fnndsc/cumin';
 
 /**
  * The engine-known facts a prompt reflects, independent of any theme.
@@ -30,7 +37,7 @@ export interface SessionPromptContext {
   physicalMode: boolean;
   lastExitCode: number;
   lastCommandDurationMs: number;
-  /** Present while /proc topology warm-up is in progress. */
+  /** Present while /proc indexing is active, reconciling, or has failed. */
   procWarmup?: ProcPromptProgress;
 }
 
@@ -61,9 +68,12 @@ export async function sessionPromptContext_build(
   const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
   const lifecycle: ProcCacheLifecycle = procCache_get().lifecycle_get();
   const restored: boolean = lifecycle.checkpointAt !== undefined;
+  const procState: ProcPromptState = lifecycle.state === 'failed'
+    ? 'failed'
+    : restored ? 'cached' : 'cold';
   const procWarmup: ProcPromptProgress | undefined =
-    warmupRaw.active || lifecycle.state === 'reconciling'
-      ? { loaded: warmupRaw.loaded, total: warmupRaw.total, restored }
+    warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed'
+      ? { loaded: warmupRaw.loaded, total: warmupRaw.total, restored, state: procState }
       : undefined;
 
   return {

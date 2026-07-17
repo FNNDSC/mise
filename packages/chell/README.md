@@ -304,6 +304,12 @@ segments, high-contrast Font Awesome icons, and optional status information.
 The icons and separators require a Nerd Font. Use `prompt --show` to preview
 the active prompt.
 
+The p10k prompt orders PACS, CUBE URL, user, path, and `/proc` from left to
+right; the optional physical-mode indicator and command telemetry follow that
+core sequence. A visible `/proc` segment distinguishes cold indexing, cached
+refresh, and refresh failure; it disappears once the CUBE-authoritative index
+is current.
+
 ---
 
 ## Getting Started

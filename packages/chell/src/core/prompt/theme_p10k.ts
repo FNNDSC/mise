@@ -3,7 +3,7 @@
  *
  * Two-line prompt:
  *   Line 1 — coloured segment bar with background fills and powerline separators
- *              host ❯ [ pacs ❯]  user ❯  path ❯ [ HH:MM ❯] [ Xs ❯] [ N ❯]
+ *             [ pacs ❯]  host ❯  user ❯  path ❯ [proc ❯] [ HH:MM ❯] [ Xs ❯] [ N ❯]
  *   Line 2 — input line: ❯
  *
  * Font Awesome icons and the powerline separator require a Nerd Font.
@@ -14,6 +14,7 @@
  */
 
 import chalk from 'chalk';
+import { procPromptState_get, type ProcPromptState } from '@fnndsc/cumin/proc-prompt';
 import type { PromptContext, PromptTheme } from './index.js';
 import {
   PROMPT_PALETTE,
@@ -55,8 +56,21 @@ const ICON_BOLT: string = '\uf0e7';
 /** Font Awesome circled-x icon (U+F057). */
 const ICON_ERROR: string = '\uf057';
 
-/** Font Awesome gears icon (U+F085). */
-const ICON_GEARS: string = '\uf085';
+/** Font Awesome snowflake icon (U+F2DC). */
+const ICON_SNOWFLAKE: string = '\uf2dc';
+
+/** Font Awesome refresh icon (U+F021). */
+const ICON_REFRESH: string = '\uf021';
+
+/** Font Awesome warning icon (U+F071). */
+const ICON_WARNING: string = '\uf071';
+
+/** Theme-specific presentation for each process-index state. */
+const PROC_STATE_SEGMENTS: Record<ProcPromptState, { icon: string; label: string; color: PromptColorPair }> = {
+  cold: { icon: ICON_SNOWFLAKE, label: 'proc cold', color: PROMPT_PALETTE.DURATION },
+  cached: { icon: ICON_REFRESH, label: 'proc cached, refreshing', color: PROMPT_PALETTE.TIME },
+  failed: { icon: ICON_WARNING, label: 'proc failed', color: PROMPT_PALETTE.STATUS },
+};
 
 /** Fraction of terminal width the segment bar should not exceed. */
 const FILL_RATIO: number = 0.95;
@@ -146,29 +160,29 @@ function time_now(): string {
 
 /**
  * Powerlevel10k-inspired two-line prompt theme with background-coloured segments.
- * Segment order: host [pacs] [physical] user dir [time] [duration] [status]
+ * Segment order: [pacs] host user dir [proc] [physical] [time] [duration] [status]
  */
 export class ThemeP10k implements PromptTheme {
   render(ctx: PromptContext): string {
     const host: string = uri_abbreviate(ctx.uri);
 
-    // Left segments: host → [pacs] → [physical] → user
-    const fixed: SegmentSpec[] = [
-      { text: `${ICON_CUBE} ${host}`, color: PROMPT_PALETTE.HOST },
-    ];
+    // Core segments: [pacs] → host → user → dir → [proc]
+    const fixed: SegmentSpec[] = [];
 
     if (ctx.pacsserver && ctx.p10kSegments.pacs) {
       fixed.push({ text: `${ICON_DATABASE} ${ctx.pacsserver}`, color: PROMPT_PALETTE.PACS });
     }
 
-    if (ctx.physicalMode) {
-      fixed.push({ text: `${ICON_MICROSCOPE} PHYSICAL`, color: PROMPT_PALETTE.PHYSICAL });
-    }
+    fixed.push({ text: `${ICON_CUBE} ${host}`, color: PROMPT_PALETTE.HOST });
 
     fixed.push({ text: `${ICON_USER} ${ctx.user}`, color: PROMPT_PALETTE.USER });
 
-    // Optional trailing segments (after dir)
+    // Optional auxiliary state and command telemetry follow the core sequence.
     const trailing: SegmentSpec[] = [];
+
+    if (ctx.physicalMode) {
+      trailing.push({ text: `${ICON_MICROSCOPE} PHYSICAL`, color: PROMPT_PALETTE.PHYSICAL });
+    }
 
     if (ctx.p10kSegments.time) {
       trailing.push({ text: `${ICON_CLOCK} ${time_now()}`, color: PROMPT_PALETTE.TIME });
@@ -185,13 +199,23 @@ export class ThemeP10k implements PromptTheme {
       trailing.push({ text: `${ICON_ERROR} ${ctx.lastExitCode}`, color: PROMPT_PALETTE.STATUS });
     }
 
+    let procSegment: SegmentSpec | undefined;
     if (ctx.procWarmup) {
-      const restored: string = ctx.procWarmup.restored ? 'cached, syncing ' : '';
-      trailing.push({
-        text: `${ICON_GEARS} proc: ${restored}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`,
-        color: PROMPT_PALETTE.TIME,
-      });
+      const progress: string = procProgress_format(
+        ctx.procWarmup.loaded,
+        ctx.procWarmup.total ?? 0,
+      );
+      const state: ProcPromptState = procPromptState_get(ctx.procWarmup);
+      const presentation = PROC_STATE_SEGMENTS[state];
+      procSegment = {
+        text: `${presentation.icon} ${presentation.label}: ${progress}`,
+        color: presentation.color,
+      };
     }
+
+    const rightSegments: SegmentSpec[] = procSegment
+      ? [procSegment, ...trailing]
+      : trailing;
 
     // Compute path budget: terminal limit minus fixed + trailing segment overhead + dir overhead
     const limit: number = Math.floor(ctx.terminalWidth * FILL_RATIO);
@@ -199,11 +223,11 @@ export class ThemeP10k implements PromptTheme {
     const fixedRendered: string = fixed
       .map((segment: SegmentSpec) => segment_render(segment.text, segment.color))
       .join('');
-    const trailingRendered: string = trailing
+    const trailingRendered: string = rightSegments
       .map((segment: SegmentSpec) => segment_render(segment.text, segment.color))
       .join('');
     const fixedOverhead: number = ansi_visibleLength(fixedRendered) + fixed.length;
-    const trailingOverhead: number = ansi_visibleLength(trailingRendered) + trailing.length;
+    const trailingOverhead: number = ansi_visibleLength(trailingRendered) + rightSegments.length;
     // dir: +2 padding, +1 sep before, +1 final sep (or sep to first trailing)
     const dirOverhead: number = 4;
     const pathBudget: number = limit - fixedOverhead - trailingOverhead - dirOverhead;
@@ -213,7 +237,7 @@ export class ThemeP10k implements PromptTheme {
     const defs: SegmentSpec[] = [
       ...fixed,
       { text: `${ICON_FOLDER} ${dirPath}`, color: PROMPT_PALETTE.DIR },
-      ...trailing,
+      ...rightSegments,
     ];
 
     let line1: string = '';

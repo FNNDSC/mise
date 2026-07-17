@@ -1,5 +1,15 @@
 # @fnndsc/brasa
 
+## 0.9.3
+
+### Patch Changes
+
+- Carry cold, cached-refresh, and failed `/proc` lifecycle state through the
+  CALYPSO prompt contract; reorder p10k segments and render distinct lifecycle
+  clues for local and remote surfaces.
+- Updated dependencies
+  - @fnndsc/cumin@3.8.2
+
 ## 0.9.2
 
 ### Patch Changes

@@ -12,6 +12,7 @@
  */
 
 import chalk from 'chalk';
+import { procPromptState_get, type ProcPromptState } from '@fnndsc/cumin/proc-prompt';
 import type { PromptContext, PromptTheme } from './index.js';
 import { PROMPT_PALETTE, statusColor_get, type HexColor } from './palette.js';
 import {
@@ -23,6 +24,13 @@ import {
 
 /** Fraction of terminal width allowed before path truncation kicks in. */
 const FILL_RATIO: number = 0.8;
+
+/** Human-readable prompt label for each process-index state. */
+const PROC_STATE_LABELS: Record<ProcPromptState, string> = {
+  cold: 'cold',
+  cached: 'cached, refreshing',
+  failed: 'failed',
+};
 
 /**
  * Default single-line prompt theme with smart path truncation.
@@ -49,9 +57,16 @@ export class ThemeDefault implements PromptTheme {
 
     const glyphColor: HexColor = statusColor_get(ctx.lastExitCode);
     const glyph: string = chalk.hex(glyphColor)('$ ');
-    const warmup: string = ctx.procWarmup
-      ? chalk.hex(PROMPT_PALETTE.WARMUP)(` [proc: ${ctx.procWarmup.restored ? 'cached, syncing ' : ''}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`)
-      : '';
+    let warmup: string = '';
+    if (ctx.procWarmup) {
+      const state: ProcPromptState = procPromptState_get(ctx.procWarmup);
+      const color: HexColor = state === 'failed'
+        ? PROMPT_PALETTE.ERROR
+        : PROMPT_PALETTE.WARMUP;
+      warmup = chalk.hex(color)(
+        ` [proc ${PROC_STATE_LABELS[state]}: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`,
+      );
+    }
     return (
       modePrefix +
       chalk.hex(PROMPT_PALETTE.USER.bg)(ctx.user) +

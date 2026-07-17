@@ -49,7 +49,7 @@ export interface PromptContext {
   lastExitCode: number;
   lastCommandDurationMs: number;
   p10kSegments: P10kSegmentConfig;
-  /** Present while /proc topology warm-up is in progress. */
+  /** Present while /proc indexing is active, reconciling, or has failed. */
   procWarmup?: ProcPromptProgress;
 }
 

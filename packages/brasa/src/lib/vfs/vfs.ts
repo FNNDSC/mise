@@ -55,6 +55,14 @@ export class VFS {
           const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
           return Ok(sortedItems);
         }
+
+        // Shell wildcard expansion reads and caches the parent directory before
+        // passing each matched path to ls. Leaf entries are not directories to
+        // descend into, so return the matching cached entry itself.
+        const parentLeaf: ListingItem | null = this.leafFromParentCache_get(effectivePath);
+        if (parentLeaf) {
+          return Ok([parentLeaf]);
+        }
       }
 
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
@@ -118,6 +126,27 @@ export class VFS {
 
     // Fallback: synthesize an entry from the path name
     return Ok([{ name: baseName, type: 'dir', size: 0, owner: 'system', date: '' }]);
+  }
+
+  /**
+   * Finds a non-directory target in its cached parent listing.
+   *
+   * @param absolutePath - Absolute path whose parent was previously listed.
+   * @returns The matching leaf item, or null when absent or directory-like.
+   */
+  private leafFromParentCache_get(absolutePath: string): ListingItem | null {
+    const baseName: string = path.posix.basename(absolutePath);
+    const parentPath: string = path.posix.dirname(absolutePath);
+    const cached = listCache_get().cache_get<ListingItem[]>(parentPath);
+    if (!cached) return null;
+
+    const item: ListingItem | undefined = cached.data.find(
+      (candidate: ListingItem): boolean => candidate.name === baseName,
+    );
+    if (!item || item.type === 'dir' || item.type === 'vfs' || item.type === 'job') {
+      return null;
+    }
+    return item;
   }
 
   /**

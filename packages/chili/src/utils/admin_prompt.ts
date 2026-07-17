@@ -65,13 +65,13 @@ export async function adminCredentials_prompt(
   const askFn: (prompt: string) => Promise<string> = _askFn ?? ask_fallback;
   const askHiddenFn: (prompt: string) => Promise<string> = _askHiddenFn ?? askHidden_fallback;
 
-  const username: string = await askFn('Username: ');
+  const username: string = await askFn('Admin username: ');
   if (!username) {
     chiliLog('Username cannot be empty.');
     return null;
   }
 
-  const password: string = await askHiddenFn('Password: ');
+  const password: string = await askHiddenFn('Admin password: ');
   if (!password) {
     chiliLog('Password cannot be empty.');
     return null;

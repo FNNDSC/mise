@@ -93,6 +93,13 @@ describe('persistent prompting (REPL interface)', () => {
     const answer = await cliSurface_create(rl as unknown as import('readline').Interface)
       .prompt({ message: 'Password: ', hidden: true });
     expect(suppressedDuringQuestion).toBe(true);
+    const passwordWriteIndex: number = writeSpy.mock.calls.findIndex(
+      (call: Parameters<typeof process.stdout.write>): boolean => call[0] === 'Password: ',
+    );
+    expect(passwordWriteIndex).toBeGreaterThanOrEqual(0);
+    expect(rl.question.mock.invocationCallOrder[0]).toBeLessThan(
+      writeSpy.mock.invocationCallOrder[passwordWriteIndex],
+    );
     // Echo restored after the answer arrives: the reinstalled hook delegates
     // back to the original (it is the original re-bound to the interface).
     (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput('after');

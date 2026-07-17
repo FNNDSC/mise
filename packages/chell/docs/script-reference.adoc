@@ -244,15 +244,23 @@ du [path]
 
 [source,bash]
 ----
-cat [--binary] <file> [file...]
+cat [--binary] [--highlight[=language] | --no-highlight] <file> [file...]
 ----
 
 Binary mode is auto-detected for `.dcm`, `.png`, `.zip`, `.pdf`, etc.
 Use `--binary` to force.
 
+Recognized source and configuration files are syntax-highlighted automatically
+when output goes directly to an interactive terminal. Use `--highlight` to force
+extension/content inference, `--highlight=python` to select a grammar, or
+`--no-highlight` for raw text. Normal pipes and redirects remain ANSI-free.
+
 [source,bash]
 ----
 cat readme.txt
+cat analysis.py
+cat source --highlight=python
+cat config.json --no-highlight
 cat /etc/compute.yaml
 cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/status
 cat /proc/jobs/feed_1107/pl-dircopy_64267/pl-shexec_64295/log

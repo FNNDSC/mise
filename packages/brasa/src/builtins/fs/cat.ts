@@ -1,95 +1,187 @@
 /**
- * @file Builtin cat command.
- * Displays file contents, reported as a command envelope.
+ * @file Text and binary implementation of the `cat` builtin.
+ *
+ * Reads ChRIS files through ChILI, streams binary bytes through the active
+ * output sink, and returns text in command envelopes. Text highlighting uses
+ * cli-highlight with a forced-color theme only after argument/TTY policy has
+ * allowed ANSI; ordinary pipe and redirect sinks strip ANSI downstream.
+ *
+ * @module
  */
+import * as path from 'path';
 import chalk from 'chalk';
-import { path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { highlight, supportsLanguage, type Theme } from 'cli-highlight';
 import { files_cat as chefs_cat_cmd, files_catBinary as chefs_catBinary_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { cat_render } from '@fnndsc/chili/views/fs.js';
 import { errorStack, Result, StackMessage, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
+import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { sink_get } from '../../core/sink.js';
-import * as path from 'path';
+import {
+  CAT_USAGE,
+  catArguments_parse,
+  type CatArguments,
+  type CatHighlightMode,
+} from './cat.args.js';
 
-/** File extensions that receive syntax highlighting. */
-const HIGHLIGHT_EXTENSIONS: Set<string> = new Set(['.json', '.yaml', '.yml']);
+/** cli-highlight language names inferred for commonly viewed text formats. */
+const SOURCE_LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
+  '.bash': 'bash',
+  '.c': 'c',
+  '.cc': 'cpp',
+  '.cfg': 'ini',
+  '.cjs': 'javascript',
+  '.conf': 'ini',
+  '.cpp': 'cpp',
+  '.css': 'css',
+  '.cts': 'typescript',
+  '.cxx': 'cpp',
+  '.diff': 'diff',
+  '.dockerfile': 'dockerfile',
+  '.go': 'go',
+  '.h': 'c',
+  '.hh': 'cpp',
+  '.hpp': 'cpp',
+  '.htm': 'xml',
+  '.html': 'xml',
+  '.hxx': 'cpp',
+  '.ini': 'ini',
+  '.java': 'java',
+  '.js': 'javascript',
+  '.json': 'json',
+  '.jsonc': 'json',
+  '.jsx': 'jsx',
+  '.kt': 'kotlin',
+  '.kts': 'kotlin',
+  '.less': 'less',
+  '.lua': 'lua',
+  '.markdown': 'markdown',
+  '.md': 'markdown',
+  '.mjs': 'javascript',
+  '.mts': 'typescript',
+  '.patch': 'diff',
+  '.php': 'php',
+  '.pl': 'perl',
+  '.pm': 'perl',
+  '.proto': 'protobuf',
+  '.py': 'python',
+  '.pyw': 'python',
+  '.r': 'r',
+  '.rb': 'ruby',
+  '.rs': 'rust',
+  '.sass': 'scss',
+  '.scss': 'scss',
+  '.sh': 'bash',
+  '.sql': 'sql',
+  '.svg': 'xml',
+  '.swift': 'swift',
+  '.toml': 'toml',
+  '.ts': 'typescript',
+  '.tsx': 'tsx',
+  '.xml': 'xml',
+  '.yaml': 'yaml',
+  '.yml': 'yaml',
+  '.zsh': 'bash',
+};
+
+/** cli-highlight language names inferred from conventional extensionless files. */
+const SOURCE_LANGUAGE_BY_BASENAME: Readonly<Record<string, string>> = {
+  '.env': 'ini',
+  'dockerfile': 'dockerfile',
+  'gnumakefile': 'makefile',
+  'makefile': 'makefile',
+};
+
+/** Forced-color palette used only after terminal/highlight policy allows ANSI. */
+const HIGHLIGHT_COLOR = new chalk.Instance({ level: 3 });
+
+/** High-contrast token palette shared by every highlighted language. */
+const HIGHLIGHT_THEME: Theme = {
+  addition: HIGHLIGHT_COLOR.green,
+  attr: HIGHLIGHT_COLOR.yellow,
+  attribute: HIGHLIGHT_COLOR.cyan,
+  built_in: HIGHLIGHT_COLOR.cyanBright,
+  bullet: HIGHLIGHT_COLOR.yellow,
+  class: HIGHLIGHT_COLOR.blueBright,
+  code: HIGHLIGHT_COLOR.green,
+  comment: HIGHLIGHT_COLOR.gray,
+  deletion: HIGHLIGHT_COLOR.redBright,
+  doctag: HIGHLIGHT_COLOR.gray,
+  emphasis: HIGHLIGHT_COLOR.italic,
+  function: HIGHLIGHT_COLOR.yellowBright,
+  keyword: HIGHLIGHT_COLOR.blueBright,
+  link: HIGHLIGHT_COLOR.blueBright.underline,
+  literal: HIGHLIGHT_COLOR.yellowBright,
+  meta: HIGHLIGHT_COLOR.magenta,
+  'meta-keyword': HIGHLIGHT_COLOR.magentaBright,
+  'meta-string': HIGHLIGHT_COLOR.green,
+  name: HIGHLIGHT_COLOR.cyanBright,
+  number: HIGHLIGHT_COLOR.magentaBright,
+  params: HIGHLIGHT_COLOR.white,
+  quote: HIGHLIGHT_COLOR.gray,
+  regexp: HIGHLIGHT_COLOR.redBright,
+  section: HIGHLIGHT_COLOR.magentaBright.bold,
+  'selector-attr': HIGHLIGHT_COLOR.green,
+  'selector-class': HIGHLIGHT_COLOR.yellow,
+  'selector-id': HIGHLIGHT_COLOR.magentaBright,
+  'selector-pseudo': HIGHLIGHT_COLOR.blueBright,
+  'selector-tag': HIGHLIGHT_COLOR.cyan,
+  string: HIGHLIGHT_COLOR.green,
+  strong: HIGHLIGHT_COLOR.bold,
+  subst: HIGHLIGHT_COLOR.cyan,
+  symbol: HIGHLIGHT_COLOR.magentaBright,
+  tag: HIGHLIGHT_COLOR.blueBright,
+  'template-tag': HIGHLIGHT_COLOR.magenta,
+  'template-variable': HIGHLIGHT_COLOR.cyan,
+  title: HIGHLIGHT_COLOR.cyanBright,
+  type: HIGHLIGHT_COLOR.cyan,
+  variable: HIGHLIGHT_COLOR.cyanBright,
+};
 
 /**
- * Applies chalk-based syntax highlighting to JSON content.
- * Returns the original string if the content is not valid JSON.
+ * Infers a syntax grammar from a file extension or conventional basename.
  *
- * @param content - Raw JSON string.
- * @returns Highlighted string, or original on parse failure.
+ * @param filePath - Resolved source path.
+ * @returns cli-highlight language name, or undefined for an unknown format.
  */
-function json_highlight(content: string): string {
-  try {
-    JSON.parse(content);
-  } catch {
-    return content;
-  }
-  return content.replace(
-    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
-    (match: string): string => {
-      if (match.endsWith(':')) return chalk.cyan(match);           // key
-      if (match.startsWith('"')) return chalk.green(match);        // string value
-      if (match === 'true' || match === 'false') return chalk.yellow(match);
-      if (match === 'null') return chalk.gray(match);
-      return chalk.magenta(match);                                 // number
-    }
-  );
+function sourceLanguage_get(filePath: string): string | undefined {
+  const basename: string = path.basename(filePath).toLowerCase();
+  return SOURCE_LANGUAGE_BY_BASENAME[basename]
+    ?? SOURCE_LANGUAGE_BY_EXTENSION[path.extname(basename).toLowerCase()];
 }
 
 /**
- * Applies chalk-based syntax highlighting to YAML content line by line.
- *
- * @param content - Raw YAML string.
- * @returns Highlighted string.
- */
-function yaml_highlight(content: string): string {
-  return content.split('\n').map((line: string): string => {
-    if (/^\s*#/.test(line)) return chalk.gray(line);
-    const kv: RegExpMatchArray | null = line.match(/^(\s*)([\w./-]+)(\s*:\s*)(.*)/);
-    if (kv) {
-      const [, indent, key, sep, value]: string[] = kv as string[];
-      const coloredValue: string = value_yamlColor(value);
-      return `${indent}${chalk.cyan(key)}${chalk.gray(sep)}${coloredValue}`;
-    }
-    const listItem: RegExpMatchArray | null = line.match(/^(\s*-\s+)(.*)/);
-    if (listItem) {
-      return `${chalk.gray(listItem[1])}${chalk.green(listItem[2])}`;
-    }
-    return line;
-  }).join('\n');
-}
-
-/**
- * Colors a scalar YAML value based on its type.
- *
- * @param value - The raw value string from a YAML key: value line.
- * @returns Chalk-colored value string.
- */
-function value_yamlColor(value: string): string {
-  if (!value) return value;
-  if (value === 'true' || value === 'false') return chalk.yellow(value);
-  if (value === 'null' || value === '~') return chalk.gray(value);
-  if (/^-?\d+(\.\d+)?$/.test(value)) return chalk.magenta(value);
-  if (/^["']/.test(value)) return chalk.green(value);
-  return chalk.white(value);
-}
-
-/**
- * Applies syntax highlighting to text content based on file extension.
- * Returns the original string unchanged when stdout is not a TTY (piping).
+ * Applies syntax highlighting according to explicit flags, filename inference,
+ * and terminal detection.
  *
  * @param content - File content string.
  * @param filePath - Full path used to determine the file type.
+ * @param mode - Automatic terminal policy, forced highlighting, or disabled highlighting.
+ * @param language - Explicit language that forces highlighting when provided.
  * @returns Highlighted or original content.
  */
-function content_highlight(content: string, filePath: string): string {
-  if (!process.stdout.isTTY) return content;
-  const ext: string = path.extname(filePath).toLowerCase();
-  if (ext === '.json') return json_highlight(content);
-  if (ext === '.yaml' || ext === '.yml') return yaml_highlight(content);
+function content_highlight(
+  content: string,
+  filePath: string,
+  mode: CatHighlightMode,
+  language?: string,
+): string {
+  if (mode === 'never') return content;
+  if (language) {
+    return highlight(content, { language, ignoreIllegals: true, theme: HIGHLIGHT_THEME });
+  }
+  if (mode === 'auto' && !process.stdout.isTTY) return content;
+  const sourceLanguage: string | undefined = sourceLanguage_get(filePath);
+  if (sourceLanguage) {
+    return highlight(content, {
+      language: sourceLanguage,
+      ignoreIllegals: true,
+      theme: HIGHLIGHT_THEME,
+    });
+  }
+  if (mode === 'always') {
+    return highlight(content, { ignoreIllegals: true, theme: HIGHLIGHT_THEME });
+  }
   return content;
 }
 
@@ -124,34 +216,53 @@ interface CatOutcome {
   bytes?: number;
 }
 
+/** Resolved input and its extension-based binary classification. */
+interface CatTarget {
+  pathArg: string;
+  target: string;
+  isBinaryFile: boolean;
+}
+
 /**
  * Displays the content of one or more files.
  *
  * Supports multiple files and concatenates their output. Binary mode is applied
- * consistently to all files if any file is detected as binary or --binary is specified.
+ * per recognized file, or consistently to all files when `--binary` is specified.
  * Text content and errors are buffered into the envelope; binary content streams
  * to the terminal directly with backpressure (raw bytes are not envelope text),
  * and the binary auto-detection notice is emitted live on the err channel so it
  * precedes the bytes it describes.
  *
- * @param args - Command line arguments (file paths and optional --binary flag).
+ * @param args - File paths plus optional binary/highlight flags.
  * @returns An envelope whose rendered text carries the (highlighted) file
  *   contents and whose model lists per-file outcomes.
  */
 export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
-  let binaryMode: boolean = false;
-  const filePaths: string[] = [];
+  const parsed: CatArguments = catArguments_parse(args);
 
-  for (const arg of args) {
-    if (arg === '--binary') {
-      binaryMode = true;
-    } else {
-      filePaths.push(arg);
-    }
+  if (parsed.filePaths.length === 0) {
+    return envelope_error('', undefined, `${chalk.red(`Usage: ${CAT_USAGE}`)}\n`);
   }
 
-  if (filePaths.length === 0) {
-    return envelope_error('', undefined, `${chalk.red('Usage: cat [--binary] <file> [file...]')}\n`);
+  const targets: CatTarget[] = await Promise.all(parsed.filePaths.map(
+    async (pathArg: string): Promise<CatTarget> => {
+      const target: string = await path_resolve(pathArg);
+      return { pathArg, target, isBinaryFile: extension_isBinary(target) };
+    },
+  ));
+  const hasTextTarget: boolean = !parsed.binaryMode
+    && targets.some((target: CatTarget): boolean => !target.isBinaryFile);
+
+  if (
+    hasTextTarget
+    && parsed.highlightLanguage !== undefined
+    && !supportsLanguage(parsed.highlightLanguage)
+  ) {
+    return envelope_error(
+      '',
+      undefined,
+      `${chalk.red(`cat: unknown highlight language '${parsed.highlightLanguage}'`)}\n`,
+    );
   }
 
   let rendered: string = '';
@@ -159,24 +270,20 @@ export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
   const outcomes: CatOutcome[] = [];
   let anyFailed: boolean = false;
 
-  for (let i: number = 0; i < filePaths.length; i++) {
-    const pathArg: string = filePaths[i];
-    const target: string = await path_resolve(pathArg);
-
-    // Auto-detect binary files
-    const isBinaryFile: boolean = extension_isBinary(target);
+  for (let i: number = 0; i < targets.length; i++) {
+    const { pathArg, target, isBinaryFile }: CatTarget = targets[i];
 
     // Inform user about auto-detection only if in interactive mode (stdout is TTY).
     // Emitted live (not buffered) so the notice precedes the raw bytes it announces.
     // Only show on first file to avoid spam.
-    if (i === 0 && isBinaryFile && !binaryMode && process.stdout.isTTY) {
+    if (i === 0 && isBinaryFile && !parsed.binaryMode && process.stdout.isTTY) {
       sink_get().err_write(`${chalk.cyan(`Info: ${pathArg} detected as binary file (${path.extname(target)}), using binary mode.`)}\n`);
       sink_get().err_write(`${chalk.cyan('Tip: Use "cat --binary <file>" to explicitly request binary mode.')}\n`);
       sink_get().err_write('\n');
     }
 
     // Use binary mode if requested OR if file is detected as binary
-    if (binaryMode || isBinaryFile) {
+    if (parsed.binaryMode || isBinaryFile) {
       const result: Result<Buffer> = await chefs_catBinary_cmd(target);
 
       if (!result.ok) {
@@ -204,7 +311,12 @@ export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
         continue;
       }
 
-      const highlighted: string = content_highlight(result.value, target);
+      const highlighted: string = content_highlight(
+        result.value,
+        target,
+        parsed.highlightMode,
+        parsed.highlightLanguage,
+      );
       rendered += `${cat_render(highlighted, pathArg)}\n`;
       outcomes.push({ path: pathArg, ok: true, binary: false });
     }

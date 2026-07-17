@@ -10,6 +10,7 @@ The `cat` command displays file contents from the ChRIS filesystem. It supports 
 **Key Features:**
 
 * **Auto-detection** - Automatically recognizes binary file types (DICOM, images, PDFs)
+* **Syntax highlighting** - Colors popular source and configuration formats in interactive terminals
 * **Binary mode** - Preserves exact byte-for-byte integrity for medical imaging and other binary data
 * **Piping support** - Works seamlessly with external tools via Unix pipes
 * **Multiple file types** - Handles regular files, pipeline specs, and PACS DICOM files
@@ -19,12 +20,15 @@ The `cat` command displays file contents from the ChRIS filesystem. It supports 
 
 **Syntax:**
 ```bash
-cat [--binary] <file> [file...]
+cat [--binary] [--highlight[=language] | --no-highlight] <file> [file...]
 ```
 
 **Parameters:**
 
 * `--binary` - Force binary mode (optional, auto-detected for known types)
+* `--highlight` - Force highlighting and infer the grammar from the filename or content
+* `--highlight=language` - Force a specific grammar, for example `python`, `typescript`, or `sql`
+* `--no-highlight` - Disable automatic highlighting and return raw text
 * `file` - Path to file(s) to display. Supports wildcards.
 
 == Text Mode Examples
@@ -59,6 +63,44 @@ cat ~/data/notes.txt          # Expands to /home/username/data/notes.txt
   }
 }
 ```
+
+== Syntax Highlighting
+
+When output goes directly to an interactive terminal, `cat` automatically
+highlights recognized text files. Python is supported along with these common
+families:
+
+* JavaScript, JSX, TypeScript, and TSX
+* Shell, SQL, Markdown, HTML/XML/SVG, and CSS/Sass/Less
+* JSON, YAML, TOML, INI, and `.env` configuration
+* C/C++, Java, Go, Rust, Ruby, PHP, Swift, Kotlin, R, Lua, and Perl
+* Protocol Buffers, unified diffs/patches, Dockerfiles, and Makefiles
+
+Use a bare flag to force filename inference or content auto-detection even when
+standard output is not a TTY:
+
+```bash
+cat analysis.py --highlight
+cat source-without-extension --highlight
+```
+
+Select a grammar explicitly when the filename is absent or misleading:
+
+```bash
+cat source --highlight=python
+cat query.txt --highlight=sql
+```
+
+Use `--no-highlight` when raw terminal text is preferred:
+
+```bash
+cat config.json --no-highlight
+```
+
+Automatic mode never adds ANSI sequences to non-interactive output. ChELL's
+pipe and redirect capture also strips ANSI, so downstream commands and saved
+files remain plain text. Binary mode always streams the original bytes and does
+not apply syntax highlighting.
 
 == Binary Mode
 
@@ -448,9 +490,9 @@ cat source.dcm | wc -c          # Should match saved.dcm
 * **Language:** TypeScript (compiled to JavaScript/Node.js)
 * **Chunk size:** 64 KB for optimal performance
 * **Buffer handling:** Asynchronous with drain event monitoring
-* **Type detection:** Extension-based with Set lookup (O(1))
+* **Type detection:** Extension- and conventional-basename lookup (O(1))
 
-=== Auto-Detection Algorithm
+=== Binary Auto-Detection Algorithm
 
 1. Extract file extension with `path.extname()`
 2. Convert to lowercase
@@ -459,11 +501,20 @@ cat source.dcm | wc -c          # Should match saved.dcm
 5. If `--binary` flag present: enable binary mode
 6. Otherwise: use text mode (UTF-8)
 
+=== Syntax Auto-Detection Algorithm
+
+1. If `--no-highlight` is present: return text unchanged
+2. If `--highlight=language` is present: validate and use that grammar
+3. If output is non-interactive and highlighting was not forced: return text unchanged
+4. Infer a grammar from the extension or conventional basename
+5. For a bare forced `--highlight` with an unknown filename: auto-detect from content
+6. Render recognized tokens with the shared high-contrast terminal palette
+
 === Data Flow
 
 **Text mode:**
 ```
-ChRIS API → UTF-8 decode → console.log() → terminal
+ChRIS API → UTF-8 decode → optional syntax highlight → command envelope → terminal
 ```
 
 **Binary mode:**

@@ -7,6 +7,7 @@
 import * as path from 'path';
 import { statSync } from 'fs';
 import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { catArgument_isOption } from '../builtins/fs/cat.args.js';
 import { args_tokenize } from '../lib/parser.js';
 
 /** Commands whose arguments benefit from glob/wildcard expansion. */
@@ -148,7 +149,7 @@ export function redirectTarget_resolve(filePath: string, commandLine: string): R
     return Err();
   }
 
-  const sourceArgs: string[] = args.filter((arg: string) => arg !== '--binary');
+  const sourceArgs: string[] = args.filter((arg: string): boolean => !catArgument_isOption(arg));
   if (sourceArgs.length === 0) {
     errorStack.stack_push('error', `Redirect target '${filePath}' is a directory; no source file provided to 'cat'.`);
     return Err();

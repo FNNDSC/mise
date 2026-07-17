@@ -126,5 +126,6 @@ describe('id help', () => {
     expect(helpText.id).toMatchObject({ usage: 'id' });
     expect(helpText.id?.description).toContain('UID');
     expect(helpText.id?.description).toContain('GID');
+    expect(helpText.id?.description).toContain('memberships');
   });
 });

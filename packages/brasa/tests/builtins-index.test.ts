@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
-import type { ChrisUser, CommandEnvelope, Result } from '@fnndsc/cumin';
+import type { ChrisIdentity, CommandEnvelope, Result } from '@fnndsc/cumin';
 
 // Mock dependencies BEFORE imports
 const mockGetCWD = jest.fn();
@@ -71,7 +71,7 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 
 // Mock cumin
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  currentUser_get: jest.fn<() => Promise<Result<ChrisUser>>>(),
+  currentIdentity_get: jest.fn<() => Promise<Result<ChrisIdentity>>>(),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {

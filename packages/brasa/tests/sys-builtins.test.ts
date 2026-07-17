@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import type { ChrisUser, CommandEnvelope, Result } from '@fnndsc/cumin';
+import type { ChrisIdentity, ChrisUser, CommandEnvelope, Result } from '@fnndsc/cumin';
 
 const mockContext = jest.fn();
-const mockCurrentUser = jest.fn<() => Promise<Result<ChrisUser>>>();
+const mockCurrentIdentity = jest.fn<() => Promise<Result<ChrisIdentity>>>();
 const mockFeedsList = jest.fn();
 const mockInstancesList = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -11,7 +11,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pluginInstances_list: mockInstancesList,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  currentUser_get: mockCurrentUser,
+  currentIdentity_get: mockCurrentIdentity,
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -71,25 +71,44 @@ describe('builtin_whoami', () => {
 
 describe('builtin_id', () => {
   it('reports the CUBE user ID through the Unix identity projection', async () => {
-    mockCurrentUser.mockResolvedValue({
+    const user: ChrisUser = {
+      id: 42,
+      username: 'alice',
+      email: 'alice@example.org',
+      is_staff: false,
+    };
+    mockCurrentIdentity.mockResolvedValue({
       ok: true,
-      value: { id: 42, username: 'alice', email: 'alice@example.org', is_staff: false },
+      value: {
+        user,
+        groups: [{ id: 9, name: 'research' }, { id: 7, name: 'pacs' }],
+      },
     });
 
     const envelope: CommandEnvelope = await builtin_id([]);
 
     expect(envelope).toEqual({
       status: 'ok',
-      rendered: 'uid=42(alice) gid=42(alice)\n',
+      rendered: 'uid=42(alice) gid=42(alice) groups=42(alice),7(pacs),9(research)\n',
       model: {
         kind: 'session.posixIdentity',
-        data: { uid: 42, user: 'alice', gid: 42, group: 'alice' },
+        data: {
+          uid: 42,
+          user: 'alice',
+          gid: 42,
+          group: 'alice',
+          groups: [
+            { gid: 42, group: 'alice' },
+            { gid: 7, group: 'pacs' },
+            { gid: 9, group: 'research' },
+          ],
+        },
       },
     });
   });
 
   it('reports an identity lookup failure with a non-zero exit code', async () => {
-    mockCurrentUser.mockResolvedValue({ ok: false });
+    mockCurrentIdentity.mockResolvedValue({ ok: false });
 
     const envelope: CommandEnvelope = await builtin_id([]);
 

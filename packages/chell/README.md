@@ -284,7 +284,7 @@ store set <url>         # override peer store
 
 ### System
 ```bash
-id                      # numeric CUBE UID and projected primary GID
+id                      # CUBE UID, projected primary GID, and memberships
 whoami                  # current user and CUBE URL
 whereami                # current working directory
 connect --user <u> --password <p> <url>

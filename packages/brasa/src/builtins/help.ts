@@ -616,7 +616,7 @@ export const helpText: Record<string, CommandHelp> = {
   },
   id: {
     usage: 'id',
-    description: 'Print the current CUBE user as a Unix-style UID and GID. CUBE has no primary-group field, so ChELL projects the user ID and username as the primary GID and group name.',
+    description: 'Print the current CUBE user as a Unix-style UID, projected primary GID, and complete list of CUBE group memberships.',
     examples: ['id'],
   },
   fortune: {

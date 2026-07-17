@@ -108,16 +108,18 @@ logout
 
 === id
 
-Print the authenticated CUBE user ID and ChELL's projected primary group:
+Print the authenticated CUBE user ID, ChELL's projected primary group, and all
+CUBE group memberships:
 
 [source,bash]
 ----
 id
-# uid=42(alice) gid=42(alice)
+# uid=42(alice) gid=42(alice) groups=42(alice),7(pacs),9(research)
 ----
 
 CUBE has no primary-group field, so the projected GID equals the UID and the
-projected group name equals the username, matching `/etc/passwd`.
+projected group name equals the username, matching `/etc/passwd`. The `groups`
+field then includes every CUBE membership, ordered by numeric group ID.
 
 === whoami
 

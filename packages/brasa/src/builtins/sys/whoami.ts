@@ -5,14 +5,21 @@
 import chalk from 'chalk';
 import { context_getSingle } from '@fnndsc/salsa';
 import {
-  currentUser_get,
+  currentIdentity_get,
   envelope_error,
   envelope_ok,
-  type ChrisUser,
+  type ChrisGroup,
+  type ChrisIdentity,
   type CommandEnvelope,
   type Result,
   type SingleContext,
 } from '@fnndsc/cumin';
+
+/** A Unix-style group entry projected from CUBE identity data. */
+interface PosixGroupIdentity {
+  gid: number;
+  group: string;
+}
 
 /**
  * Reports the current ChRIS identity using Unix `id` notation.
@@ -22,26 +29,49 @@ import {
  * name equal the user's ID and username.
  *
  * @param _args - Unused.
- * @returns An envelope carrying numeric UID/GID identity, or an error envelope
- *   when the current CUBE user cannot be resolved.
+ * @returns An envelope carrying numeric UID/GID identity and every CUBE group
+ *   membership, or an error envelope when identity cannot be resolved.
  */
 export async function builtin_id(_args: string[]): Promise<CommandEnvelope> {
-  const result: Result<ChrisUser> = await currentUser_get();
+  const result: Result<ChrisIdentity> = await currentIdentity_get();
   if (!result.ok) {
     process.exitCode = 1;
     return envelope_error(`${chalk.gray('(identity unavailable)')}\n`);
   }
 
-  const user: ChrisUser = result.value;
-  return envelope_ok(`uid=${user.id}(${user.username}) gid=${user.id}(${user.username})\n`, {
-    kind: 'session.posixIdentity',
-    data: {
-      uid: user.id,
-      user: user.username,
-      gid: user.id,
-      group: user.username,
+  const identity: ChrisIdentity = result.value;
+  const primaryGroup: PosixGroupIdentity = {
+    gid: identity.user.id,
+    group: identity.user.username,
+  };
+  const memberships: PosixGroupIdentity[] = identity.groups
+    .map((membership: ChrisGroup): PosixGroupIdentity => ({
+      gid: membership.id,
+      group: membership.name,
+    }))
+    .filter((membership: PosixGroupIdentity): boolean =>
+      membership.gid !== primaryGroup.gid || membership.group !== primaryGroup.group)
+    .sort((left: PosixGroupIdentity, right: PosixGroupIdentity): number =>
+      left.gid - right.gid || left.group.localeCompare(right.group));
+  const groups: PosixGroupIdentity[] = [primaryGroup, ...memberships];
+  const renderedGroups: string = groups
+    .map((membership: PosixGroupIdentity): string => `${membership.gid}(${membership.group})`)
+    .join(',');
+
+  return envelope_ok(
+    `uid=${identity.user.id}(${identity.user.username}) `
+      + `gid=${primaryGroup.gid}(${primaryGroup.group}) groups=${renderedGroups}\n`,
+    {
+      kind: 'session.posixIdentity',
+      data: {
+        uid: identity.user.id,
+        user: identity.user.username,
+        gid: primaryGroup.gid,
+        group: primaryGroup.group,
+        groups,
+      },
     },
-  });
+  );
 }
 
 /**

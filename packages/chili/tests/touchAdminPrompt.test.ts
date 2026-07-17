@@ -81,8 +81,12 @@ describe('files_touch', () => {
 
 describe('adminCredentials_prompt', () => {
   it('collects credentials through the registered REPL functions', async () => {
-    adminPrompt_register(async () => 'admin', async () => 'fixture-pw');
+    const askUsername: jest.Mock = jest.fn(async () => 'admin');
+    const askPassword: jest.Mock = jest.fn(async () => 'fixture-pw');
+    adminPrompt_register(askUsername, askPassword);
     expect(await adminCredentials_prompt()).toEqual({ username: 'admin', password: 'fixture-pw' });
+    expect(askUsername).toHaveBeenCalledWith('Admin username: ');
+    expect(askPassword).toHaveBeenCalledWith('Admin password: ');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Admin credentials required'));
   });
 

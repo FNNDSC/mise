@@ -20,12 +20,12 @@ The design separates two concerns with different freshness requirements:
 | `ProcCache.feeds`
 
 | Instance topology (id, parentID, pluginName)
-| Permanent once written — loaded lazily, never stale
-| `ProcCache.instances`
+| Restored locally, then reconciled against CUBE in the background
+| `ProcCache.instances` plus an identity-scoped checkpoint
 
 | Instance status
-| Always live — never stored
-| API call on every read
+| Terminal states persist; active states refresh on read
+| Checkpoint for terminal states, CUBE for active states
 
 | Instance params
 | Immutable — cached on first read
@@ -37,12 +37,12 @@ The design separates two concerns with different freshness requirements:
 [source]
 ----
 /proc/
-└── feeds/
+└── jobs/
     └── feed_<N>/               ← type=job, aggregate status from counters
         ├── status               ← derived from feed.finished_jobs etc.
         ├── title                ← feed name
-        └── <plugin>_<id>/      ← type=job, status fetched live on ls -l
-            ├── status           ← always live API fetch
+        └── <plugin>_<id>/      ← type=job, status refreshed on ls -l
+            ├── status           ← terminal cached; active refreshed from CUBE
             ├── params           ← cached on first read
             └── log              ← always live
 ----
@@ -94,9 +94,8 @@ interface ProcInstance {
 }
 ----
 
-NOTE: `status` and `statusIsTerminal` are **not** stored. Status is always
-fetched live from the API. This ensures `ls -l` and `cat status` never show
-stale data.
+NOTE: Terminal status is immutable and is checkpointed. Non-terminal status is
+discarded on restore and fetched from CUBE when read. Logs are never cached.
 
 === State tracking fields
 
@@ -108,7 +107,8 @@ stale data.
 | Feed index. Populated at login from `getFeeds()`.
 
 | `instances: Map<number, ProcInstance>`
-| All loaded instances. Populated lazily per-feed.
+| Restored checkpoint instances plus entries merged by the global sweep or a
+  scoped per-feed load.
 
 | `feedRoots: Map<number, number[]>`
 | Root instance IDs per feed (parentID === null).
@@ -121,16 +121,32 @@ stale data.
   Distinguishes "loaded but empty" from "not yet loaded".
 
 | `loading: Map<number, Promise<void>>`
-| In-flight topology fetch promises. Prevents duplicate API calls when
-  the background loader and a user navigation race on the same feed.
+| In-flight scoped per-feed fetch promises. Prevents duplicate API calls when
+  concurrent navigation requests target the same feed.
 
 | `warmupComplete: boolean`
-| True when background loader has finished all feeds. Enables
+| True when the authoritative global instance sweep has completed. Enables the
   pure in-memory path for `proc find <name>`.
 
-| `warmupProgress: { loaded: number; total: number }`
-| Drives the `[proc: N/total]` prompt segment during warm-up.
+| `warmupProgress: { loaded: number; total: number; active: boolean }`
+| Drives the `[proc: N/total]` prompt segment and records whether page progress
+  is active.
+
+| `lifecycle: empty | restored | reconciling | current | failed`
+| Distinguishes usable checkpoint data from a CUBE-current index.
 |===
+
+=== Persistent daemon checkpoint
+
+The daemon writes a versioned JSON checkpoint below the XDG cache directory,
+keyed by the normalized CUBE URL and username. Files are mode `0600` and are
+replaced atomically. The checkpoint stores normalized feed and topology data;
+it does not materialize VFS paths, logs, or cached parameters.
+
+At restart the daemon restores this checkpoint first, fetches the current
+visible-feed index from CUBE, and removes feeds the identity can no longer see.
+Only then is the daemon advertised. The expensive global instance sweep merges
+in the background and prunes topology absent from the authoritative result.
 
 === Aggregate feed status derivation
 
@@ -149,30 +165,31 @@ else                                   → 'finishedSuccessfully'
 
 === Phase 1: Feed index (synchronous, at login)
 
-`procCache_build()` fetches all feeds via paginated `getFeeds()` calls
-(100 per page). Stores `ProcFeed` with job counters. Sets `built = true`.
-Runs during the boot sequence before the REPL starts — blocks briefly
-(~5–30s depending on feed count).
+`procCache_build()` fetches owned/shared and public feeds through paginated
+CUBE calls, deduplicates overlaps, stores `ProcFeed` job counters, and marks the
+index built. During daemon startup this also validates the feed visibility of a
+restored checkpoint before the listening berth is published.
 
-=== Phase 2: Instance topology (background, batched)
+=== Phase 2: Instance topology (background, paginated)
 
-`procTopology_warmup()` runs as a fire-and-forget after `repl.start()`.
-Loads instance topology for all feeds in batches of **10 concurrent feeds**.
+`procTopology_warmup()` performs one paginated global plugin-instance sweep.
+With a restored checkpoint, global queries remain available while this sweep
+reconciles against CUBE.
 
 [source,typescript]
 ----
 // Pseudo-code
-const feedIDs = cache.feedIDs_get();
-for (let i = 0; i < feedIDs.length; i += BATCH_SIZE) {
-  const batch = feedIDs.slice(i, i + BATCH_SIZE);
-  await Promise.all(batch.map(feedID => feedInstances_load(feedID)));
-  cache.warmup_progress(i + batch.length, feedIDs.length);
+for (const page of getPluginInstancesPaginated()) {
+  for (const instance of page) cache.instance_add(instance);
+  cache.warmup_progress(seen.size, page.totalCount);
 }
+cache.topology_reconcile(seen);
 cache.warmup_complete();
 ----
 
-Warm-up progress is visible in the prompt: `[proc: 342/1275]`.
-The indicator disappears when `warmupComplete = true`.
+Warm-up progress is visible in the prompt as `[proc: 342/1275]`; use
+`proc stat` to distinguish restored, reconciling, and current cache states. The
+indicator disappears when `warmupComplete = true`.
 
 === Phase 3: Per-feed lazy loading (on navigation)
 
@@ -197,21 +214,19 @@ async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
 
 === Duplicate fetch prevention
 
-`ProcCache.loading: Map<number, Promise<void>>` stores in-flight promises.
-If both the background loader and a user navigation arrive at the same feed
+`ProcCache.loading: Map<number, Promise<void>>` stores per-feed in-flight
+promises. If two navigations or scoped operations request the same feed
 simultaneously, the second caller awaits the existing promise rather than
-firing a redundant API call.
+firing a duplicate request.
 
-== Status: Always Live
+== Status Freshness
 
-Per-node status is **never cached**. Every read goes to the API:
+Terminal per-node status is immutable and returned from cache. Active status
+is refreshed from the API when read:
 
 * `cat /proc/jobs/feed_N/<instance>/status` → `getPluginInstance(id)`
-* `ls -l /proc/jobs/feed_N` → `jobs_statusBatch(allNodeIDs)` — one
-  `Promise.all` across all nodes in the feed (~10–20 parallel calls)
-
-`jobs_statusBatch(ids)` in `salsa/src/jobs/jobOps.ts` returns
-`Map<number, string>` — all statuses in one parallel round-trip.
+* Revisiting `ls -l /proc/jobs/feed_N` while displayed nodes are active runs one
+  paginated, feed-scoped `getPluginInstances` sweep and updates cached statuses.
 
 === Feed aggregate status
 
@@ -221,23 +236,38 @@ Per-node status is **never cached**. Every read goes to the API:
 
 == `proc` Commands
 
-=== proc refresh
+=== proc stat
 
-Resets the cache and re-triggers both phases:
+Reports cache freshness without forcing a rebuild:
 
 [source,bash]
 ----
-proc refresh              # reset all — rebuilds feed index, restarts warm-up
+proc stat                 # global cache and feed-scope summary
+proc stat feed_123        # cached counters and topology state for one feed
+----
+
+The global summary shows exclusive user/public/shared feed counts, loaded versus
+reported jobs, topology-sweep state, cache lifecycle state, and the checkpoint
+timestamp when one has been restored or written. The per-feed form reports its
+aggregate status, job counters, and whether its topology is loaded.
+
+=== proc refresh
+
+Revalidates the feed index and re-triggers topology reconciliation:
+
+[source,bash]
+----
+proc refresh              # refresh feed visibility, restart reconciliation
 proc refresh feed_123     # scoped — reloads one feed's topology and job counts
 proc refresh 123          # same
 ----
 
 Behaviour:
 
-. Calls `cache.cache_clear()` (or scoped equivalent)
-. Re-fetches feed index synchronously
+. Retains usable restored/current topology during the replacement sweep
+. Re-fetches and reconciles feed visibility synchronously
 . Re-triggers background topology warm-up (fire-and-forget)
-. Returns immediately — prompt warm-up indicator reappears
+. Atomically checkpoints the result after successful completion
 
 === proc find
 
@@ -255,16 +285,20 @@ Behaviour:
 |===
 | State | Behaviour
 
-| `warmupComplete = false`
-| Always queries API (`getPluginInstances({ plugin_name: term })`).
-  Falls back to API for ID lookups too if not in cache.
+| No usable checkpoint and the global sweep is incomplete
+| Name searches refuse partial results. Add `--force` to wait for the active
+  sweep. Numeric ID lookup may fall back to CUBE when absent from cache.
 
-| `warmupComplete = true`
-| Pure in-memory: `cache.instances_find(term)` — microseconds, zero API.
+| Restored checkpoint is reconciling
+| Global queries remain enabled. Numeric IDs are cache-first; name searches use
+  CUBE while the sweep is incomplete.
+
+| Global sweep is complete
+| Searches the authoritative in-memory topology with no API lookup.
 |===
 
 After finding matches, loads topology for any unloaded feeds
-(via `procCache_refresh(feedID)`) and calls `path_build(id)` to
+(via `procFeed_ensureLoaded(feedID)`) and calls `path_build(id)` to
 reconstruct full `/proc` paths.
 
 === rm in /proc
@@ -284,19 +318,22 @@ reconstruct full `/proc` paths.
 
 == Prompt Warm-up Indicator
 
-`PromptContext` carries an optional `procWarmup` field:
+The prompt renderer accepts an optional `procWarmup` field:
 
 [source,typescript]
 ----
-procWarmup?: { loaded: number; total: number }
+procWarmup?: { loaded: number; total?: number; restored?: boolean }
 ----
 
-Present and rendered only while `warmupComplete = false`. Disappears
-automatically when warm-up finishes. Example prompt segment:
+Present while a topology sweep is active or the lifecycle is `reconciling`, and
+removed when the sweep settles. The engine context can mark restored progress,
+but attached remote surfaces currently receive the progress counts; `proc stat`
+is the authoritative way to inspect restored/current lifecycle. Example remote
+prompt segment:
 
 [source]
 ----
- 🌐 radstar  📂 /home/radstar  [proc: 342/1275]
+ 🌐 user  📂 /home/user  [proc: 342/1275]
 ❯
 ----
 
@@ -309,48 +346,54 @@ automatically when warm-up finishes. Example prompt segment:
 | `cumin/src/cache/procCache.ts`
 | `ProcCache` class with all state fields and methods
 
+| `cumin/src/cache/procCheckpoint.ts`
+| Identity-keyed validation, restore, atomic save, and debounced persistence
+
 | `salsa/src/vfs/providers/proc.ts`
-| `ProcVfsProvider`, `procTopology_warmup`, `feedInstances_ensureLoaded`
+| `ProcVfsProvider`, feed reconciliation, global topology sweep, and lazy loading
 
 | `salsa/src/jobs/jobOps.ts`
 | `jobs_statusBatch`, `jobs_find`, `job_cancel`, `job_delete`
 
-| `chell/src/chell.ts`
-| Fire-and-forget `procTopology_warmup()` just before `repl.start()`
+| `chell/src/core/startupWarmup.ts`
+| Daemon checkpoint restore, feed-visibility validation, and topology startup
 
-| `chell/src/core/prompt/index.ts`
-| `procWarmup` in `PromptContext`
+| `brasa/src/builtins/proc.ts`
+| `proc stat`, refresh, query gating, and rendered command envelopes
 
-| `chell/src/core/repl.ts`
-| Reads `procCache_get().warmupProgress_get()` in `prompt_update()`
+| `brasa/src/core/promptContext.ts` and `chell/src/core/prompt/`
+| Prompt lifecycle facts and terminal-theme rendering
 |===
 
 == Design Decisions
 
 ADR entries (see `docs/adr/`):
 
-* **Topology permanent, status volatile**: instance DAG structure never
-  changes once written. Status changes continuously. Storing them in the
-  same cache would require TTL logic or invalidation. Separation eliminates
-  the problem entirely.
+* **CUBE remains authoritative**: restored topology is immediately useful but
+  not presumed current. Feed visibility is validated before the daemon is
+  advertised, and the global sweep adds current instances and removes topology
+  absent from the completed result.
 
-* **10 concurrent feeds in background loader**: ChRIS CUBE runs gunicorn
-  with `2*CPU+1` workers (typically 5–9). 10 concurrent requests keeps
-  queue depth at ~1–2, balancing throughput against server load.
+* **One paginated global sweep**: startup indexes plugin instances page by page
+  instead of issuing one request sequence per feed. Scoped lazy loads may still
+  serve navigation; the completed global result remains authoritative.
+
+* **Terminal status is persistence-safe**: successful, failed, and cancelled
+  states are immutable and may be checkpointed. Active state and logs remain
+  live and are refreshed from CUBE.
 
 * **`topologyLoaded` set vs length check**: `feedRoots_get(N).length > 0`
   cannot distinguish "not loaded" from "loaded but genuinely 0 instances."
   An explicit `Set<number>` eliminates the ambiguity.
 
-* **In-flight map**: background loader and user navigation can race on the
-  same feed. A `Map<number, Promise<void>>` makes the second caller await
-  the first's result rather than firing a duplicate API call.
+* **In-flight map**: two navigations or scoped operations can request the same
+  feed concurrently. A `Map<number, Promise<void>>` makes the second caller
+  await the first's result rather than firing a duplicate API call.
 
 * **Feed job counters for aggregate status**: ChRIS feed objects carry
   `finished_jobs`, `errored_jobs`, `started_jobs` etc. Aggregate status
   is derivable from these without querying individual instance statuses.
 
-* **`proc find` switches to cache after warm-up**: name searches during
-  warm-up fall back to API for completeness. After `warmupComplete`,
-  in-memory scan is instant and authoritative (topology never changes).
-|===
+* **Global queries require a complete usable view**: a restored checkpoint may
+  serve searches while reconciliation runs. Without one, global queries refuse
+  partial results unless `--force` waits for the sweep to complete.

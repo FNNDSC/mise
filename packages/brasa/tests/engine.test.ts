@@ -82,7 +82,7 @@ const BUILTIN_NAMES = [
   'builtin_plugininstance', 'builtin_workflow', 'builtin_download', 'builtin_edit',
   'builtin_files', 'builtin_links', 'builtin_dirs', 'builtin_context',
   'builtin_parametersofplugin', 'builtin_physicalmode', 'builtin_prompt',
-  'builtin_timing', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
+  'builtin_timing', 'builtin_id', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
   'builtin_debug', 'builtin_help', 'builtin_tree', 'builtin_du', 'builtin_store',
 ];
 jest.unstable_mockModule('../src/builtins/index.js', () => {
@@ -320,11 +320,11 @@ describe('output redirection', () => {
 
 describe('line_execute — control flow', () => {
   it('short-circuits when a simulated plugin handles the command', async () => {
-    mockPluginExecutable.mockResolvedValueOnce(true);
+    mockPluginExecutable.mockResolvedValueOnce({ status: 'ok', rendered: 'PLUGIN OUTPUT\n' });
     const envelopes = await line_execute('whoami');
     expect(mockPluginExecutable).toHaveBeenCalledWith('whoami', []);
     expect(mockWhoami).not.toHaveBeenCalled();
-    expect(envelopes).toEqual([{ status: 'ok', rendered: '' }]);
+    expect(envelopes).toEqual([{ status: 'ok', rendered: 'PLUGIN OUTPUT\n' }]);
   });
 
   it('aborts a semicolon batch on error when stop-on-error is set', async () => {

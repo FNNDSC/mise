@@ -35,6 +35,11 @@ const mockChiliRun = jest.fn();
 jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn() } }));
 jest.unstable_mockModule('@fnndsc/chili/utils/admin_prompt.js', () => ({ adminPrompt_register: jest.fn() }));
+const mockChiliCapture = jest.fn(async (fn: () => Promise<void>) => {
+  await fn();
+  return { out: '', err: '' };
+});
+jest.unstable_mockModule('@fnndsc/chili/screen/output.js', () => ({ chili_capture: mockChiliCapture }));
 jest.unstable_mockModule('../src/core/question.js', () => ({ repl_question: jest.fn(), repl_questionHidden: jest.fn() }));
 
 const { builtin_plugin, plugin_addInteractive } = await import('../src/builtins/res/plugin.js');
@@ -45,6 +50,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   mockAllOfType.mockReturnValue([]);
+  mockChiliCapture.mockImplementation(async (fn: () => Promise<void>) => {
+    await fn();
+    return { out: '', err: '' };
+  });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -120,8 +129,14 @@ describe('plugin_addInteractive', () => {
 
   it('reports a successful install', async () => {
     mockAdd.mockResolvedValue('installed');
+    mockChiliCapture.mockImplementationOnce(async (fn: () => Promise<void>) => {
+      await fn();
+      return { out: 'Admin credentials required.\n', err: '' };
+    });
     const env = await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
     expect(env.rendered).toContain('SUCCESS');
+    expect(env.rendered).toContain('Admin credentials required');
+    expect(mockChiliCapture).toHaveBeenCalledTimes(1);
   });
 
   it('reports an already-registered plugin', async () => {

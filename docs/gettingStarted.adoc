@@ -226,6 +226,15 @@ an explicit `Topology Warm-up failed` status, when that background sweep settles
 If part of the blocking warm-up fails, the daemon reports the incomplete labels
 explicitly and still starts; those resources remain lazily loadable.
 
+For `/proc/jobs`, the daemon first restores a versioned, identity-scoped local
+checkpoint and validates its feed visibility before publishing the socket. The
+restored graph remains usable while a paginated CUBE sweep reconciles it in the
+background. Terminal job status may come from the checkpoint; active status and
+logs remain live. Use `proc stat` to inspect the cache state and checkpoint time,
+and `proc refresh` after analyses created by another client. See
+link:../packages/chell/docs/proc.adoc[the `/proc` guide] for the full freshness
+model.
+
 Either way, the daemon writes an identity-keyed berth containing its URL and a
 fresh attach token, readable only by the current OS user, under
 `$XDG_RUNTIME_DIR/calypso/` (or the platform temporary directory as fallback).

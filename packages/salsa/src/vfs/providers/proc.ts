@@ -109,7 +109,7 @@ function procFeed_create(feed: RawFeed): ProcFeed {
 }
 
 /** Indexes one complete paginated CUBE feed collection into the shared cache. */
-async function procFeeds_index(cache: ProcCache, page_fetch: FeedPageFetch): Promise<void> {
+async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, ProcFeed>): Promise<void> {
   let offset: number = 0;
   let total: number = 0;
   const seenFeedIDs: Set<number> = new Set();
@@ -121,7 +121,8 @@ async function procFeeds_index(cache: ProcCache, page_fetch: FeedPageFetch): Pro
       total = page.totalCount;
     }
     for (const feed of chunk) {
-      cache.feed_add(procFeed_create(feed));
+      const procFeed: ProcFeed = procFeed_create(feed);
+      indexed.set(procFeed.id, procFeed);
       seenFeedIDs.add(Number(feed.id));
     }
     if (chunk.length === 0 || (total > 0 && seenFeedIDs.size >= total)) break;
@@ -138,20 +139,21 @@ async function procFeeds_index(cache: ProcCache, page_fetch: FeedPageFetch): Pro
  */
 async function procCache_build(): Promise<void> {
   const cache: ProcCache = procCache_get();
-  cache.cache_clear();
 
   const client = await chrisConnection.client_get();
   if (!client) {
     errorStack.stack_push('error', 'procCache_build: not connected');
-    return;
+    throw new Error('not connected');
   }
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
-  await procFeeds_index(cache, typedClient.getFeeds.bind(typedClient));
+  const indexed: Map<number, ProcFeed> = new Map();
+  await procFeeds_index(typedClient.getFeeds.bind(typedClient), indexed);
   if (typedClient.getPublicFeeds) {
-    await procFeeds_index(cache, typedClient.getPublicFeeds.bind(typedClient));
+    await procFeeds_index(typedClient.getPublicFeeds.bind(typedClient), indexed);
   }
 
+  cache.feeds_reconcile(Array.from(indexed.values()));
   cache.built_set();
 }
 
@@ -169,7 +171,7 @@ async function cache_ensure(): Promise<void> {
 async function feedInstances_load(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   const client = await chrisConnection.client_get();
-  if (!client) return;
+  if (!client) throw new Error('not connected');
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
   const instances: Map<number, RawInstance> = new Map();
@@ -549,7 +551,7 @@ export async function feedMeta_ensure(feedID: number): Promise<void> {
   if (existing && existing.creationDate !== '') return;
 
   const client = await chrisConnection.client_get();
-  if (!client) return;
+  if (!client) throw new Error('not connected');
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
   const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
@@ -592,19 +594,20 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
  * Background topology warm-up — single paginated sweep of all plugin instances
  * across all feeds. Replaces the per-feed fan-out that was O(feeds) round trips.
  *
- * Registers itself as the active sweep so that any concurrent
- * feedInstances_ensureLoaded call waits for this sweep rather than launching
- * its own per-feed API call.
+ * Scoped per-feed loads may run concurrently for navigation; the completed
+ * global sweep reconciles the cache to its authoritative instance set.
  */
 async function procTopology_run(): Promise<void> {
   await cache_ensure();
   const cache: ProcCache = procCache_get();
+  cache.lifecycle_set('reconciling');
   const client = await chrisConnection.client_get();
-  if (!client) return;
+  if (!client) throw new Error('not connected');
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
   let offset: number = 0;
   let total: number = 0;
+  const fetchedInstanceIDs: Set<number> = new Set();
   const seenInstanceIDs: Set<number> = new Set();
   const seenFeedIDs: Set<number> = new Set();
 
@@ -621,17 +624,12 @@ async function procTopology_run(): Promise<void> {
     for (const inst of chunk) {
       const instanceID: number = Number(inst.id);
       const feedID: number = Number(inst.feed_id);
+      fetchedInstanceIDs.add(instanceID);
       const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
         ? Number(inst.previous_id)
         : null;
 
-      if (!cache.feed_get(feedID)) {
-        cache.feed_add({
-          id: feedID, title: `feed_${feedID}`, ownerUsername: '', public: false, creationDate: '',
-          finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
-          scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
-        });
-      }
+      if (!cache.feed_get(feedID)) continue;
 
       cache.instance_add({
         id: instanceID,
@@ -646,16 +644,15 @@ async function procTopology_run(): Promise<void> {
       seenFeedIDs.add(feedID);
     }
 
-    if (total > 0) cache.warmup_progress(seenInstanceIDs.size, total);
-    if (chunk.length === 0 || (total > 0 && seenInstanceIDs.size >= total)) break;
+    if (total > 0) cache.warmup_progress(fetchedInstanceIDs.size, total);
+    if (chunk.length === 0 || (total > 0 && fetchedInstanceIDs.size >= total)) break;
     if (total === 0 && chunk.length < PAGE) break;
     offset += chunk.length;
   }
 
-  for (const feedID of seenFeedIDs) {
-    cache.topologyLoaded_mark(feedID);
-  }
-  if (total === 0) cache.warmup_progress(seenInstanceIDs.size, seenInstanceIDs.size);
+  cache.topology_reconcile(seenInstanceIDs);
+  for (const feedID of seenFeedIDs) cache.topologyLoaded_mark(feedID);
+  if (total === 0) cache.warmup_progress(fetchedInstanceIDs.size, fetchedInstanceIDs.size);
   cache.warmup_complete();
 }
 
@@ -742,6 +739,7 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
     }
     procTopologyPromise = null;
     procTopologyFailure = undefined;
+    procCache_get().warmup_reset();
     await procCache_build();
   }
 }

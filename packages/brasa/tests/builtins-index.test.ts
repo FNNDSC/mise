@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
-import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { ChrisIdentity, CommandEnvelope, Result } from '@fnndsc/cumin';
 
 // Mock dependencies BEFORE imports
 const mockGetCWD = jest.fn();
@@ -71,6 +71,7 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 
 // Mock cumin
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  currentIdentity_get: jest.fn<() => Promise<Result<ChrisIdentity>>>(),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -84,6 +85,14 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     cache_set: jest.fn(),
     cache_invalidate: jest.fn(),
     cache_markDirty: jest.fn(),
+  }),
+  procCache_get: () => ({
+    instance_get: jest.fn(),
+    lifecycle_get: jest.fn(() => ({ state: 'empty' })),
+    warmupProgress_get: jest.fn(() => ({ loaded: 0, total: 0, active: false })),
+    feedIDs_get: jest.fn(() => []),
+    feedScopeCounts_get: jest.fn(() => ({ user: 0, public: 0, shared: 0, total: 0 })),
+    get warmupComplete(): boolean { return false; },
   }),
   connectionConfig: { debug: false },
   errorStack: errorStack,
@@ -154,6 +163,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: mockContextGetSingle,
+  procCache_refresh: jest.fn().mockResolvedValue(undefined),
   feedGraphData_ensure: jest.fn(),
   feedGraph_build: jest.fn(),
   files_listAll: jest.fn().mockResolvedValue(null),

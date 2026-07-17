@@ -50,6 +50,7 @@ import {
   builtin_parametersofplugin,
   builtin_physicalmode,
   builtin_timing,
+  builtin_id,
   builtin_whoami,
   builtin_whereami,
   builtin_version,
@@ -169,6 +170,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   mkdir: builtin_mkdir,
   touch: builtin_touch,
   pwd: builtin_pwd,
+  id: builtin_id,
   whoami: builtin_whoami,
   whereami: builtin_whereami,
   timing: builtin_timing,
@@ -252,6 +254,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   parametersofplugin: envelopeHandler_wrap(builtin_parametersofplugin),
   physicalmode: envelopeHandler_wrap(builtin_physicalmode),
   timing: envelopeHandler_wrap(builtin_timing),
+  id: envelopeHandler_wrap(builtin_id),
   whoami: envelopeHandler_wrap(builtin_whoami),
   whereami: envelopeHandler_wrap(builtin_whereami),
   debug: envelopeHandler_wrap(builtin_debug),
@@ -655,7 +658,9 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    if (await pluginExecutable_handle(command, args, { piped: true })) {
+    const pluginEnvelope: CommandEnvelope | null = await pluginExecutable_handle(command, args);
+    if (pluginEnvelope) {
+      envelope_deliver(pluginEnvelope);
       return;
     }
 
@@ -755,11 +760,16 @@ export async function command_executeToEnvelope(
   // command_dispatchEnvelope, so it drains the errorStack itself.
   const checkpoint: number = errorStack.checkpoint_mark();
   const exitCodeBefore: number = exitCode_read();
-  if (await pluginExecutable_handle(command, args)) {
+  const pluginEnvelope: CommandEnvelope | null = await pluginExecutable_handle(command, args);
+  if (pluginEnvelope) {
+    envelope_deliver(pluginEnvelope);
     command_timingMaybePrint(startTime, timingEnabled);
     const exitCodeAfter: number = exitCode_read();
     const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
-    return envelope_drainErrorsInto(checkpoint, { status: failed ? 'error' : 'ok', rendered: '' });
+    const result: CommandEnvelope = failed
+      ? { ...pluginEnvelope, status: 'error' }
+      : pluginEnvelope;
+    return envelope_drainErrorsInto(checkpoint, result);
   }
 
   const envelope: CommandEnvelope = await command_dispatchEnvelope(command, args);

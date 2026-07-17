@@ -8,11 +8,33 @@ jest.mock('../src/connect/chrisConnection', () => ({
 }));
 
 import { chrisConnection } from '../src/connect/chrisConnection';
-import { groups_getAll, currentUser_get, ChrisGroup, ChrisUser } from '../src/users/chrisUsers';
+import {
+  groups_getAll,
+  currentIdentity_get,
+  currentUser_get,
+  ChrisGroup,
+  ChrisIdentity,
+  ChrisUser,
+} from '../src/users/chrisUsers';
 import { errorStack } from '../src/error/errorStack';
 import { Result } from '../src/utils/result';
 
 const mockClientGet: jest.Mock = chrisConnection.client_get as unknown as jest.Mock;
+
+interface MembershipPageOptions {
+  limit: number;
+  offset: number;
+}
+
+interface MembershipPageFixture {
+  data: ChrisGroup[];
+  hasNextPage?: boolean;
+}
+
+interface UserResourceFixture {
+  data: ChrisUser;
+  getGroups: (options: MembershipPageOptions) => Promise<MembershipPageFixture>;
+}
 
 let pushSpy: jest.SpyInstance;
 beforeEach(() => {
@@ -77,5 +99,50 @@ describe('currentUser_get', () => {
     mockClientGet.mockResolvedValue({ getUser: jest.fn(async () => { throw new Error('401'); }) });
     expect((await currentUser_get()).ok).toBe(false);
     expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('401'));
+  });
+});
+
+describe('currentIdentity_get', () => {
+  it('returns the current user and every CUBE group membership', async () => {
+    const user: ChrisUser = { id: 42, username: 'rudolphpienaar', email: 'rudolph@example.org', is_staff: false };
+    const groups: ChrisGroup[] = [{ id: 7, name: 'pacs' }, { id: 9, name: 'research' }];
+    const getGroups: jest.Mock<Promise<MembershipPageFixture>, [MembershipPageOptions]> =
+      jest.fn<Promise<MembershipPageFixture>, [MembershipPageOptions]>();
+    getGroups.mockResolvedValue({ data: groups });
+    const userResource: UserResourceFixture = { data: user, getGroups };
+    const getUser: jest.Mock<Promise<UserResourceFixture>, []> =
+      jest.fn<Promise<UserResourceFixture>, []>();
+    getUser.mockResolvedValue(userResource);
+    mockClientGet.mockResolvedValue({ getUser });
+
+    const result: Result<ChrisIdentity> = await currentIdentity_get();
+
+    expect(result).toEqual({ ok: true, value: { user, groups } });
+  });
+
+  it('fetches every page of the current user memberships', async () => {
+    const user: ChrisUser = { id: 42, username: 'rudolphpienaar', email: 'rudolph@example.org', is_staff: false };
+    const getGroups: jest.Mock<Promise<MembershipPageFixture>, [MembershipPageOptions]> =
+      jest.fn<Promise<MembershipPageFixture>, [MembershipPageOptions]>(
+        async (options: MembershipPageOptions): Promise<MembershipPageFixture> =>
+          options.offset === 0
+            ? { data: [{ id: 7, name: 'pacs' }], hasNextPage: true }
+            : { data: [{ id: 9, name: 'research' }], hasNextPage: false },
+      );
+    const userResource: UserResourceFixture = { data: user, getGroups };
+    const getUser: jest.Mock<Promise<UserResourceFixture>, []> =
+      jest.fn<Promise<UserResourceFixture>, []>();
+    getUser.mockResolvedValue(userResource);
+    mockClientGet.mockResolvedValue({ getUser });
+
+    const result: Result<ChrisIdentity> = await currentIdentity_get();
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        user,
+        groups: [{ id: 7, name: 'pacs' }, { id: 9, name: 'research' }],
+      },
+    });
   });
 });

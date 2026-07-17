@@ -16,6 +16,10 @@ const mockPrefetchWithSpinner = jest.fn(
 );
 const mockTopologyWarmup = jest.fn(async (): Promise<void> => undefined);
 const mockProcCacheRefresh = jest.fn(async (): Promise<void> => undefined);
+const mockCheckpointRestore = jest.fn(async () => ({ restored: false, count: 0 }));
+const mockCheckpointWatch = jest.fn();
+const mockCacheClear = jest.fn();
+let mockCacheLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
 const mockDaemonListen = jest.fn();
 const mockDaemonLaunch = jest.fn(
   async (_engine: BrasaEngine, beforeListen?: () => Promise<void>): Promise<void> => {
@@ -37,11 +41,14 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procTopology_warmup: mockTopologyWarmup,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  chrisContext: { ChRISURL_get: jest.fn(async () => 'https://cube.example.org/api/v1/') },
   errorStack: {
     stack_pop: mockStackPop,
     scope_run: (callback: () => void): void => callback(),
   },
   procCache_get: jest.fn(() => ({
+    cache_clear: mockCacheClear,
+    lifecycle_get: (): { state: string; checkpointAt?: string } => ({ ...mockCacheLifecycle }),
     feedIDs_get: (): number[] => [1, 2, 3],
     warmupProgress_get: (): { loaded: number; total: number; active: boolean } => ({
       loaded: 12,
@@ -49,8 +56,13 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
       active: false,
     }),
   })),
+  procCheckpoint_restore: mockCheckpointRestore,
+  procCheckpoint_watch: mockCheckpointWatch,
 }));
-jest.unstable_mockModule('@fnndsc/calypso', () => ({ daemon_launch: mockDaemonLaunch }));
+jest.unstable_mockModule('@fnndsc/calypso', () => ({
+  daemon_launch: mockDaemonLaunch,
+  identity_forSession: (user: string, url: string): string => `${user}@${url}`,
+}));
 
 const { daemonSession_run, startupWarmup_run } = await import('../src/core/startupWarmup.js');
 
@@ -61,6 +73,8 @@ describe('daemonSession_run', () => {
     mockStackPop.mockReturnValue(undefined);
     mockProcCacheRefresh.mockResolvedValue(undefined);
     mockTopologyWarmup.mockResolvedValue(undefined);
+    mockCacheLifecycle = { state: 'empty' };
+    mockCheckpointRestore.mockResolvedValue({ restored: false, count: 0 });
     mockDataGet.mockResolvedValue({
       ok: true,
       value: [
@@ -93,7 +107,7 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('ok', 'Pipelines', 'Cached 1 pipeline(s)');
     expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 item(s) from /home/rudolph/feeds');
     expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 item(s) from /PUBLIC');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feed(s) — topology warming in background');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feed(s) — topology reconciling in background');
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
     expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 job(s) indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
@@ -101,6 +115,22 @@ describe('daemonSession_run', () => {
 
     const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
     expect(readyOrder).toBeLessThan(mockDaemonListen.mock.invocationCallOrder[0]);
+  });
+
+  it('restores an identity-scoped checkpoint before reconciling topology', async () => {
+    mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 7009, writtenAt: '2026-07-16T00:00:00Z' });
+    const report = jest.fn();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
+
+    expect(mockCheckpointRestore).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
+    expect(mockCheckpointWatch).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 job(s); indexed 3 feed(s) — topology reconciling in background');
+    expect(mockCheckpointRestore.mock.invocationCallOrder[0]).toBeLessThan(mockProcCacheRefresh.mock.invocationCallOrder[0]);
   });
 
   it('reports a background topology failure after publishing engine readiness', async () => {
@@ -153,6 +183,21 @@ describe('daemonSession_run', () => {
     );
     expect(mockTopologyWarmup).not.toHaveBeenCalled();
     expect(mockDaemonListen).toHaveBeenCalledTimes(1);
+  });
+
+  it('quarantines restored topology when CUBE visibility validation fails', async () => {
+    mockCacheLifecycle = { state: 'restored', checkpointAt: '2026-07-16T00:00:00Z' };
+    mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 10 });
+    mockProcCacheRefresh.mockRejectedValueOnce(new Error('visibility unavailable'));
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: jest.fn() });
+
+    expect(mockCacheClear).toHaveBeenCalled();
+    expect(mockTopologyWarmup).not.toHaveBeenCalled();
   });
 
   it('reports disabled caches without trying to warm them', async () => {

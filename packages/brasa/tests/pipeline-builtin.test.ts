@@ -4,22 +4,26 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 const mockPluginGet = jest.fn(async () => null as string | null);
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 const mockResolve = jest.fn();
+const mockInstanceGet = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { ChRISplugin_get: mockPluginGet },
   errorStack: { stack_pop: mockStackPop },
   pipeline_resolve: mockResolve,
+  procCache_get: () => ({ instance_get: mockInstanceGet }),
 }));
 
 const mockList = jest.fn();
 const mockRun = jest.fn();
 const mockSourceGet = jest.fn();
+const mockProcRefresh = jest.fn(async () => undefined);
 const mockDiagramGet: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipelines_list: mockList,
   pipeline_run: mockRun,
   pipeline_sourceGet: mockSourceGet,
+  procCache_refresh: mockProcRefresh,
   pipelineDiagram_get: mockDiagramGet,
 }));
 
@@ -54,6 +58,7 @@ beforeEach(() => {
   process.exitCode = 0;
   mockPluginGet.mockResolvedValue(null);
   mockClientGet.mockResolvedValue(null);
+  mockInstanceGet.mockReturnValue(undefined);
   mockDiagramGet.mockResolvedValue(ok({
     pipelineID: 7,
     name: 'Brain Segmentation',
@@ -135,9 +140,11 @@ describe('builtin_pipeline', () => {
     mockPluginGet.mockResolvedValue('5');
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe' }));
     mockRun.mockResolvedValue(ok({ workflowId: 99, pluginInstanceIds: [1, 2] }));
+    mockInstanceGet.mockReturnValue({ feedID: 77 });
     await builtin_pipeline(['run', 'MyPipe']);
     expect(mockRun).toHaveBeenCalledWith('MyPipe', 5, undefined);
     expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('Workflow 99 created'));
+    expect(mockProcRefresh).toHaveBeenCalledWith(77);
   });
 
   it('refuses to run without a context node', async () => {

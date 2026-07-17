@@ -2,9 +2,15 @@
 
 == intro
 
-Each plugin should have a corresponding `README` file that the developer created documenting important information. This `README` can exist in various formats, but is typically in github markdown syntax and unsurprisingly is assumed to be accessible on github.
+Each plugin should have a repository `README` containing its usage and other
+important information. ChILI discovers `README.md` and `README.rst` on the
+repository's `main` or `master` branch.
 
-The `plugin` subcommand can be used to return the `readme` of a given plugin. It operates by examining the `url` of the plugin json representation and searching in that location for a `README` file in various formats.
+The `plugin` subcommand returns the README for an installed plugin. It uses the
+plugin's `public_repo` metadata as the canonical repository and falls back to
+`documentation` for older CUBE records. Markdown is rendered for the terminal;
+reStructuredText is preserved instead of being passed through a Markdown
+parser.
 
 == how to use
 
@@ -118,6 +124,13 @@ Take note that using a _context_ specification *will update the plugin context t
 
 == final notes
 
-A successful readme call is dependent on a correct/complete set of meta data for a plugin. Careless developers might not specifiy the "url" in their plugin code meta parameters, in which case no readme lookup can occur. Should this be the case, a friendly PR nudge to the plugin developer might be needed.
+A successful README call depends on correct plugin metadata. New registrations
+should set `public_repo` to the source repository URL; `documentation` is only a
+compatibility fallback. The repository must expose `README.md` or `README.rst`
+on `main` or `master`.
+
+In ChELL, a versioned plugin executable exposes the same documentation with
+`<plugin>-v<version> --readme`. Add `--raw` when the original README content,
+without terminal styling or status text, is needed for a pipe or redirect.
 
 _-30-_

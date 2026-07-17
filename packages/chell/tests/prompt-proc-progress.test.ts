@@ -36,4 +36,11 @@ describe('prompt /proc progress', () => {
     const rendered: string = prompt_render('default', promptContext_createWithProgress(100, 100));
     expect(rendered).toContain('proc: 100/100 99%');
   });
+
+  it('marks restored data as usable while reconciliation continues', () => {
+    const context: PromptContext = promptContext_createWithProgress(25, 100);
+    context.procWarmup = { loaded: 25, total: 100, restored: true };
+    expect(prompt_render('default', context)).toContain('proc: cached, syncing 25/100 25%');
+    expect(prompt_render('p10k', context)).toContain('proc: cached, syncing 25/100 25%');
+  });
 });

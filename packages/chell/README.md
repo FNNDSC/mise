@@ -42,7 +42,7 @@ The ChELL filesystem has two kinds of paths:
 | `/SHARED/` | CFS | Cross-user shared data |
 | `*.chrislink` | CFS | Symbolic links to other ChRIS paths |
 | `/bin` | VFS | Every plugin registered in this CUBE |
-| `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`, …) |
+| `/usr/bin` | VFS | Built-in shell commands (`id`, `whoami`, `whereami`, …) |
 | `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | VFS | PACS query result sets |
 | `/proc/jobs/` | VFS | Job monitoring — live status of all plugin instances |
@@ -101,6 +101,22 @@ pl-fshack-v1.2.0 --inputFile brain.mgz -- feed_title="Brain MRI Study" instance_
 
 Everything before `--` goes to the plugin; everything after sets ChRIS metadata.
 
+### Inspecting a versioned plugin
+
+The executable itself exposes help, parameters, and repository documentation:
+
+```bash
+pl-fshack-v1.2.0 --help
+pl-fshack-v1.2.0 --parameters
+pl-fshack-v1.2.0 --readme
+pl-fshack-v1.2.0 --readme --raw > pl-fshack-README.md
+```
+
+Markdown READMEs are styled for terminal display, while reStructuredText is
+preserved as written. `--raw` returns only the original README content, making
+it safe for pipes and redirection. These forms behave the same in local and
+remote sessions.
+
 ### Monitoring
 
 ```bash
@@ -125,6 +141,10 @@ store install pl-simplefsapp --compute ares,argentum
 1. Already in this CUBE → reports `[INFO] already registered`
 2. Found in peer store (cube.chrisproject.org) → imports via admin API (prompts for admin credentials if needed)
 3. Not found → Docker extraction and registration
+
+When registration needs escalation, ChELL prompts for `Admin username` and
+`Admin password`; the password remains hidden. In a remote session those
+prompts and their guidance stay on the originating client surface.
 
 ---
 
@@ -171,7 +191,7 @@ Because every plugin runs asynchronously in ChRIS, `/proc/jobs/` is where you co
 
 ```bash
 ls -l /proc/jobs/feed_123            # see all nodes with colour-coded status
-cat /proc/jobs/feed_123/pl-fshack_789/status   # live status fetch
+cat /proc/jobs/feed_123/pl-fshack_789/status   # terminal cached; active refreshed
 cat /proc/jobs/feed_123/pl-fshack_789/log      # stdout/stderr
 cat /proc/jobs/feed_123/pl-fshack_789/params   # what it ran with
 
@@ -196,13 +216,21 @@ rm -r /proc/jobs/feed_123
 Status colours in `ls -l`: green = `finishedSuccessfully`, yellow = `started`/`running`, gray = `scheduled`/`cancelled`, red = `finishedWithError`.
 
 Connected startup indexes the visible feed list and warms job topology in the
-background. If startup prefetch is disabled, first access builds the index
-lazily. Rebuild explicitly after external activity (other users, web GUI):
+background. A daemon first restores its identity-scoped local checkpoint,
+validates that its feeds are still visible, and serves that usable topology
+while reconciling it with CUBE. Terminal statuses can be restored; active
+statuses and logs remain live. Inspect freshness and feed scope with `proc stat`:
 
 ```bash
+proc stat                 # feed scope, loaded jobs, sweep and checkpoint state
+proc stat feed_123        # cached detail for one feed
 proc refresh              # rebuild all and start one replacement topology sweep
 proc refresh feed_123     # scope to one feed
 ```
+
+If startup prefetch is disabled, first access builds the index lazily. Run a
+full `proc refresh` after activity from another client or the web GUI; CUBE is
+always authoritative.
 
 Since `/proc` paths encode the instance ID, you can also **continue an analysis from any node** just by `cd`-ing into it:
 
@@ -233,6 +261,7 @@ du                      # disk usage
 ```bash
 plugin list / search / inspect / run
 plugins list [--search <term>] [--all]
+<plugin>-v<version> --help / --parameters / --readme [--raw]
 feed list / inspect
 feeds list [--user <name>] [--all]
 feed note <id>          # read feed note
@@ -255,10 +284,12 @@ store set <url>         # override peer store
 
 ### System
 ```bash
+id                      # CUBE UID, projected primary GID, and memberships
 whoami                  # current user and CUBE URL
 whereami                # current working directory
 connect --user <u> --password <p> <url>
 logout
+proc stat               # show /proc feed scope, freshness, and checkpoint
 proc refresh            # rebuild /proc job cache and restart topology warm-up
 proc refresh feed_123   # scope rebuild to one feed
 ```

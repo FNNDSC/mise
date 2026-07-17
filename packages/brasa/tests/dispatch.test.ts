@@ -41,6 +41,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: mock
 // Built-in command table. Every name is a jest.fn() so COMMAND_HANDLERS is
 // fully populated; the ones asserted on are captured by reference.
 const mockLs = jest.fn();
+const mockId = jest.fn<(args: string[]) => Promise<CommandEnvelope>>();
 const mockWhoami = jest.fn();
 const mockPipeline = jest.fn();
 const mockUpload = jest.fn();
@@ -53,13 +54,14 @@ const BUILTIN_NAMES = [
   'builtin_plugininstance', 'builtin_workflow', 'builtin_download', 'builtin_edit',
   'builtin_files', 'builtin_links', 'builtin_dirs', 'builtin_context',
   'builtin_parametersofplugin', 'builtin_physicalmode', 'builtin_prompt',
-  'builtin_timing', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
+  'builtin_timing', 'builtin_id', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
   'builtin_debug', 'builtin_help', 'builtin_tree', 'builtin_du', 'builtin_store',
 ];
 jest.unstable_mockModule('../src/builtins/index.js', () => {
   const exports: Record<string, unknown> = {};
   for (const name of BUILTIN_NAMES) exports[name] = jest.fn();
   exports.builtin_ls = mockLs;
+  exports.builtin_id = mockId;
   exports.builtin_whoami = mockWhoami;
   exports.builtin_pipeline = mockPipeline;
   exports.builtin_upload = mockUpload;
@@ -76,10 +78,12 @@ const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
 const mockCommandHelpGet = jest.fn((): string | undefined => 'known help');
 const mockPipelineExecutableHelpRender = jest.fn((name: string): string => `PIPELINE HELP:${name}\n`);
+const mockPluginExecutableHelpRender = jest.fn((name: string): string => `PLUGIN HELP:${name}\n`);
 jest.unstable_mockModule('../src/builtins/help.js', () => ({
   help_render: mockHelpRender,
   args_checkHasHelpFlag: mockHasHelpFlag,
   commandHelp_get: mockCommandHelpGet,
+  pluginExecutableHelp_render: mockPluginExecutableHelpRender,
   pipelineExecutableHelp_render: mockPipelineExecutableHelpRender,
 }));
 
@@ -131,6 +135,12 @@ describe('command_dispatch', () => {
   it('routes a known command to its built-in handler', async () => {
     await command_dispatch('ls', ['-l']);
     expect(mockLs).toHaveBeenCalledWith(['-l']);
+    expect(mockChiliRun).not.toHaveBeenCalled();
+  });
+
+  it('routes id to the identity builtin', async () => {
+    await command_dispatch('id', []);
+    expect(mockId).toHaveBeenCalledWith([]);
     expect(mockChiliRun).not.toHaveBeenCalled();
   });
 
@@ -264,6 +274,18 @@ describe('command_dispatch', () => {
     expect(envelope?.rendered).toContain('HELP:feeds');
     // Delivered through the sink (default StdoutSink -> process.stdout).
     expect(writeSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('HELP:feeds');
+    writeSpy.mockRestore();
+  });
+
+  it('carries plugin executable output in an envelope through the sink', async () => {
+    mockPluginExecutable.mockResolvedValueOnce({ status: 'ok', rendered: 'PLUGIN HELP:pl-x-v1\n' });
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const envelope = await command_executeToEnvelope('pl-x-v1 --help', 0, false);
+
+    expect(envelope?.rendered).toBe('PLUGIN HELP:pl-x-v1\n');
+    expect(writeSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('PLUGIN HELP:pl-x-v1');
+    expect(logSpy).not.toHaveBeenCalled();
     writeSpy.mockRestore();
   });
 

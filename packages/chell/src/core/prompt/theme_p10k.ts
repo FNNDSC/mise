@@ -155,7 +155,8 @@ export class ThemeP10k implements PromptTheme {
     }
 
     if (ctx.procWarmup) {
-      trailing.push({ text: `⚙ proc: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`, color: C.TIME });
+      const restored: string = ctx.procWarmup.restored ? 'cached, syncing ' : '';
+      trailing.push({ text: `⚙ proc: ${restored}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`, color: C.TIME });
     }
 
     // Compute path budget: terminal limit minus fixed + trailing segment overhead + dir overhead

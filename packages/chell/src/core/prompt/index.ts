@@ -9,6 +9,7 @@
 
 import { ThemeDefault } from './theme_default.js';
 import { ThemeP10k } from './theme_p10k.js';
+import type { ProcPromptProgress } from '@fnndsc/cumin';
 
 /**
  * Which optional p10k segments are enabled.
@@ -49,7 +50,7 @@ export interface PromptContext {
   lastCommandDurationMs: number;
   p10kSegments: P10kSegmentConfig;
   /** Present while /proc topology warm-up is in progress. */
-  procWarmup?: { loaded: number; total?: number };
+  procWarmup?: ProcPromptProgress;
 }
 
 /**

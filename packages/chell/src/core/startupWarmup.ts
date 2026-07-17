@@ -17,8 +17,18 @@ import {
   type BrasaEngine,
   type PrefetchResult,
 } from '@fnndsc/brasa';
-import { daemon_launch } from '@fnndsc/calypso';
-import { errorStack, procCache_get, type ProcWarmupProgress, type Result, type StackMessage } from '@fnndsc/cumin';
+import { daemon_launch, identity_forSession } from '@fnndsc/calypso';
+import {
+  chrisContext,
+  errorStack,
+  procCache_get,
+  procCheckpoint_restore,
+  procCheckpoint_watch,
+  type ProcCheckpointRestoreResult,
+  type ProcWarmupProgress,
+  type Result,
+  type StackMessage,
+} from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { procCache_refresh, procTopology_status, procTopology_warmup, type ProcTopologyStatus } from '@fnndsc/salsa';
 import type { BootStatus } from '../lib/bootsequence.js';
@@ -142,6 +152,15 @@ export async function startupWarmup_run(
   }
 
   if (!session.offline && flags.jobs) {
+    let checkpoint: ProcCheckpointRestoreResult | null = null;
+    if (reportTopologySettlement && user) {
+      const cubeUrl: string | null = await chrisContext.ChRISURL_get();
+      if (cubeUrl) {
+        const identity: string = identity_forSession(user, cubeUrl);
+        checkpoint = await procCheckpoint_restore(identity);
+        procCheckpoint_watch(identity);
+      }
+    }
     const jobsResult: PrefetchResult = await prefetch_withSpinner(
       'Jobs',
       'Indexing /proc/jobs (feed list)...',
@@ -151,13 +170,17 @@ export async function startupWarmup_run(
           await procCache_refresh();
           return { ok: true, count: procCache_get().feedIDs_get().length };
         } catch (error: unknown) {
+          if (procCache_get().lifecycle_get().checkpointAt) procCache_get().cache_clear();
           const message: string = error instanceof Error ? error.message : String(error);
           return { ok: false, message };
         }
       },
     );
     if (jobsResult.ok) {
-      reporter?.log('ok', 'Jobs', `Indexed ${jobsResult.count ?? 0} feed(s) — topology warming in background`);
+      const jobsMessage: string = checkpoint?.restored
+        ? `Restored ${checkpoint.count} job(s); indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`
+        : `Indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`;
+      reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {
         const topologySweep: Promise<void> = procTopology_warmup();
         if (reportTopologySettlement) {

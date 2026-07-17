@@ -286,7 +286,7 @@ no more cloning siblings or hand-linking, npm workspaces does it:
 | `prep` | install deps (links all workspaces) | `npm install` |
 | `cook` | build all, in dependency order | `npm run build` (cumin→salsa→chili→brasa→calypso→chell) |
 | `taste` | run the full test suite | `npm test` |
-| `taste-flight` | tests with coverage | `--coverage --coverageProvider=v8` |
+| `taste-flight` | tests with coverage | workspace Jest configs (Istanbul/Babel provider) |
 | `serve` | link `chell` globally | `npm link` |
 | `scrub` | clean the kitchen | remove `dist/` + `node_modules` |
 | `run` | build + launch the shell | `node packages/chell/dist/index.js` |

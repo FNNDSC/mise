@@ -55,7 +55,9 @@ ChELL commands fall into several categories:
 
 == Wildcard Expansion
 
-ChELL supports glob-style wildcard patterns for applicable commands (currently `rm` and `cat`). Wildcards are expanded against the current ChRIS directory.
+ChELL supports glob-style wildcard patterns for applicable commands, including
+`ls`, `rm`, and `cat`. Wildcards are expanded against the current ChRIS
+directory, including virtual directories such as `/bin`.
 
 **Supported patterns:**
 
@@ -68,6 +70,7 @@ ChELL supports glob-style wildcard patterns for applicable commands (currently `
 ```bash
 rm *.json                # Remove all JSON files
 cat test*.txt            # Display all files starting with "test"
+ls /bin/pl-*             # List matching virtual plugin executables
 rm data/*.csv            # Remove CSV files in data/ subdirectory
 ```
 
@@ -776,6 +779,25 @@ store <subcommand> [options]
 See link:store.adoc[store command documentation] for full details.
 
 == System Commands
+
+=== id
+
+Prints the current authenticated ChRIS user using Unix-style identity notation.
+
+**Syntax:**
+```bash
+id
+```
+
+**Example:**
+```text
+uid=42(alice) gid=42(alice) groups=42(alice),7(pacs),9(research)
+```
+
+CUBE exposes a numeric user ID but does not define a primary group. ChELL uses
+the same POSIX projection as `/etc/passwd`: the primary GID and group name mirror
+the user's ID and username. The `groups` field includes that projected primary
+group followed by every CUBE group membership, ordered by numeric group ID.
 
 === exit
 

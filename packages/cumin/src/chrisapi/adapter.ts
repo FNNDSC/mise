@@ -31,6 +31,8 @@ export type {
   ListResource,
   Resource,
   ItemResource,
+  User,
+  UserGroupList,
   GroupList,
   ComputeResourceList,
   PluginInstance,

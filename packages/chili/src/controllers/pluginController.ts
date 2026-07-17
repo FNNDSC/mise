@@ -15,9 +15,11 @@ import {
   plugin_run as salsaPlugin_run,
   plugins_searchableToIDs as salsaPlugins_searchableToIDs,
   pluginMeta_readmeContentFetch,
+  pluginReadme_fetchFromRepository,
   pluginMeta_documentationUrlGet,
   pluginMeta_pluginIDFromSearch,
-  PluginSearchOptions
+  type PluginSearchOptions,
+  type PluginReadmeDocument,
 } from "@fnndsc/salsa";
 import { chiliErrLog } from "../screen/output.js";
 
@@ -96,6 +98,16 @@ export class PluginController extends BaseController {
    */
   async readmeContent_fetch(repoUrl: string): Promise<string | null> {
     return await pluginMeta_readmeContentFetch(repoUrl);
+  }
+
+  /**
+   * Fetches a README together with its markup format.
+   *
+   * @param repoUrl - Base URL of the plugin repository.
+   * @returns README content and source metadata, or null when unavailable.
+   */
+  async readmeDocument_fetch(repoUrl: string): Promise<PluginReadmeDocument | null> {
+    return await pluginReadme_fetchFromRepository(repoUrl);
   }
 
   /**

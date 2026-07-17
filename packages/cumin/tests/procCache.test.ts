@@ -171,6 +171,37 @@ describe('ProcCache', () => {
   });
 
   describe('topology + loading + warmup state', () => {
+    it('round-trips a persistent topology snapshot without params or active status', () => {
+      cache.feed_add(feed(1));
+      cache.instance_add({ ...inst(10, 1, null, 'pl-root', 'started'), params: { secret: 'omit' } });
+      cache.instance_add({ ...inst(11, 1, 10, 'pl-child', 'finishedSuccessfully'), joinParentIDs: [7] });
+      cache.topologyLoaded_mark(1);
+
+      const snapshot = cache.snapshot_create();
+      cache.cache_clear();
+      cache.snapshot_restore(snapshot, '2026-07-16T12:00:00.000Z');
+
+      expect(cache.instance_get(10)).toMatchObject({ status: null, params: null });
+      expect(cache.instance_get(11)).toMatchObject({ status: 'finishedSuccessfully', joinParentIDs: [7] });
+      expect(cache.topologyLoaded_has(1)).toBe(true);
+      expect(cache.lifecycle_get()).toEqual({ state: 'restored', checkpointAt: '2026-07-16T12:00:00.000Z' });
+    });
+
+    it('reconciles restored visibility and topology against authoritative IDs', () => {
+      cache.feed_add(feed(1));
+      cache.feed_add(feed(2));
+      cache.instance_add(inst(10, 1, null));
+      cache.instance_add(inst(20, 2, null));
+
+      cache.feeds_reconcile([feed(2), feed(3)]);
+      cache.instance_add(inst(30, 3, null));
+      cache.topology_reconcile(new Set([20, 30]));
+
+      expect(cache.feedIDs_get().sort()).toEqual([2, 3]);
+      expect(cache.instance_get(10)).toBeUndefined();
+      expect(cache.instance_get(20)).toBeDefined();
+      expect(cache.instance_get(30)).toBeDefined();
+    });
     it('tracks topologyLoaded', () => {
       expect(cache.topologyLoaded_has(1)).toBe(false);
       cache.topologyLoaded_mark(1);

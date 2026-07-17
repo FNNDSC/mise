@@ -48,13 +48,15 @@ function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): P
   const originalWrite: (str: string) => void = rlInternal._writeToOutput.bind(rl);
   rlInternal._writeToOutput = (_str: string): void => { /* suppress echo */ };
 
-  process.stdout.write(request.message);
   return new Promise((resolve: (answer: string) => void) => {
     rl.question('', (answer: string) => {
       rlInternal._writeToOutput = originalWrite;
       process.stdout.write('\n');
       resolve(answer.trim());
     });
+    // readline redraws when question() activates. Print the label afterward so
+    // that redraw cannot immediately erase the password prompt.
+    process.stdout.write(request.message);
   });
 }
 

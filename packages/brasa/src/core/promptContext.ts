@@ -13,7 +13,7 @@
 
 import { session } from '../session/index.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext, procCache_get, type ProcWarmupProgress } from '@fnndsc/cumin';
+import { SingleContext, procCache_get, type ProcCacheLifecycle, type ProcPromptProgress, type ProcWarmupProgress } from '@fnndsc/cumin';
 
 /**
  * The engine-known facts a prompt reflects, independent of any theme.
@@ -31,7 +31,7 @@ export interface SessionPromptContext {
   lastExitCode: number;
   lastCommandDurationMs: number;
   /** Present while /proc topology warm-up is in progress. */
-  procWarmup?: { loaded: number; total?: number };
+  procWarmup?: ProcPromptProgress;
 }
 
 /**
@@ -59,8 +59,12 @@ export async function sessionPromptContext_build(
   const isOffline: boolean = session.offline;
 
   const warmupRaw: ProcWarmupProgress = procCache_get().warmupProgress_get();
-  const procWarmup: { loaded: number; total: number } | undefined =
-    warmupRaw.active ? { loaded: warmupRaw.loaded, total: warmupRaw.total } : undefined;
+  const lifecycle: ProcCacheLifecycle = procCache_get().lifecycle_get();
+  const restored: boolean = lifecycle.checkpointAt !== undefined;
+  const procWarmup: ProcPromptProgress | undefined =
+    warmupRaw.active || lifecycle.state === 'reconciling'
+      ? { loaded: warmupRaw.loaded, total: warmupRaw.total, restored }
+      : undefined;
 
   return {
     user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),

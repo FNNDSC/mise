@@ -94,6 +94,29 @@ describe('VFS.data_get caching', () => {
     expect(mockCacheSet).not.toHaveBeenCalled();
   });
 
+  it('returns a cached parent leaf when listing an expanded /bin match', async () => {
+    const plugin = { name: 'pl-dircopy-v2.1.2', type: 'plugin', size: 0, owner: 'system', date: '' };
+    cacheStore.set('/bin', { data: [plugin], fresh: true });
+    mockDispatcherList.mockResolvedValue(ok([]));
+
+    const result = await new VFS().data_get('/bin/pl-dircopy-v2.1.2');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([plugin]);
+    expect(mockDispatcherList).not.toHaveBeenCalled();
+  });
+
+  it('still descends into directories found in a cached parent listing', async () => {
+    cacheStore.set('/home/chris', { data: [item('data')], fresh: true });
+    mockDispatcherList.mockResolvedValue(ok([item('child')]));
+
+    const result = await new VFS().data_get('/home/chris/data');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([item('child')]);
+    expect(mockDispatcherList).toHaveBeenCalledWith('/home/chris/data', {});
+  });
+
   it('propagates dispatcher failures and wraps thrown errors', async () => {
     mockDispatcherList.mockResolvedValue(err());
     expect((await new VFS().data_get('/data')).ok).toBe(false);

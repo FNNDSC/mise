@@ -614,6 +614,11 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Print the currently authenticated ChRIS username',
     examples: ['whoami'],
   },
+  id: {
+    usage: 'id',
+    description: 'Print the current CUBE user as a Unix-style UID, projected primary GID, and complete list of CUBE group memberships.',
+    examples: ['id'],
+  },
   fortune: {
     usage: 'fortune',
     summary: 'Print a random fortune cookie',
@@ -644,7 +649,7 @@ export const helpText: Record<string, CommandHelp> = {
   proc: {
     usage: 'proc <jobs|stat|feeds|refresh|find> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
-    description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. cd into a feed to see what ran. ls -l shows job status at a glance. tree shows the full execution DAG. cat status, cat log, cat params give you CUBE data as plain text — no API queries to write, no UI to open. The in-memory cache is built at login and warmed across all visible plugin instances. Global queries refuse incomplete results during warm-up; add --force to wait for the existing sweep. Targeted numeric lookups and proc stat remain available immediately.',
+    description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. The daemon restores an identity-scoped local topology checkpoint, validates feed visibility with CUBE, and reconciles all plugin instances in the background. Restored queries remain usable while syncing; a cold cache still guards global queries until complete. CUBE remains authoritative.',
     subcommands: [
       'jobs list                               List all feeds with full counter fields (default 20)',
       'jobs list --fields id,title,erroredJobs Select columns',
@@ -1214,6 +1219,30 @@ export function pipelineExecutableHelp_render(name: string): string {
 }
 
 /**
+ * Renders contextual help for one versioned plugin executable.
+ *
+ * @param name - Plugin executable name as exposed in `/bin`.
+ * @returns Plugin-specific help text, terminated with a newline.
+ */
+export function pluginExecutableHelp_render(name: string): string {
+  const help: CommandHelp = {
+    usage: `${name} <operation>`,
+    description: 'Inspect this registered CUBE plugin version.',
+    options: [
+      '  --parameters   Show parameter definitions for this plugin version',
+      '  --readme       Show the rendered plugin README',
+      '  --readme --raw Output raw README markdown for piping',
+    ],
+    examples: [
+      `${name} --parameters`,
+      `${name} --readme`,
+      `${name} --readme --raw | glow -`,
+    ],
+  };
+  return `${commandHelp_render(name, help)}\n`;
+}
+
+/**
  * Renders a command's help text as a string.
  *
  * The help text is returned as a string so callers can carry it in an envelope
@@ -1267,6 +1296,9 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
 
   // If a specific command is requested, return its help
   if (commandName) {
+    if (/-v[^/]+$/.test(commandName)) {
+      return { status: 'ok', rendered: pluginExecutableHelp_render(commandName) };
+    }
     return { status: 'ok', rendered: help_render(commandName) };
   }
 
@@ -1281,7 +1313,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
-    Connection: ['connect', 'logout', 'context', 'whoami', 'whereami'],
+    Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami'],
     Monitoring: ['proc'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],

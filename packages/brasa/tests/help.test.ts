@@ -22,7 +22,7 @@ const EXPECTED_HANDLERS = [
   // net
   'connect', 'logout', 'pacs', 'query', 'cubepath',
   // sys
-  'context', 'physicalmode', 'prompt', 'timing', 'whoami', 'whereami', 'debug', 'help',
+  'context', 'physicalmode', 'prompt', 'timing', 'id', 'whoami', 'whereami', 'debug', 'help',
   // resources — canonical
   'plugin', 'plugins', 'feed', 'feeds',
   'pipeline', 'pipelines',
@@ -118,5 +118,14 @@ describe('COMMAND_HANDLERS_KEYS wiring', () => {
   it('instance/instances aliases are registered', () => {
     expect(COMMAND_HANDLERS_KEYS).toContain('instance');
     expect(COMMAND_HANDLERS_KEYS).toContain('instances');
+  });
+});
+
+describe('id help', () => {
+  it('documents the Unix-style ChRIS identity projection', () => {
+    expect(helpText.id).toMatchObject({ usage: 'id' });
+    expect(helpText.id?.description).toContain('UID');
+    expect(helpText.id?.description).toContain('GID');
+    expect(helpText.id?.description).toContain('memberships');
   });
 });

@@ -1,5 +1,13 @@
 # @fnndsc/brasa
 
+## 0.9.4
+
+### Patch Changes
+
+- Add controllable syntax highlighting to `cat`, including Python and other
+  popular source/configuration formats, while keeping ordinary pipes and
+  redirects ANSI-free.
+
 ## 0.9.3
 
 ### Patch Changes

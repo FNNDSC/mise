@@ -7,6 +7,7 @@
  */
 import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
+import { CAT_USAGE } from './fs/cat.args.js';
 
 interface CommandHelp {
   usage: string;
@@ -98,12 +99,20 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cat: {
-    usage: 'cat <file> [file...]',
-    description: 'Display file contents',
+    usage: CAT_USAGE,
+    description: 'Display file contents, with terminal syntax highlighting for recognized text formats',
+    options: [
+      '--binary              Force byte-for-byte binary output',
+      '--highlight           Force highlighting; infer the language from the filename or content',
+      '--highlight=LANGUAGE  Force a cli-highlight language such as python, typescript, or sql',
+      '--no-highlight        Disable automatic syntax highlighting',
+    ],
     examples: [
-      'cat file.txt          # Display single file',
-      'cat file1 file2       # Display multiple files',
-      'cat *.log             # Display all .log files (wildcard)',
+      'cat file.txt                    # Display single file',
+      'cat analysis.py                 # Auto-highlight Python in a terminal',
+      'cat source --highlight=python   # Force Python highlighting without filename inference',
+      'cat config.json --no-highlight  # Display raw text',
+      'cat file1 file2                 # Display multiple files',
     ],
   },
   edit: {

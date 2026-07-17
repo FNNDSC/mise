@@ -1,3 +1,12 @@
+/**
+ * @file Tests for command-line pipe, redirect, wildcard, and shell preprocessing.
+ *
+ * Exercises the exported pure parsing seams and directory-target resolution;
+ * temporary filesystem state is isolated to one suite-owned directory.
+ *
+ * @module
+ */
+
 import { jest, describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import * as os from 'os';
@@ -99,6 +108,14 @@ describe('redirectTarget_resolve', () => {
     const r = redirectTarget_resolve(dir, 'cat /home/chris/brain.mgz');
     expect(r.ok && r.value).toBe(path.join(dir, 'brain.mgz'));
   });
+
+  it.each(['--highlight', '--highlight=python', '--no-highlight'])(
+    'ignores the cat %s option when deriving a redirected filename',
+    (option: string): void => {
+      const r = redirectTarget_resolve(dir, `cat /home/chris/script.py ${option}`);
+      expect(r.ok && r.value).toBe(path.join(dir, 'script.py'));
+    },
+  );
 
   it('errors when the target is a directory and the command is not cat', () => {
     expect(redirectTarget_resolve(dir, 'ls /home').ok).toBe(false);

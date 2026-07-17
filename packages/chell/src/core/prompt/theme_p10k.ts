@@ -15,7 +15,18 @@
 
 import chalk from 'chalk';
 import type { PromptContext, PromptTheme } from './index.js';
-import { ansi_visibleLength, path_truncate, procProgress_format } from './utils.js';
+import {
+  PROMPT_PALETTE,
+  statusColor_get,
+  type HexColor,
+  type PromptColorPair,
+} from './palette.js';
+import {
+  ansi_visibleLength,
+  homePath_abbreviate,
+  path_truncate,
+  procProgress_format,
+} from './utils.js';
 
 /** Powerline right-arrow separator (Nerd Font U+E0B0). */
 const POWERLINE: string = '';
@@ -26,19 +37,11 @@ const FILL_RATIO: number = 0.95;
 /** Minimum command duration (ms) before the duration segment appears. */
 const DURATION_THRESHOLD_MS: number = 3_000;
 
-/** Segment colour palette — bg and fg hex pairs. */
-const C = {
-  HOST:     { bg: '#005fd7', fg: '#ffffff' },
-  PACS:     { bg: '#5f5faf', fg: '#ffffff' },
-  USER:     { bg: '#5f875f', fg: '#ffffff' },
-  DIR:      { bg: '#d7af00', fg: '#000000' },
-  PHYSICAL: { bg: '#af0000', fg: '#ffffff' },
-  TIME:     { bg: '#3a3a3a', fg: '#bcbcbc' },
-  DURATION: { bg: '#875f00', fg: '#ffffff' },
-  STATUS:   { bg: '#d70000', fg: '#ffffff' },
-} as const;
-
-type ColorPair = { bg: string; fg: string };
+/** Visible content and colour pair for one rendered prompt segment. */
+interface SegmentSpec {
+  text: string;
+  color: PromptColorPair;
+}
 
 /**
  * Renders one segment: padded text on its background colour.
@@ -47,7 +50,7 @@ type ColorPair = { bg: string; fg: string };
  * @param c - Background/foreground hex pair.
  * @returns ANSI-coded segment string.
  */
-function segment_render(text: string, c: ColorPair): string {
+function segment_render(text: string, c: PromptColorPair): string {
   return chalk.hex(c.fg).bgHex(c.bg)(` ${text} `);
 }
 
@@ -58,7 +61,7 @@ function segment_render(text: string, c: ColorPair): string {
  * @param to - Colour pair of the arriving segment.
  * @returns ANSI-coded separator character.
  */
-function separator_render(from: ColorPair, to: ColorPair): string {
+function separator_render(from: PromptColorPair, to: PromptColorPair): string {
   return chalk.hex(from.bg).bgHex(to.bg)(POWERLINE);
 }
 
@@ -68,7 +71,7 @@ function separator_render(from: ColorPair, to: ColorPair): string {
  * @param from - Colour pair of the last segment.
  * @returns ANSI-coded trailing separator character.
  */
-function separator_final(from: ColorPair): string {
+function separator_final(from: PromptColorPair): string {
   return chalk.hex(from.bg)(POWERLINE);
 }
 
@@ -122,64 +125,73 @@ export class ThemeP10k implements PromptTheme {
   render(ctx: PromptContext): string {
     const host: string = uri_abbreviate(ctx.uri);
 
-    type SegSpec = { text: string; color: ColorPair };
-
     // Left segments: host → [pacs] → [physical] → user
-    const fixed: SegSpec[] = [
-      { text: `🌐 ${host}`, color: C.HOST },
+    const fixed: SegmentSpec[] = [
+      { text: `🌐 ${host}`, color: PROMPT_PALETTE.HOST },
     ];
 
     if (ctx.pacsserver && ctx.p10kSegments.pacs) {
-      fixed.push({ text: `🗄️ ${ctx.pacsserver}`, color: C.PACS });
+      fixed.push({ text: `🗄️ ${ctx.pacsserver}`, color: PROMPT_PALETTE.PACS });
     }
 
     if (ctx.physicalMode) {
-      fixed.push({ text: '🔬 PHYSICAL', color: C.PHYSICAL });
+      fixed.push({ text: '🔬 PHYSICAL', color: PROMPT_PALETTE.PHYSICAL });
     }
 
-    fixed.push({ text: `👤 ${ctx.user}`, color: C.USER });
+    fixed.push({ text: `👤 ${ctx.user}`, color: PROMPT_PALETTE.USER });
 
     // Optional trailing segments (after dir)
-    const trailing: SegSpec[] = [];
+    const trailing: SegmentSpec[] = [];
 
     if (ctx.p10kSegments.time) {
-      trailing.push({ text: `⏱ ${time_now()}`, color: C.TIME });
+      trailing.push({ text: `⏱ ${time_now()}`, color: PROMPT_PALETTE.TIME });
     }
 
     if (ctx.p10kSegments.duration && ctx.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
-      trailing.push({ text: `⚡ ${duration_format(ctx.lastCommandDurationMs)}`, color: C.DURATION });
+      trailing.push({
+        text: `⚡ ${duration_format(ctx.lastCommandDurationMs)}`,
+        color: PROMPT_PALETTE.DURATION,
+      });
     }
 
     if (ctx.p10kSegments.status && ctx.lastExitCode !== 0) {
-      trailing.push({ text: `✖ ${ctx.lastExitCode}`, color: C.STATUS });
+      trailing.push({ text: `✖ ${ctx.lastExitCode}`, color: PROMPT_PALETTE.STATUS });
     }
 
     if (ctx.procWarmup) {
       const restored: string = ctx.procWarmup.restored ? 'cached, syncing ' : '';
-      trailing.push({ text: `⚙ proc: ${restored}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`, color: C.TIME });
+      trailing.push({
+        text: `⚙ proc: ${restored}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`,
+        color: PROMPT_PALETTE.TIME,
+      });
     }
 
     // Compute path budget: terminal limit minus fixed + trailing segment overhead + dir overhead
     const limit: number = Math.floor(ctx.terminalWidth * FILL_RATIO);
 
-    const fixedRendered: string = fixed.map((s: SegSpec) => segment_render(s.text, s.color)).join('');
-    const trailingRendered: string = trailing.map((s: SegSpec) => segment_render(s.text, s.color)).join('');
+    const fixedRendered: string = fixed
+      .map((segment: SegmentSpec) => segment_render(segment.text, segment.color))
+      .join('');
+    const trailingRendered: string = trailing
+      .map((segment: SegmentSpec) => segment_render(segment.text, segment.color))
+      .join('');
     const fixedOverhead: number = ansi_visibleLength(fixedRendered) + fixed.length;
     const trailingOverhead: number = ansi_visibleLength(trailingRendered) + trailing.length;
     // dir: +2 padding, +1 sep before, +1 final sep (or sep to first trailing)
     const dirOverhead: number = 4;
     const pathBudget: number = limit - fixedOverhead - trailingOverhead - dirOverhead;
-    const dirPath: string = path_truncate(ctx.cwd, Math.max(pathBudget, 4));
+    const displayPath: string = homePath_abbreviate(ctx.cwd, ctx.user);
+    const dirPath: string = path_truncate(displayPath, Math.max(pathBudget, 4));
 
-    const defs: SegSpec[] = [
+    const defs: SegmentSpec[] = [
       ...fixed,
-      { text: `📂 ${dirPath}`, color: C.DIR },
+      { text: `📂 ${dirPath}`, color: PROMPT_PALETTE.DIR },
       ...trailing,
     ];
 
     let line1: string = '';
     for (let i: number = 0; i < defs.length; i++) {
-      const def: SegSpec = defs[i];
+      const def: SegmentSpec = defs[i];
       line1 += segment_render(def.text, def.color);
       if (i < defs.length - 1) {
         line1 += separator_render(def.color, defs[i + 1].color);
@@ -188,7 +200,8 @@ export class ThemeP10k implements PromptTheme {
       }
     }
 
-    const line2: string = (ctx.lastExitCode !== 0 ? chalk.red('❯') : chalk.green('❯')) + ' ';
+    const glyphColor: HexColor = statusColor_get(ctx.lastExitCode);
+    const line2: string = chalk.hex(glyphColor)('❯') + ' ';
     return `${line1}\n${line2}`;
   }
 }

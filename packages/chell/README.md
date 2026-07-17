@@ -287,12 +287,21 @@ store set <url>         # override peer store
 id                      # CUBE UID, projected primary GID, and memberships
 whoami                  # current user and CUBE URL
 whereami                # current working directory
+prompt list             # list prompt themes
+prompt default          # compact single-line prompt
+prompt p10k             # vivid two-line powerline prompt
 connect --user <u> --password <p> <url>
 logout
 proc stat               # show /proc feed scope, freshness, and checkpoint
 proc refresh            # rebuild /proc job cache and restart topology warm-up
 proc refresh feed_123   # scope rebuild to one feed
 ```
+
+Both prompt themes display the authenticated user's home directory as `~`, so
+`/home/chris/uploads` appears as `~/uploads`. The `default` and `p10k` themes
+share a vivid truecolor palette; `p10k` adds background-filled powerline
+segments and optional status information. Use `prompt --show` to preview the
+active prompt.
 
 ---
 

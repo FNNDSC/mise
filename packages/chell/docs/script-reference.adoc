@@ -106,6 +106,19 @@ logout
 
 == System Introspection
 
+=== id
+
+Print the authenticated CUBE user ID and ChELL's projected primary group:
+
+[source,bash]
+----
+id
+# uid=42(alice) gid=42(alice)
+----
+
+CUBE has no primary-group field, so the projected GID equals the UID and the
+projected group name equals the username, matching `/etc/passwd`.
+
 === whoami
 
 Prints `<username>  <CUBE URL>`.
@@ -352,7 +365,7 @@ ChELL presents a unified path tree mixing CFS (real ChRIS storage) and VFS
 | `/SHARED/`              | CFS | Cross-user shared data
 | `*.chrislink`           | CFS | Symbolic links to other ChRIS paths
 | `/bin`                  | VFS | Every registered plugin as a virtual executable
-| `/usr/bin`              | VFS | Built-in shell commands (`whoami`, `whereami`)
+| `/usr/bin`              | VFS | Built-in shell commands (`id`, `whoami`, `whereami`)
 | `/etc/`                 | VFS | Config files (see below)
 | `/net/pacs/queries/`    | VFS | PACS query result sets
 | `/proc/jobs/`          | VFS | Job monitoring DAG (see <<job-monitoring>>)

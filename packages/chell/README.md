@@ -42,7 +42,7 @@ The ChELL filesystem has two kinds of paths:
 | `/SHARED/` | CFS | Cross-user shared data |
 | `*.chrislink` | CFS | Symbolic links to other ChRIS paths |
 | `/bin` | VFS | Every plugin registered in this CUBE |
-| `/usr/bin` | VFS | Built-in shell commands (`whoami`, `whereami`, …) |
+| `/usr/bin` | VFS | Built-in shell commands (`id`, `whoami`, `whereami`, …) |
 | `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | VFS | PACS query result sets |
 | `/proc/jobs/` | VFS | Job monitoring — live status of all plugin instances |
@@ -284,6 +284,7 @@ store set <url>         # override peer store
 
 ### System
 ```bash
+id                      # numeric CUBE UID and projected primary GID
 whoami                  # current user and CUBE URL
 whereami                # current working directory
 connect --user <u> --password <p> <url>

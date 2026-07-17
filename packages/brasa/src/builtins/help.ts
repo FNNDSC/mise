@@ -614,6 +614,11 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Print the currently authenticated ChRIS username',
     examples: ['whoami'],
   },
+  id: {
+    usage: 'id',
+    description: 'Print the current CUBE user as a Unix-style UID and GID. CUBE has no primary-group field, so ChELL projects the user ID and username as the primary GID and group name.',
+    examples: ['id'],
+  },
   fortune: {
     usage: 'fortune',
     summary: 'Print a random fortune cookie',
@@ -1308,7 +1313,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
-    Connection: ['connect', 'logout', 'context', 'whoami', 'whereami'],
+    Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami'],
     Monitoring: ['proc'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],

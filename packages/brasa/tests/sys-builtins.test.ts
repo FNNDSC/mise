@@ -1,7 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { ChrisUser, CommandEnvelope, Result } from '@fnndsc/cumin';
 
 const mockContext = jest.fn();
+const mockCurrentUser = jest.fn<() => Promise<Result<ChrisUser>>>();
 const mockFeedsList = jest.fn();
 const mockInstancesList = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -10,6 +11,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pluginInstances_list: mockInstancesList,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  currentUser_get: mockCurrentUser,
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -30,7 +32,7 @@ const mockSession = {
 };
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: mockSession }));
 
-const { builtin_whoami, builtin_whereami } = await import('../src/builtins/sys/whoami.js');
+const { builtin_id, builtin_whoami, builtin_whereami } = await import('../src/builtins/sys/whoami.js');
 const { builtin_timing } = await import('../src/builtins/sys/timing.js');
 const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.js');
 const { builtin_debug } = await import('../src/builtins/debug.js');
@@ -63,6 +65,36 @@ describe('builtin_whoami', () => {
     const envelope: CommandEnvelope = await builtin_whoami([]);
     expect(envelope.status).toBe('error');
     expect(envelope.rendered).toContain('not connected');
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('builtin_id', () => {
+  it('reports the CUBE user ID through the Unix identity projection', async () => {
+    mockCurrentUser.mockResolvedValue({
+      ok: true,
+      value: { id: 42, username: 'alice', email: 'alice@example.org', is_staff: false },
+    });
+
+    const envelope: CommandEnvelope = await builtin_id([]);
+
+    expect(envelope).toEqual({
+      status: 'ok',
+      rendered: 'uid=42(alice) gid=42(alice)\n',
+      model: {
+        kind: 'session.posixIdentity',
+        data: { uid: 42, user: 'alice', gid: 42, group: 'alice' },
+      },
+    });
+  });
+
+  it('reports an identity lookup failure with a non-zero exit code', async () => {
+    mockCurrentUser.mockResolvedValue({ ok: false });
+
+    const envelope: CommandEnvelope = await builtin_id([]);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('identity unavailable');
     expect(process.exitCode).toBe(1);
   });
 });

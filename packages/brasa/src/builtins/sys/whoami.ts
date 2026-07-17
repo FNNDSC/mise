@@ -1,10 +1,48 @@
 /**
- * @file Builtins whoami and whereami.
+ * @file Builtins id, whoami, and whereami.
  * Quick single-line identity queries, reported as command envelopes.
  */
 import chalk from 'chalk';
 import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import {
+  currentUser_get,
+  envelope_error,
+  envelope_ok,
+  type ChrisUser,
+  type CommandEnvelope,
+  type Result,
+  type SingleContext,
+} from '@fnndsc/cumin';
+
+/**
+ * Reports the current ChRIS identity using Unix `id` notation.
+ *
+ * CUBE exposes a numeric user ID but no primary-group field. ChELL therefore
+ * uses the same POSIX projection as `/etc/passwd`: the primary GID and group
+ * name equal the user's ID and username.
+ *
+ * @param _args - Unused.
+ * @returns An envelope carrying numeric UID/GID identity, or an error envelope
+ *   when the current CUBE user cannot be resolved.
+ */
+export async function builtin_id(_args: string[]): Promise<CommandEnvelope> {
+  const result: Result<ChrisUser> = await currentUser_get();
+  if (!result.ok) {
+    process.exitCode = 1;
+    return envelope_error(`${chalk.gray('(identity unavailable)')}\n`);
+  }
+
+  const user: ChrisUser = result.value;
+  return envelope_ok(`uid=${user.id}(${user.username}) gid=${user.id}(${user.username})\n`, {
+    kind: 'session.posixIdentity',
+    data: {
+      uid: user.id,
+      user: user.username,
+      gid: user.id,
+      group: user.username,
+    },
+  });
+}
 
 /**
  * Reports the current authenticated ChRIS username.

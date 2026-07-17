@@ -41,6 +41,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: mock
 // Built-in command table. Every name is a jest.fn() so COMMAND_HANDLERS is
 // fully populated; the ones asserted on are captured by reference.
 const mockLs = jest.fn();
+const mockId = jest.fn<(args: string[]) => Promise<CommandEnvelope>>();
 const mockWhoami = jest.fn();
 const mockPipeline = jest.fn();
 const mockUpload = jest.fn();
@@ -53,13 +54,14 @@ const BUILTIN_NAMES = [
   'builtin_plugininstance', 'builtin_workflow', 'builtin_download', 'builtin_edit',
   'builtin_files', 'builtin_links', 'builtin_dirs', 'builtin_context',
   'builtin_parametersofplugin', 'builtin_physicalmode', 'builtin_prompt',
-  'builtin_timing', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
+  'builtin_timing', 'builtin_id', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
   'builtin_debug', 'builtin_help', 'builtin_tree', 'builtin_du', 'builtin_store',
 ];
 jest.unstable_mockModule('../src/builtins/index.js', () => {
   const exports: Record<string, unknown> = {};
   for (const name of BUILTIN_NAMES) exports[name] = jest.fn();
   exports.builtin_ls = mockLs;
+  exports.builtin_id = mockId;
   exports.builtin_whoami = mockWhoami;
   exports.builtin_pipeline = mockPipeline;
   exports.builtin_upload = mockUpload;
@@ -133,6 +135,12 @@ describe('command_dispatch', () => {
   it('routes a known command to its built-in handler', async () => {
     await command_dispatch('ls', ['-l']);
     expect(mockLs).toHaveBeenCalledWith(['-l']);
+    expect(mockChiliRun).not.toHaveBeenCalled();
+  });
+
+  it('routes id to the identity builtin', async () => {
+    await command_dispatch('id', []);
+    expect(mockId).toHaveBeenCalledWith([]);
     expect(mockChiliRun).not.toHaveBeenCalled();
   });
 

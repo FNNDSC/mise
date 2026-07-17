@@ -780,6 +780,24 @@ See link:store.adoc[store command documentation] for full details.
 
 == System Commands
 
+=== id
+
+Prints the current authenticated ChRIS user using Unix-style identity notation.
+
+**Syntax:**
+```bash
+id
+```
+
+**Example:**
+```text
+uid=42(alice) gid=42(alice)
+```
+
+CUBE exposes a numeric user ID but does not define a primary group. ChELL uses
+the same POSIX projection as `/etc/passwd`: the primary GID and group name mirror
+the user's ID and username.
+
 === exit
 
 Exits the ChELL shell.

@@ -25,7 +25,7 @@
 
 ## Recently completed
 
-The local feature branch contains four reviewed units on top of release-state
+The local feature branch contains five reviewed units on top of release-state
 `main`; none has been pushed:
 
 - `8345545` persists an identity-scoped, mode-`0600` `/proc` topology
@@ -47,6 +47,9 @@ The local feature branch contains four reviewed units on top of release-state
   README discovery prefers `public_repo`, retains source-format metadata,
   renders Markdown, and preserves reStructuredText without passing it through
   the Markdown renderer.
+- The `id` builtin reports the authenticated CUBE user as Unix-style
+  `uid=N(name) gid=N(name)`. CUBE has no primary-group field, so the GID mirrors
+  the UID consistently with ChELL's `/etc/passwd` projection.
 
 PR #140 (`e630f79`) made registered CUBE pipeline templates visible through the
 same diagram machinery already used for instantiated feed DAGs:
@@ -104,7 +107,7 @@ PR #144 (`6f0833a`) completed the operational follow-up:
 - On `fix/recovered-shell-followups`, a clean `make taco` used pinned npm
   `10.9.8`, rebuilt all packages in dependency order, and passed every
   workspace suite. After review corrections, the full root suite passes with
-  Cumin 612, Salsa 370, Chili 373, Brasa 698, Calypso 81, and ChELL 102 tests.
+  Cumin 612, Salsa 370, Chili 373, Brasa 702, Calypso 81, and ChELL 102 tests.
   npm reported zero vulnerabilities. The synthetic 7,009-job
   checkpoint remains approximately 790 KB and measured 9 ms save/9 ms restore
   on this machine. No live CUBE state was mutated.

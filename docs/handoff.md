@@ -1,10 +1,10 @@
 # Active project handoff
 
-- Last updated: 2026-07-16
+- Last updated: 2026-07-17
 - Last verified against `main`: `76967f3`
 - Working branch: `fix/recovered-shell-followups`
-- Current milestone: persistent `/proc` checkpoints and recovered shell follow-ups complete locally
-- Next action: push the feature branch, open a PR, and let strict Node 22/24 CI verify it
+- Current milestone: persistent `/proc` checkpoints and recovered shell follow-ups are in PR #148
+- Next action: let strict Node 22/24 CI verify PR #148, then squash-merge it
 
 ## Current truth
 
@@ -25,8 +25,8 @@
 
 ## Recently completed
 
-The local feature branch contains five reviewed units on top of release-state
-`main`; none has been pushed:
+The pushed feature branch in PR #148 contains five reviewed units on top of
+release-state `main`:
 
 - `8345545` persists an identity-scoped, mode-`0600` `/proc` topology
   checkpoint. Daemon startup validates restored feed visibility against CUBE

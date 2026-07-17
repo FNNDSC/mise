@@ -3,10 +3,10 @@
  *
  * Two-line prompt:
  *   Line 1 — coloured segment bar with background fills and powerline separators
- *             🌐 host ❯ [🗄️ pacs ❯] 👤 user ❯ 📂 path ❯ [⏱ HH:MM ❯] [⚡ Xs ❯] [✖ N ❯]
+ *              host ❯ [ pacs ❯]  user ❯  path ❯ [ HH:MM ❯] [ Xs ❯] [ N ❯]
  *   Line 2 — input line: ❯
  *
- * Powerline separator (U+E0B0) requires a Nerd Font in the terminal.
+ * Font Awesome icons and the powerline separator require a Nerd Font.
  * readline uses only the last line's visible width for cursor and
  * tab-completion alignment, so line 1 never interferes with line editing.
  *
@@ -31,6 +31,33 @@ import {
 /** Powerline right-arrow separator (Nerd Font U+E0B0). */
 const POWERLINE: string = '';
 
+/** Font Awesome cube icon (U+F1B2). */
+const ICON_CUBE: string = '\uf1b2';
+
+/** Font Awesome database icon (U+F1C0). */
+const ICON_DATABASE: string = '\uf1c0';
+
+/** Font Awesome microscope icon (U+F610). */
+const ICON_MICROSCOPE: string = '\uf610';
+
+/** Font Awesome user icon (U+F007). */
+const ICON_USER: string = '\uf007';
+
+/** Font Awesome open-folder icon (U+F07C). */
+const ICON_FOLDER: string = '\uf07c';
+
+/** Font Awesome clock icon (U+F017). */
+const ICON_CLOCK: string = '\uf017';
+
+/** Font Awesome bolt icon (U+F0E7). */
+const ICON_BOLT: string = '\uf0e7';
+
+/** Font Awesome circled-x icon (U+F057). */
+const ICON_ERROR: string = '\uf057';
+
+/** Font Awesome gears icon (U+F085). */
+const ICON_GEARS: string = '\uf085';
+
 /** Fraction of terminal width the segment bar should not exceed. */
 const FILL_RATIO: number = 0.95;
 
@@ -46,7 +73,7 @@ interface SegmentSpec {
 /**
  * Renders one segment: padded text on its background colour.
  *
- * @param text - Visible text content (may include emoji).
+ * @param text - Visible text content (may include a Font Awesome glyph).
  * @param c - Background/foreground hex pair.
  * @returns ANSI-coded segment string.
  */
@@ -127,41 +154,41 @@ export class ThemeP10k implements PromptTheme {
 
     // Left segments: host → [pacs] → [physical] → user
     const fixed: SegmentSpec[] = [
-      { text: `🌐 ${host}`, color: PROMPT_PALETTE.HOST },
+      { text: `${ICON_CUBE} ${host}`, color: PROMPT_PALETTE.HOST },
     ];
 
     if (ctx.pacsserver && ctx.p10kSegments.pacs) {
-      fixed.push({ text: `🗄️ ${ctx.pacsserver}`, color: PROMPT_PALETTE.PACS });
+      fixed.push({ text: `${ICON_DATABASE} ${ctx.pacsserver}`, color: PROMPT_PALETTE.PACS });
     }
 
     if (ctx.physicalMode) {
-      fixed.push({ text: '🔬 PHYSICAL', color: PROMPT_PALETTE.PHYSICAL });
+      fixed.push({ text: `${ICON_MICROSCOPE} PHYSICAL`, color: PROMPT_PALETTE.PHYSICAL });
     }
 
-    fixed.push({ text: `👤 ${ctx.user}`, color: PROMPT_PALETTE.USER });
+    fixed.push({ text: `${ICON_USER} ${ctx.user}`, color: PROMPT_PALETTE.USER });
 
     // Optional trailing segments (after dir)
     const trailing: SegmentSpec[] = [];
 
     if (ctx.p10kSegments.time) {
-      trailing.push({ text: `⏱ ${time_now()}`, color: PROMPT_PALETTE.TIME });
+      trailing.push({ text: `${ICON_CLOCK} ${time_now()}`, color: PROMPT_PALETTE.TIME });
     }
 
     if (ctx.p10kSegments.duration && ctx.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
       trailing.push({
-        text: `⚡ ${duration_format(ctx.lastCommandDurationMs)}`,
+        text: `${ICON_BOLT} ${duration_format(ctx.lastCommandDurationMs)}`,
         color: PROMPT_PALETTE.DURATION,
       });
     }
 
     if (ctx.p10kSegments.status && ctx.lastExitCode !== 0) {
-      trailing.push({ text: `✖ ${ctx.lastExitCode}`, color: PROMPT_PALETTE.STATUS });
+      trailing.push({ text: `${ICON_ERROR} ${ctx.lastExitCode}`, color: PROMPT_PALETTE.STATUS });
     }
 
     if (ctx.procWarmup) {
       const restored: string = ctx.procWarmup.restored ? 'cached, syncing ' : '';
       trailing.push({
-        text: `⚙ proc: ${restored}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`,
+        text: `${ICON_GEARS} proc: ${restored}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}`,
         color: PROMPT_PALETTE.TIME,
       });
     }
@@ -185,7 +212,7 @@ export class ThemeP10k implements PromptTheme {
 
     const defs: SegmentSpec[] = [
       ...fixed,
-      { text: `📂 ${dirPath}`, color: PROMPT_PALETTE.DIR },
+      { text: `${ICON_FOLDER} ${dirPath}`, color: PROMPT_PALETTE.DIR },
       ...trailing,
     ];
 

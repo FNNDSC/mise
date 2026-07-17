@@ -300,8 +300,9 @@ proc refresh feed_123   # scope rebuild to one feed
 Both prompt themes display the authenticated user's home directory as `~`, so
 `/home/chris/uploads` appears as `~/uploads`. The `default` and `p10k` themes
 share a vivid truecolor palette; `p10k` adds background-filled powerline
-segments and optional status information. Use `prompt --show` to preview the
-active prompt.
+segments, high-contrast Font Awesome icons, and optional status information.
+The icons and separators require a Nerd Font. Use `prompt --show` to preview
+the active prompt.
 
 ---
 

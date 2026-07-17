@@ -58,6 +58,45 @@ describe('prompt home path abbreviation', (): void => {
 });
 
 describe('prompt Powerlevel10k-inspired palette', (): void => {
+  it('renders the CUBE with a contrasting Font Awesome cube icon', (): void => {
+    const rendered: string = prompt_render(
+      'p10k',
+      promptContext_create('/home/rudolphpienaar/src'),
+    );
+
+    expect(rendered).toContain(
+      '\x1b[38;2;0;16;24m\x1b[48;2;0;175;255m \uf1b2 cube.example.org ',
+    );
+  });
+
+  it('uses Font Awesome glyphs across every p10k segment', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.pacsserver = 'orthanc';
+    context.physicalMode = true;
+    context.terminalWidth = 400;
+    context.lastExitCode = 7;
+    context.lastCommandDurationMs = 4_000;
+    context.p10kSegments = { pacs: true, time: true, duration: true, status: true };
+    context.procWarmup = { loaded: 25, total: 100 };
+
+    const rendered: string = prompt_render('p10k', context);
+    const fontAwesomeGlyphs: readonly string[] = [
+      '\uf1b2', // cube
+      '\uf1c0', // database
+      '\uf610', // microscope
+      '\uf007', // user
+      '\uf07c', // folder-open
+      '\uf017', // clock
+      '\uf0e7', // bolt
+      '\uf057', // circle-xmark
+      '\uf085', // gears
+    ];
+    const legacyEmoji: readonly string[] = ['🌐', '🗄️', '🔬', '👤', '📂', '⏱', '⚡', '✖', '⚙'];
+
+    for (const glyph of fontAwesomeGlyphs) expect(rendered).toContain(glyph);
+    for (const emoji of legacyEmoji) expect(rendered).not.toContain(emoji);
+  });
+
   it('uses vivid truecolor backgrounds for p10k host, user, and directory segments', (): void => {
     const rendered: string = prompt_render(
       'p10k',

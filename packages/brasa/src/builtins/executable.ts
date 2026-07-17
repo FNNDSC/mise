@@ -99,7 +99,9 @@ export async function pluginExecutable_handle(
 
     if (args.includes('--readme')) {
         const rawMode: boolean = args.includes('--raw');
-        let rendered: string = `${chalk.cyan(`Resolving plugin ${name} v${version} for README...`)}\n`;
+        let rendered: string = rawMode
+            ? ''
+            : `${chalk.cyan(`Resolving plugin ${name} v${version} for README...`)}\n`;
         const resolved: ResolvedPlugin | null = await plugin_resolveExact();
         if (!resolved) {
             rendered += `${chalk.red(`Plugin ${name} v${version} not found.`)}\n`;
@@ -111,7 +113,8 @@ export async function pluginExecutable_handle(
             const document: PluginReadmeDocument | null = await pluginReadme_fetch(String(resolved.id));
             spinner.stop();
             if (document) {
-                const readme: string = rawMode ? document.content : pluginReadme_render(document);
+                if (rawMode) return envelope_ok(document.content);
+                const readme: string = pluginReadme_render(document);
                 rendered += readme.endsWith('\n') ? readme : `${readme}\n`;
             } else {
                 rendered += `${chalk.yellow(`No README found for ${resolved.name} v${resolved.version}.`)}\n`;

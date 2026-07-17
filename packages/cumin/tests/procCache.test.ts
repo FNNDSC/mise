@@ -184,7 +184,7 @@ describe('ProcCache', () => {
       expect(cache.instance_get(10)).toMatchObject({ status: null, params: null });
       expect(cache.instance_get(11)).toMatchObject({ status: 'finishedSuccessfully', joinParentIDs: [7] });
       expect(cache.topologyLoaded_has(1)).toBe(true);
-      expect(cache.lifecycle_get()).toEqual({ phase: 'restored', checkpointAt: '2026-07-16T12:00:00.000Z' });
+      expect(cache.lifecycle_get()).toEqual({ state: 'restored', checkpointAt: '2026-07-16T12:00:00.000Z' });
     });
 
     it('reconciles restored visibility and topology against authoritative IDs', () => {

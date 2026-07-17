@@ -12,7 +12,7 @@ export type {
   ProcFeedScopeCounts,
   ProcWarmupProgress,
   ProcPromptProgress,
-  ProcCachePhase,
+  ProcCacheState,
   ProcCacheLifecycle,
   ProcCacheSnapshot,
 } from './procCache.js';

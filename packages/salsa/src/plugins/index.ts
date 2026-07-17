@@ -92,7 +92,13 @@ export interface PluginSearchOptions {
   [key: string]: unknown; // Allow for arbitrary key-value pairs initially
 }
 
-/** README content together with the source format needed by presentation layers. */
+/**
+ * README content together with source metadata needed by presentation layers.
+ *
+ * @property content - Original README text.
+ * @property format - Markup format inferred from the source filename.
+ * @property sourceUrl - Exact URL from which the README was fetched.
+ */
 export interface PluginReadmeDocument {
   content: string;
   format: 'markdown' | 'rst';

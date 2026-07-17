@@ -1,10 +1,16 @@
+/**
+ * @file Persistence and validation tests for process-cache checkpoints.
+ *
+ * Uses isolated temporary directories to verify permissions, atomic restore
+ * behavior, identity/schema rejection, graph validation, and debounced saves.
+ */
 import { mkdtemp, readFile, stat, writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { procCache_get, ProcFeed } from '../src/cache/procCache';
 import { procCheckpointPath_get, procCheckpoint_restore, procCheckpoint_save, procCheckpoint_watch } from '../src/cache/procCheckpoint';
 
-const identity: string = 'rudolph@https://cube.example.org/api/v1/';
+const identity: string = 'user@https://cube.example.org/api/v1/';
 let root: string;
 
 function feed_create(id: number): ProcFeed {
@@ -52,6 +58,33 @@ it('ignores corrupt and wrong-identity checkpoints without changing the cache', 
     snapshot: { feeds: [], instances: [], topologyLoaded: [] },
   }));
   expect((await procCheckpoint_restore(identity, root)).reason).toBe('incompatible checkpoint');
+});
+
+it('rejects malformed topology atomically without replacing live cache data', async () => {
+  const path: string = procCheckpointPath_get(identity, root);
+  const malformedCheckpoint: unknown = {
+    schemaVersion: 1,
+    identity,
+    writtenAt: '2026-07-16T12:00:00.000Z',
+    snapshot: {
+      feeds: [feed_create(5)],
+      instances: [{
+        id: 10, feedID: 5, parentID: 999, pluginName: 'pl-child',
+        params: null, status: 'finishedSuccessfully',
+      }],
+      topologyLoaded: [5],
+    },
+  };
+  await mkdir(root, { recursive: true });
+  await writeFile(path, JSON.stringify(malformedCheckpoint));
+  procCache_get().feed_add(feed_create(9));
+
+  expect(await procCheckpoint_restore(identity, root)).toMatchObject({
+    restored: false,
+    reason: 'incompatible checkpoint',
+  });
+  expect(procCache_get().feed_get(9)?.title).toBe('feed 9');
+  expect(procCache_get().feed_get(5)).toBeUndefined();
 });
 
 it('debounces a checkpoint after mutations to a current cache', async () => {

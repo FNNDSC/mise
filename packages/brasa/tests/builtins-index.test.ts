@@ -87,7 +87,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   }),
   procCache_get: () => ({
     instance_get: jest.fn(),
-    lifecycle_get: jest.fn(() => ({ phase: 'empty' })),
+    lifecycle_get: jest.fn(() => ({ state: 'empty' })),
     warmupProgress_get: jest.fn(() => ({ loaded: 0, total: 0, active: false })),
     feedIDs_get: jest.fn(() => []),
     feedScopeCounts_get: jest.fn(() => ({ user: 0, public: 0, shared: 0, total: 0 })),

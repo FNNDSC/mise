@@ -19,7 +19,7 @@ const mockProcCacheRefresh = jest.fn(async (): Promise<void> => undefined);
 const mockCheckpointRestore = jest.fn(async () => ({ restored: false, count: 0 }));
 const mockCheckpointWatch = jest.fn();
 const mockCacheClear = jest.fn();
-let mockCacheLifecycle: { phase: string; checkpointAt?: string } = { phase: 'empty' };
+let mockCacheLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
 const mockDaemonListen = jest.fn();
 const mockDaemonLaunch = jest.fn(
   async (_engine: BrasaEngine, beforeListen?: () => Promise<void>): Promise<void> => {
@@ -48,7 +48,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   },
   procCache_get: jest.fn(() => ({
     cache_clear: mockCacheClear,
-    lifecycle_get: (): { phase: string; checkpointAt?: string } => ({ ...mockCacheLifecycle }),
+    lifecycle_get: (): { state: string; checkpointAt?: string } => ({ ...mockCacheLifecycle }),
     feedIDs_get: (): number[] => [1, 2, 3],
     warmupProgress_get: (): { loaded: number; total: number; active: boolean } => ({
       loaded: 12,
@@ -73,7 +73,7 @@ describe('daemonSession_run', () => {
     mockStackPop.mockReturnValue(undefined);
     mockProcCacheRefresh.mockResolvedValue(undefined);
     mockTopologyWarmup.mockResolvedValue(undefined);
-    mockCacheLifecycle = { phase: 'empty' };
+    mockCacheLifecycle = { state: 'empty' };
     mockCheckpointRestore.mockResolvedValue({ restored: false, count: 0 });
     mockDataGet.mockResolvedValue({
       ok: true,
@@ -186,7 +186,7 @@ describe('daemonSession_run', () => {
   });
 
   it('quarantines restored topology when CUBE visibility validation fails', async () => {
-    mockCacheLifecycle = { phase: 'restored', checkpointAt: '2026-07-16T00:00:00Z' };
+    mockCacheLifecycle = { state: 'restored', checkpointAt: '2026-07-16T00:00:00Z' };
     mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 10 });
     mockProcCacheRefresh.mockRejectedValueOnce(new Error('visibility unavailable'));
     const engine: BrasaEngine = {

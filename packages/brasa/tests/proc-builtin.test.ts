@@ -38,7 +38,7 @@ const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 let mockFeeds: TestFeed[] = [];
 let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
-let mockLifecycle: { phase: string; checkpointAt?: string } = { phase: 'empty' };
+let mockLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
 const mockCache = {
   cache_clear: jest.fn((): void => {
     mockWarmup = { loaded: 0, total: 0, active: false };
@@ -110,7 +110,7 @@ describe('builtin_proc warm-up policy', () => {
     mockCache.cache_clear();
     mockFeeds = [];
     mockTopologyStatus = { state: 'idle' };
-    mockLifecycle = { phase: 'empty' };
+    mockLifecycle = { state: 'empty' };
     jest.clearAllMocks();
     process.exitCode = undefined;
   });
@@ -134,7 +134,7 @@ describe('builtin_proc warm-up policy', () => {
   it('serves a restored checkpoint while CUBE reconciliation runs', async () => {
     mockWarmup = { loaded: 25, total: 100, active: true };
     mockTopologyStatus = { state: 'running' };
-    mockLifecycle = { phase: 'reconciling', checkpointAt: '2026-07-16T00:00:00Z' };
+    mockLifecycle = { state: 'reconciling', checkpointAt: '2026-07-16T00:00:00Z' };
     mockFeeds = [{
       id: 5, title: 'restored brain', ownerUsername: 'me', public: false,
       creationDate: '', finishedJobs: 2, erroredJobs: 0, startedJobs: 0,
@@ -150,7 +150,7 @@ describe('builtin_proc warm-up policy', () => {
   it('still waits for authoritative reconciliation when a restored query is forced', async () => {
     mockWarmup = { loaded: 25, total: 100, active: true };
     mockTopologyStatus = { state: 'running' };
-    mockLifecycle = { phase: 'reconciling', checkpointAt: '2026-07-16T00:00:00Z' };
+    mockLifecycle = { state: 'reconciling', checkpointAt: '2026-07-16T00:00:00Z' };
     procTopologyAwait_mock.mockImplementationOnce(async (): Promise<void> => {
       mockWarmup = { loaded: 100, total: 100, active: false };
       mockWarmupComplete = true;

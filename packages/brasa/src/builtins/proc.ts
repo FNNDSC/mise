@@ -364,7 +364,7 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
     rendered += `    shared       : ${chalk.cyan(String(counts.shared))}\n`;
     rendered += `  jobs loaded    : ${chalk.cyan(jobCount)}\n`;
     rendered += `  topology sweep : ${warmupLine}\n`;
-    rendered += `  cache state    : ${chalk.cyan(lifecycle.phase)}\n`;
+    rendered += `  cache state    : ${chalk.cyan(lifecycle.state)}\n`;
     if (lifecycle.checkpointAt) rendered += `  checkpoint     : ${chalk.cyan(lifecycle.checkpointAt)}\n`;
     return envelope_ok(rendered);
   }

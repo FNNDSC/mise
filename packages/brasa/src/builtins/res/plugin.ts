@@ -24,7 +24,17 @@ import { spinner } from '../../lib/spinner.js';
 import { errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { adminPrompt_register } from '@fnndsc/chili/utils/admin_prompt.js';
+import { chili_capture, type ChiliCaptured } from '@fnndsc/chili/screen/output.js';
 import { repl_question, repl_questionHidden } from '../../core/question.js';
+
+/**
+ * Mutable result populated while Chili output is captured.
+ *
+ * @property outcome - Registration result returned by Chili.
+ */
+interface PluginAddCapture {
+  outcome: PluginAddOutcome;
+}
 
 /**
  * Handles plugin commands.
@@ -108,14 +118,19 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<Command
 
   let rendered: string = `${chalk.cyan(`\nAdding plugin: ${pluginInput}\n`)}\n`;
 
-  const outcome: PluginAddOutcome = await plugin_add(pluginInput, options);
+  const result: PluginAddCapture = { outcome: 'failed' };
+  const captured: ChiliCaptured = await chili_capture(async (): Promise<void> => {
+    result.outcome = await plugin_add(pluginInput, options);
+  });
+  rendered += captured.out;
+  rendered += captured.err;
 
   spinner.stop();
 
-  if (outcome === 'installed') {
+  if (result.outcome === 'installed') {
     rendered += `${chalk.green('\n[SUCCESS] Plugin added successfully!\n')}\n`;
     return envelope_ok(rendered);
-  } else if (outcome === 'already_exists') {
+  } else if (result.outcome === 'already_exists') {
     rendered += `${chalk.yellow(`\n[INFO] '${pluginInput}' is already registered in this CUBE.\n`)}\n`;
     return envelope_ok(rendered);
   }

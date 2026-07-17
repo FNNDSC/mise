@@ -103,8 +103,9 @@ PR #144 (`6f0833a`) completed the operational follow-up:
 
 - On `fix/recovered-shell-followups`, a clean `make taco` used pinned npm
   `10.9.8`, rebuilt all packages in dependency order, and passed every
-  workspace suite: Cumin 611, Salsa 370, Chili 373, Brasa 692, Calypso 81, and
-  ChELL 102 tests. npm reported zero vulnerabilities. The synthetic 7,009-job
+  workspace suite. After review corrections, the full root suite passes with
+  Cumin 612, Salsa 370, Chili 373, Brasa 698, Calypso 81, and ChELL 102 tests.
+  npm reported zero vulnerabilities. The synthetic 7,009-job
   checkpoint remains approximately 790 KB and measured 9 ms save/9 ms restore
   on this machine. No live CUBE state was mutated.
 - The pipeline feature passed focused and full cumin, salsa, and brasa suites,

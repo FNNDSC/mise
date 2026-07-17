@@ -110,22 +110,48 @@ export function status_isTerminal(status: string | null | undefined): boolean {
  * total is zero until the server reports the visible plugin-instance count.
  * active becomes true when observable page progress begins, and false when the
  * sweep completes or aborts. Use the topology lifecycle to detect an earlier
- * running phase before the first page arrives.
+ * running state before the first page arrives.
  */
 export interface ProcWarmupProgress {
   loaded: number;
   total: number;
   active: boolean;
 }
-export interface ProcPromptProgress { loaded: number; total?: number; restored?: boolean; }
 
-export type ProcCachePhase = 'empty' | 'restored' | 'reconciling' | 'current' | 'failed';
+/**
+ * Prompt-facing progress for cache restoration and reconciliation.
+ *
+ * @property loaded - Plugin instances currently available.
+ * @property total - Authoritative total when CUBE has reported one.
+ * @property restored - Whether the available instances came from a checkpoint.
+ */
+export interface ProcPromptProgress {
+  loaded: number;
+  total?: number;
+  restored?: boolean;
+}
 
+/** Availability and freshness states for the persistent process cache. */
+export type ProcCacheState = 'empty' | 'restored' | 'reconciling' | 'current' | 'failed';
+
+/**
+ * Persistent process-cache freshness metadata.
+ *
+ * @property state - Current availability and reconciliation state.
+ * @property checkpointAt - ISO timestamp of the latest durable checkpoint.
+ */
 export interface ProcCacheLifecycle {
-  phase: ProcCachePhase;
+  state: ProcCacheState;
   checkpointAt?: string;
 }
 
+/**
+ * Serializable topology retained across daemon restarts.
+ *
+ * @property feeds - Visible feed metadata.
+ * @property instances - Normalized plugin-instance topology.
+ * @property topologyLoaded - Feed IDs whose instance topology is complete.
+ */
 export interface ProcCacheSnapshot {
   feeds: ProcFeed[];
   instances: ProcInstance[];
@@ -157,7 +183,7 @@ export class ProcCache {
   /** Whether initial feed index has been built. */
   private _built: boolean = false;
 
-  private lifecycle: ProcCacheLifecycle = { phase: 'empty' };
+  private lifecycle: ProcCacheLifecycle = { state: 'empty' };
   private listeners: Set<() => void> = new Set();
 
   private constructor() {}
@@ -172,13 +198,30 @@ export class ProcCache {
   get built(): boolean { return this._built; }
   get warmupComplete(): boolean { return this._warmupComplete; }
 
+  /**
+   * Returns a copy of the current cache lifecycle metadata.
+   *
+   * @returns Current cache state and checkpoint timestamp.
+   */
   lifecycle_get(): ProcCacheLifecycle { return { ...this.lifecycle }; }
 
-  lifecycle_set(phase: ProcCachePhase): void {
-    this.lifecycle = { ...this.lifecycle, phase };
+  /**
+   * Changes the cache freshness state.
+   *
+   * @param state - New lifecycle state.
+   * @returns Nothing.
+   */
+  lifecycle_set(state: ProcCacheState): void {
+    this.lifecycle = { ...this.lifecycle, state };
     this.change_emit();
   }
 
+  /**
+   * Registers a callback for checkpoint-worthy cache mutations.
+   *
+   * @param listener - Callback invoked after a cache mutation.
+   * @returns Function that unregisters the callback.
+   */
   changeListener_add(listener: () => void): () => void {
     this.listeners.add(listener);
     return (): void => { this.listeners.delete(listener); };
@@ -247,6 +290,12 @@ export class ProcCache {
     this.change_emit();
   }
 
+  /**
+   * Replaces the visible feed set while preserving topology for retained feeds.
+   *
+   * @param feeds - Authoritative feeds visible to the current identity.
+   * @returns Nothing.
+   */
   feeds_reconcile(feeds: ProcFeed[]): void {
     const visible: Set<number> = new Set(feeds.map((feed: ProcFeed): number => feed.id));
     for (const feedID of this.feedIDs_get()) {
@@ -333,6 +382,12 @@ export class ProcCache {
     this.change_emit();
   }
 
+  /**
+   * Removes instances absent from an authoritative topology sweep.
+   *
+   * @param instanceIDs - Instance IDs returned by the completed CUBE sweep.
+   * @returns Nothing.
+   */
   topology_reconcile(instanceIDs: Set<number>): void {
     for (const id of Array.from(this.instances.keys())) {
       if (!instanceIDs.has(id)) this.instance_remove(id);
@@ -416,7 +471,7 @@ export class ProcCache {
   warmup_complete(): void {
     this._warmupComplete = true;
     this._warmupProgress = { ...this._warmupProgress, active: false };
-    this.lifecycle = { ...this.lifecycle, phase: 'current' };
+    this.lifecycle = { ...this.lifecycle, state: 'current' };
     this.change_emit();
   }
 
@@ -428,7 +483,7 @@ export class ProcCache {
   warmup_abort(): void {
     this._warmupComplete = false;
     this._warmupProgress = { ...this._warmupProgress, active: false };
-    this.lifecycle = { ...this.lifecycle, phase: 'failed' };
+    this.lifecycle = { ...this.lifecycle, state: 'failed' };
     this.change_emit();
   }
 
@@ -440,12 +495,17 @@ export class ProcCache {
     return { ...this._warmupProgress };
   }
 
+  /**
+   * Resets reconciliation progress while retaining restored topology.
+   *
+   * @returns Nothing.
+   */
   warmup_reset(): void {
     this._warmupComplete = false;
     this._warmupProgress = { loaded: this.instances.size, total: this.instances.size, active: false };
     this.lifecycle = this.lifecycle.checkpointAt
-      ? { ...this.lifecycle, phase: 'restored' }
-      : { phase: 'empty' };
+      ? { ...this.lifecycle, state: 'restored' }
+      : { state: 'empty' };
     this.change_emit();
   }
 
@@ -506,6 +566,11 @@ export class ProcCache {
     this._built = true;
   }
 
+  /**
+   * Creates a persistence-safe snapshot without parameters or active statuses.
+   *
+   * @returns Serializable feed and terminal-topology state.
+   */
   snapshot_create(): ProcCacheSnapshot {
     const instances: ProcInstance[] = Array.from(this.instances.values()).map((inst: ProcInstance): ProcInstance => ({
       ...inst,
@@ -520,6 +585,13 @@ export class ProcCache {
     };
   }
 
+  /**
+   * Replaces in-memory topology with a validated persistent snapshot.
+   *
+   * @param snapshot - Previously validated snapshot data.
+   * @param checkpointAt - ISO timestamp when the checkpoint was written.
+   * @returns Nothing.
+   */
   snapshot_restore(snapshot: ProcCacheSnapshot, checkpointAt: string): void {
     this.cache_clear();
     for (const feed of snapshot.feeds) {
@@ -531,10 +603,16 @@ export class ProcCache {
     }
     this.topologyLoaded = new Set(snapshot.topologyLoaded.filter((id: number): boolean => this.feeds.has(id)));
     this._warmupProgress = { loaded: this.instances.size, total: this.instances.size, active: false };
-    this.lifecycle = { phase: 'restored', checkpointAt };
+    this.lifecycle = { state: 'restored', checkpointAt };
     this.change_emit();
   }
 
+  /**
+   * Records the timestamp of a successful durable save.
+   *
+   * @param checkpointAt - ISO timestamp written into the checkpoint.
+   * @returns Nothing.
+   */
   checkpoint_mark(checkpointAt: string): void {
     this.lifecycle = { ...this.lifecycle, checkpointAt };
   }
@@ -552,7 +630,7 @@ export class ProcCache {
     this._warmupComplete = false;
     this._warmupProgress = { loaded: 0, total: 0, active: false };
     this._built = false;
-    this.lifecycle = { phase: 'empty' };
+    this.lifecycle = { state: 'empty' };
     this.change_emit();
   }
 }

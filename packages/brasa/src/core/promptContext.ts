@@ -62,7 +62,7 @@ export async function sessionPromptContext_build(
   const lifecycle: ProcCacheLifecycle = procCache_get().lifecycle_get();
   const restored: boolean = lifecycle.checkpointAt !== undefined;
   const procWarmup: ProcPromptProgress | undefined =
-    warmupRaw.active || lifecycle.phase === 'reconciling'
+    warmupRaw.active || lifecycle.state === 'reconciling'
       ? { loaded: warmupRaw.loaded, total: warmupRaw.total, restored }
       : undefined;
 

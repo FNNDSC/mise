@@ -13,7 +13,13 @@
 
 import chalk from 'chalk';
 import type { PromptContext, PromptTheme } from './index.js';
-import { ansi_visibleLength, path_truncate, procProgress_format } from './utils.js';
+import { PROMPT_PALETTE, statusColor_get, type HexColor } from './palette.js';
+import {
+  ansi_visibleLength,
+  homePath_abbreviate,
+  path_truncate,
+  procProgress_format,
+} from './utils.js';
 
 /** Fraction of terminal width allowed before path truncation kicks in. */
 const FILL_RATIO: number = 0.8;
@@ -24,7 +30,9 @@ const FILL_RATIO: number = 0.8;
 export class ThemeDefault implements PromptTheme {
   render(ctx: PromptContext): string {
     const limit: number = Math.floor(ctx.terminalWidth * FILL_RATIO);
-    const modePrefix: string = ctx.physicalMode ? chalk.magenta('[PHYSICAL] ') : '';
+    const modePrefix: string = ctx.physicalMode
+      ? chalk.hex(PROMPT_PALETTE.PHYSICAL.bg)('[PHYSICAL] ')
+      : '';
 
     // Compute fixed visible length: modePrefix + user + '@' + uri + ':' + '$ '
     const fixedVisible: number =
@@ -36,19 +44,21 @@ export class ThemeDefault implements PromptTheme {
       2;  // '$ '
 
     const pathBudget: number = limit - fixedVisible;
-    const path: string = path_truncate(ctx.cwd, pathBudget);
+    const displayPath: string = homePath_abbreviate(ctx.cwd, ctx.user);
+    const path: string = path_truncate(displayPath, pathBudget);
 
-    const glyph: string = ctx.lastExitCode !== 0 ? chalk.red('$ ') : chalk.green('$ ');
+    const glyphColor: HexColor = statusColor_get(ctx.lastExitCode);
+    const glyph: string = chalk.hex(glyphColor)('$ ');
     const warmup: string = ctx.procWarmup
-      ? chalk.dim(` [proc: ${ctx.procWarmup.restored ? 'cached, syncing ' : ''}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`)
+      ? chalk.hex(PROMPT_PALETTE.WARMUP)(` [proc: ${ctx.procWarmup.restored ? 'cached, syncing ' : ''}${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`)
       : '';
     return (
       modePrefix +
-      chalk.green(ctx.user) +
+      chalk.hex(PROMPT_PALETTE.USER.bg)(ctx.user) +
       '@' +
-      chalk.cyan(ctx.uri) +
+      chalk.hex(PROMPT_PALETTE.HOST.bg)(ctx.uri) +
       ':' +
-      chalk.yellow(path) +
+      chalk.hex(PROMPT_PALETTE.DIR.bg)(path) +
       warmup +
       glyph
     );

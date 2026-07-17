@@ -759,10 +759,25 @@ context                   # show current context (user, URL, feed, plugin)
 physicalmode              # toggle physical/logical filesystem mode
 prompt list               # list available prompt themes
 prompt <theme>            # switch prompt theme
+prompt --show             # preview the active prompt
 timing                    # toggle command timing display
 debug                     # toggle debug output
 help [command]            # show help
 ----
+
+=== Prompt themes
+
+ChELL abbreviates the authenticated user's home directory in the prompt:
+`/home/alice` is shown as `~`, and `/home/alice/uploads` as `~/uploads`.
+
+* `prompt default` selects the compact single-line theme.
+* `prompt p10k` selects the vivid, two-line Powerlevel10k-inspired theme with
+  background-filled powerline segments and high-contrast Font Awesome icons.
+
+Both themes share the same high-contrast truecolor palette. The `p10k` theme
+also supports optional PACS, time, duration, and status segments; run
+`prompt --configure` to choose them interactively. Its Font Awesome icons and
+powerline separators require a Nerd Font.
 
 == Scripting Patterns
 

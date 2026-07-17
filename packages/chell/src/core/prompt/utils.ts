@@ -14,6 +14,23 @@ export function ansi_visibleLength(s: string): number {
 }
 
 /**
+ * Replaces the authenticated user's home-directory prefix with `~`.
+ *
+ * Other users' home directories and similarly prefixed usernames remain
+ * unchanged.
+ *
+ * @param path - Logical working-directory path.
+ * @param user - Authenticated username that owns `/home/<user>`.
+ * @returns Home-relative display path, or the original path when outside home.
+ */
+export function homePath_abbreviate(path: string, user: string): string {
+  if (!user) return path;
+  const home: string = `/home/${user}`;
+  if (path === home || path === `${home}/`) return '~';
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
+/**
  * Truncates a filesystem path to fit within `maxLen` visible columns.
  *
  * Drops leading path segments (oldest ancestors) replacing them with

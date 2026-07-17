@@ -1,5 +1,13 @@
 # @fnndsc/chell
 
+## 5.2.4
+
+### Patch Changes
+
+- 1930297: Abbreviate the authenticated user's home directory as `~` in both prompt
+  themes and refresh their shared palette with vivid Powerlevel10k-inspired
+  truecolor accents and high-contrast Font Awesome prompt icons.
+
 ## 5.2.3
 
 ### Patch Changes

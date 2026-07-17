@@ -1,10 +1,10 @@
 # Active project handoff
 
 - Last updated: 2026-07-16
-- Last verified against `main`: `3efbdae`
-- Working branch: `main`
-- Current milestone: deterministic `/proc` warm-up and remote one-shot release complete
-- Next action: start a clean session and select the next milestone
+- Last verified against `main`: `76967f3`
+- Working branch: `fix/recovered-shell-followups`
+- Current milestone: persistent `/proc` checkpoints and recovered shell follow-ups complete locally
+- Next action: push the feature branch, open a PR, and let strict Node 22/24 CI verify it
 
 ## Current truth
 
@@ -24,6 +24,29 @@
   choose a provider without a separate design grill.
 
 ## Recently completed
+
+The local feature branch contains four reviewed units on top of release-state
+`main`; none has been pushed:
+
+- `8345545` persists an identity-scoped, mode-`0600` `/proc` topology
+  checkpoint. Daemon startup validates restored feed visibility against CUBE
+  before exposure, serves the restored graph while reconciling in the
+  background, atomically replaces successful checkpoints, and quarantines
+  restored data when visibility validation fails. `proc stat` and the prompt
+  distinguish restored/reconciling state; `proc refresh` remains the explicit
+  authoritative refresh. Direct plugin and pipeline executions update the
+  cache. CUBE remains authoritative.
+- `f1a1f1c` makes wildcard-expanded virtual leaves such as `/bin/pl-*` render
+  as entries instead of being treated as directories. Directory operands keep
+  their existing descent behavior.
+- `fd7379d` keeps remote hidden-input labels visible after readline activates
+  and names the registration prompts `Admin username` and `Admin password`.
+- `72a0ae5` returns dynamic plugin inspection through command envelopes, gives
+  `help <versioned-plugin>` and `<versioned-plugin> --help` one renderer, and
+  fixes `--parameters`/`--readme` across remote, pipe, and redirect surfaces.
+  README discovery prefers `public_repo`, retains source-format metadata,
+  renders Markdown, and preserves reStructuredText without passing it through
+  the Markdown renderer.
 
 PR #140 (`e630f79`) made registered CUBE pipeline templates visible through the
 same diagram machinery already used for instantiated feed DAGs:
@@ -78,6 +101,12 @@ PR #144 (`6f0833a`) completed the operational follow-up:
 
 ## Verification state
 
+- On `fix/recovered-shell-followups`, a clean `make taco` used pinned npm
+  `10.9.8`, rebuilt all packages in dependency order, and passed every
+  workspace suite: Cumin 611, Salsa 370, Chili 373, Brasa 692, Calypso 81, and
+  ChELL 102 tests. npm reported zero vulnerabilities. The synthetic 7,009-job
+  checkpoint remains approximately 790 KB and measured 9 ms save/9 ms restore
+  on this machine. No live CUBE state was mutated.
 - The pipeline feature passed focused and full cumin, salsa, and brasa suites,
   including path extraction, feed resolution, shallow/SignalFlow output,
   pipeline arguments/joins, and `/bin` envelope equivalence. A clean `make taco`
@@ -119,6 +148,9 @@ GitHub releases, Binaries, and post-merge Node 22/24 CI are verified green.
 
 ## Follow-ups and risks
 
+- After reconciliation reaches current state, analyses created by another
+  client require `proc refresh` or daemon restart; periodic external-change
+  polling remains deliberately out of scope.
 - `packages/calypso/src/daemon/discovery.ts` is legacy single-file discovery;
   chell no longer uses it, but removal is separate cleanup.
 - [#107](https://github.com/FNNDSC/mise/issues/107): restore the CALYPSO browser

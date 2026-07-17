@@ -58,6 +58,98 @@ describe('prompt home path abbreviation', (): void => {
 });
 
 describe('prompt Powerlevel10k-inspired palette', (): void => {
+  it('orders PACS, CUBE, user, path, and proc segments from left to right', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.pacsserver = 'orthanc';
+    context.p10kSegments.pacs = true;
+    context.procWarmup = { loaded: 25, total: 100 };
+
+    const rendered: string = prompt_render('p10k', context);
+    const pacsIndex: number = rendered.indexOf('orthanc');
+    const cubeIndex: number = rendered.indexOf('cube.example.org');
+    const userIndex: number = rendered.indexOf('rudolphpienaar');
+    const pathIndex: number = rendered.indexOf('~/src');
+    const procIndex: number = rendered.indexOf('proc');
+
+    expect(pacsIndex).toBeGreaterThanOrEqual(0);
+    expect(pacsIndex).toBeLessThan(cubeIndex);
+    expect(cubeIndex).toBeLessThan(userIndex);
+    expect(userIndex).toBeLessThan(pathIndex);
+    expect(pathIndex).toBeLessThan(procIndex);
+  });
+
+  it('places proc immediately after the path and before command telemetry', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.lastExitCode = 7;
+    context.lastCommandDurationMs = 4_000;
+    context.p10kSegments = { pacs: false, time: true, duration: true, status: true };
+    context.procWarmup = { loaded: 25, total: 100 };
+
+    const rendered: string = prompt_render('p10k', context);
+    const pathIndex: number = rendered.indexOf('~/src');
+    const procIndex: number = rendered.indexOf('proc');
+    const timeIndex: number = rendered.indexOf('\uf017');
+    const durationIndex: number = rendered.indexOf('4s');
+    const statusIndex: number = rendered.indexOf(' 7 ');
+
+    expect(pathIndex).toBeLessThan(procIndex);
+    expect(procIndex).toBeLessThan(timeIndex);
+    expect(timeIndex).toBeLessThan(durationIndex);
+    expect(durationIndex).toBeLessThan(statusIndex);
+  });
+
+  it('keeps physical mode after the requested PACS, CUBE, user, path, proc order', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.pacsserver = 'orthanc';
+    context.p10kSegments.pacs = true;
+    context.physicalMode = true;
+    context.procWarmup = { loaded: 25, total: 100 };
+
+    const rendered: string = prompt_render('p10k', context);
+    const orderedLabels: readonly string[] = [
+      'orthanc',
+      'cube.example.org',
+      'rudolphpienaar',
+      '~/src',
+      'proc',
+      'PHYSICAL',
+    ];
+    const indices: number[] = orderedLabels.map((label: string): number => rendered.indexOf(label));
+
+    expect(indices.every((index: number): boolean => index >= 0)).toBe(true);
+    expect(indices).toEqual([...indices].sort((a: number, b: number): number => a - b));
+  });
+
+  it('marks a cold proc index with a snowflake and warm warning colour', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.procWarmup = { loaded: 25, total: 100, restored: false };
+
+    const rendered: string = prompt_render('p10k', context);
+
+    expect(rendered).toContain('\x1b[48;2;255;135;0m');
+    expect(rendered).toContain('\uf2dc proc cold: 25/100 25%');
+  });
+
+  it('marks checkpoint reconciliation with a refresh icon and cached label', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.procWarmup = { loaded: 25, total: 100, restored: true };
+
+    const rendered: string = prompt_render('p10k', context);
+
+    expect(rendered).toContain('\x1b[48;2;95;95;135m');
+    expect(rendered).toContain('\uf021 proc cached, refreshing: 25/100 25%');
+  });
+
+  it('keeps a failed proc refresh visible with a warning segment', (): void => {
+    const context: PromptContext = promptContext_create('/home/rudolphpienaar/src');
+    context.procWarmup = { loaded: 25, total: 100, restored: true, state: 'failed' };
+
+    const rendered: string = prompt_render('p10k', context);
+
+    expect(rendered).toContain('\x1b[48;2;255;0;95m');
+    expect(rendered).toContain('\uf071 proc failed: 25/100 25%');
+  });
+
   it('renders the CUBE with a contrasting Font Awesome cube icon', (): void => {
     const rendered: string = prompt_render(
       'p10k',
@@ -89,7 +181,7 @@ describe('prompt Powerlevel10k-inspired palette', (): void => {
       '\uf017', // clock
       '\uf0e7', // bolt
       '\uf057', // circle-xmark
-      '\uf085', // gears
+      '\uf2dc', // snowflake (cold proc index)
     ];
     const legacyEmoji: readonly string[] = ['🌐', '🗄️', '🔬', '👤', '📂', '⏱', '⚡', '✖', '⚙'];
 

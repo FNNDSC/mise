@@ -187,9 +187,11 @@ cache.topology_reconcile(seen);
 cache.warmup_complete();
 ----
 
-Warm-up progress is visible in the prompt as `[proc: 342/1275]`; use
-`proc stat` to distinguish restored, reconciling, and current cache states. The
-indicator disappears when `warmupComplete = true`.
+Warm-up progress is visible in a state-labelled prompt segment such as
+`[proc cold: 342/1275 26%]` or `[proc cached, refreshing: 342/1275 26%]`.
+Refresh failure remains visible as `[proc failed: ...]`; the segment disappears
+once the lifecycle becomes current. Use `proc stat` for the complete checkpoint,
+scope, freshness, and lifecycle detail.
 
 === Phase 3: Per-feed lazy loading (on navigation)
 
@@ -322,18 +324,45 @@ The prompt renderer accepts an optional `procWarmup` field:
 
 [source,typescript]
 ----
-procWarmup?: { loaded: number; total?: number; restored?: boolean }
+procWarmup?: {
+  loaded: number
+  total?: number
+  restored?: boolean
+  state?: 'cold' | 'cached' | 'failed'
+}
 ----
 
-Present while a topology sweep is active or the lifecycle is `reconciling`, and
-removed when the sweep settles. The engine context can mark restored progress,
-but attached remote surfaces currently receive the progress counts; `proc stat`
-is the authoritative way to inspect restored/current lifecycle. Example remote
-prompt segment:
+Present while a topology sweep is active, the lifecycle is `reconciling`, or the
+latest refresh failed; removed when the index becomes current. Local and remote
+surfaces receive the same state through the CALYPSO prompt contract.
+
+[cols="1,1,2",options="header"]
+|===
+|State |p10k clue |Meaning
+
+|`cold`
+|Orange snowflake
+|No checkpoint exists; CUBE topology is being indexed from scratch.
+
+|`cached`
+|Slate refresh icon
+|A restored checkpoint is usable while CUBE refreshes and reconciles it.
+
+|`failed`
+|Red warning icon
+|The latest refresh failed; the segment remains visible until recovery.
+
+|Current
+|No segment
+|The CUBE-authoritative index is ready.
+|===
+
+The p10k segment order is PACS, CUBE URL, user, path, `/proc`, then the optional
+physical-mode indicator and command telemetry. Example cold prompt:
 
 [source]
 ----
- 🌐 user  📂 /home/user  [proc: 342/1275]
+  orthanc   cube.example.org   user   ~/work   proc cold: 342/1275 26% 
 ❯
 ----
 

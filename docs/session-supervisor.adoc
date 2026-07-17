@@ -285,6 +285,53 @@ What tier 2 *reuses* unchanged: the calypso daemon, the engine, the `Berth` conc
 seam — the surface's attach path (`PorterBerthResolver` replaces
 `LocalBerthResolver`).
 
+=== Cloud persistence posture
+
+CUBE remains the durable state authority. The daemon's `/proc` checkpoint is a
+restart accelerator, not workflow truth: losing it causes a cold topology sweep
+against CUBE but does not lose feeds, jobs, outputs, or provenance. This makes a
+container filesystem sufficient for the first cloud deployment.
+
+[cols="1,2,2",options="header"]
+|===
+|Storage |Behaviour |Recommendation
+
+|Ephemeral container filesystem
+|Correct after restart, with a cold CUBE rebuild and additional startup load.
+|Acceptable for an initial deployment while restart time and CUBE load are measured.
+
+|Per-daemon persistent volume
+|Retains the identity-keyed checkpoint across pod restarts and preserves the
+current atomic-rename semantics.
+|Preferred first production shape: one daemon writer per identity on an encrypted
+volume.
+
+|Shared read/write filesystem
+|Permits competing daemons to overwrite one checkpoint; the current file adapter
+has no distributed lock or compare-and-swap.
+|Do not share one identity's checkpoint between writers. Enforce an
+exactly-one-daemon lease first.
+
+|Database
+|Makes a disposable snapshot shared but does not solve daemon ownership,
+WebSocket routing, resumable commands, or active-session failover.
+|Do not introduce MongoDB for `/proc` alone.
+|===
+
+If node-portable checkpoints become operationally necessary, the natural second
+adapter is blob/object storage: the checkpoint is one versioned JSON value loaded
+and saved by identity, not a query workload. Add a small checkpoint-store seam
+when that second adapter is built; do not layer it over the current file writer in
+advance. Distributed concerns remain separate: porter supplies authentication and
+routing, while Redis, PostgreSQL, or Kubernetes Lease objects can supply registry
+and exactly-one-daemon coordination if multiple porter replicas require it.
+
+The trigger for more machinery is an observed service objective: cold rebuilds
+overload CUBE, pod rescheduling cannot reattach volumes quickly enough, or
+cross-node/cross-region recovery must retain a warm checkpoint. Seamless recovery
+of in-flight commands is a different session/event-persistence problem and must
+not be inferred from durable `/proc` cache storage.
+
 == Scope and staging
 
 [cols="1,3",options="header"]

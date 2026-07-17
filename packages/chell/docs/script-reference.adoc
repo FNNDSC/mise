@@ -779,6 +779,12 @@ also supports optional PACS, time, duration, and status segments; run
 `prompt --configure` to choose them interactively. Its Font Awesome icons and
 powerline separators require a Nerd Font.
 
+The p10k segment order is PACS, CUBE URL, user, path, `/proc`, then the optional
+physical-mode indicator and command telemetry. During topology loading, `/proc`
+uses an orange snowflake for a cold index, a slate refresh icon for cached
+reconciliation, and a red warning when refresh fails. The segment disappears
+when the index is current.
+
 == Scripting Patterns
 
 === Wait for a job to finish

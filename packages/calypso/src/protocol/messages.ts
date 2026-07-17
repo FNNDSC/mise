@@ -12,6 +12,7 @@
  * @module
  */
 import { z } from 'zod';
+import { PROC_PROMPT_STATES } from '@fnndsc/cumin/proc-prompt';
 import { commandEnvelopeSchema } from './envelope.js';
 
 /** The sink channel an output event belongs to. */
@@ -192,7 +193,12 @@ export const promptContextSchema = z.object({
   physicalMode: z.boolean(),
   lastExitCode: z.number(),
   lastCommandDurationMs: z.number(),
-  procWarmup: z.object({ loaded: z.number(), total: z.number().optional() }).optional(),
+  procWarmup: z.object({
+    loaded: z.number(),
+    total: z.number().optional(),
+    restored: z.boolean().optional(),
+    state: z.enum(PROC_PROMPT_STATES).optional(),
+  }).optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;

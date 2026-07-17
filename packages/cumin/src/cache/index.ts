@@ -11,11 +11,12 @@ export type {
   ProcFeed,
   ProcFeedScopeCounts,
   ProcWarmupProgress,
-  ProcPromptProgress,
   ProcCacheState,
   ProcCacheLifecycle,
   ProcCacheSnapshot,
 } from './procCache.js';
+export { procPromptState_get, PROC_PROMPT_STATES } from './procPrompt.js';
+export type { ProcPromptState, ProcPromptProgress } from './procPrompt.js';
 export {
   procCheckpointPath_get,
   procCheckpoint_restore,

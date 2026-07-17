@@ -594,9 +594,8 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
  * Background topology warm-up — single paginated sweep of all plugin instances
  * across all feeds. Replaces the per-feed fan-out that was O(feeds) round trips.
  *
- * Registers itself as the active sweep so that any concurrent
- * feedInstances_ensureLoaded call waits for this sweep rather than launching
- * its own per-feed API call.
+ * Scoped per-feed loads may run concurrently for navigation; the completed
+ * global sweep reconciles the cache to its authoritative instance set.
  */
 async function procTopology_run(): Promise<void> {
   await cache_ensure();

@@ -32,10 +32,10 @@ The local feature branch contains four reviewed units on top of release-state
   checkpoint. Daemon startup validates restored feed visibility against CUBE
   before exposure, serves the restored graph while reconciling in the
   background, atomically replaces successful checkpoints, and quarantines
-  restored data when visibility validation fails. `proc stat` and the prompt
-  distinguish restored/reconciling state; `proc refresh` remains the explicit
-  authoritative refresh. Direct plugin and pipeline executions update the
-  cache. CUBE remains authoritative.
+  restored data when visibility validation fails. `proc stat` distinguishes
+  restored/reconciling state, while the prompt reports sweep progress;
+  `proc refresh` remains the explicit authoritative refresh. Direct plugin and
+  pipeline executions update the cache. CUBE remains authoritative.
 - `f1a1f1c` makes wildcard-expanded virtual leaves such as `/bin/pl-*` render
   as entries instead of being treated as directories. Directory operands keep
   their existing descent behavior.

@@ -20,7 +20,7 @@
 #                  (`make meal` is a synonym)
 #
 # Extras:
-#   make taste-flight - Run tests with coverage (v8 provider)
+#   make taste-flight - Run tests with coverage (Istanbul provider)
 #   make run          - Build chell and launch the shell (local, in-process)
 #   make login        - Build and connect to a CUBE (prompts for password)
 #   make daemon       - Build and run the CALYPSO session daemon
@@ -54,7 +54,7 @@ help:
 	@echo "  make taco          - Full course: scrub, prep, cook, taste, serve"
 	@echo ""
 	@echo "Extras:"
-	@echo "  make taste-flight  - Tests with coverage (v8 provider)"
+	@echo "  make taste-flight  - Tests with coverage (Istanbul provider)"
 	@echo "  make run           - Build chell and launch the shell (local)"
 	@echo "  make login         - Build and connect to a CUBE (prompts for password)"
 	@echo "                       override: make login CUBE_URL=... CUBE_USER=..."

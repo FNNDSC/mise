@@ -55,7 +55,9 @@ ChELL commands fall into several categories:
 
 == Wildcard Expansion
 
-ChELL supports glob-style wildcard patterns for applicable commands (currently `rm` and `cat`). Wildcards are expanded against the current ChRIS directory.
+ChELL supports glob-style wildcard patterns for applicable commands, including
+`ls`, `rm`, and `cat`. Wildcards are expanded against the current ChRIS
+directory, including virtual directories such as `/bin`.
 
 **Supported patterns:**
 
@@ -68,6 +70,7 @@ ChELL supports glob-style wildcard patterns for applicable commands (currently `
 ```bash
 rm *.json                # Remove all JSON files
 cat test*.txt            # Display all files starting with "test"
+ls /bin/pl-*             # List matching virtual plugin executables
 rm data/*.csv            # Remove CSV files in data/ subdirectory
 ```
 

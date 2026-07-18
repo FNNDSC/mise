@@ -145,7 +145,7 @@ export async function shellCommand_execute(shellCommand: string): Promise<number
   });
 }
 
-type CommandHandler = (args: string[]) => Promise<void>;
+type CommandHandler = (args: string[]) => Promise<void | CommandEnvelope>;
 
 /**
  * Shape of a converted builtin: returns its outcome as an envelope instead
@@ -406,15 +406,16 @@ function exitCode_read(): number {
 }
 
 /**
- * Runs a legacy printing handler uncaptured and derives an envelope from the
- * exit-code delta.
+ * Runs a printing handler uncaptured, preserving an explicit envelope or
+ * deriving one from the exit-code delta for legacy handlers.
  *
  * This is the passthrough for commands that cannot be captured yet: the
  * interactive holdouts (their prompts must reach the terminal) and the
  * progress writers (their live updates must stay live). The handler prints
  * exactly as it always has; the placeholder envelope records only the
  * outcome, with no rendered text, so envelope consumers never re-print what
- * the terminal already showed.
+ * the terminal already showed. Migrated handlers may return that envelope
+ * directly while retaining the same live-output behavior.
  *
  * @param handler - A legacy printing command handler.
  * @param args - Parsed arguments.
@@ -422,7 +423,8 @@ function exitCode_read(): number {
  */
 async function handler_runDirect(handler: CommandHandler, args: string[]): Promise<CommandEnvelope> {
   const exitCodeBefore: number = exitCode_read();
-  await handler(args);
+  const explicitEnvelope: void | CommandEnvelope = await handler(args);
+  if (explicitEnvelope !== undefined) return explicitEnvelope;
   const exitCodeAfter: number = exitCode_read();
   const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
   return { status: failed ? 'error' : 'ok', rendered: '' };
@@ -508,7 +510,10 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
 
   const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
   if (binMatches.plugin) {
-    return handler_runDirect((pluginArgs: string[]): Promise<void> => builtin_executePlugin(command, pluginArgs), args);
+    return handler_runDirect(
+      (pluginArgs: string[]): Promise<CommandEnvelope> => builtin_executePlugin(command, pluginArgs),
+      args,
+    );
   }
 
   if (binMatches.pipeline) {

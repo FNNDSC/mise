@@ -1,5 +1,13 @@
 # @fnndsc/cumin
 
+## 3.8.4
+
+### Patch Changes
+
+- Carry per-node CPU, memory, GPU, and worker controls through the typed CUBE
+  Workflow `nodes_info` contract.
+- Accept typed plugin-run parameters without a lossy CLI string round trip.
+
 ## 3.8.3
 
 ### Patch Changes

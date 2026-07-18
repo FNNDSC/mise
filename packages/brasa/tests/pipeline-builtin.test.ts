@@ -19,12 +19,17 @@ const mockRun = jest.fn();
 const mockSourceGet = jest.fn();
 const mockProcRefresh = jest.fn(async () => undefined);
 const mockDiagramGet: jest.Mock = jest.fn();
+const mockManifestGet: jest.Mock = jest.fn();
+const mockFileContentGet: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipelines_list: mockList,
   pipeline_run: mockRun,
   pipeline_sourceGet: mockSourceGet,
   procCache_refresh: mockProcRefresh,
   pipelineDiagram_get: mockDiagramGet,
+  pipelineManifest_get: mockManifestGet,
+  fileContent_get: mockFileContentGet,
+  context_getSingle: jest.fn(async () => ({ user: 'me' })),
 }));
 
 const mockFieldsFetch = jest.fn();
@@ -45,7 +50,7 @@ jest.unstable_mockModule('../src/core/sink.js', () => ({
 
 const mockClientGet = jest.fn(async () => null);
 jest.unstable_mockModule('../src/session/index.js', () => ({
-  session: { connection: { client_get: mockClientGet } },
+  session: { connection: { client_get: mockClientGet }, getCWD: jest.fn(async () => '/home/me') },
 }));
 
 const { builtin_pipeline } = await import('../src/builtins/res/pipeline.js');
@@ -59,6 +64,23 @@ beforeEach(() => {
   mockPluginGet.mockResolvedValue(null);
   mockClientGet.mockResolvedValue(null);
   mockInstanceGet.mockReturnValue(undefined);
+  mockFileContentGet.mockResolvedValue(err());
+  mockManifestGet.mockResolvedValue(ok({
+    pipelineID: 7,
+    name: 'MyPipe',
+    rootIDs: [1],
+    nodes: [{
+      pipingID: 1,
+      title: 'root',
+      pluginName: 'pl-a',
+      pluginVersion: '1.0',
+      parentID: null,
+      computeResourceName: 'host',
+      memoryLimit: '4Gi',
+      parameterDefaults: [{ name: 'threshold', value: 0.4 }],
+      parameterDefinitions: [{ name: 'threshold', type: 'float', optional: true, default: 0.25 }],
+    }],
+  }));
   mockDiagramGet.mockResolvedValue(ok({
     pipelineID: 7,
     name: 'Brain Segmentation',
@@ -96,6 +118,8 @@ describe('builtin_pipeline', () => {
   it('returns help for --help', async () => {
     const env = await builtin_pipeline(['--help']);
     expect(env.rendered).toContain('USAGE');
+    expect(env.rendered).toContain('--paramFile');
+    expect(env.rendered).toContain('--<node>.<parameter>');
   });
 
   it('lists registered pipelines', async () => {
@@ -116,19 +140,19 @@ describe('builtin_pipeline', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('prints info and reports a disconnected node fetch', async () => {
+  it('prints registered pipeline metadata before its invocation parameters', async () => {
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe', id: 7, locked: false }));
     await builtin_pipeline(['info', 'MyPipe']);
     expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('MyPipe'));
-    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('not connected'));
   });
 
   it('reports an info resolve failure', async () => {
     mockResolve.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'no such pipeline' });
-    await builtin_pipeline(['info', 'ghost']);
+    const result = await builtin_pipeline(['info', 'ghost']);
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('no such pipeline'));
     expect(process.exitCode).toBe(1);
+    expect(result.status).toBe('error');
   });
 
   it('requires a name for run', async () => {
@@ -163,8 +187,9 @@ describe('builtin_pipeline', () => {
   it('reports a source failure', async () => {
     mockSourceGet.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'no source' });
-    await builtin_pipeline(['source', 'MyPipe']);
+    const result = await builtin_pipeline(['source', 'MyPipe']);
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('no source'));
+    expect(result.status).toBe('error');
   });
 
   it('inspects fields via table_render', async () => {
@@ -240,25 +265,17 @@ describe('builtin_pipeline', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('prints pipeline nodes when connected', async () => {
+  it('prints compound parameters and execution controls from the registered manifest', async () => {
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe', id: 7, locked: false }));
-    mockClientGet.mockResolvedValue({
-      getPipeline: async () => ({
-        data: {},
-        getPluginPipings: async () => ({
-          getItems: () => [{ data: { id: 1, title: 'root', plugin_name: 'pl-a', plugin_version: '1.0', previous_id: null } }],
-        }),
-      }),
-    } as never);
     await builtin_pipeline(['info', 'MyPipe']);
-    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('Nodes'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('--root.threshold'));
+    expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('--root.memory_limit'));
   });
 
-  it('reports an error thrown while fetching nodes', async () => {
+  it('reports an error while fetching the registered manifest', async () => {
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe', id: 7, locked: false }));
-    mockClientGet.mockResolvedValue({
-      getPipeline: async () => { throw new Error('api down'); },
-    } as never);
+    mockManifestGet.mockResolvedValue(err());
+    mockStackPop.mockReturnValueOnce({ message: 'api down' });
     await builtin_pipeline(['info', 'MyPipe']);
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('api down'));
   });
@@ -274,8 +291,9 @@ describe('builtin_pipeline', () => {
     mockPluginGet.mockResolvedValue('5');
     mockResolve.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'gone' });
-    await builtin_pipeline(['run', 'MyPipe']);
+    const result = await builtin_pipeline(['run', 'MyPipe']);
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('gone'));
+    expect(result.status).toBe('error');
   });
 
   it('reports a workflow creation failure', async () => {
@@ -283,13 +301,37 @@ describe('builtin_pipeline', () => {
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe' }));
     mockRun.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'queue full' });
-    await builtin_pipeline(['run', 'MyPipe']);
+    const result = await builtin_pipeline(['run', 'MyPipe']);
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('queue full'));
+    expect(result.status).toBe('error');
+  });
+
+  it('loads a CFS parameter file and forwards its overlay with compound CLI bindings', async () => {
+    mockPluginGet.mockResolvedValue('5');
+    mockResolve.mockResolvedValue(ok({ name: 'MyPipe', id: 7 }));
+    mockFileContentGet.mockResolvedValue(ok(
+      'plugin_tree:\n  tree:\n    - title: root\n      memory_limit: 8Gi\n',
+    ));
+    mockRun.mockResolvedValue(ok({ workflowId: 9, pluginInstanceIds: [10] }));
+
+    await builtin_pipeline([
+      'run', 'MyPipe', '--paramFile', '~/params/run.yaml', '--root.threshold', '0.6',
+    ]);
+
+    expect(mockFileContentGet).toHaveBeenCalledWith('/home/me/params/run.yaml');
+    expect(mockRun).toHaveBeenCalledWith('MyPipe', 5, {
+      globalCompute: undefined,
+      parameterFile: {
+        plugin_tree: { tree: [{ title: 'root', memory_limit: '8Gi' }] },
+      },
+      cliBindings: [{ node: 'root', field: 'threshold', value: 0.6 }],
+    });
   });
 
   it('requires a name for source', async () => {
-    await builtin_pipeline(['source']);
+    const result = await builtin_pipeline(['source']);
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('Usage: pipeline source'));
     expect(process.exitCode).toBe(1);
+    expect(result.status).toBe('error');
   });
 });

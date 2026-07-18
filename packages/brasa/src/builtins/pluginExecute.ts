@@ -8,38 +8,23 @@
  */
 
 import { plugin_executeInPlace, PluginExecutionResult } from '@fnndsc/salsa';
-import { dictionary_fromCLI, Dictionary, errorStack, Result, procCache_get } from '@fnndsc/cumin';
+import {
+  Dictionary,
+  errorStack,
+  Result,
+  procCache_get,
+  envelope_error,
+  envelope_ok,
+  type CommandEnvelope,
+  type StackMessage,
+} from '@fnndsc/cumin';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd } from './feedCreation.js';
-
-/**
- * Parses a plugin name from /bin format (name-vVersion) into ChRIS search format.
- *
- * @param pluginName - Plugin name in format: pl-name-vX.Y.Z
- * @returns Search string in format: name_exact:pl-name,version:X.Y.Z
- *
- * @example
- * ```typescript
- * pluginName_toSearchString('pl-dcm2niix-v1.0.2')
- * // Returns: 'name_exact:pl-dcm2niix,version:1.0.2'
- * ```
- */
-function pluginName_toSearchString(pluginName: string): string {
-  // Pattern: (name)-v(version)
-  const match: RegExpMatchArray | null = pluginName.match(/^(.+)-v(.+)$/);
-
-  if (match) {
-    const name: string = match[1];
-    const version: string = match[2];
-    return `name_exact:${name},version:${version}`;
-  }
-
-  // Fallback: if no version suffix, search by name only
-  return `name_exact:${pluginName}`;
-}
+import { executableArguments_parse } from './argumentTokens.js';
+import { pluginSelector_normalize } from './pluginSelector.js';
 
 /**
  * Executes a plugin in the current directory context.
@@ -49,7 +34,7 @@ function pluginName_toSearchString(pluginName: string): string {
  *
  * @param pluginName - Full plugin name with version (e.g., pl-dcm2niix-v2.1.1).
  * @param args - Array of command line arguments.
- * @returns Promise that resolves when execution completes.
+ * @returns Command envelope whose status matches parsing and execution.
  *
  * @example
  * ```typescript
@@ -62,41 +47,34 @@ function pluginName_toSearchString(pluginName: string): string {
 export async function builtin_executePlugin(
   pluginName: string,
   args: string[]
-): Promise<void> {
+): Promise<CommandEnvelope> {
   try {
-    // 1. Parse arguments - split on '--' delimiter
-    const argsString: string = args.join(' ');
-    let pluginArgsStr: string = argsString;
-    let contextArgsStr: string = '';
-
-    // Check for ' -- ' delimiter (space-dash-dash-space)
-    const delimiterIndex: number = argsString.indexOf(' -- ');
-    if (delimiterIndex !== -1) {
-      pluginArgsStr = argsString.substring(0, delimiterIndex);
-      contextArgsStr = argsString.substring(delimiterIndex + 4); // +4 to skip ' -- '
-    }
+    // 1. Split the already-tokenized arguments on the context delimiter.
+    const delimiterIndex: number = args.indexOf('--');
+    const pluginArgTokens: string[] = delimiterIndex === -1 ? args : args.slice(0, delimiterIndex);
+    const contextArgTokens: string[] = delimiterIndex === -1 ? [] : args.slice(delimiterIndex + 1);
 
     // 2. Parse both sets of parameters
     let pluginParams: Dictionary = {};
     let contextParams: Dictionary = {};
 
-    if (pluginArgsStr.trim()) {
+    if (pluginArgTokens.length > 0) {
       try {
-        pluginParams = dictionary_fromCLI(pluginArgsStr);
+        pluginParams = executableArguments_parse(pluginArgTokens);
       } catch (e: unknown) {
         const msg: string = e instanceof Error ? e.message : String(e);
         console.error(chalk.red(`Error parsing plugin parameters: ${msg}`));
-        return;
+        return envelope_error('');
       }
     }
 
-    if (contextArgsStr.trim()) {
+    if (contextArgTokens.length > 0) {
       try {
-        contextParams = dictionary_fromCLI(contextArgsStr);
+        contextParams = executableArguments_parse(contextArgTokens);
       } catch (e: unknown) {
         const msg: string = e instanceof Error ? e.message : String(e);
         console.error(chalk.red(`Error parsing context parameters: ${msg}`));
-        return;
+        return envelope_error('');
       }
     }
 
@@ -105,7 +83,7 @@ export async function builtin_executePlugin(
     const isInFeed: boolean = cwd.includes('/feeds/feed_');
 
     // If no context params provided and not in a feed, use directory name as feed title
-    if (!contextArgsStr && !isInFeed) {
+    if (contextArgTokens.length === 0 && !isInFeed) {
       const defaultTitle: string = cwd.split('/').pop() || 'Untitled';
       contextParams.feed_title = defaultTitle;
       console.log(chalk.cyan(`Using feed title: "${defaultTitle}" (customize with -- feed_title="Custom Title")`));
@@ -115,14 +93,14 @@ export async function builtin_executePlugin(
     const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
     if (!binResult.ok) {
       console.error(chalk.red('Failed to access /bin directory'));
-      return;
+      return envelope_error('');
     }
 
     const binListing: string[] = binResult.value.map((item: ListingItem) => item.name);
 
     // 5. Convert plugin name from /bin format to ChRIS search format
     // Example: pl-dcm2niix-v1.0.2 → name_exact:pl-dcm2niix,version:1.0.2
-    const pluginSearchString: string = pluginName_toSearchString(pluginName);
+    const pluginSearchString: string = pluginSelector_normalize(pluginName);
 
     // 6. Execute via salsa
     const result: PluginExecutionResult | null = await plugin_executeInPlace(
@@ -136,12 +114,12 @@ export async function builtin_executePlugin(
     if (!result) {
       // Display all errors from the stack for better debugging
       console.error(chalk.red('Plugin execution failed:'));
-      let error = errorStack.stack_pop();
+      let error: StackMessage | undefined = errorStack.stack_pop();
       while (error) {
         console.error(chalk.red(`  - ${error.message}`));
         error = errorStack.stack_pop();
       }
-      return;
+      return envelope_error('');
     }
 
     // 7. Push to procCache so /proc reflects new jobs immediately
@@ -181,8 +159,10 @@ export async function builtin_executePlugin(
       )
     );
     console.log(chalk.cyan(`Output will be in: ${result.outputPath}`));
+    return envelope_ok('');
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     console.error(chalk.red(`Error executing plugin: ${msg}`));
+    return envelope_error('');
   }
 }

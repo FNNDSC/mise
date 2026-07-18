@@ -269,10 +269,10 @@ feed. Because CUBE paths must exist before `pl-dircopy` can consume them, `--new
 combined with `--nowait`.
 
 [[planned-analysis-attachment]]
-=== Planned analysis attachment
+=== Analysis attachment
 
-`--new-feed` is deliberately the operation that creates the analysis context. A future extension
-will optionally attach exactly one plugin or one registered pipeline to the newly created
+`--new-feed` is deliberately the operation that creates the analysis context. It may
+optionally attach exactly one plugin or one registered pipeline to the newly created
 `pl-dircopy` root:
 
 [source,shell]
@@ -296,11 +296,7 @@ pacs pull <selection...> \
   --paramFile parameter-overrides.yaml
 ----
 
-This syntax is a design contract, not an implemented command surface yet. The current parser
-rejects `--plugin` and `--pipeline` instead of silently ignoring them. Runtime help therefore
-advertises only `--new-feed` until attachment support lands.
-
-The planned rules are:
+The rules are:
 
 * `--plugin` and `--pipeline` are mutually exclusive and each requires `--new-feed`. Neither flag
   implicitly creates a feed.

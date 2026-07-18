@@ -21,12 +21,8 @@ describe('pullArgs_parse', () => {
     expect(pullArgs_parse(['--retry', 'abc']).parseError).toBe('--retry requires a non-negative integer');
     expect(pullArgs_parse(['p', '--retry']).parseError).toBe('--retry requires a non-negative integer');
   });
-  it('rejects unknown and deferred attachment options', () => {
+  it('rejects unknown options', () => {
     expect(pullArgs_parse(['--foo', 'p']).parseError).toBe('unsupported option: --foo');
-    expect(pullArgs_parse(['p', '--pipeline', 'pipeline-name']).parseError)
-      .toBe('unsupported option: --pipeline');
-    expect(pullArgs_parse(['p', '--plugin', 'pl-name']).parseError)
-      .toBe('unsupported option: --plugin');
   });
   it('reads --new-feed title and consumes its value', () => {
     expect(pullArgs_parse(['p', '--new-feed', 'Brain MRI'])).toEqual({
@@ -43,5 +39,29 @@ describe('pullArgs_parse', () => {
     expect(pullArgs_parse(['p', '--new-feed', '--retry', '1']).parseError).toBe('--new-feed requires a title');
     expect(pullArgs_parse(['p', '--new-feed', 'One', '--new-feed', 'Two']).parseError)
       .toBe('--new-feed may only be specified once');
+  });
+  it('parses one pipeline attachment and preserves forwarded tokens', () => {
+    expect(pullArgs_parse([
+      'p', '--new-feed', 'Brain MRI', '--pipeline', 'brain-preprocessing', '--',
+      '--segmentation.threshold', '-0.5', '--@481.memory_limit=8Gi',
+    ])).toEqual({
+      nowait: false,
+      retryMax: 0,
+      newFeedTitle: 'Brain MRI',
+      parseError: null,
+      paths: ['p'],
+      attachment: {
+        kind: 'pipeline',
+        selector: 'brain-preprocessing',
+        args: ['--segmentation.threshold', '-0.5', '--@481.memory_limit=8Gi'],
+      },
+    });
+  });
+  it('requires a new Feed and exactly one attachment selector', () => {
+    expect(pullArgs_parse(['p', '--pipeline', 'pipe']).parseError)
+      .toBe('--pipeline requires --new-feed');
+    expect(pullArgs_parse([
+      'p', '--new-feed', 'x', '--pipeline', 'pipe', '--plugin', 'pl-x',
+    ]).parseError).toBe('--plugin and --pipeline are mutually exclusive');
   });
 });

@@ -22,8 +22,10 @@ import {
   type CommandEnvelope,
   envelope_ok,
   envelope_error,
+  procCache_get,
+  type Dictionary,
 } from '@fnndsc/cumin';
-import { feed_create, type FeedCreationResult } from '@fnndsc/salsa';
+import { feed_create, plugin_run, type FeedCreationResult } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
@@ -37,10 +39,13 @@ import {
   series_cubePathGet,
 } from '../net/pacsUtils.js';
 import { builtin_cubepath } from '../net/cubepath.js';
-import { pullArgs_parse, type PullArgs } from './pull.args.js';
+import { pullArgs_parse, type PullArgs, type PullAttachment } from './pull.args.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd } from '../feedCreation.js';
+import { builtin_pipeline } from '../res/pipeline.js';
+import { executableArguments_parse } from '../argumentTokens.js';
+import { pluginSelector_normalize } from '../pluginSelector.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -93,6 +98,12 @@ interface SeriesPullTask {
 interface PullPathResolution {
   paths: string[];
   complete: boolean;
+}
+
+interface PulledFeedResult {
+  feedID: number;
+  rootInstanceID: number;
+  owner: string;
 }
 
 function pullProgress_emit(task: SeriesPullTask, status?: ProgressStatus, phase: 'watching' | 'retrying' = 'watching'): void {
@@ -536,9 +547,9 @@ async function pulledFeed_create(
   title: string,
   allTasks: SeriesPullTask[],
   client: Client,
-): Promise<boolean> {
+): Promise<PulledFeedResult | null> {
   const dirs: string[] | null = await feedInputDirs_resolve(allTasks, client);
-  if (dirs === null) return false;
+  if (dirs === null) return null;
 
   const feed: FeedCreationResult | null = await feed_create(dirs, { title });
   const feedID: number = Number(feed?.id);
@@ -549,7 +560,7 @@ async function pulledFeed_create(
   if (!feed || !Number.isInteger(feedID) || feedID <= 0 ||
       !Number.isInteger(rootInstanceID) || rootInstanceID <= 0 || owner.length === 0) {
     sink_errLine(chalk.red(`pull: Failed to create feed '${title}'.`));
-    return false;
+    return null;
   }
 
   newFeed_cacheAdd({
@@ -565,7 +576,7 @@ async function pulledFeed_create(
   sink_dataLine(chalk.cyan(
     `Feed path: /home/${owner}/feeds/feed_${feedID}/pl-dircopy_${rootInstanceID}/data/`,
   ));
-  return true;
+  return { feedID, rootInstanceID, owner };
 }
 
 
@@ -588,7 +599,8 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok(help_render('pull'));
   }
 
-  const { nowait, retryMax, newFeedTitle, parseError, paths }: PullArgs = pullArgs_parse(args);
+  const parsed: PullArgs = pullArgs_parse(args);
+  const { nowait, retryMax, newFeedTitle, parseError, paths } = parsed;
 
   if (parseError !== null) {
     sink_errLine(chalk.red(`pull: ${parseError}.`));
@@ -685,9 +697,57 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
       process.exitCode = 1;
       return envelope_error('');
     }
-    if (!await pulledFeed_create(newFeedTitle, allTasks, client)) {
+    const feedResult: PulledFeedResult | null = await pulledFeed_create(newFeedTitle, allTasks, client);
+    if (feedResult === null) {
       process.exitCode = 1;
       return envelope_error('');
+    }
+    const attachment: PullAttachment | undefined = parsed.attachment;
+    if (attachment?.kind === 'pipeline') {
+      const attachmentEnvelope: CommandEnvelope = await builtin_pipeline([
+        'run', attachment.selector, '--previous', String(feedResult.rootInstanceID), ...attachment.args,
+      ]);
+      if (attachmentEnvelope.status === 'error') {
+        sink_errLine(chalk.red(
+          `pull: Pipeline attachment failed; Feed ${feedResult.feedID} and root ${feedResult.rootInstanceID} were retained.`,
+        ));
+        process.exitCode = 1;
+        return envelope_error('');
+      }
+      sink_dataLine(chalk.green(`Pipeline attached: ${attachment.selector}`));
+    } else if (attachment?.kind === 'plugin') {
+      let pluginParameters: Record<string, string | boolean | number>;
+      try {
+        pluginParameters = executableArguments_parse(attachment.args);
+      } catch (error: unknown) {
+        const message: string = error instanceof Error ? error.message : String(error);
+        sink_errLine(chalk.red(
+          `pull: Plugin attachment failed (${message}); Feed ${feedResult.feedID} and root ${feedResult.rootInstanceID} were retained.`,
+        ));
+        process.exitCode = 1;
+        return envelope_error('');
+      }
+      const instance: Dictionary | null = await plugin_run(pluginSelector_normalize(attachment.selector), {
+        ...pluginParameters,
+        previous_id: feedResult.rootInstanceID,
+      });
+      const instanceID: number = Number(instance?.id);
+      if (!instance || !Number.isInteger(instanceID) || instanceID <= 0) {
+        sink_errLine(chalk.red(
+          `pull: Plugin attachment failed; Feed ${feedResult.feedID} and root ${feedResult.rootInstanceID} were retained.`,
+        ));
+        process.exitCode = 1;
+        return envelope_error('');
+      }
+      procCache_get().instance_add({
+        id: instanceID,
+        feedID: feedResult.feedID,
+        parentID: feedResult.rootInstanceID,
+        pluginName: typeof instance.plugin_name === 'string' ? instance.plugin_name : attachment.selector,
+        params: null,
+        status: 'scheduled',
+      });
+      sink_dataLine(chalk.green(`Plugin attached: ${attachment.selector} (ID: ${instanceID})`));
     }
   }
 

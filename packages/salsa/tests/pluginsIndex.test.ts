@@ -72,10 +72,10 @@ describe('group-backed listing', () => {
 });
 
 describe('plugin_run', () => {
-  it('converts params to a CLI string and runs', async () => {
+  it('passes typed params directly so spaced values remain one value', async () => {
     mockPlugin.plugin_run.mockResolvedValue({ id: 1 });
-    expect(await plugin_run('pl-x', { a: 1, b: 'z' })).toEqual({ id: 1 });
-    expect(mockPlugin.plugin_run).toHaveBeenCalledWith('pl-x', '--a 1 --b z');
+    expect(await plugin_run('pl-x', { a: 1, b: 'NIfTI files' })).toEqual({ id: 1 });
+    expect(mockPlugin.plugin_run).toHaveBeenCalledWith('pl-x', { a: 1, b: 'NIfTI files' });
   });
 });
 

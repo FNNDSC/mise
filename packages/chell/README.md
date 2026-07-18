@@ -34,10 +34,10 @@ pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
 at `pl-dircopy`, and prints the feed ID, root job ID, and feed path. Without the
 flag, `pacs pull` only retrieves data into CUBE storage.
 
-The planned next step is optional analysis attachment: `--plugin <selector>` or
-`--pipeline <selector>` will require `--new-feed`, attach to that new root, and
+Optional analysis attachment is available with `--plugin <selector>` or
+`--pipeline <selector>`. Both require `--new-feed`, attach to that new root, and
 forward arguments after `--` through the selected command's existing invocation
-semantics. These flags are not implemented yet; see
+semantics. See
 [PACS Query / Retrieve / Resolve](docs/pacsqr.adoc#planned-analysis-attachment)
 for the complete behavioral contract.
 

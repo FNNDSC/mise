@@ -1,5 +1,15 @@
 # @fnndsc/salsa
 
+## 3.5.3
+
+### Patch Changes
+
+- Project registered pipelines as typed invocation manifests, validate and merge
+  sparse parameter/resource overlays, and create Workflows from complete node sets.
+- Preserve plugin parameter values as typed data through Cumin execution.
+- Updated dependencies
+  - @fnndsc/cumin@3.8.4
+
 ## 3.5.2
 
 ### Patch Changes

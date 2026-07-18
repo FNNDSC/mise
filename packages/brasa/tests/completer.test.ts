@@ -7,6 +7,7 @@ import { jest } from '@jest/globals';
 // Mock salsa plugins_listAll and vfsDispatcher
 const mockPlugins_listAll = jest.fn();
 const mockVfsDispatcherList = jest.fn().mockResolvedValue({ ok: true, value: [] });
+const mockPipelineManifestGet = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   plugins_listAll: mockPlugins_listAll,
   vfsDispatcher: {
@@ -15,7 +16,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(() => ({
     user: 'testuser',
     URL: 'http://localhost:8000'
-  }))
+  })),
+  pipelineManifest_get: mockPipelineManifestGet,
 }));
 
 // Mock session
@@ -53,6 +55,7 @@ describe('Tab Completion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [] });
+    mockPipelineManifestGet.mockResolvedValue({ ok: false });
   });
 
   describe('Command Completion', () => {
@@ -186,6 +189,64 @@ describe('Tab Completion', () => {
         expect(result[0]).toContain('pacsqueries');
         expect(result[0]).toContain('pacsretrieve');
         expect(result[0]).toContain('pacsservers');
+        done();
+      });
+    });
+  });
+
+  describe('Pipeline Parameter Completion', () => {
+    it('completes hosted parameters and execution controls from the registered manifest', (done) => {
+      mockPipelineManifestGet.mockResolvedValue({
+        ok: true,
+        value: {
+          pipelineID: 27,
+          name: 'brain-preprocessing',
+          rootIDs: [481],
+          nodes: [{
+            pipingID: 481,
+            title: 'segmentation',
+            pluginName: 'pl-segmentation',
+            pluginVersion: '2.4.0',
+            parentID: null,
+            computeResourceName: 'host',
+            parameterDefaults: [],
+            parameterDefinitions: [{ name: 'threshold', type: 'float', optional: true }],
+          }],
+        },
+      });
+
+      input_complete('brain-preprocessing --seg', (err, result) => {
+        expect(err).toBeNull();
+        expect(result[0]).toContain('--segmentation.threshold');
+        expect(result[0]).toContain('--segmentation.memory_limit');
+        done();
+      });
+    });
+
+    it('uses exact piping IDs instead of unsafe authored titles', (done) => {
+      mockPipelineManifestGet.mockResolvedValue({
+        ok: true,
+        value: {
+          pipelineID: 27,
+          name: 'brain-preprocessing',
+          rootIDs: [481],
+          nodes: [{
+            pipingID: 481,
+            title: 'segmentation stage',
+            pluginName: 'pl-segmentation',
+            pluginVersion: '2.4.0',
+            parentID: null,
+            computeResourceName: 'host',
+            parameterDefaults: [],
+            parameterDefinitions: [{ name: 'threshold', type: 'float', optional: true }],
+          }],
+        },
+      });
+
+      input_complete('brain-preprocessing --@481', (err, result) => {
+        expect(err).toBeNull();
+        expect(result[0]).toContain('--@481.threshold');
+        expect(result[0]).not.toContain('--segmentation stage.threshold');
         done();
       });
     });

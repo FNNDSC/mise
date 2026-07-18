@@ -40,7 +40,16 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 
 const mockFeedCreate = jest.fn();
-jest.unstable_mockModule('@fnndsc/salsa', () => ({ feed_create: mockFeedCreate }));
+const mockPluginRun = jest.fn();
+jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  feed_create: mockFeedCreate,
+  plugin_run: mockPluginRun,
+}));
+
+const mockPipelineBuiltin = jest.fn();
+jest.unstable_mockModule('../src/builtins/res/pipeline.js', () => ({
+  builtin_pipeline: mockPipelineBuiltin,
+}));
 
 const mockCreateAndWait = jest.fn();
 jest.unstable_mockModule('../src/builtins/net/query.js', () => ({
@@ -134,6 +143,8 @@ beforeEach(() => {
     owner_username: 'chris',
     pluginInstance: { data: { id: 400 } },
   });
+  mockPipelineBuiltin.mockResolvedValue({ status: 'ok', rendered: '' });
+  mockPluginRun.mockResolvedValue({ id: 500, plugin_name: 'pl-dcm2niix' });
   mockPathResolve.mockImplementation(async (p: string) => `/home/chris/${p}`);
 });
 afterEach(() => {
@@ -148,6 +159,8 @@ describe('builtin_pull guards and path resolution', () => {
     const env = await builtin_pull(['--help']);
     expect(env.rendered).toContain('USAGE');
     expect(env.rendered).toContain('--new-feed <title>');
+    expect(env.rendered).toContain('--plugin <selector>');
+    expect(env.rendered).toContain('--pipeline <selector>');
     expect(mockCollect).not.toHaveBeenCalled();
   });
 
@@ -313,6 +326,70 @@ describe('builtin_pull watch loop', () => {
     expect(mockProcFeedAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 300, title: 'Brain MRI' }));
     expect(mockProcInstanceAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 400, feedID: 300 }));
     expect(process.exitCode).toBe(0);
+  });
+
+  it('attaches a pipeline to the new root with forwarded invocation tokens', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+
+    const pull = builtin_pull([
+      QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'brain-preprocessing', '--',
+      '--segmentation.threshold', '0.6',
+    ]);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockPipelineBuiltin).toHaveBeenCalledWith([
+      'run', 'brain-preprocessing', '--previous', '400', '--segmentation.threshold', '0.6',
+    ]);
+    expect(sinkData).toContain('Feed created: 300');
+    expect(sinkData).toContain('Pipeline attached: brain-preprocessing');
+    expect(result.status).toBe('ok');
+  });
+
+  it('attaches a versioned plugin to the new root with forwarded parameters', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+
+    const pull = builtin_pull([
+      QUERY_PATH, '--new-feed', 'Brain MRI', '--plugin', 'pl-dcm2niix-v1.2.0', '--',
+      '--outputdir', 'NIfTI files',
+    ]);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockPluginRun).toHaveBeenCalledWith(
+      'name_exact:pl-dcm2niix,version:1.2.0',
+      { outputdir: 'NIfTI files', previous_id: 400 },
+    );
+    expect(mockProcInstanceAdd).toHaveBeenCalledWith(expect.objectContaining({
+      id: 500,
+      feedID: 300,
+      parentID: 400,
+      pluginName: 'pl-dcm2niix',
+    }));
+    expect(sinkData).toContain('Plugin attached: pl-dcm2niix-v1.2.0 (ID: 500)');
+    expect(result.status).toBe('ok');
+  });
+
+  it('retains and reports the Feed when pipeline attachment fails', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    mockPipelineBuiltin.mockResolvedValue({ status: 'error', rendered: '' });
+
+    const pull = builtin_pull([
+      QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'broken-pipeline',
+    ]);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockFeedCreate).toHaveBeenCalled();
+    expect(sinkData).toContain('Feed created: 300');
+    expect(sinkErr).toContain('Feed 300 and root 400 were retained');
+    expect(result.status).toBe('error');
   });
 
   it('does not create a requested feed after a partial pull', async () => {

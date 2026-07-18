@@ -457,7 +457,9 @@ A query expression is also accepted as query-then-pull shorthand.
 
 **Syntax:**
 ```bash
-pacs pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...]
+pacs pull [--nowait] [--retry N] [--new-feed <title>
+          [--plugin <selector>|--pipeline <selector>] [-- <args...>]]
+          <vfs-path|query-expr> [...]
 ```
 
 **Examples:**
@@ -465,6 +467,8 @@ pacs pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...
 pacs pull /net/pacs/queries/.../Study_.../Series_...
 pacs pull AccessionNumber:12345678
 pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
+pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI" \
+  --pipeline brain-preprocessing -- --segmentation.threshold 0.5
 ```
 
 Without `--new-feed`, `pacs pull` materializes the selected series under
@@ -477,10 +481,12 @@ Feed creation is all-or-nothing. An invalid or empty operand, partial retrieval,
 or unresolved CUBE directory prevents Feed creation while leaving any retrieved
 files in storage. `--new-feed` cannot be combined with `--nowait`.
 
-Planned `--plugin` and `--pipeline` flags will optionally attach one analysis to
-the new root. They are not implemented or advertised in runtime help yet. See
+`--plugin` and `--pipeline` optionally attach one analysis to the new root and
+are mutually exclusive. Arguments after `--` retain the selected executable's
+normal grammar. Attachment failure returns nonzero but preserves and reports the
+valid Feed and root. See
 link:pacsqr.adoc#planned-analysis-attachment[PACS Query / Retrieve / Resolve]
-for the complete current behavior and planned attachment contract.
+for the complete behavior.
 
 == ChEFS Commands
 

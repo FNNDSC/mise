@@ -76,8 +76,8 @@ root input paths must exist before `pl-dircopy` is created.
 
 ## PACS Analysis Attachment
 
-A PACS Analysis Attachment is the planned optional step after a PACS Selection
-has produced a new Feed. `--plugin <selector>` or `--pipeline <selector>` will
+A PACS Analysis Attachment is the optional step after a PACS Selection has
+produced a new Feed. `--plugin <selector>` or `--pipeline <selector>` will
 attach exactly one analysis to the new `pl-dircopy` root. The flags are mutually
 exclusive, require `--new-feed`, and never create a Feed implicitly. Arguments
 after `--` preserve the selected plugin or pipeline's existing invocation
@@ -86,18 +86,18 @@ semantics.
 The attachment is not transactional with Feed creation. If retrieval,
 resolution, or Feed creation fails, attachment does not run. If attachment
 fails, the valid Feed remains available and the command reports its identities
-for manual continuation. These flags are a documented design contract and are
-not implemented yet.
+for manual continuation.
 
 ## Pipeline Parameter Overlay
 
 A Pipeline Parameter Overlay is a sparse set of runtime bindings applied while
 instantiating a registered Pipeline as a Workflow. It does not mutate or
 register another Pipeline. The command-line form is
-`--<node>.<parameter> <value>`; the serial form is `--paramFile <file>`, whose
-YAML mirrors the parameter-bearing portion of `plugin_tree`. Registered
-defaults are merged first, then the parameter file, then explicit compound
-arguments.
+`--<node>.<parameter> <value>`; the same grammar addresses per-node compute and
+resource controls. The serial form is `--paramFile <file>`, read from any
+durable CFS path visible to the authenticated user, whose YAML mirrors
+`plugin_tree`. Registered values are merged first, followed by the global
+compute baseline, the parameter file, and explicit compound arguments.
 
 `<node>` denotes one authored PluginPiping rather than merely a Plugin name,
 because a Pipeline may host the same Plugin more than once. A unique node title

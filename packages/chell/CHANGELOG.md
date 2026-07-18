@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.2.10
+
+### Patch Changes
+
+- Ship pipeline runtime overlays, registered `/bin` manifests, per-node
+  compute/resource controls, and PACS plugin/pipeline attachment.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.6
+  - @fnndsc/cumin@3.8.4
+  - @fnndsc/salsa@3.5.3
+
 ## 5.2.9
 
 ### Patch Changes

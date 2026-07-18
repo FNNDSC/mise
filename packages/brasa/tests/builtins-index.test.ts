@@ -205,6 +205,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipeline_run: jest.fn().mockResolvedValue({ ok: false }),
   pipeline_sourceGet: jest.fn().mockResolvedValue({ ok: false }),
   pipelineDiagram_get: jest.fn().mockResolvedValue({ ok: false }),
+  pipelineManifest_get: jest.fn().mockResolvedValue({ ok: false }),
+  plugin_run: jest.fn().mockResolvedValue(null),
   tags_list: jest.fn().mockResolvedValue(null),
   tags_listAll: jest.fn().mockResolvedValue(null),
   tagFields_get: jest.fn().mockResolvedValue(null),

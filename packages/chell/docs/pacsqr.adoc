@@ -284,7 +284,16 @@ pacs pull <selection...> \
 
 pacs pull <selection...> \
   --new-feed "Brain MRI" \
-  --pipeline brain-preprocessing
+  --pipeline brain-preprocessing \
+  -- \
+  --registration.dof 12 \
+  --segmentation.threshold 0.4
+
+pacs pull <selection...> \
+  --new-feed "Brain MRI" \
+  --pipeline brain-preprocessing \
+  -- \
+  --paramFile parameter-overrides.yaml
 ----
 
 This syntax is a design contract, not an implemented command surface yet. The current parser
@@ -297,7 +306,10 @@ The planned rules are:
   implicitly creates a feed.
 * The selector is resolved exactly as it is for direct plugin execution or `pipeline run`.
 * Arguments after `--` are forwarded using the selected plugin or pipeline's existing invocation
-  semantics; `pacs pull` does not invent a second parameter grammar.
+  semantics; `pacs pull` does not invent a second parameter grammar. Pipeline invocation uses
+  `--<node>.<parameter> <value>` compound parameters or `--paramFile <file>` as specified in
+  link:../../../docs/feed-dag-viewer.adoc#pipeline-parameter-binding[Pipeline invocation as
+  parameter binding].
 * The lifecycle is ordered: retrieve the complete selection, resolve every CUBE directory, create
   the feed and `pl-dircopy` root, then attach the selected analysis to that root.
 * Retrieval, resolution, or feed-creation failure prevents attachment. If attachment itself fails,

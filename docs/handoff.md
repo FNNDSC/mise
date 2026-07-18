@@ -1,12 +1,12 @@
 # Active project handoff
 
 - Last updated: 2026-07-18
-- Last verified against `main`: `645026e`
-- Working branch: `main`
-- Current milestone: design is documented for attaching one plugin or pipeline
-  to a feed created by `pacs pull --new-feed`
-- Next action: implement that attachment contract on a feature branch, test it,
-  then complete the PR/CI/squash-merge-to-main workflow
+- Last verified against `main`: `593d6c2`
+- Working branch: `docs-pipeline-parameter-ux`
+- Current milestone: pipeline invocation semantics now cover per-node runtime
+  parameter bindings and serializable overlays without registering new templates
+- Next action: land this documentation contract, then implement pipeline parameter
+  binding and the PACS attachment contract on feature branches
 
 ## Current truth
 
@@ -61,7 +61,10 @@ pacs pull <selection...> \
 
 pacs pull <selection...> \
   --new-feed "Brain MRI" \
-  --pipeline brain-preprocessing
+  --pipeline brain-preprocessing \
+  -- \
+  --registration.dof 12 \
+  --segmentation.threshold 0.4
 ```
 
 Contract:
@@ -71,6 +74,11 @@ Contract:
 - Resolve selectors exactly as direct plugin execution and `pipeline run` do.
 - Forward everything after `--` through the selected command's existing
   invocation semantics. Do not introduce another parameter grammar.
+- Pipeline invocation binds runtime values as
+  `--<node>.<parameter> <value>` or through `--paramFile <file>`. The file is a
+  sparse overlay over the parameter-bearing portion of `plugin_tree`; it never
+  registers a new Pipeline. See
+  [feed-dag-viewer.adoc](feed-dag-viewer.adoc#pipeline-parameter-binding).
 - Execute in stages: retrieve → resolve → create Feed/root → attach analysis.
 - Any failure before attachment prevents attachment.
 - If attachment fails, retain the valid Feed, return nonzero, and print enough
@@ -96,6 +104,13 @@ Likely starting points:
 Do not duplicate plugin or pipeline resolution inside `pull`. Deepen the shared
 execution seams if the existing builtins cannot be called cleanly.
 
+ChELL remains a ChRIS domain shell rather than a general programming language.
+It owns one configured platform operation; Bash, Python, or another caller owns
+loops, conditionals, concurrency, and repetition over input or parameter files.
+Do not add pipeline/plugin `--sweep` flags or ChELL control-flow syntax for that
+general orchestration. The rationale and composability obligations are in
+[intent-kernel.adoc](intent-kernel.adoc#shell-boundary).
+
 ## Other recently completed work
 
 - PR #148: persistent identity-scoped `/proc` checkpoints, complete CUBE group
@@ -107,6 +122,7 @@ execution seams if the existing builtins cannot be called cleanly.
 - PR #152: opt-in `cat --highlight [language]` syntax highlighting for Python
   and other common formats, with ANSI-free pipes and redirects.
 - PR #153: PACS selection-to-Feed creation described above.
+- PR #154: authoritative PACS attachment design and ChELL 5.2.8 documentation.
 
 Historical Stage 1/2 and earlier delivery detail is archived in
 [history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md) and GitHub's
@@ -114,17 +130,16 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on `main` after PR #153 are ChELL 5.2.7, Calypso 0.4.4, Brasa
+Source versions on `main` after PR #154 are ChELL 5.2.8, Calypso 0.4.4, Brasa
 0.9.5, Chili 3.6.1, Cumin 3.8.3, and Salsa 3.5.2. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 
-The current documentation worktree bumps ChELL to 5.2.8 with matching changelog
+The current documentation worktree bumps ChELL to 5.2.9 with matching changelog
 and lockfile metadata; that version is not on `main` or npm until these docs are
 landed and subsequently released.
 
-PR #153 passed the dependency-ordered build, package lint/tests, independent
-standards/spec review, GitGuardian, and strict Node 22/24 CI. Package builds
+PR #154 passed Node 22/24 CI and GitGuardian. Package builds
 must remain dependency ordered; parallel downstream builds can race workspace
 declaration regeneration.
 

@@ -1,5 +1,13 @@
 # @fnndsc/chell
 
+## 5.2.9
+
+### Patch Changes
+
+- Specify per-node pipeline runtime parameters, serializable parameter overlays,
+  and the Unix boundary that keeps loops and other general programming in the
+  calling shell.
+
 ## 5.2.8
 
 ### Patch Changes

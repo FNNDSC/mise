@@ -138,6 +138,61 @@ execution.
 |Machine / one-shot |A single envelope as JSON from the HTTP facade *(forward)*.
 |===
 
+[[shell-boundary]]
+== The ChELL shell boundary
+
+ChELL is a domain shell and a Unix-composable command surface over ChRIS. It is not a
+second general-purpose shell language. It owns the grammar and execution of ChRIS intents:
+VFS navigation, plugin and pipeline invocation, resource operations, command sequencing,
+pipes, redirection, wildcard expansion, and environment substitution. A `.chell` script
+is consequently useful as a linear, reproducible sequence of those intents.
+
+General programming stays above that boundary. Iteration, conditionals, functions,
+arithmetic, process concurrency, and policy about whether to retry or branch belong to
+Bash, another shell, Python, or a program embedding Brasa. ChELL must not acquire `for`,
+`if`/`then`/`else`, or domain-specific repetition flags merely because one use case happens
+to involve a pipeline. Repeating a pipeline over parameter files and repeating a plugin
+over input files are the same orchestration problem.
+
+This division follows the Unix composition rule: ChELL should do the ChRIS-specific job
+well and remain callable from tools that already program processes well. For example, a
+caller may iterate over serialized pipeline invocations without ChELL knowing that the
+larger activity is a numerical experiment:
+
+[source,bash]
+----
+for params in parameters/*.yaml; do
+  chell -c "brain-preprocessing --paramFile '$params'"
+done
+----
+
+The exact quoting and file location are caller concerns; the architectural point is that
+one ChELL command performs one declared platform operation and reports its result. ChELL
+may execute a linear sequence of such commands, but it does not decide dynamically which
+commands to issue or how many times to issue them. A caller that wants a single warm engine
+can use the hosted CALYPSO session rather than moving its control flow into the engine. A
+Node program that needs structured in-process composition can call Brasa directly.
+
+Being subordinate to a general shell creates obligations for ChELL:
+
+* return reliable exit status for every command;
+* keep data and diagnostics on the correct stdout/stderr channels;
+* keep pipes and redirects free of terminal decoration;
+* make one-shot `-c` and remote one-shot execution predictable;
+* expose typed or stable machine-readable receipts so callers do not parse presentation
+  text; and
+* preserve non-interactive authentication and explicit context selection.
+
+Some of these obligations are complete and some, especially model-complete
+machine-readable output, remain forward work. Performance does not move the boundary: if
+repeated startup or authentication is expensive, improve the one-shot/daemon transport
+rather than grow a partial programming language inside ChELL.
+
+The decision rule is: configuring and linearly sequencing ChRIS operations belongs below
+the boundary; iteration, conditional selection, and concurrent scheduling belong to the
+caller. Thus per-node parameters and a parameter file are part of one pipeline invocation,
+while a parameter sweep is not.
+
 == The determinism boundary
 
 The kernel draws a hard line, and a client should respect it:

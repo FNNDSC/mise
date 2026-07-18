@@ -89,6 +89,26 @@ fails, the valid Feed remains available and the command reports its identities
 for manual continuation. These flags are a documented design contract and are
 not implemented yet.
 
+## Pipeline Parameter Overlay
+
+A Pipeline Parameter Overlay is a sparse set of runtime bindings applied while
+instantiating a registered Pipeline as a Workflow. It does not mutate or
+register another Pipeline. The command-line form is
+`--<node>.<parameter> <value>`; the serial form is `--paramFile <file>`, whose
+YAML mirrors the parameter-bearing portion of `plugin_tree`. Registered
+defaults are merged first, then the parameter file, then explicit compound
+arguments.
+
+`<node>` denotes one authored PluginPiping rather than merely a Plugin name,
+because a Pipeline may host the same Plugin more than once. A unique node title
+is portable. `@<piping-id>` is the exact registration-specific command-line
+fallback; a parameter-file node uses the corresponding `piping_id` field.
+Topology and structural join values are not runtime parameter bindings.
+
+One overlay configures one Workflow invocation. Repetition over several input
+or parameter files belongs to a general caller such as Bash, not to a Pipeline
+`--sweep` option or control-flow extensions in ChELL.
+
 ## Admin
 
 A user with elevated privileges sufficient to execute a privileged operation. In chell help text, subcommands requiring elevation are marked `[admin]`.

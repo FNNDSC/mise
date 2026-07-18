@@ -165,6 +165,134 @@ the parameters (fetched for join resolution), and the join ids — with no POST,
 effect, and no title constraint. CUBE's write endpoint is reserved for the deliberate
 "save this feed as a pipeline" action.
 
+[[pipeline-parameter-binding]]
+== Pipeline invocation as parameter binding
+
+NOTE: This section is the design contract for forward work. Registered pipelines can be
+run today, but per-node command-line and parameter-file overrides described here are not
+implemented or advertised in runtime help yet.
+
+A plugin is a single executable with one flat parameter namespace:
+
+[source,shell]
+----
+pl-plugin --arg1 value1 --arg2 value2
+----
+
+A pipeline is conceptually the same kind of executable, but its arguments are distributed
+among the plugin nodes it hosts. The registered pipeline remains a static blueprint: DAG
+topology plus stored defaults. Running it creates a workflow by binding an input root and,
+optionally, a sparse set of per-run parameter values. Changing those values must not
+register another pipeline or add another executable to `/bin`.
+
+The runtime value is therefore:
+
+[source]
+----
+PipelineInvocation = registered pipeline + input root + parameter overlay
+----
+
+The overlay is part of the workflow invocation and its receipt, not a mutation of the
+registered template.
+
+=== Compound command-line parameters
+
+The generic command-line spelling qualifies each hosted parameter with its pipeline node:
+
+[source,shell]
+----
+brain-preprocessing \
+  --registration.dof 12 \
+  --segmentation.threshold 0.4
+----
+
+The grammar is `--<node>.<parameter> <value>`. `<node>` identifies one authored piping,
+not merely a plugin name: the same plugin may occur several times in one pipeline. A
+unique, shell-safe authored node title is the human-facing form. The exact fallback is the
+piping id:
+
+[source,shell]
+----
+brain-preprocessing --@481.threshold 0.4
+----
+
+Titles are not normalized into option names: if a title is empty, duplicated, or cannot
+be represented by the compound-option grammar, the caller uses `@<piping-id>`.
+
+Resolution must reject an unknown or ambiguous node, an unknown parameter, and a value
+that the hosted plugin would reject. Completion and contextual help should derive the
+available compound arguments from the resolved pipeline rather than maintain another
+parameter registry. Pipeline-level utility options remain distinct because hosted
+arguments always contain the node/parameter separator.
+
+The compound syntax is a surface representation of a typed binding:
+
+[source,typescript]
+----
+{ piping_id: 481, parameter: "threshold", value: 0.4 }
+----
+
+All surfaces produce the same bindings. A GUI may render a form grouped by pipeline node;
+the TUI parses compound options; neither changes the workflow model.
+
+=== Serializable parameter overlays
+
+The same bindings must round-trip through `--paramFile <file>`. The file is a sparse
+parameter overlay shaped like the parameter-bearing portion of the existing pipeline
+YAML, so an operator can move between a registered pipeline, an editor, a GUI form, and a
+command invocation without learning a second representation:
+
+[source,yaml]
+----
+name: brain-preprocessing
+
+plugin_tree:
+  tree:
+    - title: registration
+      plugin_name: pl-registration
+      plugin_parameter_defaults:
+        - name: dof
+          default: 12
+
+    - title: segmentation
+      plugin_name: pl-segmentation
+      plugin_parameter_defaults:
+        - name: threshold
+          default: 0.4
+----
+
+`name` and `plugin_name` are optional compatibility assertions: when present,
+they must match the selected registered pipeline and resolved node. Node titles are the
+portable identity across re-registration. An overlay node may instead supply
+`piping_id: 481` as the exact but registration-specific fallback; if both `title` and
+`piping_id` are present, they must resolve to the same node.
+
+Missing nodes and parameters retain their registered defaults. The overlay cannot change
+topology: `root_index`, `child_indices`, join structure, plugin selection, and resource
+shape are not invocation parameters and must be rejected if supplied rather than silently
+ignored. In particular, the structural `plugininstances` value of a `ts` node must survive
+the merge unchanged unless a future design explicitly gives join editing its own operation.
+
+When file and command-line bindings are combined, precedence is deterministic:
+
+[source]
+----
+registered pipeline defaults < --paramFile values < --<node>.<parameter> values
+----
+
+The fully merged node set is serialized to CUBE's workflow `nodes_info`, including every
+piping and every structural default required to instantiate the original DAG. CUBE already
+accepts per-node `plugin_parameter_defaults` there; no temporary pipeline registration or
+YAML upload is required.
+
+=== The composition boundary
+
+One invocation with one overlay is pipeline behavior. Repeating that invocation over a
+directory of parameter files is general orchestration, just as repeating a plugin over an
+input set is. ChELL does not add `--sweep` or another pipeline-specific iteration feature
+for that job. A general shell or program calls ChELL repeatedly; see
+link:intent-kernel.adoc#shell-boundary[the ChELL shell boundary].
+
 == Rendering the DAG with SignalFlow
 
 SignalFlow (`~/src/signalflow`) is a deterministic ASCII/SVG routing engine: nodes become

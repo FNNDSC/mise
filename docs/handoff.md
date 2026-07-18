@@ -1,12 +1,12 @@
 # Active project handoff
 
 - Last updated: 2026-07-18
-- Last verified against `main`: `593d6c2`
-- Working branch: `docs-pipeline-parameter-ux`
-- Current milestone: pipeline invocation semantics now cover per-node runtime
-  parameter bindings and serializable overlays without registering new templates
-- Next action: land this documentation contract, then implement pipeline parameter
-  binding and the PACS attachment contract on feature branches
+- Last verified against `main`: `ad1c3ce`
+- Working branch: `main`
+- Current milestone: the pipeline invocation contract for per-node runtime
+  bindings and serializable overlays is documented on `main`
+- Next action: implement the shared pipeline parameter-binding seam, then use it
+  for the PACS plugin/pipeline attachment contract
 
 ## Current truth
 
@@ -123,6 +123,8 @@ general orchestration. The rationale and composability obligations are in
   and other common formats, with ANSI-free pipes and redirects.
 - PR #153: PACS selection-to-Feed creation described above.
 - PR #154: authoritative PACS attachment design and ChELL 5.2.8 documentation.
+- PR #155: pipeline parameter-binding/file-overlay contract and the Unix boundary
+  that keeps general programming in the calling shell; ChELL 5.2.9 documentation.
 
 Historical Stage 1/2 and earlier delivery detail is archived in
 [history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md) and GitHub's
@@ -130,16 +132,15 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on `main` after PR #154 are ChELL 5.2.8, Calypso 0.4.4, Brasa
+Source versions on `main` after PR #155 are ChELL 5.2.9, Calypso 0.4.4, Brasa
 0.9.5, Chili 3.6.1, Cumin 3.8.3, and Salsa 3.5.2. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 
-The current documentation worktree bumps ChELL to 5.2.9 with matching changelog
-and lockfile metadata; that version is not on `main` or npm until these docs are
-landed and subsequently released.
+ChELL 5.2.9 is now on `main` with matching changelog and lockfile metadata; it
+remains unpublished to npm until the next release workflow.
 
-PR #154 passed Node 22/24 CI and GitGuardian. Package builds
+PR #155 passed Node 22/24 CI and GitGuardian. Package builds
 must remain dependency ordered; parallel downstream builds can race workspace
 declaration regeneration.
 

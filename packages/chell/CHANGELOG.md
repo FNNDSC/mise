@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.2.7
+
+### Patch Changes
+
+- Add `pacs pull --new-feed "TITLE"` to retrieve a selected PACS series set and
+  create one analysis feed rooted in the resolved CUBE directories.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.5
+  - @fnndsc/cumin@3.8.3
+  - @fnndsc/salsa@3.5.2
+
 ## 5.2.6
 
 ### Patch Changes

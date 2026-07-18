@@ -13,6 +13,7 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
+import { newFeed_cacheAdd } from './feedCreation.js';
 
 /**
  * Parses a plugin name from /bin format (name-vVersion) into ChRIS search format.
@@ -146,21 +147,15 @@ export async function builtin_executePlugin(
     // 7. Push to procCache so /proc reflects new jobs immediately
     if (result.feedID !== undefined && result.dircopyInstanceID !== undefined) {
       // New feed: push dircopy root node + plugin node
-      const feedTitle: string = cwd.split('/').pop() || `feed_${result.feedID}`;
-      procCache_get().feed_add({
-        id: result.feedID, title: feedTitle,
-        ownerUsername: cwd.split('/')[2] ?? '', public: false,
-        creationDate: new Date().toISOString(),
-        finishedJobs: 0, erroredJobs: 0, startedJobs: 0,
-        scheduledJobs: 2, cancelledJobs: 0, createdJobs: 0,
-      });
-      procCache_get().instance_add({
-        id: result.dircopyInstanceID, feedID: result.feedID,
-        parentID: null, pluginName: 'pl-dircopy', params: null, status: 'scheduled',
-      });
-      procCache_get().instance_add({
-        id: result.pluginInstanceID, feedID: result.feedID,
-        parentID: result.dircopyInstanceID, pluginName: result.pluginName, params: null, status: 'scheduled',
+      const feedTitle: string = typeof contextParams.feed_title === 'string'
+        ? contextParams.feed_title
+        : cwd.split('/').pop() || `feed_${result.feedID}`;
+      newFeed_cacheAdd({
+        feedID: result.feedID,
+        title: feedTitle,
+        ownerUsername: cwd.split('/')[2] ?? '',
+        rootInstanceID: result.dircopyInstanceID,
+        child: { id: result.pluginInstanceID, pluginName: result.pluginName },
       });
     } else if (result.parentID !== null) {
       // Continue feed: push just the new instance

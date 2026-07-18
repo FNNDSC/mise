@@ -232,7 +232,8 @@ listing queries created by other users.
 
 `pull` accepts one or more VFS paths (at query, study, or series level), fires a PACSRetrieve per
 series, and tracks progress via the LONK WebSocket. After completion it calls `cubepath` to report
-resolved CUBE paths and file counts.
+resolved CUBE paths and file counts. Pass `--new-feed "TITLE"` to make that complete retrieved
+selection the root input of one new analysis feed.
 
 [source]
 ----
@@ -243,6 +244,32 @@ pull /net/pacs/queries/AccessionNumber:12345678_qid:2679_rudolphpienaar/Study_..
 ✓ 1/1 series pulled successfully.
   AX_T2_TSE  ->  /SERVICES/PACS/PACSDCM/7654321-.../00018-AX_T2_TSE-90c176c  (68 files)
 ----
+
+=== Creating a feed from the selection
+
+`--new-feed` is an active operation, not merely feed metadata. Without it, `pull` stops after
+materialising the selected series in CUBE storage. With it, `pull` waits for every selected series,
+resolves their concrete `/SERVICES/PACS/...` directories, and passes that exact directory set to
+`pl-dircopy` as the root of one named feed:
+
+[source,shell]
+----
+pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
+
+✓ 4/4 series pulled successfully.
+Feed created: 2326
+Root job: pl-dircopy (ID: 176660)
+Input: 4 PACS series
+Feed path: /home/rudolphpienaar/feeds/feed_2326/pl-dircopy_176660/data/
+----
+
+Feed creation is all-or-nothing. An invalid or empty selection operand, a partial retrieval, or an
+unresolved CUBE series path leaves any retrieved files in storage but does not create the requested
+feed. Because CUBE paths must exist before `pl-dircopy` can consume them, `--new-feed` cannot be
+combined with `--nowait`.
+
+The option establishes a future attachment point for a pipeline or individual plugin while keeping
+feed creation itself explicit. Pipeline/plugin attachment is not part of the current command.
 
 === Synthetic query pattern
 
@@ -535,7 +562,8 @@ Default is a single attempt with no delay.
 |`cubepath` command; multi-path collection; `--retry` flag.
 
 |`src/builtins/fs/pull.ts`
-|`pull` command; `tasks_pullWatch`; `task_fire`; `lonkWsUrl_build`; `--retry N` loop.
+|`pull` command; `tasks_pullWatch`; `task_fire`; `lonkWsUrl_build`; `--retry N` loop;
+`--new-feed` creation from resolved CUBE directories.
 
 |`salsa/src/vfs/providers/pacs.ts`
 |VFS provider synthesising `/net/pacs/` directory entries from PACSQuery records;
@@ -550,4 +578,4 @@ Default is a single attempt with no delay.
 
 ---
 
-_Last updated: 2026-05-28_
+_Last updated: 2026-07-17_

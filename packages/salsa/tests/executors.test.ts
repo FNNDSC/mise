@@ -24,7 +24,17 @@ describe('plugin_executeNewFeed', () => {
     mockFeedCreate.mockResolvedValue({ id: 123, pluginInstance: { data: { id: 456 } } });
     mockPluginRun.mockResolvedValue({ id: 789, plugin_name: 'pl-x' });
 
-    const r = await plugin_executeNewFeed('pl-x', {}, { instance_title: 'T' }, '/home/chris/uploads/d', bin);
+    const r = await plugin_executeNewFeed(
+      'pl-x',
+      {},
+      { feed_title: 'Baseline, repeat: 2', instance_title: 'T' },
+      '/home/chris/uploads/d',
+      bin,
+    );
+    expect(mockFeedCreate).toHaveBeenCalledWith(
+      ['/home/chris/uploads/d'],
+      { title: 'Baseline, repeat: 2' },
+    );
     expect(r).toMatchObject({
       feedID: 123,
       dircopyInstanceID: 456,

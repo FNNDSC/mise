@@ -127,9 +127,10 @@ export class ChRISFeed {
         return null;
       }
       const pluginID: number = pluginList.hits[0] as number;
-      const createParams: Record<string, string> = keyPairParams_apply(
-        { dir: dirs },
-        feedParams.params as string
+      const { params, ...structuredParams } = feedParams;
+      const createParams: Record<string, unknown> = keyPairParams_apply(
+        { dir: dirs, ...structuredParams },
+        typeof params === "string" ? params : undefined
       );
       pluginInstance = await client.createPluginInstance(
         pluginID,

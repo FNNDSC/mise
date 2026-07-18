@@ -273,7 +273,7 @@ Once connected, drive ChRIS as a filesystem:
 ----
 > ls                       # your files and feeds, as a directory
 > feed list                # every analysis you've run
-> ls /bin                  # every plugin, as a virtual executable
+> ls /bin                  # every plugin and Pipeline, as a virtual executable
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name
 > ls /proc/jobs           # watch running jobs, live

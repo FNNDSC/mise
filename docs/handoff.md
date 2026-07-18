@@ -6,7 +6,8 @@
 - Current milestone: fast cache-only `/bin` Pipeline summaries and explicit
   registered manifest inspection are implemented, independently reviewed, and
   fully validated
-- Next action: publish the Pipeline inspection UX split for integration
+- Next action: publish the branch (three implementation commits plus this final
+  documentation handoff) for integration; no implementation work remains
 
 ## Current truth
 
@@ -23,6 +24,28 @@
   select a provider without a separate design session.
 - `codex.resume` is an unrelated untracked local file. Do not add, edit, or
   remove it.
+
+## Pipeline invocation and inspection complete
+
+The Pipeline UX increment is complete on `fix/pipeline-manifest-performance`:
+
+- `6763618` targets exact registered Pipeline manifests and caches repeated reads.
+- `e88f634` adds delayed semantic inspection progress for slow remote hydration.
+- `9325ea3` restores immediate Unix-like `cat /bin/<pipeline>` behavior and moves
+  complete inspection to `pipeline manifest <name|id|slug>` and
+  `<pipeline> --manifest`.
+
+`pipeline diagram <name|id>` and `<pipeline> --diagram` draw the registered DAG;
+`--withargs` adds stored defaults and `--signalflow` emits SignalFlow YAML.
+The authoritative invocation, parameter-file, manifest, and drawing contracts
+are in [feed-dag-viewer.adoc](feed-dag-viewer.adoc#pipeline-parameter-binding).
+The command summary is in
+[script-reference.adoc](../packages/chell/docs/script-reference.adoc#_pipeline_execution).
+
+The branch has no upstream yet. Its dependency-ordered build, all 2,377 workspace
+tests and coverage gates, seam/test lint (with four pre-existing warnings),
+AsciiDoc rendering, production-identifier audit, and independent standards/spec
+review passed. No live CUBE or production fixture is embedded in the tests.
 
 ## PACS workflow now on `main`
 

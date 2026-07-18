@@ -1,0 +1,845 @@
+= Completing the ChRIS Client Architecture: mise as an Intent Kernel over CUBE
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+1.0, 2026-07-18
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+ChRIS is both a scientific-computing pipeline orchestrator and the data platform
+that records the files, programs, users, permissions, executions, and provenance
+on which those pipelines depend. Its backend, CUBE, exposes a durable semantic
+resource model through a Collection+JSON hypermedia API. That API has remained
+remarkably stable, but its stability has imposed a recurring cost on clients:
+the API describes resources and relationships, while users approach the system
+with procedural intent. Historically, each client had to bridge that gap for
+itself, and the principal web client consequently accumulated API traversal,
+workflow orchestration, application policy, and presentation in the same
+codebase.
+
+This paper locates *mise* in that missing middle. mise is an intent-oriented
+application layer over CUBE: it translates a bounded command vocabulary into
+validated CUBE operations, projects the resource graph into Unix-like
+namespaces, retains typed results as receipts, and can host a long-lived session
+whose caches survive the attachment and departure of individual surfaces. The
+architecture is neither an API gateway nor a replacement database. It combines
+the application-service and anti-corruption-layer patterns with a
+kernel/frontend split, a control-plane/data-plane distinction, and carefully
+bounded materialized projections. CUBE remains the authority for scientific
+state.
+
+The same implementation that validates this architecture also exposes specific
+pressure points in CUBE. mise must currently build executable catalogs, warm
+feed listings, crawl execution topology, reconcile caches, and compensate for
+weakly typed client bindings. These are not arguments for replacing
+Collection+JSON with a fashionable query interface. They are evidence for a
+smaller set of backend improvements: explicit semantic schemas, consolidated
+read projections, conditional retrieval, execution-graph snapshots and deltas,
+change events, idempotent action primitives, and end-to-end performance
+instrumentation. The result would be a stronger resource backend beneath a
+still-necessary intent layer.
+
+== Introduction
+
+Scientific computing is a broad field, and no single architectural description
+captures it. This paper begins from a deliberately situated definition: the
+working experience of a computational scientist whose analyses are most often
+programs without graphical interfaces. A program reads files, receives run-time
+behaviour through command-line arguments, performs an analysis, and writes new
+files. Programs become useful systems when they can be connected, repeated,
+placed near suitable compute, and inspected after the fact. Scientific workflow
+systems such as Pegasus formalize the same concerns at larger scale: dependency,
+data movement, distributed execution, and provenance <<pegasus-2015>>.
+
+That definition carries a Unix bias. It assumes that a small program can be
+driven from a terminal, that files are a useful interchange boundary, and that
+programs become more valuable when they compose <<unix-1974>>. The bias is not
+accidental: Unix-like systems currently dominate the TOP500 operating-system
+statistics <<top500-os>>, and the command and entry-point model is a widely
+supported interface across POSIX environments and OCI containers
+<<posix-2024>>, <<oci-image>>. ChRIS builds on precisely this shape.
+A ChRIS plugin is a containerized scientific program; a pipeline composes plugin
+instances; and the products of execution are files whose location within the
+result tree records how they came to exist.
+
+The central architectural question is therefore not merely how to expose a
+database to a frontend. It is how to preserve an authoritative, semantically rich
+record of scientific work while also giving humans and programs a practical way
+to express what they want done. ChRIS solved the first problem in CUBE. mise is
+an attempt to solve the second without weakening the first.
+
+This study asks three questions. First, what architectural category best
+describes mise relative to CUBE and the clients above it? Second, does the state
+retained by a long-lived mise daemon constitute a competing database, or can it
+remain a bounded projection of CUBE authority? Third, which repeated adaptations
+inside mise identify backend capabilities that CUBE itself should provide? The
+questions are intentionally connected. A useful taxonomy must explain not only
+where a box sits in a diagram, but which facts it owns, how long those facts
+live, and what evidence can correct them.
+
+== Methods
+
+=== Study design
+
+The work is an architecture case study and an artifact analysis, not a controlled
+performance experiment. ChRIS and mise form a revelatory single case: the author
+participated in the scientific use and architectural development of ChRIS, then
+built the client stack whose boundaries are under examination. That proximity
+provides access to design history and implementation detail, but also creates an
+obvious risk of confirmation bias. The analysis therefore separates observation
+from inference and states falsifiable engineering consequences wherever
+possible.
+
+The study follows a design-science posture: mise is both the artifact and a means
+of investigating the problem that produced it. Architectural claims are accepted
+only where they can be connected to an implemented boundary, an explicit state
+lifecycle, or a testable prediction. The existence of a package is not treated as
+proof that the corresponding abstraction is sound <<hevner-design-science-2004>>. Reporting the
+case, evidence sources, analytical criteria, and threats follows established
+guidance for software-engineering case studies <<runeson-host-2009>>.
+
+=== Evidence corpus
+
+Four evidence sources were examined. The first is the historical operation of
+ChRIS and its principal web client: the recurring need to traverse
+Collection+JSON, reconstruct client types, and place compound workflow logic in a
+presentation codebase. The second is the earlier Intent-Action Service analysis,
+which proposed a task-oriented service between procedural clients and CUBE. The
+third is the mise repository at revision
+`0cc48e09a8fc1ba30dfc9aa2a4ce69c7d9518b9c`, including its six packages,
+architecture documents, live-CUBE exemplars, unit tests, and CALYPSO wire
+contract <<mise-source>>. The fourth is prior work in scientific workflows, REST and hypermedia,
+software modularity, kernel/frontend protocols, distributed control planes, and
+materialized views.
+
+The implementation sweep concentrated on dependency direction and on code that
+crosses an authority boundary: the `chrisapi` adapter, virtual-filesystem
+providers, command dispatch, result envelopes, daemon attachment, startup cache
+warming, process-topology checkpointing, and reconciliation against CUBE. These
+paths reveal where information changes representation and where stale state
+could become mistaken for truth.
+
+=== Analytical framework
+
+Each component was classified along five dimensions:
+
+. *Responsibility:* the question the component exists to answer.
+. *Vocabulary:* resource, intent, command, session, or presentation concepts.
+. *Authority:* which facts it may originate and which it may only reproduce.
+. *Lifetime:* request, command, process, daemon restart, or durable platform.
+. *Correction mechanism:* invalidation, reconciliation, replay, or authoritative
+  retrieval.
+
+This framework makes the central state question concrete. Two components do not
+become competing databases merely because both hold a representation of a feed.
+They become competing authorities when each may independently originate the same
+fact and no deterministic rule resolves disagreement. Conversely, a derived
+copy remains a projection when its provenance is explicit, its freshness is
+bounded, and it can be discarded and reconstructed from the authority.
+
+=== Evaluation criteria
+
+The proposed interpretation is judged against six criteria: separation of
+concerns, information hiding, independent evolution, client reuse, failure
+legibility, and preservation of one scientific source of truth. The alternative
+explanations are considered adversarially. In particular, the analysis asks
+whether mise is merely a smart proxy hiding an anemic backend, whether its caches
+prove CUBE's data model deficient, and whether another API technology would make
+the extra layer unnecessary.
+
+No latency benchmark or controlled developer study is reported here. Statements
+about reduced wide-area chatter and improved warm-session responsiveness are
+architectural predictions supported by request topology and observed behaviour,
+not yet comparative measurements. The Discussion therefore includes a
+measurement programme capable of refuting the claims.
+
+== Results
+
+=== ChRIS, CUBE, and the scientific-computing substrate
+
+==== ChRIS as orchestrator and data platform
+
+ChRIS is a distributed platform for scientific computing, originating in
+medical-image analysis. It registers analysis plugins and pipelines, arranges
+their execution on available compute, and maintains the surrounding data model:
+files and folders, feeds and plugin instances, users and groups, access rules,
+compute environments, and the provenance relationships among inputs, actions,
+and outputs <<chris-embc-2015>>, <<chris-hicss-2026>>.
+
+CUBE is the backend that owns this durable platform state. A feed and its graph
+of plugin instances are not merely a display of work described elsewhere; they
+are the materialized execution record. Output files exist within that graph, so
+the platform can answer _what ran, on which input, and what did it produce_ from
+external state rather than from a client's narrative. This makes CUBE a system
+of record and a scientific data plane, not just a CRUD service behind a user
+interface. The distinction follows the broader provenance model of entities,
+activities, agents, use, and generation <<prov-dm>>, <<freire-provenance-2008>>, while
+the specific resources and relationships are implemented by CUBE <<cube-source>>.
+
+==== The Collection+JSON choice
+
+CUBE exposes its resources through a RESTful Collection+JSON API. The design was
+shaped by a longstanding interest in hypermedia and HATEOAS:
+objects occur in collections; collections and members carry links; and links
+express relations that allow a client to navigate the domain without hard-coding
+every URL. This is a semantically serious design. It treats the API as a graph of
+related resources rather than a bag of procedural remote calls
+<<fielding-rest>>, <<rfc8288>>, <<collection-json>>, <<collection-json-iana>>.
+
+The observed benefit is unusual longevity. The core CUBE API has changed much
+less than the clients built over it. New resources and relationships can be
+introduced without recasting the whole platform as a new sequence of operations.
+That history does not prove that Collection+JSON is the only possible durable
+representation, but it is evidence that the semantic resource model has been a
+stable foundation.
+
+The cost is equally real. Collection+JSON did not become common knowledge among
+incoming developers. Its traversal is verbose, the JavaScript client's typings
+have not always matched the live API, and an ordinary user task expands into a
+chain of dependent calls. The backend may expose every required affordance while
+still leaving a client to discover, order, retry, and interpret them. Stability
+at the resource boundary does not automatically produce usability at the task
+boundary.
+
+=== The intent gap
+
+Hypermedia answers questions such as _what resource is this, what is related to
+it, and which transition is currently advertised?_ A user more often asks _find
+this study, stage it, run this pipeline, and show me the result_. The latter is
+an intent: a desired outcome whose realization may cross many resources and
+transitions.
+
+This distinction is the first technical impedance mismatch in the ChRIS client
+ecosystem. HATEOAS can reduce knowledge of URL construction, but it does not
+eliminate application knowledge. A client must still choose a transition,
+sequence it with others, retain intermediate identifiers, handle partial
+failure, and decide when the resulting state satisfies the user's goal. A
+self-describing resource graph is therefore complementary to an application
+layer, not a substitute for one <<fielding-rest>>, <<evans-ddd>>,
+<<fowler-service-layer>>.
+
+For much of ChRIS history, the React and PatternFly web application was the only
+substantial reference client. Developed under the constraints of a very small
+team, it became responsible for both sides of the gap. Collection+JSON
+adaptation, multi-request orchestration, business decisions, local state, and
+visual presentation accumulated throughout the same codebase. An external
+library boundary between ChRIS behaviour and the user interface had been desired
+but did not emerge. Consequently, a second client could not simply reuse the
+first client's understanding of ChRIS; it had to rediscover it.
+
+This history helps explain why Collection+JSON is often blamed for problems that
+belong to different layers. A verbose representation can increase client effort
+and chatty access can increase latency. Neither fact demonstrates that the
+resource model is wrong, that the Django schema is necessarily slow, or that a
+different query syntax would supply missing workflow semantics. In particular,
+GraphQL specifies a query language, type system, validation, and execution, not a
+storage engine <<graphql-spec>>. Resolver implementations can exhibit N+1 loading
+and often introduce request-scoped batching to address it
+<<graphql-nplus1>>, <<dataloader>>. Serialization cost, network round trips, ORM
+behaviour, index selection, and application orchestration are therefore separate
+hypotheses and must be measured separately.
+
+=== From chili to mise
+
+The practical effort that became mise began approximately two years before this
+paper with *chili*. Its motivating refusal was simple: no new ChRIS interface
+should have to pay the Collection+JSON and orchestration cost again. The effort
+expanded into a family of packages whose boundaries made the missing
+application layer explicit.
+
+*cumin* became the sole adapter to `@fnndsc/chrisapi`. It confines
+Collection+JSON traversal and unsafe type accommodation, returning typed domain
+objects to every layer above it. *salsa* contains application logic and a virtual
+filesystem that projects CUBE resources into places and operations. *chili*
+provides typed commands and separates model production from text rendering.
+*chell* supplied the first complete surface: a domain shell in which data appears
+under `/home`, executable plugins and pipelines under `/bin`, and running or
+historical computation under `/proc`.
+
+The shell then revealed a second conflation. chell was simultaneously a terminal
+surface and the engine behind that surface. Its parser, dispatch table, pipes,
+builtins, session state, and output machinery could not be reused without also
+taking its readline loop and terminal assumptions. That engine was extracted
+into *brasa*. chell became one surface over a hostable kernel rather than the
+container of the kernel.
+
+*CALYPSO* supplies the corresponding process boundary. A CALYPSO daemon hosts one
+brasa engine and serves it to attached surfaces through a validated WebSocket
+contract. A local chell session can still embed brasa directly and pay no network
+cost. A remote shell or future graphical surface can attach to the daemon, share
+the same session, and receive the same structured envelopes. The boundary is
+inserted only when engine and surface need to live in different places or have
+different lifetimes.
+
+=== Architectural classification
+
+The resulting stack is better understood as a set of logical responsibilities
+than as a taller version of a frontend/backend deployment diagram.
+
+[cols="2,3,3,3",options="header"]
+|===
+|Component |Primary role |State it may own |State it must not own
+
+|CUBE
+|Semantic resource backend, scientific system of record, and data plane
+|Files, resources, users, permissions, feeds, plugin instances, durable workflow
+and provenance state
+|Client interaction state or a surface's presentation choices
+
+|cumin
+|Infrastructure adapter and anti-corruption layer
+|Connection context, typed adapter state, bounded caches
+|An independent account of whether scientific work occurred
+
+|salsa
+|Application logic, intent realization, and namespace projection
+|Derived paths and task-local orchestration state
+|Competing durable copies of CUBE resources
+
+|chili
+|Typed command/controller and view separation
+|Command models during execution
+|Session or scientific authority
+
+|brasa
+|Hostable intent kernel: parse, validate, dispatch, compose, and return receipts
+|The live engine session and bounded command execution state
+|Unvalidated arbitrary CUBE call sequences
+
+|CALYPSO
+|Daemon, session host, protocol boundary, and multi-surface bus
+|Attachment, routing, bounded scrollback, daemon-lifetime caches
+|Scientific truth or a permanent conversational narrative
+
+|chell and future web/agent clients
+|Presentation, interaction, and interpretation
+|Local display preferences and uncommitted user input
+|Workflow outcome or authorization inferred from presentation
+|===
+
+Taxonomically, mise combines four established roles. It is an *application
+service* because it coordinates use cases over domain resources. It is an
+*anti-corruption layer* because the peculiarities of the external CUBE client do
+not leak upward <<evans-ddd>>, <<fowler-service-layer>>. It is a *control plane*, by
+analogy with the networking terminology in RFC 7426 <<rfc7426>>, because it translates declared intent
+into operations over an authoritative data plane. Finally, where it retains
+read-optimized views of CUBE, it uses *materialized projections* in the CQRS
+sense: alternate shapes for reading the same facts, not alternate ownership of
+those facts <<young-cqrs>>, <<fowler-cqrs>>.
+
+mise is not merely an API gateway. A gateway routes, authenticates, throttles, or
+translates traffic; mise owns reusable application semantics. Nor is it simply a
+backend-for-frontend, because its intent vocabulary and execution kernel are
+shared by heterogeneous surfaces rather than tailored to one display. It is
+closest to a domain-specific operating environment over CUBE.
+
+=== The intent kernel
+
+The central abstraction is an *intent kernel*: a component that accepts an
+expression from a bounded vocabulary, validates it against live capabilities,
+executes deterministic operations over ChRIS, and returns a receipt of what
+actually happened. In the current system the expression is a ChELL command.
+Natural-language interpretation remains a layer above the kernel: a model may
+propose a permitted command, but it does not authorize or directly assemble an
+arbitrary workflow.
+
+Each command returns a `CommandEnvelope`. The envelope carries terminal status,
+rendered output, structured errors, and, as commands complete their migration, a
+typed model from which the rendering is derived. A future intent-resolved command
+also carries its resolution trace. This makes outcome external to both the UI
+and an eventual language model. A surface may render or summarize a receipt, but
+the surface does not manufacture it.
+
+The command language is intentionally not a general programming language. ChELL
+owns ChRIS-specific configuration and linear composition: filesystem navigation,
+resource operations, plugin and pipeline invocation, pipes, redirects, and
+command sequencing. Iteration, conditionals, concurrency, and experimental
+policy remain in Bash, Python, or a program embedding brasa. This keeps the
+kernel's vocabulary bounded while allowing it to participate in larger
+scientific programs.
+
+=== State, caching, and the daemon
+
+The strongest apparent challenge to this classification is CALYPSO's state. A
+daemon remains alive after a surface disconnects. It remembers the authenticated
+context, current directory, virtual namespace, and warmed views of CUBE. If this
+state were an ungoverned replica of the Django database, the middle layer would
+indeed be evidence of architectural failure. The implementation instead divides
+state according to lifetime and authority.
+
+At startup, an interactive or daemon-hosted engine follows a shared warm-up path.
+It fetches `/bin` to construct the plugin and registered-pipeline catalog used by
+execution and completion; it can prefetch the authenticated user's feeds and the
+`/PUBLIC` namespace; and it builds the feed-level index for `/proc/jobs`. Only
+after these blocking indexes settle does a daemon publish its listening berth.
+The more expensive plugin-instance topology sweep then reconciles in the
+background. This gives attached surfaces a useful namespace immediately without
+pretending that a partially warmed global job search is complete.
+
+Most of these caches are process memory. Their value is persistence across
+commands, attached surfaces, and browser reconnections, not durability across a
+daemon crash. Directory listings are invalidated on relevant mutations and
+context changes. Active job status is refreshed from CUBE, while terminal states
+can be retained because they no longer transition. A daemon near CUBE also moves
+chatty Collection+JSON traversal from a wide-area browser connection to a
+long-lived process near the data, although the magnitude of that benefit remains
+to be measured.
+
+Two narrow forms of state survive process restart. First, identity and working
+context are written through existing context files and rehydrated at launch.
+Second, `/proc` topology has an identity-keyed checkpoint under the user's cache
+directory. The checkpoint contains feed metadata, normalized plugin-instance
+topology, loaded-feed markers, and terminal status. It is schema-versioned,
+written by atomic rename to a mode-0600 file, and structurally validated before
+restoration, including parent and join relationships. Parameters are not
+persisted, and nonterminal status is never accepted as durable truth.
+
+Restoration is followed by reconciliation. CUBE is queried for the feeds visible
+to the current identity; disappeared or inaccessible feeds are removed, current
+metadata replaces snapshot metadata, and instance topology is filled or updated
+in the background. Deleting the checkpoint loses no feed, job, file, output, or
+provenance. It causes a cold rebuild and additional CUBE load. The checkpoint is
+therefore a restart accelerator, not a workflow database.
+
+CALYPSO applies the same discipline to interaction state. Bounded scrollback is
+an in-memory courtesy and disappears on restart. A future conversational
+anaphora window is likewise ephemeral. If a durable transcript is required, it
+must be explicitly materialized as an artifact rather than silently promoted
+from daemon memory. Scientific truth remains where it can be inspected by every
+authorized client: in CUBE and in engine-produced receipts.
+
+The result is a three-tier state model:
+
+[cols="2,2,3,3",options="header"]
+|===
+|State class |Typical lifetime |Examples |Authority rule
+
+|Scientific state
+|Durable platform lifetime
+|Files, feeds, plugin instances, permissions, provenance
+|CUBE originates and adjudicates the fact
+
+|Projection and session state
+|Command, daemon, or bounded checkpoint lifetime
+|Listings, `/bin`, `/proc` topology, current directory, scrollback
+|mise may retain and reshape it, but must invalidate, reconcile, or rebuild it
+
+|Presentation and interpretation state
+|Surface or conversational lifetime
+|Theme, panel selection, draft natural-language request
+|The client owns it until an intent is validated and executed
+|===
+
+=== Edges exposed by the implementation
+
+An anti-corruption layer is diagnostic. Repeated code at its lower edge reveals
+which concepts the upstream service makes expensive or ambiguous. Five such
+edges recur in mise.
+
+First, cumin must repair a type and representation boundary around
+`@fnndsc/chrisapi`. Second, `/bin` has to merge plugins and pipelines into the
+single executable catalog that a task-oriented client actually needs. Third,
+user feeds and public feeds are prefetched into navigable namespaces so ordinary
+interaction does not repeatedly traverse paginated collections. Fourth,
+`/proc/jobs` must assemble a visible execution graph from feed summaries and
+plugin-instance pages, then checkpoint the topology to avoid repeating the full
+crawl after every restart. Fifth, mutation handlers must explicitly invalidate
+local paths because CUBE offers no general change stream by which a long-lived
+projection can remain current.
+
+These results do not show that mise should be absorbed into CUBE. They show that
+the present CUBE interface is strongest as a normalized semantic substrate and
+weakest when clients need consolidated, time-sensitive views of that substrate.
+That distinction determines which improvements belong below the boundary and
+which should remain above it.
+
+== Discussion
+
+=== Architectural completion rather than backend repudiation
+
+The results support the description of mise as the missing application-semantic
+layer in ChRIS. CUBE represents durable nouns and their relations; mise provides
+a bounded grammar of scientific verbs. The distinction is not a judgment that
+declarative resources are academically pure but practically useless. It is the
+more modest observation that resource semantics and task semantics answer
+different questions and evolve at different rates.
+
+This separation follows the information-hiding criterion articulated by Parnas:
+a module boundary should conceal a design decision likely to change
+independently <<parnas-1972>>. CUBE's resource ontology changes slowly because it expresses
+durable platform concepts. Task vocabularies, interaction conventions, and
+client affordances change more quickly. Embedding every new procedural use case
+inside CUBE would protect clients from orchestration at the cost of coupling
+those two rates of change. Leaving every procedure in a frontend produces the
+opposite failure: CUBE remains pure, but each client becomes its own application
+server. mise places the boundary between them.
+
+The original Intent-Action Service proposal anticipated this arrangement as an
+external service. The implemented system refines the proposal in two ways. The
+orchestration is a reusable engine before it is a network service, so local tools
+can invoke it in-process. And its primary hosted form is a stateful session rather
+than only stateless HTTP, because a shell has a working directory, an identity,
+warm indexes, and several potentially attached surfaces. A future one-shot HTTP
+intent facade can be added without making the least expressive transport the
+definition of the architecture <<intent-action-service>>.
+
+=== Prior architectural forms
+
+The stack has precedent at several scales. The Unix tradition supplies the
+interaction model: analyses are executable tools, files are durable interfaces,
+and larger procedures arise through composition <<unix-1974>>, <<posix-2024>>.
+Plan 9 generalised this idea by
+using per-process namespaces to make heterogeneous resources appear in a common
+file hierarchy. mise applies the same cognitive device to a remote scientific
+resource graph. `/bin`, `/home`, `/net`, and `/proc` are projections, not claims
+that CUBE is literally a POSIX filesystem <<plan9-namespaces-1993>>.
+
+The brasa/CALYPSO/surface split resembles Jupyter more closely than a conventional
+web frontend. A Jupyter kernel owns execution state and speaks a protocol to
+notebooks, consoles, and other clients. Likewise, brasa owns command execution,
+CALYPSO hosts it over a wire, and chell is one possible surface. Language Server
+Protocol and Debug Adapter Protocol architectures use the same leverage: move
+domain intelligence behind a stable protocol so many editors do not each
+reimplement it <<jupyter-messaging>>, <<lsp-spec>>, <<dap-spec>>.
+
+The CUBE/mise relationship also resembles a controller over a declarative control
+plane. Systems such as Kubernetes retain desired and observed resource state,
+while controllers reconcile that state toward an outcome. The analogy is not
+exact—mise usually acts on explicit user commands rather than continuously
+reconciling desired state—but it demonstrates that a procedural controller over
+a declarative resource API is a familiar architecture rather than an aberrant
+third tier <<kubernetes-controllers>>.
+
+Finally, the caches are conventional materialized views. Database theory has
+long treated a stored alternate representation as legitimate when its derivation
+and maintenance rules are explicit. mise's `/proc` view is useful because the
+questions an operator asks—_which jobs failed, what is this feed's graph, which
+node produced this output?_—do not have the same shape as CUBE's paginated
+resource collections. The checkpoint becomes dangerous only if the projection
+loses its derivation rule and starts accepting writes as scientific fact
+<<blakeley-materialized-views-1986>>.
+
+=== The strongest objection: a distributed monolith
+
+The adversarial case should be stated in its strongest form. mise may become a
+smart proxy that compensates indefinitely for an anemic backend. Every layer can
+acquire its own model of a feed; the daemon can become operationally mandatory;
+cache invalidation can fail; and a user action can cross enough packages and
+processes that diagnosis becomes harder than it was in the original UI. The
+system would then be a distributed monolith whose boundaries increase deployment
+cost without enabling independent reasoning or evolution.
+
+That failure is possible. Layer count alone neither proves nor refutes it. The
+architecture remains coherent only while the following invariants hold:
+
+* Every durable scientific fact has one named authority, normally CUBE.
+* Every mise projection identifies its source, freshness, and correction rule.
+* A cache can be deleted without deleting the scientific work it represents.
+* Mutations pass through bounded intents and return correlated receipts.
+* Surfaces do not implement a second path for the same business operation.
+* Each added boundary removes knowledge from its consumer rather than merely
+  forwarding the same abstraction under a new name.
+* A trace identifier and typed error can follow one operation through the intent
+  kernel and CUBE.
+
+Violating these rules would justify the Frankenstein description. The existence
+of a daemon or a cache does not.
+
+=== Why a two-tier frontend/backend argument is insufficient
+
+The familiar two-box diagram is a deployment sketch, not a theory of software
+responsibility. A substantial backend already contains transport, application,
+domain, persistence, and infrastructure concerns whether or not they are drawn.
+The relevant question is whether mise requires an independently deployed network
+hop. For a local shell it does not: brasa is embedded. For a browser, a shared
+session, a federated spoke, or an engine that must run near protected data, the
+daemon boundary provides location, lifetime, and policy properties that an
+in-browser library cannot.
+
+This yields a practical rule: use the narrowest boundary that supplies a required
+property. Import the engine when caller and execution can share a Node process.
+Use CALYPSO when state, location, trust, or surface multiplicity requires an
+independent host. Add a stateless HTTP facade only for genuinely one-shot machine
+integration. The architecture is logically multilayered but need not be
+gratuitously distributed.
+
+=== What mise shows CUBE should improve
+
+The correct backend improvement programme is not “move mise into Django.” It is
+to strengthen the CUBE primitives at points where every well-behaved middle
+layer would otherwise repeat the same expensive reconstruction. A useful test is
+subtractive: a CUBE improvement is valuable when it lets mise delete adapter,
+crawler, invalidation, or recovery code without moving task policy into CUBE.
+
+[cols="3,3,4,3",options="header"]
+|===
+|Observed mise edge |Candidate CUBE capability |Required semantics |Code or risk reduced in mise
+
+|The live API and JavaScript typings diverge; cumin confines unsafe adaptation.
+|Publish a machine-verifiable resource and relation contract alongside
+Collection+JSON.
+|JSON Schema or OpenAPI components for item data and templates; stable relation
+names; nullability and pagination rules; contract conformance tests in CUBE CI.
+|Unsafe casts, reverse-engineered fields, and silent client drift.
+
+|Startup fetches `/bin` and merges plugins with registered pipelines.
+|Provide an identity-filtered executable-catalog projection.
+|One paginated or snapshot response with stable identifiers, kind, version,
+availability, parameter schema, revision, and conditional-request validators.
+|Repeated catalog fan-out and cold completion latency.
+
+|User feeds and `/PUBLIC` are repeatedly crawled to build a usable namespace.
+|Provide a session/bootstrap projection for common visible collections.
+|A bounded response or manifest of links and revision tokens, not an unbounded
+dump; support `ETag`/`If-None-Match` and explicit paging cursors.
+|Repeated cold-start traversal while preserving the canonical collections.
+
+|`/proc/jobs` reconstructs feed and plugin-instance topology, then checkpoints it.
+|Expose an identity-scoped execution-graph snapshot and incremental cursor.
+|Normalized nodes and edges, join relationships, terminal status, visibility
+scope, snapshot revision, and a delta-since contract.
+|The most expensive topology crawl and much checkpoint complexity.
+
+|Long-lived clients poll and manually invalidate path caches.
+|Expose an authenticated change feed or server-sent event stream.
+|Monotonic event identifiers, resource revision, visibility filtering, replay
+from a cursor, and an explicit resnapshot rule after retention expiry.
+|Polling load, broad invalidation, and stale-view windows.
+
+|Compound operations cross many calls and are difficult to retry safely.
+|Strengthen idempotent mutation primitives and asynchronous operation receipts.
+|Client-supplied idempotency key, correlation identifier, accepted/terminal
+state, phase-attributed failure, links to materialized resources, and safe retry.
+|Duplicate work, ambiguous timeouts, and compensating client logic.
+
+|Performance complaints collapse representation, ORM, and database cost into one
+anecdote.
+|Instrument CUBE end to end.
+|Trace-context propagation, per-endpoint query counts and timings, pagination
+metrics, slow-query plans, response size, and cache-validator hit rate.
+|Speculation about whether Collection+JSON, Django, SQL, or network topology is
+responsible.
+|===
+
+The validator proposal uses the conditional-request and caching semantics already
+standardized by HTTP <<rfc9110>>, <<rfc9111>>. Change notification is a separate
+contract, with established publish/subscribe and streaming precedents
+<<websub>>, <<rfc6202>>; it must still define ChRIS-specific ordering, replay,
+authorization, and resnapshot behaviour. Likewise, HTTP method idempotence does
+not by itself make a workflow-launching request safe. CUBE would need an
+application-level operation key and duplicate-detection contract in addition to
+the base retry semantics in RFC 9110.
+
+These capabilities are read projections, synchronization primitives, and safer
+resource mutations. They improve CUBE as a substrate. They do not decide that a
+researcher asking to “retrieve this PACS series and run the registered
+segmentation pipeline” should receive a particular sequence of user-interface
+steps. That decision remains application intent.
+
+=== Preserve Collection+JSON, add profiles around it
+
+Replacing Collection+JSON wholesale would discard accumulated domain semantics
+and force a simultaneous migration of working clients. Nor would changing the
+wire representation remove orchestration. The more defensible path is additive.
+CUBE can retain Collection+JSON as the canonical navigable resource contract
+while publishing stricter schemas, optimized projections, and task-neutral bulk
+reads beside it.
+
+GraphQL could be one optional projection mechanism if a measured workload
+benefits from client-selected fields and relationship aggregation. It would not
+be a replacement database, a workflow engine, or an automatic performance fix.
+Resolvers still execute against Django and the underlying database; their
+batching, authorization, query plans, and worst-case cost require explicit
+engineering. The choice between a purpose-built graph snapshot and GraphQL
+should therefore be made from measured query shapes, not from a belief that one
+syntax makes relational cost disappear.
+
+The same restraint applies to procedural endpoints. CUBE should expose
+idempotent domain mutations whose invariants it alone can enforce. It should not
+absorb every evolving user journey. A useful boundary test is: if all clients
+must perform an operation identically to preserve CUBE consistency, the
+operation belongs in CUBE; if clients may legitimately pursue different goals by
+composing stable operations, the composition belongs in mise or another
+application layer.
+
+=== Scientific and operational consequences
+
+For scientists, the value of the middle layer is not simply fewer lines of API
+code. An intent command can become a reproducible statement of what was asked,
+while CUBE retains the graph and files proving what occurred. This separates the
+human-readable experimental procedure from the lower-level execution record
+without discarding either. The `CommandEnvelope` is the hinge: it connects an
+intent to typed observed state and can be stored beside other research artifacts
+<<prov-dm>>, <<freire-provenance-2008>>.
+
+For federated deployments, the engine/surface split lets execution remain inside
+a site's data boundary while a thin surface attaches remotely. The typed wire is
+also an egress interception point, though it is not by itself disclosure control:
+rendered file content can still be sensitive even if its envelope kind is known.
+For language-model assistance, the same boundary keeps probabilistic
+interpretation above deterministic validation. A model may choose among declared
+intents; the evidence of execution remains a receipt and CUBE state outside the
+model. ReAct and Toolformer establish the broader tool-using model precedent,
+but neither supplies this authorization or evidence boundary
+<<react-2023>>, <<toolformer-2023>>.
+
+=== Evaluation programme
+
+The architecture should now be tested quantitatively rather than defended only
+by analogy. Representative workflows should be implemented through both direct
+CUBE orchestration and mise. Measurements should include client code size and
+cyclomatic complexity, number and dependency depth of API calls, bytes
+transferred, cold and warm latency, CUBE database query count, time to first
+useful daemon response, full topology-reconciliation time, and stale-cache
+incidents under concurrent mutation.
+
+A controlled developer study should ask newcomers to implement the same
+scientific task against raw CUBE and the intent kernel, measuring time to first
+correct result, defects, and retention of the domain model. Reliability tests
+should kill the daemon during mutation, corrupt or delete its checkpoint, revoke
+feed visibility, and attach several surfaces concurrently. Success is not that
+mise never fails. Success is that failures remain attributable, retries do not
+duplicate work, and reconstruction converges on CUBE.
+
+The CUBE improvement proposals admit similarly direct experiments. A graph
+snapshot should reduce request count and cold topology-build time without
+weakening authorization. Conditional requests should lower bytes and database
+work for unchanged catalogs. A change feed should bound staleness and polling
+load. If these changes fail to remove measurable cost or significant mise code,
+they should not be retained merely because they complete an architectural
+diagram.
+
+=== Limitations
+
+This is one platform, one implementation, and substantially one participant
+observer. The account may overvalue Unix composition, semantic APIs, and the
+boundaries that the author helped create. The original UI's internal history has
+not been reconstructed here through independent code archaeology or developer
+interviews, so claims about its coupling should be treated as an experienced
+project observation rather than a quantitative result.
+
+The current mise evidence is also asymmetric. The command engine, daemon,
+startup warming, process checkpoint, and remote shell exist and are exercised;
+model-complete envelopes, a production web console, one-shot HTTP intents, and
+natural-language resolution remain incomplete or forward work. The architecture
+demonstrates that these clients have a place to attach, not yet that they will be
+usable or widely adopted.
+
+Finally, architectural stability is not synonymous with API success. CUBE's
+long-lived resource model may be stable because it is well chosen, because
+client-specific change was displaced outward, or both. Only comparative
+maintenance and developer studies can separate those explanations.
+
+== Conclusion
+
+mise is fairly characterized as the middle layer that ChRIS lacked: an
+intent-oriented application service and domain-specific kernel over CUBE's
+semantic resource graph. This is not a retreat from Collection+JSON. CUBE's
+durable relations supply the stable substrate; mise turns those relations into a
+shared operational vocabulary so each client no longer reconstructs the same
+procedures beside its presentation code.
+
+The architecture is coherent only because authority remains asymmetric. CUBE
+owns scientific facts. mise owns intent execution, session continuity, typed
+receipts, and disposable projections. CALYPSO lets those capabilities outlive a
+surface and run near the data. Its caches and checkpoint are not evidence of a
+second scientific database so long as they remain attributable, reconstructible,
+and reconciled against CUBE.
+
+At the same time, mise should not become an excuse to leave every backend edge
+untouched. Its adapter repairs, startup crawls, topology checkpoint, polling, and
+manual invalidation identify concrete opportunities to improve CUBE. Stronger
+schemas, consolidated resource projections, graph snapshots and deltas, cache
+validators, change events, idempotent receipts, and tracing would make CUBE a
+better semantic substrate and allow mise to become smaller.
+
+The architectural lesson is therefore neither “two tiers are enough” nor “more
+layers are better.” A layer earns its existence when it owns a distinct rate of
+change, removes knowledge from its consumers, and preserves a clear account of
+truth. On that criterion, CUBE and mise are not redundant systems. They are the
+declarative and procedural halves of one scientific-computing architecture.
+
+[bibliography]
+== References
+
+* [[[chris-hicss-2026]]] J. Zhang and R. Pienaar. “Bridging Science and Medicine with the ChRIS Research Integration System.” In _Proceedings of the 59th Hawaii International Conference on System Sciences_, 2026. https://doi.org/10.24251/HICSS.2026.414
+
+* [[[chris-embc-2015]]] R. Pienaar, N. Rannou, J. Bernal, D. Hahn, and P. E. Grant. “ChRIS—A web-based neuroimaging and informatics system for collecting, organizing, processing, visualizing and sharing of medical data.” In _2015 37th Annual International Conference of the IEEE Engineering in Medicine and Biology Society_, pp. 206–209, 2015. https://doi.org/10.1109/EMBC.2015.7318336
+
+* [[[cube-source]]] FNNDSC. _ChRIS_ultron_backEnd: the ChRIS CUBE backend_. Official source repository and API documentation. https://github.com/FNNDSC/ChRIS_ultron_backEnd (accessed 2026-07-18).
+
+* [[[mise-source]]] FNNDSC. _mise: MISE Integrates the Sandwich Ecosystem_. Source repository, revision `0cc48e09a8fc1ba30dfc9aa2a4ce69c7d9518b9c`. https://github.com/FNNDSC/mise (accessed 2026-07-18).
+
+* [[[intent-action-service]]] R. Pienaar. _Completing the ChRIS Architecture: An Intent-Action Service for Bridging Declarative Resources and Procedural Workflows_. ChRIS Intent-Action Service design study. https://github.com/FNNDSC/intent-server (accessed 2026-07-18).
+
+* [[[pegasus-2015]]] E. Deelman, K. Vahi, G. Juve, M. Rynge, S. Callaghan, P. J. Maechling, R. Mayani, W. Chen, R. Ferreira da Silva, M. Livny, and K. Wenger. “Pegasus, a workflow management system for science automation.” _Future Generation Computer Systems_ 46, pp. 17–35, 2015. https://doi.org/10.1016/j.future.2014.10.008
+
+* [[[freire-provenance-2008]]] J. Freire, D. Koop, E. Santos, and C. T. Silva. “Provenance for Computational Tasks: A Survey.” _Computing in Science & Engineering_ 10(3), pp. 11–21, 2008. https://doi.org/10.1109/MCSE.2008.79
+
+* [[[prov-dm]]] L. Moreau and P. Missier, editors. _PROV-DM: The PROV Data Model_. W3C Recommendation, 30 April 2013. https://www.w3.org/TR/2013/REC-prov-dm-20130430/
+
+* [[[unix-1974]]] D. M. Ritchie and K. Thompson. “The UNIX Time-Sharing System.” _Communications of the ACM_ 17(7), pp. 365–375, 1974. https://doi.org/10.1145/361011.361061
+
+* [[[posix-2024]]] The Open Group and IEEE. _The Open Group Base Specifications, Issue 8; IEEE Std 1003.1-2024_. 2024. https://pubs.opengroup.org/onlinepubs/9799919799/
+
+* [[[top500-os]]] TOP500. “Operating System Family / System Share statistics.” https://top500.org/statistics/details/osfam/1/ (accessed 2026-07-18).
+
+* [[[oci-image]]] Open Container Initiative. _OCI Image Format Specification_. https://github.com/opencontainers/image-spec (accessed 2026-07-18).
+
+* [[[fielding-rest]]] R. T. Fielding. _Architectural Styles and the Design of Network-based Software Architectures_. Doctoral dissertation, University of California, Irvine, 2000. https://ics.uci.edu/~fielding/pubs/dissertation/top.htm
+
+* [[[rfc8288]]] M. Nottingham. _Web Linking_. RFC 8288, Internet Engineering Task Force, October 2017. https://doi.org/10.17487/RFC8288
+
+* [[[collection-json]]] M. Amundsen. _Collection+JSON Hypermedia Type_. Official specification. https://github.com/collection-json/spec (accessed 2026-07-18).
+
+* [[[collection-json-iana]]] Internet Assigned Numbers Authority. “Media Types: `application/vnd.collection+json`.” https://www.iana.org/assignments/media-types/application/vnd.collection+json (accessed 2026-07-18).
+
+* [[[evans-ddd]]] E. Evans. _Domain-Driven Design: Tackling Complexity in the Heart of Software_. Addison-Wesley Professional, 2003. ISBN 978-0-321-12521-7.
+
+* [[[fowler-service-layer]]] M. Fowler. “Service Layer.” In _Patterns of Enterprise Application Architecture_. Addison-Wesley Professional, 2002. ISBN 978-0-321-12742-6. https://martinfowler.com/eaaCatalog/serviceLayer.html
+
+* [[[hevner-design-science-2004]]] A. R. Hevner, S. T. March, J. Park, and S. Ram. “Design Science in Information Systems Research.” _MIS Quarterly_ 28(1), pp. 75–105, 2004. https://doi.org/10.2307/25148625
+
+* [[[runeson-host-2009]]] P. Runeson and M. Höst. “Guidelines for conducting and reporting case study research in software engineering.” _Empirical Software Engineering_ 14(2), pp. 131–164, 2009. https://doi.org/10.1007/s10664-008-9102-8
+
+* [[[parnas-1972]]] D. L. Parnas. “On the Criteria To Be Used in Decomposing Systems into Modules.” _Communications of the ACM_ 15(12), pp. 1053–1058, 1972. https://doi.org/10.1145/361598.361623
+
+* [[[plan9-namespaces-1993]]] R. Pike, D. Presotto, K. Thompson, H. Trickey, and P. Winterbottom. “The Use of Name Spaces in Plan 9.” _ACM SIGOPS Operating Systems Review_ 27(2), pp. 72–76, 1993. https://doi.org/10.1145/155848.155861
+
+* [[[jupyter-messaging]]] Project Jupyter. _Messaging in Jupyter: the Jupyter kernel wire protocol_. https://jupyter-client.readthedocs.io/en/latest/messaging.html (accessed 2026-07-18).
+
+* [[[lsp-spec]]] Microsoft. _Language Server Protocol Specification_, version 3.17. https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ (accessed 2026-07-18).
+
+* [[[dap-spec]]] Microsoft. _Debug Adapter Protocol Specification_. https://microsoft.github.io/debug-adapter-protocol/specification (accessed 2026-07-18).
+
+* [[[rfc7426]]] E. Haleplidis, S. Denazis, J. H. Salim, D. Meyer, and O. Koufopavlou. _Software-Defined Networking (SDN): Layers and Architecture Terminology_. RFC 7426, Internet Research Task Force, January 2015. https://doi.org/10.17487/RFC7426
+
+* [[[kubernetes-controllers]]] The Kubernetes Authors. “Controllers.” _Kubernetes documentation_. https://kubernetes.io/docs/concepts/architecture/controller/ (accessed 2026-07-18).
+
+* [[[young-cqrs]]] G. Young. _CQRS Documents_. 2010. https://cqrs.files.wordpress.com/2010/11/cqrs_documents.pdf
+
+* [[[fowler-cqrs]]] M. Fowler. “CQRS.” 14 July 2011. https://martinfowler.com/bliki/CQRS.html
+
+* [[[blakeley-materialized-views-1986]]] J. A. Blakeley, P.-Å. Larson, and F. W. Tompa. “Efficiently Updating Materialized Views.” In _Proceedings of the 1986 ACM SIGMOD International Conference on Management of Data_, pp. 61–71, 1986. https://doi.org/10.1145/16894.16861
+
+* [[[rfc9110]]] R. T. Fielding, M. Nottingham, and J. Reschke. _HTTP Semantics_. RFC 9110, Internet Engineering Task Force, June 2022. https://doi.org/10.17487/RFC9110
+
+* [[[rfc9111]]] R. T. Fielding, M. Nottingham, and J. Reschke. _HTTP Caching_. RFC 9111, Internet Engineering Task Force, June 2022. https://doi.org/10.17487/RFC9111
+
+* [[[websub]]] A. Guy and J. Genestoux, editors. _WebSub_. W3C Recommendation, 23 January 2018. https://www.w3.org/TR/2018/REC-websub-20180123/
+
+* [[[rfc6202]]] G. Loreto, P. Saint-Andre, S. Salsano, and G. Wilkins. _Known Issues and Best Practices for the Use of Long Polling and Streaming in Bidirectional HTTP_. RFC 6202, Internet Engineering Task Force, April 2011. https://doi.org/10.17487/RFC6202
+
+* [[[graphql-spec]]] GraphQL Foundation. _GraphQL Specification_, September 2025 edition. https://spec.graphql.org/September2025/
+
+* [[[graphql-nplus1]]] GraphQL.js. “Solving the N+1 Problem with DataLoader.” Official documentation. https://www.graphql-js.org/docs/n1-dataloader/ (accessed 2026-07-18).
+
+* [[[dataloader]]] GraphQL Foundation. _DataLoader_. https://github.com/graphql/dataloader (accessed 2026-07-18).
+
+* [[[react-2023]]] S. Yao, J. Zhao, D. Yu, N. Du, I. Shafran, K. R. Narasimhan, and Y. Cao. “ReAct: Synergizing Reasoning and Acting in Language Models.” _International Conference on Learning Representations_, 2023. https://openreview.net/forum?id=WE_vluYUL-X
+
+* [[[toolformer-2023]]] T. Schick, J. Dwivedi-Yu, R. Dessì, R. Raileanu, M. Lomeli, L. Zettlemoyer, N. Cancedda, and T. Scialom. “Toolformer: Language Models Can Teach Themselves to Use Tools.” _Advances in Neural Information Processing Systems_ 36, 2023. https://arxiv.org/abs/2302.04761

@@ -1,11 +1,11 @@
 # Active project handoff
 
 - Last updated: 2026-07-18
-- Last verified against `main`: `8f5bc90`
-- Working branch: `feat/pipeline-invocation-overlays`
-- Current milestone: pipeline runtime overlays and PACS plugin/pipeline
-  attachment are implemented, reviewed, and fully validated
-- Next action: land the implementation branch
+- Last verified against `main`: `e8d44db`
+- Working branch: `fix/pipeline-manifest-performance`
+- Current milestone: exact `/bin` Pipeline manifest-read optimization is
+  implemented, independently reviewed, and fully validated
+- Next action: land the performance fix
 
 ## Current truth
 
@@ -123,6 +123,7 @@ general orchestration. The rationale and composability obligations are in
 - PR #154: authoritative PACS attachment design and ChELL 5.2.8 documentation.
 - PR #155: pipeline parameter-binding/file-overlay contract and the Unix boundary
   that keeps general programming in the calling shell; ChELL 5.2.9 documentation.
+- PR #157: Pipeline invocation overlays and PACS plugin/Pipeline attachment.
 
 Historical Stage 1/2 and earlier delivery detail is archived in
 [history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md) and GitHub's
@@ -130,8 +131,8 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on this branch are ChELL 5.2.10, Calypso 0.4.4, Brasa 0.9.6,
-Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.3. The latest npm-published
+Source versions on this branch are ChELL 5.2.11, Calypso 0.4.4, Brasa 0.9.7,
+Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.4. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 

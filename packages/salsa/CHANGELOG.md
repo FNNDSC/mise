@@ -1,5 +1,13 @@
 # @fnndsc/salsa
 
+## 3.5.4
+
+### Patch Changes
+
+- Add a lightweight registered-manifest projection, exact targeted Pipeline
+  slug resolution, and connection-scoped manifest and hosted-plugin metadata
+  caches.
+
 ## 3.5.3
 
 ### Patch Changes

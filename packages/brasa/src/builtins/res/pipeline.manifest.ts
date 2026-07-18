@@ -38,10 +38,15 @@ export function pipelineManifest_render(manifest: PipelineManifest): string {
   const indexByPiping: Map<number, number> = new Map(
     manifest.nodes.map((node: PipelineManifestNode, index: number): [number, number] => [node.pipingID, index]),
   );
+  const childrenByPiping: Map<number, number[]> = new Map();
+  manifest.nodes.forEach((node: PipelineManifestNode, index: number): void => {
+    if (node.parentID === null) return;
+    const children: number[] = childrenByPiping.get(node.parentID) ?? [];
+    children.push(index);
+    childrenByPiping.set(node.parentID, children);
+  });
   const tree: ManifestYamlNode[] = manifest.nodes.map((node: PipelineManifestNode): ManifestYamlNode => {
-    const children: number[] = manifest.nodes
-      .filter((candidate: PipelineManifestNode): boolean => candidate.parentID === node.pipingID)
-      .map((candidate: PipelineManifestNode): number => indexByPiping.get(candidate.pipingID) as number);
+    const children: number[] = childrenByPiping.get(node.pipingID) ?? [];
     const yamlNode: ManifestYamlNode = {
       piping_id: node.pipingID,
       title: node.title,

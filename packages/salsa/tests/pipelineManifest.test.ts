@@ -25,16 +25,22 @@ jest.mock('@fnndsc/cumin', () => ({
   },
 }));
 
-import { pipelineManifest_get } from '../src/pipelines/manifest';
+import {
+  pipelineManifest_get,
+  pipelineManifestForPipeline_get,
+} from '../src/pipelines/manifest';
 import {
   pipeline_run,
   pipelines_list,
   pipelines_listAll,
   pipelineFields_get,
   pipelines_getAll,
+  pipelineManifestBySlug_get,
   pipeline_sourceGet,
 } from '../src/pipelines';
 import { pipelineDiagram_get } from '../src/pipelines/diagram';
+
+type ManifestResult = Awaited<ReturnType<typeof pipelineManifest_get>>;
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -55,6 +61,124 @@ describe('pipelineManifest_get', () => {
     pipeline_resolve.mockResolvedValue({ ok: true, value: { id: 27, name: 'brain' } });
     client_get.mockResolvedValue({ getPipeline: async () => { throw new Error('down'); } });
     expect((await pipelineManifest_get('brain')).ok).toBe(false);
+  });
+
+  it('projects the registered invocation without waiting for hosted plugin metadata', async () => {
+    pipeline_resolve.mockResolvedValue({ ok: true, value: { id: 27, name: 'brain' } });
+    client_get.mockResolvedValue({
+      getPipeline: async () => ({
+        getPluginPipings: async () => ({
+          getItems: () => [{
+            data: {
+              id: 481,
+              title: 'segmentation',
+              plugin_name: 'pl-segmentation',
+              plugin_version: '2.4.0',
+              previous_id: null,
+            },
+            getPlugin: async () => { throw new Error('hosted metadata must not be fetched'); },
+          }],
+        }),
+        getDefaultParameters: async () => ({
+          data: [{ plugin_piping_id: 481, param_name: 'threshold', value: 0.4 }],
+        }),
+      }),
+    });
+
+    const result: ManifestResult = await pipelineManifest_get('brain', { detail: 'registered' });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        pipelineID: 27,
+        name: 'brain',
+        rootIDs: [481],
+        nodes: [{
+          pipingID: 481,
+          title: 'segmentation',
+          pluginName: 'pl-segmentation',
+          pluginVersion: '2.4.0',
+          parentID: null,
+          computeResourceName: 'host',
+          cpuLimit: undefined,
+          memoryLimit: undefined,
+          gpuLimit: undefined,
+          numberOfWorkers: undefined,
+          parameterDefaults: [{ name: 'threshold', value: 0.4 }],
+          computeResources: undefined,
+          parameterDefinitions: undefined,
+        }],
+      },
+    });
+  });
+
+  it('serves a repeated registered manifest from the connection-scoped cache', async () => {
+    pipeline_resolve
+      .mockResolvedValueOnce({ ok: true, value: { id: 27, name: 'cached-brain' } })
+      .mockRejectedValue(new Error('resolution must not repeat'));
+    const getPipeline = jest.fn()
+      .mockResolvedValueOnce({
+        getPluginPipings: async () => ({
+          getItems: () => [{
+            data: {
+              id: 481,
+              title: 'segmentation',
+              plugin_name: 'pl-segmentation',
+              plugin_version: '2.4.0',
+              previous_id: null,
+            },
+          }],
+        }),
+        getDefaultParameters: async () => ({ data: [] }),
+      })
+      .mockRejectedValue(new Error('Pipeline must not be fetched twice'));
+    client_get.mockResolvedValue({ getPipeline });
+
+    const first: ManifestResult = await pipelineManifest_get('cached-brain', { detail: 'registered' });
+    const repeated: ManifestResult = await pipelineManifest_get('cached-brain', { detail: 'registered' });
+
+    expect(first.ok).toBe(true);
+    expect(repeated).toEqual(first);
+  });
+
+  it('projects an already resolved Pipeline without resolving it again', async () => {
+    pipeline_resolve.mockRejectedValue(new Error('Pipeline is already resolved'));
+    client_get.mockResolvedValue({
+      getPipeline: async () => ({
+        getPluginPipings: async () => ({ getItems: () => [] }),
+        getDefaultParameters: async () => ({ data: [] }),
+      }),
+    });
+
+    expect(await pipelineManifestForPipeline_get(
+      { id: 42, name: 'Example Pipeline' },
+      {
+        getPluginPipings: async () => ({ getItems: () => [] }),
+        getDefaultParameters: async () => ({ data: [] }),
+      },
+      { detail: 'registered' },
+    )).toEqual({
+      ok: true,
+      value: {
+        pipelineID: 42,
+        name: 'Example Pipeline',
+        rootIDs: [],
+        nodes: [],
+      },
+    });
+  });
+
+  it('fails an already-resolved projection while disconnected', async () => {
+    client_get.mockResolvedValue(null);
+
+    expect((await pipelineManifestForPipeline_get(
+      { id: 42, name: 'Example Pipeline' },
+      {
+        getPluginPipings: async () => ({ getItems: () => [] }),
+        getDefaultParameters: async () => ({ data: [] }),
+      },
+      { detail: 'registered' },
+    )).ok).toBe(false);
   });
 
   it('projects CUBE pipeline and piping identities with stored invocation defaults', async () => {
@@ -136,6 +260,82 @@ describe('pipelineManifest_get', () => {
         }],
       },
     });
+  });
+
+  it('reuses hosted metadata when one versioned Plugin appears in multiple nodes', async () => {
+    pipeline_resolve.mockResolvedValue({
+      ok: true,
+      value: { id: 31, name: 'repeated-plugin' },
+    });
+    const hostedPlugin = {
+      getPluginParameters: async () => ({
+        getItems: () => [{ data: { name: 'label', type: 'str', optional: true } }],
+      }),
+      getPluginComputeResources: async () => ({
+        getItems: () => [{ data: { name: 'host' } }],
+      }),
+    };
+    client_get.mockResolvedValue({
+      getPipeline: async () => ({
+        getPluginPipings: async () => ({
+          getItems: () => [{
+            data: {
+              id: 1, title: 'first', plugin_name: 'pl-repeat',
+              plugin_version: '1.0.0', previous_id: null,
+            },
+            getPlugin: async () => hostedPlugin,
+          }, {
+            data: {
+              id: 2, title: 'second', plugin_name: 'pl-repeat',
+              plugin_version: '1.0.0', previous_id: 1,
+            },
+            getPlugin: async () => { throw new Error('metadata must be shared'); },
+          }],
+        }),
+        getDefaultParameters: async () => ({ data: [] }),
+      }),
+    });
+
+    const result: ManifestResult = await pipelineManifest_get('repeated-plugin');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.nodes.map((node) => node.parameterDefinitions)).toEqual([
+        [{ name: 'label', type: 'str', optional: true, default: undefined, help: undefined }],
+        [{ name: 'label', type: 'str', optional: true, default: undefined, help: undefined }],
+      ]);
+    }
+  });
+
+  it('evicts failed hosted metadata so a later projection can retry', async () => {
+    pipeline_resolve.mockResolvedValue({
+      ok: true,
+      value: { id: 31, name: 'retry-metadata' },
+    });
+    const getPlugin = jest.fn()
+      .mockRejectedValueOnce(new Error('temporary metadata failure'))
+      .mockResolvedValue({
+        getPluginParameters: async () => ({ getItems: () => [] }),
+        getPluginComputeResources: async () => ({ getItems: () => [] }),
+      });
+    client_get.mockResolvedValue({
+      getPipeline: async () => ({
+        getPluginPipings: async () => ({
+          getItems: () => [{
+            data: {
+              id: 1, title: 'retry', plugin_name: 'pl-retry',
+              plugin_version: '1.0.0', previous_id: null,
+            },
+            getPlugin,
+          }],
+        }),
+        getDefaultParameters: async () => ({ data: [] }),
+      }),
+    });
+
+    expect((await pipelineManifest_get('retry-metadata')).ok).toBe(false);
+    expect((await pipelineManifest_get('retry-metadata')).ok).toBe(true);
+    expect(getPlugin).toHaveBeenCalledTimes(2);
   });
 
   it('runs one prepared overlay as the complete Workflow node override set', async () => {
@@ -278,6 +478,90 @@ describe('pipelineManifest_get', () => {
       ok: true,
       value: [{ id: 27, name: 'Brain Pipeline', slug: 'brain_id27' }],
     });
+  });
+
+  it('projects one exact /bin slug without enumerating or fetching the Pipeline twice', async () => {
+    cumin_pipelines_list.mockRejectedValue(new Error('global enumeration must not run'));
+    const getPipelineSourceFiles = jest.fn().mockResolvedValue({
+      getItems: () => [{
+        data: {
+          fname: '/PIPELINES/example_pipeline.yaml',
+        },
+      }],
+    });
+    const getPipeline = jest.fn().mockImplementation(async (id: number) => ({
+        data: { id, name: 'Example Pipeline' },
+        getPluginPipings: async () => ({ getItems: () => [] }),
+        getDefaultParameters: async () => ({ data: [] }),
+      }));
+    client_get.mockResolvedValue({
+      getPipeline,
+      getPipelineSourceFiles,
+    });
+
+    expect(await pipelineManifestBySlug_get('example_pipeline_id42')).toEqual({
+      ok: true,
+      value: {
+        pipelineID: 42,
+        name: 'Example Pipeline',
+        rootIDs: [],
+        nodes: [],
+      },
+    });
+    expect(getPipeline).toHaveBeenCalledTimes(1);
+    expect(getPipelineSourceFiles).toHaveBeenCalledWith({ pipeline_id: 42, limit: 1000 });
+  });
+
+  it('serves repeated exact slug resolution from the connection-scoped cache', async () => {
+    const getPipeline = jest.fn()
+      .mockResolvedValueOnce({
+        data: { id: 128, name: 'Cached Pipeline' },
+        getPluginPipings: async () => ({ getItems: () => [] }),
+        getDefaultParameters: async () => ({ data: [] }),
+      })
+      .mockRejectedValue(new Error('Pipeline must not be resolved twice'));
+    const getPipelineSourceFiles = jest.fn()
+      .mockResolvedValueOnce({ getItems: () => [] })
+      .mockRejectedValue(new Error('Source files must not be resolved twice'));
+    client_get.mockResolvedValue({ getPipeline, getPipelineSourceFiles });
+
+    const first: ManifestResult = await pipelineManifestBySlug_get('Cached_Pipeline_id128');
+    const repeated: ManifestResult = await pipelineManifestBySlug_get('Cached_Pipeline_id128');
+
+    expect(first.ok).toBe(true);
+    expect(repeated).toEqual(first);
+    expect(getPipeline).toHaveBeenCalledTimes(1);
+    expect(getPipelineSourceFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let an exact slug cache bypass later name ambiguity checks', async () => {
+    pipeline_resolve.mockResolvedValue({ ok: false });
+    client_get.mockResolvedValue({
+      getPipeline: async (id: number) => ({
+        data: { id, name: 'Shared Name' },
+        getPluginPipings: async () => ({ getItems: () => [] }),
+        getDefaultParameters: async () => ({ data: [] }),
+      }),
+      getPipelineSourceFiles: async () => ({ getItems: () => [] }),
+    });
+
+    expect((await pipelineManifestBySlug_get('Shared_Name_id42')).ok).toBe(true);
+    expect((await pipelineManifest_get('Shared Name', { detail: 'registered' })).ok).toBe(false);
+    expect(pipeline_resolve).toHaveBeenCalledWith('Shared Name');
+  });
+
+  it('fails exact slug resolution while disconnected', async () => {
+    client_get.mockResolvedValue(null);
+    expect((await pipelineManifestBySlug_get('example_pipeline_id42')).ok).toBe(false);
+  });
+
+  it('turns targeted slug lookup errors into a failed result', async () => {
+    client_get.mockResolvedValue({
+      getPipeline: async () => { throw new Error('temporary lookup failure'); },
+      getPipelineSourceFiles: async () => ({ getItems: () => [] }),
+    });
+
+    expect((await pipelineManifestBySlug_get('example_pipeline_id42')).ok).toBe(false);
   });
 
   it('cannot build /bin pipeline entries while disconnected', async () => {

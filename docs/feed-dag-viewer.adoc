@@ -303,6 +303,13 @@ back unchanged is a semantic no-op; editing selected values makes it a registrat
 parameter file. `pipeline source <pipeline>` remains the exact authoring YAML used for
 re-registration.
 
+Reading the `/bin` entry resolves its stable `_id<N>` suffix directly, verifies the exact
+source-derived slug, and requests only the registered projection above. It does not enumerate
+all Pipelines or fetch each hosted Plugin's parameter schema and compute registrations; those
+are execution-validation metadata used by `--parameters` and Workflow preparation, not fields
+in the serialized registered manifest. Exact slug and manifest results are cached per CUBE
+connection for a short interval, so a repeated read does not repeat the remote projection.
+
 When file and command-line bindings are combined, precedence is deterministic:
 
 [source]

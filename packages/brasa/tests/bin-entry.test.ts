@@ -9,12 +9,14 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 const manifestGet = jest.fn();
+const manifestBySlugGet = jest.fn();
 const pipelinesGetAll = jest.fn();
 const checkpointMark = jest.fn(() => 7);
 const checkpointDrain = jest.fn();
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipelineManifest_get: manifestGet,
+  pipelineManifestBySlug_get: manifestBySlugGet,
   pipelines_getAll: pipelinesGetAll,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
@@ -28,27 +30,27 @@ describe('binPipelineManifest_try', () => {
 
   it('resolves a registered pipeline before plugin-like name parsing', async () => {
     const manifest = { pipelineID: 27, name: 'registration-v2_id27', rootIDs: [], nodes: [] };
-    pipelinesGetAll.mockResolvedValue({
-      ok: true,
-      value: [{ id: 27, name: 'Registration v2', slug: 'registration-v2_id27' }],
-    });
-    manifestGet.mockResolvedValue({ ok: true, value: manifest });
+    pipelinesGetAll.mockRejectedValue(new Error('global enumeration must not run'));
+    manifestGet.mockRejectedValue(new Error('numeric Pipeline resolution must not repeat'));
+    manifestBySlugGet.mockResolvedValue({ ok: true, value: manifest });
 
     await expect(binPipelineManifest_try('registration-v2_id27')).resolves.toBe(manifest);
-    expect(manifestGet).toHaveBeenCalledWith('27');
+    expect(manifestBySlugGet).toHaveBeenCalledWith('registration-v2_id27');
     expect(checkpointDrain).not.toHaveBeenCalled();
   });
 
   it('drains only failed pipeline-probe errors before plugin fallback', async () => {
     pipelinesGetAll.mockResolvedValue({ ok: true, value: [] });
+    manifestBySlugGet.mockResolvedValue({ ok: false });
 
     await expect(binPipelineManifest_try('pl-example-v1.0.0')).resolves.toBeNull();
     expect(manifestGet).not.toHaveBeenCalled();
     expect(checkpointDrain).toHaveBeenCalledWith(7);
   });
 
-  it('falls through when exact pipeline enumeration fails', async () => {
+  it('falls through when exact targeted Pipeline resolution fails', async () => {
     pipelinesGetAll.mockResolvedValue({ ok: false });
+    manifestBySlugGet.mockResolvedValue({ ok: false });
 
     await expect(binPipelineManifest_try('pl-example-v1.0.0')).resolves.toBeNull();
     expect(manifestGet).not.toHaveBeenCalled();
@@ -60,7 +62,7 @@ describe('binPipelineManifest_try', () => {
       ok: true,
       value: [{ id: 27, name: 'Registration v2', slug: 'registration-v2_id27' }],
     });
-    manifestGet.mockResolvedValue({ ok: false });
+    manifestBySlugGet.mockResolvedValue({ ok: false });
 
     await expect(binPipelineManifest_try('registration-v2_id27')).resolves.toBeNull();
     expect(checkpointDrain).toHaveBeenCalledWith(7);

@@ -1,5 +1,15 @@
 # @fnndsc/brasa
 
+## 0.9.7
+
+### Patch Changes
+
+- Resolve exact `/bin` Pipeline reads without global Pipeline enumeration or
+  per-node hosted-plugin metadata requests, cache repeat reads, and render
+  Pipeline topology in linear time.
+- Updated dependencies
+  - @fnndsc/salsa@3.5.4
+
 ## 0.9.6
 
 ### Patch Changes

@@ -105,6 +105,13 @@ is portable. `@<piping-id>` is the exact registration-specific command-line
 fallback; a parameter-file node uses the corresponding `piping_id` field.
 Topology and structural join values are not runtime parameter bindings.
 
+`cat /bin/<pipeline>` reads the registered projection: Pipeline and piping
+identity, topology, stored values, placement, and resource controls. Exact
+`_id<N>` slug resolution is targeted and connection-cached; this inspection
+path does not enumerate all Pipelines or fetch hosted Plugin schemas for every
+node. Execution validation still uses the enriched manifest when binding a
+Workflow.
+
 One overlay configures one Workflow invocation. Repetition over several input
 or parameter files belongs to a general caller such as Bash, not to a Pipeline
 `--sweep` option or control-flow extensions in ChELL.

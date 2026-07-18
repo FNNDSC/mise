@@ -9,10 +9,8 @@
  */
 import { errorStack, type Result } from '@fnndsc/cumin';
 import {
-  pipelineManifest_get,
-  pipelines_getAll,
+  pipelineManifestBySlug_get,
   type PipelineManifest,
-  type PipelineRecord,
 } from '@fnndsc/salsa';
 
 /**
@@ -23,16 +21,8 @@ import {
  */
 export async function binPipelineManifest_try(commandName: string): Promise<PipelineManifest | null> {
   const checkpoint: number = errorStack.checkpoint_mark();
-  const pipelines: Result<PipelineRecord[]> = await pipelines_getAll();
-  if (pipelines.ok) {
-    const exact: PipelineRecord | undefined = pipelines.value.find(
-      (pipeline: PipelineRecord): boolean => pipeline.slug === commandName,
-    );
-    if (exact !== undefined) {
-      const result: Result<PipelineManifest> = await pipelineManifest_get(String(exact.id));
-      if (result.ok) return result.value;
-    }
-  }
+  const result: Result<PipelineManifest> = await pipelineManifestBySlug_get(commandName);
+  if (result.ok) return result.value;
   errorStack.checkpoint_drain(checkpoint);
   return null;
 }

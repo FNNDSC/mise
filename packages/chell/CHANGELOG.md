@@ -1,5 +1,15 @@
 # @fnndsc/chell
 
+## 5.2.11
+
+### Patch Changes
+
+- Keep the cold `cat /bin/<pipeline>` remote request count independent of node
+  count and make repeated reads connection-cache hits.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.7
+  - @fnndsc/salsa@3.5.4
+
 ## 5.2.10
 
 ### Patch Changes

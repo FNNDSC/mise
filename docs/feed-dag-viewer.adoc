@@ -309,6 +309,10 @@ all Pipelines or fetch each hosted Plugin's parameter schema and compute registr
 are execution-validation metadata used by `--parameters` and Workflow preparation, not fields
 in the serialized registered manifest. Exact slug and manifest results are cached per CUBE
 connection for a short interval, so a repeated read does not repeat the remote projection.
+When an uncached read remains outstanding for 300 milliseconds, Brasa emits semantic
+Pipeline-inspection progress. An interactive ChELL surface renders it as an ephemeral
+`Reading registered pipeline…` spinner on stderr and erases it before the YAML appears;
+non-TTY pipes and redirects receive only the manifest data, and fast cache hits show nothing.
 
 When file and command-line bindings are combined, precedence is deterministic:
 

@@ -8,6 +8,7 @@
  * @module
  */
 import cliProgress from 'cli-progress';
+import chalk from 'chalk';
 import type { ProgressEvent, ProgressOperation, ProgressStatus, ProgressRenderer } from '@fnndsc/brasa';
 
 type ProgressBar = {
@@ -35,8 +36,13 @@ export interface ProgressBarFactory {
 }
 
 export interface ProgressRendererOptions {
+  /** Counted progress bars and non-interactive terminal summaries. */
   stream?: NodeJS.WriteStream;
+  /** Ephemeral status output; defaults to stderr. */
+  statusStream?: NodeJS.WriteStream;
+  /** Override terminal detection, primarily for host adapters and tests. */
   isTTY?: boolean;
+  /** Progress-bar implementation, primarily for deterministic tests. */
   factory?: ProgressBarFactory;
 }
 
@@ -62,6 +68,9 @@ const TERMINAL_STATUSES: Set<ProgressStatus> = new Set<ProgressStatus>([
   'timeout',
   'error',
 ]);
+
+const INSPECTION_FRAMES: readonly string[] = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
+const INSPECTION_FRAME_MS: number = 80;
 
 function defaultFactory_get(): ProgressBarFactory {
   return {
@@ -129,20 +138,32 @@ function fallback_line(event: ProgressEvent): string {
  */
 export class TerminalProgressRenderer implements ProgressRenderer {
   private readonly stream: NodeJS.WriteStream;
+  private readonly statusStream: NodeJS.WriteStream;
   private readonly isTTY: boolean;
+  private readonly inspectionIsTTY: boolean;
   private readonly factory: ProgressBarFactory;
   private readonly transferBars: Map<ProgressOperation, BarState> = new Map<ProgressOperation, BarState>();
   private readonly pullBars: Map<string, PullBarState> = new Map<string, PullBarState>();
   private pullMultiBar: MultiBarInstance | null = null;
   private pullBaseWidth: number = 0;
+  private inspectionInterval: NodeJS.Timeout | null = null;
+  private inspectionFrameIndex: number = 0;
+  private inspectionLabel: string = '';
 
   constructor(options: ProgressRendererOptions = {}) {
     this.stream = options.stream ?? process.stdout;
+    this.statusStream = options.statusStream ?? process.stderr;
     this.isTTY = options.isTTY ?? !!this.stream.isTTY;
+    this.inspectionIsTTY = this.isTTY && !!this.statusStream.isTTY;
     this.factory = options.factory ?? defaultFactory_get();
   }
 
   public write(event: ProgressEvent): void {
+    if (event.operation === 'pipeline' || event.kind === 'inspection') {
+      if (this.inspectionIsTTY) this.inspection_write(event);
+      return;
+    }
+
     if (!this.isTTY) {
       if (fallback_shouldPrint(event)) {
         this.stream.write(fallback_line(event));
@@ -166,6 +187,7 @@ export class TerminalProgressRenderer implements ProgressRenderer {
   }
 
   public clear(): void {
+    this.inspection_stop();
     for (const state of this.transferBars.values()) {
       state.bar.stop?.();
     }
@@ -174,6 +196,35 @@ export class TerminalProgressRenderer implements ProgressRenderer {
     this.pullMultiBar = null;
     this.pullBars.clear();
     this.pullBaseWidth = 0;
+  }
+
+  private inspection_write(event: ProgressEvent): void {
+    if (event.phase === 'complete' || event.phase === 'failed') {
+      this.inspection_stop();
+      return;
+    }
+    this.inspectionLabel = event.label ?? 'Reading registered pipeline…';
+    if (this.inspectionInterval !== null) return;
+    this.inspectionFrameIndex = 0;
+    this.statusStream.write('\x1B[?25l');
+    this.inspection_render();
+    this.inspectionInterval = setInterval((): void => {
+      this.inspectionFrameIndex = (this.inspectionFrameIndex + 1) % INSPECTION_FRAMES.length;
+      this.inspection_render();
+    }, INSPECTION_FRAME_MS);
+  }
+
+  private inspection_render(): void {
+    const frame: string = INSPECTION_FRAMES[this.inspectionFrameIndex];
+    this.statusStream.write(`\r\x1b[K${chalk.cyanBright(frame)} ${chalk.gray(this.inspectionLabel)}`);
+  }
+
+  private inspection_stop(): void {
+    if (this.inspectionInterval === null) return;
+    clearInterval(this.inspectionInterval);
+    this.inspectionInterval = null;
+    this.statusStream.write('\r\x1b[K');
+    this.statusStream.write('\x1B[?25h');
   }
 
   private transfer_write(event: ProgressEvent): void {

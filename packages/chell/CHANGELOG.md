@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.2.12
+
+### Patch Changes
+
+- Show a delayed, ephemeral `Reading registered pipeline…` spinner on stderr
+  for slow interactive `/bin` Pipeline reads; keep pipes, redirects, and fast
+  cache hits silent.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.8
+  - @fnndsc/calypso@0.4.5
+
 ## 5.2.11
 
 ### Patch Changes

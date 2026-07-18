@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { TerminalProgressRenderer, type ProgressBarFactory } from '../src/core/progressRenderer.js';
 
 class FakeBar {
@@ -99,6 +99,84 @@ describe('TerminalProgressRenderer', () => {
     expect(stream.writes).toEqual([]);
   });
 
+  it('renders Pipeline inspection as an ephemeral spinner on the status stream', () => {
+    jest.useFakeTimers();
+    const dataStream = stream_create(true);
+    const statusStream = stream_create(true);
+    const renderer = new TerminalProgressRenderer({
+      stream: dataStream,
+      statusStream,
+      isTTY: true,
+      factory: fakeFactory_create(),
+    });
+
+    try {
+      renderer.write({
+        operation: 'pipeline',
+        kind: 'inspection',
+        phase: 'reading',
+        label: 'Reading registered pipeline…',
+        status: 'running',
+      });
+      expect(dataStream.writes).toEqual([]);
+      expect(statusStream.writes.join('')).toContain('Reading registered pipeline…');
+
+      renderer.write({
+        operation: 'pipeline',
+        kind: 'inspection',
+        phase: 'complete',
+        status: 'done',
+      });
+      expect(statusStream.writes.join('')).toContain('\r\x1b[K');
+      expect(statusStream.writes.at(-1)).toBe('\x1B[?25h');
+    } finally {
+      renderer.clear();
+      jest.useRealTimers();
+    }
+  });
+
+  it('suppresses Pipeline inspection when command stdout is piped', () => {
+    const dataStream = stream_create(false);
+    const statusStream = stream_create(true);
+    const renderer = new TerminalProgressRenderer({
+      stream: dataStream,
+      statusStream,
+      factory: fakeFactory_create(),
+    });
+
+    renderer.write({
+      operation: 'pipeline',
+      kind: 'inspection',
+      phase: 'reading',
+      label: 'Reading registered pipeline…',
+      status: 'running',
+    });
+
+    expect(dataStream.writes).toEqual([]);
+    expect(statusStream.writes).toEqual([]);
+  });
+
+  it('suppresses Pipeline inspection when command stderr is redirected', () => {
+    const dataStream = stream_create(true);
+    const statusStream = stream_create(false);
+    const renderer = new TerminalProgressRenderer({
+      stream: dataStream,
+      statusStream,
+      factory: fakeFactory_create(),
+    });
+
+    renderer.write({
+      operation: 'pipeline',
+      kind: 'inspection',
+      phase: 'reading',
+      label: 'Reading registered pipeline…',
+      status: 'running',
+    });
+
+    expect(dataStream.writes).toEqual([]);
+    expect(statusStream.writes).toEqual([]);
+  });
+
   it('uses pull multibar entries keyed by itemId and renders unconfirmed as warning text', () => {
     const renderer = new TerminalProgressRenderer({ stream: stream_create(true), isTTY: true, factory: fakeFactory_create() });
 
@@ -159,6 +237,8 @@ describe('TerminalProgressRenderer', () => {
     renderer.write({ operation: 'download', phase: 'transferring', label: 'Downloading files', current: 1, total: 3, unit: 'files', status: 'running' });
     renderer.write({ operation: 'download', phase: 'failed', label: 'Download complete', current: 1, total: 3, unit: 'files', status: 'error' });
     renderer.write({ operation: 'pull', phase: 'watching', label: 'T1', current: 0, total: 1, unit: 'files', status: 'unconfirmed' });
+    renderer.write({ operation: 'pipeline', kind: 'inspection', phase: 'reading', label: 'Reading registered pipeline…', status: 'running' });
+    renderer.write({ operation: 'pipeline', kind: 'inspection', phase: 'complete', status: 'done' });
 
     expect(singleBars).toHaveLength(0);
     expect(stream.writes).toEqual([

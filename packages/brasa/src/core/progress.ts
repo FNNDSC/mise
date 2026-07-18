@@ -7,11 +7,26 @@
  * @module
  */
 
-export type ProgressOperation = 'upload' | 'download' | 'pull' | 'workflow';
-export type ProgressKind = 'transfer' | 'retrieve' | 'workflow';
-export type ProgressPhase = 'scanning' | 'transferring' | 'watching' | 'retrying' | 'complete' | 'failed';
-export type ProgressUnit = 'files' | 'bytes' | 'series' | 'jobs' | 'nodes';
-export type ProgressStatus = 'running' | 'done' | 'unconfirmed' | 'stalled' | 'timeout' | 'error' | 'unknown';
+/** Operations that may produce structured progress. */
+export const PROGRESS_OPERATIONS = ['upload', 'download', 'pull', 'workflow', 'pipeline'] as const;
+/** Broad structured-progress producer classes. */
+export const PROGRESS_KINDS = ['transfer', 'retrieve', 'workflow', 'inspection'] as const;
+/** Lifecycle phases shared by structured-progress operations. */
+export const PROGRESS_PHASES = [
+  'scanning', 'transferring', 'watching', 'retrying', 'reading', 'complete', 'failed',
+] as const;
+/** Units supported by counted progress. */
+export const PROGRESS_UNITS = ['files', 'bytes', 'series', 'jobs', 'nodes'] as const;
+/** Operation and item states supported by structured progress. */
+export const PROGRESS_STATUSES = [
+  'running', 'done', 'unconfirmed', 'stalled', 'timeout', 'error', 'unknown',
+] as const;
+
+export type ProgressOperation = typeof PROGRESS_OPERATIONS[number];
+export type ProgressKind = typeof PROGRESS_KINDS[number];
+export type ProgressPhase = typeof PROGRESS_PHASES[number];
+export type ProgressUnit = typeof PROGRESS_UNITS[number];
+export type ProgressStatus = typeof PROGRESS_STATUSES[number];
 
 export interface ProgressEvent {
   operation: ProgressOperation;

@@ -1,5 +1,14 @@
 # @fnndsc/calypso
 
+## 0.4.5
+
+### Patch Changes
+
+- Carry semantic Pipeline-inspection progress from a hosted Brasa engine to
+  the remote surface that issued the command.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.8
+
 ## 0.4.4
 
 ### Patch Changes

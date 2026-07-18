@@ -112,6 +112,11 @@ path does not enumerate all Pipelines or fetch hosted Plugin schemas for every
 node. Execution validation still uses the enriched manifest when binding a
 Workflow.
 
+Slow uncached `/bin` Pipeline reads emit semantic inspection progress after a
+300 ms delay. ChELL renders that progress as an ephemeral stderr spinner only
+on an interactive TTY; it never becomes manifest data or enters a pipe or
+redirect, and fast cache hits remain silent.
+
 One overlay configures one Workflow invocation. Repetition over several input
 or parameter files belongs to a general caller such as Bash, not to a Pipeline
 `--sweep` option or control-flow extensions in ChELL.

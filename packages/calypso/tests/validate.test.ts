@@ -59,6 +59,18 @@ describe('serverMessage_parse', () => {
     expect(serverMessage_parse({ type: 'error', reason: 'bad token' }).ok).toBe(true);
   });
 
+  it('accepts semantic Pipeline inspection progress', () => {
+    expect(serverMessage_parse({
+      type: 'progress',
+      id: '1',
+      operation: 'pipeline',
+      kind: 'inspection',
+      phase: 'reading',
+      label: 'Reading registered pipeline…',
+      status: 'running',
+    }).ok).toBe(true);
+  });
+
   it('accepts additive proc totals and legacy loaded-only prompt progress', () => {
     const context = {
       user: 'chris', uri: 'http://cube/', cwd: '/', pacsserver: null,

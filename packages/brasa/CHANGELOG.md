@@ -1,5 +1,12 @@
 # @fnndsc/brasa
 
+## 0.9.8
+
+### Patch Changes
+
+- Emit delayed semantic progress when an exact `/bin` Pipeline manifest read
+  takes longer than 300 milliseconds, while leaving fast cache hits silent.
+
 ## 0.9.7
 
 ### Patch Changes

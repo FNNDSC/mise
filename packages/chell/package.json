@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/chell",
-  "version": "5.2.8",
+  "version": "5.2.9",
   "description": "ChELL Executes Layered Logic - Interactive ChRIS REPL Shell",
   "repository": {
     "type": "git",

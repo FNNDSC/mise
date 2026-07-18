@@ -15,7 +15,8 @@ documentation; for using the shell and the packages, see the per-package READMEs
   what mise offers a client that is not the shell — a single contract of *intent
   in, receipt out*, reachable in-process (brasa as a library) or over the wire
   (a calypso session), so no client ever speaks Collection+JSON. Marks what exists
-  today versus what is forward work.
+  today versus what is forward work, and records why ChELL remains subordinate
+  to a general shell for loops, branching, concurrency, and other programming.
 
 - **[envelope-model.adoc](envelope-model.adoc)** — the contract that makes the
   above real: every command returns a `CommandEnvelope`, and the move from
@@ -45,7 +46,8 @@ documentation; for using the shell and the packages, see the per-package READMEs
 
 - **[feed-dag-viewer.adoc](feed-dag-viewer.adoc)** — the shipped cache-first
   feed and pipeline diagram model, including shallow trees, topological joins,
-  SignalFlow YAML emission, and dynamic `/bin` pipeline aliases.
+  SignalFlow YAML emission, dynamic `/bin` pipeline aliases, and the forward
+  contract for per-node pipeline parameter bindings and serializable overlays.
 
 - **[handoff.md](handoff.md)** — the concise active project state: current
   milestone, release state, known risks, and next action. Architectural,

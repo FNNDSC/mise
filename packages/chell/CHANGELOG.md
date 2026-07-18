@@ -1,5 +1,12 @@
 # @fnndsc/chell
 
+## 5.2.8
+
+### Patch Changes
+
+- Document the planned PACS pull attachment contract for explicitly adding one
+  plugin or pipeline to a newly created feed.
+
 ## 5.2.7
 
 ### Patch Changes

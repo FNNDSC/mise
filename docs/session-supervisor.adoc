@@ -285,6 +285,7 @@ What tier 2 *reuses* unchanged: the calypso daemon, the engine, the `Berth` conc
 seam — the surface's attach path (`PorterBerthResolver` replaces
 `LocalBerthResolver`).
 
+[[cloud-persistence-posture]]
 === Cloud persistence posture
 
 CUBE remains the durable state authority. The daemon's `/proc` checkpoint is a

@@ -49,6 +49,7 @@ ChELL commands fall into several categories:
 * **Connection Management** - Connecting to and authenticating with ChRIS servers
 * **Navigation** - Moving through the ChRIS filesystem
 * **File Operations** - Working with files, directories, and links
+* **PACS Query and Retrieval** - Finding and materializing medical-imaging series
 * **Resource Management** - Managing ChRIS-specific resources (plugins, feeds)
 * **ChEFS Commands** - ChRIS Experimental File System primitives
 * **System Commands** - Shell control and configuration
@@ -431,6 +432,55 @@ upload /tmp/output.json .
 * Preserves directory structure
 * Shows progress for large uploads
 * Uses current context if relative paths provided
+
+== PACS Query and Retrieval
+
+=== pacs query
+
+Creates a PACS query, waits for its results, and prints the navigable VFS path
+under `/net/pacs/queries/`.
+
+**Syntax:**
+```bash
+pacs query <DICOM-key:value> [...] [--title <title>] [--pacsserver <id>] [--table]
+```
+
+**Example:**
+```bash
+pacs query AccessionNumber:12345678
+```
+
+=== pacs pull
+
+Retrieves the series selected by one or more query, study, or series VFS paths.
+A query expression is also accepted as query-then-pull shorthand.
+
+**Syntax:**
+```bash
+pacs pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...]
+```
+
+**Examples:**
+```bash
+pacs pull /net/pacs/queries/.../Study_.../Series_...
+pacs pull AccessionNumber:12345678
+pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
+```
+
+Without `--new-feed`, `pacs pull` materializes the selected series under
+`/SERVICES/PACS/` and stops. `--new-feed` waits for the complete selection,
+resolves every series directory, and creates exactly one named Feed rooted at
+`pl-dircopy`. It then prints the Feed ID, root job ID, input series count, and
+Feed path.
+
+Feed creation is all-or-nothing. An invalid or empty operand, partial retrieval,
+or unresolved CUBE directory prevents Feed creation while leaving any retrieved
+files in storage. `--new-feed` cannot be combined with `--nowait`.
+
+Planned `--plugin` and `--pipeline` flags will optionally attach one analysis to
+the new root. They are not implemented or advertised in runtime help yet. See
+link:pacsqr.adoc#planned-analysis-attachment[PACS Query / Retrieve / Resolve]
+for the complete current behavior and planned attachment contract.
 
 == ChEFS Commands
 

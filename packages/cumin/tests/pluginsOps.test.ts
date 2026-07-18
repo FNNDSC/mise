@@ -95,6 +95,22 @@ describe('ChRISPlugin.plugin_runOnCUBE and pluginInstance_toDict', () => {
   });
 });
 
+describe('ChRISPlugin.plugin_run', () => {
+  it('preserves typed parameter values without a CLI serialization round trip', async () => {
+    const plugin = new ChRISPlugin();
+    jest.spyOn(plugin, 'pluginIDs_resolve').mockResolvedValue({ hits: [17] });
+    const runOnCube = jest.spyOn(plugin, 'plugin_runOnCUBE').mockResolvedValue({} as never);
+    jest.spyOn(plugin, 'pluginInstance_toDict').mockReturnValue({ id: 33 });
+
+    await plugin.plugin_run('pl-x', { previous_id: 4, outputdir: 'NIfTI files' });
+
+    expect(runOnCube).toHaveBeenCalledWith(17, 4, {
+      previous_id: 4,
+      outputdir: 'NIfTI files',
+    });
+  });
+});
+
 describe('ChRISPlugin.plugin_existsInCube', () => {
   it('finds a plugin by exact name', async () => {
     mockClientGet.mockResolvedValue({

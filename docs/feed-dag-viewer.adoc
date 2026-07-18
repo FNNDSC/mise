@@ -168,9 +168,8 @@ effect, and no title constraint. CUBE's write endpoint is reserved for the delib
 [[pipeline-parameter-binding]]
 == Pipeline invocation as parameter binding
 
-NOTE: This section is the design contract for forward work. Registered pipelines can be
-run today, but per-node command-line and parameter-file overrides described here are not
-implemented or advertised in runtime help yet.
+NOTE: This contract is implemented by the ChELL pipeline executable and `pipeline run`
+surfaces. PACS attachment forwards the same invocation tokens after `--`.
 
 A plugin is a single executable with one flat parameter namespace:
 
@@ -235,9 +234,27 @@ The compound syntax is a surface representation of a typed binding:
 All surfaces produce the same bindings. A GUI may render a form grouped by pipeline node;
 the TUI parses compound options; neither changes the workflow model.
 
+The same node-qualified grammar covers CUBE Workflow execution controls:
+
+[source,shell]
+----
+brain-preprocessing \
+  --segmentation.compute_resource_name gpu \
+  --segmentation.memory_limit 8Gi \
+  --@481.number_of_workers 4
+----
+
+The reserved controls are `compute_resource_name`, `cpu_limit`, `memory_limit`,
+`gpu_limit`, and `number_of_workers`. Plain `--compute <resource>` remains the global
+baseline; node-qualified placement is more specific and wins. Node titles and topology
+are not runtime controls.
+
 === Serializable parameter overlays
 
-The same bindings must round-trip through `--paramFile <file>`. The file is a sparse
+The same bindings must round-trip through `--paramFile <file>`. Exactly one file may be
+supplied. It is resolved with ordinary ChELL path semantics and read from durable CUBE CFS
+using the authenticated user's normal read permissions; virtual `/bin`, `/proc`, `/net`,
+`/etc`, and `/usr` paths are not parameter files. The file is a sparse
 parameter overlay shaped like the parameter-bearing portion of the existing pipeline
 YAML, so an operator can move between a registered pipeline, an editor, a GUI form, and a
 command invocation without learning a second representation:
@@ -245,6 +262,7 @@ command invocation without learning a second representation:
 [source,yaml]
 ----
 name: brain-preprocessing
+pipeline_id: 27
 
 plugin_tree:
   tree:
@@ -255,29 +273,41 @@ plugin_tree:
           default: 12
 
     - title: segmentation
+      piping_id: 481
       plugin_name: pl-segmentation
+      plugin_version: 2.4.0
+      compute_resource_name: gpu
+      memory_limit: 8Gi
       plugin_parameter_defaults:
         - name: threshold
           default: 0.4
 ----
 
-`name` and `plugin_name` are optional compatibility assertions: when present,
+`name`, `pipeline_id`, `plugin_name`, and `plugin_version` are optional compatibility
+assertions: when present,
 they must match the selected registered pipeline and resolved node. Node titles are the
 portable identity across re-registration. An overlay node may instead supply
 `piping_id: 481` as the exact but registration-specific fallback; if both `title` and
 `piping_id` are present, they must resolve to the same node.
 
-Missing nodes and parameters retain their registered defaults. The overlay cannot change
-topology: `root_index`, `child_indices`, join structure, plugin selection, and resource
-shape are not invocation parameters and must be rejected if supplied rather than silently
-ignored. In particular, the structural `plugininstances` value of a `ts` node must survive
-the merge unchanged unless a future design explicitly gives join editing its own operation.
+Missing nodes and parameters retain their registered defaults. Compute and resource controls
+are mutable node bindings. Topology and identity are not: `root_index`, `child_indices`, node
+titles, and plugin selection are accepted only as strict assertions when a complete registered
+manifest is used as the file. Unknown fields, duplicate file bindings, mismatched assertions,
+and attempts to override the structural `plugininstances` value are errors.
+
+`cat /bin/<pipeline>` emits that complete registered invocation manifest, including
+`pipeline_id`, every `piping_id`, plugin versions, stored parameter overrides, effective
+compute (`host` when no placement is supplied), resource controls, and topology. Passing it
+back unchanged is a semantic no-op; editing selected values makes it a registration-specific
+parameter file. `pipeline source <pipeline>` remains the exact authoring YAML used for
+re-registration.
 
 When file and command-line bindings are combined, precedence is deterministic:
 
 [source]
 ----
-registered pipeline defaults < --paramFile values < --<node>.<parameter> values
+registered values < global --compute baseline < --paramFile node values < explicit compound values
 ----
 
 The fully merged node set is serialized to CUBE's workflow `nodes_info`, including every

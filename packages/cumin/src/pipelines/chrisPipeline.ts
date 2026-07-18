@@ -71,6 +71,10 @@ export interface WorkflowNodeOverride {
   piping_id: number;
   compute_resource_name?: string;
   title?: string;
+  cpu_limit?: unknown;
+  memory_limit?: unknown;
+  gpu_limit?: unknown;
+  number_of_workers?: unknown;
   plugin_parameter_defaults?: Array<{ name: string; default: unknown }>;
 }
 

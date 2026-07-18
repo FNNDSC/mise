@@ -521,13 +521,21 @@ appropriate subcommand:
 | (none)                        | run the pipeline
 | `--nodes` or `--parameters`  | show pipeline info
 | `--source` or `--readme`     | show pipeline source
+| `--paramFile <cfs-file>`     | apply one sparse CFS YAML overlay
+| `--<node>.<field> <value>`   | override a hosted parameter or node execution control
 |===
 
 [source,bash]
 ----
-my-pipeline --previous_id 456
+my-pipeline --previous 456
 my-pipeline --nodes
+my-pipeline --segmentation.threshold 0.5 --segmentation.memory_limit 8Gi
+my-pipeline --paramFile ~/experiments/run-1.yaml
 ----
+
+`cat /bin/my-pipeline` emits the registered CUBE invocation manifest, including
+pipeline and piping IDs. `pipeline source my-pipeline` emits the original
+authoring YAML.
 
 == Resource Commands
 

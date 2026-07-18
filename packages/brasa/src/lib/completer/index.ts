@@ -7,7 +7,14 @@
  * @module
  */
 import { session } from '../../session/index.js';
-import { plugins_listAll, vfsDispatcher, context_getSingle } from '@fnndsc/salsa';
+import {
+  plugins_listAll,
+  vfsDispatcher,
+  context_getSingle,
+  pipelineManifest_get,
+  type PipelineManifest,
+  type PipelineManifestNode,
+} from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { partialPath_split, completions_build } from './pathComplete.helpers.js';
@@ -152,6 +159,47 @@ export function input_complete(line: string, callback: CompleterCallback): void 
       callback(null, [builtinHits, trimmed]);
     });
     return;
+  }
+
+  const compoundWord: CompletionWord = completionWord_get(line);
+  if (compoundWord.value.startsWith('--')) {
+    const pipelineSpecifier: string | undefined = args[0] === 'pipeline' && args[1] === 'run'
+      ? args[2]
+      : args[0];
+    if (pipelineSpecifier !== undefined) {
+      pipelineManifest_get(pipelineSpecifier).then((result) => {
+        if (!result.ok) {
+          callback(null, [[], compoundWord.raw]);
+          return;
+        }
+        const executionFields: string[] = [
+          'compute_resource_name', 'cpu_limit', 'memory_limit', 'gpu_limit', 'number_of_workers',
+        ];
+        const options: string[] = [];
+        const manifest: PipelineManifest = result.value as PipelineManifest;
+        for (const node of manifest.nodes) {
+          const titleUsable: boolean = /^[A-Za-z0-9_-]+$/.test(node.title) &&
+            manifest.nodes.filter(
+              (candidate: PipelineManifestNode): boolean => candidate.title === node.title,
+            ).length === 1;
+          const selectors: string[] = titleUsable ? [node.title, `@${node.pipingID}`] : [`@${node.pipingID}`];
+          const fields: string[] = [
+            ...executionFields,
+            ...(node.parameterDefinitions ?? [])
+              .filter((parameter) => parameter.name !== 'plugininstances')
+              .map((parameter) => parameter.name),
+          ];
+          for (const field of fields) {
+            options.push(...selectors.map((selector: string): string => `--${selector}.${field}`));
+          }
+        }
+        callback(null, [
+          options.filter((option: string): boolean => option.startsWith(compoundWord.value)),
+          compoundWord.raw,
+        ]);
+      }).catch(() => callback(null, [[], compoundWord.raw]));
+      return;
+    }
   }
   
   // Case 2: Path Completion (Argument to specific commands)

@@ -1,5 +1,20 @@
 # @fnndsc/brasa
 
+## 0.9.6
+
+### Patch Changes
+
+- Run registered pipelines with node-qualified parameters, compute/resource
+  controls, and strict CFS YAML overlays; expose registered manifests through
+  `/bin`, contextual parameter help, and completion.
+- Attach one plugin or pipeline after `pacs pull --new-feed`, preserving the
+  valid Feed and root when attachment fails.
+- Preserve shell-tokenized spaces, negative values, booleans, and `--name=value`
+  across plugin and pipeline executable arguments.
+- Updated dependencies
+  - @fnndsc/cumin@3.8.4
+  - @fnndsc/salsa@3.5.3
+
 ## 0.9.5
 
 ### Patch Changes

@@ -1,12 +1,11 @@
 # Active project handoff
 
 - Last updated: 2026-07-18
-- Last verified against `main`: `ad1c3ce`
-- Working branch: `main`
-- Current milestone: the pipeline invocation contract for per-node runtime
-  bindings and serializable overlays is documented on `main`
-- Next action: implement the shared pipeline parameter-binding seam, then use it
-  for the PACS plugin/pipeline attachment contract
+- Last verified against `main`: `8f5bc90`
+- Working branch: `feat/pipeline-invocation-overlays`
+- Current milestone: pipeline runtime overlays and PACS plugin/pipeline
+  attachment are implemented, reviewed, and fully validated
+- Next action: land the implementation branch
 
 ## Current truth
 
@@ -40,8 +39,7 @@ landed with successful Node 22 and Node 24 CI.
 Ordinary `pacs pull` remains retrieve-only. Feed creation is all-or-nothing:
 invalid/empty operands, partial retrieval, or unresolved CUBE paths prevent Feed
 creation while leaving already retrieved files in storage. `--new-feed` is
-incompatible with `--nowait`. The current parser explicitly rejects
-`--plugin` and `--pipeline`.
+incompatible with `--nowait`.
 
 The authoritative behavior and architecture are documented in
 [packages/chell/docs/pacsqr.adoc](../packages/chell/docs/pacsqr.adoc). The root
@@ -49,7 +47,7 @@ README and ChELL README provide the short user-facing form, the ChELL command
 reference records the command grammar, and ChELL's domain glossary defines PACS
 Selection and PACS Analysis Attachment.
 
-## Next PACS increment: analysis attachment
+## PACS analysis attachment
 
 The agreed command surface is:
 
@@ -67,7 +65,7 @@ pacs pull <selection...> \
   --segmentation.threshold 0.4
 ```
 
-Contract:
+Implemented contract:
 
 - `--plugin` and `--pipeline` are mutually exclusive.
 - Both require `--new-feed`; neither implicitly creates a Feed.
@@ -85,9 +83,9 @@ Contract:
   Feed/root identity for manual continuation. Do not roll back the Feed.
 - On success, print the existing Feed/root summary plus the created plugin
   instance or workflow identity.
-- Keep runtime help limited to implemented flags until this increment lands.
+- Runtime help advertises the implemented attachment grammar.
 
-Likely starting points:
+Implementation seams:
 
 - `packages/brasa/src/builtins/fs/pull.args.ts` — parse the mutually exclusive
   attachment choice and the `--` payload.
@@ -98,11 +96,11 @@ Likely starting points:
   invocation behavior.
 - `packages/brasa/src/builtins/res/pipeline.ts` and `pipeline.args.ts` — reuse
   pipeline resolution and execution behavior.
-- `packages/brasa/tests/pacs-builtin.test.ts` — parser, lifecycle, failure, and
+- `packages/brasa/tests/pull-builtin.test.ts` — parser, lifecycle, failure, and
   output coverage.
 
-Do not duplicate plugin or pipeline resolution inside `pull`. Deepen the shared
-execution seams if the existing builtins cannot be called cleanly.
+Pipeline attachment reuses `builtin_pipeline`; plugin attachment reuses Salsa's
+plugin execution seam and the shared Brasa token binder.
 
 ChELL remains a ChRIS domain shell rather than a general programming language.
 It owns one configured platform operation; Bash, Python, or another caller owns
@@ -132,13 +130,17 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on `main` after PR #155 are ChELL 5.2.9, Calypso 0.4.4, Brasa
-0.9.5, Chili 3.6.1, Cumin 3.8.3, and Salsa 3.5.2. The latest npm-published
+Source versions on this branch are ChELL 5.2.10, Calypso 0.4.4, Brasa 0.9.6,
+Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.3. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 
-ChELL 5.2.9 is now on `main` with matching changelog and lockfile metadata; it
-remains unpublished to npm until the next release workflow.
+The bumped packages have matching changelog and lockfile metadata and remain
+unpublished to npm until the next release workflow.
+
+The implementation branch passes the dependency-ordered workspace build, the
+full workspace test suite and coverage gates, seam/test lint gates, documentation
+rendering, and independent standards/spec review.
 
 PR #155 passed Node 22/24 CI and GitGuardian. Package builds
 must remain dependency ordered; parallel downstream builds can race workspace
@@ -149,6 +151,9 @@ npm 10.9.8 when regenerating the root lockfile to avoid unrelated npm 11 churn.
 
 ## Follow-ups and risks
 
+- `pacs pull` still fires a new retrieve for a SeriesInstanceUID already present
+  in CFS. A separate idempotency increment should reuse complete series, retrieve
+  only missing/incomplete data, and provide an explicit force-refresh option.
 - PACS progress proof issue
   [#94](https://github.com/FNNDSC/mise/issues/94) remains constrained by the
   test-owned PACS fixture policy.

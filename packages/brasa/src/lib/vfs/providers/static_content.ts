@@ -7,11 +7,13 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack, pipeline_resolve, PipelineRecord } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import type { PipelineManifest } from '@fnndsc/salsa';
 import { commandHelp_get } from '../../../builtins/help.js';
-import { pipeline_sourceGet } from '@fnndsc/salsa';
 import chalk from 'chalk';
 import { session } from '../../../session/index.js';
+import { pipelineManifest_render } from '../../../builtins/res/pipeline.manifest.js';
+import { binPipelineManifest_try } from './binEntry.js';
 
 /**
  * Interface representing a ChRIS API Plugin parameter resource.
@@ -114,32 +116,6 @@ function pluginParameters_render(
 }
 
 /**
- * Renders a brief info block for a pipeline that has no registered YAML source.
- *
- * @param pipeline - The resolved PipelineRecord.
- * @returns Formatted summary string.
- */
-function pipelineSummary_render(pipeline: PipelineRecord): string {
-  const lines: string[] = [];
-  lines.push('');
-  lines.push(chalk.bold.magenta(pipeline.name));
-  lines.push(chalk.gray('─'.repeat(74)));
-  lines.push(`${chalk.bold.blue('ID:')}       ${pipeline.id}`);
-  if (pipeline.authors) lines.push(`${chalk.bold.blue('Authors:')}  ${pipeline.authors}`);
-  if (pipeline.category) lines.push(`${chalk.bold.blue('Category:')} ${pipeline.category}`);
-  if (pipeline.locked !== undefined) lines.push(`${chalk.bold.blue('Locked:')}   ${pipeline.locked}`);
-  if (pipeline.description) {
-    lines.push('');
-    lines.push(chalk.bold.blue('DESCRIPTION'));
-    lines.push(`  ${pipeline.description}`);
-  }
-  lines.push('');
-  lines.push(chalk.dim('No YAML source registered. Use `pipeline info <name>` for full DAG details.'));
-  lines.push('');
-  return lines.join('\n');
-}
-
-/**
  * Reads virtual file content under command and builtin static paths.
  *
  * Handles help text formatting for /usr/bin and fetches parameter specifications for /bin plugins.
@@ -167,15 +143,12 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
 
     if (prefix === "/bin") {
       const commandName: string = effectivePath.substring("/bin/".length);
+      const pipelineManifest: PipelineManifest | null = await binPipelineManifest_try(commandName);
+      if (pipelineManifest !== null) return Ok(pipelineManifest_render(pipelineManifest));
+
       const versionSeparatorIndex: number = commandName.lastIndexOf('-v');
 
       if (versionSeparatorIndex === -1) {
-        const yamlResult: Result<string> = await pipeline_sourceGet(commandName);
-        if (yamlResult.ok) return Ok(yamlResult.value);
-
-        const resolveResult: Result<PipelineRecord> = await pipeline_resolve(commandName);
-        if (resolveResult.ok) return Ok(pipelineSummary_render(resolveResult.value));
-
         errorStack.stack_push("error", `Unknown /bin entry: ${commandName}`);
         return Err();
       }

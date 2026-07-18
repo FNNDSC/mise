@@ -299,7 +299,14 @@ export class ChRISPlugin {
     return dict;
   }
 
-  async plugin_run(plugin: string, params: string): Promise<Dictionary | null> {
+  /**
+   * Run one plugin with typed parameters or a legacy CLI parameter string.
+   *
+   * @param plugin - Plugin search selector.
+   * @param params - Typed plugin parameters, or a legacy CLI string.
+   * @returns Created plugin-instance dictionary, or null on failure.
+   */
+  async plugin_run(plugin: string, params: string | ChRISObjectParams): Promise<Dictionary | null> {
     let pluginList: QueryHits | null;
     if ((pluginList = await this.pluginIDs_resolve(plugin)) === null) {
       return null;
@@ -307,7 +314,7 @@ export class ChRISPlugin {
     const pluginID: number = pluginList.hits[0] as number;
 
     // Parse params first to check for explicit previous_id
-    const pluginParams: ChRISObjectParams = dictionary_fromCLI(params);
+    const pluginParams: ChRISObjectParams = typeof params === 'string' ? dictionary_fromCLI(params) : params;
 
     // Prioritize explicit previous_id from params, fall back to context
     let previousID: number;

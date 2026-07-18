@@ -31,7 +31,27 @@ export {
   type PipelineDiagramArgument,
   type PipelineDiagramNode,
 } from './diagram.js';
+export {
+  pipelineManifest_get,
+  type PipelineManifest,
+  type PipelineManifestNode,
+  type PipelineManifestParameterDefault,
+} from './manifest.js';
+export {
+  pipelineInvocation_prepare,
+  type PipelineInvocationBinding,
+  type PipelineInvocationPrepareOptions,
+  type PipelineParameterDefinition,
+  type PreparedPipelineInvocation,
+  type PreparedWorkflowNode,
+} from './invocation.js';
 import axios from 'axios';
+import { pipelineManifest_get, type PipelineManifest } from './manifest.js';
+import {
+  pipelineInvocation_prepare,
+  type PipelineInvocationBinding,
+  type PreparedPipelineInvocation,
+} from './invocation.js';
 
 export type { PipelineRecord, WorkflowResult };
 
@@ -126,58 +146,46 @@ export async function pipelines_getAll(): Promise<Result<PipelineRecord[]>> {
   return Ok(records);
 }
 
+/** Runtime overlays accepted by `pipeline_run`. */
+export interface PipelineRunOptions {
+  /** Compute placement baseline applied before node-specific overlays. */
+  globalCompute?: string;
+  /** Parsed sparse or complete registered-manifest YAML overlay. */
+  parameterFile?: unknown;
+  /** Explicit node-qualified values, with highest precedence. */
+  cliBindings?: PipelineInvocationBinding[];
+}
+
 /**
- * Runs a pipeline by name or ID, attaching it to a previous plugin instance.
+ * Run a pipeline by name or ID, attaching it to a previous plugin instance.
  *
  * @param nameOrId - Pipeline name or numeric ID string.
- * @param previousPluginInstId - The plugin instance to attach the pipeline root to.
- * @param computeOverride - Optional compute resource name applied to all nodes.
- * @returns Result containing workflow ID and created plugin instance IDs.
+ * @param previousPluginInstId - Plugin instance to which pipeline roots attach.
+ * @param invocationOptions - Runtime overlays, or the legacy global compute string.
+ * @returns Result containing Workflow ID and created plugin instance IDs.
  */
 export async function pipeline_run(
   nameOrId: string,
   previousPluginInstId: number,
-  computeOverride?: string
+  invocationOptions: PipelineRunOptions | string = {},
 ): Promise<Result<WorkflowResult>> {
-  const pipelineResult: Result<PipelineRecord> = await pipeline_resolve(nameOrId);
-  if (!pipelineResult.ok) return Err();
-
-  const pipeline: PipelineRecord = pipelineResult.value;
-
-  const options: WorkflowCreateOptions = { previousPluginInstId };
-
-  if (computeOverride) {
-    const client = await chrisConnection.client_get();
-    if (!client) {
-      errorStack.stack_push('error', 'Not connected to ChRIS');
-      return Err();
-    }
-
-    try {
-      const pipelineObj = await (client as unknown as {
-        getPipeline: (id: number) => Promise<{
-          getPluginPipings: (opts: Record<string, unknown>) => Promise<{
-            getItems: () => Array<{ data: { id: number } }>;
-          }>;
-        }>;
-      }).getPipeline(pipeline.id);
-
-      if (pipelineObj) {
-        const pipingsResponse = await pipelineObj.getPluginPipings({ limit: 1000 });
-        const pipings = pipingsResponse.getItems();
-        options.nodeOverrides = pipings.map((p) => ({
-          piping_id: p.data.id,
-          compute_resource_name: computeOverride,
-        }));
-      }
-    } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      errorStack.stack_push('error', `pipeline_run: compute override failed: ${msg}`);
-      return Err();
-    }
-  }
-
-  return pipeline_createWorkflow(pipeline.id, options);
+  const normalized: PipelineRunOptions = typeof invocationOptions === 'string'
+    ? { globalCompute: invocationOptions }
+    : invocationOptions;
+  const manifestResult: Result<PipelineManifest> = await pipelineManifest_get(nameOrId);
+  if (!manifestResult.ok) return Err();
+  const prepared: Result<PreparedPipelineInvocation> = pipelineInvocation_prepare({
+    manifest: manifestResult.value,
+    globalCompute: normalized.globalCompute,
+    parameterFile: normalized.parameterFile,
+    cliBindings: normalized.cliBindings,
+  });
+  if (!prepared.ok) return Err();
+  const options: WorkflowCreateOptions = {
+    previousPluginInstId,
+    nodeOverrides: prepared.value.nodeOverrides,
+  };
+  return pipeline_createWorkflow(prepared.value.pipelineID, options);
 }
 
 /**

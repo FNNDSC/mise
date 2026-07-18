@@ -101,6 +101,7 @@ beforeEach(() => {
   mockHasHelpFlag.mockReturnValue(false);
   mockCommandHelpGet.mockReturnValue('known help');
   mockTiming.mockReturnValue(false);
+  mockExecutePlugin.mockResolvedValue({ status: 'ok', rendered: '' });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   exitSpy = jest.spyOn(process, 'exit').mockImplementation(((): never => {
@@ -155,6 +156,15 @@ describe('command_dispatch', () => {
     mockDataGet.mockResolvedValue(Ok([{ name: 'pl-dircopy', type: 'plugin' }]));
     await command_dispatch('pl-dircopy', ['--dir', '/a']);
     expect(mockExecutePlugin).toHaveBeenCalledWith('pl-dircopy', ['--dir', '/a']);
+  });
+
+  it('preserves a direct plugin failure envelope', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-dircopy', type: 'plugin' }]));
+    mockExecutePlugin.mockResolvedValue({ status: 'error', rendered: '' });
+
+    const result = await command_dispatchEnvelope('pl-dircopy', ['unexpected']);
+
+    expect(result.status).toBe('error');
   });
 
   it('runs a /bin pipeline name as a pipeline run', async () => {

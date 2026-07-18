@@ -9,7 +9,7 @@
  * - `diagram` — render the registered pipeline as a shallow tree or SignalFlow YAML
  *
  * Pipelines also appear as executables in `/bin` (colored distinctly from plugins)
- * and can be invoked directly by name. `cat /bin/<name>` returns the YAML source.
+ * and can be invoked directly by name. `cat /bin/<name>` returns its registered manifest.
  *
  * @module
  */
@@ -21,6 +21,9 @@ import {
   pipeline_resolve,
   procCache_get,
   type CommandEnvelope,
+  type PipelineRecord,
+  type Result,
+  type StackMessage,
   envelope_ok,
   envelope_error,
 } from '@fnndsc/cumin';
@@ -28,66 +31,22 @@ import {
   pipelines_list,
   pipeline_run,
   pipeline_sourceGet,
+  pipelineManifest_get,
+  fileContent_get,
+  type PipelineManifest,
+  type PipelineRunOptions,
+  type WorkflowResult,
   procCache_refresh,
 } from '@fnndsc/salsa';
+import { load as yamlLoad } from 'js-yaml';
 import { pipelineFields_fetch } from '@fnndsc/chili/commands/pipeline/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
 import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
-import { session } from '../../session/index.js';
-
-/**
- * Renders a pipeline's node structure by fetching its piping definitions.
- *
- * @param pipelineId - Numeric pipeline ID.
- */
-async function pipelineNodes_print(pipelineId: number): Promise<void> {
-  const client = await session.connection.client_get();
-  if (!client) {
-    sink_errLine(chalk.red('pipeline info: not connected to ChRIS'));
-    return;
-  }
-
-  try {
-    const pipelineObj = await (client as unknown as {
-      getPipeline: (id: number) => Promise<{
-        data: Record<string, unknown>;
-        getPluginPipings: (opts: Record<string, unknown>) => Promise<{
-          getItems: () => Array<{ data: Record<string, unknown> }>;
-        }>;
-      }>;
-    }).getPipeline(pipelineId);
-
-    if (!pipelineObj) {
-      sink_errLine(chalk.red(`pipeline info: pipeline ${pipelineId} not found`));
-      return;
-    }
-
-    const pipingsResponse = await pipelineObj.getPluginPipings({ limit: 1000 });
-    const pipings = pipingsResponse.getItems();
-
-    sink_dataLine(chalk.bold.blue('\nNodes:\n'));
-    sink_dataLine(
-      `  ${chalk.bold('ID'.padEnd(6))}${chalk.bold('Title'.padEnd(30))}${chalk.bold('Plugin')}`
-    );
-    sink_dataLine(`  ${chalk.gray('─'.repeat(70))}`);
-
-    for (const piping of pipings) {
-      const d: Record<string, unknown> = piping.data;
-      const id: string = String(d.id ?? '').padEnd(6);
-      const title: string = String(d.title ?? '(untitled)').padEnd(30);
-      const plugin: string = String(d.plugin_name ?? '') + ' v' + String(d.plugin_version ?? '');
-      const previous: string = d.previous_id ? chalk.gray(` ← node ${d.previous_id}`) : chalk.gray(' (root)');
-      sink_dataLine(`  ${chalk.cyan(id)}${chalk.white(title)}${chalk.yellow(plugin)}${previous}`);
-    }
-    sink_dataLine('');
-  } catch (error: unknown) {
-    const msg: string = error instanceof Error ? error.message : String(error);
-    sink_errLine(chalk.red(`pipeline info: ${msg}`));
-  }
-}
+import { pipelineParameters_render } from './pipeline.manifest.js';
+import { path_resolve } from '../utils.js';
 
 /**
  * Handles `pipeline list [search]`.
@@ -120,29 +79,38 @@ async function pipelineList_handle(args: string[]): Promise<void> {
  * Handles `pipeline info <name|id>`.
  *
  * @param args - Command arguments.
+ * @returns Command envelope whose status matches resolution and manifest fetching.
  */
-async function pipelineInfo_handle(args: string[]): Promise<void> {
+async function pipelineInfo_handle(args: string[]): Promise<CommandEnvelope> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
     sink_errLine(chalk.red('Usage: pipeline info <name|id>'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
-  const result = await pipeline_resolve(nameOrId);
+  const result: Result<PipelineRecord> = await pipeline_resolve(nameOrId);
   if (!result.ok) {
-    const err = errorStack.stack_pop();
+    const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline info: ${err?.message ?? 'not found'}`));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
-  const p = result.value;
+  const p: PipelineRecord = result.value;
   sink_dataLine('');
   sink_dataLine(`${chalk.bold.magenta(p.name)}  ${chalk.gray(`[id: ${p.id}]`)}`);
   if (p.description) sink_dataLine(chalk.white(`  ${p.description}`));
   if (p.authors)     sink_dataLine(chalk.gray(`  Authors: ${p.authors}`));
   if (p.category)    sink_dataLine(chalk.gray(`  Category: ${p.category}`));
   sink_dataLine(chalk.gray(`  Locked: ${p.locked ? 'yes' : 'no'}`));
-  await pipelineNodes_print(p.id);
+  const manifestResult: Result<PipelineManifest> = await pipelineManifest_get(nameOrId);
+  if (!manifestResult.ok) {
+    const err: StackMessage | undefined = errorStack.stack_pop();
+    sink_errLine(chalk.red(`pipeline info: ${err?.message ?? 'manifest unavailable'}`));
+    process.exitCode = 1;
+    return envelope_error('');
+  }
+  sink_dataLine(pipelineParameters_render(manifestResult.value as PipelineManifest));
+  return envelope_ok('');
 }
 
 /**
@@ -175,36 +143,75 @@ async function pipelineRun_previousInstId(previousOverride: number | undefined):
  * Handles `pipeline run <name|id> [--compute <r>] [--previous <id>]`.
  *
  * @param args - Command arguments.
+ * @returns Command envelope whose status matches Workflow creation.
  */
-async function pipelineRun_handle(args: string[]): Promise<void> {
+async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
     sink_errLine(chalk.red('Usage: pipeline run <name|id> [--compute <resource>] [--previous <inst_id>]'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
 
-  const { computeOverride, previousOverride }: PipelineRunOverrides = pipelineRunArgs_parse(args);
+  const parsed: PipelineRunOverrides = pipelineRunArgs_parse(args);
+  const { computeOverride, previousOverride } = parsed;
+  if (parsed.parseError !== null) {
+    sink_errLine(chalk.red(`pipeline run: ${parsed.parseError}`));
+    process.exitCode = 1;
+    return envelope_error('');
+  }
 
   const previousInstId: number | null = await pipelineRun_previousInstId(previousOverride);
-  if (previousInstId === null) return;
+  if (previousInstId === null) return envelope_error('');
 
-  const pipelineResult = await pipeline_resolve(nameOrId);
+  const pipelineResult: Result<PipelineRecord> = await pipeline_resolve(nameOrId);
   if (!pipelineResult.ok) {
-    const err = errorStack.stack_pop();
+    const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline run: ${err?.message ?? 'pipeline not found'}`));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
 
   sink_dataLine(chalk.gray(`Running pipeline '${pipelineResult.value.name}' on instance ${previousInstId}...`));
 
-  const runResult = await pipeline_run(nameOrId, previousInstId, computeOverride);
+  let parameterFile: unknown;
+  if (parsed.paramFile !== undefined) {
+    const resolvedPath: string = await path_resolve(parsed.paramFile);
+    const virtualPrefix: string | undefined = ['/bin', '/usr', '/etc', '/proc', '/net']
+      .find((prefix: string): boolean => resolvedPath === prefix || resolvedPath.startsWith(`${prefix}/`));
+    if (virtualPrefix !== undefined) {
+      sink_errLine(chalk.red(`pipeline run: --paramFile must name a readable CFS file, not '${resolvedPath}'`));
+      process.exitCode = 1;
+      return envelope_error('');
+    }
+    const contentResult: Result<string> = await fileContent_get(resolvedPath);
+    if (!contentResult.ok) {
+      const err: StackMessage | undefined = errorStack.stack_pop();
+      sink_errLine(chalk.red(`pipeline run: ${err?.message ?? `cannot read ${resolvedPath}`}`));
+      process.exitCode = 1;
+      return envelope_error('');
+    }
+    try {
+      parameterFile = yamlLoad(contentResult.value);
+    } catch (error: unknown) {
+      const message: string = error instanceof Error ? error.message : String(error);
+      sink_errLine(chalk.red(`pipeline run: invalid parameter YAML: ${message}`));
+      process.exitCode = 1;
+      return envelope_error('');
+    }
+  }
+  const hasInvocationOptions: boolean = computeOverride !== undefined || parameterFile !== undefined || parsed.bindings.length > 0;
+  const invocationOptions: PipelineRunOptions | undefined = hasInvocationOptions ? {
+    globalCompute: computeOverride,
+    parameterFile,
+    cliBindings: parsed.bindings,
+  } : undefined;
+  const runResult: Result<WorkflowResult> = await pipeline_run(nameOrId, previousInstId, invocationOptions);
   if (!runResult.ok) {
-    const err = errorStack.stack_pop();
+    const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline run: ${err?.message ?? 'workflow creation failed'}`));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
 
   const { workflowId, pluginInstanceIds } = runResult.value;
@@ -218,28 +225,31 @@ async function pipelineRun_handle(args: string[]): Promise<void> {
   }
   sink_dataLine(chalk.green(`✓ Workflow ${workflowId} created — ${pluginInstanceIds.length} node(s) queued`));
   sink_dataLine(chalk.gray(`  Instance IDs: ${pluginInstanceIds.join(', ')}`));
+  return envelope_ok('');
 }
 
 /**
  * Handles `pipeline source <name|id>`.
  *
  * @param args - Command arguments.
+ * @returns Command envelope whose status matches source retrieval.
  */
-async function pipelineSource_handle(args: string[]): Promise<void> {
+async function pipelineSource_handle(args: string[]): Promise<CommandEnvelope> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
     sink_errLine(chalk.red('Usage: pipeline source <name|id>'));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
-  const sourceResult = await pipeline_sourceGet(nameOrId);
+  const sourceResult: Result<string> = await pipeline_sourceGet(nameOrId);
   if (!sourceResult.ok) {
-    const err = errorStack.stack_pop();
+    const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline source: ${err?.message ?? 'source not found'}`));
     process.exitCode = 1;
-    return;
+    return envelope_error('');
   }
   sink_dataLine(sourceResult.value);
+  return envelope_ok('');
 }
 
 /**
@@ -317,14 +327,11 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
       await pipelineList_handle(args);
       return envelope_ok('');
     case 'info':
-      await pipelineInfo_handle(args);
-      return envelope_ok('');
+      return pipelineInfo_handle(args);
     case 'run':
-      await pipelineRun_handle(args);
-      return envelope_ok('');
+      return pipelineRun_handle(args);
     case 'source':
-      await pipelineSource_handle(args);
-      return envelope_ok('');
+      return pipelineSource_handle(args);
     case 'diagram':
       return pipelineDiagramCommand_handle(args);
     case 'inspect':

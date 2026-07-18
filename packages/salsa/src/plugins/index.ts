@@ -132,9 +132,7 @@ export function dictionary_toCLI(params: Dictionary): string {
  */
 export async function plugin_run(searchable: string, parameters: Dictionary): Promise<Dictionary | null> {
   const chrisPlugin: ChRISPlugin = new ChRISPlugin();
-  // Convert Dictionary to CLI-style string format expected by cumin
-  const paramsString: string = dictionary_toCLI(parameters);
-  return await chrisPlugin.plugin_run(searchable, paramsString);
+  return await chrisPlugin.plugin_run(searchable, parameters);
 }
 
 /**

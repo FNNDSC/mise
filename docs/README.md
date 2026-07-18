@@ -5,6 +5,13 @@ what has shipped, where the project is going, and why. This is not primarily use
 documentation; for using the shell and the packages, see the per-package READMEs (start with
 [packages/chell](../packages/chell/README.md)).
 
+- **[mise.adoc](mise.adoc)** — the scientific architecture paper: ChRIS and
+  CUBE's historical context, the Collection+JSON intent gap, mise's taxonomic
+  placement and state model, adversarial analysis of the multilayer design, and
+  the concrete backend capabilities that mise's edges suggest CUBE should add.
+  Supporting source verification is recorded in
+  **[mise-references.md](mise-references.md)**.
+
 - **[history.adoc](history.adoc)** — the narrative history of the stack: how mise
   grew from a single adapter that tamed Collection+JSON into a layered command
   substrate, then a shell, then a hostable engine a daemon can serve to many

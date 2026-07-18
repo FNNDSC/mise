@@ -1,5 +1,37 @@
 # @fnndsc/chell
 
+## 5.2.13
+
+### Patch Changes
+
+- Restore Unix-fast `cat /bin/<pipeline>` semantics and expose complete,
+  potentially remote Pipeline inspection through `pipeline manifest` and the
+  direct executable's `--manifest` alias.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.9
+  - @fnndsc/salsa@3.5.5
+
+## 5.2.12
+
+### Patch Changes
+
+- Show a delayed, ephemeral `Reading registered pipeline…` spinner on stderr
+  for slow interactive `/bin` Pipeline reads; keep pipes, redirects, and fast
+  cache hits silent.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.8
+  - @fnndsc/calypso@0.4.5
+
+## 5.2.11
+
+### Patch Changes
+
+- Keep the cold `cat /bin/<pipeline>` remote request count independent of node
+  count and make repeated reads connection-cache hits.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.7
+  - @fnndsc/salsa@3.5.4
+
 ## 5.2.10
 
 ### Patch Changes

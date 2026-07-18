@@ -13,6 +13,13 @@
  */
 import { z } from 'zod';
 import { PROC_PROMPT_STATES } from '@fnndsc/cumin/proc-prompt';
+import {
+  PROGRESS_KINDS,
+  PROGRESS_OPERATIONS,
+  PROGRESS_PHASES,
+  PROGRESS_STATUSES,
+  PROGRESS_UNITS,
+} from '@fnndsc/brasa/progress';
 import { commandEnvelopeSchema } from './envelope.js';
 
 /** The sink channel an output event belongs to. */
@@ -118,19 +125,19 @@ export const outputMessageSchema = z.object({
 });
 
 /** The operation producing structured progress. */
-export const progressOperationSchema = z.enum(['upload', 'download', 'pull', 'workflow']);
+export const progressOperationSchema = z.enum(PROGRESS_OPERATIONS);
 
 /** Broad class of progress producer. */
-export const progressKindSchema = z.enum(['transfer', 'retrieve', 'workflow']);
+export const progressKindSchema = z.enum(PROGRESS_KINDS);
 
 /** Lifecycle phase of a progress operation. */
-export const progressPhaseSchema = z.enum(['scanning', 'transferring', 'watching', 'retrying', 'complete', 'failed']);
+export const progressPhaseSchema = z.enum(PROGRESS_PHASES);
 
 /** Unit used by the primary progress counter. */
-export const progressUnitSchema = z.enum(['files', 'bytes', 'series', 'jobs', 'nodes']);
+export const progressUnitSchema = z.enum(PROGRESS_UNITS);
 
 /** State of the operation or item being reported. */
-export const progressStatusSchema = z.enum(['running', 'done', 'unconfirmed', 'stalled', 'timeout', 'error', 'unknown']);
+export const progressStatusSchema = z.enum(PROGRESS_STATUSES);
 
 /** A structured progress event correlated to a command. */
 export const progressMessageSchema = z.object({

@@ -1,11 +1,13 @@
 # Active project handoff
 
 - Last updated: 2026-07-18
-- Last verified against `main`: `8f5bc90`
-- Working branch: `feat/pipeline-invocation-overlays`
-- Current milestone: pipeline runtime overlays and PACS plugin/pipeline
-  attachment are implemented, reviewed, and fully validated
-- Next action: land the implementation branch
+- Last verified against `main`: `e8d44db`
+- Working branch: `fix/pipeline-manifest-performance`
+- Current milestone: fast cache-only `/bin` Pipeline summaries and explicit
+  registered manifest inspection are implemented, independently reviewed, and
+  fully validated
+- Next action: publish the branch (three implementation commits plus this final
+  documentation handoff) for integration; no implementation work remains
 
 ## Current truth
 
@@ -22,6 +24,28 @@
   select a provider without a separate design session.
 - `codex.resume` is an unrelated untracked local file. Do not add, edit, or
   remove it.
+
+## Pipeline invocation and inspection complete
+
+The Pipeline UX increment is complete on `fix/pipeline-manifest-performance`:
+
+- `6763618` targets exact registered Pipeline manifests and caches repeated reads.
+- `e88f634` adds delayed semantic inspection progress for slow remote hydration.
+- `9325ea3` restores immediate Unix-like `cat /bin/<pipeline>` behavior and moves
+  complete inspection to `pipeline manifest <name|id|slug>` and
+  `<pipeline> --manifest`.
+
+`pipeline diagram <name|id>` and `<pipeline> --diagram` draw the registered DAG;
+`--withargs` adds stored defaults and `--signalflow` emits SignalFlow YAML.
+The authoritative invocation, parameter-file, manifest, and drawing contracts
+are in [feed-dag-viewer.adoc](feed-dag-viewer.adoc#pipeline-parameter-binding).
+The command summary is in
+[script-reference.adoc](../packages/chell/docs/script-reference.adoc#_pipeline_execution).
+
+The branch has no upstream yet. Its dependency-ordered build, all 2,377 workspace
+tests and coverage gates, seam/test lint (with four pre-existing warnings),
+AsciiDoc rendering, production-identifier audit, and independent standards/spec
+review passed. No live CUBE or production fixture is embedded in the tests.
 
 ## PACS workflow now on `main`
 
@@ -123,6 +147,7 @@ general orchestration. The rationale and composability obligations are in
 - PR #154: authoritative PACS attachment design and ChELL 5.2.8 documentation.
 - PR #155: pipeline parameter-binding/file-overlay contract and the Unix boundary
   that keeps general programming in the calling shell; ChELL 5.2.9 documentation.
+- PR #157: Pipeline invocation overlays and PACS plugin/Pipeline attachment.
 
 Historical Stage 1/2 and earlier delivery detail is archived in
 [history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md) and GitHub's
@@ -130,8 +155,8 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on this branch are ChELL 5.2.10, Calypso 0.4.4, Brasa 0.9.6,
-Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.3. The latest npm-published
+Source versions on this branch are ChELL 5.2.13, Calypso 0.4.5, Brasa 0.9.9,
+Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.5. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 

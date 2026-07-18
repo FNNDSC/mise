@@ -105,6 +105,21 @@ is portable. `@<piping-id>` is the exact registration-specific command-line
 fallback; a parameter-file node uses the corresponding `piping_id` field.
 Topology and structural join values are not runtime parameter bindings.
 
+`pipeline manifest <pipeline>` reads the registered projection: Pipeline and
+piping identity, topology, stored values, placement, and resource controls.
+`<pipeline> --manifest` is its direct-executable alias. Exact `_id<N>` slug
+resolution is targeted and connection-cached; this inspection path does not
+enumerate all Pipelines or fetch hosted Plugin schemas for every node.
+Execution validation still uses the enriched manifest when binding a Workflow.
+
+`cat /bin/<pipeline>` stays immediate and Unix-like. It uses only cached `/bin`
+identity, falling back to the stable `_id<N>` suffix on a cold cache, and emits
+a short summary pointing to the explicit manifest command. It never hydrates
+the manifest. Slow uncached `pipeline manifest` reads emit semantic inspection
+progress after a 300 ms delay. ChELL renders that progress as an ephemeral
+stderr spinner only on an interactive TTY; it never becomes manifest data or
+enters a pipe or redirect, and fast cache hits remain silent.
+
 One overlay configures one Workflow invocation. Repetition over several input
 or parameter files belongs to a general caller such as Bash, not to a Pipeline
 `--sweep` option or control-flow extensions in ChELL.

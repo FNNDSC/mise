@@ -38,12 +38,13 @@ scratch, and most stalled under the weight of it.
 
 mise builds that plumbing once and hands you ChRIS as something you *operate*
 directly. What you run is **chell**, a shell: your data appears as folders and
-files, every analysis plugin is a command in `/bin`, and a running job is a live
-entry under `/proc`. Instead of writing API code, you drive it:
+files, every analysis plugin and registered pipeline is a command in `/bin`, and
+a running job is a live entry under `/proc`. Instead of writing API code, you
+drive it:
 
 ```bash
 cd /home/chris/uploads/SAG-anon       # your data is a filesystem
-ls /bin                               # every plugin is a virtual executable
+ls /bin                               # plugins and pipelines are virtual executables
 pl-fshack-v1.2.0 --inputFile brain.mgz   # run an analysis by name
 cat /proc/jobs/feed_123/pl-fshack_789/status   # watch it run
 ```
@@ -76,7 +77,7 @@ Then drive it:
 ```bash
 > ls                       # your files and feeds, as a directory
 > feed list                # every analysis you've run
-> ls /bin                  # every plugin, as a virtual executable
+> ls /bin                  # every plugin and pipeline, as a virtual executable
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name
 > ls /proc/jobs           # watch running jobs, live
@@ -214,16 +215,16 @@ which maps API resources onto paths:
 | Path | What you see |
 |------|--------------|
 | `/home/<user>/` | Your uploaded files, directories, and feeds |
-| `/bin` | Every plugin registered in this CUBE (virtual executables) |
+| `/bin` | Every plugin and Pipeline registered in this CUBE (virtual executables) |
 | `/etc` | Config — compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | PACS query result sets |
 | `/proc/jobs/` | Live job monitoring as a navigable DAG |
 
 PACS selections can become analysis inputs in one operation: `pacs pull
 <selection...> --new-feed "TITLE"` retrieves the complete set and creates one
-named feed rooted in those resolved CUBE directories. Planned `--plugin` and
-`--pipeline` additions will optionally attach an analysis to that new root while
-keeping feed creation explicit; the current and planned behavior is specified in
+named feed rooted in those resolved CUBE directories. `--plugin` and `--pipeline`
+can attach one analysis to that explicit new root, forwarding its arguments after
+`--`; the complete behavior is specified in
 [the PACS Q/R guide](packages/chell/docs/pacsqr.adoc#planned-analysis-attachment).
 
 See [packages/chell/README.md](packages/chell/README.md) for the full tour

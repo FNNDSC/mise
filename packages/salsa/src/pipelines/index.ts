@@ -34,6 +34,7 @@ export {
 export {
   pipelineManifest_get,
   type PipelineManifest,
+  type PipelineManifestGetOptions,
   type PipelineManifestNode,
   type PipelineManifestParameterDefault,
 } from './manifest.js';
@@ -46,7 +47,12 @@ export {
   type PreparedWorkflowNode,
 } from './invocation.js';
 import axios from 'axios';
-import { pipelineManifest_get, type PipelineManifest } from './manifest.js';
+import {
+  pipelineManifestForPipeline_get,
+  pipelineManifest_get,
+  type PipelineManifest,
+  type PipelineManifestResource,
+} from './manifest.js';
 import {
   pipelineInvocation_prepare,
   type PipelineInvocationBinding,
@@ -54,6 +60,53 @@ import {
 } from './invocation.js';
 
 export type { PipelineRecord, WorkflowResult };
+
+type ConnectionClient = Awaited<ReturnType<typeof chrisConnection.client_get>>;
+
+interface PipelineSlugCacheEntry {
+  record: PipelineRecord;
+  resource: PipelineLookupResource;
+  expiresAt: number;
+}
+
+interface PipelineSourceFileItem {
+  data: { fname: string; pipeline_id?: number; pipeline_name?: string };
+}
+
+interface PipelineSourceFileList {
+  getItems: () => PipelineSourceFileItem[];
+}
+
+interface PipelineLookupResource extends PipelineManifestResource {
+  data?: PipelineRecord;
+}
+
+interface PipelineLookupClient {
+  getPipeline: (id: number) => Promise<PipelineLookupResource | null>;
+  getPipelineSourceFiles: (options: Record<string, unknown>) => Promise<PipelineSourceFileList>;
+}
+
+const PIPELINE_SLUG_TTL_MS: number = 5 * 60 * 1000;
+const pipelineSlugCaches: WeakMap<object, Map<string, PipelineSlugCacheEntry>> = new WeakMap();
+
+function pipelineSlugCache_get(client: object): Map<string, PipelineSlugCacheEntry> {
+  let cache: Map<string, PipelineSlugCacheEntry> | undefined = pipelineSlugCaches.get(client);
+  if (cache === undefined) {
+    cache = new Map();
+    pipelineSlugCaches.set(client, cache);
+  }
+  return cache;
+}
+
+function pipelineSlug_create(pipeline: PipelineRecord, sourceFilename?: string): string {
+  const sourceBase: string | undefined = sourceFilename
+    ?.split('/').pop()?.replace(/\.(ya?ml)$/i, '');
+  const generatedBase: string = pipeline.name
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  return `${sourceBase ?? generatedBase}_id${pipeline.id}`;
+}
 
 /**
  * Lists registered pipelines, optionally filtered by name substring.
@@ -101,7 +154,7 @@ export async function pipelineFields_get(): Promise<string[] | null> {
  * @returns Result containing array of PipelineRecord (with slug attached).
  */
 export async function pipelines_getAll(): Promise<Result<PipelineRecord[]>> {
-  const client = await chrisConnection.client_get();
+  const client: ConnectionClient = await chrisConnection.client_get();
   if (!client) {
     errorStack.stack_push('error', 'Not connected to ChRIS');
     return Err();
@@ -118,32 +171,85 @@ export async function pipelines_getAll(): Promise<Result<PipelineRecord[]>> {
 
   if (!pipelinesResult.ok) return Err();
 
-  const idToSlug: Map<number, string> = new Map<number, string>();
+  const idToSourceFilename: Map<number, string> = new Map<number, string>();
   if (sourceFilesResponse) {
     for (const item of sourceFilesResponse.getItems()) {
       const { fname, pipeline_id } = item.data;
       if (pipeline_id && fname) {
-        const base: string = fname.split('/').pop() ?? '';
-        const slug: string = base.replace(/\.(ya?ml)$/i, '');
-        idToSlug.set(pipeline_id, slug);
+        idToSourceFilename.set(pipeline_id, fname);
       }
     }
   }
 
-  const records = pipelinesResult.value.map((pipeline: PipelineRecord) => {
-    const sourceSlug: string | undefined = idToSlug.get(pipeline.id);
-    const generatedSlug: string = pipeline.name
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_|_$/g, '');
-    const base: string = sourceSlug ?? generatedSlug;
-    return {
-      ...pipeline,
-      slug: `${base}_id${pipeline.id}`,
-    };
-  });
+  const records = pipelinesResult.value.map((pipeline: PipelineRecord) => ({
+    ...pipeline,
+    slug: pipelineSlug_create(pipeline, idToSourceFilename.get(pipeline.id)),
+  }));
 
   return Ok(records);
+}
+
+/**
+ * Project one exact Pipeline executable slug without listing every Pipeline.
+ *
+ * The stable `_id<N>` suffix identifies the candidate Pipeline. The targeted
+ * source-file lookup then verifies the complete slug before it is accepted.
+ *
+ * @param slug - Exact Pipeline basename exposed in `/bin`.
+ * @returns The registered invocation manifest for the exact Pipeline slug.
+ */
+export async function pipelineManifestBySlug_get(slug: string): Promise<Result<PipelineManifest>> {
+  const match: RegExpMatchArray | null = slug.match(/_id(\d+)$/);
+  if (match === null) return Err();
+
+  const pipelineID: number = Number(match[1]);
+  const client: ConnectionClient = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push('error', 'Not connected to ChRIS');
+    return Err();
+  }
+  const cache: Map<string, PipelineSlugCacheEntry> = pipelineSlugCache_get(client as object);
+  const cached: PipelineSlugCacheEntry | undefined = cache.get(slug);
+  if (cached !== undefined && cached.expiresAt > Date.now()) {
+    return pipelineManifestForPipeline_get(
+      cached.record,
+      cached.resource,
+      { detail: 'registered' },
+    );
+  }
+  if (cached !== undefined) cache.delete(slug);
+
+  try {
+    const typedClient: PipelineLookupClient = client as unknown as PipelineLookupClient;
+    const [pipelineResource, sourceFiles]: [PipelineLookupResource | null, PipelineSourceFileList] = await Promise.all([
+      typedClient.getPipeline(pipelineID),
+      typedClient.getPipelineSourceFiles({ pipeline_id: pipelineID, limit: 1000 }),
+    ]);
+    if (pipelineResource === null || pipelineResource.data === undefined) return Err();
+    const pipeline: PipelineRecord = pipelineResource.data;
+
+    const sourceItems: PipelineSourceFileItem[] = sourceFiles.getItems();
+    const source: PipelineSourceFileItem | undefined = sourceItems.find(
+      (item: PipelineSourceFileItem): boolean => item.data.pipeline_id === pipelineID,
+    )
+      ?? sourceItems.find(
+        (item: PipelineSourceFileItem): boolean => item.data.pipeline_name === pipeline.name,
+      )
+      ?? (sourceItems.length === 1 ? sourceItems[0] : undefined);
+    const exactSlug: string = pipelineSlug_create(pipeline, source?.data.fname);
+    if (exactSlug !== slug) return Err();
+    const record: PipelineRecord = { ...pipeline, slug: exactSlug };
+    cache.set(slug, {
+      record,
+      resource: pipelineResource,
+      expiresAt: Date.now() + PIPELINE_SLUG_TTL_MS,
+    });
+    return pipelineManifestForPipeline_get(record, pipelineResource, { detail: 'registered' });
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('error', `pipelineManifestBySlug_get: ${message}`);
+    return Err();
+  }
 }
 
 /** Runtime overlays accepted by `pipeline_run`. */

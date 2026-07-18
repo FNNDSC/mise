@@ -61,10 +61,11 @@ describe('help_render', () => {
   });
 
   it('renders dynamic pipeline executable operations', () => {
-    const help: string = pipelineExecutableHelp_render('US_DICOM_id127');
-    expect(help).toContain('US_DICOM_id127');
+    const help: string = pipelineExecutableHelp_render('example_pipeline_id42');
+    expect(help).toContain('example_pipeline_id42');
     expect(help).toContain('--diagram --withargs');
     expect(help).toContain('--signalflow');
+    expect(help).toContain('--manifest');
     expect(help).toContain('--source, --readme');
   });
 

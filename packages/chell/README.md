@@ -17,7 +17,7 @@ Requires Node.js ≥ 20.12. This installs the `chell` command — see [Getting S
 ChRIS stores data, analysis tools, and results behind a REST API. ChELL maps all of that onto paths:
 
 - your data lives under `/home/<user>/`
-- every registered plugin is a virtual executable in `/bin`
+- every registered plugin and Pipeline is a virtual executable in `/bin`
 - system configuration is readable at `/etc`
 - PACS query results surface under `/net/pacs/queries/`
 
@@ -59,7 +59,7 @@ The ChELL filesystem has two kinds of paths:
 | `/SERVICES/` | CFS | Service-level data |
 | `/SHARED/` | CFS | Cross-user shared data |
 | `*.chrislink` | CFS | Symbolic links to other ChRIS paths |
-| `/bin` | VFS | Every plugin registered in this CUBE |
+| `/bin` | VFS | Every plugin and Pipeline registered in this CUBE |
 | `/usr/bin` | VFS | Built-in shell commands (`id`, `whoami`, `whereami`, …) |
 | `/etc/` | VFS | Config: compute environments, groups, users, CUBE info |
 | `/net/pacs/queries/` | VFS | PACS query result sets |
@@ -175,16 +175,34 @@ A **workflow** is a live instantiation of a pipeline, attached to a specific fee
 ```bash
 # Browse registered pipeline templates
 pipeline list
-pipeline inspect <id>
+pipeline info <name|id>
 
-# Instantiate a pipeline on an existing feed node → creates a workflow
-workflow create <pipeline_id> --previous_id <instance_id>
+# Inspect or draw a registered template
+pipeline manifest <name|id|slug>
+pipeline diagram <name|id>
+
+# Run by invoking its /bin name in the current context
+brain-segmentation
+brain-segmentation --segmentation.threshold 0.5
+brain-segmentation --paramFile ~/experiments/run-1.yaml
+
+# Equivalent explicit form
+pipeline run brain-segmentation --previous <instance_id>
 
 # Monitor all the jobs it spawns
 jobs list --feed <feed_id>
 ```
 
-The `--previous_id` here is the feed node to attach the first pipeline step to — the same context that ChELL resolves automatically when you invoke a single plugin directly.
+`<pipeline> --manifest` is the direct alias for the complete registered
+invocation YAML, including piping IDs, stored values, compute placement, resource
+controls, and topology. `cat /bin/<pipeline>` intentionally remains immediate:
+it prints only a cached executable summary pointing to the manifest command.
+
+`<pipeline> --diagram` is the direct drawing alias; add `--withargs` for stored
+defaults or `--signalflow` for SignalFlow YAML. Pipeline parameters and execution
+controls use `--<node>.<field> <value>`, while `--paramFile <cfs-file>` reads one
+sparse overlay from durable CFS. ChELL resolves the current context automatically;
+`--previous <instance_id>` selects an explicit attachment point.
 
 ---
 
@@ -285,7 +303,7 @@ feeds list [--user <name>] [--all]
 feed note <id>          # read feed note
 feed note edit <id>     # edit feed note in $EDITOR
 feed comments <id>      # list comments
-pipeline list / inspect
+pipeline list / info / manifest / run / source / diagram
 workflow list / create
 job inspect <id>
 compute list            # list compute environments

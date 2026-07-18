@@ -78,6 +78,12 @@ export interface PipelineManifest {
   nodes: PipelineManifestNode[];
 }
 
+/** Controls how much remote metadata is included in a Pipeline manifest. */
+export interface PipelineManifestGetOptions {
+  /** `registered` omits hosted schemas; `execution` includes validation metadata. */
+  detail?: 'registered' | 'execution';
+}
+
 interface PipingData {
   id: number;
   title?: string;
@@ -120,41 +126,141 @@ interface DefaultParameterData {
 interface Item<T> { data: T }
 interface ItemList { getItems: () => unknown[] }
 interface DataList { data?: unknown }
-interface PipelineResource {
+/** Remote registered Pipeline resource used to build an invocation manifest. */
+export interface PipelineManifestResource {
+  /** List the Pipeline's registered PluginPipings. */
   getPluginPipings: (options: Record<string, unknown>) => Promise<ItemList>;
+  /** List the parameter and execution-control values stored on its pipings. */
   getDefaultParameters: (options: Record<string, unknown>) => Promise<DataList>;
 }
 interface PipelineClient {
-  getPipeline: (id: number) => Promise<PipelineResource | null>;
+  getPipeline: (id: number) => Promise<PipelineManifestResource | null>;
+}
+
+interface TimedCacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+interface PipelineManifestClientCache {
+  aliases: Map<string, TimedCacheEntry<PipelineRecord>>;
+  manifests: Map<string, TimedCacheEntry<PipelineManifest>>;
+  pluginMetadata: Map<string, TimedCacheEntry<Promise<PluginMetadata>>>;
+}
+
+interface PluginMetadata {
+  computeResources: string[];
+  parameterDefinitions: NonNullable<PipelineManifestNode['parameterDefinitions']>;
+}
+
+const PIPELINE_MANIFEST_TTL_MS: number = 5 * 60 * 1000;
+const manifestCaches: WeakMap<object, PipelineManifestClientCache> = new WeakMap();
+
+function timedCache_get<T>(entries: Map<string, TimedCacheEntry<T>>, key: string): T | undefined {
+  const entry: TimedCacheEntry<T> | undefined = entries.get(key);
+  if (entry === undefined) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    entries.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function timedCache_set<T>(entries: Map<string, TimedCacheEntry<T>>, key: string, value: T): void {
+  entries.set(key, { value, expiresAt: Date.now() + PIPELINE_MANIFEST_TTL_MS });
+}
+
+function manifestClientCache_get(client: object): PipelineManifestClientCache {
+  let cache: PipelineManifestClientCache | undefined = manifestCaches.get(client);
+  if (cache === undefined) {
+    cache = { aliases: new Map(), manifests: new Map(), pluginMetadata: new Map() };
+    manifestCaches.set(client, cache);
+  }
+  return cache;
+}
+
+async function pluginMetadata_get(
+  cache: PipelineManifestClientCache,
+  item: PipingItem,
+  piping: PipingData,
+): Promise<PluginMetadata | undefined> {
+  if (item.getPlugin === undefined) return undefined;
+  const key: string = piping.plugin_name !== undefined && piping.plugin_version !== undefined
+    ? `${piping.plugin_name}@${piping.plugin_version}`
+    : `piping:${piping.id}`;
+  let metadataPromise: Promise<PluginMetadata> | undefined = timedCache_get(cache.pluginMetadata, key);
+  if (metadataPromise === undefined) {
+    metadataPromise = (async (): Promise<PluginMetadata> => {
+      const plugin: PluginResource = await item.getPlugin!();
+      const [parameterList, computeList]: [ItemList, ItemList] = await Promise.all([
+        plugin.getPluginParameters({ limit: 1000 }),
+        plugin.getPluginComputeResources({ limit: 1000 }),
+      ]);
+      return {
+        parameterDefinitions: items_get<Item<PluginParameterData>>(parameterList).map(
+          (parameter: Item<PluginParameterData>) => ({
+            name: parameter.data.name,
+            type: parameter.data.type ?? 'string',
+            optional: parameter.data.optional ?? false,
+            default: parameter.data.default,
+            help: parameter.data.help,
+          }),
+        ),
+        computeResources: items_get<Item<ComputeResourceData>>(computeList)
+          .map((compute: Item<ComputeResourceData>): string | undefined => compute.data.name)
+          .filter((name: string | undefined): name is string => typeof name === 'string'),
+      };
+    })();
+    timedCache_set(cache.pluginMetadata, key, metadataPromise);
+  }
+  try {
+    return await metadataPromise;
+  } catch (error: unknown) {
+    cache.pluginMetadata.delete(key);
+    throw error;
+  }
+}
+
+/**
+ * Fetch a manifest for an already-resolved Pipeline without resolving it again.
+ *
+ * @param pipeline - Exact Pipeline record already resolved by the caller.
+ * @param resource - Remote Pipeline resource obtained during that resolution.
+ * @param options - Projection detail required by the caller.
+ * @returns Result containing the requested registered Pipeline projection.
+ */
+export async function pipelineManifestForPipeline_get(
+  pipeline: PipelineRecord,
+  resource: PipelineManifestResource,
+  options: PipelineManifestGetOptions = {},
+): Promise<Result<PipelineManifest>> {
+  const client: PipelineClient | null = await chrisConnection.client_get() as unknown as PipelineClient | null;
+  if (!client) {
+    errorStack.stack_push('error', 'Not connected to ChRIS. Cannot inspect pipeline.');
+    return Err();
+  }
+  const cache: PipelineManifestClientCache = manifestClientCache_get(client as object);
+  timedCache_set(cache.aliases, String(pipeline.id), pipeline);
+  if (typeof pipeline.slug === 'string') timedCache_set(cache.aliases, pipeline.slug, pipeline);
+  const detail: 'registered' | 'execution' = options.detail ?? 'execution';
+  const manifestKey: string = `${pipeline.id}:${detail}`;
+  const cachedManifest: PipelineManifest | undefined = timedCache_get(cache.manifests, manifestKey);
+  if (cachedManifest !== undefined) return Ok(cachedManifest);
+  return pipelineManifest_project(pipeline, resource, detail, cache);
 }
 
 function definedValue_getFirst(...values: unknown[]): unknown {
   return values.find((value: unknown): boolean => value !== undefined);
 }
 
-/**
- * Fetch one registered pipeline as its CUBE-specific invocation manifest.
- *
- * @param specifier - Pipeline name or numeric ID string.
- * @returns Result containing the complete registered invocation manifest.
- */
-export async function pipelineManifest_get(specifier: string): Promise<Result<PipelineManifest>> {
-  const resolved: Result<PipelineRecord> = await pipeline_resolve(specifier);
-  if (!resolved.ok) return Err();
-
-  const client: PipelineClient | null = await chrisConnection.client_get() as unknown as PipelineClient | null;
-  if (!client) {
-    errorStack.stack_push('error', 'Not connected to ChRIS. Cannot inspect pipeline.');
-    return Err();
-  }
-
+async function pipelineManifest_project(
+  pipelineRecord: PipelineRecord,
+  pipeline: PipelineManifestResource,
+  detail: 'registered' | 'execution',
+  cache: PipelineManifestClientCache,
+): Promise<Result<PipelineManifest>> {
+  const manifestKey: string = `${pipelineRecord.id}:${detail}`;
   try {
-    const pipeline: PipelineResource | null = await client.getPipeline(resolved.value.id);
-    if (!pipeline) {
-      errorStack.stack_push('error', `Pipeline ${resolved.value.id} not found.`);
-      return Err();
-    }
-
     const [pipingList, defaultList]: [ItemList, DataList] = await Promise.all([
       pipeline.getPluginPipings({ limit: 1000 }),
       pipeline.getDefaultParameters({ limit: 1000 }),
@@ -174,24 +280,10 @@ export async function pipelineManifest_get(specifier: string): Promise<Result<Pi
       const resource: DefaultParameterData | undefined = stored[0];
       let computeResources: string[] | undefined;
       let parameterDefinitions: PipelineManifestNode['parameterDefinitions'];
-      if (item.getPlugin) {
-        const plugin: PluginResource = await item.getPlugin();
-        const [parameterList, computeList]: [ItemList, ItemList] = await Promise.all([
-          plugin.getPluginParameters({ limit: 1000 }),
-          plugin.getPluginComputeResources({ limit: 1000 }),
-        ]);
-        parameterDefinitions = items_get<Item<PluginParameterData>>(parameterList).map(
-          (parameter: Item<PluginParameterData>) => ({
-            name: parameter.data.name,
-            type: parameter.data.type ?? 'string',
-            optional: parameter.data.optional ?? false,
-            default: parameter.data.default,
-            help: parameter.data.help,
-          }),
-        );
-        computeResources = items_get<Item<ComputeResourceData>>(computeList)
-          .map((compute: Item<ComputeResourceData>): string | undefined => compute.data.name)
-          .filter((name: string | undefined): name is string => typeof name === 'string');
+      if (detail === 'execution' && item.getPlugin) {
+        const metadata: PluginMetadata | undefined = await pluginMetadata_get(cache, item, piping);
+        parameterDefinitions = metadata?.parameterDefinitions;
+        computeResources = metadata?.computeResources;
       }
       return {
         pipingID: piping.id,
@@ -213,13 +305,59 @@ export async function pipelineManifest_get(specifier: string): Promise<Result<Pi
       };
     }));
 
-    return Ok({
-      pipelineID: resolved.value.id,
-      name: resolved.value.name,
+    const manifest: PipelineManifest = {
+      pipelineID: pipelineRecord.id,
+      name: pipelineRecord.name,
       rootIDs: nodes.filter((node: PipelineManifestNode): boolean => node.parentID === null)
         .map((node: PipelineManifestNode): number => node.pipingID),
       nodes,
-    });
+    };
+    timedCache_set(cache.manifests, manifestKey, manifest);
+    return Ok(manifest);
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('error', `pipelineManifest_get: ${message}`);
+    return Err();
+  }
+}
+
+/**
+ * Fetch one registered pipeline as its CUBE-specific invocation manifest.
+ *
+ * @param specifier - Pipeline name or numeric ID string.
+ * @param options - Projection detail required by the caller.
+ * @returns Result containing the complete registered invocation manifest.
+ */
+export async function pipelineManifest_get(
+  specifier: string,
+  options: PipelineManifestGetOptions = {},
+): Promise<Result<PipelineManifest>> {
+  const detail: 'registered' | 'execution' = options.detail ?? 'execution';
+  const client: PipelineClient | null = await chrisConnection.client_get() as unknown as PipelineClient | null;
+  if (!client) {
+    errorStack.stack_push('error', 'Not connected to ChRIS. Cannot inspect pipeline.');
+    return Err();
+  }
+  const cache: PipelineManifestClientCache = manifestClientCache_get(client as object);
+  let pipelineRecord: PipelineRecord | undefined = timedCache_get(cache.aliases, specifier);
+  if (pipelineRecord === undefined) {
+    const resolved: Result<PipelineRecord> = await pipeline_resolve(specifier);
+    if (!resolved.ok) return Err();
+    pipelineRecord = resolved.value;
+    timedCache_set(cache.aliases, specifier, pipelineRecord);
+    timedCache_set(cache.aliases, String(pipelineRecord.id), pipelineRecord);
+  }
+  const manifestKey: string = `${pipelineRecord.id}:${detail}`;
+  const cachedManifest: PipelineManifest | undefined = timedCache_get(cache.manifests, manifestKey);
+  if (cachedManifest !== undefined) return Ok(cachedManifest);
+
+  try {
+    const pipeline: PipelineManifestResource | null = await client.getPipeline(pipelineRecord.id);
+    if (!pipeline) {
+      errorStack.stack_push('error', `Pipeline ${pipelineRecord.id} not found.`);
+      return Err();
+    }
+    return pipelineManifest_project(pipelineRecord, pipeline, detail, cache);
   } catch (error: unknown) {
     const message: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipelineManifest_get: ${message}`);

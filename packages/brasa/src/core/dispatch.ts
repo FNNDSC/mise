@@ -317,6 +317,7 @@ export function command_timingMaybePrint(startTime: number, enabled: boolean): v
  *   --signalflow          → pipeline diagram --signalflow
  *   --help / -h           → contextual pipeline-executable help
  *   --nodes / --parameters → pipeline info
+ *   --manifest             → pipeline manifest
  *   --source / --readme    → pipeline source
  *   (bare or --compute)    → pipeline run
  *
@@ -334,6 +335,8 @@ async function pipelineExecutable_handle(name: string, args: string[]): Promise<
     envelope = await builtin_pipeline(['diagram', name, ...diagramArgs]);
   } else if (args.includes('--signalflow')) {
     envelope = await builtin_pipeline(['diagram', name, '--signalflow']);
+  } else if (args.includes('--manifest')) {
+    envelope = await builtin_pipeline(['manifest', name]);
   } else if (args.includes('--nodes') || args.includes('--parameters')) {
     envelope = await builtin_pipeline(['info', name]);
   } else if (args.includes('--source') || args.includes('--readme')) {

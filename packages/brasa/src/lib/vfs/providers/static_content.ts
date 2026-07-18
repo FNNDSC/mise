@@ -8,12 +8,14 @@
  */
 
 import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
-import type { PipelineManifest } from '@fnndsc/salsa';
 import { commandHelp_get } from '../../../builtins/help.js';
 import chalk from 'chalk';
 import { session } from '../../../session/index.js';
-import { pipelineManifest_render } from '../../../builtins/res/pipeline.manifest.js';
-import { binPipelineManifest_try } from './binEntry.js';
+import {
+  binPipelineSummary_render,
+  binPipelineSummary_try,
+  type BinPipelineSummary,
+} from './binEntry.js';
 
 /**
  * Interface representing a ChRIS API Plugin parameter resource.
@@ -143,8 +145,8 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
 
     if (prefix === "/bin") {
       const commandName: string = effectivePath.substring("/bin/".length);
-      const pipelineManifest: PipelineManifest | null = await binPipelineManifest_try(commandName);
-      if (pipelineManifest !== null) return Ok(pipelineManifest_render(pipelineManifest));
+      const pipelineSummary: BinPipelineSummary | null = binPipelineSummary_try(commandName);
+      if (pipelineSummary !== null) return Ok(binPipelineSummary_render(pipelineSummary));
 
       const versionSeparatorIndex: number = commandName.lastIndexOf('-v');
 

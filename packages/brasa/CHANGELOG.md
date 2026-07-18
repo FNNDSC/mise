@@ -1,5 +1,32 @@
 # @fnndsc/brasa
 
+## 0.9.9
+
+### Patch Changes
+
+- Keep `cat /bin/<pipeline>` immediate with a cache-only executable summary;
+  move complete registered invocation YAML and delayed inspection progress to
+  `pipeline manifest <specifier>` and `<pipeline> --manifest`.
+- Updated dependencies
+  - @fnndsc/salsa@3.5.5
+
+## 0.9.8
+
+### Patch Changes
+
+- Emit delayed semantic progress when an exact `/bin` Pipeline manifest read
+  takes longer than 300 milliseconds, while leaving fast cache hits silent.
+
+## 0.9.7
+
+### Patch Changes
+
+- Resolve exact `/bin` Pipeline reads without global Pipeline enumeration or
+  per-node hosted-plugin metadata requests, cache repeat reads, and render
+  Pipeline topology in linear time.
+- Updated dependencies
+  - @fnndsc/salsa@3.5.4
+
 ## 0.9.6
 
 ### Patch Changes

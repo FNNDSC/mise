@@ -4,12 +4,14 @@
  * Manages registered ChRIS pipelines. Subcommands:
  * - `list`   — list all registered pipelines
  * - `info`   — show a pipeline's nodes and default parameters
+ * - `manifest` — emit the complete registered invocation YAML
  * - `run`    — instantiate a pipeline as a workflow on the current context node
  * - `source` — display the pipeline's YAML source file
  * - `diagram` — render the registered pipeline as a shallow tree or SignalFlow YAML
  *
  * Pipelines also appear as executables in `/bin` (colored distinctly from plugins)
- * and can be invoked directly by name. `cat /bin/<name>` returns its registered manifest.
+ * and can be invoked directly by name. `cat /bin/<name>` returns a cache-only
+ * executable summary; `pipeline manifest <name>` performs complete inspection.
  *
  * @module
  */
@@ -32,6 +34,7 @@ import {
   pipeline_run,
   pipeline_sourceGet,
   pipelineManifest_get,
+  pipelineManifestBySlug_get,
   fileContent_get,
   type PipelineManifest,
   type PipelineRunOptions,
@@ -45,8 +48,11 @@ import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
 import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
-import { pipelineParameters_render } from './pipeline.manifest.js';
+import { pipelineManifest_render, pipelineParameters_render } from './pipeline.manifest.js';
 import { path_resolve } from '../utils.js';
+
+const PIPELINE_PROGRESS_DELAY_MS: number = 300;
+const PIPELINE_PROGRESS_LABEL: string = 'Reading registered pipeline…';
 
 /**
  * Handles `pipeline list [search]`.
@@ -253,6 +259,75 @@ async function pipelineSource_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * Handles `pipeline manifest <name|id|slug>`.
+ *
+ * @param args - Command arguments.
+ * @returns Complete registered invocation manifest as serializable YAML.
+ */
+async function pipelineManifestCommand_handle(args: string[]): Promise<CommandEnvelope> {
+  const specifier: string = args.slice(1).join(' ').trim();
+  if (specifier.length === 0) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('Usage: pipeline manifest <name|id|slug>')}\n`);
+  }
+  const result: Result<PipelineManifest> = await pipelineManifestWithProgress_get(specifier);
+  if (!result.ok) {
+    const err: StackMessage | undefined = errorStack.stack_pop();
+    process.exitCode = 1;
+    return envelope_error(
+      '',
+      undefined,
+      `${chalk.red(`pipeline manifest: ${err?.message ?? 'manifest unavailable'}`)}\n`,
+    );
+  }
+  return envelope_ok(pipelineManifest_render(result.value));
+}
+
+/**
+ * Fetches a registered manifest while emitting delayed semantic progress.
+ *
+ * @param specifier - Pipeline name, numeric ID, or exact registered slug.
+ * @returns The complete registered invocation manifest result.
+ */
+async function pipelineManifestWithProgress_get(specifier: string): Promise<Result<PipelineManifest>> {
+  let progressStarted: boolean = false;
+  let progressFailed: boolean = false;
+  const progressTimer: NodeJS.Timeout = setTimeout((): void => {
+    progressStarted = true;
+    sink_get().progress_write({
+      operation: 'pipeline',
+      kind: 'inspection',
+      phase: 'reading',
+      label: PIPELINE_PROGRESS_LABEL,
+      status: 'running',
+    });
+  }, PIPELINE_PROGRESS_DELAY_MS);
+  try {
+    if (/_id\d+$/.test(specifier)) {
+      const checkpoint: number = errorStack.checkpoint_mark();
+      const exact: Result<PipelineManifest> = await pipelineManifestBySlug_get(specifier);
+      if (exact.ok) return exact;
+      errorStack.checkpoint_drain(checkpoint);
+    }
+    return await pipelineManifest_get(specifier, { detail: 'registered' });
+  } catch (error: unknown) {
+    progressFailed = true;
+    throw error;
+  } finally {
+    clearTimeout(progressTimer);
+    if (progressStarted) {
+      sink_get().progress_write({
+        operation: 'pipeline',
+        kind: 'inspection',
+        phase: progressFailed ? 'failed' : 'complete',
+        label: PIPELINE_PROGRESS_LABEL,
+        status: progressFailed ? 'error' : 'done',
+      });
+    }
+  }
+}
+
+/**
  * Handles `pipeline inspect`: lists available pipeline fields.
  */
 async function pipelineInspect_handle(): Promise<void> {
@@ -315,7 +390,7 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
 
   if (!subcommand) {
     const current: string | null = await chrisContext.ChRISplugin_get();
-    sink_dataLine(chalk.gray('Usage: pipeline <list|info|run|source|diagram> [args]'));
+    sink_dataLine(chalk.gray('Usage: pipeline <list|info|manifest|run|source|diagram> [args]'));
     if (current) {
       sink_dataLine(chalk.gray(`  Current context node: instance ${current}`));
     }
@@ -332,6 +407,8 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
       return pipelineRun_handle(args);
     case 'source':
       return pipelineSource_handle(args);
+    case 'manifest':
+      return pipelineManifestCommand_handle(args);
     case 'diagram':
       return pipelineDiagramCommand_handle(args);
     case 'inspect':
@@ -341,7 +418,7 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
       return builtin_pipeline(['list', args[1] ?? '']);
     default:
       sink_errLine(chalk.red(`pipeline: unknown subcommand '${subcommand}'`));
-      sink_dataLine(chalk.gray('  Subcommands: list, search, inspect, info, run, source, diagram'));
+      sink_dataLine(chalk.gray('  Subcommands: list, search, inspect, info, manifest, run, source, diagram'));
       process.exitCode = 1;
       return envelope_error('');
   }

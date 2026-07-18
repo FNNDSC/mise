@@ -1,13 +1,13 @@
 # Active project handoff
 
 - Last updated: 2026-07-18
-- Last verified against `main`: `e8d44db`
-- Working branch: `fix/pipeline-manifest-performance`
+- Last verified against `main`: `534d571`
+- Working branch: `main`
 - Current milestone: fast cache-only `/bin` Pipeline summaries and explicit
   registered manifest inspection are implemented, independently reviewed, and
-  fully validated
-- Next action: publish the branch (three implementation commits plus this final
-  documentation handoff) for integration; no implementation work remains
+  fully validated and landed through PR #158
+- Next action: begin the next project from a clean context; no Pipeline UX work
+  remains
 
 ## Current truth
 
@@ -27,13 +27,12 @@
 
 ## Pipeline invocation and inspection complete
 
-The Pipeline UX increment is complete on `fix/pipeline-manifest-performance`:
-
-- `6763618` targets exact registered Pipeline manifests and caches repeated reads.
-- `e88f634` adds delayed semantic inspection progress for slow remote hydration.
-- `9325ea3` restores immediate Unix-like `cat /bin/<pipeline>` behavior and moves
-  complete inspection to `pipeline manifest <name|id|slug>` and
-  `<pipeline> --manifest`.
+The Pipeline UX increment landed through PR
+[#158](https://github.com/FNNDSC/mise/pull/158), squash commit `534d571`.
+It targets and caches exact registered Pipeline manifests, adds delayed semantic
+progress for slow remote hydration, and restores immediate Unix-like
+`cat /bin/<pipeline>` behavior by moving complete inspection to
+`pipeline manifest <name|id|slug>` and `<pipeline> --manifest`.
 
 `pipeline diagram <name|id>` and `<pipeline> --diagram` draw the registered DAG;
 `--withargs` adds stored defaults and `--signalflow` emits SignalFlow YAML.
@@ -42,10 +41,12 @@ are in [feed-dag-viewer.adoc](feed-dag-viewer.adoc#pipeline-parameter-binding).
 The command summary is in
 [script-reference.adoc](../packages/chell/docs/script-reference.adoc#_pipeline_execution).
 
-The branch has no upstream yet. Its dependency-ordered build, all 2,377 workspace
-tests and coverage gates, seam/test lint (with four pre-existing warnings),
-AsciiDoc rendering, production-identifier audit, and independent standards/spec
-review passed. No live CUBE or production fixture is embedded in the tests.
+GitHub Actions CI run #347 passed. The dependency-ordered local build, all 2,377
+workspace tests and coverage gates, seam/test lint (with four pre-existing
+warnings), AsciiDoc rendering, production-identifier audit, and independent
+standards/spec review also passed. Codecov reported project coverage increasing
+by 0.09 percentage points; its non-blocking patch report recorded 94.98% patch
+coverage. No live CUBE or production fixture is embedded in the tests.
 
 ## PACS workflow now on `main`
 
@@ -148,6 +149,8 @@ general orchestration. The rationale and composability obligations are in
 - PR #155: pipeline parameter-binding/file-overlay contract and the Unix boundary
   that keeps general programming in the calling shell; ChELL 5.2.9 documentation.
 - PR #157: Pipeline invocation overlays and PACS plugin/Pipeline attachment.
+- PR #158: fast cache-only `/bin` Pipeline summaries and explicit registered
+  manifest inspection.
 
 Historical Stage 1/2 and earlier delivery detail is archived in
 [history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md) and GitHub's
@@ -155,7 +158,7 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on this branch are ChELL 5.2.13, Calypso 0.4.5, Brasa 0.9.9,
+Source versions on `main` are ChELL 5.2.13, Calypso 0.4.5, Brasa 0.9.9,
 Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.5. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
@@ -163,11 +166,11 @@ Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 The bumped packages have matching changelog and lockfile metadata and remain
 unpublished to npm until the next release workflow.
 
-The implementation branch passes the dependency-ordered workspace build, the
-full workspace test suite and coverage gates, seam/test lint gates, documentation
-rendering, and independent standards/spec review.
+Merged `main` contains the dependency-ordered workspace build, full workspace
+test suite and coverage-gate results, seam/test lint results, documentation
+rendering, and independent standards/spec review from PR #158.
 
-PR #155 passed Node 22/24 CI and GitGuardian. Package builds
+PR #158 passed GitHub Actions CI. Package builds
 must remain dependency ordered; parallel downstream builds can race workspace
 declaration regeneration.
 

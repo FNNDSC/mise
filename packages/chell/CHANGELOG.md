@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.2.13
+
+### Patch Changes
+
+- Restore Unix-fast `cat /bin/<pipeline>` semantics and expose complete,
+  potentially remote Pipeline inspection through `pipeline manifest` and the
+  direct executable's `--manifest` alias.
+- Updated dependencies
+  - @fnndsc/brasa@0.9.9
+  - @fnndsc/salsa@3.5.5
+
 ## 5.2.12
 
 ### Patch Changes

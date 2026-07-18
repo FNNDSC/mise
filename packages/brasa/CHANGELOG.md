@@ -1,5 +1,15 @@
 # @fnndsc/brasa
 
+## 0.9.9
+
+### Patch Changes
+
+- Keep `cat /bin/<pipeline>` immediate with a cache-only executable summary;
+  move complete registered invocation YAML and delayed inspection progress to
+  `pipeline manifest <specifier>` and `<pipeline> --manifest`.
+- Updated dependencies
+  - @fnndsc/salsa@3.5.5
+
 ## 0.9.8
 
 ### Patch Changes

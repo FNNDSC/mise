@@ -65,6 +65,7 @@ describe('help_render', () => {
     expect(help).toContain('example_pipeline_id42');
     expect(help).toContain('--diagram --withargs');
     expect(help).toContain('--signalflow');
+    expect(help).toContain('--manifest');
     expect(help).toContain('--source, --readme');
   });
 

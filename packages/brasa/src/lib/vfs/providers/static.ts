@@ -75,6 +75,7 @@ export class StaticVfsProvider implements VFSProvider {
               owner: typeof pipeline.authors === 'string' ? pipeline.authors : 'system',
               date: '',
               title: pipeline.name,
+              id: pipeline.id,
             });
           });
         }

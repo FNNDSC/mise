@@ -185,6 +185,12 @@ describe('command_dispatch', () => {
     expect(mockPipeline).toHaveBeenCalledWith(['source', 'myPipe']);
   });
 
+  it('routes pipeline --manifest to the registered invocation manifest', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+    await command_dispatch('myPipe', ['--manifest']);
+    expect(mockPipeline).toHaveBeenCalledWith(['manifest', 'myPipe']);
+  });
+
   it('routes pipeline executable diagram flags through pipeline diagram', async () => {
     mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
 

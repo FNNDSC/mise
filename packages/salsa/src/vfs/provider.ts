@@ -37,6 +37,9 @@ export interface VFSItem {
   /** Title or description (for feeds, queries). */
   title?: string;
 
+  /** Backing resource ID, when the virtual entry represents one. */
+  id?: number;
+
   /** Execution status (for job type items). */
   status?: string;
 }
@@ -94,4 +97,3 @@ export interface VFSProvider {
    */
   readBinary?(path: string): Promise<Result<Buffer>>;
 }
-

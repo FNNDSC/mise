@@ -1,5 +1,12 @@
 # @fnndsc/salsa
 
+## 3.5.5
+
+### Patch Changes
+
+- Carry backing resource IDs on VFS entries so cache-only virtual executable
+  summaries can retain stable Pipeline identity.
+
 ## 3.5.4
 
 ### Patch Changes

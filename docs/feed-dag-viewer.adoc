@@ -296,20 +296,21 @@ titles, and plugin selection are accepted only as strict assertions when a compl
 manifest is used as the file. Unknown fields, duplicate file bindings, mismatched assertions,
 and attempts to override the structural `plugininstances` value are errors.
 
-`cat /bin/<pipeline>` emits that complete registered invocation manifest, including
+`pipeline manifest <pipeline>` emits that complete registered invocation manifest, including
 `pipeline_id`, every `piping_id`, plugin versions, stored parameter overrides, effective
-compute (`host` when no placement is supplied), resource controls, and topology. Passing it
-back unchanged is a semantic no-op; editing selected values makes it a registration-specific
-parameter file. `pipeline source <pipeline>` remains the exact authoring YAML used for
-re-registration.
+compute (`host` when no placement is supplied), resource controls, and topology.
+`<pipeline> --manifest` is the direct-executable spelling. Passing the YAML back unchanged is
+a semantic no-op; editing selected values makes it a registration-specific parameter file.
+`pipeline source <pipeline>` remains the exact authoring YAML used for re-registration.
 
-Reading the `/bin` entry resolves its stable `_id<N>` suffix directly, verifies the exact
-source-derived slug, and requests only the registered projection above. It does not enumerate
-all Pipelines or fetch each hosted Plugin's parameter schema and compute registrations; those
-are execution-validation metadata used by `--parameters` and Workflow preparation, not fields
-in the serialized registered manifest. Exact slug and manifest results are cached per CUBE
-connection for a short interval, so a repeated read does not repeat the remote projection.
-When an uncached read remains outstanding for 300 milliseconds, Brasa emits semantic
+`cat /bin/<pipeline>` deliberately stays shallow and immediate: it reads only the cached
+executable identity (or the stable `_id<N>` suffix on a cold cache) and prints a short summary
+that points to `pipeline manifest`. It performs no remote manifest hydration. The explicit
+manifest command resolves the registered projection without fetching each hosted Plugin's
+parameter schema and compute registrations; those are execution-validation metadata used by
+`--parameters` and Workflow preparation, not serialized manifest fields. Exact slug and
+manifest results are cached per CUBE connection for a short interval. When an uncached
+explicit manifest read remains outstanding for 300 milliseconds, Brasa emits semantic
 Pipeline-inspection progress. An interactive ChELL surface renders it as an ephemeral
 `Reading registered pipeline…` spinner on stderr and erases it before the YAML appears;
 non-TTY pipes and redirects receive only the manifest data, and fast cache hits show nothing.

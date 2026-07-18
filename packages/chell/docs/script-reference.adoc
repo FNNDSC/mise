@@ -491,6 +491,7 @@ wired parameters).  A *workflow* is a live instantiation of a pipeline on a feed
 ----
 pipeline list [--search <term>] [--all] [--limit <n>]
 pipeline inspect <id>
+pipeline manifest <name|id|slug>
 ----
 
 === workflow create
@@ -521,6 +522,7 @@ appropriate subcommand:
 | (none)                        | run the pipeline
 | `--nodes` or `--parameters`  | show pipeline info
 | `--source` or `--readme`     | show pipeline source
+| `--manifest`                 | emit complete registered invocation YAML
 | `--paramFile <cfs-file>`     | apply one sparse CFS YAML overlay
 | `--<node>.<field> <value>`   | override a hosted parameter or node execution control
 |===
@@ -529,13 +531,16 @@ appropriate subcommand:
 ----
 my-pipeline --previous 456
 my-pipeline --nodes
+my-pipeline --manifest
 my-pipeline --segmentation.threshold 0.5 --segmentation.memory_limit 8Gi
 my-pipeline --paramFile ~/experiments/run-1.yaml
 ----
 
-`cat /bin/my-pipeline` emits the registered CUBE invocation manifest, including
-pipeline and piping IDs. `pipeline source my-pipeline` emits the original
-authoring YAML.
+`cat /bin/my-pipeline` emits a fast cached executable summary and points to the
+explicit inspection command. `pipeline manifest my-pipeline` (or
+`my-pipeline --manifest`) emits the complete registered CUBE invocation YAML,
+including pipeline and piping IDs. `pipeline source my-pipeline` emits the
+original authoring YAML.
 
 == Resource Commands
 
@@ -632,6 +637,7 @@ compute inspect <id>
 pipelines list [--all]
 pipeline inspect <id>
 pipeline info <name>     # show nodes and parameters of a named pipeline
+pipeline manifest <name|id|slug> # emit registered invocation YAML
 pipeline source <name>   # show pipeline YAML source
 pipeline run <name> [--previous_id <id>] [--compute <res>]
 ----

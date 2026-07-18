@@ -1,61 +1,61 @@
 /**
- * @file Pipeline-first resolution for dynamic `/bin` entries.
+ * @file Cache-only summaries for registered Pipeline executables in `/bin`.
  *
- * Pipeline names and plugin executable names share one namespace. This module
- * probes exact registered Pipeline identity first and removes only probe-local
- * errors before the caller falls through to versioned plugin resolution.
+ * Reading an executable entry must not hydrate its registered invocation
+ * manifest. This module uses the warm `/bin` listing when available and falls
+ * back to the stable `_id<N>` suffix, without making a CUBE request.
  *
  * @module
  */
-import { errorStack, type Result } from '@fnndsc/cumin';
-import {
-  pipelineManifestBySlug_get,
-  type PipelineManifest,
-} from '@fnndsc/salsa';
-import { sink_get } from '../../../core/sink.js';
+import { listCache_get } from '@fnndsc/cumin';
+import type { VFSItem } from '@fnndsc/salsa';
+import { dump as yamlDump } from 'js-yaml';
 
-const PIPELINE_PROGRESS_DELAY_MS: number = 300;
-const PIPELINE_PROGRESS_LABEL: string = 'Reading registered pipeline…';
+type CachedBinEntry = Pick<VFSItem, 'name' | 'type' | 'id' | 'title'>;
+
+/** Shallow identity and discovery information for one Pipeline executable. */
+export interface BinPipelineSummary {
+  command: string;
+  pipelineID: number;
+  name?: string;
+}
 
 /**
- * Try to resolve one `/bin` basename as a registered Pipeline.
+ * Resolve a Pipeline executable from cached `/bin` identity only.
  *
  * @param commandName - Exact dynamic `/bin` entry basename.
- * @returns Registered manifest, or null after clearing failed-probe errors.
+ * @returns A shallow summary, or null when the name is known not to be a Pipeline.
  */
-export async function binPipelineManifest_try(commandName: string): Promise<PipelineManifest | null> {
-  const checkpoint: number = errorStack.checkpoint_mark();
-  let progressStarted: boolean = false;
-  const progressTimer: NodeJS.Timeout = setTimeout((): void => {
-    progressStarted = true;
-    sink_get().progress_write({
-      operation: 'pipeline',
-      kind: 'inspection',
-      phase: 'reading',
-      label: PIPELINE_PROGRESS_LABEL,
-      status: 'running',
-    });
-  }, PIPELINE_PROGRESS_DELAY_MS);
-  let result: Result<PipelineManifest>;
-  let progressFailed: boolean = false;
-  try {
-    result = await pipelineManifestBySlug_get(commandName);
-  } catch (error: unknown) {
-    progressFailed = true;
-    throw error;
-  } finally {
-    clearTimeout(progressTimer);
-    if (progressStarted) {
-      sink_get().progress_write({
-        operation: 'pipeline',
-        kind: 'inspection',
-        phase: progressFailed ? 'failed' : 'complete',
-        label: PIPELINE_PROGRESS_LABEL,
-        status: progressFailed ? 'error' : 'done',
-      });
-    }
-  }
-  if (result.ok) return result.value;
-  errorStack.checkpoint_drain(checkpoint);
-  return null;
+export function binPipelineSummary_try(commandName: string): BinPipelineSummary | null {
+  const idMatch: RegExpMatchArray | null = commandName.match(/_id(\d+)$/);
+  if (idMatch === null) return null;
+
+  const cached = listCache_get().cache_get<CachedBinEntry[]>('/bin');
+  const entry: CachedBinEntry | undefined = cached?.data.find(
+    (candidate: CachedBinEntry): boolean =>
+      candidate.type === 'pipeline' && candidate.name === commandName,
+  );
+  if (cached !== null && entry === undefined) return null;
+
+  return {
+    command: commandName,
+    pipelineID: entry?.id ?? Number(idMatch[1]),
+    name: entry?.title,
+  };
+}
+
+/**
+ * Serialize a shallow Pipeline executable summary.
+ *
+ * @param summary - Cache-only Pipeline identity and discovery information.
+ * @returns Stable YAML directing callers to the explicit manifest command.
+ */
+export function binPipelineSummary_render(summary: BinPipelineSummary): string {
+  return yamlDump({
+    kind: 'pipeline',
+    pipeline_id: summary.pipelineID,
+    ...(summary.name === undefined ? {} : { name: summary.name }),
+    command: summary.command,
+    manifest: `pipeline manifest ${summary.command}`,
+  }, { noRefs: true, lineWidth: -1 });
 }

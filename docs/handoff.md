@@ -3,9 +3,10 @@
 - Last updated: 2026-07-18
 - Last verified against `main`: `e8d44db`
 - Working branch: `fix/pipeline-manifest-performance`
-- Current milestone: delayed semantic TTY progress for slow exact `/bin`
-  Pipeline reads is implemented, independently reviewed, and fully validated
-- Next action: land the progress UX
+- Current milestone: fast cache-only `/bin` Pipeline summaries and explicit
+  registered manifest inspection are implemented, independently reviewed, and
+  fully validated
+- Next action: publish the Pipeline inspection UX split for integration
 
 ## Current truth
 
@@ -131,8 +132,8 @@ merged PR record; keep this active handoff focused on current truth.
 
 ## Release and verification state
 
-Source versions on this branch are ChELL 5.2.12, Calypso 0.4.5, Brasa 0.9.8,
-Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.4. The latest npm-published
+Source versions on this branch are ChELL 5.2.13, Calypso 0.4.5, Brasa 0.9.9,
+Chili 3.6.1, Cumin 3.8.4, and Salsa 3.5.5. The latest npm-published
 versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
 Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
 

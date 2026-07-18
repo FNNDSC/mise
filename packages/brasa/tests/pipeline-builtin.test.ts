@@ -3,13 +3,19 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 
 const mockPluginGet = jest.fn(async () => null as string | null);
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
+const mockCheckpointMark = jest.fn(() => 5);
+const mockCheckpointDrain = jest.fn();
 const mockResolve = jest.fn();
 const mockInstanceGet = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { ChRISplugin_get: mockPluginGet },
-  errorStack: { stack_pop: mockStackPop },
+  errorStack: {
+    stack_pop: mockStackPop,
+    checkpoint_mark: mockCheckpointMark,
+    checkpoint_drain: mockCheckpointDrain,
+  },
   pipeline_resolve: mockResolve,
   procCache_get: () => ({ instance_get: mockInstanceGet }),
 }));
@@ -20,6 +26,7 @@ const mockSourceGet = jest.fn();
 const mockProcRefresh = jest.fn(async () => undefined);
 const mockDiagramGet: jest.Mock = jest.fn();
 const mockManifestGet: jest.Mock = jest.fn();
+const mockManifestBySlugGet: jest.Mock = jest.fn();
 const mockFileContentGet: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipelines_list: mockList,
@@ -28,6 +35,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procCache_refresh: mockProcRefresh,
   pipelineDiagram_get: mockDiagramGet,
   pipelineManifest_get: mockManifestGet,
+  pipelineManifestBySlug_get: mockManifestBySlugGet,
   fileContent_get: mockFileContentGet,
   context_getSingle: jest.fn(async () => ({ user: 'me' })),
 }));
@@ -42,10 +50,15 @@ jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_displa
 const mockDataLine = jest.fn();
 const mockErrLine = jest.fn();
 const mockSinkWrite = jest.fn();
+const mockProgressWrite = jest.fn();
 jest.unstable_mockModule('../src/core/sink.js', () => ({
   sink_dataLine: mockDataLine,
   sink_errLine: mockErrLine,
-  sink_get: () => ({ data_write: mockSinkWrite, err_write: jest.fn() }),
+  sink_get: () => ({
+    data_write: mockSinkWrite,
+    err_write: jest.fn(),
+    progress_write: mockProgressWrite,
+  }),
 }));
 
 const mockClientGet = jest.fn(async () => null);
@@ -81,6 +94,7 @@ beforeEach(() => {
       parameterDefinitions: [{ name: 'threshold', type: 'float', optional: true, default: 0.25 }],
     }],
   }));
+  mockManifestBySlugGet.mockImplementation((specifier: string) => mockManifestGet(specifier));
   mockDiagramGet.mockResolvedValue(ok({
     pipelineID: 7,
     name: 'Brain Segmentation',
@@ -120,6 +134,7 @@ describe('builtin_pipeline', () => {
     expect(env.rendered).toContain('USAGE');
     expect(env.rendered).toContain('--paramFile');
     expect(env.rendered).toContain('--<node>.<parameter>');
+    expect(env.rendered).toContain('manifest <name|id|slug>');
   });
 
   it('lists registered pipelines', async () => {
@@ -182,6 +197,110 @@ describe('builtin_pipeline', () => {
     mockSourceGet.mockResolvedValue(ok('yaml: source'));
     await builtin_pipeline(['source', 'MyPipe']);
     expect(mockDataLine).toHaveBeenCalledWith('yaml: source');
+  });
+
+  it('emits the complete registered invocation YAML through pipeline manifest', async () => {
+    const result: CommandEnvelope = await builtin_pipeline(['manifest', 'example_pipeline_id42']);
+
+    expect(mockManifestBySlugGet).toHaveBeenCalledWith('example_pipeline_id42');
+    expect(mockProgressWrite).not.toHaveBeenCalled();
+    expect(result.rendered).toContain('pipeline_id: 7');
+    expect(result.rendered).toContain('piping_id: 1');
+    expect(result.rendered).toContain('memory_limit: 4Gi');
+  });
+
+  it('requests the lightweight registered projection for a Pipeline name', async () => {
+    await builtin_pipeline(['manifest', 'Example Pipeline']);
+
+    expect(mockManifestGet).toHaveBeenCalledWith(
+      'Example Pipeline',
+      { detail: 'registered' },
+    );
+    expect(mockManifestBySlugGet).not.toHaveBeenCalled();
+  });
+
+  it('falls back to name resolution when an id-shaped name is not an exact slug', async () => {
+    mockManifestBySlugGet.mockResolvedValue(err());
+
+    const result: CommandEnvelope = await builtin_pipeline(['manifest', 'Example_id42']);
+
+    expect(result.status).toBe('ok');
+    expect(mockManifestBySlugGet).toHaveBeenCalledWith('Example_id42');
+    expect(mockCheckpointDrain).toHaveBeenCalledWith(5);
+    expect(mockManifestGet).toHaveBeenCalledWith('Example_id42', { detail: 'registered' });
+  });
+
+  it('requires a Pipeline specifier for manifest output', async () => {
+    const result: CommandEnvelope = await builtin_pipeline(['manifest']);
+
+    expect(result.status).toBe('error');
+    expect(result.renderedErr).toContain('Usage: pipeline manifest');
+  });
+
+  it('emits delayed semantic progress for a slow pipeline manifest read', async () => {
+    jest.useFakeTimers();
+    let resolveManifest: ((value: unknown) => void) | undefined;
+    mockManifestBySlugGet.mockReturnValue(new Promise((resolve: (value: unknown) => void) => {
+      resolveManifest = resolve;
+    }));
+
+    try {
+      const pending: Promise<CommandEnvelope> = builtin_pipeline(['manifest', 'example_pipeline_id42']);
+      await jest.advanceTimersByTimeAsync(299);
+      expect(mockProgressWrite).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(1);
+      expect(mockProgressWrite).toHaveBeenCalledWith({
+        operation: 'pipeline',
+        kind: 'inspection',
+        phase: 'reading',
+        label: 'Reading registered pipeline…',
+        status: 'running',
+      });
+
+      resolveManifest?.({
+        ok: true,
+        value: { pipelineID: 42, name: 'Example Pipeline', rootIDs: [], nodes: [] },
+      });
+      await pending;
+      expect(mockProgressWrite).toHaveBeenLastCalledWith({
+        operation: 'pipeline',
+        kind: 'inspection',
+        phase: 'complete',
+        label: 'Reading registered pipeline…',
+        status: 'done',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('marks delayed manifest progress failed when hydration rejects', async () => {
+    jest.useFakeTimers();
+    let rejectManifest: ((reason: Error) => void) | undefined;
+    mockManifestBySlugGet.mockReturnValue(new Promise((
+      _resolve: (value: unknown) => void,
+      reject: (reason: Error) => void,
+    ) => {
+      rejectManifest = reject;
+    }));
+
+    try {
+      const pending: Promise<CommandEnvelope> = builtin_pipeline(['manifest', 'example_pipeline_id42']);
+      const rejection: Promise<void> = expect(pending).rejects.toThrow('CUBE unavailable');
+      await jest.advanceTimersByTimeAsync(300);
+      rejectManifest?.(new Error('CUBE unavailable'));
+      await rejection;
+      expect(mockProgressWrite).toHaveBeenLastCalledWith({
+        operation: 'pipeline',
+        kind: 'inspection',
+        phase: 'failed',
+        label: 'Reading registered pipeline…',
+        status: 'error',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('reports a source failure', async () => {

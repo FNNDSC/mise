@@ -1,171 +1,152 @@
 # Active project handoff
 
-- Last updated: 2026-07-17
-- Last verified against `main`: `76967f3`
-- Working branch: `fix/recovered-shell-followups`
-- Current milestone: persistent `/proc` checkpoints and recovered shell follow-ups are in PR #148
-- Next action: let strict Node 22/24 CI verify PR #148, then squash-merge it
+- Last updated: 2026-07-18
+- Last verified against `main`: `645026e`
+- Working branch: `main`
+- Current milestone: design is documented for attaching one plugin or pipeline
+  to a feed created by `pacs pull --new-feed`
+- Next action: implement that attachment contract on a feature branch, test it,
+  then complete the PR/CI/squash-merge-to-main workflow
 
 ## Current truth
 
 - **mise is the framework.** The dependency direction remains `cumin → salsa →
-  chili → brasa → calypso → chell`: brasa is the hostable engine, calypso hosts
-  one engine per session daemon, and chell is the local/remote CLI surface.
-- Stage 1 (hostable engine and structured envelopes) and Stage 2 (CALYPSO daemon
-  plus sibling surfaces) are complete. Their campaign record is archived in
-  [history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md).
-- Tier-1 identity-keyed daemons are complete and published. One machine can run
-  isolated daemons per `<user>@<url>` identity; see
-  [session-supervisor.adoc](session-supervisor.adoc). Tier-2 `porter` remains
-  deferred until the web surface establishes its network/auth perimeter.
-- CUBE remains durable workflow truth. Daemon scrollback, progress, and
-  conversational state are presentation or ephemeral context.
+  chili → brasa → calypso → chell`: Brasa is the hostable engine, Calypso hosts
+  one engine per session daemon, and ChELL is the local/remote CLI surface.
+- CUBE is durable workflow truth. Daemon scrollback, progress, prompt state, and
+  identity-scoped `/proc` checkpoints are recoverable presentation state.
+- Tier-1 identity-keyed daemons are complete. Tier-2 cloud hosting remains
+  deferred until the web surface establishes its network and authentication
+  perimeter. The persistence rationale is in
+  [session-supervisor.adoc](session-supervisor.adoc#cloud-persistence-posture).
 - Stage 3 natural-language intent remains undesigned. Do not create its epic or
-  choose a provider without a separate design grill.
+  select a provider without a separate design session.
+- `codex.resume` is an unrelated untracked local file. Do not add, edit, or
+  remove it.
 
-## Recently completed
+## PACS workflow now on `main`
 
-The pushed feature branch in PR #148 contains five reviewed units on top of
-release-state `main`:
+PR [#153](https://github.com/FNNDSC/mise/pull/153), squash commit `645026e`,
+landed with successful Node 22 and Node 24 CI.
 
-- `8345545` persists an identity-scoped, mode-`0600` `/proc` topology
-  checkpoint. Daemon startup validates restored feed visibility against CUBE
-  before exposure, serves the restored graph while reconciling in the
-  background, atomically replaces successful checkpoints, and quarantines
-  restored data when visibility validation fails. `proc stat` distinguishes
-  restored/reconciling state, while the prompt reports sweep progress;
-  `proc refresh` remains the explicit authoritative refresh. Direct plugin and
-  pipeline executions update the cache. CUBE remains authoritative.
-- `f1a1f1c` makes wildcard-expanded virtual leaves such as `/bin/pl-*` render
-  as entries instead of being treated as directories. Directory operands keep
-  their existing descent behavior.
-- `fd7379d` keeps remote hidden-input labels visible after readline activates
-  and names the registration prompts `Admin username` and `Admin password`.
-- `72a0ae5` returns dynamic plugin inspection through command envelopes, gives
-  `help <versioned-plugin>` and `<versioned-plugin> --help` one renderer, and
-  fixes `--parameters`/`--readme` across remote, pipe, and redirect surfaces.
-  README discovery prefers `public_repo`, retains source-format metadata,
-  renders Markdown, and preserves reStructuredText without passing it through
-  the Markdown renderer.
-- The `id` builtin reports the authenticated CUBE user as Unix-style
-  `uid=N(name) gid=N(name) groups=N(name),G(group),…`. CUBE has no primary-group
-  field, so the GID mirrors the UID consistently with ChELL's `/etc/passwd`
-  projection; `groups` includes every CUBE group membership.
+`pacs pull <selection...> --new-feed "TITLE"` now:
 
-PR #140 (`e630f79`) made registered CUBE pipeline templates visible through the
-same diagram machinery already used for instantiated feed DAGs:
+1. resolves query, study, and/or series operands into a precise series set;
+2. retrieves every selected series and waits for completion;
+3. resolves each series to its concrete `/SERVICES/PACS/...` CUBE directory;
+4. creates exactly one named Feed rooted at `pl-dircopy` over those directories;
+5. prints the Feed ID, root job ID, input series count, and Feed path.
 
-- `pipeline diagram <id|name|search>` draws the authored pipings as a shallow
-  tree. `--withargs` appends non-null stored plugin defaults; `--signalflow`
-  emits SignalFlow YAML.
-- Pipelines exposed through `/bin` accept `--diagram`, optionally followed by
-  `--withargs` or `--signalflow`; bare `--signalflow` is the direct SignalFlow
-  alias. They return the same structured envelope as the explicit command.
-- Pipeline pipings are never collapsed: every authored title/default set stays
-  visible. Feed collapse remains unchanged.
-- `feed diagram [<specifier>]` is an exact shallow alias of `feed tree`.
-  Feed graph commands accept numeric IDs, `feed_N`, exact titles, and unique
-  title searches. Inside any `feed_N` path—including `/proc/jobs/feed_N`—the
-  specifier can be omitted.
-- Feed and pipeline adapters converge on one nested diagram-node model, one
-  shallow connector walk, and one SignalFlow emitter. There is no duplicate
-  join or rendering implementation.
+Ordinary `pacs pull` remains retrieve-only. Feed creation is all-or-nothing:
+invalid/empty operands, partial retrieval, or unresolved CUBE paths prevent Feed
+creation while leaving already retrieved files in storage. `--new-feed` is
+incompatible with `--nowait`. The current parser explicitly rejects
+`--plugin` and `--pipeline`.
 
-The detailed model and rendering rationale lives in
-[feed-dag-viewer.adoc](feed-dag-viewer.adoc).
+The authoritative behavior and architecture are documented in
+[packages/chell/docs/pacsqr.adoc](../packages/chell/docs/pacsqr.adoc). The root
+README and ChELL README provide the short user-facing form, the ChELL command
+reference records the command grammar, and ChELL's domain glossary defines PACS
+Selection and PACS Analysis Attachment.
 
-PR #142 (`71a6cd4`) completed the executable and daemon follow-up:
+## Next PACS increment: analysis attachment
 
-- Dynamic pipeline executables provide contextual `--help`, and bare
-  `<pipeline> --signalflow` routes to the pipeline SignalFlow emitter.
-- Remote pipe-segment failures propagate back to the engine without killing the
-  interactive client. Final redirection stays on the originating surface, so
-  shell expansion and local paths have local meaning.
-- Interactive and daemon hosts share startup warming. Daemon mode reports
-  Plugins, Pipelines, Feeds, Public, and Jobs status, then reports `Engine Ready`
-  before binding and publishing its berth. A failed warm-up is reported
-  explicitly; the daemon still starts and loads that data lazily.
+The agreed command surface is:
 
-PR #144 (`6f0833a`) completed the operational follow-up:
+```shell
+pacs pull <selection...> \
+  --new-feed "Brain MRI" \
+  --plugin pl-dcm2niix-v1.2.0 \
+  -- --outputdir nii
 
-- `/proc` indexes the union of owned/shared and public CUBE feeds, deduplicates
-  overlaps, retains ownership/public metadata, and tracks the deterministic
-  plugin-instance total during topology warm-up.
-- Prompt progress renders `N/M f%` without presenting 100% while work is active.
-  `proc stat` reports exclusive U/P/S feed scope and explicit topology lifecycle.
-- Global `proc` queries refuse partial results while warming or after failure;
-  `--force` joins the existing sweep without starting another. Targeted numeric
-  lookup and navigation remain available.
-- A full `proc refresh` resets the old topology lifecycle and starts exactly one
-  replacement sweep. Failed sweeps clear prompt progress, and daemon output
-  reports the eventual `Topology` ready/failure result.
-- `chell --remote -c '<command>'` now executes once through the attached daemon,
-  returns the remote status, closes the transport, and exits instead of entering
-  or leaving behind an interactive attachment.
+pacs pull <selection...> \
+  --new-feed "Brain MRI" \
+  --pipeline brain-preprocessing
+```
 
-## Verification state
+Contract:
 
-- On `fix/recovered-shell-followups`, a clean `make taco` used pinned npm
-  `10.9.8`, rebuilt all packages in dependency order, and passed every
-  workspace suite. After review corrections, the full root suite passes with
-  Cumin 614, Salsa 370, Chili 373, Brasa 702, Calypso 81, and ChELL 102 tests.
-  npm reported zero vulnerabilities. The synthetic 7,009-job
-  checkpoint remains approximately 790 KB and measured 9 ms save/9 ms restore
-  on this machine. No live CUBE state was mutated.
-- The pipeline feature passed focused and full cumin, salsa, and brasa suites,
-  including path extraction, feed resolution, shallow/SignalFlow output,
-  pipeline arguments/joins, and `/bin` envelope equivalence. A clean `make taco`
-  completed successfully before PR #140 merged.
-- PR #142 added coverage for executable utility routing, contextual help,
-  remote pipe failures, surface-owned redirection, shared startup warming, and
-  daemon publication ordering. Strict Node 22/24 CI passed before merge.
-- PR #144 adds capped-pagination, public-feed union,
-  warm-up lifecycle/failure, prompt progress, command gating, and remote
-  one-shot regression coverage. The dependency-ordered build, full workspace
-  test suite (including permitted loopback daemon tests), and lint all pass;
-  lint reports only four pre-existing unused-disable warnings. Independent
-  standards and behavior audits report no remaining findings.
-- Package builds are run in dependency order; parallel downstream builds race
-  workspace declaration regeneration and are not valid verification.
-- Before PR #140 merged, public read-only CUBE resources verified pipeline 244's
-  live pipings/default-parameter shape, including `pl-topologicalcopy` with
-  `plugininstances = "1445,1447,1450"` (stored piping IDs). Subsequent operator
-  invocations exercised authenticated pipeline executables on ekanite. No CUBE
-  state was changed by the verification.
+- `--plugin` and `--pipeline` are mutually exclusive.
+- Both require `--new-feed`; neither implicitly creates a Feed.
+- Resolve selectors exactly as direct plugin execution and `pipeline run` do.
+- Forward everything after `--` through the selected command's existing
+  invocation semantics. Do not introduce another parameter grammar.
+- Execute in stages: retrieve → resolve → create Feed/root → attach analysis.
+- Any failure before attachment prevents attachment.
+- If attachment fails, retain the valid Feed, return nonzero, and print enough
+  Feed/root identity for manual continuation. Do not roll back the Feed.
+- On success, print the existing Feed/root summary plus the created plugin
+  instance or workflow identity.
+- Keep runtime help limited to implemented flags until this increment lands.
 
-## Published release state
+Likely starting points:
 
-Published from Version Packages PR #145 (`c79731f`), with the Calypso retry
-completed after release-infrastructure PR #146 (`3efbdae`):
+- `packages/brasa/src/builtins/fs/pull.args.ts` — parse the mutually exclusive
+  attachment choice and the `--` payload.
+- `packages/brasa/src/builtins/fs/pull.ts` — stage attachment after successful
+  `feedCreation_fromPaths`.
+- `packages/brasa/src/builtins/feedCreation.ts` — shared Feed creation result.
+- `packages/brasa/src/builtins/pluginExecute.ts` — reuse plugin selector and
+  invocation behavior.
+- `packages/brasa/src/builtins/res/pipeline.ts` and `pipeline.args.ts` — reuse
+  pipeline resolution and execution behavior.
+- `packages/brasa/tests/pacs-builtin.test.ts` — parser, lifecycle, failure, and
+  output coverage.
 
-- `@fnndsc/chell` 5.2.3
-- `@fnndsc/calypso` 0.4.3
-- `@fnndsc/brasa` 0.9.2
-- `@fnndsc/chili` 3.6.1
-- `@fnndsc/cumin` 3.8.1
-- `@fnndsc/salsa` 3.5.1
+Do not duplicate plugin or pipeline resolution inside `pull`. Deepen the shared
+execution seams if the existing builtins cannot be called cleanly.
 
-The first publish run released five packages but Calypso's concurrent
-`prepublishOnly` rebuild raced Cumin's declaration rebuild. PR #146 made the
-root dependency-ordered build authoritative and changed both package hooks to
-non-mutating artifact checks; the retry published Calypso 0.4.3. npm versions,
-GitHub releases, Binaries, and post-merge Node 22/24 CI are verified green.
+## Other recently completed work
+
+- PR #148: persistent identity-scoped `/proc` checkpoints, complete CUBE group
+  reporting in `id`, remote-input fixes, and executable inspection recovery.
+- PR #150: `~` prompt abbreviation and a high-contrast Powerlevel10k-inspired
+  Font Awesome prompt palette.
+- PR #151: prompt order `PACS | URL | user | path | proc`, explicit cold/cache
+  refresh lifecycle clues, and cloud-persistence guidance.
+- PR #152: opt-in `cat --highlight [language]` syntax highlighting for Python
+  and other common formats, with ANSI-free pipes and redirects.
+- PR #153: PACS selection-to-Feed creation described above.
+
+Historical Stage 1/2 and earlier delivery detail is archived in
+[history/calypso-stage1-stage2.md](history/calypso-stage1-stage2.md) and GitHub's
+merged PR record; keep this active handoff focused on current truth.
+
+## Release and verification state
+
+Source versions on `main` after PR #153 are ChELL 5.2.7, Calypso 0.4.4, Brasa
+0.9.5, Chili 3.6.1, Cumin 3.8.3, and Salsa 3.5.2. The latest npm-published
+versions verified on 2026-07-18 remain ChELL 5.2.3, Calypso 0.4.3, Brasa 0.9.2,
+Chili 3.6.1, Cumin 3.8.1, and Salsa 3.5.1.
+
+The current documentation worktree bumps ChELL to 5.2.8 with matching changelog
+and lockfile metadata; that version is not on `main` or npm until these docs are
+landed and subsequently released.
+
+PR #153 passed the dependency-ordered build, package lint/tests, independent
+standards/spec review, GitGuardian, and strict Node 22/24 CI. Package builds
+must remain dependency ordered; parallel downstream builds can race workspace
+declaration regeneration.
+
+Every touched package requires a version bump and changelog entry. Use pinned
+npm 10.9.8 when regenerating the root lockfile to avoid unrelated npm 11 churn.
 
 ## Follow-ups and risks
 
-- After reconciliation reaches current state, analyses created by another
-  client require `proc refresh` or daemon restart; periodic external-change
-  polling remains deliberately out of scope.
+- PACS progress proof issue
+  [#94](https://github.com/FNNDSC/mise/issues/94) remains constrained by the
+  test-owned PACS fixture policy.
+- After `/proc` reconciliation reaches current state, analyses created by
+  another client require `proc refresh` or daemon restart; periodic polling is
+  deliberately out of scope.
 - `packages/calypso/src/daemon/discovery.ts` is legacy single-file discovery;
-  chell no longer uses it, but removal is separate cleanup.
-- [#107](https://github.com/FNNDSC/mise/issues/107): restore the CALYPSO browser
-  smoke as a CI gate.
-- [#94](https://github.com/FNNDSC/mise/issues/94): materialize structured `pull`
-  progress proof; still constrained by the test-owned PACS fixture policy.
+  ChELL no longer uses it, but removal is separate cleanup.
+- CALYPSO browser-smoke issue
+  [#107](https://github.com/FNNDSC/mise/issues/107) remains open.
 - Remote interrupt/cancellation semantics remain undesigned.
 
 ## Freshness contract
 
 Every architectural, release, or project-state PR must update this file. Update
-the verified main commit, date, current milestone, release state, and next
-action. Routine dependency and typo-only PRs need not touch it.
+the verified main commit, date, milestone, release state, and next action.
+Routine dependency and typo-only PRs need not touch it.

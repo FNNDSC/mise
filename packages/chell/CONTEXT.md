@@ -55,6 +55,40 @@ This divergence is real but intentional. The web GUI compounds the confusion by 
 
 **Historical note:** the pervasive filesystem model was adopted gradually and with pushback. The Feed concept predates the VFS — feeds were originally linked lists of plugin instances with no folder metaphor. The folder metaphor was imposed on the naming convention first, then later backed by a real VFS implementation.
 
+## PACS Selection
+
+A PACS Selection is the set of series denoted by one or more operands to `pacs
+pull`. An operand may name a query, study, or series in `/net/pacs/queries/`, or
+may be a query expression handled by the query-then-pull shorthand. The
+selection—not the original broad PACS query—is the analysis input boundary.
+
+Ordinary `pacs pull` materializes that selection under `/SERVICES/PACS/` and
+stops. `pacs pull <selection...> --new-feed "TITLE"` additionally waits for the
+complete set, resolves every selected series to its concrete CUBE directory,
+and creates exactly one Feed whose root PluginInstance is `pl-dircopy` over
+those directories. `--new-feed` is therefore an operation, not passive title
+metadata.
+
+Feed creation is all-or-nothing with respect to the selection. Retrieved files
+remain durable if a later resolution or creation step fails, but no partial
+Feed is created. `--new-feed` cannot be combined with `--nowait` because the
+root input paths must exist before `pl-dircopy` is created.
+
+## PACS Analysis Attachment
+
+A PACS Analysis Attachment is the planned optional step after a PACS Selection
+has produced a new Feed. `--plugin <selector>` or `--pipeline <selector>` will
+attach exactly one analysis to the new `pl-dircopy` root. The flags are mutually
+exclusive, require `--new-feed`, and never create a Feed implicitly. Arguments
+after `--` preserve the selected plugin or pipeline's existing invocation
+semantics.
+
+The attachment is not transactional with Feed creation. If retrieval,
+resolution, or Feed creation fails, attachment does not run. If attachment
+fails, the valid Feed remains available and the command reports its identities
+for manual continuation. These flags are a documented design contract and are
+not implemented yet.
+
 ## Admin
 
 A user with elevated privileges sufficient to execute a privileged operation. In chell help text, subcommands requiring elevation are marked `[admin]`.

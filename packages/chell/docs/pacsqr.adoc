@@ -268,8 +268,43 @@ unresolved CUBE series path leaves any retrieved files in storage but does not c
 feed. Because CUBE paths must exist before `pl-dircopy` can consume them, `--new-feed` cannot be
 combined with `--nowait`.
 
-The option establishes a future attachment point for a pipeline or individual plugin while keeping
-feed creation itself explicit. Pipeline/plugin attachment is not part of the current command.
+[[planned-analysis-attachment]]
+=== Planned analysis attachment
+
+`--new-feed` is deliberately the operation that creates the analysis context. A future extension
+will optionally attach exactly one plugin or one registered pipeline to the newly created
+`pl-dircopy` root:
+
+[source,shell]
+----
+pacs pull <selection...> \
+  --new-feed "Brain MRI" \
+  --plugin pl-dcm2niix-v1.2.0 \
+  -- --outputdir nii
+
+pacs pull <selection...> \
+  --new-feed "Brain MRI" \
+  --pipeline brain-preprocessing
+----
+
+This syntax is a design contract, not an implemented command surface yet. The current parser
+rejects `--plugin` and `--pipeline` instead of silently ignoring them. Runtime help therefore
+advertises only `--new-feed` until attachment support lands.
+
+The planned rules are:
+
+* `--plugin` and `--pipeline` are mutually exclusive and each requires `--new-feed`. Neither flag
+  implicitly creates a feed.
+* The selector is resolved exactly as it is for direct plugin execution or `pipeline run`.
+* Arguments after `--` are forwarded using the selected plugin or pipeline's existing invocation
+  semantics; `pacs pull` does not invent a second parameter grammar.
+* The lifecycle is ordered: retrieve the complete selection, resolve every CUBE directory, create
+  the feed and `pl-dircopy` root, then attach the selected analysis to that root.
+* Retrieval, resolution, or feed-creation failure prevents attachment. If attachment itself fails,
+  the successfully created feed is retained, the command returns nonzero, and output identifies the
+  feed/root so the user can continue manually. There is no rollback of a valid feed.
+* Successful output reports the feed and root identities already shown above plus the created plugin
+  instance or workflow identity.
 
 === Synthetic query pattern
 
@@ -578,4 +613,4 @@ Default is a single attempt with no delay.
 
 ---
 
-_Last updated: 2026-07-17_
+_Last updated: 2026-07-18_

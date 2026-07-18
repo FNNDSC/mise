@@ -221,7 +221,10 @@ which maps API resources onto paths:
 
 PACS selections can become analysis inputs in one operation: `pacs pull
 <selection...> --new-feed "TITLE"` retrieves the complete set and creates one
-named feed rooted in those resolved CUBE directories.
+named feed rooted in those resolved CUBE directories. Planned `--plugin` and
+`--pipeline` additions will optionally attach an analysis to that new root while
+keeping feed creation explicit; the current and planned behavior is specified in
+[the PACS Q/R guide](packages/chell/docs/pacsqr.adoc#planned-analysis-attachment).
 
 See [packages/chell/README.md](packages/chell/README.md) for the full tour
 (running plugins, pipelines, the store, job monitoring) and

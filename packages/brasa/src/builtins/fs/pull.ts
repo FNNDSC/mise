@@ -14,7 +14,6 @@
 import chalk from 'chalk';
 import WebSocket from 'ws';
 import {
-  errorStack,
   pacsQueries_create,
   pacsRetrieve_create,
   PACSQueryCreateData,
@@ -24,6 +23,7 @@ import {
   envelope_ok,
   envelope_error,
 } from '@fnndsc/cumin';
+import { feed_create, type FeedCreationResult } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from '../net/query.js';
@@ -40,6 +40,7 @@ import { builtin_cubepath } from '../net/cubepath.js';
 import { pullArgs_parse, type PullArgs } from './pull.args.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import type { ProgressStatus } from '../../core/progress.js';
+import { newFeed_cacheAdd } from '../feedCreation.js';
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -87,6 +88,11 @@ interface SeriesPullTask {
   startTime: number;
   lonkConfirmed: boolean;
   cubePathDir: string | null;
+}
+
+interface PullPathResolution {
+  paths: string[];
+  complete: boolean;
 }
 
 function pullProgress_emit(task: SeriesPullTask, status?: ProgressStatus, phase: 'watching' | 'retrying' = 'watching'): void {
@@ -356,10 +362,14 @@ async function tasks_pullWatch(
  *
  * @param paths - Raw path or query-expression operands.
  * @param pacsserver - The resolved PACS server identifier.
- * @returns The resolved VFS paths.
+ * @returns Resolved VFS paths and whether every operand resolved.
  */
-async function paths_resolveToVfs(paths: string[], pacsserver: string): Promise<string[]> {
+async function paths_resolveToVfs(
+  paths: string[],
+  pacsserver: string,
+): Promise<PullPathResolution> {
   const resolvedPaths: string[] = [];
+  let complete: boolean = true;
   for (const rawPath of paths) {
     const p: string = rawPath.startsWith('/') ? rawPath : await path_resolve(rawPath);
     if (p.startsWith('/net/pacs')) {
@@ -380,12 +390,14 @@ async function paths_resolveToVfs(paths: string[], pacsserver: string): Promise<
         resolvedPaths.push(qResult.vfsPath);
       } else {
         sink_errLine(chalk.red(`pull: Query failed for: ${rawPath}`));
+        complete = false;
       }
     } else {
       sink_errLine(chalk.red(`pull: Not a PACS VFS path or valid query expression: ${rawPath}`));
+      complete = false;
     }
   }
-  return resolvedPaths;
+  return { paths: resolvedPaths, complete };
 }
 
 /**
@@ -481,6 +493,81 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
   pullProgress_complete(allTasks, failures.length > 0 || totalFiringErrors > 0);
 }
 
+/**
+ * Resolves the exact CUBE directories materialised by a completed pull.
+ *
+ * @param allTasks - Successfully pulled series tasks.
+ * @param client - Authenticated ChRIS API client.
+ * @returns De-duplicated CUBE directories, or null if any series is unresolved.
+ */
+async function feedInputDirs_resolve(
+  allTasks: SeriesPullTask[],
+  client: Client,
+): Promise<string[] | null> {
+  const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
+  const resolved: Array<{ task: SeriesPullTask; folderPath: string | null }> = await Promise.all(
+    allTasks.map(async (task: SeriesPullTask) => {
+      if (task.cubePathDir !== null) return { task, folderPath: task.cubePathDir };
+      const cubePath = await series_cubePathGet(task.seriesUID, pacsClient, 4, 2_000);
+      return { task, folderPath: cubePath?.folderPath ?? null };
+    }),
+  );
+
+  const missing = resolved.find(({ folderPath }) => folderPath === null);
+  if (missing) {
+    sink_errLine(chalk.red(
+      `pull: Could not resolve CUBE storage for series ${missing.task.seriesUID}; new feed not created.`,
+    ));
+    return null;
+  }
+
+  return [...new Set(resolved.map(({ folderPath }) => folderPath as string))];
+}
+
+/**
+ * Creates a feed whose pl-dircopy root contains exactly the pulled series.
+ *
+ * @param title - Requested feed title.
+ * @param allTasks - Successfully pulled series tasks.
+ * @param client - Authenticated ChRIS API client.
+ * @returns True when a valid feed and root instance were created.
+ */
+async function pulledFeed_create(
+  title: string,
+  allTasks: SeriesPullTask[],
+  client: Client,
+): Promise<boolean> {
+  const dirs: string[] | null = await feedInputDirs_resolve(allTasks, client);
+  if (dirs === null) return false;
+
+  const feed: FeedCreationResult | null = await feed_create(dirs, { title });
+  const feedID: number = Number(feed?.id);
+  const rootInstanceID: number = Number(feed?.pluginInstance?.data?.id);
+  const owner: string = typeof feed?.owner_username === 'string'
+    ? feed.owner_username.trim()
+    : '';
+  if (!feed || !Number.isInteger(feedID) || feedID <= 0 ||
+      !Number.isInteger(rootInstanceID) || rootInstanceID <= 0 || owner.length === 0) {
+    sink_errLine(chalk.red(`pull: Failed to create feed '${title}'.`));
+    return false;
+  }
+
+  newFeed_cacheAdd({
+    feedID,
+    title,
+    ownerUsername: owner,
+    rootInstanceID,
+  });
+
+  sink_dataLine(chalk.green(`Feed created: ${feedID}`));
+  sink_dataLine(chalk.green(`Root job: pl-dircopy (ID: ${rootInstanceID})`));
+  sink_dataLine(`Input: ${allTasks.length} PACS series`);
+  sink_dataLine(chalk.cyan(
+    `Feed path: /home/${owner}/feeds/feed_${feedID}/pl-dircopy_${rootInstanceID}/data/`,
+  ));
+  return true;
+}
+
 
 /**
  * Pulls one or more `/net/pacs/queries/...` VFS paths into ChRIS storage.
@@ -489,6 +576,7 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
  * exits non-zero on partial failure.
  * With `--nowait`: fires retrieves and prints `<seriesUID> <retrieveId>` per line, then returns.
  * With `--retry N`: re-fires retrieves for [NO LONK] series up to N additional times.
+ * With `--new-feed TITLE`: creates one feed from the exact successfully retrieved set.
  *
  * @param args - Command arguments (VFS paths, optional flags).
  * @example
@@ -500,10 +588,24 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok(help_render('pull'));
   }
 
-  const { nowait, retryMax, paths }: PullArgs = pullArgs_parse(args);
+  const { nowait, retryMax, newFeedTitle, parseError, paths }: PullArgs = pullArgs_parse(args);
+
+  if (parseError !== null) {
+    sink_errLine(chalk.red(`pull: ${parseError}.`));
+    process.exitCode = 1;
+    return envelope_error('');
+  }
+
+  if (nowait && newFeedTitle !== null) {
+    sink_errLine(chalk.red('pull: --new-feed cannot be combined with --nowait.'));
+    process.exitCode = 1;
+    return envelope_error('');
+  }
 
   if (paths.length === 0) {
-    sink_errLine(chalk.red('pull: No paths specified. Usage: pull [--nowait] [--retry N] <vfs-path> [...]'));
+    sink_errLine(chalk.red(
+      'pull: No paths specified. Usage: pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path> [...]',
+    ));
     process.exitCode = 1;
     return envelope_error('');
   }
@@ -516,13 +618,16 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   }
   const pacsserver: string = pacsIdentifier;
 
-  const resolvedPaths: string[] = await paths_resolveToVfs(paths, pacsserver);
+  const pathResolution: PullPathResolution = await paths_resolveToVfs(paths, pacsserver);
+  const resolvedPaths: string[] = pathResolution.paths;
+  let selectionComplete: boolean = pathResolution.complete;
 
   const allTasks: SeriesPullTask[] = [];
   for (const p of resolvedPaths) {
     const tasks: SeriesPullTask[] = await path_seriesCollect(p, pacsIdentifier);
     if (tasks.length === 0) {
       sink_errLine(chalk.yellow(`pull: No series found under: ${p}`));
+      selectionComplete = false;
     }
     allTasks.push(...tasks);
   }
@@ -564,6 +669,30 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   if (cubeEnvelope.rendered.length > 0) sink_get().data_write(cubeEnvelope.rendered);
   if (cubeEnvelope.renderedErr !== undefined && cubeEnvelope.renderedErr.length > 0) sink_get().err_write(cubeEnvelope.renderedErr);
 
-  sink_dataLine(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
+  if (newFeedTitle !== null) {
+    if (!selectionComplete) {
+      sink_errLine(chalk.red(
+        'pull: New feed not created because the requested selection was incomplete.',
+      ));
+      process.exitCode = 1;
+      return envelope_error('');
+    }
+    const incomplete: boolean = totalFiringErrors > 0 || allTasks.some(
+      (task: SeriesPullTask) => task.status !== 'pulled',
+    );
+    if (incomplete) {
+      sink_errLine(chalk.red('pull: New feed not created because retrieval was incomplete.'));
+      process.exitCode = 1;
+      return envelope_error('');
+    }
+    if (!await pulledFeed_create(newFeedTitle, allTasks, client)) {
+      process.exitCode = 1;
+      return envelope_error('');
+    }
+  }
+
+  if (newFeedTitle === null) {
+    sink_dataLine(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
+  }
   return envelope_ok('');
 }

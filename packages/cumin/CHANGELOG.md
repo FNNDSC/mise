@@ -1,5 +1,12 @@
 # @fnndsc/cumin
 
+## 3.8.3
+
+### Patch Changes
+
+- Preserve structured feed-creation parameters, including titles containing
+  commas, while retaining support for legacy comma-delimited parameters.
+
 ## 3.8.2
 
 ### Patch Changes

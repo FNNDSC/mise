@@ -23,6 +23,17 @@ ChRIS stores data, analysis tools, and results behind a REST API. ChELL maps all
 
 You navigate with `cd`, inspect with `ls`, read files with `cat`, and run analyses by invoking plugin names — the same muscle memory you use on any Unix system.
 
+PACS retrieval can also establish the input of a new analysis directly:
+
+```bash
+pacs query AccessionNumber:12345678
+pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
+```
+
+`--new-feed` waits for the complete selected series set, creates one feed rooted
+at `pl-dircopy`, and prints the feed ID, root job ID, and feed path. Without the
+flag, `pacs pull` only retrieves data into CUBE storage.
+
 ---
 
 ## The Virtual Filesystem

@@ -1,5 +1,16 @@
 # @fnndsc/brasa
 
+## 0.9.5
+
+### Patch Changes
+
+- Add `pacs pull --new-feed "TITLE"` to create one named analysis feed from a
+  completely retrieved PACS selection, with explicit feed/root IDs and
+  all-or-nothing handling for partial or unresolved pulls.
+- Updated dependencies
+  - @fnndsc/cumin@3.8.3
+  - @fnndsc/salsa@3.5.2
+
 ## 0.9.4
 
 ### Patch Changes

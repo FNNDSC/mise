@@ -219,6 +219,10 @@ which maps API resources onto paths:
 | `/net/pacs/queries/` | PACS query result sets |
 | `/proc/jobs/` | Live job monitoring as a navigable DAG |
 
+PACS selections can become analysis inputs in one operation: `pacs pull
+<selection...> --new-feed "TITLE"` retrieves the complete set and creates one
+named feed rooted in those resolved CUBE directories.
+
 See [packages/chell/README.md](packages/chell/README.md) for the full tour
 (running plugins, pipelines, the store, job monitoring) and
 [packages/salsa/README.md](packages/salsa/README.md) for the VFS internals.

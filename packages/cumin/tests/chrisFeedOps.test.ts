@@ -77,6 +77,25 @@ describe('ChRISFeed.createFromDirs', () => {
     expect(detail?.pluginInstance).toBeDefined();
   });
 
+  it('passes structured feed parameters without comma-delimited title parsing', async () => {
+    const createPluginInstance = jest.fn(async () => ({
+      getFeed: jest.fn(async () => feedCollection({
+        id: 9,
+        name: 'Baseline, repeat: 2',
+        owner_username: 'chris',
+      })),
+    }));
+    mockClientGet.mockResolvedValue({ createPluginInstance });
+    mockPluginIDsGet.mockResolvedValue({ hits: [17] });
+
+    await new ChRISFeed().createFromDirs('/home/chris/data', { title: 'Baseline, repeat: 2' });
+
+    expect(createPluginInstance).toHaveBeenCalledWith(17, {
+      dir: '/home/chris/data',
+      title: 'Baseline, repeat: 2',
+    });
+  });
+
   it('fails when pl-dircopy is not registered', async () => {
     mockClientGet.mockResolvedValue({});
     mockPluginIDsGet.mockResolvedValue(null);

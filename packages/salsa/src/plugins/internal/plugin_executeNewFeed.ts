@@ -7,25 +7,10 @@ import {
   errorStack,
   path_findLatestDircopy,
 } from '@fnndsc/cumin';
-import { feed_create } from '../../feeds/index.js';
+import { feed_create, type FeedCreationResult } from '../../feeds/index.js';
 import { plugin_run } from '../index.js';
 import * as path from 'path';
 import { PluginExecutionResult } from '../plugin_executeInPlace.js';
-
-/**
- * Result of creating a new feed by executing a plugin.
- */
-export interface FeedCreationResult {
-  id: number;
-  name: string;
-  owner_username: string;
-  pluginInstance: {
-    data: {
-      id: number;
-      [key: string]: unknown;
-    };
-  };
-}
 
 /**
  * Handles the "new feed" execution path.
@@ -53,9 +38,9 @@ export async function plugin_executeNewFeed(
     return null;
   }
 
-  const feedResult: FeedCreationResult | null = (await feed_create([cwd], {
-    params: `title:${feedTitle}`,
-  })) as FeedCreationResult | null;
+  const feedResult: FeedCreationResult | null = await feed_create([cwd], {
+    title: feedTitle,
+  });
 
   if (!feedResult) {
     errorStack.stack_push('error', 'Failed to create feed');

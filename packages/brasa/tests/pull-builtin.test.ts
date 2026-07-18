@@ -27,14 +27,20 @@ jest.unstable_mockModule('ws', () => ({ default: MockWebSocket }));
 
 const mockQueriesCreate = jest.fn();
 const mockRetrieveCreate = jest.fn();
+const mockProcFeedAdd = jest.fn();
+const mockProcInstanceAdd = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: jest.fn(), stack_getAll: jest.fn(() => []) },
   pacsQueries_create: mockQueriesCreate,
   pacsRetrieve_create: mockRetrieveCreate,
+  procCache_get: () => ({ feed_add: mockProcFeedAdd, instance_add: mockProcInstanceAdd }),
   Client: class {},
 }));
+
+const mockFeedCreate = jest.fn();
+jest.unstable_mockModule('@fnndsc/salsa', () => ({ feed_create: mockFeedCreate }));
 
 const mockCreateAndWait = jest.fn();
 jest.unstable_mockModule('../src/builtins/net/query.js', () => ({
@@ -122,6 +128,12 @@ beforeEach(() => {
   mockRetrieveCreate.mockResolvedValue(ok({ id: 200 }));
   mockCollect.mockResolvedValue([info()]);
   mockCubePathGet.mockResolvedValue(null);
+  mockFeedCreate.mockResolvedValue({
+    id: 300,
+    name: 'Brain MRI',
+    owner_username: 'chris',
+    pluginInstance: { data: { id: 400 } },
+  });
   mockPathResolve.mockImplementation(async (p: string) => `/home/chris/${p}`);
 });
 afterEach(() => {
@@ -135,6 +147,7 @@ describe('builtin_pull guards and path resolution', () => {
   it('returns help for --help', async () => {
     const env = await builtin_pull(['--help']);
     expect(env.rendered).toContain('USAGE');
+    expect(env.rendered).toContain('--new-feed <title>');
     expect(mockCollect).not.toHaveBeenCalled();
   });
 
@@ -205,6 +218,20 @@ describe('builtin_pull guards and path resolution', () => {
     expect(sinkData).toContain('1.2.3 ERROR');
     expect(process.exitCode).toBe(1);
   });
+
+  it('rejects --new-feed without a title', async () => {
+    await builtin_pull([QUERY_PATH, '--new-feed']);
+    expect(sinkErr).toContain('--new-feed requires a title');
+    expect(mockCollect).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects --new-feed with --nowait', async () => {
+    await builtin_pull([QUERY_PATH, '--nowait', '--new-feed', 'Brain MRI']);
+    expect(sinkErr).toContain('--new-feed cannot be combined with --nowait');
+    expect(mockCollect).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
 });
 
 describe('builtin_pull watch loop', () => {
@@ -258,7 +285,141 @@ describe('builtin_pull watch loop', () => {
     ]));
     expect(sinkData).toContain('1/1 series pulled successfully');
     expect(mockCubepath).toHaveBeenCalledWith([QUERY_PATH, '--retry']);
+    expect(mockFeedCreate).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
+  });
+
+  it('creates one named feed from the resolved directories after a complete pull', async () => {
+    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
+    mockCubePathGet
+      .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 })
+      .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-2', fileCount: 2 });
+
+    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    wsInstances[0].emit('message', lonk('4.5.6', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    await pull;
+
+    expect(mockFeedCreate).toHaveBeenCalledWith(
+      ['/SERVICES/PACS/A/series-1', '/SERVICES/PACS/A/series-2'],
+      { title: 'Brain MRI' },
+    );
+    expect(sinkData).toContain('Feed created: 300');
+    expect(sinkData).toContain('Root job: pl-dircopy (ID: 400)');
+    expect(sinkData).toContain('Input: 2 PACS series');
+    expect(sinkData).toContain('/home/chris/feeds/feed_300/pl-dircopy_400/data/');
+    expect(mockProcFeedAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 300, title: 'Brain MRI' }));
+    expect(mockProcInstanceAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 400, feedID: 300 }));
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('does not create a requested feed after a partial pull', async () => {
+    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
+    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Incomplete']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    wsInstances[0].emit('message', lonk('4.5.6', { error: 'refused' }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockFeedCreate).not.toHaveBeenCalled();
+    expect(sinkErr).toContain('New feed not created because retrieval was incomplete');
+    expect(result.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('does not create a requested feed when any operand is invalid', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    const pull = builtin_pull([QUERY_PATH, '/not/a/pacs/path', '--new-feed', 'Partial selection']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockFeedCreate).not.toHaveBeenCalled();
+    expect(sinkErr).toContain('New feed not created because the requested selection was incomplete');
+    expect(result.status).toBe('error');
+  });
+
+  it('does not create a requested feed when any operand contains no series', async () => {
+    mockCollect
+      .mockResolvedValueOnce([info('1.2.3')])
+      .mockResolvedValueOnce([]);
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    const emptyPath: string = '/net/pacs/queries/q_qid:2';
+    const pull = builtin_pull([QUERY_PATH, emptyPath, '--new-feed', 'Partial selection']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockFeedCreate).not.toHaveBeenCalled();
+    expect(sinkErr).toContain(`No series found under: ${emptyPath}`);
+    expect(sinkErr).toContain('New feed not created because the requested selection was incomplete');
+    expect(result.status).toBe('error');
+  });
+
+  it('preserves punctuation in the requested feed title', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Baseline, repeat: 2']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    await pull;
+
+    expect(mockFeedCreate).toHaveBeenCalledWith(
+      ['/SERVICES/PACS/A/series-1'],
+      { title: 'Baseline, repeat: 2' },
+    );
+  });
+
+  it('fails when a pulled series cannot be resolved to a CUBE directory', async () => {
+    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Missing path']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(mockFeedCreate).not.toHaveBeenCalled();
+    expect(sinkErr).toContain('Could not resolve CUBE storage for series 1.2.3');
+    expect(result.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('reports feed creation failure after a successful pull', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    mockFeedCreate.mockResolvedValue(null);
+    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(sinkErr).toContain("Failed to create feed 'Brain MRI'");
+    expect(result.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('requires an owner so every successful creation can print its feed path', async () => {
+    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    mockFeedCreate.mockResolvedValue({
+      id: 300,
+      name: 'Brain MRI',
+      owner_username: '',
+      pluginInstance: { data: { id: 400 } },
+    });
+    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
+    await flush();
+    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    const result = await pull;
+
+    expect(sinkErr).toContain("Failed to create feed 'Brain MRI'");
+    expect(sinkData).not.toContain('Feed path:');
+    expect(result.status).toBe('error');
+    expect(process.exitCode).toBe(1);
   });
 
   it('marks a series failed on a LONK error message', async () => {

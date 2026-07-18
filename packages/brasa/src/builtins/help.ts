@@ -536,17 +536,20 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   'pacs pull': {
-    usage: 'pacs pull [--nowait] [--retry N] <vfs-path|query-expr> [...]',
+    usage: 'pacs pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...]',
     description: 'Pull PACS series into ChRIS storage (blocking, with LONK progress)',
     options: [
       '--nowait      Fire retrieves and exit immediately; prints <seriesUID> <retrieveId> per line',
       '--retry N     Re-fire retrieves for [NO LONK] series up to N additional times',
+      '--new-feed <title>  Create one named feed from the complete retrieved selection',
+      '                    (cannot be combined with --nowait)',
       '--help        Show this help',
     ],
     examples: [
       'pacs pull /net/pacs/queries/42_AccessionNumber:12345678',
       'pacs pull /net/pacs/queries/42_.../Study_1.2.3_US-Hips_DDH',
       'pacs pull AccessionNumber:12345678   # query-then-pull shorthand',
+      'pacs pull AccessionNumber:12345678 --new-feed "Brain MRI"',
       '',
       '# Standalone alias (identical behaviour)',
       'pull /net/pacs/queries/42_AccessionNumber:12345678',
@@ -1031,11 +1034,13 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   pull: {
-    usage: 'pull [--nowait] <vfs-path|query-expr> [...]',
+    usage: 'pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...]',
     description: 'Pull PACS series into ChRIS storage; accepts VFS paths or query expressions (blocking)',
     options: [
       '--nowait      Fire retrieves and exit immediately; prints <seriesUID> <retrieveId> per line',
       '--retry N     Re-fire retrieves for [NO LONK] series up to N additional times',
+      '--new-feed <title>  Create one named feed from the complete retrieved selection',
+      '                    (cannot be combined with --nowait)',
       '--help        Show this help',
     ],
     examples: [
@@ -1054,6 +1059,7 @@ export const helpText: Record<string, CommandHelp> = {
       '# Pull directly from a query expression (creates query, waits, then pulls)',
       'pull PatientID:1234',
       'pull AccessionNumber:12345678',
+      'pull AccessionNumber:12345678 --new-feed "Brain MRI"',
       '',
       '# Fire-and-forget (scripted)',
       'pull --nowait /net/pacs/queries/42_AccessionNumber:12345678',

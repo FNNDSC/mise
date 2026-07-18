@@ -1,5 +1,14 @@
 # @fnndsc/salsa
 
+## 3.5.2
+
+### Patch Changes
+
+- Export a typed feed-creation result so PACS, plugin, and future pipeline
+  workflows can share the same feed/root identity contract.
+- Updated dependencies
+  - @fnndsc/cumin@3.8.3
+
 ## 3.5.1
 
 ### Patch Changes

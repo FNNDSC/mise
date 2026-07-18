@@ -5,7 +5,6 @@
 
 import {
   ChRISFeed,
-  SimpleRecord,
   ChRISObjectParams,
   ChRISFeedGroup,
   FilteredResourceData,
@@ -26,6 +25,20 @@ export {
   feedComment_update,
 } from '@fnndsc/cumin';
 export type { FeedNote, FeedComment } from '@fnndsc/cumin';
+
+/** Feed identity plus the pl-dircopy instance that created it. */
+export interface FeedCreationResult {
+  id: number;
+  name: string;
+  owner_username: string;
+  pluginInstance: {
+    data: {
+      id: number;
+      [key: string]: unknown;
+    };
+  };
+  [key: string]: unknown;
+}
 
 /**
  * List feeds based on options.
@@ -75,12 +88,15 @@ export async function feedFields_get(): Promise<string[] | null> {
  * @param params - Optional parameters for the feed (e.g., name, tags).
  * @returns A Promise resolving to the created feed record, or null if creation failed.
  */
-export async function feed_create(dirs: string[], params: ChRISObjectParams = {}): Promise<SimpleRecord | null> {
+export async function feed_create(
+  dirs: string[],
+  params: ChRISObjectParams = {},
+): Promise<FeedCreationResult | null> {
   const chrisFeed: ChRISFeed = new ChRISFeed();
   // For now, assuming dirs is passed as is or joined.
   const dirsArg: string = Array.isArray(dirs) ? dirs.join(',') : dirs;
 
-  return await chrisFeed.createFromDirs(dirsArg, params);
+  return await chrisFeed.createFromDirs(dirsArg, params) as FeedCreationResult | null;
 }
 
 /**

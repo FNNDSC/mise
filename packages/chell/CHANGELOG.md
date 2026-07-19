@@ -1,5 +1,20 @@
 # @fnndsc/chell
 
+## 5.2.14
+
+### Patch Changes
+
+- 0e92d4d: Persist and reconcile daemon `/proc` checkpoints, fix wildcard listing of
+  virtual executables, keep remote admin prompts on their originating surface,
+  add a Unix-style `id` builtin for the current CUBE UID/GID projection and group
+  memberships, and make versioned-plugin help, parameters, and README output
+  compose correctly through terminals, pipes, and redirects.
+- Updated dependencies [0e92d4d]
+  - @fnndsc/cumin@3.8.5
+  - @fnndsc/salsa@3.5.6
+  - @fnndsc/chili@3.6.2
+  - @fnndsc/brasa@0.9.10
+
 ## 5.2.13
 
 ### Patch Changes

@@ -1,0 +1,130 @@
+= ARGUS surface architecture
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+
+== Status
+
+This document records the initial architecture of ARGUS before application
+implementation begins. ARGUS is an LCARS-based web console and terminal surface
+for mise. It is an alternate full ChRIS experience that can grow incrementally;
+it is not _the_ ChRIS UI and does not replace sibling surfaces.
+
+== The center of the experience
+
+The defining ARGUS instrument is an indwelling terminal attached to a live
+CALYPSO session. The terminal is not one feature among several. It is the
+continuous command surface around which graphical instruments are arranged.
+
+[source,text]
+----
+                         ARGUS
+             +-------------------------+
+             |  CALYPSO CONSOLE        |
+             |  persistent terminal    |
+             |  prompt + transcript    |
+             +------------+------------+
+                          |
+        +---------+-------+-------+---------+---------+
+        | Files   | Runs  | Tools | Sources | Compute |
+        +---------+-------+-------+---------+---------+
+----
+
+A terminal command may update a graphical instrument. A graphical action must
+lower to the same bounded command a terminal operator could issue. Neither path
+creates a second control vocabulary. ARGUS inherits this constraint from mise's
+existing CALYPSO architecture rather than establishing it independently.
+
+== Operational domains
+
+ARGUS divides the scientific-computing experience into five sibling domains:
+
+Files:: Data materialized under ChRIS authority, visible through the combined
+VFS/CFS namespace. Home and Root are locations within Files, not separate
+application features.
+
+Runs:: Materialized executions and their provenance. A Run may invoke multiple
+Tools, including portions assembled from multiple Pipelines, and produces new
+Files. Analysis-oriented and job-oriented presentations are views of Runs.
+
+Tools:: Reusable declarations of transformations. Plugins and Pipelines are both
+Tools and appear as executables under `/bin`.
+
+Sources:: External places from which data can be discovered or acquired. PACS
+is the first Source; the name deliberately leaves room for other connected data
+systems.
+
+Compute:: The execution environments and capabilities on which Runs occur.
+Compute describes the substrate; it does not own Tools or Runs.
+
+Their principal relationships are:
+
+[source,text]
+----
+Sources ----acquire----> Files
+                          |
+                    +-----+-----+
+                    |           |
+                  Tools      Compute
+                    |           |
+                    +-----+-----+
+                          |
+                          v
+                         Runs ----produce----> Files
+----
+
+The explanatory distinction is between source, material, declaration,
+execution, and substrate. The code does not introduce `static` and `dynamic`
+parent directories because those dimensions do not form ownership boundaries.
+
+== Source tree
+
+[source,text]
+----
+apps/argus/
+|-- README.md
+|-- docs/
+|   `-- architecture.adoc
+`-- src/
+    |-- app/                  composition, layout, navigation
+    |-- calypso/              session transport and public protocol
+    |-- console/              terminal, prompt, transcript, progress
+    |-- features/
+    |   |-- files/
+    |   |-- runs/
+    |   |-- tools/
+    |   |-- sources/
+    |   `-- compute/
+    |-- viewers/              shared renderers for Files and Run outputs
+    `-- lcars/                Lower Decks layout and ARGUS adaptations
+----
+
+The directories are deliberately empty scaffolds at this stage. Build tooling,
+runtime entry points, and the licensed LCARS assets will arrive with an explicit
+implementation increment.
+
+== Boundary rules
+
+* Browser code consumes CALYPSO's public wire contract.
+* Browser code does not import cumin, salsa, chili, brasa, chell, or `chrisapi`.
+* CUBE remains the authority for durable scientific state.
+* CALYPSO owns the live session; ARGUS projects it.
+* Feature instruments do not invent graphical-only mutation paths.
+* Viewers are shared presentation capabilities, not a sixth domain.
+* Identity, access, notifications, and navigation are cross-cutting concerns,
+  not scientific-computing domains.
+
+== Forward construction
+
+A sensible first implementation would prove one complete surface path: render the
+Lower Decks LCARS shell, attach to CALYPSO, execute a command in the embedded
+terminal, stream its output, receive its final envelope, and update the prompt.
+Files is a strong candidate for the first graphical domain built around that
+console because it maps directly onto mise's mature VFS/CFS contract; this is a
+proposed sequence, not a dependency encoded by the tree.
+
+The existing ChRIS UI remains the aspiration catalogue for user journeys and
+capability coverage. ARGUS will pursue that coverage through vertical slices,
+without copying the existing UI's direct API and client-state architecture.

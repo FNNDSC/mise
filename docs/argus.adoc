@@ -1,0 +1,119 @@
+= ARGUS: an LCARS web surface for mise
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+
+== Purpose
+
+ARGUS is a forward-looking, LCARS-based web surface for ChRIS built on mise. It
+is one user experience among sibling surfaces, not a privileged frontend and not
+a replacement mandate for the existing ChRIS UI.
+
+The current ChRIS UI supplies an aspiration target: its mature journeys identify
+the capabilities a full operator experience eventually needs. ARGUS approaches
+those capabilities incrementally through the CALYPSO session contract rather
+than reproducing a browser client that speaks directly to CUBE.
+
+== Placement in mise
+
+[source,text]
+----
+ local ChELL          ARGUS web console          future surfaces
+     |                       |                         |
+     +-----------------------+-------------------------+
+                             |
+                    CALYPSO session contract
+                             |
+                         brasa engine
+                             |
+                 chili -> salsa -> cumin -> CUBE
+----
+
+ARGUS lives under `apps/argus`, outside the deterministic package stack. This
+placement matters: it is an application consuming a published boundary, not a
+seventh layer in the Sandwich Model.
+
+== The indwelling console
+
+ARGUS is terminal-centered. Its primary new deliverable is an indwelling console
+attached to CALYPSO: a persistent prompt, transcript, structured progress, and
+session context embedded within the graphical surface.
+
+The surrounding graphical instruments are alternate renderings and affordances
+over the same bounded command language. A graphical gesture must be expressible
+as the same command an operator could type; a terminal command may update any
+instrument that understands its envelope model.
+
+== Domain model
+
+The operator experience is organized into five domains:
+
+Files:: Materialized data within the ChRIS VFS/CFS namespace.
+
+Runs:: Materialized executions and provenance that consume and produce Files.
+
+Tools:: Reusable transformation declarations, including Plugins and Pipelines.
+
+Sources:: External systems from which data can be discovered or acquired,
+initially PACS.
+
+Compute:: Execution environments and capabilities used by Runs.
+
+[source,text]
+----
+Sources --> Files
+              |
+        Tools + Compute
+              |
+              v
+             Runs --> Files
+              |
+              `------> Tools
+----
+
+Runs are not synonymous with CUBE Workflow resources. A Run is the broader
+operator concept: materialized work may invoke several Tools and may contain
+parts derived from multiple Pipelines. Analysis and job presentations are two
+views of Runs. A CUBE Workflow remains a technical resource where relevant,
+not an ARGUS top-level feature.
+
+== Application boundaries
+
+The approved source domains are:
+
+[source,text]
+----
+apps/argus/src/features/
+|-- files/
+|-- runs/
+|-- tools/
+|-- sources/
+`-- compute/
+----
+
+CALYPSO session code and the indwelling console sit beside, not inside, the
+feature tree. LCARS layout code and shared viewers likewise remain outside the
+domain directories.
+
+ARGUS must not import internal execution layers or the raw ChRIS API. It consumes
+CALYPSO messages, envelopes, prompt context, and progress events. This constraint
+keeps CUBE authoritative, CALYPSO session-owning, and ARGUS presentational.
+
+== Incremental horizon
+
+The first slice is the console itself. Subsequent slices grow outward through
+Files, Runs, Tools, Sources, and Compute while the existing ChRIS UI remains a
+capability checklist rather than a screen-by-screen specification.
+
+Specialized binary viewers and network-facing multi-user hosting remain later
+seams. They require explicit browser data-transfer and authentication contracts;
+they are not prerequisites for proving the local CALYPSO web surface.
+
+== LCARS source
+
+The visual starting point is the Lower Decks theme from TheLCARS.com Version 26.
+Template redistribution and attribution must be resolved before its HTML, CSS,
+fonts, sounds, or images are committed to the public repository. The initial
+tree therefore contains no downloaded LCARS assets.

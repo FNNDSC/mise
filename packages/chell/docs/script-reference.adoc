@@ -694,6 +694,9 @@ invalidate it immediately, while changes made through Django admin become
 visible after the freshness window. Progress is status telemetry and therefore
 does not enter pipes, redirects, or captured command output.
 
+See link:posix.adoc[posix.adoc] for the record mapping, cache lifecycle, and
+daemon behavior of POSIX-style projections.
+
 === pluginmetas / meta / metas
 
 [source,bash]
@@ -928,6 +931,7 @@ In `-c` or script mode, each command's output is emitted as it runs.
 == See Also
 
 * link:vfs.adoc[vfs.adoc] — VFS architecture and provider details
+* link:posix.adoc[posix.adoc] — POSIX-style resource projections and freshness
 * link:pluginrun.adoc[pluginrun.adoc] — Plugin execution deep-dive
 * link:store.adoc[store.adoc] — Store install three-phase resolution
 * link:login.adoc[login.adoc] — Connection and authentication options

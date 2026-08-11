@@ -1,0 +1,120 @@
+= POSIX-Style Projections
+:toc:
+:toc-placement: preamble
+:toclevels: 3
+:sectnums:
+
+== Scope
+
+ChELL presents parts of ChRIS through familiar POSIX paths and record formats.
+These are shell-facing projections, not the host operating system's files:
+
+* `/etc/group` represents CUBE groups and memberships.
+* `/etc/passwd` represents the authenticated CUBE user.
+* `/bin` represents transforms registered as plugins and pipelines.
+* `/proc/jobs` represents instantiated transforms and their state.
+
+The projection makes established shell tools and habits useful without claiming
+that ChRIS resources are kernel users, processes, or files. In particular,
+reading `/etc/group` never reads the daemon host's `/etc/group`, and changing a
+CUBE membership does not alter an operating-system group.
+
+== `/etc/group`
+
+Each visible CUBE group is rendered as one POSIX-style record:
+
+[source,text]
+----
+group_name:x:group_id:user_1,user_2
+----
+
+The fields map as follows:
+
+[cols="1,3"]
+|===
+| Field | Meaning
+
+| Group name
+| CUBE group name.
+
+| `x`
+| Conventional password placeholder; ChELL does not expose a group password.
+
+| Group ID
+| Numeric CUBE group identifier.
+
+| Members
+| Comma-separated CUBE usernames resolved from the group's membership API.
+|===
+
+The projection is read-only. Membership changes use the group-domain commands:
+
+[source,bash]
+----
+groups search pacs_users
+group members 7
+group adduser 7 peter.hong
+group removeuser 7 peter.hong
+----
+
+These operations require the permissions enforced by CUBE, ordinarily an
+administrator token.
+
+=== Resolution and cache lifetime
+
+Resolving every group membership may require many CUBE requests. ChELL caches
+the completed `/etc/group` projection for five minutes. It never caches a
+partial or failed projection.
+
+The cache belongs to one VFS provider and is keyed by both CUBE URL and
+authenticated username. A provider cannot reuse group data after either part
+of that identity changes.
+
+[cols="1,3"]
+|===
+| Event | Next `/etc/group` read
+
+| A second read within five minutes
+| Returns the completed cached projection without new group-membership calls.
+
+| `group adduser` or `group removeuser` succeeds in ChELL
+| The membership revision advances and invalidates the cached projection
+immediately.
+
+| Membership changes through Django admin or another client
+| The cached projection remains valid until its five-minute freshness window
+expires, then the next read resolves from CUBE again.
+
+| CUBE URL or authenticated user changes
+| The old projection is bypassed, even inside its freshness window.
+
+| The daemon or local ChELL process restarts
+| The in-memory projection is discarded; the next read resolves from CUBE.
+|===
+
+=== Interactive progress
+
+On a cache miss, ChELL emits semantic inspection progress if resolution lasts
+longer than 300 ms. An interactive terminal renders the event as:
+
+[source,text]
+----
+Resolving /etc/group memberships…
+----
+
+A fast cache hit normally completes before the delay and shows no spinner.
+Progress travels on the status channel, not the data or error channel. It is
+therefore never included in command envelopes, pipes, redirects, or captured
+script output. Browser and other future surfaces may render the same progress
+event using their own presentation.
+
+=== Daemon operation
+
+In remote mode the VFS provider and its cache live in the CALYPSO daemon, so
+attached surfaces share the daemon's projection. Restart the daemon once after
+deploying code that changes this behavior. Normal cache expiry and successful
+ChELL membership mutations do not require a restart.
+
+Restarting the daemon can also force an immediate refresh after an external
+administrative change, but it is an operational escape hatch rather than the
+normal refresh path.

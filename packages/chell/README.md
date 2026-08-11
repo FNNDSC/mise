@@ -77,28 +77,6 @@ cd /home/chris/feeds
 ls -l                     # see your analysis feeds
 ```
 
-### `/etc/group` freshness
-
-`/etc/group` projects CUBE groups and their current usernames into POSIX group
-syntax. Resolving every membership can require many API requests, so ChELL
-caches the completed projection for five minutes. The cache is scoped to the
-CUBE URL and authenticated user; changing either identity cannot reuse the
-previous projection.
-
-On a cache miss, an interactive surface shows
-`Resolving /etc/group memberships…` after 300 ms. This is semantic status
-telemetry, not command output: scripts, pipes, redirects, and captured results
-receive only the group file contents. A cache hit normally completes before the
-spinner appears.
-
-Membership changes made with `group adduser` or `group removeuser` invalidate
-the projection immediately. Changes made by another client, including Django
-admin, become visible when the five-minute freshness window expires. In daemon
-mode the cache lives in the daemon process and is shared by its attached
-surfaces; restarting that daemon also discards it and forces the next read to
-rehydrate. A daemon restart is required once when deploying code that changes
-this behavior, but not during normal cache refreshes.
-
 ### Symlinks (`.chrislink` files)
 
 ChRIS uses `.chrislink` files as symbolic links. `ls -l` renders them as `l` entries; `cd` and `cat` follow them transparently. The link target is resolved through the VFS dispatcher — it can point anywhere in the virtual tree.

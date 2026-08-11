@@ -126,22 +126,22 @@ field then includes every CUBE membership, ordered by numeric group ID.
 
 === whoami
 
-Prints `<username>  <CUBE URL>`.
+Prints the authenticated CUBE username.
 
 [source,bash]
 ----
 whoami
-# rudolphpienaar  http://localhost:32223/api/v1/
+# rudolphpienaar
 ----
 
 === whereami
 
-Prints current working directory.
+Prints the current CUBE URL. Use `pwd` for the ChELL working directory.
 
 [source,bash]
 ----
 whereami
-# /home/rudolphpienaar/uploads
+# http://localhost:32223/api/v1/
 ----
 
 == Filesystem Navigation

@@ -322,8 +322,8 @@ store set <url>         # override peer store
 ### System
 ```bash
 id                      # CUBE UID, projected primary GID, and memberships
-whoami                  # current user and CUBE URL
-whereami                # current working directory
+whoami                  # current CUBE user
+whereami                # current CUBE URL (use pwd for working directory)
 prompt list             # list prompt themes
 prompt default          # compact single-line prompt
 prompt p10k             # vivid two-line powerline prompt

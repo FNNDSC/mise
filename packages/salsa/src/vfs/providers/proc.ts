@@ -77,6 +77,17 @@ const PAGE: number = 100;
 let procTopologyPromise: Promise<void> | null = null;
 let procTopologyFailure: string | undefined;
 
+/** Private continuation state retained when a topology page request fails. */
+interface ProcTopologySweepState {
+  offset: number;
+  total: number;
+  fetchedInstanceIDs: Set<number>;
+  seenInstanceIDs: Set<number>;
+  seenFeedIDs: Set<number>;
+}
+
+let procTopologyResumeState: ProcTopologySweepState | null = null;
+
 /** Lifecycle states for the session's global topology sweep. */
 export type ProcTopologyState = 'idle' | 'running' | 'complete' | 'failed';
 
@@ -596,35 +607,36 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
  *
  * Scoped per-feed loads may run concurrently for navigation; the completed
  * global sweep reconciles the cache to its authoritative instance set.
+ *
+ * @param state - Private pagination and reconciliation state for this sweep.
+ * @returns A promise that settles when the complete topology has been reconciled.
  */
-async function procTopology_run(): Promise<void> {
+async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
   await cache_ensure();
   const cache: ProcCache = procCache_get();
   cache.lifecycle_set('reconciling');
+  if (state.total > 0) {
+    cache.warmup_progress(state.fetchedInstanceIDs.size, state.total);
+  }
   const client = await chrisConnection.client_get();
   if (!client) throw new Error('not connected');
 
   const typedClient: ChrisClient = client as unknown as ChrisClient;
-  let offset: number = 0;
-  let total: number = 0;
-  const fetchedInstanceIDs: Set<number> = new Set();
-  const seenInstanceIDs: Set<number> = new Set();
-  const seenFeedIDs: Set<number> = new Set();
 
   while (true) {
     const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
-      limit: PAGE, offset,
+      limit: PAGE, offset: state.offset,
     });
     const chunk: RawInstance[] = page.data ?? [];
-    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
-      total = page.totalCount;
-      if (total > 0) cache.warmup_progress(0, total);
+    if (state.offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+      state.total = page.totalCount;
+      if (state.total > 0) cache.warmup_progress(0, state.total);
     }
 
     for (const inst of chunk) {
       const instanceID: number = Number(inst.id);
       const feedID: number = Number(inst.feed_id);
-      fetchedInstanceIDs.add(instanceID);
+      state.fetchedInstanceIDs.add(instanceID);
       const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
         ? Number(inst.previous_id)
         : null;
@@ -640,32 +652,49 @@ async function procTopology_run(): Promise<void> {
         params: null,
         status: String(inst.status ?? 'unknown'),
       });
-      seenInstanceIDs.add(instanceID);
-      seenFeedIDs.add(feedID);
+      state.seenInstanceIDs.add(instanceID);
+      state.seenFeedIDs.add(feedID);
     }
 
-    if (total > 0) cache.warmup_progress(fetchedInstanceIDs.size, total);
-    if (chunk.length === 0 || (total > 0 && fetchedInstanceIDs.size >= total)) break;
-    if (total === 0 && chunk.length < PAGE) break;
-    offset += chunk.length;
+    if (state.total > 0) cache.warmup_progress(state.fetchedInstanceIDs.size, state.total);
+    if (chunk.length === 0 || (state.total > 0 && state.fetchedInstanceIDs.size >= state.total)) break;
+    if (state.total === 0 && chunk.length < PAGE) break;
+    state.offset += chunk.length;
   }
 
-  cache.topology_reconcile(seenInstanceIDs);
-  for (const feedID of seenFeedIDs) cache.topologyLoaded_mark(feedID);
-  if (total === 0) cache.warmup_progress(fetchedInstanceIDs.size, fetchedInstanceIDs.size);
+  cache.topology_reconcile(state.seenInstanceIDs);
+  for (const feedID of state.seenFeedIDs) cache.topologyLoaded_mark(feedID);
+  if (state.total === 0) {
+    cache.warmup_progress(state.fetchedInstanceIDs.size, state.fetchedInstanceIDs.size);
+  }
   cache.warmup_complete();
 }
 
 /**
- * Starts or joins the session's global plugin-instance topology sweep.
+ * Creates an empty continuation for a fresh global topology sweep.
  *
- * @returns The single in-flight sweep promise.
+ * @returns New private pagination and reconciliation state.
  */
-export function procTopology_warmup(): Promise<void> {
-  if (procTopologyPromise) return procTopologyPromise;
+function procTopologyState_create(): ProcTopologySweepState {
+  return {
+    offset: 0,
+    total: 0,
+    fetchedInstanceIDs: new Set<number>(),
+    seenInstanceIDs: new Set<number>(),
+    seenFeedIDs: new Set<number>(),
+  };
+}
 
+/**
+ * Starts one topology sweep from the supplied private continuation state.
+ *
+ * @param state - Private pagination and reconciliation state to run or resume.
+ * @returns The in-flight topology sweep promise.
+ */
+function procTopology_start(state: ProcTopologySweepState): Promise<void> {
   procTopologyFailure = undefined;
-  const sweep: Promise<void> = procTopology_run();
+  procTopologyResumeState = state;
+  const sweep: Promise<void> = procTopology_run(state);
   procTopologyPromise = sweep;
   sweep.then(
     (): void => {
@@ -673,6 +702,7 @@ export function procTopology_warmup(): Promise<void> {
       procTopologyPromise = null;
       if (procCache_get().warmupComplete) {
         procTopologyFailure = undefined;
+        procTopologyResumeState = null;
       } else {
         procTopologyFailure = 'the topology sweep ended before the index completed';
       }
@@ -685,6 +715,30 @@ export function procTopology_warmup(): Promise<void> {
     },
   );
   return sweep;
+}
+
+/**
+ * Starts or joins the session's global plugin-instance topology sweep.
+ *
+ * @returns The single in-flight sweep promise.
+ */
+export function procTopology_warmup(): Promise<void> {
+  if (procTopologyPromise) return procTopologyPromise;
+  return procTopology_start(procTopologyState_create());
+}
+
+/**
+ * Continues a failed global topology sweep from its failed page.
+ *
+ * @returns The resumed sweep promise, or the active sweep when one is running.
+ * @throws {Error} When there is no failed sweep continuation to retry.
+ */
+export function procTopology_retry(): Promise<void> {
+  if (procTopologyPromise) return procTopologyPromise;
+  if (procTopologyFailure === undefined || !procTopologyResumeState) {
+    throw new Error('no failed topology sweep to retry');
+  }
+  return procTopology_start(procTopologyResumeState);
 }
 
 /**
@@ -739,6 +793,7 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
     }
     procTopologyPromise = null;
     procTopologyFailure = undefined;
+    procTopologyResumeState = null;
     procCache_get().warmup_reset();
     await procCache_build();
   }

@@ -191,7 +191,9 @@ Warm-up progress is visible in a state-labelled prompt segment such as
 `[proc cold: 342/1275 26%]` or `[proc cached, refreshing: 342/1275 26%]`.
 Refresh failure remains visible as `[proc failed: ...]`; the segment disappears
 once the lifecycle becomes current. Use `proc stat` for the complete checkpoint,
-scope, freshness, and lifecycle detail.
+scope, freshness, and lifecycle detail. A failed sweep retains its pagination
+and reconciliation state in daemon memory, so `proc retry` continues at the
+failed page. A daemon restart loses that continuation.
 
 === Phase 3: Per-feed lazy loading (on navigation)
 
@@ -252,6 +254,21 @@ The global summary shows exclusive user/public/shared feed counts, loaded versus
 reported jobs, topology-sweep state, cache lifecycle state, and the checkpoint
 timestamp when one has been restored or written. The per-feed form reports its
 aggregate status, job counters, and whether its topology is loaded.
+
+=== proc retry
+
+Continues a failed global topology sweep without repeating successful pages:
+
+[source,bash]
+----
+proc retry                # resume at the page that failed
+----
+
+The command returns immediately while reconciliation continues in the
+background; the prompt and `proc stat` report its progress. Continuation state
+exists only for a failed sweep in the current daemon process. It is cleared
+after successful reconciliation, by a full `proc refresh`, or by daemon
+restart. Use `proc refresh` when an authoritative start-over is required.
 
 === proc refresh
 

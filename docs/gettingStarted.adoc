@@ -231,7 +231,8 @@ checkpoint and validates its feed visibility before publishing the socket. The
 restored graph remains usable while a paginated CUBE sweep reconciles it in the
 background. Terminal job status may come from the checkpoint; active status and
 logs remain live. Use `proc stat` to inspect the cache state and checkpoint time,
-and `proc refresh` after analyses created by another client. See
+`proc retry` to continue a failed topology sweep, and `proc refresh` after
+analyses created by another client or when a clean rebuild is required. See
 link:../packages/chell/docs/proc.adoc[the `/proc` guide] for the full freshness
 model.
 

@@ -30,6 +30,9 @@ All resource commands follow `<object> <verb>` order — never `<verb> <object>`
 
 | `proc refresh`
 | `refresh proc`
+
+| `proc retry`
+| `retry proc`
 |===
 
 Filesystem commands are exceptions: `ls`, `cd`, `cat`, `rm`, `cp`, `mv`, `mkdir`,
@@ -736,6 +739,7 @@ rm -r /proc/jobs/feed_1107
 proc refresh              # rebuild /proc feed index (fast — feeds only)
 proc refresh feed_123     # scope rebuild to one feed
 proc refresh 123          # same
+proc retry                # resume a failed global topology sweep
 
 proc find <instance_id>   # return full /proc path for any instance ID
 ----
@@ -755,6 +759,7 @@ cat $(proc find 64306)/status
 
 * Built lazily on first access to any `/proc/jobs` path.
 * `proc refresh` rebuilds the feed index (fast, feeds only).
+* `proc retry` retains completed pages and continues at the page that failed.
 * Instance nodes within a feed are loaded on first access to that feed's directory.
 * Status of non-terminal nodes is always fetched live from the API on `cat status`.
 * `/proc` paths bypass listCache — always fresh.

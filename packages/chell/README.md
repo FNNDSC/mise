@@ -260,6 +260,7 @@ statuses and logs remain live. Inspect freshness and feed scope with `proc stat`
 ```bash
 proc stat                 # feed scope, loaded jobs, sweep and checkpoint state
 proc stat feed_123        # cached detail for one feed
+proc retry                # resume a failed topology sweep at its failed page
 proc refresh              # rebuild all and start one replacement topology sweep
 proc refresh feed_123     # scope to one feed
 ```
@@ -329,6 +330,7 @@ prompt p10k             # vivid two-line powerline prompt
 connect --user <u> --password <p> <url>
 logout
 proc stat               # show /proc feed scope, freshness, and checkpoint
+proc retry              # resume failed /proc reconciliation without starting over
 proc refresh            # rebuild /proc job cache and restart topology warm-up
 proc refresh feed_123   # scope rebuild to one feed
 ```

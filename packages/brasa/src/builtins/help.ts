@@ -672,7 +672,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc <jobs|stat|feeds|refresh|find> [args]',
+    usage: 'proc <jobs|stat|feeds|refresh|retry|find> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
     description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. The daemon restores an identity-scoped local topology checkpoint, validates feed visibility with CUBE, and reconciles all plugin instances in the background. Restored queries remain usable while syncing; a cold cache still guards global queries until complete. CUBE remains authoritative.',
     subcommands: [
@@ -690,6 +690,7 @@ export const helpText: Record<string, CommandHelp> = {
       'feeds <title> [--force]                Search feed titles; --force waits for warm-up',
       'refresh                                Rebuild entire proc cache',
       'refresh <feed_id>                      Rebuild cache for one feed only',
+      'retry                                  Resume a failed topology sweep at its failed page',
       'find <id>                              Targeted instance lookup; available during warm-up',
       'find <name> [--force]                  Name search; --force waits for warm-up',
     ],
@@ -703,6 +704,7 @@ export const helpText: Record<string, CommandHelp> = {
       'proc stat 899',
       'proc feeds failed',
       'proc refresh',
+      'proc retry',
       'proc find 64306',
       'proc find pl-fshack',
     ],

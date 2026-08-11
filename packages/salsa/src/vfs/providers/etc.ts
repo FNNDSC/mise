@@ -15,21 +15,39 @@ import {
   computeResources_getAll,
   ComputeResource,
   groups_getAll,
+  groupMembers_getAll,
   ChrisGroup,
+  ChrisGroupMember,
   currentUser_get,
   ChrisUser,
   chrisContext,
 } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
+import { groupMembershipRevision_get } from '../../groups/membershipRevision.js';
 
 /** Virtual files exposed under /etc. */
 const ETC_FILES: string[] = ['compute.yaml', 'group', 'passwd', 'cube'];
+
+/** Maximum group membership lists hydrated concurrently for `/etc/group`. */
+const GROUP_MEMBERSHIP_CONCURRENCY: number = 4;
+
+/** How long external CUBE membership changes may remain cached. */
+const GROUP_PROJECTION_TTL_MS: number = 5 * 60 * 1000;
+
+/** One connection-scoped, rendered `/etc/group` snapshot. */
+interface GroupProjectionCacheEntry {
+  connectionKey: string;
+  content: string;
+  expiresAt: number;
+  membershipRevision: number;
+}
 
 /**
  * VFS provider for /etc — maps ChRIS API resources to Unix-style config files.
  */
 export class EtcVfsProvider implements VFSProvider {
   prefix = '/etc';
+  private groupProjectionCache: GroupProjectionCacheEntry | undefined;
 
   /**
    * Lists contents of /etc — the four virtual config files.
@@ -102,14 +120,48 @@ export class EtcVfsProvider implements VFSProvider {
     return Ok(lines.join('\n') + '\n');
   }
 
+  /** Renders CUBE groups and their usernames in POSIX `/etc/group` form. */
   private async group_render(): Promise<Result<string>> {
+    const cubeURL: string | null = await chrisContext.ChRISURL_get();
+    const cubeUser: string | null = await chrisContext.ChRISuser_get();
+    const connectionKey: string = `${cubeURL ?? ''}\u0000${cubeUser ?? ''}`;
+    const membershipRevision: number = groupMembershipRevision_get();
+    const now: number = Date.now();
+    if (
+      this.groupProjectionCache?.connectionKey === connectionKey
+      && this.groupProjectionCache.membershipRevision === membershipRevision
+      && this.groupProjectionCache.expiresAt > now
+    ) {
+      return Ok(this.groupProjectionCache.content);
+    }
+
     const result: Result<ChrisGroup[]> = await groups_getAll();
     if (!result.ok) return Err();
 
-    const lines: string[] = result.value.map(
-      (g: ChrisGroup): string => `${g.name}:x:${g.id}:`
-    );
-    return Ok(lines.join('\n') + '\n');
+    const lines: string[] = [];
+    for (let index: number = 0; index < result.value.length; index += GROUP_MEMBERSHIP_CONCURRENCY) {
+      const groupBatch: ChrisGroup[] = result.value.slice(index, index + GROUP_MEMBERSHIP_CONCURRENCY);
+      const batchResults: Array<{ group: ChrisGroup; members: Result<ChrisGroupMember[]> }> =
+        await Promise.all(groupBatch.map(async (group: ChrisGroup) => ({
+          group,
+          members: await groupMembers_getAll(group.id),
+        })));
+      for (const { group, members } of batchResults) {
+        if (!members.ok) return Err();
+        const usernames: string = members.value
+          .map((member: ChrisGroupMember): string => member.username)
+          .join(',');
+        lines.push(`${group.name}:x:${group.id}:${usernames}`);
+      }
+    }
+    const content: string = lines.join('\n') + '\n';
+    this.groupProjectionCache = {
+      connectionKey,
+      content,
+      expiresAt: Date.now() + GROUP_PROJECTION_TTL_MS,
+      membershipRevision,
+    };
+    return Ok(content);
   }
 
   private async passwd_render(): Promise<Result<string>> {

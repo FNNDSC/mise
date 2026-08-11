@@ -35,6 +35,8 @@ export interface RemoteEngineOptions {
   onPrompt?: (message: string, hidden: boolean) => Promise<string>;
   /** Runs a pipeline segment on this machine and returns its output. */
   onPipe?: (command: string, input: Buffer) => Promise<Buffer>;
+  /** Runs a host-shell command on this machine and returns its exit code. */
+  onShell?: (command: string) => Promise<number>;
   /** Opens content in this machine's editor and returns the edited result. */
   onEdit?: (content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>;
   /** Called when the connection closes unexpectedly. */
@@ -50,6 +52,7 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
   private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
   private readonly onPipe: ((command: string, input: Buffer) => Promise<Buffer>) | undefined;
+  private readonly onShell: ((command: string) => Promise<number>) | undefined;
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private latestPrompt: string = '';
   private nextId: number = 0;
@@ -64,6 +67,7 @@ export class RemoteEngine implements BrasaEngine {
     this.onSession = options.onSession;
     this.onPrompt = options.onPrompt;
     this.onPipe = options.onPipe;
+    this.onShell = options.onShell;
     this.onEdit = options.onEdit;
   }
 
@@ -82,7 +86,12 @@ export class RemoteEngine implements BrasaEngine {
       ws.once('error', (err: Error) => reject(err));
 
       ws.once('open', () => {
-        ws.send(JSON.stringify({ type: 'attach', protocolVersion: CONTRACT_VERSION, token: options.token }));
+        ws.send(JSON.stringify({
+          type: 'attach',
+          protocolVersion: CONTRACT_VERSION,
+          token: options.token,
+          capabilities: { shellCommands: options.onShell !== undefined },
+        }));
         ws.once('message', (data: Buffer) => {
           const parsed = serverMessage_parse(safeJson_parse(data.toString()));
           if (!parsed.ok || parsed.value === undefined) {
@@ -202,6 +211,9 @@ export class RemoteEngine implements BrasaEngine {
       case 'pipe':
         void this.pipe_run(message.pipeId, message.command, message.input);
         break;
+      case 'shell':
+        void this.shell_run(message.shellId, message.command);
+        break;
       case 'edit':
         void this.edit_run(message.editId, message.content, message.extension);
         break;
@@ -246,6 +258,26 @@ export class RemoteEngine implements BrasaEngine {
     } catch (error: unknown) {
       const reason: string = error instanceof Error ? error.message : String(error);
       this.ws.send(JSON.stringify({ type: 'pipeError', pipeId, reason }));
+    }
+  }
+
+  /**
+   * Runs a host-shell command the daemon delegated to this surface and returns
+   * only its exit status; the process owns this surface's terminal directly.
+   *
+   * @param shellId - Correlation id for the shell request.
+   * @param command - The shell command without the leading `!`.
+   */
+  private async shell_run(shellId: string, command: string): Promise<void> {
+    try {
+      if (!this.onShell) {
+        throw new Error('this surface cannot run shell commands');
+      }
+      const exitCode: number = await this.onShell(command);
+      this.ws.send(JSON.stringify({ type: 'shellResult', shellId, exitCode }));
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.ws.send(JSON.stringify({ type: 'shellError', shellId, reason }));
     }
   }
 

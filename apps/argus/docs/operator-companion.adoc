@@ -1,0 +1,246 @@
+= ARGUS operator companion
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+
+== Status
+
+This document records the forward design for host capabilities required by a
+full ARGUS workbench. It defines an architectural boundary, not an implemented
+service or a settled wire protocol.
+
+ARGUS remains a web application. A full IDE experience, however, requires
+capabilities that a browser intentionally does not provide: an arbitrary local
+PTY, Git and development tools, reliable filesystem watching, and efficient
+access to an operator's source tree. Those capabilities belong in a small
+operator-side companion rather than in the browser or the spoke CALYPSO daemon.
+
+== Filesystem realms
+
+Once the operator and computation occupy different machines, `local` is
+ambiguous. ARGUS uses explicit realm names:
+
+[cols="1,2,2",options="header"]
+|===
+|Realm |Purpose |Authority
+
+|Surface Filesystem
+|The operator machine's source trees, downloads, editor files, and local tools
+|Operator
+
+|Spoke Workspace
+|A responsive POSIX working tree near protected data and execution facilities
+|HARBOR or the spoke
+
+|ChRIS Files
+|Materialized scientific inputs, outputs, and provenance exposed through VFS/CFS
+|CUBE
+
+|External Sources
+|PACS and other systems from which data is discovered or acquired
+|Source system
+|===
+
+A Spoke Workspace is not ChRIS Files. Source trees need ordinary POSIX
+semantics, rapid small-file access, build caches, watchers, permissions, sockets,
+and temporary files. ChRIS Files remain the durable scientific-material and
+provenance boundary.
+
+== Placement
+
+CALYPSO stays close to authoritative computation and protected data. Moving it
+to the operator machine merely to reach that machine's filesystem would move
+the engine and credentials across the trust boundary and make CUBE interactions
+pay wide-area latency.
+
+[source,text]
+----
+Operator machine                              Spoke
++----------------------------------+          +-----------------------------+
+| Browser: ARGUS UI                |          | CALYPSO daemon              |
+|                                  |          | mise engine                 |
+| Operator Companion               |<-------->| spoke workspace             |
+| local filesystem, PTY, Git,      |          | CUBE/data proximity         |
+| editor services, file watching   |          +-----------------------------+
++----------------------------------+
+----
+
+The companion is part of the ARGUS surface, not part of CALYPSO. CALYPSO owns
+the ChRIS session; the companion owns capabilities granted by the operator's
+machine. ChELL already occupies this surface-side role when it attaches with
+`--remote`: shell escapes are brokered back to that client and run against its
+terminal and filesystem. Client-local upload/download paths and workspace
+projection remain future companion capabilities.
+
+== Jupyter precedent
+
+Jupyter supplies the closest established architectural metaphor. Its browser
+frontend does not itself own a Python process or ambient filesystem access. A
+Jupyter server supplies contents, terminals, sessions, and kernel lifecycle; by
+default its file browser reflects the server's filesystem and its terminals run
+on the server host. When that server is local, the experience appears local to
+the browser. When it is remote, the same instruments operate in the remote
+server's realm.
+
+ARGUS applies that separation without adopting the narrower notebook model:
+
+[cols="1,1",options="header"]
+|===
+|Jupyter concept |ARGUS counterpart
+
+|Browser frontend
+|ARGUS browser UI
+
+|Jupyter server
+|Operator Companion acting as the Workbench Host
+
+|Contents service and file browser
+|Workbench Host filesystem service and workspace browser over the Surface Filesystem
+
+|Kernel or terminal
+|Local PTY, language service, or spoke CALYPSO session
+
+|Kernel gateway
+|Connection to one or more spoke CALYPSO sessions
+
+|Cell output
+|Command envelopes, Runs, and materialized ChRIS Files
+|===
+
+`Operator Companion` names the installed process and its placement near the
+operator. `Workbench Host` names the role it performs for a full ARGUS
+Workbench. They are not two required processes.
+
+The Jupyter analogy is architectural rather than a commitment to notebook UX.
+ARGUS spans ordinary source trees, Git, multiple languages and execution realms,
+long-running scientific Runs, workspace projection, and spoke ingress/egress
+policy. CALYPSO is kernel-like in that it maintains command-session context and
+returns structured results, but it is specifically a ChRIS command kernel rather
+than the complete Workbench Host.
+
+== Deployment modes
+
+ARGUS Workbench:: A local command starts the companion, serves the bundled
+ARGUS application on a random loopback port, opens it in the browser, and
+connects outward to one or more spoke CALYPSO sessions. This mode can provide a
+PTY, approved workspace roots, Git, development tools, and workspace projection.
+
+Thin ARGUS:: A conventionally hosted browser application attaches without a
+companion. It can operate ChRIS and use browser-mediated file selection and
+downloads, but it has no arbitrary local shell and no ambient filesystem access.
+
+The thin mode is a valid surface, not a degraded failure state. Capabilities are
+declared during attachment so commands requiring an absent capability fail
+clearly.
+
+== Locality semantics
+
+Operations must state or imply one execution realm consistently:
+
+[cols="1,2",options="header"]
+|===
+|Operation |Realm
+
+|Ordinary ChELL commands
+|Selected spoke CALYPSO session and ChRIS VFS
+
+|`!command`
+|Surface machine through its companion; unavailable on a surface without a shell capability
+
+|Spoke shell
+|An explicit, separately authorized operation inside a Spoke Workspace; never an alternate meaning of `!`
+
+|`upload local-path chris-path`
+|Read Surface Filesystem, write ChRIS Files
+
+|`download chris-path local-path`
+|Read ChRIS Files, write Surface Filesystem
+
+|Workspace projection
+|Incrementally transfer an operator worktree into a Spoke Workspace
+|===
+
+Daemon stdout is never a command-response destination. Live output is
+correlated with the requesting surface and returned through the session
+contract.
+
+== Workspace projection
+
+The preferred starting posture is asymmetric:
+
+* The operator's Git worktree is the source-code authority while editing.
+* HARBOR incrementally projects changes into a real POSIX Spoke Workspace.
+* Projection is operator-to-spoke by default; it is not silently bidirectional.
+* Builds, tests, language servers, and execution may run in the spoke workspace
+  when their environment or data must remain there.
+* Scientific outputs materialize as ChRIS Files rather than leaking into an
+  implicitly synchronized source tree.
+* Retrieval from a protected spoke is explicit and subject to egress policy.
+* A Run should eventually identify the Git revision, uncommitted overlay, and
+  compute environment from which it was produced.
+
+`Projection` names the relationship without prematurely selecting SSHFS,
+periodic synchronization, a remote-development protocol, or content-addressed
+snapshots as its transport.
+
+== Browser sandbox and trust boundary
+
+The companion does not disable the browser sandbox. Browser code still cannot
+open arbitrary host files or spawn a process directly. It asks an installed
+native process to exercise a granted capability. Functionally this extends the
+application beyond normal browser confinement, so ARGUS Workbench must be
+treated as a native application whose presentation happens to run in a browser.
+
+This extension provides the capabilities needed for an IDE, but it enlarges the
+trusted computing base: a compromised ARGUS origin, dependency, or companion
+protocol could otherwise turn a web flaw into host file access or code
+execution. A generic unauthenticated localhost REST or WebSocket service is not
+an acceptable implementation.
+
+=== Required controls
+
+* Bind only to loopback and use a random port.
+* Authenticate every connection with a short-lived, per-launch secret.
+* Validate the browser origin and the complete protocol independently of CORS.
+* Serve a pinned local ARGUS bundle in Workbench mode; do not load remote scripts
+  into the privileged origin.
+* Apply a restrictive Content Security Policy.
+* Grant workspace roots explicitly and represent them with opaque handles rather
+  than accepting arbitrary paths from browser code.
+* Contain filesystem access across `..`, symlinks, and race conditions.
+* Separate read, write, shell, and transfer capabilities.
+* Start visible PTY sessions only through an explicit operator action.
+* Make transfers across a spoke trust boundary directional, auditable, and
+  subject to ingress and egress policy.
+* Provide a companion-free Thin ARGUS mode for deployments that do not accept
+  the expanded trust boundary.
+
+Browser file APIs remain useful for narrow thin-client workflows because they
+require explicit user permission for file or directory handles. They do not
+supply the PTY, process, Git, language-server, or filesystem-watching substrate
+of a full IDE. Browser access to loopback and local-network services is itself
+increasingly permission-gated and must not be assumed to be uniform across
+browsers.
+
+== Open design questions
+
+* Whether the companion should proxy the browser's CALYPSO connection or allow
+  the browser and companion to attach as separate surfaces.
+* Whether language servers run locally, in the spoke workspace, or are selected
+  per project.
+* The projection transport and conflict model for uncommitted changes.
+* How workspace capability grants are persisted, displayed, and revoked.
+* The protocol boundary for large uploads and downloads: relayed through
+  CALYPSO, directly transferred under a short-lived grant, or both.
+* How a source snapshot and overlay become durable Run provenance.
+
+== References
+
+* Mozilla Developer Network, https://developer.mozilla.org/en-US/docs/Web/API/File_System_API[File System API].
+* Mozilla Developer Network, https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Local_network_access[Local network access].
+* Chrome for Developers, https://developer.chrome.com/blog/local-network-access[New permission prompt for Local Network Access].
+* Project Jupyter, https://jupyter-server.readthedocs.io/en/latest/developers/architecture.html[Jupyter Server architecture].
+* Project Jupyter, https://jupyter-server.readthedocs.io/en/stable/developers/contents.html[Jupyter Contents API].
+* Project Jupyter, https://jupyterlab.readthedocs.io/en/stable/user/running.html[Managing kernels and terminals].

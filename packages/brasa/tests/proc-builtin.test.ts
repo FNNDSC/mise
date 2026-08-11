@@ -35,6 +35,7 @@ const contextGetSingle_mock = jest.fn(async () => ({ user: 'me' }));
 const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
 const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
+const procTopologyRetry_mock = jest.fn(async (): Promise<void> => undefined);
 let mockFeeds: TestFeed[] = [];
 let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
@@ -74,6 +75,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procFeed_ensureLoaded: procFeedEnsureLoaded_mock,
   procTopology_await: procTopologyAwait_mock,
   procTopology_warmup: procTopologyWarmup_mock,
+  procTopology_retry: procTopologyRetry_mock,
   procTopology_status: jest.fn(() => ({ ...mockTopologyStatus })),
 }));
 
@@ -226,6 +228,7 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('failed to warm: connection lost');
     expect(envelope.renderedErr).toContain('incomplete results');
+    expect(envelope.renderedErr).toContain('proc retry');
     expect(process.exitCode).toBe(1);
   });
 
@@ -361,6 +364,26 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.status).toBe('ok');
     expect(procCacheRefresh_mock).toHaveBeenCalledWith(undefined);
     expect(procTopologyWarmup_mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes a failed topology sweep without rebuilding earlier pages', async () => {
+    mockWarmup = { loaded: 23200, total: 27600, active: false };
+    mockTopologyStatus = { state: 'failed', failure: 'connection lost' };
+
+    const envelope: TestEnvelope = await builtin_proc(['retry']);
+
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('23200/27600');
+    expect(procTopologyRetry_mock).toHaveBeenCalledTimes(1);
+    expect(procCacheRefresh_mock).not.toHaveBeenCalled();
+  });
+
+  it('refuses proc retry when no topology sweep has failed', async () => {
+    const envelope: TestEnvelope = await builtin_proc(['retry']);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('no failed topology sweep');
+    expect(procTopologyRetry_mock).not.toHaveBeenCalled();
   });
 
   it('inspects available job fields without requiring warm-up', async () => {

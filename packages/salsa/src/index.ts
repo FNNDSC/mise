@@ -19,7 +19,7 @@ export * from './plugininstances/index.js';
 export * from './workflows/index.js';
 export * from './compute/index.js';
 export * from './jobs/index.js';
-export { procCache_refresh, procTopology_warmup, procTopology_status, procTopology_await, procFeed_ensureLoaded, feedInstances_ensureLoaded, feedMeta_ensure, feedStatus_refresh } from './vfs/providers/proc.js';
+export { procCache_refresh, procTopology_warmup, procTopology_retry, procTopology_status, procTopology_await, procFeed_ensureLoaded, feedInstances_ensureLoaded, feedMeta_ensure, feedStatus_refresh } from './vfs/providers/proc.js';
 export type { ProcTopologyState, ProcTopologyStatus } from './vfs/providers/proc.js';
 export { feedGraph_build, signature_compute } from './dag/feedGraph.js';
 export type { FeedGraph, FeedNode } from './dag/feedGraph.js';

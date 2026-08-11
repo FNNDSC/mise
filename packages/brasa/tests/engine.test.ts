@@ -42,17 +42,6 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   },
 }));
 
-// Host shell escape (`!cmd`) spawns a child process; drive its lifecycle events.
-type SpawnHandlers = Record<string, (arg?: unknown) => void>;
-let spawnBehavior: (h: SpawnHandlers) => void = (h) => h.close?.(0);
-const mockSpawn = jest.fn(() => {
-  const handlers: SpawnHandlers = {};
-  const child = { on: (ev: string, cb: (arg?: unknown) => void) => { handlers[ev] = cb; return child; } };
-  Promise.resolve().then(() => spawnBehavior(handlers));
-  return child;
-});
-jest.unstable_mockModule('child_process', () => ({ spawn: mockSpawn }));
-
 // Redirect targets: real preprocess resolves the path (statSync), dispatch writes it.
 const mockWriteFile = jest.fn();
 const mockAppendFile = jest.fn();
@@ -115,6 +104,7 @@ jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecuta
 // Pipe segments now run through the active surface; the test installs a
 // surface whose pipeSegment delegates to this mock.
 const mockSegmentPipe = jest.fn();
+const mockShellCommand = jest.fn(async (_command: string): Promise<number> => 0);
 jest.unstable_mockModule('../src/lib/pipe.js', () => ({ segment_pipeThrough: mockSegmentPipe }));
 
 // Engine creation registers the static VFS providers on the salsa dispatcher.
@@ -152,12 +142,18 @@ beforeEach(() => {
   mockHasHelpFlag.mockReturnValue(false);
   mockTiming.mockReturnValue(false);
   mockStatSync.mockImplementation(enoent);
-  spawnBehavior = (h) => h.close?.(0);
-  // Install a surface that can run pipe segments, delegating to the mock.
+  // Install a surface that can run local process capabilities, delegating to mocks.
   surface_set({
-    capabilities: { hiddenInput: false, localEdit: false, tty: false, pipeSegments: true },
+    capabilities: {
+      hiddenInput: false,
+      localEdit: false,
+      tty: false,
+      pipeSegments: true,
+      shellCommands: true,
+    },
     prompt: async (): Promise<string> => '',
     pipeSegment: (command: string, input: Buffer): Promise<Buffer> => mockSegmentPipe(command, input) as Promise<Buffer>,
+    shellCommand: (command: string): Promise<number> => mockShellCommand(command),
     localEdit: async (r: { content: string }): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
   });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -243,9 +239,17 @@ describe('line_execute', () => {
 
   it('fails a pipeline clearly when the surface cannot run segments', async () => {
     surface_set({
-      capabilities: { hiddenInput: false, localEdit: false, tty: false, pipeSegments: false },
+      capabilities: {
+        hiddenInput: false,
+        localEdit: false,
+        tty: false,
+        pipeSegments: false,
+        shellCommands: false,
+      },
       prompt: async (): Promise<string> => '',
       pipeSegment: (_c: string, i: Buffer): Promise<Buffer> => Promise.resolve(i),
+      shellCommand: async (): Promise<number> => 0,
+      localEdit: async (r: { content: string }): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
     });
     const envelopes = await line_execute('whoami | grep foo');
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('cannot run pipeline segments'));
@@ -269,29 +273,31 @@ describe('line_execute', () => {
 });
 
 describe('shell escape', () => {
-  it('runs a !-prefixed command on the host shell', async () => {
+  it('delegates a !-prefixed command to the active surface', async () => {
     const envelopes = await line_execute('!echo hi');
-    expect(mockSpawn).toHaveBeenCalledWith('echo hi', expect.objectContaining({ shell: true }));
+    expect(mockShellCommand).toHaveBeenCalledWith('echo hi');
     expect(envelopes).toEqual([{ status: 'ok', rendered: '' }]);
   });
 
   it('reports a non-zero host exit code as an error envelope', async () => {
-    spawnBehavior = (h) => h.close?.(3);
+    mockShellCommand.mockResolvedValueOnce(3);
     const envelopes = await line_execute('!false');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('exited with code 3'));
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
   });
 
-  it('reports a spawn error', async () => {
-    spawnBehavior = (h) => h.error?.(new Error('nope'));
+  it('reports a surface shell failure in the returned envelope', async () => {
+    mockShellCommand.mockRejectedValueOnce(new Error('nope'));
     const envelopes = await line_execute('!badcmd');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('nope'));
-    expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
+    expect(envelopes).toEqual([{
+      status: 'error',
+      rendered: '',
+      renderedErr: expect.stringContaining('nope'),
+    }]);
   });
 
   it('ignores a bare "!" with no command', async () => {
     const envelopes = await line_execute('!');
-    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(mockShellCommand).not.toHaveBeenCalled();
     expect(envelopes).toEqual([]);
   });
 });

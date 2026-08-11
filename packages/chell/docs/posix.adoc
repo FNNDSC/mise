@@ -1,0 +1,301 @@
+= POSIX-Style Projections
+:toc:
+:toc-placement: preamble
+:toclevels: 3
+:sectnums:
+
+== Scope
+
+ChELL presents parts of ChRIS through familiar POSIX paths and record formats. These are shell-facing projections, not the host operating system's files:
+
+* `/etc/group` represents CUBE groups and memberships.
+* `/etc/passwd` represents the authenticated CUBE user.
+* `/bin` represents transforms registered as plugins and pipelines.
+* `/proc/jobs` represents instantiated transforms and their state.
+
+The projection makes established shell tools and habits useful without claiming that ChRIS resources are kernel users, processes, or files. In particular, reading `/etc/group` never reads the daemon host's `/etc/group`, and changing a CUBE membership does not alter an operating-system group.
+
+== One namespace, two kinds of storage
+
+ChELL resolves relative paths against a session working directory and presents CUBE storage and API-backed resources in one tree:
+
+[cols="1,1,3"]
+|===
+| Path | Backing | Contract
+
+| `/home/<user>`, `/PIPELINES`, `/PUBLIC`, `/SERVICES`, `/SHARED`
+| CFS
+| Durable files, directories, and `.chrislink` links stored by CUBE.
+
+| `/bin`
+| VFS
+| Registered plugins and pipelines projected as executable entries.
+
+| `/usr/bin`
+| VFS
+| ChELL built-ins projected as executable entries.
+
+| `/etc`
+| VFS
+| Connection, identity, group, and compute-resource records.
+
+| `/net/pacs/queries`
+| VFS
+| PACS query results navigated as query, study, and series directories.
+
+| `/proc/jobs`
+| VFS
+| Feeds and plugin instances projected as a job DAG.
+|===
+
+CFS is the durable ChRIS filesystem. VFS paths are synthesized from APIs and may be live, cached, or read-only according to their provider. A displayed owner, type character, mode-like name, or absolute path is metadata in this combined namespace; it does not imply a corresponding host inode.
+
+`cd`, `pwd`, absolute and relative paths, `..`, `~`, and `~/...` use this session namespace. Bare `cd` selects `/home/<authenticated-user>`. `cd -` is not implemented. In normal mode ChELL preserves the logical path while resolving `.chrislink` targets for access. `--physicalFS` instead stores the resolved CUBE path as the working directory; it still does not expose the host filesystem.
+
+=== Long-listing type characters
+
+`ls -l` keeps a Unix-shaped leading type character but extends it for projected resources:
+
+[cols="1,3"]
+|===
+| Character | ChELL meaning
+
+| `d`
+| CFS directory.
+
+| `-`
+| CFS file, or a virtual leaf file where the provider presents file content.
+
+| `l`
+| CFS `.chrislink` entry; `ls -l` displays its target and access/navigation resolves it.
+
+| `p`
+| Registered plugin executable in `/bin`.
+
+| `P`
+| Registered pipeline executable in `/bin`.
+
+| `v`
+| Virtual directory or other VFS entry.
+
+| `j`
+| ChRIS job node in `/proc/jobs`; the usual size column carries execution status rather than a byte count.
+|===
+
+These characters classify resources for navigation and rendering. They are not host inode mode bits and cannot be changed with `chmod`.
+
+== Executable projections
+
+`/bin` contains the plugins and pipelines available from the connected CUBE. A plugin filename includes its version, such as `pl-dircopy-v2.1.1`; a pipeline uses its registered slug. Invoking either name directly dispatches a ChRIS run, not a host process. Reading a plugin entry returns its parameter-oriented help, while reading a pipeline entry returns its invocation summary.
+
+`/usr/bin` lists ChELL's built-in commands. Reading one of these entries returns the same help text exposed by the command. Both executable directories are static VFS projections: copying entries out of them is not supported, and their reported owner values are descriptive rather than OS ownership. Pipeline entries may report their registered authors.
+
+== Configuration and identity projections
+
+`/etc` is a read-only VFS directory with four files:
+
+[cols="1,3"]
+|===
+| Path | Projection
+
+| `/etc/cube`
+| YAML connection URL and authenticated CUBE username.
+
+| `/etc/passwd`
+| One POSIX-style record for the authenticated CUBE user. The CUBE user ID is used for both UID and projected primary GID; the home is `/home/<username>` and the shell field is `chell`.
+
+| `/etc/group`
+| CUBE groups and their resolved memberships. See <<_etc_group>>.
+
+| `/etc/compute.yaml`
+| Registered compute resources in YAML.
+|===
+
+The identity commands separate the same session facts: `whoami` prints the CUBE username, `whereami` prints the CUBE URL, `pwd` prints the ChELL working directory, and `id` renders numeric identity and memberships. Because CUBE has no primary-group field, `id` projects the user's numeric ID and username as the primary GID and group, then appends CUBE group memberships. CUBE remains the authority for visibility and mutation: there are no local mode bits, and ChELL does not implement `chmod`, `chown`, or an OS-style `groupadd`. Group membership changes use `group adduser` and `group removeuser` and remain subject to CUBE permissions.
+
+The passwd record has this stable shape:
+
+[source,text]
+----
+username:x:user_id:user_id:email:/home/username:chell
+----
+
+The final field names ChELL as the projected shell; it is not a host executable path and cannot be used by the operating system for login.
+
+== Process and data-source projections
+
+`/proc/jobs` is a read-mostly view of visible feeds and their plugin-instance graphs. Feed directories contain `status`, `title`, and root job nodes. Job nodes contain `status`, `params`, `log`, and child jobs. Terminal status and immutable parameters can be cached; active status and logs are refreshed. These are ChRIS jobs, not host PIDs. `proc refresh`, `proc retry`, and the documented `rm` job operations are domain commands, not Linux `/proc` semantics. See link:proc.adoc[the `/proc` contract] for freshness details.
+
+`/net/pacs/queries` projects PACS query results rather than mounted PACS storage. Query results expand into studies and series; virtual `metadata.json` and `image_slices.dcm` entries can be read. PACS retrieve/copy operations materialize data into CFS; navigating the projection alone does not.
+
+== Shell composition
+
+ChELL implements a deliberately small shell language:
+
+* whitespace-separated arguments with single quotes, double quotes, and backslash escapes;
+* sequential commands separated by unquoted `;`;
+* pipes separated by unquoted `|`;
+* overwrite and append redirection with unquoted `>` and `>>`;
+* `$NAME` and `${NAME}` substitution from the ChELL process environment on the normal plain-command dispatch path; an unset name is left literal;
+* wildcard expansion for `ls`, `rm`, `cat`, `mv`, `cp`, `du`, and `tree`.
+
+Where supported, environment substitution is applied to parsed tokens after quote characters have been removed and after wildcard expansion. Unlike a POSIX shell, single quotes therefore do not suppress `$NAME` substitution, quoting a wildcard does not suppress expansion for a wildcard-aware command, and a wildcard introduced by an environment value is not subsequently expanded. An expanded value stays one token and cannot inject a semicolon, pipe, or redirect into the already-parsed command structure. The ChELL command captured by a pipe or standalone redirect does not currently take this environment-substitution path; neither does a direct plugin executable that resolves before generic dispatch.
+
+In a pipe, the first segment is a ChELL command. Later segments are ordinary tools run by the originating surface. With `chell --remote`, those tools run on the remote client machine, never on the CALYPSO daemon host. A surface that cannot provide local pipeline execution, such as a browser without an appropriate companion capability, rejects the pipe instead of silently running it somewhere else. Only the data channel is piped or redirected; errors remain visible and progress/status output is never captured. Text is ANSI-stripped at the composition boundary, while binary data is preserved.
+
+=== Filesystem and process realms
+
+POSIX spelling alone does not identify which machine owns an operation. The current implementation has three distinct realms:
+
+[cols="2,2,3"]
+|===
+| Operation | Realm | Consequence in `chell --remote`
+
+| `cd`, `ls`, `cat`, and other ordinary ChELL filesystem commands
+| ChRIS CFS/VFS session namespace
+| CALYPSO resolves the path against the connected CUBE.
+
+| `$NAME` on the normal plain-command dispatch path
+| Engine process environment
+| The value comes from the CALYPSO daemon environment, not the remote client's environment. Unset names remain literal.
+
+| A standalone `command > file` or `command >> file`
+| Engine host filesystem
+| The target is written by the CALYPSO daemon. The redirect target is a host path, not a CFS/VFS path, and ChELL does not perform tilde expansion on it.
+
+| `upload <local> <remote>` and `download <remote> <local>`
+| Engine host filesystem for the local endpoint; CFS for the remote endpoint
+| Today the local endpoint is on the daemon machine. These commands are not a client-filesystem transfer channel in remote mode.
+
+| `edit <CFS-file>`
+| CFS content with an originating-surface editor
+| The daemon fetches and saves the ChRIS file, while the remote client opens its own editor and returns the changed content.
+
+| The second and later segments of `chell-command {vbar} host-tool`
+| Originating surface process and filesystem
+| The daemon sends the bytes and command to the client. A redirect embedded in that host-tool segment is interpreted by the client shell.
+
+| `!host-command`
+| Originating surface process and filesystem
+| The command runs on the remote client, never on the daemon.
+|===
+
+The difference between standalone and downstream-pipe redirection is observable in the current execution model but is not ordinary shell locality. Use explicit CFS commands for durable ChRIS data, and do not assume that a host path visible to one realm exists in another.
+
+== Host-shell escape
+
+A line beginning with `!` bypasses ChELL parsing after the bang and runs the remainder as a host-shell command on the originating surface:
+
+[source,bash]
+----
+!pwd
+!ls ~/Downloads
+----
+
+For ordinary ChELL this is the local machine. For `chell --remote` it is still the client machine, not the daemon. Thus `pwd` reports the ChELL session path, while `!pwd` reports the issuing surface's host path. A bare `!` does nothing. Host-path completion after `!` is not currently provided, and a browser or headless surface may decline the shell-command capability entirely.
+
+== Deliberate non-POSIX boundaries
+
+The familiar spelling is an interface, not an emulation promise:
+
+* ChELL does not provide host/Unix processes or PIDs, inodes, device files, Unix ownership, mode changes, hard links, or a general host mount beneath its root.
+* The parser is not Bash: it has no command substitution, shell functions, control structures, `&&`/`||`, stdin or stderr redirection, background jobs, or general-purpose expansion. Its quoting groups tokens and protects structural separators, but does not carry POSIX quote provenance into later environment or wildcard expansion.
+* VFS capabilities are provider-specific. `/etc` and the executable projections are read-only; `/proc` and `/net/pacs` expose only their documented domain operations.
+* Cache freshness is part of the interface. CFS listings, `/proc`, and `/etc/group` do not all share one cache or one invalidation policy.
+* `!` and local pipeline segments explicitly use surface capabilities; `upload` and `download` are explicit transfers. Ordinary ChELL paths do not name the operator's local files.
+
+== `/etc/group`
+
+Each visible CUBE group is rendered as one POSIX-style record:
+
+[source,text]
+----
+group_name:x:group_id:user_1,user_2
+----
+
+The fields map as follows:
+
+[cols="1,3"]
+|===
+| Field | Meaning
+
+| Group name
+| CUBE group name.
+
+| `x`
+| Conventional password placeholder; ChELL does not expose a group password.
+
+| Group ID
+| Numeric CUBE group identifier.
+
+| Members
+| Comma-separated CUBE usernames resolved from the group's membership API.
+|===
+
+The projection is read-only. Membership changes use the group-domain commands:
+
+[source,bash]
+----
+groups search pacs_users
+group members 7
+group adduser 7 peter.hong
+group removeuser 7 peter.hong
+----
+
+These operations require the permissions enforced by CUBE, ordinarily an administrator token.
+
+=== Resolution and cache lifetime
+
+Resolving every group membership may require many CUBE requests. ChELL caches the completed `/etc/group` projection for five minutes. It never caches a partial or failed projection.
+
+The cache belongs to one VFS provider and is keyed by both CUBE URL and authenticated username. A provider cannot reuse group data after either part of that identity changes.
+
+[cols="1,3"]
+|===
+| Event | Next `/etc/group` read
+
+| A second read within five minutes
+| Returns the completed cached projection without new group-membership calls.
+
+| `group adduser` or `group removeuser` succeeds in ChELL
+| The membership revision advances and invalidates the cached projection immediately.
+
+| Membership changes through Django admin or another client
+| The cached projection remains valid until its five-minute freshness window expires, then the next read resolves from CUBE again.
+
+| CUBE URL or authenticated user changes
+| The old projection is bypassed, even inside its freshness window.
+
+| The daemon or local ChELL process restarts
+| The in-memory projection is discarded; the next read resolves from CUBE.
+|===
+
+=== Interactive progress
+
+On a cache miss, ChELL emits semantic inspection progress if resolution lasts longer than 300 ms. An interactive terminal renders the event as:
+
+[source,text]
+----
+Resolving /etc/group memberships…
+----
+
+A fast cache hit normally completes before the delay and shows no spinner. Progress travels on the status channel, not the data or error channel. It is therefore never included in command envelopes, pipes, redirects, or captured script output. Browser and other future surfaces may render the same progress event using their own presentation.
+
+=== Daemon operation
+
+In remote mode the VFS provider and its cache live in the CALYPSO daemon, so attached surfaces share the daemon's projection. Restart the daemon once after deploying code that changes this behavior. Normal cache expiry and successful ChELL membership mutations do not require a restart.
+
+Restarting the daemon can also force an immediate refresh after an external administrative change, but it is an operational escape hatch rather than the normal refresh path.
+
+== References
+
+The contracts above are derived from implemented first-party sources rather than from a claim of general POSIX conformance:
+
+* link:script-reference.adoc[ChELL script reference] — supported filesystem commands, namespace roots, and invocation forms.
+* link:vfs.adoc[VFS architecture] and link:physicalMode.adoc[physical-filesystem mode] — CFS/VFS routing and logical-path behavior.
+* link:../../salsa/src/vfs/dispatcher.ts[`VFSDispatcher`] and link:../../salsa/src/vfs/provider.ts[`VFSProvider`] — provider selection and the common item/operation contract.
+* link:../../salsa/src/vfs/providers/etc.ts[`EtcVfsProvider`], link:../../salsa/src/vfs/providers/proc.ts[`ProcVfsProvider`], and link:../../salsa/src/vfs/providers/pacs.ts[`PacsVfsProvider`] — implemented virtual records and freshness behavior.
+* link:../../brasa/src/lib/vfs/providers/static.ts[`StaticVfsProvider`] — `/bin`, `/usr`, and `/usr/bin` projections.
+* link:../../brasa/src/core/engine.ts[engine], link:../../brasa/src/core/dispatch.ts[dispatch], link:../../brasa/src/core/preprocess.ts[preprocessor], and link:../../brasa/src/core/surface.ts[surface capability contract] — parsing, execution order, pipes, redirects, and host-shell locality.
+* link:../../brasa/src/builtins/fs/upload.ts[upload] and link:../../brasa/src/builtins/fs/download.ts[download] — current ownership of local transfer endpoints.
+* link:../src/core/cliSurface.ts[CLI surface] — client-local shell, pipeline, and editor capabilities.

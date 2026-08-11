@@ -27,12 +27,18 @@ export const channelSchema = z.enum(['data', 'err', 'status']);
 
 // --- Surface → daemon ------------------------------------------------------
 
-/** Attach to a session: declares the contract version and the attach token. */
+/** Capabilities an attaching surface can safely execute on its own machine. */
+export const surfaceCapabilitiesMessageSchema = z.object({
+  shellCommands: z.boolean(),
+});
+
+/** Attach to a session: declares the contract version, token, and surface capabilities. */
 export const attachMessageSchema = z.object({
   type: z.literal('attach'),
   protocolVersion: z.number().int(),
   token: z.string(),
   session: z.string().optional(),
+  capabilities: surfaceCapabilitiesMessageSchema.optional(),
 });
 
 /** Execute one input line, correlated by `id`. */
@@ -70,6 +76,20 @@ export const pipeErrorMessageSchema = z.object({
   reason: z.string(),
 });
 
+/** Returns the exit code of a shell command the daemon asked the surface to run. */
+export const shellResultMessageSchema = z.object({
+  type: z.literal('shellResult'),
+  shellId: z.string(),
+  exitCode: z.number().int(),
+});
+
+/** Returns a surface shell-launch failure to the daemon, correlated by `shellId`. */
+export const shellErrorMessageSchema = z.object({
+  type: z.literal('shellError'),
+  shellId: z.string(),
+  reason: z.string(),
+});
+
 /** Returns the edited content from a local-edit the daemon requested, correlated by `editId`. */
 export const editResultMessageSchema = z.object({
   type: z.literal('editResult'),
@@ -86,6 +106,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   promptAnswerMessageSchema,
   pipeResultMessageSchema,
   pipeErrorMessageSchema,
+  shellResultMessageSchema,
+  shellErrorMessageSchema,
   editResultMessageSchema,
 ]);
 
@@ -233,6 +255,13 @@ export const pipeMessageSchema = z.object({
   input: z.string(),
 });
 
+/** Asks the surface to run a shell command on its own machine, never on the daemon host. */
+export const shellMessageSchema = z.object({
+  type: z.literal('shell'),
+  shellId: z.string(),
+  command: z.string(),
+});
+
 /**
  * Asks the surface to open content in its local editor (never on the daemon
  * host) and return the edited result.
@@ -256,6 +285,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   promptMessageSchema,
   promptLineMessageSchema,
   pipeMessageSchema,
+  shellMessageSchema,
   editMessageSchema,
 ]);
 

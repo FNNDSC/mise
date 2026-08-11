@@ -3,7 +3,7 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
@@ -36,7 +36,7 @@ async function procWarmup_guard(command: string, force: boolean): Promise<Comman
     const reason: string = topology.failure ? `: ${topology.failure}` : '';
     return envelope_error('', undefined,
       `${chalk.red(`proc: the visible-job index failed to warm${reason}.`)}\n` +
-      'Global queries are disabled to avoid incomplete results. Restart the session daemon to retry.\n'
+      'Global queries are disabled to avoid incomplete results. Run `proc retry` to continue from the failed page.\n'
     );
   }
 
@@ -238,6 +238,33 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * Resumes the session's failed global topology sweep at its failed page.
+ *
+ * @returns An envelope confirming the retained progress, or a clear error when
+ * there is no failed sweep to retry.
+ */
+function procRetry_handle(): CommandEnvelope {
+  const topology: ProcTopologyStatus = procTopology_status();
+  if (topology.state !== 'failed') {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.yellow('proc retry: no failed topology sweep to retry')}\n`);
+  }
+
+  const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
+  try {
+    const resumed: Promise<void> = procTopology_retry();
+    void resumed.catch((): void => { /* surfaced by proc topology status */ });
+    return envelope_ok(
+      `${chalk.green(`/proc topology retry resumed at ${progress.loaded}/${progress.total}`)}\n`,
+    );
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`proc retry failed: ${message}`)}\n`);
+  }
+}
+
+/**
  * Handles `proc find <query>`: locates instances by id/plugin-name and reports
  * their /proc paths.
  *
@@ -410,6 +437,9 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
 
   if (!subcommand || subcommand === 'refresh') {
     return procRefresh_handle(args);
+  }
+  if (subcommand === 'retry') {
+    return procRetry_handle();
   }
   if (subcommand === 'jobs') {
     return jobs_subcmd(args.slice(1));

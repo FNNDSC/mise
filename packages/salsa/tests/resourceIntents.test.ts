@@ -9,6 +9,10 @@ const asset = {
   resources_getAll: jest.fn(),
   resourceFields_get: jest.fn(),
 };
+const groupMembersGetAll = jest.fn();
+const groupUserAdd = jest.fn();
+const groupUserRemove = jest.fn();
+const errorPop = jest.fn();
 
 jest.mock('@fnndsc/cumin', () => {
   const Group = jest.fn().mockImplementation(() => ({ asset }));
@@ -19,11 +23,22 @@ jest.mock('@fnndsc/cumin', () => {
     ChRISWorkflowGroup: Group,
     ChRISPluginMetaGroup: Group,
     ChRISPluginInstanceGroup: Group,
+    groupMembers_getAll: groupMembersGetAll,
+    groupUser_add: groupUserAdd,
+    groupUser_remove: groupUserRemove,
+    errorStack: { stack_pop: errorPop },
   };
 });
 
 import { tags_list, tags_listAll, tagFields_get } from '../src/tags/index';
-import { groups_list, groups_listAll, groupFields_get } from '../src/groups/index';
+import {
+  groups_list,
+  groups_listAll,
+  groupFields_get,
+  groupMembers_getAll,
+  groupUser_add,
+  groupUser_remove,
+} from '../src/groups/index';
 import {
   computeResources_list,
   computeResources_listAll,
@@ -46,6 +61,41 @@ beforeEach(() => {
   asset.resources_listAndFilterByOptions.mockReset();
   asset.resources_getAll.mockReset();
   asset.resourceFields_get.mockReset();
+  groupMembersGetAll.mockReset();
+  groupUserAdd.mockReset();
+  groupUserRemove.mockReset();
+  errorPop.mockReset();
+});
+
+describe('group membership intents', () => {
+  it('presents successful membership operations', async () => {
+    groupMembersGetAll.mockResolvedValue({
+      ok: true,
+      value: [{ id: 12, username: 'peter.hong' }],
+    });
+    groupUserAdd.mockResolvedValue({ ok: true, value: { id: 12, username: 'peter.hong' } });
+    groupUserRemove.mockResolvedValue({ ok: true, value: true });
+
+    await expect(groupMembers_getAll(7)).resolves.toEqual({
+      ok: true,
+      value: [{ id: 12, username: 'peter.hong' }],
+    });
+    await expect(groupUser_add(7, 'peter.hong')).resolves.toEqual({
+      ok: true,
+      value: { id: 12, username: 'peter.hong' },
+    });
+    await expect(groupUser_remove(7, 'peter.hong')).resolves.toEqual({ ok: true, value: true });
+  });
+
+  it('carries the CUBE error across the Salsa boundary', async () => {
+    groupUserAdd.mockResolvedValue({ ok: false });
+    errorPop.mockReturnValue({ message: 'Request failed with status code 403' });
+
+    await expect(groupUser_add(7, 'peter.hong')).resolves.toEqual({
+      ok: false,
+      error: 'Request failed with status code 403',
+    });
+  });
 });
 
 describe.each([

@@ -30,6 +30,7 @@ const sinkSet_mock = jest.fn<(sink: unknown) => void>();
 const surfaceSet_mock = jest.fn<(surface: unknown) => void>();
 const prompt_mock = jest.fn<(options: { message: string; hidden: boolean }) => Promise<string>>();
 const pipeSegment_mock = jest.fn<(command: string, stdin: Buffer) => Promise<Buffer>>();
+const shellCommand_mock = jest.fn<(command: string) => Promise<number>>();
 const localEdit_mock = jest.fn<(request: LocalEditRequest) => Promise<LocalEditResult>>();
 const resolverResolve_mock = jest.fn<(identity: string) => Promise<TestBerth | null>>();
 const resolverList_mock = jest.fn<() => Promise<TestBerth[]>>();
@@ -66,6 +67,7 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   surface_get: jest.fn(() => ({
     prompt: prompt_mock,
     pipeSegment: pipeSegment_mock,
+    shellCommand: shellCommand_mock,
     localEdit: localEdit_mock,
   })),
   surface_set: surfaceSet_mock,
@@ -191,6 +193,7 @@ describe('remote_run', () => {
     }) as typeof process.exit);
     prompt_mock.mockResolvedValue('answer');
     pipeSegment_mock.mockResolvedValue(Buffer.from('output'));
+    shellCommand_mock.mockResolvedValue(0);
     localEdit_mock.mockResolvedValue({ content: 'edited', changed: true });
 
     await remote_run(berth.identity);
@@ -198,9 +201,10 @@ describe('remote_run', () => {
     const session_dispatch = options.onSession;
     const prompt_dispatch = options.onPrompt;
     const pipe_dispatch = options.onPipe;
+    const shell_dispatch = options.onShell;
     const edit_dispatch = options.onEdit;
     const close_dispatch = options.onClose;
-    if (!session_dispatch || !prompt_dispatch || !pipe_dispatch || !edit_dispatch || !close_dispatch) {
+    if (!session_dispatch || !prompt_dispatch || !pipe_dispatch || !shell_dispatch || !edit_dispatch || !close_dispatch) {
       throw new Error('interactive callbacks were not connected');
     }
 
@@ -208,12 +212,14 @@ describe('remote_run', () => {
     session_dispatch('abcdef123', { status: 'ok', rendered: '' });
     await expect(prompt_dispatch('Question?', false)).resolves.toBe('answer');
     await expect(pipe_dispatch('wc -l', Buffer.from('input'))).resolves.toEqual(Buffer.from('output'));
+    await expect(shell_dispatch('pwd')).resolves.toBe(0);
     await expect(edit_dispatch('before', '.txt')).resolves.toEqual({ content: 'edited', changed: true });
     expect(() => close_dispatch()).toThrow('daemon disconnected');
 
     expect(stdout_spy).toHaveBeenCalledWith(expect.stringContaining('background output'));
     expect(prompt_mock).toHaveBeenCalledWith({ message: 'Question?', hidden: false });
     expect(pipeSegment_mock).toHaveBeenCalledWith('wc -l', Buffer.from('input'));
+    expect(shellCommand_mock).toHaveBeenCalledWith('pwd');
     expect(localEdit_mock).toHaveBeenCalledWith({ content: 'before', extension: '.txt' });
     expect(exit_spy).toHaveBeenCalledWith(0);
   });

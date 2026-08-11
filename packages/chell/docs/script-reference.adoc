@@ -30,6 +30,9 @@ All resource commands follow `<object> <verb>` order — never `<verb> <object>`
 
 | `proc refresh`
 | `refresh proc`
+
+| `proc retry`
+| `retry proc`
 |===
 
 Filesystem commands are exceptions: `ls`, `cd`, `cat`, `rm`, `cp`, `mv`, `mkdir`,
@@ -123,22 +126,22 @@ field then includes every CUBE membership, ordered by numeric group ID.
 
 === whoami
 
-Prints `<username>  <CUBE URL>`.
+Prints the authenticated CUBE username.
 
 [source,bash]
 ----
 whoami
-# rudolphpienaar  http://localhost:32223/api/v1/
+# rudolphpienaar
 ----
 
 === whereami
 
-Prints current working directory.
+Prints the current CUBE URL. Use `pwd` for the ChELL working directory.
 
 [source,bash]
 ----
 whereami
-# /home/rudolphpienaar/uploads
+# http://localhost:32223/api/v1/
 ----
 
 == Filesystem Navigation
@@ -388,7 +391,7 @@ ChELL presents a unified path tree mixing CFS (real ChRIS storage) and VFS
 | Path | Content
 
 | `/etc/compute.yaml` | All compute environments in YAML
-| `/etc/group`        | LDAP-style group listing
+| `/etc/group`        | POSIX-style group listing with cached CUBE memberships
 | `/etc/passwd`       | User listing
 | `/etc/cube`         | CUBE instance information
 |===
@@ -665,11 +668,27 @@ tag inspect <id>
 ----
 groups list [--all]
 group inspect <id>
+group members <id>
 group create <name>          # [admin]
 group delete <id>            # [admin]
 group adduser <id> <user>    # [admin]
 group removeuser <id> <user> # [admin]
 ----
+
+Membership changes operate on an existing CUBE user and require an
+administrator token. Resolve a group ID first, then update it:
+
+[source,bash]
+----
+groups search pacs_users
+group members 7
+group adduser 7 peter.hong
+cat /etc/group
+----
+
+`/etc/group` is a read-only projection of the current users in each visible group. The first read hydrates memberships from CUBE and shows an interactive spinner when that takes longer than 300 ms. The rendered projection is cached for five minutes per CUBE connection; `group adduser` and `group removeuser` invalidate it immediately, while changes made through Django admin become visible after the freshness window. Progress is status telemetry and therefore does not enter pipes, redirects, or captured command output.
+
+See link:posix.adoc[posix.adoc] for the record mapping, cache lifecycle, and daemon behavior of POSIX-style projections.
 
 === pluginmetas / meta / metas
 
@@ -736,6 +755,7 @@ rm -r /proc/jobs/feed_1107
 proc refresh              # rebuild /proc feed index (fast — feeds only)
 proc refresh feed_123     # scope rebuild to one feed
 proc refresh 123          # same
+proc retry                # resume a failed global topology sweep
 
 proc find <instance_id>   # return full /proc path for any instance ID
 ----
@@ -755,6 +775,7 @@ cat $(proc find 64306)/status
 
 * Built lazily on first access to any `/proc/jobs` path.
 * `proc refresh` rebuilds the feed index (fast, feeds only).
+* `proc retry` retains completed pages and continues at the page that failed.
 * Instance nodes within a feed are loaded on first access to that feed's directory.
 * Status of non-terminal nodes is always fetched live from the API on `cat status`.
 * `/proc` paths bypass listCache — always fresh.
@@ -903,6 +924,7 @@ In `-c` or script mode, each command's output is emitted as it runs.
 == See Also
 
 * link:vfs.adoc[vfs.adoc] — VFS architecture and provider details
+* link:posix.adoc[posix.adoc] — POSIX-style resource projections and freshness
 * link:pluginrun.adoc[pluginrun.adoc] — Plugin execution deep-dive
 * link:store.adoc[store.adoc] — Store install three-phase resolution
 * link:login.adoc[login.adoc] — Connection and authentication options

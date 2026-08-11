@@ -43,6 +43,10 @@ documentation; for using the shell and the packages, see the per-package READMEs
   architecture to taste, and every surface — framework-based or bespoke — attaches
   to the daemon as a sibling.
 
+- **[argus.adoc](argus.adoc)** — **ARGUS**, an LCARS-based web surface built
+  around an indwelling CALYPSO terminal. Defines its place outside the package
+  stack and its five operator domains: Files, Runs, Tools, Sources, and Compute.
+
 - **[structured-progress.md](structured-progress.md)** — the implementation
   contract for CALYPSO structured progress: progress events are facts emitted
   through the sink and daemon wire; terminal bars are renderings of those facts.

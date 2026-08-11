@@ -8,10 +8,17 @@ import { CONTRACT_VERSION } from '../src/protocol/version';
 
 describe('clientMessage_parse', () => {
   it('accepts each client message shape', () => {
-    expect(clientMessage_parse({ type: 'attach', protocolVersion: CONTRACT_VERSION, token: 't' }).ok).toBe(true);
+    expect(clientMessage_parse({
+      type: 'attach',
+      protocolVersion: CONTRACT_VERSION,
+      token: 't',
+      capabilities: { shellCommands: true },
+    }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'execute', id: '1', line: 'ls' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'complete', id: '2', prefix: 'l' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'pipeError', pipeId: 'p1', reason: 'failed' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'shellResult', shellId: 's1', exitCode: 0 }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'shellError', shellId: 's2', reason: 'failed' }).ok).toBe(true);
   });
 
   it('rejects an unknown message type with a reason', () => {
@@ -57,6 +64,7 @@ describe('serverMessage_parse', () => {
     expect(serverMessage_parse({ type: 'complete', id: '2', prefix: 'l', candidates: ['ls'] }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'attached', session: 's', protocolVersion: CONTRACT_VERSION }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'error', reason: 'bad token' }).ok).toBe(true);
+    expect(serverMessage_parse({ type: 'shell', shellId: 's1', command: 'pwd' }).ok).toBe(true);
   });
 
   it('accepts semantic Pipeline inspection progress', () => {

@@ -4,6 +4,8 @@
  */
 const mockCompute = jest.fn();
 const mockGroups = jest.fn();
+const mockGroupMembers = jest.fn();
+const mockGroupUserAdd = jest.fn();
 const mockUser = jest.fn();
 const mockCtx = { ChRISURL_get: jest.fn(), ChRISuser_get: jest.fn() };
 
@@ -13,6 +15,8 @@ jest.mock('@fnndsc/cumin', () => {
     ...actual,
     computeResources_getAll: mockCompute,
     groups_getAll: mockGroups,
+    groupMembers_getAll: mockGroupMembers,
+    groupUser_add: mockGroupUserAdd,
     currentUser_get: mockUser,
     chrisContext: mockCtx,
   };
@@ -20,12 +24,16 @@ jest.mock('@fnndsc/cumin', () => {
 
 import { Ok, Err, errorStack } from '@fnndsc/cumin';
 import { EtcVfsProvider } from '../src/vfs/providers/etc';
+import { groupUser_add } from '../src/groups/index';
 
-const etc = new EtcVfsProvider();
+let etc: EtcVfsProvider;
 
 beforeEach(() => {
   jest.clearAllMocks();
   errorStack.stack_clear();
+  mockCtx.ChRISURL_get.mockResolvedValue(null);
+  mockCtx.ChRISuser_get.mockResolvedValue(null);
+  etc = new EtcVfsProvider();
 });
 
 describe('list / cp', () => {
@@ -75,15 +83,90 @@ describe('compute.yaml', () => {
 });
 
 describe('group', () => {
-  it('renders /etc/group lines', async () => {
-    mockGroups.mockResolvedValue(Ok([{ name: 'all_users', id: 1 }]));
+  it('renders /etc/group lines with their usernames', async () => {
+    mockGroups.mockResolvedValue(Ok([
+      { name: 'all_users', id: 1 },
+      { name: 'pacs_users', id: 7 },
+    ]));
+    mockGroupMembers
+      .mockResolvedValueOnce(Ok([
+        { id: 10, username: 'alice' },
+        { id: 11, username: 'peter.hong' },
+      ]))
+      .mockResolvedValueOnce(Ok([{ id: 11, username: 'peter.hong' }]));
+
     const r = await etc.read('/etc/group');
-    expect(r.ok && r.value).toBe('all_users:x:1:\n');
+
+    expect(r.ok && r.value).toBe(
+      'all_users:x:1:alice,peter.hong\n'
+      + 'pacs_users:x:7:peter.hong\n',
+    );
+    expect(mockGroupMembers).toHaveBeenNthCalledWith(1, 1);
+    expect(mockGroupMembers).toHaveBeenNthCalledWith(2, 7);
   });
 
   it('errors when the fetch fails', async () => {
     mockGroups.mockResolvedValue(Err());
     expect((await etc.read('/etc/group')).ok).toBe(false);
+  });
+
+  it('reuses a hydrated group projection on consecutive reads', async (): Promise<void> => {
+    mockGroups.mockResolvedValue(Ok([{ name: 'pacs_users', id: 2 }]));
+    mockGroupMembers.mockResolvedValue(Ok([{ id: 12, username: 'peter.hong' }]));
+
+    const first = await etc.read('/etc/group');
+    const second = await etc.read('/etc/group');
+
+    expect(first).toEqual(Ok('pacs_users:x:2:peter.hong\n'));
+    expect(second).toEqual(first);
+    expect(mockGroups).toHaveBeenCalledTimes(1);
+    expect(mockGroupMembers).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes the cached projection after a successful membership mutation', async (): Promise<void> => {
+    mockGroups.mockResolvedValue(Ok([{ name: 'pacs_users', id: 2 }]));
+    mockGroupMembers
+      .mockResolvedValueOnce(Ok([]))
+      .mockResolvedValueOnce(Ok([{ id: 12, username: 'peter.hong' }]));
+    mockGroupUserAdd.mockResolvedValue(Ok({ id: 12, username: 'peter.hong' }));
+
+    expect(await etc.read('/etc/group')).toEqual(Ok('pacs_users:x:2:\n'));
+    expect(await groupUser_add(2, 'peter.hong')).toEqual({
+      ok: true,
+      value: { id: 12, username: 'peter.hong' },
+    });
+    expect(await etc.read('/etc/group')).toEqual(Ok('pacs_users:x:2:peter.hong\n'));
+    expect(mockGroups).toHaveBeenCalledTimes(2);
+    expect(mockGroupMembers).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes the projection after its five-minute freshness window', async (): Promise<void> => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    mockGroups.mockResolvedValue(Ok([{ name: 'pacs_users', id: 2 }]));
+    mockGroupMembers.mockResolvedValue(Ok([]));
+
+    await etc.read('/etc/group');
+    now.mockReturnValue(301_001);
+    await etc.read('/etc/group');
+
+    expect(mockGroups).toHaveBeenCalledTimes(2);
+    expect(mockGroupMembers).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it('does not reuse a projection after the CUBE connection changes', async (): Promise<void> => {
+    mockCtx.ChRISURL_get
+      .mockResolvedValueOnce('https://cube-a.example/api/v1/')
+      .mockResolvedValueOnce('https://cube-b.example/api/v1/');
+    mockCtx.ChRISuser_get.mockResolvedValue('chris');
+    mockGroups.mockResolvedValue(Ok([{ name: 'all_users', id: 1 }]));
+    mockGroupMembers.mockResolvedValue(Ok([]));
+
+    await etc.read('/etc/group');
+    await etc.read('/etc/group');
+
+    expect(mockGroups).toHaveBeenCalledTimes(2);
+    expect(mockGroupMembers).toHaveBeenCalledTimes(2);
   });
 });
 

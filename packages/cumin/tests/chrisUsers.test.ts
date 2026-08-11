@@ -9,13 +9,19 @@ jest.mock('../src/connect/chrisConnection', () => ({
 
 import { chrisConnection } from '../src/connect/chrisConnection';
 import {
-  groups_getAll,
   currentIdentity_get,
   currentUser_get,
-  ChrisGroup,
   ChrisIdentity,
   ChrisUser,
 } from '../src/users/chrisUsers';
+import {
+  groupMembers_getAll,
+  groupUser_add,
+  groupUser_remove,
+  groups_getAll,
+  ChrisGroup,
+  ChrisGroupMember,
+} from '../src/groups/chrisGroups';
 import { errorStack } from '../src/error/errorStack';
 import { Result } from '../src/utils/result';
 
@@ -46,13 +52,20 @@ afterEach(() => {
 });
 
 describe('groups_getAll', () => {
-  it('returns the group list from the client payload', async () => {
+  it('returns every page of groups from the client payload', async () => {
+    const getGroups = jest.fn(async ({ offset }: { offset: number }) =>
+      offset === 0
+        ? { data: [{ id: 1, name: 'admins' }], hasNextPage: true }
+        : { data: [{ id: 2, name: 'pacs' }], hasNextPage: false },
+    );
     mockClientGet.mockResolvedValue({
-      getGroups: jest.fn(async () => ({ data: [{ id: 1, name: 'admins' }, { id: 2, name: 'pacs' }] })),
+      getGroups,
     });
     const result: Result<ChrisGroup[]> = await groups_getAll();
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual([{ id: 1, name: 'admins' }, { id: 2, name: 'pacs' }]);
+    expect(getGroups).toHaveBeenNthCalledWith(1, { offset: 0 });
+    expect(getGroups).toHaveBeenNthCalledWith(2, { offset: 1 });
   });
 
   it('returns an empty list when the payload has no data', async () => {
@@ -72,6 +85,69 @@ describe('groups_getAll', () => {
     mockClientGet.mockResolvedValue({ getGroups: jest.fn(async () => { throw new Error('boom'); }) });
     expect((await groups_getAll()).ok).toBe(false);
     expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('boom'));
+  });
+});
+
+describe('groupMembers_getAll', () => {
+  it('resolves every page of group-user links to usernames', async () => {
+    const membership = (id: number, username: string) => ({
+      getUser: jest.fn(async () => ({ data: { id, username } })),
+    });
+    const alice = membership(11, 'alice');
+    const peter = membership(12, 'peter.hong');
+    const getUsers = jest.fn(async ({ offset }: MembershipPageOptions) => {
+      const items = offset === 0 ? [alice] : [peter];
+      return {
+        data: items.map((_item, index) => ({ id: offset + index + 100 })),
+        getItems: () => items,
+        hasNextPage: offset === 0,
+      };
+    });
+    mockClientGet.mockResolvedValue({
+      getGroup: jest.fn(async () => ({ getUsers })),
+    });
+
+    const result: Result<ChrisGroupMember[]> = await groupMembers_getAll(7);
+
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        { id: 11, username: 'alice' },
+        { id: 12, username: 'peter.hong' },
+      ],
+    });
+    expect(getUsers).toHaveBeenNthCalledWith(1, { offset: 0 });
+    expect(getUsers).toHaveBeenNthCalledWith(2, { offset: 1 });
+  });
+});
+
+describe('group membership changes', () => {
+  it('adds a username through the selected group resource', async () => {
+    const getUser = jest.fn(async () => ({ data: { id: 12, username: 'peter.hong' } }));
+    const adminAddUser = jest.fn(async () => ({ data: { id: 99 }, getUser }));
+    mockClientGet.mockResolvedValue({
+      getGroup: jest.fn(async () => ({ adminAddUser })),
+    });
+
+    const result: Result<ChrisGroupMember> = await groupUser_add(7, 'peter.hong');
+
+    expect(result).toEqual({ ok: true, value: { id: 12, username: 'peter.hong' } });
+    expect(adminAddUser).toHaveBeenCalledWith('peter.hong');
+    expect(getUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the selected username membership', async () => {
+    const remove = jest.fn(async () => undefined);
+    const getUser = jest.fn(async () => ({ delete: remove }));
+    mockClientGet.mockResolvedValue({
+      getGroup: jest.fn(async () => ({ getUser })),
+    });
+
+    const result: Result<boolean> = await groupUser_remove(7, 'peter.hong');
+
+    expect(result).toEqual({ ok: true, value: true });
+    expect(getUser).toHaveBeenCalledWith('peter.hong');
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 });
 

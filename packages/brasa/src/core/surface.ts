@@ -38,12 +38,16 @@
  *   a daemon host: the local CLI runs segments in-process, a remote CLI runs
  *   them on the client machine, and a browser surface lacks the capability
  *   and fails such pipelines with a clear message.
+ * @property shellCommands - The surface can run a `!`-prefixed host-shell
+ *   command on its own machine. A daemon delegates this capability to the
+ *   command's originating surface and never launches the process itself.
  */
 export interface SurfaceCapabilities {
   hiddenInput: boolean;
   localEdit: boolean;
   tty: boolean;
   pipeSegments: boolean;
+  shellCommands: boolean;
 }
 
 /**
@@ -114,6 +118,15 @@ export interface Surface {
   pipeSegment(command: string, input: Buffer): Promise<Buffer>;
 
   /**
+   * Runs one host-shell command on the surface machine.
+   *
+   * @param command - The shell command without the leading `!`.
+   * @returns The process exit code.
+   * @throws {CapabilityError} When the surface lacks `shellCommands`.
+   */
+  shellCommand(command: string): Promise<number>;
+
+  /**
    * Opens content in the surface's local editor and returns the result. The
    * editor mechanics are the surface's business — a temp file and `$EDITOR`
    * for the local CLI, the client's editor for a remote CLI, an editor
@@ -160,6 +173,7 @@ export class HeadlessSurface implements Surface {
     localEdit: false,
     tty: false,
     pipeSegments: false,
+    shellCommands: false,
   };
 
   /** @inheritdoc */
@@ -170,6 +184,11 @@ export class HeadlessSurface implements Surface {
   /** @inheritdoc */
   public pipeSegment(_command: string, _input: Buffer): Promise<Buffer> {
     throw new CapabilityError('pipeSegments', 'This surface cannot run pipeline segments.');
+  }
+
+  /** @inheritdoc */
+  public shellCommand(_command: string): Promise<number> {
+    throw new CapabilityError('shellCommands', 'This surface cannot run shell commands.');
   }
 
   /** @inheritdoc */

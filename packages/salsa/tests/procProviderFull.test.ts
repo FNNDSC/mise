@@ -24,6 +24,7 @@ import {
   feedStatus_derive,
   procPath_parse,
   procTopology_warmup,
+  procTopology_retry,
   procTopology_status,
   procTopology_await,
   procCache_refresh,
@@ -369,6 +370,52 @@ describe('cache build / warmup / refresh', () => {
 
     expect(cache.warmupProgress_get()).toEqual({ loaded: 1, total: 2, active: false });
     expect(procTopology_status()).toEqual({ state: 'failed', failure: 'second page lost' });
+  });
+
+  it('retries a failed topology sweep from the failed page', async () => {
+    cache.built_set();
+    cache.feed_add(feed({ id: 5 }));
+    let failSecondPage: boolean = true;
+    const pageFetch = jest.fn(({ offset }: { offset: number }) => {
+      if (offset === 0) {
+        return Promise.resolve({
+          data: [{ id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-root', status: 'started' }],
+          totalCount: 2,
+        });
+      }
+      if (failSecondPage) {
+        failSecondPage = false;
+        return Promise.reject(new Error('second page lost'));
+      }
+      return Promise.resolve({
+        data: [{ id: 11, feed_id: 5, previous_id: 10, plugin_name: 'pl-child', status: 'scheduled' }],
+        totalCount: 2,
+      });
+    });
+    mockClientGet.mockResolvedValue({ getPluginInstances: pageFetch });
+
+    await expect(procTopology_warmup()).rejects.toThrow('second page lost');
+    await procTopology_retry();
+
+    expect(pageFetch.mock.calls.map(([params]) => params.offset)).toEqual([0, 1, 1]);
+    expect(cache.instance_get(10)).toBeDefined();
+    expect(cache.instance_get(11)).toBeDefined();
+    expect(cache.warmupComplete).toBe(true);
+    expect(procTopology_status()).toEqual({ state: 'complete', failure: undefined });
+  });
+
+  it('discards a failed continuation when a full refresh starts over', async () => {
+    cache.built_set();
+    mockClientGet.mockResolvedValue({
+      getPluginInstances: jest.fn().mockRejectedValue(new Error('page lost')),
+    });
+    await expect(procTopology_warmup()).rejects.toThrow('page lost');
+
+    mockClientGet.mockResolvedValue(pagingClient([], []));
+    await procCache_refresh();
+
+    expect(() => procTopology_retry()).toThrow('no failed topology sweep to retry');
+    expect(procTopology_status()).toEqual({ state: 'idle', failure: undefined });
   });
 
   it('procTopology_warmup sweeps instances and completes', async () => {

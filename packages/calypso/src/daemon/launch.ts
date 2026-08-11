@@ -95,16 +95,24 @@ export async function daemon_launch(
   });
   sink_set(new DaemonSink(daemon));
 
-  // Interactivity is a surface capability: a builtin that prompts, or a
-  // pipeline segment, reaches the surface running the command through the
-  // daemon's brokers, over the wire, without knowing the transport — and
-  // nothing ever spawns on the daemon host.
+  // Interactivity is a surface capability: prompts, pipeline segments, shell
+  // escapes, and local editing reach the surface running the command through
+  // the daemon's brokers, without knowing the transport. Nothing ever spawns
+  // on the daemon host.
   const surface: Surface = {
-    capabilities: { hiddenInput: true, localEdit: true, tty: true, pipeSegments: true },
+    capabilities: {
+      hiddenInput: true,
+      localEdit: true,
+      tty: true,
+      pipeSegments: true,
+      shellCommands: true,
+    },
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current(request.message, request.hidden ?? false),
     pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
       daemon.pipe_current(command, input),
+    shellCommand: (command: string): Promise<number> =>
+      daemon.shell_current(command),
     localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
       daemon.edit_current(request.content, request.extension),
   };

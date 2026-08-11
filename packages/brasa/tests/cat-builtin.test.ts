@@ -40,6 +40,7 @@ const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
 
 const { builtin_cat } = await import('../src/builtins/fs/cat.js');
+const { sink_get } = await import('../src/core/sink.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -62,6 +63,43 @@ describe('builtin_cat', (): void => {
     const envelope = await builtin_cat(['notes.txt']);
     expect(mockCat).toHaveBeenCalledWith('/home/chris/notes.txt');
     expect(envelope.rendered).toContain('RENDERED');
+  });
+
+  it('emits delayed inspection progress while resolving /etc/group', async (): Promise<void> => {
+    jest.useFakeTimers();
+    let resolveRead: ((value: ReturnType<typeof ok<string>>) => void) | undefined;
+    mockCat.mockReturnValue(new Promise((resolve): void => { resolveRead = resolve; }));
+    const progressSpy = jest.spyOn(sink_get(), 'progress_write');
+
+    const command = builtin_cat(['/etc/group']);
+    await jest.advanceTimersByTimeAsync(300);
+    expect(progressSpy).toHaveBeenCalledWith(expect.objectContaining({
+      operation: 'group',
+      kind: 'inspection',
+      phase: 'reading',
+      status: 'running',
+    }));
+
+    resolveRead?.(ok('pacs_users:x:2:\n'));
+    await command;
+    expect(progressSpy).toHaveBeenLastCalledWith(expect.objectContaining({
+      operation: 'group',
+      kind: 'inspection',
+      phase: 'complete',
+      status: 'done',
+    }));
+    progressSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('does not emit progress when /etc/group resolves before the delay', async (): Promise<void> => {
+    const progressSpy = jest.spyOn(sink_get(), 'progress_write');
+    mockCat.mockResolvedValue(ok('pacs_users:x:2:\n'));
+
+    await builtin_cat(['/etc/group']);
+
+    expect(progressSpy).not.toHaveBeenCalled();
+    progressSpy.mockRestore();
   });
 
   it('reports a text read error and sets a non-zero exit code', async (): Promise<void> => {

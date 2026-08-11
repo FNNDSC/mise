@@ -14,6 +14,7 @@ import {
   groupUser_add as cumin_groupUser_add,
   groupUser_remove as cumin_groupUser_remove,
 } from '@fnndsc/cumin';
+import { groupMembershipRevision_advance } from './membershipRevision.js';
 
 /** Group membership data exposed to adjacent application layers. */
 export interface GroupMember {
@@ -91,7 +92,12 @@ export async function groupUser_add(
   username: string,
 ): Promise<GroupMembershipResult<GroupMember>> {
   const result: Result<ChrisGroupMember> = await cumin_groupUser_add(groupID, username);
-  return groupResult_present(result, `Failed to add ${username} to group ${groupID}.`);
+  const presented: GroupMembershipResult<GroupMember> = groupResult_present(
+    result,
+    `Failed to add ${username} to group ${groupID}.`,
+  );
+  if (presented.ok) groupMembershipRevision_advance();
+  return presented;
 }
 
 /**
@@ -106,5 +112,10 @@ export async function groupUser_remove(
   username: string,
 ): Promise<GroupMembershipResult<boolean>> {
   const result: Result<boolean> = await cumin_groupUser_remove(groupID, username);
-  return groupResult_present(result, `Failed to remove ${username} from group ${groupID}.`);
+  const presented: GroupMembershipResult<boolean> = groupResult_present(
+    result,
+    `Failed to remove ${username} from group ${groupID}.`,
+  );
+  if (presented.ok) groupMembershipRevision_advance();
+  return presented;
 }

@@ -391,7 +391,7 @@ ChELL presents a unified path tree mixing CFS (real ChRIS storage) and VFS
 | Path | Content
 
 | `/etc/compute.yaml` | All compute environments in YAML
-| `/etc/group`        | POSIX-style group listing with live CUBE memberships
+| `/etc/group`        | POSIX-style group listing with cached CUBE memberships
 | `/etc/passwd`       | User listing
 | `/etc/cube`         | CUBE instance information
 |===
@@ -686,9 +686,13 @@ group adduser 7 peter.hong
 cat /etc/group
 ----
 
-`/etc/group` is a live projection: reading it fetches the current users of
-each visible group. It is read-only; membership changes use the `group`
-commands above.
+`/etc/group` is a read-only projection of the current users in each visible
+group. The first read hydrates memberships from CUBE and shows an interactive
+spinner when that takes longer than 300 ms. The rendered projection is cached
+for five minutes per CUBE connection; `group adduser` and `group removeuser`
+invalidate it immediately, while changes made through Django admin become
+visible after the freshness window. Progress is status telemetry and therefore
+does not enter pipes, redirects, or captured command output.
 
 === pluginmetas / meta / metas
 

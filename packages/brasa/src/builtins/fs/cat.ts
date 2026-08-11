@@ -24,6 +24,12 @@ import {
   type CatHighlightMode,
 } from './cat.args.js';
 
+/** Delay before a slow group projection becomes visible as progress. */
+const GROUP_PROGRESS_DELAY_MS: number = 300;
+
+/** User-facing status shown while CUBE group memberships are hydrated. */
+const GROUP_PROGRESS_LABEL: string = 'Resolving /etc/group memberships…';
+
 /** cli-highlight language names inferred for commonly viewed text formats. */
 const SOURCE_LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.bash': 'bash',
@@ -224,6 +230,51 @@ interface CatTarget {
 }
 
 /**
+ * Reads one text target, adding delayed semantic progress for `/etc/group`.
+ *
+ * Fast cache hits complete before the delay. Inspection progress is ephemeral,
+ * so pipe and redirect sinks drop it while interactive surfaces show a spinner.
+ *
+ * @param target - Resolved VFS path.
+ * @returns Text content or the original read failure.
+ */
+async function textFile_read(target: string): Promise<Result<string>> {
+  if (target !== '/etc/group') return chefs_cat_cmd(target);
+
+  let progressStarted: boolean = false;
+  let progressFailed: boolean = false;
+  const progressTimer: NodeJS.Timeout = setTimeout((): void => {
+    progressStarted = true;
+    sink_get().progress_write({
+      operation: 'group',
+      kind: 'inspection',
+      phase: 'reading',
+      label: GROUP_PROGRESS_LABEL,
+      status: 'running',
+    });
+  }, GROUP_PROGRESS_DELAY_MS);
+  try {
+    const result: Result<string> = await chefs_cat_cmd(target);
+    progressFailed = !result.ok;
+    return result;
+  } catch (error: unknown) {
+    progressFailed = true;
+    throw error;
+  } finally {
+    clearTimeout(progressTimer);
+    if (progressStarted) {
+      sink_get().progress_write({
+        operation: 'group',
+        kind: 'inspection',
+        phase: progressFailed ? 'failed' : 'complete',
+        label: GROUP_PROGRESS_LABEL,
+        status: progressFailed ? 'error' : 'done',
+      });
+    }
+  }
+}
+
+/**
  * Displays the content of one or more files.
  *
  * Supports multiple files and concatenates their output. Binary mode is applied
@@ -300,7 +351,7 @@ export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
       sink_get().data_write(result.value);
       outcomes.push({ path: pathArg, ok: true, binary: true, bytes: result.value.length });
     } else {
-      const result: Result<string> = await chefs_cat_cmd(target);
+      const result: Result<string> = await textFile_read(target);
 
       if (!result.ok) {
         const error: StackMessage | undefined = errorStack.stack_pop();

@@ -8,7 +8,7 @@
  */
 
 /** Operations that may produce structured progress. */
-export const PROGRESS_OPERATIONS = ['upload', 'download', 'pull', 'workflow', 'pipeline'] as const;
+export const PROGRESS_OPERATIONS = ['upload', 'download', 'pull', 'workflow', 'pipeline', 'group'] as const;
 /** Broad structured-progress producer classes. */
 export const PROGRESS_KINDS = ['transfer', 'retrieve', 'workflow', 'inspection'] as const;
 /** Lifecycle phases shared by structured-progress operations. */

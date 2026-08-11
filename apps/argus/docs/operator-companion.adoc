@@ -72,6 +72,52 @@ the ChRIS session; the companion owns capabilities granted by the operator's
 machine. ChELL already occupies this surface-side role when it attaches with
 `--remote`, although not every required operation is brokered through it yet.
 
+== Jupyter precedent
+
+Jupyter supplies the closest established architectural metaphor. Its browser
+frontend does not itself own a Python process or ambient filesystem access. A
+Jupyter server supplies contents, terminals, sessions, and kernel lifecycle; by
+default its file browser reflects the server's filesystem and its terminals run
+on the server host. When that server is local, the experience appears local to
+the browser. When it is remote, the same instruments operate in the remote
+server's realm.
+
+ARGUS applies that separation without adopting the narrower notebook model:
+
+[cols="1,1",options="header"]
+|===
+|Jupyter concept |ARGUS counterpart
+
+|Browser frontend
+|ARGUS browser UI
+
+|Jupyter server
+|Operator Companion acting as the Workbench Host
+
+|Contents service and file browser
+|Workbench Host filesystem service and workspace browser over the Surface Filesystem
+
+|Kernel or terminal
+|Local PTY, language service, or spoke CALYPSO session
+
+|Kernel gateway
+|Connection to one or more spoke CALYPSO sessions
+
+|Cell output
+|Command envelopes, Runs, and materialized ChRIS Files
+|===
+
+`Operator Companion` names the installed process and its placement near the
+operator. `Workbench Host` names the role it performs for a full ARGUS
+Workbench. They are not two required processes.
+
+The Jupyter analogy is architectural rather than a commitment to notebook UX.
+ARGUS spans ordinary source trees, Git, multiple languages and execution realms,
+long-running scientific Runs, workspace projection, and spoke ingress/egress
+policy. CALYPSO is kernel-like in that it maintains command-session context and
+returns structured results, but it is specifically a ChRIS command kernel rather
+than the complete Workbench Host.
+
 == Deployment modes
 
 ARGUS Workbench:: A local command starts the companion, serves the bundled
@@ -193,3 +239,6 @@ browsers.
 * Mozilla Developer Network, https://developer.mozilla.org/en-US/docs/Web/API/File_System_API[File System API].
 * Mozilla Developer Network, https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Local_network_access[Local network access].
 * Chrome for Developers, https://developer.chrome.com/blog/local-network-access[New permission prompt for Local Network Access].
+* Project Jupyter, https://jupyter-server.readthedocs.io/en/latest/developers/architecture.html[Jupyter Server architecture].
+* Project Jupyter, https://jupyter-server.readthedocs.io/en/stable/developers/contents.html[Jupyter Contents API].
+* Project Jupyter, https://jupyterlab.readthedocs.io/en/stable/user/running.html[Managing kernels and terminals].

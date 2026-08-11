@@ -343,22 +343,34 @@ export class CalypsoDaemon {
     // the engine raises is asked of the surface that submitted the command.
     this.currentOrigin = origin;
     this.currentId = message.id;
+    let envelopes: CommandEnvelope[] | undefined;
+    let failureReason: string | undefined;
     try {
-      const envelopes: CommandEnvelope[] = await this.engine.line_execute(message.line);
-      this.send(origin.socket, { type: 'result', id: message.id, envelopes });
-      for (const envelope of envelopes) {
-        this.bus_publish(origin, envelope);
+      try {
+        envelopes = await this.engine.line_execute(message.line);
+      } catch (err: unknown) {
+        failureReason = err instanceof Error ? err.message : String(err);
       }
-    } catch (err: unknown) {
-      const reason: string = err instanceof Error ? err.message : String(err);
-      this.send(origin.socket, { type: 'error', id: message.id, reason });
+      // A remote REPL draws its next prompt as soon as `result` resolves the
+      // command. Push the refreshed context first so that prompt cannot lag
+      // one command behind state changes such as `cd`.
+      await this.promptline_push();
+      if (envelopes !== undefined) {
+        this.send(origin.socket, { type: 'result', id: message.id, envelopes });
+        for (const envelope of envelopes) {
+          this.bus_publish(origin, envelope);
+        }
+      } else {
+        this.send(origin.socket, {
+          type: 'error',
+          id: message.id,
+          reason: failureReason ?? 'engine execution failed',
+        });
+      }
     } finally {
       this.currentOrigin = null;
       this.currentId = null;
     }
-    // The command may have changed session context (cwd, connection); push the
-    // refreshed prompt to every surface.
-    await this.promptline_push();
   }
 
   /**

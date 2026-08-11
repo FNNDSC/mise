@@ -686,16 +686,9 @@ group adduser 7 peter.hong
 cat /etc/group
 ----
 
-`/etc/group` is a read-only projection of the current users in each visible
-group. The first read hydrates memberships from CUBE and shows an interactive
-spinner when that takes longer than 300 ms. The rendered projection is cached
-for five minutes per CUBE connection; `group adduser` and `group removeuser`
-invalidate it immediately, while changes made through Django admin become
-visible after the freshness window. Progress is status telemetry and therefore
-does not enter pipes, redirects, or captured command output.
+`/etc/group` is a read-only projection of the current users in each visible group. The first read hydrates memberships from CUBE and shows an interactive spinner when that takes longer than 300 ms. The rendered projection is cached for five minutes per CUBE connection; `group adduser` and `group removeuser` invalidate it immediately, while changes made through Django admin become visible after the freshness window. Progress is status telemetry and therefore does not enter pipes, redirects, or captured command output.
 
-See link:posix.adoc[posix.adoc] for the record mapping, cache lifecycle, and
-daemon behavior of POSIX-style projections.
+See link:posix.adoc[posix.adoc] for the record mapping, cache lifecycle, and daemon behavior of POSIX-style projections.
 
 === pluginmetas / meta / metas
 

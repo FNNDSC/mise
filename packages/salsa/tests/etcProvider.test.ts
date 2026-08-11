@@ -4,6 +4,7 @@
  */
 const mockCompute = jest.fn();
 const mockGroups = jest.fn();
+const mockGroupMembers = jest.fn();
 const mockUser = jest.fn();
 const mockCtx = { ChRISURL_get: jest.fn(), ChRISuser_get: jest.fn() };
 
@@ -13,6 +14,7 @@ jest.mock('@fnndsc/cumin', () => {
     ...actual,
     computeResources_getAll: mockCompute,
     groups_getAll: mockGroups,
+    groupMembers_getAll: mockGroupMembers,
     currentUser_get: mockUser,
     chrisContext: mockCtx,
   };
@@ -75,10 +77,26 @@ describe('compute.yaml', () => {
 });
 
 describe('group', () => {
-  it('renders /etc/group lines', async () => {
-    mockGroups.mockResolvedValue(Ok([{ name: 'all_users', id: 1 }]));
+  it('renders /etc/group lines with their usernames', async () => {
+    mockGroups.mockResolvedValue(Ok([
+      { name: 'all_users', id: 1 },
+      { name: 'pacs_users', id: 7 },
+    ]));
+    mockGroupMembers
+      .mockResolvedValueOnce(Ok([
+        { id: 10, username: 'alice' },
+        { id: 11, username: 'peter.hong' },
+      ]))
+      .mockResolvedValueOnce(Ok([{ id: 11, username: 'peter.hong' }]));
+
     const r = await etc.read('/etc/group');
-    expect(r.ok && r.value).toBe('all_users:x:1:\n');
+
+    expect(r.ok && r.value).toBe(
+      'all_users:x:1:alice,peter.hong\n'
+      + 'pacs_users:x:7:peter.hong\n',
+    );
+    expect(mockGroupMembers).toHaveBeenNthCalledWith(1, 1);
+    expect(mockGroupMembers).toHaveBeenNthCalledWith(2, 7);
   });
 
   it('errors when the fetch fails', async () => {

@@ -15,7 +15,9 @@ import {
   computeResources_getAll,
   ComputeResource,
   groups_getAll,
+  groupMembers_getAll,
   ChrisGroup,
+  ChrisGroupMember,
   currentUser_get,
   ChrisUser,
   chrisContext,
@@ -24,6 +26,9 @@ import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
 
 /** Virtual files exposed under /etc. */
 const ETC_FILES: string[] = ['compute.yaml', 'group', 'passwd', 'cube'];
+
+/** Maximum group membership lists hydrated concurrently for `/etc/group`. */
+const GROUP_MEMBERSHIP_CONCURRENCY: number = 4;
 
 /**
  * VFS provider for /etc — maps ChRIS API resources to Unix-style config files.
@@ -102,13 +107,27 @@ export class EtcVfsProvider implements VFSProvider {
     return Ok(lines.join('\n') + '\n');
   }
 
+  /** Renders CUBE groups and their usernames in POSIX `/etc/group` form. */
   private async group_render(): Promise<Result<string>> {
     const result: Result<ChrisGroup[]> = await groups_getAll();
     if (!result.ok) return Err();
 
-    const lines: string[] = result.value.map(
-      (g: ChrisGroup): string => `${g.name}:x:${g.id}:`
-    );
+    const lines: string[] = [];
+    for (let index: number = 0; index < result.value.length; index += GROUP_MEMBERSHIP_CONCURRENCY) {
+      const groupBatch: ChrisGroup[] = result.value.slice(index, index + GROUP_MEMBERSHIP_CONCURRENCY);
+      const batchResults: Array<{ group: ChrisGroup; members: Result<ChrisGroupMember[]> }> =
+        await Promise.all(groupBatch.map(async (group: ChrisGroup) => ({
+          group,
+          members: await groupMembers_getAll(group.id),
+        })));
+      for (const { group, members } of batchResults) {
+        if (!members.ok) return Err();
+        const usernames: string = members.value
+          .map((member: ChrisGroupMember): string => member.username)
+          .join(',');
+        lines.push(`${group.name}:x:${group.id}:${usernames}`);
+      }
+    }
     return Ok(lines.join('\n') + '\n');
   }
 

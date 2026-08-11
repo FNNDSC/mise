@@ -891,7 +891,7 @@ export const helpText: Record<string, CommandHelp> = {
       '  adduser <id> <user>   [admin] Add user to group',
       '  removeuser <id> <user> [admin] Remove user from group',
     ],
-    examples: ['groups list', 'groups search all_users', 'groups inspect', 'group members 3'],
+    examples: ['groups list', 'groups search pacs_users', 'group members 3', 'group adduser 3 peter.hong', 'group removeuser 3 peter.hong'],
   },
   groups: {
     usage: 'groups <subcommand> [options]',
@@ -906,7 +906,7 @@ export const helpText: Record<string, CommandHelp> = {
       '  adduser <id> <user>   [admin] Add user to group',
       '  removeuser <id> <user> [admin] Remove user from group',
     ],
-    examples: ['groups list', 'groups search all_users', 'groups inspect', 'group members 3'],
+    examples: ['groups list', 'groups search pacs_users', 'group members 3', 'group adduser 3 peter.hong', 'group removeuser 3 peter.hong'],
   },
   pluginmeta: {
     usage: 'pluginmetas <subcommand> [options]',

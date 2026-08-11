@@ -391,7 +391,7 @@ ChELL presents a unified path tree mixing CFS (real ChRIS storage) and VFS
 | Path | Content
 
 | `/etc/compute.yaml` | All compute environments in YAML
-| `/etc/group`        | LDAP-style group listing
+| `/etc/group`        | POSIX-style group listing with live CUBE memberships
 | `/etc/passwd`       | User listing
 | `/etc/cube`         | CUBE instance information
 |===
@@ -668,11 +668,27 @@ tag inspect <id>
 ----
 groups list [--all]
 group inspect <id>
+group members <id>
 group create <name>          # [admin]
 group delete <id>            # [admin]
 group adduser <id> <user>    # [admin]
 group removeuser <id> <user> # [admin]
 ----
+
+Membership changes operate on an existing CUBE user and require an
+administrator token. Resolve a group ID first, then update it:
+
+[source,bash]
+----
+groups search pacs_users
+group members 7
+group adduser 7 peter.hong
+cat /etc/group
+----
+
+`/etc/group` is a live projection: reading it fetches the current users of
+each visible group. It is read-only; membership changes use the `group`
+commands above.
 
 === pluginmetas / meta / metas
 

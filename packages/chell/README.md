@@ -68,7 +68,7 @@ The ChELL filesystem has two kinds of paths:
 ```bash
 cd /etc
 cat compute.yaml          # inspect available compute environments
-cat group                 # list groups
+cat group                 # list groups and their current CUBE users
 
 cd /bin
 ls pl-mri*                # browse MRI-related plugins

@@ -1,8 +1,10 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 // Satisfy builtins/utils' heavy imports so the real commandArgs_process loads.
+const mockErrorPop = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  errorStack: { stack_pop: mockErrorPop },
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
@@ -19,8 +21,16 @@ jest.unstable_mockModule('@fnndsc/chili/commands/tags/fields.js', () => ({ tagFi
 
 const mockGroupsList = jest.fn();
 const mockGroupFields = jest.fn();
+const mockGroupMembers = jest.fn();
+const mockGroupUserAdd = jest.fn();
+const mockGroupUserRemove = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/list.js', () => ({ groups_fetchList: mockGroupsList }));
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/fields.js', () => ({ groupFields_fetch: mockGroupFields }));
+jest.unstable_mockModule('@fnndsc/chili/commands/groups/membership.js', () => ({
+  groupMembers_fetch: mockGroupMembers,
+  groupUser_add: mockGroupUserAdd,
+  groupUser_remove: mockGroupUserRemove,
+}));
 
 const mockWorkflowsList = jest.fn();
 const mockWorkflowFields = jest.fn();
@@ -138,6 +148,70 @@ describe.each(cases)('builtin_$name', ({ builtin, list, fields, listKey }) => {
 
   it('handles the search subcommand', async () => {
     await expect(builtin(['search', 'foo'])).resolves.toBeDefined();
+  });
+});
+
+describe('builtin_group membership', () => {
+  it('resolves a group name search through the collection query', async () => {
+    mockGroupsList.mockResolvedValue({ groups: [], selectedFields: [], totalCount: 0 });
+
+    await builtin_group(['search', 'pacs_users']);
+
+    expect(mockGroupsList).toHaveBeenCalledWith(
+      expect.objectContaining({ search: 'name_icontains:pacs_users' }),
+    );
+  });
+
+  it('lists group members as a table', async () => {
+    mockGroupMembers.mockResolvedValue({
+      ok: true,
+      value: [{ id: 12, username: 'peter.hong' }],
+    });
+
+    const envelope = await builtin_group(['members', '7']);
+
+    expect(mockGroupMembers).toHaveBeenCalledWith(7);
+    expect(mockTable).toHaveBeenCalledWith(
+      [{ id: 12, username: 'peter.hong' }],
+      ['id', 'username'],
+      expect.any(Object),
+    );
+    expect(envelope.status).toBe('ok');
+  });
+
+  it('adds an existing user to a group', async () => {
+    mockGroupUserAdd.mockResolvedValue({
+      ok: true,
+      value: { id: 12, username: 'peter.hong' },
+    });
+
+    const envelope = await builtin_group(['adduser', '7', 'peter.hong']);
+
+    expect(mockGroupUserAdd).toHaveBeenCalledWith(7, 'peter.hong');
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('peter.hong');
+  });
+
+  it('preserves a CUBE authorization error when adding a user', async () => {
+    mockGroupUserAdd.mockResolvedValue({
+      ok: false,
+      error: 'Failed to add peter.hong to group 7: Request failed with status code 403',
+    });
+
+    const envelope = await builtin_group(['adduser', '7', 'peter.hong']);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('status code 403');
+  });
+
+  it('removes a user from a group', async () => {
+    mockGroupUserRemove.mockResolvedValue({ ok: true, value: true });
+
+    const envelope = await builtin_group(['removeuser', '7', 'peter.hong']);
+
+    expect(mockGroupUserRemove).toHaveBeenCalledWith(7, 'peter.hong');
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('peter.hong');
   });
 });
 

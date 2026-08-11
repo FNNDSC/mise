@@ -86,7 +86,8 @@ parent directories because those dimensions do not form ownership boundaries.
 apps/argus/
 |-- README.md
 |-- docs/
-|   `-- architecture.adoc
+|   |-- architecture.adoc
+|   `-- operator-companion.adoc
 `-- src/
     |-- app/                  composition, layout, navigation
     |-- calypso/              session transport and public protocol
@@ -115,6 +116,12 @@ implementation increment.
 * Viewers are shared presentation capabilities, not a sixth domain.
 * Identity, access, notifications, and navigation are cross-cutting concerns,
   not scientific-computing domains.
+
+The full IDE horizon also requires an operator-side runtime for local files,
+PTYs, Git, and workspace projection. That component remains on the surface side
+while CALYPSO remains close to CUBE and spoke computation. Its locality model,
+deployment modes, and browser security boundary are defined in
+link:operator-companion.adoc[ARGUS operator companion].
 
 == Forward construction
 

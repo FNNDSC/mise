@@ -11,4 +11,6 @@ public wire contract and do not speak directly to CUBE or `chrisapi`.
 The application is currently an architectural scaffold. See
 [docs/architecture.adoc](docs/architecture.adoc) for the approved structure and
 [the mise-level ARGUS design](../../docs/argus.adoc) for its place in the wider
-system.
+system. The forward design for local IDE, filesystem, terminal, and workspace
+capabilities is recorded in
+[docs/operator-companion.adoc](docs/operator-companion.adoc).

@@ -14,11 +14,12 @@ The wire contract, daemon, session bus, identity-keyed discovery, and ChELL remo
 
 The contract is defined as [zod](https://zod.dev) schemas — the single source of truth, from which the message types are inferred and against which every message is validated at the boundary.
 
-- **Messages** (two direction-keyed unions): surfaces attach, execute, complete,
-  answer prompts, return local pipe results or failures, and return edits; the
+- **Messages** (two direction-keyed unions): surfaces attach with their local
+  capabilities, execute, complete,
+  answer prompts, return local pipe and shell results or failures, and return edits; the
   daemon acknowledges attachment, returns results and completion, streams output
   and structured progress, broadcasts session envelopes, pushes prompt context,
-  delegates prompts/pipes/edits to the originating surface, and reports errors.
+  delegates prompts/pipes/shell escapes/edits to the originating surface, and reports errors.
 - **Envelope** — the `commandEnvelopeSchema` validates cumin's `CommandEnvelope` on the wire; a compile-time guard keeps the schema in step with cumin's type so the published contract can never silently drift from what the code produces.
 - **Boundary validation** — structural violations are rejected; unknown *additive* fields are tolerated, so a daemon accepts extensions from a newer minor without understanding them. Parsing never throws.
 - **Versioning** — the contract version (`CONTRACT_VERSION`) is carried in the attach handshake and refused on mismatch; within a major, changes are additive only.

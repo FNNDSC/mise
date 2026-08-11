@@ -15,7 +15,7 @@
  */
 import * as readline from 'readline';
 import { Writable } from 'stream';
-import { spawnSync, type SpawnSyncReturns } from 'child_process';
+import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -132,6 +132,24 @@ function localEdit_run(request: LocalEditRequest): Promise<LocalEditResult> {
 }
 
 /**
+ * Runs a host-shell command on this CLI machine with direct terminal access.
+ *
+ * @param command - The shell command without the leading `!`.
+ * @returns The child process exit code.
+ */
+function shellCommand_run(command: string): Promise<number> {
+  return new Promise((resolve: (exitCode: number) => void, reject: (error: Error) => void) => {
+    const child: ChildProcess = spawn(command, {
+      shell: true,
+      stdio: 'inherit',
+      env: process.env,
+    });
+    child.once('error', reject);
+    child.once('close', (code: number | null) => resolve(code ?? 1));
+  });
+}
+
+/**
  * Creates the CLI host's surface.
  *
  * @param rl - The REPL's persistent readline interface, when running
@@ -145,6 +163,7 @@ export function cliSurface_create(rl?: readline.Interface): Surface {
     localEdit: true,
     tty: !!process.stdout.isTTY,
     pipeSegments: true,
+    shellCommands: true,
   };
 
   return {
@@ -155,6 +174,9 @@ export function cliSurface_create(rl?: readline.Interface): Surface {
     pipeSegment(command: string, input: Buffer): Promise<Buffer> {
       // The local CLI runs pipe segments in-process, exactly as before.
       return segment_pipeThrough(command, input);
+    },
+    shellCommand(command: string): Promise<number> {
+      return shellCommand_run(command);
     },
     localEdit(request: LocalEditRequest): Promise<LocalEditResult> {
       return localEdit_run(request);

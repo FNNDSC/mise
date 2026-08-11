@@ -38,10 +38,13 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 type ExecuteMessage = z.infer<typeof executeMessageSchema>;
 type CompleteRequest = z.infer<typeof completeRequestSchema>;
 
-/** An attached surface: its socket and the id it is tagged with on the bus. */
+/** An attached surface: its socket, bus id, and locally executable capabilities. */
 interface Surface {
   socket: WebSocket;
   id: string;
+  capabilities: {
+    shellCommands: boolean;
+  };
 }
 
 /** One scrollback entry: an envelope and the surface that produced it. */
@@ -53,6 +56,14 @@ interface SessionEntry {
 /** Promise callbacks for one pipeline segment executing on a surface. */
 interface PendingPipe {
   resolve: (output: Buffer) => void;
+  reject: (error: Error) => void;
+}
+
+/** Promise callbacks for one host-shell command executing on a surface. */
+interface PendingShell {
+  origin: WebSocket;
+  onClose: () => void;
+  resolve: (exitCode: number) => void;
   reject: (error: Error) => void;
 }
 
@@ -116,6 +127,8 @@ export class CalypsoDaemon {
   private promptSeq: number = 0;
   private readonly pendingPipes: Map<string, PendingPipe> = new Map<string, PendingPipe>();
   private pipeSeq: number = 0;
+  private readonly pendingShells: Map<string, PendingShell> = new Map<string, PendingShell>();
+  private shellSeq: number = 0;
   private readonly pendingEdits: Map<string, (result: EditOutcome) => void> = new Map<string, (result: EditOutcome) => void>();
   private editSeq: number = 0;
 
@@ -208,6 +221,10 @@ export class CalypsoDaemon {
         this.pipeResult_settle(value.pipeId, value.output);
       } else if (value.type === 'pipeError') {
         this.pipeError_settle(value.pipeId, value.reason);
+      } else if (value.type === 'shellResult') {
+        this.shellResult_settle(socket, value.shellId, value.exitCode);
+      } else if (value.type === 'shellError') {
+        this.shellError_settle(socket, value.shellId, value.reason);
       } else if (value.type === 'editResult') {
         this.editResult_settle(value.editId, { content: value.content, changed: value.changed });
       } else {
@@ -246,7 +263,13 @@ export class CalypsoDaemon {
     }
     // Each connection is a distinct surface (its own bus tag); all attach to
     // the one shared session returned in the ack.
-    const surface: Surface = { socket, id: randomBytes(8).toString('hex') };
+    const surface: Surface = {
+      socket,
+      id: randomBytes(8).toString('hex'),
+      capabilities: {
+        shellCommands: attach.value.capabilities?.shellCommands ?? false,
+      },
+    };
     this.surfaces.add(surface);
     this.send(socket, { type: 'attached', session: this.sessionId, protocolVersion: CONTRACT_VERSION });
     this.scrollback_replay(socket);
@@ -471,6 +494,55 @@ export class CalypsoDaemon {
     const pending: PendingPipe | undefined = this.pendingPipes.get(pipeId);
     if (pending) {
       this.pendingPipes.delete(pipeId);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  /**
+   * Runs a host-shell command on the surface running the current command.
+   * The daemon never spawns the process itself.
+   *
+   * @param command - The shell command without the leading `!`.
+   * @returns The surface process exit code.
+   * @throws {Error} When no command is executing or the surface disconnects.
+   */
+  public shell_current(command: string): Promise<number> {
+    const origin: Surface | null = this.currentOrigin;
+    if (!origin) {
+      return Promise.reject(new Error('no active command to run a shell command for'));
+    }
+    if (!origin.capabilities.shellCommands) {
+      return Promise.reject(new Error('the originating surface cannot run shell commands'));
+    }
+    const shellId: string = `h${this.shellSeq++}`;
+    return new Promise((resolve: (exitCode: number) => void, reject: (error: Error) => void) => {
+      const onClose = (): void => {
+        if (this.pendingShells.delete(shellId)) {
+          reject(new Error('surface disconnected before returning the shell result'));
+        }
+      };
+      this.pendingShells.set(shellId, { origin: origin.socket, onClose, resolve, reject });
+      origin.socket.once('close', onClose);
+      this.send(origin.socket, { type: 'shell', shellId, command });
+    });
+  }
+
+  /** Resolves a pending surface shell command with its originating surface's exit code. */
+  private shellResult_settle(socket: WebSocket, shellId: string, exitCode: number): void {
+    const pending: PendingShell | undefined = this.pendingShells.get(shellId);
+    if (pending && pending.origin === socket) {
+      this.pendingShells.delete(shellId);
+      pending.origin.removeListener('close', pending.onClose);
+      pending.resolve(exitCode);
+    }
+  }
+
+  /** Rejects a pending surface shell command with its originating surface's failure. */
+  private shellError_settle(socket: WebSocket, shellId: string, reason: string): void {
+    const pending: PendingShell | undefined = this.pendingShells.get(shellId);
+    if (pending && pending.origin === socket) {
+      this.pendingShells.delete(shellId);
+      pending.origin.removeListener('close', pending.onClose);
       pending.reject(new Error(reason));
     }
   }

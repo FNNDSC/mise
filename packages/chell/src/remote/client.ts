@@ -145,6 +145,10 @@ export async function remote_run(identity?: string, commandToExecute?: string): 
         // Pipeline segments run on this machine, through the client's own
         // tools — never on the daemon host.
         surface_get().pipeSegment(command, input),
+      onShell: (command: string): Promise<number> =>
+        // Host-shell escapes belong to the attached surface, so `!cmd` runs
+        // on this client machine and never on the daemon host.
+        surface_get().shellCommand(command),
       onEdit: (content: string, extension: string | undefined): Promise<{ content: string; changed: boolean }> =>
         // Editing happens in this machine's editor.
         surface_get().localEdit({ content, extension }),

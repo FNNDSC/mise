@@ -70,7 +70,9 @@ Operator machine                              Spoke
 The companion is part of the ARGUS surface, not part of CALYPSO. CALYPSO owns
 the ChRIS session; the companion owns capabilities granted by the operator's
 machine. ChELL already occupies this surface-side role when it attaches with
-`--remote`, although not every required operation is brokered through it yet.
+`--remote`: shell escapes are brokered back to that client and run against its
+terminal and filesystem. Client-local upload/download paths and workspace
+projection remain future companion capabilities.
 
 == Jupyter precedent
 

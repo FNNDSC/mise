@@ -35,12 +35,12 @@ import {
   type RedirectInfo,
 } from './preprocess.js';
 import {
-  shellCommand_execute,
   command_executeToEnvelope,
   command_timingMaybePrint,
   redirect_execute,
   pipe_execute,
 } from './dispatch.js';
+import { capability_require, surface_get } from './surface.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -113,9 +113,15 @@ async function shellEscape_execute(
 ): Promise<CommandEnvelope[]> {
   const shellCommand: string = trimmedLine.substring(1).trim();
   if (!shellCommand) return [];
-  const exitCode: number = await shellCommand_execute(shellCommand);
-  command_timingMaybePrint(startTime, timingEnabled);
-  return [{ status: exitCode === 0 ? 'ok' : 'error', rendered: '' }];
+  try {
+    capability_require('shellCommands', 'this surface cannot run shell commands');
+    const exitCode: number = await surface_get().shellCommand(shellCommand);
+    command_timingMaybePrint(startTime, timingEnabled);
+    return [{ status: exitCode === 0 ? 'ok' : 'error', rendered: '' }];
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    return [{ status: 'error', rendered: '', renderedErr: `${chalk.red(`Shell command failed: ${message}`)}\n` }];
+  }
 }
 
 /**

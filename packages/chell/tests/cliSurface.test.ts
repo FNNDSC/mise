@@ -4,6 +4,7 @@
  * (including hidden-input echo suppression).
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { EventEmitter } from 'events';
 
 /** A controllable fake of a readline interface. */
 interface FakeInterface {
@@ -24,6 +25,15 @@ const mockCreateInterface = jest.fn((opts: { output?: unknown; terminal?: boolea
   return rl;
 });
 jest.unstable_mockModule('readline', () => ({ createInterface: mockCreateInterface }));
+const spawnMock = jest.fn(() => {
+  const child = new EventEmitter();
+  process.nextTick(() => child.emit('close', 0));
+  return child;
+});
+jest.unstable_mockModule('child_process', () => ({
+  spawn: spawnMock,
+  spawnSync: jest.fn(),
+}));
 // Isolate this surface unit from the engine: cliSurface uses only
 // segment_pipeThrough from brasa at runtime (the rest are erased types).
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
@@ -46,6 +56,16 @@ describe('cliSurface capabilities', () => {
     expect(caps.hiddenInput).toBe(true);
     expect(caps.localEdit).toBe(true);
     expect(caps.tty).toBe(!!process.stdout.isTTY);
+    expect(caps.shellCommands).toBe(true);
+  });
+
+  it('runs a shell command on the CLI host with inherited terminal I/O', async () => {
+    await expect(cliSurface_create().shellCommand('pwd')).resolves.toBe(0);
+    expect(spawnMock).toHaveBeenCalledWith('pwd', {
+      shell: true,
+      stdio: 'inherit',
+      env: process.env,
+    });
   });
 });
 

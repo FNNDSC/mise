@@ -17,8 +17,15 @@ function fullSurface_create(): Surface & { prompts: string[] } {
   const prompts: string[] = [];
   return {
     prompts,
-    capabilities: { hiddenInput: true, localEdit: true, tty: true, pipeSegments: true },
+    capabilities: {
+      hiddenInput: true,
+      localEdit: true,
+      tty: true,
+      pipeSegments: true,
+      shellCommands: true,
+    },
     pipeSegment: async (_c: string, i: Buffer): Promise<Buffer> => i,
+    shellCommand: async (_command: string): Promise<number> => 0,
     localEdit: async (r): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
     prompt: async (request): Promise<string> => {
       prompts.push(request.message);
@@ -66,8 +73,16 @@ describe('capability_require', () => {
 describe('HeadlessSurface', () => {
   it('cannot prompt and says so', () => {
     const surface: HeadlessSurface = new HeadlessSurface();
-    expect(surface.capabilities).toEqual({ hiddenInput: false, localEdit: false, tty: false, pipeSegments: false });
+    expect(surface.capabilities).toEqual({
+      hiddenInput: false,
+      localEdit: false,
+      tty: false,
+      pipeSegments: false,
+      shellCommands: false,
+    });
     expect(() => surface.prompt({ message: 'x' })).toThrow(CapabilityError);
+    expect(() => (surface as unknown as { shellCommand(command: string): Promise<number> })
+      .shellCommand('pwd')).toThrow(CapabilityError);
   });
 });
 

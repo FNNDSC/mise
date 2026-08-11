@@ -14,7 +14,6 @@
  */
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
-import { spawn, ChildProcess } from 'child_process';
 import {
   builtin_cd,
   builtin_ls,
@@ -115,34 +114,6 @@ async function unknownCommand_delegate(command: string, args: string[]): Promise
   const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
   envelope_deliver(chiliEnvelope);
   return chiliEnvelope;
-}
-
-/**
- * Executes a shell command on the host system (shell escape with ! prefix).
- *
- * @param shellCommand - The command to execute on the host shell.
- * @returns A Promise resolving to the command's exit code (1 on spawn failure).
- */
-export async function shellCommand_execute(shellCommand: string): Promise<number> {
-  return new Promise((resolve: (code: number) => void) => {
-    const child: ChildProcess = spawn(shellCommand, {
-      shell: true,
-      stdio: 'inherit',
-      env: process.env
-    });
-
-    child.on('close', (code: number | null) => {
-      if (code !== null && code !== 0) {
-        console.error(chalk.red(`Shell command exited with code ${code}`));
-      }
-      resolve(code ?? 0);
-    });
-
-    child.on('error', (err: Error) => {
-      console.error(chalk.red(`Failed to execute shell command: ${err.message}`));
-      resolve(1);
-    });
-  });
 }
 
 type CommandHandler = (args: string[]) => Promise<void | CommandEnvelope>;

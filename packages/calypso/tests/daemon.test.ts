@@ -53,10 +53,15 @@ function send(ws: WebSocket, message: unknown): void {
 }
 
 /** Attaches with the valid token and awaits the ack. */
-async function client_attach(port: number): Promise<WebSocket> {
+async function client_attach(port: number, shellCommands: boolean = false): Promise<WebSocket> {
   const ws = await client_open(port);
   const acked = message_next(ws);
-  send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+  send(ws, {
+    type: 'attach',
+    protocolVersion: CONTRACT_VERSION,
+    token: TOKEN,
+    capabilities: { shellCommands },
+  });
   await acked;
   return ws;
 }
@@ -490,6 +495,112 @@ describe('CalypsoDaemon pipe segments over the wire', () => {
         rendered: "Command 'signalflow' exited with code 1",
       });
       ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
+describe('CalypsoDaemon shell commands over the wire', () => {
+  it('routes a shell command to the executing surface and returns its exit code', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        const exitCode: number = await (daemonRef as CalypsoDaemon).shell_current('pwd');
+        return [{ status: exitCode === 0 ? 'ok' : 'error', rendered: '' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port: number = await daemon.start();
+    try {
+      const ws: WebSocket = await client_attach(port, true);
+      const asked: Promise<Record<string, unknown>> = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '!pwd' });
+      const shell: Record<string, unknown> = await asked;
+      expect(shell).toEqual(expect.objectContaining({ type: 'shell', command: 'pwd' }));
+
+      const replied: Promise<Record<string, unknown>> = message_next(ws);
+      send(ws, { type: 'shellResult', shellId: shell.shellId as string, exitCode: 0 });
+      const result: Record<string, unknown> = await replied;
+      expect(result).toEqual(expect.objectContaining({
+        type: 'result',
+        envelopes: [{ status: 'ok', rendered: '' }],
+      }));
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('rejects shell execution when the originating surface lacks the capability', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        try {
+          await (daemonRef as CalypsoDaemon).shell_current('pwd');
+          return [{ status: 'ok', rendered: '' }];
+        } catch (error: unknown) {
+          return [{
+            status: 'error',
+            rendered: '',
+            renderedErr: error instanceof Error ? error.message : String(error),
+          }];
+        }
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port: number = await daemon.start();
+    try {
+      const ws: WebSocket = await client_attach(port);
+      const replied: Promise<Record<string, unknown>> = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '!pwd' });
+      const result: Record<string, unknown> = await replied;
+      expect(result).toEqual(expect.objectContaining({
+        type: 'result',
+        envelopes: [expect.objectContaining({
+          status: 'error',
+          renderedErr: expect.stringContaining('cannot run shell commands'),
+        })],
+      }));
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('ignores a shell result forged by a sibling surface', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        const exitCode: number = await (daemonRef as CalypsoDaemon).shell_current('pwd');
+        return [{ status: exitCode === 0 ? 'ok' : 'error', rendered: '' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port: number = await daemon.start();
+    try {
+      const origin: WebSocket = await client_attach(port, true);
+      const sibling: WebSocket = await client_attach(port, true);
+      const asked: Promise<Record<string, unknown>> = message_next(origin);
+      send(origin, { type: 'execute', id: '1', line: '!pwd' });
+      const shell: Record<string, unknown> = await asked;
+      send(sibling, { type: 'shellResult', shellId: shell.shellId as string, exitCode: 9 });
+
+      const replied: Promise<Record<string, unknown>> = message_next(origin);
+      send(origin, { type: 'shellResult', shellId: shell.shellId as string, exitCode: 0 });
+      const result: Record<string, unknown> = await replied;
+      expect(result).toEqual(expect.objectContaining({
+        type: 'result',
+        envelopes: [{ status: 'ok', rendered: '' }],
+      }));
+      origin.terminate();
+      sibling.terminate();
     } finally {
       await daemon.stop();
     }

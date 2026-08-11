@@ -122,11 +122,47 @@ describe('RemoteEngine live output', () => {
     };
 
     remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
+      type: 'attach',
+      capabilities: { shellCommands: false },
+    }));
     const envelopes: CommandEnvelope[] = await remote.line_execute('echo live');
 
     expect(envelopes).toEqual([{ status: 'ok', rendered: 'live data' }]);
     expect(data).toEqual(['live data']);
     expect(err).toEqual([]);
+  });
+
+  it('runs a daemon-requested shell command on the attached surface', async () => {
+    const shell = jest.fn(async (_command: string): Promise<number> => 0);
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      if (sent.type !== 'execute') return;
+      const id = String(sent.id);
+      process.nextTick(() => {
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'shell', shellId: 'h1', command: 'printf local',
+        })));
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'result', id, envelopes: [{ status: 'ok', rendered: '' }],
+        })));
+      });
+    };
+
+    remote = await RemoteEngine.connect({
+      url: 'ws://127.0.0.1:1',
+      token: 'token',
+      onShell: shell,
+    });
+    expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
+      type: 'attach',
+      capabilities: { shellCommands: true },
+    }));
+    await remote.line_execute('!printf local');
+
+    expect(shell).toHaveBeenCalledWith('printf local');
+    expect(FakeWebSocket.instances[0].sent).toContainEqual({
+      type: 'shellResult', shellId: 'h1', exitCode: 0,
+    });
   });
 
   it('does not suppress final envelope text for status-only output', async () => {

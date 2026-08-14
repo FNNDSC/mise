@@ -43,6 +43,12 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
  * Help-text registry keyed by builtin command name.
  */
 export const helpText: Record<string, CommandHelp> = {
+  user: {
+    usage: 'user <add|inspect|disable|enable|remove> <username>',
+    description: 'Manage CUBE-local accounts; federated identities remain externally managed',
+    options: ['Use `sudo user …` for lifecycle operations.', 'add prompts for email and a hidden password confirmation.'],
+    examples: ['sudo user add jack.bivowac', 'sudo user disable jack.bivowac', 'sudo user remove jack.bivowac'],
+  },
   sudo: {
     usage: 'sudo <command> [arguments...]',
     description: 'Run one ChRIS command with a temporary administrator identity',

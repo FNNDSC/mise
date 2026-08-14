@@ -123,6 +123,19 @@ sudo plugin add pl-dircopy
 Do not rely on an automatic retry after a permission failure: use the copyable
 `Try: sudo …` suggestion emitted for known administrator operations.
 
+=== user
+
+`user` manages CUBE-local accounts only. It cannot create, disable, or remove a federated identity. Account creation prompts for email and a hidden password twice; new local accounts are not automatically PACS users.
+
+[source,bash]
+----
+sudo user add jack.bivowac
+sudo user inspect jack.bivowac
+sudo user disable jack.bivowac
+sudo user enable jack.bivowac
+sudo user remove jack.bivowac
+----
+
 == System Introspection
 
 === id

@@ -17,7 +17,7 @@
  * @module
  */
 
-import Client, { ListResource, PACSRetrieve } from '@fnndsc/chrisapi';
+import Client, { ListResource, PACSRetrieve, Request } from '@fnndsc/chrisapi';
 
 /**
  * The chrisapi Client class, re-exported as a value.
@@ -119,6 +119,31 @@ export async function client_adminUrlEnsure(client: Client): Promise<string | nu
     await slice.setUrls().catch(() => undefined);
   }
   return slice.adminUrl ?? null;
+}
+
+/**
+ * Executes a collection+json request against an administrative CUBE child URL.
+ *
+ * @param client - Connected CUBE client whose token authorizes the request.
+ * @param path - Relative path below CUBE's advertised administrative endpoint.
+ * @param method - Supported HTTP method.
+ * @param data - Optional Collection+JSON template fields for a POST request.
+ * @returns The decoded HTTP response document.
+ * @throws {Error} When the client has no advertised administrative endpoint.
+ */
+export async function client_adminRequest(
+  client: Client,
+  path: string,
+  method: 'get' | 'post',
+  data?: Record<string, string>,
+): Promise<unknown> {
+  const adminURL: string | null = await client_adminUrlEnsure(client);
+  if (!adminURL) throw new Error('Administrator privileges are required.');
+  const request: Request = new Request(client_authGet(client), 'application/vnd.collection+json');
+  const url: string = new URL(path, adminURL.endsWith('/') ? adminURL : `${adminURL}/`).toString();
+  if (method === 'get') return (await request.get(url)).data;
+  const template = { template: { data: Object.entries(data ?? {}).map(([name, value]) => ({ name, value })) } };
+  return (await request.post(url, template)).data;
 }
 
 /**

@@ -23,6 +23,7 @@ export const COMMAND_HANDLERS_KEYS: string[] = [
   'store',
   'tag', 'tags',
   'group', 'groups',
+  'user', 'users',
   'pluginmeta', 'pluginmetas', 'meta', 'metas',
   'plugininstance', 'plugininstances', 'instance', 'instances', 'job', 'jobs',
   'workflow', 'workflows',

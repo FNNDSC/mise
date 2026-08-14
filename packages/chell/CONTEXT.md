@@ -178,6 +178,15 @@ The options every `list` / `search` invocation must honour:
 - `--table` — tabular output
 - `--csv` — CSV output
 
+### CUBE-local account administration
+
+`user` is a control-plane administration command, not a ChRIS Resource Command.
+It manages only CUBE-local login records through the restricted administrative
+endpoint; it does not enumerate or mutate externally federated identities.
+Its targeted lifecycle grammar is therefore `user <add|inspect|disable|enable|remove>
+<username>` rather than the resource-level `list`/`search`/field-inspection
+contract. Privileged invocations use the scoped `sudo user ...` wrapper.
+
 ## VFS (Virtual File System)
 
 The unified filesystem abstraction chell uses to navigate both real and virtual paths. Implemented via `VFSDispatcher` (salsa) which routes paths to the appropriate `VFSProvider`.

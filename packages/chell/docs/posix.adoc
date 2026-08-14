@@ -246,6 +246,21 @@ These operations require the permissions enforced by CUBE, ordinarily an adminis
 
 `sudo <command> [arguments...]` is an explicit, CUBE-scoped elevation wrapper rather than Unix UID elevation. It asks the active interactive surface for an administrator username and hidden password, uses the returned CUBE token only while running its nested command, and discards it afterward. The normal session token and saved identity are never replaced. A headless or browser-only surface that cannot securely collect hidden input fails clearly instead of attempting elevation.
 
+=== CUBE-local accounts
+
+`user` manages only accounts created locally in this CUBE; identities supplied by an external provider (such as Authentik through LDAP) are read-only here. A local account has a CUBE password and begins in `all_users` only. PACS access remains an explicit group assignment.
+
+[source,bash]
+----
+sudo user add jack.bivowac
+sudo group adduser pacs_users jack.bivowac
+sudo user disable jack.bivowac
+sudo user enable jack.bivowac
+sudo user remove jack.bivowac
+----
+
+`disable` is reversible and revokes CUBE tokens while retaining data. `remove` is irreversible for the local login: it disables the account and makes its password unusable, but retains the CUBE user record, files, feeds, and provenance.
+
 === Resolution and cache lifetime
 
 Resolving every group membership may require many CUBE requests. ChELL caches the completed `/etc/group` projection for five minutes. It never caches a partial or failed projection.

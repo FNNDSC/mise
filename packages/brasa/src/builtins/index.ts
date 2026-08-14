@@ -43,6 +43,7 @@ export * from './res/files.js';
 export * from './res/compute.js';
 export * from './res/tag.js';
 export * from './res/group.js';
+export * from './res/user.js';
 export * from './res/pluginmeta.js';
 export * from './res/plugininstance.js';
 export * from './res/workflow.js';

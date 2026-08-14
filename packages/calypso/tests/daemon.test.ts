@@ -60,7 +60,7 @@ async function client_attach(port: number, shellCommands: boolean = false): Prom
     type: 'attach',
     protocolVersion: CONTRACT_VERSION,
     token: TOKEN,
-    capabilities: { shellCommands },
+    capabilities: { hiddenInput: true, shellCommands },
   });
   await acked;
   return ws;

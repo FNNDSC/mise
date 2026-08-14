@@ -162,6 +162,10 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  localAccount_adminAccessEnsure: jest.fn(),
+  localAccount_create: jest.fn(),
+  localAccount_find: jest.fn(),
+  localAccount_action: jest.fn(),
   context_getSingle: mockContextGetSingle,
   procCache_refresh: jest.fn().mockResolvedValue(undefined),
   feedGraphData_ensure: jest.fn(),

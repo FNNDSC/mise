@@ -237,12 +237,12 @@ The projection is read-only. Membership changes use the group-domain commands:
 [source,bash]
 ----
 groups search pacs_users
-group members 7
-group adduser 7 peter.hong
-group removeuser 7 peter.hong
+group members pacs_users
+group adduser pacs_users peter.hong joe.schmo
+group removeuser pacs_users joe.schmo
 ----
 
-These operations require the permissions enforced by CUBE, ordinarily an administrator token.
+These operations require the permissions enforced by CUBE, ordinarily an administrator token. The group operand is normally an exact CUBE name; numeric IDs remain available for automation. Adding a current member or removing an absent one is a successful no-op. A batch attempts all supplied usernames, reports each result, and returns non-zero if any mutation fails.
 
 === Resolution and cache lifetime
 

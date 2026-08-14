@@ -5,11 +5,14 @@
 
 import {
   groupMembers_getAll as salsa_groupMembers_getAll,
+  groupReference_resolve as salsa_groupReference_resolve,
   groupUser_add as salsa_groupUser_add,
   groupUser_remove as salsa_groupUser_remove,
 } from '@fnndsc/salsa';
 import type {
   GroupMember as SalsaGroupMember,
+  GroupReference as SalsaGroupReference,
+  GroupReferenceResult as SalsaGroupReferenceResult,
   GroupMembershipResult as SalsaGroupMembershipResult,
 } from '@fnndsc/salsa';
 
@@ -18,6 +21,22 @@ export type GroupMember = SalsaGroupMember;
 
 /** Self-contained membership operation outcome exposed to Brasa. */
 export type GroupMembershipResult<T> = SalsaGroupMembershipResult<T>;
+
+/** Exact group identity exposed to Brasa after reference resolution. */
+export type GroupReference = SalsaGroupReference;
+
+/** Self-contained outcome from resolving a numeric or exact-name group operand. */
+export type GroupReferenceResult = SalsaGroupReferenceResult;
+
+/**
+ * Resolves an operator-facing numeric ID or exact group name.
+ *
+ * @param reference - Numeric group ID or exact CUBE group name.
+ * @returns One group identity or a self-contained resolution error.
+ */
+export async function groupReference_resolve(reference: string): Promise<GroupReferenceResult> {
+  return salsa_groupReference_resolve(reference);
+}
 
 /**
  * Fetches every user in one CUBE group.

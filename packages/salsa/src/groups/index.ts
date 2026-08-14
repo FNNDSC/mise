@@ -22,9 +22,20 @@ export interface GroupMember {
   username: string;
 }
 
+/** An exact CUBE group identity resolved from an operator-facing reference. */
+export interface GroupReference {
+  id: number;
+  name: string;
+}
+
 /** Success or user-facing failure from a group membership operation. */
 export type GroupMembershipResult<T> =
   | { ok: true; value: T }
+  | { ok: false; error: string };
+
+/** Success or user-facing failure from resolving a CUBE group reference. */
+export type GroupReferenceResult =
+  | { ok: true; value: GroupReference }
   | { ok: false; error: string };
 
 /**
@@ -58,6 +69,44 @@ export async function groups_list(options: ListOptions): Promise<FilteredResourc
 export async function groups_listAll(options: Partial<ListOptions> = {}): Promise<FilteredResourceData | null> {
   const group: ChRISGroupGroup = new ChRISGroupGroup();
   return await group.asset.resources_getAll(options);
+}
+
+/**
+ * Resolves a numeric ID or exact CUBE group name to one group identity.
+ *
+ * Numeric operands retain compatibility with ID-oriented automation. Other
+ * operands match only `name` exactly; a partial name never chooses a group.
+ *
+ * @param reference - Numeric group ID or exact group name.
+ * @returns Resolved group identity or a self-contained user-facing error.
+ */
+export async function groupReference_resolve(reference: string): Promise<GroupReferenceResult> {
+  const groups: FilteredResourceData | null = await groups_listAll();
+  const candidates: GroupReference[] = (groups?.tableData ?? []).flatMap(
+    (record: Record<string, unknown>): GroupReference[] => {
+      const id: number = typeof record.id === 'number' ? record.id : Number(record.id);
+      const name: string | undefined = typeof record.name === 'string' ? record.name : undefined;
+      return Number.isInteger(id) && id >= 0 && name !== undefined ? [{ id, name }] : [];
+    },
+  );
+  const numericID: number | undefined = /^\d+$/.test(reference) ? Number(reference) : undefined;
+  const matches: GroupReference[] = numericID === undefined
+    ? candidates.filter((candidate: GroupReference): boolean => candidate.name === reference)
+    : candidates.filter((candidate: GroupReference): boolean => candidate.id === numericID);
+
+  if (matches.length === 1) return { ok: true, value: matches[0] };
+  if (matches.length === 0) {
+    return numericID === undefined
+      ? { ok: false, error: `No group named '${reference}'.` }
+      : { ok: false, error: `No group with ID ${numericID}.` };
+  }
+  const options: string = matches.map(
+    (candidate: GroupReference): string => `${candidate.name} (${candidate.id})`,
+  ).join(', ');
+  return {
+    ok: false,
+    error: `Group name '${reference}' is ambiguous: ${options}. Use a numeric ID.`,
+  };
 }
 
 /**

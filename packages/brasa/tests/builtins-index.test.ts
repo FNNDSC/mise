@@ -258,6 +258,7 @@ jest.unstable_mockModule('@fnndsc/chili/commands/groups/list.js', () => ({ group
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/fields.js', () => ({ groupFields_fetch: jest.fn().mockResolvedValue([]) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/membership.js', () => ({
   groupMembers_fetch: jest.fn().mockResolvedValue({ ok: true, value: [] }),
+  groupReference_resolve: jest.fn().mockResolvedValue({ ok: true, value: { id: 7, name: 'pacs_users' } }),
   groupUser_add: jest.fn().mockResolvedValue({ ok: false }),
   groupUser_remove: jest.fn().mockResolvedValue({ ok: false }),
 }));

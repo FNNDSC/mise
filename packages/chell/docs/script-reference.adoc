@@ -667,24 +667,28 @@ tag inspect <id>
 [source,bash]
 ----
 groups list [--all]
-group inspect <id>
-group members <id>
-group create <name>          # [admin]
-group delete <id>            # [admin]
-group adduser <id> <user>    # [admin]
-group removeuser <id> <user> # [admin]
+group inspect [<group>]
+group members <group>
+group adduser <group> <user...>    # [admin]
+group removeuser <group> <user...> # [admin]
 ----
 
 Membership changes operate on an existing CUBE user and require an
-administrator token. Resolve a group ID first, then update it:
+administrator token. Use an exact group name in ordinary work; numeric CUBE
+IDs remain accepted for scripts and as an escape hatch. A name is never
+interpreted as a partial search result.
 
 [source,bash]
 ----
-groups search pacs_users
-group members 7
-group adduser 7 peter.hong
+group members pacs_users
+group adduser pacs_users peter.hong joe.schmo
+group removeuser pacs_users joe.schmo
 cat /etc/group
 ----
+
+Each requested user is reported. Adding an existing member and removing a
+non-member are successful no-ops; if another user in the same batch fails,
+ChELL still attempts every requested change and returns a non-zero status.
 
 `/etc/group` is a read-only projection of the current users in each visible group. The first read hydrates memberships from CUBE and shows an interactive spinner when that takes longer than 300 ms. The rendered projection is cached for five minutes per CUBE connection; `group adduser` and `group removeuser` invalidate it immediately, while changes made through Django admin become visible after the freshness window. Progress is status telemetry and therefore does not enter pipes, redirects, or captured command output.
 

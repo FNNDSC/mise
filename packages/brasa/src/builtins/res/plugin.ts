@@ -4,7 +4,7 @@
  * Handles plugin management in chell. Subcommands:
  * - `list`  — fetch and render the plugin collection via chili
  * - `run`   — execute a plugin instance by searchable name/id
- * - `add`   — register a new plugin into CUBE (interactive, with spinner)
+ * - `add`   — register a new plugin into CUBE (with spinner)
  *
  * Unknown subcommands fall through to a spawned chili process.
  * `plugin` and `plugins` are both registered as aliases in COMMAND_HANDLERS.
@@ -23,9 +23,8 @@ import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
 import { spinner } from '../../lib/spinner.js';
 import { errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
-import { adminPrompt_register } from '@fnndsc/chili/utils/admin_prompt.js';
 import { chili_capture, type ChiliCaptured } from '@fnndsc/chili/screen/output.js';
-import { repl_question, repl_questionHidden } from '../../core/question.js';
+import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
 
 /**
  * Mutable result populated while Chili output is captured.
@@ -114,8 +113,6 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<Command
   };
 
   errorStack.stack_clear();
-  adminPrompt_register(repl_question, repl_questionHidden);
-
   let rendered: string = `${chalk.cyan(`\nAdding plugin: ${pluginInput}\n`)}\n`;
 
   const result: PluginAddCapture = { outcome: 'failed' };
@@ -146,6 +143,10 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<Command
       rendered += `${chalk.red(`  - ${cleanError}`)}\n`;
     });
     rendered += '\n';
+  }
+
+  if (errors.some(authorizationFailure_is)) {
+    rendered += `\n${sudoHint_build('plugin add', [pluginInput])}`;
   }
 
   const warnings: string[] = errorStack.allOfType_get('warning');

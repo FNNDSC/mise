@@ -25,6 +25,7 @@ import {
 } from '@fnndsc/chili/commands/groups/membership.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
 
 /**
  * Renders an error for a failed group membership operation.
@@ -73,6 +74,7 @@ async function groupMembership_batch(
   let rendered: string = '';
   let renderedErr: string = '';
   let failures: number = 0;
+  let elevationHintShown: boolean = false;
 
   for (const username of usernames) {
     const present: boolean = members.has(username);
@@ -91,6 +93,13 @@ async function groupMembership_batch(
     if (!result.ok) {
       failures += 1;
       renderedErr += `${chalk.red(`Could not ${operation} ${username} ${operation === 'add' ? 'to' : 'from'} ${group_label(group)}: ${result.error}`)}\n`;
+      if (!elevationHintShown && authorizationFailure_is(result.error)) {
+        renderedErr += sudoHint_build(
+          `group ${operation}user`,
+          [group.name, ...usernames],
+        );
+        elevationHintShown = true;
+      }
       continue;
     }
 

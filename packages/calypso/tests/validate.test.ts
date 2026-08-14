@@ -21,6 +21,26 @@ describe('clientMessage_parse', () => {
     expect(clientMessage_parse({ type: 'shellError', shellId: 's2', reason: 'failed' }).ok).toBe(true);
   });
 
+  it('accepts hidden-input capability declaration without requiring it from older surfaces', () => {
+    const declared = clientMessage_parse({
+      type: 'attach',
+      protocolVersion: CONTRACT_VERSION,
+      token: 't',
+      capabilities: { shellCommands: false, hiddenInput: true },
+    });
+    expect(declared.ok).toBe(true);
+    if (declared.ok && declared.value?.type === 'attach') {
+      expect(declared.value.capabilities?.hiddenInput).toBe(true);
+    }
+
+    expect(clientMessage_parse({
+      type: 'attach',
+      protocolVersion: CONTRACT_VERSION,
+      token: 't',
+      capabilities: { shellCommands: false },
+    }).ok).toBe(true);
+  });
+
   it('rejects an unknown message type with a reason', () => {
     const r = clientMessage_parse({ type: 'nope', id: '1' });
     expect(r.ok).toBe(false);

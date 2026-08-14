@@ -1,7 +1,7 @@
 /**
  * @file Tests for the three-phase plugin add orchestration: current-CUBE
  * check, peer-store import, Docker extraction. Docker, salsa, cumin and the
- * admin prompt are mocked at their seams; input format detection runs real.
+ * CUBE-facing collaborators are mocked at their seams; input format detection runs real.
  */
 
 let mockDockerAvailable: jest.Mock;
@@ -31,19 +31,15 @@ jest.mock('@fnndsc/salsa', () => ({
 let mockValidate: jest.Mock;
 let mockGetAll: jest.Mock;
 let mockErrorsGet: jest.Mock;
+let mockErrorPush: jest.Mock;
 jest.mock('@fnndsc/cumin', () => ({
   computeResources_validate: (...a: unknown[]): unknown => mockValidate(...a),
   computeResourceNames_parse: (s: string): string[] => s.split(',').map((x: string) => x.trim()),
   computeResources_getAll: (...a: unknown[]): unknown => mockGetAll(...a),
   errorStack: {
     allOfType_get: (...a: unknown[]): unknown => mockErrorsGet(...a),
-    stack_push: jest.fn(),
+    stack_push: (...a: unknown[]): unknown => mockErrorPush(...a),
   },
-}));
-
-let mockPrompt: jest.Mock;
-jest.mock('../src/utils/admin_prompt', () => ({
-  adminCredentials_prompt: (...a: unknown[]): unknown => mockPrompt(...a),
 }));
 
 import { plugin_add } from '../src/commands/plugins/add';
@@ -65,7 +61,7 @@ beforeEach(() => {
   mockValidate = jest.fn(async () => ok(['host']));
   mockGetAll = jest.fn(async () => ok([]));
   mockErrorsGet = jest.fn(() => []);
-  mockPrompt = jest.fn();
+  mockErrorPush = jest.fn();
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -120,30 +116,21 @@ describe('phase 2: peer stores', () => {
     expect(errSpy).toHaveBeenCalledWith('broken');
   });
 
-  it('retries an auth failure with flag credentials', async () => {
+  it('returns an auth failure after one attempt with flag credentials', async () => {
     mockSearchPeers.mockResolvedValue({ storeName: 's', plugin: {} });
-    mockImportFromStore
-      .mockResolvedValueOnce({ success: false, requiresAuth: true })
-      .mockResolvedValueOnce({ success: true, plugin: {} });
+    mockImportFromStore.mockResolvedValueOnce({ success: false, requiresAuth: true });
     const outcome = await plugin_add('pl-x', { compute: 'host', adminUser: 'a', adminPassword: 'p' });
-    expect(outcome).toBe('installed');
-    expect(mockImportFromStore).toHaveBeenLastCalledWith('', {}, ['host'], { username: 'a', password: 'p' });
+    expect(outcome).toBe('failed');
+    expect(mockImportFromStore).toHaveBeenCalledTimes(1);
+    expect(mockImportFromStore).toHaveBeenCalledWith('', {}, ['host'], { username: 'a', password: 'p' });
   });
 
-  it('prompts interactively and gives up after three failed attempts', async () => {
+  it('does not prompt interactively after an auth failure', async () => {
     mockSearchPeers.mockResolvedValue({ storeName: 's', plugin: {} });
     mockImportFromStore.mockResolvedValue({ success: false, requiresAuth: true });
-    mockPrompt.mockResolvedValue({ username: 'a', password: 'bad' });
     expect(await plugin_add('pl-x', { compute: 'host' })).toBe('failed');
-    expect(mockPrompt).toHaveBeenCalledTimes(3);
-  });
-
-  it('stops when the interactive prompt is cancelled', async () => {
-    mockSearchPeers.mockResolvedValue({ storeName: 's', plugin: {} });
-    mockImportFromStore.mockResolvedValue({ success: false, requiresAuth: true });
-    mockPrompt.mockResolvedValue(null);
-    expect(await plugin_add('pl-x', { compute: 'host' })).toBe('failed');
-    expect(logSpy).toHaveBeenCalledWith('Authentication cancelled.');
+    expect(mockImportFromStore).toHaveBeenCalledTimes(1);
+    expect(mockErrorPush).toHaveBeenCalledWith('error', expect.stringContaining('Administrator privileges'));
   });
 });
 
@@ -197,14 +184,15 @@ describe('phase 3: docker extraction', () => {
     expect(errSpy).toHaveBeenCalledWith('Failed to extract plugin descriptor from image.');
   });
 
-  it('retries registration on an auth error and fails otherwise', async () => {
+  it('returns an auth failure without retrying registration', async () => {
     mockShellDetails.mockResolvedValue({
       stdout: JSON.stringify({ name: 'pl-x', dock_image: 'i' }), stderr: '', success: true,
     });
-    mockRegisterWithAdmin.mockResolvedValueOnce(null).mockResolvedValueOnce({ name: 'pl-x' });
+    mockRegisterWithAdmin.mockResolvedValue(null);
     mockErrorsGet.mockReturnValue(['403 Forbidden']);
     const outcome = await plugin_add('org/pl-x:1.0', { compute: 'host', adminUser: 'a', adminPassword: 'p' });
-    expect(outcome).toBe('installed');
+    expect(outcome).toBe('failed');
+    expect(mockRegisterWithAdmin).toHaveBeenCalledTimes(1);
 
     mockRegisterWithAdmin.mockReset().mockResolvedValue(null);
     mockErrorsGet.mockReturnValue(['just broken']);

@@ -90,6 +90,9 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
 
+const mockSudoCommandRun = jest.fn();
+jest.unstable_mockModule('../src/core/elevation.js', () => ({ sudoCommand_run: mockSudoCommandRun }));
+
 const { command_dispatch, command_dispatchEnvelope, command_executeToEnvelope, envRefs_expand } = await import('../src/core/dispatch.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
@@ -102,6 +105,7 @@ beforeEach(() => {
   mockCommandHelpGet.mockReturnValue('known help');
   mockTiming.mockReturnValue(false);
   mockExecutePlugin.mockResolvedValue({ status: 'ok', rendered: '' });
+  mockSudoCommandRun.mockResolvedValue({ status: 'ok', rendered: 'elevated\n' });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   exitSpy = jest.spyOn(process, 'exit').mockImplementation(((): never => {
@@ -133,6 +137,19 @@ describe('envRefs_expand', () => {
 });
 
 describe('command_dispatch', () => {
+  it('routes sudo through the scoped-elevation command seam', async () => {
+    const envelope: CommandEnvelope = await command_dispatchEnvelope(
+      'sudo',
+      ['group', 'adduser', 'pacs_users', 'peter.hong'],
+    );
+
+    expect(mockSudoCommandRun).toHaveBeenCalledWith(
+      ['group', 'adduser', 'pacs_users', 'peter.hong'],
+      expect.any(Function),
+    );
+    expect(envelope).toEqual({ status: 'ok', rendered: 'elevated\n' });
+  });
+
   it('routes a known command to its built-in handler', async () => {
     await command_dispatch('ls', ['-l']);
     expect(mockLs).toHaveBeenCalledWith(['-l']);

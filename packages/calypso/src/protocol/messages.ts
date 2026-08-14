@@ -30,6 +30,7 @@ export const channelSchema = z.enum(['data', 'err', 'status']);
 /** Capabilities an attaching surface can safely execute on its own machine. */
 export const surfaceCapabilitiesMessageSchema = z.object({
   shellCommands: z.boolean(),
+  hiddenInput: z.boolean().optional(),
 });
 
 /** Attach to a session: declares the contract version, token, and surface capabilities. */

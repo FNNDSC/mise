@@ -100,6 +100,9 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({
 
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  sudoCommand_run: jest.fn(async (): Promise<{ status: string; rendered: string }> => ({ status: 'ok', rendered: '' })),
+}));
 
 // Pipe segments now run through the active surface; the test installs a
 // surface whose pipeSegment delegates to this mock.

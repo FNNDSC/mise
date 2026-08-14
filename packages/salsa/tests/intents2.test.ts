@@ -6,6 +6,7 @@
 const mockConn = {
   connection_connect: jest.fn(),
   connection_logout: jest.fn(),
+  elevation_withCredentials: jest.fn(),
 };
 const mockCtx = {
   fullContext_get: jest.fn(),
@@ -27,7 +28,7 @@ jest.mock('@fnndsc/cumin', () => {
   };
 });
 
-import { connect_do, logout_do } from '../src/connect/index';
+import { connect_do, elevation_do, logout_do } from '../src/connect/index';
 import { store_list, store_search } from '../src/store/index';
 import { context_getFull, context_getSingle, context_set } from '../src/context/index';
 import { errorStack } from '@fnndsc/cumin';
@@ -55,6 +56,20 @@ describe('connect intents', () => {
     mockConn.connection_logout.mockResolvedValue(undefined);
     await logout_do();
     expect(mockConn.connection_logout).toHaveBeenCalled();
+  });
+
+  it('elevation_do delegates one scoped operation to Cumin', async () => {
+    mockConn.elevation_withCredentials.mockImplementation(async (
+      _credentials: unknown,
+      operation: () => Promise<string>,
+    ): Promise<string> => await operation());
+    const operation = jest.fn(async (): Promise<string> => 'done');
+
+    await expect(elevation_do({ username: 'admin', password: 'secret' }, operation)).resolves.toBe('done');
+    expect(mockConn.elevation_withCredentials).toHaveBeenCalledWith(
+      { username: 'admin', password: 'secret' },
+      operation,
+    );
   });
 });
 

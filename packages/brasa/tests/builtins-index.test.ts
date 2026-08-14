@@ -262,6 +262,10 @@ jest.unstable_mockModule('@fnndsc/chili/commands/groups/membership.js', () => ({
   groupUser_add: jest.fn().mockResolvedValue({ ok: false }),
   groupUser_remove: jest.fn().mockResolvedValue({ ok: false }),
 }));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  authorizationFailure_is: jest.fn(() => false),
+  sudoHint_build: jest.fn(() => ''),
+}));
 jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/list.js', () => ({ pluginMetas_fetchList: jest.fn().mockResolvedValue({ pluginMetas: [], selectedFields: [] }) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/fields.js', () => ({ pluginMetaFields_fetch: jest.fn().mockResolvedValue([]) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/plugininstances/list.js', () => ({ pluginInstances_fetchList: jest.fn().mockResolvedValue({ pluginInstances: [], selectedFields: [] }) }));

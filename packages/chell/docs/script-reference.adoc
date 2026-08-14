@@ -107,6 +107,22 @@ connect --user chris --password chris1234 http://localhost:8000/api/v1/
 logout
 ----
 
+=== sudo
+
+`sudo` is explicit, command-scoped CUBE elevation—not Unix UID elevation. It
+asks the active surface for an administrator username and hidden password, then
+uses that CUBE token only while its nested command runs. The normal session and
+saved token are unchanged. A surface without secure hidden input fails clearly.
+
+[source,bash]
+----
+sudo group adduser pacs_users peter.hong
+sudo plugin add pl-dircopy
+----
+
+Do not rely on an automatic retry after a permission failure: use the copyable
+`Try: sudo …` suggestion emitted for known administrator operations.
+
 == System Introspection
 
 === id
@@ -601,7 +617,7 @@ plugin search <searchable>             # resolve to IDs
 ----
 store list [--store <url>]
 store search <query>
-store install <plugin_name> [--compute <res1,res2>] [--adminUser <u> --adminPassword <p>]
+sudo store install <plugin_name> [--compute <res1,res2>]
 store inspect                 # show current peer store URL
 store set <url>               # override peer store
 store reset                   # reset to default (cube.chrisproject.org)
@@ -610,7 +626,7 @@ store reset                   # reset to default (cube.chrisproject.org)
 `store install` three-phase resolution:
 
 1. Already in CUBE → reports `[INFO] already registered`
-2. Found in peer store → imports (prompts for admin credentials interactively if needed)
+2. Found in peer store → imports with the current identity, or fails with a `sudo` suggestion when CUBE requires an administrator
 3. Not found → Docker extraction and registration
 
 === jobs / plugininstances / instances
@@ -678,10 +694,16 @@ administrator token. Use an exact group name in ordinary work; numeric CUBE
 IDs remain accepted for scripts and as an escape hatch. A name is never
 interpreted as a partial search result.
 
+When the ordinary CUBE identity is denied a known administrator operation,
+ChELL preserves the CUBE error and prints a copyable `sudo` suggestion. `sudo`
+prompts on the active surface for an administrator username and hidden password,
+uses the resulting token only for its nested command, then discards it. It does
+not replace or persist the normal session identity.
+
 [source,bash]
 ----
 group members pacs_users
-group adduser pacs_users peter.hong joe.schmo
+sudo group adduser pacs_users peter.hong joe.schmo
 group removeuser pacs_users joe.schmo
 cat /etc/group
 ----
@@ -885,11 +907,11 @@ cat /etc/compute.yaml
 store install pl-fshack --compute ares
 ----
 
-=== Install a plugin (non-interactive, admin credentials via flags)
+=== Install a plugin with explicit elevation
 
 [source,bash]
 ----
-store install pl-fshack --compute ares,argentum --adminUser chris --adminPassword chris1234
+sudo store install pl-fshack --compute ares,argentum
 ----
 
 === List all running jobs

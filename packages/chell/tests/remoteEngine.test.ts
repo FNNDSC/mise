@@ -124,7 +124,7 @@ describe('RemoteEngine live output', () => {
     remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
     expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
       type: 'attach',
-      capabilities: { shellCommands: false },
+      capabilities: { shellCommands: false, hiddenInput: false },
     }));
     const envelopes: CommandEnvelope[] = await remote.line_execute('echo live');
 
@@ -155,7 +155,7 @@ describe('RemoteEngine live output', () => {
     });
     expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
       type: 'attach',
-      capabilities: { shellCommands: true },
+      capabilities: { shellCommands: true, hiddenInput: false },
     }));
     await remote.line_execute('!printf local');
 

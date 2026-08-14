@@ -18,10 +18,6 @@ jest.mock('@fnndsc/cumin', () => ({
 }));
 jest.mock('../../../src/utils/docker.js');
 jest.mock('../../../src/utils/input_format.js');
-jest.mock('../../../src/utils/admin_prompt.js', () => ({
-  adminCredentials_prompt: jest.fn().mockResolvedValue({ username: 'admin', password: 'pw' }),
-}));
-
 describe('plugin_add', () => {
   beforeEach(() => {
     jest.clearAllMocks();

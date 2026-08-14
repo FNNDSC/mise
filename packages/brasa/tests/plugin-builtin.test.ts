@@ -34,13 +34,15 @@ jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_displa
 const mockChiliRun = jest.fn();
 jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn() } }));
-jest.unstable_mockModule('@fnndsc/chili/utils/admin_prompt.js', () => ({ adminPrompt_register: jest.fn() }));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  authorizationFailure_is: (message: string): boolean => message.includes('403'),
+  sudoHint_build: (command: string, args: string[]): string => `Try: sudo ${[command, ...args].join(' ')}\n`,
+}));
 const mockChiliCapture = jest.fn(async (fn: () => Promise<void>) => {
   await fn();
   return { out: '', err: '' };
 });
 jest.unstable_mockModule('@fnndsc/chili/screen/output.js', () => ({ chili_capture: mockChiliCapture }));
-jest.unstable_mockModule('../src/core/question.js', () => ({ repl_question: jest.fn(), repl_questionHidden: jest.fn() }));
 
 const { builtin_plugin, plugin_addInteractive } = await import('../src/builtins/res/plugin.js');
 
@@ -131,11 +133,11 @@ describe('plugin_addInteractive', () => {
     mockAdd.mockResolvedValue('installed');
     mockChiliCapture.mockImplementationOnce(async (fn: () => Promise<void>) => {
       await fn();
-      return { out: 'Admin credentials required.\n', err: '' };
+      return { out: 'Plugin registered.\n', err: '' };
     });
     const env = await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
     expect(env.rendered).toContain('SUCCESS');
-    expect(env.rendered).toContain('Admin credentials required');
+    expect(env.rendered).toContain('Plugin registered');
     expect(mockChiliCapture).toHaveBeenCalledTimes(1);
   });
 
@@ -153,5 +155,14 @@ describe('plugin_addInteractive', () => {
     expect(env.rendered).toContain('FAILED');
     expect(env.rendered).toContain('bad thing');
     expect(env.rendered).toContain('heads up');
+  });
+
+  it('suggests sudo after a CUBE authorization failure', async () => {
+    mockAdd.mockResolvedValue('failed');
+    mockAllOfType.mockImplementation((type: string) => type === 'error' ? ['Request failed with status code 403'] : []);
+
+    const env = await plugin_addInteractive({ _: ['add', 'pl-x'] } as never);
+
+    expect(env.rendered).toContain('Try: sudo plugin add pl-x');
   });
 });

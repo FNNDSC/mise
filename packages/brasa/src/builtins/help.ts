@@ -43,6 +43,18 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
  * Help-text registry keyed by builtin command name.
  */
 export const helpText: Record<string, CommandHelp> = {
+  sudo: {
+    usage: 'sudo <command> [arguments...]',
+    description: 'Run one ChRIS command with a temporary administrator identity',
+    options: [
+      'Prompts for an administrator username and hidden password on the active surface.',
+      'The elevated CUBE token is used only for the nested command; it is not saved or made the session identity.',
+    ],
+    examples: [
+      'sudo group adduser pacs_users peter.hong',
+      'sudo plugin add pl-dircopy',
+    ],
+  },
   ls: {
     usage: 'ls [options] [path]',
     description: 'List directory contents',
@@ -313,8 +325,8 @@ export const helpText: Record<string, CommandHelp> = {
       'PLUGINS ADD OPTIONS:',
       '  --compute <resources>         Comma-separated compute resources (default: host)',
       '  --store <url>                 Peer store URL (default: cube.chrisproject.org)',
-      '  --adminUser <username>        Admin username (to skip interactive prompt)',
-      '  --adminPassword <password>    Admin password (to skip interactive prompt)',
+      '  --adminUser <username>        Administrator username (non-interactive compatibility)',
+      '  --adminPassword <password>    Administrator password (non-interactive compatibility)',
       '  --publicRepo <url>            Public repository URL for the plugin',
       '',
       'PLUGIN INPUT FORMATS:',
@@ -343,8 +355,8 @@ export const helpText: Record<string, CommandHelp> = {
       'plugins add pl-dircopy',
       'plugins add pl-dircopy --compute host,gpu',
       '',
-      '# Add plugin with admin credentials (skip prompt)',
-      'plugins add pl-dircopy --adminUser chris --adminPassword chris1234',
+      '# Add a plugin with a temporary administrator identity',
+      'sudo plugins add pl-dircopy',
       '',
       '# Add plugin from Docker image',
       'plugins add fnndsc/pl-dircopy:2.1.1',
@@ -823,8 +835,7 @@ export const helpText: Record<string, CommandHelp> = {
       '',
       'INSTALL OPTIONS:',
       '  --compute <names>     Compute resources (comma-separated)',
-      '  --adminUser <user>    Admin username for install',
-      '  --adminPassword <pw>  Admin password for install',
+      '  Use `sudo store install …` for an administrator installation.',
       '-l                      Long listing format',
     ],
     examples: [

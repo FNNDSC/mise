@@ -18,6 +18,7 @@ export * from './core/surface.js';
 export * from './core/promptContext.js';
 export * from './core/connect.js';
 export * from './core/question.js';
+export * from './core/elevation.js';
 export * from './core/version.js';
 export * from './command-keys.js';
 export * from './session/index.js';

@@ -44,6 +44,7 @@ interface Surface {
   id: string;
   capabilities: {
     shellCommands: boolean;
+    hiddenInput: boolean;
   };
 }
 
@@ -268,6 +269,7 @@ export class CalypsoDaemon {
       id: randomBytes(8).toString('hex'),
       capabilities: {
         shellCommands: attach.value.capabilities?.shellCommands ?? false,
+        hiddenInput: attach.value.capabilities?.hiddenInput ?? false,
       },
     };
     this.surfaces.add(surface);
@@ -381,13 +383,17 @@ export class CalypsoDaemon {
    * @param message - The prompt text to show.
    * @param hidden - Whether to request no-echo entry (a password).
    * @returns The surface's answer.
-   * @throws {Error} When no command is executing (nothing to prompt for) or the
-   *   surface disconnects before answering.
+   * @throws {Error} When no command is executing, the surface cannot securely
+   *   collect a requested hidden answer, or the surface disconnects before
+   *   answering.
    */
   public prompt_current(message: string, hidden: boolean): Promise<string> {
     const origin: Surface | null = this.currentOrigin;
     if (!origin) {
       return Promise.reject(new Error('no active command to prompt for'));
+    }
+    if (hidden && !origin.capabilities.hiddenInput) {
+      return Promise.reject(new Error('this surface cannot securely collect hidden input'));
     }
     const promptId: string = `p${this.promptSeq++}`;
     return new Promise((resolve: (answer: string) => void, reject: (err: Error) => void) => {

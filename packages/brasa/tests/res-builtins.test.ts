@@ -3,6 +3,10 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 // Satisfy builtins/utils' heavy imports so the real commandArgs_process loads.
 const mockErrorPop = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  authorizationFailure_is: (message: string): boolean => message.includes('403'),
+  sudoHint_build: (command: string, args: string[]): string => `Try: sudo ${[command, ...args].join(' ')}\n`,
+}));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   errorStack: { stack_pop: mockErrorPop },
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
@@ -228,6 +232,7 @@ describe('builtin_group membership', () => {
     expect(envelope.rendered).toContain('Added peter.hong');
     expect(envelope.renderedErr).toContain('joe.schmo');
     expect(envelope.renderedErr).toContain('status code 403');
+    expect(envelope.renderedErr).toContain('Try: sudo group adduser pacs_users peter.hong joe.schmo');
     expect(process.exitCode).toBe(1);
   });
 

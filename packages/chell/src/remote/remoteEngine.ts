@@ -90,7 +90,10 @@ export class RemoteEngine implements BrasaEngine {
           type: 'attach',
           protocolVersion: CONTRACT_VERSION,
           token: options.token,
-          capabilities: { shellCommands: options.onShell !== undefined },
+          capabilities: {
+            shellCommands: options.onShell !== undefined,
+            hiddenInput: options.onPrompt !== undefined,
+          },
         }));
         ws.once('message', (data: Buffer) => {
           const parsed = serverMessage_parse(safeJson_parse(data.toString()));

@@ -35,6 +35,7 @@ import {
   groups_list,
   groups_listAll,
   groupFields_get,
+  groupReference_resolve,
   groupMembers_getAll,
   groupUser_add,
   groupUser_remove,
@@ -68,6 +69,46 @@ beforeEach(() => {
 });
 
 describe('group membership intents', () => {
+  it('resolves an exact group name to its numeric CUBE ID', async (): Promise<void> => {
+    asset.resources_getAll.mockResolvedValue({
+      tableData: [{ id: 7, name: 'pacs_users' }, { id: 9, name: 'research' }],
+      selectedFields: ['id', 'name'],
+    });
+
+    await expect(groupReference_resolve('pacs_users')).resolves.toEqual({
+      ok: true,
+      value: { id: 7, name: 'pacs_users' },
+    });
+  });
+
+  it('preserves a numeric group ID and rejects an unknown exact name', async (): Promise<void> => {
+    asset.resources_getAll.mockResolvedValue({
+      tableData: [{ id: 7, name: 'pacs_users' }],
+      selectedFields: ['id', 'name'],
+    });
+
+    await expect(groupReference_resolve('7')).resolves.toEqual({
+      ok: true,
+      value: { id: 7, name: 'pacs_users' },
+    });
+    await expect(groupReference_resolve('no_such_group')).resolves.toEqual({
+      ok: false,
+      error: "No group named 'no_such_group'.",
+    });
+  });
+
+  it('never guesses when an exact group name is ambiguous', async (): Promise<void> => {
+    asset.resources_getAll.mockResolvedValue({
+      tableData: [{ id: 7, name: 'pacs_users' }, { id: 9, name: 'pacs_users' }],
+      selectedFields: ['id', 'name'],
+    });
+
+    await expect(groupReference_resolve('pacs_users')).resolves.toEqual({
+      ok: false,
+      error: "Group name 'pacs_users' is ambiguous: pacs_users (7), pacs_users (9). Use a numeric ID.",
+    });
+  });
+
   it('presents successful membership operations', async () => {
     groupMembersGetAll.mockResolvedValue({
       ok: true,

@@ -52,6 +52,32 @@ export interface ProcFeedScopeCounts {
   total: number;
 }
 
+/** Feed counters whose changes can alter a feed's plugin-instance topology. */
+const FEED_TOPOLOGY_COUNTERS: ReadonlyArray<keyof Pick<ProcFeed,
+  'finishedJobs' | 'erroredJobs' | 'startedJobs' | 'scheduledJobs' | 'cancelledJobs' | 'createdJobs'
+>> = [
+  'finishedJobs',
+  'erroredJobs',
+  'startedJobs',
+  'scheduledJobs',
+  'cancelledJobs',
+  'createdJobs',
+];
+
+/** Reports whether a feed has work which can still change after checkpointing. */
+function feed_isActive(feed: ProcFeed): boolean {
+  return feed.startedJobs > 0 || feed.scheduledJobs > 0 || feed.createdJobs > 0;
+}
+
+/** Reports whether two feed summaries indicate different instance topology. */
+function feedTopology_changed(previous: ProcFeed, current: ProcFeed): boolean {
+  return FEED_TOPOLOGY_COUNTERS.some(
+    (counter: keyof Pick<ProcFeed,
+      'finishedJobs' | 'erroredJobs' | 'startedJobs' | 'scheduledJobs' | 'cancelledJobs' | 'createdJobs'
+    >): boolean => previous[counter] !== current[counter],
+  );
+}
+
 /**
  * Instance entry. Topology (id/feedID/parentID/pluginName) is permanent.
  * Status is cached only once terminal (settled); active status is refreshed live.
@@ -70,6 +96,12 @@ export interface ProcInstance {
   pluginType?: string;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
+  /**
+   * Authoritative CUBE output directory, resolved lazily for the `/proc` data
+   * link. `undefined` means not looked up; `null` means CUBE reported none.
+   * This navigation convenience is deliberately excluded from checkpoints.
+   */
+  outputPath?: string | null;
   /**
    * Last known job status. Terminal statuses (see {@link PROC_TERMINAL_STATUSES})
    * are immutable and kept permanently; active statuses are refreshed live.
@@ -281,14 +313,23 @@ export class ProcCache {
    * Replaces the visible feed set while preserving topology for retained feeds.
    *
    * @param feeds - Authoritative feeds visible to the current identity.
-   * @returns Nothing.
+   * @returns IDs requiring topology reconciliation because they are new, their
+   *   aggregate job counts changed, or they still have active work.
    */
-  feeds_reconcile(feeds: ProcFeed[]): void {
+  feeds_reconcile(feeds: ProcFeed[]): number[] {
+    const reconciliationTargets: number[] = [];
     const visible: Set<number> = new Set(feeds.map((feed: ProcFeed): number => feed.id));
     for (const feedID of this.feedIDs_get()) {
       if (!visible.has(feedID)) this.feed_remove(feedID);
     }
-    for (const feed of feeds) this.feed_add(feed);
+    for (const feed of feeds) {
+      const previous: ProcFeed | undefined = this.feed_get(feed.id);
+      if (!previous || feedTopology_changed(previous, feed) || feed_isActive(feed)) {
+        reconciliationTargets.push(feed.id);
+      }
+      this.feed_add(feed);
+    }
+    return reconciliationTargets;
   }
 
   // ── Instance ──────────────────────────────────────────────────────────────
@@ -389,6 +430,46 @@ export class ProcCache {
   params_update(id: number, params: Record<string, unknown>): void {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (inst) inst.params = params;
+  }
+
+  /**
+   * Stores the lazily resolved CUBE output path for one instance.
+   *
+   * @param id - Plugin-instance ID whose output location was resolved.
+   * @param outputPath - Absolute CFS output directory, or null when absent.
+   * @returns Nothing.
+   */
+  outputPath_update(id: number, outputPath: string | null): void {
+    const inst: ProcInstance | undefined = this.instances.get(id);
+    if (inst) inst.outputPath = outputPath;
+  }
+
+  /**
+   * Finds the closest cached job output containing a CFS path.
+   *
+   * An output path is a directory boundary: `/home/alice/run` contains
+   * `/home/alice/run/result.txt`, but not `/home/alice/run-old`.
+   *
+   * @param cfsPath - Absolute CFS path to resolve against live-session outputs.
+   * @returns The closest producing instance, or undefined when no output path
+   *   known in this session contains the path.
+   */
+  outputPath_match(cfsPath: string): ProcInstance | undefined {
+    const cleanPath: string = cfsPath.length > 1 && cfsPath.endsWith('/')
+      ? cfsPath.slice(0, -1)
+      : cfsPath;
+    let closest: ProcInstance | undefined;
+    for (const inst of this.instances.values()) {
+      const outputPath: string | null | undefined = inst.outputPath;
+      if (!outputPath) continue;
+      const isAncestor: boolean = outputPath === '/'
+        ? cleanPath.startsWith('/')
+        : cleanPath === outputPath || cleanPath.startsWith(`${outputPath}/`);
+      if (isAncestor && (!closest || outputPath.length > (closest.outputPath?.length ?? 0))) {
+        closest = inst;
+      }
+    }
+    return closest;
   }
 
   /**
@@ -559,12 +640,15 @@ export class ProcCache {
    * @returns Serializable feed and terminal-topology state.
    */
   snapshot_create(): ProcCacheSnapshot {
-    const instances: ProcInstance[] = Array.from(this.instances.values()).map((inst: ProcInstance): ProcInstance => ({
-      ...inst,
-      params: null,
-      status: status_isTerminal(inst.status) ? inst.status : null,
-      joinParentIDs: inst.joinParentIDs ? [...inst.joinParentIDs] : undefined,
-    }));
+    const instances: ProcInstance[] = Array.from(this.instances.values()).map((inst: ProcInstance): ProcInstance => {
+      const { outputPath: _outputPath, ...persistent }: ProcInstance = inst;
+      return {
+        ...persistent,
+        params: null,
+        status: status_isTerminal(inst.status) ? inst.status : null,
+        joinParentIDs: inst.joinParentIDs ? [...inst.joinParentIDs] : undefined,
+      };
+    });
     return {
       feeds: Array.from(this.feeds.values()).map((feed: ProcFeed): ProcFeed => ({ ...feed })),
       instances,
@@ -586,7 +670,8 @@ export class ProcCache {
       this.feedRoots.set(feed.id, []);
     }
     for (const inst of snapshot.instances) {
-      this.instance_add({ ...inst, params: null, status: status_isTerminal(inst.status) ? inst.status : null });
+      const { outputPath: _outputPath, ...restored }: ProcInstance = inst;
+      this.instance_add({ ...restored, params: null, status: status_isTerminal(inst.status) ? inst.status : null });
     }
     this.topologyLoaded = new Set(snapshot.topologyLoaded.filter((id: number): boolean => this.feeds.has(id)));
     this._warmupProgress = { loaded: this.instances.size, total: this.instances.size, active: false };

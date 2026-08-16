@@ -168,6 +168,80 @@ describe('client creation', () => {
   });
 });
 
+describe('elevation_withCredentials', () => {
+  it('scopes an elevated client to one operation without changing stored session state', async () => {
+    const store: FakeStore = { files: { '/cfg/token': 'NORMAL' } };
+    const conn: ChRISConnection = connection_make(store);
+    const normalClient: object = { identity: 'normal' };
+    const elevatedClient: object = { identity: 'elevated' };
+    mockClientCreate
+      .mockReturnValueOnce(normalClient)
+      .mockReturnValueOnce(elevatedClient);
+    mockAuthToken.mockResolvedValue('ELEVATED');
+    expect(await conn.client_get()).toBe(normalClient);
+
+    await expect(conn.elevation_withCredentials(
+      { username: 'admin', password: 'secret' },
+      async (): Promise<object | null> => await conn.client_get(),
+    )).resolves.toBe(elevatedClient);
+
+    expect(mockAuthToken).toHaveBeenCalledWith('https://cube/api/v1/auth-token/', 'admin', 'secret');
+    expect(await conn.client_get()).toBe(normalClient);
+    expect(store.files['/cfg/token']).toBe('NORMAL');
+  });
+
+  it('restores the normal client when elevated work throws', async () => {
+    const conn: ChRISConnection = connection_make({ files: { '/cfg/token': 'NORMAL' } });
+    const normalClient: object = { identity: 'normal' };
+    const elevatedClient: object = { identity: 'elevated' };
+    mockClientCreate
+      .mockReturnValueOnce(normalClient)
+      .mockReturnValueOnce(elevatedClient);
+    mockAuthToken.mockResolvedValue('ELEVATED');
+    expect(await conn.client_get()).toBe(normalClient);
+
+    await expect(conn.elevation_withCredentials(
+      { username: 'admin', password: 'secret' },
+      async (): Promise<void> => { throw new Error('operation failed'); },
+    )).rejects.toThrow('operation failed');
+
+    expect(await conn.client_get()).toBe(normalClient);
+  });
+
+  it('keeps a concurrent normal operation on its normal client', async () => {
+    const conn: ChRISConnection = connection_make({ files: { '/cfg/token': 'NORMAL' } });
+    const normalClient: object = { identity: 'normal' };
+    const elevatedClient: object = { identity: 'elevated' };
+    let releaseElevatedWork: (() => void) | undefined;
+    const elevatedWorkContinue: Promise<void> = new Promise<void>((resolve: () => void): void => {
+      releaseElevatedWork = resolve;
+    });
+    mockClientCreate
+      .mockReturnValueOnce(normalClient)
+      .mockReturnValueOnce(elevatedClient);
+    mockAuthToken.mockResolvedValue('ELEVATED');
+    expect(await conn.client_get()).toBe(normalClient);
+
+    let beginElevatedWork: (() => void) | undefined;
+    const elevatedStarted: Promise<void> = new Promise<void>((resolve: () => void): void => {
+      beginElevatedWork = resolve;
+    });
+    const elevatedOperation: Promise<object | null> = conn.elevation_withCredentials(
+      { username: 'admin', password: 'secret' },
+      async (): Promise<object | null> => {
+        beginElevatedWork?.();
+        await elevatedWorkContinue;
+        return await conn.client_get();
+      },
+    );
+
+    await elevatedStarted;
+    expect(await conn.client_get()).toBe(normalClient);
+    releaseElevatedWork?.();
+    await expect(elevatedOperation).resolves.toBe(elevatedClient);
+  });
+});
+
 describe('context_set', () => {
   it('applies user, URL and folder from a parsed context and refreshes', async () => {
     const conn: ChRISConnection = connection_make({ files: { '/cfg/token': 'T' } });

@@ -37,6 +37,7 @@ import {
   builtin_compute,
   builtin_tag,
   builtin_group,
+  builtin_user,
   builtin_pluginmeta,
   builtin_plugininstance,
   builtin_workflow,
@@ -79,6 +80,7 @@ import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sink
 import { vfs } from '../lib/vfs/vfs.js';
 import { args_tokenize } from '../lib/parser.js';
 import { surface_get, capability_require } from './surface.js';
+import { sudoCommand_run } from './elevation.js';
 import {
   redirectTarget_resolve,
   wildcards_expandCheck,
@@ -167,6 +169,8 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   tags: builtin_tag,
   group: builtin_group,
   groups: builtin_group,
+  user: builtin_user,
+  users: builtin_user,
   pluginmeta: builtin_pluginmeta,
   pluginmetas: builtin_pluginmeta,
   meta: builtin_pluginmeta,
@@ -464,6 +468,10 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     process.exit(0);
   }
   args = args.map(envRefs_expand);
+
+  if (command === 'sudo') {
+    return await sudoCommand_run(args, commandDispatchEnvelope_run);
+  }
 
   const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
   if (envelopeHandler) {

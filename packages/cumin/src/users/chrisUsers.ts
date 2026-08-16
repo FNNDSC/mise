@@ -6,6 +6,8 @@
 
 import { chrisConnection } from '../connect/chrisConnection.js';
 import {
+  client_adminRequest,
+  client_adminUrlEnsure,
   listData_get,
   itemData_get,
   type Client,
@@ -35,6 +37,127 @@ export interface ChrisUser {
 export interface ChrisIdentity {
   user: ChrisUser;
   groups: ChrisGroup[];
+}
+
+/** A CUBE-local account managed independently from a federated identity. */
+export interface LocalAccount {
+  id: number;
+  username: string;
+  email: string;
+  is_active: boolean;
+  disabled_at: string | null;
+  removed_at: string | null;
+}
+
+/** One allowed lifecycle transition for a CUBE-local account. */
+export type LocalAccountAction = 'disable' | 'enable' | 'remove';
+
+/**
+ * Verifies that the current CUBE identity may use the local-account endpoint.
+ *
+ * @returns Success when the current identity has an administrative CUBE link.
+ */
+export async function localAccount_adminAccessEnsure(): Promise<Result<void>> {
+  try {
+    const client: Client | null = await chrisConnection.client_get();
+    if (!client) throw new Error('Not connected to ChRIS. Please log in.');
+    if (!await client_adminUrlEnsure(client)) {
+      throw new Error('Administrator privileges are required.');
+    }
+    return Ok(undefined);
+  } catch (error: unknown) {
+    errorStack.stack_push('error', error instanceof Error ? error.message : String(error));
+    return Err();
+  }
+}
+
+/**
+ * Decodes one collection+json item into a plain local-account record.
+ *
+ * @param document - Collection+JSON response document.
+ * @returns The decoded account, or null when the response lacks a valid item.
+ */
+function localAccount_decode(document: unknown): LocalAccount | null {
+  const item = (document as { collection?: { items?: Array<{ data?: Array<{ name: string; value: unknown }> }> } })
+    ?.collection?.items?.[0];
+  if (!item?.data) return null;
+  const values: Record<string, unknown> = Object.fromEntries(item.data.map(({ name, value }) => [name, value]));
+  const id: number = Number(values.id);
+  return Number.isInteger(id) && typeof values.username === 'string' && typeof values.email === 'string'
+    ? { id, username: values.username, email: values.email, is_active: values.is_active === true,
+        disabled_at: typeof values.disabled_at === 'string' ? values.disabled_at : null,
+        removed_at: typeof values.removed_at === 'string' ? values.removed_at : null }
+    : null;
+}
+
+/**
+ * Finds one CUBE-local account by its exact username.
+ *
+ * @param username - Exact CUBE-local username to find.
+ * @returns The matching local account or a recorded operation error.
+ */
+export async function localAccount_find(username: string): Promise<Result<LocalAccount>> {
+  try {
+    const client: Client | null = await chrisConnection.client_get();
+    if (!client) throw new Error('Not connected to ChRIS. Please log in.');
+    const account: LocalAccount | null = localAccount_decode(await client_adminRequest(
+      client, `users/?username=${encodeURIComponent(username)}`, 'get',
+    ));
+    if (!account) throw new Error(`No CUBE-local account named '${username}'.`);
+    return Ok(account);
+  } catch (error: unknown) {
+    errorStack.stack_push('error', error instanceof Error ? error.message : String(error));
+    return Err();
+  }
+}
+
+/**
+ * Creates one CUBE-local account through the administrative endpoint.
+ *
+ * @param username - New CUBE-local username.
+ * @param email - Email address stored on the CUBE account.
+ * @param password - Initial local-login password.
+ * @returns The created local account or a recorded operation error.
+ */
+export async function localAccount_create(
+  username: string, email: string, password: string,
+): Promise<Result<LocalAccount>> {
+  try {
+    const client: Client | null = await chrisConnection.client_get();
+    if (!client) throw new Error('Not connected to ChRIS. Please log in.');
+    const account: LocalAccount | null = localAccount_decode(await client_adminRequest(
+      client, 'users/', 'post', { username, email, password },
+    ));
+    if (!account) throw new Error('CUBE returned no local-account record.');
+    return Ok(account);
+  } catch (error: unknown) {
+    errorStack.stack_push('error', error instanceof Error ? error.message : String(error));
+    return Err();
+  }
+}
+
+/**
+ * Applies one lifecycle action to a CUBE-local account.
+ *
+ * @param accountID - Stable local-account record identifier.
+ * @param action - Lifecycle transition to apply.
+ * @returns The updated local account or a recorded operation error.
+ */
+export async function localAccount_action(
+  accountID: number, action: LocalAccountAction,
+): Promise<Result<LocalAccount>> {
+  try {
+    const client: Client | null = await chrisConnection.client_get();
+    if (!client) throw new Error('Not connected to ChRIS. Please log in.');
+    const account: LocalAccount | null = localAccount_decode(await client_adminRequest(
+      client, `users/${accountID}/`, 'post', { action },
+    ));
+    if (!account) throw new Error('CUBE returned no local-account record.');
+    return Ok(account);
+  } catch (error: unknown) {
+    errorStack.stack_push('error', error instanceof Error ? error.message : String(error));
+    return Err();
+  }
 }
 
 /** Current user data paired with its ChrisAPI resource. */

@@ -56,6 +56,7 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private latestPrompt: string = '';
   private nextId: number = 0;
+  private activeExecuteId: string | undefined;
   private readonly liveEnvelopeChannels: Map<string, Set<'data' | 'err'>> = new Map<string, Set<'data' | 'err'>>();
 
   /**
@@ -90,7 +91,10 @@ export class RemoteEngine implements BrasaEngine {
           type: 'attach',
           protocolVersion: CONTRACT_VERSION,
           token: options.token,
-          capabilities: { shellCommands: options.onShell !== undefined },
+          capabilities: {
+            shellCommands: options.onShell !== undefined,
+            hiddenInput: options.onPrompt !== undefined,
+          },
         }));
         ws.once('message', (data: Buffer) => {
           const parsed = serverMessage_parse(safeJson_parse(data.toString()));
@@ -124,19 +128,31 @@ export class RemoteEngine implements BrasaEngine {
   /** @inheritdoc */
   public async line_execute(line: string): Promise<CommandEnvelope[]> {
     const id: string = String(this.nextId++);
-    const envelopes: CommandEnvelope[] = await this.request<CommandEnvelope[]>('execute', { line }, id);
-    const liveChannels: Set<'data' | 'err'> | undefined = this.liveEnvelopeChannels.get(id);
-    this.liveEnvelopeChannels.delete(id);
-    // Deliver to the active sink exactly as the in-process engine delivers
-    // live, so the REPL host renders remote output without any change.
-    for (const envelope of envelopes) {
-      envelope_deliver(liveChannels ? {
-        ...envelope,
-        rendered: liveChannels.has('data') ? '' : envelope.rendered,
-        renderedErr: liveChannels.has('err') ? undefined : envelope.renderedErr,
-      } : envelope);
+    this.activeExecuteId = id;
+    try {
+      const envelopes: CommandEnvelope[] = await this.request<CommandEnvelope[]>('execute', { line }, id);
+      const liveChannels: Set<'data' | 'err'> | undefined = this.liveEnvelopeChannels.get(id);
+      this.liveEnvelopeChannels.delete(id);
+      // Deliver to the active sink exactly as the in-process engine delivers
+      // live, so the REPL host renders remote output without any change.
+      for (const envelope of envelopes) {
+        envelope_deliver(liveChannels ? {
+          ...envelope,
+          rendered: liveChannels.has('data') ? '' : envelope.rendered,
+          renderedErr: liveChannels.has('err') ? undefined : envelope.renderedErr,
+        } : envelope);
+      }
+      return envelopes;
+    } finally {
+      if (this.activeExecuteId === id) this.activeExecuteId = undefined;
     }
-    return envelopes;
+  }
+
+  /** @inheritdoc */
+  public line_cancel(): boolean {
+    if (this.activeExecuteId === undefined) return false;
+    this.ws.send(JSON.stringify({ type: 'cancel', id: this.activeExecuteId }));
+    return true;
   }
 
   /** @inheritdoc */

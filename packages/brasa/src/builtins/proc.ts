@@ -4,9 +4,11 @@
  */
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
-import { procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
+import { builtin_cd } from './fs/cd.js';
+import { session } from '../session/index.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { screen, table_render } from '@fnndsc/chili/screen/screen.js';
 import {
@@ -323,6 +325,73 @@ async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * Maps a canonical CFS feed path into its matching `/proc` location.
+ *
+ * The CFS feed namespace and `/proc` share CUBE's feed and plugin-instance
+ * identifiers. A feed root maps directly; a job path maps only after its
+ * cached node confirms the same feed. An unknown node is loaded scoped to that
+ * one feed rather than by a global scan.
+ *
+ * @param cwd - Current CFS path to examine.
+ * @param cache - Current `/proc` cache.
+ * @returns The matching `/proc` path, or null when the CFS path is not canonical.
+ */
+async function procHere_canonicalPath_get(cwd: string, cache: ProcCache): Promise<string | null> {
+  if (!path_isInFeed(cwd)) return null;
+  const feedID: number | null = path_extractFeedID(cwd);
+  if (feedID === null || !cache.feed_get(feedID)) return null;
+
+  const instanceID: number | null = path_extractPluginInstanceID(cwd);
+  if (instanceID === null) return `/proc/jobs/feed_${feedID}`;
+
+  let instance: ProcInstance | undefined = cache.instance_get(instanceID);
+  if (!instance || instance.feedID !== feedID) {
+    await procFeed_ensureLoaded(feedID);
+    instance = cache.instance_get(instanceID);
+  }
+  if (!instance || instance.feedID !== feedID) return null;
+  return cache.path_build(instanceID);
+}
+
+/**
+ * Returns from a CFS output directory to its producing `/proc` job node.
+ *
+ * Canonical `/home/<user>/feeds/feed_<id>` paths map directly using CUBE's
+ * stable feed and plugin-instance IDs. Other CFS output locations use the
+ * session's CUBE-supplied output-path provenance as a fallback.
+ *
+ * @param args - Full command args. No operands are accepted.
+ * @returns The directory-change envelope, or a clear error when provenance is unknown.
+ */
+async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
+  if (args.length > 1) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('Usage: proc here')}\n`);
+  }
+
+  const cache: ProcCache = procCache_get();
+  const cwd: string = await session.getCWD();
+  const canonicalPath: string | null = await procHere_canonicalPath_get(cwd, cache);
+  if (canonicalPath) return builtin_cd([canonicalPath]);
+
+  const source: ProcInstance | undefined = cache.outputPath_match(cwd);
+  if (!source) {
+    process.exitCode = 1;
+    return envelope_error('', undefined,
+      `${chalk.yellow('proc here: no matching /proc job is known for this path in the current session.')}\n` +
+      'Use a canonical CFS feed path, follow a job\'s `data` link first, or use `cd -` to return to the previous directory.\n'
+    );
+  }
+
+  const procPath: string | null = cache.path_build(source.id);
+  if (!procPath) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('proc here: producing job is no longer available in /proc.')}\n`);
+  }
+  return builtin_cd([procPath]);
+}
+
+/**
  * Handles `proc feeds <query>`: lists cached feeds whose title matches.
  *
  * @param args - Full command args (`args[1]` is the query).
@@ -446,6 +515,9 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
   }
   if (subcommand === 'find') {
     return procFind_handle(args);
+  }
+  if (subcommand === 'here') {
+    return procHere_handle(args);
   }
   if (subcommand === 'feeds') {
     return procFeeds_handle(args);

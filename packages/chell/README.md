@@ -157,12 +157,14 @@ store install pl-simplefsapp --compute ares,argentum
 
 `store install` runs a three-phase resolution:
 1. Already in this CUBE → reports `[INFO] already registered`
-2. Found in peer store (cube.chrisproject.org) → imports via admin API (prompts for admin credentials if needed)
+2. Found in peer store (cube.chrisproject.org) → imports via admin API
 3. Not found → Docker extraction and registration
 
-When registration needs escalation, ChELL prompts for `Admin username` and
-`Admin password`; the password remains hidden. In a remote session those
-prompts and their guidance stay on the originating client surface.
+When registration needs escalation, ChELL reports the original failure and
+suggests the explicit retry, for example `sudo store install pl-simplefsapp`.
+`sudo` prompts for administrator credentials with a hidden password and uses
+the resulting CUBE identity only for that nested command. In a remote session
+those prompts and their guidance stay on the originating client surface.
 
 ---
 

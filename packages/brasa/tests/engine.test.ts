@@ -67,7 +67,7 @@ const BUILTIN_NAMES = [
   'builtin_cat', 'builtin_cp', 'builtin_mv', 'builtin_upload', 'builtin_pacs',
   'builtin_pipeline', 'builtin_pull', 'builtin_query', 'builtin_cubepath',
   'builtin_rm', 'builtin_touch', 'builtin_mkdir', 'builtin_plugin', 'builtin_feed',
-  'builtin_compute', 'builtin_tag', 'builtin_group', 'builtin_pluginmeta',
+  'builtin_compute', 'builtin_tag', 'builtin_group', 'builtin_user', 'builtin_pluginmeta',
   'builtin_plugininstance', 'builtin_workflow', 'builtin_download', 'builtin_edit',
   'builtin_files', 'builtin_links', 'builtin_dirs', 'builtin_context',
   'builtin_parametersofplugin', 'builtin_physicalmode', 'builtin_prompt',
@@ -100,6 +100,9 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({
 
 const mockPluginExecutable = jest.fn(async () => false);
 jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecutable_handle: mockPluginExecutable }));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  sudoCommand_run: jest.fn(async (): Promise<{ status: string; rendered: string }> => ({ status: 'ok', rendered: '' })),
+}));
 
 // Pipe segments now run through the active surface; the test installs a
 // surface whose pipeSegment delegates to this mock.

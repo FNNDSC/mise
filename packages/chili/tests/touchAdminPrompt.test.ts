@@ -1,7 +1,7 @@
 /**
- * @file Tests for the touch command core and admin credential prompting.
- * salsa and path resolution mocked at their seams; local file reads use a
- * real temp directory. The raw-readline fallbacks stay untested (raw TTY).
+ * @file Tests for the touch command core.
+ * Salsa and path resolution are mocked at their seams; local file reads use a
+ * real temporary file.
  */
 
 import fs from 'fs';
@@ -10,47 +10,39 @@ import path from 'path';
 
 let mockSalsaTouch: jest.Mock;
 jest.mock('@fnndsc/salsa', () => ({
-  files_touch: (...a: unknown[]): unknown => mockSalsaTouch(...a),
+  files_touch: (...args: unknown[]): unknown => mockSalsaTouch(...args),
 }));
 let mockResolve: jest.Mock;
 jest.mock('../src/utils/cli', () => ({
-  path_resolveChrisFs: (...a: unknown[]): unknown => mockResolve(...a),
+  path_resolveChrisFs: (...args: unknown[]): unknown => mockResolve(...args),
 }));
 
-import { files_touch } from '../src/commands/fs/touch';
-import {
-  adminPrompt_register,
-  adminCredentials_prompt,
-  adminCredentials_validate,
-} from '../src/utils/admin_prompt';
 import { errorStack } from '@fnndsc/cumin';
+import { files_touch } from '../src/commands/fs/touch';
 
 let pushSpy: jest.SpyInstance;
-let logSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSalsaTouch = jest.fn(async () => true);
-  mockResolve = jest.fn(async (p: string) => `/home/chris${p}`);
+  mockSalsaTouch = jest.fn(async (): Promise<boolean> => true);
+  mockResolve = jest.fn(async (filePath: string): Promise<string> => `/home/chris${filePath}`);
   pushSpy = jest.spyOn(errorStack, 'stack_push').mockImplementation(() => undefined);
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 });
 afterEach(() => {
   pushSpy.mockRestore();
-  logSpy.mockRestore();
 });
 
 describe('files_touch', () => {
-  it('creates an empty file at the resolved path', async () => {
+  it('creates an empty file at the resolved path', async (): Promise<void> => {
     expect(await files_touch('/notes.txt')).toBe(true);
     expect(mockSalsaTouch).toHaveBeenCalledWith('/home/chris/notes.txt');
   });
 
-  it('passes inline contents through', async () => {
+  it('passes inline contents through', async (): Promise<void> => {
     await files_touch('/notes.txt', { withContents: 'hello' });
     expect(mockSalsaTouch).toHaveBeenCalledWith('/home/chris/notes.txt', 'hello');
   });
 
-  it('reads contents from a local file', async () => {
+  it('reads contents from a local file', async (): Promise<void> => {
     const tmp: string = path.join(os.tmpdir(), `chili-touch-${process.pid}.txt`);
     fs.writeFileSync(tmp, 'from disk', 'utf-8');
     try {
@@ -61,55 +53,20 @@ describe('files_touch', () => {
     }
   });
 
-  it('fails when the local file is missing', async () => {
+  it('fails when the local file is missing', async (): Promise<void> => {
     expect(await files_touch('/notes.txt', { withContentsFromFile: '/no/such/file' })).toBe(false);
     expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('Local file not found'));
     expect(mockSalsaTouch).not.toHaveBeenCalled();
   });
 
-  it('fails when the local file read throws', async () => {
-    const existsSpy: jest.SpyInstance = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-    const readSpy: jest.SpyInstance = jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+  it('fails when the local file read throws', async (): Promise<void> => {
+    const existsSpy: jest.SpiedFunction<typeof fs.existsSync> = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+    const readSpy: jest.SpiedFunction<typeof fs.readFileSync> = jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
       throw new Error('EACCES');
     });
     expect(await files_touch('/notes.txt', { withContentsFromFile: '/locked' })).toBe(false);
     expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('EACCES'));
     existsSpy.mockRestore();
     readSpy.mockRestore();
-  });
-});
-
-describe('adminCredentials_prompt', () => {
-  it('collects credentials through the registered REPL functions', async () => {
-    const askUsername: jest.Mock = jest.fn(async () => 'admin');
-    const askPassword: jest.Mock = jest.fn(async () => 'fixture-pw');
-    adminPrompt_register(askUsername, askPassword);
-    expect(await adminCredentials_prompt()).toEqual({ username: 'admin', password: 'fixture-pw' });
-    expect(askUsername).toHaveBeenCalledWith('Admin username: ');
-    expect(askPassword).toHaveBeenCalledWith('Admin password: ');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Admin credentials required'));
-  });
-
-  it('shows the retry banner on later attempts', async () => {
-    adminPrompt_register(async () => 'admin', async () => 'pw');
-    await adminCredentials_prompt(2, 3);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Attempt 2 of 3'));
-  });
-
-  it('cancels on an empty username or password', async () => {
-    adminPrompt_register(async () => '', async () => 'pw');
-    expect(await adminCredentials_prompt()).toBeNull();
-
-    adminPrompt_register(async () => 'admin', async () => '');
-    expect(await adminCredentials_prompt()).toBeNull();
-  });
-});
-
-describe('adminCredentials_validate', () => {
-  it('accepts non-empty credentials and rejects blanks or null', () => {
-    expect(adminCredentials_validate({ username: 'a', password: 'p' })).toBe(true);
-    expect(adminCredentials_validate({ username: ' ', password: 'p' })).toBe(false);
-    expect(adminCredentials_validate({ username: 'a', password: '' })).toBe(false);
-    expect(adminCredentials_validate(null)).toBe(false);
   });
 });

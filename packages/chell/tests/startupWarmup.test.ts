@@ -11,11 +11,14 @@ const mockDataGet = jest.fn();
 const mockSession: { offline: boolean } = { offline: false };
 const mockStackPop = jest.fn((): { message: string } | undefined => undefined);
 const mockPrefetchPath = jest.fn();
+const mockQuestion = jest.fn(async (): Promise<string> => '');
 const mockPrefetchWithSpinner = jest.fn(
   async (_label: string, _message: string, _interactive: boolean, action: () => Promise<unknown>): Promise<unknown> => action(),
 );
 const mockTopologyWarmup = jest.fn(async (): Promise<void> => undefined);
-const mockProcCacheRefresh = jest.fn(async (): Promise<void> => undefined);
+const mockTopologyReconcileFeeds = jest.fn(async (_feedIDs: number[]): Promise<void> => undefined);
+const mockProcCacheRefresh = jest.fn(async (): Promise<number[]> => []);
+const mockVfsRead = jest.fn();
 const mockCheckpointRestore = jest.fn(async () => ({ restored: false, count: 0 }));
 const mockCheckpointWatch = jest.fn();
 const mockCacheClear = jest.fn();
@@ -33,11 +36,14 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   vfs: { data_get: mockDataGet },
   prefetch_path: mockPrefetchPath,
   prefetch_withSpinner: mockPrefetchWithSpinner,
+  repl_question: mockQuestion,
   error_stripDebugPrefix: (message: string): string => message,
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  vfsDispatcher: { read: mockVfsRead },
   procCache_refresh: mockProcCacheRefresh,
   procTopology_status: jest.fn(() => ({ state: 'complete', failure: undefined })),
+  procTopology_reconcileFeeds: mockTopologyReconcileFeeds,
   procTopology_warmup: mockTopologyWarmup,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
@@ -70,9 +76,12 @@ describe('daemonSession_run', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSession.offline = false;
+    process.exitCode = undefined;
     mockStackPop.mockReturnValue(undefined);
-    mockProcCacheRefresh.mockResolvedValue(undefined);
+    mockProcCacheRefresh.mockResolvedValue([]);
     mockTopologyWarmup.mockResolvedValue(undefined);
+    mockTopologyReconcileFeeds.mockResolvedValue(undefined);
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\npacs_users:x:2:rudolph\n' });
     mockCacheLifecycle = { state: 'empty' };
     mockCheckpointRestore.mockResolvedValue({ restored: false, count: 0 });
     mockDataGet.mockResolvedValue({
@@ -119,6 +128,7 @@ describe('daemonSession_run', () => {
 
   it('restores an identity-scoped checkpoint before reconciling topology', async () => {
     mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 7009, writtenAt: '2026-07-16T00:00:00Z' });
+    mockProcCacheRefresh.mockResolvedValueOnce([17, 23]);
     const report = jest.fn();
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
@@ -131,6 +141,8 @@ describe('daemonSession_run', () => {
     expect(mockCheckpointWatch).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
     expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 job(s); indexed 3 feed(s) — topology reconciling in background');
     expect(mockCheckpointRestore.mock.invocationCallOrder[0]).toBeLessThan(mockProcCacheRefresh.mock.invocationCallOrder[0]);
+    expect(mockTopologyWarmup).not.toHaveBeenCalled();
+    expect(mockTopologyReconcileFeeds).toHaveBeenCalledWith([17, 23]);
   });
 
   it('reports a background topology failure after publishing engine readiness', async () => {
@@ -185,6 +197,55 @@ describe('daemonSession_run', () => {
     expect(mockDaemonListen).toHaveBeenCalledTimes(1);
   });
 
+  it('starts only after the operator elects to continue an exhausted warm-up', async () => {
+    mockVfsRead.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    const recovery = jest.fn(async () => 'continue' as const);
+    const report = jest.fn<StartupWarmupReporter['log']>();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(
+      engine,
+      'rudolph',
+      { plugins: false, feeds: false, publicFeeds: false, jobs: false },
+      false,
+      { log: report },
+      recovery,
+    );
+
+    expect(recovery).toHaveBeenCalledWith(['Groups']);
+    expect(report).toHaveBeenCalledWith('fail', 'Engine', 'Starting with incomplete warm-up: Groups');
+    expect(mockDaemonListen).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not bind a daemon when the operator exits after exhausted warm-up', async () => {
+    mockVfsRead.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    const recovery = jest.fn(async () => 'exit' as const);
+    const report = jest.fn<StartupWarmupReporter['log']>();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(
+      engine,
+      'rudolph',
+      { plugins: false, feeds: false, publicFeeds: false, jobs: false },
+      false,
+      { log: report },
+      recovery,
+    );
+
+    expect(recovery).toHaveBeenCalledWith(['Groups']);
+    expect(report).toHaveBeenCalledWith('fail', 'Engine', 'Startup aborted after incomplete warm-up: Groups');
+    expect(mockDaemonListen).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
   it('quarantines restored topology when CUBE visibility validation fails', async () => {
     mockCacheLifecycle = { state: 'restored', checkpointAt: '2026-07-16T00:00:00Z' };
     mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 10 });
@@ -216,6 +277,55 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('skip', 'Feeds', 'Prefetch disabled');
     expect(report).toHaveBeenCalledWith('skip', 'Jobs', 'Prefetch disabled');
     expect(mockDataGet).not.toHaveBeenCalled();
+  });
+
+  it('hydrates /etc/group before the host becomes ready', async () => {
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+
+    expect(mockVfsRead).toHaveBeenCalledWith('/etc/group');
+    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 group(s)');
+  });
+
+  it('retries a transient group projection failure before declaring Groups failed', async () => {
+    mockVfsRead
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: true, value: 'all_users:x:1:rudolph\npacs_users:x:2:rudolph\n' });
+    mockStackPop.mockReturnValueOnce({ message: 'No server response!' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+
+    expect(cache.failures).toEqual([]);
+    expect(mockVfsRead).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 group(s)');
+  });
+
+  it('reports a failed group warm-up without preventing later startup work', async () => {
+    mockVfsRead.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+
+    expect(cache.failures).toEqual(['Groups']);
+    expect(report).toHaveBeenCalledWith('fail', 'Groups', 'membership service unavailable');
   });
 
   it('reports offline caches and skips network work', async () => {

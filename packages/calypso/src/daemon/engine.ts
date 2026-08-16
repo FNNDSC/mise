@@ -38,6 +38,13 @@ export interface HostedEngine {
   line_execute(line: string): Promise<CommandEnvelope[]>;
 
   /**
+   * Requests cancellation of the foreground command when it supports it.
+   *
+   * @returns True when the active command accepted the request.
+   */
+  line_cancel?(): boolean;
+
+  /**
    * Computes completion candidates for a partial input line.
    *
    * @param linePrefix - The input line up to the cursor.

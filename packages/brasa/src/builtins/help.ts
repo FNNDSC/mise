@@ -43,6 +43,24 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
  * Help-text registry keyed by builtin command name.
  */
 export const helpText: Record<string, CommandHelp> = {
+  user: {
+    usage: 'user <add|inspect|disable|enable|remove> <username>',
+    description: 'Manage CUBE-local accounts; federated identities remain externally managed',
+    options: ['Use `sudo user …` for lifecycle operations.', 'add prompts for email and a hidden password confirmation.'],
+    examples: ['sudo user add jack.bivowac', 'sudo user disable jack.bivowac', 'sudo user remove jack.bivowac'],
+  },
+  sudo: {
+    usage: 'sudo <command> [arguments...]',
+    description: 'Run one ChRIS command with a temporary administrator identity',
+    options: [
+      'Prompts for an administrator username and hidden password on the active surface.',
+      'The elevated CUBE token is used only for the nested command; it is not saved or made the session identity.',
+    ],
+    examples: [
+      'sudo group adduser pacs_users peter.hong',
+      'sudo plugin add pl-dircopy',
+    ],
+  },
   ls: {
     usage: 'ls [options] [path]',
     description: 'List directory contents',
@@ -313,8 +331,8 @@ export const helpText: Record<string, CommandHelp> = {
       'PLUGINS ADD OPTIONS:',
       '  --compute <resources>         Comma-separated compute resources (default: host)',
       '  --store <url>                 Peer store URL (default: cube.chrisproject.org)',
-      '  --adminUser <username>        Admin username (to skip interactive prompt)',
-      '  --adminPassword <password>    Admin password (to skip interactive prompt)',
+      '  --adminUser <username>        Administrator username (non-interactive compatibility)',
+      '  --adminPassword <password>    Administrator password (non-interactive compatibility)',
       '  --publicRepo <url>            Public repository URL for the plugin',
       '',
       'PLUGIN INPUT FORMATS:',
@@ -343,8 +361,8 @@ export const helpText: Record<string, CommandHelp> = {
       'plugins add pl-dircopy',
       'plugins add pl-dircopy --compute host,gpu',
       '',
-      '# Add plugin with admin credentials (skip prompt)',
-      'plugins add pl-dircopy --adminUser chris --adminPassword chris1234',
+      '# Add a plugin with a temporary administrator identity',
+      'sudo plugins add pl-dircopy',
       '',
       '# Add plugin from Docker image',
       'plugins add fnndsc/pl-dircopy:2.1.1',
@@ -672,7 +690,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc <jobs|stat|feeds|refresh|retry|find> [args]',
+    usage: 'proc <jobs|stat|feeds|refresh|retry|find|here> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
     description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. The daemon restores an identity-scoped local topology checkpoint, validates feed visibility with CUBE, and reconciles all plugin instances in the background. Restored queries remain usable while syncing; a cold cache still guards global queries until complete. CUBE remains authoritative.',
     subcommands: [
@@ -693,6 +711,7 @@ export const helpText: Record<string, CommandHelp> = {
       'retry                                  Resume a failed topology sweep at its failed page',
       'find <id>                              Targeted instance lookup; available during warm-up',
       'find <name> [--force]                  Name search; --force waits for warm-up',
+      'here                                   Navigate from a CFS feed/output path to its matching job',
     ],
     examples: [
       'proc jobs list',
@@ -707,6 +726,7 @@ export const helpText: Record<string, CommandHelp> = {
       'proc retry',
       'proc find 64306',
       'proc find pl-fshack',
+      'proc here',
     ],
   },
   prompt: {
@@ -776,12 +796,16 @@ export const helpText: Record<string, CommandHelp> = {
     options: [
       '--follow    Follow symbolic links when traversing',
       '--path      Emit one full path per entry (grep-friendly, no tree art)',
+      '--dirs      Show directories only',
+      '--dirpath   Emit one full directory path per line',
     ],
     examples: [
       'tree                  # Tree of current directory',
       'tree /home/user/data  # Tree of specific path',
       'tree --follow         # Follow symbolic links',
       'tree --path           # One path per line, no decoration',
+      'tree --dirs           # Directory hierarchy only',
+      'tree --dirpath        # One directory path per line',
     ],
   },
   du: {
@@ -823,8 +847,7 @@ export const helpText: Record<string, CommandHelp> = {
       '',
       'INSTALL OPTIONS:',
       '  --compute <names>     Compute resources (comma-separated)',
-      '  --adminUser <user>    Admin username for install',
-      '  --adminPassword <pw>  Admin password for install',
+      '  Use `sudo store install …` for an administrator installation.',
       '-l                      Long listing format',
     ],
     examples: [
@@ -885,13 +908,14 @@ export const helpText: Record<string, CommandHelp> = {
       ...RESOURCE_LIST_OPTIONS,
       '',
       'RESOURCE-SPECIFIC SUBCOMMANDS:',
-      '  members <id>          List users in a group',
-      '  create <name>         [admin] Create a new group',
-      '  delete <id>           [admin] Remove a group',
-      '  adduser <id> <user>   [admin] Add user to group',
-      '  removeuser <id> <user> [admin] Remove user from group',
+      '  inspect [<group>]             Show group identity, or fields when omitted',
+      '  members <group>               List users in a group',
+      '  create <name>                  [admin] Create a new group',
+      '  delete <id>                    [admin] Remove a group',
+      '  adduser <group> <user...>     [admin] Add one or more users',
+      '  removeuser <group> <user...>  [admin] Remove one or more users',
     ],
-    examples: ['groups list', 'groups search pacs_users', 'group members 3', 'group adduser 3 peter.hong', 'group removeuser 3 peter.hong'],
+    examples: ['groups list', 'group members pacs_users', 'group adduser pacs_users peter.hong joe.schmo', 'group removeuser pacs_users joe.schmo'],
   },
   groups: {
     usage: 'groups <subcommand> [options]',
@@ -900,13 +924,14 @@ export const helpText: Record<string, CommandHelp> = {
       ...RESOURCE_LIST_OPTIONS,
       '',
       'RESOURCE-SPECIFIC SUBCOMMANDS:',
-      '  members <id>          List users in a group',
-      '  create <name>         [admin] Create a new group',
-      '  delete <id>           [admin] Remove a group',
-      '  adduser <id> <user>   [admin] Add user to group',
-      '  removeuser <id> <user> [admin] Remove user from group',
+      '  inspect [<group>]             Show group identity, or fields when omitted',
+      '  members <group>               List users in a group',
+      '  create <name>                  [admin] Create a new group',
+      '  delete <id>                    [admin] Remove a group',
+      '  adduser <group> <user...>     [admin] Add one or more users',
+      '  removeuser <group> <user...>  [admin] Remove one or more users',
     ],
-    examples: ['groups list', 'groups search pacs_users', 'group members 3', 'group adduser 3 peter.hong', 'group removeuser 3 peter.hong'],
+    examples: ['groups list', 'group members pacs_users', 'group adduser pacs_users peter.hong joe.schmo', 'group removeuser pacs_users joe.schmo'],
   },
   pluginmeta: {
     usage: 'pluginmetas <subcommand> [options]',
@@ -1356,6 +1381,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
+    Administration: ['sudo', 'user'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
     General: ['help', 'date', 'cal', 'fortune', 'exit', '!'],
   };

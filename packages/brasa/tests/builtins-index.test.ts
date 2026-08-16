@@ -4,10 +4,14 @@ import type { ChrisIdentity, CommandEnvelope, Result } from '@fnndsc/cumin';
 // Mock dependencies BEFORE imports
 const mockGetCWD = jest.fn();
 const mockSetCWD = jest.fn();
+const mockDirectoryChange = jest.fn(async (path: string): Promise<void> => { mockSetCWD(path); });
+const mockPreviousCWDGet = jest.fn<() => string | undefined>();
 const mockUserGet = jest.fn();
 const mockClientGet = jest.fn();
 const mockGetFileBrowserFolderByPath = jest.fn();
 const mockVfsList = jest.fn(() => ({ status: 'ok', rendered: '' }));
+const mockVfsDispatcherList = jest.fn().mockResolvedValue({ ok: true, value: [] });
+const mockVfsDispatcherLinkTargetResolve = jest.fn();
 const mockContextGetSingle = jest.fn();
 const mockConnectLogin = jest.fn();
 const mockConnectLogout = jest.fn();
@@ -144,6 +148,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   session: {
     getCWD: mockGetCWD,
     setCWD: mockSetCWD,
+    directory_change: mockDirectoryChange,
+    previousCWD_get: mockPreviousCWDGet,
     physicalMode_get: jest.fn().mockReturnValue(false),
     timingEnabled_get: jest.fn().mockReturnValue(false),
     connection: {
@@ -162,6 +168,10 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  localAccount_adminAccessEnsure: jest.fn(),
+  localAccount_create: jest.fn(),
+  localAccount_find: jest.fn(),
+  localAccount_action: jest.fn(),
   context_getSingle: mockContextGetSingle,
   procCache_refresh: jest.fn().mockResolvedValue(undefined),
   feedGraphData_ensure: jest.fn(),
@@ -188,7 +198,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   store_search: jest.fn(),
   vfsDispatcher: {
     provider_get: jest.fn().mockImplementation((path: string) => ({
-      prefix: path.startsWith('/net') ? '/net/pacs' : (path.startsWith('/bin') || path.startsWith('/usr')) ? path : ''
+      prefix: path.startsWith('/net') ? '/net/pacs' : path.startsWith('/proc') ? '/proc/jobs' : (path.startsWith('/bin') || path.startsWith('/usr')) ? path : ''
     })),
     providers_get: jest.fn().mockReturnValue([
       { prefix: '/net/pacs' },
@@ -197,7 +207,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
       { prefix: '/etc' },
       { prefix: '/proc/jobs' },
     ]),
-    list: jest.fn().mockResolvedValue({ ok: true, value: [] })
+    list: mockVfsDispatcherList,
+    linkTarget_resolve: mockVfsDispatcherLinkTargetResolve,
   },
   pipelines_list: jest.fn().mockResolvedValue(null),
   pipelines_listAll: jest.fn().mockResolvedValue(null),
@@ -258,8 +269,13 @@ jest.unstable_mockModule('@fnndsc/chili/commands/groups/list.js', () => ({ group
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/fields.js', () => ({ groupFields_fetch: jest.fn().mockResolvedValue([]) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/membership.js', () => ({
   groupMembers_fetch: jest.fn().mockResolvedValue({ ok: true, value: [] }),
+  groupReference_resolve: jest.fn().mockResolvedValue({ ok: true, value: { id: 7, name: 'pacs_users' } }),
   groupUser_add: jest.fn().mockResolvedValue({ ok: false }),
   groupUser_remove: jest.fn().mockResolvedValue({ ok: false }),
+}));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  authorizationFailure_is: jest.fn(() => false),
+  sudoHint_build: jest.fn(() => ''),
 }));
 jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/list.js', () => ({ pluginMetas_fetchList: jest.fn().mockResolvedValue({ pluginMetas: [], selectedFields: [] }) }));
 jest.unstable_mockModule('@fnndsc/chili/commands/pluginmetas/fields.js', () => ({ pluginMetaFields_fetch: jest.fn().mockResolvedValue([]) }));
@@ -360,6 +376,7 @@ afterEach(() => {
 describe('Builtins - Core Functions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [] });
     mockGetCWD.mockResolvedValue('/home/user');
     mockContextGetSingle.mockReturnValue({
       user: 'testuser',
@@ -418,6 +435,74 @@ describe('Builtins - Core Functions', () => {
       await builtin_cd(['/bin']);
 
       expect(mockSetCWD).toHaveBeenCalledWith('/bin');
+    });
+
+    it('returns to the previous interactive directory with cd -', async () => {
+      mockPreviousCWDGet.mockReturnValue('/proc/jobs/feed_5/pl-root_10');
+      mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [] });
+
+      const envelope: CommandEnvelope = await builtin_cd(['-']);
+
+      expect(envelope.status).toBe('ok');
+      expect(envelope.rendered).toContain('/proc/jobs/feed_5/pl-root_10');
+      expect(mockDirectoryChange).toHaveBeenCalledWith('/proc/jobs/feed_5/pl-root_10');
+    });
+
+    it('reports a clear error when cd - has no previous directory', async () => {
+      mockPreviousCWDGet.mockReturnValue(undefined);
+
+      const envelope: CommandEnvelope = await builtin_cd(['-']);
+
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('OLDPWD not set');
+    });
+
+    it('rejects a virtual file even when its provider can list the containing directory', async () => {
+      mockVfsDispatcherList.mockImplementation(async (targetPath: string) => {
+        if (targetPath === '/proc/jobs/feed_5') {
+          return {
+            ok: true,
+            value: [
+              { name: 'status', type: 'file', size: 0, owner: '', date: '' },
+              { name: 'pl-dircopy_10', type: 'job', size: 0, owner: '', date: '' },
+            ],
+          };
+        }
+        return { ok: true, value: [] };
+      });
+
+      const envelope: CommandEnvelope = await builtin_cd(['/proc/jobs/feed_5/status']);
+
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('Not a directory');
+      expect(mockSetCWD).not.toHaveBeenCalled();
+    });
+
+    it('resolves an unresolved virtual job data link only when cd follows it', async () => {
+      mockVfsDispatcherList.mockResolvedValueOnce({
+        ok: true,
+        value: [{
+          name: 'data',
+          type: 'link',
+          size: 0,
+          owner: '',
+          date: '',
+        }],
+      });
+      mockVfsDispatcherLinkTargetResolve.mockResolvedValueOnce({
+        ok: true,
+        value: '/home/alice/outputs/result-set',
+      });
+      mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: mockGetFileBrowserFolderByPath });
+      mockGetFileBrowserFolderByPath.mockResolvedValue({ path: '/resolved/path' });
+
+      const envelope: CommandEnvelope = await builtin_cd(['/proc/jobs/feed_5/pl-root_10/data']);
+
+      expect(envelope.status).toBe('ok');
+      expect(mockVfsDispatcherLinkTargetResolve)
+        .toHaveBeenCalledWith('/proc/jobs/feed_5/pl-root_10/data');
+      expect(mockGetFileBrowserFolderByPath).toHaveBeenCalledWith('/resolved/path');
+      expect(mockSetCWD).toHaveBeenCalledWith('/home/alice/outputs/result-set');
     });
 
     it('should change to valid ChRIS directory', async () => {

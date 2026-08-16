@@ -6,13 +6,22 @@
 jest.mock('../src/connect/chrisConnection', () => ({
   chrisConnection: { client_get: jest.fn() },
 }));
+jest.mock('../src/chrisapi/adapter', () => ({
+  ...jest.requireActual('../src/chrisapi/adapter'),
+  client_adminRequest: jest.fn(),
+}));
 
 import { chrisConnection } from '../src/connect/chrisConnection';
+import { client_adminRequest } from '../src/chrisapi/adapter';
 import {
   currentIdentity_get,
   currentUser_get,
   ChrisIdentity,
   ChrisUser,
+  localAccount_adminAccessEnsure,
+  localAccount_action,
+  localAccount_create,
+  localAccount_find,
 } from '../src/users/chrisUsers';
 import {
   groupMembers_getAll,
@@ -26,6 +35,7 @@ import { errorStack } from '../src/error/errorStack';
 import { Result } from '../src/utils/result';
 
 const mockClientGet: jest.Mock = chrisConnection.client_get as unknown as jest.Mock;
+const mockAdminRequest: jest.Mock = client_adminRequest as unknown as jest.Mock;
 
 interface MembershipPageOptions {
   limit: number;
@@ -148,6 +158,43 @@ describe('group membership changes', () => {
     expect(result).toEqual({ ok: true, value: true });
     expect(getUser).toHaveBeenCalledWith('peter.hong');
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('local account operations', () => {
+  const document = {
+    collection: { items: [{ data: [
+      { name: 'id', value: 9 }, { name: 'username', value: 'jack.bivowac' },
+      { name: 'email', value: 'jack@example.com' }, { name: 'is_active', value: true },
+      { name: 'disabled_at', value: null }, { name: 'removed_at', value: null },
+    ] }] },
+  };
+
+  it('creates, finds, and changes a local account through the admin seam', async () => {
+    mockClientGet.mockResolvedValue({});
+    mockAdminRequest.mockResolvedValue(document);
+
+    await expect(localAccount_create('jack.bivowac', 'jack@example.com', 'secret-pass')).resolves.toEqual({
+      ok: true, value: { id: 9, username: 'jack.bivowac', email: 'jack@example.com', is_active: true, disabled_at: null, removed_at: null },
+    });
+    await expect(localAccount_find('jack.bivowac')).resolves.toMatchObject({ ok: true });
+    await expect(localAccount_action(9, 'disable')).resolves.toMatchObject({ ok: true });
+    expect(mockAdminRequest).toHaveBeenNthCalledWith(1, {}, 'users/', 'post', {
+      username: 'jack.bivowac', email: 'jack@example.com', password: 'secret-pass',
+    });
+    expect(mockAdminRequest).toHaveBeenNthCalledWith(2, {}, 'users/?username=jack.bivowac', 'get');
+    expect(mockAdminRequest).toHaveBeenNthCalledWith(3, {}, 'users/9/', 'post', { action: 'disable' });
+  });
+
+  it('reports a malformed admin response as an error', async () => {
+    mockClientGet.mockResolvedValue({});
+    mockAdminRequest.mockResolvedValue({ collection: { items: [] } });
+    expect((await localAccount_find('missing')).ok).toBe(false);
+  });
+
+  it('checks administrator access before collecting account credentials', async () => {
+    mockClientGet.mockResolvedValue({ adminUrl: 'https://cube.example/chris-admin/api/v1/' });
+    await expect(localAccount_adminAccessEnsure()).resolves.toEqual({ ok: true, value: undefined });
   });
 });
 

@@ -28,8 +28,8 @@ The design separates two concerns with different freshness requirements:
 | Checkpoint for terminal states, CUBE for active states
 
 | Instance params
-| Immutable — cached on first read
-| `ProcCache.instances[N].params`
+| The complete effective parameter collection is read from CUBE and cached on first read
+| `PluginInstance.parameters` -> `ProcCache.instances[N].params`
 |===
 
 == VFS Structure
@@ -44,7 +44,8 @@ The design separates two concerns with different freshness requirements:
         └── <plugin>_<id>/      ← type=job, status refreshed on ls -l
             ├── status           ← terminal cached; active refreshed from CUBE
             ├── params           ← cached on first read
-            └── log              ← always live
+            ├── log              ← full CUBE pfcon log, decoded from `raw`
+            └── data             ← CUBE output_path link into durable CFS
 ----
 
 === Path rules
@@ -62,6 +63,7 @@ The design separates two concerns with different freshness requirements:
 
 | `j` | Job (feed directory or instance node)
 | `-` | Virtual file (`status`, `params`, `log`, `title`)
+| `l` | Job `data` link to the instance's authoritative CFS `output_path`
 |===
 
 == Cache Architecture
@@ -96,6 +98,34 @@ interface ProcInstance {
 
 NOTE: Terminal status is immutable and is checkpointed. Non-terminal status is
 discarded on restore and fetched from CUBE when read. Logs are never cached.
+CUBE exposes the complete pfcon response in the plugin instance's `raw` field;
+ChELL base64-decodes and zlib-inflates that CUBE value, then reads
+`compute.logs`. It never retrieves a log from a spoke.
+
+=== Job output navigation
+
+Every job directory exposes `data` as a synthetic link to that instance's
+authoritative CUBE `output_path`. `cd data` crosses from the `/proc`
+computation view into the corresponding durable data directory. ChELL never
+derives the target from feed, plugin-instance, or output-directory naming
+conventions. Listing and recursive structural operations (`ls`, `tree`) show
+the link without fetching its target, so a warm job topology stays an
+in-memory traversal. Only following `data` reads and memoizes the target from
+the instance resource; a later `ls -l` can then show the CFS target. The target
+is normalized to an absolute CFS path and retained only for the live
+session—not in the daemon checkpoint. CFS access still receives CUBE's ordinary
+authorization checks. If CUBE reports that the instance has no output path,
+the link is absent on subsequent listings.
+
+`cd -` returns immediately to the prior interactive directory after following a
+`data` link. `proc here` is the inverse navigation command. In a canonical CFS
+feed path, `/home/<user>/feeds/feed_<id>` maps directly to
+`/proc/jobs/feed_<id>`; a canonical job segment maps to its validated job node.
+This uses CUBE's stable feed and plugin-instance identifiers, not a deployment
+specific output-layout guess. Other output locations fall back to output paths
+resolved during the current session and never issue a global reverse lookup.
+When neither association is available, it fails clearly and `cd -` remains the
+reliable return path.
 
 === State tracking fields
 
@@ -145,8 +175,10 @@ it does not materialize VFS paths, logs, or cached parameters.
 
 At restart the daemon restores this checkpoint first, fetches the current
 visible-feed index from CUBE, and removes feeds the identity can no longer see.
-Only then is the daemon advertised. The expensive global instance sweep merges
-in the background and prunes topology absent from the authoritative result.
+Only then is the daemon advertised. New feeds, feeds whose aggregate job counts
+changed, and feeds with active jobs are reconciled in the background; unchanged
+terminal feed topology stays in the checkpoint. `proc refresh` remains the
+explicit full global reconciliation when an authoritative start-over is needed.
 
 === Aggregate feed status derivation
 
@@ -172,9 +204,11 @@ restored checkpoint before the listening berth is published.
 
 === Phase 2: Instance topology (background, paginated)
 
-`procTopology_warmup()` performs one paginated global plugin-instance sweep.
-With a restored checkpoint, global queries remain available while this sweep
-reconciles against CUBE.
+On a cold cache, `procTopology_warmup()` performs one paginated global
+plugin-instance sweep. With a restored checkpoint, ChELL instead reconciles
+only feeds which are new, whose aggregate job counts changed, or which remain
+active. Global queries remain available throughout. This preserves CUBE as the
+authority while avoiding a repeat full sweep for unchanged terminal history.
 
 [source,typescript]
 ----
@@ -192,8 +226,9 @@ Warm-up progress is visible in a state-labelled prompt segment such as
 Refresh failure remains visible as `[proc failed: ...]`; the segment disappears
 once the lifecycle becomes current. Use `proc stat` for the complete checkpoint,
 scope, freshness, and lifecycle detail. A failed sweep retains its pagination
-and reconciliation state in daemon memory, so `proc retry` continues at the
-failed page. A daemon restart loses that continuation.
+state in daemon memory; a failed restored-cache reconciliation retains its
+target feed set. `proc retry` resumes the corresponding work. A daemon restart
+loses either continuation.
 
 === Phase 3: Per-feed lazy loading (on navigation)
 
@@ -257,7 +292,8 @@ aggregate status, job counters, and whether its topology is loaded.
 
 === proc retry
 
-Continues a failed global topology sweep without repeating successful pages:
+Continues a failed global topology sweep without repeating successful pages, or
+retries the retained feed set from a restored-cache reconciliation:
 
 [source,bash]
 ----
@@ -417,12 +453,14 @@ ADR entries (see `docs/adr/`):
 
 * **CUBE remains authoritative**: restored topology is immediately useful but
   not presumed current. Feed visibility is validated before the daemon is
-  advertised, and the global sweep adds current instances and removes topology
-  absent from the completed result.
+  advertised; new, changed, and active feeds are reconciled after restore, and
+  `proc refresh` provides the full authoritative sweep.
 
-* **One paginated global sweep**: startup indexes plugin instances page by page
-  instead of issuing one request sequence per feed. Scoped lazy loads may still
-  serve navigation; the completed global result remains authoritative.
+* **One paginated global sweep for cold or explicit refresh**: startup indexes
+  plugin instances page by page rather than one request sequence per feed when
+  no usable checkpoint exists. After restore, scoped feeds may concurrently
+  serve navigation and reconciliation; `proc refresh` remains the authoritative
+  global start-over.
 
 * **Terminal status is persistence-safe**: successful, failed, and cancelled
   states are immutable and may be checkpointed. Active state and logs remain

@@ -3,6 +3,7 @@
  * Changes the current working directory, reported as a command envelope.
  */
 import chalk from 'chalk';
+import path from 'path';
 import { session } from '../../session/index.js';
 import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
 import { envelope_ok, envelope_error } from '@fnndsc/cumin';
@@ -87,13 +88,38 @@ function cdSuccess_envelope(newCwd: string, rendered: string): CommandEnvelope {
  */
 async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<CommandEnvelope> {
   if (vfsPath_isStructural(cleanPath)) {
-    await session.setCWD(cleanPath);
+    await session.directory_change(cleanPath);
     return cdSuccess_envelope(cleanPath, '');
   }
 
-  // For deeper VFS paths (e.g. /net/pacs/queries/<id>), validate and cache the
-  // result so a subsequent `ls` doesn't need to re-fetch.
+  // Resolve the target from its parent listing before asking the target provider
+  // to list its children. Some providers deliberately return a containing-node
+  // listing for virtual files such as /proc/.../status; a successful list alone
+  // therefore does not establish that `cleanPath` is navigable.
   const { vfsDispatcher } = await import('@fnndsc/salsa');
+  const parentPath: string = path.posix.dirname(cleanPath);
+  const entryName: string = path.posix.basename(cleanPath);
+  const parentResult: Result<VFSItem[]> = await vfsDispatcher.list(parentPath);
+  const entry: VFSItem | undefined = parentResult.ok
+    ? parentResult.value.find((item: VFSItem) => item.name === entryName)
+    : undefined;
+  if (entry?.type === 'link') {
+    let target: string | undefined = entry.target;
+    if (!target) {
+      const linkResult: Result<string> = await vfsDispatcher.linkTarget_resolve(cleanPath);
+      if (linkResult.ok) target = linkResult.value;
+    }
+    if (!target) {
+      return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`);
+    }
+    return cdReal_handle(target, pathArg);
+  }
+  if (entry && !['dir', 'job', 'vfs'].includes(entry.type)) {
+    return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: Not a directory`)}\n`);
+  }
+
+  // A directory-like VFS entry still asks its provider to enumerate children,
+  // both as final validation and to prime a subsequent `ls`.
   const listResult: Result<VFSItem[]> = await vfsDispatcher.list(cleanPath);
   if (!listResult.ok) {
     const { errorStack } = await import('@fnndsc/cumin');
@@ -105,7 +131,7 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
   const { listCache_get } = await import('@fnndsc/cumin');
   listCache_get().cache_set(cleanPath, listResult.value);
 
-  await session.setCWD(cleanPath);
+  await session.directory_change(cleanPath);
   return cdSuccess_envelope(cleanPath, '');
 }
 
@@ -160,7 +186,7 @@ async function cdReal_handle(logicalPath: string, pathArg: string): Promise<Comm
   try {
     const folder: FileBrowserFolder | null | undefined = (await client.getFileBrowserFolderByPath(validationPath)) as FileBrowserFolder | null | undefined;
     if (folder_verifyPathMatch(folder, validationPath)) {
-      await session.setCWD(cwdPath);
+      await session.directory_change(cwdPath);
       return cdSuccess_envelope(cwdPath, rendered);
     }
     let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
@@ -197,6 +223,17 @@ export async function builtin_cd(args: string[]): Promise<CommandEnvelope> {
   // 'cd' with no args goes to home
   if (!pathArg) {
     return builtin_cd(['~']);
+  }
+
+  if (pathArg === '-') {
+    const previousCWD: string | undefined = session.previousCWD_get();
+    if (!previousCWD) {
+      return envelope_error('', undefined, `${chalk.red('cd: OLDPWD not set')}\n`);
+    }
+    const result: CommandEnvelope = await builtin_cd([previousCWD]);
+    return result.status === 'ok'
+      ? { ...result, rendered: `${previousCWD}\n${result.rendered}` }
+      : result;
   }
 
   try {

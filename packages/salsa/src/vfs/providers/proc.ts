@@ -35,6 +35,7 @@ interface RawInstance {
   plugin_name: string;
   plugin_type?: string;
   status: string;
+  output_path?: string;
   [key: string]: unknown;
 }
 
@@ -59,6 +60,30 @@ interface ChrisListResource<T> {
   totalCount?: number;
 }
 
+/** One resolved parameter value recorded on a plugin instance. */
+interface RawInstanceParameter {
+  param_name?: string;
+  value?: unknown;
+}
+
+/** Paginated parameter collection exposed by a plugin-instance resource. */
+interface InstanceParameterList {
+  data?: RawInstanceParameter[] | null;
+  totalCount?: number;
+  getItems?: () => Array<{ data: RawInstanceParameter }>;
+}
+
+/** Detail resource through which CUBE exposes an instance's effective parameters. */
+interface InstanceResource {
+  data?: Record<string, unknown>;
+  getParameters(params?: { limit: number; offset: number }): Promise<InstanceParameterList>;
+}
+
+/** Client operation needed for lazy instance-parameter resolution. */
+interface InstanceDetailClient {
+  getPluginInstance(id: number): Promise<InstanceResource | null>;
+}
+
 interface ChrisClient {
   getPluginInstances(params?: Record<string, unknown>): Promise<ChrisListResource<RawInstance>>;
   getFeeds(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
@@ -68,7 +93,7 @@ interface ChrisClient {
 type FeedPageFetch = (params: Record<string, unknown>) => Promise<ChrisListResource<RawFeed>>;
 
 /** Virtual filenames inside each instance directory. */
-const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log']);
+const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log', 'data']);
 /** Virtual filenames inside each feed directory. */
 const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 
@@ -87,6 +112,7 @@ interface ProcTopologySweepState {
 }
 
 let procTopologyResumeState: ProcTopologySweepState | null = null;
+let procTopologyScopedResumeFeedIDs: number[] | null = null;
 
 /** Lifecycle states for the session's global topology sweep. */
 export type ProcTopologyState = 'idle' | 'running' | 'complete' | 'failed';
@@ -148,7 +174,7 @@ async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, P
  * Builds the feed index (fast). Fetches owned/shared and public feeds with job counters.
  * Instance topology is loaded separately via procTopology_warmup().
  */
-async function procCache_build(): Promise<void> {
+async function procCache_build(): Promise<number[]> {
   const cache: ProcCache = procCache_get();
 
   const client = await chrisConnection.client_get();
@@ -164,8 +190,9 @@ async function procCache_build(): Promise<void> {
     await procFeeds_index(typedClient.getPublicFeeds.bind(typedClient), indexed);
   }
 
-  cache.feeds_reconcile(Array.from(indexed.values()));
+  const reconciliationTargets: number[] = cache.feeds_reconcile(Array.from(indexed.values()));
   cache.built_set();
+  return reconciliationTargets;
 }
 
 /** Ensures the feed index is built, building it on first access. */
@@ -214,6 +241,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
       pluginName: String(inst.plugin_name),
       pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
       params: null,
+      outputPath: outputPath_normalize(inst.output_path) ?? undefined,
       status: String(inst.status ?? 'unknown'),
     });
   }
@@ -235,8 +263,11 @@ export async function feedInstances_ensureLoaded(feedID: number): Promise<void> 
 
   const promise: Promise<void> = feedInstances_load(feedID);
   cache.loading_set(feedID, promise);
-  await promise;
-  cache.loading_clear(feedID);
+  try {
+    await promise;
+  } finally {
+    cache.loading_clear(feedID);
+  }
 }
 
 // ── Aggregate status ───────────────────────────────────────────────────────
@@ -299,6 +330,74 @@ function params_render(inst: ProcInstance): string {
     .join('\n');
 }
 
+/**
+ * Normalizes CUBE's output-path spelling into an absolute CFS path.
+ *
+ * @param value - Raw `output_path` value from a plugin-instance resource.
+ * @returns Absolute CFS path, or null when no usable path was supplied.
+ */
+function outputPath_normalize(value: unknown): string | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const clean: string = value.trim();
+  return clean.startsWith('/') ? clean : `/${clean}`;
+}
+
+/**
+ * Resolves and memoizes the authoritative CFS output directory for one job.
+ *
+ * @param instanceID - Plugin-instance ID whose output path is needed.
+ * @returns Absolute output path, or null when CUBE has not recorded one.
+ */
+async function instanceOutputPath_ensure(instanceID: number): Promise<string | null> {
+  const cache: ProcCache = procCache_get();
+  const inst: ProcInstance | undefined = cache.instance_get(instanceID);
+  if (!inst) return null;
+  if (inst.outputPath !== undefined) return inst.outputPath;
+
+  const client = await chrisConnection.client_get();
+  if (!client) return null;
+  try {
+    const resource: InstanceResource | null = await (client as unknown as InstanceDetailClient)
+      .getPluginInstance(instanceID);
+    const outputPath: string | null = outputPath_normalize(resource?.data?.['output_path']);
+    cache.outputPath_update(instanceID, outputPath);
+    return outputPath;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads every page of effective parameter values from one plugin instance.
+ *
+ * @param resource - Detail resource for the instance being inspected.
+ * @returns Parameter names mapped to their recorded invocation values.
+ */
+async function instanceParams_fetch(resource: InstanceResource): Promise<Record<string, unknown>> {
+  const params: Record<string, unknown> = {};
+  let offset: number = 0;
+  let total: number = 0;
+  let fetched: number = 0;
+
+  while (true) {
+    const page: InstanceParameterList = await resource.getParameters({ limit: PAGE, offset });
+    const items: RawInstanceParameter[] = page.data
+      ?? (page.getItems ? page.getItems().map((item: { data: RawInstanceParameter }): RawInstanceParameter => item.data) : []);
+    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+      total = page.totalCount;
+    }
+    for (const item of items) {
+      if (item.param_name) params[item.param_name] = item.value;
+    }
+    fetched += items.length;
+    if (items.length === 0 || (total > 0 && fetched >= total)) break;
+    if (total === 0 && items.length < PAGE) break;
+    offset += items.length;
+  }
+
+  return params;
+}
+
 /** Collects all instance IDs for a feed recursively. */
 function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
   const result: number[] = [];
@@ -318,6 +417,30 @@ function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
  */
 export class ProcVfsProvider implements VFSProvider {
   readonly prefix: string = PROC_JOBS_PREFIX;
+
+  /**
+   * Resolves the synthetic `data` link for one job only when navigation asks
+   * to follow it. This keeps `/proc` topology listings and recursive trees
+   * entirely cache-backed.
+   *
+   * @param pathStr - Absolute `/proc/jobs/.../data` path to resolve.
+   * @returns The authoritative CFS output path, or an error when absent.
+   */
+  async linkTarget_resolve(pathStr: string): Promise<Result<string>> {
+    await cache_ensure();
+    const clean: string = pathStr.replace(/\/$/, '');
+    const { feedID, instanceID, virtualFile } = procPath_parse(clean);
+    if (feedID === null || instanceID === null || virtualFile !== 'data') {
+      errorStack.stack_push('error', `Not a /proc job data link: ${pathStr}`);
+      return Err();
+    }
+
+    const outputPath: string | null = await instanceOutputPath_ensure(instanceID);
+    if (outputPath) return Ok(outputPath);
+
+    errorStack.stack_push('error', `No CFS output path is available for job ${instanceID}`);
+    return Err();
+  }
 
   async list(
     pathStr: string,
@@ -397,6 +520,14 @@ export class ProcVfsProvider implements VFSProvider {
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
       items.push({ name: 'params', type: 'file', size: 0, owner: '', date: '' });
       items.push({ name: 'log',    type: 'file', size: 0, owner: '', date: '' });
+      // `data` is structural: list it without fetching the per-instance detail
+      // endpoint. Its target is resolved only when `cd data` follows the link.
+      // A known null means CUBE has no output directory, so omit it entirely.
+      if (inst.outputPath !== null) {
+        const dataLink: VFSItem = { name: 'data', type: 'link', size: 0, owner: '', date: '' };
+        if (inst.outputPath) dataLink.target = inst.outputPath;
+        items.push(dataLink);
+      }
 
       for (const childID of childIDs) {
         const child: ProcInstance | undefined = cache.instance_get(childID);
@@ -447,19 +578,14 @@ export class ProcVfsProvider implements VFSProvider {
 
       if (virtualFile === 'params') {
         if (inst.params === null) {
-          // Fetch params on first read and cache permanently
+          // CUBE stores the effective run values in the parameter sub-resource;
+          // the instance detail payload itself is operational metadata.
           const client = await chrisConnection.client_get();
           if (client) {
             try {
-              const raw = await (client as unknown as {
-                getPluginInstance(id: number): Promise<{ data: Record<string, unknown> } | null>;
-              }).getPluginInstance(instanceID);
-              if (raw?.data) {
-                const p: Record<string, unknown> = { ...raw.data };
-                delete p['id']; delete p['feed_id']; delete p['plugin_name'];
-                delete p['status']; delete p['previous_id'];
-                cache.params_update(instanceID, p);
-              }
+              const resource: InstanceResource | null = await (client as unknown as InstanceDetailClient)
+                .getPluginInstance(instanceID);
+              if (resource) cache.params_update(instanceID, await instanceParams_fetch(resource));
             } catch { /* leave null */ }
           }
         }
@@ -650,6 +776,7 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
         pluginName: String(inst.plugin_name),
         pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
         params: null,
+        outputPath: outputPath_normalize(inst.output_path) ?? undefined,
         status: String(inst.status ?? 'unknown'),
       });
       state.seenInstanceIDs.add(instanceID);
@@ -694,6 +821,7 @@ function procTopologyState_create(): ProcTopologySweepState {
 function procTopology_start(state: ProcTopologySweepState): Promise<void> {
   procTopologyFailure = undefined;
   procTopologyResumeState = state;
+  procTopologyScopedResumeFeedIDs = null;
   const sweep: Promise<void> = procTopology_run(state);
   procTopologyPromise = sweep;
   sweep.then(
@@ -718,6 +846,53 @@ function procTopology_start(state: ProcTopologySweepState): Promise<void> {
 }
 
 /**
+ * Runs a feed-scoped topology reconciliation selected after checkpoint restore.
+ *
+ * @param feedIDs - Canonical feed IDs whose topology needs a fresh load.
+ * @returns A promise that settles after the supplied feeds are reconciled.
+ */
+async function procTopologyScoped_run(feedIDs: number[]): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  cache.lifecycle_set('reconciling');
+  for (const feedID of feedIDs) await procCache_refresh(feedID);
+  cache.warmup_complete();
+}
+
+/**
+ * Starts one scoped reconciliation and retains its targets for `proc retry`.
+ *
+ * @param feedIDs - Canonical feed IDs selected by the fresh feed index.
+ * @returns The in-flight scoped reconciliation promise.
+ */
+function procTopologyScoped_start(feedIDs: number[]): Promise<void> {
+  const targets: number[] = [...feedIDs];
+  procTopologyFailure = undefined;
+  procTopologyResumeState = null;
+  procTopologyScopedResumeFeedIDs = targets;
+  const sweep: Promise<void> = procTopologyScoped_run(targets);
+  procTopologyPromise = sweep;
+  sweep.then(
+    (): void => {
+      if (procTopologyPromise !== sweep) return;
+      procTopologyPromise = null;
+      if (procCache_get().warmupComplete) {
+        procTopologyFailure = undefined;
+        procTopologyScopedResumeFeedIDs = null;
+      } else {
+        procTopologyFailure = 'the scoped topology reconciliation ended before the index completed';
+      }
+    },
+    (error: unknown): void => {
+      if (procTopologyPromise !== sweep) return;
+      procTopologyPromise = null;
+      procCache_get().warmup_abort();
+      procTopologyFailure = error instanceof Error ? error.message : String(error);
+    },
+  );
+  return sweep;
+}
+
+/**
  * Starts or joins the session's global plugin-instance topology sweep.
  *
  * @returns The single in-flight sweep promise.
@@ -728,17 +903,33 @@ export function procTopology_warmup(): Promise<void> {
 }
 
 /**
- * Continues a failed global topology sweep from its failed page.
+ * Reconciles topology only for feed IDs selected by a restored-cache feed-index
+ * comparison. This preserves the checkpointed topology for unchanged terminal
+ * feeds while refreshing new, changed, and active feeds from CUBE.
+ *
+ * @param feedIDs - Canonical CUBE feed IDs whose topology must be reloaded.
+ * @returns A promise that resolves after all supplied feeds have been refreshed.
+ */
+export function procTopology_reconcileFeeds(feedIDs: number[]): Promise<void> {
+  if (procTopologyPromise) return procTopologyPromise;
+  return procTopologyScoped_start(feedIDs);
+}
+
+/**
+ * Continues a failed topology reconciliation from its retained global page or
+ * scoped feed set.
  *
  * @returns The resumed sweep promise, or the active sweep when one is running.
  * @throws {Error} When there is no failed sweep continuation to retry.
  */
 export function procTopology_retry(): Promise<void> {
   if (procTopologyPromise) return procTopologyPromise;
-  if (procTopologyFailure === undefined || !procTopologyResumeState) {
+  if (procTopologyFailure === undefined) {
     throw new Error('no failed topology sweep to retry');
   }
-  return procTopology_start(procTopologyResumeState);
+  if (procTopologyResumeState) return procTopology_start(procTopologyResumeState);
+  if (procTopologyScopedResumeFeedIDs) return procTopologyScoped_start(procTopologyScopedResumeFeedIDs);
+  throw new Error('no failed topology sweep to retry');
 }
 
 /**
@@ -766,8 +957,15 @@ export async function procTopology_await(): Promise<void> {
 
 /**
  * Rebuilds the ProcCache, optionally scoped to one feed.
+ *
+ * A full refresh returns feeds whose topology merits reload after the feed-index
+ * comparison. Callers performing an explicit `proc refresh` can ignore that
+ * result and run a global topology sweep; restored startup uses it to stay scoped.
+ *
+ * @param feedID - One feed to force-refresh, or undefined for the full feed index.
+ * @returns IDs whose topology is new, changed, or currently active.
  */
-export async function procCache_refresh(feedID?: number): Promise<void> {
+export async function procCache_refresh(feedID?: number): Promise<number[]> {
   if (feedID !== undefined) {
     const cache: ProcCache = procCache_get();
     cache.feed_remove(feedID);
@@ -782,6 +980,7 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
       }
     }
     await feedInstances_ensureLoaded(feedID);
+    return [feedID];
   } else {
     const activeSweep: Promise<void> | null = procTopologyPromise;
     if (activeSweep) {
@@ -794,7 +993,8 @@ export async function procCache_refresh(feedID?: number): Promise<void> {
     procTopologyPromise = null;
     procTopologyFailure = undefined;
     procTopologyResumeState = null;
+    procTopologyScopedResumeFeedIDs = null;
     procCache_get().warmup_reset();
-    await procCache_build();
+    return procCache_build();
   }
 }

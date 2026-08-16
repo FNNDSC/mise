@@ -15,10 +15,31 @@ describe('clientMessage_parse', () => {
       capabilities: { shellCommands: true },
     }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'execute', id: '1', line: 'ls' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'cancel', id: '1' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'complete', id: '2', prefix: 'l' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'pipeError', pipeId: 'p1', reason: 'failed' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'shellResult', shellId: 's1', exitCode: 0 }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'shellError', shellId: 's2', reason: 'failed' }).ok).toBe(true);
+  });
+
+  it('accepts hidden-input capability declaration without requiring it from older surfaces', () => {
+    const declared = clientMessage_parse({
+      type: 'attach',
+      protocolVersion: CONTRACT_VERSION,
+      token: 't',
+      capabilities: { shellCommands: false, hiddenInput: true },
+    });
+    expect(declared.ok).toBe(true);
+    if (declared.ok && declared.value?.type === 'attach') {
+      expect(declared.value.capabilities?.hiddenInput).toBe(true);
+    }
+
+    expect(clientMessage_parse({
+      type: 'attach',
+      protocolVersion: CONTRACT_VERSION,
+      token: 't',
+      capabilities: { shellCommands: false },
+    }).ok).toBe(true);
   });
 
   it('rejects an unknown message type with a reason', () => {

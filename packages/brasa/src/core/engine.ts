@@ -41,6 +41,7 @@ import {
   pipe_execute,
 } from './dispatch.js';
 import { capability_require, surface_get } from './surface.js';
+import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -70,6 +71,13 @@ export interface BrasaEngine {
    * @returns The envelopes of the executed commands, in execution order.
    */
   line_execute(line: string): Promise<CommandEnvelope[]>;
+
+  /**
+   * Requests cancellation of the foreground command when it supports it.
+   *
+   * @returns True when the active command accepted the request.
+   */
+  line_cancel?(): boolean;
 
   /**
    * Computes completion candidates for a partial input line.
@@ -178,6 +186,16 @@ async function batch_execute(
  * @returns The envelopes of the executed commands, in execution order.
  */
 export async function line_execute(line: string): Promise<CommandEnvelope[]> {
+  return await commandCancellation_run(async (): Promise<CommandEnvelope[]> => line_execute_run(line));
+}
+
+/**
+ * Executes one line inside its already-established cancellation scope.
+ *
+ * @param line - The raw input line.
+ * @returns The envelopes of the executed commands, in execution order.
+ */
+async function line_execute_run(line: string): Promise<CommandEnvelope[]> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return [];
 
@@ -218,6 +236,15 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
 
   const envelope: CommandEnvelope | null = await command_executeToEnvelope(trimmedLine, startTime, timingEnabled);
   return envelope ? [envelope] : [];
+}
+
+/**
+ * Requests cancellation of the active foreground command.
+ *
+ * @returns True when a command can honor the request.
+ */
+export function line_cancel(): boolean {
+  return commandCancellation_request();
 }
 
 /**
@@ -295,5 +322,5 @@ async function vfsProviders_register(): Promise<void> {
 export async function engine_create(): Promise<BrasaEngine> {
   await session.init();
   await vfsProviders_register();
-  return { line_execute, line_complete };
+  return { line_execute, line_cancel, line_complete };
 }

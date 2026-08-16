@@ -32,7 +32,7 @@ class FakeWebSocket extends EventEmitter {
       });
       return;
     }
-    if (sent.type !== 'execute' && sent.type !== 'complete') {
+    if (sent.type !== 'execute' && sent.type !== 'complete' && sent.type !== 'cancel') {
       return;
     }
     scenario?.(this, sent);
@@ -124,13 +124,36 @@ describe('RemoteEngine live output', () => {
     remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
     expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
       type: 'attach',
-      capabilities: { shellCommands: false },
+      capabilities: { shellCommands: false, hiddenInput: false },
     }));
     const envelopes: CommandEnvelope[] = await remote.line_execute('echo live');
 
     expect(envelopes).toEqual([{ status: 'ok', rendered: 'live data' }]);
     expect(data).toEqual(['live data']);
     expect(err).toEqual([]);
+  });
+
+  it('sends an origin-correlated cancel for its active execute request', async () => {
+    let resolveResult: (() => void) | undefined;
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      if (sent.type !== 'execute') return;
+      const id = String(sent.id);
+      resolveResult = (): void => {
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'result', id, envelopes: [{ status: 'error', rendered: '', renderedErr: 'du: cancelled\n' }],
+        })));
+      };
+    };
+
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    const running: Promise<CommandEnvelope[]> = remote.line_execute('du --human-readable test-upload');
+    await new Promise<void>((resolve: () => void): void => process.nextTick(resolve));
+
+    expect(remote.line_cancel()).toBe(true);
+    expect(FakeWebSocket.instances[0].sent).toContainEqual({ type: 'cancel', id: '0' });
+    resolveResult?.();
+    await running;
+    expect(remote.line_cancel()).toBe(false);
   });
 
   it('runs a daemon-requested shell command on the attached surface', async () => {
@@ -155,7 +178,7 @@ describe('RemoteEngine live output', () => {
     });
     expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
       type: 'attach',
-      capabilities: { shellCommands: true },
+      capabilities: { shellCommands: true, hiddenInput: false },
     }));
     await remote.line_execute('!printf local');
 

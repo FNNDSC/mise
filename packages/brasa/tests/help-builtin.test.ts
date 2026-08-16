@@ -104,6 +104,7 @@ describe('builtin_help', () => {
   it('lists commands by category with no argument', async () => {
     const envelope = await builtin_help([]);
     expect(envelope.rendered).toContain('Available Commands');
+    expect(envelope.rendered).toContain('sudo');
   });
 
   it('shows a specific command help when named', async () => {

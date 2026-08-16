@@ -12,6 +12,7 @@ const providerFns = {
   pacsRead: jest.fn(),
   pacsReadBinary: jest.fn(),
   etcList: jest.fn(),
+  procLinkTargetResolve: jest.fn(),
 };
 
 jest.mock('../src/vfs/providers/native', () => ({
@@ -40,6 +41,7 @@ jest.mock('../src/vfs/providers/proc', () => ({
   ProcVfsProvider: class {
     prefix: string = '/proc';
     list(): Promise<unknown> { return Promise.resolve({ ok: true, value: [] }); }
+    linkTarget_resolve(...args: unknown[]): Promise<unknown> { return providerFns.procLinkTargetResolve(...args); }
   },
 }));
 
@@ -160,5 +162,24 @@ describe('read and readBinary', () => {
 
     expect((await d.readBinary('/etc/motd')).ok).toBe(false);
     expect(mockStackPush).toHaveBeenCalledWith('error', expect.stringContaining('Binary file read not supported'));
+  });
+});
+
+describe('link target resolution', () => {
+  it('delegates an unresolved virtual link to its provider', async () => {
+    providerFns.procLinkTargetResolve.mockResolvedValue({ ok: true, value: '/home/chris/output' });
+    const d: VFSDispatcher = new VFSDispatcher();
+
+    await expect(d.linkTarget_resolve('/proc/jobs/feed_5/pl-root_10/data'))
+      .resolves.toEqual({ ok: true, value: '/home/chris/output' });
+    expect(providerFns.procLinkTargetResolve)
+      .toHaveBeenCalledWith('/proc/jobs/feed_5/pl-root_10/data');
+  });
+
+  it('rejects paths whose provider cannot resolve virtual links', async () => {
+    const d: VFSDispatcher = new VFSDispatcher();
+
+    await expect(d.linkTarget_resolve('/etc/passwd')).resolves.toEqual({ ok: false });
+    expect(mockStackPush).toHaveBeenCalledWith('error', expect.stringContaining('Link resolution not supported'));
   });
 });

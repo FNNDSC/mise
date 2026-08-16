@@ -100,6 +100,24 @@ export interface CLIscan {
   endsWith?: string;
   mermaid?: boolean;
   save?: string;
+  /** Stops traversal between CUBE listing operations when aborted. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Raised internally to stop a recursive scan without recording a scan failure.
+ */
+class ScanCancelledError extends Error {}
+
+/**
+ * Stops traversal when the calling foreground command requested cancellation.
+ *
+ * @param signal - Foreground command signal, when the caller supports cancellation.
+ * @returns Nothing.
+ * @throws {ScanCancelledError} When the signal has been aborted.
+ */
+function scanCancellation_throwIfRequested(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new ScanCancelledError('Scan cancelled.');
 }
 
 /**
@@ -483,9 +501,12 @@ async function chrisDir_walk(
   hostBasePath: string,
   followLinks: boolean,
   dirsOnly: boolean,
-  linkedPath: string = ""
+  linkedPath: string = "",
+  signal: AbortSignal | undefined = undefined,
 ): Promise<DirWalkResult> {
+  scanCancellation_throwIfRequested(signal);
   const listResult: Result<VFSItem[]> = await vfsDispatcher.list(currentPath);
+  scanCancellation_throwIfRequested(signal);
   if (!listResult.ok) {
     return { files: [], totalSize: 0 };
   }
@@ -547,7 +568,10 @@ async function chrisDir_walk(
 
     if (followLinks) {
       for (const link of linkInfos) {
-        const sub: DirWalkResult = await chrisDir_walk(link.linkTarget, chrisPath, hostBasePath, followLinks, dirsOnly, link.chrisPath);
+        scanCancellation_throwIfRequested(signal);
+        const sub: DirWalkResult = await chrisDir_walk(
+          link.linkTarget, chrisPath, hostBasePath, followLinks, dirsOnly, link.chrisPath, signal,
+        );
         files.push(...sub.files);
         totalSize += sub.totalSize;
       }
@@ -555,9 +579,12 @@ async function chrisDir_walk(
   }
 
   for (const dir of dirs) {
+    scanCancellation_throwIfRequested(signal);
     const fullPath: string = currentPath === "/" ? "/" + dir.name : path.join(currentPath, dir.name);
     const nextLinkedPath: string = linkedPath ? path.join(linkedPath, dir.name) : "";
-    const sub: DirWalkResult = await chrisDir_walk(fullPath, chrisPath, hostBasePath, followLinks, dirsOnly, nextLinkedPath);
+    const sub: DirWalkResult = await chrisDir_walk(
+      fullPath, chrisPath, hostBasePath, followLinks, dirsOnly, nextLinkedPath, signal,
+    );
     files.push(...sub.files);
     totalSize += sub.totalSize;
   }
@@ -569,12 +596,16 @@ async function chrisFS_scan(
   chrisPath: string,
   hostBasePath: string,
   followLinks: boolean = false,
-  dirsOnly: boolean = false
+  dirsOnly: boolean = false,
+  signal: AbortSignal | undefined = undefined,
 ): Promise<ScanRecord | null> {
   try {
-    const result: DirWalkResult = await chrisDir_walk(chrisPath, chrisPath, hostBasePath, followLinks, dirsOnly);
+    const result: DirWalkResult = await chrisDir_walk(
+      chrisPath, chrisPath, hostBasePath, followLinks, dirsOnly, '', signal,
+    );
     return { fileInfo: result.files, totalSize: result.totalSize };
   } catch (error: unknown) {
+    if (error instanceof ScanCancelledError) return null;
     errorStack.stack_push("error", `Failed to scan ChRIS filesystem: ${error}`);
     return null;
   }
@@ -586,6 +617,7 @@ function scanResult_filter(scanResult: ScanRecord, options: CLIscan): ScanRecord
   }
   const keepPaths: Set<string> = new Set<string>();
   for (const file of scanResult.fileInfo) {
+    scanCancellation_throwIfRequested(options.signal);
     const basename: string = path.basename(file.chrisPath);
     if (
       (!options.filter || file.chrisPath.includes(options.filter)) &&
@@ -641,6 +673,7 @@ async function scanResult_render(scanResult: ScanRecord, options: CLIscan): Prom
  * @returns The scan record, or null if no context is set.
  */
 export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
+  scanCancellation_throwIfRequested(options.signal);
   const chrisFolder: string | null = await chrisContext.current_get(
     Context.ChRISfolder
   );
@@ -652,12 +685,16 @@ export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
     chiliLog(chalk.cyan(`Scanning for ${options.dirsOnly ? "directories" : "all files"} recursively from ${chrisFolder}`));
   }
   const hostBasePath: string = options.hostpath || process.cwd();
-  const scanResult: ScanRecord | null = await chrisFS_scan(chrisFolder, hostBasePath, options.follow, options.dirsOnly);
+  const scanResult: ScanRecord | null = await chrisFS_scan(
+    chrisFolder, hostBasePath, options.follow, options.dirsOnly, options.signal,
+  );
+  scanCancellation_throwIfRequested(options.signal);
   if (!scanResult) {
     chiliErrLog(chalk.red("Failed to scan ChRIS filesystem."));
     return null;
   }
   const filtered: ScanRecord = scanResult_filter(scanResult, options);
+  scanCancellation_throwIfRequested(options.signal);
   await scanResult_render(filtered, options);
   if (!options.silent) {
     chiliLog(chalk.green(`Total size: ${bytes_format(filtered.totalSize)}`));

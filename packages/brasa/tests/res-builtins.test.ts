@@ -3,6 +3,10 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 // Satisfy builtins/utils' heavy imports so the real commandArgs_process loads.
 const mockErrorPop = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
+jest.unstable_mockModule('../src/core/elevation.js', () => ({
+  authorizationFailure_is: (message: string): boolean => message.includes('403'),
+  sudoHint_build: (command: string, args: string[]): string => `Try: sudo ${[command, ...args].join(' ')}\n`,
+}));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   errorStack: { stack_pop: mockErrorPop },
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
@@ -24,10 +28,12 @@ const mockGroupFields = jest.fn();
 const mockGroupMembers = jest.fn();
 const mockGroupUserAdd = jest.fn();
 const mockGroupUserRemove = jest.fn();
+const mockGroupReferenceResolve = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/list.js', () => ({ groups_fetchList: mockGroupsList }));
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/fields.js', () => ({ groupFields_fetch: mockGroupFields }));
 jest.unstable_mockModule('@fnndsc/chili/commands/groups/membership.js', () => ({
   groupMembers_fetch: mockGroupMembers,
+  groupReference_resolve: mockGroupReferenceResolve,
   groupUser_add: mockGroupUserAdd,
   groupUser_remove: mockGroupUserRemove,
 }));
@@ -66,6 +72,7 @@ let errSpy: jest.SpiedFunction<typeof console.error>;
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
+  mockGroupReferenceResolve.mockResolvedValue({ ok: true, value: { id: 7, name: 'pacs_users' } });
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -162,14 +169,15 @@ describe('builtin_group membership', () => {
     );
   });
 
-  it('lists group members as a table', async () => {
+  it('resolves an exact group name before listing members', async () => {
     mockGroupMembers.mockResolvedValue({
       ok: true,
       value: [{ id: 12, username: 'peter.hong' }],
     });
 
-    const envelope = await builtin_group(['members', '7']);
+    const envelope = await builtin_group(['members', 'pacs_users']);
 
+    expect(mockGroupReferenceResolve).toHaveBeenCalledWith('pacs_users');
     expect(mockGroupMembers).toHaveBeenCalledWith(7);
     expect(mockTable).toHaveBeenCalledWith(
       [{ id: 12, username: 'peter.hong' }],
@@ -179,32 +187,84 @@ describe('builtin_group membership', () => {
     expect(envelope.status).toBe('ok');
   });
 
-  it('adds an existing user to a group', async () => {
+  it('inspects an exact group name as its CUBE identity', async () => {
+    const envelope = await builtin_group(['inspect', 'pacs_users']);
+
+    expect(mockGroupReferenceResolve).toHaveBeenCalledWith('pacs_users');
+    expect(mockTable).toHaveBeenCalledWith(
+      [{ id: 7, name: 'pacs_users' }],
+      ['id', 'name'],
+      expect.any(Object),
+    );
+    expect(envelope.status).toBe('ok');
+  });
+
+  it('adds every missing user named in a group batch', async () => {
+    mockGroupMembers.mockResolvedValue({
+      ok: true,
+      value: [{ id: 12, username: 'peter.hong' }],
+    });
     mockGroupUserAdd.mockResolvedValue({
       ok: true,
-      value: { id: 12, username: 'peter.hong' },
+      value: { id: 13, username: 'joe.schmo' },
     });
 
-    const envelope = await builtin_group(['adduser', '7', 'peter.hong']);
+    const envelope = await builtin_group(['adduser', 'pacs_users', 'peter.hong', 'joe.schmo']);
 
-    expect(mockGroupUserAdd).toHaveBeenCalledWith(7, 'peter.hong');
+    expect(mockGroupReferenceResolve).toHaveBeenCalledWith('pacs_users');
+    expect(mockGroupUserAdd).toHaveBeenCalledWith(7, 'joe.schmo');
+    expect(mockGroupUserAdd).not.toHaveBeenCalledWith(7, 'peter.hong');
     expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('already a member');
+    expect(envelope.rendered).toContain('Added joe.schmo');
     expect(envelope.rendered).toContain('peter.hong');
   });
 
-  it('preserves a CUBE authorization error when adding a user', async () => {
-    mockGroupUserAdd.mockResolvedValue({
-      ok: false,
-      error: 'Failed to add peter.hong to group 7: Request failed with status code 403',
-    });
+  it('reports every batch result and fails overall when one mutation fails', async () => {
+    mockGroupMembers.mockResolvedValue({ ok: true, value: [] });
+    mockGroupUserAdd
+      .mockResolvedValueOnce({ ok: true, value: { id: 12, username: 'peter.hong' } })
+      .mockResolvedValueOnce({ ok: false, error: 'Request failed with status code 403' });
 
-    const envelope = await builtin_group(['adduser', '7', 'peter.hong']);
+    const envelope = await builtin_group(['adduser', 'pacs_users', 'peter.hong', 'joe.schmo']);
 
     expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('Added peter.hong');
+    expect(envelope.renderedErr).toContain('joe.schmo');
     expect(envelope.renderedErr).toContain('status code 403');
+    expect(envelope.renderedErr).toContain('Try: sudo group adduser pacs_users peter.hong joe.schmo');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('continues to accept a numeric group ID', async () => {
+    mockGroupMembers.mockResolvedValue({ ok: true, value: [] });
+    mockGroupUserRemove.mockResolvedValue({ ok: true, value: true });
+
+    const envelope = await builtin_group(['removeuser', '7', 'peter.hong']);
+
+    expect(mockGroupReferenceResolve).toHaveBeenCalledWith('7');
+    expect(mockGroupUserRemove).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('was not a member');
+  });
+
+  it('rejects a group name that cannot be resolved', async () => {
+    mockGroupReferenceResolve.mockResolvedValue({
+      ok: false,
+      error: "No group named 'pacs_users'.",
+    });
+
+    const envelope = await builtin_group(['members', 'pacs_users']);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain("No group named 'pacs_users'.");
   });
 
   it('removes a user from a group', async () => {
+    mockGroupMembers.mockResolvedValue({
+      ok: true,
+      value: [{ id: 12, username: 'peter.hong' }],
+    });
     mockGroupUserRemove.mockResolvedValue({ ok: true, value: true });
 
     const envelope = await builtin_group(['removeuser', '7', 'peter.hong']);
@@ -212,6 +272,23 @@ describe('builtin_group membership', () => {
     expect(mockGroupUserRemove).toHaveBeenCalledWith(7, 'peter.hong');
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('peter.hong');
+  });
+
+  it('removes every present user from a named group batch', async () => {
+    mockGroupMembers.mockResolvedValue({
+      ok: true,
+      value: [{ id: 12, username: 'peter.hong' }],
+    });
+    mockGroupUserRemove.mockResolvedValue({ ok: true, value: true });
+
+    const envelope = await builtin_group(['removeuser', 'pacs_users', 'peter.hong', 'joe.schmo']);
+
+    expect(mockGroupReferenceResolve).toHaveBeenCalledWith('pacs_users');
+    expect(mockGroupUserRemove).toHaveBeenCalledWith(7, 'peter.hong');
+    expect(mockGroupUserRemove).not.toHaveBeenCalledWith(7, 'joe.schmo');
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('Removed peter.hong');
+    expect(envelope.rendered).toContain('joe.schmo was not a member');
   });
 });
 

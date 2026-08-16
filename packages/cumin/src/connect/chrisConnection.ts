@@ -21,6 +21,7 @@ import { IStorageProvider } from "../io/io.js";
 import { chrisIO } from "../io/chrisIO.js";
 import { errorStack } from "../error/errorStack.js";
 import chalk from "chalk";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
  * Re-exports the ChRIS API client for convenience.
@@ -35,6 +36,12 @@ interface ConnectOptions {
   password: string;
   debug: boolean;
   url: string;
+}
+
+/** Credentials used to obtain a short-lived elevated CUBE token. */
+export interface ElevationCredentials {
+  username: string;
+  password: string;
 }
 
 /**
@@ -63,6 +70,7 @@ export class ChRISConnection {
   private client: Client | null = null;
   private _config?: ConnectionConfig; // Renamed backing field
   private storageProvider?: IStorageProvider; // Made optional
+  private readonly elevatedClientContext: AsyncLocalStorage<Client> = new AsyncLocalStorage<Client>();
 
   /**
    * Constructs a new ChRISConnection instance.
@@ -277,6 +285,9 @@ export class ChRISConnection {
    * @returns A Promise resolving to the Client instance or null.
    */
   async client_get(): Promise<Client | null> {
+    const elevatedClient: Client | undefined = this.elevatedClientContext.getStore();
+    if (elevatedClient) return elevatedClient;
+
     if (
       (await this.authToken_get()) &&
       (await this.chrisURL_get()) &&
@@ -288,6 +299,31 @@ export class ChRISConnection {
       }
     }
     return this.client;
+  }
+
+  /**
+   * Executes one operation with a non-persistent CUBE client for supplied
+   * credentials. The client follows only the nested operation's asynchronous
+   * context, so concurrent normal and elevated commands retain their own
+   * identities.
+   *
+   * The normal session token, cached client, and token storage remain intact.
+   *
+   * @param credentials - Credentials for the requested CUBE identity.
+   * @param operation - Work to perform while the temporary client is active.
+   * @returns The operation's result.
+   * @throws {Error} When no CUBE URL is available or authentication fails.
+   */
+  async elevation_withCredentials<T>(
+    credentials: ElevationCredentials,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const url: string | null = await this.chrisURL_get();
+    if (!url) throw new Error('Not connected to ChRIS. Run connect first.');
+
+    const token: string = await adapterAuthToken_get(`${url}auth-token/`, credentials.username, credentials.password);
+    const elevatedClient: Client = client_create(url, token);
+    return await this.elevatedClientContext.run(elevatedClient, operation);
   }
 
   /**

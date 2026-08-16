@@ -204,6 +204,25 @@ export class VFSDispatcher {
     errorStack.stack_push("error", `Binary file read not supported for path: ${pathStr}`);
     return Err();
   }
+
+  /**
+   * Resolves a lazy link through the provider that owns it.
+   *
+   * This is deliberately distinct from {@link list}: a structural traversal
+   * can display an unresolved link without causing its provider to fetch the
+   * target from a remote service.
+   *
+   * @param pathStr - Absolute path of the provider-defined link.
+   * @returns The resolved target path, or an error if unsupported or absent.
+   */
+  async linkTarget_resolve(pathStr: string): Promise<Result<string>> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (provider.linkTarget_resolve) {
+      return provider.linkTarget_resolve(pathStr);
+    }
+    errorStack.stack_push('error', `Link resolution not supported for path: ${pathStr}`);
+    return Err();
+  }
 }
 
 /** Global instance of VFSDispatcher singleton. */

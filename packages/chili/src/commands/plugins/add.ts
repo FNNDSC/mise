@@ -23,6 +23,7 @@ import {
   plugin_assignToComputeResources,
   plugins_searchPeers,
   plugin_importFromStore,
+  type AdminCredentials,
   PluginRegistrationData,
   PeerStorePlugin,
   PluginImportResult,
@@ -42,10 +43,6 @@ import {
   PluginInputFormat,
   DetectedFormat,
 } from '../../utils/input_format.js';
-import {
-  adminCredentials_prompt,
-  AdminCredentials,
-} from '../../utils/admin_prompt.js';
 import { chiliErrLog, chiliLog } from "../../screen/output.js";
 
 /**
@@ -176,7 +173,8 @@ export async function plugin_add(
 /**
  * Registers a plugin from peer store data.
  *
- * Handles admin authentication with retry logic (up to 3 attempts).
+ * Uses supplied non-interactive administrator credentials when present;
+ * otherwise reports CUBE's authorization failure to the caller.
  *
  * @param pluginData - Plugin data from peer store.
  * @param computeResources - Compute resources to assign plugin to.
@@ -213,31 +211,10 @@ async function pluginFromStore_register(
     return false;
   }
 
-  // Admin auth required - try with interactive credentials
-  const retrySuccess: boolean = await registrationWithAuth_retry(
-    async (creds: AdminCredentials) => {
-      const retryResult: PluginImportResult = await plugin_importFromStore('', pluginData, computeResources, creds);
-      return retryResult.success;
-    },
-    options
-  );
-
-  if (!retrySuccess) {
-    chiliErrLog('Failed to import plugin from store (authentication failed or rejected).');
-    const errors: string[] = errorStack.allOfType_get('error');
-    if (errors.length > 0) {
-      chiliErrLog('Errors:');
-      errors.forEach((e: string) => chiliErrLog(`- ${e}`));
-    }
-
-    const warnings: string[] = errorStack.allOfType_get('warning');
-    if (warnings.length > 0) {
-      chiliErrLog('Warnings:');
-      warnings.forEach((e: string) => chiliErrLog(`- ${e}`));
-    }
-  }
-
-  return retrySuccess;
+  const message: string = result.errorMessage || 'Administrator privileges are required to import this plugin.';
+  chiliErrLog(message);
+  errorStack.stack_push('error', message);
+  return false;
 }
 
 /**
@@ -312,18 +289,10 @@ async function pluginFromDocker_register(
     return false;
   }
 
-  // Retry with admin credentials
-  return await registrationWithAuth_retry(
-    async (creds: AdminCredentials) => {
-      const retryResult: PluginRegistrationResponse | null = await plugin_registerWithAdmin(
-          pluginData as unknown as PluginRegistrationData,
-          computeResources, 
-          creds
-      );
-      return retryResult !== null;
-    },
-    options
-  );
+  const message: string = 'Administrator privileges are required to register this plugin.';
+  chiliErrLog(message);
+  errorStack.stack_push('error', message);
+  return false;
 }
 
 /**
@@ -509,51 +478,4 @@ function pluginData_inferMissingFields(
     pluginData.public_repo = `https://github.com/${repoGuess}`;
     chiliLog(`Inferred public_repo: ${pluginData.public_repo}`);
   }
-}
-
-/**
- * Retries a registration operation with admin credential prompting.
- *
- * Allows up to 3 attempts. Uses provided credentials or prompts interactively.
- *
- * @param registrationFn - Function that attempts registration with credentials.
- * @param options - CLI options including admin credentials.
- * @returns Promise resolving to success boolean.
- */
-async function registrationWithAuth_retry(
-  registrationFn: (creds: AdminCredentials) => Promise<boolean>,
-  options: PluginAddOptions
-): Promise<boolean> {
-  const MAX_ATTEMPTS: number = 3;
-
-  // If credentials provided via flags, try once
-  if (options.adminUser && options.adminPassword) {
-    const creds: AdminCredentials = {
-      username: options.adminUser,
-      password: options.adminPassword,
-    };
-    return await registrationFn(creds);
-  }
-
-  // Interactive prompting with retry
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const creds: AdminCredentials | null = await adminCredentials_prompt(attempt, MAX_ATTEMPTS);
-
-    if (!creds) {
-      chiliLog('Authentication cancelled.');
-      return false;
-    }
-
-    const success: boolean = await registrationFn(creds);
-    if (success) {
-      return true;
-    }
-
-    if (attempt < MAX_ATTEMPTS) {
-      chiliLog('Authentication failed.');
-    }
-  }
-
-  chiliErrLog(`Authentication failed after ${MAX_ATTEMPTS} attempts.`);
-  return false;
 }

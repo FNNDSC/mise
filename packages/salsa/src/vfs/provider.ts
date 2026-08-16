@@ -96,4 +96,16 @@ export interface VFSProvider {
    * @returns A Promise resolving to a Result containing the file contents as a Buffer.
    */
   readBinary?(path: string): Promise<Result<Buffer>>;
+
+  /**
+   * Resolves the target of a provider-defined lazy link when an operation
+   * actually follows it.
+   *
+   * Listings must not use this hook: providers may expose an unresolved link
+   * as structural metadata without paying for its target until navigation.
+   *
+   * @param path - Absolute virtual path naming the link.
+   * @returns The target path, or an error when the provider cannot resolve it.
+   */
+  linkTarget_resolve?(path: string): Promise<Result<string>>;
 }

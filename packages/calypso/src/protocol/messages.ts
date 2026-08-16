@@ -30,6 +30,7 @@ export const channelSchema = z.enum(['data', 'err', 'status']);
 /** Capabilities an attaching surface can safely execute on its own machine. */
 export const surfaceCapabilitiesMessageSchema = z.object({
   shellCommands: z.boolean(),
+  hiddenInput: z.boolean().optional(),
 });
 
 /** Attach to a session: declares the contract version, token, and surface capabilities. */
@@ -46,6 +47,12 @@ export const executeMessageSchema = z.object({
   type: z.literal('execute'),
   id: z.string(),
   line: z.string(),
+});
+
+/** Requests cancellation of the caller's currently executing command. */
+export const cancelMessageSchema = z.object({
+  type: z.literal('cancel'),
+  id: z.string(),
 });
 
 /** Request completion candidates for a partial line, correlated by `id`. */
@@ -102,6 +109,7 @@ export const editResultMessageSchema = z.object({
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
   executeMessageSchema,
+  cancelMessageSchema,
   completeRequestSchema,
   promptAnswerMessageSchema,
   pipeResultMessageSchema,

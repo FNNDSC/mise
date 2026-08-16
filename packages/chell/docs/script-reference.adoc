@@ -107,6 +107,35 @@ connect --user chris --password chris1234 http://localhost:8000/api/v1/
 logout
 ----
 
+=== sudo
+
+`sudo` is explicit, command-scoped CUBE elevation—not Unix UID elevation. It
+asks the active surface for an administrator username and hidden password, then
+uses that CUBE token only while its nested command runs. The normal session and
+saved token are unchanged. A surface without secure hidden input fails clearly.
+
+[source,bash]
+----
+sudo group adduser pacs_users peter.hong
+sudo plugin add pl-dircopy
+----
+
+Do not rely on an automatic retry after a permission failure: use the copyable
+`Try: sudo …` suggestion emitted for known administrator operations.
+
+=== user
+
+`user` manages CUBE-local accounts only. It cannot create, disable, or remove a federated identity. Account creation prompts for email and a hidden password twice; new local accounts are not automatically PACS users.
+
+[source,bash]
+----
+sudo user add jack.bivowac
+sudo user inspect jack.bivowac
+sudo user disable jack.bivowac
+sudo user enable jack.bivowac
+sudo user remove jack.bivowac
+----
+
 == System Introspection
 
 === id
@@ -154,7 +183,7 @@ cd <path>
 cd              # go to home (/home/<user>)
 cd ~            # same
 cd ..           # parent
-cd -            # not supported; use absolute path
+cd -            # exchange current and previous interactive directories
 ----
 
 Paths that work:
@@ -222,23 +251,31 @@ Recursive listing in ASCII tree form.  Descends into `dir`, `vfs`, and `job` typ
 
 [source,bash]
 ----
-tree [path]
+tree [--dirs|--dirpath] [path]
 ----
+
+`--dirs` retains the ASCII hierarchy but omits files. `--dirpath` emits one
+absolute directory path per line and is suitable for copying, filtering, or
+selecting a target for `cd`.
 
 [source,bash]
 ----
 tree
 tree /proc/jobs/feed_1107   # full DAG of a feed's jobs
 tree /home/alice/data
+tree --dirs /home/alice/data      # directory hierarchy only
+tree --dirpath /home/alice/data   # full directory paths only
 ----
 
 === du
 
-Disk usage summary for a directory tree.
+Disk usage summary for a directory tree. `-h` and `--human-readable` are size-formatting flags, not help aliases; both retain a following path operand. A recursive scan can be stopped with Ctrl-C. Cancellation is cooperative, so it returns after any current CUBE listing completes.
 
 [source,bash]
 ----
-du [path]
+du [options] [path]
+du --human-readable test-upload
+du -sh test-upload
 ----
 
 == File Operations
@@ -601,7 +638,7 @@ plugin search <searchable>             # resolve to IDs
 ----
 store list [--store <url>]
 store search <query>
-store install <plugin_name> [--compute <res1,res2>] [--adminUser <u> --adminPassword <p>]
+sudo store install <plugin_name> [--compute <res1,res2>]
 store inspect                 # show current peer store URL
 store set <url>               # override peer store
 store reset                   # reset to default (cube.chrisproject.org)
@@ -610,7 +647,7 @@ store reset                   # reset to default (cube.chrisproject.org)
 `store install` three-phase resolution:
 
 1. Already in CUBE → reports `[INFO] already registered`
-2. Found in peer store → imports (prompts for admin credentials interactively if needed)
+2. Found in peer store → imports with the current identity, or fails with a `sudo` suggestion when CUBE requires an administrator
 3. Not found → Docker extraction and registration
 
 === jobs / plugininstances / instances
@@ -667,26 +704,36 @@ tag inspect <id>
 [source,bash]
 ----
 groups list [--all]
-group inspect <id>
-group members <id>
-group create <name>          # [admin]
-group delete <id>            # [admin]
-group adduser <id> <user>    # [admin]
-group removeuser <id> <user> # [admin]
+group inspect [<group>]
+group members <group>
+group adduser <group> <user...>    # [admin]
+group removeuser <group> <user...> # [admin]
 ----
 
 Membership changes operate on an existing CUBE user and require an
-administrator token. Resolve a group ID first, then update it:
+administrator token. Use an exact group name in ordinary work; numeric CUBE
+IDs remain accepted for scripts and as an escape hatch. A name is never
+interpreted as a partial search result.
+
+When the ordinary CUBE identity is denied a known administrator operation,
+ChELL preserves the CUBE error and prints a copyable `sudo` suggestion. `sudo`
+prompts on the active surface for an administrator username and hidden password,
+uses the resulting token only for its nested command, then discards it. It does
+not replace or persist the normal session identity.
 
 [source,bash]
 ----
-groups search pacs_users
-group members 7
-group adduser 7 peter.hong
+group members pacs_users
+sudo group adduser pacs_users peter.hong joe.schmo
+group removeuser pacs_users joe.schmo
 cat /etc/group
 ----
 
-`/etc/group` is a read-only projection of the current users in each visible group. The first read hydrates memberships from CUBE and shows an interactive spinner when that takes longer than 300 ms. The rendered projection is cached for five minutes per CUBE connection; `group adduser` and `group removeuser` invalidate it immediately, while changes made through Django admin become visible after the freshness window. Progress is status telemetry and therefore does not enter pipes, redirects, or captured command output.
+Each requested user is reported. Adding an existing member and removing a
+non-member are successful no-ops; if another user in the same batch fails,
+ChELL still attempts every requested change and returns a non-zero status.
+
+`/etc/group` is a read-only projection of the current users in each visible group. The first read hydrates memberships from CUBE and shows an interactive spinner when that takes longer than 300 ms. The rendered projection is cached for five minutes per CUBE connection; `group adduser` and `group removeuser` invalidate it immediately, while changes made through Django admin become visible after the freshness window. Progress is status telemetry and therefore does not enter pipes, redirects, or captured command output. During startup, each blocking cache step—including this membership hydration—gets up to three complete attempts, with 250 ms then 500 ms backoff. A daemon terminal reports failed attempts as `[RETRY]`; after the final failure it asks whether to continue with degraded caches or exit before publishing its berth. A non-interactive daemon keeps the availability-first behavior and starts degraded rather than hanging.
 
 See link:posix.adoc[posix.adoc] for the record mapping, cache lifecycle, and daemon behavior of POSIX-style projections.
 
@@ -758,6 +805,7 @@ proc refresh 123          # same
 proc retry                # resume a failed global topology sweep
 
 proc find <instance_id>   # return full /proc path for any instance ID
+proc here                 # navigate from a known output directory to its producing job
 ----
 
 `proc find` example:
@@ -770,6 +818,11 @@ proc find 64306
 # Then read status directly:
 cat $(proc find 64306)/status
 ----
+
+After following a job's `data` link into CFS, use `cd -` for the immediate
+return. `proc here` can instead navigate from that output directory (or a
+descendant) to its producing `/proc/jobs` node. It works from output paths
+resolved in the current session and never guesses a feed or CFS path layout.
 
 === /proc cache behaviour
 
@@ -881,11 +934,11 @@ cat /etc/compute.yaml
 store install pl-fshack --compute ares
 ----
 
-=== Install a plugin (non-interactive, admin credentials via flags)
+=== Install a plugin with explicit elevation
 
 [source,bash]
 ----
-store install pl-fshack --compute ares,argentum --adminUser chris --adminPassword chris1234
+sudo store install pl-fshack --compute ares,argentum
 ----
 
 === List all running jobs

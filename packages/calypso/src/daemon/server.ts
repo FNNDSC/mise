@@ -31,12 +31,13 @@ import type { HostedEngine, CompletionResult } from './engine.js';
 import { token_matches } from './token.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
 import { clientMessage_parse, attach_parse } from '../protocol/validate.js';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 type ExecuteMessage = z.infer<typeof executeMessageSchema>;
 type CompleteRequest = z.infer<typeof completeRequestSchema>;
+type CancelMessage = z.infer<typeof cancelMessageSchema>;
 
 /** An attached surface: its socket, bus id, and locally executable capabilities. */
 interface Surface {
@@ -44,6 +45,7 @@ interface Surface {
   id: string;
   capabilities: {
     shellCommands: boolean;
+    hiddenInput: boolean;
   };
 }
 
@@ -213,6 +215,8 @@ export class CalypsoDaemon {
       if (value.type === 'execute') {
         // One shared queue: commands from every surface run one at a time.
         this.queue = this.queue.then(() => this.execute_run(attached, value));
+      } else if (value.type === 'cancel') {
+        this.cancel_run(attached, value);
       } else if (value.type === 'complete') {
         void this.complete_run(socket, value);
       } else if (value.type === 'promptAnswer') {
@@ -237,6 +241,23 @@ export class CalypsoDaemon {
         this.surfaces.delete(surface);
       }
     });
+  }
+
+  /**
+   * Relays a cancellation request only to the surface's own foreground command.
+   *
+   * @param origin - Surface asking to cancel a command.
+   * @param message - Correlated command identifier to cancel.
+   * @returns Nothing. The running command reports its normal final envelope.
+   */
+  private cancel_run(origin: Surface, message: CancelMessage): void {
+    if (this.currentOrigin !== origin || this.currentId !== message.id) {
+      this.send(origin.socket, { type: 'error', reason: 'cancel: no matching foreground command' });
+      return;
+    }
+    if (!this.engine.line_cancel?.()) {
+      this.send(origin.socket, { type: 'error', reason: 'cancel: command cannot be interrupted' });
+    }
   }
 
   /**
@@ -268,6 +289,7 @@ export class CalypsoDaemon {
       id: randomBytes(8).toString('hex'),
       capabilities: {
         shellCommands: attach.value.capabilities?.shellCommands ?? false,
+        hiddenInput: attach.value.capabilities?.hiddenInput ?? false,
       },
     };
     this.surfaces.add(surface);
@@ -381,13 +403,17 @@ export class CalypsoDaemon {
    * @param message - The prompt text to show.
    * @param hidden - Whether to request no-echo entry (a password).
    * @returns The surface's answer.
-   * @throws {Error} When no command is executing (nothing to prompt for) or the
-   *   surface disconnects before answering.
+   * @throws {Error} When no command is executing, the surface cannot securely
+   *   collect a requested hidden answer, or the surface disconnects before
+   *   answering.
    */
   public prompt_current(message: string, hidden: boolean): Promise<string> {
     const origin: Surface | null = this.currentOrigin;
     if (!origin) {
       return Promise.reject(new Error('no active command to prompt for'));
+    }
+    if (hidden && !origin.capabilities.hiddenInput) {
+      return Promise.reject(new Error('this surface cannot securely collect hidden input'));
     }
     const promptId: string = `p${this.promptSeq++}`;
     return new Promise((resolve: (answer: string) => void, reject: (err: Error) => void) => {

@@ -266,6 +266,27 @@ describe('ProcCache', () => {
     });
   });
 
+  describe('outputPath_match', () => {
+    it('returns the closest output directory that contains the CFS path', () => {
+      cache.instance_add({ ...inst(1, 7, null, 'pl-root'), outputPath: '/home/alice/outputs' });
+      cache.instance_add({ ...inst(2, 7, 1, 'pl-child'), outputPath: '/home/alice/outputs/result-set' });
+
+      expect(cache.outputPath_match('/home/alice/outputs/result-set/metrics/report.json')?.id).toBe(2);
+    });
+
+    it('does not match a merely similar output-path prefix', () => {
+      cache.instance_add({ ...inst(1, 7, null, 'pl-root'), outputPath: '/home/alice/outputs/run' });
+
+      expect(cache.outputPath_match('/home/alice/outputs/run-old/result.txt')).toBeUndefined();
+    });
+
+    it('normalizes a trailing slash on the current CFS path', () => {
+      cache.instance_add({ ...inst(1, 7, null, 'pl-root'), outputPath: '/home/alice/outputs/run' });
+
+      expect(cache.outputPath_match('/home/alice/outputs/run/')?.id).toBe(1);
+    });
+  });
+
   describe('search', () => {
     it('feeds_find matches title substrings case-insensitively', () => {
       cache.feed_add(feed(1, 'Brain MRI'));

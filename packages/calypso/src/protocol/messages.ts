@@ -49,6 +49,12 @@ export const executeMessageSchema = z.object({
   line: z.string(),
 });
 
+/** Requests cancellation of the caller's currently executing command. */
+export const cancelMessageSchema = z.object({
+  type: z.literal('cancel'),
+  id: z.string(),
+});
+
 /** Request completion candidates for a partial line, correlated by `id`. */
 export const completeRequestSchema = z.object({
   type: z.literal('complete'),
@@ -103,6 +109,7 @@ export const editResultMessageSchema = z.object({
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
   executeMessageSchema,
+  cancelMessageSchema,
   completeRequestSchema,
   promptAnswerMessageSchema,
   pipeResultMessageSchema,

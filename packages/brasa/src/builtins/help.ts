@@ -690,7 +690,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc <jobs|stat|feeds|refresh|retry|find> [args]',
+    usage: 'proc <jobs|stat|feeds|refresh|retry|find|here> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
     description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. The daemon restores an identity-scoped local topology checkpoint, validates feed visibility with CUBE, and reconciles all plugin instances in the background. Restored queries remain usable while syncing; a cold cache still guards global queries until complete. CUBE remains authoritative.',
     subcommands: [
@@ -711,6 +711,7 @@ export const helpText: Record<string, CommandHelp> = {
       'retry                                  Resume a failed topology sweep at its failed page',
       'find <id>                              Targeted instance lookup; available during warm-up',
       'find <name> [--force]                  Name search; --force waits for warm-up',
+      'here                                   Navigate from a CFS feed/output path to its matching job',
     ],
     examples: [
       'proc jobs list',
@@ -725,6 +726,7 @@ export const helpText: Record<string, CommandHelp> = {
       'proc retry',
       'proc find 64306',
       'proc find pl-fshack',
+      'proc here',
     ],
   },
   prompt: {
@@ -794,12 +796,16 @@ export const helpText: Record<string, CommandHelp> = {
     options: [
       '--follow    Follow symbolic links when traversing',
       '--path      Emit one full path per entry (grep-friendly, no tree art)',
+      '--dirs      Show directories only',
+      '--dirpath   Emit one full directory path per line',
     ],
     examples: [
       'tree                  # Tree of current directory',
       'tree /home/user/data  # Tree of specific path',
       'tree --follow         # Follow symbolic links',
       'tree --path           # One path per line, no decoration',
+      'tree --dirs           # Directory hierarchy only',
+      'tree --dirpath        # One directory path per line',
     ],
   },
   du: {
@@ -1375,6 +1381,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
+    Administration: ['sudo', 'user'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
     General: ['help', 'date', 'cal', 'fortune', 'exit', '!'],
   };

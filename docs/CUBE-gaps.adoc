@@ -1,0 +1,221 @@
+= CUBE Read-Model Gaps Exposed by ChELL
+:toc:
+:toclevels: 3
+
+== Status and purpose
+
+This is a living design record. ChELL and CALYPSO deliberately create a long-lived, interactive operator session. Their boot caches reveal where CUBE's existing resource collections serve a normal operation efficiently and where a client must reconstruct an aggregate through excessive remote traversal.
+
+This document does not call for non-Collection+JSON endpoints. A proposed collection is a *read projection*, not a new source of truth or a stored substitute for CUBE's normalized state. CUBE remains authoritative for durable users, groups, feeds, plugin instances, files, and permissions.
+
+The purpose is to turn observed client pain into measured, C-J-native CUBE collection requirements. It is not a backlog of endpoints to add speculatively.
+
+== Operating model
+
+=== Snapshot, not truth
+
+A read projection answers a bounded question about the current CUBE state. It may be calculated on demand, cached within CUBE, or eventually materialized by CUBE if measurement justifies it. It does not make its representation canonical.
+
+For example, `/etc/group` is a POSIX-shaped snapshot over CUBE group and membership relations. The snapshot is useful because membership normally changes less frequently than it is read. It is not the group model.
+
+Each projection must declare:
+
+* its authoritative CUBE facts;
+* its authorization and visibility scope;
+* pagination and result bounds;
+* snapshot/freshness semantics; and
+* the stable fields that clients may rely on.
+
+=== C-J, not an escape hatch
+
+New read models remain ordinary CUBE Collection+JSON collections:
+
+* a collection URL with normal pagination and link relations;
+* C-J item `data` for projection fields;
+* item or collection links to the canonical resources where useful; and
+* normal HTTP cache validators such as `ETag` when CUBE can provide them.
+
+They are not RPC-shaped ``getGroupFile`` calls, shell-specific text endpoints, or a parallel non-C-J transport. ChELL renders C-J data into its POSIX views; CUBE does not need to know that a consumer calls one view `/etc/group`.
+
+=== When a boot cache is a CUBE gap
+
+A cache alone is not evidence of bad backend design. Completion indexes, renderer state, and a session's recent navigation are legitimate client working-set state.
+
+A CUBE read-model gap is indicated when all of the following hold:
+
+. A normal operator action needs a cross-resource aggregate.
+. The client must fan out into N resource requests, or otherwise reconstruct a relation CUBE already owns.
+. The resulting projection would also help another legitimate CUBE client, such as the web UI or an administrative surface.
+. The cost is measured on a representative CUBE and exceeds the interaction budget.
+
+The response is to propose a small, deep collection interface that hides joins, authorization filtering, and pagination inside CUBE. It is not to make ChELL's local cache authoritative.
+
+== Current boot inventory
+
+[cols="1,1,2,2",options="header"]
+|===
+| Boot/cache item | Current client work | Judgment | Next action
+
+| `/bin` tool and pipeline index
+| Fetches CUBE plugin and pipeline collections and caches names for navigation and completion.
+| Normal session working-set cache. The data is already collection-shaped and the warm-up is not known to reconstruct an N+1 relation.
+| Measure cold latency and pagination cost; do not propose a new CUBE collection without evidence.
+
+| CFS feed and public-path listings
+| Prefetches ordinary native filesystem listings for navigation and completion.
+| Normal path/list cache unless a measured path listing itself fans out through several CUBE resource collections.
+| Keep the cache client-owned; investigate only a measured server-side listing inefficiency.
+
+| `/proc` feed index
+| Builds a ChELL job-history index from visible feeds and their counters, then retains a session/checkpoint view.
+| Candidate gap. A run dashboard, shell, and future Argus surface may all need a compact visible-run index, but the existing C-J feeds collection may already satisfy the requirement.
+| Record query count, payload, cold latency, and the fields unavailable without follow-up requests before proposing a collection.
+
+| `/proc` topology index
+| Performs a paginated plugin-instance sweep to construct parent/child topology and support global name/ID lookup.
+| Strong candidate gap, but not yet a conclusion. The client may legitimately own its navigation index; CUBE may need only a more selective collection query rather than a new topology object.
+| Measure sweep cost and identify the minimum shared projection: node identity, feed identity, parent/previous relation, plugin identity, and status/counters.
+
+| `/etc/group`
+| Lists groups, then enumerates each group's members (bounded client concurrency), and renders POSIX lines.
+| Confirmed aggregate-read gap. On the observed production CUBE the cold read can exceed ten seconds. The cost is dominated by remote N+1 traversal of a relationship CUBE already owns.
+| Specify and evaluate the `group-memberships` collection below. ChELL currently hides the cost with boot hydration and a five-minute, identity-scoped cache.
+
+| Administrator identity directory
+| An elevated operator needs to enumerate CUBE identities for account administration, group-member selection, and an administrative `/etc/passwd` projection.
+| Confirmed collection and authorization gap. CUBE already has `GET /api/v1/users/`, but its current list handler renders an empty queryset for every caller. Its user-detail permission currently allows any authenticated caller to read a known user's record. Neither behavior expresses the intended operator-versus-administrator visibility policy.
+| Repair the existing C-J `users` collection and detail permission policy as specified below. Do not create a shell-specific account-directory endpoint.
+
+|===
+
+== Confirmed proposal: group memberships
+
+=== Operator requirement
+
+A permitted client needs a bounded snapshot of the groups and memberships visible to its authenticated CUBE identity. It needs this for `/etc/group`, group administration views, and any surface that presents group membership as a relation rather than asking only about one known group.
+
+This is not a requirement for CUBE to persist a group file.
+
+=== Proposed C-J collection
+
+Prefer a flat relation collection:
+
+----
+GET /api/v1/group-memberships/?limit=100&offset=0
+----
+
+Each C-J item represents one canonical group/user membership relation and carries the projection fields needed to render or group it locally:
+
+----
+{
+  "data": [
+    { "name": "id", "value": 91 },
+    { "name": "group_id", "value": 7 },
+    { "name": "group_name", "value": "pacs_users" },
+    { "name": "user_id", "value": 12 },
+    { "name": "username", "value": "peter.hong" }
+  ],
+  "links": [
+    { "rel": "group", "href": "…/groups/7/" },
+    { "rel": "user", "href": "…/users/12/" }
+  ]
+}
+----
+
+Groups with no memberships still need representation. The same read interface can provide those as ordinary group collection items through an embedded/expanded `members` relation, or CUBE can define the collection contract to include a separate group summary section/link. This is an open interface question; it must be settled before implementation so clients do not infer empty groups from absence.
+
+The existing group and group-user mutation collections remain canonical for writes. `group-memberships` is read-only.
+
+=== Required interface semantics
+
+* The collection applies CUBE's normal authorization rules. It must never reveal a user or membership the requesting identity could not otherwise inspect.
+* It is paginated and returns the normal C-J total/next relation. ChELL must not assume all memberships arrive in one response.
+* Its response is a snapshot. CUBE may expose an HTTP `ETag` or a revision fact so clients can revalidate cheaply.
+* CUBE performs the join/prefetch internally. A caller does not discover per-group member URLs and replay the join itself.
+* Exact group or username filters may be added only where they preserve the same collection semantics and have a demonstrated caller.
+
+=== ChELL cache policy after CUBE support
+
+ChELL still keeps an identity-scoped snapshot because `/etc/group` is read often and changes comparatively rarely:
+
+* key: normalized CUBE URL plus authenticated username;
+* freshness: five minutes unless CUBE supplies a cheaper validator;
+* ChELL-originated membership mutation: invalidate immediately; and
+* outside mutation: visible after revalidation/expiry.
+
+The difference is that a cold snapshot becomes one paginated collection traversal, rather than N per-group membership traversals.
+
+== Confirmed proposal: administrator identity directory
+
+=== Operator requirement
+
+An ordinary operator needs only the identity under which their ChELL session is connected. An elevated CUBE administrator also needs a complete, paginated directory of the CUBE identities that CUBE regards as administrable, including federated identities synchronized into CUBE. This supports account administration, group membership selection, and a familiar administrative inspection:
+
+[source,bash]
+----
+cat /etc/passwd        # session operator only
+sudo cat /etc/passwd   # identities visible to the temporary CUBE administrator
+----
+
+This is an identity projection, not a password database. It must never expose password hashes, bearer tokens, or external identity-provider credentials.
+
+=== Existing C-J seam and its defect
+
+No new endpoint shape is needed. CUBE already publishes the ordinary C-J collection URL:
+
+----
+GET /api/v1/users/?limit=100&offset=0
+----
+
+The present implementation declares `User.objects.all()` but calls the list renderer with an empty list, so every collection response is empty. Separately, the current object permission permits a safe read of any known user detail to every authenticated caller. This is neither a useful administrative collection nor a coherent least-disclosure policy.
+
+=== Required interface semantics
+
+Repair the existing `users` collection rather than adding an administration-specific or shell-specific variant:
+
+* An authenticated non-administrator cannot enumerate the collection. It receives a normal authorization failure; its own identity remains available through CUBE's existing authenticated-user link/resource.
+* An authenticated CUBE administrator receives every CUBE user visible to that CUBE, including synchronized federated identities, through normal pagination.
+* A user-detail read is available to its owner and to an administrator. If a future caller needs a deliberately public identity card, that must be a separate minimal projection with an explicit disclosure policy, not an accidental consequence of the account-detail serializer.
+* Each C-J item supplies at least stable `id`, `username`, and any approved display/contact field needed by legitimate administration. Password fields, hashes, tokens, and provider credentials are never C-J item data.
+* Exact username filtering may be added for administrator workflows, provided it preserves the same authorization, pagination, and C-J semantics.
+
+This is a small, deep interface: CUBE owns user storage, federation synchronization, authorization, filtering, and pagination behind one existing collection seam. Clients no longer infer an account directory by probing numeric IDs or by reimplementing CUBE's authorization rules.
+
+=== ChELL projection policy after CUBE support
+
+Without `sudo`, `/etc/passwd` remains one record obtained from the authenticated-user resource; it does not trigger a directory traversal. Within `sudo`, ChELL traverses the repaired `users` collection using the temporary elevated CUBE client and renders its approved fields as POSIX-style records.
+
+The elevated listing must not populate a cache keyed only by the normal session identity. ChELL should either render it without caching or key any short-lived cache by the effective elevated identity and invalidate it when the elevation scope ends. An administrator's visibility must never become ambient output for the original operator after `sudo` returns.
+
+== Candidate proposal process for `/proc`
+
+Do not create a CUBE `/proc` endpoint. `/proc` is ChELL's VFS projection. First determine whether the ordinary C-J feed and plugin-instance collections lack a query shape needed by several clients.
+
+If they do, prefer one of these C-J-native evolutions:
+
+* a compact, visible-run index collection with feed identity and aggregate counters; or
+* a bounded plugin-instance collection representation that can return the minimal topology fields for a selected visible run or query scope.
+
+Avoid a universal, unbounded graph-document endpoint. It would couple clients to a large mutable representation, complicate authorization, and merely move ChELL's current global sweep into a less inspectable server response.
+
+The required evidence is a trace showing the current request sequence, visible scope, response sizes, cold/warm latency, and which fields force the follow-up requests.
+
+== Adoption rule
+
+For every proposed gap, add an entry here before CUBE implementation with:
+
+. a captured cold-path trace and representative timing;
+. the consumer-facing operation and latency budget;
+. the authoritative CUBE resources and permission rules;
+. the proposed Collection+JSON interface, including pagination and freshness;
+. an explanation of why an existing collection/query expansion is insufficient; and
+. a compatibility plan for clients that do not yet use the projection.
+
+This keeps boot caching honest: it remains a useful session optimization while also acting as instrumentation for improving the CUBE C-J interface.
+
+== References
+
+* link:../packages/chell/src/core/startupWarmup.ts[`startupWarmup.ts`] — current boot hydration policy.
+* link:../packages/salsa/src/vfs/providers/etc.ts[`EtcVfsProvider`] — current `/etc/group` projection and cache.
+* link:../packages/chell/docs/proc.adoc[`proc.adoc`] — `/proc` cache, checkpoint, and topology-sweep design.
+* link:../packages/chell/docs/posix.adoc[`posix.adoc`] — POSIX projection contracts and cache semantics.

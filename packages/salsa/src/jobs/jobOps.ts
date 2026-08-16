@@ -5,6 +5,7 @@
  */
 
 import { chrisConnection, errorStack, Result, Ok, Err, procCache_get } from '@fnndsc/cumin';
+import { inflateSync } from 'node:zlib';
 
 /** Statuses that cannot be cancelled — operation is already done. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -20,6 +21,31 @@ interface PluginInstanceObj {
   data: { status?: string; [key: string]: unknown };
   put(data: Record<string, unknown>): Promise<unknown>;
   delete(): Promise<void>;
+}
+
+/** Tests whether an unknown value is a non-null record. */
+function record_is(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Decodes CUBE's base64-encoded, zlib-compressed raw pfcon response and
+ * extracts its complete compute log.
+ *
+ * @param raw - The `PluginInstance.raw` value returned by CUBE.
+ * @returns The complete compute log, or undefined when no decodable log exists.
+ */
+function pfconLog_decode(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+
+  try {
+    const json: unknown = JSON.parse(inflateSync(Buffer.from(raw, 'base64')).toString('utf8'));
+    if (!record_is(json) || !record_is(json['compute'])) return undefined;
+    const logs: unknown = json['compute']['logs'];
+    return typeof logs === 'string' ? logs : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -345,6 +371,11 @@ export async function job_logFetch(instanceID: number): Promise<Result<string>> 
     if (!instance) {
       errorStack.stack_push('error', `Plugin instance ${instanceID} not found.`);
       return Err();
+    }
+
+    const rawLog: string | undefined = pfconLog_decode(instance.data.raw);
+    if (rawLog !== undefined) {
+      return Ok(rawLog || '(no log output yet)');
     }
 
     if (!instance.getLogs) {

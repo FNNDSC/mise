@@ -25,8 +25,8 @@ import * as path from 'path';
  * ```
  */
 export function path_isInFeed(dirPath: string): boolean {
-  // Pattern: /feeds/feed_<digits>/
-  const feedPattern: RegExp = /\/feeds\/feed_\d+\//;
+  // A feed root is itself inside the feed, so the final slash is optional.
+  const feedPattern: RegExp = /\/feeds\/feed_\d+(?:\/|$)/;
   return feedPattern.test(dirPath);
 }
 
@@ -63,7 +63,7 @@ export function path_extractPluginInstanceID(dirPath: string): number | null {
     const dirname: string = path.basename(currentPath);
     const match: RegExpMatchArray | null = dirname.match(instancePattern);
 
-    if (match) {
+    if (match && !dirname.startsWith('feed_')) {
       // Found a match: extract the instance ID
       const instanceID: number = parseInt(match[2], 10);
       return instanceID;

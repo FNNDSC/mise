@@ -38,9 +38,9 @@ export interface BootPanels {
 }
 
 /**
- * Status of a boot step: ok, skip, or fail.
+ * Status of a boot step: ok, retry, skip, or fail.
  */
-export type BootStatus = 'ok' | 'skip' | 'fail';
+export type BootStatus = 'ok' | 'retry' | 'skip' | 'fail';
 
 /**
  * Creates a boot logger that renders a titled status box.
@@ -64,6 +64,7 @@ export function bootLogger_create(title: string, useAscii: boolean) {
   const statusTag = (status: BootStatus): string => {
     switch (status) {
       case 'ok': return chalk.green('[ OK ]');
+      case 'retry': return chalk.yellow('[RETRY]');
       case 'skip': return chalk.yellow('[SKIP]');
       case 'fail': return chalk.red('[FAIL]');
     }

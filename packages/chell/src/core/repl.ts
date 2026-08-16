@@ -107,8 +107,13 @@ export class REPL {
     });
 
     this.rl.on('SIGINT', () => {
-      // Ctrl+C cancels the current input line and re-prompts — does not exit.
+      // A cancellable foreground command (currently recursive scans) gets the
+      // interrupt first. Otherwise Ctrl+C retains readline's usual behavior:
+      // clear an unfinished input line and redraw the prompt.
       process.stdout.write('\n');
+      if (this.engine.line_cancel?.()) {
+        return;
+      }
       readline.clearLine(process.stdout, 0);
       this.prompt_update();
     });

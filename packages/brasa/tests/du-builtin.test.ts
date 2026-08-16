@@ -23,6 +23,7 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({ bytes_f
 const ok = <T>(value: T) => ({ ok: true as const, value });
 
 const { builtin_du } = await import('../src/builtins/fs/du.js');
+const { commandCancellation_request, commandCancellation_run } = await import('../src/core/cancellation.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -51,6 +52,42 @@ describe('builtin_du', () => {
     expect(mockScanDo).toHaveBeenCalled();
     expect(mockSetCWD).toHaveBeenCalledWith('/home/chris/data');
     expect(envelope.rendered.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a path operand after a long boolean option', async () => {
+    mockDataGet.mockResolvedValue(ok([{ type: 'dir' }]));
+    mockScanDo.mockResolvedValue({
+      totalSize: 3000,
+      fileInfo: [{ chrisPath: '/home/chris/test-upload/a', size: 3000 }],
+    });
+
+    await builtin_du(['--human-readable', 'test-upload']);
+
+    expect(mockDataGet).toHaveBeenCalledWith('/home/chris/test-upload', { directory: true });
+    expect(mockSetCWD).toHaveBeenCalledWith('/home/chris/test-upload');
+  });
+
+  it('stops a recursive scan when its foreground command is cancelled', async () => {
+    mockDataGet.mockResolvedValue(ok([{ type: 'dir' }]));
+    let started: (() => void) | undefined;
+    const scanning: Promise<void> = new Promise<void>((resolve: () => void): void => { started = resolve; });
+    mockScanDo.mockImplementation(async (options: { signal?: AbortSignal }) => {
+      started?.();
+      await new Promise<void>((resolve: () => void): void => {
+        options.signal?.addEventListener('abort', (): void => resolve(), { once: true });
+      });
+      return null;
+    });
+
+    const running: Promise<Awaited<ReturnType<typeof builtin_du>>> =
+      commandCancellation_run(() => builtin_du(['test-upload']));
+    await scanning;
+    expect(commandCancellation_request()).toBe(true);
+
+    await expect(running).resolves.toEqual({
+      status: 'error', rendered: '', renderedErr: 'du: cancelled\n',
+    });
+    expect(mockSetCWD).toHaveBeenLastCalledWith('/home/chris');
   });
 
   it('reports a target that cannot be accessed', async () => {

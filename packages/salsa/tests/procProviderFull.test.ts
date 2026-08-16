@@ -18,7 +18,7 @@ jest.mock('@fnndsc/cumin', () => ({
 }));
 jest.mock('../src/jobs/index', () => mockJobs);
 
-import { procCache_get, Ok, Err, ProcFeed } from '@fnndsc/cumin';
+import { procCache_get, Ok, Err, ProcFeed, ProcInstance } from '@fnndsc/cumin';
 import {
   ProcVfsProvider,
   feedStatus_derive,
@@ -27,6 +27,7 @@ import {
   procTopology_retry,
   procTopology_status,
   procTopology_await,
+  procTopology_reconcileFeeds,
   procCache_refresh,
   procFeed_ensureLoaded,
   feedInstances_ensureLoaded,
@@ -98,6 +99,11 @@ describe('procPath_parse', () => {
       feedID: 5, instanceID: 10, virtualFile: 'status',
     });
   });
+  it('parses an instance data link', () => {
+    expect(procPath_parse('/proc/jobs/feed_5/pl-x_10/data')).toEqual({
+      feedID: 5, instanceID: 10, virtualFile: 'data',
+    });
+  });
   it('returns nulls for a non-feed path', () => {
     expect(procPath_parse('/proc/jobs/other')).toEqual({ feedID: null, instanceID: null, virtualFile: null });
   });
@@ -167,6 +173,80 @@ describe('ProcVfsProvider.list', () => {
     expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-child_11', status: 'finishedSuccessfully' });
     expect(client.getPluginInstances).not.toHaveBeenCalled();
   });
+
+  it('projects a job output as a navigable data link', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({
+      id: 10,
+      feedID: 5,
+      parentID: null,
+      pluginName: 'pl-root',
+      params: null,
+      status: 'finishedSuccessfully',
+      outputPath: '/home/alice/outputs/result-set',
+    } as ProcInstance);
+    cache.topologyLoaded_mark(5);
+
+    const r = await provider.list('/proc/jobs/feed_5/pl-root_10');
+
+    expect(r.ok && r.value).toContainEqual({
+      name: 'data',
+      type: 'link',
+      target: '/home/alice/outputs/result-set',
+      size: 0,
+      owner: '',
+      date: '',
+    });
+  });
+
+  it('lists an unresolved data link without fetching CUBE instance metadata', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({
+      id: 10,
+      feedID: 5,
+      parentID: null,
+      pluginName: 'pl-root',
+      params: null,
+      status: 'finishedSuccessfully',
+    });
+    cache.topologyLoaded_mark(5);
+    const getPluginInstance = jest.fn().mockResolvedValue({
+      data: { output_path: 'home/alice/outputs/result-set' },
+    });
+    mockClientGet.mockResolvedValue({ getPluginInstance });
+
+    const r = await provider.list('/proc/jobs/feed_5/pl-root_10');
+
+    expect(r.ok && r.value.find((item) => item.name === 'data')).toMatchObject({
+      type: 'link',
+    });
+    expect(r.ok && r.value.find((item) => item.name === 'data')?.target).toBeUndefined();
+    expect(cache.instance_get(10)?.outputPath).toBeUndefined();
+    expect(getPluginInstance).not.toHaveBeenCalled();
+  });
+
+  it('resolves an unresolved data link only when it is followed', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({
+      id: 10,
+      feedID: 5,
+      parentID: null,
+      pluginName: 'pl-root',
+      params: null,
+      status: 'finishedSuccessfully',
+    });
+    cache.topologyLoaded_mark(5);
+    const getPluginInstance = jest.fn().mockResolvedValue({
+      data: { output_path: 'home/alice/outputs/result-set' },
+    });
+    mockClientGet.mockResolvedValue({ getPluginInstance });
+
+    const r = await provider.linkTarget_resolve('/proc/jobs/feed_5/pl-root_10/data');
+
+    expect(r).toEqual({ ok: true, value: '/home/alice/outputs/result-set' });
+    expect(cache.instance_get(10)?.outputPath).toBe('/home/alice/outputs/result-set');
+    expect(getPluginInstance).toHaveBeenCalledWith(10);
+  });
 });
 
 describe('ProcVfsProvider.read', () => {
@@ -211,18 +291,25 @@ describe('ProcVfsProvider.read', () => {
     expect(r.ok && r.value).toBe('unknown');
   });
 
-  it('fetches + caches params on first read, filtering meta keys', async () => {
+  it('fetches and caches the complete effective parameter collection, not instance metadata', async () => {
+    const getParameters = jest.fn().mockImplementation(({ offset }: { offset: number }) => ({
+      data: offset === 0
+        ? [{ param_name: 'inputdir', value: '/in', type: 'path' }]
+        : [{ param_name: 'threshold', value: '0.5', type: 'float' }],
+      totalCount: 2,
+    }));
     mockClientGet.mockResolvedValue({
-      getPluginInstance: jest.fn().mockResolvedValue({
-        data: { id: 10, feed_id: 5, plugin_name: 'pl-x', status: 'x', previous_id: null, dir: '/in', k: 'v' },
-      }),
+      getPluginInstance: jest.fn().mockResolvedValue({ getParameters }),
     });
     const r = await provider.read('/proc/jobs/feed_5/pl-x_10/params');
-    expect(r.ok && r.value).toContain('dir=/in');
-    expect(r.ok && r.value).toContain('k=v');
+    expect(r.ok && r.value).toContain('inputdir=/in');
+    expect(r.ok && r.value).toContain('threshold=0.5');
     expect(r.ok && r.value).not.toContain('plugin_name');
+    expect(r.ok && r.value).not.toContain('raw=');
+    expect(getParameters).toHaveBeenNthCalledWith(1, { limit: 100, offset: 0 });
+    expect(getParameters).toHaveBeenNthCalledWith(2, { limit: 100, offset: 1 });
     // cached now -> params_render from cache
-    expect(cache.instance_get(10)?.params).toMatchObject({ dir: '/in' });
+    expect(cache.instance_get(10)?.params).toMatchObject({ inputdir: '/in', threshold: '0.5' });
   });
 
   it('reads instance log', async () => {
@@ -535,6 +622,55 @@ describe('cache build / warmup / refresh', () => {
     await procCache_refresh();
     expect(cache.built).toBe(true);
     expect(cache.feed_get(1)).toBeDefined();
+  });
+
+  it('returns only new, changed, or active feeds as restored-cache reconciliation targets', async () => {
+    cache.feed_add(feed({ id: 1, title: 'settled', finishedJobs: 4 }));
+    cache.feed_add(feed({ id: 2, title: 'changed', finishedJobs: 1 }));
+    cache.feed_add(feed({ id: 3, title: 'active', startedJobs: 1 }));
+    mockClientGet.mockResolvedValue(pagingClient([
+      { id: 1, name: 'settled', finished_jobs: 4 },
+      { id: 2, name: 'changed', finished_jobs: 2 },
+      { id: 3, name: 'active', started_jobs: 1 },
+      { id: 4, name: 'new' },
+    ], []));
+
+    const targets: number[] = await procCache_refresh();
+
+    expect(targets).toEqual([2, 3, 4]);
+  });
+
+  it('reconciles only supplied feeds without opening a global instance sweep', async () => {
+    cache.feed_add(feed({ id: 5, title: 'target' }));
+    const client = pagingClient([{ id: 5, name: 'target' }], [
+      { id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 'finishedSuccessfully' },
+    ]);
+    mockClientGet.mockResolvedValue(client);
+
+    await procTopology_reconcileFeeds([5]);
+
+    expect(client.getPluginInstances).toHaveBeenCalledWith({ feed_id: 5, limit: 100, offset: 0 });
+    expect(client.getPluginInstances).not.toHaveBeenCalledWith({ limit: 100, offset: 0 });
+    expect(cache.instance_get(10)).toBeDefined();
+  });
+
+  it('retries a failed scoped reconciliation from its retained feed set', async () => {
+    cache.feed_add(feed({ id: 5, title: 'target' }));
+    const client = pagingClient([{ id: 5, name: 'target' }], []);
+    client.getPluginInstances
+      .mockRejectedValueOnce(new Error('temporary connection loss'))
+      .mockResolvedValueOnce({
+        data: [{ id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 'finishedSuccessfully' }],
+        totalCount: 1,
+      });
+    mockClientGet.mockResolvedValue(client);
+
+    await expect(procTopology_reconcileFeeds([5])).rejects.toThrow('temporary connection loss');
+    expect(procTopology_status()).toEqual({ state: 'failed', failure: 'temporary connection loss' });
+
+    await procTopology_retry();
+
+    expect(cache.instance_get(10)).toBeDefined();
   });
 
   it('resets completed topology lifecycle before a full cache rebuild', async () => {

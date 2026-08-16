@@ -31,12 +31,13 @@ import type { HostedEngine, CompletionResult } from './engine.js';
 import { token_matches } from './token.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
 import { clientMessage_parse, attach_parse } from '../protocol/validate.js';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 type ExecuteMessage = z.infer<typeof executeMessageSchema>;
 type CompleteRequest = z.infer<typeof completeRequestSchema>;
+type CancelMessage = z.infer<typeof cancelMessageSchema>;
 
 /** An attached surface: its socket, bus id, and locally executable capabilities. */
 interface Surface {
@@ -214,6 +215,8 @@ export class CalypsoDaemon {
       if (value.type === 'execute') {
         // One shared queue: commands from every surface run one at a time.
         this.queue = this.queue.then(() => this.execute_run(attached, value));
+      } else if (value.type === 'cancel') {
+        this.cancel_run(attached, value);
       } else if (value.type === 'complete') {
         void this.complete_run(socket, value);
       } else if (value.type === 'promptAnswer') {
@@ -238,6 +241,23 @@ export class CalypsoDaemon {
         this.surfaces.delete(surface);
       }
     });
+  }
+
+  /**
+   * Relays a cancellation request only to the surface's own foreground command.
+   *
+   * @param origin - Surface asking to cancel a command.
+   * @param message - Correlated command identifier to cancel.
+   * @returns Nothing. The running command reports its normal final envelope.
+   */
+  private cancel_run(origin: Surface, message: CancelMessage): void {
+    if (this.currentOrigin !== origin || this.currentId !== message.id) {
+      this.send(origin.socket, { type: 'error', reason: 'cancel: no matching foreground command' });
+      return;
+    }
+    if (!this.engine.line_cancel?.()) {
+      this.send(origin.socket, { type: 'error', reason: 'cancel: command cannot be interrupted' });
+    }
   }
 
   /**

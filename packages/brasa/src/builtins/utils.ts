@@ -16,14 +16,28 @@ export interface ParsedArgs {
   [key: string]: string | boolean | string[];
 }
 
+/**
+ * Parsing policy for command-specific long options.
+ *
+ * @property booleanLongOptions - Flags that must retain a following operand.
+ */
+export interface CommandArgsOptions {
+  /** Long options which are flags and must never consume a following operand. */
+  booleanLongOptions?: readonly string[];
+}
 
 
 /**
  * Parses raw argument strings into a structured object.
  * Supports `--` as an end-of-options marker (everything after is treated as positional args).
+ *
+ * @param args - Tokenized command arguments.
+ * @param options - Command-specific long-option policy.
+ * @returns Parsed option values and positional operands.
  */
-export function commandArgs_process(args: string[]): ParsedArgs {
+export function commandArgs_process(args: string[], options: CommandArgsOptions = {}): ParsedArgs {
   const result: ParsedArgs = { _: [] };
+  const booleanLongOptions: Set<string> = new Set(options.booleanLongOptions);
   let endOfOptions: boolean = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -42,8 +56,12 @@ export function commandArgs_process(args: string[]): ParsedArgs {
     }
 
     if (arg.startsWith('--')) {
-      const key: string = arg.substring(2);
-      if (args[i + 1] && !args[i + 1].startsWith('-')) {
+      const rawKey: string = arg.substring(2);
+      const separator: number = rawKey.indexOf('=');
+      const key: string = separator === -1 ? rawKey : rawKey.slice(0, separator);
+      if (separator !== -1) {
+        result[key] = rawKey.slice(separator + 1);
+      } else if (!booleanLongOptions.has(key) && args[i + 1] && !args[i + 1].startsWith('-')) {
         result[key] = args[i + 1];
         i++;
       } else {

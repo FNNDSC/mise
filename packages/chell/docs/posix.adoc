@@ -50,7 +50,7 @@ ChELL resolves relative paths against a session working directory and presents C
 
 CFS is the durable ChRIS filesystem. VFS paths are synthesized from APIs and may be live, cached, or read-only according to their provider. A displayed owner, type character, mode-like name, or absolute path is metadata in this combined namespace; it does not imply a corresponding host inode.
 
-`cd`, `pwd`, absolute and relative paths, `..`, `~`, and `~/...` use this session namespace. Bare `cd` selects `/home/<authenticated-user>`. `cd -` is not implemented. In normal mode ChELL preserves the logical path while resolving `.chrislink` targets for access. `--physicalFS` instead stores the resolved CUBE path as the working directory; it still does not expose the host filesystem.
+`cd`, `pwd`, absolute and relative paths, `..`, `~`, and `~/...` use this session namespace. Bare `cd` selects `/home/<authenticated-user>`. `cd -` exchanges the current directory with the previous interactive `cd` destination and prints that destination. In normal mode ChELL preserves the logical path while resolving `.chrislink` targets for access. `--physicalFS` instead stores the resolved CUBE path as the working directory; it still does not expose the host filesystem.
 
 === Long-listing type characters
 
@@ -124,7 +124,7 @@ The final field names ChELL as the projected shell; it is not a host executable 
 
 == Process and data-source projections
 
-`/proc/jobs` is a read-mostly view of visible feeds and their plugin-instance graphs. Feed directories contain `status`, `title`, and root job nodes. Job nodes contain `status`, `params`, `log`, and child jobs. Terminal status and immutable parameters can be cached; active status and logs are refreshed. These are ChRIS jobs, not host PIDs. `proc refresh`, `proc retry`, and the documented `rm` job operations are domain commands, not Linux `/proc` semantics. See link:proc.adoc[the `/proc` contract] for freshness details.
+`/proc/jobs` is a read-mostly view of visible feeds and their plugin-instance graphs. Feed directories contain `status`, `title`, and root job nodes. Job nodes contain `status`, `params`, `log`, `data`, and child jobs. `data` is a synthetic link to the job's authoritative CUBE `output_path`, so `cd data` crosses into its durable CFS output directory. Structural operations such as `ls` and `tree` never fetch that per-job target: the target is resolved and memoized only when an operator follows `data`. Terminal status and immutable parameters can be cached; active status is refreshed. `log` decodes CUBE's full compressed pfcon response (`PluginInstance.raw`) and reads its `compute.logs` field; it never leaks a spoke-local implementation detail. These are ChRIS jobs, not host PIDs. `proc refresh`, `proc retry`, and the documented `rm` job operations are domain commands, not Linux `/proc` semantics. See link:proc.adoc[the `/proc` contract] for freshness details.
 
 `/net/pacs/queries` projects PACS query results rather than mounted PACS storage. Query results expand into studies and series; virtual `metadata.json` and `image_slices.dcm` entries can be read. PACS retrieve/copy operations materialize data into CFS; navigating the projection alone does not.
 
@@ -263,7 +263,7 @@ sudo user remove jack.bivowac
 
 === Resolution and cache lifetime
 
-Resolving every group membership may require many CUBE requests. ChELL caches the completed `/etc/group` projection for five minutes. It never caches a partial or failed projection.
+Resolving every group membership may require many CUBE requests. ChELL resolves the complete `/etc/group` projection during connected startup and caches it for five minutes. It never caches a partial or failed projection. Startup reports a `Groups` cache status; if that warm-up fails, the daemon still starts and the first `cat /etc/group` retries with its normal interactive progress spinner.
 
 The cache belongs to one VFS provider and is keyed by both CUBE URL and authenticated username. A provider cannot reuse group data after either part of that identity changes.
 

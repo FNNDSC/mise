@@ -22,12 +22,16 @@ describe('path_isInFeed()', () => {
     expect(path_isInFeed('/home/chris/feeds/feed_abc/')).toBe(false);
   });
 
-  it('returns false when the trailing slash is missing', () => {
-    expect(path_isInFeed('/home/chris/feeds/feed_123')).toBe(false);
+  it('returns true for the feed root without a trailing slash', () => {
+    expect(path_isInFeed('/home/chris/feeds/feed_123')).toBe(true);
   });
 });
 
 describe('path_extractPluginInstanceID()', () => {
+  it('does not mistake a feed directory for a plugin instance directory', () => {
+    expect(path_extractPluginInstanceID('/home/chris/feeds/feed_123')).toBeNull();
+  });
+
   it('extracts the id from a deep subdirectory', () => {
     expect(
       path_extractPluginInstanceID('/home/chris/feeds/feed_123/pl-dircopy_456/data/sub/dir/')

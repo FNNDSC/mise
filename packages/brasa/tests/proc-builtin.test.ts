@@ -36,6 +36,11 @@ const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
 const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyRetry_mock = jest.fn(async (): Promise<void> => undefined);
+const builtinCd_mock = jest.fn(async (): Promise<TestEnvelope> => ({ status: 'ok', rendered: '' }));
+const sessionGetCWD_mock = jest.fn(async (): Promise<string> => '/home/alice/outputs/result-set/child');
+const pathExtractFeedID_mock = jest.fn((): number | null => null);
+const pathExtractPluginInstanceID_mock = jest.fn((): number | null => null);
+const pathIsInFeed_mock = jest.fn((): boolean => false);
 let mockFeeds: TestFeed[] = [];
 let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
@@ -52,6 +57,8 @@ const mockCache = {
   instances_count: jest.fn((): number => 25),
   instancesForFeed_count: jest.fn((): number => 2),
   path_build: jest.fn((id: number): string => `/proc/jobs/feed_1/pl-test_${id}`),
+  instance_get: jest.fn(() => undefined),
+  outputPath_match: jest.fn(() => undefined),
   topologyLoaded_has: jest.fn((): boolean => true),
   warmupProgress_get: jest.fn(() => ({ ...mockWarmup })),
   lifecycle_get: jest.fn(() => ({ ...mockLifecycle })),
@@ -66,6 +73,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   }),
   envelope_ok: (rendered: string): TestEnvelope => ({ status: 'ok', rendered }),
   procCache_get: jest.fn(() => mockCache),
+  path_extractFeedID: pathExtractFeedID_mock,
+  path_extractPluginInstanceID: pathExtractPluginInstanceID_mock,
+  path_isInFeed: pathIsInFeed_mock,
 }));
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -81,6 +91,14 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({
   spinner: { start: jest.fn(), stop: jest.fn() },
+}));
+
+jest.unstable_mockModule('../src/builtins/fs/cd.js', () => ({
+  builtin_cd: builtinCd_mock,
+}));
+
+jest.unstable_mockModule('../src/session/index.js', () => ({
+  session: { getCWD: sessionGetCWD_mock },
 }));
 
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
@@ -265,6 +283,62 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('/proc/jobs/feed_1/pl-test_123');
     expect(procTopologyAwait_mock).not.toHaveBeenCalled();
+  });
+
+  it('navigates from a known output directory to its producing proc node', async () => {
+    (mockCache.outputPath_match as jest.Mock).mockReturnValueOnce({ id: 123 });
+    mockCache.path_build.mockReturnValueOnce('/proc/jobs/feed_5/pl-root_10');
+
+    const envelope: TestEnvelope = await builtin_proc(['here']);
+
+    expect(envelope.status).toBe('ok');
+    expect(sessionGetCWD_mock).toHaveBeenCalledTimes(1);
+    expect(mockCache.outputPath_match).toHaveBeenCalledWith('/home/alice/outputs/result-set/child');
+    expect(builtinCd_mock).toHaveBeenCalledWith(['/proc/jobs/feed_5/pl-root_10']);
+  });
+
+  it('maps a CFS feed root to the equivalent proc feed without output provenance', async () => {
+    mockFeeds = [{
+      id: 4248, title: 'feed', ownerUsername: 'radstar', public: false,
+      creationDate: '', finishedJobs: 1, erroredJobs: 0, startedJobs: 0,
+      scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+    }];
+    sessionGetCWD_mock.mockResolvedValueOnce('/home/radstar/feeds/feed_4248');
+    pathIsInFeed_mock.mockReturnValueOnce(true);
+    pathExtractFeedID_mock.mockReturnValueOnce(4248);
+
+    const envelope: TestEnvelope = await builtin_proc(['here']);
+
+    expect(envelope.status).toBe('ok');
+    expect(mockCache.outputPath_match).not.toHaveBeenCalled();
+    expect(builtinCd_mock).toHaveBeenCalledWith(['/proc/jobs/feed_4248']);
+  });
+
+  it('maps a canonical CFS job directory to its validated proc node', async () => {
+    mockFeeds = [{
+      id: 4248, title: 'feed', ownerUsername: 'radstar', public: false,
+      creationDate: '', finishedJobs: 1, erroredJobs: 0, startedJobs: 0,
+      scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+    }];
+    sessionGetCWD_mock.mockResolvedValueOnce('/home/radstar/feeds/feed_4248/pl-dircopy_515719/data');
+    pathIsInFeed_mock.mockReturnValueOnce(true);
+    pathExtractFeedID_mock.mockReturnValueOnce(4248);
+    pathExtractPluginInstanceID_mock.mockReturnValueOnce(515719);
+    (mockCache.instance_get as jest.Mock).mockReturnValueOnce({ id: 515719, feedID: 4248 });
+    mockCache.path_build.mockReturnValueOnce('/proc/jobs/feed_4248/pl-dircopy_515719');
+
+    const envelope: TestEnvelope = await builtin_proc(['here']);
+
+    expect(envelope.status).toBe('ok');
+    expect(builtinCd_mock).toHaveBeenCalledWith(['/proc/jobs/feed_4248/pl-dircopy_515719']);
+  });
+
+  it('does not infer a producer when output provenance is absent', async () => {
+    const envelope: TestEnvelope = await builtin_proc(['here']);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('no matching /proc job is known');
+    expect(builtinCd_mock).not.toHaveBeenCalled();
   });
 
   it('allows proc stat while warming', async () => {

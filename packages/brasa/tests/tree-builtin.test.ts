@@ -54,6 +54,28 @@ describe('builtin_tree', () => {
     expect(envelope.rendered).toContain('/b');
   });
 
+  it('scans only directories when --dirs is selected', async () => {
+    mockScanDo.mockResolvedValue({ fileInfo: [{ chrisPath: '/a/dir' }], totalSize: 0 });
+
+    const envelope = await builtin_tree(['--dirs']);
+
+    expect(mockScanDo).toHaveBeenCalledWith(expect.objectContaining({ dirsOnly: true, tree: false }));
+    expect(mockArchy).toHaveBeenCalled();
+    expect(envelope.rendered).toContain('TREE_OUTPUT');
+  });
+
+  it('emits only full directory paths when --dirpath is selected', async () => {
+    mockScanDo.mockResolvedValue({ fileInfo: [{ chrisPath: '/data/a' }, { chrisPath: '/data/a/b' }], totalSize: 0 });
+
+    const envelope = await builtin_tree(['--dirpath', '/data']);
+
+    expect(mockScanDo).toHaveBeenCalledWith(expect.objectContaining({ dirsOnly: true, tree: false }));
+    expect(mockArchy).not.toHaveBeenCalled();
+    expect(envelope.rendered).toContain('/data/a');
+    expect(envelope.rendered).toContain('/data/a/b');
+    expect(mockSetCWD).toHaveBeenCalledWith('/data');
+  });
+
   it('temporarily changes directory for an explicit path and restores it', async () => {
     mockScanDo.mockResolvedValue({ fileInfo: [], totalSize: 0 });
     await builtin_tree(['/data/scans']);

@@ -16,6 +16,7 @@ export class Session {
   private _offline: boolean = false;
   private _physicalMode: boolean = false;
   private _timingEnabled: boolean = false;
+  private _previousCWD: string | undefined;
 
   /**
    * Private constructor for Singleton.
@@ -62,6 +63,31 @@ export class Session {
    */
   async setCWD(path: string): Promise<void> {
     await chrisContext.current_set(Context.ChRISfolder, path);
+  }
+
+  /**
+   * Changes directory as an interactive `cd` operation while retaining the
+   * previous directory for `cd -`.
+   *
+   * Other temporary context changes use {@link setCWD} directly and therefore
+   * do not disturb interactive navigation history.
+   *
+   * @param path - New current working directory.
+   * @returns Nothing.
+   */
+  async directory_change(path: string): Promise<void> {
+    const current: string = await this.getCWD();
+    if (current !== path) this._previousCWD = current;
+    await this.setCWD(path);
+  }
+
+  /**
+   * Returns the directory immediately preceding the latest interactive change.
+   *
+   * @returns Previous directory, or undefined when none exists in this session.
+   */
+  previousCWD_get(): string | undefined {
+    return this._previousCWD;
   }
   
   /**

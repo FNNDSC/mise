@@ -1,3 +1,5 @@
+import { deflateSync } from 'node:zlib';
+
 /**
  * Boundary-only tests for salsa job operations. The only external seam is
  * cumin's chrisConnection.client_get(); everything else (Result/errorStack/
@@ -250,6 +252,18 @@ describe('job_feedID_get', () => {
 });
 
 describe('job_logFetch', () => {
+  it('decodes the complete log from CUBE\'s compressed raw pfcon response', async () => {
+    const raw: string = deflateSync(Buffer.from(JSON.stringify({
+      compute: { logs: 'first line\nlast line' },
+    }), 'utf8')).toString('base64');
+    const inst = instance('completed', { data: { status: 'completed', raw } });
+    clientGet.mockResolvedValue(client({ getPluginInstance: jest.fn().mockResolvedValue(inst) }));
+
+    const r = await job_logFetch(1);
+
+    expect(r.ok && r.value).toBe('first line\nlast line');
+  });
+
   it('joins log entries', async () => {
     const inst = instance('completed', {
       getLogs: jest.fn().mockResolvedValue({ data: [{ log: 'line1' }, { log: 'line2' }] }),

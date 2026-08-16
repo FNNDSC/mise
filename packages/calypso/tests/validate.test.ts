@@ -15,6 +15,7 @@ describe('clientMessage_parse', () => {
       capabilities: { shellCommands: true },
     }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'execute', id: '1', line: 'ls' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'cancel', id: '1' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'complete', id: '2', prefix: 'l' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'pipeError', pipeId: 'p1', reason: 'failed' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'shellResult', shellId: 's1', exitCode: 0 }).ok).toBe(true);

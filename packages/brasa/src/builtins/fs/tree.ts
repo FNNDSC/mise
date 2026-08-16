@@ -25,9 +25,13 @@ import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
  * ```
  */
 export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args);
+  const parsed: ParsedArgs = commandArgs_process(args, {
+    booleanLongOptions: ['follow', 'path', 'dirs', 'dirpath'],
+  });
   const pathArgs: string[] = parsed._ as string[];
-  const pathMode: boolean = !!parsed['path'];
+  const dirpathMode: boolean = !!parsed['dirpath'];
+  const pathMode: boolean = !!parsed['path'] || dirpathMode;
+  const dirsOnly: boolean = !!parsed['dirs'] || dirpathMode;
 
   // Determine target path
   let targetPath: string | undefined;
@@ -40,7 +44,7 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
     silent: true,
     tree: false,  // We'll format it ourselves
     follow: !!parsed['follow'],
-    dirsOnly: false,
+    dirsOnly,
   };
 
   // If path specified, temporarily set context

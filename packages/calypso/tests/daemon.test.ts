@@ -241,6 +241,38 @@ describe('CalypsoDaemon', () => {
     expect(engine.executed).toEqual(['first', 'second']);
   });
 
+  it('relays cancellation only from the surface running the foreground command', async () => {
+    let release: (() => void) | undefined;
+    engine.line_execute = async (line: string): Promise<CommandEnvelope[]> => {
+      engine.executed.push(line);
+      await new Promise<void>((resolve: () => void): void => { release = resolve; });
+      return [{ status: 'error', rendered: '', renderedErr: 'du: cancelled\n' }];
+    };
+    let cancellations: number = 0;
+    const cancel = (): boolean => {
+      cancellations += 1;
+      release?.();
+      return true;
+    };
+    engine.line_cancel = cancel;
+
+    const origin = await client_attach(port);
+    const sibling = await client_attach(port);
+    clients.push(origin, sibling);
+    send(origin, { type: 'execute', id: 'scan-1', line: 'du test-upload' });
+    await until(() => engine.executed.length === 1);
+
+    const siblingError = message_next(sibling);
+    send(sibling, { type: 'cancel', id: 'scan-1' });
+    expect((await siblingError).reason).toContain('no matching foreground command');
+    expect(cancellations).toBe(0);
+
+    const result = message_next(origin);
+    send(origin, { type: 'cancel', id: 'scan-1' });
+    await until(() => cancellations === 1);
+    expect((await result).type).toBe('result');
+  });
+
   it('returns an error when the engine throws during execute', async () => {
     const ws = await client_attach(port);
     clients.push(ws);

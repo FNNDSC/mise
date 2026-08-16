@@ -134,13 +134,13 @@ Providers implement a common interface: `list(path)` → `Result<VFSItem[]>` and
 ├── title
 └── pl-dircopy_456/         ← type=job in VFSItem; ls -l shows colour-coded status
     ├── status              ← live API fetch if non-terminal
-    ├── params              ← key=value, cached permanently
-    ├── log                 ← never cached, always live
+    ├── params              ← complete effective key=value run parameters, cached permanently
+    ├── log                 ← never cached; decoded from CUBE's `raw` response
     └── pl-fshack_789/
         └── …
 ```
 
-The cache (`ProcCache` in cumin) holds flat topology maps for O(1) lookup and O(depth) path reconstruction. The daemon restores this normalized graph from an identity-scoped local checkpoint, validates visible feeds, then reconciles it with a paginated CUBE sweep. Terminal status persists; active status and logs remain live.
+The cache (`ProcCache` in cumin) holds flat topology maps for O(1) lookup and O(depth) path reconstruction. The daemon restores this normalized graph from an identity-scoped local checkpoint, validates visible feeds, then reconciles only new, changed, and active feeds; `proc refresh` explicitly runs the paginated global CUBE sweep. Terminal status persists; active status remains live. `params` reads the complete `PluginInstance.parameters` collection, rather than instance-detail metadata. Logs remain uncached: ChELL decodes CUBE's base64/zlib-compressed `PluginInstance.raw` response and reads `compute.logs`; it never fetches from a spoke.
 
 ## Development
 

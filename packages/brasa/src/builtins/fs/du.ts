@@ -8,6 +8,7 @@ import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
 import { spinner } from '../../lib/spinner.js';
+import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import type { Result, CommandEnvelope } from '@fnndsc/cumin';
@@ -24,6 +25,11 @@ export interface DuOptions {
   separateDirs: boolean;
   maxDepth: number | undefined;
 }
+
+/** Long `du` flags that never accept a separate value. */
+const DU_BOOLEAN_LONG_OPTIONS: readonly string[] = [
+  'human-readable', 'summarize', 'all', 'total', 'separate-dirs',
+];
 
 /**
  * Stat summary for a single `du` target.
@@ -196,9 +202,11 @@ function dirUsage_render(
  * ```
  */
 export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args);
+  const parsed: ParsedArgs = commandArgs_process(args, { booleanLongOptions: DU_BOOLEAN_LONG_OPTIONS });
   const opts: DuOptions = duOptions_parse(parsed);
   const pathArgs: string[] = parsed._ as string[];
+  commandCancellation_enable();
+  const signal: AbortSignal | undefined = commandCancellation_signalGet();
 
   const originalFolder: string = await session.getCWD();
   const rawTargets: string[] = pathArgs.length > 0 ? pathArgs : ['.'];
@@ -214,6 +222,9 @@ export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
 
   try {
     for (const targetPath of resolvedTargets) {
+      if (signal?.aborted) {
+        return { status: 'error', rendered: '', renderedErr: 'du: cancelled\n' };
+      }
       const argLabel: string = path.basename(targetPath);
       spinner.start(`Scanning ${argLabel}...`);
 
@@ -237,9 +248,14 @@ export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
         tree: false,
         follow: false,
         dirsOnly: false,
+        signal,
       };
       const scanResult: ScanRecord | null = await scan_do(scanOptions);
       await session.setCWD(originalFolder);
+
+      if (signal?.aborted) {
+        return { status: 'error', rendered: '', renderedErr: 'du: cancelled\n' };
+      }
 
       if (!scanResult) {
         spinner.stop();

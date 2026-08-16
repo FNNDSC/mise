@@ -411,17 +411,18 @@ Uploads files or directories from the local filesystem to ChRIS.
 
 **Syntax:**
 ```bash
-upload <local_path> <chris_path>
+upload <local_path_or_glob> <chris_path>
 ```
 
 **Parameters:**
 
-* `local_path` - Path on local filesystem (supports `~` expansion)
+* `local_path_or_glob` - Path or glob on the local filesystem (supports `~` expansion)
 * `chris_path` - Target path in ChRIS filesystem
 
 **Examples:**
 ```bash
 upload ~/data/results.csv /home/alice/experiments/
+upload ~/Pictures/earthandmoon* .
 upload ./local_dir/ ~/uploads/
 upload /tmp/output.json .
 ```

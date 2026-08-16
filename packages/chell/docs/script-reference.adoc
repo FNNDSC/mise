@@ -371,15 +371,16 @@ touch <path>
 
 [source,bash]
 ----
-upload <local_path> <chris_path>
+upload <local_path_or_glob> <chris_path>
 ----
 
-Recursively uploads a local file or directory tree.
+Recursively uploads a local file or directory tree. The local endpoint also accepts a host-filesystem glob; every match is uploaded with one aggregate progress display.
 
 [source,bash]
 ----
 upload ~/data/study .
 upload /tmp/results.csv /home/alice/uploads/
+upload ~/Pictures/earthandmoon* .
 ----
 
 === download

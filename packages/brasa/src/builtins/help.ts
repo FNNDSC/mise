@@ -219,8 +219,8 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   upload: {
-    usage: 'upload <local_path> <chris_path>',
-    description: 'Upload files from local filesystem to ChRIS with progress tracking',
+    usage: 'upload <local_path_or_glob> <chris_path>',
+    description: 'Upload local files, directories, or glob matches to ChRIS with progress tracking',
     options: [
       'Displays progress bar showing:',
       '  - File count and percentage complete',
@@ -230,6 +230,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
     examples: [
       'upload ~/data/file.csv /home/user/uploads/',
+      'upload ~/Pictures/earthandmoon* .',
       'upload ./results/ ~/data/',
       'upload ~/experiment/data /home/user/projects/',
     ],

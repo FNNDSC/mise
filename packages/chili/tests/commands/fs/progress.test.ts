@@ -59,6 +59,29 @@ describe('fs structured progress producers', () => {
     ]);
   });
 
+  it('expands a host-filesystem glob before scanning an upload', async () => {
+    await fs.promises.writeFile(path.join(tmpDir, 'earthandmoon-1.png'), 'one');
+    await fs.promises.writeFile(path.join(tmpDir, 'earthandmoon-2.png'), 'two');
+    await fs.promises.writeFile(path.join(tmpDir, 'unrelated.png'), 'three');
+
+    const summary = await files_uploadWithProgress(path.join(tmpDir, 'earthandmoon*'), '/remote', {
+      force: true,
+    });
+
+    expect(summary.totalFiles).toBe(2);
+    expect(summary.transferredCount).toBe(2);
+    expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/remote', 'earthandmoon-1.png');
+    expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/remote', 'earthandmoon-2.png');
+  });
+
+  it('reports a host glob with no matches before transferring', async () => {
+    await expect(files_uploadWithProgress(path.join(tmpDir, 'missing*'), '/remote', {
+      force: true,
+    })).rejects.toThrow(`No local files matched '${path.join(tmpDir, 'missing*')}'`);
+
+    expect(chrisIO.file_upload).not.toHaveBeenCalled();
+  });
+
   it('emits failed upload completion when one file does not upload', async () => {
     const localFile = path.join(tmpDir, 'bad.dcm');
     await fs.promises.writeFile(localFile, 'abc');
@@ -101,11 +124,13 @@ describe('fs structured progress producers', () => {
   });
 
   it('formats transfer helper values and delegates plain upload', async () => {
+    const localFile: string = path.join(tmpDir, 'local.txt');
+    await fs.promises.writeFile(localFile, 'content');
     (files_uploadPath as jest.Mock).mockResolvedValue(true);
 
-    await expect(files_upload('local.txt', '/remote')).resolves.toBe(true);
+    await expect(files_upload(localFile, '/remote')).resolves.toBe(true);
 
-    expect(files_uploadPath).toHaveBeenCalledWith('local.txt', '/remote');
+    expect(files_uploadPath).toHaveBeenCalledWith(localFile, '/remote');
     expect(bytes_format(0)).toBe('0 B');
     expect(bytes_format(2048)).toBe('2 KB');
     expect(eta_format(null)).toBe('--');
@@ -113,6 +138,17 @@ describe('fs structured progress producers', () => {
     expect(eta_format(3661)).toBe('1h 1m 1s');
     expect(rate_format(0)).toBe('--');
     expect(rate_format(2048)).toBe('2 KB/s');
+  });
+
+  it('expands a host glob for the plain upload entry point', async () => {
+    await fs.promises.writeFile(path.join(tmpDir, 'scan-1.txt'), 'one');
+    await fs.promises.writeFile(path.join(tmpDir, 'scan-2.txt'), 'two');
+    (files_uploadPath as jest.Mock).mockResolvedValue(true);
+
+    await expect(files_upload(path.join(tmpDir, 'scan-*'), '/remote')).resolves.toBe(true);
+
+    expect(files_uploadPath).toHaveBeenCalledWith(path.join(tmpDir, 'scan-1.txt'), '/remote');
+    expect(files_uploadPath).toHaveBeenCalledWith(path.join(tmpDir, 'scan-2.txt'), '/remote');
   });
 
   it('emits byte progress for a single-file download', async () => {

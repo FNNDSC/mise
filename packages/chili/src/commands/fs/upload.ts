@@ -2,14 +2,17 @@
  * @file Upload command implementation.
  * @module
  */
-import { files_uploadPath } from "@fnndsc/salsa";
-import { chrisIO } from "@fnndsc/cumin";
-import { path_resolveChrisFs } from "../../utils/cli.js";
 import fs from "fs";
 import path from "path";
+
 import chalk from "chalk";
-import { prompt_confirmOrThrow } from "../../utils/input_format.js";
+import { glob } from "glob";
+
+import { chrisIO } from "@fnndsc/cumin";
+import { files_uploadPath } from "@fnndsc/salsa";
 import { chiliLog } from "../../screen/output.js";
+import { prompt_confirmOrThrow } from "../../utils/input_format.js";
+import { path_resolveChrisFs } from "../../utils/cli.js";
 
 /**
  * File information for upload tracking.
@@ -93,12 +96,45 @@ export function rate_format(rateBytesPerSec: number): string {
 }
 
 /**
- * Recursively scans a local directory to get all files for upload.
- * @param localPath - The local filesystem path.
+ * Expands one host-local source path or glob pattern.
+ *
+ * An exact existing path takes precedence over pattern interpretation so a
+ * literal filename containing glob metacharacters remains addressable.
+ *
+ * @param localPattern - The local filesystem path or glob pattern.
+ * @returns Matching host-local paths in deterministic order.
+ * @throws If the exact path cannot be read or the pattern has no matches.
+ */
+async function localPaths_expand(localPattern: string): Promise<string[]> {
+  try {
+    await fs.promises.stat(localPattern);
+    return [localPattern];
+  } catch (error: unknown) {
+    const isNotFound: boolean = typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 'ENOENT';
+    if (!isNotFound) {
+      throw error;
+    }
+  }
+
+  const matches: string[] = await glob(localPattern, { dot: false });
+
+  if (matches.length === 0) {
+    throw new Error(`No local files matched '${localPattern}'`);
+  }
+
+  return matches.sort();
+}
+
+/**
+ * Recursively scans local files and directories for upload.
+ * @param localPaths - The local filesystem paths to scan.
  * @param remotePath - The target ChRIS path.
  * @returns Array of UploadFileInfo objects.
  */
-async function localFiles_scan(localPath: string, remotePath: string): Promise<UploadFileInfo[]> {
+async function localFiles_scan(localPaths: readonly string[], remotePath: string): Promise<UploadFileInfo[]> {
   const files: UploadFileInfo[] = [];
 
   async function walkDir(currentLocal: string, currentRemote: string): Promise<void> {
@@ -123,25 +159,26 @@ async function localFiles_scan(localPath: string, remotePath: string): Promise<U
     }
   }
 
-  const stats: fs.Stats = await fs.promises.stat(localPath);
-  if (stats.isDirectory()) {
-    // Preserve directory basename in remote path (Unix cp semantics)
-    const basename: string = path.basename(localPath);
-    const targetDir: string = remotePath.endsWith('/')
-      ? remotePath + basename
-      : remotePath + '/' + basename;
-    await walkDir(localPath, targetDir);
-  } else {
-    // Single file upload
-    const filename: string = path.basename(localPath);
-    const targetPath: string = remotePath.endsWith('/')
-      ? remotePath + filename
-      : remotePath + '/' + filename;
-    files.push({
-      hostPath: localPath,
-      chrisPath: targetPath,
-      size: stats.size,
-    });
+  for (const localPath of localPaths) {
+    const stats: fs.Stats = await fs.promises.stat(localPath);
+    if (stats.isDirectory()) {
+      // Preserve each directory basename in the remote path (Unix cp semantics).
+      const basename: string = path.basename(localPath);
+      const targetDir: string = remotePath.endsWith('/')
+        ? remotePath + basename
+        : remotePath + '/' + basename;
+      await walkDir(localPath, targetDir);
+    } else {
+      const filename: string = path.basename(localPath);
+      const targetPath: string = remotePath.endsWith('/')
+        ? remotePath + filename
+        : remotePath + '/' + filename;
+      files.push({
+        hostPath: localPath,
+        chrisPath: targetPath,
+        size: stats.size,
+      });
+    }
   }
 
   return files;
@@ -149,7 +186,7 @@ async function localFiles_scan(localPath: string, remotePath: string): Promise<U
 
 /**
  * Uploads files and optionally emits structured progress events.
- * @param localPath - Local path (file or directory).
+ * @param localPath - Local path (file or directory) or a host-local glob.
  * @param remotePath - Remote ChRIS path.
  * @param options - Upload options, including an optional progress callback.
  * @returns Promise<UploadSummary> with upload statistics.
@@ -160,6 +197,7 @@ export async function files_uploadWithProgress(
   options: UploadOptions = {}
 ): Promise<UploadSummary> {
   const resolvedRemote: string = await path_resolveChrisFs(remotePath, {});
+  const localPaths: string[] = await localPaths_expand(localPath);
 
   // Scan files
   chiliLog(chalk.cyan("Scanning files to upload..."));
@@ -170,16 +208,18 @@ export async function files_uploadWithProgress(
     label: "Scanning files to upload",
     status: "running",
   });
-  const fileList: UploadFileInfo[] = await localFiles_scan(localPath, resolvedRemote);
+  const fileList: UploadFileInfo[] = await localFiles_scan(localPaths, resolvedRemote);
 
   // Determine actual target path (where files will be uploaded)
-  const stats: fs.Stats = await fs.promises.stat(localPath);
   let actualTarget: string = resolvedRemote;
-  if (stats.isDirectory()) {
-    const basename: string = path.basename(localPath);
-    actualTarget = resolvedRemote.endsWith('/')
-      ? resolvedRemote + basename
-      : resolvedRemote + '/' + basename;
+  if (localPaths.length === 1) {
+    const stats: fs.Stats = await fs.promises.stat(localPaths[0]);
+    if (stats.isDirectory()) {
+      const basename: string = path.basename(localPaths[0]);
+      actualTarget = resolvedRemote.endsWith('/')
+        ? resolvedRemote + basename
+        : resolvedRemote + '/' + basename;
+    }
   }
 
   // Detect existing target and require confirmation unless force is set
@@ -294,6 +334,13 @@ export async function files_uploadWithProgress(
  */
 export async function files_upload(localPath: string, remotePath: string): Promise<boolean> {
   const resolvedRemote: string = await path_resolveChrisFs(remotePath, {});
+  const localPaths: string[] = await localPaths_expand(localPath);
 
-  return await files_uploadPath(localPath, resolvedRemote);
+  for (const matchedPath of localPaths) {
+    if (!await files_uploadPath(matchedPath, resolvedRemote)) {
+      return false;
+    }
+  }
+
+  return true;
 }

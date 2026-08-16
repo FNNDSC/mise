@@ -165,7 +165,7 @@ POSIX spelling alone does not identify which machine owns an operation. The curr
 
 | `upload <local> <remote>` and `download <remote> <local>`
 | Engine host filesystem for the local endpoint; CFS for the remote endpoint
-| Today the local endpoint is on the daemon machine. These commands are not a client-filesystem transfer channel in remote mode.
+| Today the local endpoint is on the daemon machine. `upload` expands a local-endpoint glob there before transfer, while ordinary ChELL wildcard expansion remains CFS/VFS-only. These commands are not a client-filesystem transfer channel in remote mode.
 
 | `edit <CFS-file>`
 | CFS content with an originating-surface editor

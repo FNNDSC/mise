@@ -434,6 +434,26 @@ upload /tmp/output.json .
 * Shows progress for large uploads
 * Uses current context if relative paths provided
 
+=== download
+
+Downloads a ChRIS file or directory to the local filesystem.
+
+**Syntax:**
+```bash
+download <chris_path_or_glob> <local_path> [-f|--force]
+```
+
+**Parameters:**
+
+* `chris_path_or_glob` - ChRIS path, or a CFS glob that selects multiple paths
+* `local_path` - Exact local destination. For a source glob, this is a directory receiving every match.
+
+**Examples:**
+```bash
+download /home/alice/results/*.nii /tmp/results/
+download /home/alice/feeds/feed_42 ./downloads/
+```
+
 == PACS Query and Retrieval
 
 === pacs query

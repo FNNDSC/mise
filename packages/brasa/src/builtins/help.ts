@@ -236,14 +236,15 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   download: {
-    usage: 'download <chris_path> <local_path> [-f|--force]',
-    description: 'Download a ChRIS file or directory to the local filesystem with progress tracking',
+    usage: 'download <chris_path_or_glob> <local_path> [-f|--force]',
+    description: 'Download a ChRIS file, directory, or CFS glob to the local filesystem with progress tracking',
     options: [
       '-f, --force   Overwrite existing local paths',
       'Progress bar shows files, ETA, bytes transferred',
     ],
     examples: [
       'download /home/user/data ./data',
+      'download /home/user/results/*.nii ./results/',
       'download /feeds/feed_123 ./downloads -f',
     ],
   },

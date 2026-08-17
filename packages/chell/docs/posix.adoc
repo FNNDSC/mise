@@ -137,7 +137,7 @@ ChELL implements a deliberately small shell language:
 * pipes separated by unquoted `|`;
 * overwrite and append redirection with unquoted `>` and `>>`;
 * `$NAME` and `${NAME}` substitution from the ChELL process environment on the normal plain-command dispatch path; an unset name is left literal;
-* wildcard expansion for `ls`, `rm`, `cat`, `mv`, `cp`, `du`, and `tree`.
+* wildcard expansion for `ls`, `rm`, `cat`, `mv`, `cp`, `du`, and `tree`, plus the CFS source argument of `download`.
 
 Where supported, environment substitution is applied to parsed tokens after quote characters have been removed and after wildcard expansion. Unlike a POSIX shell, single quotes therefore do not suppress `$NAME` substitution, quoting a wildcard does not suppress expansion for a wildcard-aware command, and a wildcard introduced by an environment value is not subsequently expanded. An expanded value stays one token and cannot inject a semicolon, pipe, or redirect into the already-parsed command structure. The ChELL command captured by a pipe or standalone redirect does not currently take this environment-substitution path; neither does a direct plugin executable that resolves before generic dispatch.
 
@@ -165,7 +165,7 @@ POSIX spelling alone does not identify which machine owns an operation. The curr
 
 | `upload <local> <remote>` and `download <remote> <local>`
 | Engine host filesystem for the local endpoint; CFS for the remote endpoint
-| Today the local endpoint is on the daemon machine. `upload` expands a local-endpoint glob there before transfer, while ordinary ChELL wildcard expansion remains CFS/VFS-only. These commands are not a client-filesystem transfer channel in remote mode.
+| Today the local endpoint is on the daemon machine. `upload` expands a local-endpoint glob there; `download` expands only its CFS source and writes every match into one literal local directory. Ordinary ChELL wildcard expansion remains CFS/VFS-only. These commands are not a client-filesystem transfer channel in remote mode.
 
 | `edit <CFS-file>`
 | CFS content with an originating-surface editor

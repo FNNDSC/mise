@@ -175,7 +175,7 @@ async function fileId_resolve(srcPath: string): Promise<Result<number>> {
  * @param targetPath - The absolute ChRIS path to check.
  * @returns Promise resolving to true if the path is a directory, false otherwise.
  */
-async function path_isDir(targetPath: string): Promise<boolean> {
+export async function files_path_isDirectory(targetPath: string): Promise<boolean> {
   const parent: string = path.posix.dirname(targetPath);
   const name: string = path.posix.basename(targetPath);
   const results: FilteredResourceData | null = await files_listAll({ limit: 1000, offset: 0 }, "dirs", parent);
@@ -294,8 +294,8 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
  */
 export async function files_move(srcPath: string, destPath: string): Promise<boolean> {
   try {
-    const srcIsDir: boolean = await path_isDir(srcPath);
-    const destIsDir: boolean = await path_isDir(destPath);
+    const srcIsDir: boolean = await files_path_isDirectory(srcPath);
+    const destIsDir: boolean = await files_path_isDirectory(destPath);
     const destLooksDir: boolean = destPath.endsWith("/");
     const finalDest: string = (destIsDir || destLooksDir)
       ? path.posix.join(destPath, path.posix.basename(srcPath))

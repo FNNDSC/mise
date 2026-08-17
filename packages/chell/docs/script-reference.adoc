@@ -387,7 +387,14 @@ upload ~/Pictures/earthandmoon* .
 
 [source,bash]
 ----
-download <chris_path> <local_path>
+download <chris_path_or_glob> <local_path>
+----
+
+Downloads one CFS file or directory to the daemon host. A CFS source glob downloads every match into one host-local destination directory with aggregate progress; the local destination is always literal.
+
+[source,bash]
+----
+download /home/alice/results/*.nii /tmp/results/
 ----
 
 === pull

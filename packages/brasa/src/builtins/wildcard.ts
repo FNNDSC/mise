@@ -21,18 +21,24 @@ export function string_checkHasWildcard(arg: string): boolean {
   return /[*?[\]]/.test(arg);
 }
 
+/** A VFS item selected by wildcard expansion. */
+export interface WildcardMatch {
+  path: string;
+  type: ListingItem['type'];
+}
+
 /**
- * Expands a wildcard pattern against the current directory.
+ * Expands a wildcard pattern against the current directory with item type.
  *
  * @param pattern - The glob pattern (e.g., "*.ts", "test*.json").
- * @returns A Promise resolving to Result<string[]>.
+ * @returns A Promise resolving to Result<WildcardMatch[]>.
  *          Ok([]) = no matches (not an error).
  *          Err(...) = couldn't expand (API failure, permission denied, etc.).
  */
-export async function wildcard_expand(pattern: string): Promise<Result<string[]>> {
+export async function wildcard_expandMatches(pattern: string): Promise<Result<WildcardMatch[]>> {
   // If no wildcard, return as-is
   if (!string_checkHasWildcard(pattern)) {
-    return Ok([pattern]);
+    return Ok([{ path: pattern, type: 'file' }]);
   }
 
   try {
@@ -80,14 +86,17 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
     }
 
     // Filter items by pattern
-    const matches: string[] = items
+    const matches: WildcardMatch[] = items
       .filter((item: ListingItem) => minimatch(item.name, matchPattern))
       .map((item: ListingItem) => {
-        // Return full path if we searched a different directory
-        if (searchDir !== cwd) {
-          return `${searchDir}/${item.name}`.replace(/\/+/g, '/');
-        }
-        return item.name;
+        // Return a full path if we searched a different directory.
+        const itemPath: string = searchDir !== cwd
+          ? `${searchDir}/${item.name}`.replace(/\/+/g, '/')
+          : item.name;
+        return {
+          path: itemPath,
+          type: item.type,
+        };
       });
 
     // Ok([]) for no matches (not an error)
@@ -98,6 +107,20 @@ export async function wildcard_expand(pattern: string): Promise<Result<string[]>
     errorStack.stack_push("error", `Failed to expand wildcard '${pattern}': ${errorMsg}`);
     return Err();
   }
+}
+
+/**
+ * Expands a wildcard pattern against the current directory.
+ *
+ * @param pattern - The glob pattern (e.g., "*.ts", "test*.json").
+ * @returns A Promise resolving to Result<string[]>.
+ *          Ok([]) = no matches (not an error).
+ *          Err(...) = couldn't expand (API failure, permission denied, etc.).
+ */
+export async function wildcard_expand(pattern: string): Promise<Result<string[]>> {
+  const result: Result<WildcardMatch[]> = await wildcard_expandMatches(pattern);
+  if (!result.ok) return result;
+  return Ok(result.value.map((match: WildcardMatch) => match.path));
 }
 
 /**

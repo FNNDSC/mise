@@ -3,10 +3,10 @@ import os from 'os';
 import path from 'path';
 import { Readable } from 'stream';
 import { bytes_format, eta_format, files_upload, files_uploadWithProgress, rate_format, type UploadProgressEvent } from '../../../src/commands/fs/upload';
-import { files_downloadWithProgress, type DownloadProgressEvent } from '../../../src/commands/fs/download';
+import { files_downloadManyWithProgress, files_downloadWithProgress, type DownloadProgressEvent } from '../../../src/commands/fs/download';
 import * as cliUtils from '../../../src/utils/cli';
 import { chrisIO } from '@fnndsc/cumin';
-import { fileContent_getBinaryStream, files_listRecursive, files_uploadPath } from '@fnndsc/salsa';
+import { fileContent_getBinaryStream, files_listRecursive, files_path_isDirectory, files_uploadPath } from '@fnndsc/salsa';
 import { prompt_confirmOrThrow } from '../../../src/utils/input_format';
 
 jest.mock('../../../src/utils/cli');
@@ -22,6 +22,7 @@ jest.mock('@fnndsc/cumin', () => ({
 jest.mock('@fnndsc/salsa', () => ({
   fileContent_getBinaryStream: jest.fn(),
   files_listRecursive: jest.fn(),
+  files_path_isDirectory: jest.fn(),
   files_uploadPath: jest.fn(),
 }));
 
@@ -70,6 +71,7 @@ describe('fs structured progress producers', () => {
 
     expect(summary.totalFiles).toBe(2);
     expect(summary.transferredCount).toBe(2);
+    expect(summary.transferSize).toBe(6);
     expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/remote', 'earthandmoon-1.png');
     expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/remote', 'earthandmoon-2.png');
   });
@@ -189,6 +191,83 @@ describe('fs structured progress producers', () => {
     expect(events).toEqual([
       expect.objectContaining({ operation: 'download', phase: 'failed', status: 'error' }),
     ]);
+  });
+
+  it('downloads multiple CFS files into one local directory with aggregate progress', async () => {
+    const destination: string = path.join(tmpDir, 'downloads');
+    const events: DownloadProgressEvent[] = [];
+    (files_listRecursive as jest.Mock).mockRejectedValue(new Error('not a directory'));
+    (fileContent_getBinaryStream as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, value: { stream: Readable.from([Buffer.from('one')]), size: 3 } })
+      .mockResolvedValueOnce({ ok: true, value: { stream: Readable.from([Buffer.from('two')]), size: 3 } });
+
+    const summary = await files_downloadManyWithProgress([
+      { path: '/remote/one.txt', type: 'file' },
+      { path: '/remote/two.txt', type: 'file' },
+    ], destination, {
+      onProgress: event => { events.push(event); },
+    });
+
+    expect(summary.totalFiles).toBe(2);
+    expect(summary.transferredCount).toBe(2);
+    expect(summary.transferSize).toBe(6);
+    expect(await fs.promises.readFile(path.join(destination, 'one.txt'), 'utf8')).toBe('one');
+    expect(await fs.promises.readFile(path.join(destination, 'two.txt'), 'utf8')).toBe('two');
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: 'download', phase: 'scanning', status: 'running' }),
+      expect.objectContaining({ operation: 'download', phase: 'transferring', current: 0, total: 2, unit: 'files' }),
+      expect.objectContaining({ operation: 'download', phase: 'transferring', current: 2, total: 2, percent: 100, unit: 'files' }),
+      expect.objectContaining({ operation: 'download', phase: 'complete', current: 2, total: 2, percent: 100, unit: 'files', status: 'done' }),
+    ]));
+  });
+
+  it('preserves an empty matched CFS directory', async () => {
+    const destination: string = path.join(tmpDir, 'downloads');
+    (files_listRecursive as jest.Mock).mockResolvedValue([]);
+
+    const summary = await files_downloadManyWithProgress([
+      { path: '/remote/empty', type: 'directory' },
+    ], destination);
+
+    expect(summary.totalFiles).toBe(0);
+    expect(summary.transferredCount).toBe(0);
+    const stats: fs.Stats = await fs.promises.stat(path.join(destination, 'empty'));
+    expect(stats.isDirectory()).toBe(true);
+    expect(fileContent_getBinaryStream).not.toHaveBeenCalled();
+  });
+
+  it('resolves a link source to its file target before downloading', async () => {
+    const destination: string = path.join(tmpDir, 'downloads');
+    (cliUtils.path_resolveChrisFs as jest.Mock).mockResolvedValue('/remote/target.txt');
+    (files_path_isDirectory as jest.Mock).mockResolvedValue(false);
+    (fileContent_getBinaryStream as jest.Mock).mockResolvedValue({
+      ok: true,
+      value: { stream: Readable.from([Buffer.from('link target')]), size: 11 },
+    });
+
+    const summary = await files_downloadManyWithProgress([
+      { path: '/PUBLIC/shared', type: 'link' },
+    ], destination);
+
+    expect(summary.transferredCount).toBe(1);
+    expect(files_path_isDirectory).toHaveBeenCalledWith('/remote/target.txt');
+    expect(await fs.promises.readFile(path.join(destination, 'target.txt'), 'utf8')).toBe('link target');
+  });
+
+  it('preserves an empty directory reached through a link source', async () => {
+    const destination: string = path.join(tmpDir, 'downloads');
+    (cliUtils.path_resolveChrisFs as jest.Mock).mockResolvedValue('/remote/target');
+    (files_path_isDirectory as jest.Mock).mockResolvedValue(true);
+    (files_listRecursive as jest.Mock).mockResolvedValue([]);
+
+    const summary = await files_downloadManyWithProgress([
+      { path: '/PUBLIC/shared', type: 'link' },
+    ], destination);
+
+    expect(summary.totalFiles).toBe(0);
+    const stats: fs.Stats = await fs.promises.stat(path.join(destination, 'target'));
+    expect(stats.isDirectory()).toBe(true);
+    expect(fileContent_getBinaryStream).not.toHaveBeenCalled();
   });
 
   it('throws before download when the local file exists without force', async () => {

@@ -2,21 +2,28 @@
  * @file Builtin download command.
  * Downloads files from ChRIS to the local filesystem with progress.
  */
-import chalk from 'chalk';
 import path from 'path';
-import { path_resolve } from '../utils.js';
+
+import chalk from 'chalk';
+
 import {
   files_downloadWithProgress as chefs_download_cmd,
-  DownloadSummary,
+  files_downloadManyWithProgress as chefs_downloadMany_cmd,
+  type DownloadOptions,
+  type DownloadProgressEvent,
+  type DownloadSource,
+  type DownloadSummary,
   bytes_format
 } from '@fnndsc/chili/commands/fs/download.js';
-import { sink_get } from '../../core/sink.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { sink_get } from '../../core/sink.js';
+import { path_resolve } from '../utils.js';
+import { string_checkHasWildcard, wildcard_expandMatches } from '../wildcard.js';
 
 /**
  * Downloads a remote ChRIS file or directory to the local filesystem.
  *
- * @param args - [remotePath, localPath] plus optional -f/--force to overwrite.
+ * @param args - [remotePathOrGlob, localPath] plus optional -f/--force to overwrite.
  * @returns An envelope carrying the download summary.
  */
 export async function builtin_download(args: string[]): Promise<CommandEnvelope> {
@@ -24,20 +31,38 @@ export async function builtin_download(args: string[]): Promise<CommandEnvelope>
   const cleanArgs: string[] = args.filter(arg => arg !== '-f' && arg !== '--force');
 
   if (cleanArgs.length < 2) {
-    return envelope_ok(`${chalk.red('Usage: download <remote_path> <local_path> [-f|--force]')}\n`);
+    return envelope_ok(`${chalk.red('Usage: download <remote_path_or_glob> <local_path> [-f|--force]')}\n`);
   }
 
   const remotePathArg: string = cleanArgs[0];
   const localPathArg: string = cleanArgs[1];
 
-  const targetRemote: string = await path_resolve(remotePathArg);
   const targetLocal: string = path.resolve(localPathArg);
 
   try {
-    const summary: DownloadSummary = await chefs_download_cmd(targetRemote, targetLocal, {
+    const progress: DownloadOptions = {
       force,
-      onProgress: event => sink_get().progress_write(event),
-    });
+      onProgress: (event: DownloadProgressEvent): void => sink_get().progress_write(event),
+    };
+    let summary: DownloadSummary;
+    if (!string_checkHasWildcard(remotePathArg)) {
+      const targetRemote: string = await path_resolve(remotePathArg);
+      summary = await chefs_download_cmd(targetRemote, targetLocal, progress);
+    } else {
+      const sourcePattern: string = await path_resolve(remotePathArg);
+      const expansion = await wildcard_expandMatches(sourcePattern);
+      if (!expansion.ok) {
+        throw new Error(`Could not expand CFS source glob '${remotePathArg}'`);
+      }
+      if (expansion.value.length === 0) {
+        throw new Error(`No CFS paths matched '${remotePathArg}'`);
+      }
+      const sources: DownloadSource[] = await Promise.all(expansion.value.map(async match => ({
+        path: await path_resolve(match.path),
+        type: match.type === 'dir' ? 'directory' : match.type === 'link' ? 'link' : 'file',
+      })));
+      summary = await chefs_downloadMany_cmd(sources, targetLocal, progress);
+    }
 
     let rendered: string = '\n';
     if (summary.failedCount === 0) {

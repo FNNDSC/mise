@@ -87,6 +87,21 @@ describe('sudoCommand_run', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('nested elevation is not supported');
   });
+
+  it('preserves pathname provenance when forwarding nested arguments', async (): Promise<void> => {
+    const args: string[] & { pathnameExpanded?: readonly boolean[] } = ['download', '/remote/a', '/tmp/out'];
+    Object.defineProperty(args, 'pathnameExpanded', { value: [false, true, false] });
+    const surface: Surface = surface_create(['admin', 'secret']);
+    surface_set(surface);
+    const run = jest.fn(async (_command: string, commandArgs: string[]): Promise<CommandEnvelope> => {
+      expect((commandArgs as typeof args).pathnameExpanded).toEqual([true, false]);
+      return { status: 'ok', rendered: '' };
+    });
+
+    await sudoCommand_run(args, run);
+
+    expect(run).toHaveBeenCalledWith('download', expect.any(Array));
+  });
 });
 
 describe('elevation hints', () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import type { ChrisIdentity, CommandEnvelope, Result } from '@fnndsc/cumin';
 import type { DownloadSummary } from '@fnndsc/chili/commands/fs/download.js';
+import type { ShellArguments } from '../src/lib/parser.js';
 
 // Mock dependencies BEFORE imports
 const mockGetCWD = jest.fn();
@@ -672,6 +673,7 @@ describe('Builtins - Core Functions', () => {
       const envelope = await builtin_upload(['./local.txt', 'remote.txt']);
 
       expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt', expect.objectContaining({
+        expandLocalGlob: false,
         onProgress: expect.any(Function),
       }));
       expect(envelope.rendered).toContain('Successfully uploaded 1 file');
@@ -710,42 +712,17 @@ describe('Builtins - Core Functions', () => {
       }));
     });
 
-    it('expands only a wildcard remote source into one aggregate download', async () => {
-      mockWildcardExpandMatches.mockResolvedValue(Ok([
-        { path: '/remote/one.txt', type: 'file' },
-        { path: '/remote/two.txt', type: 'file' },
-      ]));
+    it('uses aggregate transfer for sources expanded by the shell', async () => {
+      const args: ShellArguments = ['/remote/one.txt', '/remote/two.txt', './downloads'];
+      args.pathnameExpanded = [true, true, false];
 
-      await builtin_download(['/remote/*.txt', './downloads']);
+      await builtin_download(args);
 
-      expect(mockWildcardExpandMatches).toHaveBeenCalledWith('/remote/*.txt');
       expect(mockChefsDownloadMany).toHaveBeenCalledWith(
-        [
-          { path: '/remote/one.txt', type: 'file' },
-          { path: '/remote/two.txt', type: 'file' },
-        ],
+        ['/remote/one.txt', '/remote/two.txt'],
         expect.stringContaining('downloads'),
         expect.objectContaining({ force: false, onProgress: expect.any(Function) }),
       );
-    });
-
-    it('normalizes a tilde CFS source glob before expansion', async () => {
-      mockWildcardExpandMatches.mockResolvedValue(Ok([
-        { path: '/home/testuser/feeds/result.nii', type: 'file' },
-      ]));
-
-      await builtin_download(['~/feeds/*.nii', './downloads']);
-
-      expect(mockWildcardExpandMatches).toHaveBeenCalledWith('/home/testuser/feeds/*.nii');
-    });
-
-    it('reports a CFS source wildcard with no matches', async () => {
-      mockWildcardExpandMatches.mockResolvedValue(Ok([]));
-
-      const envelope = await builtin_download(['/remote/missing*', './downloads']);
-
-      expect(envelope.renderedErr).toContain("No CFS paths matched '/remote/missing*'");
-      expect(mockChefsDownloadMany).not.toHaveBeenCalled();
     });
   });
 

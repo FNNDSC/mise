@@ -66,7 +66,7 @@ import {
 } from '../builtins/index.js';
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { builtin_proc } from '../builtins/proc.js';
-import { wildcards_expandAll } from '../builtins/wildcard.js';
+import { shellWords_expand } from '../builtins/wildcard.js';
 import {
   help_render,
   commandHelp_get,
@@ -78,12 +78,18 @@ import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnnd
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { vfs } from '../lib/vfs/vfs.js';
-import { args_tokenize } from '../lib/parser.js';
+import {
+  shellArguments_envRefsExpand,
+  shellWords_tokenize,
+  shellWords_values,
+  type ShellArguments,
+  type ShellWord,
+} from '../lib/parser.js';
 import { surface_get, capability_require } from './surface.js';
 import { sudoCommand_run } from './elevation.js';
 import {
   redirectTarget_resolve,
-  wildcards_expandCheck,
+  pathnameExpansion_isEligible,
   type RedirectInfo,
 } from './preprocess.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
@@ -467,7 +473,7 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
   if (command === 'exit') {
     process.exit(0);
   }
-  args = args.map(envRefs_expand);
+  args = shellArguments_envRefsExpand(args, envRefs_expand);
 
   if (command === 'sudo') {
     return await sudoCommand_run(args, commandDispatchEnvelope_run);
@@ -576,25 +582,34 @@ async function helpEnvelope_maybe(command: string, args: string[]): Promise<Comm
 }
 
 /**
- * Expands wildcard patterns in args for commands that support it.
- * Returns Ok(expanded args) or Err if expansion fails.
+ * Expands eligible shell words in the ChELL CFS/VFS namespace.
  *
- * @param command - The command name (determines whether expansion applies).
- * @param args - Raw argument list potentially containing glob patterns.
+ * @param command - Command word being executed.
+ * @param args - Parsed argument words.
+ * @returns Expanded compatibility arguments with expansion provenance.
  */
-async function wildcards_expand(command: string, args: string[]): Promise<Result<string[]>> {
-  if (!wildcards_expandCheck(command)) {
-    return Ok(args);
-  }
-  const expandResult: Result<string[]> = await wildcards_expandAll(args);
-  if (!expandResult.ok) {
-    const lastError: StackMessage | undefined = errorStack.stack_pop();
-    if (lastError) {
-      console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
-    }
-    return Err();
-  }
-  return Ok(expandResult.value);
+async function commandWords_expand(
+  command: string,
+  args: readonly ShellWord[],
+): Promise<Result<ShellArguments>> {
+  const sudoNestedCommand: ShellWord | undefined = command === 'sudo' ? args[0] : undefined;
+  const targetCommand: string = sudoNestedCommand?.value ?? command;
+  const targetArgs: readonly ShellWord[] = sudoNestedCommand ? args.slice(1) : args;
+  const values: string[] = targetArgs.map((word: ShellWord): string => word.value);
+  const result: Result<ShellWord[]> = await shellWords_expand(
+    targetArgs,
+    (_word: ShellWord, index: number): boolean => pathnameExpansion_isEligible(
+      targetCommand,
+      index,
+      targetArgs.length,
+      values,
+    ),
+  );
+  if (!result.ok) return result;
+  const expandedWords: ShellWord[] = sudoNestedCommand
+    ? [sudoNestedCommand, ...result.value]
+    : result.value;
+  return Ok(shellWords_values(expandedWords));
 }
 
 /**
@@ -609,21 +624,20 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   const trimmedLine: string = commandLine.trim();
   if (!trimmedLine) return { text: '', buffer: Buffer.alloc(0) };
 
-  const tokens: string[] = args_tokenize(trimmedLine);
-  if (tokens.length === 0) {
+  const words: ShellWord[] = shellWords_tokenize(trimmedLine);
+  if (words.length === 0) {
     return { text: '', buffer: Buffer.alloc(0) };
   }
-  let [command, ...args]: string[] = tokens;
+  const [commandWord, ...argumentWords]: ShellWord[] = words;
+  const command: string = commandWord.value;
 
-  if (wildcards_expandCheck(command)) {
-    const expandResult: Result<string[]> = await wildcards_expandAll(args);
-    if (!expandResult.ok) {
-      const lastError: StackMessage | undefined = errorStack.stack_pop();
-      const errorMsg: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Unknown error';
-      return { text: chalk.red(`${errorMsg}\n`), buffer: Buffer.from('') };
-    }
-    args = expandResult.value;
+  const expandResult: Result<ShellArguments> = await commandWords_expand(command, argumentWords);
+  if (!expandResult.ok) {
+    const lastError: StackMessage | undefined = errorStack.stack_pop();
+    const errorMsg: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Unknown error';
+    return { text: chalk.red(`${errorMsg}\n`), buffer: Buffer.from('') };
   }
+  const args: ShellArguments = expandResult.value;
 
   if (command === 'exit') {
     process.exit(0);
@@ -636,6 +650,9 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   // bytes kept byte-for-byte). The err channel passes through to stderr live.
   const pipeSink: PipeCaptureSink = new PipeCaptureSink();
   await sinkScope_run(pipeSink, async (): Promise<void> => {
+    const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
+    if (helpEnvelope) return;
+
     const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
     if (envelopeHandler) {
       const envelope: CommandEnvelope | undefined = await envelopeHandler(args);
@@ -725,23 +742,24 @@ export async function command_executeToEnvelope(
   startTime: number,
   timingEnabled: boolean,
 ): Promise<CommandEnvelope | null> {
-  const tokens: string[] = args_tokenize(trimmedLine);
-  if (tokens.length === 0) return null;
-  let [command, ...args]: string[] = tokens;
-
-  // Check for --help flag before any processing. The help text travels in the
-  // envelope and through the sink, so it reaches the surface that asked for it.
-  const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
-  if (helpEnvelope) {
-    return helpEnvelope;
-  }
-
-  // Expand wildcards for commands that support it
-  const expandResult: Result<string[]> = await wildcards_expand(command, args);
+  const words: ShellWord[] = shellWords_tokenize(trimmedLine);
+  if (words.length === 0) return null;
+  const [commandWord, ...argumentWords]: ShellWord[] = words;
+  const command: string = commandWord.value;
+  const expandResult: Result<ShellArguments> = await commandWords_expand(command, argumentWords);
   if (!expandResult.ok) {
+    const lastError: StackMessage | undefined = errorStack.stack_pop();
+    if (lastError) {
+      console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
+    }
     return { status: 'error', rendered: '' };
   }
-  args = expandResult.value;
+  const args: ShellArguments = expandResult.value;
+
+  // Help travels through the same expanded-word path as a pipe's first
+  // ChELL segment, ensuring that structural execution forms agree.
+  const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
+  if (helpEnvelope) return helpEnvelope;
 
   // Attempt to handle as a simulated plugin execution. This path bypasses
   // command_dispatchEnvelope, so it drains the errorStack itself.

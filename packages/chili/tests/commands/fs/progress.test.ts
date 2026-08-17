@@ -33,6 +33,7 @@ describe('fs structured progress producers', () => {
     jest.clearAllMocks();
     tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'chili-progress-'));
     (cliUtils.path_resolveChrisFs as jest.Mock).mockImplementation(async (p: string | undefined) => p ?? '/');
+    (files_path_isDirectory as jest.Mock).mockResolvedValue(false);
     (chrisIO.client_get as jest.Mock).mockResolvedValue(null);
     (chrisIO.file_upload as jest.Mock).mockResolvedValue(true);
     (prompt_confirmOrThrow as jest.Mock).mockResolvedValue(undefined);
@@ -80,6 +81,16 @@ describe('fs structured progress producers', () => {
     await expect(files_uploadWithProgress(path.join(tmpDir, 'missing*'), '/remote', {
       force: true,
     })).rejects.toThrow(`No local files matched '${path.join(tmpDir, 'missing*')}'`);
+
+    expect(chrisIO.file_upload).not.toHaveBeenCalled();
+  });
+
+  it('does not interpret a literal host wildcard as a glob', async () => {
+    await fs.promises.writeFile(path.join(tmpDir, 'scan-1.txt'), 'one');
+
+    await expect(files_uploadWithProgress(path.join(tmpDir, 'scan-*.txt'), '/remote', {
+      expandLocalGlob: false,
+    })).rejects.toThrow(`No local file exists at '${path.join(tmpDir, 'scan-*.txt')}'`);
 
     expect(chrisIO.file_upload).not.toHaveBeenCalled();
   });
@@ -196,14 +207,13 @@ describe('fs structured progress producers', () => {
   it('downloads multiple CFS files into one local directory with aggregate progress', async () => {
     const destination: string = path.join(tmpDir, 'downloads');
     const events: DownloadProgressEvent[] = [];
-    (files_listRecursive as jest.Mock).mockRejectedValue(new Error('not a directory'));
     (fileContent_getBinaryStream as jest.Mock)
       .mockResolvedValueOnce({ ok: true, value: { stream: Readable.from([Buffer.from('one')]), size: 3 } })
       .mockResolvedValueOnce({ ok: true, value: { stream: Readable.from([Buffer.from('two')]), size: 3 } });
 
     const summary = await files_downloadManyWithProgress([
-      { path: '/remote/one.txt', type: 'file' },
-      { path: '/remote/two.txt', type: 'file' },
+      '/remote/one.txt',
+      '/remote/two.txt',
     ], destination, {
       onProgress: event => { events.push(event); },
     });
@@ -223,10 +233,11 @@ describe('fs structured progress producers', () => {
 
   it('preserves an empty matched CFS directory', async () => {
     const destination: string = path.join(tmpDir, 'downloads');
+    (files_path_isDirectory as jest.Mock).mockResolvedValue(true);
     (files_listRecursive as jest.Mock).mockResolvedValue([]);
 
     const summary = await files_downloadManyWithProgress([
-      { path: '/remote/empty', type: 'directory' },
+      '/remote/empty',
     ], destination);
 
     expect(summary.totalFiles).toBe(0);
@@ -246,7 +257,7 @@ describe('fs structured progress producers', () => {
     });
 
     const summary = await files_downloadManyWithProgress([
-      { path: '/PUBLIC/shared', type: 'link' },
+      '/PUBLIC/shared',
     ], destination);
 
     expect(summary.transferredCount).toBe(1);
@@ -261,7 +272,7 @@ describe('fs structured progress producers', () => {
     (files_listRecursive as jest.Mock).mockResolvedValue([]);
 
     const summary = await files_downloadManyWithProgress([
-      { path: '/PUBLIC/shared', type: 'link' },
+      '/PUBLIC/shared',
     ], destination);
 
     expect(summary.totalFiles).toBe(0);
@@ -280,6 +291,7 @@ describe('fs structured progress producers', () => {
   it('emits directory download scan, transfer, and failed completion events', async () => {
     const destination = path.join(tmpDir, 'downloads');
     const events: DownloadProgressEvent[] = [];
+    (files_path_isDirectory as jest.Mock).mockResolvedValue(true);
     (files_listRecursive as jest.Mock).mockResolvedValue([
       { type: 'dir', path: '/remote/study' },
       { type: 'file', path: '/remote/study/a.dcm', size: 1 },

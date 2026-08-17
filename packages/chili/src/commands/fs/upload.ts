@@ -54,6 +54,8 @@ export interface UploadProgressEvent {
 /** Options for upload execution. */
 export interface UploadOptions {
   force?: boolean;
+  /** Whether the host-local source word contained unquoted glob syntax. */
+  expandLocalGlob?: boolean;
   onProgress?: (event: UploadProgressEvent) => void;
 }
 
@@ -105,7 +107,7 @@ export function rate_format(rateBytesPerSec: number): string {
  * @returns Matching host-local paths in deterministic order.
  * @throws If the exact path cannot be read or the pattern has no matches.
  */
-async function localPaths_expand(localPattern: string): Promise<string[]> {
+async function localPaths_expand(localPattern: string, expandLocalGlob: boolean): Promise<string[]> {
   try {
     await fs.promises.stat(localPattern);
     return [localPattern];
@@ -117,6 +119,10 @@ async function localPaths_expand(localPattern: string): Promise<string[]> {
     if (!isNotFound) {
       throw error;
     }
+  }
+
+  if (!expandLocalGlob) {
+    throw new Error(`No local file exists at '${localPattern}'`);
   }
 
   const matches: string[] = await glob(localPattern, { dot: false });
@@ -197,7 +203,7 @@ export async function files_uploadWithProgress(
   options: UploadOptions = {}
 ): Promise<UploadSummary> {
   const resolvedRemote: string = await path_resolveChrisFs(remotePath, {});
-  const localPaths: string[] = await localPaths_expand(localPath);
+  const localPaths: string[] = await localPaths_expand(localPath, options.expandLocalGlob ?? true);
 
   // Scan files
   chiliLog(chalk.cyan("Scanning files to upload..."));
@@ -334,7 +340,7 @@ export async function files_uploadWithProgress(
  */
 export async function files_upload(localPath: string, remotePath: string): Promise<boolean> {
   const resolvedRemote: string = await path_resolveChrisFs(remotePath, {});
-  const localPaths: string[] = await localPaths_expand(localPath);
+  const localPaths: string[] = await localPaths_expand(localPath, true);
 
   for (const matchedPath of localPaths) {
     if (!await files_uploadPath(matchedPath, resolvedRemote)) {

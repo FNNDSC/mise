@@ -49,12 +49,6 @@ export interface DownloadOptions {
   onProgress?: (event: DownloadProgressEvent) => void;
 }
 
-/** An exact CFS item selected for an aggregate download. */
-export interface DownloadSource {
-  path: string;
-  type: 'directory' | 'file' | 'link';
-}
-
 /** One remote file and its precomputed host-local destination. */
 interface DownloadPlan {
   remotePath: string;
@@ -81,14 +75,7 @@ async function directory_ensureExists(dirPath: string): Promise<void> {
  * @returns True if it's a directory, false if it's a file.
  */
 async function chrisPath_isDirectory(chrisPath: string): Promise<boolean> {
-  try {
-    // Try to list it - if it succeeds, it's a directory
-    const items: FsItem[] = await files_listRecursive(chrisPath);
-    return items.length > 0 || chrisPath.endsWith('/');
-  } catch {
-    // If listing fails, assume it's a file
-    return false;
-  }
+  return files_path_isDirectory(chrisPath);
 }
 
 /**
@@ -355,20 +342,19 @@ export async function files_downloadWithProgress(
  * A directory source retains its basename below the local destination, while
  * an individual file is placed directly in that destination.
  *
- * @param sources - Exact CFS source paths and their known item types.
+ * @param sources - Exact CFS source paths.
  * @param localDirectory - Host-local directory receiving the matches.
  * @returns The CFS-file and directory plans needed for the transfer.
  */
 async function downloadPlans_create(
-  sources: readonly DownloadSource[],
+  sources: readonly string[],
   localDirectory: string,
 ): Promise<DownloadBatchPlan> {
   const plan: DownloadBatchPlan = { directories: [], files: [] };
 
   for (const source of sources) {
-    const resolvedChris: string = await path_resolveChrisFs(source.path, {});
-    const isDirectory: boolean = source.type === 'directory'
-      || (source.type === 'link' && await files_path_isDirectory(resolvedChris));
+    const resolvedChris: string = await path_resolveChrisFs(source, {});
+    const isDirectory: boolean = await files_path_isDirectory(resolvedChris);
     if (isDirectory) {
       const targetDirectory: string = path.join(localDirectory, path.basename(resolvedChris));
       plan.directories.push(targetDirectory);
@@ -439,14 +425,14 @@ async function downloadDestination_prepare(
  * CFS source glob. It intentionally accepts paths rather than patterns: CFS
  * namespace expansion belongs to the VFS-aware Brasa layer.
  *
- * @param sources - Exact CFS files or directories selected by the VFS layer.
+ * @param sources - Exact CFS files or directories selected by the shell.
  * @param localDirectory - Host-local directory receiving all matched sources.
  * @param options - Download options and an optional aggregate progress callback.
  * @returns Aggregate transfer statistics for all supplied sources.
  * @throws If no sources are provided or the local target is not a directory.
  */
 export async function files_downloadManyWithProgress(
-  sources: readonly DownloadSource[],
+  sources: readonly string[],
   localDirectory: string,
   options: DownloadOptions = {},
 ): Promise<DownloadSummary> {

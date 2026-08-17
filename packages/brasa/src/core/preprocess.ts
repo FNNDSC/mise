@@ -10,17 +10,35 @@ import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { catArgument_isOption } from '../builtins/fs/cat.args.js';
 import { args_tokenize } from '../lib/parser.js';
 
-/** Commands whose arguments benefit from glob/wildcard expansion. */
-const WILDCARD_COMMANDS: readonly string[] = ['ls', 'rm', 'cat', 'mv', 'cp', 'du', 'tree'];
-
 /**
- * Determines if a command should have its arguments expanded for wildcards.
+ * Determines whether an argument belongs to the CFS/VFS shell namespace.
  *
- * @param command - The command name.
- * @returns True if wildcards should be expanded.
+ * Ordinary ChELL words expand before dispatch. Transfer commands mark their
+ * host-local operands as a different realm: upload owns host-source expansion,
+ * while download keeps its final host destination literal.
+ *
+ * @param command - Command word being executed.
+ * @param index - Zero-based argument position before expansion.
+ * @param argumentCount - Number of arguments before expansion.
+ * @param args - Argument values before expansion.
+ * @returns True if the word is eligible for CFS/VFS pathname expansion.
  */
-export function wildcards_expandCheck(command: string): boolean {
-  return WILDCARD_COMMANDS.includes(command);
+export function pathnameExpansion_isEligible(
+  command: string,
+  index: number,
+  argumentCount: number,
+  args: readonly string[] = [],
+): boolean {
+  if (command === 'upload') return false;
+  if (command === 'download') {
+    const positionalIndexes: number[] = args.reduce((indexes: number[], arg: string, argIndex: number): number[] => {
+      if (arg !== '-f' && arg !== '--force') indexes.push(argIndex);
+      return indexes;
+    }, []);
+    const destinationIndex: number | undefined = positionalIndexes.at(-1);
+    return destinationIndex !== undefined && index !== destinationIndex && positionalIndexes.includes(index);
+  }
+  return true;
 }
 
 /**
@@ -44,11 +62,18 @@ export function pipes_parse(line: string): string[] {
   let currentSegment: string = '';
   let inSingleQuote: boolean = false;
   let inDoubleQuote: boolean = false;
+  let escapeNext: boolean = false;
 
   for (let i = 0; i < line.length; i++) {
     const char: string = line[i];
 
-    if (char === "'" && !inDoubleQuote) {
+    if (escapeNext) {
+      currentSegment += char;
+      escapeNext = false;
+    } else if (char === '\\') {
+      currentSegment += char;
+      escapeNext = true;
+    } else if (char === "'" && !inDoubleQuote) {
       inSingleQuote = !inSingleQuote;
       currentSegment += char;
     } else if (char === '"' && !inSingleQuote) {
@@ -86,11 +111,16 @@ export interface RedirectInfo {
 export function redirect_parse(line: string): RedirectInfo | null {
   let inSingleQuote: boolean = false;
   let inDoubleQuote: boolean = false;
+  let escapeNext: boolean = false;
 
   for (let i = 0; i < line.length; i++) {
     const char: string = line[i];
 
-    if (char === "'" && !inDoubleQuote) {
+    if (escapeNext) {
+      escapeNext = false;
+    } else if (char === '\\') {
+      escapeNext = true;
+    } else if (char === "'" && !inDoubleQuote) {
       inSingleQuote = !inSingleQuote;
     } else if (char === '"' && !inSingleQuote) {
       inDoubleQuote = !inDoubleQuote;

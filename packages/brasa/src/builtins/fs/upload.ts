@@ -8,6 +8,7 @@ import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_form
 import { listCache_get, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import path from 'path';
 import { sink_get } from '../../core/sink.js';
+import { shellArguments_pathnameExpansion } from '../../lib/parser.js';
 
 /**
  * Uploads a local file or directory to ChRIS.
@@ -21,11 +22,13 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
   }
   const localPath: string = args[0];
   const remotePath: string = args[1];
+  const localGlob: boolean = shellArguments_pathnameExpansion(args, 0);
 
   const targetRemote: string = await path_resolve(remotePath);
 
   try {
     const summary: UploadSummary = await chefs_upload_cmd(localPath, targetRemote, {
+      expandLocalGlob: localGlob,
       onProgress: event => sink_get().progress_write(event),
     });
 

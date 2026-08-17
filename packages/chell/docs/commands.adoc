@@ -56,9 +56,16 @@ ChELL commands fall into several categories:
 
 == Wildcard Expansion
 
-ChELL supports glob-style wildcard patterns for applicable commands, including
-`ls`, `rm`, and `cat`. Wildcards are expanded against the current ChRIS
-directory, including virtual directories such as `/bin`.
+ChELL expands unquoted glob-style wildcard words before it dispatches a command.
+The expansion is against the current CFS/VFS directory, including virtual
+directories such as `/bin`, so filesystem-facing commands receive the same
+concrete path arguments without maintaining their own wildcard lists. `*`, `?`,
+and character classes are supported for one directory listing; an unmatched
+pattern remains literal. Quote or escape wildcard syntax to pass it literally.
+
+`upload` and `download` are explicit realm boundaries: `upload` expands its
+host-local source itself, while `download` expands only its CFS/VFS source and
+keeps its host-local destination literal.
 
 **Supported patterns:**
 

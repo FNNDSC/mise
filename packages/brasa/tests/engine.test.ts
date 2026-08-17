@@ -87,7 +87,7 @@ jest.unstable_mockModule('../src/builtins/index.js', () => {
 const mockExecutePlugin = jest.fn();
 jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_executePlugin: mockExecutePlugin }));
 jest.unstable_mockModule('../src/builtins/proc.js', () => ({ builtin_proc: jest.fn() }));
-jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expandAll: jest.fn(async (a: string[]) => Ok(a)) }));
+jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ shellWords_expand: jest.fn(async (words) => Ok(words)) }));
 
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);

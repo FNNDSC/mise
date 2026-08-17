@@ -56,7 +56,32 @@ export interface UploadOptions {
   force?: boolean;
   /** Whether the host-local source word contained unquoted glob syntax. */
   expandLocalGlob?: boolean;
+  /** Confirms replacement of an existing upload directory target. */
+  confirm?: (message: string) => Promise<void>;
+  /** Reports a live transfer notice on the caller's chosen output channel. */
+  onNotice?: (message: string, channel: "status" | "err") => void;
   onProgress?: (event: UploadProgressEvent) => void;
+}
+
+/**
+ * Emits a live upload notice through the caller's output boundary.
+ *
+ * @param options - Upload options that may own live presentation.
+ * @param message - Unstyled user-facing notice.
+ * @param channel - Semantic output channel for the notice.
+ * @returns Nothing.
+ */
+function uploadNotice_emit(
+  options: UploadOptions,
+  message: string,
+  channel: "status" | "err",
+): void {
+  if (options.onNotice) {
+    options.onNotice(message, channel);
+    return;
+  }
+  const styled: string = channel === "err" ? chalk.red(message) : chalk.cyan(message);
+  chiliLog(styled);
 }
 
 /**
@@ -206,7 +231,7 @@ export async function files_uploadWithProgress(
   const localPaths: string[] = await localPaths_expand(localPath, options.expandLocalGlob ?? true);
 
   // Scan files
-  chiliLog(chalk.cyan("Scanning files to upload..."));
+  uploadNotice_emit(options, "Scanning files to upload...", "status");
   options.onProgress?.({
     operation: "upload",
     kind: "transfer",
@@ -228,15 +253,23 @@ export async function files_uploadWithProgress(
     }
   }
 
-  // Detect existing target and require confirmation unless force is set
+  // A file goes *into* an existing destination directory. Only a directory
+  // upload creates a nested target that can require merge confirmation.
   if (!options.force) {
     try {
       const client = await chrisIO.client_get();
       if (client) {
         const folderList = await client.getFileBrowserFolders({ path: actualTarget });
         const items: Object[] | null = await folderList.getItems();
-        if (items && items.length > 0) {
-          await prompt_confirmOrThrow(`Target '${actualTarget}' already exists in ChRIS. Merge/overwrite? (y/N)`);
+        const uploadingDirectory: boolean = localPaths.length === 1
+          && (await fs.promises.stat(localPaths[0])).isDirectory();
+        if (uploadingDirectory && items && items.length > 0) {
+          const message: string = `Target '${actualTarget}' already exists in ChRIS. Merge/overwrite? (y/N)`;
+          if (options.confirm) {
+            await options.confirm(message);
+          } else {
+            await prompt_confirmOrThrow(message);
+          }
         }
       }
     } catch {
@@ -288,14 +321,14 @@ export async function files_uploadWithProgress(
         summary.transferSize += fileContent.length;
       } else {
         summary.failedCount++;
-        chiliLog(chalk.yellow(`Failed to upload: ${file.hostPath}`));
+        uploadNotice_emit(options, `Failed to upload: ${file.hostPath}`, "err");
       }
     } catch (error: unknown) {
       summary.failedCount++;
-      chiliLog(
-        chalk.red(
-          `Error uploading ${file.hostPath}: ${error instanceof Error ? error.message : String(error)}`
-        )
+      uploadNotice_emit(
+        options,
+        `Error uploading ${file.hostPath}: ${error instanceof Error ? error.message : String(error)}`,
+        "err",
       );
     }
 

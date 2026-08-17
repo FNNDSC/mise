@@ -423,7 +423,7 @@ upload <local_path_or_glob> <chris_path>
 
 **Parameters:**
 
-* `local_path_or_glob` - Path or glob on the local filesystem (supports `~` expansion)
+* `local_path_or_glob` - Path or glob on the local transfer endpoint filesystem
 * `chris_path` - Target path in ChRIS filesystem
 
 **Examples:**
@@ -439,7 +439,10 @@ upload /tmp/output.json .
 * Recursively uploads directories
 * Preserves directory structure
 * Shows progress for large uploads
-* Uses current context if relative paths provided
+* A file source is placed inside an existing target directory; it does not replace that directory
+* A directory source creates a nested directory named after the source and asks before merging with an existing nested target
+* In `chell --remote`, the local endpoint is currently the daemon host, not the client machine; use an absolute daemon-host path
+* Status, errors, and any confirmation are rendered by the issuing surface rather than the daemon terminal
 
 === download
 

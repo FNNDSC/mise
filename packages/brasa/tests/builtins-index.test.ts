@@ -674,6 +674,8 @@ describe('Builtins - Core Functions', () => {
 
       expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt', expect.objectContaining({
         expandLocalGlob: false,
+        confirm: expect.any(Function),
+        onNotice: expect.any(Function),
         onProgress: expect.any(Function),
       }));
       expect(envelope.rendered).toContain('Successfully uploaded 1 file');
@@ -708,6 +710,8 @@ describe('Builtins - Core Functions', () => {
 
       expect(mockChefsDownload).toHaveBeenCalledWith('/remote/file.txt', expect.stringContaining('local.txt'), expect.objectContaining({
         force: false,
+        confirm: expect.any(Function),
+        onNotice: expect.any(Function),
         onProgress: expect.any(Function),
       }));
     });

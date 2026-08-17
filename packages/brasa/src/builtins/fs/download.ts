@@ -18,6 +18,21 @@ import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
 import { path_resolve } from '../utils.js';
+import { surface_get } from '../../core/surface.js';
+
+/**
+ * Asks the issuing surface to confirm a local download overwrite or merge.
+ *
+ * @param message - Confirmation question prepared by the transfer command.
+ * @returns Nothing when the surface accepts the operation.
+ * @throws {Error} When the surface declines the operation.
+ */
+async function downloadConfirmation_request(message: string): Promise<void> {
+  const answer: string = await surface_get().prompt({ message });
+  if (answer.trim().toLowerCase() !== 'y' && answer.trim().toLowerCase() !== 'yes') {
+    throw new Error('Operation cancelled by user.');
+  }
+}
 
 /**
  * Downloads a remote ChRIS file or directory to the local filesystem.
@@ -48,6 +63,12 @@ export async function builtin_download(args: string[]): Promise<CommandEnvelope>
   try {
     const progress: DownloadOptions = {
       force,
+      confirm: downloadConfirmation_request,
+      onNotice: (message: string, channel: 'status' | 'err'): void => {
+        const sink = sink_get();
+        if (channel === 'status') sink.status_write(`${message}\n`);
+        else sink.err_write(`${message}\n`);
+      },
       onProgress: (event: DownloadProgressEvent): void => sink_get().progress_write(event),
     };
     let summary: DownloadSummary;

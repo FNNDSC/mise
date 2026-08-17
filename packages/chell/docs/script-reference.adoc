@@ -374,7 +374,7 @@ touch <path>
 upload <local_path_or_glob> <chris_path>
 ----
 
-Recursively uploads a local file or directory tree. The local endpoint also accepts a host-filesystem glob; every match is uploaded with one aggregate progress display.
+Recursively uploads a local file or directory tree. The local endpoint also accepts a host-filesystem glob; every match is uploaded with one aggregate progress display. A file goes inside an existing target directory; only an existing nested target of a directory upload requires merge confirmation. In remote mode, the local endpoint remains the daemon host until client-local transfer support is added.
 
 [source,bash]
 ----
@@ -390,7 +390,7 @@ upload ~/Pictures/earthandmoon* .
 download <chris_path_or_glob> <local_path>
 ----
 
-Downloads one CFS file or directory to the daemon host. The shell expands an unquoted CFS source glob before dispatch; every match downloads into one host-local destination directory with aggregate progress. The local destination is always literal.
+Downloads one CFS file or directory to the daemon host. The shell expands an unquoted CFS source glob before dispatch; every match downloads into one host-local destination directory with aggregate progress. The local destination is always literal. Status, errors, and overwrite confirmation are delivered to the issuing surface.
 
 [source,bash]
 ----

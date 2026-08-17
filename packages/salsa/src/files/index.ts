@@ -579,7 +579,7 @@ export async function fileContent_getBinaryStream(
   filePath: string
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
   const provider = vfsDispatcher.provider_get(filePath);
-  if (provider && provider.prefix !== '/') {
+  if (provider && provider.prefix !== '') {
     return vfsDispatcher.readBinary(filePath).then((res: Result<Buffer>) => {
       if (res.ok) {
         return Ok({ stream: res.value, size: res.value.length });

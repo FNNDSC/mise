@@ -46,7 +46,47 @@ export interface DownloadProgressEvent {
 /** Options for download execution. */
 export interface DownloadOptions {
   force?: boolean;
+  /** Confirms replacement or merge at the local transfer destination. */
+  confirm?: (message: string) => Promise<void>;
+  /** Reports a live transfer notice on the caller's chosen output channel. */
+  onNotice?: (message: string, channel: "status" | "err") => void;
   onProgress?: (event: DownloadProgressEvent) => void;
+}
+
+/**
+ * Emits a live download notice through the caller's output boundary.
+ *
+ * @param options - Download options that may own live presentation.
+ * @param message - Unstyled user-facing notice.
+ * @param channel - Semantic output channel for the notice.
+ * @returns Nothing.
+ */
+function downloadNotice_emit(
+  options: DownloadOptions,
+  message: string,
+  channel: "status" | "err",
+): void {
+  if (options.onNotice) {
+    options.onNotice(message, channel);
+    return;
+  }
+  const styled: string = channel === "err" ? chalk.red(message) : chalk.cyan(message);
+  chiliLog(styled);
+}
+
+/**
+ * Requests a transfer confirmation through the caller's interaction boundary.
+ *
+ * @param options - Download options that may own confirmation.
+ * @param message - Confirmation question prepared by the transfer planner.
+ * @returns Nothing when the operation may continue.
+ */
+async function downloadConfirmation_request(options: DownloadOptions, message: string): Promise<void> {
+  if (options.confirm) {
+    await options.confirm(message);
+    return;
+  }
+  await prompt_confirmOrThrow(message);
 }
 
 /** One remote file and its precomputed host-local destination. */
@@ -142,13 +182,13 @@ export async function files_downloadWithProgress(
         const existingStat: fs.Stats = await fs.promises.stat(finalLocalPath);
         if (existingStat.isFile()) {
           if (!options.force) {
-            await prompt_confirmOrThrow(
+            await downloadConfirmation_request(options,
               `Local file exists at ${finalLocalPath}. Overwrite? (y/N)`
             );
           }
         } else if (existingStat.isDirectory()) {
           if (!options.force) {
-            await prompt_confirmOrThrow(
+            await downloadConfirmation_request(options,
               `Target directory exists. Download into existing folder: ${finalLocalPath}? (y/N)`
             );
           }
@@ -213,7 +253,7 @@ export async function files_downloadWithProgress(
   }
 
   // Download directory
-  chiliLog(chalk.cyan("Scanning files to download..."));
+  downloadNotice_emit(options, "Scanning files to download...", "status");
   options.onProgress?.({
     operation: "download",
     kind: "transfer",
@@ -237,13 +277,13 @@ export async function files_downloadWithProgress(
     if (statTarget.isDirectory()) {
       const entries: string[] = await fs.promises.readdir(targetDir);
       if (!options.force) {
-        await prompt_confirmOrThrow(
+        await downloadConfirmation_request(options,
           `Target directory exists${entries.length ? ' (will merge contents)' : ''}: ${targetDir}. Continue? (y/N)`
         );
       }
     } else if (statTarget.isFile()) {
       if (!options.force) {
-        await prompt_confirmOrThrow(
+        await downloadConfirmation_request(options,
           `Local file exists at ${targetDir}. Overwrite? (y/N)`
         );
       }
@@ -271,7 +311,7 @@ export async function files_downloadWithProgress(
       const result = await fileContent_getBinaryStream(file.path);
       if (!result.ok) {
         summary.failedCount++;
-        chiliLog(chalk.yellow(`\nFailed to download: ${file.path}`));
+        downloadNotice_emit(options, `Failed to download: ${file.path}`, "err");
         continue;
       }
 
@@ -301,7 +341,7 @@ export async function files_downloadWithProgress(
     } catch (error: unknown) {
       summary.failedCount++;
       const msg: string = error instanceof Error ? error.message : String(error);
-      chiliLog(chalk.red(`\nError downloading ${file.path}: ${msg}`));
+      downloadNotice_emit(options, `Error downloading ${file.path}: ${msg}`, "err");
     }
 
     options.onProgress?.({
@@ -385,14 +425,14 @@ async function downloadPlans_create(
  *
  * @param localDirectory - Host-local directory receiving the matches.
  * @param plans - Concrete file transfers that will be written below the directory.
- * @param force - Whether existing files may be overwritten without prompting.
+ * @param options - Download options including overwrite confirmation behavior.
  * @returns A promise fulfilled when the destination is ready.
  * @throws If the destination is an existing non-directory or the operator rejects overwrite.
  */
 async function downloadDestination_prepare(
   localDirectory: string,
   plans: readonly DownloadPlan[],
-  force: boolean,
+  options: DownloadOptions,
 ): Promise<void> {
   if (fs.existsSync(localDirectory)) {
     const stats: fs.Stats = await fs.promises.stat(localDirectory);
@@ -403,7 +443,7 @@ async function downloadDestination_prepare(
     await directory_ensureExists(localDirectory);
   }
 
-  if (force) return;
+  if (options.force) return;
 
   const conflicts: DownloadPlan[] = [];
   for (const plan of plans) {
@@ -412,7 +452,7 @@ async function downloadDestination_prepare(
     }
   }
   if (conflicts.length > 0) {
-    await prompt_confirmOrThrow(
+    await downloadConfirmation_request(options,
       `${conflicts.length} local file(s) already exist below ${localDirectory}. Overwrite? (y/N)`,
     );
   }
@@ -459,7 +499,7 @@ export async function files_downloadManyWithProgress(
     status: 'running',
   });
   const plans: DownloadBatchPlan = await downloadPlans_create(sources, localDirectory);
-  await downloadDestination_prepare(localDirectory, plans.files, options.force === true);
+  await downloadDestination_prepare(localDirectory, plans.files, options);
   for (const directory of plans.directories) {
     await directory_ensureExists(directory);
   }
@@ -499,7 +539,7 @@ export async function files_downloadManyWithProgress(
     } catch (error: unknown) {
       summary.failedCount++;
       const message: string = error instanceof Error ? error.message : String(error);
-      chiliLog(chalk.red(`\nError downloading ${plan.remotePath}: ${message}`));
+      downloadNotice_emit(options, `Error downloading ${plan.remotePath}: ${message}`, "err");
     }
 
     options.onProgress?.({

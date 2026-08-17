@@ -136,6 +136,43 @@ describe('fs structured progress producers', () => {
     ]));
   });
 
+  it('places a file into an existing destination directory without confirmation', async () => {
+    const localFile: string = path.join(tmpDir, 'scan.dcm');
+    await fs.promises.writeFile(localFile, 'scan');
+    (chrisIO.client_get as jest.Mock).mockResolvedValue({
+      getFileBrowserFolders: jest.fn().mockResolvedValue({
+        getItems: jest.fn().mockResolvedValue([{ path: '/remote/existing-child' }]),
+      }),
+    });
+
+    await files_uploadWithProgress(localFile, '/remote');
+
+    expect(prompt_confirmOrThrow).not.toHaveBeenCalled();
+    expect(chrisIO.file_upload).toHaveBeenCalledWith(expect.any(Blob), '/remote', 'scan.dcm');
+  });
+
+  it('uses caller-owned confirmation and notices instead of terminal I/O', async () => {
+    const localDir: string = path.join(tmpDir, 'study');
+    await fs.promises.mkdir(localDir);
+    await fs.promises.writeFile(path.join(localDir, 'scan.dcm'), 'scan');
+    const confirm = jest.fn(async (): Promise<void> => undefined);
+    const notices: string[] = [];
+    (chrisIO.client_get as jest.Mock).mockResolvedValue({
+      getFileBrowserFolders: jest.fn().mockResolvedValue({
+        getItems: jest.fn().mockResolvedValue([{ path: '/remote/study' }]),
+      }),
+    });
+
+    await files_uploadWithProgress(localDir, '/remote', {
+      confirm,
+      onNotice: (notice: string): void => { notices.push(notice); },
+    });
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Target '/remote/study' already exists"));
+    expect(prompt_confirmOrThrow).not.toHaveBeenCalled();
+    expect(notices).toContain('Scanning files to upload...');
+  });
+
   it('formats transfer helper values and delegates plain upload', async () => {
     const localFile: string = path.join(tmpDir, 'local.txt');
     await fs.promises.writeFile(localFile, 'content');
@@ -229,6 +266,21 @@ describe('fs structured progress producers', () => {
       expect.objectContaining({ operation: 'download', phase: 'transferring', current: 2, total: 2, percent: 100, unit: 'files' }),
       expect.objectContaining({ operation: 'download', phase: 'complete', current: 2, total: 2, percent: 100, unit: 'files', status: 'done' }),
     ]));
+  });
+
+  it('routes aggregate download failures to the caller-owned notice channel', async () => {
+    const destination: string = path.join(tmpDir, 'downloads');
+    const notices: Array<{ message: string; channel: string }> = [];
+    (fileContent_getBinaryStream as jest.Mock).mockResolvedValue({ ok: false });
+
+    const summary = await files_downloadManyWithProgress(['/remote/missing.txt'], destination, {
+      onNotice: (message: string, channel: "status" | "err"): void => { notices.push({ message, channel }); },
+    });
+
+    expect(summary.failedCount).toBe(1);
+    expect(notices).toEqual([
+      { message: 'Error downloading /remote/missing.txt: Failed to download file', channel: 'err' },
+    ]);
   });
 
   it('preserves an empty matched CFS directory', async () => {

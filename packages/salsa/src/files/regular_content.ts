@@ -5,6 +5,7 @@
  */
 
 import { Result, Ok, Err, chrisIO } from "@fnndsc/cumin";
+import { Readable } from "stream";
 import { fileId_atPath_resolve } from './fileLookup.js';
 
 /**
@@ -39,11 +40,17 @@ export async function fileContent_getRegularStream(
 
   const streamResult: Result<{ stream: unknown; size?: number; filename?: string }> =
     await chrisIO.file_downloadStream(idResult.value);
-  if (!streamResult.ok) {
-    return Err();
+  if (streamResult.ok) {
+    return Ok(streamResult.value);
   }
 
-  return Ok(streamResult.value);
+  // Some CUBE deployments expose file bytes through the established blob
+  // endpoint but cannot satisfy an axios streaming request. Preserve the
+  // streaming fast path, then adapt that compatible binary response so
+  // download callers retain one stream-shaped contract.
+  const binaryResult: Result<Buffer> = await files_view(idResult.value);
+  if (!binaryResult.ok) return Err();
+  return Ok({ stream: Readable.from(binaryResult.value), size: binaryResult.value.length });
 }
 
 /**

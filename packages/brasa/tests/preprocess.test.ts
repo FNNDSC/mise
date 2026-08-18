@@ -24,7 +24,7 @@ const {
   pipes_parse,
   redirect_parse,
   redirectTarget_resolve,
-  wildcards_expandCheck,
+  pathnameExpansion_isEligible,
   command_shellEscape_detect,
 } = await import('../src/core/preprocess.js');
 
@@ -38,6 +38,9 @@ describe('pipes_parse', () => {
   it('ignores pipes inside single or double quotes', () => {
     expect(pipes_parse('echo "a | b"')).toEqual(['echo "a | b"']);
     expect(pipes_parse("echo 'a | b'")).toEqual(["echo 'a | b'"]);
+  });
+  it('ignores an escaped pipe', () => {
+    expect(pipes_parse('cat \\|')).toEqual(['cat \\|']);
   });
   it('drops a trailing empty segment', () => {
     expect(pipes_parse('ls |')).toEqual(['ls']);
@@ -65,13 +68,24 @@ describe('redirect_parse', () => {
   it('ignores redirect operators inside quotes', () => {
     expect(redirect_parse('echo "a > b"')).toBeNull();
   });
+  it('ignores an escaped redirect operator', () => {
+    expect(redirect_parse('echo \\>')).toBeNull();
+  });
 });
 
-describe('wildcards_expandCheck', () => {
-  it('is true for file commands and false otherwise', () => {
-    expect(wildcards_expandCheck('ls')).toBe(true);
-    expect(wildcards_expandCheck('cp')).toBe(true);
-    expect(wildcards_expandCheck('connect')).toBe(false);
+describe('pathnameExpansion_isEligible', () => {
+  it('expands ordinary command arguments without an allow-list', () => {
+    expect(pathnameExpansion_isEligible('ls', 0, 1)).toBe(true);
+    expect(pathnameExpansion_isEligible('connect', 0, 1)).toBe(true);
+  });
+
+  it('keeps cross-realm transfer operands out of CFS/VFS expansion', () => {
+    expect(pathnameExpansion_isEligible('upload', 0, 2)).toBe(false);
+    expect(pathnameExpansion_isEligible('download', 0, 2, ['*.nii', '/tmp'])).toBe(true);
+    expect(pathnameExpansion_isEligible('download', 1, 2, ['*.nii', '/tmp'])).toBe(false);
+    expect(pathnameExpansion_isEligible('download', 1, 3, ['-f', '*.nii', '/tmp'])).toBe(true);
+    expect(pathnameExpansion_isEligible('download', 1, 3, ['a*', 'b*', '/tmp'])).toBe(true);
+    expect(pathnameExpansion_isEligible('download', 2, 3, ['a*', 'b*', '/tmp'])).toBe(false);
   });
 });
 

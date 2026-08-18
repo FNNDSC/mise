@@ -2,42 +2,83 @@
  * @file Builtin download command.
  * Downloads files from ChRIS to the local filesystem with progress.
  */
-import chalk from 'chalk';
 import path from 'path';
-import { path_resolve } from '../utils.js';
+
+import chalk from 'chalk';
+
 import {
   files_downloadWithProgress as chefs_download_cmd,
-  DownloadSummary,
+  files_downloadManyWithProgress as chefs_downloadMany_cmd,
+  type DownloadOptions,
+  type DownloadProgressEvent,
+  type DownloadSummary,
   bytes_format
 } from '@fnndsc/chili/commands/fs/download.js';
-import { sink_get } from '../../core/sink.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { sink_get } from '../../core/sink.js';
+import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
+import { path_resolve } from '../utils.js';
+import { surface_get } from '../../core/surface.js';
+
+/**
+ * Asks the issuing surface to confirm a local download overwrite or merge.
+ *
+ * @param message - Confirmation question prepared by the transfer command.
+ * @returns Nothing when the surface accepts the operation.
+ * @throws {Error} When the surface declines the operation.
+ */
+async function downloadConfirmation_request(message: string): Promise<void> {
+  const answer: string = await surface_get().prompt({ message });
+  if (answer.trim().toLowerCase() !== 'y' && answer.trim().toLowerCase() !== 'yes') {
+    throw new Error('Operation cancelled by user.');
+  }
+}
 
 /**
  * Downloads a remote ChRIS file or directory to the local filesystem.
  *
- * @param args - [remotePath, localPath] plus optional -f/--force to overwrite.
+ * @param args - [remotePathOrGlob, localPath] plus optional -f/--force to overwrite.
  * @returns An envelope carrying the download summary.
  */
 export async function builtin_download(args: string[]): Promise<CommandEnvelope> {
   const force: boolean = args.includes('-f') || args.includes('--force');
-  const cleanArgs: string[] = args.filter(arg => arg !== '-f' && arg !== '--force');
+  const positionalIndexes: number[] = args.reduce((indexes: number[], arg: string, index: number): number[] => {
+    if (arg !== '-f' && arg !== '--force') indexes.push(index);
+    return indexes;
+  }, []);
+  const cleanArgs: string[] = positionalIndexes.map((index: number): string => args[index]);
 
   if (cleanArgs.length < 2) {
-    return envelope_ok(`${chalk.red('Usage: download <remote_path> <local_path> [-f|--force]')}\n`);
+    return envelope_ok(`${chalk.red('Usage: download <remote_path_or_glob> <local_path> [-f|--force]')}\n`);
   }
 
-  const remotePathArg: string = cleanArgs[0];
-  const localPathArg: string = cleanArgs[1];
+  const localPathArg: string = cleanArgs[cleanArgs.length - 1];
+  const sourceArgs: string[] = cleanArgs.slice(0, -1);
+  const sourceWasExpanded: boolean = positionalIndexes
+    .slice(0, -1)
+    .some((index: number): boolean => shellArguments_pathnameExpanded(args, index));
 
-  const targetRemote: string = await path_resolve(remotePathArg);
   const targetLocal: string = path.resolve(localPathArg);
 
   try {
-    const summary: DownloadSummary = await chefs_download_cmd(targetRemote, targetLocal, {
+    const progress: DownloadOptions = {
       force,
-      onProgress: event => sink_get().progress_write(event),
-    });
+      confirm: downloadConfirmation_request,
+      onNotice: (message: string, channel: 'status' | 'err'): void => {
+        const sink = sink_get();
+        if (channel === 'status') sink.status_write(`${message}\n`);
+        else sink.err_write(`${message}\n`);
+      },
+      onProgress: (event: DownloadProgressEvent): void => sink_get().progress_write(event),
+    };
+    let summary: DownloadSummary;
+    if (!sourceWasExpanded) {
+      const targetRemote: string = await path_resolve(sourceArgs[0]);
+      summary = await chefs_download_cmd(targetRemote, targetLocal, progress);
+    } else {
+      const sources: string[] = await Promise.all(sourceArgs.map(path_resolve));
+      summary = await chefs_downloadMany_cmd(sources, targetLocal, progress);
+    }
 
     let rendered: string = '\n';
     if (summary.failedCount === 0) {

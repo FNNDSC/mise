@@ -11,6 +11,7 @@
 import chalk from 'chalk';
 import { envelope_error, type CommandEnvelope } from '@fnndsc/cumin';
 import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
+import { shellArguments_slice } from '../lib/parser.js';
 import { surface_get } from './surface.js';
 
 /** Execution seam used by `sudo` to run its nested command. */
@@ -48,7 +49,8 @@ export async function sudoCommand_run(
   args: string[],
   run: ElevatedCommandRunner,
 ): Promise<CommandEnvelope> {
-  const [command, ...commandArgs]: string[] = args;
+  const command: string | undefined = args[0];
+  const commandArgs: string[] = shellArguments_slice(args, 1);
   if (!command) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red('Usage: sudo <command> [arguments...]')}\n`);

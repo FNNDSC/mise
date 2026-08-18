@@ -17,6 +17,8 @@ import {
   Result,
   Ok,
   Err,
+  runtimeOutput_data,
+  runtimeOutput_err,
 } from "@fnndsc/cumin";
 import { ChrisPathNode } from "@fnndsc/cumin";
 import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
@@ -102,19 +104,19 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
       const targetPath: string = path.posix.join(destPath, relativePath); // Use posix for ChRIS paths
 
       if (item.type === 'dir') {
-        console.log(`  Creating directory: ${targetPath}`);
+        runtimeOutput_data(`  Creating directory: ${targetPath}\n`);
         const created: boolean = await files_mkdir(targetPath);
         if (!created) {
-          console.warn(`  Warning: Failed to create directory ${targetPath}`);
+          runtimeOutput_err(`  Warning: Failed to create directory ${targetPath}\n`);
           failCount++;
         } else {
           successCount++;
         }
       } else if (item.type === 'file') {
-        console.log(`  Copying file: ${path.posix.basename(normalizedItemPath)}`);
+        runtimeOutput_data(`  Copying file: ${path.posix.basename(normalizedItemPath)}\n`);
         const copied: boolean = await files_copy(normalizedItemPath, targetPath);
         if (!copied) {
-          console.warn(`  Warning: Failed to copy file ${normalizedItemPath}`);
+          runtimeOutput_err(`  Warning: Failed to copy file ${normalizedItemPath}\n`);
           failCount++;
           // Continue trying to copy other files instead of aborting
         } else {
@@ -123,7 +125,7 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
       }
     }
 
-    console.log(`Copied ${successCount} items, ${failCount} failed`);
+    runtimeOutput_data(`Copied ${successCount} items, ${failCount} failed\n`);
     return failCount === 0;
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
@@ -175,7 +177,7 @@ async function fileId_resolve(srcPath: string): Promise<Result<number>> {
  * @param targetPath - The absolute ChRIS path to check.
  * @returns Promise resolving to true if the path is a directory, false otherwise.
  */
-async function path_isDir(targetPath: string): Promise<boolean> {
+export async function files_path_isDirectory(targetPath: string): Promise<boolean> {
   const parent: string = path.posix.dirname(targetPath);
   const name: string = path.posix.basename(targetPath);
   const results: FilteredResourceData | null = await files_listAll({ limit: 1000, offset: 0 }, "dirs", parent);
@@ -269,7 +271,7 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
     if (!uploadSuccess) {
         const lastError = errorStack.stack_pop();
         if (lastError) {
-            console.error(`    Error: ${lastError.message}`);
+            runtimeOutput_err(`    Error: ${lastError.message}\n`);
         }
     }
     return uploadSuccess;
@@ -294,8 +296,8 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
  */
 export async function files_move(srcPath: string, destPath: string): Promise<boolean> {
   try {
-    const srcIsDir: boolean = await path_isDir(srcPath);
-    const destIsDir: boolean = await path_isDir(destPath);
+    const srcIsDir: boolean = await files_path_isDirectory(srcPath);
+    const destIsDir: boolean = await files_path_isDirectory(destPath);
     const destLooksDir: boolean = destPath.endsWith("/");
     const finalDest: string = (destIsDir || destLooksDir)
       ? path.posix.join(destPath, path.posix.basename(srcPath))
@@ -518,7 +520,7 @@ export async function files_getSingle(
  */
 export async function files_share(fileId: number, options: FileShareOptions): Promise<boolean> {
   // Implement actual sharing logic using cumin/chrisapi
-  console.log(`Sharing file ${fileId} with options:`, options);
+  runtimeOutput_data(`Sharing file ${fileId} with options: ${JSON.stringify(options)}\n`);
   return Promise.resolve(true);
 }
 
@@ -579,7 +581,7 @@ export async function fileContent_getBinaryStream(
   filePath: string
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
   const provider = vfsDispatcher.provider_get(filePath);
-  if (provider && provider.prefix !== '/') {
+  if (provider && provider.prefix !== '') {
     return vfsDispatcher.readBinary(filePath).then((res: Result<Buffer>) => {
       if (res.ok) {
         return Ok({ stream: res.value, size: res.value.length });

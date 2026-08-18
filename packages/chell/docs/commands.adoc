@@ -56,9 +56,16 @@ ChELL commands fall into several categories:
 
 == Wildcard Expansion
 
-ChELL supports glob-style wildcard patterns for applicable commands, including
-`ls`, `rm`, and `cat`. Wildcards are expanded against the current ChRIS
-directory, including virtual directories such as `/bin`.
+ChELL expands unquoted glob-style wildcard words before it dispatches a command.
+The expansion is against the current CFS/VFS directory, including virtual
+directories such as `/bin`, so filesystem-facing commands receive the same
+concrete path arguments without maintaining their own wildcard lists. `*`, `?`,
+and character classes are supported for one directory listing; an unmatched
+pattern remains literal. Quote or escape wildcard syntax to pass it literally.
+
+`upload` and `download` are explicit realm boundaries: `upload` expands its
+host-local source itself, while `download` expands only its CFS/VFS source and
+keeps its host-local destination literal.
 
 **Supported patterns:**
 
@@ -411,17 +418,18 @@ Uploads files or directories from the local filesystem to ChRIS.
 
 **Syntax:**
 ```bash
-upload <local_path> <chris_path>
+upload <local_path_or_glob> <chris_path>
 ```
 
 **Parameters:**
 
-* `local_path` - Path on local filesystem (supports `~` expansion)
+* `local_path_or_glob` - Path or glob on the local transfer endpoint filesystem
 * `chris_path` - Target path in ChRIS filesystem
 
 **Examples:**
 ```bash
 upload ~/data/results.csv /home/alice/experiments/
+upload ~/Pictures/earthandmoon* .
 upload ./local_dir/ ~/uploads/
 upload /tmp/output.json .
 ```
@@ -431,7 +439,30 @@ upload /tmp/output.json .
 * Recursively uploads directories
 * Preserves directory structure
 * Shows progress for large uploads
-* Uses current context if relative paths provided
+* A file source is placed inside an existing target directory; it does not replace that directory
+* A directory source creates a nested directory named after the source and asks before merging with an existing nested target
+* In `chell --remote`, the local endpoint is currently the daemon host, not the client machine; use an absolute daemon-host path
+* Status, errors, and any confirmation are rendered by the issuing surface rather than the daemon terminal
+
+=== download
+
+Downloads a ChRIS file or directory to the local filesystem.
+
+**Syntax:**
+```bash
+download <chris_path_or_glob> <local_path> [-f|--force]
+```
+
+**Parameters:**
+
+* `chris_path_or_glob` - ChRIS path, or a CFS glob that selects multiple paths
+* `local_path` - Exact local destination. For a source glob, this is a directory receiving every match.
+
+**Examples:**
+```bash
+download /home/alice/results/*.nii /tmp/results/
+download /home/alice/feeds/feed_42 ./downloads/
+```
 
 == PACS Query and Retrieval
 

@@ -45,6 +45,7 @@ const mockId = jest.fn<(args: string[]) => Promise<CommandEnvelope>>();
 const mockWhoami = jest.fn();
 const mockPipeline = jest.fn();
 const mockUpload = jest.fn();
+const mockDownload = jest.fn();
 const BUILTIN_NAMES = [
   'builtin_cd', 'builtin_ls', 'builtin_pwd', 'builtin_connect', 'builtin_logout',
   'builtin_cat', 'builtin_cp', 'builtin_mv', 'builtin_upload', 'builtin_pacs',
@@ -65,6 +66,7 @@ jest.unstable_mockModule('../src/builtins/index.js', () => {
   exports.builtin_whoami = mockWhoami;
   exports.builtin_pipeline = mockPipeline;
   exports.builtin_upload = mockUpload;
+  exports.builtin_download = mockDownload;
   exports.error_stripDebugPrefix = (s: string): string => s;
   return exports;
 });
@@ -72,7 +74,8 @@ jest.unstable_mockModule('../src/builtins/index.js', () => {
 const mockExecutePlugin = jest.fn();
 jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_executePlugin: mockExecutePlugin }));
 jest.unstable_mockModule('../src/builtins/proc.js', () => ({ builtin_proc: jest.fn() }));
-jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expandAll: jest.fn(async (a: string[]) => Ok(a)) }));
+const mockShellWordsExpand = jest.fn(async (words) => Ok(words));
+jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ shellWords_expand: mockShellWordsExpand }));
 
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
@@ -137,6 +140,32 @@ describe('envRefs_expand', () => {
 });
 
 describe('command_dispatch', () => {
+  it('passes shell-expanded operands to a builtin without a command allow-list', async () => {
+    mockExecutePlugin.mockResolvedValueOnce(null);
+    mockShellWordsExpand.mockResolvedValueOnce(Ok([
+      { value: '/home/chris/a.nii', pathnameExpanded: true },
+      { value: '/home/chris/b.nii', pathnameExpanded: true },
+    ]));
+
+    await command_executeToEnvelope('ls *.nii', 0, false);
+
+    expect(mockShellWordsExpand).toHaveBeenCalled();
+    expect(mockLs).toHaveBeenCalledWith(['/home/chris/a.nii', '/home/chris/b.nii']);
+  });
+
+  it('preserves pathname-expansion provenance through normal dispatch', async () => {
+    mockShellWordsExpand.mockResolvedValueOnce(Ok([
+      { value: '/home/chris/a.nii', pathnameExpansion: false, pathnameExpanded: true },
+      { value: '/home/chris/b.nii', pathnameExpansion: false, pathnameExpanded: true },
+      { value: '/tmp/out', pathnameExpansion: false, pathnameExpanded: false },
+    ]));
+
+    await command_executeToEnvelope('download *.nii /tmp/out', 0, false);
+
+    expect((mockDownload.mock.calls[0][0] as { pathnameExpanded?: readonly boolean[] }).pathnameExpanded)
+      .toEqual([true, true, false]);
+  });
+
   it('routes sudo through the scoped-elevation command seam', async () => {
     const envelope: CommandEnvelope = await command_dispatchEnvelope(
       'sudo',
@@ -148,6 +177,24 @@ describe('command_dispatch', () => {
       expect.any(Function),
     );
     expect(envelope).toEqual({ status: 'ok', rendered: 'elevated\n' });
+  });
+
+  it('applies transfer pathname policy beneath sudo', async () => {
+    mockShellWordsExpand.mockResolvedValueOnce(Ok([
+      { value: '/remote/a.nii', pathnameExpansion: false, pathnameExpanded: true },
+      { value: '/remote/b.nii', pathnameExpansion: false, pathnameExpanded: true },
+      { value: '/tmp/out', pathnameExpansion: false, pathnameExpanded: false },
+    ]));
+
+    await command_executeToEnvelope('sudo download *.nii /tmp/out', 0, false);
+
+    const call = mockShellWordsExpand.mock.calls[0];
+    expect(call[0]).toHaveLength(2);
+    const eligible = call[1] as (_word: unknown, index: number) => boolean;
+    expect(eligible({}, 0)).toBe(true);
+    expect(eligible({}, 1)).toBe(false);
+    const elevatedArgs = mockSudoCommandRun.mock.calls[0][0] as { pathnameExpanded?: readonly boolean[] };
+    expect(elevatedArgs.pathnameExpanded).toEqual([false, true, true, false]);
   });
 
   it('routes a known command to its built-in handler', async () => {

@@ -61,6 +61,7 @@
     "cli-table3": "^0.6.3",
     "commander": "^12.1.0",
     "figlet": "^1.7.0",
+    "glob": "^11.1.0",
     "js-yaml": "^4.1.0",
     "marked": "^9.1.0",
     "marked-terminal": "^6.1.0",

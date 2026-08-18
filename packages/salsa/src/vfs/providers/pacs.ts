@@ -6,7 +6,7 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryCreateData, PACSQueryDecodedResult, PACSQueryRecord, PACSRetrieveRecord, PACSQueryStatusReport, FilteredResourceData, PACSServer } from "@fnndsc/cumin";
+import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryCreateData, PACSQueryDecodedResult, PACSQueryRecord, PACSRetrieveRecord, PACSQueryStatusReport, FilteredResourceData, PACSServer, runtimeOutput_data, runtimeOutput_err } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
 import {
@@ -207,7 +207,7 @@ async function retrieve_pollUntilComplete(
 
     const statusResult: Result<PACSQueryStatusReport> = await pacsRetrieve_statusForQuery(syntheticQueryId);
     if (!statusResult.ok || !statusResult.value) {
-      console.log(chalk.yellow(`     [Attempt ${attempts}/${maxAttempts}] Failed to fetch status report, retrying...`));
+      runtimeOutput_err(`${chalk.yellow(`     [Attempt ${attempts}/${maxAttempts}] Failed to fetch status report, retrying...`)}\n`);
       continue;
     }
 
@@ -235,23 +235,23 @@ async function retrieve_pollUntilComplete(
     }
 
     const overallStatus: string = statusReport.retrieveStatus || "pending";
-    console.log(chalk.gray(`     [Attempt ${attempts}/${maxAttempts}] CUBE Status: ${overallStatus} | Files: ${totalActual}/${totalExpected}`));
+    runtimeOutput_data(`${chalk.gray(`     [Attempt ${attempts}/${maxAttempts}] CUBE Status: ${overallStatus} | Files: ${totalActual}/${totalExpected}`)}\n`);
 
     if (allPulled && totalExpected > 0 && totalActual === totalExpected) {
-      console.log(chalk.green(`  ✓ Pull complete: ${totalActual}/${totalExpected} files retrieved.`));
+      runtimeOutput_data(`${chalk.green(`  ✓ Pull complete: ${totalActual}/${totalExpected} files retrieved.`)}\n`);
       return true;
     }
     if (overallStatus === "succeeded" || overallStatus === "completed") {
-      console.log(chalk.green(`  ✓ Pull complete (Status: ${overallStatus}).`));
+      runtimeOutput_data(`${chalk.green(`  ✓ Pull complete (Status: ${overallStatus}).`)}\n`);
       return true;
     }
     if (anyError || overallStatus === "error" || overallStatus === "failed") {
-      console.error(chalk.red("  ✗ PACS retrieve reported error status."));
+      runtimeOutput_err(`${chalk.red("  ✗ PACS retrieve reported error status.")}\n`);
       return false;
     }
   }
 
-  console.error(chalk.red("  ✗ PACS retrieve timed out."));
+  runtimeOutput_err(`${chalk.red("  ✗ PACS retrieve timed out.")}\n`);
   return false;
 }
 
@@ -263,7 +263,7 @@ async function series_retrieveAndCopy(
   idx: number,
   total: number
 ): Promise<boolean> {
-  console.log(chalk.cyan(`\n[PACS Retrieve ${idx + 1}/${total}] Processing series: ${seriesItem.description} (${seriesItem.uid})...`));
+  runtimeOutput_data(`${chalk.cyan(`\n[PACS Retrieve ${idx + 1}/${total}] Processing series: ${seriesItem.description} (${seriesItem.uid})...`)}\n`);
 
   const queryPayload: PACSQueryCreateData = {
     title: `Synthetic cp Query ${seriesItem.uid}`,
@@ -271,29 +271,29 @@ async function series_retrieveAndCopy(
     execute: false,
   };
 
-  console.log(chalk.gray("  -> Registering synthetic query on CUBE..."));
+  runtimeOutput_data(`${chalk.gray("  -> Registering synthetic query on CUBE...")}\n`);
   const queryResult: Result<PACSQueryRecord> = await pacsQueries_create(pacsserver, queryPayload);
   if (!queryResult.ok) {
-    console.error(chalk.red(`  ✗ Failed to create synthetic query for series ${seriesItem.uid}`));
+    runtimeOutput_err(`${chalk.red(`  ✗ Failed to create synthetic query for series ${seriesItem.uid}`)}\n`);
     return false;
   }
 
   const syntheticQueryId: number = queryResult.value.id;
-  console.log(chalk.gray(`  -> Triggering PACS retrieve (Query ID: ${syntheticQueryId})...`));
+  runtimeOutput_data(`${chalk.gray(`  -> Triggering PACS retrieve (Query ID: ${syntheticQueryId})...`)}\n`);
   const retrieveResult: Result<PACSRetrieveRecord> = await pacsRetrieve_create(syntheticQueryId);
   if (!retrieveResult.ok) {
-    console.error(chalk.red(`  ✗ Failed to create PACS retrieve for query ${syntheticQueryId}`));
+    runtimeOutput_err(`${chalk.red(`  ✗ Failed to create PACS retrieve for query ${syntheticQueryId}`)}\n`);
     return false;
   }
 
-  console.log(chalk.gray("  -> Pulling series data sequentially, polling progress..."));
+  runtimeOutput_data(`${chalk.gray("  -> Pulling series data sequentially, polling progress...")}\n`);
   const finished: boolean = await retrieve_pollUntilComplete(syntheticQueryId, seriesItem.uid, 60);
   if (!finished) return false;
 
-  console.log(chalk.gray("  -> Finding folder path on ChRIS storage..."));
+  runtimeOutput_data(`${chalk.gray("  -> Finding folder path on ChRIS storage...")}\n`);
   const folderPath: string | null = await series_getFolderPath(seriesItem.uid);
   if (!folderPath) {
-    console.error(chalk.red(`  ✗ No registered folder path found for series UID ${seriesItem.uid}`));
+    runtimeOutput_err(`${chalk.red(`  ✗ No registered folder path found for series UID ${seriesItem.uid}`)}\n`);
     return false;
   }
 
@@ -301,14 +301,14 @@ async function series_retrieveAndCopy(
   const cleanDesc: string = seriesItem.description.replace(/[\s/]/g, "_");
   const targetSeriesFolder: string = path.posix.join(dest, `Series_${seriesItem.uid}_${cleanDesc}`);
 
-  console.log(chalk.gray(`  -> Copying series files to '${targetSeriesFolder}'...`));
+  runtimeOutput_data(`${chalk.gray(`  -> Copying series files to '${targetSeriesFolder}'...`)}\n`);
   const copySuccess: boolean = await files_copyRecursively(absoluteFolderPath, targetSeriesFolder);
   if (!copySuccess) {
-    console.error(chalk.red(`  ✗ Recursive copy failed from '${absoluteFolderPath}' to '${targetSeriesFolder}'`));
+    runtimeOutput_err(`${chalk.red(`  ✗ Recursive copy failed from '${absoluteFolderPath}' to '${targetSeriesFolder}'`)}\n`);
     return false;
   }
 
-  console.log(chalk.green(`  ✓ Series '${seriesItem.description}' copied successfully.`));
+  runtimeOutput_data(`${chalk.green(`  ✓ Series '${seriesItem.description}' copied successfully.`)}\n`);
   return true;
 }
 
@@ -432,7 +432,7 @@ export class PacsVfsProvider implements VFSProvider {
       if (!serverResult.ok) return false;
       const pacsserver: string = serverResult.value;
 
-      console.log(chalk.cyan(`[PACS Retrieve] Initiating sequential gather of ${seriesToRetrieve.length} series...`));
+      runtimeOutput_data(`${chalk.cyan(`[PACS Retrieve] Initiating sequential gather of ${seriesToRetrieve.length} series...`)}\n`);
 
       let overallSuccess: boolean = true;
       for (let i: number = 0; i < seriesToRetrieve.length; i++) {

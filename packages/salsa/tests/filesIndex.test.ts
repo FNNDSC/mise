@@ -289,7 +289,7 @@ describe('fileContent_getBinary + stream routing', () => {
     expect(r.ok && r.value.size).toBe(3);
   });
   it('stream falls back to the regular stream handler', async () => {
-    mockDispatcher.provider_get.mockReturnValue({ prefix: '/' });
+    mockDispatcher.provider_get.mockReturnValue({ prefix: '' });
     mockRegular.fileContent_getRegularStream.mockResolvedValue(Ok({ stream: 's' }));
     await fileContent_getBinaryStream('/home/f');
     expect(mockRegular.fileContent_getRegularStream).toHaveBeenCalled();
@@ -307,7 +307,7 @@ describe('fileContent_getBinary + stream routing', () => {
   });
 
   it('stream routes /PIPELINES/ and /SERVICES/PACS/', async () => {
-    mockDispatcher.provider_get.mockReturnValue({ prefix: '/' });
+    mockDispatcher.provider_get.mockReturnValue({ prefix: '' });
     mockPipeline.fileContent_getPipelineBinary.mockResolvedValue(Ok(Buffer.from('pp')));
     const rp = await fileContent_getBinaryStream('/PIPELINES/x');
     expect(rp.ok && rp.value.size).toBe(2);

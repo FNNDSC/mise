@@ -87,7 +87,7 @@ jest.unstable_mockModule('../src/builtins/index.js', () => {
 const mockExecutePlugin = jest.fn();
 jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_executePlugin: mockExecutePlugin }));
 jest.unstable_mockModule('../src/builtins/proc.js', () => ({ builtin_proc: jest.fn() }));
-jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ wildcards_expandAll: jest.fn(async (a: string[]) => Ok(a)) }));
+jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ shellWords_expand: jest.fn(async (words) => Ok(words)) }));
 
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
@@ -137,9 +137,9 @@ const {
   stopOnError_set,
 } = await import('../src/core/engine.js');
 const { surface_set } = await import('../src/core/surface.js');
+const { BufferSink, CaptureSink, sink_set } = await import('../src/core/sink.js');
 
-let logSpy: jest.SpiedFunction<typeof console.log>;
-let errSpy: jest.SpiedFunction<typeof console.error>;
+let output: InstanceType<typeof CaptureSink>;
 beforeEach(() => {
   jest.clearAllMocks();
   mockHasHelpFlag.mockReturnValue(false);
@@ -159,8 +159,8 @@ beforeEach(() => {
     shellCommand: (command: string): Promise<number> => mockShellCommand(command),
     localEdit: async (r: { content: string }): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
   });
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-  errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  output = new CaptureSink(new BufferSink());
+  sink_set(output);
 });
 
 describe('line_execute', () => {
@@ -255,7 +255,7 @@ describe('line_execute', () => {
       localEdit: async (r: { content: string }): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
     });
     const envelopes = await line_execute('whoami | grep foo');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('cannot run pipeline segments'));
+    expect(output.errText_get()).toContain('cannot run pipeline segments');
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
     expect(mockSegmentPipe).not.toHaveBeenCalled();
   });
@@ -263,7 +263,7 @@ describe('line_execute', () => {
   it('yields an error envelope when a pipe segment fails', async () => {
     mockSegmentPipe.mockRejectedValue(new Error('broken pipe'));
     const envelopes = await line_execute('whoami | grep foo');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('broken pipe'));
+    expect(output.errText_get()).toContain('broken pipe');
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
   });
 
@@ -271,7 +271,7 @@ describe('line_execute', () => {
     mockTiming.mockReturnValue(true);
     await line_execute('whoami');
     expect(mockWhoami).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ms'));
+    expect(output.dataText_get()).toContain('ms');
   });
 });
 
@@ -322,7 +322,7 @@ describe('output redirection', () => {
     mockStatSync.mockReturnValue({ isDirectory: () => true } as unknown as ReturnType<typeof mockStatSync>);
     const envelopes = await line_execute('whoami > somedir');
     expect(mockWriteFile).not.toHaveBeenCalled();
-    expect(errSpy).toHaveBeenCalled();
+    expect(output.errText_get()).not.toBe('');
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
   });
 });
@@ -342,7 +342,7 @@ describe('line_execute — control flow', () => {
     const envelopes = await line_execute('whoami; whoami');
     // First segment throws and aborts; the second never runs.
     expect(mockWhoami).toHaveBeenCalledTimes(1);
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    expect(output.errText_get()).toContain('boom');
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
     stopOnError_set(false);
   });

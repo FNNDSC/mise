@@ -219,8 +219,8 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   upload: {
-    usage: 'upload <local_path> <chris_path>',
-    description: 'Upload files from local filesystem to ChRIS with progress tracking',
+    usage: 'upload <local_path_or_glob> <chris_path>',
+    description: 'Upload local files, directories, or glob matches to ChRIS with progress tracking',
     options: [
       'Displays progress bar showing:',
       '  - File count and percentage complete',
@@ -230,19 +230,21 @@ export const helpText: Record<string, CommandHelp> = {
     ],
     examples: [
       'upload ~/data/file.csv /home/user/uploads/',
+      'upload ~/Pictures/earthandmoon* .',
       'upload ./results/ ~/data/',
       'upload ~/experiment/data /home/user/projects/',
     ],
   },
   download: {
-    usage: 'download <chris_path> <local_path> [-f|--force]',
-    description: 'Download a ChRIS file or directory to the local filesystem with progress tracking',
+    usage: 'download <chris_path_or_glob> <local_path> [-f|--force]',
+    description: 'Download a ChRIS file, directory, or CFS glob to the local filesystem with progress tracking',
     options: [
       '-f, --force   Overwrite existing local paths',
       'Progress bar shows files, ETA, bytes transferred',
     ],
     examples: [
       'download /home/user/data ./data',
+      'download /home/user/results/*.nii ./results/',
       'download /feeds/feed_123 ./downloads -f',
     ],
   },

@@ -43,6 +43,7 @@ export * from "./tags/chrisTags";
 export * from "./groups/chrisGroups";
 export * from "./pluginmetas/chrisPluginMetas";
 export * from "./workflows/chrisWorkflows";
+export * from "./output/runtimeOutput";
 
 // Re-export chrisapi types so downstream packages don't import chrisapi directly
 export { listData_get, itemData_get, items_get } from "./chrisapi/adapter";

@@ -8,6 +8,22 @@ import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_form
 import { listCache_get, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import path from 'path';
 import { sink_get } from '../../core/sink.js';
+import { shellArguments_pathnameExpansion } from '../../lib/parser.js';
+import { surface_get } from '../../core/surface.js';
+
+/**
+ * Asks the issuing surface to confirm replacement of an existing CFS target.
+ *
+ * @param message - Confirmation question prepared by the transfer command.
+ * @returns Nothing when the surface accepts the operation.
+ * @throws {Error} When the surface declines the operation.
+ */
+async function uploadConfirmation_request(message: string): Promise<void> {
+  const answer: string = await surface_get().prompt({ message });
+  if (answer.trim().toLowerCase() !== 'y' && answer.trim().toLowerCase() !== 'yes') {
+    throw new Error('Operation cancelled by user.');
+  }
+}
 
 /**
  * Uploads a local file or directory to ChRIS.
@@ -21,11 +37,19 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
   }
   const localPath: string = args[0];
   const remotePath: string = args[1];
+  const localGlob: boolean = shellArguments_pathnameExpansion(args, 0);
 
   const targetRemote: string = await path_resolve(remotePath);
 
   try {
     const summary: UploadSummary = await chefs_upload_cmd(localPath, targetRemote, {
+      expandLocalGlob: localGlob,
+      confirm: uploadConfirmation_request,
+      onNotice: (message: string, channel: 'status' | 'err'): void => {
+        const sink = sink_get();
+        if (channel === 'status') sink.status_write(`${message}\n`);
+        else sink.err_write(`${message}\n`);
+      },
       onProgress: event => sink_get().progress_write(event),
     });
 

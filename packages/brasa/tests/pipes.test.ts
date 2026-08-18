@@ -138,7 +138,7 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({
 
 // Mock wildcards
 jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({
-  wildcards_expandAll: jest.fn((args) => args)
+  shellWords_expand: jest.fn((words) => ({ ok: true, value: words }))
 }));
 
 describe('Pipe Functionality', () => {

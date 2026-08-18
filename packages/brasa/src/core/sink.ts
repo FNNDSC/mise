@@ -23,6 +23,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { type ProgressEvent, type ProgressRenderer, NullProgressRenderer } from './progress.js';
 
@@ -213,6 +214,15 @@ export class CaptureSink implements OutputSink {
 export class PipeCaptureSink implements OutputSink {
   private chunks: Buffer[] = [];
 
+  /**
+   * Initializes a pipe capture sink.
+   *
+   * @param live - The surrounding sink that receives stderr. Data remains
+   * captured for the next pipe segment, while stderr retains its ordinary
+   * unpiped destination.
+   */
+  constructor(private readonly live: OutputSink = new StdoutSink()) {}
+
   /** @inheritdoc */
   public data_write(chunk: string | Buffer): void {
     this.chunks.push(typeof chunk === 'string'
@@ -222,9 +232,10 @@ export class PipeCaptureSink implements OutputSink {
 
   /** @inheritdoc */
   public err_write(chunk: string | Buffer): void {
-    // The err channel is never piped: pass it straight to stderr, exactly as
-    // the historical inherit behavior did.
-    process.stderr.write(chunk);
+    // The err channel is never piped, but it must still use the surrounding
+    // host sink. In a CALYPSO daemon that is the issuing surface, not the
+    // daemon's own stderr.
+    this.live.err_write(chunk);
   }
 
   /** @inheritdoc */
@@ -263,6 +274,14 @@ let hostSink: OutputSink = new StdoutSink();
  * at once without their output stomping a shared global.
  */
 const sinkScope: AsyncLocalStorage<OutputSink> = new AsyncLocalStorage<OutputSink>();
+
+// Lower layers report operational notices through Cumin's narrow port. The
+// callback resolves the sink at write time, preserving each invocation's
+// AsyncLocalStorage scope rather than pinning output to one terminal.
+runtimeOutput_set({
+  data_write: (chunk: string | Buffer): void => { sink_get().data_write(chunk); },
+  err_write: (chunk: string | Buffer): void => { sink_get().err_write(chunk); },
+});
 
 /**
  * Returns the sink in effect for the current async context.

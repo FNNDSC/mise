@@ -244,15 +244,19 @@ describe('PipeCaptureSink', () => {
     expect(Array.from(buffer.subarray(6))).toEqual([0x00, 0x01, 0xff]);
   });
 
-  it('passes the err channel through to stderr and drops status/progress', () => {
-    const pipe: PipeCaptureSink = new PipeCaptureSink();
-    const errSpy: jest.SpiedFunction<typeof process.stderr.write> = jest
-      .spyOn(process.stderr, 'write')
-      .mockImplementation(() => true);
+  it('passes the err channel to the surrounding sink and drops status/progress', () => {
+    const errors: string[] = [];
+    const live: OutputSink = {
+      data_write: (): void => { /* not used */ },
+      err_write: (chunk: string | Buffer): void => { errors.push(chunk.toString()); },
+      status_write: (): void => { /* not used */ },
+      progress_write: (): void => { /* not used */ },
+    };
+    const pipe: PipeCaptureSink = new PipeCaptureSink(live);
     pipe.err_write('oops\n');
     pipe.status_write('spinner');
     pipe.progress_write({} as never);
-    expect(errSpy).toHaveBeenCalledWith('oops\n');
+    expect(errors).toEqual(['oops\n']);
     expect(pipe.buffer_get().length).toBe(0);
   });
 });

@@ -103,6 +103,22 @@ describe('fileContent_getRegularStream', () => {
   it('errors when the stream download fails', async () => {
     groupWith([{ id: 1, fname: '/dir/f.txt' }]);
     mockIO.file_downloadStream.mockResolvedValue(Err());
+    mockIO.file_download.mockResolvedValue(null);
     expect((await fileContent_getRegularStream('/dir/f.txt')).ok).toBe(false);
+  });
+
+  it('falls back to the binary endpoint when CUBE cannot stream a file', async () => {
+    groupWith([{ id: 1, fname: '/dir/f.txt' }]);
+    mockIO.file_downloadStream.mockResolvedValue(Err());
+    mockIO.file_download.mockResolvedValue(Buffer.from('fallback'));
+
+    const result = await fileContent_getRegularStream('/dir/f.txt');
+
+    expect(result.ok && result.value.size).toBe(8);
+    if (result.ok) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of result.value.stream as AsyncIterable<Buffer>) chunks.push(chunk);
+      expect(Buffer.concat(chunks).toString()).toBe('fallback');
+    }
   });
 });

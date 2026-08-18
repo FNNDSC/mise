@@ -2,15 +2,17 @@
  * @file Download command implementation.
  * @module
  */
-import { fileContent_getBinaryStream, files_listRecursive, FsItem } from "@fnndsc/salsa";
-import { path_resolveChrisFs } from "../../utils/cli.js";
 import fs from "fs";
 import path from "path";
-import chalk from "chalk";
 import { pipeline } from "stream/promises";
-import { bytes_format } from "./upload.js";
-import { prompt_confirmOrThrow } from "../../utils/input_format.js";
+
+import chalk from "chalk";
+
+import { fileContent_getBinaryStream, files_listRecursive, files_path_isDirectory, FsItem } from "@fnndsc/salsa";
 import { chiliLog } from "../../screen/output.js";
+import { prompt_confirmOrThrow } from "../../utils/input_format.js";
+import { path_resolveChrisFs } from "../../utils/cli.js";
+import { bytes_format } from "./upload.js";
 
 export { bytes_format };
 
@@ -44,7 +46,59 @@ export interface DownloadProgressEvent {
 /** Options for download execution. */
 export interface DownloadOptions {
   force?: boolean;
+  /** Confirms replacement or merge at the local transfer destination. */
+  confirm?: (message: string) => Promise<void>;
+  /** Reports a live transfer notice on the caller's chosen output channel. */
+  onNotice?: (message: string, channel: "status" | "err") => void;
   onProgress?: (event: DownloadProgressEvent) => void;
+}
+
+/**
+ * Emits a live download notice through the caller's output boundary.
+ *
+ * @param options - Download options that may own live presentation.
+ * @param message - Unstyled user-facing notice.
+ * @param channel - Semantic output channel for the notice.
+ * @returns Nothing.
+ */
+function downloadNotice_emit(
+  options: DownloadOptions,
+  message: string,
+  channel: "status" | "err",
+): void {
+  if (options.onNotice) {
+    options.onNotice(message, channel);
+    return;
+  }
+  const styled: string = channel === "err" ? chalk.red(message) : chalk.cyan(message);
+  chiliLog(styled);
+}
+
+/**
+ * Requests a transfer confirmation through the caller's interaction boundary.
+ *
+ * @param options - Download options that may own confirmation.
+ * @param message - Confirmation question prepared by the transfer planner.
+ * @returns Nothing when the operation may continue.
+ */
+async function downloadConfirmation_request(options: DownloadOptions, message: string): Promise<void> {
+  if (options.confirm) {
+    await options.confirm(message);
+    return;
+  }
+  await prompt_confirmOrThrow(message);
+}
+
+/** One remote file and its precomputed host-local destination. */
+interface DownloadPlan {
+  remotePath: string;
+  localPath: string;
+}
+
+/** All host-local artifacts needed for an aggregate download. */
+interface DownloadBatchPlan {
+  directories: string[];
+  files: DownloadPlan[];
 }
 
 /**
@@ -61,14 +115,7 @@ async function directory_ensureExists(dirPath: string): Promise<void> {
  * @returns True if it's a directory, false if it's a file.
  */
 async function chrisPath_isDirectory(chrisPath: string): Promise<boolean> {
-  try {
-    // Try to list it - if it succeeds, it's a directory
-    const items: FsItem[] = await files_listRecursive(chrisPath);
-    return items.length > 0 || chrisPath.endsWith('/');
-  } catch {
-    // If listing fails, assume it's a file
-    return false;
-  }
+  return files_path_isDirectory(chrisPath);
 }
 
 /**
@@ -135,13 +182,13 @@ export async function files_downloadWithProgress(
         const existingStat: fs.Stats = await fs.promises.stat(finalLocalPath);
         if (existingStat.isFile()) {
           if (!options.force) {
-            await prompt_confirmOrThrow(
+            await downloadConfirmation_request(options,
               `Local file exists at ${finalLocalPath}. Overwrite? (y/N)`
             );
           }
         } else if (existingStat.isDirectory()) {
           if (!options.force) {
-            await prompt_confirmOrThrow(
+            await downloadConfirmation_request(options,
               `Target directory exists. Download into existing folder: ${finalLocalPath}? (y/N)`
             );
           }
@@ -206,7 +253,7 @@ export async function files_downloadWithProgress(
   }
 
   // Download directory
-  chiliLog(chalk.cyan("Scanning files to download..."));
+  downloadNotice_emit(options, "Scanning files to download...", "status");
   options.onProgress?.({
     operation: "download",
     kind: "transfer",
@@ -230,13 +277,13 @@ export async function files_downloadWithProgress(
     if (statTarget.isDirectory()) {
       const entries: string[] = await fs.promises.readdir(targetDir);
       if (!options.force) {
-        await prompt_confirmOrThrow(
+        await downloadConfirmation_request(options,
           `Target directory exists${entries.length ? ' (will merge contents)' : ''}: ${targetDir}. Continue? (y/N)`
         );
       }
     } else if (statTarget.isFile()) {
       if (!options.force) {
-        await prompt_confirmOrThrow(
+        await downloadConfirmation_request(options,
           `Local file exists at ${targetDir}. Overwrite? (y/N)`
         );
       }
@@ -264,7 +311,7 @@ export async function files_downloadWithProgress(
       const result = await fileContent_getBinaryStream(file.path);
       if (!result.ok) {
         summary.failedCount++;
-        chiliLog(chalk.yellow(`\nFailed to download: ${file.path}`));
+        downloadNotice_emit(options, `Failed to download: ${file.path}`, "err");
         continue;
       }
 
@@ -294,7 +341,7 @@ export async function files_downloadWithProgress(
     } catch (error: unknown) {
       summary.failedCount++;
       const msg: string = error instanceof Error ? error.message : String(error);
-      chiliLog(chalk.red(`\nError downloading ${file.path}: ${msg}`));
+      downloadNotice_emit(options, `Error downloading ${file.path}: ${msg}`, "err");
     }
 
     options.onProgress?.({
@@ -324,6 +371,203 @@ export async function files_downloadWithProgress(
     percent: summary.totalFiles === 0 ? 100 : (summary.transferredCount / summary.totalFiles) * 100,
     unit: "files",
     status: summary.failedCount === 0 ? "done" : "error",
+  });
+
+  return summary;
+}
+
+/**
+ * Builds concrete host-local transfer plans for multiple exact CFS sources.
+ *
+ * A directory source retains its basename below the local destination, while
+ * an individual file is placed directly in that destination.
+ *
+ * @param sources - Exact CFS source paths.
+ * @param localDirectory - Host-local directory receiving the matches.
+ * @returns The CFS-file and directory plans needed for the transfer.
+ */
+async function downloadPlans_create(
+  sources: readonly string[],
+  localDirectory: string,
+): Promise<DownloadBatchPlan> {
+  const plan: DownloadBatchPlan = { directories: [], files: [] };
+
+  for (const source of sources) {
+    const resolvedChris: string = await path_resolveChrisFs(source, {});
+    const isDirectory: boolean = await files_path_isDirectory(resolvedChris);
+    if (isDirectory) {
+      const targetDirectory: string = path.join(localDirectory, path.basename(resolvedChris));
+      plan.directories.push(targetDirectory);
+      const items: FsItem[] = await files_listRecursive(resolvedChris);
+      for (const item of items) {
+        const relativePath: string = item.path.substring(resolvedChris.length).replace(/^\//, '');
+        const localPath: string = path.join(targetDirectory, relativePath);
+        if (item.type === 'dir') {
+          plan.directories.push(localPath);
+        } else {
+          plan.files.push({ remotePath: item.path, localPath });
+        }
+      }
+      continue;
+    }
+
+    plan.files.push({
+      remotePath: resolvedChris,
+      localPath: path.join(localDirectory, path.basename(resolvedChris)),
+    });
+  }
+
+  return plan;
+}
+
+/**
+ * Ensures that a multi-source download can safely use its destination.
+ *
+ * @param localDirectory - Host-local directory receiving the matches.
+ * @param plans - Concrete file transfers that will be written below the directory.
+ * @param options - Download options including overwrite confirmation behavior.
+ * @returns A promise fulfilled when the destination is ready.
+ * @throws If the destination is an existing non-directory or the operator rejects overwrite.
+ */
+async function downloadDestination_prepare(
+  localDirectory: string,
+  plans: readonly DownloadPlan[],
+  options: DownloadOptions,
+): Promise<void> {
+  if (fs.existsSync(localDirectory)) {
+    const stats: fs.Stats = await fs.promises.stat(localDirectory);
+    if (!stats.isDirectory()) {
+      throw new Error(`Wildcard download requires a local directory target: ${localDirectory}`);
+    }
+  } else {
+    await directory_ensureExists(localDirectory);
+  }
+
+  if (options.force) return;
+
+  const conflicts: DownloadPlan[] = [];
+  for (const plan of plans) {
+    if (fs.existsSync(plan.localPath)) {
+      conflicts.push(plan);
+    }
+  }
+  if (conflicts.length > 0) {
+    await downloadConfirmation_request(options,
+      `${conflicts.length} local file(s) already exist below ${localDirectory}. Overwrite? (y/N)`,
+    );
+  }
+}
+
+/**
+ * Downloads multiple exact CFS paths into one host-local directory.
+ *
+ * This is the aggregate transfer seam used after the ChELL layer expands a
+ * CFS source glob. It intentionally accepts paths rather than patterns: CFS
+ * namespace expansion belongs to the VFS-aware Brasa layer.
+ *
+ * @param sources - Exact CFS files or directories selected by the shell.
+ * @param localDirectory - Host-local directory receiving all matched sources.
+ * @param options - Download options and an optional aggregate progress callback.
+ * @returns Aggregate transfer statistics for all supplied sources.
+ * @throws If no sources are provided or the local target is not a directory.
+ */
+export async function files_downloadManyWithProgress(
+  sources: readonly string[],
+  localDirectory: string,
+  options: DownloadOptions = {},
+): Promise<DownloadSummary> {
+  if (sources.length === 0) {
+    throw new Error('No CFS paths were provided for download');
+  }
+
+  const summary: DownloadSummary = {
+    startTime: Date.now(),
+    endTime: 0,
+    totalFiles: 0,
+    transferredCount: 0,
+    failedCount: 0,
+    transferSize: 0,
+    duration: 0,
+    speed: 0,
+  };
+
+  options.onProgress?.({
+    operation: 'download',
+    kind: 'transfer',
+    phase: 'scanning',
+    label: 'Scanning CFS files to download',
+    status: 'running',
+  });
+  const plans: DownloadBatchPlan = await downloadPlans_create(sources, localDirectory);
+  await downloadDestination_prepare(localDirectory, plans.files, options);
+  for (const directory of plans.directories) {
+    await directory_ensureExists(directory);
+  }
+  summary.totalFiles = plans.files.length;
+
+  options.onProgress?.({
+    operation: 'download',
+    kind: 'transfer',
+    phase: 'transferring',
+    label: 'Downloading matching files',
+    current: 0,
+    total: plans.files.length,
+    percent: plans.files.length === 0 ? 100 : 0,
+    unit: 'files',
+    status: 'running',
+  });
+
+  for (const [index, plan] of plans.files.entries()) {
+    try {
+      const result = await fileContent_getBinaryStream(plan.remotePath);
+      if (!result.ok) {
+        throw new Error('Failed to download file');
+      }
+
+      const { stream, size } = result.value as {
+        stream: NodeJS.ReadableStream;
+        size?: number;
+      };
+      await directory_ensureExists(path.dirname(plan.localPath));
+      let transferred: number = 0;
+      stream.on('data', (chunk: Buffer): void => {
+        transferred += chunk.length;
+      });
+      await pipeline(stream, fs.createWriteStream(plan.localPath));
+      summary.transferredCount++;
+      summary.transferSize += size ?? transferred;
+    } catch (error: unknown) {
+      summary.failedCount++;
+      const message: string = error instanceof Error ? error.message : String(error);
+      downloadNotice_emit(options, `Error downloading ${plan.remotePath}: ${message}`, "err");
+    }
+
+    options.onProgress?.({
+      operation: 'download',
+      kind: 'transfer',
+      phase: 'transferring',
+      label: 'Downloading matching files',
+      current: index + 1,
+      total: plans.files.length,
+      percent: plans.files.length === 0 ? 100 : ((index + 1) / plans.files.length) * 100,
+      unit: 'files',
+      status: 'running',
+    });
+  }
+
+  summary.endTime = Date.now();
+  summary.duration = (summary.endTime - summary.startTime) / 1000;
+  summary.speed = summary.duration > 0 ? summary.transferSize / summary.duration : 0;
+  options.onProgress?.({
+    operation: 'download',
+    kind: 'transfer',
+    phase: summary.failedCount === 0 ? 'complete' : 'failed',
+    label: 'Download complete',
+    current: summary.transferredCount,
+    total: summary.totalFiles,
+    percent: summary.totalFiles === 0 ? 100 : (summary.transferredCount / summary.totalFiles) * 100,
+    unit: 'files',
+    status: summary.failedCount === 0 ? 'done' : 'error',
   });
 
   return summary;

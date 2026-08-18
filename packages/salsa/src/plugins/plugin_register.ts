@@ -4,7 +4,7 @@
  * @module
  */
 
-import { ChRISPlugin, errorStack, Client, plugin_registerDirect, Result } from '@fnndsc/cumin';
+import { ChRISPlugin, errorStack, Client, plugin_registerDirect, Result, runtimeOutput_data } from '@fnndsc/cumin';
 import { AdminCredentials } from './store_import.js';
 
 /**
@@ -71,7 +71,7 @@ export async function plugin_registerWithAdmin(
   );
 
   if (result) {
-    console.log(`Plugin '${result.name}' registered successfully.`);
+    runtimeOutput_data(`Plugin '${result.name}' registered successfully.\n`);
     return result as PluginRegistrationResponse;
   }
 
@@ -100,7 +100,7 @@ export async function plugin_register(
   );
 
   if (result.ok) {
-    console.log(`Plugin '${result.value.name}' registered successfully.`);
+    runtimeOutput_data(`Plugin '${result.value.name}' registered successfully.\n`);
     return result.value as PluginRegistrationResponse;
   }
 
@@ -151,7 +151,7 @@ export async function plugin_assignToComputeResources(
     );
 
     if (newResources.length === 0) {
-      console.log(`Plugin already assigned to: ${computeResources.join(', ')}`);
+      runtimeOutput_data(`Plugin already assigned to: ${computeResources.join(', ')}\n`);
       return true;
     }
 
@@ -161,8 +161,8 @@ export async function plugin_assignToComputeResources(
     // Note: @fnndsc/chrisapi doesn't directly expose compute resource modification
     // We would need to use admin API to modify plugin compute resources
     // For now, this is a placeholder that logs the action
-    console.log(`Adding plugin to compute resources: ${newResources.join(', ')}`);
-    console.log(`Full resource list: ${allResources.join(', ')}`);
+    runtimeOutput_data(`Adding plugin to compute resources: ${newResources.join(', ')}\n`);
+    runtimeOutput_data(`Full resource list: ${allResources.join(', ')}\n`);
 
     // TODO: Implement actual compute resource assignment via admin API
     errorStack.stack_push(

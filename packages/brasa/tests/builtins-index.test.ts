@@ -1,5 +1,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import type { ChrisIdentity, CommandEnvelope, Result } from '@fnndsc/cumin';
+import type { DownloadSummary } from '@fnndsc/chili/commands/fs/download.js';
+import type { ShellArguments } from '../src/lib/parser.js';
 
 // Mock dependencies BEFORE imports
 const mockGetCWD = jest.fn();
@@ -24,6 +26,8 @@ const mockFileFieldsFetch = jest.fn();
 const mockChefsMkdir = jest.fn();
 const mockChefsTouch = jest.fn();
 const mockChefsUpload = jest.fn();
+const mockChefsDownload = jest.fn();
+const mockChefsDownloadMany = jest.fn();
 const mockChefsCat = jest.fn();
 const mockChefsRm = jest.fn();
 const mockTableDisplay = jest.fn();
@@ -47,6 +51,9 @@ const mockComputeFieldsFetch = jest.fn().mockResolvedValue([]);
 const STORE_DEFAULT = 'https://default/api/v1/';
 let mockStoreUrl: string | undefined;
 const mockStorePersist = jest.fn().mockResolvedValue(undefined);
+const mockWildcardExpand = jest.fn();
+const mockWildcardExpandMatches = jest.fn();
+const mockStringCheckHasWildcard = jest.fn();
 
 // Define local Ok, Err, and errorStack for consistent use across mocks and tests
 const Ok = (val: any) => ({ ok: true, value: val });
@@ -157,6 +164,12 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
       client_get: mockClientGet
     }
   }
+}));
+
+jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({
+  wildcard_expand: mockWildcardExpand,
+  wildcard_expandMatches: mockWildcardExpandMatches,
+  string_checkHasWildcard: mockStringCheckHasWildcard,
 }));
 
 // Mock VFS
@@ -298,18 +311,28 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: m
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cp.js', () => ({ files_cp: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/mv.js', () => ({ files_mv: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/download.js', () => ({
-  files_downloadWithProgress: jest.fn().mockResolvedValue({
-    transferredCount: 1,
-    failedCount: 0,
-    transferSize: 1024,
-    duration: 1,
-    speed: 1024,
-    totalFiles: 1,
-    endTime: Date.now(),
-    startTime: Date.now(),
-  }),
+  files_downloadWithProgress: mockChefsDownload,
+  files_downloadManyWithProgress: mockChefsDownloadMany,
   bytes_format: (n: number) => `${n} B`,
 }));
+
+const DOWNLOAD_SUMMARY: DownloadSummary = {
+  transferredCount: 1,
+  failedCount: 0,
+  transferSize: 1024,
+  duration: 1,
+  speed: 1024,
+  totalFiles: 1,
+  endTime: Date.now(),
+  startTime: Date.now(),
+};
+
+mockChefsDownload.mockResolvedValue(DOWNLOAD_SUMMARY);
+mockChefsDownloadMany.mockResolvedValue({
+  ...DOWNLOAD_SUMMARY,
+  totalFiles: 2,
+  transferredCount: 2,
+});
 
 // Mock chili views
 jest.unstable_mockModule('@fnndsc/chili/views/plugin.js', () => ({ pluginList_render: mockPluginListRender, pluginRun_render: mockPluginRunRender }));
@@ -376,6 +399,15 @@ afterEach(() => {
 describe('Builtins - Core Functions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockChefsDownload.mockResolvedValue(DOWNLOAD_SUMMARY);
+    mockChefsDownloadMany.mockResolvedValue({
+      ...DOWNLOAD_SUMMARY,
+      totalFiles: 2,
+      transferredCount: 2,
+    });
+    mockStringCheckHasWildcard.mockImplementation((value: string): boolean => /[*?[\]]/.test(value));
+    mockWildcardExpand.mockResolvedValue(Ok([]));
+    mockWildcardExpandMatches.mockResolvedValue(Ok([]));
     mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [] });
     mockGetCWD.mockResolvedValue('/home/user');
     mockContextGetSingle.mockReturnValue({
@@ -641,6 +673,9 @@ describe('Builtins - Core Functions', () => {
       const envelope = await builtin_upload(['./local.txt', 'remote.txt']);
 
       expect(mockChefsUpload).toHaveBeenCalledWith('./local.txt', '/home/user/remote.txt', expect.objectContaining({
+        expandLocalGlob: false,
+        confirm: expect.any(Function),
+        onNotice: expect.any(Function),
         onProgress: expect.any(Function),
       }));
       expect(envelope.rendered).toContain('Successfully uploaded 1 file');
@@ -670,14 +705,28 @@ describe('Builtins - Core Functions', () => {
 
     it('should invoke chili download helper', async () => {
       const downloadModule = await import('@fnndsc/chili/commands/fs/download.js');
-      const mockDownload = downloadModule.files_downloadWithProgress as jest.Mock;
 
       await builtin_download(['/remote/file.txt', './local.txt']);
 
-      expect(mockDownload).toHaveBeenCalledWith('/remote/file.txt', expect.stringContaining('local.txt'), expect.objectContaining({
+      expect(mockChefsDownload).toHaveBeenCalledWith('/remote/file.txt', expect.stringContaining('local.txt'), expect.objectContaining({
         force: false,
+        confirm: expect.any(Function),
+        onNotice: expect.any(Function),
         onProgress: expect.any(Function),
       }));
+    });
+
+    it('uses aggregate transfer for sources expanded by the shell', async () => {
+      const args: ShellArguments = ['/remote/one.txt', '/remote/two.txt', './downloads'];
+      args.pathnameExpanded = [true, true, false];
+
+      await builtin_download(args);
+
+      expect(mockChefsDownloadMany).toHaveBeenCalledWith(
+        ['/remote/one.txt', '/remote/two.txt'],
+        expect.stringContaining('downloads'),
+        expect.objectContaining({ force: false, onProgress: expect.any(Function) }),
+      );
     });
   });
 

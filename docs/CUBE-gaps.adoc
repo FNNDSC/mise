@@ -200,6 +200,72 @@ Avoid a universal, unbounded graph-document endpoint. It would couple clients to
 
 The required evidence is a trace showing the current request sequence, visible scope, response sizes, cold/warm latency, and which fields force the follow-up requests.
 
+== Confirmed contract-integrity gap: plugin execution schemas
+
+=== Observed failure
+
+For a versioned plugin executable, ChELL's ``--parameters`` view reads the
+ordinary C-J relation:
+
+----
+GET /api/v1/plugins/{plugin_id}/parameters/
+----
+
+That collection is not a ChELL approximation. In CUBE it is the plugin's
+``parameters`` relation, and its items are the parameter records used when
+CUBE validates and creates plugin instances. It is therefore the authoritative
+*registered execution schema* for that CUBE plugin version.
+
+On the observed production CUBE, ``pl-pfdo_med2img v1.2.2`` returns ten such
+records even with an explicit high collection limit. The source at the exact
+``1.2.2`` tag declares twenty-four plugin flags through
+``ChrisApp.add_argument``; fourteen are absent from CUBE. The ten returned
+records are the first ten source declarations in order. This is not pagination,
+renderer filtering, or a README-only discrepancy: the historical registration
+manifest is incomplete or was not refreshed from the image.
+
+=== Boundary and requirement
+
+A README is prose and may document an upstream module, historical options, or
+container-internal switches. It must not be parsed by ChELL into a runnable
+schema. The plugin's machine-readable ``ChrisApp`` declaration is different:
+it is the input used to form a registration manifest. A registration whose
+parameter collection omits those flags makes CUBE's own canonical execution
+schema incomplete: users cannot reliably discover or set the supported run
+contract.
+
+The required CUBE contract is:
+
+* for each immutable plugin name/version/image registration, the
+  ``parameters`` C-J collection is the complete set of CUBE-supported runtime
+  flags, including type, flag spelling, default, requiredness, help, and
+  whether a parameter is UI-exposed;
+* the registration pipeline validates that declared manifest against the
+  image's machine-readable CLI declaration where the plugin supplies one;
+* CUBE records provenance for that manifest: at minimum the image digest (or
+  immutable image reference), declaration source, and validation/registration
+  timestamp; and
+* a mismatch is a registration/CI failure or an explicitly marked exception,
+  never something clients silently reconcile from README text.
+
+The existing ``/plugins/{id}/parameters/`` collection remains the right C-J
+read seam; no shell-specific endpoint is needed. Provenance can be supplied
+as approved data on the existing plugin item or a normal linked C-J manifest
+item if clients need to inspect it. The immediate production repair is to
+correct the registered parameter manifest for the affected plugin version
+without making the README a second source of truth. Before changing production
+data, capture the registration payload produced from that image and compare it
+with CUBE's resulting C-J collection. This distinguishes an incomplete
+historical registration from a truncation fault in the registration pipeline.
+
+=== ChELL policy
+
+``plugin-vX --parameters`` means “CUBE-declared run parameters,” not every
+option mentioned in documentation. ChELL should label that boundary plainly.
+``--readme`` remains the human documentation view. Once CUBE supplies
+provenance or a verified manifest state, ChELL may show it, but it must not
+invent an executable parameter from README prose.
+
 == Adoption rule
 
 For every proposed gap, add an entry here before CUBE implementation with:

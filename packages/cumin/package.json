@@ -27,6 +27,11 @@
       "types": "./dist/cache/procPrompt.d.ts",
       "require": "./dist/cache/procPrompt.js"
     },
+    "./runtime-output": {
+      "import": "./dist/output/runtimeOutput.js",
+      "types": "./dist/output/runtimeOutput.d.ts",
+      "require": "./dist/output/runtimeOutput.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

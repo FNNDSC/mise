@@ -42,6 +42,7 @@ import {
 } from './dispatch.js';
 import { capability_require, surface_get } from './surface.js';
 import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
+import { sink_get } from './sink.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -157,7 +158,7 @@ async function batch_execute(
       envelopes.push(...await line_execute(command));
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Command error: ${msg}`));
+      sink_get().err_write(`${chalk.red(`Command error: ${msg}`)}\n`);
       envelopes.push({ status: 'error', rendered: '' });
       if (stopOnError) {
         return envelopes;
@@ -166,7 +167,7 @@ async function batch_execute(
   }
   if (timingEnabled) {
     const elapsed: number = performance.now() - startTime;
-    console.log(chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`));
+    sink_get().data_write(`${chalk.gray(`[Total: ${elapsed.toFixed(2)}ms]`)}\n`);
   }
   return envelopes;
 }
@@ -220,7 +221,7 @@ async function line_execute_run(line: string): Promise<CommandEnvelope[]> {
       return [envelope];
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Pipe error: ${msg}`));
+      sink_get().err_write(`${chalk.red(`Pipe error: ${msg}`)}\n`);
       return [{ status: 'error', rendered: '' }];
     }
   }

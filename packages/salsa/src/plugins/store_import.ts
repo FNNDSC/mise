@@ -9,7 +9,7 @@
  * @module
  */
 
-import { ChRISPlugin, Client, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { ChRISPlugin, Client, Result, Ok, Err, errorStack, runtimeOutput_err } from '@fnndsc/cumin';
 
 /** A HATEOAS-style collection link (relation + URL). */
 interface CollectionLink {
@@ -95,7 +95,7 @@ export async function plugin_importFromStore(
       if (paramsResult.ok && paramsResult.value.length > 0) {
         pluginData.parameters = paramsResult.value;
       } else if (!paramsResult.ok) {
-        console.log(`Warning: Failed to fetch parameters from ${paramsLink.href}`);
+        runtimeOutput_err(`Warning: Failed to fetch parameters from ${paramsLink.href}\n`);
       }
     }
   }

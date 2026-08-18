@@ -25,6 +25,7 @@ import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd } from './feedCreation.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
+import { sink_dataLine, sink_errLine } from '../core/sink.js';
 
 /**
  * Executes a plugin in the current directory context.
@@ -63,7 +64,7 @@ export async function builtin_executePlugin(
         pluginParams = executableArguments_parse(pluginArgTokens);
       } catch (e: unknown) {
         const msg: string = e instanceof Error ? e.message : String(e);
-        console.error(chalk.red(`Error parsing plugin parameters: ${msg}`));
+        sink_errLine(chalk.red(`Error parsing plugin parameters: ${msg}`));
         return envelope_error('');
       }
     }
@@ -73,7 +74,7 @@ export async function builtin_executePlugin(
         contextParams = executableArguments_parse(contextArgTokens);
       } catch (e: unknown) {
         const msg: string = e instanceof Error ? e.message : String(e);
-        console.error(chalk.red(`Error parsing context parameters: ${msg}`));
+        sink_errLine(chalk.red(`Error parsing context parameters: ${msg}`));
         return envelope_error('');
       }
     }
@@ -86,13 +87,13 @@ export async function builtin_executePlugin(
     if (contextArgTokens.length === 0 && !isInFeed) {
       const defaultTitle: string = cwd.split('/').pop() || 'Untitled';
       contextParams.feed_title = defaultTitle;
-      console.log(chalk.cyan(`Using feed title: "${defaultTitle}" (customize with -- feed_title="Custom Title")`));
+      sink_dataLine(chalk.cyan(`Using feed title: "${defaultTitle}" (customize with -- feed_title="Custom Title")`));
     }
 
     // 4. Get /bin listing for finding pl-dircopy
     const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
     if (!binResult.ok) {
-      console.error(chalk.red('Failed to access /bin directory'));
+      sink_errLine(chalk.red('Failed to access /bin directory'));
       return envelope_error('');
     }
 
@@ -113,10 +114,10 @@ export async function builtin_executePlugin(
 
     if (!result) {
       // Display all errors from the stack for better debugging
-      console.error(chalk.red('Plugin execution failed:'));
+      sink_errLine(chalk.red('Plugin execution failed:'));
       let error: StackMessage | undefined = errorStack.stack_pop();
       while (error) {
-        console.error(chalk.red(`  - ${error.message}`));
+        sink_errLine(chalk.red(`  - ${error.message}`));
         error = errorStack.stack_pop();
       }
       return envelope_error('');
@@ -151,18 +152,14 @@ export async function builtin_executePlugin(
 
     // 8. Render output
     if (result.feedID) {
-      console.log(chalk.green(`Feed created: ${result.feedID}`));
+      sink_dataLine(chalk.green(`Feed created: ${result.feedID}`));
     }
-    console.log(
-      chalk.green(
-        `Job scheduled: ${pluginName} (ID: ${result.pluginInstanceID})`
-      )
-    );
-    console.log(chalk.cyan(`Output will be in: ${result.outputPath}`));
+    sink_dataLine(chalk.green(`Job scheduled: ${pluginName} (ID: ${result.pluginInstanceID})`));
+    sink_dataLine(chalk.cyan(`Output will be in: ${result.outputPath}`));
     return envelope_ok('');
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red(`Error executing plugin: ${msg}`));
+    sink_errLine(chalk.red(`Error executing plugin: ${msg}`));
     return envelope_error('');
   }
 }

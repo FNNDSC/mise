@@ -288,7 +288,7 @@ export { COMMAND_HANDLERS_KEYS } from '../command-keys.js';
 export function command_timingMaybePrint(startTime: number, enabled: boolean): void {
   if (!enabled) return;
   const elapsed: number = performance.now() - startTime;
-  console.log(chalk.gray(`[${elapsed.toFixed(2)}ms]`));
+  sink_get().data_write(`${chalk.gray(`[${elapsed.toFixed(2)}ms]`)}\n`);
 }
 
 /**
@@ -542,7 +542,7 @@ export async function redirect_execute(redirectInfo: RedirectInfo): Promise<Comm
   const targetResult: Result<string> = redirectTarget_resolve(redirectInfo.filePath, redirectInfo.command);
   if (!targetResult.ok) {
     const lastError: StackMessage | undefined = errorStack.stack_pop();
-    console.error(chalk.red(lastError ? lastError.message : 'Redirect error'));
+    sink_get().err_write(`${chalk.red(lastError ? lastError.message : 'Redirect error')}\n`);
     return { status: 'error', rendered: '' };
   }
   if (redirectInfo.operator === '>') {
@@ -648,7 +648,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   // rendered text through the sink (ANSI-stripped for the plain-pipe contract);
   // streaming commands and binary cat write to the same sink directly (raw
   // bytes kept byte-for-byte). The err channel passes through to stderr live.
-  const pipeSink: PipeCaptureSink = new PipeCaptureSink();
+  const pipeSink: PipeCaptureSink = new PipeCaptureSink(sink_get());
   await sinkScope_run(pipeSink, async (): Promise<void> => {
     const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
     if (helpEnvelope) return;
@@ -750,7 +750,7 @@ export async function command_executeToEnvelope(
   if (!expandResult.ok) {
     const lastError: StackMessage | undefined = errorStack.stack_pop();
     if (lastError) {
-      console.error(chalk.red(error_stripDebugPrefix(lastError.message)));
+      sink_get().err_write(`${chalk.red(error_stripDebugPrefix(lastError.message))}\n`);
     }
     return { status: 'error', rendered: '' };
   }

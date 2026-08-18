@@ -17,6 +17,8 @@ import {
   Result,
   Ok,
   Err,
+  runtimeOutput_data,
+  runtimeOutput_err,
 } from "@fnndsc/cumin";
 import { ChrisPathNode } from "@fnndsc/cumin";
 import { fileContent_getPipeline, fileContent_getPipelineBinary } from './pipeline_content';
@@ -102,19 +104,19 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
       const targetPath: string = path.posix.join(destPath, relativePath); // Use posix for ChRIS paths
 
       if (item.type === 'dir') {
-        console.log(`  Creating directory: ${targetPath}`);
+        runtimeOutput_data(`  Creating directory: ${targetPath}\n`);
         const created: boolean = await files_mkdir(targetPath);
         if (!created) {
-          console.warn(`  Warning: Failed to create directory ${targetPath}`);
+          runtimeOutput_err(`  Warning: Failed to create directory ${targetPath}\n`);
           failCount++;
         } else {
           successCount++;
         }
       } else if (item.type === 'file') {
-        console.log(`  Copying file: ${path.posix.basename(normalizedItemPath)}`);
+        runtimeOutput_data(`  Copying file: ${path.posix.basename(normalizedItemPath)}\n`);
         const copied: boolean = await files_copy(normalizedItemPath, targetPath);
         if (!copied) {
-          console.warn(`  Warning: Failed to copy file ${normalizedItemPath}`);
+          runtimeOutput_err(`  Warning: Failed to copy file ${normalizedItemPath}\n`);
           failCount++;
           // Continue trying to copy other files instead of aborting
         } else {
@@ -123,7 +125,7 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
       }
     }
 
-    console.log(`Copied ${successCount} items, ${failCount} failed`);
+    runtimeOutput_data(`Copied ${successCount} items, ${failCount} failed\n`);
     return failCount === 0;
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
@@ -269,7 +271,7 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
     if (!uploadSuccess) {
         const lastError = errorStack.stack_pop();
         if (lastError) {
-            console.error(`    Error: ${lastError.message}`);
+            runtimeOutput_err(`    Error: ${lastError.message}\n`);
         }
     }
     return uploadSuccess;
@@ -518,7 +520,7 @@ export async function files_getSingle(
  */
 export async function files_share(fileId: number, options: FileShareOptions): Promise<boolean> {
   // Implement actual sharing logic using cumin/chrisapi
-  console.log(`Sharing file ${fileId} with options:`, options);
+  runtimeOutput_data(`Sharing file ${fileId} with options: ${JSON.stringify(options)}\n`);
   return Promise.resolve(true);
 }
 

@@ -9,6 +9,8 @@ let mockRegisterWithAdmin: jest.Mock;
 let mockGetAuthToken: jest.Mock;
 let mockStackPush: jest.Mock;
 let mockErrorsGet: jest.Mock;
+let mockRuntimeOutputData: jest.Mock;
+let mockRuntimeOutputErr: jest.Mock;
 
 jest.mock('@fnndsc/cumin', () => ({
   ChRISPlugin: class {
@@ -24,6 +26,8 @@ jest.mock('@fnndsc/cumin', () => ({
   },
   Ok: <T>(value: T): { ok: true; value: T } => ({ ok: true, value }),
   Err: (): { ok: false } => ({ ok: false }),
+  runtimeOutput_data: (...args: unknown[]): unknown => mockRuntimeOutputData(...args),
+  runtimeOutput_err: (...args: unknown[]): unknown => mockRuntimeOutputErr(...args),
 }));
 
 import { plugin_importFromStore, storeImport_isSupported } from '../src/plugins/store_import';
@@ -46,7 +50,6 @@ const paramsCollection = {
   },
 };
 
-let logSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
   mockClientGet = jest.fn();
@@ -54,11 +57,9 @@ beforeEach(() => {
   mockGetAuthToken = jest.fn();
   mockStackPush = jest.fn();
   mockErrorsGet = jest.fn(() => []);
+  mockRuntimeOutputData = jest.fn();
+  mockRuntimeOutputErr = jest.fn();
   global.fetch = mockFetch as unknown as typeof fetch;
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-});
-afterEach(() => {
-  logSpy.mockRestore();
 });
 
 describe('plugin_importFromStore', () => {
@@ -91,7 +92,7 @@ describe('plugin_importFromStore', () => {
       links: [{ rel: 'parameters', href: 'https://store/p/' }],
     });
     expect(result.success).toBe(true);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to fetch parameters'));
+    expect(mockRuntimeOutputErr).toHaveBeenCalledWith(expect.stringContaining('Failed to fetch parameters'));
   });
 
   it('acquires an admin token from credentials', async () => {

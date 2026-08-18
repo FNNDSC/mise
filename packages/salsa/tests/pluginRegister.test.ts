@@ -9,6 +9,8 @@ let mockGetComputeResources: jest.Mock;
 let mockGetAuthToken: jest.Mock;
 let mockRegisterDirect: jest.Mock;
 let mockStackPush: jest.Mock;
+let mockRuntimeOutputData: jest.Mock;
+let mockRuntimeOutputErr: jest.Mock;
 
 jest.mock('@fnndsc/cumin', () => ({
   ChRISPlugin: class {
@@ -22,6 +24,8 @@ jest.mock('@fnndsc/cumin', () => ({
   },
   errorStack: { stack_push: (...args: unknown[]): unknown => mockStackPush(...args) },
   plugin_registerDirect: (...args: unknown[]): Promise<unknown> => mockRegisterDirect(...args),
+  runtimeOutput_data: (...args: unknown[]): unknown => mockRuntimeOutputData(...args),
+  runtimeOutput_err: (...args: unknown[]): unknown => mockRuntimeOutputErr(...args),
 }));
 
 import {
@@ -34,7 +38,6 @@ import {
 
 const descriptor: PluginRegistrationData = { name: 'pl-new', dock_image: 'org/pl-new' };
 
-let logSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
   mockClientGet = jest.fn();
@@ -44,10 +47,8 @@ beforeEach(() => {
   mockGetAuthToken = jest.fn();
   mockRegisterDirect = jest.fn();
   mockStackPush = jest.fn();
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-});
-afterEach(() => {
-  logSpy.mockRestore();
+  mockRuntimeOutputData = jest.fn();
+  mockRuntimeOutputErr = jest.fn();
 });
 
 describe('plugin_registerWithAdmin', () => {
@@ -112,13 +113,13 @@ describe('plugin_assignToComputeResources', () => {
   it('reports success when the plugin already has the resources', async () => {
     mockGetComputeResources.mockResolvedValue(['host', 'gpu']);
     expect(await plugin_assignToComputeResources(1, ['host'])).toBe(true);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('already assigned'));
+    expect(mockRuntimeOutputData).toHaveBeenCalledWith(expect.stringContaining('already assigned'));
   });
 
   it('logs the additional resources and warns about the manual step', async () => {
     mockGetComputeResources.mockResolvedValue(['host']);
     expect(await plugin_assignToComputeResources(1, ['gpu'])).toBe(true);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Adding plugin to compute resources: gpu'));
+    expect(mockRuntimeOutputData).toHaveBeenCalledWith(expect.stringContaining('Adding plugin to compute resources: gpu'));
     expect(mockStackPush).toHaveBeenCalledWith('warning', expect.stringContaining('not fully implemented'));
   });
 

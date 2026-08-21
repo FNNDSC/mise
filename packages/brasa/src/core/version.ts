@@ -75,6 +75,35 @@ function packageVersion_load(name: string): string {
   }
 }
 
+/**
+ * Build-time-injected git hash, the bundled-binary counterpart to reading
+ * `dist/buildinfo.json`. esbuild replaces it with a literal when bundling the
+ * standalone binary. Undefined under tsc.
+ */
+declare const __BUILD_HASH__: string;
+
+/**
+ * The short git hash this build of the stack was produced from.
+ *
+ * Reads `buildinfo.json`, written next to the compiled output by
+ * `scripts/buildinfo.mjs` as the final build step. In the bundled binary the
+ * esbuild-injected hash is used instead; when neither exists (running straight
+ * from source under ts-jest, for instance) the marker `dev` is returned.
+ *
+ * @returns The six-character build hash, or `'dev'` when no build metadata exists.
+ */
+export function buildHash_get(): string {
+  try {
+    const info: { hash?: string } = JSON.parse(
+      readFileSync(path.resolve(moduleDir, '../buildinfo.json'), 'utf-8'),
+    ) as { hash?: string };
+    if (typeof info.hash === 'string' && info.hash.length > 0) return info.hash;
+  } catch {
+    // No buildinfo.json beside the compiled output: fall through.
+  }
+  return typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev';
+}
+
 /** The architectural role a package plays in the stack. */
 export type PackageRole = 'surface' | 'sessionHost' | 'engine' | 'layer';
 
@@ -167,6 +196,38 @@ export function versionReport_build(): string {
   const info: PackageInfo[] = stackInfo_get();
   const pkgWidth: number = Math.max(...info.map((i: PackageInfo) => i.pkg.length));
   return info.map((i: PackageInfo) => `${i.pkg.padEnd(pkgWidth)}  ${i.version}`).join('\n');
+}
+
+/**
+ * Composes the startup welcome line from explicit version and build values.
+ *
+ * Separated from {@link welcomeLine_build} so a remote surface can render the
+ * line from the versions the daemon reported in its attach handshake, rather
+ * than from whatever happens to be installed client-side.
+ *
+ * @param pkg - The short package name whose backronym heads the line
+ *   (e.g. `'chell'`, `'calypso'`). Unknown names fall back to the surface.
+ * @param version - The package version to display.
+ * @param build - The short build hash to display.
+ * @returns A line of the form `ChELL Executes Layered Logic, v 5.3.0 (886f09). Welcome.`
+ */
+export function welcomeLine_compose(pkg: string, version: string, build: string): string {
+  const descriptor: PackageDescriptor = STACK.find((d: PackageDescriptor) => d.pkg === pkg) ?? STACK[0];
+  return `${descriptor.name}, v ${version} (${build}). Welcome.`;
+}
+
+/**
+ * Builds the startup welcome line for a locally resolved package: its backronym
+ * name, installed version, and the build hash of this checkout.
+ *
+ * @param pkg - The short package name (e.g. `'chell'`, `'calypso'`). Defaults
+ *   to the chell surface.
+ * @returns The composed welcome line.
+ */
+export function welcomeLine_build(pkg: string = 'chell'): string {
+  const descriptor: PackageDescriptor = STACK.find((d: PackageDescriptor) => d.pkg === pkg) ?? STACK[0];
+  const info: PackageInfo = packageInfo_resolve(descriptor);
+  return welcomeLine_compose(descriptor.pkg, info.version, buildHash_get());
 }
 
 /** Human-readable heading for each role, in the order `--info` groups them. */

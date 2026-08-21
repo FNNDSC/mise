@@ -84,6 +84,21 @@ describe('serverMessage_parse', () => {
     expect(serverMessage_parse({ type: 'session', surface: 'cli', envelope: { status: 'ok', rendered: 'x' } }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'complete', id: '2', prefix: 'l', candidates: ['ls'] }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'attached', session: 's', protocolVersion: CONTRACT_VERSION }).ok).toBe(true);
+    expect(serverMessage_parse({
+      type: 'attached',
+      session: 's',
+      protocolVersion: CONTRACT_VERSION,
+      stack: { chell: '5.3.0', calypso: '0.5.0', build: 'abc123' },
+    }).ok).toBe(true);
+    expect(serverMessage_parse({
+      type: 'attached',
+      session: 's',
+      protocolVersion: CONTRACT_VERSION,
+      stack: {
+        chell: '5.3.0', calypso: '0.5.0', build: 'abc123',
+        brasa: '0.10.0', chili: '3.5.0', salsa: '2.1.0', cumin: '3.9.0',
+      },
+    }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'error', reason: 'bad token' }).ok).toBe(true);
     expect(serverMessage_parse({ type: 'shell', shellId: 's1', command: 'pwd' }).ok).toBe(true);
   });

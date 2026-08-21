@@ -124,11 +124,27 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
 // --- Daemon → surface ------------------------------------------------------
 
-/** Acknowledges a successful attach. */
+/**
+ * Acknowledges a successful attach. The optional `stack` block reports the
+ * daemon's own installed versions and build hash, so a remote surface can
+ * greet with the truth of the process it attached to rather than whatever is
+ * installed client-side; older daemons simply omit it.
+ */
 export const attachedMessageSchema = z.object({
   type: z.literal('attached'),
   session: z.string(),
   protocolVersion: z.number().int(),
+  stack: z
+    .object({
+      chell: z.string(),
+      calypso: z.string(),
+      build: z.string(),
+      brasa: z.string().optional(),
+      chili: z.string().optional(),
+      salsa: z.string().optional(),
+      cumin: z.string().optional(),
+    })
+    .optional(),
 });
 
 /** The final result of one executed line: one envelope per command. */

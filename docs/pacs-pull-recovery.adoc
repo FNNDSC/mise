@@ -1,0 +1,43 @@
+= PACS Pull Recovery and Monitoring
+:toc:
+:toclevels: 3
+
+== Status and purpose
+
+This is an operational design record for the `pacs pull` retrieve pipeline: what it does, how it fails in practice, and the recovery discipline built around those failures. It exists because a live demonstration on 2026-08-21 lost six of fourteen series from a routine accession pull, silently, and the loss was only visible in the ChRIS UI afterwards. The failure was reproduced under controlled conditions the same day, its mechanism identified, and the defenses described here were implemented and verified against the same study. The account is grounded in that observed incident rather than in speculation, and it should be updated when new failure modes are observed.
+
+The document relates to the wider mise design records as the operational counterpart of link:calypso.adoc[calypso.adoc]: where that document reasons about cache freshness inside a long-lived client process, this one reasons about a lossy, load-sensitive server pipeline that no amount of client-side caching discipline can cure, only tolerate. The server components involved are CUBE (https://github.com/FNNDSC/ChRIS_ultron_backEnd) and its PACS integration service pfdcm (https://github.com/FNNDSC/pfdcm).
+
+== The retrieve pipeline
+
+A `pacs pull` decomposes into stages, each with its own failure surface. The expression or VFS path resolves to a PACS query whose decoded result enumerates the studies and series with their expected DICOM instance counts. For each series, the client creates a synthetic single-series PACSQuery and a PACSRetrieve against it; this creation is the *firing* step, and it is the only step that causes data to move. The PACS then pushes DICOM instances to CUBE, which registers them as PACSFiles under a `/SERVICES/PACS/...` folder. In parallel, the client subscribes to LONK WebSocket notifications to watch progress, and after the watch concludes it resolves each series' landing folder to report or to build a feed.
+
+The critical asymmetry is between the firing step and everything after it. Once a retrieve is fired, the PACS-to-CUBE transfer proceeds server-side regardless of what the watching client does: the client can disconnect, its watch can misreport, and the data still arrives. But a series whose firing fails has no retrieve object at all, so nothing is in flight, nothing ever arrives, and no later stage will complain, because every later stage only inspects series that fired.
+
+== Observed failure modes
+
+Four distinct failure modes were observed or confirmed during the 2026-08-21 incident and its reproduction. They differ radically in severity, and the pull summary now labels them differently for exactly that reason.
+
+*Server brown-out.* The CUBE API at the demonstration site intermittently stopped answering entirely during heavy retrieve activity, returning empty replies to every request for roughly thirty seconds before recovering without intervention. During the reproduction this window was caught directly: a connection probe received empty replies, and a chell session started inside the window misdiagnosed the condition as an expired token and dropped to disconnected mode. The working hypothesis is load from parallel retrieve firing plus concurrent file registration; whether the bottleneck is CUBE itself, its proxy, or pfdcm is an open server-side question that this document cannot settle. The client cannot cure this mode, only avoid amplifying it and recover from what it breaks.
+
+*Firing loss.* When the brown-out window overlaps the firing step, the synthetic query or retrieve creation fails and that series is permanently lost to the run. In the original incident nine of fourteen firings raced the brown-out and six series never arrived. This is the fatal mode, and it was also the silent one: the old summary showed an undifferentiated `[ERROR]` and the error text from the server was swallowed entirely.
+
+*Watch loss.* LONK confirmations can be lost, and a series can be marked errored, stalled, or unconfirmed while its transfer is in fact proceeding. This mode is usually cosmetic: in the reproduction, three series flagged `[ERROR]` by the watch were fully registered in CUBE minutes later without any client action, because the PACS keeps pushing and CUBE keeps registering regardless of what the watcher sees. It is not always cosmetic, though. A LONK error can also report a retrieve that genuinely failed server-side, and the two cases are indistinguishable at the moment the summary prints. The disambiguation is the recovery loop itself: `pacs status` a little later shows whether the files arrived, and the idempotent re-pull re-fires whatever did not. A series that stays at zero files across repeated fired retrieves, as one did during the reproduction while its same-description sibling pulled cleanly, is failing on the PACS or pfdcm side and needs server-side investigation by series UID.
+
+*Registration lag.* A series can be fully transferred but not yet queryable through the PACSSeries and PACSFiles collections, so an immediate status check undercounts. The `series_cubePathGet` helper already retries across this gap, and `pacs status` run a little later shows the true count. This mode self-heals in seconds.
+
+== Client-side defenses
+
+The defenses follow directly from the mode analysis: make the fatal mode less likely, make it loud when it happens anyway, and make recovery a single idempotent action.
+
+Firing is now retried and bounded. Each series' query and retrieve creation gets three attempts with short backoff (250 ms then 500 ms), so a transient refusal inside a brown-out window no longer condemns the series. At most four firings run concurrently, replacing the previous all-at-once stampede that fired every series of a study simultaneously and was itself a plausible contributor to the brown-outs. A series whose creation still fails after all attempts is marked `unfired`, a state distinct from every watch-side failure.
+
+The summary now tells the operator which failures matter. An unfired series prints `FAILED TO FIRE, will not arrive; re-run pull` in red, because it is permanent loss for that run. Watch-side failures print in yellow with a pointer to `pacs status`, because the data is usually arriving anyway and the right move is to verify rather than panic.
+
+`pull` is idempotent. Before firing anything, every series is checked against CUBE, and a series whose expected instance count is already registered is skipped with a note. Re-running the same pull therefore fetches exactly the missing series and touches nothing else. This collapses the recovery algorithm to one instruction with no state to track: run the same pull again.
+
+`pacs status` is the observability half of that loop. It accepts a query expression, a `/net/pacs/queries/...` path, or a bare query id, reuses the most recent matching query rather than minting a new record on every check, and renders one line per series: a fill bar of registered files against the expected count, the derived state, and the in-CUBE `/SERVICES` folder for every series that has landed. `pacsretrieve report <queryId>` remains available as the lower-level view of the same truth.
+
+== Operator playbook
+
+The normal loop after any pull that reports failures, or any suspicion that a study is incomplete, is `pacs status <expression>` to see what is missing, then the same `pull` again to fetch only that, then `pacs status` once more to confirm. Red `FAILED TO FIRE` lines in a pull summary mean the re-pull is mandatory; yellow watch-failure lines mean check status first, since the series has usually arrived on its own. If a status check shows counts still climbing, registration is in progress and patience beats action. If chell itself reports an expired token or no server response during heavy retrieve activity, the server is likely in a brown-out window; wait half a minute and retry rather than re-authenticating. Repeated brown-outs under modest load are a server-side incident and belong with the CUBE and pfdcm operators, with this document's evidence as the starting point.

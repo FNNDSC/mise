@@ -11,6 +11,7 @@
 import chalk from 'chalk';
 import { chrisContext, pacsServers_list, PACSServer, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { builtin_query } from './query.js';
+import { builtin_pacsStatus } from './status.js';
 import { builtin_pull } from '../fs/pull.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
@@ -54,6 +55,7 @@ async function servers_print(active: string | null): Promise<void> {
  *   pacs list                 — list servers (alias for: pacs connect)
  *   pacs query <Key:Value...> — create PACS query and wait for results
  *   pacs pull <vfs-path...>   — pull DICOM series into ChRIS storage
+ *   pacs status <target>      — per-series pulled/pending report with CUBE paths
  *
  * @param args - Command arguments (subcommand + its own args).
  * @returns An envelope; streaming subcommands carry empty rendered text and
@@ -122,9 +124,12 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
     case 'pull':
       return builtin_pull(args.slice(1));
 
+    case 'status':
+      return builtin_pacsStatus(args.slice(1));
+
     default:
       sink_errLine(chalk.red(`pacs: Unknown subcommand '${subcommand}'`));
-      sink_dataLine(chalk.gray('  Subcommands: connect, disconnect, list, query, pull'));
+      sink_dataLine(chalk.gray('  Subcommands: connect, disconnect, list, query, pull, status'));
       sink_dataLine(chalk.gray('  Try: help pacs'));
       process.exitCode = 1;
       return envelope_error('');

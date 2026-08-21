@@ -38,7 +38,7 @@ import { sessionConnect_fromSaved, type SavedSessionResult } from '@fnndsc/brasa
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
-import { versionReport_build, infoReport_build, stackInfo_get, type PackageInfo } from '@fnndsc/brasa';
+import { versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, fortune_random, type PackageInfo } from '@fnndsc/brasa';
 import {
   daemonSession_run,
   startupWarmup_run,
@@ -407,6 +407,10 @@ async function interactiveSession_run(
     );
   }
 
+  if (flags.isInteractiveSession) {
+    console.log(chalk.bold.cyan(welcomeLine_build('chell')));
+    console.log('');
+  }
   console.log(chalk.yellow('Order up! Your Taco Chell is ready! Filled with chili, salsa, and cumin goodness! 🌮'));
   console.log('');
   if (flags.isInteractiveSession) {
@@ -414,6 +418,8 @@ async function interactiveSession_run(
       console.log(chalk.yellow('You are currently disconnected. Use: connect --user <user> --password <pwd> <url>'));
     }
     console.log(chalk.gray("Tip: type 'help' for available commands."));
+    console.log('');
+    console.log(chalk.gray(fortune_random(4)));
     console.log('');
   }
 

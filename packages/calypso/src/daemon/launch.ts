@@ -19,6 +19,7 @@ import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
+import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 
@@ -92,6 +93,9 @@ export async function daemon_launch(
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces.
     promptProvider: (): Promise<SessionPromptContext> => sessionPromptContext_build(),
+    // Report this process's own versions and build hash so attaching surfaces
+    // greet with the daemon's truth rather than their local install's.
+    stack: { ...versions_get(), build: buildHash_get() },
   });
   sink_set(new DaemonSink(daemon));
 
@@ -124,6 +128,11 @@ export async function daemon_launch(
   berth_write(berth);
 
   const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
+  console.log(chalk.bold.cyan(welcomeLine_build('calypso')));
+  for (const line of versionReport_build().split('\n')) {
+    console.log(chalk.gray(`    ${line}`));
+  }
+  console.log(chalk.gray(fortune_random(4)));
   console.log(chalk.green(`[+] CALYPSO daemon listening on ${url}`));
   console.log(chalk.gray(`    identity:  ${identity}`));
   console.log(chalk.gray(`    token:     ${token}`));

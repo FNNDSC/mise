@@ -261,9 +261,13 @@ describe('builtin_pull watch loop', () => {
     mockQueriesCreate.mockResolvedValue(err());
     const pull = builtin_pull([QUERY_PATH]);
     await flush();
+    // Drain the firing retry backoffs (250ms + 500ms) before the task is
+    // declared unfired.
+    await jest.advanceTimersByTimeAsync(1_000);
     await pull;
     expect(sinkData).toContain('0/1 series complete');
-    expect(sinkData).toContain('1 retrieve(s) failed to start');
+    expect(sinkData).toContain('FAILED TO FIRE');
+    expect(sinkData).toContain('1 retrieve(s) were never fired');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
       expect.objectContaining({ operation: 'pull', phase: 'failed', unit: 'series', status: 'error' }),
@@ -305,6 +309,9 @@ describe('builtin_pull watch loop', () => {
   it('creates one named feed from the resolved directories after a complete pull', async () => {
     mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
     mockCubePathGet
+      // Pre-fire completeness checks (one per task): both absent.
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 })
       .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-2', fileCount: 2 });
 
@@ -328,8 +335,34 @@ describe('builtin_pull watch loop', () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it('skips series already fully registered in CUBE and fires only the missing', async () => {
+    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
+    mockCubePathGet
+      .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 })
+      .mockResolvedValueOnce(null);
+
+    const pull = builtin_pull([QUERY_PATH]);
+    await flush();
+
+    expect(sinkData).toContain('1/2 series already in CUBE — skipped');
+    const ws: MockWebSocket = wsInstances[0];
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({ SeriesInstanceUID: '4.5.6', pacs_name: 'AET', action: 'subscribe' }),
+    );
+
+    ws.emit('message', lonk('4.5.6', { done: true }));
+    await jest.advanceTimersByTimeAsync(2_000);
+    await pull;
+
+    expect(sinkData).toContain('2/2 series pulled successfully');
+    expect(process.exitCode).toBe(0);
+  });
+
   it('attaches a pipeline to the new root with forwarded invocation tokens', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
 
     const pull = builtin_pull([
       QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'brain-preprocessing', '--',
@@ -349,7 +382,9 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('attaches a versioned plugin to the new root with forwarded parameters', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
 
     const pull = builtin_pull([
       QUERY_PATH, '--new-feed', 'Brain MRI', '--plugin', 'pl-dcm2niix-v1.2.0', '--',
@@ -375,7 +410,9 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('retains and reports the Feed when pipeline attachment fails', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     mockPipelineBuiltin.mockResolvedValue({ status: 'error', rendered: '' });
 
     const pull = builtin_pull([
@@ -408,7 +445,9 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('does not create a requested feed when any operand is invalid', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     const pull = builtin_pull([QUERY_PATH, '/not/a/pacs/path', '--new-feed', 'Partial selection']);
     await flush();
     wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
@@ -424,7 +463,9 @@ describe('builtin_pull watch loop', () => {
     mockCollect
       .mockResolvedValueOnce([info('1.2.3')])
       .mockResolvedValueOnce([]);
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     const emptyPath: string = '/net/pacs/queries/q_qid:2';
     const pull = builtin_pull([QUERY_PATH, emptyPath, '--new-feed', 'Partial selection']);
     await flush();
@@ -439,7 +480,9 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('preserves punctuation in the requested feed title', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Baseline, repeat: 2']);
     await flush();
     wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
@@ -466,7 +509,9 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('reports feed creation failure after a successful pull', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     mockFeedCreate.mockResolvedValue(null);
     const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
     await flush();
@@ -480,7 +525,9 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('requires an owner so every successful creation can print its feed path', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    // First resolution is the pre-fire completeness check: report the series
+    // as absent so the watch path (not the skip path) is exercised.
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     mockFeedCreate.mockResolvedValue({
       id: 300,
       name: 'Brain MRI',
@@ -511,7 +558,7 @@ describe('builtin_pull watch loop', () => {
     await pull;
 
     expect(sinkData).toContain('1/2 series complete');
-    expect(sinkData).toContain('[ERROR]');
+    expect(sinkData).toContain('[ERROR —');
     expect(process.exitCode).toBe(1);
   });
 
@@ -535,7 +582,7 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(34_000);
     await pull;
 
-    expect(sinkData).toContain('[STALLED]');
+    expect(sinkData).toContain('[STALLED —');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'stalled' }),
     ]));
@@ -554,7 +601,7 @@ describe('builtin_pull watch loop', () => {
     await jest.advanceTimersByTimeAsync(4_000);
     await pull;
 
-    expect(sinkData).toContain('[TIMEOUT]');
+    expect(sinkData).toContain('[TIMEOUT —');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'timeout' }),
     ]));
@@ -569,7 +616,7 @@ describe('builtin_pull watch loop', () => {
     await pull;
 
     expect(sinkData).toContain('0/1 series complete');
-    expect(sinkData).toContain('[ERROR]');
+    expect(sinkData).toContain('[ERROR —');
     expect(progressEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
       expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
@@ -578,7 +625,7 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('confirms a NO LONK series via CUBE path lookup on --retry', async () => {
-    mockCubePathGet.mockResolvedValue({ folderPath: '/SERVICES/PACS/x', fileCount: 2 });
+    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/x', fileCount: 2 });
     const pull = builtin_pull([QUERY_PATH, '--retry', '1']);
     await flush();
 

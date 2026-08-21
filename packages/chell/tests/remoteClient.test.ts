@@ -20,6 +20,7 @@ interface TestBerth {
 interface TestRemoteEngine {
   close(): void;
   promptLine?: () => string;
+  daemonStack?: () => { chell: string; calypso: string; build: string } | undefined;
 }
 
 const remoteClose_mock = jest.fn<() => void>();
@@ -72,6 +73,11 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   })),
   surface_set: surfaceSet_mock,
   StdoutSink: class MockStdoutSink {},
+  welcomeLine_build: jest.fn(() => 'ChELL Executes Layered Logic, v 0.0.0 (dev). Welcome.'),
+  welcomeLine_compose: jest.fn(
+    (pkg: string, version: string, build: string) => `ChELL Executes Layered Logic, v ${version} (${build}). Welcome.`,
+  ),
+  fortune_random: jest.fn(() => 'A test fortune.'),
 }));
 jest.unstable_mockModule('../src/remote/remoteEngine.js', () => ({
   RemoteEngine: MockRemoteEngine,
@@ -116,7 +122,11 @@ describe('remote_run', () => {
     process.exitCode = undefined;
     resolverResolve_mock.mockResolvedValue(berth);
     resolverList_mock.mockResolvedValue([berth]);
-    remoteConnect_mock.mockResolvedValue({ close: remoteClose_mock, promptLine: jest.fn((): string => '') });
+    remoteConnect_mock.mockResolvedValue({
+      close: remoteClose_mock,
+      promptLine: jest.fn((): string => ''),
+      daemonStack: jest.fn(() => undefined),
+    });
     surfaceLineExecute_mock.mockResolvedValue([{ status: 'ok', rendered: '/proc/jobs\n' }]);
   });
 
@@ -184,6 +194,37 @@ describe('remote_run', () => {
     expect(replStart_mock).toHaveBeenCalledTimes(1);
     expect(surfaceLineExecute_mock).not.toHaveBeenCalled();
     expect(remoteClose_mock).not.toHaveBeenCalled();
+  });
+
+  it('banners the daemon-reported stack on interactive attach', async () => {
+    const log_spy = jest.spyOn(console, 'log').mockImplementation((): void => undefined);
+    remoteConnect_mock.mockResolvedValue({
+      close: remoteClose_mock,
+      promptLine: jest.fn((): string => ''),
+      daemonStack: jest.fn(() => ({
+        chell: '5.3.0', calypso: '0.5.0', build: 'abc123',
+        brasa: '0.10.0', chili: '3.5.0', salsa: '2.1.0', cumin: '3.9.0',
+      })),
+    });
+
+    await remote_run(berth.identity);
+
+    const printed: string = log_spy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    log_spy.mockRestore();
+    expect(printed).toContain('v 5.3.0 (abc123)');
+    for (const layer of ['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']) {
+      expect(printed).toContain(layer);
+    }
+    expect(replStart_mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the local welcome line when the daemon reports no stack', async () => {
+    const log_spy = jest.spyOn(console, 'log').mockImplementation((): void => undefined);
+    await remote_run(berth.identity);
+    const printed: string = log_spy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    log_spy.mockRestore();
+    expect(printed).toContain('Welcome.');
+    expect(printed).toContain('Attached to CALYPSO daemon');
   });
 
   it('wires interactive daemon callbacks to the local surface', async () => {

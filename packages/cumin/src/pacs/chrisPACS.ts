@@ -545,6 +545,8 @@ export interface SeriesRetrieveStatus {
   expectedFiles: number;
   actualFiles: number;
   status: "pending" | "pulling" | "pulled" | "error";
+  /** CUBE storage folder the series landed in, or null when nothing arrived. */
+  folderPath: string | null;
 }
 
 /**
@@ -567,19 +569,30 @@ export interface PACSQueryStatusReport {
   studies: StudyRetrieveStatus[];
 }
 
+/** A series' presence in CUBE storage: registered file count and folder. */
+export interface SeriesStorageState {
+  /** Number of PACSFiles registered for the series. */
+  fileCount: number;
+  /** Display folder path (leading slash), or null when nothing arrived. */
+  folderPath: string | null;
+}
+
 /**
- * Count PACSFiles for a given SeriesInstanceUID.
+ * Resolves a series' CUBE storage state: its registered file count and the
+ * folder it landed in.
  *
- * @param seriesInstanceUID - The series instance UID to count files for.
- * @returns Result containing file count or Err.
+ * @param seriesInstanceUID - The series instance UID to inspect.
+ * @returns Result containing the storage state; failures resolve to an empty
+ *   state (count 0, no folder) rather than failing the whole report.
  */
-async function seriesFiles_count(
+export async function seriesStorage_resolve(
   seriesInstanceUID: string
-): Promise<Result<number>> {
+): Promise<Result<SeriesStorageState>> {
+  const empty: SeriesStorageState = { fileCount: 0, folderPath: null };
   try {
     const client: Client | null = await chrisConnection.client_get();
     if (!client) {
-      return Ok(0);
+      return Ok(empty);
     }
 
     // First get the PACSSeries record to find the folder_path
@@ -590,32 +603,29 @@ async function seriesFiles_count(
 
     const seriesItems: ReturnType<typeof seriesList.getItems> = seriesList.getItems();
     if (!seriesItems || seriesItems.length === 0) {
-      return Ok(0);
+      return Ok(empty);
     }
 
     const seriesData: { folder_path?: string } | null =
       itemData_get<{ folder_path?: string }>(seriesItems[0]);
-    if (!seriesData) {
-      return Ok(0);
+    const rawFolder: string | undefined = seriesData?.folder_path;
+    if (!rawFolder) {
+      return Ok(empty);
     }
+    const folderPath: string = rawFolder.startsWith("/") ? rawFolder : `/${rawFolder}`;
 
-    const folderPath: string | undefined = seriesData.folder_path;
-
-    if (!folderPath) {
-      return Ok(0);
-    }
-
-    // Count PACSFiles in that folder
+    // Count PACSFiles in that folder (API stores fname without leading slash)
     const filesList: Awaited<ReturnType<typeof client.getPACSFiles>> = await client.getPACSFiles({
-      fname: folderPath,
+      fname: rawFolder.startsWith("/") ? rawFolder.slice(1) : rawFolder,
       limit: 1000,
     });
 
     const items: ReturnType<typeof filesList.getItems> = filesList.getItems();
-    return Ok(filesList.totalCount || (items ? items.length : 0));
+    const fileCount: number = filesList.totalCount || (items ? items.length : 0);
+    return Ok({ fileCount, folderPath });
   } catch (error: unknown) {
-    errorStack.stack_push("warning", `Failed to count files for series ${seriesInstanceUID}: ${error}`);
-    return Ok(0); // Return 0 rather than failing the whole operation
+    errorStack.stack_push("warning", `Failed to resolve storage for series ${seriesInstanceUID}: ${error}`);
+    return Ok(empty); // Return the empty state rather than failing the whole operation
   }
 }
 
@@ -689,17 +699,18 @@ async function studySeries_buildStatus(
     if (!seriesUID) continue;
 
     const expectedFiles: number = Number(tag_extractValue(series.NumberOfSeriesRelatedInstances)) || 0;
-    const actualFilesResult: Result<number> = await seriesFiles_count(seriesUID);
-    const actualFiles: number = actualFilesResult.ok ? actualFilesResult.value : 0;
-    const status: "pending" | "pulling" | "pulled" | "error" = series_determineStatus(expectedFiles, actualFiles);
+    const storageResult: Result<SeriesStorageState> = await seriesStorage_resolve(seriesUID);
+    const storage: SeriesStorageState = storageResult.ok ? storageResult.value : { fileCount: 0, folderPath: null };
+    const status: "pending" | "pulling" | "pulled" | "error" = series_determineStatus(expectedFiles, storage.fileCount);
 
     studyStatus.series.push({
       seriesInfo: series,
       seriesInstanceUID: seriesUID,
       seriesDescription: tag_extractValue(series.SeriesDescription) as string | undefined,
       expectedFiles,
-      actualFiles,
+      actualFiles: storage.fileCount,
       status,
+      folderPath: storage.folderPath,
     });
   }
 

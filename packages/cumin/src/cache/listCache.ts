@@ -260,6 +260,26 @@ export class ListCache {
   }
 
   /**
+   * Invalidates a path and every cached listing beneath it.
+   * Called by operations that remove or replace an entire directory tree
+   * (rm -r, a directory re-upload): nested listings cached before the
+   * mutation would otherwise serve the old tree's contents until their TTL
+   * expires, with no refresh hint.
+   *
+   * @param path - Root of the subtree to invalidate. The entry for the path
+   *     itself is removed along with all entries under `path + '/'`.
+   */
+  cache_invalidateTree(path: string): void {
+    this.cache.delete(path);
+    const prefix: string = path.endsWith("/") ? path : `${path}/`;
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  /**
    * @deprecated Use cache without cwd tracking. Cache persists across navigation.
    * This method is kept for backward compatibility but does nothing.
    *

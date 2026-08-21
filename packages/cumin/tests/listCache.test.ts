@@ -342,6 +342,33 @@ describe('ListCache Enhanced', () => {
       expect(cache.cache_get('/b')).toBeNull();
       expect(cache.stats_get().entries).toBe(0);
     });
+
+    it('invalidateTree drops the path and everything beneath it', () => {
+      cache.cache_set('/a', 'a');
+      cache.cache_set('/a/sub', 'a-sub');
+      cache.cache_set('/a/sub/deep', 'a-sub-deep');
+      cache.cache_set('/ab', 'sibling-with-shared-prefix');
+      cache.cache_set('/b', 'b');
+
+      cache.cache_invalidateTree('/a');
+
+      expect(cache.cache_get('/a')).toBeNull();
+      expect(cache.cache_get('/a/sub')).toBeNull();
+      expect(cache.cache_get('/a/sub/deep')).toBeNull();
+      expect(cache.cache_get('/ab')).not.toBeNull();
+      expect(cache.cache_get('/b')).not.toBeNull();
+    });
+
+    it('invalidateTree accepts a trailing slash without over-matching', () => {
+      cache.cache_set('/a', 'a');
+      cache.cache_set('/a/sub', 'a-sub');
+      cache.cache_set('/ab', 'sibling');
+
+      cache.cache_invalidateTree('/a/');
+
+      expect(cache.cache_get('/a/sub')).toBeNull();
+      expect(cache.cache_get('/ab')).not.toBeNull();
+    });
   });
 
   describe('Backward compatibility - cwd_update', () => {

@@ -191,6 +191,10 @@ export async function builtin_rm(args: string[]): Promise<CommandEnvelope> {
         const listCache: ListCache = listCache_get();
         const parentDir: string = path.posix.dirname(target);
         listCache.cache_invalidate(parentDir);
+        // Also drop the removed target and any listings cached beneath it:
+        // a later re-upload to the same path must not inherit still-fresh
+        // nested listings from the deleted tree.
+        listCache.cache_invalidateTree(target);
       } else {
         err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));
         outcomes.push({ path: pathArg, removed: false, skipped: false });

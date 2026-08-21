@@ -89,6 +89,30 @@ describe('NativeVfsProvider.list', () => {
     expect(r.ok && r.value.map((i) => i.name)).toEqual(['ok.txt']);
   });
 
+  it('errors when every sub-listing is empty and the folder is absent', async () => {
+    // All three asset listings resolve null AND the parent listing does not
+    // contain the target: the folder does not exist, so this must be an error
+    // rather than a silently empty directory.
+    mockListAll.mockImplementation(async (_o: unknown, _asset: string, parent?: string) => {
+      if (parent === '/p') return { tableData: [{ path: '/p/other' }] };
+      return null;
+    });
+    const r = await provider.list('/p/ghost');
+    expect(r.ok).toBe(false);
+  });
+
+  it('lists an existing-but-empty folder as empty, not as an error', async () => {
+    // All three asset listings resolve null, but the parent listing confirms
+    // the folder exists: an empty directory is a valid, empty listing.
+    mockListAll.mockImplementation(async (_o: unknown, _asset: string, parent?: string) => {
+      if (parent === '/p') return { tableData: [{ path: '/p/empty' }] };
+      return null;
+    });
+    const r = await provider.list('/p/empty');
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.value).toEqual([]);
+  });
+
   it('returns Err when list throws synchronously', async () => {
     mockListAll.mockImplementation(() => {
       throw new Error('boom');

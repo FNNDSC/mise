@@ -56,6 +56,27 @@ export class NativeVfsProvider implements VFSProvider {
       ]);
 
       const [dirsResult, filesResult, linksResult] = results;
+
+      // files_listAll returns null both for a failed folder resolution and for
+      // an existing folder whose collection is simply empty. When every
+      // sub-listing comes back empty-or-failed the two cases are
+      // indistinguishable here, so probe the parent listing: a missing folder
+      // must surface as an error, not render as an empty directory.
+      const noneSucceeded: boolean = results.every(
+        (settled) =>
+          settled.status === "rejected" || !settled.value?.tableData
+      );
+      if (noneSucceeded && resolvedPath !== "/") {
+        const dirExists: boolean = await path_checkIsDir(resolvedPath);
+        if (!dirExists) {
+          errorStack.stack_push(
+            "error",
+            `Cannot list ${resolvedPath}: No such file or directory`
+          );
+          return Err();
+        }
+      }
+
       const items: VFSItem[] = [];
 
       const mapToItem = (

@@ -44,6 +44,25 @@ export interface RemoteEngineOptions {
 }
 
 /**
+ * The daemon-reported stack identity from the attach handshake: its installed
+ * chell and calypso versions plus the short build hash. Absent on daemons that
+ * predate the field.
+ *
+ * @property chell - The daemon's installed chell version.
+ * @property calypso - The daemon's installed calypso version.
+ * @property build - The daemon's short build hash.
+ */
+export interface DaemonStack {
+  chell: string;
+  calypso: string;
+  build: string;
+  brasa?: string;
+  chili?: string;
+  salsa?: string;
+  cumin?: string;
+}
+
+/**
  * A `BrasaEngine` implementation that drives a remote daemon.
  */
 export class RemoteEngine implements BrasaEngine {
@@ -55,6 +74,7 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onShell: ((command: string) => Promise<number>) | undefined;
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private latestPrompt: string = '';
+  private stackReport: DaemonStack | undefined;
   private nextId: number = 0;
   private activeExecuteId: string | undefined;
   private readonly liveEnvelopeChannels: Map<string, Set<'data' | 'err'>> = new Map<string, Set<'data' | 'err'>>();
@@ -115,6 +135,7 @@ export class RemoteEngine implements BrasaEngine {
             return;
           }
           const engine: RemoteEngine = new RemoteEngine(ws, options);
+          engine.stackReport = message.stack;
           ws.on('message', (payload: Buffer) => engine.message_handle(payload));
           if (options.onClose) {
             ws.on('close', () => options.onClose?.());
@@ -352,6 +373,16 @@ export class RemoteEngine implements BrasaEngine {
    */
   public promptLine(): string {
     return this.latestPrompt;
+  }
+
+  /**
+   * The stack identity the daemon reported in its attach handshake.
+   *
+   * @returns The daemon's versions and build hash, or undefined when the
+   *   daemon predates the field.
+   */
+  public daemonStack(): DaemonStack | undefined {
+    return this.stackReport;
   }
 
   /**

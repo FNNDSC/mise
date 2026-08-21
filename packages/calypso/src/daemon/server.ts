@@ -35,6 +35,25 @@ import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancel
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
+/**
+ * The hosting process's stack identity, sent to surfaces in the attach ack.
+ * Injected by the host (which resolves it from brasa) rather than resolved
+ * here, keeping the transport server free of engine dependencies.
+ *
+ * @property chell - The daemon's installed chell version.
+ * @property calypso - The daemon's installed calypso version.
+ * @property build - The daemon's short build hash.
+ */
+export interface DaemonStackInfo {
+  chell: string;
+  calypso: string;
+  build: string;
+  brasa?: string;
+  chili?: string;
+  salsa?: string;
+  cumin?: string;
+}
+
 type ExecuteMessage = z.infer<typeof executeMessageSchema>;
 type CompleteRequest = z.infer<typeof completeRequestSchema>;
 type CancelMessage = z.infer<typeof cancelMessageSchema>;
@@ -99,6 +118,8 @@ export interface DaemonOptions {
   host?: string;
   scrollbackSize?: number;
   promptProvider?: () => PromptContext | Promise<PromptContext>;
+  /** The hosting process's versions and build hash, reported on attach. */
+  stack?: DaemonStackInfo;
 }
 
 /**
@@ -112,6 +133,7 @@ export class CalypsoDaemon {
   private readonly host: string;
   private readonly scrollbackSize: number;
   private readonly promptProvider: (() => PromptContext | Promise<PromptContext>) | undefined;
+  private readonly stack: DaemonStackInfo | undefined;
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
   private readonly surfaces: Set<Surface> = new Set<Surface>();
@@ -145,6 +167,7 @@ export class CalypsoDaemon {
     this.host = options.host ?? '127.0.0.1';
     this.scrollbackSize = options.scrollbackSize ?? SCROLLBACK_DEFAULT;
     this.promptProvider = options.promptProvider;
+    this.stack = options.stack;
   }
 
   /**
@@ -293,7 +316,12 @@ export class CalypsoDaemon {
       },
     };
     this.surfaces.add(surface);
-    this.send(socket, { type: 'attached', session: this.sessionId, protocolVersion: CONTRACT_VERSION });
+    this.send(socket, {
+      type: 'attached',
+      session: this.sessionId,
+      protocolVersion: CONTRACT_VERSION,
+      ...(this.stack !== undefined ? { stack: this.stack } : {}),
+    });
     this.scrollback_replay(socket);
     // The newcomer shows the right prompt immediately, before any command.
     void this.promptline_push(surface);

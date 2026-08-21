@@ -20,6 +20,7 @@ interface TestBerth {
 interface TestRemoteEngine {
   close(): void;
   promptLine?: () => string;
+  daemonStack?: () => { chell: string; calypso: string; build: string } | undefined;
 }
 
 const remoteClose_mock = jest.fn<() => void>();
@@ -72,6 +73,11 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   })),
   surface_set: surfaceSet_mock,
   StdoutSink: class MockStdoutSink {},
+  welcomeLine_build: jest.fn(() => 'ChELL Executes Layered Logic, v 0.0.0 (dev). Welcome.'),
+  welcomeLine_compose: jest.fn(
+    (pkg: string, version: string, build: string) => `ChELL Executes Layered Logic, v ${version} (${build}). Welcome.`,
+  ),
+  fortune_random: jest.fn(() => 'A test fortune.'),
 }));
 jest.unstable_mockModule('../src/remote/remoteEngine.js', () => ({
   RemoteEngine: MockRemoteEngine,
@@ -116,7 +122,11 @@ describe('remote_run', () => {
     process.exitCode = undefined;
     resolverResolve_mock.mockResolvedValue(berth);
     resolverList_mock.mockResolvedValue([berth]);
-    remoteConnect_mock.mockResolvedValue({ close: remoteClose_mock, promptLine: jest.fn((): string => '') });
+    remoteConnect_mock.mockResolvedValue({
+      close: remoteClose_mock,
+      promptLine: jest.fn((): string => ''),
+      daemonStack: jest.fn(() => undefined),
+    });
     surfaceLineExecute_mock.mockResolvedValue([{ status: 'ok', rendered: '/proc/jobs\n' }]);
   });
 

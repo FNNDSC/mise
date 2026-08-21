@@ -34,9 +34,16 @@ class ChRISObjContextFactory {
   async create(
     context: string
   ): Promise<ChRISEmbeddedResourceGroup<ChRISResourceType> | null> {
+    // Folder paths are not stable identities in CUBE: deleting and re-uploading
+    // a directory assigns a new folder id, so a group bound at first touch would
+    // keep listing (or 404ing against) the dead folder for the life of the
+    // process. Long-running daemons make that lifetime unbounded, so folder
+    // contexts are re-resolved on every call. Plugin and feed ids are stable
+    // and stay cached.
+    const cacheable: boolean = this.config.contextType !== "folder";
     const cacheKey: string = `${this.config.name}:${context}`;
 
-    if (this.cache.has(cacheKey)) {
+    if (cacheable && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
     }
 
@@ -50,7 +57,9 @@ class ChRISObjContextFactory {
       if (!objContext) {
         return null;
       }
-      this.cache.set(cacheKey, objContext);
+      if (cacheable) {
+        this.cache.set(cacheKey, objContext);
+      }
       return objContext;
     } catch (error: unknown) {
       const errorMessage: string =

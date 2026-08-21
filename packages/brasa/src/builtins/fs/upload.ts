@@ -61,10 +61,12 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
     }
     rendered += `${chalk.gray(`  Total: ${bytes_format(summary.transferSize)} in ${summary.duration.toFixed(1)}s (${bytes_format(summary.speed)}/s)`)}\n`;
 
-    // Invalidate cache for actual target directory where files were uploaded
+    // Invalidate cache for actual target directory where files were uploaded,
+    // including nested listings: a directory re-upload replaces a whole tree,
+    // and still-fresh entries below the target would serve the old contents.
     if (summary.transferredCount > 0) {
       const listCache = listCache_get();
-      listCache.cache_invalidate(summary.actualTargetPath);
+      listCache.cache_invalidateTree(summary.actualTargetPath);
       // Also invalidate parent to refresh its listing
       listCache.cache_invalidate(targetRemote);
     }

@@ -36,11 +36,18 @@ describe('objContext_create', () => {
     expect(mockCreate).toHaveBeenCalledWith('ParametersOfPlugin', 'getPluginParameters', 'plugin:12');
   });
 
-  it('caches per context key and skips a second creation', async () => {
+  it('caches stable-id contexts (plugin) and skips a second creation', async () => {
+    mockCreate.mockResolvedValue({ bound: true });
+    await objContext_create('InstancesOfPlugin', 'plugin:7');
+    await objContext_create('InstancesOfPlugin', 'plugin:7');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-resolves folder contexts on every call (paths are not stable ids)', async () => {
     mockCreate.mockResolvedValue({ bound: true });
     await objContext_create('ChRISFilesContext', 'folder:/home/chris');
     await objContext_create('ChRISFilesContext', 'folder:/home/chris');
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
   it('passes a null creation result through uncached', async () => {

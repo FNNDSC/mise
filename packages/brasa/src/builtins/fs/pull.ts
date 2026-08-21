@@ -52,11 +52,18 @@ const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
 const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
 const CHECKER_INTERVAL_MS: number = 2_000;
 
-type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error';
+type SeriesStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error' | 'unfired';
+
+/** Concurrent retrieve creations; more overloads CUBE and loses retrieves. */
+const FIRE_CONCURRENCY: number = 4;
+/** Retry attempts for one retrieve creation, with backoff between them. */
+const FIRE_ATTEMPTS: number = 3;
+const FIRE_BACKOFF_MS: readonly number[] = [250, 500];
 
 function progressStatus_fromSeries(status: SeriesStatus, lonkConfirmed: boolean): ProgressStatus {
   if (status === 'pulled') return lonkConfirmed ? 'done' : 'unconfirmed';
   if (status === 'pending' || status === 'pulling') return 'running';
+  if (status === 'unfired') return 'error';
   return status;
 }
 
@@ -179,33 +186,62 @@ async function path_seriesCollect(pathStr: string, fallbackPacsName: string): Pr
  * @param pacsserver - Resolved PACS server ID string.
  */
 async function task_fire(task: SeriesPullTask, pacsserver: string): Promise<void> {
-  const queryData: PACSQueryCreateData = {
-    // CUBE rejects duplicate query titles per user, which used to make a
-    // re-pull of the same series fail; a timestamp keeps titles unique.
-    title: `pull_${task.seriesUID}_${Date.now().toString(36)}`,
-    query: JSON.stringify({
-      SeriesInstanceUID: task.seriesUID,
-      StudyInstanceUID: task.studyUID,
-    }),
-    execute: false,
+  const sleep = (ms: number): Promise<void> => new Promise((r: (v: void) => void) => setTimeout(r, ms));
+
+  // Creation failures during a server brown-out are permanent data loss for
+  // this pull (nothing ever retrieves), so each step gets a few attempts with
+  // backoff before the series is declared unfired.
+  for (let attempt: number = 0; attempt < FIRE_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(FIRE_BACKOFF_MS[Math.min(attempt - 1, FIRE_BACKOFF_MS.length - 1)]);
+
+    const queryData: PACSQueryCreateData = {
+      // CUBE rejects duplicate query titles per user, which used to make a
+      // re-pull of the same series fail; a timestamp keeps titles unique.
+      title: `pull_${task.seriesUID}_${Date.now().toString(36)}`,
+      query: JSON.stringify({
+        SeriesInstanceUID: task.seriesUID,
+        StudyInstanceUID: task.studyUID,
+      }),
+      execute: false,
+    };
+
+    const queryResult = await pacsQueries_create(pacsserver, queryData);
+    if (!queryResult.ok) continue;
+
+    const syntheticQueryId: number = queryResult.value.id;
+    const retrieveResult = await pacsRetrieve_create(syntheticQueryId);
+    if (!retrieveResult.ok) continue;
+
+    task.syntheticQueryId = syntheticQueryId;
+    task.retrieveId = (retrieveResult.value as PACSRetrieveRecord).id;
+    task.startTime = Date.now();
+    return;
+  }
+
+  task.status = 'unfired';
+}
+
+/**
+ * Fires retrieves for tasks with bounded concurrency, so a large study does
+ * not stampede CUBE with parallel creations (the overload that loses
+ * retrieves in the first place).
+ *
+ * @param tasks - Tasks to fire.
+ * @param pacsserver - Resolved PACS server identifier.
+ */
+async function tasks_fireBounded(tasks: SeriesPullTask[], pacsserver: string): Promise<void> {
+  let next: number = 0;
+  const worker = async (): Promise<void> => {
+    while (next < tasks.length) {
+      const task: SeriesPullTask = tasks[next++];
+      await task_fire(task, pacsserver);
+    }
   };
-
-  const queryResult = await pacsQueries_create(pacsserver, queryData);
-  if (!queryResult.ok) {
-    task.status = 'error';
-    return;
-  }
-
-  const syntheticQueryId: number = queryResult.value.id;
-  const retrieveResult = await pacsRetrieve_create(syntheticQueryId);
-  if (!retrieveResult.ok) {
-    task.status = 'error';
-    return;
-  }
-
-  task.syntheticQueryId = syntheticQueryId;
-  task.retrieveId = (retrieveResult.value as PACSRetrieveRecord).id;
-  task.startTime = Date.now();
+  const workers: Promise<void>[] = Array.from(
+    { length: Math.min(FIRE_CONCURRENCY, tasks.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
 }
 
 /**
@@ -255,21 +291,21 @@ async function tasks_pullWatch(
     }));
   }
 
-  await Promise.all(tasks.map((t: SeriesPullTask): Promise<void> => task_fire(t, pacsserver)));
+  await tasks_fireBounded(tasks, pacsserver);
 
-  const fired: SeriesPullTask[] = tasks.filter((t: SeriesPullTask) => t.status !== 'error');
+  const fired: SeriesPullTask[] = tasks.filter((t: SeriesPullTask) => t.status !== 'unfired');
   const firingErrors: number = tasks.length - fired.length;
 
   if (fired.length === 0) {
     for (const t of tasks) {
-      if (t.status === 'error') pullProgress_emit(t, 'error');
+      if (t.status === 'unfired') pullProgress_emit(t, 'error');
     }
     ws.close();
     return firingErrors;
   }
 
   for (const t of tasks) {
-    pullProgress_emit(t, t.status === 'error' ? 'error' : 'running');
+    pullProgress_emit(t, t.status === 'unfired' ? 'error' : 'running');
   }
 
   const taskByUID: Map<string, SeriesPullTask> = new Map(
@@ -291,7 +327,7 @@ async function tasks_pullWatch(
       let allTerminal: boolean = true;
 
       for (const t of fired) {
-        if (t.status === 'pulled' || t.status === 'error' || t.status === 'stalled' || t.status === 'timeout') {
+        if (t.status === 'pulled' || t.status === 'error' || t.status === 'unfired' || t.status === 'stalled' || t.status === 'timeout') {
           continue;
         }
         allTerminal = false;
@@ -490,18 +526,51 @@ function pullSummary_print(allTasks: SeriesPullTask[], totalFiringErrors: number
     sink_dataLine(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
   } else {
     sink_dataLine(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
+    // An unfired series is permanent loss for this run (no retrieve exists,
+    // nothing will ever arrive); a watch failure is usually cosmetic — the
+    // PACS keeps pushing and CUBE keeps registering after detach.
     for (const f of failures) {
-      sink_dataLine(chalk.red(`  ✗ ${f.label} [${f.status.toUpperCase()}]`));
+      if (f.status === 'unfired') {
+        sink_dataLine(chalk.red(`  ✗ ${f.label} [FAILED TO FIRE — will not arrive; re-run pull]`));
+      } else {
+        sink_dataLine(chalk.yellow(`  ✗ ${f.label} [${f.status.toUpperCase()} — verify with: pacs status]`));
+      }
     }
     process.exitCode = 1;
   }
 
   if (totalFiringErrors > 0) {
-    sink_dataLine(chalk.red(`  ${totalFiringErrors} retrieve(s) failed to start.`));
+    sink_dataLine(chalk.red(`  ${totalFiringErrors} retrieve(s) were never fired — re-run pull to fetch them.`));
     process.exitCode = 1;
   }
 
   pullProgress_complete(allTasks, failures.length > 0 || totalFiringErrors > 0);
+}
+
+/**
+ * Marks tasks whose series are already fully registered in CUBE as pulled,
+ * so firing can skip them. This is what makes `pull` idempotent: re-running
+ * the same pull after a partial failure fetches only the missing series.
+ *
+ * @param tasks - All pull tasks; complete ones are mutated to pulled.
+ * @param client - Authenticated ChRIS API client.
+ * @returns How many tasks were marked complete and skipped.
+ */
+async function tasks_skipComplete(tasks: SeriesPullTask[], client: Client): Promise<number> {
+  const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
+  let skipped: number = 0;
+  await Promise.all(tasks.map(async (task: SeriesPullTask): Promise<void> => {
+    const cubePath = await series_cubePathGet(task.seriesUID, pacsClient, 1, 0);
+    if (!cubePath) return;
+    if (task.expectedFiles > 0 && cubePath.fileCount >= task.expectedFiles) {
+      task.status = 'pulled';
+      task.lonkConfirmed = true;
+      task.actualFiles = cubePath.fileCount;
+      task.cubePathDir = cubePath.folderPath;
+      skipped++;
+    }
+  }));
+  return skipped;
 }
 
 /**
@@ -657,9 +726,18 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     return envelope_error('');
   }
 
+  // Idempotent recovery: skip series whose expected file count is already
+  // registered in CUBE, so re-running the same pull fetches only what is
+  // missing instead of re-firing the whole study.
+  const skipped: number = await tasks_skipComplete(allTasks, client);
+  if (skipped > 0) {
+    sink_dataLine(chalk.gray(`pull: ${skipped}/${allTasks.length} series already in CUBE — skipped.`));
+  }
+  const toFetch: SeriesPullTask[] = allTasks.filter((t: SeriesPullTask) => t.status !== 'pulled');
+
   // --nowait: fire retrieves and exit without watching
   if (nowait) {
-    for (const t of allTasks) {
+    for (const t of toFetch) {
       await task_fire(t, pacsserver);
       if (t.retrieveId !== null) {
         sink_dataLine(`${t.seriesUID} ${t.retrieveId}`);
@@ -671,7 +749,9 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok('');
   }
 
-  let totalFiringErrors: number = await tasks_pullWatch(allTasks, pacsserver, client);
+  let totalFiringErrors: number = toFetch.length > 0
+    ? await tasks_pullWatch(toFetch, pacsserver, client)
+    : 0;
   totalFiringErrors += await pullRetryLoop(allTasks, retryMax, pacsserver, client);
 
   pullSummary_print(allTasks, totalFiringErrors);

@@ -12,13 +12,19 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 
 const mockQuery = jest.fn(async () => ({ status: 'ok', rendered: '' }));
 const mockPull = jest.fn(async () => ({ status: 'ok', rendered: '' }));
+const mockStatus = jest.fn(async () => ({ status: 'ok', rendered: '' }));
 jest.unstable_mockModule('../src/builtins/net/query.js', () => ({ builtin_query: mockQuery }));
 jest.unstable_mockModule('../src/builtins/fs/pull.js', () => ({ builtin_pull: mockPull }));
+jest.unstable_mockModule('../src/builtins/net/status.js', () => ({ builtin_pacsStatus: mockStatus }));
 
 // pacs streams its output through the sink line writers.
 const mockDataLine = jest.fn();
 const mockErrLine = jest.fn();
-jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_dataLine: mockDataLine, sink_errLine: mockErrLine }));
+jest.unstable_mockModule('../src/core/sink.js', () => ({
+  sink_dataLine: mockDataLine,
+  sink_errLine: mockErrLine,
+  sink_get: jest.fn(() => ({ data_write: jest.fn(), err_write: jest.fn(), progress_write: jest.fn() })),
+}));
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 

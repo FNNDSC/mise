@@ -535,6 +535,8 @@ export const helpText: Record<string, CommandHelp> = {
       '  list                  List registered PACS servers (alias: pacs connect)',
       '  query <Key:Value...>  Create PACS query and wait for results',
       '  pull <vfs-path...>    Pull DICOM series into ChRIS storage',
+      '  status <target>       Per-series pulled/pending report with in-CUBE paths;',
+      '                        target is an expression, VFS path, or query id',
     ],
     examples: [
       'pacs                              # Show active server',
@@ -545,6 +547,7 @@ export const helpText: Record<string, CommandHelp> = {
       'pacs list                         # List all servers',
       'pacs query PatientID:1234         # Query PACS',
       'pacs pull /net/pacs/queries/42_AccessionNumber:12345678',
+      'pacs status AccessionNumber:22119730   # What has landed in CUBE, what is missing',
     ],
   },
   'pacs query': {

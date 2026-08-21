@@ -138,6 +138,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   StackMessage: {},
   Client: jest.fn(),
   pacsQueries_create: jest.fn(),
+  pacsQueries_list: jest.fn(async () => ({ ok: false })),
+  pacsRetrieve_statusForQuery: jest.fn(async () => ({ ok: false })),
   pacsRetrieve_create: jest.fn(),
   pacsQuery_get: jest.fn(),
   pacsQuery_resultDecode: jest.fn(),

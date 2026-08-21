@@ -26,6 +26,7 @@ describe("PACSRetrieveGroupHandler", () => {
               expectedFiles: 220,
               actualFiles: 186,
               status: "pulling",
+              folderPath: "/SERVICES/PACS/PACSDCM/mprage",
             },
             {
               seriesInfo: {},
@@ -34,6 +35,7 @@ describe("PACSRetrieveGroupHandler", () => {
               expectedFiles: 300,
               actualFiles: 0,
               status: "pending",
+              folderPath: null,
             },
           ],
         },
@@ -67,6 +69,7 @@ describe("PACSRetrieveGroupHandler", () => {
               expectedFiles: 220,
               actualFiles: 220,
               status: "pulled",
+              folderPath: "/SERVICES/PACS/PACSDCM/mprage",
             },
           ],
         },

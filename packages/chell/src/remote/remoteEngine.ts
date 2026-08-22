@@ -12,17 +12,11 @@
  */
 import { WebSocket } from 'ws';
 import chalk from 'chalk';
-import { serverMessage_parse, CONTRACT_VERSION, type ServerMessage } from '@fnndsc/calypso';
+import { serverMessage_parse, CONTRACT_VERSION, RequestBroker, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 import { envelope_deliver, sink_get, type OutputSink } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
-
-/** A pending request awaiting its correlated reply. */
-interface Pending {
-  resolve: (value: unknown) => void;
-  reject: (err: Error) => void;
-}
 
 /** Options for connecting a remote engine. */
 export interface RemoteEngineOptions {
@@ -68,7 +62,10 @@ export interface DaemonStack {
  */
 export class RemoteEngine implements BrasaEngine {
   private readonly ws: WebSocket;
-  private readonly pending: Map<string, Pending> = new Map<string, Pending>();
+  // The same correlation lifecycle the daemon uses for its surface-delegated
+  // requests; here it correlates this client's execute/complete requests and
+  // rejects them if the daemon connection closes first.
+  private readonly requests: RequestBroker<unknown> = new RequestBroker<unknown>('r', 'daemon disconnected before replying');
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
   private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
   private readonly onPipe: ((command: string, input: Buffer) => Promise<Buffer>) | undefined;
@@ -191,9 +188,8 @@ export class RemoteEngine implements BrasaEngine {
    */
   private request<T>(type: 'execute' | 'complete', fields: Record<string, string>, requestId?: string): Promise<T> {
     const id: string = requestId ?? String(this.nextId++);
-    return new Promise((resolve: (value: unknown) => void, reject: (err: Error) => void) => {
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ type, id, ...fields }));
+    return this.requests.openWithId(id, this.ws, (correlationId: string): void => {
+      this.ws.send(JSON.stringify({ type, id: correlationId, ...fields }));
     }) as Promise<T>;
   }
 
@@ -216,11 +212,10 @@ export class RemoteEngine implements BrasaEngine {
     const message: ServerMessage = parsed.value;
     switch (message.type) {
       case 'result':
-        this.pending_settle(message.id, (p: Pending) => p.resolve(message.envelopes));
+        this.requests.settle(this.ws, message.id, message.envelopes);
         break;
       case 'complete':
-        this.pending_settle(message.id, (p: Pending) =>
-          p.resolve({ candidates: message.candidates, prefix: message.prefix }));
+        this.requests.settle(this.ws, message.id, { candidates: message.candidates, prefix: message.prefix });
         break;
       case 'session':
         // The wire envelope is a CommandEnvelope; calypso's schema infers the
@@ -261,7 +256,7 @@ export class RemoteEngine implements BrasaEngine {
         break;
       case 'error':
         if (message.id !== undefined) {
-          this.pending_settle(message.id, (p: Pending) => p.reject(new Error(message.reason)));
+          this.requests.fail(this.ws, message.id, message.reason);
         }
         break;
       default:
@@ -279,8 +274,18 @@ export class RemoteEngine implements BrasaEngine {
    * @param hidden - Whether the entry should be hidden (a password).
    */
   private async prompt_answer(promptId: string, message: string, hidden: boolean): Promise<void> {
-    const answer: string = this.onPrompt ? await this.onPrompt(message, hidden) : '';
-    this.ws.send(JSON.stringify({ type: 'promptAnswer', promptId, answer }));
+    try {
+      if (!this.onPrompt) {
+        // A silent empty answer would let the command proceed on fabricated
+        // input; an inability to prompt is a failure and reports as one.
+        throw new Error('this surface cannot prompt');
+      }
+      const answer: string = await this.onPrompt(message, hidden);
+      this.ws.send(JSON.stringify({ type: 'promptAnswer', promptId, answer }));
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.ws.send(JSON.stringify({ type: 'promptError', promptId, reason }));
+    }
   }
 
   /**
@@ -295,7 +300,12 @@ export class RemoteEngine implements BrasaEngine {
   private async pipe_run(pipeId: string, command: string, input: string): Promise<void> {
     const inputBytes: Buffer = Buffer.from(input, 'base64');
     try {
-      const output: Buffer = this.onPipe ? await this.onPipe(command, inputBytes) : inputBytes;
+      if (!this.onPipe) {
+        // Passing input through unchanged would silently turn the segment
+        // into a no-op; an inability to run it is a failure.
+        throw new Error('this surface cannot run pipeline segments');
+      }
+      const output: Buffer = await this.onPipe(command, inputBytes);
       this.ws.send(JSON.stringify({ type: 'pipeResult', pipeId, output: output.toString('base64') }));
     } catch (error: unknown) {
       const reason: string = error instanceof Error ? error.message : String(error);
@@ -333,10 +343,18 @@ export class RemoteEngine implements BrasaEngine {
    * @param extension - An optional filename extension.
    */
   private async edit_run(editId: string, content: string, extension: string | undefined): Promise<void> {
-    const result: { content: string; changed: boolean } = this.onEdit
-      ? await this.onEdit(content, extension)
-      : { content, changed: false };
-    this.ws.send(JSON.stringify({ type: 'editResult', editId, content: result.content, changed: result.changed }));
+    try {
+      if (!this.onEdit) {
+        // Returning the content unchanged would report a successful edit that
+        // never happened; an inability to edit is a failure.
+        throw new Error('this surface cannot edit');
+      }
+      const result: { content: string; changed: boolean } = await this.onEdit(content, extension);
+      this.ws.send(JSON.stringify({ type: 'editResult', editId, content: result.content, changed: result.changed }));
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.ws.send(JSON.stringify({ type: 'editError', editId, reason }));
+    }
   }
 
   /**
@@ -353,20 +371,6 @@ export class RemoteEngine implements BrasaEngine {
       sink.err_write(chunk);
     } else {
       sink.status_write(chunk);
-    }
-  }
-
-  /**
-   * Applies a settlement to the pending request for an id, if one exists.
-   *
-   * @param id - The correlation id.
-   * @param settle - The settlement to apply.
-   */
-  private pending_settle(id: string, settle: (pending: Pending) => void): void {
-    const pending: Pending | undefined = this.pending.get(id);
-    if (pending) {
-      this.pending.delete(id);
-      settle(pending);
     }
   }
 

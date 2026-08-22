@@ -29,6 +29,7 @@ import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { HostedEngine, CompletionResult } from './engine.js';
 import { token_matches } from './token.js';
+import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
 import { clientMessage_parse, attach_parse } from '../protocol/validate.js';
 import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
@@ -72,20 +73,6 @@ interface Surface {
 interface SessionEntry {
   surface: string;
   envelope: CommandEnvelope;
-}
-
-/** Promise callbacks for one pipeline segment executing on a surface. */
-interface PendingPipe {
-  resolve: (output: Buffer) => void;
-  reject: (error: Error) => void;
-}
-
-/** Promise callbacks for one host-shell command executing on a surface. */
-interface PendingShell {
-  origin: WebSocket;
-  onClose: () => void;
-  resolve: (exitCode: number) => void;
-  reject: (error: Error) => void;
 }
 
 /** The result of a surface's local edit, returned by {@link CalypsoDaemon.edit_current}. */
@@ -147,14 +134,13 @@ export class CalypsoDaemon {
   private queue: Promise<void> = Promise.resolve();
   private currentOrigin: Surface | null = null;
   private currentId: string | null = null;
-  private readonly pendingPrompts: Map<string, (answer: string) => void> = new Map<string, (answer: string) => void>();
-  private promptSeq: number = 0;
-  private readonly pendingPipes: Map<string, PendingPipe> = new Map<string, PendingPipe>();
-  private pipeSeq: number = 0;
-  private readonly pendingShells: Map<string, PendingShell> = new Map<string, PendingShell>();
-  private shellSeq: number = 0;
-  private readonly pendingEdits: Map<string, (result: EditOutcome) => void> = new Map<string, (result: EditOutcome) => void>();
-  private editSeq: number = 0;
+  // One RequestBroker per surface-delegated request kind. The broker owns the
+  // whole correlation lifecycle uniformly: id generation, close-guard,
+  // origin-validated settles, listener cleanup. See broker.ts.
+  private readonly prompts: RequestBroker<string> = new RequestBroker<string>('p', 'surface disconnected before answering');
+  private readonly pipes: RequestBroker<Buffer> = new RequestBroker<Buffer>('x', 'surface disconnected before returning pipe output');
+  private readonly shells: RequestBroker<number> = new RequestBroker<number>('h', 'surface disconnected before returning the shell result');
+  private readonly edits: RequestBroker<EditOutcome> = new RequestBroker<EditOutcome>('e', 'surface disconnected before returning the edit');
 
   /**
    * @param options - The engine to host, the attach token, the bind address,
@@ -243,17 +229,21 @@ export class CalypsoDaemon {
       } else if (value.type === 'complete') {
         void this.complete_run(socket, value);
       } else if (value.type === 'promptAnswer') {
-        this.promptAnswer_settle(value.promptId, value.answer);
+        this.prompts.settle(socket, value.promptId, value.answer);
+      } else if (value.type === 'promptError') {
+        this.prompts.fail(socket, value.promptId, value.reason);
       } else if (value.type === 'pipeResult') {
-        this.pipeResult_settle(value.pipeId, value.output);
+        this.pipes.settle(socket, value.pipeId, Buffer.from(value.output, 'base64'));
       } else if (value.type === 'pipeError') {
-        this.pipeError_settle(value.pipeId, value.reason);
+        this.pipes.fail(socket, value.pipeId, value.reason);
       } else if (value.type === 'shellResult') {
-        this.shellResult_settle(socket, value.shellId, value.exitCode);
+        this.shells.settle(socket, value.shellId, value.exitCode);
       } else if (value.type === 'shellError') {
-        this.shellError_settle(socket, value.shellId, value.reason);
+        this.shells.fail(socket, value.shellId, value.reason);
       } else if (value.type === 'editResult') {
-        this.editResult_settle(value.editId, { content: value.content, changed: value.changed });
+        this.edits.settle(socket, value.editId, { content: value.content, changed: value.changed });
+      } else if (value.type === 'editError') {
+        this.edits.fail(socket, value.editId, value.reason);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -443,15 +433,7 @@ export class CalypsoDaemon {
     if (hidden && !origin.capabilities.hiddenInput) {
       return Promise.reject(new Error('this surface cannot securely collect hidden input'));
     }
-    const promptId: string = `p${this.promptSeq++}`;
-    return new Promise((resolve: (answer: string) => void, reject: (err: Error) => void) => {
-      this.pendingPrompts.set(promptId, resolve);
-      const onClose = (): void => {
-        if (this.pendingPrompts.delete(promptId)) {
-          reject(new Error('surface disconnected before answering'));
-        }
-      };
-      origin.socket.once('close', onClose);
+    return this.prompts.open(origin.socket, (promptId: string): void => {
       this.send(origin.socket, { type: 'prompt', promptId, message, hidden });
     });
   }
@@ -494,20 +476,6 @@ export class CalypsoDaemon {
   }
 
   /**
-   * Resolves a pending prompt with the surface's answer.
-   *
-   * @param promptId - The prompt correlation id.
-   * @param answer - The answer the surface supplied.
-   */
-  private promptAnswer_settle(promptId: string, answer: string): void {
-    const resolve: ((answer: string) => void) | undefined = this.pendingPrompts.get(promptId);
-    if (resolve) {
-      this.pendingPrompts.delete(promptId);
-      resolve(answer);
-    }
-  }
-
-  /**
    * Runs a pipeline segment on the surface running the current command,
    * returning its output. The host installs a `pipeSegment` on its engine-side
    * surface that calls this, so a pipeline's segments run on the client and
@@ -523,45 +491,9 @@ export class CalypsoDaemon {
     if (!origin) {
       return Promise.reject(new Error('no active command to run a pipe segment for'));
     }
-    const pipeId: string = `x${this.pipeSeq++}`;
-    return new Promise((resolve: (output: Buffer) => void, reject: (err: Error) => void) => {
-      this.pendingPipes.set(pipeId, { resolve, reject });
-      const onClose = (): void => {
-        if (this.pendingPipes.delete(pipeId)) {
-          reject(new Error('surface disconnected before returning pipe output'));
-        }
-      };
-      origin.socket.once('close', onClose);
+    return this.pipes.open(origin.socket, (pipeId: string): void => {
       this.send(origin.socket, { type: 'pipe', pipeId, command, input: input.toString('base64') });
     });
-  }
-
-  /**
-   * Resolves a pending pipe segment with the surface's output.
-   *
-   * @param pipeId - The pipe correlation id.
-   * @param output - The base64-encoded segment output.
-   */
-  private pipeResult_settle(pipeId: string, output: string): void {
-    const pending: PendingPipe | undefined = this.pendingPipes.get(pipeId);
-    if (pending) {
-      this.pendingPipes.delete(pipeId);
-      pending.resolve(Buffer.from(output, 'base64'));
-    }
-  }
-
-  /**
-   * Rejects a pending pipeline segment with the surface's failure.
-   *
-   * @param pipeId - The pipe correlation id.
-   * @param reason - Human-readable command failure.
-   */
-  private pipeError_settle(pipeId: string, reason: string): void {
-    const pending: PendingPipe | undefined = this.pendingPipes.get(pipeId);
-    if (pending) {
-      this.pendingPipes.delete(pipeId);
-      pending.reject(new Error(reason));
-    }
   }
 
   /**
@@ -580,37 +512,9 @@ export class CalypsoDaemon {
     if (!origin.capabilities.shellCommands) {
       return Promise.reject(new Error('the originating surface cannot run shell commands'));
     }
-    const shellId: string = `h${this.shellSeq++}`;
-    return new Promise((resolve: (exitCode: number) => void, reject: (error: Error) => void) => {
-      const onClose = (): void => {
-        if (this.pendingShells.delete(shellId)) {
-          reject(new Error('surface disconnected before returning the shell result'));
-        }
-      };
-      this.pendingShells.set(shellId, { origin: origin.socket, onClose, resolve, reject });
-      origin.socket.once('close', onClose);
+    return this.shells.open(origin.socket, (shellId: string): void => {
       this.send(origin.socket, { type: 'shell', shellId, command });
     });
-  }
-
-  /** Resolves a pending surface shell command with its originating surface's exit code. */
-  private shellResult_settle(socket: WebSocket, shellId: string, exitCode: number): void {
-    const pending: PendingShell | undefined = this.pendingShells.get(shellId);
-    if (pending && pending.origin === socket) {
-      this.pendingShells.delete(shellId);
-      pending.origin.removeListener('close', pending.onClose);
-      pending.resolve(exitCode);
-    }
-  }
-
-  /** Rejects a pending surface shell command with its originating surface's failure. */
-  private shellError_settle(socket: WebSocket, shellId: string, reason: string): void {
-    const pending: PendingShell | undefined = this.pendingShells.get(shellId);
-    if (pending && pending.origin === socket) {
-      this.pendingShells.delete(shellId);
-      pending.origin.removeListener('close', pending.onClose);
-      pending.reject(new Error(reason));
-    }
   }
 
   /**
@@ -629,31 +533,9 @@ export class CalypsoDaemon {
     if (!origin) {
       return Promise.reject(new Error('no active command to edit for'));
     }
-    const editId: string = `e${this.editSeq++}`;
-    return new Promise((resolve: (result: EditOutcome) => void, reject: (err: Error) => void) => {
-      this.pendingEdits.set(editId, resolve);
-      const onClose = (): void => {
-        if (this.pendingEdits.delete(editId)) {
-          reject(new Error('surface disconnected before returning the edit'));
-        }
-      };
-      origin.socket.once('close', onClose);
+    return this.edits.open(origin.socket, (editId: string): void => {
       this.send(origin.socket, { type: 'edit', editId, content, extension });
     });
-  }
-
-  /**
-   * Resolves a pending edit with the surface's result.
-   *
-   * @param editId - The edit correlation id.
-   * @param outcome - The edited content and changed flag.
-   */
-  private editResult_settle(editId: string, outcome: EditOutcome): void {
-    const resolve: ((result: EditOutcome) => void) | undefined = this.pendingEdits.get(editId);
-    if (resolve) {
-      this.pendingEdits.delete(editId);
-      resolve(outcome);
-    }
   }
 
   /**

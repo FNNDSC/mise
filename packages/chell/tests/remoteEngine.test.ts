@@ -47,6 +47,26 @@ jest.unstable_mockModule('ws', () => ({ WebSocket: FakeWebSocket }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   CONTRACT_VERSION: 1,
   serverMessage_parse: (value: unknown) => ({ ok: true, value }),
+  // Minimal real-shaped broker: the engine under test depends on genuine
+  // correlation behavior (open/settle/fail), not just the class existing.
+  RequestBroker: class {
+    private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+    constructor(private prefix: string, private reason: string) {}
+    openWithId(id: string, _origin: unknown, send: (id: string) => void): Promise<unknown> {
+      return new Promise((resolve, reject) => {
+        this.pending.set(id, { resolve, reject });
+        send(id);
+      });
+    }
+    settle(_socket: unknown, id: string, reply: unknown): void {
+      const p = this.pending.get(id);
+      if (p) { this.pending.delete(id); p.resolve(reply); }
+    }
+    fail(_socket: unknown, id: string, reason: string): void {
+      const p = this.pending.get(id);
+      if (p) { this.pending.delete(id); p.reject(new Error(reason)); }
+    }
+  },
 }));
 
 // Isolate this surface unit from the engine barrel: provide just the sink
@@ -186,6 +206,52 @@ describe('RemoteEngine live output', () => {
     expect(FakeWebSocket.instances[0].sent).toContainEqual({
       type: 'shellResult', shellId: 'h1', exitCode: 0,
     });
+  });
+
+  it('reports promptError, pipeError, and editError when it has no handlers', async () => {
+    // A surface without handlers must report inability rather than fabricate
+    // an empty answer, a pass-through pipe, or an unchanged "successful" edit.
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      if (sent.type !== 'execute') return;
+      const id = String(sent.id);
+      process.nextTick(() => {
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'prompt', promptId: 'p1', message: 'Password:', hidden: true })));
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'pipe', pipeId: 'x1', command: 'grep x', input: Buffer.from('in').toString('base64') })));
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'edit', editId: 'e1', content: 'text', extension: 'md' })));
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'result', id, envelopes: [{ status: 'ok', rendered: '' }] })));
+      });
+    };
+
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    await remote.line_execute('anything');
+    // The error replies are sent on the next ticks after the requests land.
+    await new Promise((r) => setTimeout(r, 0));
+
+    const sentTypes = FakeWebSocket.instances[0].sent;
+    expect(sentTypes).toContainEqual(expect.objectContaining({ type: 'promptError', promptId: 'p1' }));
+    expect(sentTypes).toContainEqual(expect.objectContaining({ type: 'pipeError', pipeId: 'x1' }));
+    expect(sentTypes).toContainEqual(expect.objectContaining({ type: 'editError', editId: 'e1' }));
+  });
+
+  it('reports a promptError when the prompt handler itself fails', async () => {
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      if (sent.type !== 'execute') return;
+      const id = String(sent.id);
+      process.nextTick(() => {
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'prompt', promptId: 'p2', message: 'Name:', hidden: false })));
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'result', id, envelopes: [{ status: 'ok', rendered: '' }] })));
+      });
+    };
+
+    remote = await RemoteEngine.connect({
+      url: 'ws://127.0.0.1:1',
+      token: 'token',
+      onPrompt: async () => { throw new Error('tty gone'); },
+    });
+    await remote.line_execute('anything');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(FakeWebSocket.instances[0].sent).toContainEqual({ type: 'promptError', promptId: 'p2', reason: 'tty gone' });
   });
 
   it('does not suppress final envelope text for status-only output', async () => {

@@ -20,6 +20,8 @@ describe('clientMessage_parse', () => {
     expect(clientMessage_parse({ type: 'pipeError', pipeId: 'p1', reason: 'failed' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'shellResult', shellId: 's1', exitCode: 0 }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'shellError', shellId: 's2', reason: 'failed' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'promptError', promptId: 'p1', reason: 'cannot prompt' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'editError', editId: 'e1', reason: 'cannot edit' }).ok).toBe(true);
   });
 
   it('accepts hidden-input capability declaration without requiring it from older surfaces', () => {

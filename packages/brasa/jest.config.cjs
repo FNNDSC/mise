@@ -24,7 +24,7 @@ module.exports = {
   // Minimum coverage enforced by CI; raise as coverage improves. Baseline set
   // when the engine was lifted out of chell into this package.
   coverageThreshold: {
-    global: { statements: 89, branches: 77, functions: 91, lines: 90 },
+    global: { statements: 90, branches: 79, functions: 92, lines: 91 },
     // Per-file floor: no covered file may fall below 60% statements/lines.
     './src/**/*.ts': { statements: 60, lines: 60 },
   },

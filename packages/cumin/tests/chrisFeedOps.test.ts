@@ -311,3 +311,104 @@ describe('feed comments', () => {
     expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('Comment 3 not found'));
   });
 });
+
+describe('feed lifecycle error paths', () => {
+  const notConnected = async (fn: () => Promise<{ ok: boolean }>): Promise<void> => {
+    mockClientGet.mockResolvedValue(null);
+    expect((await fn()).ok).toBe(false);
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('Not connected'));
+  };
+  const feedMissing = async (fn: () => Promise<{ ok: boolean }>): Promise<void> => {
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => null) });
+    expect((await fn()).ok).toBe(false);
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('not found'));
+  };
+
+  it('every lifecycle op fails cleanly when not connected', async () => {
+    await notConnected(() => feed_makePublic(1));
+    await notConnected(() => feed_makePrivate(1));
+    await notConnected(() => feed_delete(1));
+    await notConnected(() => feed_resolve('1'));
+    await notConnected(() => feedNote_get(1));
+    await notConnected(() => feedNote_update(1, { title: 't', content: 'c' }));
+    await notConnected(() => feedComments_list(1));
+    await notConnected(() => feedComment_create(1, { title: 'hi' }));
+    await notConnected(() => feedComment_delete(1, 2));
+  });
+
+  it('every lifecycle op fails cleanly on a missing feed', async () => {
+    await feedMissing(() => feed_makePublic(9));
+    await feedMissing(() => feed_makePrivate(9));
+    await feedMissing(() => feed_delete(9));
+    await feedMissing(() => feedNote_get(9));
+    await feedMissing(() => feedNote_update(9, { title: 't', content: 'c' }));
+    await feedMissing(() => feedComments_list(9));
+    await feedMissing(() => feedComment_create(9, { title: 'hi' }));
+  });
+
+  it('reports the underlying error when a lifecycle call throws', async () => {
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({
+        makePublic: jest.fn(async () => { throw new Error('server said no'); }),
+        makeUnpublic: jest.fn(async () => { throw new Error('server said no'); }),
+        delete: jest.fn(async () => { throw new Error('server said no'); }),
+      })),
+    });
+    expect((await feed_makePublic(3)).ok).toBe(false);
+    expect((await feed_makePrivate(3)).ok).toBe(false);
+    expect((await feed_delete(3)).ok).toBe(false);
+    expect(pushSpy).toHaveBeenCalledWith('error', expect.stringContaining('server said no'));
+  });
+
+  it('makes a feed private and deletes a feed on the happy path', async () => {
+    const makeUnpublic = jest.fn(async () => ({}));
+    const del = jest.fn(async () => undefined);
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ makeUnpublic, delete: del })) });
+    expect((await feed_makePrivate(4)).ok).toBe(true);
+    expect((await feed_delete(4)).ok).toBe(true);
+    expect(makeUnpublic).toHaveBeenCalled();
+    expect(del).toHaveBeenCalled();
+  });
+});
+
+describe('feed notes and comments', () => {
+  it('reads and updates a feed note', async () => {
+    const put = jest.fn(async () => ({}));
+    const getNote = jest.fn(async () => ({ data: { id: 1, title: 'Note', content: 'body' }, put }));
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ getNote })) });
+
+    const read = await feedNote_get(5);
+    expect(read.ok && read.value).toMatchObject({ title: 'Note', content: 'body' });
+
+    const write = await feedNote_update(5, { title: 'New', content: 'updated' });
+    expect(write.ok).toBe(true);
+    expect(put).toHaveBeenCalledWith({ title: 'New', content: 'updated' });
+  });
+
+  it('lists, creates, deletes, and updates comments', async () => {
+    const commentPut = jest.fn(async () => ({ data: [{ id: 7, title: 'edited', owner_username: 'chris' }] }));
+    const commentDelete = jest.fn(async () => undefined);
+    const comment = { data: { id: 7, title: 'hello', owner_username: 'chris' }, put: commentPut, delete: commentDelete };
+    const post = jest.fn(async () => ({ data: [comment.data] }));
+    const getComments = jest.fn(async () => ({ data: [comment.data], post }));
+    const getComment = jest.fn(async () => comment);
+    mockClientGet.mockResolvedValue({
+      getFeed: jest.fn(async () => ({ getComments, getComment })),
+    });
+
+    const listed = await feedComments_list(5);
+    expect(listed.ok && listed.value).toEqual([comment.data]);
+
+    const created = await feedComment_create(5, { title: 'hello' });
+    expect(created.ok && created.value).toMatchObject({ id: 7, title: 'hello' });
+    expect(post).toHaveBeenCalledWith({ title: 'hello' });
+
+    const deleted = await feedComment_delete(5, 7);
+    expect(deleted.ok).toBe(true);
+    expect(commentDelete).toHaveBeenCalled();
+
+    const updated = await feedComment_update(5, 7, { title: 'edited' });
+    expect(updated.ok).toBe(true);
+    expect(commentPut).toHaveBeenCalledWith({ title: 'edited' });
+  });
+});

@@ -325,6 +325,7 @@ describe('feed lifecycle error paths', () => {
   };
 
   it('every lifecycle op fails cleanly when not connected', async () => {
+    expect.hasAssertions();
     await notConnected(() => feed_makePublic(1));
     await notConnected(() => feed_makePrivate(1));
     await notConnected(() => feed_delete(1));
@@ -337,6 +338,7 @@ describe('feed lifecycle error paths', () => {
   });
 
   it('every lifecycle op fails cleanly on a missing feed', async () => {
+    expect.hasAssertions();
     await feedMissing(() => feed_makePublic(9));
     await feedMissing(() => feed_makePrivate(9));
     await feedMissing(() => feed_delete(9));

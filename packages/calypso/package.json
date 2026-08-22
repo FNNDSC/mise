@@ -16,7 +16,7 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "calypso": "./dist/calypso.js"
+    "calypso": "dist/calypso.js"
   },
   "files": [
     "dist"

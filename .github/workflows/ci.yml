@@ -18,8 +18,16 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # One npm major everywhere: node 22 ships npm 10 and node 24 ships npm
+      # 11, and a lockfile regenerated under one major has failed `npm ci`
+      # under the other. The lockfile is maintained with npm 11; see engines.
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npm run build
+      # Publish preflight: packs every workspace exactly as a release would,
+      # so publish-time rejections (invalid overrides, bin cleanup, missing
+      # files) fail this PR instead of the release run. No auth is needed.
+      - run: npm publish --dry-run --workspaces
       - run: npm test
       - name: Upload coverage to Codecov
         if: matrix.node == 24

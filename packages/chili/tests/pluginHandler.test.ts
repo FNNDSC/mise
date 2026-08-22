@@ -134,3 +134,76 @@ describe('PluginMemberHandler', () => {
     expect(plugin?.commands.map((c) => c.name())).toEqual(expect.arrayContaining(['readme', 'run', 'search']));
   });
 });
+
+describe('commander action wiring', () => {
+  /** Parses argv through a program with exitOverride so failures throw. */
+  async function group_parse(...argv: string[]): Promise<void> {
+    const program = new Command();
+    program.exitOverride();
+    new PluginGroupHandler().pluginGroupCommand_setup(program);
+    await program.parseAsync(['node', 'chili', ...argv]);
+  }
+  async function member_parse(...argv: string[]): Promise<void> {
+    const program = new Command();
+    program.exitOverride();
+    new PluginMemberHandler().pluginCommand_setup(program);
+    await program.parseAsync(['node', 'chili', ...argv]);
+  }
+
+  it('plugins overview action delegates', async () => {
+    await group_parse('plugins', 'overview');
+    expect(mockOverview).toHaveBeenCalled();
+  });
+
+  it('plugins fieldslist action lists fields', async () => {
+    mockFields.mockResolvedValue(['name', 'version']);
+    await group_parse('plugins', 'fieldslist');
+    expect(mockTableDisplay).toHaveBeenCalledWith(['name', 'version'], ['fields']);
+  });
+
+  it('plugins delete action forwards the searchable and force flag', async () => {
+    mockSearchByTerm.mockResolvedValue([{ id: 3, name: 'pl-x', version: '1.0' }]);
+    mockDeleteById.mockResolvedValue(true);
+    await group_parse('plugins', 'delete', 'id:3', '--force');
+    expect(mockDeleteById).toHaveBeenCalledWith(3);
+    expect(mockConfirm).not.toHaveBeenCalled();
+  });
+
+  it('plugins add action forwards the image and options', async () => {
+    await group_parse('plugins', 'add', 'fnndsc/pl-x', '--compute', 'host');
+    expect(mockAdd).toHaveBeenCalledWith('fnndsc/pl-x', expect.objectContaining({ compute: 'host' }));
+  });
+
+  it('plugin readme action resolves an explicit id', async () => {
+    mockReadmeFetch.mockResolvedValue({ content: 'R', format: 'markdown', sourceUrl: 'u' });
+    await member_parse('plugin', 'readme', '12');
+    expect(mockReadmeFetch).toHaveBeenCalledWith('12');
+  });
+
+  it('plugin readme action resolves via --search when no id is given', async () => {
+    const searchSpy = jest.spyOn(PluginController.prototype, 'pluginID_fromSearch').mockResolvedValue('44');
+    mockReadmeFetch.mockResolvedValue({ content: 'R', format: 'markdown', sourceUrl: 'u' });
+    await member_parse('plugin', 'readme', '--search', 'name:pl-x');
+    expect(searchSpy).toHaveBeenCalled();
+    expect(mockReadmeFetch).toHaveBeenCalledWith('44');
+  });
+
+  it('plugin readme action reports when nothing resolves', async () => {
+    jest.spyOn(PluginController.prototype, 'pluginID_fromSearch').mockResolvedValue(null);
+    await member_parse('plugin', 'readme', '--search', 'name:nope');
+    expect(errSpy).toHaveBeenCalled();
+    expect(mockReadmeFetch).not.toHaveBeenCalled();
+  });
+
+  it('plugin run action joins parameters after the searchable', async () => {
+    mockExecute.mockResolvedValue({ id: 1 });
+    await member_parse('plugin', 'run', 'pl-x', '--dir', '/in');
+    expect(mockExecute).toHaveBeenCalledWith('pl-x', '--dir /in');
+  });
+
+  it('plugin search action resolves the searchable', async () => {
+    mockIdsResolve.mockResolvedValue(['7']);
+    await member_parse('plugin', 'search', 'name:pl-x');
+    expect(mockIdsResolve).toHaveBeenCalledWith('name:pl-x');
+  });
+});

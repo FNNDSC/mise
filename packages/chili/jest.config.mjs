@@ -27,7 +27,7 @@ export default {
   coverageThreshold: {
     // Ratcheted 2026-08 after the screen.ts lift (65% -> 93%): thresholds sit
     // just under the measured 90.6/76.8/92.4/91.0 so the gain cannot erode.
-    global: { statements: 90, branches: 76, functions: 91, lines: 90 },
+    global: { statements: 91, branches: 78, functions: 93, lines: 92 },
     // Per-file floor: no covered file may fall below 60% statements/lines.
     './src/**/*.ts': { statements: 60, lines: 60 },
   },

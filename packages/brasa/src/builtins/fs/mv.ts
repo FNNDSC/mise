@@ -72,9 +72,12 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
       outcomes.push({ source: srcPath, moved: success });
       if (success) {
         successCount++;
-        // Invalidate source directory
+        // Invalidate the source's parent AND the moved subtree: listings
+        // cached beneath the old path would otherwise serve the vanished
+        // tree until their TTL expires.
         const srcDir: string = path.posix.dirname(srcPath);
         listCache.cache_invalidate(srcDir);
+        listCache.cache_invalidateTree(srcPath);
       } else {
         failCount++;
       }
@@ -86,8 +89,9 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
-  // Invalidate destination directory (always, since files moved into it)
-  listCache.cache_invalidate(destPath);
+  // Invalidate the destination subtree (a moved directory replaces whatever
+  // listings were cached beneath it) and its parent.
+  listCache.cache_invalidateTree(destPath);
   const destParent: string = path.posix.dirname(destPath);
   listCache.cache_invalidate(destParent);
 

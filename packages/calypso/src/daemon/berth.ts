@@ -178,7 +178,11 @@ export function berth_read(identity: string): Berth | null {
   try {
     const berth: Berth | null = berth_validate(JSON.parse(readFileSync(path, 'utf-8')));
     return berth && berth.identity === identity ? berth : null;
-  } catch {
+  } catch (error: unknown) {
+    // A corrupt berth file reading as "no daemon" sends the user down a
+    // confusing start-a-new-daemon path; name the file so it can be removed.
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(`[!] Ignoring unreadable berth file ${path}: ${msg}`);
     return null;
   }
 }
@@ -204,8 +208,11 @@ export function berthAll_read(): Berth[] {
       if (berth) {
         berths.push(berth);
       }
-    } catch {
-      // A malformed or vanished file is simply skipped.
+    } catch (error: unknown) {
+      // Skipped, but named: a corrupted berth silently vanishing from the
+      // --remote picker is indistinguishable from a stopped daemon.
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.error(`[!] Skipping unreadable berth file ${join(dir, name)}: ${msg}`);
     }
   }
   return berths;

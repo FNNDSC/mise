@@ -8,6 +8,7 @@
  */
 import { exec } from "child_process";
 import { chiliErrLog, chiliLog } from "../screen/output.js";
+import { errorStack } from "@fnndsc/cumin";
 
 /**
  * Promisified version of child_process.exec.
@@ -35,12 +36,13 @@ export async function shellCommand_run(command: string): Promise<string | null> 
   try {
     const { stdout, stderr } = await childProcess_exec(command);
     if (stderr) {
-      // chiliErrLog(`Command stderr: ${stderr.trim()}`); // Log stderr as warning, not necessarily an error
+      // stderr alone is not failure for many tools (progress chatter), so it
+      // is not surfaced here; a non-zero exit throws and is surfaced below.
     }
     return stdout.trim();
   } catch (error: unknown) {
-    // chiliErrLog(`Command failed: ${command}`);
-    // chiliErrLog(`Error: ${error.message}`);
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Command failed: ${command}: ${msg}`);
     return null;
   }
 }
@@ -165,7 +167,9 @@ export async function docker_getImageCmd(image: string): Promise<string[]> {
   try {
     const cmd: string[] = JSON.parse(result) as string[];
     return Array.isArray(cmd) ? cmd : [];
-  } catch {
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("warning", `Could not parse docker inspect output: ${msg}`);
     return [];
   }
 }

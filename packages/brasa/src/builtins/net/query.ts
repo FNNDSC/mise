@@ -24,6 +24,7 @@ import {
   type CommandEnvelope,
   envelope_ok,
   envelope_error,
+  listCache_get,
 } from '@fnndsc/cumin';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -124,6 +125,10 @@ export async function pacsQuery_createAndWait(
   if (!createResult.ok) {
     return null;
   }
+
+  // A new query changes the /net/pacs/queries listing; drop any cached copy
+  // so an immediate `ls` shows the query instead of a stale directory.
+  listCache_get().cache_invalidate('/net/pacs/queries');
 
   const queryId: number = createResult.value.id;
   const ownerUsername: string | undefined =

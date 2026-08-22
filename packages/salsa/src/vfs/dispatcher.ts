@@ -122,7 +122,9 @@ export class VFSDispatcher {
           try {
             resolvedPathStr = await this.pathResolver(pathStr);
           } catch (e: unknown) {
-            // Fall back cleanly to the original path on failure
+            // Deliberate absorption: for a read-only listing, the logical
+            // path is a valid fallback (the provider lists what it can);
+            // contrast cp(), where a guessed path could write wrongly.
           }
         }
         const nativeResult: Result<VFSItem[]> = await this.defaultProvider.list(resolvedPathStr, options);
@@ -145,7 +147,7 @@ export class VFSDispatcher {
         const resolvedPath: string = await this.pathResolver(pathStr);
         return provider.list(resolvedPath, options);
       } catch (e: unknown) {
-        // Fall back cleanly to the original path on failure
+        // Deliberate absorption: same read-only-listing rationale as above.
       }
     }
     return provider.list(pathStr, options);
@@ -162,14 +164,25 @@ export class VFSDispatcher {
   async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
     const provider: VFSProvider = this.provider_get(src);
     if (provider === this.defaultProvider && this.pathResolver) {
-      let resolvedSrc: string = src;
-      let resolvedDest: string = dest;
+      // A copy must never proceed on a guessed path: an unresolved source
+      // copies the wrong thing, an unresolved destination writes to the wrong
+      // place. Resolution failure fails the copy.
+      let resolvedSrc: string;
+      let resolvedDest: string;
       try {
         resolvedSrc = await this.pathResolver(src);
-      } catch (e: unknown) {}
+      } catch (e: unknown) {
+        const msg: string = e instanceof Error ? e.message : String(e);
+        errorStack.stack_push("error", `cp: cannot resolve source path ${src}: ${msg}`);
+        return false;
+      }
       try {
         resolvedDest = await this.pathResolver(dest);
-      } catch (e: unknown) {}
+      } catch (e: unknown) {
+        const msg: string = e instanceof Error ? e.message : String(e);
+        errorStack.stack_push("error", `cp: cannot resolve destination path ${dest}: ${msg}`);
+        return false;
+      }
       return provider.cp(resolvedSrc, resolvedDest, options);
     }
     return provider.cp(src, dest, options);

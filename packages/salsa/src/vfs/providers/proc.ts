@@ -362,7 +362,10 @@ async function instanceOutputPath_ensure(instanceID: number): Promise<string | n
     const outputPath: string | null = outputPath_normalize(resource?.data?.['output_path']);
     cache.outputPath_update(instanceID, outputPath);
     return outputPath;
-  } catch {
+  } catch (error: unknown) {
+    // "No CFS output path" downstream must not mask a failed fetch.
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("warning", `Could not fetch output path for instance ${instanceID}: ${msg}`);
     return null;
   }
 }
@@ -586,7 +589,11 @@ export class ProcVfsProvider implements VFSProvider {
               const resource: InstanceResource | null = await (client as unknown as InstanceDetailClient)
                 .getPluginInstance(instanceID);
               if (resource) cache.params_update(instanceID, await instanceParams_fetch(resource));
-            } catch { /* leave null */ }
+            } catch {
+              // Deliberate absorption, adjudicated 2026-08: parameters are a
+              // lazy display enrichment; a failed fetch renders as
+              // "(no parameters)" and the next read retries.
+            }
           }
         }
         return Ok(params_render(inst));
@@ -610,12 +617,23 @@ export class ProcVfsProvider implements VFSProvider {
     if (feedID !== null && instanceID === null) {
       const allIDs: number[] = getAllInstanceIDs_forFeed(feedID, cache);
       const statusMap: Map<number, string> = await jobs_statusBatch(allIDs);
+      // Every cancel Result is checked: reporting success while jobs kept
+      // running would leave the user believing the feed's work was stopped.
+      const failedCancels: number[] = [];
       await Promise.all(allIDs.map(async (id: number) => {
         const s: string = statusMap.get(id) ?? '';
         if (!status_isTerminal(s)) {
-          await job_cancel(id);
+          const cancelResult: Result<boolean> = await job_cancel(id);
+          if (!cancelResult.ok) failedCancels.push(id);
         }
       }));
+      if (failedCancels.length > 0) {
+        errorStack.stack_push(
+          'error',
+          `rm: failed to cancel ${failedCancels.length} running job(s) in feed ${feedID}: instance(s) ${failedCancels.sort((a, b) => a - b).join(', ')}`,
+        );
+        return false;
+      }
       cache.feed_remove(feedID);
       return true;
     }

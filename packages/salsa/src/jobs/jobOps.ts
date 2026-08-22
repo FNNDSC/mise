@@ -201,26 +201,45 @@ export async function jobs_statusBatch(ids: number[]): Promise<Map<number, strin
   if (ids.length === 0) return result;
 
   const client = await chrisConnection.client_get();
-  if (!client) return result;
+  if (!client) {
+    // An empty map from a disconnected client is not "no jobs": say so, so
+    // callers rendering stale status have a visible reason.
+    errorStack.stack_push("warning", `jobs_statusBatch: not connected; status for ${ids.length} instance(s) unavailable.`);
+    return result;
+  }
 
   const typedClient = client as unknown as {
     getPluginInstance(id: number): Promise<{ data: { status?: string; [key: string]: unknown } } | null>;
   };
 
+  const failedIDs: number[] = [];
   const entries: Array<[number, string]> = (
     await Promise.all(
       ids.map(async (id: number): Promise<[number, string] | null> => {
         try {
           const inst = await typedClient.getPluginInstance(id);
-          if (!inst) return null;
+          if (!inst) {
+            failedIDs.push(id);
+            return null;
+          }
           const status: string = (inst.data.status as string) ?? 'unknown';
           return [id, status];
         } catch {
+          failedIDs.push(id);
           return null;
         }
       })
     )
   ).filter((e): e is [number, string] => e !== null);
+
+  // Partial results are by design (one dead instance must not blank a whole
+  // listing), but the gaps must be visible rather than reading as absent.
+  if (failedIDs.length > 0) {
+    errorStack.stack_push(
+      "warning",
+      `jobs_statusBatch: could not fetch status for instance(s) ${failedIDs.sort((a, b) => a - b).join(", ")}.`,
+    );
+  }
 
   for (const [id, status] of entries) {
     result.set(id, status);

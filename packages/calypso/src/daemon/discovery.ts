@@ -56,7 +56,11 @@ export function discovery_read(): Discovery | null {
       return parsed as Discovery;
     }
     return null;
-  } catch {
+  } catch (error: unknown) {
+    // Same rationale as berth_read: a corrupt discovery file must not be
+    // indistinguishable from "no daemon running".
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(`[!] Ignoring unreadable discovery file ${path}: ${msg}`);
     return null;
   }
 }

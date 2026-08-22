@@ -75,6 +75,20 @@ class ChRISObjContextFactory {
       return null;
     }
   }
+
+  /**
+   * Evicts a cached context group, forcing the next create to re-resolve.
+   *
+   * Plugin and feed ids are stable enough to cache for the process lifetime,
+   * but a deleted-and-recreated id would serve a dead binding forever (the
+   * folder-context incident, one identity class over). Callers that delete a
+   * plugin or feed should evict its context here.
+   *
+   * @param context - The context string whose cached group to drop.
+   */
+  evict(context: string): void {
+    this.cache.delete(`${this.config.name}:${context}`);
+  }
 }
 
 const ObjContexts: { [key: string]: ObjContextConfig } = {
@@ -143,6 +157,20 @@ export async function objContext_create(
     throw error;
     return null;
   }
+}
+
+/**
+ * Evicts a cached context group so the next create re-resolves it.
+ *
+ * Use after deleting the underlying resource (a plugin, a feed): its id may
+ * be reassigned, and the cached binding would otherwise outlive it for the
+ * whole process.
+ *
+ * @param type - The context type (e.g. "InstancesOfPlugin", "ChRISFeedGroup").
+ * @param context - The context string (e.g. "plugin:123").
+ */
+export function objContext_evict(type: string, context: string): void {
+  objContextFactories[type]?.evict(context);
 }
 
 // Usage examples:

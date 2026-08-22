@@ -4,7 +4,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
-  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),}));
+  envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
+  errorStack: { stack_pop: jest.fn(() => ({ message: 'store unreachable' })) },
+}));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 
@@ -58,23 +60,38 @@ describe('builtin_store', () => {
   });
 
   it('lists store plugins with the grid view', async () => {
-    mockListPlugins.mockResolvedValue([{ name: 'pl-a' }]);
+    mockListPlugins.mockResolvedValue({ ok: true, value: [{ name: 'pl-a' }] });
     const env = await builtin_store(['list']);
     expect(mockGrid).toHaveBeenCalled();
     expect(env.rendered).toContain('GRID');
   });
 
   it('uses the long view with -l', async () => {
-    mockListPlugins.mockResolvedValue([{ name: 'pl-a' }]);
+    mockListPlugins.mockResolvedValue({ ok: true, value: [{ name: 'pl-a' }] });
     const env = await builtin_store(['list', '-l']);
     expect(mockLong).toHaveBeenCalled();
     expect(env.rendered).toContain('LONG');
   });
 
   it('notes an empty listing', async () => {
-    mockListPlugins.mockResolvedValue([]);
+    mockListPlugins.mockResolvedValue({ ok: true, value: [] });
     const env = await builtin_store(['list']);
     expect(env.rendered).toContain('No plugins found');
+  });
+
+  it('surfaces a store fetch failure as an error envelope', async () => {
+    mockListPlugins.mockResolvedValue({ ok: false });
+    const env = await builtin_store(['list']);
+    expect(env.status).toBe('error');
+    expect(env.renderedErr).toContain('store unreachable');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('surfaces a search fetch failure as an error envelope', async () => {
+    mockSearchPlugins.mockResolvedValue({ ok: false });
+    const env = await builtin_store(['search', 'brain']);
+    expect(env.status).toBe('error');
+    expect(env.renderedErr).toContain('store unreachable');
   });
 
   it('requires a query for search', async () => {
@@ -83,14 +100,14 @@ describe('builtin_store', () => {
   });
 
   it('searches the store', async () => {
-    mockSearchPlugins.mockResolvedValue([{ name: 'pl-b' }]);
+    mockSearchPlugins.mockResolvedValue({ ok: true, value: [{ name: 'pl-b' }] });
     const env = await builtin_store(['search', 'brain']);
     expect(mockSearchPlugins).toHaveBeenCalledWith('brain', expect.anything());
     expect(env.rendered).toContain('GRID');
   });
 
   it('notes no search matches', async () => {
-    mockSearchPlugins.mockResolvedValue([]);
+    mockSearchPlugins.mockResolvedValue({ ok: true, value: [] });
     const env = await builtin_store(['search', 'nope']);
     expect(env.rendered).toContain("matching 'nope'");
   });

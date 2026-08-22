@@ -86,7 +86,15 @@ async function computeResources_resolve(
     return { ok: true, value: names };
   }
   const allResult: Result<ComputeResource[]> = await computeResources_getAll();
-  if (allResult.ok && allResult.value.length > 0) {
+  if (!allResult.ok) {
+    // A failed fetch is not "no compute resources configured": defaulting to
+    // 'host' here would register the plugin against a guessed resource.
+    const errors: string[] = errorStack.allOfType_get('error');
+    errors.forEach((err: string) => chiliErrLog(err));
+    chiliErrLog('Could not fetch compute resources; not defaulting. Specify --computes explicitly or retry.');
+    return { ok: false };
+  }
+  if (allResult.value.length > 0) {
     const names: string[] = allResult.value.map((r: ComputeResource) => r.name);
     chiliLog(`Using compute resources: ${names.join(', ')}`);
     return { ok: true, value: names };

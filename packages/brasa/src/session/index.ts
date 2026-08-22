@@ -46,7 +46,10 @@ export class Session {
       const { chrisConnection_init: chiliConnection_init } = await import('@fnndsc/chili/utils');
       await chiliConnection_init(nodeStorageProvider);
     } catch (e: unknown) {
-      // Fail silently if chili utilities connection initialization is not needed/available
+      // Deliberate absorption, adjudicated 2026-08: chili's connection init
+      // is an optional secondary wiring (cumin's own init is the required
+      // one); when it is absent or fails, chili paths fall back to cumin's
+      // connection at call time.
     }
   }
 

@@ -76,24 +76,26 @@ describe('connect intents', () => {
 describe('store intents', () => {
   it('store_list returns the peer-store plugins', async () => {
     mockListPeerStore.mockResolvedValue([{ name: 'pl-a' }]);
-    expect(await store_list('http://store/')).toEqual([{ name: 'pl-a' }]);
+    const r = await store_list('http://store/');
+    expect(r.ok && r.value).toEqual([{ name: 'pl-a' }]);
     expect(mockListPeerStore).toHaveBeenCalledWith('http://store/');
   });
 
-  it('store_list returns [] when the store yields null', async () => {
+  it('store_list propagates a store failure as Err', async () => {
     mockListPeerStore.mockResolvedValue(null);
-    expect(await store_list()).toEqual([]);
+    expect((await store_list()).ok).toBe(false);
   });
 
   it('store_search passes the name filter', async () => {
     mockListPeerStore.mockResolvedValue([{ name: 'pl-dircopy' }]);
-    expect(await store_search('dircopy', 'http://store/')).toEqual([{ name: 'pl-dircopy' }]);
+    const r = await store_search('dircopy', 'http://store/');
+    expect(r.ok && r.value).toEqual([{ name: 'pl-dircopy' }]);
     expect(mockListPeerStore).toHaveBeenCalledWith('http://store/', { name: 'dircopy' });
   });
 
-  it('store_search returns [] when the store yields null', async () => {
+  it('store_search propagates a store failure as Err', async () => {
     mockListPeerStore.mockResolvedValue(null);
-    expect(await store_search('x')).toEqual([]);
+    expect((await store_search('x')).ok).toBe(false);
   });
 });
 

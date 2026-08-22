@@ -369,6 +369,13 @@ export class ChRISConnection {
     try {
       this.authToken = await this.storageProvider!.read(this.tokenFile);
     } catch (error: unknown) {
+      // A missing token file is the normal logged-out state; any other read
+      // failure (permissions, disk) must not silently present as logged-out.
+      const code: string | undefined = (error as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT") {
+        const msg: string = error instanceof Error ? error.message : String(error);
+        errorStack.stack_push("warning", `Could not read auth token file ${this.tokenFile}: ${msg}`);
+      }
       this.authToken = null;
     }
   }

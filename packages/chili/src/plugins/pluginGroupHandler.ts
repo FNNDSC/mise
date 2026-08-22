@@ -9,7 +9,7 @@ import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
 import { CLIoptions, options_toParams } from "../utils/cli.js";
 import { PluginContextController } from "../controllers/pluginContextController.js";
 import { pluginParameters_renderMan, pluginParameters_manRender } from "../views/pluginParameters.js";
-import { FilteredResourceData, ChRISEmbeddedResourceGroup, type CommandEnvelope, envelope_ok, envelope_error } from "@fnndsc/cumin";
+import { FilteredResourceData, ChRISEmbeddedResourceGroup, errorStack, type CommandEnvelope, envelope_ok, envelope_error } from "@fnndsc/cumin";
 import { chiliErrLog, chiliLog } from "../screen/output.js";
 
 /**
@@ -57,7 +57,11 @@ export class PluginContextGroupHandler {
         this.controller = await PluginContextController.controller_create(this.assetName, this.id);
         this.baseGroupHandler.chrisObject =
           this.controller.chrisObject as unknown as ChRISEmbeddedResourceGroup<unknown>;
-      } catch {
+      } catch (error: unknown) {
+        // The generic "no context" message downstream must not eat the real
+        // cause (auth failure, network, bad id).
+        const msg: string = error instanceof Error ? error.message : String(error);
+        errorStack.stack_push("warning", `Could not create plugin controller for ${this.id ?? "current context"}: ${msg}`);
         this.controller = null;
       }
     }

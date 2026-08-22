@@ -85,8 +85,9 @@ export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
-  // Invalidate destination directory (always, since files copied into it)
-  listCache.cache_invalidate(destPath);
+  // Invalidate the destination subtree (a recursive copy replaces whatever
+  // listings were cached beneath it) and its parent.
+  listCache.cache_invalidateTree(destPath);
   const destParent: string = path.posix.dirname(destPath);
   listCache.cache_invalidate(destParent);
 

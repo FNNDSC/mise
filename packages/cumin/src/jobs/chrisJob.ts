@@ -174,6 +174,10 @@ export class ChRISJob {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (e: unknown) {
+          // A poll failure ends the stream early; tell the consumer why
+          // instead of presenting the break as normal completion.
+          const msg: string = e instanceof Error ? e.message : String(e);
+          errorStack.stack_push("warning", `Log stream ended early: status poll failed: ${msg}`);
           break;
       }
     }

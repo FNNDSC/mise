@@ -12,7 +12,7 @@
  *
  * @module
  */
-import { chrisConnection, procCache_get, ProcCache, ProcInstance } from '@fnndsc/cumin';
+import { chrisConnection, procCache_get, errorStack, ProcCache, ProcInstance } from '@fnndsc/cumin';
 
 /** One parameter row from a plugin instance's parameter sub-resource. */
 interface ParamItem {
@@ -67,7 +67,10 @@ export async function nodeJoins_resolve(id: number): Promise<void> {
   const typedClient: JoinClient = client as unknown as JoinClient;
   const resource: InstanceResource | null = await typedClient.getPluginInstance(id);
   if (!resource) {
-    cache.joinParents_update(id, []);
+    // A failed fetch must not be recorded as "no joins": writing an empty
+    // overlay here would be permanent, since resolved nodes are never
+    // retried. Leave the node unresolved so the next resolve attempts again.
+    errorStack.stack_push("warning", `Could not fetch instance ${id} to resolve join edges; will retry on next resolve.`);
     return;
   }
 

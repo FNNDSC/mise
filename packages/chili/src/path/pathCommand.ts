@@ -508,6 +508,9 @@ async function chrisDir_walk(
   const listResult: Result<VFSItem[]> = await vfsDispatcher.list(currentPath);
   scanCancellation_throwIfRequested(signal);
   if (!listResult.ok) {
+    // An unlistable subtree must not scan as an empty one: a transfer built
+    // on this walk would silently omit the subtree and still report success.
+    errorStack.stack_push("error", `scan: cannot list ${currentPath}; its contents are excluded from this operation.`);
     return { files: [], totalSize: 0 };
   }
   const items: VFSItem[] = listResult.value || [];
@@ -775,7 +778,8 @@ async function localFS_scan(options: TransferCLI): Promise<ScanRecord | null> {
       return null;
     }
   } catch (error: unknown) {
-    chiliErrLog(chalk.red(`Folder context '${folder}' does not exist in CUBE. Please specify an existing directory.`));
+    const msg: string = error instanceof Error ? error.message : String(error);
+    chiliErrLog(chalk.red(`Cannot use folder '${folder}': ${msg}`));
     return null;
   }
 

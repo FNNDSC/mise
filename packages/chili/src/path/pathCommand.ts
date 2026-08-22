@@ -12,10 +12,7 @@ import {
   Context,
   errorStack,
   ChRISEmbeddedResourceGroup,
-  ListOptions,
-  FilteredResourceData,
   objContext_create,
-  ChrisPathNode,
   Result,
 } from "@fnndsc/cumin";
 import { vfsDispatcher, VFSItem } from "@fnndsc/salsa";
@@ -81,12 +78,6 @@ interface Tranmission {
   duration: number;
 }
 
-interface ResourceGroups {
-  filesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>;
-  dirsGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>;
-  linksGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>;
-}
-
 /**
  * CLI options controlling a path scan or transfer.
  */
@@ -148,38 +139,6 @@ function summaryTable_create(summary: TransferDetail): string[][] {
   return summaryTable;
 }
 
-/**
- * Creates resource groups (files, directories, links) for a given ChRIS path.
- *
- * @param currentPath - The ChRIS path to create resource groups for.
- * @returns A Promise resolving to an object containing the resource groups, or null on error.
- */
-async function resourceGroups_create(
-  currentPath: string
-): Promise<ResourceGroups | null> {
-  try {
-    const filesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> = (await objContext_create(
-      "ChRISFilesContext",
-      `folder:${currentPath}`
-    )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
-    const dirsGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> = (await objContext_create(
-      "ChRISDirsContext",
-      `folder:${currentPath}`
-    )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
-    const linksGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> = (await objContext_create(
-      "ChRISLinksContext",
-      `folder:${currentPath}`
-    )) as ChRISEmbeddedResourceGroup<ChrisPathNode>;
-
-    return { filesGroup, dirsGroup, linksGroup };
-  } catch (error: unknown) {
-    errorStack.stack_push(
-      "error",
-      `Failed to create ChRISEmbeddedResourceGroup objects for path ${currentPath}: ${error}`
-    );
-    return null;
-  }
-}
 
 /**
  * Generates a Mermaid diagram definition from a scan result.
@@ -361,139 +320,8 @@ export function archyTree_create(files: FileInfo[]): string {
   return archy(archyFormat_convert(root));
 }
 
-/**
- * Scans directories within ChRIS.
- *
- * @param dirsGroup - The ChRISEmbeddedResourceGroup for directories.
- * @param chrisPath - The base ChRIS path.
- * @param hostBasePath - The base path on the host system.
- * @param linkedPath - Optional linked path for resolving relative paths.
- * @returns A Promise resolving to an array of FileInfo objects for directories.
- */
-async function dirs_scan(
-  dirsGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>,
-  chrisPath: string,
-  hostBasePath: string,
-  linkedPath: string = ""
-): Promise<FileInfo[]> {
-  const dirs: FileInfo[] = [];
-  const dirResults: FilteredResourceData | null =
-    await dirsGroup.asset.resources_listAndFilterByOptions(
-      options_toParams({ fields: "path" })
-    );
-  if (dirResults && dirResults.tableData) {
-    for (const dir of dirResults.tableData) {
-      const dirPath: string = "/" + String(dir.path);
-      const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, path.basename(dirPath))
-        : dirPath;
-      const dirInfo: FileInfo = {
-        id: 0,
-        hostPath: path.join(
-          hostBasePath,
-          path.relative(chrisPath, relativeChrisPath)
-        ),
-        chrisPath: relativeChrisPath,
-        size: 0,
-        isLink: false,
-        linkTarget: "",
-        isDirectory: true,
-      };
-      dirs.push(dirInfo);
-    }
-  }
-  return dirs;
-}
 
-/**
- * Scans files within ChRIS.
- *
- * @param filesGroup - The ChRISEmbeddedResourceGroup for files.
- * @param chrisPath - The base ChRIS path.
- * @param hostBasePath - The base path on the host system.
- * @param linkedPath - Optional linked path for resolving relative paths.
- * @returns A Promise resolving to an array of FileInfo objects for files.
- */
-async function files_scan(
-  filesGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>,
-  chrisPath: string,
-  hostBasePath: string,
-  linkedPath: string = ""
-): Promise<FileInfo[]> {
-  const files: FileInfo[] = [];
-  const fileResults: FilteredResourceData | null =
-    await filesGroup.asset.resources_listAndFilterByOptions(
-      options_toParams({ fields: "id,fname,fsize" })
-    );
-  if (fileResults && fileResults.tableData) {
-    for (const file of fileResults.tableData) {
-      const size: number = parseInt(String(file.fsize), 10);
-      const fname: string = "/" + String(file.fname);
-      const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, path.basename(fname))
-        : fname;
-      const fileInfo: FileInfo = {
-        id: parseInt(String(file.id), 10),
-        hostPath: path.join(
-          hostBasePath,
-          path.relative(chrisPath, relativeChrisPath)
-        ),
-        chrisPath: relativeChrisPath,
-        size: isNaN(size) ? 0 : size,
-        isLink: !!linkedPath,
-        linkTarget: linkedPath ? fname : "",
-        isDirectory: false,
-      };
-      files.push(fileInfo);
-    }
-  }
-  return files;
-}
 
-/**
- * Scans links within ChRIS.
- *
- * @param linksGroup - The ChRISEmbeddedResourceGroup for links.
- * @param chrisPath - The base ChRIS path.
- * @param hostBasePath - The base path on the host system.
- * @param linkedPath - Optional linked path for resolving relative paths.
- * @returns A Promise resolving to an array of FileInfo objects for links.
- */
-async function links_scan(
-  linksGroup: ChRISEmbeddedResourceGroup<ChrisPathNode>,
-  chrisPath: string,
-  hostBasePath: string,
-  linkedPath: string = ""
-): Promise<FileInfo[]> {
-  const links: FileInfo[] = [];
-  const linkResults: FilteredResourceData | null =
-    await linksGroup.asset.resources_listAndFilterByOptions(
-      options_toParams({ fields: "id,path,fname" })
-    );
-  if (linkResults && linkResults.tableData) {
-    for (const link of linkResults.tableData) {
-      const linkPath: string = "/" + String(link.path);
-      const linkFname: string = "/" + String(link.fname);
-      const relativeChrisPath: string = linkedPath
-        ? path.join(linkedPath, path.basename(linkFname))
-        : linkFname;
-      const linkInfo: FileInfo = {
-        id: parseInt(String(link.id), 10),
-        hostPath: path.join(
-          hostBasePath,
-          path.relative(chrisPath, relativeChrisPath)
-        ),
-        chrisPath: relativeChrisPath,
-        isLink: true,
-        linkTarget: linkPath,
-        size: 0,
-        isDirectory: false,
-      };
-      links.push(linkInfo);
-    }
-  }
-  return links;
-}
 
 async function chrisDir_walk(
   currentPath: string,

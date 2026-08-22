@@ -1,0 +1,75 @@
+= mise: A Critical Analysis
+:toc:
+:toclevels: 3
+
+== Status and purpose
+
+This is a point-in-time critical analysis of the mise monorepo at main `2045185` (2026-08-22), written immediately after an intensive audit-and-remediation campaign (see link:code-audit-2026-08.adoc[code-audit-2026-08.adoc]) and therefore with the debt freshly mapped rather than estimated. It assesses the design thesis, the code quality, the solution's fit in its ecosystem, and the package's desirability as a foundation for future development, and it closes with an explicit professionalism grade calibrated against comparable software. It is deliberately opinionated; a critique that hedges every judgment records nothing.
+
+== The thesis
+
+mise projects a POSIX shell over CUBE: feeds render as directories, plugins as executables, jobs as `/proc`, PACS queries as a virtual filesystem, group membership as `/etc/group`. Around that projection sits an intent kernel (brasa) hostable three ways, in-process CLI, long-lived daemon (calypso), and remote surface (`chell --remote`), bound by a zod-validated wire contract, a session bus, and command envelopes that carry both rendered text and typed models. The single organizing bet is that the *session*, not the request, is the unit of interaction, and that every user interface is a thin projection of one shared session.
+
+The thesis is strong, and this month's work stress-tested it honestly. The metaphor amortizes decades of operator muscle memory: anyone who knows `ls`, `cp`, and `grep` can operate a medical-imaging platform without learning its REST vocabulary. The architecture earned its claims under pressure: the same engine ran all three hosting modes without the seams tearing, the wire contract absorbed two additive extensions with no version bump, and the capability inversion, in which pipeline segments, shell escapes, and edits execute on the requesting surface and never on the daemon host, is a security design most projects get backwards.
+
+== Strengths
+
+The layering is real rather than aspirational. The brasa extraction separated engine from readline, the calypso daemon hosts that engine without reaching into it, and the protocol validates every message at the boundary. Newer components (the correlated-request broker, the PACS retrieve engine) continue the pattern rather than eroding it.
+
+The error doctrine is now honest end to end. The pervasive `Result<T>` plus error-stack pattern is enforced: failures exit non-zero, causes survive to the user, and every deliberate absorption carries a dated adjudication comment. This was false as recently as the audit; it is now load-bearing and gate-protected.
+
+The documentation culture is unusual for the domain. The design records (link:calypso.adoc[calypso.adoc], link:surfaces.adoc[surfaces.adoc], the audit, the link:pacs-pull-recovery.adoc[PACS recovery playbook]) argue positions, record failures with evidence, and cross-reference one another. They are reasoning artifacts, not stale wikis.
+
+The test posture is substantial: roughly 2,700 tests, per-package coverage thresholds ratcheted upward as coverage improves (the statement floor moved from 87 to 89 percent in one campaign and is locked by CI), and a test-quality linter in the pipeline.
+
+== Weaknesses
+
+chili is a compromised layer. It is simultaneously a legacy commander-based CLI, a rendering library, and the command backend brasa delegates to; its output seam is a retrofit, its worst files hold the repo's remaining god methods, and it carried both dead code and a live rendering defect into this month. Architecturally it wants dissolution, rendering upward into surfaces and logic downward into salsa; its survival is historical, not justified.
+
+The chrisapi boundary is type-blind. Sixty-five `as unknown as` casts launder the client exactly where the wire is least trustworthy, and the PACSFile/UserFile id-namespace defect lived precisely there. The adapter contract designed to close this seam exists and is stalled. This is the largest standing correctness risk.
+
+Mock-shaped tests inherit their author's misconceptions. The failure mode was demonstrated twice in one week: PACS `cp` was broken on every real path while its unit tests passed, because the tests encoded the same wrong path shape as the code, and the npm release broke while every suite was green. The unit suites verify logic superbly and reality weakly; live exemplars exist but do not gate CI.
+
+Freshness is a bug factory by construction. CUBE pushes almost nothing (LONK covers PACS retrieves only), so every layer invents caching, and a long-lived daemon converts staleness from session-scoped to permanent. Two production incidents came from this class. The cache-contract discipline now contains it; the structural cure, server-side read models and notifications (see link:CUBE-gaps.adoc[CUBE-gaps.adoc]), is outside mise's control, so the tension is permanent.
+
+Parallel evolution has been the growth pattern: five correlation-broker implementations, two PACS watchers, four retry loops, a dead scanner, duplicated transfer loops. The audit converged the hot cases, but the habit that produced them is cultural and the remaining chili duplication shows it is not yet extinct.
+
+The metaphor leaks at its edges. Where POSIX semantics and CUBE semantics disagree, mise must choose and document the choice: `cp` materializing a PACS series was undocumented until this week, `rm -rf` on plain storage directories fails today, and server-side deletion is asynchronous. Every unchosen edge is a future support incident.
+
+Release operations are fragile. One publish attempt failed three independent ways (stale package-level overrides, an expired registry token, npm-version-sensitive lockfile drift), and the project effectively has a bus factor of one.
+
+== Where it fits
+
+Within the ChRIS ecosystem the niches are distinct: ChRIS_ui, the React single-page application, serves the clinical end user; chrs offers a stateless Rust CLI; raw chrisapi serves scripts. mise occupies the position none of them can: stateful, multi-surface, operator-grade interaction, and it is alone there. The forthcoming argus thesis, web panels as projections of a live session, deleting the server-state-synchronization problem class that dominates modern web clients, is the most interesting architectural claim in the ChRIS orbit, and the envelope and session-bus machinery make it credible engineering rather than slideware.
+
+== As a framework for future development
+
+Conditionally desirable, with the conditions explicit. The durable core is brasa plus the calypso contract: anything that speaks envelopes over that wire, a web terminal, automation bots, LLM-assisted operation, inherits session management, caching, capability brokering, and error honesty for free, which is what makes a framework a framework. The conditions, in priority order, are envelope Phase-2 (typed models are the actual unlock; a terminal-string protocol caps every non-terminal surface), the chrisapi adapter contract (the casts must die before anything scales on the PACS or jobs surfaces), and chili's dissolution (otherwise it becomes the permanent attic). One process change belongs on the same list: promote the live exemplars to CI gates, because this codebase's demonstrated failure mode is green suites over broken reality.
+
+== Professionalism, compared
+
+Perception in this domain runs pessimistic, and the pessimism is mostly earned: the median research-adjacent scientific codebase, and medical-imaging tooling is squarely in that population, ships with no tests or token tests, no CI, a README as its entire documentation, global mutable state, and no release discipline at all. Against that median, mise is not merely above average; it is top-decile. Coverage gates that ratchet, design documents that argue, a versioned wire contract with boundary validation, and an audit that produced a findings ledger and then executed it are practices most academic labs never reach.
+
+Against the strongest tier of professional open source the picture is more mixed, and the comparison is instructive rather than damning. SQLite documents a testing discipline (https://sqlite.org/testing.html) in which test code outweighs product code by orders of magnitude and every release passes full-coverage and fuzzing harnesses; mise's unit-heavy, integration-light suite is nowhere near that, and this month proved why it matters. Mature ecosystem projects in the CNCF orbit are required, by graduation criteria (https://github.com/cncf/toc/blob/main/process/graduation_criteria.md), to demonstrate committers from multiple organizations and completed security audits; mise has a bus factor of one and self-merged pull requests, which is normal for its size and unacceptable at that tier. Within its own scientific-software peer group, the better citizens, 3D Slicer with its CTest/CDash dashboards, nipype with long-standing CI and coverage reporting, sit roughly at mise's level of process, usually with more contributors and less architectural ambition; the long tail of bioinformatics and imaging utilities sits far below it.
+
+The honest one-line calibration: mise practices software engineering in a domain where most projects practice software accumulation.
+
+=== Grade
+
+[cols="3,1,6"]
+|===
+| Axis | Grade | Basis
+
+| Architecture and design coherence | A- | Layering proved under hosting-mode stress; deductions for chili's compromised position and the metaphor's undocumented edges.
+| Documentation | A- | Design records with reasoning and failure evidence; user-facing help lagged behavior until recently.
+| Testing | B | Coverage breadth and ratcheted gates are top-tier for the domain; integration truth is the proven weakness, and it has bitten.
+| Error handling and observability | A- | Result-pattern honesty now enforced end to end; the grade is recent, earned in remediation, and must survive time.
+| Type safety | B- | Strict TypeScript throughout, undermined at the single most critical boundary by 65 unresolved casts.
+| Release and operations | C+ | Changesets automation exists but the chain failed three ways in one attempt; token and lockfile hygiene are manual folklore.
+| Process and review | C+ | Single maintainer, self-merged changes, no external review; standard for the context, a ceiling on the grade.
+| Security posture | B+ | The surface-capability inversion is genuinely strong design; no supply-chain hardening or audit beyond secret scanning.
+
+| *Overall* | *B+* | *Top-decile for research-adjacent scientific software; mid-pack against elite open source; trajectory clearly upward, with the gap to A- consisting of exactly three named items: integration gating, the adapter contract, and release hardening.*
+|===
+
+The B+ should be read with its context attached: it is a single-maintainer research-ecosystem project scoring within reach of codebases maintained by funded teams, and the distance to the next grade is a short, known list rather than a cultural overhaul.

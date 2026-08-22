@@ -175,6 +175,12 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Copy files or directories (supports wildcards and multiple sources)',
     options: [
       '-r, --recursive    Recursive copy (for directories)',
+      '',
+      'PACS SOURCES: a /net/pacs/queries/... source names query results, not',
+      'stored files. cp MATERIALIZES the series: if its DICOMs are not yet in',
+      'CUBE it fires a PACS retrieve and waits for them to land (the same',
+      'engine as pull), then copies the landed files to the destination.',
+      'A series already fully in CUBE is copied without a retrieve.',
     ],
     examples: [
       'cp file.txt copy.txt              # Copy single file',
@@ -182,6 +188,8 @@ export const helpText: Record<string, CommandHelp> = {
       'cp file1 file2 file3 dest/        # Copy multiple files',
       'cp uploads/*.txt backup/          # Copy with wildcard',
       'cp "file with spaces.txt" dest/   # Use quotes for spaces',
+      'cp -r /net/pacs/queries/AccessionNumber:123_qid:7/Study_1.2.3_Head/Series_1.2.3.4_AX_T2 results/',
+      '                                  # Retrieve-if-needed, then copy the series',
     ],
   },
   mv: {

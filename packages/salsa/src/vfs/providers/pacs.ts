@@ -6,7 +6,8 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryCreateData, PACSQueryDecodedResult, PACSQueryRecord, PACSRetrieveRecord, PACSQueryStatusReport, FilteredResourceData, PACSServer, runtimeOutput_data, runtimeOutput_err } from "@fnndsc/cumin";
+import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryDecodedResult, FilteredResourceData, PACSServer, seriesStorage_resolve, runtimeOutput_data, runtimeOutput_err, type SeriesStorageState, type Client } from "@fnndsc/cumin";
+import { retrieveTask_make, retrieve_fireAndWatch, retrieveTasks_skipComplete, type RetrieveTask, type RetrieveWatchEvents } from "../../retrieve/watch.js";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
 import {
@@ -23,9 +24,6 @@ import {
 import {
   pacsServers_list,
   pacsQueries_list,
-  pacsQueries_create,
-  pacsRetrieve_create,
-  pacsRetrieve_statusForQuery,
   pacsQuery_resultDecode,
 } from "../../pacs/index.js";
 import { files_copyRecursively } from "../../files/index.js";
@@ -34,28 +32,6 @@ import chalk from "chalk";
 import { pacsVfs_read, pacsVfs_readBinary } from "./pacs_content.js";
 
 
-/**
- * Resolves the folder path on ChRIS storage for a retrieved series.
- *
- * @param seriesInstanceUID - The Series Instance UID to resolve.
- * @returns Promise resolving to the folder path string or null on failure.
- */
-async function series_getFolderPath(seriesInstanceUID: string): Promise<string | null> {
-  const client: Awaited<ReturnType<typeof chrisConnection.client_get>> = await chrisConnection.client_get();
-  if (!client) {
-    return null;
-  }
-  const seriesList: Awaited<ReturnType<typeof client.getPACSSeriesList>> = await client.getPACSSeriesList({
-    SeriesInstanceUID: seriesInstanceUID,
-    limit: 1,
-  });
-  const seriesItems: ReturnType<typeof seriesList.getItems> = seriesList.getItems();
-  if (!seriesItems || seriesItems.length === 0) {
-    return null;
-  }
-  const series: { data?: { folder_path?: string } } = seriesItems[0] as unknown as { data?: { folder_path?: string } };
-  return series?.data?.folder_path || null;
-}
 
 type SortOptions = { sort?: "name" | "size" | "date" | "owner"; reverse?: boolean };
 
@@ -151,7 +127,7 @@ function seriesToRetrieve_build(
   studyUID: string,
   seriesUID: string | undefined,
   src: string
-): Result<{ uid: string; description: string }[]> {
+): Result<{ uid: string; description: string; expectedFiles: number }[]> {
   const studies: Record<string, unknown>[] = studies_extractFromDecoded(decoded.json);
   const studyObj: Record<string, unknown> | undefined = study_findByUID(studies, studyUID);
   if (!studyObj) {
@@ -160,17 +136,19 @@ function seriesToRetrieve_build(
   }
 
   const seriesArray: Record<string, unknown>[] = series_extractFromStudy(studyObj);
-  const seriesToRetrieve: { uid: string; description: string }[] = [];
+  const seriesToRetrieve: { uid: string; description: string; expectedFiles: number }[] = [];
+  const expected_of = (obj: Record<string, unknown> | undefined): number =>
+    Number(tag_extractValue(obj?.NumberOfSeriesRelatedInstances ?? 0)) || 0;
 
   if (seriesUID) {
     const seriesObj: Record<string, unknown> | undefined = series_findByUID(seriesArray, seriesUID);
     const desc: string = seriesObj ? tag_extractValue(seriesObj.SeriesDescription || "Series") : "Series";
-    seriesToRetrieve.push({ uid: seriesUID, description: desc });
+    seriesToRetrieve.push({ uid: seriesUID, description: desc, expectedFiles: expected_of(seriesObj) });
   } else {
     for (const s of seriesArray) {
       const sUID: string = tag_extractValue(s.SeriesInstanceUID || s.uid);
       if (sUID) {
-        seriesToRetrieve.push({ uid: sUID, description: tag_extractValue(s.SeriesDescription || "Series") });
+        seriesToRetrieve.push({ uid: sUID, description: tag_extractValue(s.SeriesDescription || "Series"), expectedFiles: expected_of(s) });
       }
     }
   }
@@ -195,68 +173,8 @@ async function pacsServer_resolve(): Promise<Result<string>> {
   return Err();
 }
 
-async function retrieve_pollUntilComplete(
-  syntheticQueryId: number,
-  seriesUID: string,
-  maxAttempts: number
-): Promise<boolean> {
-  let attempts: number = 0;
-  while (attempts < maxAttempts) {
-    attempts++;
-    await new Promise<void>((resolve) => setTimeout(resolve, 5000));
-
-    const statusResult: Result<PACSQueryStatusReport> = await pacsRetrieve_statusForQuery(syntheticQueryId);
-    if (!statusResult.ok || !statusResult.value) {
-      runtimeOutput_err(`${chalk.yellow(`     [Attempt ${attempts}/${maxAttempts}] Failed to fetch status report, retrying...`)}\n`);
-      continue;
-    }
-
-    const statusReport: PACSQueryStatusReport = statusResult.value;
-    let totalExpected: number = 0;
-    let totalActual: number = 0;
-    let anyPulling: boolean = false;
-    let allPulled: boolean = true;
-    let anyError: boolean = false;
-
-    if (statusReport.studies) {
-      for (const s of statusReport.studies) {
-        if (s.series) {
-          for (const ser of s.series) {
-            if (String(ser.seriesInstanceUID) === String(seriesUID)) {
-              totalExpected = Number(ser.expectedFiles) || 0;
-              totalActual = Number(ser.actualFiles) || 0;
-              if (ser.status === "pulling") anyPulling = true;
-              if (ser.status !== "pulled") allPulled = false;
-              if (ser.status === "error") anyError = true;
-            }
-          }
-        }
-      }
-    }
-
-    const overallStatus: string = statusReport.retrieveStatus || "pending";
-    runtimeOutput_data(`${chalk.gray(`     [Attempt ${attempts}/${maxAttempts}] CUBE Status: ${overallStatus} | Files: ${totalActual}/${totalExpected}`)}\n`);
-
-    if (allPulled && totalExpected > 0 && totalActual === totalExpected) {
-      runtimeOutput_data(`${chalk.green(`  ✓ Pull complete: ${totalActual}/${totalExpected} files retrieved.`)}\n`);
-      return true;
-    }
-    if (overallStatus === "succeeded" || overallStatus === "completed") {
-      runtimeOutput_data(`${chalk.green(`  ✓ Pull complete (Status: ${overallStatus}).`)}\n`);
-      return true;
-    }
-    if (anyError || overallStatus === "error" || overallStatus === "failed") {
-      runtimeOutput_err(`${chalk.red("  ✗ PACS retrieve reported error status.")}\n`);
-      return false;
-    }
-  }
-
-  runtimeOutput_err(`${chalk.red("  ✗ PACS retrieve timed out.")}\n`);
-  return false;
-}
-
 async function series_retrieveAndCopy(
-  seriesItem: { uid: string; description: string },
+  seriesItem: { uid: string; description: string; expectedFiles: number },
   studyUID: string,
   pacsserver: string,
   dest: string,
@@ -265,33 +183,54 @@ async function series_retrieveAndCopy(
 ): Promise<boolean> {
   runtimeOutput_data(`${chalk.cyan(`\n[PACS Retrieve ${idx + 1}/${total}] Processing series: ${seriesItem.description} (${seriesItem.uid})...`)}\n`);
 
-  const queryPayload: PACSQueryCreateData = {
-    title: `Synthetic cp Query ${seriesItem.uid}`,
-    query: JSON.stringify({ SeriesInstanceUID: seriesItem.uid, StudyInstanceUID: studyUID }),
-    execute: false,
-  };
-
-  runtimeOutput_data(`${chalk.gray("  -> Registering synthetic query on CUBE...")}\n`);
-  const queryResult: Result<PACSQueryRecord> = await pacsQueries_create(pacsserver, queryPayload);
-  if (!queryResult.ok) {
-    runtimeOutput_err(`${chalk.red(`  ✗ Failed to create synthetic query for series ${seriesItem.uid}`)}\n`);
+  const client: Client | null = await chrisConnection.client_get();
+  if (!client) {
+    runtimeOutput_err(`${chalk.red("  ✗ Not connected to ChRIS.")}\n`);
     return false;
   }
 
-  const syntheticQueryId: number = queryResult.value.id;
-  runtimeOutput_data(`${chalk.gray(`  -> Triggering PACS retrieve (Query ID: ${syntheticQueryId})...`)}\n`);
-  const retrieveResult: Result<PACSRetrieveRecord> = await pacsRetrieve_create(syntheticQueryId);
-  if (!retrieveResult.ok) {
-    runtimeOutput_err(`${chalk.red(`  ✗ Failed to create PACS retrieve for query ${syntheticQueryId}`)}\n`);
-    return false;
-  }
+  // One retrieve engine for cp and pull alike: bounded, retried firing plus
+  // the LONK watch, replacing this provider's former 5-second polling loop.
+  const task: RetrieveTask = retrieveTask_make({
+    label: seriesItem.description,
+    seriesUID: seriesItem.uid,
+    studyUID,
+    pacsName: pacsserver,
+    // The decode's instance count enables the idempotency skip: a series
+    // already fully registered in CUBE is copied without refiring.
+    expectedFiles: seriesItem.expectedFiles,
+  });
 
-  runtimeOutput_data(`${chalk.gray("  -> Pulling series data sequentially, polling progress...")}\n`);
-  const finished: boolean = await retrieve_pollUntilComplete(syntheticQueryId, seriesItem.uid, 60);
-  if (!finished) return false;
+  const alreadyThere: number = await retrieveTasks_skipComplete([task]);
+  if (alreadyThere === 0) {
+    const events: RetrieveWatchEvents = {
+      task: (t: RetrieveTask, status: string): void => {
+        if (status === 'running' && t.actualFiles > 0) {
+          runtimeOutput_data(`${chalk.gray(`     ${t.actualFiles} file(s) received...`)}\n`);
+        } else if (status === 'error') {
+          runtimeOutput_err(`${chalk.red("  ✗ PACS retrieve reported an error.")}\n`);
+        } else if (status === 'stalled' || status === 'timeout') {
+          runtimeOutput_err(`${chalk.red(`  ✗ PACS retrieve ${status}.`)}\n`);
+        }
+      },
+    };
+    runtimeOutput_data(`${chalk.gray("  -> Firing PACS retrieve and watching progress...")}\n`);
+    const firingErrors: number = await retrieve_fireAndWatch([task], pacsserver, client, events);
+    if (firingErrors > 0) {
+      runtimeOutput_err(`${chalk.red(`  ✗ Retrieve could not be fired for series ${seriesItem.uid}.`)}\n`);
+      return false;
+    }
+    if (task.status !== 'pulled') {
+      return false;
+    }
+  }
 
   runtimeOutput_data(`${chalk.gray("  -> Finding folder path on ChRIS storage...")}\n`);
-  const folderPath: string | null = await series_getFolderPath(seriesItem.uid);
+  let folderPath: string | null = task.cubePathDir;
+  if (folderPath === null) {
+    const stateResult: Result<SeriesStorageState> = await seriesStorage_resolve(seriesItem.uid, { attempts: 4, delayMs: 2_000 });
+    folderPath = stateResult.ok ? stateResult.value.folderPath : null;
+  }
   if (!folderPath) {
     runtimeOutput_err(`${chalk.red(`  ✗ No registered folder path found for series UID ${seriesItem.uid}`)}\n`);
     return false;
@@ -454,9 +393,9 @@ export class PacsVfsProvider implements VFSProvider {
         return false;
       }
 
-      const seriesResult: Result<{ uid: string; description: string }[]> = seriesToRetrieve_build(decoded, studyUID, seriesUID, src);
+      const seriesResult: Result<{ uid: string; description: string; expectedFiles: number }[]> = seriesToRetrieve_build(decoded, studyUID, seriesUID, src);
       if (!seriesResult.ok) return false;
-      const seriesToRetrieve: { uid: string; description: string }[] = seriesResult.value;
+      const seriesToRetrieve: { uid: string; description: string; expectedFiles: number }[] = seriesResult.value;
 
       const serverResult: Result<string> = await pacsServer_resolve();
       if (!serverResult.ok) return false;

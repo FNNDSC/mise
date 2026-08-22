@@ -45,7 +45,8 @@
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
     "typescript": "^5.0.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1"
   },
   "overrides": {
     "glob": "^10.0.0",
@@ -53,6 +54,7 @@
   },
   "dependencies": {
     "@fnndsc/cumin": "^3.8.4",
-    "axios": "^1.6.8"
+    "axios": "^1.6.8",
+    "ws": "^8.21.0"
   }
 }

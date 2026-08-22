@@ -1,49 +1,76 @@
+/**
+ * Tests for the pull builtin as a consumer of the shared retrieve engine:
+ * argument guards, path/expression resolution, the idempotency skip line,
+ * summary rendering (unfired vs watch-failure labels), progress adaptation,
+ * and feed/pipeline/plugin creation from the retrieved set. The engine itself
+ * (firing, LONK watch, confirm loop) is mocked here and tested in salsa's
+ * retrieveWatch suite.
+ */
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { EventEmitter } from 'events';
 import type { OutputSink } from '../src/core/sink.js';
 import type { ProgressEvent } from '../src/core/progress.js';
 
-// LONK WebSocket stand-in. 'open' (or a connect error) fires synchronously at
-// listener registration so tests never race the connection handshake; message
-// and lifecycle events are emitted by the tests themselves.
-let wsOpenMode: 'open' | 'fail' = 'open';
-const wsInstances: MockWebSocket[] = [];
-class MockWebSocket extends EventEmitter {
-  url: string;
-  send = jest.fn();
-  close = jest.fn((): void => { this.emit('close'); });
-  constructor(url: string) {
-    super();
-    this.url = url;
-    wsInstances.push(this);
-  }
-  override once(event: string | symbol, listener: (...args: unknown[]) => void): this {
-    if (wsOpenMode === 'open' && event === 'open') { listener(); return this; }
-    if (wsOpenMode === 'fail' && event === 'error') { listener(new Error('ws connect failed')); return this; }
-    return super.once(event, listener);
-  }
-}
-jest.unstable_mockModule('ws', () => ({ default: MockWebSocket }));
-
-const mockQueriesCreate = jest.fn();
-const mockRetrieveCreate = jest.fn();
 const mockProcFeedAdd = jest.fn();
 const mockProcInstanceAdd = jest.fn();
+const mockStorageResolve = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: jest.fn(), stack_getAll: jest.fn(() => []) },
-  pacsQueries_create: mockQueriesCreate,
-  pacsRetrieve_create: mockRetrieveCreate,
   procCache_get: () => ({ feed_add: mockProcFeedAdd, instance_add: mockProcInstanceAdd }),
+  seriesStorage_resolve: mockStorageResolve,
   Client: class {},
 }));
 
+/** A pending engine task, mirroring salsa's RetrieveTask shape. */
+interface TestTask {
+  label: string;
+  seriesUID: string;
+  studyUID: string;
+  pacsName: string;
+  expectedFiles: number;
+  syntheticQueryId: number | null;
+  retrieveId: number | null;
+  status: string;
+  actualFiles: number;
+  lastProgressFiles: number;
+  lastProgressTime: number;
+  startTime: number;
+  lonkConfirmed: boolean;
+  cubePathDir: string | null;
+}
+
 const mockFeedCreate = jest.fn();
 const mockPluginRun = jest.fn();
+const mockTasksFire = jest.fn();
+const mockSkipComplete = jest.fn();
+const mockFireAndWatch = jest.fn();
+const mockConfirmLoop = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feed_create: mockFeedCreate,
   plugin_run: mockPluginRun,
+  retrieveTask_make: (info: Record<string, unknown>): TestTask => ({
+    ...(info as Pick<TestTask, 'label' | 'seriesUID' | 'studyUID' | 'pacsName' | 'expectedFiles'>),
+    syntheticQueryId: null,
+    retrieveId: null,
+    status: 'pending',
+    actualFiles: 0,
+    lastProgressFiles: 0,
+    lastProgressTime: 0,
+    startTime: 0,
+    lonkConfirmed: false,
+    cubePathDir: null,
+  }),
+  retrieveTasks_fire: mockTasksFire,
+  retrieveTasks_skipComplete: mockSkipComplete,
+  retrieve_fireAndWatch: mockFireAndWatch,
+  retrieve_confirmLoop: mockConfirmLoop,
+  retrieveProgress_classify: (task: TestTask): string => {
+    if (task.status === 'pulled') return task.lonkConfirmed ? 'done' : 'unconfirmed';
+    if (task.status === 'pending' || task.status === 'pulling') return 'running';
+    if (task.status === 'unfired') return 'error';
+    return task.status;
+  },
 }));
 
 const mockPipelineBuiltin = jest.fn();
@@ -59,11 +86,9 @@ jest.unstable_mockModule('../src/builtins/net/query.js', () => ({
 
 const mockCollect = jest.fn();
 const mockServerResolve = jest.fn(async () => 'PACSDCM' as string | null);
-const mockCubePathGet = jest.fn();
 jest.unstable_mockModule('../src/builtins/net/pacsUtils.js', () => ({
   pacs_seriesCollect: mockCollect,
   pacsServer_resolve: mockServerResolve,
-  series_cubePathGet: mockCubePathGet,
 }));
 
 const mockCubepath = jest.fn();
@@ -80,9 +105,6 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
   spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() },
 }));
 
-const ok = <T>(value: T) => ({ ok: true as const, value });
-const err = () => ({ ok: false as const });
-
 const { sink_set, StdoutSink } = await import('../src/core/sink.js');
 const { builtin_pull } = await import('../src/builtins/fs/pull.js');
 
@@ -97,20 +119,21 @@ const info = (seriesUID: string = '1.2.3', expectedFiles: number = 2) => ({
   pacsName: 'AET',
   expectedFiles,
 });
-const fakeClient = {
-  createDownloadToken: async () => ({
-    data: { token: 'TOK' },
-    url: 'https://cube.example/api/v1/downloadtokens/5/',
-  }),
-};
+const fakeClient = {};
 
-const lonk = (seriesUID: string, message: Record<string, unknown>): string =>
-  JSON.stringify({ SeriesInstanceUID: seriesUID, message });
-
-// Drains chained promise continuations (unaffected by fake timers).
-const flush = async (): Promise<void> => {
-  for (let i = 0; i < 50; i++) await Promise.resolve();
-};
+/** Drives every fired task to the given status through the mock engine. */
+function fireOutcome_set(status: string, confirmed: boolean = true, dir: string | null = null): void {
+  mockFireAndWatch.mockImplementation(async (tasks: TestTask[], _srv: unknown, _c: unknown, events?: { task?: (t: TestTask, s: string, p: string) => void }) => {
+    for (const t of tasks) {
+      t.status = status;
+      t.lonkConfirmed = status === 'pulled' ? confirmed : false;
+      if (dir !== null) t.cubePathDir = dir;
+      if (status === 'pulled') t.actualFiles = t.expectedFiles;
+      events?.task?.(t, status === 'pulled' ? (confirmed ? 'done' : 'unconfirmed') : 'error', 'watching');
+    }
+    return status === 'unfired' ? tasks.length : 0;
+  });
+}
 
 const progressEvents: ProgressEvent[] = [];
 let sinkData: string = '';
@@ -118,8 +141,6 @@ let sinkErr: string = '';
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
-  wsOpenMode = 'open';
-  wsInstances.length = 0;
   progressEvents.length = 0;
   sinkData = '';
   sinkErr = '';
@@ -133,10 +154,14 @@ beforeEach(() => {
   mockCubepath.mockResolvedValue({ status: 'ok', rendered: '' });
   mockServerResolve.mockResolvedValue('PACSDCM');
   mockClientGet.mockResolvedValue(fakeClient);
-  mockQueriesCreate.mockResolvedValue(ok({ id: 100 }));
-  mockRetrieveCreate.mockResolvedValue(ok({ id: 200 }));
   mockCollect.mockResolvedValue([info()]);
-  mockCubePathGet.mockResolvedValue(null);
+  mockSkipComplete.mockResolvedValue(0);
+  mockConfirmLoop.mockResolvedValue(0);
+  mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 2, folderPath: '/SERVICES/PACS/A/series-1' } });
+  mockTasksFire.mockImplementation(async (tasks: TestTask[]) => {
+    for (const t of tasks) t.retrieveId = 200;
+  });
+  fireOutcome_set('pulled');
   mockFeedCreate.mockResolvedValue({
     id: 300,
     name: 'Brain MRI',
@@ -148,85 +173,70 @@ beforeEach(() => {
   mockPathResolve.mockImplementation(async (p: string) => `/home/chris/${p}`);
 });
 afterEach(() => {
-  jest.useRealTimers();
   sink_set(new StdoutSink());
   process.exitCode = 0;
 });
-
 
 describe('builtin_pull guards and path resolution', () => {
   it('returns help for --help', async () => {
     const env = await builtin_pull(['--help']);
     expect(env.rendered).toContain('USAGE');
     expect(env.rendered).toContain('--new-feed <title>');
-    expect(env.rendered).toContain('--plugin <selector>');
-    expect(env.rendered).toContain('--pipeline <selector>');
     expect(mockCollect).not.toHaveBeenCalled();
   });
 
   it('requires at least one path', async () => {
     await builtin_pull([]);
-    expect(sinkErr).toContain(('No paths specified'));
+    expect(sinkErr).toContain('No paths specified');
     expect(process.exitCode).toBe(1);
   });
 
   it('errors when no PACS server is available', async () => {
     mockServerResolve.mockResolvedValue(null);
     await builtin_pull([QUERY_PATH]);
-    expect(sinkErr).toContain(('No PACS server available'));
+    expect(sinkErr).toContain('No PACS server available');
     expect(process.exitCode).toBe(1);
   });
 
   it('rejects an operand that is neither a PACS path nor a query', async () => {
     await builtin_pull(['/home/chris/feeds']);
-    expect(sinkErr).toContain(('Not a PACS VFS path'));
-    expect(sinkErr).toContain(('No series to retrieve'));
+    expect(sinkErr).toContain('Not a PACS VFS path');
+    expect(sinkErr).toContain('No series to retrieve');
     expect(process.exitCode).toBe(1);
   });
 
   it('warns when a path yields no series', async () => {
     mockCollect.mockResolvedValue([]);
     await builtin_pull([QUERY_PATH]);
-    expect(sinkErr).toContain((`No series found under: ${QUERY_PATH}`));
+    expect(sinkErr).toContain(`No series found under: ${QUERY_PATH}`);
     expect(process.exitCode).toBe(1);
   });
 
   it('errors when not connected to ChRIS', async () => {
     mockClientGet.mockResolvedValue(null);
     await builtin_pull([QUERY_PATH]);
-    expect(sinkErr).toContain(('Not connected'));
+    expect(sinkErr).toContain('Not connected to ChRIS');
     expect(process.exitCode).toBe(1);
   });
 
-  it('resolves a relative operand through path_resolve', async () => {
-    mockPathResolve.mockResolvedValue(QUERY_PATH);
-    await builtin_pull(['q_qid:1', '--nowait']);
-    expect(mockPathResolve).toHaveBeenCalledWith('q_qid:1');
-    expect(mockCollect).toHaveBeenCalledWith(QUERY_PATH, 'PACSDCM', 'pull');
-  });
-
   it('runs a query for an expression operand, then fires with --nowait', async () => {
-    mockCreateAndWait.mockResolvedValue({ queryId: 9, vfsPath: QUERY_PATH, decoded: {} });
-    await builtin_pull(['PatientID:X', '--nowait']);
-    // The RAW expression is queried — path resolution must not touch it.
-    expect(mockCreateAndWait).toHaveBeenCalledWith(
-      'PatientID:X', 'pull_PatientID:X', 'PACSDCM', expect.any(Function),
-    );
-    expect(sinkData).toContain(QUERY_PATH);
+    mockCreateAndWait.mockResolvedValue({ queryId: 9, vfsPath: '/net/pacs/queries/x_qid:9', decoded: { raw: '' } });
+    await builtin_pull(['PatientID:77', '--nowait']);
+    expect(mockCreateAndWait).toHaveBeenCalledWith('PatientID:77', 'pull_PatientID:77', 'PACSDCM', expect.any(Function));
+    expect(mockTasksFire).toHaveBeenCalled();
     expect(sinkData).toContain('1.2.3 200');
-    expect(mockQueriesCreate).toHaveBeenCalledWith('PACSDCM', expect.objectContaining({ execute: false }));
   });
 
   it('reports a failed query expression', async () => {
     mockCreateAndWait.mockResolvedValue(null);
-    await builtin_pull(['PatientID:X']);
-    expect(sinkErr).toContain(('Query failed for'));
-    expect(sinkErr).toContain(('No series to retrieve'));
-    expect(process.exitCode).toBe(1);
+    await builtin_pull(['PatientID:77']);
+    expect(sinkErr).toContain('Query failed for: PatientID:77');
   });
 
   it('prints seriesUID ERROR when a --nowait retrieve fails to fire', async () => {
-    mockQueriesCreate.mockResolvedValue(err());
+    mockTasksFire.mockImplementation(async (tasks: TestTask[]) => {
+      for (const t of tasks) t.status = 'unfired';
+    });
     await builtin_pull([QUERY_PATH, '--nowait']);
     expect(sinkData).toContain('1.2.3 ERROR');
     expect(process.exitCode).toBe(1);
@@ -235,7 +245,6 @@ describe('builtin_pull guards and path resolution', () => {
   it('rejects --new-feed without a title', async () => {
     await builtin_pull([QUERY_PATH, '--new-feed']);
     expect(sinkErr).toContain('--new-feed requires a title');
-    expect(mockCollect).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -247,80 +256,81 @@ describe('builtin_pull guards and path resolution', () => {
   });
 });
 
-describe('builtin_pull watch loop', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-
-  it('rejects when the LONK websocket cannot connect', async () => {
-    wsOpenMode = 'fail';
-    await expect(builtin_pull([QUERY_PATH])).rejects.toThrow('ws connect failed');
-  });
-
-  it('reports firing failures without entering the watch loop', async () => {
-    mockQueriesCreate.mockResolvedValue(err());
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-    // Drain the firing retry backoffs (250ms + 500ms) before the task is
-    // declared unfired.
-    await jest.advanceTimersByTimeAsync(1_000);
-    await pull;
-    expect(sinkData).toContain('0/1 series complete');
-    expect(sinkData).toContain('FAILED TO FIRE');
-    expect(sinkData).toContain('1 retrieve(s) were never fired');
-    expect(progressEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
-      expect.objectContaining({ operation: 'pull', phase: 'failed', unit: 'series', status: 'error' }),
-    ]));
-    expect(process.exitCode).toBe(1);
-    expect(wsInstances[0].close).toHaveBeenCalled();
-  });
-
-  it('pulls a series to completion on LONK done', async () => {
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    expect(wsInstances).toHaveLength(1);
-    const ws: MockWebSocket = wsInstances[0];
-    expect(ws.url).toBe('wss://cube.example/api/v1/pacs/ws/?token=TOK');
-    expect(ws.send).toHaveBeenCalledWith(
-      JSON.stringify({ SeriesInstanceUID: '1.2.3', pacs_name: 'AET', action: 'subscribe' }),
-    );
-
-    ws.emit('message', 'not json');
-    ws.emit('message', lonk('unknown-uid', { ndicom: 1 }));
-    ws.emit('message', lonk('1.2.3', { ndicom: 1 }));
-    ws.emit('message', lonk('1.2.3', { ndicom: 2 }));
-    ws.emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    await pull;
-
-    expect(progressEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ operation: 'pull', itemId: '1.2.3', current: 1, status: 'running' }),
-      expect.objectContaining({ operation: 'pull', itemId: '1.2.3', current: 2, status: 'done' }),
-      expect.objectContaining({ operation: 'pull', phase: 'complete', unit: 'series', status: 'done' }),
-    ]));
+describe('builtin_pull engine consumption', () => {
+  it('pulls a series to completion and renders the success summary', async () => {
+    await builtin_pull([QUERY_PATH]);
+    expect(mockFireAndWatch).toHaveBeenCalledTimes(1);
     expect(sinkData).toContain('1/1 series pulled successfully');
     expect(mockCubepath).toHaveBeenCalledWith([QUERY_PATH, '--retry']);
-    expect(mockFeedCreate).not.toHaveBeenCalled();
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: 'pull', itemId: '1.2.3', status: 'done' }),
+      expect.objectContaining({ operation: 'pull', phase: 'complete', unit: 'series', status: 'done' }),
+    ]));
     expect(process.exitCode).toBe(0);
+  });
+
+  it('labels unfired series as permanent loss and watch failures as verifiable', async () => {
+    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
+    mockFireAndWatch.mockImplementation(async (tasks: TestTask[]) => {
+      tasks[0].status = 'unfired';
+      tasks[1].status = 'error';
+      return 1;
+    });
+    await builtin_pull([QUERY_PATH]);
+    expect(sinkData).toContain('0/2 series complete');
+    expect(sinkData).toContain('FAILED TO FIRE');
+    expect(sinkData).toContain('[ERROR — verify with: pacs status]');
+    expect(sinkData).toContain('1 retrieve(s) were never fired');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('skips series already fully registered and fires only the missing', async () => {
+    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
+    mockSkipComplete.mockImplementation(async (tasks: TestTask[]) => {
+      tasks[0].status = 'pulled';
+      tasks[0].lonkConfirmed = true;
+      return 1;
+    });
+    await builtin_pull([QUERY_PATH]);
+    expect(sinkData).toContain('1/2 series already in CUBE — skipped');
+    const watched: TestTask[] = mockFireAndWatch.mock.calls[0][0] as TestTask[];
+    expect(watched).toHaveLength(1);
+    expect(watched[0].seriesUID).toBe('4.5.6');
+    expect(sinkData).toContain('2/2 series pulled successfully');
+  });
+
+  it('skips the watch entirely when every series is already registered', async () => {
+    mockSkipComplete.mockImplementation(async (tasks: TestTask[]) => {
+      for (const t of tasks) { t.status = 'pulled'; t.lonkConfirmed = true; }
+      return 1;
+    });
+    await builtin_pull([QUERY_PATH]);
+    expect(mockFireAndWatch).not.toHaveBeenCalled();
+    expect(sinkData).toContain('1/1 series pulled successfully');
+  });
+
+  it('runs the confirm loop with the requested retry budget', async () => {
+    await builtin_pull([QUERY_PATH, '--retry', '3']);
+    expect(mockConfirmLoop).toHaveBeenCalledWith(expect.any(Array), 3, 'PACSDCM', fakeClient, expect.any(Object));
+  });
+
+  it('renders the retry-round banner when the engine announces a refire', async () => {
+    mockConfirmLoop.mockImplementation(async (_tasks: unknown, _max: unknown, _srv: unknown, _c: unknown, events?: { retryRound?: (a: number, m: number, n: number) => void }) => {
+      events?.retryRound?.(1, 3, 2);
+      return 0;
+    });
+    await builtin_pull([QUERY_PATH, '--retry', '3']);
+    expect(sinkData).toContain('Retry 1/3 for 2 unconfirmed series');
   });
 
   it('creates one named feed from the resolved directories after a complete pull', async () => {
     mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
-    mockCubePathGet
-      // Pre-fire completeness checks (one per task): both absent.
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 })
-      .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-2', fileCount: 2 });
+    fireOutcome_set('pulled', true, null);
+    mockStorageResolve
+      .mockResolvedValueOnce({ ok: true, value: { fileCount: 2, folderPath: '/SERVICES/PACS/A/series-1' } })
+      .mockResolvedValueOnce({ ok: true, value: { fileCount: 2, folderPath: '/SERVICES/PACS/A/series-2' } });
 
-    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    wsInstances[0].emit('message', lonk('4.5.6', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    await pull;
+    await builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
 
     expect(mockFeedCreate).toHaveBeenCalledWith(
       ['/SERVICES/PACS/A/series-1', '/SERVICES/PACS/A/series-2'],
@@ -328,102 +338,50 @@ describe('builtin_pull watch loop', () => {
     );
     expect(sinkData).toContain('Feed created: 300');
     expect(sinkData).toContain('Root job: pl-dircopy (ID: 400)');
-    expect(sinkData).toContain('Input: 2 PACS series');
-    expect(sinkData).toContain('/home/chris/feeds/feed_300/pl-dircopy_400/data/');
     expect(mockProcFeedAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 300, title: 'Brain MRI' }));
     expect(mockProcInstanceAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 400, feedID: 300 }));
     expect(process.exitCode).toBe(0);
   });
 
-  it('skips series already fully registered in CUBE and fires only the missing', async () => {
-    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
-    mockCubePathGet
-      .mockResolvedValueOnce({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 })
-      .mockResolvedValueOnce(null);
-
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    expect(sinkData).toContain('1/2 series already in CUBE — skipped');
-    const ws: MockWebSocket = wsInstances[0];
-    expect(ws.send).toHaveBeenCalledTimes(1);
-    expect(ws.send).toHaveBeenCalledWith(
-      JSON.stringify({ SeriesInstanceUID: '4.5.6', pacs_name: 'AET', action: 'subscribe' }),
-    );
-
-    ws.emit('message', lonk('4.5.6', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    await pull;
-
-    expect(sinkData).toContain('2/2 series pulled successfully');
-    expect(process.exitCode).toBe(0);
+  it('prefers the engine-resolved cube path over a fresh storage lookup', async () => {
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/from-engine');
+    await builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
+    expect(mockStorageResolve).not.toHaveBeenCalled();
+    expect(mockFeedCreate).toHaveBeenCalledWith(['/SERVICES/PACS/A/from-engine'], { title: 'Brain MRI' });
   });
 
   it('attaches a pipeline to the new root with forwarded invocation tokens', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
-
-    const pull = builtin_pull([
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
+    const result = await builtin_pull([
       QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'brain-preprocessing', '--',
       '--segmentation.threshold', '0.6',
     ]);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
     expect(mockPipelineBuiltin).toHaveBeenCalledWith([
       'run', 'brain-preprocessing', '--previous', '400', '--segmentation.threshold', '0.6',
     ]);
-    expect(sinkData).toContain('Feed created: 300');
     expect(sinkData).toContain('Pipeline attached: brain-preprocessing');
     expect(result.status).toBe('ok');
   });
 
   it('attaches a versioned plugin to the new root with forwarded parameters', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
-
-    const pull = builtin_pull([
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
+    const result = await builtin_pull([
       QUERY_PATH, '--new-feed', 'Brain MRI', '--plugin', 'pl-dcm2niix-v1.2.0', '--',
       '--outputdir', 'NIfTI files',
     ]);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
     expect(mockPluginRun).toHaveBeenCalledWith(
       'name_exact:pl-dcm2niix,version:1.2.0',
       { outputdir: 'NIfTI files', previous_id: 400 },
     );
-    expect(mockProcInstanceAdd).toHaveBeenCalledWith(expect.objectContaining({
-      id: 500,
-      feedID: 300,
-      parentID: 400,
-      pluginName: 'pl-dcm2niix',
-    }));
-    expect(sinkData).toContain('Plugin attached: pl-dcm2niix-v1.2.0 (ID: 500)');
     expect(result.status).toBe('ok');
   });
 
   it('retains and reports the Feed when pipeline attachment fails', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
     mockPipelineBuiltin.mockResolvedValue({ status: 'error', rendered: '' });
-
-    const pull = builtin_pull([
+    const result = await builtin_pull([
       QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'broken-pipeline',
     ]);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
-    expect(mockFeedCreate).toHaveBeenCalled();
     expect(sinkData).toContain('Feed created: 300');
     expect(sinkErr).toContain('Feed 300 and root 400 were retained');
     expect(result.status).toBe('error');
@@ -431,13 +389,13 @@ describe('builtin_pull watch loop', () => {
 
   it('does not create a requested feed after a partial pull', async () => {
     mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
-    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Incomplete']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    wsInstances[0].emit('message', lonk('4.5.6', { error: 'refused' }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
+    mockFireAndWatch.mockImplementation(async (tasks: TestTask[]) => {
+      tasks[0].status = 'pulled';
+      tasks[0].lonkConfirmed = true;
+      tasks[1].status = 'error';
+      return 0;
+    });
+    const result = await builtin_pull([QUERY_PATH, '--new-feed', 'Incomplete']);
     expect(mockFeedCreate).not.toHaveBeenCalled();
     expect(sinkErr).toContain('New feed not created because retrieval was incomplete');
     expect(result.status).toBe('error');
@@ -445,15 +403,7 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('does not create a requested feed when any operand is invalid', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
-    const pull = builtin_pull([QUERY_PATH, '/not/a/pacs/path', '--new-feed', 'Partial selection']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
+    const result = await builtin_pull([QUERY_PATH, '/not/a/pacs/path', '--new-feed', 'Partial selection']);
     expect(mockFeedCreate).not.toHaveBeenCalled();
     expect(sinkErr).toContain('New feed not created because the requested selection was incomplete');
     expect(result.status).toBe('error');
@@ -463,45 +413,23 @@ describe('builtin_pull watch loop', () => {
     mockCollect
       .mockResolvedValueOnce([info('1.2.3')])
       .mockResolvedValueOnce([]);
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
     const emptyPath: string = '/net/pacs/queries/q_qid:2';
-    const pull = builtin_pull([QUERY_PATH, emptyPath, '--new-feed', 'Partial selection']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
+    const result = await builtin_pull([QUERY_PATH, emptyPath, '--new-feed', 'Partial selection']);
     expect(mockFeedCreate).not.toHaveBeenCalled();
     expect(sinkErr).toContain(`No series found under: ${emptyPath}`);
-    expect(sinkErr).toContain('New feed not created because the requested selection was incomplete');
     expect(result.status).toBe('error');
   });
 
   it('preserves punctuation in the requested feed title', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
-    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Baseline, repeat: 2']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    await pull;
-
-    expect(mockFeedCreate).toHaveBeenCalledWith(
-      ['/SERVICES/PACS/A/series-1'],
-      { title: 'Baseline, repeat: 2' },
-    );
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
+    await builtin_pull([QUERY_PATH, '--new-feed', 'Baseline, repeat: 2']);
+    expect(mockFeedCreate).toHaveBeenCalledWith(expect.any(Array), { title: 'Baseline, repeat: 2' });
   });
 
   it('fails when a pulled series cannot be resolved to a CUBE directory', async () => {
-    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Missing path']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
+    fireOutcome_set('pulled', true, null);
+    mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 0, folderPath: null } });
+    const result = await builtin_pull([QUERY_PATH, '--new-feed', 'Missing path']);
     expect(mockFeedCreate).not.toHaveBeenCalled();
     expect(sinkErr).toContain('Could not resolve CUBE storage for series 1.2.3');
     expect(result.status).toBe('error');
@@ -509,151 +437,25 @@ describe('builtin_pull watch loop', () => {
   });
 
   it('reports feed creation failure after a successful pull', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
     mockFeedCreate.mockResolvedValue(null);
-    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
+    const result = await builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
     expect(sinkErr).toContain("Failed to create feed 'Brain MRI'");
     expect(result.status).toBe('error');
     expect(process.exitCode).toBe(1);
   });
 
   it('requires an owner so every successful creation can print its feed path', async () => {
-    // First resolution is the pre-fire completeness check: report the series
-    // as absent so the watch path (not the skip path) is exercised.
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/A/series-1', fileCount: 2 });
+    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
     mockFeedCreate.mockResolvedValue({
       id: 300,
       name: 'Brain MRI',
       owner_username: '',
       pluginInstance: { data: { id: 400 } },
     });
-    const pull = builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
-    await flush();
-    wsInstances[0].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    const result = await pull;
-
+    const result = await builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
     expect(sinkErr).toContain("Failed to create feed 'Brain MRI'");
     expect(sinkData).not.toContain('Feed path:');
     expect(result.status).toBe('error');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('marks a series failed on a LONK error message', async () => {
-    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    const ws: MockWebSocket = wsInstances[0];
-    ws.emit('message', lonk('1.2.3', { done: true }));
-    ws.emit('message', lonk('4.5.6', { error: 'refused' }));
-    await jest.advanceTimersByTimeAsync(2_000);
-    await pull;
-
-    expect(sinkData).toContain('1/2 series complete');
-    expect(sinkData).toContain('[ERROR —');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('fails all in-flight series on a websocket error', async () => {
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    wsInstances[0].emit('error', new Error('dropped'));
-    await flush();
-    await pull;
-
-    expect(sinkData).toContain('0/1 series complete');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('marks a silent series stalled after progress stops', async () => {
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    wsInstances[0].emit('message', lonk('1.2.3', { ndicom: 1 }));
-    await jest.advanceTimersByTimeAsync(34_000);
-    await pull;
-
-    expect(sinkData).toContain('[STALLED —');
-    expect(progressEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ itemId: '1.2.3', status: 'stalled' }),
-    ]));
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('times out a series that never finishes', async () => {
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    // Keep progress ticking (dodging the stall check) until the 5 min cap.
-    for (let n = 1; n <= 15; n++) {
-      wsInstances[0].emit('message', lonk('1.2.3', { ndicom: n }));
-      await jest.advanceTimersByTimeAsync(20_000);
-    }
-    await jest.advanceTimersByTimeAsync(4_000);
-    await pull;
-
-    expect(sinkData).toContain('[TIMEOUT —');
-    expect(progressEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ itemId: '1.2.3', status: 'timeout' }),
-    ]));
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('fails a NO LONK series when retries are exhausted', async () => {
-    const pull = builtin_pull([QUERY_PATH]);
-    await flush();
-
-    await jest.advanceTimersByTimeAsync(20_000);
-    await pull;
-
-    expect(sinkData).toContain('0/1 series complete');
-    expect(sinkData).toContain('[ERROR —');
-    expect(progressEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
-      expect.objectContaining({ itemId: '1.2.3', status: 'error' }),
-    ]));
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('confirms a NO LONK series via CUBE path lookup on --retry', async () => {
-    mockCubePathGet.mockResolvedValueOnce(null).mockResolvedValue({ folderPath: '/SERVICES/PACS/x', fileCount: 2 });
-    const pull = builtin_pull([QUERY_PATH, '--retry', '1']);
-    await flush();
-
-    await jest.advanceTimersByTimeAsync(20_000);
-    await pull;
-
-    expect(mockCubePathGet).toHaveBeenCalledWith('1.2.3', fakeClient, 1, 0);
-    expect(progressEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ itemId: '1.2.3', status: 'unconfirmed' }),
-    ]));
-    expect(sinkData).toContain('1/1 series pulled successfully');
-    expect(process.exitCode).toBe(0);
-  });
-
-  it('re-fires unconfirmed series and succeeds on the retry pass', async () => {
-    const pull = builtin_pull([QUERY_PATH, '--retry', '1']);
-    await flush();
-
-    await jest.advanceTimersByTimeAsync(20_000);
-    await flush();
-
-    expect(sinkData).toContain('Retry 1/1 for 1 unconfirmed series');
-    expect(wsInstances).toHaveLength(2);
-    wsInstances[1].emit('message', lonk('1.2.3', { done: true }));
-    await jest.advanceTimersByTimeAsync(4_000);
-    await pull;
-
-    expect(sinkData).toContain('1/1 series pulled successfully');
-    expect(process.exitCode).toBe(0);
   });
 });

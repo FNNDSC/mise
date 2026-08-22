@@ -30,6 +30,7 @@ import {
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { spinner } from '../../lib/spinner.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from './query.js';
+import { queryId_extractFromFolder } from '@fnndsc/salsa';
 import { pacsServer_resolve } from './pacsUtils.js';
 
 /** Width of the per-series fill bar, in characters. */
@@ -120,8 +121,8 @@ async function statusTarget_resolve(
   }
 
   if (target.startsWith('/')) {
-    const qidMatch: RegExpExecArray | null = /_qid:(\d+)/.exec(target);
-    if (qidMatch) return { queryId: Number(qidMatch[1]), reason: '' };
+    const parsedId: number = queryId_extractFromFolder(target);
+    if (!Number.isNaN(parsedId)) return { queryId: parsedId, reason: '' };
     return { queryId: null, reason: `Cannot parse a query id from path: ${target}` };
   }
 

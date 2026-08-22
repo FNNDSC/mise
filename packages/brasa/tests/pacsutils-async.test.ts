@@ -4,7 +4,9 @@ const mockPush = jest.fn();
 const mockDecode = jest.fn();
 const mockServersList = jest.fn();
 const mockCurrentGet = jest.fn(async () => null as string | null);
+const mockStorageResolve = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  seriesStorage_resolve: mockStorageResolve,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush },
@@ -159,66 +161,27 @@ describe('pacs_seriesCollect', () => {
 interface FakeList { getItems(): Array<unknown>; totalCount: number }
 const list = (items: unknown[], totalCount: number): FakeList => ({ getItems: () => items, totalCount });
 
-describe('series_cubePathGet', () => {
-  it('resolves the folder path and file count on the first attempt', async () => {
-    const client = {
-      getPACSSeriesList: jest.fn(async () => list([{ data: { folder_path: 'SERVICES/PACS/x' } }], 1)),
-      getPACSFiles: jest.fn(async () => list([{}], 42)),
-    };
-    expect(await series_cubePathGet('1.2.3', client, 1, 0)).toEqual({
+describe('series_cubePathGet (delegates to cumin seriesStorage_resolve)', () => {
+  beforeEach(() => {
+    mockStorageResolve.mockReset();
+  });
+
+  it('maps a landed storage state to a SeriesCubePath', async () => {
+    mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 42, folderPath: '/SERVICES/PACS/x' } });
+    expect(await series_cubePathGet('1.2.3', {} as never, 4, 2000)).toEqual({
       folderPath: '/SERVICES/PACS/x',
       fileCount: 42,
     });
-    expect(client.getPACSFiles).toHaveBeenCalledWith({ fname: 'SERVICES/PACS/x', limit: 1 });
+    expect(mockStorageResolve).toHaveBeenCalledWith('1.2.3', { attempts: 4, delayMs: 2000 });
   });
 
-  it('strips a leading slash for the fname query but keeps it for display', async () => {
-    const client = {
-      getPACSSeriesList: jest.fn(async () => list([{ data: { folder_path: '/already/rooted' } }], 1)),
-      getPACSFiles: jest.fn(async () => list([], 3)),
-    };
-    expect(await series_cubePathGet('1.2.3', client, 1, 0)).toEqual({
-      folderPath: '/already/rooted',
-      fileCount: 3,
-    });
-    expect(client.getPACSFiles).toHaveBeenCalledWith({ fname: 'already/rooted', limit: 1 });
+  it('returns null when the resolver reports no folder', async () => {
+    mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 0, folderPath: null } });
+    expect(await series_cubePathGet('1.2.3', {} as never, 1, 0)).toBeNull();
   });
 
-  it('retries when the series is not yet indexed', async () => {
-    const client = {
-      getPACSSeriesList: jest
-        .fn(async () => list([{ data: { folder_path: 'p' } }], 1))
-        .mockResolvedValueOnce(list([], 0)),
-      getPACSFiles: jest.fn(async () => list([], 7)),
-    };
-    expect(await series_cubePathGet('1.2.3', client, 2, 0)).toEqual({ folderPath: '/p', fileCount: 7 });
-    expect(client.getPACSSeriesList).toHaveBeenCalledTimes(2);
-  });
-
-  it('gives up after maxAttempts when folder_path never appears', async () => {
-    const client = {
-      getPACSSeriesList: jest.fn(async () => list([{ data: {} }], 1)),
-      getPACSFiles: jest.fn(async () => list([], 0)),
-    };
-    expect(await series_cubePathGet('1.2.3', client, 3, 0)).toBeNull();
-    expect(client.getPACSSeriesList).toHaveBeenCalledTimes(3);
-    expect(client.getPACSFiles).not.toHaveBeenCalled();
-  });
-
-  it('swallows client errors and returns null after retries', async () => {
-    const client = {
-      getPACSSeriesList: jest.fn(async () => { throw new Error('boom'); }),
-      getPACSFiles: jest.fn(async () => list([], 0)),
-    };
-    expect(await series_cubePathGet('1.2.3', client, 2, 0)).toBeNull();
-    expect(client.getPACSSeriesList).toHaveBeenCalledTimes(2);
-  });
-
-  it('clamps a negative file count to zero', async () => {
-    const client = {
-      getPACSSeriesList: jest.fn(async () => list([{ data: { folder_path: 'p' } }], 1)),
-      getPACSFiles: jest.fn(async () => list([], -1)),
-    };
-    expect(await series_cubePathGet('1.2.3', client, 1, 0)).toEqual({ folderPath: '/p', fileCount: 0 });
+  it('returns null when the resolver fails outright', async () => {
+    mockStorageResolve.mockResolvedValue({ ok: false });
+    expect(await series_cubePathGet('1.2.3', {} as never, 1, 0)).toBeNull();
   });
 });

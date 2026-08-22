@@ -129,6 +129,35 @@ export class ChrisIO {
    * @param fileId - The ID of the file to download.
    * @returns A Result containing the stream/blob and optional size metadata.
    */
+
+  /**
+   * Fetches a downloadable file resource by id, trying the userfiles
+   * collection first and falling back to PACS files.
+   *
+   * Filebrowser folder listings mix file kinds (a /SERVICES path holds PACS
+   * files, a /home path holds userfiles) but yield only numeric ids, so the
+   * downloader must probe both collections; a PACS id is invisible at the
+   * userfiles endpoint and previously read as "not found".
+   *
+   * @param client - The connected ChRIS client.
+   * @param fileId - The file id from a folder listing.
+   * @returns The file resource, or null when neither collection knows the id.
+   */
+  private async downloadableFile_get(client: Client, fileId: number): Promise<UserFile | null> {
+    try {
+      const userFile: UserFile | null = await client.getUserFile(fileId);
+      if (userFile) return userFile;
+    } catch {
+      // Fall through to the PACS collection.
+    }
+    try {
+      const pacsClient = client as unknown as { getPACSFile(id: number): Promise<UserFile | null> };
+      return await pacsClient.getPACSFile(fileId);
+    } catch {
+      return null;
+    }
+  }
+
   async file_downloadStream(
     fileId: number
   ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
@@ -139,7 +168,7 @@ export class ChrisIO {
     }
 
     try {
-      const userFile: UserFile | null = await client.getUserFile(fileId);
+      const userFile: UserFile | null = await this.downloadableFile_get(client, fileId);
 
       if (!userFile) {
         errorStack.stack_push(
@@ -189,7 +218,7 @@ export class ChrisIO {
     }
 
     try {
-      const userFile: UserFile | null = await client.getUserFile(fileId);
+      const userFile: UserFile | null = await this.downloadableFile_get(client, fileId);
 
       if (!userFile) {
         // This is a common case: the file ID was scraped from a listing, but

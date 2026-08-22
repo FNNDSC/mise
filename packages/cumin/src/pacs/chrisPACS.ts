@@ -8,6 +8,7 @@
 
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
+import { retry_untilValue } from "../utils/retry.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { FilteredResourceData, ListOptions } from "../resources/chrisResources.js";
 import {
@@ -581,13 +582,32 @@ export interface SeriesStorageState {
  * Resolves a series' CUBE storage state: its registered file count and the
  * folder it landed in.
  *
+ * With `retry` options, re-probes across the registration lag between a PACS
+ * push completing and the PACSSeries record becoming queryable, returning the
+ * first state that carries a folder. This is the one series-storage resolver;
+ * the per-package copies it replaces are gone.
+ *
  * @param seriesInstanceUID - The series instance UID to inspect.
+ * @param retry - Optional bounded re-probing: total attempts and the delay
+ *   between them.
  * @returns Result containing the storage state; failures resolve to an empty
  *   state (count 0, no folder) rather than failing the whole report.
  */
 export async function seriesStorage_resolve(
-  seriesInstanceUID: string
+  seriesInstanceUID: string,
+  retry?: { attempts: number; delayMs: number }
 ): Promise<Result<SeriesStorageState>> {
+  if (retry && retry.attempts > 1) {
+    const landed: SeriesStorageState | null = await retry_untilValue<SeriesStorageState>(
+      retry.attempts,
+      [retry.delayMs],
+      async (): Promise<SeriesStorageState | null> => {
+        const probe: Result<SeriesStorageState> = await seriesStorage_resolve(seriesInstanceUID);
+        return probe.ok && probe.value.folderPath !== null ? probe.value : null;
+      },
+    );
+    return Ok(landed ?? { fileCount: 0, folderPath: null });
+  }
   const empty: SeriesStorageState = { fileCount: 0, folderPath: null };
   try {
     const client: Client | null = await chrisConnection.client_get();

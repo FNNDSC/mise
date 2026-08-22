@@ -82,6 +82,7 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 
 // Mock cumin
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
   currentIdentity_get: jest.fn<() => Promise<Result<ChrisIdentity>>>(),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
@@ -184,6 +185,13 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 
 // Mock salsa
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  retrieveTask_make: (info: Record<string, unknown>) => ({ ...info, syntheticQueryId: null, retrieveId: null, status: 'pending', actualFiles: 0, lastProgressFiles: 0, lastProgressTime: 0, startTime: 0, lonkConfirmed: false, cubePathDir: null }),
+  retrieveTasks_fire: jest.fn(),
+  retrieveTasks_skipComplete: jest.fn(async () => 0),
+  retrieve_fireAndWatch: jest.fn(async () => 0),
+  retrieve_confirmLoop: jest.fn(async () => 0),
+  retrieveProgress_classify: () => 'running',
+  queryId_extractFromFolder: (folder: string) => { const m = /_qid:(\d+)/.exec(folder); return m ? Number(m[1]) : NaN; },
   localAccount_adminAccessEnsure: jest.fn(),
   localAccount_create: jest.fn(),
   localAccount_find: jest.fn(),

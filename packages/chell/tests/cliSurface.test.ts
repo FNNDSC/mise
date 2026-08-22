@@ -30,9 +30,10 @@ const spawnMock = jest.fn(() => {
   process.nextTick(() => child.emit('close', 0));
   return child;
 });
+const spawnSyncMock = jest.fn((_editor: string, _args: string[]) => ({ error: undefined }));
 jest.unstable_mockModule('child_process', () => ({
   spawn: spawnMock,
-  spawnSync: jest.fn(),
+  spawnSync: spawnSyncMock,
 }));
 // Isolate this surface unit from the engine: cliSurface uses only
 // segment_pipeThrough from brasa at runtime (the rest are erased types).
@@ -126,5 +127,43 @@ describe('persistent prompting (REPL interface)', () => {
     expect(original).toHaveBeenCalledWith('after');
     expect(writeSpy).toHaveBeenCalledWith('Password: ');
     expect(answer).toBe('secret');
+  });
+});
+
+describe('local editing', () => {
+  it('returns unchanged content when the editor leaves the file alone', async () => {
+    const surface = cliSurface_create();
+    const result = await surface.localEdit({ content: 'original text', extension: '.md' });
+    expect(spawnSyncMock).toHaveBeenCalled();
+    const [, editorArgs] = spawnSyncMock.mock.calls[0] as [string, string[]];
+    expect(editorArgs[0]).toContain('chell-edit-');
+    expect(editorArgs[0]).toContain('.md');
+    expect(result).toEqual({ content: 'original text', changed: false });
+  });
+
+  it('returns the edited content with changed=true when the editor modifies it', async () => {
+    const fs = await import('fs');
+    spawnSyncMock.mockImplementationOnce((_editor: string, args: string[]) => {
+      fs.writeFileSync(args[0], 'edited text', 'utf8');
+      return { error: undefined };
+    });
+    const surface = cliSurface_create();
+    const result = await surface.localEdit({ content: 'original text', extension: undefined });
+    expect(result).toEqual({ content: 'edited text', changed: true });
+  });
+
+  it('throws when the editor fails to launch, still cleaning the temp file', async () => {
+    spawnSyncMock.mockImplementationOnce(() => ({ error: new Error('ENOENT') }));
+    const surface = cliSurface_create();
+    // The launch failure surfaces synchronously from the surface call.
+    expect(() => surface.localEdit({ content: 'x', extension: '.txt' }))
+      .toThrow('failed to launch');
+  });
+
+  it('defaults the temp extension to .txt', async () => {
+    const surface = cliSurface_create();
+    await surface.localEdit({ content: 'x', extension: '' });
+    const [, editorArgs] = spawnSyncMock.mock.calls[0] as [string, string[]];
+    expect(editorArgs[0]).toContain('.txt');
   });
 });

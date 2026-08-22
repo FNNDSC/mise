@@ -78,12 +78,16 @@ export function cpSrc_parse(src: string): Result<{ studyUID: string; seriesUID?:
   const absolutePath: string = src.startsWith("/") ? src : "/" + src;
   const parts: string[] = absolutePath.split("/").filter(Boolean);
 
-  if (parts.length < 4) {
+  // Locate the query folder by its `_qid:` marker rather than by position:
+  // real listing paths are /net/pacs/queries/<qfolder>/Study_/Series_, and a
+  // fixed-offset parse silently rejected every one of them.
+  const queryIdx: number = parts.findIndex((part: string): boolean => /_qid:\d+/.test(part));
+  if (queryIdx === -1 || parts.length < queryIdx + 2) {
     errorStack.stack_push("error", `cp: Copying from '${src}' is not supported. Please specify a Study or Series directory.`);
     return Err();
   }
 
-  const studyFolder: string = parts[3];
+  const studyFolder: string = parts[queryIdx + 1];
   if (!studyFolder.startsWith("Study_")) {
     errorStack.stack_push("error", `cp: Invalid PACS Study folder format: '${studyFolder}'`);
     return Err();
@@ -92,11 +96,11 @@ export function cpSrc_parse(src: string): Result<{ studyUID: string; seriesUID?:
   const studyUID: string = studyFolder.replace(/^Study_/, "").split("_")[0];
 
   let seriesUID: string | undefined;
-  if (parts.length >= 5 && parts[4].startsWith("Series_")) {
-    seriesUID = parts[4].replace(/^Series_/, "").split("_")[0];
+  if (parts.length >= queryIdx + 3 && parts[queryIdx + 2].startsWith("Series_")) {
+    seriesUID = parts[queryIdx + 2].replace(/^Series_/, "").split("_")[0];
   }
 
-  const queryId: number = queryId_extractFromFolder(parts[2]);
+  const queryId: number = queryId_extractFromFolder(parts[queryIdx]);
   if (Number.isNaN(queryId)) {
     errorStack.stack_push("error", `cp: Invalid query ID in path '${src}'`);
     return Err();

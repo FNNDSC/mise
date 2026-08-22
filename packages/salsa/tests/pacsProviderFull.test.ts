@@ -21,6 +21,17 @@ jest.mock('@fnndsc/cumin', () => ({
   chrisContext: { current_get: mockCtxGet },
 }));
 jest.mock('../src/pacs/index', () => mockPacs);
+const mockEngine = {
+  retrieveTask_make: jest.fn((info: Record<string, unknown>) => ({
+    ...info,
+    syntheticQueryId: null, retrieveId: null, status: 'pending',
+    actualFiles: 0, lastProgressFiles: 0, lastProgressTime: 0, startTime: 0,
+    lonkConfirmed: false, cubePathDir: null,
+  })),
+  retrieveTasks_skipComplete: jest.fn(),
+  retrieve_fireAndWatch: jest.fn(),
+};
+jest.mock('../src/retrieve/watch', () => mockEngine);
 jest.mock('../src/files/index', () => ({ files_copyRecursively: mockCopyRecursively }));
 jest.mock('../src/vfs/providers/pacs_content', () => mockContent);
 
@@ -196,28 +207,56 @@ describe('cp early exits', () => {
   });
 });
 
-describe('cp success (fake timers through the poll loop)', () => {
-  it('retrieves a series and copies it to the destination', async () => {
-    jest.useFakeTimers();
+describe('cp success (through the shared retrieve engine)', () => {
+  it('retrieves a series via the engine and copies it to the destination', async () => {
     mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
     mockCtxGet.mockResolvedValue('srv1'); // PACS server from context
-    mockPacs.pacsQueries_create.mockResolvedValue(Ok({ id: 99 }));
-    mockPacs.pacsRetrieve_create.mockResolvedValue(Ok({ id: 1 }));
-    mockPacs.pacsRetrieve_statusForQuery.mockResolvedValue(
-      Ok({ retrieveStatus: 'succeeded', studies: [] })
-    );
-    mockClientGet.mockResolvedValue({
-      getPACSSeriesList: jest.fn().mockResolvedValue({
-        getItems: () => [{ data: { folder_path: 'PACS/SE1' } }],
-      }),
+    mockClientGet.mockResolvedValue({});
+    mockEngine.retrieveTasks_skipComplete.mockResolvedValue(0);
+    mockEngine.retrieve_fireAndWatch.mockImplementation(async (tasks: Array<Record<string, unknown>>) => {
+      tasks[0].status = 'pulled';
+      tasks[0].lonkConfirmed = true;
+      tasks[0].cubePathDir = '/PACS/SE1';
+      return 0;
     });
     mockCopyRecursively.mockResolvedValue(true);
 
-    const p = provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never);
-    await jest.advanceTimersByTimeAsync(5000); // clear the 5s poll delay
-    expect(await p).toBe(true);
+    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(true);
+    expect(mockEngine.retrieve_fireAndWatch).toHaveBeenCalled();
     expect(mockCopyRecursively).toHaveBeenCalledWith('/PACS/SE1', '/dest/Series_SE1_Axial');
-    jest.useRealTimers();
+  });
+
+  it('parses real listing paths (with the /queries/ segment) for cp', async () => {
+    // Regression: cpSrc_parse once assumed /net/pacs/<qfolder>/Study_..., so
+    // every real path (/net/pacs/queries/<qfolder>/...) was rejected as an
+    // invalid study folder and PACS cp never worked outside tests.
+    mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
+    mockCtxGet.mockResolvedValue('srv1');
+    mockClientGet.mockResolvedValue({});
+    mockEngine.retrieveTasks_skipComplete.mockImplementation(async (tasks: Array<Record<string, unknown>>) => {
+      tasks[0].status = 'pulled';
+      tasks[0].cubePathDir = '/PACS/SE1';
+      return 1;
+    });
+    mockCopyRecursively.mockResolvedValue(true);
+
+    expect(await provider.cp('/net/pacs/queries/q_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(true);
+    expect(mockCopyRecursively).toHaveBeenCalledWith('/PACS/SE1', '/dest/Series_SE1_Axial');
+  });
+
+  it('skips the watch entirely when the series is already registered', async () => {
+    mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
+    mockCtxGet.mockResolvedValue('srv1');
+    mockClientGet.mockResolvedValue({});
+    mockEngine.retrieveTasks_skipComplete.mockImplementation(async (tasks: Array<Record<string, unknown>>) => {
+      tasks[0].status = 'pulled';
+      tasks[0].cubePathDir = '/PACS/SE1';
+      return 1;
+    });
+    mockCopyRecursively.mockResolvedValue(true);
+
+    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(true);
+    expect(mockEngine.retrieve_fireAndWatch).not.toHaveBeenCalled();
   });
 });
 
@@ -226,14 +265,12 @@ describe('pacsServer_resolve fallback', () => {
     mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
     mockCtxGet.mockResolvedValue(null);
     mockPacs.pacsServers_list.mockResolvedValue(Ok([{ id: 7 }]));
-    mockPacs.pacsQueries_create.mockResolvedValue(Err()); // stop after server resolve
+    mockClientGet.mockResolvedValue({});
+    mockEngine.retrieveTasks_skipComplete.mockResolvedValue(0);
+    mockEngine.retrieve_fireAndWatch.mockResolvedValue(1); // firing failed
 
-    jest.useFakeTimers();
-    const p = provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never);
-    await jest.advanceTimersByTimeAsync(0);
-    // query create fails -> series copy fails -> overall false, but server WAS resolved
-    expect(await p).toBe(false);
+    // firing fails -> series copy fails -> overall false, but server WAS resolved
+    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(false);
     expect(mockPacs.pacsServers_list).toHaveBeenCalled();
-    jest.useRealTimers();
   });
 });

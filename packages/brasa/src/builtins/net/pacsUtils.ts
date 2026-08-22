@@ -6,7 +6,8 @@
  * @module
  */
 
-import { errorStack, pacsQuery_resultDecode, pacsServers_list, chrisContext, Context } from '@fnndsc/cumin';
+import { errorStack, pacsQuery_resultDecode, pacsServers_list, chrisContext, Context, seriesStorage_resolve } from '@fnndsc/cumin';
+import { queryId_extractFromFolder } from '@fnndsc/salsa';
 
 /**
  * Minimal series info collected from a decoded PACS query result.
@@ -120,8 +121,7 @@ export async function pacs_seriesCollect(
   }
 
   const queryFolder: string = parts[3];
-  const qidMatch: RegExpExecArray | null = /_qid:(\d+)/.exec(queryFolder);
-  const queryId: number = qidMatch ? Number(qidMatch[1]) : NaN;
+  const queryId: number = queryId_extractFromFolder(queryFolder);
   if (Number.isNaN(queryId)) {
     errorStack.stack_push('error', `${callerTag}: Cannot parse query ID from: ${queryFolder}`);
     return [];
@@ -204,48 +204,23 @@ export async function pacs_seriesCollect(
 /**
  * Resolves the CUBE FS folder path and actual file count for a series.
  *
- * Retries up to `maxAttempts` times with `retryDelayMs` between attempts
- * to handle the timing gap between LONK completion and pacsseries DB indexing.
+ * Thin compatibility wrapper over cumin's `seriesStorage_resolve`, the one
+ * series-storage resolver; the client parameter is retained for signature
+ * stability but unused, since the resolver holds its own connection.
  *
  * @param seriesUID - DICOM SeriesInstanceUID.
- * @param pacsClient - ChRIS API client with getPACSSeriesList and getPACSFiles.
+ * @param _pacsClient - Unused; kept for call-site compatibility.
  * @param maxAttempts - Number of attempts before giving up (default 4).
  * @param retryDelayMs - Delay between attempts in ms (default 2000).
  * @returns SeriesCubePath on success, or null if not found.
  */
 export async function series_cubePathGet(
   seriesUID: string,
-  pacsClient: ChRISPACSClient,
+  _pacsClient: ChRISPACSClient,
   maxAttempts: number = 4,
   retryDelayMs: number = 2_000,
 ): Promise<SeriesCubePath | null> {
-  const sleep = (ms: number): Promise<void> => new Promise((r: (v: void) => void) => setTimeout(r, ms));
-
-  for (let attempt: number = 0; attempt < maxAttempts; attempt++) {
-    try {
-      if (attempt > 0) await sleep(retryDelayMs);
-
-      const seriesList: { getItems(): Array<unknown>; totalCount: number } =
-        await pacsClient.getPACSSeriesList({ SeriesInstanceUID: seriesUID, limit: 1 });
-      const items: Array<unknown> = seriesList.getItems();
-      if (items.length === 0) continue;
-
-      const series: { data?: { folder_path?: string } } = items[0] as { data?: { folder_path?: string } };
-      const raw: string | undefined = series?.data?.folder_path;
-      if (!raw) continue;
-      // Display path has leading slash; fname query uses raw (API stores without leading slash)
-      const folderPath: string = raw.startsWith('/') ? raw : `/${raw}`;
-      const fnameQuery: string = raw.startsWith('/') ? raw.slice(1) : raw;
-
-      const fileList: { getItems(): Array<unknown>; totalCount: number } =
-        await pacsClient.getPACSFiles({ fname: fnameQuery, limit: 1 });
-      const fileCount: number = Math.max(0, fileList.totalCount);
-
-      return { folderPath, fileCount };
-    } catch {
-      // retry
-    }
-  }
-
-  return null;
+  const stateResult = await seriesStorage_resolve(seriesUID, { attempts: maxAttempts, delayMs: retryDelayMs });
+  if (!stateResult.ok || stateResult.value.folderPath === null) return null;
+  return { folderPath: stateResult.value.folderPath, fileCount: stateResult.value.fileCount };
 }

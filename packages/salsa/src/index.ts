@@ -11,6 +11,7 @@ export * from './context/index.js';
 export * from './store/index.js';
 export * from './pipelines/index.js';
 export * from './pacs/index.js';
+export * from './retrieve/watch.js';
 export * from './vfs/index.js';
 export * from './tags/index.js';
 export * from './groups/index.js';

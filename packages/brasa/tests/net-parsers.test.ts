@@ -3,6 +3,7 @@ import { jest, describe, it, expect } from '@jest/globals';
 // query.ts / pacsUtils.ts pull cumin + chili at module load; the pure parsers
 // under test use none of it, so stub the boundary just enough to import them.
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_pop: jest.fn(), stack_push: jest.fn() },

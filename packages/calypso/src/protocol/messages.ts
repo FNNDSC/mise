@@ -69,6 +69,13 @@ export const promptAnswerMessageSchema = z.object({
   answer: z.string(),
 });
 
+/** Reports a prompt failure to the daemon (surface cannot or did not answer), correlated by `promptId`. */
+export const promptErrorMessageSchema = z.object({
+  type: z.literal('promptError'),
+  promptId: z.string(),
+  reason: z.string(),
+});
+
 /** Returns the output of a pipeline segment the daemon asked the surface to run, correlated by `pipeId`. */
 export const pipeResultMessageSchema = z.object({
   type: z.literal('pipeResult'),
@@ -105,6 +112,13 @@ export const editResultMessageSchema = z.object({
   changed: z.boolean(),
 });
 
+/** Reports a local-edit failure to the daemon, correlated by `editId`. */
+export const editErrorMessageSchema = z.object({
+  type: z.literal('editError'),
+  editId: z.string(),
+  reason: z.string(),
+});
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
@@ -112,11 +126,13 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   cancelMessageSchema,
   completeRequestSchema,
   promptAnswerMessageSchema,
+  promptErrorMessageSchema,
   pipeResultMessageSchema,
   pipeErrorMessageSchema,
   shellResultMessageSchema,
   shellErrorMessageSchema,
   editResultMessageSchema,
+  editErrorMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */

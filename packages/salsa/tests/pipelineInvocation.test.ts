@@ -350,3 +350,103 @@ describe('pipelineInvocation_prepare', () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe('parameter-file structural assertions', () => {
+  /** Two-node manifest: root 'segment' (@1) with child 'convert' (@2). */
+  const manifest_make = () => ({
+    pipelineID: 9,
+    name: 'pipe',
+    rootIDs: [1],
+    nodes: [
+      {
+        pipingID: 1, title: 'segment', pluginName: 'pl-seg', pluginVersion: '1.0',
+        parentID: null, computeResourceName: 'host', computeResources: ['host', 'gpu'],
+        cpuLimit: 1, memoryLimit: '1Gi', gpuLimit: 0, numberOfWorkers: 1,
+        parameterDefaults: [], parameterDefinitions: [],
+      },
+      {
+        pipingID: 2, title: 'convert', pluginName: 'pl-conv', pluginVersion: '2.0',
+        parentID: 1, computeResourceName: 'host', computeResources: ['host'],
+        cpuLimit: 1, memoryLimit: '1Gi', gpuLimit: 0, numberOfWorkers: 1,
+        parameterDefaults: [], parameterDefinitions: [],
+      },
+    ],
+  });
+  const prep = (parameterFile: unknown) =>
+    pipelineInvocation_prepare({ manifest: manifest_make(), parameterFile: parameterFile as never });
+
+  it('rejects a root_index that contradicts the registered pipeline', () => {
+    expect(prep({ plugin_tree: { root_index: 1, tree: [] } }).ok).toBe(false);
+  });
+
+  it('rejects a plugin_tree without a tree array', () => {
+    expect(prep({ plugin_tree: { tree: 'nope' } }).ok).toBe(false);
+  });
+
+  it('rejects a non-mapping node entry', () => {
+    expect(prep({ plugin_tree: { tree: ['not-a-node'] } }).ok).toBe(false);
+  });
+
+  it('rejects an unknown piping id and an unknown title selector', () => {
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 99 }] } }).ok).toBe(false);
+    expect(prep({ plugin_tree: { tree: [{ title: 'ghost' }] } }).ok).toBe(false);
+  });
+
+  it('resolves nodes by piping id and validates identity assertions', () => {
+    const ok = prep({ plugin_tree: { tree: [{
+      piping_id: 2, title: 'convert', plugin_name: 'pl-conv', plugin_version: '2.0',
+    }] } });
+    expect(ok.ok).toBe(true);
+
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 2, title: 'wrong' }] } }).ok).toBe(false);
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 2, plugin_name: 'pl-wrong' }] } }).ok).toBe(false);
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 2, plugin_version: '9.9' }] } }).ok).toBe(false);
+  });
+
+  it('validates child_indices against the registered topology', () => {
+    // Root's only child is manifest index 1.
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 1, child_indices: [1] }] } }).ok).toBe(true);
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 1, child_indices: [0] }] } }).ok).toBe(false);
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 1, child_indices: 'x' }] } }).ok).toBe(false);
+  });
+
+  it('applies valid execution-field overrides and rejects invalid ones', () => {
+    const ok = prep({ plugin_tree: { tree: [{
+      piping_id: 1,
+      compute_resource_name: 'gpu',
+      cpu_limit: 4,
+      memory_limit: '8Gi',
+      gpu_limit: 1,
+      number_of_workers: 2,
+    }] } });
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      const node = ok.value.nodeOverrides.find(
+        (n) => n.piping_id === 1,
+      ) as unknown as Record<string, unknown>;
+      expect(node.compute_resource_name).toBe('gpu');
+      expect(node.gpu_limit).toBe(1);
+      expect(node.number_of_workers).toBe(2);
+    }
+
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 1, compute_resource_name: '  ' }] } }).ok).toBe(false);
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 1, gpu_limit: -1 }] } }).ok).toBe(false);
+    expect(prep({ plugin_tree: { tree: [{ piping_id: 1, number_of_workers: 1.5 }] } }).ok).toBe(false);
+  });
+
+  it('rejects a duplicate binding for the same node and field', () => {
+    expect(prep({ plugin_tree: { tree: [
+      { piping_id: 1, cpu_limit: 2 },
+      { piping_id: 1, cpu_limit: 3 },
+    ] } }).ok).toBe(false);
+  });
+
+  it('rejects an ambiguous title selector when two nodes share a title', () => {
+    const manifest = manifest_make();
+    manifest.nodes[1].title = 'segment';
+    expect(pipelineInvocation_prepare({
+      manifest,
+      parameterFile: { plugin_tree: { tree: [{ title: 'segment' }] } } as never,
+    }).ok).toBe(false);
+  });
+});

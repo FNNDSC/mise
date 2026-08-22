@@ -8,7 +8,7 @@ jest.mock('../src/resources/chrisEmbeddedResourceGroup', () => ({
 }));
 
 import { ChRISEmbeddedResourceGroup } from '../src/resources/chrisEmbeddedResourceGroup';
-import { objContext_create } from '../src/resources/chrisObjContext';
+import { objContext_create, objContext_evict } from '../src/resources/chrisObjContext';
 import { errorStack } from '../src/error/errorStack';
 
 const mockCreate: jest.Mock = ChRISEmbeddedResourceGroup.create as unknown as jest.Mock;
@@ -47,6 +47,14 @@ describe('objContext_create', () => {
     mockCreate.mockResolvedValue({ bound: true });
     await objContext_create('ChRISFilesContext', 'folder:/home/chris');
     await objContext_create('ChRISFilesContext', 'folder:/home/chris');
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-creates a stable-id context after eviction', async () => {
+    mockCreate.mockResolvedValue({ bound: true });
+    await objContext_create('InstancesOfPlugin', 'plugin:9');
+    objContext_evict('InstancesOfPlugin', 'plugin:9');
+    await objContext_create('InstancesOfPlugin', 'plugin:9');
     expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 

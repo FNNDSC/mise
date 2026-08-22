@@ -319,8 +319,21 @@ export class PacsVfsProvider implements VFSProvider {
   /** Prefix matches /net/pacs and subdirectories. */
   prefix = "/net/pacs";
 
-  /** Cache for decoded PACS query results to avoid redundant API hits. */
+  /**
+   * Cache for decoded PACS query results to avoid redundant API hits.
+   *
+   * Contract (see docs/code-audit-2026-08.adoc, cache inventory): only a
+   * settled result — one carrying a structured `json` payload — is cached,
+   * since a query's payload is written once and never mutates afterwards; a
+   * payload-less decode (query still running, or empty) is re-fetched on the
+   * next access. The cache is size-bounded so a long-lived daemon does not
+   * grow it monotonically; eviction is oldest-inserted-first, which for
+   * monotonically increasing query ids approximates least-recently-created.
+   */
   private _queryCache: Map<number, PACSQueryDecodedResult> = new Map<number, PACSQueryDecodedResult>();
+
+  /** Upper bound on cached decoded query results. */
+  private static readonly QUERY_CACHE_MAX: number = 100;
 
   /**
    * Fetches the decoded query result, leveraging a cache to prevent redundant API calls.
@@ -339,7 +352,16 @@ export class PacsVfsProvider implements VFSProvider {
       return null;
     }
 
-    this._queryCache.set(queryId, decodedResult.value);
+    // Cache settled results only: a decode without a structured payload may
+    // be a still-running query whose payload arrives later, and caching it
+    // would pin the empty view for the life of the process.
+    if (decodedResult.value.json !== undefined && decodedResult.value.json !== null) {
+      if (this._queryCache.size >= PacsVfsProvider.QUERY_CACHE_MAX) {
+        const oldest: number | undefined = this._queryCache.keys().next().value;
+        if (oldest !== undefined) this._queryCache.delete(oldest);
+      }
+      this._queryCache.set(queryId, decodedResult.value);
+    }
     return decodedResult.value;
   }
 
@@ -384,7 +406,12 @@ export class PacsVfsProvider implements VFSProvider {
 
       const studyUID: string = parts[4].replace(/^Study_/, "").split("_")[0];
       const studyObj: Record<string, unknown> | undefined = study_findByUID(studies, studyUID);
-      if (!studyObj) return Ok([]);
+      // A missing UID is "no such directory", never an empty one: rendering
+      // not-found as an empty listing hides typos and stale paths entirely.
+      if (!studyObj) {
+        errorStack.stack_push("error", `'${effectivePath}': No such study in query ${queryId}. Use 'ls' on the query directory to see available studies.`);
+        return Err();
+      }
 
       const seriesArr: Record<string, unknown>[] = series_extractFromStudy(studyObj);
 
@@ -393,7 +420,10 @@ export class PacsVfsProvider implements VFSProvider {
       if (parts.length === 6) {
         const seriesUID: string = parts[5].replace(/^Series_/, "").split("_")[0];
         const seriesObj: Record<string, unknown> | undefined = series_findByUID(seriesArr, seriesUID);
-        if (!seriesObj) return Ok([]);
+        if (!seriesObj) {
+          errorStack.stack_push("error", `'${effectivePath}': No such series in study ${studyUID}.`);
+          return Err();
+        }
         return seriesFiles_list(seriesObj);
       }
 

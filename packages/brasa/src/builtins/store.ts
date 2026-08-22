@@ -8,7 +8,8 @@ import { store_listPlugins, store_searchPlugins } from '@fnndsc/chili/commands/s
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { spinner } from '../lib/spinner.js';
 import { plugin_addInteractive } from './res/plugin.js';
-import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { type CommandEnvelope, envelope_ok, envelope_error, errorStack, type Result } from '@fnndsc/cumin';
+import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 import {
   DEFAULT_STORE_URL,
   storeUrl_get,
@@ -17,6 +18,20 @@ import {
   storeUrl_clear,
   storeConfig_persist,
 } from '../config/storeConfig.js';
+
+/**
+ * Renders a store fetch failure as an error envelope, draining the reason the
+ * fetch pushed onto the error stack.
+ *
+ * @param fallback - Message used when the stack holds no detail.
+ * @returns An error envelope with the failure on the err channel.
+ */
+function storeFailure_envelope(fallback: string): CommandEnvelope {
+  const lastError = errorStack.stack_pop();
+  const detail: string = lastError ? lastError.message : fallback;
+  process.exitCode = 1;
+  return envelope_error('', undefined, `${chalk.red(detail)}\n`);
+}
 
 /**
  * Handles store commands.
@@ -40,9 +55,13 @@ export async function builtin_store(args: string[]): Promise<CommandEnvelope> {
     spinner.start('Fetching from store...');
 
     if (subcommand === 'list') {
-       const items = await store_listPlugins(storeOptions);
+       const listResult: Result<ListingItem[]> = await store_listPlugins(storeOptions);
        spinner.stop();
 
+       if (!listResult.ok) {
+         return storeFailure_envelope('store list failed');
+       }
+       const items: ListingItem[] = listResult.value;
        if (items.length === 0) {
          return envelope_ok('No plugins found in store.\n');
        }
@@ -57,9 +76,13 @@ export async function builtin_store(args: string[]): Promise<CommandEnvelope> {
           return envelope_ok(`${chalk.red("Usage: store search <query>")}\n`);
        }
 
-       const items = await store_searchPlugins(query, storeOptions);
+       const searchResult: Result<ListingItem[]> = await store_searchPlugins(query, storeOptions);
        spinner.stop();
 
+       if (!searchResult.ok) {
+         return storeFailure_envelope(`store search failed for '${query}'`);
+       }
+       const items: ListingItem[] = searchResult.value;
        if (items.length === 0) {
          return envelope_ok(`No plugins found matching '${query}'.\n`);
        }

@@ -80,15 +80,24 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
+  let anyFailed: boolean = false;
   for (const target of targets) {
     const envelope: CommandEnvelope = await vfs.list(target, options);
     rendered += envelope.rendered;
     if (envelope.renderedErr !== undefined) {
       renderedErr += envelope.renderedErr;
     }
+    if (envelope.status === 'error') {
+      anyFailed = true;
+    }
   }
 
-  const result: CommandEnvelope = { status: 'ok', rendered };
+  // A failed listing is a failed command: aggregating error envelopes into an
+  // ok status would let `ls missing-dir` exit 0.
+  if (anyFailed) {
+    process.exitCode = 1;
+  }
+  const result: CommandEnvelope = { status: anyFailed ? 'error' : 'ok', rendered };
   if (renderedErr.length > 0) {
     result.renderedErr = renderedErr;
   }

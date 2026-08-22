@@ -138,7 +138,8 @@ async function listingItems_enrichTitles(items: ListingItem[]): Promise<void> {
           }
         }
       } catch (e: unknown) {
-        // Silently ignore errors
+        // Deliberate absorption: titles are cosmetic enrichment of a listing
+        // that already rendered; a lookup failure degrades to the raw name.
       }
       return;
     }
@@ -158,7 +159,8 @@ async function listingItems_enrichTitles(items: ListingItem[]): Promise<void> {
           }
         }
       } catch (e: unknown) {
-        // Silently ignore errors
+        // Deliberate absorption: same cosmetic-enrichment rationale as the
+        // feed-title lookup above.
       }
       return;
     }

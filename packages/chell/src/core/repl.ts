@@ -63,6 +63,9 @@ export class REPL {
       completer: (line: string, callback: (err: Error | null, result: [string[], string]) => void): void => {
         this.engine.line_complete(line)
           .then((result: CompletionResult) => callback(null, [result.candidates, result.prefix]))
+          // Deliberate absorption, adjudicated 2026-08: a completion failure
+          // degrades to no candidates; surfacing it would corrupt the
+          // readline display mid-keystroke.
           .catch(() => callback(null, [[], line]));
       },
     });

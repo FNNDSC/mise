@@ -20,7 +20,7 @@ import {
 import chalk from "chalk";
 // import Table from "cli-table3";
 import { screen, border_draw, table_display, TableDataRow } from "../screen/screen.js";
-import { chiliLog } from "../screen/output.js";
+import { chiliLog, chiliErrLog } from "../screen/output.js";
 
 /** A single context key/value row for tabular display. */
 interface ContextRow {
@@ -203,8 +203,10 @@ async function context_displaySingle(options: ContextOptions): Promise<string> {
 async function context_set(options: ContextOptions): Promise<string> {
   const result = await salsa_context_set(options);
   if (!result.ok) {
+    // border_draw only builds the string; it must be printed to reach the
+    // user, otherwise the failure vanishes and context_set looks like a noop.
     const errors: string[] = errorStack.allOfType_get('error');
-    border_draw(chalk.red(`ERROR: ${errors.join('\n')}`));
+    chiliErrLog(border_draw(chalk.red(`ERROR: ${errors.join('\n')}`)));
     return "";
   }
   if (result.value.length === 0) {

@@ -18,7 +18,7 @@ import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
 import { session } from '@fnndsc/brasa';
-import { Result, Ok, Err, Client } from '@fnndsc/cumin';
+import { Result, Ok, Err, Client, type CommandEnvelope } from '@fnndsc/cumin';
 import { spinner } from '@fnndsc/brasa';
 import { logo_print, logo_animatePulse, logo_animateStop } from '../lib/logo.js';
 import {
@@ -539,8 +539,11 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     if (config.stopOnError) {
       stopOnError_set(true);
     }
-    await surfaceLine_execute(engine, config.commandToExecute);
-    process.exit(process.exitCode ?? 0);
+    const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, config.commandToExecute);
+    // An error envelope means the command failed, whether or not the builtin
+    // set an exit code itself; scripts must never see failure exit 0.
+    const anyError: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error');
+    process.exit(process.exitCode || (anyError ? 1 : 0));
   }
 
   // --- Script Mode ---

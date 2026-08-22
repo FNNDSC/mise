@@ -17,6 +17,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   pacsQuery_get: mockQueryGet,
   pacsQuery_resultDecode: mockDecode,
   pacsQueries_create: mockCreate,
+  listCache_get: () => ({ cache_invalidate: jest.fn(), cache_invalidateTree: jest.fn() }),
   pacsServers_list: mockServersList,
 }));
 

@@ -144,6 +144,25 @@ describe('cp', () => {
     expect(await d.cp('/net/pacs/queries/q1', '/home/chris', {} as never)).toBe(true);
     expect(providerFns.pacsCp).toHaveBeenCalledWith('/net/pacs/queries/q1', '/home/chris', {});
   });
+
+  it('fails the copy when path resolution throws, never guessing a path', async () => {
+    providerFns.nativeCp.mockResolvedValue(true);
+    const d: VFSDispatcher = new VFSDispatcher();
+    d.pathResolver_register(async () => { throw new Error('no map'); });
+    expect(await d.cp('/a', '/b', {} as never)).toBe(false);
+    expect(providerFns.nativeCp).not.toHaveBeenCalled();
+  });
+
+  it('fails the copy when only the destination fails to resolve', async () => {
+    providerFns.nativeCp.mockResolvedValue(true);
+    const d: VFSDispatcher = new VFSDispatcher();
+    d.pathResolver_register(async (p: string) => {
+      if (p === '/b') throw new Error('no map');
+      return `/r${p}`;
+    });
+    expect(await d.cp('/a', '/b', {} as never)).toBe(false);
+    expect(providerFns.nativeCp).not.toHaveBeenCalled();
+  });
 });
 
 describe('read and readBinary', () => {

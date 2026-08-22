@@ -17,6 +17,7 @@ import {
 } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { connectionConfig } from "../config/config.js";
+import { errorStack } from "../error/errorStack.js";
 
 /**
  * ListResource with pagination support (hasNext property exists at runtime).
@@ -156,6 +157,7 @@ export class ChRISResource {
    */
   async resourceItem_delete(id: number): Promise<boolean> {
     if (!resource_isList(this._resourceCollection)) {
+      errorStack.stack_push("error", `Cannot delete item ${id}: no list collection loaded.`);
       return false;
     }
     const res: ItemResource = this._resourceCollection?.getItem(id) as ItemResource;
@@ -163,6 +165,8 @@ export class ChRISResource {
       await res._delete();
       return true;
     } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      errorStack.stack_push("error", `Failed to delete item ${id}: ${msg}`);
       return false;
     }
   }

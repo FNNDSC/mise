@@ -67,8 +67,13 @@ export class NativeVfsProvider implements VFSProvider {
           settled.status === "rejected" || !settled.value?.tableData
       );
       if (noneSucceeded && resolvedPath !== "/") {
-        const dirExists: boolean = await path_checkIsDir(resolvedPath);
-        if (!dirExists) {
+        const dirExists: Result<boolean> = await path_checkIsDir(resolvedPath);
+        if (!dirExists.ok) {
+          // The probe itself failed: report the verification failure rather
+          // than claiming the folder is absent.
+          return Err();
+        }
+        if (!dirExists.value) {
           errorStack.stack_push(
             "error",
             `Cannot list ${resolvedPath}: No such file or directory`
@@ -142,8 +147,11 @@ export class NativeVfsProvider implements VFSProvider {
    */
   async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
     try {
-      const srcIsDir: boolean = await path_checkIsDir(src);
-      if (srcIsDir && !options.recursive) {
+      const srcIsDir: Result<boolean> = await path_checkIsDir(src);
+      if (!srcIsDir.ok) {
+        return false;
+      }
+      if (srcIsDir.value && !options.recursive) {
         errorStack.stack_push(
           "error",
           `Source is a directory. Re-run with --recursive to copy: ${src}`
@@ -151,9 +159,12 @@ export class NativeVfsProvider implements VFSProvider {
         return false;
       }
 
-      const destIsDir: boolean = await path_checkIsDir(dest);
+      const destIsDir: Result<boolean> = await path_checkIsDir(dest);
+      if (!destIsDir.ok) {
+        return false;
+      }
       const destLooksDir: boolean = dest.endsWith("/");
-      const finalDest = (destIsDir || destLooksDir)
+      const finalDest = (destIsDir.value || destLooksDir)
         ? path.posix.join(dest, path.posix.basename(src))
         : dest;
 
@@ -173,18 +184,25 @@ export class NativeVfsProvider implements VFSProvider {
 /**
  * Determines whether a given ChRIS path refers to a directory.
  *
+ * Distinguishes "verified absent" from "could not verify": a listing failure
+ * while probing must not masquerade as a missing directory, since callers use
+ * this probe to decide between not-found errors and real operations.
+ *
  * @param targetPath - The absolute ChRIS path to check.
- * @returns Promise<boolean> indicating directory existence.
+ * @returns Ok(true/false) when the parent listing answered, Err when the
+ *   probe itself failed (an error has been pushed to the stack).
  */
-async function path_checkIsDir(targetPath: string): Promise<boolean> {
+async function path_checkIsDir(targetPath: string): Promise<Result<boolean>> {
   const parent: string = path.posix.dirname(targetPath);
   const name: string = path.posix.basename(targetPath);
   try {
     const results = await files_listAll({ limit: 1000, offset: 0 }, "dirs", parent);
     if (!results || !results.tableData) {
-      return false;
+      // files_listAll returns null for both an empty parent and a failed
+      // context: an empty parent simply has no dirs, so absent is the answer.
+      return Ok(false);
     }
-    return results.tableData.some((entry: Record<string, unknown>) => {
+    const found: boolean = results.tableData.some((entry: Record<string, unknown>) => {
       const candidate: string =
         typeof entry.path === "string" && entry.path.length > 0
           ? entry.path
@@ -193,8 +211,11 @@ async function path_checkIsDir(targetPath: string): Promise<boolean> {
             : "";
       return candidate === targetPath || path.posix.basename(candidate) === name;
     });
-  } catch {
-    return false;
+    return Ok(found);
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Cannot verify directory ${targetPath}: ${msg}`);
+    return Err();
   }
 }
 

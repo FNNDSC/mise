@@ -11,6 +11,7 @@
  * @module
  */
 import { WebSocket } from 'ws';
+import chalk from 'chalk';
 import { serverMessage_parse, CONTRACT_VERSION, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
@@ -206,6 +207,10 @@ export class RemoteEngine implements BrasaEngine {
   private message_handle(payload: Buffer): void {
     const parsed = serverMessage_parse(safeJson_parse(payload.toString()));
     if (!parsed.ok || parsed.value === undefined) {
+      // An invalid daemon message usually means protocol drift between the
+      // daemon and this client; dropping it silently would leave any
+      // correlated pending request hanging with no explanation.
+      console.error(chalk.yellow(`[!] Ignoring invalid daemon message: ${parsed.ok ? 'empty payload' : (parsed.error ?? 'unparseable')}`));
       return;
     }
     const message: ServerMessage = parsed.value;

@@ -189,7 +189,10 @@ export async function pluginReadme_fetchFromRepository(repoUrl: string): Promise
         };
       }
     } catch (error: unknown) {
-      // Continue to next URL
+      // Deliberate absorption, adjudicated 2026-08: candidate README URLs are
+      // expected to 404 (main vs master, .md vs .rst); each miss falls through
+      // to the next candidate and an all-miss returns null, which callers
+      // render as "no README".
     }
   }
   return null;

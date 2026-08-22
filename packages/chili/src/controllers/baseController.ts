@@ -13,7 +13,8 @@ import {
   QueryHits,
   record_extract,
   listParams_fromOptions,
-  ResourcesByFields
+  ResourcesByFields,
+  errorStack
 } from "@fnndsc/cumin";
 import { CLIoptions } from "../utils/cli.js";
 
@@ -50,9 +51,8 @@ export class BaseController {
         await this.chrisObject.asset.resources_listAndFilterByOptions(params);
       return results;
     } catch (error: unknown) {
-      // Error handling is delegated to the caller or logged to errorStack
-      // For now, we let the errorStack mechanisms in cumin handle internal logging
-      // but we might want to bubble up specific errors.
+      const msg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to list resources: ${msg}`);
       return null;
     }
   }

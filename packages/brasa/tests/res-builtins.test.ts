@@ -294,10 +294,17 @@ describe('builtin_group membership', () => {
 
 describe('builtin_compute', () => {
   it('lists compute resources via computeList_render', async () => {
-    mockComputeList.mockResolvedValue({ resources: [{ id: 1 }] });
+    mockComputeList.mockResolvedValue({ ok: true, value: { resources: [{ id: 1 }] } });
     const envelope = await builtin_compute([]);
     expect(mockComputeRender).toHaveBeenCalled();
     expect(envelope.rendered).toContain('COMPUTE_RENDER');
+  });
+
+  it('surfaces a compute fetch failure as an error envelope', async () => {
+    mockComputeList.mockResolvedValue({ ok: false });
+    const envelope = await builtin_compute(['list']);
+    expect(process.exitCode).toBe(1);
+    expect(envelope.status).toBe('error');
   });
 
   it('reports a listing error with a non-zero exit code', async () => {

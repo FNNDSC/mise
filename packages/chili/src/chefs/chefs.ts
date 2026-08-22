@@ -7,7 +7,7 @@
  * @module
  */
 import { Command } from "commander";
-import { chrisContext, Context, Result } from "@fnndsc/cumin";
+import { chrisContext, Context, Result, errorStack } from "@fnndsc/cumin";
 import { files_list, LsOptions } from '../commands/fs/ls.js';
 import { ListingItem } from '../models/listing.js';
 import { grid_render, long_render } from '../views/ls.js';
@@ -20,7 +20,8 @@ import { files_cp, CpOptions } from '../commands/fs/cp.js';
 import { files_mv, MvOptions } from '../commands/fs/mv.js';
 import { mkdir_render, touch_render, upload_render, cat_render, rm_render, cp_render, mv_render } from '../views/fs.js';
 import { path_resolveChrisFs } from '../utils/cli.js';
-import { chiliLog } from "../screen/output.js";
+import { chiliLog, chiliErrLog } from "../screen/output.js";
+import chalk from "chalk";
 
 /**
  * Lists directory contents.
@@ -127,8 +128,15 @@ async function chefs_pwd(): Promise<void> {
  */
 async function chefs_cat(filePath: string): Promise<void> {
   const result: Result<string> = await files_cat(filePath);
-  const content: string | null = result.ok ? result.value : null;
-  chiliLog(cat_render(content, filePath));
+  if (!result.ok) {
+    // Show the actual failure (auth, network, missing file) rather than the
+    // renderer's one-size-fits-all "cannot display" message.
+    const errors: string[] = errorStack.allOfType_get("error");
+    const detail: string = errors.length > 0 ? errors[errors.length - 1] : `Cannot read ${filePath}`;
+    chiliErrLog(chalk.red(detail));
+    return;
+  }
+  chiliLog(cat_render(result.value, filePath));
 }
 
 /**

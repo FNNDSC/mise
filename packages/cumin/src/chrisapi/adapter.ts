@@ -116,6 +116,9 @@ export async function client_adminUrlEnsure(client: Client): Promise<string | nu
   const slice: { adminUrl?: string; setUrls?: () => Promise<void> } =
     client as unknown as { adminUrl?: string; setUrls?: () => Promise<void> };
   if (!slice.adminUrl && typeof slice.setUrls === 'function') {
+    // Deliberate absorption: setUrls failing and "no admin link" have the
+    // same meaning for this probe (no admin access), and callers surface the
+    // null with their own authorization message.
     await slice.setUrls().catch(() => undefined);
   }
   return slice.adminUrl ?? null;

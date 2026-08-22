@@ -14,7 +14,7 @@ jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 const mockInvalidate = jest.fn();
 const mockStackPop = jest.fn(() => null);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  listCache_get: () => ({ cache_invalidate: mockInvalidate }),
+  listCache_get: () => ({ cache_invalidate: mockInvalidate, cache_invalidateTree: mockInvalidate }),
   errorStack: { stack_pop: mockStackPop },
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },

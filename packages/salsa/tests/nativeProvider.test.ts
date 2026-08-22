@@ -89,6 +89,17 @@ describe('NativeVfsProvider.list', () => {
     expect(r.ok && r.value.map((i) => i.name)).toEqual(['ok.txt']);
   });
 
+  it('errors without a not-found claim when the existence probe itself fails', async () => {
+    // Sub-listings all empty AND the parent probe fails: report verification
+    // failure (Err) rather than asserting the folder is absent.
+    mockListAll.mockImplementation(async (_o: unknown, _asset: string, parent?: string) => {
+      if (parent === '/p') throw new Error('probe down');
+      return null;
+    });
+    const r = await provider.list('/p/ghost');
+    expect(r.ok).toBe(false);
+  });
+
   it('errors when every sub-listing is empty and the folder is absent', async () => {
     // All three asset listings resolve null AND the parent listing does not
     // contain the target: the folder does not exist, so this must be an error
@@ -163,9 +174,12 @@ describe('NativeVfsProvider.cp', () => {
     expect(mockCopy).toHaveBeenCalled();
   });
 
-  it('treats a dir-listing failure as "not a directory"', async () => {
-    mockListAll.mockRejectedValue(new Error('list down')); // path_checkIsDir catch -> false
+  it('fails the copy when the dir probe itself fails', async () => {
+    // A probe failure is "could not verify", not "not a directory": copying
+    // on a guess risks the wrong operation, so cp refuses.
+    mockListAll.mockRejectedValue(new Error('list down'));
     mockCopy.mockResolvedValue(true);
-    expect(await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).toBe(true);
+    expect(await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).toBe(false);
+    expect(mockCopy).not.toHaveBeenCalled();
   });
 });

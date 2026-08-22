@@ -10,7 +10,7 @@
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { CommandEnvelope, envelope_ok, envelope_error, errorStack, type Result } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { computeResources_fetchList, ComputeListResult } from '@fnndsc/chili/commands/compute/list.js';
 import { computeFields_fetch } from '@fnndsc/chili/commands/compute/fields.js';
@@ -29,8 +29,13 @@ export async function builtin_compute(args: string[]): Promise<CommandEnvelope> 
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { resources }: ComputeListResult = await computeResources_fetchList();
-      return envelope_ok(`${computeList_render(resources, { table: !!parsed.table, csv: !!parsed.csv })}\n`);
+      const listResult: Result<ComputeListResult> = await computeResources_fetchList();
+      if (!listResult.ok) {
+        const lastError = errorStack.stack_pop();
+        process.exitCode = 1;
+        return envelope_error('', undefined, `${chalk.red(lastError ? lastError.message : 'compute list failed')}\n`);
+      }
+      return envelope_ok(`${computeList_render(listResult.value.resources, { table: !!parsed.table, csv: !!parsed.csv })}\n`);
     } catch (e: unknown) {
       const msg: string = e instanceof Error ? e.message : String(e);
       process.exitCode = 1;

@@ -6,6 +6,7 @@
  * @module
  */
 import { store_list, store_search } from '@fnndsc/salsa';
+import { Result, Ok, Err } from '@fnndsc/cumin';
 import { ListingItem } from '../../models/listing.js';
 import { CLIoptions } from '../../utils/cli.js';
 
@@ -42,11 +43,12 @@ function storeItem_map(plugin: Record<string, unknown>): ListingItem {
  * Lists plugins from the store.
  *
  * @param options - CLI options.
- * @returns Promise resolving to ListingItem array.
+ * @returns Ok with ListingItem array, or Err when the store fetch failed.
  */
-export async function store_listPlugins(options: StoreOptions): Promise<ListingItem[]> {
-  const plugins: Record<string, unknown>[] = await store_list(options.store);
-  return plugins.map(storeItem_map);
+export async function store_listPlugins(options: StoreOptions): Promise<Result<ListingItem[]>> {
+  const plugins: Result<Record<string, unknown>[]> = await store_list(options.store);
+  if (!plugins.ok) return Err();
+  return Ok(plugins.value.map(storeItem_map));
 }
 
 /**
@@ -54,9 +56,10 @@ export async function store_listPlugins(options: StoreOptions): Promise<ListingI
  *
  * @param query - Search query.
  * @param options - CLI options.
- * @returns Promise resolving to ListingItem array.
+ * @returns Ok with ListingItem array, or Err when the store fetch failed.
  */
-export async function store_searchPlugins(query: string, options: StoreOptions): Promise<ListingItem[]> {
-  const plugins: Record<string, unknown>[] = await store_search(query, options.store);
-  return plugins.map(storeItem_map);
+export async function store_searchPlugins(query: string, options: StoreOptions): Promise<Result<ListingItem[]>> {
+  const plugins: Result<Record<string, unknown>[]> = await store_search(query, options.store);
+  if (!plugins.ok) return Err();
+  return Ok(plugins.value.map(storeItem_map));
 }

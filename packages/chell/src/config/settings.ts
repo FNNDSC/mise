@@ -97,8 +97,15 @@ export async function settings_load(): Promise<void> {
         storeUrl_set(obj.storeUrl);
       }
     }
-  } catch {
-    // No config file yet — use defaults
+  } catch (error: unknown) {
+    // A missing file is the normal first-run state; any other failure
+    // (corrupt JSON, permissions) means the user's settings were silently
+    // NOT applied, which deserves a visible note.
+    const code: string | undefined = (error as NodeJS.ErrnoException)?.code;
+    if (code !== 'ENOENT') {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      console.error(`[!] Could not load settings from ${CONFIG_FILE}: ${msg}. Using defaults.`);
+    }
   }
 }
 
@@ -115,8 +122,11 @@ export async function settings_save(): Promise<void> {
       ...(storeUrl !== undefined ? { storeUrl } : {}),
     };
     await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(data, null, 2) + '\n');
-  } catch {
-    // Silently fail
+  } catch (error: unknown) {
+    // A failed save means the user's change will not survive this session;
+    // saying nothing would let them find out the hard way next boot.
+    const msg: string = error instanceof Error ? error.message : String(error);
+    console.error(`[!] Could not save settings to ${CONFIG_FILE}: ${msg}`);
   }
 }
 

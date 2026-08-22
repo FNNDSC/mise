@@ -66,7 +66,11 @@ export class FileGroupHandler {
     if (!this.controller) {
       try {
         this.controller = await FileController.handler_create(this.assetName, this.path);
-      } catch {
+      } catch (error: unknown) {
+        // The generic "no ChRIS context" message downstream must not eat the
+        // real cause (auth failure, network, bad path).
+        const msg: string = error instanceof Error ? error.message : String(error);
+        errorStack.stack_push("warning", `Could not create file controller for ${this.path ?? "current context"}: ${msg}`);
         this.controller = null;
       }
     }

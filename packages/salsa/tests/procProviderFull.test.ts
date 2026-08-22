@@ -340,6 +340,13 @@ describe('ProcVfsProvider.rm', () => {
     expect(cache.feed_get(5)).toBeUndefined();
   });
 
+  it('fails the feed removal when a job cancel fails, keeping the feed', async () => {
+    mockJobs.jobs_statusBatch.mockResolvedValue(new Map([[10, 'running']]));
+    mockJobs.job_cancel.mockResolvedValue(Err());
+    expect(await provider.rm('/proc/jobs/feed_5')).toBe(false);
+    expect(cache.feed_get(5)).toBeDefined();
+  });
+
   it('cancels a non-terminal instance', async () => {
     mockJobs.job_statusFetch.mockResolvedValue(Ok('running'));
     mockJobs.job_cancel.mockResolvedValue(Ok(true));

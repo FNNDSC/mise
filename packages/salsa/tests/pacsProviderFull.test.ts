@@ -118,10 +118,31 @@ describe('list', () => {
     expect((await provider.list('/net/pacs/queries/q_qid:5')).ok).toBe(false);
   });
 
-  it('returns [] for an unknown study', async () => {
+  it('errors for an unknown study instead of listing it as empty', async () => {
     mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
     const r = await provider.list('/net/pacs/queries/q_qid:5/Study_NOPE_x');
-    expect(r.ok && r.value).toEqual([]);
+    expect(r.ok).toBe(false);
+  });
+
+  it('caches a settled decode but re-fetches a payload-less one', async () => {
+    // Payload-less decode (query still running): not cached, re-fetched.
+    mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok({ json: null }));
+    await provider.list('/net/pacs/queries/q_qid:5');
+    await provider.list('/net/pacs/queries/q_qid:5');
+    expect(mockPacs.pacsQuery_resultDecode).toHaveBeenCalledTimes(2);
+
+    // Settled decode (payload present): cached after first fetch.
+    mockPacs.pacsQuery_resultDecode.mockClear();
+    mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
+    await provider.list('/net/pacs/queries/q_qid:6');
+    await provider.list('/net/pacs/queries/q_qid:6');
+    expect(mockPacs.pacsQuery_resultDecode).toHaveBeenCalledTimes(1);
+  });
+
+  it('errors for an unknown series instead of listing it as empty', async () => {
+    mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
+    const r = await provider.list('/net/pacs/queries/q_qid:5/Study_S1_x/Series_NOPE_y');
+    expect(r.ok).toBe(false);
   });
 
   it('honours sort + reverse options', async () => {

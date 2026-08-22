@@ -621,23 +621,29 @@ export class Screen {
    */
   private title_prepare(title: Title, width: number): string {
     let { title: titleText, justification = "left" } = title;
-    const contentWidth: number = width - 4; // Accounting for border characters
+    // A table narrower than the title must clamp rather than compute negative
+    // pad/repeat counts: String.repeat(-n) throws, which used to replace the
+    // whole table with "Error generating table".
+    const contentWidth: number = Math.max(width - 4, 1); // Accounting for border characters
 
     if (titleText.length > contentWidth) {
-      titleText = titleText.slice(0, contentWidth - 3) + "...";
+      titleText = contentWidth <= 3
+        ? titleText.slice(0, contentWidth)
+        : titleText.slice(0, contentWidth - 3) + "...";
     }
 
     switch (justification) {
       case "right":
         titleText = titleText.padStart(contentWidth);
         break;
-      case "center":
-        const padding: number = Math.floor((contentWidth - titleText.length) / 2);
+      case "center": {
+        const padding: number = Math.max(Math.floor((contentWidth - titleText.length) / 2), 0);
         titleText =
           " ".repeat(padding) +
           titleText +
-          " ".repeat(contentWidth - titleText.length - padding);
+          " ".repeat(Math.max(contentWidth - titleText.length - padding, 0));
         break;
+      }
       case "left":
       default:
         titleText = titleText.padEnd(contentWidth);

@@ -12,13 +12,12 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # Required for npm OIDC trusted publishing (tokenless publish with
-      # provenance). Activation: on npmjs.com, for EACH @fnndsc package,
-      # Settings -> Trusted Publisher -> GitHub Actions with repository
-      # FNNDSC/mise and workflow release.yml. Once every package is
-      # configured, delete the NPM_TOKEN lines below and the repo secret;
-      # npm >= 11.5 then authenticates via OIDC automatically and tokens can
-      # never expire mid-release again.
+      # npm OIDC trusted publishing (tokenless publish with provenance).
+      # Each @fnndsc package is configured on npmjs.com under Settings ->
+      # Trusted Publisher as GitHub Actions, repository FNNDSC/mise,
+      # workflow release.yml. npm >= 11.5 exchanges this OIDC token
+      # automatically at publish time; no NPM_TOKEN secret exists to expire
+      # mid-release.
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +25,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          registry-url: https://registry.npmjs.org
       # Same npm major as CI and the lockfile; also the minimum for OIDC
       # trusted publishing.
       - run: npm install -g npm@11
+      # changesets/action writes an _authToken line into ~/.npmrc when the
+      # file is absent, which would shadow OIDC auth with an empty token.
+      # Pre-create the file so the action leaves auth alone and npm falls
+      # through to trusted publishing.
+      - run: echo "provenance=true" > "$HOME/.npmrc"
       - run: npm ci
       - run: npm run build
       # Opens/updates a "Version Packages" PR; when that PR is merged,
@@ -40,5 +43,3 @@ jobs:
           publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

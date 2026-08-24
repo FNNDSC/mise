@@ -17,8 +17,8 @@
  */
 
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir, userInfo } from 'os';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocket } from 'ws';
@@ -45,12 +45,17 @@ interface DaemonHandle {
 
 /** Package root, from `exemplars/ts/dist` at runtime. */
 const PACKAGE_ROOT: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-/** Same path as `src/remote/discovery.ts`, repeated to avoid importing TS source. */
-const DISCOVERY_PATH: string = path.join(tmpdir(), `chell-calypso-${userInfo().username}.json`);
 /** Isolated config directory shared across daemon restart within this exemplar. */
 const STABLE_CONFIG_DIR: string = mkdtempSync(path.join(tmpdir(), 'chell-calypso-exitgate-'));
-let originalDiscovery: string | null = null;
-let originalDiscoveryExists: boolean = false;
+/**
+ * Isolated runtime directory: the daemon advertises through identity-keyed
+ * berth files under `$XDG_RUNTIME_DIR/calypso`, so giving the child its own
+ * runtime directory both isolates this run from any daemon the user is
+ * really running and gives the exemplar one place to look.
+ */
+const RUNTIME_DIR: string = mkdtempSync(path.join(tmpdir(), 'chell-calypso-runtime-'));
+/** Where the spawned daemon's berth files land. */
+const BERTH_DIR: string = path.join(RUNTIME_DIR, 'calypso');
 
 /**
  * Starts a daemon process and waits for its same-user discovery file.
@@ -60,7 +65,7 @@ let originalDiscoveryExists: boolean = false;
  *   passing credentials again; this is the restart/crash-rehydrate path.
  */
 async function daemon_start(env: CubeEnv, useSavedSession: boolean): Promise<DaemonHandle> {
-  rmSync(DISCOVERY_PATH, { force: true });
+  rmSync(BERTH_DIR, { recursive: true, force: true });
   const args: string[] = ['dist/index.js'];
   if (!useSavedSession) {
     args.push(`${env.user}@${env.url}`, '-p', env.password);
@@ -69,7 +74,7 @@ async function daemon_start(env: CubeEnv, useSavedSession: boolean): Promise<Dae
 
   const child: ChildProcessWithoutNullStreams = spawn(process.execPath, args, {
     cwd: PACKAGE_ROOT,
-    env: { ...process.env, XDG_CONFIG_HOME: STABLE_CONFIG_DIR },
+    env: { ...process.env, XDG_CONFIG_HOME: STABLE_CONFIG_DIR, XDG_RUNTIME_DIR: RUNTIME_DIR },
   });
   const output: string[] = [];
   child.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString('utf-8')));
@@ -105,21 +110,27 @@ async function wait_forDiscovery(
 }
 
 /**
- * Reads daemon discovery, validating only the shape needed by this exemplar.
+ * Reads daemon discovery from the isolated berth directory, validating only
+ * the shape needed by this exemplar. The daemon writes one identity-keyed
+ * `berth-*.json` there; with the runtime directory isolated, the first valid
+ * berth is this run's daemon.
  */
 function discovery_read(): Discovery | null {
-  if (!existsSync(DISCOVERY_PATH)) return null;
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(DISCOVERY_PATH, 'utf-8'));
-    if (
-      parsed && typeof parsed === 'object' &&
-      typeof (parsed as Discovery).url === 'string' &&
-      typeof (parsed as Discovery).token === 'string'
-    ) {
-      return parsed as Discovery;
+  if (!existsSync(BERTH_DIR)) return null;
+  for (const name of readdirSync(BERTH_DIR)) {
+    if (!name.startsWith('berth-') || !name.endsWith('.json')) continue;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path.join(BERTH_DIR, name), 'utf-8'));
+      if (
+        parsed && typeof parsed === 'object' &&
+        typeof (parsed as Discovery).url === 'string' &&
+        typeof (parsed as Discovery).token === 'string'
+      ) {
+        return { url: (parsed as Discovery).url, token: (parsed as Discovery).token };
+      }
+    } catch {
+      continue;
     }
-  } catch {
-    return null;
   }
   return null;
 }
@@ -297,23 +308,13 @@ function daemonOutput_sanitize(output: string): string {
 }
 
 /**
- * Saves any pre-existing discovery file so this exemplar can restore it.
+ * Removes this run's isolated berth directory.
+ *
+ * The runtime directory is exemplar-private, so nothing of the user's needs
+ * preserving; cleanup just avoids leaving stale berths behind.
  */
-function discovery_preserve(): void {
-  originalDiscoveryExists = existsSync(DISCOVERY_PATH);
-  originalDiscovery = originalDiscoveryExists ? readFileSync(DISCOVERY_PATH, 'utf-8') : null;
-  rmSync(DISCOVERY_PATH, { force: true });
-}
-
-/**
- * Restores the discovery file that existed before this run.
- */
-function discovery_restore(): void {
-  if (originalDiscoveryExists && originalDiscovery !== null) {
-    writeFileSync(DISCOVERY_PATH, originalDiscovery, { mode: 0o600 });
-  } else {
-    rmSync(DISCOVERY_PATH, { force: true });
-  }
+function discovery_cleanup(): void {
+  rmSync(BERTH_DIR, { recursive: true, force: true });
 }
 
 /**
@@ -322,7 +323,7 @@ function discovery_restore(): void {
 async function main(): Promise<void> {
   const env: CubeEnv = env_load();
   config_isolate();
-  discovery_preserve();
+  // Berths live in the isolated RUNTIME_DIR, so nothing needs preserving.
 
   let daemon: DaemonHandle | null = null;
   let client: CalypsoClient | null = null;
@@ -347,7 +348,7 @@ async function main(): Promise<void> {
   } finally {
     client?.close();
     if (daemon) await daemon_stop(daemon);
-    discovery_restore();
+    discovery_cleanup();
     rmSync(STABLE_CONFIG_DIR, { recursive: true, force: true });
   }
 
@@ -356,7 +357,7 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  discovery_restore();
+  discovery_cleanup();
   rmSync(STABLE_CONFIG_DIR, { recursive: true, force: true });
   process.exit(1);
 });

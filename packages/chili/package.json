@@ -20,7 +20,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "chili": "./dist/index.js"
+    "chili": "dist/index.js"
   },
   "scripts": {
     "build": "tsc && chmod +x ./dist/index.js",

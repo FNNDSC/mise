@@ -18,8 +18,18 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # One exact npm version everywhere: lockfile shape drifts not only
+      # across npm majors (node 22 ships npm 10, node 24 npm 11) but within
+      # a major (11.6 omitted @emnapi optional-dep entries that 11.19
+      # requires). The lockfile is maintained with this exact version; bump
+      # it here, in release.yml, and regenerate the lockfile together.
+      - run: npm install -g npm@11.19.0
       - run: npm ci
       - run: npm run build
+      # Publish preflight: packs every workspace exactly as a release would,
+      # so publish-time rejections (invalid overrides, bin cleanup, missing
+      # files) fail this PR instead of the release run. No auth is needed.
+      - run: npm publish --dry-run --workspaces
       - run: npm test
       - name: Upload coverage to Codecov
         if: matrix.node == 24

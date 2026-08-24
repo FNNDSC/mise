@@ -73,3 +73,15 @@ The honest one-line calibration: mise practices software engineering in a domain
 |===
 
 The B+ should be read with its context attached: it is a single-maintainer research-ecosystem project scoring within reach of codebases maintained by funded teams, and the distance to the next grade is a short, known list rather than a cultural overhaul.
+
+== Path to A-
+
+The gap between the B+ above and an A- is three named items, not a cultural overhaul; this section records them as an executable sequence with the axis each one repairs.
+
+*Release hardening (repairs Release and operations, C+ to B+).* Three permanent fixes for the three observed failure modes: publish authentication moves to npm OIDC trusted publishing so no token can expire mid-release (the workflow authenticates through `id-token: write` alone and the `NPM_TOKEN` lines are gone from it; per-package trusted-publisher configuration on npmjs.com is a one-time maintainer action, after which the repo secret itself is deleted); the npm major is pinned to 11 across CI, the release workflow, and the root `engines` field with `engine-strict`, ending the lockfile drift between node 22's npm 10 and node 24's npm 11; and every CI run now executes `npm publish --dry-run --workspaces` as a preflight, so publish-time rejections fail the pull request rather than the release. The preflight justified itself on its first local run by exposing that chili's and cumin's `bin` entries were being silently dropped at publish, meaning released tarballs shipped without their CLIs.
+
+*The chrisapi adapter contract (repairs Type safety, B- to A-).* Execute the already-designed cumin adapter seam over the two cast clusters that held this month's live defects, the PACS surface (`getPACSSeriesList`, `getPACSFiles`, `getPACSFile`, `createDownloadToken`) and the jobs surface (`getPluginInstance`), then hold the line mechanically: a ratchet test asserting the repository's `as unknown as` count may only decrease. The remaining tail burns down on-touch.
+
+*Integration truth in CI (repairs Testing, B to A-).* The demonstrated failure mode is green suites over broken reality, so the cure is reality in the pipeline: promote a curated subset of the live exemplars to a gating job (connect, listing, an upload/remove cycle, a PACS query, one-shot exit codes) against either a scoped account on the development CUBE or a containerized miniChRIS brought up in the workflow, and add one mock-free wire round trip, a real remote client attached to a real in-process daemon exercising attach, execute, prompt, pipe, and edit.
+
+Sequenced small-first (release hardening in one session, the adapter in about two, integration gating in two to four), the whole path is roughly a week of working sessions, after which the honest overall grade is A-: the review-process ceiling (single maintainer, self-merged changes) is contextual and priced in, and everything else on the deduction list has a shipped fix.

@@ -40,7 +40,7 @@
     "prepublishOnly": "test -f dist/index.js && test -f dist/index.d.ts"
   },
   "bin": {
-    "cumin": "./dist/cli.js"
+    "cumin": "dist/cli.js"
   },
   "keywords": [
     "chris",

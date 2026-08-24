@@ -15,7 +15,8 @@ import { PluginInstance } from "../../models/plugin.js";
  *
  * @param searchable - The plugin identifier (ID or name) to run.
  * @param params - The raw parameter string from the CLI (e.g., "--param1 value1 --param2 value2").
- * @returns A Promise resolving to the created plugin instance, or `null` on failure.
+ * @returns A Promise resolving to the created plugin instance, or `null` on
+ *          failure (including a response missing the instance's identity).
  * @throws {Error} If the parameter string cannot be parsed.
  */
 export async function plugin_execute(searchable: string, params: string): Promise<PluginInstance | null> {
@@ -26,5 +27,11 @@ export async function plugin_execute(searchable: string, params: string): Promis
     throw new Error(`Error parsing plugin parameters: ${e}`);
   }
   const result: Dictionary | null = await salsaPlugin_run(searchable, parsedParams);
-  return result as unknown as PluginInstance;
+  if (result === null || typeof result.id !== 'number') return null;
+  return {
+    ...result,
+    id: result.id,
+    title: typeof result.title === 'string' ? result.title : '',
+    status: typeof result.status === 'string' ? result.status : 'unknown',
+  };
 }

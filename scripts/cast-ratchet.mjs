@@ -18,7 +18,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** The committed cast count. Lower it whenever the real count drops. */
-const BASELINE = 44;
+const BASELINE = 2;
 
 const PATTERN = /as unknown as/g;
 

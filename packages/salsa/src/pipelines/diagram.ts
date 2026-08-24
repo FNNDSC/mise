@@ -13,9 +13,11 @@ import {
   Result,
   chrisConnection,
   errorStack,
-  items_get,
-  listData_get,
+  pipeline_get,
   pipeline_resolve,
+  type PipelineHandle,
+  type PluginPipingItem,
+  type PipingDefaultParameterData,
   type PipelineRecord,
 } from '@fnndsc/cumin';
 
@@ -58,30 +60,15 @@ interface DefaultParameterData {
   value: unknown;
 }
 
-/** Item wrapper returned by chrisapi piping lists. */
-interface PipingItem {
-  data: PipingData;
-}
-
-/** Piping collection returned by one pipeline resource. */
-interface PipingListSlice {
-  getItems: () => unknown[];
-}
-
-/** Default-parameter collection returned by one pipeline resource. */
-interface DefaultParameterListSlice {
-  data?: unknown;
-}
-
-/** Pipeline resource methods missing from the published chrisapi typings. */
-interface PipelineResourceSlice {
-  getPluginPipings: (options: Record<string, unknown>) => Promise<PipingListSlice>;
-  getDefaultParameters: (options: Record<string, unknown>) => Promise<DefaultParameterListSlice>;
-}
-
-/** Client operation used to retrieve a registered pipeline resource. */
-interface PipelineClientSlice {
-  getPipeline: (id: number) => Promise<PipelineResourceSlice | null>;
+/**
+ * Narrows a wire default-parameter row to the diagram's required shape.
+ *
+ * @param row - Stored default row from the contract.
+ * @returns The narrowed row, or null when required fields are absent.
+ */
+function defaultParameter_narrow(row: PipingDefaultParameterData): DefaultParameterData | null {
+  if (typeof row.plugin_piping_id !== 'number' || typeof row.param_name !== 'string') return null;
+  return { plugin_piping_id: row.plugin_piping_id, param_name: row.param_name, value: row.value };
 }
 
 /**
@@ -109,28 +96,27 @@ export async function pipelineDiagram_get(specifier: string): Promise<Result<Pip
   const resolved: Result<PipelineRecord> = await pipeline_resolve(specifier);
   if (!resolved.ok) return Err();
 
-  const client: PipelineClientSlice | null = await chrisConnection.client_get() as unknown as PipelineClientSlice | null;
+  const client = await chrisConnection.client_get();
   if (!client) {
     errorStack.stack_push('error', 'Not connected to ChRIS. Cannot draw pipeline.');
     return Err();
   }
 
   try {
-    const pipeline: PipelineResourceSlice | null = await client.getPipeline(resolved.value.id);
+    const pipeline: PipelineHandle | null = await pipeline_get(client, resolved.value.id);
     if (!pipeline) {
       errorStack.stack_push('error', `Pipeline ${resolved.value.id} not found.`);
       return Err();
     }
 
-    const collections: [PipingListSlice, DefaultParameterListSlice] = await Promise.all([
-      pipeline.getPluginPipings({ limit: 1000 }),
-      pipeline.getDefaultParameters({ limit: 1000 }),
+    const [pipingItems, defaultsPage] = await Promise.all([
+      pipeline.pluginPipings_get({ limit: 1000 }),
+      pipeline.defaultParametersPage_get({ limit: 1000 }),
     ]);
-    const pipingList: PipingListSlice = collections[0];
-    const defaultList: DefaultParameterListSlice = collections[1];
-    const pipings: PipingData[] = items_get<PipingItem>(pipingList)
-      .map((item: PipingItem): PipingData => item.data);
-    const defaults: DefaultParameterData[] = listData_get<DefaultParameterData>(defaultList);
+    const pipings: PipingData[] = pipingItems.map((item: PluginPipingItem): PipingData => item.data);
+    const defaults: DefaultParameterData[] = defaultsPage.data
+      .map((row: PipingDefaultParameterData): DefaultParameterData | null => defaultParameter_narrow(row))
+      .filter((row: DefaultParameterData | null): row is DefaultParameterData => row !== null);
     const defaultsByPiping: Map<number, PipelineDiagramArgument[]> = new Map<number, PipelineDiagramArgument[]>();
     const joinsByPiping: Map<number, unknown> = new Map<number, unknown>();
 

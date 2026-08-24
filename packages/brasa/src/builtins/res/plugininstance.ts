@@ -6,7 +6,7 @@
  */
 import chalk from 'chalk';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { commandArgs_process, ParsedArgs } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { pluginInstances_fetchList, PluginInstanceListResult } from '@fnndsc/chili/commands/plugininstances/list.js';
 import { pluginInstanceFields_fetch } from '@fnndsc/chili/commands/plugininstances/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -23,7 +23,7 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { pluginInstances, selectedFields, totalCount }: PluginInstanceListResult = await pluginInstances_fetchList(parsed as unknown as CLIoptions);
+      const { pluginInstances, selectedFields, totalCount }: PluginInstanceListResult = await pluginInstances_fetchList(cliOptions_from(parsed));
       if (pluginInstances.length === 0) { return envelope_ok(`${chalk.gray('No plugin instances found.')}\n`); }
       return envelope_ok(table_render(pluginInstances, selectedFields, { title: { title: 'Plugin Instances', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginInstances.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

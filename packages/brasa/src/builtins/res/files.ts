@@ -3,7 +3,7 @@
  * Manages file resources.
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { files_fetchList } from '@fnndsc/chili/commands/files/list.js';
 import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
 import { FilteredResourceData, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
@@ -28,7 +28,7 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<Com
   try {
     if (subcommand === 'list') {
        const path: string | undefined = parsed._[1] as string | undefined;
-       const results: FilteredResourceData | null = await files_fetchList(parsed as unknown as CLIoptions, assetName, path);
+       const results: FilteredResourceData | null = await files_fetchList(cliOptions_from(parsed), assetName, path);
 
        if (!results) {
           return envelope_error('', undefined, `No ${assetName} resources found. Perhaps check your current context?\n`);

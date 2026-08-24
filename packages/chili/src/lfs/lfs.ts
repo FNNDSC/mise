@@ -34,7 +34,9 @@ export async function dirContents_list(filepath: string) {
       return { filename: file, "size(KB)": size, created_at: birthtime };
     });
     const detailedFiles: DetailedFile[] = await Promise.all(detailedFilesPromises);
-    chiliLog(table_render(detailedFiles as unknown as import("../screen/screen.js").TableDataRow[], ["filename", "size(KB)", "created_at"]));
+    const tableRows: import("../screen/screen.js").TableDataRow[] =
+      detailedFiles.map((file: DetailedFile): import("../screen/screen.js").TableDataRow => ({ ...file }));
+    chiliLog(table_render(tableRows, ["filename", "size(KB)", "created_at"]));
   } catch (error: unknown) {
     chiliErrLog("Error occurred while reading the directory!", error);
   }

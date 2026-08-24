@@ -7,6 +7,7 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { session } from '../session/index.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**
  * Structure for parsed command line arguments.
@@ -14,6 +15,23 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 export interface ParsedArgs {
   _: string[];
   [key: string]: string | boolean | string[];
+}
+
+/**
+ * Bridges POSIX-parsed builtin arguments to chili's CLI option bag.
+ *
+ * ParsedArgs and CLIoptions carry incompatible index signatures, so the
+ * conversion is a real copy (positional `_` dropped), not a cast.
+ *
+ * @param parsed - Arguments from `commandArgs_process`.
+ * @returns The same flags as a chili CLIoptions object.
+ */
+export function cliOptions_from(parsed: ParsedArgs): CLIoptions {
+  const options: CLIoptions = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (key !== '_') options[key] = value;
+  }
+  return options;
 }
 
 /**

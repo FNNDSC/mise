@@ -32,20 +32,6 @@ export interface SeriesCubePath {
 }
 
 /**
- * Minimal ChRIS API client slice for PACS series and file queries.
- */
-export interface ChRISPACSClient {
-  getPACSSeriesList(
-    params: { SeriesInstanceUID: string; limit: number },
-    timeout?: number,
-  ): Promise<{ getItems(): Array<unknown>; totalCount: number }>;
-  getPACSFiles(
-    params: { fname: string; limit: number },
-    timeout?: number,
-  ): Promise<{ getItems(): Array<unknown>; totalCount: number }>;
-}
-
-/**
  * Safely unwraps a DICOM tag value (may be `{value: ...}` wrapper or plain string/number).
  */
 export function pacs_tagValueExtract(val: unknown): string {
@@ -209,14 +195,12 @@ export async function pacs_seriesCollect(
  * stability but unused, since the resolver holds its own connection.
  *
  * @param seriesUID - DICOM SeriesInstanceUID.
- * @param _pacsClient - Unused; kept for call-site compatibility.
  * @param maxAttempts - Number of attempts before giving up (default 4).
  * @param retryDelayMs - Delay between attempts in ms (default 2000).
  * @returns SeriesCubePath on success, or null if not found.
  */
 export async function series_cubePathGet(
   seriesUID: string,
-  _pacsClient: ChRISPACSClient,
   maxAttempts: number = 4,
   retryDelayMs: number = 2_000,
 ): Promise<SeriesCubePath | null> {

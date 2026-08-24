@@ -11,6 +11,8 @@ import {
   publicFeedsPage_get,
   pluginInstancesPage_get,
   pluginInstance_get,
+  pipeline_get,
+  pipelineSourceFilesPage_get,
   downloadToken_create,
   ListPage,
   FeedData,
@@ -181,6 +183,90 @@ describe('pluginInstance_get', () => {
     const page: ListPage<InstanceParameterData> | undefined =
       await handle?.parametersPage_get({ limit: 10, offset: 0 });
     expect(page?.data).toEqual([{ param_name: 'thresh', value: 3 }]);
+  });
+});
+
+describe('pipeline surface', () => {
+  test('pipeline_get returns null when the client yields no resource', async () => {
+    const client: Client = client_fake({ getPipeline: async () => null });
+    expect(await pipeline_get(client, 9)).toBeNull();
+  });
+
+  test('pipeline_get exposes the record and pages the stored defaults', async () => {
+    const client: Client = client_fake({
+      getPipeline: async () => ({
+        data: { id: 9, name: 'brain-flow' },
+        getDefaultParameters: async () => ({
+          data: [{ plugin_piping_id: 3, param_name: 'dir', value: '/in' }],
+          totalCount: 1,
+        }),
+      }),
+    });
+    const handle = await pipeline_get(client, 9);
+    expect(handle?.data).toEqual({ id: 9, name: 'brain-flow' });
+    const page = await handle?.defaultParametersPage_get({ limit: 10, offset: 0 });
+    expect(page?.data).toEqual([{ plugin_piping_id: 3, param_name: 'dir', value: '/in' }]);
+  });
+
+  test('pluginPipings_get yields items whose plugin link resolves to a handle', async () => {
+    const client: Client = client_fake({
+      getPipeline: async () => ({
+        data: { id: 9, name: 'brain-flow' },
+        getPluginPipings: async () => ({
+          getItems: () => [
+            {
+              data: { id: 1, plugin_name: 'pl-a', previous_id: null },
+              getPlugin: async () => ({
+                getPluginParameters: async () => ({
+                  getItems: () => [{ data: { name: 'thresh', type: 'float' } }],
+                }),
+                getPluginComputeResources: async () => ({ data: [{ name: 'host' }] }),
+              }),
+            },
+            { data: { id: 2, plugin_name: 'pl-b', previous_id: 1 } },
+          ],
+        }),
+      }),
+    });
+    const handle = await pipeline_get(client, 9);
+    const items = (await handle?.pluginPipings_get({ limit: 100 })) ?? [];
+    expect(items.map((item) => item.data.id)).toEqual([1, 2]);
+
+    const plugin = await items[0].plugin_get();
+    const parameterPage = await plugin?.parametersPage_get({ limit: 10 });
+    expect(parameterPage?.data).toEqual([{ name: 'thresh', type: 'float' }]);
+    const computePage = await plugin?.computeResourcesPage_get({ limit: 10 });
+    expect(computePage?.data).toEqual([{ name: 'host' }]);
+
+    // The second item declares no getPlugin: its link resolves to null.
+    expect(await items[1].plugin_get()).toBeNull();
+  });
+
+  test('pluginPipings_get accepts data-style piping lists', async () => {
+    const client: Client = client_fake({
+      getPipeline: async () => ({
+        data: { id: 9, name: 'brain-flow' },
+        getPluginPipings: async () => ({
+          data: [{ id: 4, plugin_name: 'pl-c', previous_id: null }],
+        }),
+      }),
+    });
+    const handle = await pipeline_get(client, 9);
+    const items = (await handle?.pluginPipings_get({ limit: 100 })) ?? [];
+    expect(items.map((item) => item.data.plugin_name)).toEqual(['pl-c']);
+    expect(await items[0].plugin_get()).toBeNull();
+  });
+
+  test('pipelineSourceFilesPage_get normalizes getItems-style lists', async () => {
+    const client: Client = client_fake({
+      getPipelineSourceFiles: async () => ({
+        getItems: () => [{ data: { fname: 'flows/brain.yml', pipeline_id: 9 } }],
+        totalCount: 1,
+      }),
+    });
+    const page = await pipelineSourceFilesPage_get(client, { pipeline_id: 9, limit: 10 });
+    expect(page.data).toEqual([{ fname: 'flows/brain.yml', pipeline_id: 9 }]);
+    expect(page.totalCount).toBe(1);
   });
 });
 

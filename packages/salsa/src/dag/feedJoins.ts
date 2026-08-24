@@ -12,26 +12,17 @@
  *
  * @module
  */
-import { chrisConnection, procCache_get, errorStack, ProcCache, ProcInstance } from '@fnndsc/cumin';
-
-/** One parameter row from a plugin instance's parameter sub-resource. */
-interface ParamItem {
-  param_name?: string;
-  value?: unknown;
-}
-
-interface ParamList {
-  data?: ParamItem[];
-  getItems?: () => Array<{ data: ParamItem }>;
-}
-
-interface InstanceResource {
-  getParameters(params?: { limit?: number; offset?: number }): Promise<ParamList>;
-}
-
-interface JoinClient {
-  getPluginInstance(id: number): Promise<InstanceResource | null>;
-}
+import {
+  chrisConnection,
+  procCache_get,
+  errorStack,
+  ProcCache,
+  ProcInstance,
+  pluginInstance_get,
+  type PluginInstanceHandle,
+  type ListPage,
+  type InstanceParameterData,
+} from '@fnndsc/cumin';
 
 /** Matches the canonical topological-copy plugin when `pluginType` is unavailable. */
 const TS_NAME_PATTERN: RegExp = /topologicalcopy/i;
@@ -64,9 +55,8 @@ export async function nodeJoins_resolve(id: number): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) return;
 
-  const typedClient: JoinClient = client as unknown as JoinClient;
-  const resource: InstanceResource | null = await typedClient.getPluginInstance(id);
-  if (!resource) {
+  const handle: PluginInstanceHandle | null = await pluginInstance_get(client, id);
+  if (!handle) {
     // A failed fetch must not be recorded as "no joins": writing an empty
     // overlay here would be permanent, since resolved nodes are never
     // retried. Leave the node unresolved so the next resolve attempts again.
@@ -74,9 +64,10 @@ export async function nodeJoins_resolve(id: number): Promise<void> {
     return;
   }
 
-  const list: ParamList = await resource.getParameters({ limit: 100 });
-  const items: ParamItem[] = list.data ?? (list.getItems ? list.getItems().map((i) => i.data) : []);
-  const param: ParamItem | undefined = items.find((p: ParamItem): boolean => p.param_name === 'plugininstances');
+  const page: ListPage<InstanceParameterData> = await handle.parametersPage_get({ limit: 100, offset: 0 });
+  const param: InstanceParameterData | undefined = page.data.find(
+    (p: InstanceParameterData): boolean => p.param_name === 'plugininstances',
+  );
 
   // Overlay = the join's sources minus its anchor parent (which is also in the list).
   const sources: number[] = param ? joinIDs_parse(param.value) : [];

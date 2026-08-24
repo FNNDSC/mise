@@ -168,7 +168,7 @@ describe('series_cubePathGet (delegates to cumin seriesStorage_resolve)', () => 
 
   it('maps a landed storage state to a SeriesCubePath', async () => {
     mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 42, folderPath: '/SERVICES/PACS/x' } });
-    expect(await series_cubePathGet('1.2.3', {} as never, 4, 2000)).toEqual({
+    expect(await series_cubePathGet('1.2.3', 4, 2000)).toEqual({
       folderPath: '/SERVICES/PACS/x',
       fileCount: 42,
     });
@@ -177,11 +177,11 @@ describe('series_cubePathGet (delegates to cumin seriesStorage_resolve)', () => 
 
   it('returns null when the resolver reports no folder', async () => {
     mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 0, folderPath: null } });
-    expect(await series_cubePathGet('1.2.3', {} as never, 1, 0)).toBeNull();
+    expect(await series_cubePathGet('1.2.3', 1, 0)).toBeNull();
   });
 
   it('returns null when the resolver fails outright', async () => {
     mockStorageResolve.mockResolvedValue({ ok: false });
-    expect(await series_cubePathGet('1.2.3', {} as never, 1, 0)).toBeNull();
+    expect(await series_cubePathGet('1.2.3', 1, 0)).toBeNull();
   });
 });

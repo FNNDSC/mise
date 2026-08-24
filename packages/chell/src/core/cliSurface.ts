@@ -22,11 +22,6 @@ import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import { segment_pipeThrough } from '@fnndsc/brasa';
 
-/** Minimal view of readline's internal echo hook, used to suppress echo. */
-interface ReadlineEchoInternal {
-  _writeToOutput(str: string): void;
-}
-
 /**
  * Prompts on a persistent readline interface (the REPL's), suppressing echo
  * for hidden input by intercepting the interface's own output hook. This
@@ -44,13 +39,14 @@ function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): P
     });
   }
 
-  const rlInternal: ReadlineEchoInternal = rl as unknown as ReadlineEchoInternal;
-  const originalWrite: (str: string) => void = rlInternal._writeToOutput.bind(rl);
-  rlInternal._writeToOutput = (_str: string): void => { /* suppress echo */ };
+  // `_writeToOutput` is readline's internal echo hook, absent from its
+  // typings; replacing it is the supported folk technique for hidden input.
+  const originalWrite: unknown = Reflect.get(rl, '_writeToOutput');
+  Reflect.set(rl, '_writeToOutput', (_str: string): void => { /* suppress echo */ });
 
   return new Promise((resolve: (answer: string) => void) => {
     rl.question('', (answer: string) => {
-      rlInternal._writeToOutput = originalWrite;
+      Reflect.set(rl, '_writeToOutput', originalWrite);
       process.stdout.write('\n');
       resolve(answer.trim());
     });

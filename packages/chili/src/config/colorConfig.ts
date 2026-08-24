@@ -12,6 +12,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import { chiliErrLog } from "../screen/output.js";
+import { chalkColor_get, type ChalkColorFunction } from "../screen/screen.js";
 
 /**
  * Interface for color style configuration.
@@ -119,9 +120,9 @@ function colorStyle_apply(text: string, style: ColorStyle): string {
   let styledText: string = text;
 
   // Apply color
-  if (style.color && typeof (chalk as unknown as Record<string, unknown>)[style.color] === 'function') {
-    const colorFn = (chalk as unknown as Record<string, (text: string) => string>)[style.color];
-    styledText = colorFn(styledText);
+  if (style.color) {
+    const colorFn: ChalkColorFunction | undefined = chalkColor_get(style.color);
+    if (colorFn) styledText = colorFn(styledText);
   }
 
   // Apply modifiers
@@ -153,7 +154,8 @@ export function fileSystemItem_colorize(
   let icon: string = '';
   if (config.icons && config.icons.enabled) {
     const iconKey: string = type in config.icons ? type : 'file';
-    icon = (config.icons as unknown as Record<string, string>)[iconKey] + ' ';
+    const iconValue: unknown = Reflect.get(config.icons, iconKey);
+    icon = (typeof iconValue === 'string' ? iconValue : '') + ' ';
   }
 
   if (fullPath && config.specialPaths[fullPath]) {

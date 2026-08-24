@@ -11,9 +11,12 @@ import {
   Result,
   chrisConnection,
   errorStack,
-  items_get,
-  listData_get,
+  pipeline_get,
   pipeline_resolve,
+  type PipelineHandle,
+  type PluginPipingItem,
+  type PluginHandle,
+  type PipingDefaultParameterData,
   type PipelineRecord,
 } from '@fnndsc/cumin';
 
@@ -104,15 +107,6 @@ interface PluginParameterData {
   help?: string;
 }
 
-interface ComputeResourceData { name?: string }
-interface PluginResource {
-  getPluginParameters: (options: Record<string, unknown>) => Promise<ItemList>;
-  getPluginComputeResources: (options: Record<string, unknown>) => Promise<ItemList>;
-}
-interface PipingItem extends Item<PipingData> {
-  getPlugin?: () => Promise<PluginResource>;
-}
-
 interface DefaultParameterData {
   plugin_piping_id: number;
   param_name: string;
@@ -123,18 +117,15 @@ interface DefaultParameterData {
   plugin_piping_number_of_workers?: unknown;
 }
 
-interface Item<T> { data: T }
-interface ItemList { getItems: () => unknown[] }
-interface DataList { data?: unknown }
-/** Remote registered Pipeline resource used to build an invocation manifest. */
-export interface PipelineManifestResource {
-  /** List the Pipeline's registered PluginPipings. */
-  getPluginPipings: (options: Record<string, unknown>) => Promise<ItemList>;
-  /** List the parameter and execution-control values stored on its pipings. */
-  getDefaultParameters: (options: Record<string, unknown>) => Promise<DataList>;
-}
-interface PipelineClient {
-  getPipeline: (id: number) => Promise<PipelineManifestResource | null>;
+/**
+ * Narrows a wire default-parameter row to the manifest's required shape.
+ *
+ * @param row - Stored default row from the contract.
+ * @returns The narrowed row, or null when required fields are absent.
+ */
+function defaultParameter_narrow(row: PipingDefaultParameterData): DefaultParameterData | null {
+  if (typeof row.plugin_piping_id !== 'number' || typeof row.param_name !== 'string') return null;
+  return { ...row, plugin_piping_id: row.plugin_piping_id, param_name: row.param_name, value: row.value };
 }
 
 interface TimedCacheEntry<T> {
@@ -181,33 +172,33 @@ function manifestClientCache_get(client: object): PipelineManifestClientCache {
 
 async function pluginMetadata_get(
   cache: PipelineManifestClientCache,
-  item: PipingItem,
+  item: PluginPipingItem,
   piping: PipingData,
 ): Promise<PluginMetadata | undefined> {
-  if (item.getPlugin === undefined) return undefined;
   const key: string = piping.plugin_name !== undefined && piping.plugin_version !== undefined
     ? `${piping.plugin_name}@${piping.plugin_version}`
     : `piping:${piping.id}`;
   let metadataPromise: Promise<PluginMetadata> | undefined = timedCache_get(cache.pluginMetadata, key);
   if (metadataPromise === undefined) {
     metadataPromise = (async (): Promise<PluginMetadata> => {
-      const plugin: PluginResource = await item.getPlugin!();
-      const [parameterList, computeList]: [ItemList, ItemList] = await Promise.all([
-        plugin.getPluginParameters({ limit: 1000 }),
-        plugin.getPluginComputeResources({ limit: 1000 }),
+      const plugin: PluginHandle | null = await item.plugin_get();
+      if (plugin === null) throw new Error('piping exposes no plugin link');
+      const [parameterPage, computePage] = await Promise.all([
+        plugin.parametersPage_get({ limit: 1000 }),
+        plugin.computeResourcesPage_get({ limit: 1000 }),
       ]);
       return {
-        parameterDefinitions: items_get<Item<PluginParameterData>>(parameterList).map(
-          (parameter: Item<PluginParameterData>) => ({
-            name: parameter.data.name,
-            type: parameter.data.type ?? 'string',
-            optional: parameter.data.optional ?? false,
-            default: parameter.data.default,
-            help: parameter.data.help,
+        parameterDefinitions: parameterPage.data.map(
+          (parameter) => ({
+            name: parameter.name,
+            type: parameter.type ?? 'string',
+            optional: parameter.optional ?? false,
+            default: parameter.default,
+            help: parameter.help,
           }),
         ),
-        computeResources: items_get<Item<ComputeResourceData>>(computeList)
-          .map((compute: Item<ComputeResourceData>): string | undefined => compute.data.name)
+        computeResources: computePage.data
+          .map((compute): string | undefined => compute.name)
           .filter((name: string | undefined): name is string => typeof name === 'string'),
       };
     })();
@@ -225,16 +216,16 @@ async function pluginMetadata_get(
  * Fetch a manifest for an already-resolved Pipeline without resolving it again.
  *
  * @param pipeline - Exact Pipeline record already resolved by the caller.
- * @param resource - Remote Pipeline resource obtained during that resolution.
+ * @param resource - Typed pipeline handle obtained during that resolution.
  * @param options - Projection detail required by the caller.
  * @returns Result containing the requested registered Pipeline projection.
  */
 export async function pipelineManifestForPipeline_get(
   pipeline: PipelineRecord,
-  resource: PipelineManifestResource,
+  resource: PipelineHandle,
   options: PipelineManifestGetOptions = {},
 ): Promise<Result<PipelineManifest>> {
-  const client: PipelineClient | null = await chrisConnection.client_get() as unknown as PipelineClient | null;
+  const client = await chrisConnection.client_get();
   if (!client) {
     errorStack.stack_push('error', 'Not connected to ChRIS. Cannot inspect pipeline.');
     return Err();
@@ -255,18 +246,19 @@ function definedValue_getFirst(...values: unknown[]): unknown {
 
 async function pipelineManifest_project(
   pipelineRecord: PipelineRecord,
-  pipeline: PipelineManifestResource,
+  pipeline: PipelineHandle,
   detail: 'registered' | 'execution',
   cache: PipelineManifestClientCache,
 ): Promise<Result<PipelineManifest>> {
   const manifestKey: string = `${pipelineRecord.id}:${detail}`;
   try {
-    const [pipingList, defaultList]: [ItemList, DataList] = await Promise.all([
-      pipeline.getPluginPipings({ limit: 1000 }),
-      pipeline.getDefaultParameters({ limit: 1000 }),
+    const [pipingItems, defaultsPage] = await Promise.all([
+      pipeline.pluginPipings_get({ limit: 1000 }),
+      pipeline.defaultParametersPage_get({ limit: 1000 }),
     ]);
-    const pipingItems: PipingItem[] = items_get<PipingItem>(pipingList);
-    const defaults: DefaultParameterData[] = listData_get<DefaultParameterData>(defaultList);
+    const defaults: DefaultParameterData[] = defaultsPage.data
+      .map((row: PipingDefaultParameterData): DefaultParameterData | null => defaultParameter_narrow(row))
+      .filter((row: DefaultParameterData | null): row is DefaultParameterData => row !== null);
     const defaultsByPiping: Map<number, DefaultParameterData[]> = new Map();
     for (const parameter of defaults) {
       const current: DefaultParameterData[] = defaultsByPiping.get(parameter.plugin_piping_id) ?? [];
@@ -274,13 +266,13 @@ async function pipelineManifest_project(
       defaultsByPiping.set(parameter.plugin_piping_id, current);
     }
 
-    const nodes: PipelineManifestNode[] = await Promise.all(pipingItems.map(async (item: PipingItem): Promise<PipelineManifestNode> => {
+    const nodes: PipelineManifestNode[] = await Promise.all(pipingItems.map(async (item: PluginPipingItem): Promise<PipelineManifestNode> => {
       const piping: PipingData = item.data;
       const stored: DefaultParameterData[] = defaultsByPiping.get(piping.id) ?? [];
       const resource: DefaultParameterData | undefined = stored[0];
       let computeResources: string[] | undefined;
       let parameterDefinitions: PipelineManifestNode['parameterDefinitions'];
-      if (detail === 'execution' && item.getPlugin) {
+      if (detail === 'execution') {
         const metadata: PluginMetadata | undefined = await pluginMetadata_get(cache, item, piping);
         parameterDefinitions = metadata?.parameterDefinitions;
         computeResources = metadata?.computeResources;
@@ -333,7 +325,7 @@ export async function pipelineManifest_get(
   options: PipelineManifestGetOptions = {},
 ): Promise<Result<PipelineManifest>> {
   const detail: 'registered' | 'execution' = options.detail ?? 'execution';
-  const client: PipelineClient | null = await chrisConnection.client_get() as unknown as PipelineClient | null;
+  const client = await chrisConnection.client_get();
   if (!client) {
     errorStack.stack_push('error', 'Not connected to ChRIS. Cannot inspect pipeline.');
     return Err();
@@ -352,7 +344,7 @@ export async function pipelineManifest_get(
   if (cachedManifest !== undefined) return Ok(cachedManifest);
 
   try {
-    const pipeline: PipelineManifestResource | null = await client.getPipeline(pipelineRecord.id);
+    const pipeline: PipelineHandle | null = await pipeline_get(client, pipelineRecord.id);
     if (!pipeline) {
       errorStack.stack_push('error', `Pipeline ${pipelineRecord.id} not found.`);
       return Err();

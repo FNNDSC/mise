@@ -24,7 +24,9 @@ describe('commands/feed/create', () => {
 
     expect(cumin.dictionary_fromCLI).toHaveBeenCalledWith('title:My Feed');
     expect(salsa.feed_create).toHaveBeenCalledWith(['/path/to/data'], mockParsedParams);
-    expect(result).toEqual(mockFeedInfo);
+    // The command narrows the raw record to the Feed model, defaulting the
+    // date fields the wire record omitted.
+    expect(result).toEqual({ id: 1, name: 'new-feed', creation_date: '', modification_date: '' });
   });
 
   it('should throw error if dirs are not provided', async () => {

@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack, items_get } from '@fnndsc/cumin';
 import { commandHelp_get } from '../../../builtins/help.js';
 import chalk from 'chalk';
 import { session } from '../../../session/index.js';
@@ -165,13 +165,13 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       }
 
       const pluginsList = await client.getPlugins({ name_exact: name, version: version, limit: 1 });
-      const plugins: Object[] | null = pluginsList.getItems();
-      if (!plugins || plugins.length === 0) {
+      const plugins: ChRISApiPlugin[] = items_get<ChRISApiPlugin>(pluginsList);
+      if (plugins.length === 0) {
         errorStack.stack_push("error", `Plugin not found on server: ${name} v${version}`);
         return Err();
       }
 
-      const plugin: ChRISApiPlugin = plugins[0] as unknown as ChRISApiPlugin;
+      const plugin: ChRISApiPlugin = plugins[0];
       const parametersList = await plugin.getPluginParameters({ limit: 100 });
       const parameters: ChRISApiPluginParameter[] = parametersList.getItems();
 

@@ -170,7 +170,8 @@ export class REPL {
         const content: string = await fs.promises.readFile(file, 'utf-8');
         const lines: string[] = content.split('\n').filter((l: string) => l.trim()).reverse();
         const limit: number = settings.config.historySize;
-        (this.rl as unknown as { history: string[] }).history = lines.slice(0, limit);
+        // `history` is a runtime readline property its typings do not declare.
+        Reflect.set(this.rl, 'history', lines.slice(0, limit));
       } catch (e: unknown) {
         // Silently fail if history cannot be loaded
       }

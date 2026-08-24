@@ -85,3 +85,25 @@ The gap between the B+ above and an A- is three named items, not a cultural over
 *Integration truth in CI (repairs Testing, B to A-).* The demonstrated failure mode is green suites over broken reality, so the cure is reality in the pipeline: promote a curated subset of the live exemplars to a gating job (connect, listing, an upload/remove cycle, a PACS query, one-shot exit codes) against either a scoped account on the development CUBE or a containerized miniChRIS brought up in the workflow, and add one mock-free wire round trip, a real remote client attached to a real in-process daemon exercising attach, execute, prompt, pipe, and edit.
 
 Sequenced small-first (release hardening in one session, the adapter in about two, integration gating in two to four), the whole path is roughly a week of working sessions, after which the honest overall grade is A-: the review-process ceiling (single maintainer, self-merged changes) is contextual and priced in, and everything else on the deduction list has a shipped fix.
+
+== Regrade, 2026-08-24
+
+The path above was executed in one working day (PRs #178 through #189), and this section records what actually happened against what was planned, because the deviations are themselves evidence about the codebase.
+
+*Release hardening* landed as planned and then proved itself immediately: the first tokenless publish shipped all six packages with SLSA provenance, and along the way the preflight exposed that two published packages had been shipping without their CLI binaries, the OIDC provenance check caught four packages still claiming their pre-monorepo repositories, and the exact-version npm pin was forced when the major-only pin failed its own first CI run. Release and operations: C+ to B+ as projected.
+
+*The adapter contract* overshot its plan. The typed wire contract landed over the jobs, PACS, and pipelines surfaces, and instead of leaving a tail to burn down on-touch, the burn-down ran to completion: the repository's `as unknown as` count fell from sixty to two, both survivors inside the licensed adapter seam, with the CI ratchet holding the baseline at exactly that number. Type safety: B- to A-, with the caveat that the two remaining casts are a floor, not a residue.
+
+*Integration truth* landed in a different shape than planned, for a structural reason worth recording: jest cannot load the real workspace package graph at all (its module analysis overflows), so the mock-free wire round trip lives as an exemplar under plain node rather than a jest suite — the mock-free test could not run inside the mocking framework. It gates every pull request: a real remote client attached to a real in-process daemon, exercising attach, execute, completion, pipeline segments, shell escapes, prompts, and local edits across a real WebSocket. The live nightly was found to have been skipping green for six weeks (no credentials were ever configured), which is this critique's central failure mode reproduced one level up; it now fails loudly when unconfigured and runs green against the public CUBE at cube.chrisproject.org with a dedicated test account. Getting it green took four triage rounds, each finding real rot the silent skip had hidden, including a daemon-discovery path the exemplar still read though nothing had written it since the berth migration. Testing: B to A-.
+
+[cols="3,1,1,6"]
+|===
+| Axis | Was | Now | Basis
+
+| Testing | B | A- | Mock-free wire round trip gates every PR; live exemplars run nightly against a real CUBE and fail loudly when they cannot.
+| Type safety | B- | A- | Two casts remain in the entire repository, both in the licensed seam, held by a one-way ratchet.
+| Release and operations | C+ | B+ | Tokenless OIDC publishing with provenance, exact toolchain pins, publish preflight in CI; proven by a real release.
+| Process and review | C+ | C+ | Unchanged and unchangeable from inside: single maintainer, self-merged changes.
+
+| *Overall* | *B+* | *A-* | *Every deduction that had a shipped fix now has that fix shipped, verified live; what remains is the contextual review-process ceiling.*
+|===

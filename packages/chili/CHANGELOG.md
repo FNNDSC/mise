@@ -1,5 +1,11 @@
 # @fnndsc/chili
 
+## 3.6.3
+
+### Patch Changes
+
+- 9ed47ad: Fix titled tables narrower than their title: negative padding computations threw a RangeError that replaced the entire table with "Error generating table". Title width now clamps, truncating gracefully at any table width.
+
 ## 3.6.2
 
 ### Patch Changes

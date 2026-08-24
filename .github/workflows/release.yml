@@ -25,9 +25,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Same npm major as CI and the lockfile; also the minimum for OIDC
-      # trusted publishing.
-      - run: npm install -g npm@11
+      # Same exact npm version as CI and the lockfile (see ci.yml); npm 11.5+
+      # is also the minimum for OIDC trusted publishing.
+      - run: npm install -g npm@11.19.0
       # changesets/action writes an _authToken line into ~/.npmrc when the
       # file is absent, which would shadow OIDC auth with an empty token.
       # Pre-create the file so the action leaves auth alone and npm falls

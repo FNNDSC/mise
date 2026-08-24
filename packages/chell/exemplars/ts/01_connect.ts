@@ -30,7 +30,9 @@ async function main(): Promise<void> {
 
   section('PACS visibility');
   const servers: Result<PACSServer[]> = await step('listed PACS servers', pacsServers_list());
-  if (servers.ok) {
+  // A registered PACS is a fixture of some CUBEs (BCH), not all (the public
+  // instance has none): assert it only when the environment names one.
+  if (servers.ok && process.env.CUBE_PACS) {
     const registered: boolean = servers.value.some((s: PACSServer) => s.identifier === env.pacs);
     check(`configured PACS '${env.pacs}' is registered`, registered);
   }

@@ -43,6 +43,14 @@ jobs:
             if [ -n "$bad" ]; then exit "$code"; fi
           fi
       - run: npm test
+      # Mock-free wire round trip: a real chell RemoteEngine attached to a
+      # real in-process CalypsoDaemon (attach, execute, completion, pipes,
+      # shell escapes, prompts, local edits). Needs no CUBE or credentials,
+      # so it gates every PR; the unit suites mock this boundary, this does
+      # not.
+      - run: npm run exemplars:build --workspace @fnndsc/chell
+      - run: node exemplars/ts/dist/06_wireRoundtrip.js
+        working-directory: packages/chell
       - name: Upload coverage to Codecov
         if: matrix.node == 24
         uses: codecov/codecov-action@v4

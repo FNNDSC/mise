@@ -41,6 +41,3 @@ jobs:
           publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Temporary while validating OIDC trusted publishing: surfaces the
-          # token-exchange requests in the log. Remove once a publish lands.
-          NPM_CONFIG_LOGLEVEL: verbose

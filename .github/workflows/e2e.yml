@@ -42,6 +42,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Same exact npm version as CI and the lockfile (see ci.yml).
+      - run: npm install -g npm@11.19.0
       - name: Build
         run: |
           npm ci

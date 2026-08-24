@@ -31,6 +31,7 @@ async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
   const filePath: string = `${scratchDir}/hello.txt`;
   const content: string = `hello from ${runId}`;
 
+  // tag::fsRoundtrip[]
   section('write');
   if (!check('created the scratch directory', await files_mkdir(scratchDir))) return;
   cleanup.register('removed the scratch directory', async () => {
@@ -42,6 +43,7 @@ async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
   section('read back');
   const readBack: Result<string> = await step('read hello.txt', fileContent_get(filePath));
   if (readBack.ok) check('content matches what was written', readBack.value === content);
+  // end::fsRoundtrip[]
 }
 
 /**

@@ -1,0 +1,54 @@
+= The intent API: drive ChRIS from a program
+:toc: left
+:toclevels: 2
+:source-highlighter: highlight.js
+:example-root: ../../packages/chell/exemplars/ts
+
+== What this is
+
+The intent API is the pairing of `@fnndsc/cumin` (connection lifecycle, the typed wire contract, resource primitives, the `Result<T>` error discipline) and `@fnndsc/salsa` (file operations, feeds, jobs, pipelines, PACS retrieval). A program built on it states intentions: connect as this user, make this directory, stage this series, run this plugin, and receives typed results rather than raw collection documents.
+
+== Why this is
+
+CUBE's REST surface is correct but request-shaped: creating a feed, attaching an analysis and reading its output takes a choreography of collection lookups that every script would otherwise reimplement, and reimplement slightly wrongly. The intent layer performs that choreography once, in one audited place, and its error discipline is uniform: fallible operations return `Result<T>`, failure carries its cause on an error stack, and nothing is silently absorbed.
+
+== How this relates to existing clients
+
+link:https://fnndsc.github.io/fnndsc/chrisdoc/index.html[@fnndsc/chrisapi] remains the canonical low-level client, and mise consumes it behind a single adapter seam rather than competing with it; the type-laundering casts that once spread through consuming code are confined there and held by a ratchet. If your program needs a raw collection the intent layer does not model, the escape hatch is deliberate and typed: see the wire contract in the link:api/modules/_fnndsc_cumin.html[cumin reference].
+
+== The examples are tests
+
+Every code block below is included, by tag, from an exemplar program in `packages/chell/exemplars/ts/`. The exemplars run in continuous integration against a live CUBE and leave it exactly as they found it (every created resource registers its own undo on a cleanup plan). What you read here executed, recently, for real. The harness helpers you will see, `check`, `step`, `section`, `CleanupPlan`, live beside the exemplars in `lib/harness.ts` and are plain assertion and cleanup conveniences, not part of the API.
+
+== Connect and identify
+
+Connection is a saved-session singleton: `cube_connect` wraps `chrisConnection_init` plus `connection_connect`, after which every salsa and cumin call in the process operates as that user. From exemplar `01_connect.ts`:
+
+[source,typescript]
+----
+include::{example-root}/01_connect.ts[tag=connect]
+----
+
+== A filesystem round trip
+
+Files live in the ChRIS filesystem, addressed by absolute paths under `/home/<user>`. The salsa calls here are `files_mkdir`, `files_touch` and `fileContent_get`, each returning either a boolean or a `Result<string>`. Note the cleanup registration the moment the directory exists: intent programs restore the CUBE they touched. From exemplar `02_fsRoundtrip.ts`:
+
+[source,typescript]
+----
+include::{example-root}/02_fsRoundtrip.ts[tag=fsRoundtrip]
+----
+
+== Feeds and analyses
+
+An analysis is a feed rooted in data plus plugin instances attached to it. The exemplar stages a DICOM series from a PACS, roots a feed on its folder with `pl-dircopy`, then attaches `pl-dcm2niix` and polls it to completion; the excerpt below shows the feed and analysis steps (the staging above them is PACS-specific and covered by the exemplar in full). From exemplar `03_feedDcm2niix.ts`:
+
+[source,typescript]
+----
+include::{example-root}/03_feedDcm2niix.ts[tag=feedRun]
+----
+
+The helpers `feed_root` and `analysis_runAndVerify` in that exemplar are small and worth reading whole: they wrap `feed_createFromDirs`, plugin resolution, instance creation and status polling, all through public salsa and cumin calls, and register feed deletion on the cleanup plan.
+
+== Where to go next
+
+The generated reference documents every exported function with its parameters and result shape: link:api/modules/_fnndsc_cumin.html[cumin] for connection, wire contract and primitives; link:api/modules/_fnndsc_salsa.html[salsa] for files, feeds, jobs, pipelines and PACS. For the PACS retrieve engine specifically (firing bounded pulls, LONK progress watching, storage resolution), read `retrieve_fireAndWatch` and its neighbours in the salsa reference; exemplar `04_pacsQR.ts` exercises the full query, retrieve, verify and restore cycle.

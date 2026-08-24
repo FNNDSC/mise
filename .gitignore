@@ -12,3 +12,4 @@ packages/chili/download/
 *.dicom
 *.nii
 *.nii.gz
+/site/

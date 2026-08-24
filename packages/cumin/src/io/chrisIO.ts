@@ -151,8 +151,7 @@ export class ChrisIO {
       // Fall through to the PACS collection.
     }
     try {
-      const pacsClient = client as unknown as { getPACSFile(id: number): Promise<UserFile | null> };
-      return await pacsClient.getPACSFile(fileId);
+      return await resource_call<UserFile | null>(client, 'getPACSFile', fileId);
     } catch {
       return null;
     }

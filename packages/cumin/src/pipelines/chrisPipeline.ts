@@ -12,7 +12,7 @@
  */
 
 import { chrisConnection } from "../connect/chrisConnection.js";
-import { itemData_get, items_get, resource_call } from "../chrisapi/adapter.js";
+import { itemData_get, items_get, listData_get, resource_call } from "../chrisapi/adapter.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
@@ -111,7 +111,7 @@ export async function pipelines_list(
     const params: PipelineSearchParams = search ? { name: search } : {};
     const result = await group.asset.resources_getAll(params);
     if (!result || !result.tableData) return Ok([]);
-    return Ok(result.tableData as unknown as PipelineRecord[]);
+    return Ok(listData_get<PipelineRecord>({ data: result.tableData }));
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipelines_list: ${msg}`);

@@ -231,6 +231,20 @@ export async function resource_call<T>(
 }
 
 /**
+ * Tests whether a chrisapi object exposes a named runtime method.
+ *
+ * Companion to `resource_call` for methods that are legitimately optional
+ * across CUBE/chrisapi versions (e.g. `getPublicFeeds`, `getLogs`).
+ *
+ * @param obj - The chrisapi object to probe.
+ * @param methodName - Name of the method to look for.
+ * @returns True when the object has a callable property of that name.
+ */
+export function method_exists(obj: object, methodName: string): boolean {
+  return typeof (obj as Record<string, unknown>)[methodName] === 'function';
+}
+
+/**
  * Deletes a PACS retrieve resource addressed by URL.
  *
  * The chrisapi Client offers no delete-by-id for retrieves, so the resource

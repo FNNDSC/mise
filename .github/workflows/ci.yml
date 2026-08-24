@@ -51,4 +51,6 @@ jobs:
           fail_ci_if_error: false
       - run: npm run lint:tests
       - run: npm run lint:seam
+      # Cast ratchet: the repo's `as unknown as` count may only decrease.
+      - run: npm run lint:casts
       - run: npm run lint --if-present

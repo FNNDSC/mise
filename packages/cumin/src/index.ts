@@ -48,6 +48,24 @@ export * from "./output/runtimeOutput";
 
 // Re-export chrisapi types so downstream packages don't import chrisapi directly
 export { listData_get, itemData_get, items_get } from "./chrisapi/adapter";
+
+// Typed wire contract over the hot API surfaces (jobs, PACS): downstream
+// packages call these instead of casting the opaque client per call site.
+export {
+  feedsPage_get,
+  publicFeedsPage_get,
+  pluginInstancesPage_get,
+  pluginInstance_get,
+  downloadToken_create,
+} from "./chrisapi/contract";
+export type {
+  ListPage,
+  FeedData,
+  PluginInstanceData,
+  InstanceParameterData,
+  DownloadToken,
+  PluginInstanceHandle,
+} from "./chrisapi/contract";
 export type {
   ListResource,
   Resource,

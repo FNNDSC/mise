@@ -23,74 +23,21 @@ import {
   Result,
   Ok,
   Err,
+  feedsPage_get,
+  publicFeedsPage_get,
+  pluginInstancesPage_get,
+  pluginInstance_get,
+  ListPage,
+  FeedData,
+  PluginInstanceData,
+  PluginInstanceHandle,
+  InstanceParameterData,
 } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
 import { job_cancel, job_delete, job_statusFetch, job_logFetch, jobs_statusBatch } from '../../jobs/index.js';
 
-/** Raw instance data from chrisapi. */
-interface RawInstance {
-  id: number;
-  feed_id: number;
-  previous_id: number | null;
-  plugin_name: string;
-  plugin_type?: string;
-  status: string;
-  output_path?: string;
-  [key: string]: unknown;
-}
-
-/** Raw feed data from chrisapi (includes job count fields). */
-interface RawFeed {
-  id: number;
-  name: string;
-  owner_username?: string;
-  public?: boolean;
-  creation_date?: string;
-  finished_jobs?: number;
-  errored_jobs?: number;
-  started_jobs?: number;
-  scheduled_jobs?: number;
-  cancelled_jobs?: number;
-  created_jobs?: number;
-  [key: string]: unknown;
-}
-
-interface ChrisListResource<T> {
-  data: T[] | null;
-  totalCount?: number;
-}
-
-/** One resolved parameter value recorded on a plugin instance. */
-interface RawInstanceParameter {
-  param_name?: string;
-  value?: unknown;
-}
-
-/** Paginated parameter collection exposed by a plugin-instance resource. */
-interface InstanceParameterList {
-  data?: RawInstanceParameter[] | null;
-  totalCount?: number;
-  getItems?: () => Array<{ data: RawInstanceParameter }>;
-}
-
-/** Detail resource through which CUBE exposes an instance's effective parameters. */
-interface InstanceResource {
-  data?: Record<string, unknown>;
-  getParameters(params?: { limit: number; offset: number }): Promise<InstanceParameterList>;
-}
-
-/** Client operation needed for lazy instance-parameter resolution. */
-interface InstanceDetailClient {
-  getPluginInstance(id: number): Promise<InstanceResource | null>;
-}
-
-interface ChrisClient {
-  getPluginInstances(params?: Record<string, unknown>): Promise<ChrisListResource<RawInstance>>;
-  getFeeds(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
-  getPublicFeeds?(params?: Record<string, unknown>): Promise<ChrisListResource<RawFeed>>;
-}
-
-type FeedPageFetch = (params: Record<string, unknown>) => Promise<ChrisListResource<RawFeed>>;
+/** Fetches one page of a paginated feed collection through the wire contract. */
+type FeedPageFetch = (params: Record<string, unknown>) => Promise<ListPage<FeedData>>;
 
 /** Virtual filenames inside each instance directory. */
 const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log', 'data']);
@@ -129,7 +76,7 @@ export interface ProcTopologyStatus {
 }
 
 /** Converts a CUBE feed row into the cache's feed model. */
-function procFeed_create(feed: RawFeed): ProcFeed {
+function procFeed_create(feed: FeedData): ProcFeed {
   return {
     id: Number(feed.id),
     title: String(feed.name),
@@ -152,9 +99,9 @@ async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, P
   const seenFeedIDs: Set<number> = new Set();
 
   while (true) {
-    const page: ChrisListResource<RawFeed> = await page_fetch({ limit: PAGE, offset });
-    const chunk: RawFeed[] = page.data ?? [];
-    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+    const page: ListPage<FeedData> = await page_fetch({ limit: PAGE, offset });
+    const chunk: FeedData[] = page.data;
+    if (offset === 0 && page.totalCount !== null) {
       total = page.totalCount;
     }
     for (const feed of chunk) {
@@ -183,12 +130,18 @@ async function procCache_build(): Promise<number[]> {
     throw new Error('not connected');
   }
 
-  const typedClient: ChrisClient = client as unknown as ChrisClient;
   const indexed: Map<number, ProcFeed> = new Map();
-  await procFeeds_index(typedClient.getFeeds.bind(typedClient), indexed);
-  if (typedClient.getPublicFeeds) {
-    await procFeeds_index(typedClient.getPublicFeeds.bind(typedClient), indexed);
-  }
+  await procFeeds_index(
+    (params: Record<string, unknown>): Promise<ListPage<FeedData>> => feedsPage_get(client, params),
+    indexed,
+  );
+  // Older CUBEs lack a public-feeds endpoint: the contract answers null
+  // without a wire call, and an empty first page ends the index loop.
+  await procFeeds_index(
+    async (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
+      (await publicFeedsPage_get(client, params)) ?? { data: [], totalCount: 0 },
+    indexed,
+  );
 
   const reconciliationTargets: number[] = cache.feeds_reconcile(Array.from(indexed.values()));
   cache.built_set();
@@ -211,17 +164,16 @@ async function feedInstances_load(feedID: number): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) throw new Error('not connected');
 
-  const typedClient: ChrisClient = client as unknown as ChrisClient;
-  const instances: Map<number, RawInstance> = new Map();
+  const instances: Map<number, PluginInstanceData> = new Map();
   let offset: number = 0;
   let total: number = 0;
 
   while (true) {
-    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
+    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
       feed_id: feedID, limit: PAGE, offset,
     });
-    const chunk: RawInstance[] = page.data ?? [];
-    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+    const chunk: PluginInstanceData[] = page.data;
+    if (offset === 0 && page.totalCount !== null) {
       total = page.totalCount;
     }
     for (const instance of chunk) instances.set(Number(instance.id), instance);
@@ -357,9 +309,8 @@ async function instanceOutputPath_ensure(instanceID: number): Promise<string | n
   const client = await chrisConnection.client_get();
   if (!client) return null;
   try {
-    const resource: InstanceResource | null = await (client as unknown as InstanceDetailClient)
-      .getPluginInstance(instanceID);
-    const outputPath: string | null = outputPath_normalize(resource?.data?.['output_path']);
+    const handle: PluginInstanceHandle | null = await pluginInstance_get(client, instanceID);
+    const outputPath: string | null = outputPath_normalize(handle?.data?.output_path);
     cache.outputPath_update(instanceID, outputPath);
     return outputPath;
   } catch (error: unknown) {
@@ -373,20 +324,19 @@ async function instanceOutputPath_ensure(instanceID: number): Promise<string | n
 /**
  * Reads every page of effective parameter values from one plugin instance.
  *
- * @param resource - Detail resource for the instance being inspected.
+ * @param handle - Typed handle for the instance being inspected.
  * @returns Parameter names mapped to their recorded invocation values.
  */
-async function instanceParams_fetch(resource: InstanceResource): Promise<Record<string, unknown>> {
+async function instanceParams_fetch(handle: PluginInstanceHandle): Promise<Record<string, unknown>> {
   const params: Record<string, unknown> = {};
   let offset: number = 0;
   let total: number = 0;
   let fetched: number = 0;
 
   while (true) {
-    const page: InstanceParameterList = await resource.getParameters({ limit: PAGE, offset });
-    const items: RawInstanceParameter[] = page.data
-      ?? (page.getItems ? page.getItems().map((item: { data: RawInstanceParameter }): RawInstanceParameter => item.data) : []);
-    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+    const page: ListPage<InstanceParameterData> = await handle.parametersPage_get({ limit: PAGE, offset });
+    const items: InstanceParameterData[] = page.data;
+    if (offset === 0 && page.totalCount !== null) {
       total = page.totalCount;
     }
     for (const item of items) {
@@ -586,9 +536,8 @@ export class ProcVfsProvider implements VFSProvider {
           const client = await chrisConnection.client_get();
           if (client) {
             try {
-              const resource: InstanceResource | null = await (client as unknown as InstanceDetailClient)
-                .getPluginInstance(instanceID);
-              if (resource) cache.params_update(instanceID, await instanceParams_fetch(resource));
+              const handle: PluginInstanceHandle | null = await pluginInstance_get(client, instanceID);
+              if (handle) cache.params_update(instanceID, await instanceParams_fetch(handle));
             } catch {
               // Deliberate absorption, adjudicated 2026-08: parameters are a
               // lazy display enrichment; a failed fetch renders as
@@ -708,9 +657,8 @@ export async function feedMeta_ensure(feedID: number): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) throw new Error('not connected');
 
-  const typedClient: ChrisClient = client as unknown as ChrisClient;
-  const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
-  const f: RawFeed | undefined = (page.data ?? [])[0];
+  const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
+  const f: FeedData | undefined = page.data[0];
   if (!f) return;
 
   cache.feed_add(procFeed_create(f));
@@ -721,17 +669,16 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) return;
 
-  const typedClient: ChrisClient = client as unknown as ChrisClient;
   let offset: number = 0;
   let total: number = 0;
   const seenInstanceIDs: Set<number> = new Set();
 
   while (true) {
-    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
+    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
       feed_id: feedID, limit: PAGE, offset,
     });
-    const chunk: RawInstance[] = page.data ?? [];
-    if (offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+    const chunk: PluginInstanceData[] = page.data;
+    if (offset === 0 && page.totalCount !== null) {
       total = page.totalCount;
     }
     for (const inst of chunk) {
@@ -765,14 +712,12 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) throw new Error('not connected');
 
-  const typedClient: ChrisClient = client as unknown as ChrisClient;
-
   while (true) {
-    const page: ChrisListResource<RawInstance> = await typedClient.getPluginInstances({
+    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
       limit: PAGE, offset: state.offset,
     });
-    const chunk: RawInstance[] = page.data ?? [];
-    if (state.offset === 0 && typeof page.totalCount === 'number' && page.totalCount >= 0) {
+    const chunk: PluginInstanceData[] = page.data;
+    if (state.offset === 0 && page.totalCount !== null) {
       state.total = page.totalCount;
       if (state.total > 0) cache.warmup_progress(0, state.total);
     }
@@ -990,9 +935,8 @@ export async function procCache_refresh(feedID?: number): Promise<number[]> {
     // Re-fetch feed metadata with job counters
     const client = await chrisConnection.client_get();
     if (client) {
-      const typedClient: ChrisClient = client as unknown as ChrisClient;
-      const page: ChrisListResource<RawFeed> = await typedClient.getFeeds({ id: feedID, limit: 1, offset: 0 });
-      const f: RawFeed | undefined = (page.data ?? [])[0];
+      const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
+      const f: FeedData | undefined = page.data[0];
       if (f) {
         cache.feed_add(procFeed_create(f));
       }

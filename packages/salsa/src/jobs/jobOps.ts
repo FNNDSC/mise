@@ -1,10 +1,26 @@
 /**
  * @file Job (plugin instance) cancel and delete operations.
  *
+ * All CUBE access flows through cumin's typed wire contract
+ * (`pluginInstance_get`, `pluginInstancesPage_get`) — no casts against the
+ * opaque client belong here.
+ *
  * @module
  */
 
-import { chrisConnection, errorStack, Result, Ok, Err, procCache_get } from '@fnndsc/cumin';
+import {
+  chrisConnection,
+  errorStack,
+  Result,
+  Ok,
+  Err,
+  procCache_get,
+  pluginInstance_get,
+  pluginInstancesPage_get,
+  PluginInstanceHandle,
+  ListPage,
+  PluginInstanceData,
+} from '@fnndsc/cumin';
 import { inflateSync } from 'node:zlib';
 
 /** Statuses that cannot be cancelled — operation is already done. */
@@ -13,15 +29,6 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'finishedWithError',
   'cancelled',
 ]);
-
-/**
- * Plugin instance object returned by chrisapi (minimal shape we need).
- */
-interface PluginInstanceObj {
-  data: { status?: string; [key: string]: unknown };
-  put(data: Record<string, unknown>): Promise<unknown>;
-  delete(): Promise<void>;
-}
 
 /** Tests whether an unknown value is a non-null record. */
 function record_is(value: unknown): value is Record<string, unknown> {
@@ -69,21 +76,18 @@ export async function job_cancel(instanceID: number): Promise<Result<boolean>> {
       return Err();
     }
 
-    const instance: PluginInstanceObj = await (client as unknown as {
-      getPluginInstance(id: number): Promise<PluginInstanceObj>;
-    }).getPluginInstance(instanceID);
-
-    if (!instance) {
+    const handle: PluginInstanceHandle | null = await pluginInstance_get(client, instanceID);
+    if (!handle) {
       errorStack.stack_push('error', `Plugin instance ${instanceID} not found.`);
       return Err();
     }
 
-    const status: string = (instance.data.status as string) ?? '';
+    const status: string = handle.data?.status ?? '';
     if (TERMINAL_STATUSES.has(status)) {
       return Ok(true);
     }
 
-    await instance.put({ status: 'cancelled' });
+    await handle.status_set('cancelled');
     return Ok(true);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
@@ -113,21 +117,18 @@ export async function job_delete(instanceID: number): Promise<Result<boolean>> {
       return Err();
     }
 
-    const instance: PluginInstanceObj = await (client as unknown as {
-      getPluginInstance(id: number): Promise<PluginInstanceObj>;
-    }).getPluginInstance(instanceID);
-
-    if (!instance) {
+    const handle: PluginInstanceHandle | null = await pluginInstance_get(client, instanceID);
+    if (!handle) {
       errorStack.stack_push('error', `Plugin instance ${instanceID} not found.`);
       return Err();
     }
 
-    const status: string = (instance.data.status as string) ?? '';
+    const status: string = handle.data?.status ?? '';
     if (!TERMINAL_STATUSES.has(status)) {
-      await instance.put({ status: 'cancelled' });
+      await handle.status_set('cancelled');
     }
 
-    await instance.delete();
+    await handle.delete();
     return Ok(true);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
@@ -156,17 +157,13 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
       return Err();
     }
 
-    const instance: PluginInstanceObj = await (client as unknown as {
-      getPluginInstance(id: number): Promise<PluginInstanceObj>;
-    }).getPluginInstance(instanceID);
-
-    if (!instance) {
+    const handle: PluginInstanceHandle | null = await pluginInstance_get(client, instanceID);
+    if (!handle) {
       errorStack.stack_push('error', `Plugin instance ${instanceID} not found.`);
       return Err();
     }
 
-    const status: string = (instance.data.status as string) ?? 'unknown';
-    return Ok(status);
+    return Ok(handle.data?.status ?? 'unknown');
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `Failed to fetch status for instance ${instanceID}: ${msg}`);
@@ -174,15 +171,6 @@ export async function job_statusFetch(instanceID: number): Promise<Result<string
   }
 }
 
-/**
- * Finds plugin instances by numeric ID or plugin name substring.
- *
- * Checks ProcCache first. On a miss, queries the API and loads the
- * relevant feed(s) into the cache so paths can be reconstructed.
- *
- * @param term - Numeric instance ID string, or plugin name substring.
- * @returns Ok(array of {id, feedID, pluginName, status}) or Err.
- *
 /**
  * Fetches current status for a batch of plugin instances in parallel.
  * Used by ls -l /proc/jobs/feed_N to get all node statuses in one round-trip.
@@ -208,22 +196,17 @@ export async function jobs_statusBatch(ids: number[]): Promise<Map<number, strin
     return result;
   }
 
-  const typedClient = client as unknown as {
-    getPluginInstance(id: number): Promise<{ data: { status?: string; [key: string]: unknown } } | null>;
-  };
-
   const failedIDs: number[] = [];
   const entries: Array<[number, string]> = (
     await Promise.all(
       ids.map(async (id: number): Promise<[number, string] | null> => {
         try {
-          const inst = await typedClient.getPluginInstance(id);
-          if (!inst) {
+          const handle: PluginInstanceHandle | null = await pluginInstance_get(client, id);
+          if (!handle) {
             failedIDs.push(id);
             return null;
           }
-          const status: string = (inst.data.status as string) ?? 'unknown';
-          return [id, status];
+          return [id, handle.data?.status ?? 'unknown'];
         } catch {
           failedIDs.push(id);
           return null;
@@ -290,10 +273,6 @@ export async function jobs_find(
       return Err();
     }
 
-    interface InstListResult {
-      data: Array<{ id?: unknown; feed_id?: unknown; plugin_name?: unknown; status?: unknown }> | null;
-    }
-
     const searchParam: Record<string, unknown> = isID
       ? { id: numeric, limit: 1, offset: 0 }
       : { plugin_name: term, limit: 100, offset: 0 };
@@ -302,11 +281,12 @@ export async function jobs_find(
     let offset: number = 0;
 
     while (true) {
-      const page: InstListResult = await (client as unknown as {
-        getPluginInstances(p: Record<string, unknown>): Promise<InstListResult>;
-      }).getPluginInstances({ ...searchParam, offset });
+      const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
+        ...searchParam,
+        offset,
+      });
 
-      const chunk = page.data ?? [];
+      const chunk: PluginInstanceData[] = page.data;
       for (const inst of chunk) {
         apiResults.push({
           id: Number(inst.id),
@@ -346,14 +326,12 @@ export async function job_feedID_get(instanceID: number): Promise<Result<number>
       return Err();
     }
 
-    interface InstListResult {
-      data: Array<{ feed_id?: unknown; id?: unknown }> | null;
-    }
-    const result: InstListResult = await (client as unknown as {
-      getPluginInstances(p: Record<string, unknown>): Promise<InstListResult>;
-    }).getPluginInstances({ id: instanceID, limit: 1 });
+    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
+      id: instanceID,
+      limit: 1,
+    });
 
-    const hit: { feed_id?: unknown } | undefined = result.data?.[0];
+    const hit: PluginInstanceData | undefined = page.data[0];
     if (!hit || hit.feed_id === undefined || hit.feed_id === null) {
       errorStack.stack_push('error', `Instance ${instanceID} not found.`);
       return Err();
@@ -381,30 +359,21 @@ export async function job_logFetch(instanceID: number): Promise<Result<string>> 
       return Err();
     }
 
-    const instance = await (client as unknown as {
-      getPluginInstance(id: number): Promise<PluginInstanceObj & {
-        getLogs?(): Promise<{ data: { log?: string }[] }>;
-      }>;
-    }).getPluginInstance(instanceID);
-
-    if (!instance) {
+    const handle: PluginInstanceHandle | null = await pluginInstance_get(client, instanceID);
+    if (!handle) {
       errorStack.stack_push('error', `Plugin instance ${instanceID} not found.`);
       return Err();
     }
 
-    const rawLog: string | undefined = pfconLog_decode(instance.data.raw);
+    const rawLog: string | undefined = pfconLog_decode(handle.data?.raw);
     if (rawLog !== undefined) {
       return Ok(rawLog || '(no log output yet)');
     }
 
-    if (!instance.getLogs) {
+    const logText: string | null = await handle.logs_get();
+    if (logText === null) {
       return Ok('(log not available for this instance)');
     }
-
-    const logsResult = await instance.getLogs();
-    const logText: string = logsResult.data
-      .map((entry: { log?: string }) => entry.log ?? '')
-      .join('\n');
     return Ok(logText || '(no log output yet)');
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);

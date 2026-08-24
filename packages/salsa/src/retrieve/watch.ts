@@ -23,6 +23,8 @@ import {
   pacsRetrieve_create,
   seriesStorage_resolve,
   retry_untilValue,
+  downloadToken_create,
+  type DownloadToken,
   type PACSQueryCreateData,
   type PACSRetrieveRecord,
   type SeriesStorageState,
@@ -93,10 +95,6 @@ export interface RetrieveWatchEvents {
   retryRound?: (attempt: number, retryMax: number, count: number) => void;
 }
 
-/** Minimal ChRIS API client slice for creating download tokens. */
-interface TokenClient {
-  createDownloadToken(): Promise<{ data: unknown; url: unknown }>;
-}
 
 /**
  * Builds a fresh retrieve task from series identity facts.
@@ -271,10 +269,8 @@ export async function retrieve_fireAndWatch(
     events.task?.(task, status ?? retrieveProgress_classify(task), phase);
   };
 
-  const tokenClient: TokenClient = client as unknown as TokenClient;
-  const downloadToken = await tokenClient.createDownloadToken();
-  const tokenStr: string = String((downloadToken.data as unknown as Record<string, unknown>).token ?? '');
-  const ws: WebSocket = new WebSocket(lonkWsUrl_build(downloadToken.url as string, tokenStr));
+  const downloadToken: DownloadToken = await downloadToken_create(client);
+  const ws: WebSocket = new WebSocket(lonkWsUrl_build(downloadToken.url, downloadToken.token));
 
   await new Promise<void>((openResolve: () => void, openReject: (err: Error) => void) => {
     ws.once('open', openResolve);

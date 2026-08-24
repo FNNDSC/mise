@@ -24,7 +24,7 @@ import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 
 /** The daemon sink forwards live command output to the executing surface. */
-class DaemonSink implements OutputSink {
+export class DaemonSink implements OutputSink {
   constructor(private readonly daemon: CalypsoDaemon) {}
 
   /** @inheritdoc */
@@ -40,6 +40,37 @@ class DaemonSink implements OutputSink {
     const text: string = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
     this.daemon.output_current(channel, text);
   }
+}
+
+/**
+ * Builds the surface a daemon-hosted engine talks to.
+ *
+ * Interactivity is a surface capability: prompts, pipeline segments, shell
+ * escapes, and local editing reach the surface running the command through
+ * the daemon's brokers, without knowing the transport. Nothing ever spawns
+ * on the daemon host.
+ *
+ * @param daemon - The daemon whose brokers deliver the capability requests.
+ * @returns The surface to install with `surface_set` on the daemon host.
+ */
+export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
+  return {
+    capabilities: {
+      hiddenInput: true,
+      localEdit: true,
+      tty: true,
+      pipeSegments: true,
+      shellCommands: true,
+    },
+    prompt: (request: PromptRequest): Promise<string> =>
+      daemon.prompt_current(request.message, request.hidden ?? false),
+    pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
+      daemon.pipe_current(command, input),
+    shellCommand: (command: string): Promise<number> =>
+      daemon.shell_current(command),
+    localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
+      daemon.edit_current(request.content, request.extension),
+  };
 }
 
 /**
@@ -98,29 +129,7 @@ export async function daemon_launch(
     stack: { ...versions_get(), build: buildHash_get() },
   });
   sink_set(new DaemonSink(daemon));
-
-  // Interactivity is a surface capability: prompts, pipeline segments, shell
-  // escapes, and local editing reach the surface running the command through
-  // the daemon's brokers, without knowing the transport. Nothing ever spawns
-  // on the daemon host.
-  const surface: Surface = {
-    capabilities: {
-      hiddenInput: true,
-      localEdit: true,
-      tty: true,
-      pipeSegments: true,
-      shellCommands: true,
-    },
-    prompt: (request: PromptRequest): Promise<string> =>
-      daemon.prompt_current(request.message, request.hidden ?? false),
-    pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
-      daemon.pipe_current(command, input),
-    shellCommand: (command: string): Promise<number> =>
-      daemon.shell_current(command),
-    localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
-      daemon.edit_current(request.content, request.extension),
-  };
-  surface_set(surface);
+  surface_set(daemonSurface_create(daemon));
 
   const port: number = await daemon.start();
   const url: string = `ws://127.0.0.1:${port}`;

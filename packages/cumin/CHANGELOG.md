@@ -1,5 +1,24 @@
 # @fnndsc/cumin
 
+## 3.10.0
+
+### Minor Changes
+
+- 5285bd5: Cast burndown to the adapter floor. The wire contract gains the pipelines
+  surface (`pipeline_get` with piping items and plugin metadata handles,
+  `pipelineSourceFilesPage_get`); salsa's pipeline modules, feed joins, and
+  brasa/chili call sites migrate onto typed accessors and honest converters.
+  The repository's `as unknown as` count is now 2, both inside the licensed
+  adapter seam, and the CI ratchet holds it there. chell progress bars also
+  draw on the renderer's configured stream instead of assuming stdout.
+- 919648f: Typed chrisapi wire contract over the jobs and PACS surfaces. cumin gains
+  `feedsPage_get`, `publicFeedsPage_get`, `pluginInstancesPage_get`,
+  `pluginInstance_get` (typed detail handle with parameters, status, logs,
+  delete), and `downloadToken_create`, with the wire row shapes (`FeedData`,
+  `PluginInstanceData`, `InstanceParameterData`, `DownloadToken`) declared once.
+  salsa's proc provider, job operations, and retrieve watcher now call the
+  contract instead of casting the opaque client per call site.
+
 ## 3.9.0
 
 ### Minor Changes

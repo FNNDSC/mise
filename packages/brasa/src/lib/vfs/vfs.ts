@@ -16,6 +16,7 @@ import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, Result, Ok, Err, errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
 import { error_stripDebugPrefix } from '../../builtins/utils.js';
+import { listingItemsFromVfs_make } from './listing.js';
 
 /**
  * Virtual File System Router.
@@ -68,7 +69,7 @@ export class VFS {
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
       const vfsResult = await vfsDispatcher.list(effectivePath, options);
       if (vfsResult.ok) {
-        const items: ListingItem[] = vfsResult.value as unknown as ListingItem[];
+        const items: ListingItem[] = listingItemsFromVfs_make(vfsResult.value);
 
         // Cache the results (not for /proc paths)
         if (!isProcPath) {
@@ -112,9 +113,9 @@ export class VFS {
     if (cached) {
       parentItems = cached.data;
     } else {
-      const parentResult: Result<ListingItem[]> = await vfsDispatcher.list(parentPath, options) as Result<ListingItem[]>;
+      const parentResult = await vfsDispatcher.list(parentPath, options);
       if (parentResult.ok) {
-        parentItems = parentResult.value;
+        parentItems = listingItemsFromVfs_make(parentResult.value);
         listCache.cache_set(parentPath, parentItems);
       }
     }

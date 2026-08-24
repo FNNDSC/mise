@@ -56,6 +56,8 @@ export {
   publicFeedsPage_get,
   pluginInstancesPage_get,
   pluginInstance_get,
+  pipeline_get,
+  pipelineSourceFilesPage_get,
   downloadToken_create,
 } from "./chrisapi/contract";
 export type {
@@ -65,6 +67,14 @@ export type {
   InstanceParameterData,
   DownloadToken,
   PluginInstanceHandle,
+  PipelineHandle,
+  PluginPipingItem,
+  PluginPipingData,
+  PipingDefaultParameterData,
+  PipelineSourceFileData,
+  PluginParameterData,
+  ComputeResourceData,
+  PluginHandle,
 } from "./chrisapi/contract";
 export type {
   ListResource,

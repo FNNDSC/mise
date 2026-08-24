@@ -56,7 +56,7 @@ export class PluginContextGroupHandler {
       try {
         this.controller = await PluginContextController.controller_create(this.assetName, this.id);
         this.baseGroupHandler.chrisObject =
-          this.controller.chrisObject as unknown as ChRISEmbeddedResourceGroup<unknown>;
+          this.controller.chrisObject as ChRISEmbeddedResourceGroup<unknown>;
       } catch (error: unknown) {
         // The generic "no context" message downstream must not eat the real
         // cause (auth failure, network, bad id).

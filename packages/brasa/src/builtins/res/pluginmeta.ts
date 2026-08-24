@@ -6,7 +6,7 @@
  */
 import chalk from 'chalk';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { commandArgs_process, ParsedArgs } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { pluginMetas_fetchList, PluginMetaListResult } from '@fnndsc/chili/commands/pluginmetas/list.js';
 import { pluginMetaFields_fetch } from '@fnndsc/chili/commands/pluginmetas/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -23,7 +23,7 @@ export async function builtin_pluginmeta(args: string[]): Promise<CommandEnvelop
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { pluginMetas, selectedFields, totalCount }: PluginMetaListResult = await pluginMetas_fetchList(parsed as unknown as CLIoptions);
+      const { pluginMetas, selectedFields, totalCount }: PluginMetaListResult = await pluginMetas_fetchList(cliOptions_from(parsed));
       if (pluginMetas.length === 0) { return envelope_ok(`${chalk.gray('No plugin metas found.')}\n`); }
       return envelope_ok(table_render(pluginMetas, selectedFields, { title: { title: 'Plugin Metas', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginMetas.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

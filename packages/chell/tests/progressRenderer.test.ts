@@ -257,4 +257,20 @@ describe('TerminalProgressRenderer', () => {
     expect(singleBars[0].stopped).toBe(true);
     expect(FakeMultiBar.instances[0].stopped).toBe(true);
   });
+
+  it('renders real cli-progress bars through the default factory', () => {
+    // No factory injected: the default cli-progress subclasses construct with
+    // Record options, drawing bars into the fake TTY streams.
+    const stream = stream_create(true);
+    const statusStream = stream_create(true);
+    const renderer = new TerminalProgressRenderer({ stream, statusStream, isTTY: true });
+
+    renderer.write({ operation: 'upload', phase: 'transferring', label: 'Uploading', current: 1, total: 2, unit: 'files' });
+    renderer.write({ operation: 'pull', phase: 'watching', itemId: 'series-a', label: 'series-a', current: 0, total: 3, unit: 'files' });
+    renderer.clear();
+
+    const output: string = stream.writes.join('');
+    expect(output).toContain('Uploading');
+    expect(output).toContain('series-a');
+  });
 });

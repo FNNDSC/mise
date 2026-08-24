@@ -16,6 +16,21 @@ export interface ChalkColorFunction {
   bold: (text: string) => string;
 }
 
+/**
+ * Resolves a chalk style function by its runtime name.
+ *
+ * chalk's typings enumerate fixed properties while user configuration
+ * addresses colors by string, so the lookup is dynamic; the callable check
+ * makes an unknown name resolve to undefined instead of a crash.
+ *
+ * @param name - Color/style name from configuration (e.g. "cyan").
+ * @returns The chalk function, or undefined when chalk has no such style.
+ */
+export function chalkColor_get(name: string): ChalkColorFunction | undefined {
+  const candidate: unknown = Reflect.get(chalk, name);
+  return typeof candidate === 'function' ? (candidate as ChalkColorFunction) : undefined;
+}
+
 type Justification = "left" | "center" | "right";
 type CellValue = string | number | boolean | null | undefined | object | unknown;
 
@@ -550,8 +565,7 @@ export class Screen {
       color = this.color_determine(cell, options.typeColors);
     }
 
-    const chalkColors: Record<string, ChalkColorFunction> = chalk as unknown as Record<string, ChalkColorFunction>;
-    const colorFn: ChalkColorFunction | undefined = color ? chalkColors[color] : undefined;
+    const colorFn: ChalkColorFunction | undefined = color ? chalkColor_get(color) : undefined;
 
     const coloredCell: string = cellString.includes("\u001b")
       ? cellString
@@ -581,8 +595,7 @@ export class Screen {
     const color: string = columnOptions.color || "white";
     const justification: Justification = columnOptions.justification || "left";
     const width: number = colWidths[index];
-    const chalkColors: Record<string, ChalkColorFunction> = chalk as unknown as Record<string, ChalkColorFunction>;
-    const colorFn: ChalkColorFunction = chalkColors[color] || chalkColors.white;
+    const colorFn: ChalkColorFunction = chalkColor_get(color) ?? chalk.white;
     return this.text_justify(colorFn.bold(header), width, justification);
   }
 

@@ -11,7 +11,7 @@ import {
   envelope_ok,
   envelope_error,
 } from '@fnndsc/cumin';
-import { commandArgs_process, ParsedArgs } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { groups_fetchList, GroupListResult } from '@fnndsc/chili/commands/groups/list.js';
 import { groupFields_fetch } from '@fnndsc/chili/commands/groups/fields.js';
 import {
@@ -131,7 +131,7 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { groups, selectedFields, totalCount }: GroupListResult = await groups_fetchList(parsed as unknown as CLIoptions);
+      const { groups, selectedFields, totalCount }: GroupListResult = await groups_fetchList(cliOptions_from(parsed));
       if (groups.length === 0) { return envelope_ok(`${chalk.gray('No groups found.')}\n`); }
       return envelope_ok(table_render(groups, selectedFields, { title: { title: 'Groups', justification: 'center' }, pagination: totalCount !== undefined ? { shown: groups.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

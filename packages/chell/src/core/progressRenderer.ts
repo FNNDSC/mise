@@ -73,9 +73,20 @@ const INSPECTION_FRAMES: readonly string[] = ['⣾', '⣽', '⣻', '⢿', '⡿',
 const INSPECTION_FRAME_MS: number = 80;
 
 function defaultFactory_get(): ProgressBarFactory {
+  // The factory ctor types take loose Record options for testability; these
+  // subclasses narrow them to cli-progress's all-optional Options at the
+  // constructor boundary instead of casting the classes themselves.
   return {
-    SingleBar: cliProgress.SingleBar as unknown as SingleBarCtor,
-    MultiBar: cliProgress.MultiBar as unknown as MultiBarCtor,
+    SingleBar: class extends cliProgress.SingleBar {
+      constructor(options: Record<string, unknown>, preset: unknown) {
+        super(options as cliProgress.Options, preset as cliProgress.Preset);
+      }
+    },
+    MultiBar: class extends cliProgress.MultiBar {
+      constructor(options: Record<string, unknown>, preset: unknown) {
+        super(options as cliProgress.Options, preset as cliProgress.Preset);
+      }
+    },
     preset: cliProgress.Presets.shades_classic,
   };
 }
@@ -248,6 +259,8 @@ export class TerminalProgressRenderer implements ProgressRenderer {
         hideCursor: true,
         clearOnComplete: false,
         stopOnComplete: false,
+        // Draw on the renderer's stream, not an assumed stdout.
+        stream: this.stream,
       }, this.factory.preset);
       bar.start(total, event_current(event), { label: event_label(event), unit: event.unit ?? '' });
       state = { bar, total };
@@ -269,6 +282,8 @@ export class TerminalProgressRenderer implements ProgressRenderer {
         hideCursor: true,
         clearOnComplete: false,
         stopOnComplete: false,
+        // Draw on the renderer's stream, not an assumed stdout.
+        stream: this.stream,
       }, this.factory.preset);
     }
 

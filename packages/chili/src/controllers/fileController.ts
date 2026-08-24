@@ -17,11 +17,6 @@ import {
 } from "@fnndsc/salsa";
 import { chiliErrLog, chiliLog } from "../screen/output.js";
 
-// Helper interface to access internal property safely
-interface ChRISFileSystemGroupWithFolder extends ChRISEmbeddedResourceGroup<ChrisPathNode> {
-  folder?: string;
-}
-
 /**
  * Controller for managing ChRIS file system resources (files, links, directories).
  * Extends BaseController to provide file-specific functionality.
@@ -60,8 +55,9 @@ export class FileController extends BaseController {
       return null;
     }
     
-    const groupWithFolder: ChRISFileSystemGroupWithFolder = chrisFileSystemGroup as unknown as ChRISFileSystemGroupWithFolder;
-    const effectivePath: string = path || groupWithFolder.folder || "";
+    // `folder` is a runtime property the group type does not declare.
+    const folderValue: unknown = Reflect.get(chrisFileSystemGroup, 'folder');
+    const effectivePath: string = path || (typeof folderValue === 'string' ? folderValue : "");
     
     return new FileController(chrisFileSystemGroup, effectivePath, assetName);
   }

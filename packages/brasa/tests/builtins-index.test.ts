@@ -71,6 +71,7 @@ jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_display: mockTableDisplay,
   table_render: mockTableRender,
   border_draw: jest.fn(),
+  chalkColor_get: jest.fn(() => undefined),
   screen: { print: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 

@@ -23,6 +23,11 @@ import {
   pipeline_resolve,
   pipeline_createWorkflow,
   pipelineFile_getTextByPath,
+  pipeline_get,
+  pipelineSourceFilesPage_get,
+  type PipelineHandle,
+  type PipelineSourceFileData,
+  type ListPage,
 } from '@fnndsc/cumin';
 
 export {
@@ -51,7 +56,6 @@ import {
   pipelineManifestForPipeline_get,
   pipelineManifest_get,
   type PipelineManifest,
-  type PipelineManifestResource,
 } from './manifest.js';
 import {
   pipelineInvocation_prepare,
@@ -65,25 +69,8 @@ type ConnectionClient = Awaited<ReturnType<typeof chrisConnection.client_get>>;
 
 interface PipelineSlugCacheEntry {
   record: PipelineRecord;
-  resource: PipelineLookupResource;
+  resource: PipelineHandle;
   expiresAt: number;
-}
-
-interface PipelineSourceFileItem {
-  data: { fname: string; pipeline_id?: number; pipeline_name?: string };
-}
-
-interface PipelineSourceFileList {
-  getItems: () => PipelineSourceFileItem[];
-}
-
-interface PipelineLookupResource extends PipelineManifestResource {
-  data?: PipelineRecord;
-}
-
-interface PipelineLookupClient {
-  getPipeline: (id: number) => Promise<PipelineLookupResource | null>;
-  getPipelineSourceFiles: (options: Record<string, unknown>) => Promise<PipelineSourceFileList>;
 }
 
 const PIPELINE_SLUG_TTL_MS: number = 5 * 60 * 1000;
@@ -160,21 +147,18 @@ export async function pipelines_getAll(): Promise<Result<PipelineRecord[]>> {
     return Err();
   }
 
-  const [pipelinesResult, sourceFilesResponse] = await Promise.all([
+  const [pipelinesResult, sourceFilesPage] = await Promise.all([
     cumin_pipelines_list(),
-    (client as unknown as {
-      getPipelineSourceFiles: (o: Record<string, unknown>) => Promise<{
-        getItems: () => Array<{ data: { fname: string; pipeline_name?: string; pipeline_id?: number } }>;
-      }>;
-    }).getPipelineSourceFiles({ limit: 1000 }).catch(() => null),
+    pipelineSourceFilesPage_get(client, { limit: 1000 })
+      .catch((): ListPage<PipelineSourceFileData> | null => null),
   ]);
 
   if (!pipelinesResult.ok) return Err();
 
   const idToSourceFilename: Map<number, string> = new Map<number, string>();
-  if (sourceFilesResponse) {
-    for (const item of sourceFilesResponse.getItems()) {
-      const { fname, pipeline_id } = item.data;
+  if (sourceFilesPage) {
+    for (const row of sourceFilesPage.data) {
+      const { fname, pipeline_id } = row;
       if (pipeline_id && fname) {
         idToSourceFilename.set(pipeline_id, fname);
       }
@@ -220,31 +204,31 @@ export async function pipelineManifestBySlug_get(slug: string): Promise<Result<P
   if (cached !== undefined) cache.delete(slug);
 
   try {
-    const typedClient: PipelineLookupClient = client as unknown as PipelineLookupClient;
-    const [pipelineResource, sourceFiles]: [PipelineLookupResource | null, PipelineSourceFileList] = await Promise.all([
-      typedClient.getPipeline(pipelineID),
-      typedClient.getPipelineSourceFiles({ pipeline_id: pipelineID, limit: 1000 }),
-    ]);
-    if (pipelineResource === null || pipelineResource.data === undefined) return Err();
-    const pipeline: PipelineRecord = pipelineResource.data;
+    const [pipelineHandle, sourcePage]: [PipelineHandle | null, ListPage<PipelineSourceFileData>] =
+      await Promise.all([
+        pipeline_get(client, pipelineID),
+        pipelineSourceFilesPage_get(client, { pipeline_id: pipelineID, limit: 1000 }),
+      ]);
+    if (pipelineHandle === null || pipelineHandle.data === null) return Err();
+    const pipeline: PipelineRecord = pipelineHandle.data;
 
-    const sourceItems: PipelineSourceFileItem[] = sourceFiles.getItems();
-    const source: PipelineSourceFileItem | undefined = sourceItems.find(
-      (item: PipelineSourceFileItem): boolean => item.data.pipeline_id === pipelineID,
+    const sourceRows: PipelineSourceFileData[] = sourcePage.data;
+    const source: PipelineSourceFileData | undefined = sourceRows.find(
+      (row: PipelineSourceFileData): boolean => row.pipeline_id === pipelineID,
     )
-      ?? sourceItems.find(
-        (item: PipelineSourceFileItem): boolean => item.data.pipeline_name === pipeline.name,
+      ?? sourceRows.find(
+        (row: PipelineSourceFileData): boolean => row.pipeline_name === pipeline.name,
       )
-      ?? (sourceItems.length === 1 ? sourceItems[0] : undefined);
-    const exactSlug: string = pipelineSlug_create(pipeline, source?.data.fname);
+      ?? (sourceRows.length === 1 ? sourceRows[0] : undefined);
+    const exactSlug: string = pipelineSlug_create(pipeline, source?.fname);
     if (exactSlug !== slug) return Err();
     const record: PipelineRecord = { ...pipeline, slug: exactSlug };
     cache.set(slug, {
       record,
-      resource: pipelineResource,
+      resource: pipelineHandle,
       expiresAt: Date.now() + PIPELINE_SLUG_TTL_MS,
     });
-    return pipelineManifestForPipeline_get(record, pipelineResource, { detail: 'registered' });
+    return pipelineManifestForPipeline_get(record, pipelineHandle, { detail: 'registered' });
   } catch (error: unknown) {
     const message: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipelineManifestBySlug_get: ${message}`);
@@ -316,15 +300,10 @@ export async function pipeline_sourceGet(
   }
 
   try {
-    const sourceFiles = await (client as unknown as {
-      getPipelineSourceFiles: (opts: Record<string, unknown>) => Promise<{
-        getItems: () => Array<{ data: { fname: string } }>;
-      }>;
-    }).getPipelineSourceFiles({ pipeline_id: pipeline.id, limit: 1 });
+    const sourcePage: ListPage<PipelineSourceFileData> =
+      await pipelineSourceFilesPage_get(client, { pipeline_id: pipeline.id, limit: 1 });
 
-    const items = sourceFiles.getItems();
-
-    if (items.length === 0) {
+    if (sourcePage.data.length === 0) {
       errorStack.stack_push(
         'error',
         `No source file registered for pipeline '${pipeline.name}' (id=${pipeline.id})`
@@ -332,7 +311,7 @@ export async function pipeline_sourceGet(
       return Err();
     }
 
-    return pipelineFile_getTextByPath('/' + items[0].data.fname);
+    return pipelineFile_getTextByPath('/' + sourcePage.data[0].fname);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipeline_sourceGet: ${msg}`);

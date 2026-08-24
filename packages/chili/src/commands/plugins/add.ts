@@ -270,7 +270,7 @@ async function pluginFromDocker_register(
   // Register with admin API
   chiliLog('Registering plugin with ChRIS CUBE...');
   const registered: PluginRegistrationResponse | null = await plugin_registerWithAdmin(
-    pluginData as unknown as PluginRegistrationData, 
+    pluginData,
     computeResources,
     initialCreds
   );

@@ -27,7 +27,9 @@ describe('commands/plugin/run', () => {
 
     expect(cumin.dictionary_fromCLI).toHaveBeenCalledWith('--param1 value1');
     expect(salsa.plugin_run).toHaveBeenCalledWith('plugin-name', { param1: 'value1' });
-    expect(result).toEqual(mockInstance);
+    // The command narrows the raw record to the PluginInstance model,
+    // defaulting the fields the wire record omitted.
+    expect(result).toEqual({ id: 1, name: 'test-instance', title: '', status: 'unknown' });
   });
 
   it('should return null if salsa.plugin_run fails', async () => {

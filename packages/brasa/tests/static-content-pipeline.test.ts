@@ -11,6 +11,10 @@ const stackPush = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok: (value: unknown) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
+  items_get: (list: { getItems?: () => unknown[] } | null | undefined) => {
+    const items = list?.getItems?.();
+    return Array.isArray(items) ? items : [];
+  },
   errorStack: {
     stack_push: stackPush,
     checkpoint_mark: jest.fn(() => 1),

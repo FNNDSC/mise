@@ -102,7 +102,7 @@ function inodeFields_list(inodeType: string, dataObj: ResourcesByFields | null):
   }
   if (dataObj.fields) {
     chiliLog(inodeType);
-    chiliLog(table_render(dataObj.fields as unknown as string[], ["fields"]));
+    chiliLog(table_render(dataObj.fields, ["fields"]));
     return true;
   }
   return false;

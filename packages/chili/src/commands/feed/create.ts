@@ -42,5 +42,12 @@ export async function feed_create(options: CLIoptions): Promise<Feed | null> {
   }
 
   const result: SimpleRecord | null = await salsaFeed_create(dirsArray, feedParams);
-  return result as unknown as Feed;
+  if (result === null || typeof result.id !== 'number') return null;
+  return {
+    ...result,
+    id: result.id,
+    name: typeof result.name === 'string' ? result.name : '',
+    creation_date: typeof result.creation_date === 'string' ? result.creation_date : '',
+    modification_date: typeof result.modification_date === 'string' ? result.modification_date : '',
+  };
 }

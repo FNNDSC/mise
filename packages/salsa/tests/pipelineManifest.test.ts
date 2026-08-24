@@ -153,8 +153,9 @@ describe('pipelineManifest_get', () => {
     expect(await pipelineManifestForPipeline_get(
       { id: 42, name: 'Example Pipeline' },
       {
-        getPluginPipings: async () => ({ getItems: () => [] }),
-        getDefaultParameters: async () => ({ data: [] }),
+        data: { id: 42, name: 'Example Pipeline' },
+        pluginPipings_get: async () => [],
+        defaultParametersPage_get: async () => ({ data: [], totalCount: 0 }),
       },
       { detail: 'registered' },
     )).toEqual({
@@ -174,8 +175,9 @@ describe('pipelineManifest_get', () => {
     expect((await pipelineManifestForPipeline_get(
       { id: 42, name: 'Example Pipeline' },
       {
-        getPluginPipings: async () => ({ getItems: () => [] }),
-        getDefaultParameters: async () => ({ data: [] }),
+        data: { id: 42, name: 'Example Pipeline' },
+        pluginPipings_get: async () => [],
+        defaultParametersPage_get: async () => ({ data: [], totalCount: 0 }),
       },
       { detail: 'registered' },
     )).ok).toBe(false);

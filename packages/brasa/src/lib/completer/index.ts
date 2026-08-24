@@ -17,6 +17,7 @@ import {
 } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import { listingItemsFromVfs_make } from '../vfs/listing.js';
 import { partialPath_split, completions_build } from './pathComplete.helpers.js';
 import { listCache_get } from '@fnndsc/cumin';
 import * as path from 'path';
@@ -264,7 +265,7 @@ async function path_complete(partial: string): Promise<string[]> {
       // Use vfsDispatcher for all path types — handles /pacs, /bin, native, etc.
       const vfsResult = await vfsDispatcher.list(absDirToList);
       if (vfsResult.ok) {
-        items = vfsResult.value as unknown as ListingItem[];
+        items = listingItemsFromVfs_make(vfsResult.value);
       }
 
       // Inject virtual directories at root if missing

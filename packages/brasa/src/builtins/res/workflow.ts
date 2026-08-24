@@ -6,7 +6,7 @@
  */
 import chalk from 'chalk';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { commandArgs_process, ParsedArgs } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { workflows_fetchList, WorkflowListResult } from '@fnndsc/chili/commands/workflows/list.js';
 import { workflowFields_fetch } from '@fnndsc/chili/commands/workflows/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -23,7 +23,7 @@ export async function builtin_workflow(args: string[]): Promise<CommandEnvelope>
 
   if (!subcommand || subcommand === 'list') {
     try {
-      const { workflows, selectedFields, totalCount }: WorkflowListResult = await workflows_fetchList(parsed as unknown as CLIoptions);
+      const { workflows, selectedFields, totalCount }: WorkflowListResult = await workflows_fetchList(cliOptions_from(parsed));
       if (workflows.length === 0) { return envelope_ok(`${chalk.gray('No workflows found.')}\n`); }
       return envelope_ok(table_render(workflows, selectedFields, { title: { title: 'Workflows', justification: 'center' }, pagination: totalCount !== undefined ? { shown: workflows.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

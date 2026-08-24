@@ -14,7 +14,6 @@ import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { path_resolve } from '../utils.js';
 import {
-  ChRISPACSClient,
   PACSSeriesInfo,
   SeriesCubePath,
   pacs_seriesCollect,
@@ -86,7 +85,6 @@ export async function builtin_cubepath(args: string[]): Promise<CommandEnvelope>
     return envelope_error('', undefined, `${errOut}${chalk.red('cubepath: Not connected to ChRIS.')}\n`);
   }
 
-  const pacsClient: ChRISPACSClient = client as unknown as ChRISPACSClient;
   const maxAttempts: number = retry ? 4 : 1;
   const retryDelayMs: number = retry ? 2_000 : 0;
 
@@ -96,7 +94,7 @@ export async function builtin_cubepath(args: string[]): Promise<CommandEnvelope>
     await Promise.all(
       allSeries.map(async (info: PACSSeriesInfo): Promise<SeriesResult> => {
         const cubePath: SeriesCubePath | null =
-          await series_cubePathGet(info.seriesUID, pacsClient, maxAttempts, retryDelayMs);
+          await series_cubePathGet(info.seriesUID, maxAttempts, retryDelayMs);
         return { info, cubePath };
       }),
     );

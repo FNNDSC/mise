@@ -29,7 +29,19 @@ jobs:
       # Publish preflight: packs every workspace exactly as a release would,
       # so publish-time rejections (invalid overrides, bin cleanup, missing
       # files) fail this PR instead of the release run. No auth is needed.
-      - run: npm publish --dry-run --workspaces
+      # Between releases every workspace version already exists on the
+      # registry, so "cannot publish over" is the expected steady state and
+      # only OTHER npm errors fail the job.
+      - name: Publish preflight
+        run: |
+          set +e
+          out=$(npm publish --dry-run --workspaces 2>&1)
+          code=$?
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            bad=$(grep '^npm error' <<<"$out" | grep -viE 'cannot publish over|A complete log of this run')
+            if [ -n "$bad" ]; then exit "$code"; fi
+          fi
       - run: npm test
       - name: Upload coverage to Codecov
         if: matrix.node == 24

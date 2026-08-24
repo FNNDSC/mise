@@ -4,11 +4,12 @@
   "description": "Utility library for ChILI and other ChRIS-related JavaScript applications",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FNNDSC/cumin.git"
+    "url": "git+https://github.com/FNNDSC/mise.git",
+    "directory": "packages/cumin"
   },
-  "homepage": "https://github.com/FNNDSC/cumin#readme",
+  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/cumin#readme",
   "bugs": {
-    "url": "https://github.com/FNNDSC/cumin/issues"
+    "url": "https://github.com/FNNDSC/mise/issues"
   },
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -53,10 +54,10 @@
     "@types/chalk": "^0.4.31",
     "@types/figlet": "^1.5.8",
     "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
-    "typescript": "^5.0.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "@fnndsc/chrisapi": "^1.25.0",

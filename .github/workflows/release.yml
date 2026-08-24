@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual retry: publishing is idempotent (already-published versions are
+  # skipped), so a failed publish can be re-attempted without a new commit.
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -23,16 +26,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       # Same exact npm version as CI and the lockfile (see ci.yml); npm 11.5+
       # is also the minimum for OIDC trusted publishing.
       - run: npm install -g npm@11.19.0
-      # changesets/action writes an _authToken line into ~/.npmrc when the
-      # file is absent, which would shadow OIDC auth with an empty token.
-      # Pre-create the file so the action leaves auth alone and npm falls
-      # through to trusted publishing.
-      - run: echo "provenance=true" > "$HOME/.npmrc"
       - run: npm ci
       - run: npm run build
       # Opens/updates a "Version Packages" PR; when that PR is merged,
@@ -43,3 +41,6 @@ jobs:
           publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Temporary while validating OIDC trusted publishing: surfaces the
+          # token-exchange requests in the log. Remove once a publish lands.
+          NPM_CONFIG_LOGLEVEL: verbose

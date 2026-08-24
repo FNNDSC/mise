@@ -20,6 +20,6 @@ import type { VFSItem } from '@fnndsc/salsa';
  * @param items - Items from a vfsDispatcher listing.
  * @returns The same items as ListingItem view models.
  */
-export function listingItems_fromVfs(items: VFSItem[]): ListingItem[] {
+export function listingItemsFromVfs_make(items: VFSItem[]): ListingItem[] {
   return items.map((item: VFSItem): ListingItem => ({ ...item }));
 }

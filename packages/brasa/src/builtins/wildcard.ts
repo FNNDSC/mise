@@ -6,7 +6,7 @@
  * @module
  */
 import { minimatch } from 'minimatch';
-import { listingItems_fromVfs } from '../lib/vfs/listing.js';
+import { listingItemsFromVfs_make } from '../lib/vfs/listing.js';
 import { session } from '../session/index.js';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { path_resolveChrisFs } from '@fnndsc/chili/utils/cli.js';
@@ -81,7 +81,7 @@ async function wildcardMatches_expand(
     } else {
       const vfsResult = await vfsDispatcher.list(physicalSearchDir);
       if (vfsResult.ok) {
-        items = listingItems_fromVfs(vfsResult.value);
+        items = listingItemsFromVfs_make(vfsResult.value);
         listCache.cache_set(physicalSearchDir, items);
       } else {
         return Err();

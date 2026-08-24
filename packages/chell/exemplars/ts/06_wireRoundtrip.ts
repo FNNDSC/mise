@@ -57,6 +57,7 @@ function rendered_join(envelopes: CommandEnvelope[]): string {
 async function realEngine_roundtrip(): Promise<void> {
   section('real engine: attach and execute');
 
+  // tag::daemonHost[]
   const engine = await engine_create();
   const pipeCommands: string[] = [];
   const shellCommands: string[] = [];
@@ -77,7 +78,9 @@ async function realEngine_roundtrip(): Promise<void> {
   });
   sinkForDaemon = new DaemonSink(daemon);
   surface_set(daemonSurface_create(daemon));
+  // end::daemonHost[]
 
+  // tag::clientAttach[]
   const port: number = await daemon.start();
   const client: RemoteEngine = await RemoteEngine.connect({
     url: `ws://127.0.0.1:${port}`,
@@ -91,11 +94,14 @@ async function realEngine_roundtrip(): Promise<void> {
       return shell_run(command);
     },
   });
+  // end::clientAttach[]
   check('attached over the WebSocket handshake', true);
 
+  // tag::execute[]
   const helpEnvelopes: CommandEnvelope[] = await client.line_execute('help');
   check('help returned an ok envelope', helpEnvelopes[0]?.status === 'ok');
   check('help rendered its text across the wire', rendered_join(helpEnvelopes).includes('help'));
+  // end::execute[]
 
   const badEnvelopes: CommandEnvelope[] = await client.line_execute('definitelynotacommand');
   check('unknown command returned an error envelope', badEnvelopes[0]?.status === 'error');

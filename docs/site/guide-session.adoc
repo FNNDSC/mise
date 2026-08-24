@@ -1,0 +1,54 @@
+= The session API: host or attach to a live session
+:toc: left
+:toclevels: 2
+:source-highlighter: highlight.js
+:example-root: ../../packages/chell/exemplars/ts
+
+== What this is
+
+The session API is the pairing of `@fnndsc/brasa` (the engine: parser, dispatch, builtins, pipes, session state, output sinks, surface capabilities) and `@fnndsc/calypso` (the daemon that hosts an engine behind a WebSocket, plus the zod-validated wire contract a client speaks). A program on this API exchanges command lines for command envelopes: structured results carrying rendered text, error text and status, exactly what the chell shell itself runs on.
+
+== Why this is
+
+Some programs are not scripts but surfaces: a web terminal, a chat integration, an agent that operates ChRIS conversationally. Such a program needs a session (working directory, connection, caches, history), needs interactivity to happen on the correct machine (a password prompt or a pipe through `grep` must run where the human is, never on a daemon host), and needs results as data rather than scraped text. The engine plus the wire contract provide precisely that, and the capability inversion is the load-bearing design: prompts, pipeline segments, shell escapes and local edits are surface capabilities the engine requests, so an attached client executes them locally and returns the outcome.
+
+== How this relates to existing session machinery
+
+chell's interactive REPL, `chell -c` one-shots, the `chell --daemon` host and `chell --remote` client are all thin arrangements of these same parts; nothing documented here is a side door. The forthcoming web surface is planned as another such arrangement. For the protocol itself, every message crossing the socket validates against the schemas in the link:api/modules/_fnndsc_calypso.html[calypso reference].
+
+== The examples are tests
+
+The code below is included by tag from exemplar `06_wireRoundtrip.ts`, which continuous integration runs on every pull request: a real daemon and a real remote client in one process, every message crossing a real WebSocket. The `check` calls are the exemplar's assertions, kept in the excerpts as evidence of what the run verifies.
+
+== Host an engine behind a daemon
+
+Create the real engine, wrap it so each executed line runs with the daemon's output sink scoped in (live output then streams to the executing surface rather than the host's stdout), and install the daemon-brokered surface so interactivity is delegated to whichever client runs the command:
+
+[source,typescript]
+----
+include::{example-root}/06_wireRoundtrip.ts[tag=daemonHost]
+----
+
+== Attach a client
+
+`RemoteEngine` is chell's own production client: it performs the attach handshake, validates every server message, and exposes the same `line_execute` and `line_complete` interface as an in-process engine. The callbacks are the surface capabilities this client offers; here pipes run through the real `segment_pipeThrough` and shell escapes through a real child process:
+
+[source,typescript]
+----
+include::{example-root}/06_wireRoundtrip.ts[tag=clientAttach]
+----
+
+== Execute and read envelopes
+
+A line goes in; envelopes come out. Each envelope carries `status`, `rendered` and optionally `renderedErr`, so a hosting program can present output, detect failure and set exit codes without parsing text:
+
+[source,typescript]
+----
+include::{example-root}/06_wireRoundtrip.ts[tag=execute]
+----
+
+The remainder of the exemplar exercises completion, pipeline segments (the daemon's output really does come back uppercased by the client's `tr`), shell escapes with exit-code mapping, and the prompt and local-edit round trips; read it whole as the working reference for a complete surface.
+
+== Where to go next
+
+link:api/modules/_fnndsc_brasa.html[brasa reference] for the engine, sinks, surfaces and envelope delivery; link:api/modules/_fnndsc_calypso.html[calypso reference] for `CalypsoDaemon`, the request brokers and the message schemas. Exemplar `05_calypsoDaemon.ts` adds the operational layer this guide omits: spawning `chell --daemon` as a process, berth-based discovery, and surviving a daemon restart with the session rehydrated.

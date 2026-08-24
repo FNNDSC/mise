@@ -1,0 +1,32 @@
+= mise: developer documentation
+:toc: left
+:toclevels: 2
+:source-highlighter: highlight.js
+
+== What this is
+
+mise is a TypeScript framework for programming against link:https://chrisproject.org[ChRIS], the open-source medical-imaging compute platform, without speaking its REST vocabulary. The backend, CUBE, exposes feeds, plugin instances, PACS queries and file collections through a collection+json API (see the link:https://github.com/FNNDSC/ChRIS_ultron_backEnd[CUBE repository]); mise projects that surface into two developer-facing APIs, one for programs that know what they want and one for programs that host an interactive session.
+
+== Why this is
+
+The canonical JavaScript client, link:https://github.com/FNNDSC/fnndsc[@fnndsc/chrisapi] (reference at link:https://fnndsc.github.io/fnndsc/chrisdoc/index.html[chrisdoc]), is a faithful mapping of the REST collections: correct, complete, and demanding. A developer using it must know which collection holds what, how pagination works, and how a dozen resources relate before the first useful program runs. mise absorbs that knowledge once, behind an intent-shaped surface, so downstream programs state outcomes rather than orchestrate requests.
+
+== Choose your API
+
+Two personas, two entry points. Both are documented with examples that are not illustrations: every code block on these pages is included verbatim, by asciidoc tag, from an exemplar program that continuous integration runs against a live CUBE. If an example on this site stopped working, the build would be red.
+
+=== The intent API
+
+You are writing a program, a script, a bot, an analysis pipeline driver. You want to connect, move files, run plugins, query a PACS, and get typed results back. Start with the link:guide-intent.html[intent API guide], then use the reference for link:api/modules/_fnndsc_cumin.html[@fnndsc/cumin] (connection, wire contract, resource primitives) and link:api/modules/_fnndsc_salsa.html[@fnndsc/salsa] (files, feeds, jobs, pipelines, PACS retrieve).
+
+=== The session API
+
+You are building a surface: a web terminal, a chat bot, an agent, anything that hosts or attaches to a live ChRIS session and exchanges command lines for structured envelopes. Start with the link:guide-session.html[session API guide], then use the reference for link:api/modules/_fnndsc_brasa.html[@fnndsc/brasa] (the hostable engine) and link:api/modules/_fnndsc_calypso.html[@fnndsc/calypso] (the daemon and its validated wire contract).
+
+== How this relates to the rest of the ecosystem
+
+Within the ChRIS orbit, link:https://github.com/FNNDSC/ChRIS_ui[ChRIS_ui] serves clinical end users through a React application, link:https://github.com/FNNDSC/chrs[chrs] offers a stateless Rust command line, and raw chrisapi serves scripts that are content to speak REST. mise occupies the position none of them do: stateful, multi-surface, intent-driven interaction, with one engine hostable in-process, as a daemon, or behind a remote client. The shell most readers know it by, chell, is itself just one surface over the session API documented here.
+
+== Reference
+
+The full generated API reference lives at link:api/index.html[api/], one module per package, built from the same JSDoc that ships in the source.

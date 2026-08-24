@@ -208,12 +208,14 @@ async function scenario_run(env: CubeEnv, accession: string, cleanup: CleanupPla
   const staged: Result<SeriesLocation> = await series_stage(env, cleanup, target.value);
   if (!check('series staged in CUBE', staged.ok) || !staged.ok) return;
 
+  // tag::feedRun[]
   section('feed: pl-dircopy on the series folder');
   const parentId: Result<number> = await feed_root(cleanup, staged.value.folderPath);
   if (!parentId.ok) return;
 
   section('analysis: pl-dcm2niix');
   await analysis_runAndVerify(parentId.value, runId);
+  // end::feedRun[]
 }
 
 /**

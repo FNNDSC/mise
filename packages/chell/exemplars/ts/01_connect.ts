@@ -20,6 +20,7 @@ async function main(): Promise<void> {
   const env: CubeEnv = env_load();
   config_isolate();
 
+  // tag::connect[]
   section('authenticate');
   const token: string = await cube_connect(env);
   check('received an auth token', token.length > 0);
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
   section('identify');
   const user: Result<ChrisUser> = await step('fetched the current user', currentUser_get());
   if (user.ok) check(`logged in as ${env.user}`, user.value.username === env.user);
+  // end::connect[]
 
   // A registered PACS is a fixture of some CUBEs (BCH), not all (the public
   // instance exposes none): probe the PACS surface only when the environment

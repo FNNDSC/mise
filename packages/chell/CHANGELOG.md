@@ -1,5 +1,23 @@
 # @fnndsc/chell
 
+## 5.3.1
+
+### Patch Changes
+
+- 5285bd5: Cast burndown to the adapter floor. The wire contract gains the pipelines
+  surface (`pipeline_get` with piping items and plugin metadata handles,
+  `pipelineSourceFilesPage_get`); salsa's pipeline modules, feed joins, and
+  brasa/chili call sites migrate onto typed accessors and honest converters.
+  The repository's `as unknown as` count is now 2, both inside the licensed
+  adapter seam, and the CI ratchet holds it there. chell progress bars also
+  draw on the renderer's configured stream instead of assuming stdout.
+- Updated dependencies [5285bd5]
+- Updated dependencies [919648f]
+  - @fnndsc/cumin@3.10.0
+  - @fnndsc/salsa@3.6.1
+  - @fnndsc/chili@3.6.4
+  - @fnndsc/brasa@0.10.1
+
 ## 5.3.0
 
 ### Minor Changes

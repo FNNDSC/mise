@@ -51,7 +51,7 @@ export interface CubeEnv {
   adminUser?: string;
   adminPassword?: string;
   pacs: string;
-  accession: string;
+  accession?: string;
 }
 
 /**
@@ -97,10 +97,6 @@ export function env_load(): CubeEnv {
     console.log('CUBE_URL, CUBE_USER and CUBE_PASSWORD must be set (env or exemplars/e2e.config.json) — skipping.');
     process.exit(2);
   }
-  if (!accession) {
-    console.log('CUBE_TEST_ACCESSION must identify a designated test study on your instance — skipping.');
-    process.exit(2);
-  }
 
   return {
     url,
@@ -111,6 +107,22 @@ export function env_load(): CubeEnv {
     pacs: process.env.CUBE_PACS ?? 'PACSDCM',
     accession,
   };
+}
+
+/**
+ * Exits with the "not configured" code when no PACS test study is designated.
+ * Exemplars that query or pull from a PACS call this right after `env_load`;
+ * a CUBE without a PACS (e.g. the public instance) then skips them.
+ *
+ * @param env - The loaded environment settings.
+ * @returns The designated test accession.
+ */
+export function pacsFixture_require(env: CubeEnv): string {
+  if (!env.accession) {
+    console.log('CUBE_TEST_ACCESSION must identify a designated test study on your instance — skipping.');
+    process.exit(2);
+  }
+  return env.accession;
 }
 
 /**

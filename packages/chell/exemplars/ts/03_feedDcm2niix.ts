@@ -23,7 +23,7 @@ import {
 } from '@fnndsc/cumin';
 import { job_statusFetch, job_logFetch, vfsDispatcher } from '@fnndsc/salsa';
 import {
-  env_load, adminEnv_require, config_isolate, cube_connect, connection_active,
+  env_load, adminEnv_require, pacsFixture_require, config_isolate, cube_connect, connection_active,
   check, step, section, summary_exit, poll_until, runId_make, restToken_get,
   folder_deleteAndConfirm, pacsQuery_deleteById, CleanupPlan, CubeEnv,
 } from './lib/harness.js';
@@ -185,13 +185,13 @@ async function analysis_runAndVerify(parentId: number, runId: string): Promise<v
  * @param env - The CUBE environment.
  * @param cleanup - Undo actions, registered as resources are created.
  */
-async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
+async function scenario_run(env: CubeEnv, accession: string, cleanup: CleanupPlan): Promise<void> {
   const runId: string = runId_make();
 
   section(`stage the '${IMAGE_SERIES_MARKER}' series from PACS`);
   const queried: Result<QueryOutcome> = await step(
     'query completed',
-    query_createAndWait(env.pacs, { AccessionNumber: env.accession }, `${runId}-query`),
+    query_createAndWait(env.pacs, { AccessionNumber: accession }, `${runId}-query`),
   );
   if (!queried.ok) return;
   cleanup.register(`deleted PACSQuery ${queried.value.queryId}`, async () => {
@@ -222,12 +222,13 @@ async function scenario_run(env: CubeEnv, cleanup: CleanupPlan): Promise<void> {
 async function main(): Promise<void> {
   const env: CubeEnv = env_load();
   adminEnv_require(env);
+  const accession: string = pacsFixture_require(env);
   config_isolate();
   await cube_connect(env);
 
   const cleanup: CleanupPlan = new CleanupPlan();
   try {
-    await scenario_run(env, cleanup);
+    await scenario_run(env, accession, cleanup);
   } finally {
     section('cleanup — restore the CUBE');
     await cleanup.run();

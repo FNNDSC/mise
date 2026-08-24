@@ -49,15 +49,15 @@ jobs:
           npm ci
           npm run build
           npm run exemplars:build --workspace @fnndsc/chell
-      # Exemplar 04 (PACS Q/R) self-skips with exit 2 when the admin
-      # credentials or PACS fixtures are not configured; a CUBE without a
-      # PACS (e.g. the public instance) still runs the rest.
+      # Exemplars 03 and 04 need PACS fixtures and admin credentials; they
+      # self-skip with exit 2 when those are not configured, so a CUBE
+      # without a PACS (e.g. the public instance) still runs the rest.
       - name: TS exemplars
         working-directory: packages/chell
         run: |
           node exemplars/ts/dist/01_connect.js
           node exemplars/ts/dist/02_fsRoundtrip.js
-          node exemplars/ts/dist/03_feedDcm2niix.js
+          node exemplars/ts/dist/03_feedDcm2niix.js || [ $? -eq 2 ]
           node exemplars/ts/dist/04_pacsQR.js || [ $? -eq 2 ]
           node exemplars/ts/dist/05_calypsoDaemon.js
           node exemplars/ts/dist/06_wireRoundtrip.js

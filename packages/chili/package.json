@@ -4,11 +4,12 @@
   "description": "ChILI handles Intelligent Line Interactions: A CLI and library for ChRIS, acting as the controller layer for business logic and user presentation.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FNNDSC/chili.git"
+    "url": "git+https://github.com/FNNDSC/mise.git",
+    "directory": "packages/chili"
   },
-  "homepage": "https://github.com/FNNDSC/chili#readme",
+  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/chili#readme",
   "bugs": {
-    "url": "https://github.com/FNNDSC/chili/issues"
+    "url": "https://github.com/FNNDSC/mise/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

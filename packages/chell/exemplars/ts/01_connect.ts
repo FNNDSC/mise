@@ -28,13 +28,16 @@ async function main(): Promise<void> {
   const user: Result<ChrisUser> = await step('fetched the current user', currentUser_get());
   if (user.ok) check(`logged in as ${env.user}`, user.value.username === env.user);
 
-  section('PACS visibility');
-  const servers: Result<PACSServer[]> = await step('listed PACS servers', pacsServers_list());
   // A registered PACS is a fixture of some CUBEs (BCH), not all (the public
-  // instance has none): assert it only when the environment names one.
-  if (servers.ok && process.env.CUBE_PACS) {
-    const registered: boolean = servers.value.some((s: PACSServer) => s.identifier === env.pacs);
-    check(`configured PACS '${env.pacs}' is registered`, registered);
+  // instance exposes none): probe the PACS surface only when the environment
+  // names one.
+  if (process.env.CUBE_PACS) {
+    section('PACS visibility');
+    const servers: Result<PACSServer[]> = await step('listed PACS servers', pacsServers_list());
+    if (servers.ok) {
+      const registered: boolean = servers.value.some((s: PACSServer) => s.identifier === env.pacs);
+      check(`configured PACS '${env.pacs}' is registered`, registered);
+    }
   }
 
   summary_exit();

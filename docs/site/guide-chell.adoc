@@ -6,7 +6,7 @@
 
 == What this is
 
-chell projects ChRIS onto a POSIX shell: files and feeds are paths, plugins are executables, jobs live under `/proc`, PACS queries under `/net/pacs`, and the verbs are the ones every operator already knows. That projection is itself a development surface. A program can speak it two ways: as `.chell` scripts run by the shell (`chell -e -f script.chell`, the analogue of a bash script), and as command lines handed to the engine from TypeScript, where each line returns typed envelopes instead of printing to a terminal.
+`chell` projects ChRIS onto a POSIX shell: files and feeds are paths, plugins are executables, jobs live under `/proc`, PACS queries under `/net/pacs`, and the verbs are the ones every operator already knows. That projection is itself a development surface. A program can speak it two ways: as `.chell` scripts run by the shell (`chell -e -f script.chell`, the analogue of a bash script), and as command lines handed to the engine from TypeScript, where each line returns typed envelopes instead of printing to a terminal.
 
 == Why this is
 
@@ -14,11 +14,11 @@ Sometimes the shell's vocabulary is the right abstraction even when no human is 
 
 == How this relates to the other APIs
 
-Every chell command is a brasa builtin, and the builtins call the same salsa and cumin functions the intent guide documents; nothing here is a second implementation. Driving lines through the engine is the session API (see the link:guide-session.html[session guide]) with the vocabulary as payload, and everything shown here works identically through a remote `RemoteEngine` attached to a daemon.
+Every `chell` command is a `brasa` builtin, and the builtins call the same `salsa` and `cumin` functions the intent guide documents; nothing here is a second implementation. Driving lines through the engine is the session API (see the link:guide-session.html[session guide]) with the vocabulary as payload, and everything shown here works identically through a remote `RemoteEngine` attached to a daemon.
 
 == The command surface
 
-The vocabulary groups by domain; `help` inside chell is the authoritative, always-current list, and `help <command>` documents each one.
+The vocabulary groups by domain; `help` inside `chell` is the authoritative, always-current list, and `help <command>` documents each one.
 
 [cols="1,3"]
 |===
@@ -56,7 +56,7 @@ include::../../packages/chell/exemplars/chell/31_feed_inplace.chell[]
 
 The in-place verb was verified against the public CUBE while writing this page: one command in a directory of files produced the feed, the `pl-dircopy` root, and the scheduled `pl-dcm2niix` instance, with the output path announced in the rendered result.
 
-One-shot lines work the same way without a file: `chell -c 'ls /home'` executes and exits with the command's status, which makes chell itself usable from cron jobs and CI steps.
+One-shot lines work the same way without a file: `chell -c 'ls /home'` executes and exits with the command's status, which makes `chell` itself usable from cron jobs and CI steps.
 
 == The typed API
 
@@ -71,7 +71,7 @@ The typed surface currently covers `pwd`, `cd`, `mkdir`, `touch` and `rm`; the v
 
 == The typed envelope, in detail
 
-Every command in mise, however invoked, concludes in exactly one *command envelope*: the single currency in which results travel from execution to whatever hosts it, a terminal, a daemon, a pipe, or your program. Understanding its four fields is understanding the whole result model.
+Every command in `mise`, however invoked, concludes in exactly one *command envelope*: the single currency in which results travel from execution to whatever hosts it, a terminal, a daemon, a pipe, or your program. Understanding its four fields is understanding the whole result model.
 
 [cols="1,1,4"]
 |===
@@ -102,7 +102,7 @@ The one place trust enters is a single audited helper (`envelope_typed`) inside 
 
 === The kinds and their payloads
 
-The filesystem vocabulary currently maps these kinds; the map grows as commands join the typed surface, and the generated link:api/modules/_fnndsc_brasa.html[brasa reference] documents each payload interface in full.
+The filesystem vocabulary currently maps these kinds; the map grows as commands join the typed surface, and the generated link:api/modules/_fnndsc_brasa.html[`brasa` reference] documents each payload interface in full.
 
 [cols="1,2,4"]
 |===
@@ -155,4 +155,4 @@ The richer vocabulary (`pacs pull`, `feed`, the `/proc` tree) works through exac
 
 == Where to go next
 
-The link:guide-session.html[session guide] shows how these same lines cross a WebSocket to a daemon-hosted engine, which is how a web surface or bot would speak the vocabulary remotely. The builtin implementations live in the link:api/modules/_fnndsc_brasa.html[brasa reference]; each one renders through the envelope model the session guide describes.
+The link:guide-session.html[session guide] shows how these same lines cross a WebSocket to a daemon-hosted engine, which is how a web surface or bot would speak the vocabulary remotely. The builtin implementations live in the link:api/modules/_fnndsc_brasa.html[`brasa` reference]; each one renders through the envelope model the session guide describes.

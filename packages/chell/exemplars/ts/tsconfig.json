@@ -15,6 +15,7 @@
   },
   "include": [
     "lib/**/*.ts",
-    "*.ts"
+    "*.ts",
+    "standalone/**/*.ts"
   ]
 }

@@ -6,7 +6,7 @@
 
 == What this is
 
-The session API is the pairing of `@fnndsc/brasa` (the engine: parser, dispatch, builtins, pipes, session state, output sinks, surface capabilities) and `@fnndsc/calypso` (the daemon that hosts an engine behind a WebSocket, plus the zod-validated wire contract a client speaks). A program on this API exchanges command lines for command envelopes: structured results carrying rendered text, error text and status, exactly what the chell shell itself runs on.
+The session API is the pairing of brasa (the engine: parser, dispatch, builtins, pipes, session state, output sinks, surface capabilities) and calypso (the daemon that hosts an engine behind a WebSocket, plus the zod-validated wire contract a client speaks); the packages install as `@fnndsc/brasa` and `@fnndsc/calypso`. A program on this API exchanges command lines for command envelopes: structured results carrying rendered text, error text and status, exactly what the chell shell itself runs on.
 
 == Why this is
 
@@ -16,39 +16,30 @@ Some programs are not scripts but surfaces: a web terminal, a chat integration, 
 
 chell's interactive REPL, `chell -c` one-shots, the `chell --daemon` host and `chell --remote` client are all thin arrangements of these same parts; nothing documented here is a side door. The forthcoming web surface is planned as another such arrangement. For the protocol itself, every message crossing the socket validates against the schemas in the link:api/modules/_fnndsc_calypso.html[calypso reference].
 
-== The examples are tests
+== The example is a program, and the program is a test
 
-The code below is included by tag from exemplar `06_wireRoundtrip.ts`, which continuous integration runs on every pull request: a real daemon and a real remote client in one process, every message crossing a real WebSocket. The `check` calls are the exemplar's assertions, kept in the excerpts as evidence of what the run verifies.
+The example below is a complete, standalone program, included in full: it needs no CUBE and no credentials, and continuous integration runs it on every pull request. It lives in `packages/chell/exemplars/ts/standalone/`; copy it whole and it runs.
 
-== Host an engine behind a daemon
+== Host, attach, execute
 
-Create the real engine, wrap it so each executed line runs with the daemon's output sink scoped in (live output then streams to the executing surface rather than the host's stdout), and install the daemon-brokered surface so interactivity is delegated to whichever client runs the command:
+One program, both roles. It creates the real brasa engine, hosts it behind a real calypso daemon on an ephemeral port, attaches chell's production `RemoteEngine` client over the WebSocket, executes one line, and reads the typed envelope back:
+
+[source,typescript]
+----
+include::{example-root}/standalone/session_wire.ts[]
+----
+
+Each envelope carries `status`, `rendered` and optionally `renderedErr`, so a hosting program presents output, detects failure and sets exit codes without parsing text. In a real deployment the two halves live in different processes, usually different machines; exemplar `05_calypsoDaemon.ts` shows that operational layer, spawning `chell --daemon`, discovering it through its berth file, and surviving a restart with the session rehydrated.
+
+== Interactivity crosses the wire too
+
+The client above passed no capability callbacks, so it attached as a non-interactive surface. A real surface passes them: `onPrompt` answers password and confirmation prompts, `onPipe` runs pipeline segments (`help | grep session`) through the client machine's own tools, `onShell` runs `!` escapes locally, and `onEdit` opens the client's editor and returns the result. Exemplar `06_wireRoundtrip.ts`, run by continuous integration on every pull request, exercises each of those round trips with assertions; this excerpt shows the daemon half it drives:
 
 [source,typescript]
 ----
 include::{example-root}/06_wireRoundtrip.ts[tag=daemonHost]
 ----
 
-== Attach a client
-
-`RemoteEngine` is chell's own production client: it performs the attach handshake, validates every server message, and exposes the same `line_execute` and `line_complete` interface as an in-process engine. The callbacks are the surface capabilities this client offers; here pipes run through the real `segment_pipeThrough` and shell escapes through a real child process:
-
-[source,typescript]
-----
-include::{example-root}/06_wireRoundtrip.ts[tag=clientAttach]
-----
-
-== Execute and read envelopes
-
-A line goes in; envelopes come out. Each envelope carries `status`, `rendered` and optionally `renderedErr`, so a hosting program can present output, detect failure and set exit codes without parsing text:
-
-[source,typescript]
-----
-include::{example-root}/06_wireRoundtrip.ts[tag=execute]
-----
-
-The remainder of the exemplar exercises completion, pipeline segments (the daemon's output really does come back uppercased by the client's `tr`), shell escapes with exit-code mapping, and the prompt and local-edit round trips; read it whole as the working reference for a complete surface.
-
 == Where to go next
 
-link:api/modules/_fnndsc_brasa.html[brasa reference] for the engine, sinks, surfaces and envelope delivery; link:api/modules/_fnndsc_calypso.html[calypso reference] for `CalypsoDaemon`, the request brokers and the message schemas. Exemplar `05_calypsoDaemon.ts` adds the operational layer this guide omits: spawning `chell --daemon` as a process, berth-based discovery, and surviving a daemon restart with the session rehydrated.
+link:api/modules/_fnndsc_brasa.html[brasa reference] for the engine, sinks, surfaces and envelope delivery; link:api/modules/_fnndsc_calypso.html[calypso reference] for `CalypsoDaemon`, the request brokers and the message schemas.

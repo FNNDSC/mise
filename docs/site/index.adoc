@@ -17,11 +17,15 @@ Two personas, two entry points. Both are documented with examples that are not i
 
 === The intent API
 
-You are writing a program, a script, a bot, an analysis pipeline driver. You want to connect, move files, run plugins, query a PACS, and get typed results back. Start with the link:guide-intent.html[intent API guide], then use the reference for link:api/modules/_fnndsc_cumin.html[@fnndsc/cumin] (connection, wire contract, resource primitives) and link:api/modules/_fnndsc_salsa.html[@fnndsc/salsa] (files, feeds, jobs, pipelines, PACS retrieve).
+You are writing a program, a script, a bot, an analysis pipeline driver. You want to connect, move files, run plugins, query a PACS, and get typed results back. Start with the link:guide-intent.html[intent API guide], then use the reference for link:api/modules/_fnndsc_cumin.html[cumin] (connection, wire contract, resource primitives) and link:api/modules/_fnndsc_salsa.html[salsa] (files, feeds, jobs, pipelines, PACS retrieve).
+
+=== The chell vocabulary
+
+You think in operator actions: paths, `ls`, `cp`, `pacs pull`, the `/proc` tree. The shell's projection is itself a development surface, scriptable as `.chell` files and drivable line-by-line from TypeScript with typed envelopes coming back. Start with the link:guide-chell.html[chell vocabulary guide].
 
 === The session API
 
-You are building a surface: a web terminal, a chat bot, an agent, anything that hosts or attaches to a live ChRIS session and exchanges command lines for structured envelopes. Start with the link:guide-session.html[session API guide], then use the reference for link:api/modules/_fnndsc_brasa.html[@fnndsc/brasa] (the hostable engine) and link:api/modules/_fnndsc_calypso.html[@fnndsc/calypso] (the daemon and its validated wire contract).
+You are building a surface: a web terminal, a chat bot, an agent, anything that hosts or attaches to a live ChRIS session and exchanges command lines for structured envelopes. Start with the link:guide-session.html[session API guide], then use the reference for link:api/modules/_fnndsc_brasa.html[brasa] (the hostable engine) and link:api/modules/_fnndsc_calypso.html[calypso] (the daemon and its validated wire contract).
 
 == How this relates to the rest of the ecosystem
 

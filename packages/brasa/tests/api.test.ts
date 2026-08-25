@@ -9,12 +9,16 @@ const mkdirRun = jest.fn();
 const touchRun = jest.fn();
 const rmRun = jest.fn();
 const pwdRun = jest.fn();
+const lsRun = jest.fn();
+const catRun = jest.fn();
 const cdRun = jest.fn();
 
 jest.unstable_mockModule('../src/builtins/fs/mkdir.js', () => ({ mkdir_run: mkdirRun }));
 jest.unstable_mockModule('../src/builtins/fs/touch.js', () => ({ touch_run: touchRun }));
 jest.unstable_mockModule('../src/builtins/fs/rm.js', () => ({ rm_run: rmRun }));
 jest.unstable_mockModule('../src/builtins/fs/pwd.js', () => ({ pwd_run: pwdRun }));
+jest.unstable_mockModule('../src/builtins/fs/ls.js', () => ({ ls_run: lsRun }));
+jest.unstable_mockModule('../src/builtins/fs/cat.js', () => ({ cat_run: catRun }));
 jest.unstable_mockModule('../src/builtins/fs/cd.js', () => ({ cd_run: cdRun }));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { init: jest.fn() } }));
 
@@ -72,6 +76,26 @@ describe('chellApi_create', () => {
     expect(rmRun).toHaveBeenCalledWith({ paths: ['scratch'], recursive: true, force: true, interactive: false });
     await sh.rm(['a', 'b']);
     expect(rmRun).toHaveBeenCalledWith({ paths: ['a', 'b'], recursive: false, force: false, interactive: false });
+  });
+
+  it('ls defaults to the cwd and forwards flags without paths leaking in', async () => {
+    lsRun.mockResolvedValue(envelope_of('fs.listing', [{ path: '/x', items: [] }]));
+    const sh = await chellApi_create();
+    await sh.ls();
+    expect(lsRun).toHaveBeenCalledWith({ paths: [] });
+    const result = await sh.ls('/x', { long: true, sort: 'size' });
+    expect(lsRun).toHaveBeenCalledWith({ long: true, sort: 'size', paths: ['/x'] });
+    expect(result.model?.data[0]?.path).toBe('/x');
+  });
+
+  it('cat never injects highlighting for programmatic consumers', async () => {
+    catRun.mockResolvedValue(envelope_of('fs.cat', [{ path: '/f', ok: true, binary: false }]));
+    const sh = await chellApi_create();
+    const result = await sh.cat('/f');
+    expect(catRun).toHaveBeenCalledWith({ filePaths: ['/f'], binaryMode: false, highlightMode: 'never' });
+    expect(result.model?.data[0]?.ok).toBe(true);
+    await sh.cat(['/a', '/b'], { binary: true });
+    expect(catRun).toHaveBeenCalledWith({ filePaths: ['/a', '/b'], binaryMode: true, highlightMode: 'never' });
   });
 
   it('propagates an error-status envelope unchanged', async () => {

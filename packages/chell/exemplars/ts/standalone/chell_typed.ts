@@ -65,6 +65,18 @@ async function main(): Promise<void> {
   }
   console.log(`created ${wrote.model?.data[0]?.path}`);
 
+  // Listings and content are data, not scraped text.
+  const listing: TypedEnvelope<'fs.listing'> = await sh.ls(scratch, { long: true });
+  const names: string[] = (listing.model?.data[0]?.items ?? []).map((item) => item.name);
+  console.log(`listed: ${names.join(', ')}`);
+
+  const content: TypedEnvelope<'fs.cat'> = await sh.cat(`${scratch}/hello.txt`);
+  if (!content.rendered.includes('hello from the typed API')) {
+    console.error('cat content mismatch');
+    process.exit(1);
+  }
+  console.log('content verified');
+
   const gone: TypedEnvelope<'fs.rm'> = await sh.rm(scratch, { recursive: true });
   if (gone.status !== 'ok') {
     console.error(gone.renderedErr ?? 'rm failed');

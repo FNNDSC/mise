@@ -215,7 +215,7 @@ function extension_isBinary(filePath: string): boolean {
 }
 
 /** Outcome of one cat target, for the envelope model. */
-interface CatOutcome {
+export interface CatOutcome {
   path: string;
   ok: boolean;
   binary: boolean;
@@ -289,8 +289,18 @@ async function textFile_read(target: string): Promise<Result<string>> {
  *   contents and whose model lists per-file outcomes.
  */
 export async function builtin_cat(args: string[]): Promise<CommandEnvelope> {
-  const parsed: CatArguments = catArguments_parse(args);
+  return cat_run(catArguments_parse(args));
+}
 
+/**
+ * Prints files: the shared typed core behind the parsed builtin and the
+ * typed API.
+ *
+ * @param parsed - File paths and presentation options.
+ * @returns An envelope whose rendered text carries the (highlighted) file
+ *   contents and whose model lists per-file outcomes.
+ */
+export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
   if (parsed.filePaths.length === 0) {
     return envelope_error('', undefined, `${chalk.red(`Usage: ${CAT_USAGE}`)}\n`);
   }

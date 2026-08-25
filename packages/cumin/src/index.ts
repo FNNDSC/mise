@@ -62,6 +62,7 @@ export {
   downloadToken_create,
   listPages_walk,
   listPages_drain,
+  collectionPage_wrap,
 } from "./chrisapi/contract";
 export type {
   ListPage,

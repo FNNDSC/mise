@@ -43,11 +43,16 @@ import type { PipelineRecord } from '../pipelines/chrisPipeline';
  * @property hasMore - Whether the server says further pages exist, when it
  *   says anything at all. Servers may serve fewer rows than the requested
  *   limit while more remain, so a walk must trust this over page fullness.
+ * @property fetchedCount - Rows the server actually served for this page,
+ *   when client-side normalization dropped some before `data` was built. A
+ *   walk advances its offset by this, never by `data.length`, so a dropped
+ *   row cannot cause refetching or a false end-of-collection.
  */
 export interface ListPage<T> {
   data: T[];
   totalCount: number | null;
   hasMore?: boolean;
+  fetchedCount?: number;
 }
 
 /**
@@ -115,15 +120,19 @@ export async function* listPages_walk<T>(
     if (total === null && page.totalCount !== null) {
       total = page.totalCount;
     }
+    // Offset arithmetic and termination count rows the server served, not
+    // rows that survived normalization: a page whose rows were all dropped
+    // client-side is still a served page, not the end of the collection.
+    const advance: number = page.fetchedCount ?? items.length;
     yield { items, offset, total };
-    if (items.length === 0) return;
+    if (advance === 0) return;
     if (page.hasMore === false) return;
-    if (total !== null && offset + items.length >= total) return;
+    if (total !== null && offset + advance >= total) return;
     // A short page ends the walk only when the server gave no better signal:
     // a page can be shorter than the requested limit (server-side caps)
     // while hasMore says further pages exist.
-    if (total === null && page.hasMore !== true && items.length < pageSize) return;
-    offset += items.length;
+    if (total === null && page.hasMore !== true && advance < pageSize) return;
+    offset += advance;
   }
 }
 
@@ -506,6 +515,15 @@ export interface PipelineHandle {
    */
   pluginPipings_get(params: Record<string, unknown>): Promise<PluginPipingItem[]>;
   /**
+   * Reads one page of the pipeline's plugin pipings with its pagination
+   * signals intact, so a paginated walk can advance correctly even when a
+   * served row carries no data and is dropped from the items.
+   *
+   * @param params - Page window (limit, offset).
+   * @returns The typed page; fetchedCount reflects rows served.
+   */
+  pluginPipingsPage_get(params: Record<string, unknown>): Promise<ListPage<PluginPipingItem>>;
+  /**
    * Reads one page of the stored piping default parameters.
    *
    * @param params - Page window (limit, offset).
@@ -525,11 +543,38 @@ function listPageFlexible_wrap<T>(page: WirePage | null | undefined): ListPage<T
   if (Array.isArray(page?.data) || typeof page?.getItems !== 'function') {
     return listPage_wrap<T>(page);
   }
-  const rows: T[] = items_get<{ data?: unknown }>(page as { getItems(): unknown })
+  const served: Array<{ data?: unknown }> = items_get<{ data?: unknown }>(page as { getItems(): unknown });
+  const rows: T[] = served
     .map((item: { data?: unknown }): T | null => itemData_get<T>(item))
     .filter((row: T | null): row is T => row !== null);
   const total: unknown = page?.totalCount;
-  return { data: rows, totalCount: typeof total === 'number' && total >= 0 ? total : null };
+  return {
+    data: rows,
+    totalCount: typeof total === 'number' && total >= 0 ? total : null,
+    fetchedCount: served.length,
+  };
+}
+
+/**
+ * Wraps one page of a chrisapi collection resource as a typed ListPage.
+ *
+ * The collection carries the pagination signals (`totalCount`,
+ * `hasNextPage`) as typed getters; the caller extracts the rows in whatever
+ * shape it needs (data records or item resources) and passes both here.
+ *
+ * @param collection - The chrisapi list resource the page came from.
+ * @param rows - The page's rows, already extracted by the caller.
+ * @returns The typed page; totalCount is null when the server sent none.
+ */
+export function collectionPage_wrap<T>(
+  collection: { totalCount: number; hasNextPage: boolean },
+  rows: T[],
+): ListPage<T> {
+  return {
+    data: rows,
+    totalCount: collection.totalCount >= 0 ? collection.totalCount : null,
+    hasMore: collection.hasNextPage,
+  };
 }
 
 /**
@@ -572,29 +617,41 @@ export async function pipeline_get(
   );
   if (!resource) return null;
 
+  const pipingsPage_get = async (params: Record<string, unknown>): Promise<ListPage<PluginPipingItem>> => {
+    const page: WirePage = await resource_call<WirePage>(resource, 'getPluginPipings', params);
+    const rawItems: Array<{ data?: unknown }> =
+      typeof page?.getItems === 'function'
+        ? items_get<{ data?: unknown }>(page as { getItems(): unknown })
+        : listData_get<PluginPipingData>(page).map((row: PluginPipingData): { data?: unknown } => ({ data: row }));
+    const pipings: PluginPipingItem[] = rawItems
+      .map((item: { data?: unknown }): PluginPipingItem | null => {
+        const data: PluginPipingData | null = itemData_get<PluginPipingData>(item);
+        if (!data) return null;
+        return {
+          data,
+          async plugin_get(): Promise<PluginHandle | null> {
+            if (!method_exists(item, 'getPlugin')) return null;
+            const plugin: object | null = await resource_call<object | null>(item, 'getPlugin');
+            return plugin ? pluginHandle_wrap(plugin) : null;
+          },
+        };
+      })
+      .filter((item: PluginPipingItem | null): item is PluginPipingItem => item !== null);
+    const total: unknown = page?.totalCount;
+    return {
+      data: pipings,
+      totalCount: typeof total === 'number' && total >= 0 ? total : null,
+      fetchedCount: rawItems.length,
+    };
+  };
+
   return {
     data: itemData_get<PipelineRecord>(resource),
 
+    pluginPipingsPage_get: pipingsPage_get,
+
     async pluginPipings_get(params: Record<string, unknown>): Promise<PluginPipingItem[]> {
-      const page: WirePage = await resource_call<WirePage>(resource, 'getPluginPipings', params);
-      const rawItems: Array<{ data?: unknown }> =
-        typeof page?.getItems === 'function'
-          ? items_get<{ data?: unknown }>(page as { getItems(): unknown })
-          : listData_get<PluginPipingData>(page).map((row: PluginPipingData): { data?: unknown } => ({ data: row }));
-      return rawItems
-        .map((item: { data?: unknown }): PluginPipingItem | null => {
-          const data: PluginPipingData | null = itemData_get<PluginPipingData>(item);
-          if (!data) return null;
-          return {
-            data,
-            async plugin_get(): Promise<PluginHandle | null> {
-              if (!method_exists(item, 'getPlugin')) return null;
-              const plugin: object | null = await resource_call<object | null>(item, 'getPlugin');
-              return plugin ? pluginHandle_wrap(plugin) : null;
-            },
-          };
-        })
-        .filter((item: PluginPipingItem | null): item is PluginPipingItem => item !== null);
+      return (await pipingsPage_get(params)).data;
     },
 
     async defaultParametersPage_get(

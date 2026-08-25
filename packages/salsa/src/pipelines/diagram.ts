@@ -15,6 +15,7 @@ import {
   errorStack,
   pipeline_get,
   pipeline_resolve,
+  listPages_drain,
   type PipelineHandle,
   type PluginPipingItem,
   type PipingDefaultParameterData,
@@ -109,12 +110,12 @@ export async function pipelineDiagram_get(specifier: string): Promise<Result<Pip
       return Err();
     }
 
-    const [pipingItems, defaultsPage] = await Promise.all([
-      pipeline.pluginPipings_get({ limit: 1000 }),
-      pipeline.defaultParametersPage_get({ limit: 1000 }),
+    const [pipingItems, defaultRows] = await Promise.all([
+      listPages_drain((offset: number, limit: number) => pipeline.pluginPipingsPage_get({ limit, offset })),
+      listPages_drain((offset: number, limit: number) => pipeline.defaultParametersPage_get({ limit, offset })),
     ]);
     const pipings: PipingData[] = pipingItems.map((item: PluginPipingItem): PipingData => item.data);
-    const defaults: DefaultParameterData[] = defaultsPage.data
+    const defaults: DefaultParameterData[] = defaultRows
       .map((row: PipingDefaultParameterData): DefaultParameterData | null => defaultParameter_narrow(row))
       .filter((row: DefaultParameterData | null): row is DefaultParameterData => row !== null);
     const defaultsByPiping: Map<number, PipelineDiagramArgument[]> = new Map<number, PipelineDiagramArgument[]>();

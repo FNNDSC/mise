@@ -29,6 +29,11 @@
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js"
     },
+    "./pacs-grammar": {
+      "import": "./dist/vfs/providers/pacsGrammar.js",
+      "types": "./dist/vfs/providers/pacsGrammar.d.ts",
+      "require": "./dist/vfs/providers/pacsGrammar.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

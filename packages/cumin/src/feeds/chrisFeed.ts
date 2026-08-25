@@ -26,7 +26,7 @@ import {
 } from "../resources/chrisResources.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { ChRISPlugin } from "../plugins/chrisPlugins.js";
-import { listPages_drain, type ListPage } from "../chrisapi/contract.js";
+import { collectionPage_wrap, listPages_drain, type ListPage } from "../chrisapi/contract.js";
 import {
   QueryHits,
   keyPairParams_apply,
@@ -176,7 +176,7 @@ export async function feed_resolve(specifier: string): Promise<Result<FeedRecord
     const matches: FeedRecord[] = await listPages_drain(
       async (offset: number, limit: number): Promise<ListPage<FeedRecord>> => {
         const list: ListResource = await client.getFeeds({ name: specifier, limit, offset });
-        return { data: listData_get<FeedRecord>(list), totalCount: list.totalCount >= 0 ? list.totalCount : null, hasMore: list.hasNextPage };
+        return collectionPage_wrap(list, listData_get<FeedRecord>(list));
       },
     );
     const exact: FeedRecord[] = matches.filter((feed: FeedRecord): boolean => feed.name === specifier);
@@ -439,7 +439,7 @@ export async function feedComments_list(feedId: number): Promise<Result<FeedComm
     const comments: FeedComment[] = await listPages_drain(
       async (offset: number, limit: number): Promise<ListPage<FeedComment>> => {
         const commentList: CommentList = await feed.getComments({ limit, offset });
-        return { data: listData_get<FeedComment>(commentList), totalCount: commentList.totalCount >= 0 ? commentList.totalCount : null, hasMore: commentList.hasNextPage };
+        return collectionPage_wrap(commentList, listData_get<FeedComment>(commentList));
       },
     );
     return Ok(comments);

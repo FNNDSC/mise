@@ -20,12 +20,8 @@ import {
   type Client,
 } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
+import { tag_extractRaw, studies_extractFromDecoded, series_extractFromStudy } from "./dicomPayload.js";
 import zlib from "zlib";
-
-/** Raw DICOM tag wrapper carrying a `value` field. */
-interface DicomTagValue {
-  value?: unknown;
-}
 
 
 /**
@@ -650,20 +646,6 @@ export async function seriesStorage_resolve(
 }
 
 /**
- * Extract value from a DICOM tag object or return as-is.
- *
- * @param val - Potentially a tag object with {label, value} or a primitive.
- * @returns The extracted value.
- */
-function tag_extractValue(val: unknown): unknown {
-  if (val && typeof val === "object" && "value" in (val as Record<string, unknown>)) {
-    const tagObj: DicomTagValue = val as DicomTagValue;
-    return tagObj.value;
-  }
-  return val;
-}
-
-/**
  * Determine series status based on file counts.
  *
  * @param expected - Expected number of files.
@@ -700,25 +682,21 @@ async function studySeries_buildStatus(
 ): Promise<StudyRetrieveStatus> {
   const studyStatus: StudyRetrieveStatus = {
     studyInfo: study,
-    studyInstanceUID: tag_extractValue(study.StudyInstanceUID) as string | undefined,
-    studyDescription: tag_extractValue(study.StudyDescription) as string | undefined,
+    studyInstanceUID: tag_extractRaw(study.StudyInstanceUID) as string | undefined,
+    studyDescription: tag_extractRaw(study.StudyDescription) as string | undefined,
     series: [],
   };
 
-  const seriesArray: unknown[] =
-    Array.isArray(study.series) ? study.series :
-    Array.isArray(study.Series) ? study.Series :
-    Array.isArray(study.results) ? study.results :
-    [];
+  const seriesArray: Record<string, unknown>[] = series_extractFromStudy(study);
 
   for (const seriesObj of seriesArray) {
     if (!seriesObj || typeof seriesObj !== "object") continue;
 
     const series: Record<string, unknown> = seriesObj as Record<string, unknown>;
-    const seriesUID: string | undefined = tag_extractValue(series.SeriesInstanceUID) as string | undefined;
+    const seriesUID: string | undefined = tag_extractRaw(series.SeriesInstanceUID) as string | undefined;
     if (!seriesUID) continue;
 
-    const expectedFiles: number = Number(tag_extractValue(series.NumberOfSeriesRelatedInstances)) || 0;
+    const expectedFiles: number = Number(tag_extractRaw(series.NumberOfSeriesRelatedInstances)) || 0;
     const storageResult: Result<SeriesStorageState> = await seriesStorage_resolve(seriesUID);
     const storage: SeriesStorageState = storageResult.ok ? storageResult.value : { fileCount: 0, folderPath: null };
     const status: "pending" | "pulling" | "pulled" | "error" = series_determineStatus(expectedFiles, storage.fileCount);
@@ -726,7 +704,7 @@ async function studySeries_buildStatus(
     studyStatus.series.push({
       seriesInfo: series,
       seriesInstanceUID: seriesUID,
-      seriesDescription: tag_extractValue(series.SeriesDescription) as string | undefined,
+      seriesDescription: tag_extractRaw(series.SeriesDescription) as string | undefined,
       expectedFiles,
       actualFiles: storage.fileCount,
       status,
@@ -757,7 +735,7 @@ export async function pacsRetrieve_statusForQuery(
     }
 
     const { retrieveStatus, retrieveId } = await retrieve_latestFromQuery(queryId);
-    const payloadArray: unknown[] = Array.isArray(decoded.json) ? decoded.json : [decoded.json];
+    const payloadArray: Record<string, unknown>[] = studies_extractFromDecoded(decoded.json);
     const studies: StudyRetrieveStatus[] = [];
 
     for (const obj of payloadArray) {

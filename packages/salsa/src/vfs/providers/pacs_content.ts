@@ -8,23 +8,14 @@
  */
 
 import { Result, Ok, Err, errorStack, PACSQueryDecodedResult } from "@fnndsc/cumin";
-import { queryId_extractFromFolder } from "./pacsHelpers.js";
-
-/**
- * Safely extracts a string value from a potentially object-wrapped DICOM tag.
- *
- * @param val - Potentially object-wrapped DICOM tag or raw string.
- * @returns The string value of the DICOM tag.
- */
-function pacs_tagValueExtract(val: unknown): string {
-  if (val && typeof val === "object") {
-    const record: Record<string, unknown> = val as Record<string, unknown>;
-    if ("value" in record) {
-      return String(record.value ?? "");
-    }
-  }
-  return String(val ?? "");
-}
+import {
+  queryId_extractFromFolder,
+  folderUID_get,
+  studies_extractFromDecoded,
+  series_extractFromStudy,
+  study_findByUID,
+  series_findByUID,
+} from "./pacsHelpers.js";
 
 /**
  * Reads virtual file content under '/net/pacs'.
@@ -83,48 +74,19 @@ export async function pacsVfs_read(
       return Err();
     }
 
-    const studyUID: string = studyFolder.replace(/^Study_/, "").split("_")[0];
-    const seriesUID: string = seriesFolder.replace(/^Series_/, "").split("_")[0];
+    const studyUID: string = folderUID_get(studyFolder, "Study");
+    const seriesUID: string = folderUID_get(seriesFolder, "Series");
 
-    const decodedJson = decoded.json;
-    let studiesObj: unknown;
-    if (decodedJson && typeof decodedJson === "object") {
-      const record: Record<string, unknown> = decodedJson as Record<string, unknown>;
-      if ("studies" in record) {
-        studiesObj = record.studies;
-      } else if ("Studies" in record) {
-        studiesObj = record.Studies;
-      } else if ("results" in record) {
-        studiesObj = record.results;
-      } else {
-        studiesObj = decodedJson;
-      }
-    } else {
-      studiesObj = decodedJson;
-    }
-
-    const studies: unknown[] = Array.isArray(studiesObj) ? studiesObj : [studiesObj];
-    const studyObj: Record<string, unknown> | undefined = (studies as Record<string, unknown>[]).find((s: Record<string, unknown>) => {
-      const sUID: string = pacs_tagValueExtract(s.StudyInstanceUID || s.uid);
-      return sUID === studyUID;
-    });
+    const studies: Record<string, unknown>[] = studies_extractFromDecoded(decoded.json);
+    const studyObj: Record<string, unknown> | undefined = study_findByUID(studies, studyUID);
 
     if (!studyObj) {
       errorStack.stack_push("error", `Study with UID ${studyUID} not found in query results.`);
       return Err();
     }
 
-    const seriesArray: unknown[] =
-      Array.isArray(studyObj.series) ? studyObj.series :
-      Array.isArray(studyObj.Series) ? studyObj.Series :
-      Array.isArray(studyObj.results) ? studyObj.results :
-      Array.isArray(studyObj.data) ? studyObj.data :
-      [];
-
-    const seriesObj: Record<string, unknown> | undefined = (seriesArray as Record<string, unknown>[]).find((s: Record<string, unknown>) => {
-      const sUID: string = pacs_tagValueExtract(s.SeriesInstanceUID || s.uid);
-      return sUID === seriesUID;
-    });
+    const seriesArray: Record<string, unknown>[] = series_extractFromStudy(studyObj);
+    const seriesObj: Record<string, unknown> | undefined = series_findByUID(seriesArray, seriesUID);
 
     if (!seriesObj) {
       errorStack.stack_push("error", `Series with UID ${seriesUID} not found in study results.`);

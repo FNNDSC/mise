@@ -83,7 +83,12 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 }));
 
 // Mock cumin
+const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  // The payload helpers are pure and side-effect free: forward the real ones.
+  tag_extractValue: dicomPayload.tag_extractValue,
+  studies_extractFromDecoded: dicomPayload.studies_extractFromDecoded,
+  series_extractFromStudy: dicomPayload.series_extractFromStudy,
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
   currentIdentity_get: jest.fn<() => Promise<Result<ChrisIdentity>>>(),
   envelope_ok: (rendered: string, model?: unknown) =>
@@ -195,6 +200,15 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   retrieve_confirmLoop: jest.fn(async () => 0),
   retrieveProgress_classify: () => 'running',
   queryId_extractFromFolder: (folder: string) => { const m = /_qid:(\d+)/.exec(folder); return m ? Number(m[1]) : NaN; },
+  queryLabel_extractFromFolder: (folder: string) => folder.replace(/_qid:\d+.*$/, ''),
+  folderUID_get: (folder: string, prefix: string) => folder.replace(new RegExp(`^${prefix}_`), '').split('_')[0],
+  queryFolderName_build: (parts: { queryId: number | string; queryObj: Record<string, unknown>; title?: string; username?: string; hasResult?: boolean }) => {
+    const segments = Object.entries(parts.queryObj)
+      .filter(([, v]) => v !== undefined && v !== null && String(v).trim().length > 0)
+      .map(([k, v]) => `${k}:${v}`);
+    const desc = segments.join('_') || (parts.title ? parts.title.replace(/^pacs_query_\d+_\d+$/, 'query').replace(/^pacs_query_/, '') : 'query') || 'query';
+    return `${desc}_qid:${parts.queryId}${parts.username ? `_${parts.username}` : ''}${parts.hasResult === false ? '_no-hits' : ''}`;
+  },
   localAccount_adminAccessEnsure: jest.fn(),
   localAccount_create: jest.fn(),
   localAccount_find: jest.fn(),

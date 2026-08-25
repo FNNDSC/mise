@@ -2,7 +2,13 @@ import { jest, describe, it, expect } from '@jest/globals';
 
 // query.ts / pacsUtils.ts pull cumin + chili at module load; the pure parsers
 // under test use none of it, so stub the boundary just enough to import them.
+// The payload helpers are pure and side-effect free: the mock forwards the
+// real implementations so these tests keep pinning real behavior.
+const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  tag_extractValue: dicomPayload.tag_extractValue,
+  studies_extractFromDecoded: dicomPayload.studies_extractFromDecoded,
+  series_extractFromStudy: dicomPayload.series_extractFromStudy,
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),

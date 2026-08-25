@@ -14,6 +14,8 @@ import {
   tag_extractValue,
   path_normalize,
   queryId_extractFromFolder,
+  queryFolderName_build,
+  folderUID_get,
   studies_extractFromDecoded,
   series_extractFromStudy,
   study_findByUID,
@@ -60,19 +62,13 @@ async function queries_list(options?: SortOptions): Promise<Result<VFSItem[]>> {
     const queryStr: string = typeof row.query === "string" ? row.query : "";
     let queryObj: Record<string, unknown> = {};
     try { if (queryStr) queryObj = JSON.parse(queryStr); } catch { /* ignore */ }
-    const queryParts: string[] = [];
-    for (const [k, v] of Object.entries(queryObj)) {
-      if (v !== undefined && v !== null && String(v).trim().length > 0) queryParts.push(`${k}:${v}`);
-    }
-    let queryDesc: string = queryParts.join("_");
-    if (!queryDesc) queryDesc = title.replace(/^pacs_query_\d+_\d+$/, "query").replace(/^pacs_query_/, "");
     const hasResult: boolean = typeof row.result === "string" && row.result.trim().length > 0;
-    const noHitsSuffix: string = hasResult ? "" : "_no-hits";
     const ownerUsername: string = typeof row.owner_username === "string" ? row.owner_username : "";
-    const userSuffix: string = ownerUsername ? `_${ownerUsername}` : "";
     const creationDate: string = typeof row.creation_date === "string" ? row.creation_date : new Date().toISOString();
     return {
-      name: `${queryDesc}_qid:${queryId}${userSuffix}${noHitsSuffix}`,
+      name: queryFolderName_build({
+        queryId, queryObj, title, username: ownerUsername || undefined, hasResult,
+      }),
       type: "dir",
       size: 0,
       owner: ownerUsername || "system",
@@ -343,7 +339,7 @@ export class PacsVfsProvider implements VFSProvider {
 
       if (parts.length === 4) return studies_list(studies, options);
 
-      const studyUID: string = parts[4].replace(/^Study_/, "").split("_")[0];
+      const studyUID: string = folderUID_get(parts[4], "Study");
       const studyObj: Record<string, unknown> | undefined = study_findByUID(studies, studyUID);
       // A missing UID is "no such directory", never an empty one: rendering
       // not-found as an empty listing hides typos and stale paths entirely.
@@ -357,7 +353,7 @@ export class PacsVfsProvider implements VFSProvider {
       if (parts.length === 5) return series_list(seriesArr, options);
 
       if (parts.length === 6) {
-        const seriesUID: string = parts[5].replace(/^Series_/, "").split("_")[0];
+        const seriesUID: string = folderUID_get(parts[5], "Series");
         const seriesObj: Record<string, unknown> | undefined = series_findByUID(seriesArr, seriesUID);
         if (!seriesObj) {
           errorStack.stack_push("error", `'${effectivePath}': No such series in study ${studyUID}.`);

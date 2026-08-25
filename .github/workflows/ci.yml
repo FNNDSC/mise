@@ -22,10 +22,17 @@ jobs:
           node-version: 24
       - run: npm install -g npm@11.19.0
       - run: npm audit --omit=dev --audit-level=high
-      - run: npm audit --omit=dev --audit-level=high
-        working-directory: packages/cumin
-      - run: npm audit --omit=dev --audit-level=high
-        working-directory: packages/salsa
+      # Auditing from inside a workspace member is a silent no-op: npm
+      # resolves the prefix up to the workspace root and audits the root
+      # lockfile again. Copying each nested lockfile out of the workspace
+      # tree is what actually audits it.
+      - name: Audit nested lockfiles
+        run: |
+          for pkg in cumin salsa; do
+            dir=$(mktemp -d)
+            cp "packages/$pkg/package.json" "packages/$pkg/package-lock.json" "$dir"
+            (cd "$dir" && npm audit --omit=dev --audit-level=high)
+          done
 
   check:
     runs-on: ubuntu-latest

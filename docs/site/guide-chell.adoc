@@ -1,0 +1,63 @@
+= The chell vocabulary: build with the shell's metaphors
+:toc: left
+:toclevels: 2
+:source-highlighter: highlight.js
+:example-root: ../../packages/chell/exemplars/ts
+
+== What this is
+
+chell projects ChRIS onto a POSIX shell: files and feeds are paths, plugins are executables, jobs live under `/proc`, PACS queries under `/net/pacs`, and the verbs are the ones every operator already knows. That projection is itself a development surface. A program can speak it two ways: as `.chell` scripts run by the shell (`chell -e -f script.chell`, the analogue of a bash script), and as command lines handed to the engine from TypeScript, where each line returns typed envelopes instead of printing to a terminal.
+
+== Why this is
+
+Sometimes the shell's vocabulary is the right abstraction even when no human is typing: automation that mirrors what an operator would do stays reviewable by that operator, and one line like `pacs pull AccessionNumber:12345678` carries orchestration that would take a page of client calls. The intent API (see the link:guide-intent.html[intent guide]) is the right tool when your program thinks in typed operations; this vocabulary is the right tool when it thinks in operator actions.
+
+== How this relates to the other APIs
+
+Every chell command is a brasa builtin, and the builtins call the same salsa and cumin functions the intent guide documents; nothing here is a second implementation. Driving lines through the engine is the session API (see the link:guide-session.html[session guide]) with the vocabulary as payload, and everything shown here works identically through a remote `RemoteEngine` attached to a daemon.
+
+== The command surface
+
+The vocabulary groups by domain; `help` inside chell is the authoritative, always-current list, and `help <command>` documents each one.
+
+[cols="1,3"]
+|===
+| Domain | Commands
+
+| Filesystem | `ls`, `cd`, `pwd`, `cat`, `touch`, `mkdir`, `cp`, `mv`, `rm`, `tree`, `du`, `upload`, `download`, `edit`, `pull`
+| PACS | `pacs query`, `pacs pull`, `pacs status`, `cubepath`
+| Resources | `feed`, `plugin`, `plugininstance`, `pipeline`, `workflow`, `pluginmeta`, `tag`, `group`, `user`, `compute`, `files`
+| Jobs | the `/proc` tree (`ls /proc/jobs`, `cat .../status`, `.../log`, `.../params`), `proc refresh`
+| Session | `connect`, `logout`, `whoami`, `context`, `version`, `date`, `cal`, `fortune`
+| Shell features | pipes (`cat f.txt \| wc -l`), redirection (`>`, `>>`), semicolon batches, `!` host-shell escape, wildcards
+|===
+
+== The examples are programs, and the programs are tests
+
+Both examples below run in continuous integration against a live CUBE; the `.chell` script has guarded the nightly since the exemplar harness landed, and the TypeScript program joins the same run.
+
+== A `.chell` script
+
+The shell analogue of a bash script: run with `-e` (stop on error) and `-f`, a clean exit is the assertion. This is exemplar `10_fs_roundtrip.chell`, included whole:
+
+[source,shell]
+----
+include::../../packages/chell/exemplars/chell/10_fs_roundtrip.chell[]
+----
+
+One-shot lines work the same way without a file: `chell -c 'ls /home'` executes and exits with the command's status, which makes chell itself usable from cron jobs and CI steps.
+
+== The vocabulary from TypeScript
+
+The complete program: connect with cumin, create the engine chell's own REPL drives, and work in shell lines. No salsa calls appear; the API is the vocabulary, and every line comes back as a typed envelope your program can inspect:
+
+[source,typescript]
+----
+include::{example-root}/standalone/chell_vocabulary.ts[]
+----
+
+Two honesty notes, visible in the program rather than hidden. Deletion from a headless engine currently trips a known defect (interactive chell and `.chell` scripts are unaffected), so cleanup drops to the filebrowser REST endpoint; and richer vocabulary (`pacs pull`, `feed`, the `/proc` tree) works through exactly the same `line_execute` call, one line in, envelopes out.
+
+== Where to go next
+
+The link:guide-session.html[session guide] shows how these same lines cross a WebSocket to a daemon-hosted engine, which is how a web surface or bot would speak the vocabulary remotely. The builtin implementations live in the link:api/modules/_fnndsc_brasa.html[brasa reference]; each one renders through the envelope model the session guide describes.

@@ -18,6 +18,8 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { MkdirOutcome } from '../builtins/fs/mkdir.js';
 import type { TouchOutcome } from '../builtins/fs/touch.js';
 import type { RmOutcome } from '../builtins/fs/rm.js';
+import type { LsListing } from '../builtins/fs/ls.js';
+import type { CatOutcome } from '../builtins/fs/cat.js';
 
 /**
  * The payload the `fs.cwd` kind carries.
@@ -38,6 +40,8 @@ export interface FsModelMap {
   'fs.mkdir': MkdirOutcome[];
   'fs.touch': TouchOutcome[];
   'fs.rm': RmOutcome[];
+  'fs.listing': LsListing[];
+  'fs.cat': CatOutcome[];
 }
 
 /** Every kind the typed API currently maps. */

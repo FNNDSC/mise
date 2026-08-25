@@ -12,6 +12,7 @@ const mockUserGet = jest.fn();
 const mockClientGet = jest.fn();
 const mockGetFileBrowserFolderByPath = jest.fn();
 const mockVfsList = jest.fn(() => ({ status: 'ok', rendered: '' }));
+const mockVfsDataGet = jest.fn(async () => ({ ok: true, value: [] }));
 const mockVfsDispatcherList = jest.fn().mockResolvedValue({ ok: true, value: [] });
 const mockVfsDispatcherLinkTargetResolve = jest.fn();
 const mockContextGetSingle = jest.fn();
@@ -180,7 +181,8 @@ jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({
 // Mock VFS
 jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
   vfs: {
-    list: mockVfsList
+    list: mockVfsList,
+    data_get: mockVfsDataGet,
   }
 }));
 
@@ -591,6 +593,23 @@ describe('Builtins - Core Functions', () => {
   });
 
   describe('builtin_ls()', () => {
+    it('carries the fs.listing model with per-target entries', async () => {
+      mockVfsDataGet.mockResolvedValueOnce({ ok: true, value: [{ name: 'a.txt', type: 'file', size: 1, owner: 'u', date: '' }] });
+      const envelope = await builtin_ls(['/data']);
+      expect(envelope.model?.kind).toBe('fs.listing');
+      const listings = envelope.model?.data as Array<{ path: string; items: Array<{ name: string }> }>;
+      expect(listings[0].path).toBe('/data');
+      expect(listings[0].items[0].name).toBe('a.txt');
+    });
+
+    it('omits failed targets from the model and reports error status', async () => {
+      mockVfsList.mockReturnValueOnce({ status: 'error', rendered: '', renderedErr: 'ls: nope\n' });
+      const envelope = await builtin_ls(['/missing']);
+      expect(envelope.status).toBe('error');
+      expect((envelope.model?.data as unknown[]).length).toBe(0);
+      expect(mockVfsDataGet).not.toHaveBeenCalled();
+    });
+
     it('should list current directory when no args', async () => {
       await builtin_ls([]);
 

@@ -31,6 +31,8 @@ import { touch_run } from '../builtins/fs/touch.js';
 import { rm_run } from '../builtins/fs/rm.js';
 import { pwd_run } from '../builtins/fs/pwd.js';
 import { cd_run } from '../builtins/fs/cd.js';
+import { ls_run, type LsOptions } from '../builtins/fs/ls.js';
+import { cat_run } from '../builtins/fs/cat.js';
 import { envelope_typed, type TypedEnvelope } from './models.js';
 
 export type { TypedEnvelope, ModelKind, FsModelMap, CwdModel } from './models.js';
@@ -42,6 +44,15 @@ export interface TouchApiOptions {
   contents?: string;
   /** Local file whose content is uploaded into the target. */
   contentsFromFile?: string;
+}
+
+/** Options for {@link ChellApi.ls}: the ls flags, minus the target paths. */
+export type LsApiOptions = Omit<LsOptions, 'paths'>;
+
+/** Options for {@link ChellApi.cat}. */
+export interface CatApiOptions {
+  /** Print raw bytes without the binary-file guard. */
+  binary?: boolean;
 }
 
 /** Options for {@link ChellApi.rm}. */
@@ -95,6 +106,25 @@ export interface ChellApi {
   touch(path: string, options?: TouchApiOptions): Promise<TypedEnvelope<'fs.touch'>>;
 
   /**
+   * Lists a directory (or several).
+   *
+   * @param paths - Target path or paths; omit to list the session cwd.
+   * @param options - Sorting and presentation flags.
+   * @returns Envelope whose `fs.listing` model carries entries per target.
+   */
+  ls(paths?: string | string[], options?: LsApiOptions): Promise<TypedEnvelope<'fs.listing'>>;
+
+  /**
+   * Prints one or more files; content arrives in the envelope's rendered
+   * channel, per-file outcomes in the model.
+   *
+   * @param paths - File path or paths.
+   * @param options - Binary handling.
+   * @returns Envelope whose `fs.cat` model lists per-file outcomes.
+   */
+  cat(paths: string | string[], options?: CatApiOptions): Promise<TypedEnvelope<'fs.cat'>>;
+
+  /**
    * Removes files or directories.
    *
    * @param paths - Target path or paths, absolute or cwd-relative.
@@ -132,6 +162,20 @@ export async function chellApi_create(): Promise<ChellApi> {
         contents: options?.contents,
         contentsFromFile: options?.contentsFromFile,
       }).then(envelope_typed<'fs.touch'>),
+
+    ls: (paths?: string | string[], options?: LsApiOptions): Promise<TypedEnvelope<'fs.listing'>> =>
+      ls_run({
+        ...options,
+        paths: paths === undefined ? [] : Array.isArray(paths) ? paths : [paths],
+      }).then(envelope_typed<'fs.listing'>),
+
+    cat: (paths: string | string[], options?: CatApiOptions): Promise<TypedEnvelope<'fs.cat'>> =>
+      cat_run({
+        filePaths: Array.isArray(paths) ? paths : [paths],
+        binaryMode: options?.binary ?? false,
+        // A program consumes rendered content as data: never inject ANSI.
+        highlightMode: 'never',
+      }).then(envelope_typed<'fs.cat'>),
 
     rm: (paths: string | string[], options?: RmApiOptions): Promise<TypedEnvelope<'fs.rm'>> =>
       rm_run({

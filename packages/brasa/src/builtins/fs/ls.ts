@@ -7,6 +7,7 @@ import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
 import { listCache_get, type CommandEnvelope } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
+import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 
 /** Valid sort fields for ls. */
 type LsSortField = 'name' | 'size' | 'date' | 'owner';
@@ -20,7 +21,6 @@ type LsSortField = 'name' | 'size' | 'date' | 'owner';
  */
 export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
-  const pathArgsRaw: string[] = parsed._ as string[];
 
   let sortBy: LsSortField = 'name';
   if (parsed['sort']) {
@@ -30,9 +30,60 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
-  let pathArgs: string[] = pathArgsRaw;
+  return ls_run({
+    paths: parsed._ as string[],
+    long: !!parsed['l'],
+    human: !!parsed['h'],
+    oneColumn: !!parsed['1'],
+    sort: sortBy,
+    reverse: !!parsed['reverse'] || !!parsed['r'],
+    directory: !!parsed['d'],
+    refresh: !!parsed['refresh'] || !!parsed['f'],
+  });
+}
 
-  const shouldRefresh: boolean = !!parsed['refresh'] || !!parsed['f'];
+/** Typed invocation options for ls. */
+export interface LsOptions {
+  /** Paths to list; empty or omitted lists the session cwd. */
+  paths?: string[];
+  /** Long (detailed) listing. */
+  long?: boolean;
+  /** Human-readable sizes in the long listing. */
+  human?: boolean;
+  /** One entry per line. */
+  oneColumn?: boolean;
+  /** Sort field. */
+  sort?: LsSortField;
+  /** Reverse the sort order. */
+  reverse?: boolean;
+  /** List the entry itself rather than its contents. */
+  directory?: boolean;
+  /** Invalidate cached listings before reading. */
+  refresh?: boolean;
+}
+
+/**
+ * One listed target and its resolved entries, for the envelope model.
+ *
+ * @property path - The listed directory (resolved; the cwd when none given).
+ * @property items - The listing entries in display order.
+ */
+export interface LsListing {
+  path: string;
+  items: ListingItem[];
+}
+
+/**
+ * Lists directories: the shared typed core behind the parsed builtin and
+ * the typed API.
+ *
+ * @param runOptions - Target paths, sorting, and presentation flags.
+ * @returns An envelope whose rendered text carries the listing and whose
+ *   `fs.listing` model carries the entries per target.
+ */
+export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
+  const pathArgs: string[] = runOptions.paths ?? [];
+  const shouldRefresh: boolean = runOptions.refresh ?? false;
 
   const options: {
     long: boolean;
@@ -42,12 +93,12 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     reverse: boolean;
     directory: boolean;
   } = {
-    long: !!parsed['l'],
-    human: !!parsed['h'],
-    oneColumn: !!parsed['1'],
-    sort: sortBy,
-    reverse: !!parsed['reverse'] || !!parsed['r'],
-    directory: !!parsed['d']
+    long: runOptions.long ?? false,
+    human: runOptions.human ?? false,
+    oneColumn: runOptions.oneColumn ?? false,
+    sort: runOptions.sort ?? 'name',
+    reverse: runOptions.reverse ?? false,
+    directory: runOptions.directory ?? false,
   };
 
   let rendered: string = '';
@@ -81,6 +132,7 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
   }
 
   let anyFailed: boolean = false;
+  const listings: LsListing[] = [];
   for (const target of targets) {
     const envelope: CommandEnvelope = await vfs.list(target, options);
     rendered += envelope.rendered;
@@ -89,6 +141,13 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     }
     if (envelope.status === 'error') {
       anyFailed = true;
+      continue;
+    }
+    // Collect the entries for the model; vfs.list just populated the
+    // listing cache, so this second read is served from it.
+    const items = await vfs.data_get(target, options);
+    if (items.ok) {
+      listings.push({ path: target ?? await session.getCWD(), items: items.value });
     }
   }
 
@@ -98,6 +157,7 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     process.exitCode = 1;
   }
   const result: CommandEnvelope = { status: anyFailed ? 'error' : 'ok', rendered };
+  result.model = { kind: 'fs.listing', data: listings };
   if (renderedErr.length > 0) {
     result.renderedErr = renderedErr;
   }

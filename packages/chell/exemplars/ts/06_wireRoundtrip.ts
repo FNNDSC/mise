@@ -16,7 +16,7 @@
  *
  * @module
  */
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CalypsoDaemon, daemonSurface_create, DaemonSink } from '@fnndsc/calypso';
 import {
@@ -25,6 +25,9 @@ import {
   sinkScope_run,
   surface_get,
   surface_set,
+  type BrasaEngine,
+  type CompletionResult,
+  type LocalEditResult,
 } from '@fnndsc/brasa';
 import { RemoteEngine } from '@fnndsc/chell/dist/remote/remoteEngine.js';
 import { config_isolate, check, section, summary_exit } from './lib/harness.js';
@@ -34,7 +37,7 @@ const TOKEN: string = 'wire-roundtrip-token';
 /** Runs a host-shell command for the client side, exactly as a surface would. */
 function shell_run(command: string): Promise<number> {
   return new Promise((resolve: (code: number) => void) => {
-    const child = spawn('sh', ['-c', command], { stdio: 'ignore' });
+    const child: ChildProcess = spawn('sh', ['-c', command], { stdio: 'ignore' });
     child.on('close', (code: number | null) => resolve(code ?? 1));
   });
 }
@@ -58,7 +61,7 @@ async function realEngine_roundtrip(): Promise<void> {
   section('real engine: attach and execute');
 
   // tag::daemonHost[]
-  const engine = await engine_create();
+  const engine: BrasaEngine = await engine_create();
   const pipeCommands: string[] = [];
   const shellCommands: string[] = [];
 
@@ -107,7 +110,7 @@ async function realEngine_roundtrip(): Promise<void> {
   check('unknown command returned an error envelope', badEnvelopes[0]?.status === 'error');
 
   section('real engine: completion');
-  const completion = await client.line_complete('hel');
+  const completion: CompletionResult = await client.line_complete('hel');
   check('completion offered help for "hel"', completion.candidates.includes('help'));
 
   section('real engine: pipeline segments run on the client');
@@ -145,7 +148,7 @@ async function capability_roundtrip(): Promise<void> {
           return [{ status: 'ok', rendered: `answered:${answer}\n` }];
         }
         if (line === 'revise') {
-          const edit = await surface_get().localEdit({ content: 'draft text', extension: '.txt' });
+          const edit: LocalEditResult = await surface_get().localEdit({ content: 'draft text', extension: '.txt' });
           return [{ status: 'ok', rendered: `edited:${edit.changed}:${edit.content}\n` }];
         }
         return [{ status: 'error', rendered: '' }];

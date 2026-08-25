@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { chrisConnection_init, NodeStorageProvider, type CommandEnvelope } from '@fnndsc/cumin';
+import { chrisConnection_init, NodeStorageProvider, type ChRISConnection, type CommandEnvelope } from '@fnndsc/cumin';
 import { engine_create, type BrasaEngine } from '@fnndsc/brasa';
 
 /**
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const connection = await chrisConnection_init(new NodeStorageProvider());
+  const connection: ChRISConnection = await chrisConnection_init(new NodeStorageProvider());
   if (!(await connection.connection_connect({ url, user, password, debug: false }))) {
     console.error('Authentication failed.');
     process.exit(1);
@@ -99,7 +99,7 @@ async function folder_delete(url: string, user: string, password: string, folder
   const token: string = ((await tokenResponse.json()) as { token: string }).token;
   const auth: Record<string, string> = { Authorization: `Token ${token}`, Accept: 'application/json' };
 
-  const search = async (): Promise<number | null> => {
+  const search: () => Promise<number | null> = async (): Promise<number | null> => {
     const response: Response = await fetch(
       `${url}filebrowser/search/?path=${encodeURIComponent(folderPath)}`,
       { headers: auth },
@@ -114,7 +114,7 @@ async function folder_delete(url: string, user: string, password: string, folder
   if (folderId === null) return true;
   const deleted: Response = await fetch(`${url}filebrowser/${folderId}/`, { method: 'DELETE', headers: auth });
   if (deleted.status !== 202 && deleted.status !== 204) return false;
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt: number = 0; attempt < 20; attempt++) {
     if ((await search()) === null) return true;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }

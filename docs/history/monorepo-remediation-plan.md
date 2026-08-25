@@ -1,5 +1,9 @@
 # ChELL stack — remediation plan (converged)
 
+> **Historical record.** This is the original 2025 plan that migrated four standalone repositories into the `FNNDSC/mise` monorepo and sequenced the first quality campaign. It is preserved unedited below the line, so it describes the world as it was then: a four-package stack (the engine split later added `brasa` and `calypso`), 692 tests, and `NPM_TOKEN` release authentication (replaced by npm OIDC trusted publishing in August 2026). The current architecture is documented in [`docs/mise.adoc`](../mise.adoc) and the narrative of how it evolved in [`docs/history.adoc`](../history.adoc).
+
+---
+
 Decisions locked via design review:
 
 | # | decision | choice |

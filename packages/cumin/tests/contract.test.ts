@@ -15,6 +15,7 @@ import {
   pipelineSourceFilesPage_get,
   downloadToken_create,
   listPages_walk,
+  collectionPage_wrap,
   ListPage,
   PageWalkStep,
   FeedData,
@@ -426,10 +427,54 @@ describe('listPages_walk', () => {
     expect(calls).toEqual([[0, 3]]);
   });
 
+  test('advances by rows served, not rows surviving normalization', async () => {
+    // A wrap may drop malformed rows from data while reporting the served
+    // count; the offset must advance by what the server sent, or the walk
+    // refetches rows and can end early.
+    const calls: Array<[number, number]> = [];
+    const fetch = async (offset: number, limit: number): Promise<ListPage<number>> => {
+      calls.push([offset, limit]);
+      const pages: Array<{ kept: number[]; served: number }> = [
+        { kept: [1, 2], served: 4 },
+        { kept: [3], served: 4 },
+        { kept: [4], served: 2 },
+      ];
+      const page = pages[offset / 4];
+      return { data: page.kept, totalCount: 10, fetchedCount: page.served };
+    };
+    const collected: number[] = await walk_collect(listPages_walk(fetch, { pageSize: 4 }));
+    expect(collected).toEqual([1, 2, 3, 4]);
+    expect(calls).toEqual([[0, 4], [4, 4], [8, 4]]);
+  });
+
+  test('a served page whose rows were all dropped does not end the walk', async () => {
+    const calls: Array<[number, number]> = [];
+    const fetch = async (offset: number, limit: number): Promise<ListPage<number>> => {
+      calls.push([offset, limit]);
+      if (offset === 0) return { data: [], totalCount: 6, fetchedCount: 3 };
+      return { data: [7, 8, 9], totalCount: 6, fetchedCount: 3 };
+    };
+    const collected: number[] = await walk_collect(listPages_walk(fetch, { pageSize: 3 }));
+    expect(collected).toEqual([7, 8, 9]);
+    expect(calls).toEqual([[0, 3], [3, 3]]);
+  });
+
   test('propagates a fetch failure to the consumer', async () => {
     const fetch = async (): Promise<ListPage<number>> => {
       throw new Error('wire down');
     };
     await expect(walk_collect(listPages_walk(fetch))).rejects.toThrow('wire down');
+  });
+});
+
+describe('collectionPage_wrap', () => {
+  test('carries totalCount and hasNextPage from the collection', () => {
+    const page = collectionPage_wrap({ totalCount: 12, hasNextPage: true }, ['a', 'b']);
+    expect(page).toEqual({ data: ['a', 'b'], totalCount: 12, hasMore: true });
+  });
+
+  test('translates a negative totalCount to unknown', () => {
+    const page = collectionPage_wrap({ totalCount: -1, hasNextPage: false }, []);
+    expect(page).toEqual({ data: [], totalCount: null, hasMore: false });
   });
 });

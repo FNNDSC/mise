@@ -14,7 +14,7 @@ import {
   type User,
   type UserGroupList,
 } from '../chrisapi/adapter.js';
-import { listPages_drain, type ListPage } from '../chrisapi/contract.js';
+import { collectionPage_wrap, listPages_drain, type ListPage } from '../chrisapi/contract.js';
 import { errorStack } from '../error/errorStack.js';
 import { Result, Ok, Err } from '../utils/result.js';
 import type { ChrisGroup } from '../groups/chrisGroups.js';
@@ -219,7 +219,7 @@ export async function currentIdentity_get(): Promise<Result<ChrisIdentity>> {
     const groups: ChrisGroup[] = await listPages_drain(
       async (offset: number, limit: number): Promise<ListPage<ChrisGroup>> => {
         const groupList: UserGroupList = await current.value.resource.getGroups({ limit, offset });
-        return { data: listData_get<ChrisGroup>(groupList), totalCount: groupList.totalCount >= 0 ? groupList.totalCount : null, hasMore: groupList.hasNextPage };
+        return collectionPage_wrap(groupList, listData_get<ChrisGroup>(groupList));
       },
       { pageSize: membershipPageSize },
     );

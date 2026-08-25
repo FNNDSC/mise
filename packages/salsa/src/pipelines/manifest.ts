@@ -254,12 +254,7 @@ async function pipelineManifest_project(
   const manifestKey: string = `${pipelineRecord.id}:${detail}`;
   try {
     const [pipingItems, defaultRows] = await Promise.all([
-      // pluginPipings_get returns a bare item array (no page envelope), so
-      // the drain terminates on the short page.
-      listPages_drain(async (offset: number, limit: number) => ({
-        data: await pipeline.pluginPipings_get({ limit, offset }),
-        totalCount: null,
-      })),
+      listPages_drain((offset: number, limit: number) => pipeline.pluginPipingsPage_get({ limit, offset })),
       listPages_drain((offset: number, limit: number) => pipeline.defaultParametersPage_get({ limit, offset })),
     ]);
     const defaults: DefaultParameterData[] = defaultRows

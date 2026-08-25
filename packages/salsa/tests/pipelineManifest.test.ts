@@ -155,6 +155,7 @@ describe('pipelineManifest_get', () => {
       {
         data: { id: 42, name: 'Example Pipeline' },
         pluginPipings_get: async () => [],
+        pluginPipingsPage_get: async () => ({ data: [], totalCount: 0 }),
         defaultParametersPage_get: async () => ({ data: [], totalCount: 0 }),
       },
       { detail: 'registered' },
@@ -177,6 +178,7 @@ describe('pipelineManifest_get', () => {
       {
         data: { id: 42, name: 'Example Pipeline' },
         pluginPipings_get: async () => [],
+        pluginPipingsPage_get: async () => ({ data: [], totalCount: 0 }),
         defaultParametersPage_get: async () => ({ data: [], totalCount: 0 }),
       },
       { detail: 'registered' },

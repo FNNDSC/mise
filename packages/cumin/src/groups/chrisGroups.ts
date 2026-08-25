@@ -14,7 +14,7 @@ import {
   type GroupUserList,
   type User,
 } from '../chrisapi/adapter.js';
-import { listPages_drain, listPages_walk, type ListPage } from '../chrisapi/contract.js';
+import { collectionPage_wrap, listPages_drain, listPages_walk, type ListPage } from '../chrisapi/contract.js';
 import { errorStack } from '../error/errorStack.js';
 import { ChRISResourceGroup } from '../resources/chrisResourceGroup.js';
 import { Err, Ok, type Result } from '../utils/result.js';
@@ -71,7 +71,7 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
       const groups: ChrisGroup[] = await listPages_drain(
         async (offset: number, limit: number): Promise<ListPage<ChrisGroup>> => {
           const page: GroupList = await client.getGroups({ limit, offset });
-          return { data: listData_get<ChrisGroup>(page), totalCount: page.totalCount >= 0 ? page.totalCount : null, hasMore: page.hasNextPage };
+          return collectionPage_wrap(page, listData_get<ChrisGroup>(page));
         },
       );
       return Ok(groups);
@@ -96,7 +96,7 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
       for await (const step of listPages_walk(
         async (offset: number, limit: number): Promise<ListPage<GroupUser>> => {
           const page: GroupUserList = await group.getUsers({ limit, offset });
-          return { data: items_get<GroupUser>(page), totalCount: page.totalCount >= 0 ? page.totalCount : null, hasMore: page.hasNextPage };
+          return collectionPage_wrap(page, items_get<GroupUser>(page));
         },
       )) {
         // Membership rows carry only a link to the user; one detail request

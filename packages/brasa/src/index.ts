@@ -10,6 +10,8 @@
  */
 
 export * from './core/engine.js';
+// The typed chell API: the shell's vocabulary as function calls.
+export * from './api/index.js';
 export * from './core/dispatch.js';
 export * from './core/preprocess.js';
 export * from './core/sink.js';

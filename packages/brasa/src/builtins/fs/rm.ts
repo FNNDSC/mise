@@ -99,7 +99,7 @@ export function rmSummary_format(successCount: number, failCount: number): strin
 }
 
 /** Outcome of one removal target, for the envelope model. */
-interface RmOutcome {
+export interface RmOutcome {
   path: string;
   removed: boolean;
   skipped: boolean;
@@ -116,7 +116,18 @@ interface RmOutcome {
  * @returns An envelope whose model lists per-target outcomes.
  */
 export async function builtin_rm(args: string[]): Promise<CommandEnvelope> {
-  const { recursive, force, interactive, paths }: RmArgs = rmArgs_parse(args);
+  return rm_run(rmArgs_parse(args));
+}
+
+/**
+ * Removes files or directories: the shared typed core behind the parsed
+ * builtin and the typed API.
+ *
+ * @param runArgs - Flags and target paths.
+ * @returns An envelope whose model lists per-target outcomes.
+ */
+export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
+  const { recursive, force, interactive, paths }: RmArgs = runArgs;
 
   if (paths.length === 0) {
     return envelope_error('', undefined, `${chalk.red('Usage: rm [-rf] <path> [path...]')}\n`);

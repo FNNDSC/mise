@@ -10,19 +10,27 @@ import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.
 import { mkdir_render } from '@fnndsc/chili/views/fs.js';
 
 /** Outcome of one mkdir target, for the envelope model. */
-interface MkdirOutcome {
+export interface MkdirOutcome {
   path: string;
   created: boolean;
 }
 
+/** Typed invocation options for mkdir. */
+export interface MkdirOptions {
+  /** Directory paths to create, absolute or relative to the session cwd. */
+  paths: string[];
+}
+
 /**
- * Creates directories.
+ * Creates directories: the shared typed core behind the parsed builtin and
+ * the typed API.
  *
- * @param args - Command line arguments (directory paths).
+ * @param options - The directories to create.
  * @returns An envelope whose rendered text reports each directory and whose
  *   model lists per-target outcomes.
  */
-export async function builtin_mkdir(args: string[]): Promise<CommandEnvelope> {
+export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope> {
+  const args: string[] = options.paths;
   if (args.length === 0) {
     return envelope_error('', undefined, `${chalk.red('Usage: mkdir <directory> [directory...]')}\n`);
   }
@@ -59,4 +67,14 @@ export async function builtin_mkdir(args: string[]): Promise<CommandEnvelope> {
     return envelope;
   }
   return envelope_ok(rendered, model);
+}
+
+/**
+ * Creates directories from parsed command-line arguments.
+ *
+ * @param args - Command line arguments (directory paths).
+ * @returns The envelope from {@link mkdir_run}.
+ */
+export async function builtin_mkdir(args: string[]): Promise<CommandEnvelope> {
+  return mkdir_run({ paths: args });
 }

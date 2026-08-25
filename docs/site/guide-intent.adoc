@@ -31,7 +31,7 @@ include::{example-root}/standalone/intent_connect.ts[]
 
 == A filesystem round trip
 
-Files live in the ChRIS filesystem, addressed by absolute paths under `/home/<user>`. This program makes a scratch directory with salsa's `files_mkdir`, writes with `files_touch`, reads back with `fileContent_get`, verifies the content, and then removes its own evidence. The cleanup drops to CUBE's filebrowser REST endpoint because path-addressed folder deletion has no salsa wrapper yet; the two helpers at the bottom are the escape-hatch pattern in miniature, shown rather than hidden.
+Files live in the ChRIS filesystem, addressed by absolute paths under `/home/<user>`. This program makes a scratch directory with salsa's `files_mkdir`, writes with `files_touch`, reads back with `fileContent_get`, verifies the content, and then removes its own evidence with `folderByPath_delete`, which returns only once the CUBE confirms the folder no longer resolves (server-side deletion is asynchronous, so a fire-and-forget delete would race any rerun).
 
 [source,typescript]
 ----

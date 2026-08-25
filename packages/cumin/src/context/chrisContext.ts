@@ -338,6 +338,13 @@ export class ChrisContext {
    * @returns True on success, false on failure.
    */
   async current_set(context: Context, value: string): Promise<boolean> {
+    // Resolve the session-scoped filenames BEFORE writing: a fresh process's
+    // first context write otherwise lands at the unresolved location while
+    // every later read uses the resolved one (first-command `cd` lost its
+    // value this way). The same init runs again after the write because
+    // saving the user or URL changes which directory the filenames live in.
+    await sessionConfig.connection.init();
+    await sessionConfig.init();
     let status: boolean = false;
     switch (context) {
       case Context.ChRISuser:

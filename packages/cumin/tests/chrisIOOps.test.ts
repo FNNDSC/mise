@@ -47,6 +47,33 @@ describe('init', () => {
   });
 });
 
+describe('folder_deleteByPath', () => {
+  it('deletes and confirms disappearance', async () => {
+    const del = jest.fn(async () => undefined);
+    const byPath = jest.fn()
+      .mockResolvedValueOnce({ delete: del })
+      .mockResolvedValueOnce(null);
+    mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: byPath });
+    const result = await io().folder_deleteByPath('/home/alice/scratch');
+    expect(result.ok).toBe(true);
+    expect(del).toHaveBeenCalled();
+    // Leading slash stripped for the filebrowser lookup.
+    expect(byPath).toHaveBeenCalledWith('home/alice/scratch');
+  });
+
+  it('treats an absent folder as already deleted', async () => {
+    mockClientGet.mockResolvedValue({ getFileBrowserFolderByPath: jest.fn(async () => null) });
+    expect((await io().folder_deleteByPath('home/alice/gone')).ok).toBe(true);
+  });
+
+  it('fails when the delete call throws', async () => {
+    mockClientGet.mockResolvedValue({
+      getFileBrowserFolderByPath: jest.fn(async () => ({ delete: async () => { throw new Error('403'); } })),
+    });
+    expect((await io().folder_deleteByPath('home/alice/held')).ok).toBe(false);
+  });
+});
+
 describe('file_downloadStream', () => {
   it('returns the stream with size and filename', async () => {
     mockClientGet.mockResolvedValue({

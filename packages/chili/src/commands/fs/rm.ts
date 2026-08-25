@@ -101,6 +101,11 @@ export async function files_rm(targetPath: string, options: RmOptions = {}): Pro
     const info = await pathInfo_find(resolvedPath);
 
     if (!info) {
+      // POSIX rm -f: a missing operand is not an error, which is what makes
+      // "remove any leftover, then recreate" scripts idempotent.
+      if (options.force) {
+        return { success: true, path: resolvedPath, type: null };
+      }
       return {
         success: false,
         path: resolvedPath,

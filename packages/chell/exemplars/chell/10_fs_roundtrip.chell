@@ -11,6 +11,11 @@
 # Start from the home directory (cd with no argument goes home).
 cd
 
+# Self-heal: a previous failed run may have left the scratch directory
+# behind, and recreating over its remains upsets the CUBE. POSIX rm -f
+# semantics make this a no-op on a clean start.
+rm -rf e2e-chell-scratch
+
 # Make a scratch directory and enter it.
 mkdir e2e-chell-scratch
 cd e2e-chell-scratch

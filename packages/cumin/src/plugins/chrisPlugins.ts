@@ -40,6 +40,9 @@ import { Searchable } from "../utils/searchable.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
 
+/** Upper bound on pages fetched from a peer store's link-following walk. */
+const PEER_STORE_MAX_PAGES: number = 500;
+
 /** Plugin descriptor uploaded as a JSON blob under the `fname` field. */
 interface PluginUploadFile {
   fname: Blob;
@@ -615,8 +618,21 @@ export class ChRISPlugin {
 
       const allPlugins: Record<string, unknown>[] = [];
       let nextUrl: string | null = url;
+      let pagesFetched: number = 0;
 
       while (nextUrl) {
+        // A link-following walk trusts the server for termination; a store
+        // echoing its own `next` link (or an absurd page count) must not
+        // spin forever. Truncation is reported, never silent.
+        if (pagesFetched >= PEER_STORE_MAX_PAGES) {
+          errorStack.stack_push(
+            'warning',
+            `Peer store listing truncated after ${PEER_STORE_MAX_PAGES} pages (${allPlugins.length} plugins); the store's pagination links may be cyclic.`,
+          );
+          break;
+        }
+        const currentUrl: string = nextUrl;
+        pagesFetched += 1;
         const response: Response = await fetch(nextUrl, {
           headers: { 'Accept': 'application/vnd.collection+json' }
         });
@@ -645,7 +661,7 @@ export class ChRISPlugin {
           nextUrl = null;
           if (data.collection.links) {
             const nextLink = data.collection.links.find(l => l.rel === 'next');
-            if (nextLink) {
+            if (nextLink && nextLink.href !== currentUrl) {
               nextUrl = nextLink.href;
             }
           }

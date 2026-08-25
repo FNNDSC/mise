@@ -13,6 +13,7 @@ import {
   errorStack,
   pipeline_get,
   pipeline_resolve,
+  listPages_drain,
   type PipelineHandle,
   type PluginPipingItem,
   type PluginHandle,
@@ -183,12 +184,12 @@ async function pluginMetadata_get(
     metadataPromise = (async (): Promise<PluginMetadata> => {
       const plugin: PluginHandle | null = await item.plugin_get();
       if (plugin === null) throw new Error('piping exposes no plugin link');
-      const [parameterPage, computePage] = await Promise.all([
-        plugin.parametersPage_get({ limit: 1000 }),
-        plugin.computeResourcesPage_get({ limit: 1000 }),
+      const [parameterRows, computeRows] = await Promise.all([
+        listPages_drain((offset: number, limit: number) => plugin.parametersPage_get({ limit, offset })),
+        listPages_drain((offset: number, limit: number) => plugin.computeResourcesPage_get({ limit, offset })),
       ]);
       return {
-        parameterDefinitions: parameterPage.data.map(
+        parameterDefinitions: parameterRows.map(
           (parameter) => ({
             name: parameter.name,
             type: parameter.type ?? 'string',
@@ -197,7 +198,7 @@ async function pluginMetadata_get(
             help: parameter.help,
           }),
         ),
-        computeResources: computePage.data
+        computeResources: computeRows
           .map((compute): string | undefined => compute.name)
           .filter((name: string | undefined): name is string => typeof name === 'string'),
       };
@@ -252,11 +253,16 @@ async function pipelineManifest_project(
 ): Promise<Result<PipelineManifest>> {
   const manifestKey: string = `${pipelineRecord.id}:${detail}`;
   try {
-    const [pipingItems, defaultsPage] = await Promise.all([
-      pipeline.pluginPipings_get({ limit: 1000 }),
-      pipeline.defaultParametersPage_get({ limit: 1000 }),
+    const [pipingItems, defaultRows] = await Promise.all([
+      // pluginPipings_get returns a bare item array (no page envelope), so
+      // the drain terminates on the short page.
+      listPages_drain(async (offset: number, limit: number) => ({
+        data: await pipeline.pluginPipings_get({ limit, offset }),
+        totalCount: null,
+      })),
+      listPages_drain((offset: number, limit: number) => pipeline.defaultParametersPage_get({ limit, offset })),
     ]);
-    const defaults: DefaultParameterData[] = defaultsPage.data
+    const defaults: DefaultParameterData[] = defaultRows
       .map((row: PipingDefaultParameterData): DefaultParameterData | null => defaultParameter_narrow(row))
       .filter((row: DefaultParameterData | null): row is DefaultParameterData => row !== null);
     const defaultsByPiping: Map<number, DefaultParameterData[]> = new Map();

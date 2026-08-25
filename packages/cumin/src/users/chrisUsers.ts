@@ -14,6 +14,7 @@ import {
   type User,
   type UserGroupList,
 } from '../chrisapi/adapter.js';
+import { listPages_drain, type ListPage } from '../chrisapi/contract.js';
 import { errorStack } from '../error/errorStack.js';
 import { Result, Ok, Err } from '../utils/result.js';
 import type { ChrisGroup } from '../groups/chrisGroups.js';
@@ -215,18 +216,13 @@ export async function currentIdentity_get(): Promise<Result<ChrisIdentity>> {
 
   try {
     const membershipPageSize: number = 1000;
-    const groups: ChrisGroup[] = [];
-    let offset: number = 0;
-    while (true) {
-      const groupList: UserGroupList = await current.value.resource.getGroups({
-        limit: membershipPageSize,
-        offset,
-      });
-      const pageGroups: ChrisGroup[] = listData_get<ChrisGroup>(groupList);
-      groups.push(...pageGroups);
-      if (!groupList.hasNextPage || pageGroups.length === 0) break;
-      offset += pageGroups.length;
-    }
+    const groups: ChrisGroup[] = await listPages_drain(
+      async (offset: number, limit: number): Promise<ListPage<ChrisGroup>> => {
+        const groupList: UserGroupList = await current.value.resource.getGroups({ limit, offset });
+        return { data: listData_get<ChrisGroup>(groupList), totalCount: groupList.totalCount >= 0 ? groupList.totalCount : null, hasMore: groupList.hasNextPage };
+      },
+      { pageSize: membershipPageSize },
+    );
     return Ok({ user: current.value.user, groups });
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);

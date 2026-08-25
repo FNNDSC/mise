@@ -40,10 +40,14 @@ import type { PipelineRecord } from '../pipelines/chrisPipeline';
  * @property data - The rows of this page, in server order.
  * @property totalCount - The collection's total row count when the server
  *   reported one, otherwise null. A null total means "unknown", not zero.
+ * @property hasMore - Whether the server says further pages exist, when it
+ *   says anything at all. Servers may serve fewer rows than the requested
+ *   limit while more remain, so a walk must trust this over page fullness.
  */
 export interface ListPage<T> {
   data: T[];
   totalCount: number | null;
+  hasMore?: boolean;
 }
 
 /**
@@ -113,10 +117,37 @@ export async function* listPages_walk<T>(
     }
     yield { items, offset, total };
     if (items.length === 0) return;
+    if (page.hasMore === false) return;
     if (total !== null && offset + items.length >= total) return;
-    if (total === null && items.length < pageSize) return;
+    // A short page ends the walk only when the server gave no better signal:
+    // a page can be shorter than the requested limit (server-side caps)
+    // while hasMore says further pages exist.
+    if (total === null && page.hasMore !== true && items.length < pageSize) return;
     offset += items.length;
   }
+}
+
+/**
+ * Drains every page of a paginated CUBE list into one array.
+ *
+ * Convenience over listPages_walk for callers that need the complete
+ * collection and nothing per-page. The single-shot `{ limit: 1000 }` idiom
+ * this replaces silently truncated collections past its guess; the drain
+ * walks to the actual end.
+ *
+ * @param page_fetch - Fetches one page at the given offset and limit.
+ * @param options - Page size and resume position. See PageWalkOptions.
+ * @returns Every row of the collection, in server order.
+ */
+export async function listPages_drain<T>(
+  page_fetch: (offset: number, limit: number) => Promise<ListPage<T>>,
+  options: PageWalkOptions = {},
+): Promise<T[]> {
+  const rows: T[] = [];
+  for await (const step of listPages_walk(page_fetch, options)) {
+    rows.push(...step.items);
+  }
+  return rows;
 }
 
 /**

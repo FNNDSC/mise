@@ -74,8 +74,8 @@ describe('groups_getAll', () => {
     const result: Result<ChrisGroup[]> = await groups_getAll();
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual([{ id: 1, name: 'admins' }, { id: 2, name: 'pacs' }]);
-    expect(getGroups).toHaveBeenNthCalledWith(1, { offset: 0 });
-    expect(getGroups).toHaveBeenNthCalledWith(2, { offset: 1 });
+    expect(getGroups).toHaveBeenNthCalledWith(1, { limit: 100, offset: 0 });
+    expect(getGroups).toHaveBeenNthCalledWith(2, { limit: 100, offset: 1 });
   });
 
   it('returns an empty list when the payload has no data', async () => {
@@ -126,8 +126,8 @@ describe('groupMembers_getAll', () => {
         { id: 12, username: 'peter.hong' },
       ],
     });
-    expect(getUsers).toHaveBeenNthCalledWith(1, { offset: 0 });
-    expect(getUsers).toHaveBeenNthCalledWith(2, { offset: 1 });
+    expect(getUsers).toHaveBeenNthCalledWith(1, { limit: 100, offset: 0 });
+    expect(getUsers).toHaveBeenNthCalledWith(2, { limit: 100, offset: 1 });
   });
 });
 

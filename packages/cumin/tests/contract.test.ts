@@ -400,6 +400,32 @@ describe('listPages_walk', () => {
     expect(calls).toEqual([[20, 10]]);
   });
 
+  test('continues past a short page while the server says more exist', async () => {
+    // Servers may cap the requested limit: full pages here are 3 rows even
+    // though the walk asks for 10, and no total is reported.
+    const rows: number[] = Array.from({ length: 8 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const fetch = async (offset: number, limit: number): Promise<ListPage<number>> => {
+      calls.push([offset, limit]);
+      const items: number[] = rows.slice(offset, offset + Math.min(limit, 3));
+      return { data: items, totalCount: null, hasMore: offset + items.length < rows.length };
+    };
+    const collected: number[] = await walk_collect(listPages_walk(fetch, { pageSize: 10 }));
+    expect(collected).toEqual(rows);
+    expect(calls).toEqual([[0, 10], [3, 10], [6, 10]]);
+  });
+
+  test('stops without an extra fetch when the server says no more exist', async () => {
+    const calls: Array<[number, number]> = [];
+    const fetch = async (offset: number, limit: number): Promise<ListPage<number>> => {
+      calls.push([offset, limit]);
+      return { data: [1, 2, 3].slice(0, limit), totalCount: null, hasMore: false };
+    };
+    const collected: number[] = await walk_collect(listPages_walk(fetch, { pageSize: 3 }));
+    expect(collected).toEqual([1, 2, 3]);
+    expect(calls).toEqual([[0, 3]]);
+  });
+
   test('propagates a fetch failure to the consumer', async () => {
     const fetch = async (): Promise<ListPage<number>> => {
       throw new Error('wire down');

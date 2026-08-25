@@ -6,8 +6,23 @@
  * @module
  */
 
-import { errorStack, pacsQuery_resultDecode, pacsServers_list, chrisContext, Context, seriesStorage_resolve } from '@fnndsc/cumin';
-import { queryId_extractFromFolder } from '@fnndsc/salsa';
+import {
+  errorStack,
+  pacsQuery_resultDecode,
+  pacsServers_list,
+  chrisContext,
+  Context,
+  seriesStorage_resolve,
+  tag_extractValue,
+  studies_extractFromDecoded,
+  series_extractFromStudy,
+} from '@fnndsc/cumin';
+import { queryId_extractFromFolder, queryLabel_extractFromFolder, folderUID_get } from '@fnndsc/salsa';
+
+export { folderUID_get };
+
+/** Compatibility alias for cumin's tag_extractValue, the one tag unwrapper. */
+export const pacs_tagValueExtract: (val: unknown) => string = tag_extractValue;
 
 /**
  * Minimal series info collected from a decoded PACS query result.
@@ -29,26 +44,6 @@ export interface PACSSeriesInfo {
 export interface SeriesCubePath {
   folderPath: string;
   fileCount: number;
-}
-
-/**
- * Safely unwraps a DICOM tag value (may be `{value: ...}` wrapper or plain string/number).
- */
-export function pacs_tagValueExtract(val: unknown): string {
-  if (val && typeof val === 'object') {
-    const r: Record<string, unknown> = val as Record<string, unknown>;
-    if ('value' in r) return String(r.value ?? '');
-    if ('Value' in r && Array.isArray(r.Value) && r.Value.length > 0) return String(r.Value[0] ?? '');
-  }
-  return String(val ?? '');
-}
-
-/**
- * Extracts the UID portion of a VFS folder name (`<prefix>_<uid>_<label>`).
- */
-export function folderUID_get(folder: string, prefix: string): string {
-  const withoutPrefix: string = folder.replace(new RegExp(`^${prefix}_`), '');
-  return withoutPrefix.split('_')[0];
 }
 
 /**
@@ -112,7 +107,7 @@ export async function pacs_seriesCollect(
     errorStack.stack_push('error', `${callerTag}: Cannot parse query ID from: ${queryFolder}`);
     return [];
   }
-  const queryLabel: string = queryFolder.replace(/_qid:\d+.*$/, '');
+  const queryLabel: string = queryLabel_extractFromFolder(queryFolder);
 
   const decodedResult = await pacsQuery_resultDecode(queryId);
   if (!decodedResult.ok || !decodedResult.value.json) {
@@ -120,20 +115,7 @@ export async function pacs_seriesCollect(
     return [];
   }
 
-  const raw: unknown = decodedResult.value.json;
-  let studiesSource: unknown;
-  if (raw && typeof raw === 'object') {
-    const r: Record<string, unknown> = raw as Record<string, unknown>;
-    studiesSource =
-      'studies' in r ? r.studies :
-      'Studies' in r ? r.Studies :
-      'results' in r ? r.results :
-      raw;
-  } else {
-    studiesSource = raw;
-  }
-  const studies: Record<string, unknown>[] =
-    (Array.isArray(studiesSource) ? studiesSource : [studiesSource]) as Record<string, unknown>[];
+  const studies: Record<string, unknown>[] = studies_extractFromDecoded(decodedResult.value.json);
 
   const targetStudyUID: string | null = parts.length >= 5
     ? folderUID_get(parts[4], 'Study')
@@ -147,29 +129,24 @@ export async function pacs_seriesCollect(
   for (const studyObj of studies) {
     if (!studyObj || typeof studyObj !== 'object') continue;
 
-    const studyUID: string = pacs_tagValueExtract(studyObj.StudyInstanceUID ?? studyObj.uid);
+    const studyUID: string = tag_extractValue(studyObj.StudyInstanceUID ?? studyObj.uid);
     if (targetStudyUID && studyUID !== targetStudyUID) continue;
 
-    const studyLabel: string = pacs_tagValueExtract(studyObj.StudyDescription ?? 'Study').replace(/[\s/]/g, '_');
-    const retrieveAETitle: string = pacs_tagValueExtract(studyObj.RetrieveAETitle ?? '');
+    const studyLabel: string = tag_extractValue(studyObj.StudyDescription ?? 'Study').replace(/[\s/]/g, '_');
+    const retrieveAETitle: string = tag_extractValue(studyObj.RetrieveAETitle ?? '');
     const pacsName: string = retrieveAETitle || fallbackPacsName;
 
-    const seriesArr: Record<string, unknown>[] = (
-      Array.isArray(studyObj.series) ? studyObj.series :
-      Array.isArray(studyObj.Series) ? studyObj.Series :
-      Array.isArray(studyObj.results) ? studyObj.results :
-      []
-    ) as Record<string, unknown>[];
+    const seriesArr: Record<string, unknown>[] = series_extractFromStudy(studyObj);
 
     for (const seriesObj of seriesArr) {
       if (!seriesObj || typeof seriesObj !== 'object') continue;
 
-      const seriesUID: string = pacs_tagValueExtract(seriesObj.SeriesInstanceUID ?? seriesObj.uid);
+      const seriesUID: string = tag_extractValue(seriesObj.SeriesInstanceUID ?? seriesObj.uid);
       if (!seriesUID) continue;
       if (targetSeriesUID && seriesUID !== targetSeriesUID) continue;
 
-      const seriesLabel: string = pacs_tagValueExtract(seriesObj.SeriesDescription ?? 'Series').replace(/[\s/]/g, '_');
-      const expectedFiles: number = Number(pacs_tagValueExtract(seriesObj.NumberOfSeriesRelatedInstances ?? '0')) || 0;
+      const seriesLabel: string = tag_extractValue(seriesObj.SeriesDescription ?? 'Series').replace(/[\s/]/g, '_');
+      const expectedFiles: number = Number(tag_extractValue(seriesObj.NumberOfSeriesRelatedInstances ?? '0')) || 0;
 
       infos.push({
         label: `${queryLabel}|${studyLabel}|${seriesLabel}`,

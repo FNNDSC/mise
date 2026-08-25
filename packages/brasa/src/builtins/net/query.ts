@@ -26,6 +26,7 @@ import {
   envelope_error,
   listCache_get,
 } from '@fnndsc/cumin';
+import { queryFolderName_build } from '@fnndsc/salsa';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
@@ -79,7 +80,9 @@ export function queryExpr_parse(expr: string): Record<string, string> | null {
 }
 
 /**
- * Builds the VFS path for a query, matching the PacsVfsProvider folder-naming logic.
+ * Builds the VFS path for a query via the provider's one naming authority,
+ * so the path handed back after `query` is the path `ls` will show once the
+ * query has results.
  *
  * @param queryId - The numeric query ID.
  * @param queryObj - The parsed query key-value pairs.
@@ -87,12 +90,7 @@ export function queryExpr_parse(expr: string): Record<string, string> | null {
  * @returns Absolute VFS path string.
  */
 export function queryVfsPath_build(queryId: number, queryObj: Record<string, string>, username?: string): string {
-  const parts: string[] = Object.entries(queryObj)
-    .filter(([, v]) => v.trim().length > 0)
-    .map(([k, v]) => `${k}:${v}`);
-  const desc: string = parts.join('_') || 'query';
-  const userSuffix: string = username ? `_${username}` : '';
-  return `/net/pacs/queries/${desc}_qid:${queryId}${userSuffix}`;
+  return `/net/pacs/queries/${queryFolderName_build({ queryId, queryObj, username, hasResult: true })}`;
 }
 
 /**

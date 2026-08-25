@@ -1,28 +1,26 @@
 /**
  * @file Pure helpers for the PACS VFS provider.
  *
- * Tag extraction, path/query parsing, and study/series lookup — dependency-light
- * (cumin only) so they load and unit-test without the provider's import cycle.
+ * The PACS path grammar in one place: query folders are named
+ * `<desc>_qid:<id>[_<user>][_no-hits]`, study folders `Study_<uid>_<desc>`,
+ * series folders `Series_<uid>_<desc>`. This module owns both directions,
+ * building folder names and parsing them back, so a path a surface builds is
+ * always the path the listing shows. Payload interpretation (tag values,
+ * study/series arrays) lives in cumin's dicomPayload module and is re-exported
+ * here for the provider's convenience. Dependency-light (cumin only) so these
+ * load and unit-test without the provider's import cycle.
  *
  * @module
  */
 import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
 
-/**
- * Safely extracts a string value from a potentially object-wrapped DICOM tag.
- *
- * @param val - Potentially object-wrapped DICOM tag or raw string.
- * @returns The string value of the DICOM tag.
- */
-export function tag_extractValue(val: unknown): string {
-  if (val && typeof val === "object") {
-    const record: Record<string, unknown> = val as Record<string, unknown>;
-    if ("value" in record) {
-      return String(record.value ?? "");
-    }
-  }
-  return String(val ?? "");
-}
+export {
+  tag_extractValue,
+  studies_extractFromDecoded,
+  series_extractFromStudy,
+  study_findByUID,
+  series_findByUID,
+} from "@fnndsc/cumin";
 
 export function path_normalize(pathStr: string): string {
   let p: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
@@ -35,43 +33,76 @@ export function queryId_extractFromFolder(folder: string): number {
   return match ? Number(match[1]) : NaN;
 }
 
-export function studies_extractFromDecoded(decodedJson: unknown): Record<string, unknown>[] {
-  let studiesObj: unknown;
-  if (decodedJson && typeof decodedJson === "object") {
-    const record: Record<string, unknown> = decodedJson as Record<string, unknown>;
-    if ("studies" in record) studiesObj = record.studies;
-    else if ("Studies" in record) studiesObj = record.Studies;
-    else if ("results" in record) studiesObj = record.results;
-    else studiesObj = decodedJson;
-  } else {
-    studiesObj = decodedJson;
+/**
+ * Extracts the descriptive label of a query folder, the part before its
+ * `_qid:` marker (the id, user, and no-hits suffixes are all dropped).
+ *
+ * @param folder - Query folder name (`<desc>_qid:<id>[_<user>][_no-hits]`).
+ * @returns The label, or the folder unchanged when it carries no marker.
+ */
+export function queryLabel_extractFromFolder(folder: string): string {
+  return folder.replace(/_qid:\d+.*$/, "");
+}
+
+/**
+ * Extracts the UID portion of a study or series folder name
+ * (`<prefix>_<uid>_<label>`).
+ *
+ * @param folder - The folder name.
+ * @param prefix - The expected prefix, `Study` or `Series`.
+ * @returns The UID between the prefix and the first following underscore.
+ */
+export function folderUID_get(folder: string, prefix: string): string {
+  const withoutPrefix: string = folder.replace(new RegExp(`^${prefix}_`), "");
+  return withoutPrefix.split("_")[0];
+}
+
+/**
+ * Everything that determines a query folder's name.
+ *
+ * @property queryId - The query's numeric id.
+ * @property queryObj - The query's key-value search terms; blank values are
+ *   skipped.
+ * @property title - The query record's title, used as the description when
+ *   queryObj yields nothing.
+ * @property username - Owning username, appended as `_<user>` when present.
+ * @property hasResult - Whether the query holds a result payload; false
+ *   appends the `_no-hits` suffix. Defaults to true.
+ */
+export interface QueryFolderNameParts {
+  queryId: number | string;
+  queryObj: Record<string, unknown>;
+  title?: string;
+  username?: string;
+  hasResult?: boolean;
+}
+
+/**
+ * Builds a query folder name: `<desc>_qid:<id>[_<user>][_no-hits]`.
+ *
+ * This is the single naming authority: the listing provider and any surface
+ * that pre-computes a query's path must both use it, otherwise a freshly
+ * created query can be addressed by a name `ls` will never show.
+ *
+ * @param parts - The name's inputs. See QueryFolderNameParts.
+ * @returns The folder name (no leading path).
+ */
+export function queryFolderName_build(parts: QueryFolderNameParts): string {
+  const segments: string[] = [];
+  for (const [k, v] of Object.entries(parts.queryObj)) {
+    if (v !== undefined && v !== null && String(v).trim().length > 0) segments.push(`${k}:${v}`);
   }
-  const arr: unknown[] = Array.isArray(studiesObj) ? studiesObj : [studiesObj];
-  return arr as Record<string, unknown>[];
-}
-
-export function series_extractFromStudy(studyObj: Record<string, unknown>): Record<string, unknown>[] {
-  const arr: unknown[] =
-    Array.isArray(studyObj.series) ? studyObj.series :
-    Array.isArray(studyObj.Series) ? studyObj.Series :
-    Array.isArray(studyObj.results) ? studyObj.results :
-    Array.isArray(studyObj.data) ? studyObj.data :
-    [];
-  return arr as Record<string, unknown>[];
-}
-
-export function study_findByUID(studies: Record<string, unknown>[], uid: string): Record<string, unknown> | undefined {
-  return studies.find((s: Record<string, unknown>) => {
-    const sUID: string = tag_extractValue(s.StudyInstanceUID || s.uid);
-    return sUID === uid;
-  });
-}
-
-export function series_findByUID(seriesArr: Record<string, unknown>[], uid: string): Record<string, unknown> | undefined {
-  return seriesArr.find((s: Record<string, unknown>) => {
-    const sUID: string = tag_extractValue(s.SeriesInstanceUID || s.uid);
-    return sUID === uid;
-  });
+  let desc: string = segments.join("_");
+  if (!desc) {
+    const title: string = parts.title ?? "";
+    desc = title
+      ? title.replace(/^pacs_query_\d+_\d+$/, "query").replace(/^pacs_query_/, "")
+      : "query";
+    if (!desc) desc = "query";
+  }
+  const userSuffix: string = parts.username ? `_${parts.username}` : "";
+  const noHitsSuffix: string = parts.hasResult === false ? "_no-hits" : "";
+  return `${desc}_qid:${parts.queryId}${userSuffix}${noHitsSuffix}`;
 }
 
 export function cpSrc_parse(src: string): Result<{ studyUID: string; seriesUID?: string; queryId: number }> {
@@ -93,11 +124,11 @@ export function cpSrc_parse(src: string): Result<{ studyUID: string; seriesUID?:
     return Err();
   }
 
-  const studyUID: string = studyFolder.replace(/^Study_/, "").split("_")[0];
+  const studyUID: string = folderUID_get(studyFolder, "Study");
 
   let seriesUID: string | undefined;
   if (parts.length >= queryIdx + 3 && parts[queryIdx + 2].startsWith("Series_")) {
-    seriesUID = parts[queryIdx + 2].replace(/^Series_/, "").split("_")[0];
+    seriesUID = folderUID_get(parts[queryIdx + 2], "Series");
   }
 
   const queryId: number = queryId_extractFromFolder(parts[queryIdx]);

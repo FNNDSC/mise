@@ -23,6 +23,11 @@
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js"
     },
+    "./dicom-payload": {
+      "import": "./dist/pacs/dicomPayload.js",
+      "types": "./dist/pacs/dicomPayload.d.ts",
+      "require": "./dist/pacs/dicomPayload.js"
+    },
     "./proc-prompt": {
       "import": "./dist/cache/procPrompt.js",
       "types": "./dist/cache/procPrompt.d.ts",

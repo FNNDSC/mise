@@ -5,7 +5,13 @@ const mockDecode = jest.fn();
 const mockServersList = jest.fn();
 const mockCurrentGet = jest.fn(async () => null as string | null);
 const mockStorageResolve = jest.fn();
+// The payload helpers are pure and side-effect free: the mock forwards the
+// real implementations so these tests keep pinning real behavior.
+const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  tag_extractValue: dicomPayload.tag_extractValue,
+  studies_extractFromDecoded: dicomPayload.studies_extractFromDecoded,
+  series_extractFromStudy: dicomPayload.series_extractFromStudy,
   seriesStorage_resolve: mockStorageResolve,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),

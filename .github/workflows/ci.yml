@@ -49,7 +49,9 @@ jobs:
       # so it gates every PR; the unit suites mock this boundary, this does
       # not.
       - run: npm run exemplars:build --workspace @fnndsc/chell
-      - run: node exemplars/ts/dist/06_wireRoundtrip.js
+      - run: |
+          node exemplars/ts/dist/06_wireRoundtrip.js
+          node exemplars/ts/dist/standalone/session_wire.js
         working-directory: packages/chell
       - name: Upload coverage to Codecov
         if: matrix.node == 24

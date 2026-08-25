@@ -27,6 +27,7 @@ import {
   publicFeedsPage_get,
   pluginInstancesPage_get,
   pluginInstance_get,
+  listPages_walk,
   ListPage,
   FeedData,
   PluginInstanceData,
@@ -94,24 +95,14 @@ function procFeed_create(feed: FeedData): ProcFeed {
 
 /** Indexes one complete paginated CUBE feed collection into the shared cache. */
 async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, ProcFeed>): Promise<void> {
-  let offset: number = 0;
-  let total: number = 0;
-  const seenFeedIDs: Set<number> = new Set();
-
-  while (true) {
-    const page: ListPage<FeedData> = await page_fetch({ limit: PAGE, offset });
-    const chunk: FeedData[] = page.data;
-    if (offset === 0 && page.totalCount !== null) {
-      total = page.totalCount;
-    }
-    for (const feed of chunk) {
+  for await (const step of listPages_walk(
+    (offset: number, limit: number): Promise<ListPage<FeedData>> => page_fetch({ limit, offset }),
+    { pageSize: PAGE },
+  )) {
+    for (const feed of step.items) {
       const procFeed: ProcFeed = procFeed_create(feed);
       indexed.set(procFeed.id, procFeed);
-      seenFeedIDs.add(Number(feed.id));
     }
-    if (chunk.length === 0 || (total > 0 && seenFeedIDs.size >= total)) break;
-    if (total === 0 && chunk.length < PAGE) break;
-    offset += chunk.length;
   }
 }
 
@@ -165,21 +156,12 @@ async function feedInstances_load(feedID: number): Promise<void> {
   if (!client) throw new Error('not connected');
 
   const instances: Map<number, PluginInstanceData> = new Map();
-  let offset: number = 0;
-  let total: number = 0;
-
-  while (true) {
-    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
-      feed_id: feedID, limit: PAGE, offset,
-    });
-    const chunk: PluginInstanceData[] = page.data;
-    if (offset === 0 && page.totalCount !== null) {
-      total = page.totalCount;
-    }
-    for (const instance of chunk) instances.set(Number(instance.id), instance);
-    if (chunk.length === 0 || (total > 0 && instances.size >= total)) break;
-    if (total === 0 && chunk.length < PAGE) break;
-    offset += chunk.length;
+  for await (const step of listPages_walk(
+    (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
+      pluginInstancesPage_get(client, { feed_id: feedID, limit, offset }),
+    { pageSize: PAGE },
+  )) {
+    for (const instance of step.items) instances.set(Number(instance.id), instance);
   }
 
   for (const inst of instances.values()) {
@@ -329,23 +311,14 @@ async function instanceOutputPath_ensure(instanceID: number): Promise<string | n
  */
 async function instanceParams_fetch(handle: PluginInstanceHandle): Promise<Record<string, unknown>> {
   const params: Record<string, unknown> = {};
-  let offset: number = 0;
-  let total: number = 0;
-  let fetched: number = 0;
-
-  while (true) {
-    const page: ListPage<InstanceParameterData> = await handle.parametersPage_get({ limit: PAGE, offset });
-    const items: InstanceParameterData[] = page.data;
-    if (offset === 0 && page.totalCount !== null) {
-      total = page.totalCount;
-    }
-    for (const item of items) {
+  for await (const step of listPages_walk(
+    (offset: number, limit: number): Promise<ListPage<InstanceParameterData>> =>
+      handle.parametersPage_get({ limit, offset }),
+    { pageSize: PAGE },
+  )) {
+    for (const item of step.items) {
       if (item.param_name) params[item.param_name] = item.value;
     }
-    fetched += items.length;
-    if (items.length === 0 || (total > 0 && fetched >= total)) break;
-    if (total === 0 && items.length < PAGE) break;
-    offset += items.length;
   }
 
   return params;
@@ -669,26 +642,14 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) return;
 
-  let offset: number = 0;
-  let total: number = 0;
-  const seenInstanceIDs: Set<number> = new Set();
-
-  while (true) {
-    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
-      feed_id: feedID, limit: PAGE, offset,
-    });
-    const chunk: PluginInstanceData[] = page.data;
-    if (offset === 0 && page.totalCount !== null) {
-      total = page.totalCount;
+  for await (const step of listPages_walk(
+    (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
+      pluginInstancesPage_get(client, { feed_id: feedID, limit, offset }),
+    { pageSize: PAGE },
+  )) {
+    for (const inst of step.items) {
+      cache.status_update(Number(inst.id), String(inst.status ?? 'unknown'));
     }
-    for (const inst of chunk) {
-      const instanceID: number = Number(inst.id);
-      cache.status_update(instanceID, String(inst.status ?? 'unknown'));
-      seenInstanceIDs.add(instanceID);
-    }
-    if (chunk.length === 0 || (total > 0 && seenInstanceIDs.size >= total)) break;
-    if (total === 0 && chunk.length < PAGE) break;
-    offset += chunk.length;
   }
 }
 
@@ -712,17 +673,20 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
   const client = await chrisConnection.client_get();
   if (!client) throw new Error('not connected');
 
-  while (true) {
-    const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
-      limit: PAGE, offset: state.offset,
-    });
-    const chunk: PluginInstanceData[] = page.data;
-    if (state.offset === 0 && page.totalCount !== null) {
-      state.total = page.totalCount;
+  // state.total of 0 encodes "unknown" in the persisted sweep state; the
+  // walker's null encoding is translated at this boundary so a resumed
+  // sweep keeps its latched total and offset.
+  for await (const step of listPages_walk(
+    (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
+      pluginInstancesPage_get(client, { limit, offset }),
+    { pageSize: PAGE, startOffset: state.offset, startTotal: state.total > 0 ? state.total : null },
+  )) {
+    if (state.total === 0 && step.total !== null) {
+      state.total = step.total;
       if (state.total > 0) cache.warmup_progress(0, state.total);
     }
 
-    for (const inst of chunk) {
+    for (const inst of step.items) {
       const instanceID: number = Number(inst.id);
       const feedID: number = Number(inst.feed_id);
       state.fetchedInstanceIDs.add(instanceID);
@@ -746,10 +710,8 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
       state.seenFeedIDs.add(feedID);
     }
 
+    state.offset = step.offset + step.items.length;
     if (state.total > 0) cache.warmup_progress(state.fetchedInstanceIDs.size, state.total);
-    if (chunk.length === 0 || (state.total > 0 && state.fetchedInstanceIDs.size >= state.total)) break;
-    if (state.total === 0 && chunk.length < PAGE) break;
-    state.offset += chunk.length;
   }
 
   cache.topology_reconcile(state.seenInstanceIDs);

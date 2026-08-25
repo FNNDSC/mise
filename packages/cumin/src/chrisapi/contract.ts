@@ -47,6 +47,79 @@ export interface ListPage<T> {
 }
 
 /**
+ * Options controlling one paginated walk over a CUBE list.
+ *
+ * @property pageSize - Rows requested per page. Defaults to 100.
+ * @property startOffset - Offset at which the walk begins. Defaults to 0; a
+ *   resumed walk passes the offset its previous attempt had reached.
+ * @property startTotal - Server total already latched by a previous attempt,
+ *   or null when unknown. Defaults to null.
+ */
+export interface PageWalkOptions {
+  pageSize?: number;
+  startOffset?: number;
+  startTotal?: number | null;
+}
+
+/**
+ * One yielded step of a paginated walk.
+ *
+ * @property items - The rows of this page, in server order. May be empty on
+ *   the final step.
+ * @property offset - Offset at which this page was fetched.
+ * @property total - The latched server total, or null while the server has
+ *   not reported one. A null total means "unknown", not zero.
+ */
+export interface PageWalkStep<T> {
+  items: T[];
+  offset: number;
+  total: number | null;
+}
+
+/**
+ * Walks every page of a paginated CUBE list, yielding one step per page.
+ *
+ * This is the one pagination loop: it owns offset advancement, total
+ * latching, and termination, so callers only consume rows. The walk ends
+ * when a page comes back empty, when the latched total has been reached, or
+ * when a short page arrives while the total is still unknown. Fetch errors
+ * propagate to the caller; a resumed walk continues from `startOffset`.
+ *
+ * @param page_fetch - Fetches one page at the given offset and limit.
+ * @param options - Page size and resume position. See PageWalkOptions.
+ * @returns Async generator yielding a PageWalkStep per fetched page.
+ *
+ * @example
+ * ```
+ * for await (const step of listPages_walk((offset, limit) =>
+ *   feedsPage_get(client, { limit, offset }))) {
+ *   for (const feed of step.items) index.set(feed.id, feed);
+ * }
+ * ```
+ */
+export async function* listPages_walk<T>(
+  page_fetch: (offset: number, limit: number) => Promise<ListPage<T>>,
+  options: PageWalkOptions = {},
+): AsyncGenerator<PageWalkStep<T>, void, void> {
+  const pageSize: number = options.pageSize ?? 100;
+  let offset: number = options.startOffset ?? 0;
+  let total: number | null = options.startTotal ?? null;
+
+  while (true) {
+    const page: ListPage<T> = await page_fetch(offset, pageSize);
+    const items: T[] = page.data;
+    if (total === null && page.totalCount !== null) {
+      total = page.totalCount;
+    }
+    yield { items, offset, total };
+    if (items.length === 0) return;
+    if (total !== null && offset + items.length >= total) return;
+    if (total === null && items.length < pageSize) return;
+    offset += items.length;
+  }
+}
+
+/**
  * Wire shape of one CUBE feed row, as served by the feeds list endpoints.
  *
  * @property id - Feed id.

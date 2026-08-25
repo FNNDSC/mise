@@ -11,13 +11,13 @@ import { files_cp as chefs_cp_cmd } from '@fnndsc/chili/commands/fs/cp.js';
 import { cp_render } from '@fnndsc/chili/views/fs.js';
 
 /** Outcome of one copy source, for the envelope model. */
-interface CpOutcome {
+export interface CpOutcome {
   source: string;
   copied: boolean;
 }
 
 /** Model payload for the fs.cp envelope. */
-interface CpModelData {
+export interface CpModelData {
   dest: string;
   outcomes: CpOutcome[];
   copied: number;
@@ -36,15 +36,41 @@ export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
 
-  if (pathArgs.length < 2) {
+  // Last arg is destination, all others are sources
+  return cp_run({
+    sources: pathArgs.slice(0, -1),
+    dest: pathArgs.length > 0 ? pathArgs[pathArgs.length - 1] : '',
+    recursive: !!parsed['r'] || !!parsed['recursive'],
+  });
+}
+
+/** Typed invocation options for cp. */
+export interface CpOptions {
+  /** Source paths, absolute or relative to the session cwd. */
+  sources: string[];
+  /** Destination path (a directory when several sources are given). */
+  dest: string;
+  /** Copy directories recursively. */
+  recursive?: boolean;
+}
+
+/**
+ * Copies files or directories: the shared typed core behind the parsed
+ * builtin and the typed API.
+ *
+ * @param options - Sources, destination, and the recursive flag.
+ * @returns An envelope whose rendered text reports results and whose
+ *   `fs.cp` model carries per-source outcomes.
+ */
+export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
+  const sources: string[] = options.sources;
+  const dest: string = options.dest;
+
+  if (sources.length === 0 || dest === '') {
     return envelope_error(`${chalk.red('Usage: cp [-r] <source...> <dest>')}\n`);
   }
 
-  const recursive: boolean = !!parsed['r'] || !!parsed['recursive'];
-
-  // Last arg is destination, all others are sources
-  const dest: string = pathArgs[pathArgs.length - 1];
-  const sources: string[] = pathArgs.slice(0, -1);
+  const recursive: boolean = options.recursive ?? false;
 
   const destPath: string = await path_resolve(dest);
   const listCache: ListCache = listCache_get();

@@ -33,6 +33,8 @@ import { pwd_run } from '../builtins/fs/pwd.js';
 import { cd_run } from '../builtins/fs/cd.js';
 import { ls_run, type LsOptions } from '../builtins/fs/ls.js';
 import { cat_run } from '../builtins/fs/cat.js';
+import { cp_run } from '../builtins/fs/cp.js';
+import { mv_run } from '../builtins/fs/mv.js';
 import { envelope_typed, type TypedEnvelope } from './models.js';
 
 export type { TypedEnvelope, ModelKind, FsModelMap, CwdModel } from './models.js';
@@ -125,6 +127,25 @@ export interface ChellApi {
   cat(paths: string | string[], options?: CatApiOptions): Promise<TypedEnvelope<'fs.cat'>>;
 
   /**
+   * Copies files or directories.
+   *
+   * @param sources - Source path or paths.
+   * @param dest - Destination path (a directory when several sources).
+   * @param options - `recursive` copies directories.
+   * @returns Envelope whose `fs.cp` model carries per-source outcomes.
+   */
+  cp(sources: string | string[], dest: string, options?: { recursive?: boolean }): Promise<TypedEnvelope<'fs.cp'>>;
+
+  /**
+   * Moves or renames files or directories.
+   *
+   * @param sources - Source path or paths.
+   * @param dest - Destination path (a directory when several sources).
+   * @returns Envelope whose `fs.mv` model carries per-source outcomes.
+   */
+  mv(sources: string | string[], dest: string): Promise<TypedEnvelope<'fs.mv'>>;
+
+  /**
    * Removes files or directories.
    *
    * @param paths - Target path or paths, absolute or cwd-relative.
@@ -176,6 +197,19 @@ export async function chellApi_create(): Promise<ChellApi> {
         // A program consumes rendered content as data: never inject ANSI.
         highlightMode: 'never',
       }).then(envelope_typed<'fs.cat'>),
+
+    cp: (sources: string | string[], dest: string, options?: { recursive?: boolean }): Promise<TypedEnvelope<'fs.cp'>> =>
+      cp_run({
+        sources: Array.isArray(sources) ? sources : [sources],
+        dest,
+        recursive: options?.recursive ?? false,
+      }).then(envelope_typed<'fs.cp'>),
+
+    mv: (sources: string | string[], dest: string): Promise<TypedEnvelope<'fs.mv'>> =>
+      mv_run({
+        sources: Array.isArray(sources) ? sources : [sources],
+        dest,
+      }).then(envelope_typed<'fs.mv'>),
 
     rm: (paths: string | string[], options?: RmApiOptions): Promise<TypedEnvelope<'fs.rm'>> =>
       rm_run({

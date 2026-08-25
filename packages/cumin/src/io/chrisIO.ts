@@ -475,8 +475,14 @@ export class ChrisIO {
         errorStack.stack_push("error", `File not found with ID ${fileId}`);
         return Err<boolean>();
       }
-      // chrisapi typings omit the path field, but API supports it for renames
-      await resource_call<unknown>(userFile, 'put', { path: destPath });
+      // The rename field drifted across CUBE versions: newer servers take
+      // `upload_path`, older ones `path` (chrisapi types neither). Try the
+      // current name first and fall back for older CUBEs.
+      try {
+        await resource_call<unknown>(userFile, 'put', { upload_path: destPath });
+      } catch {
+        await resource_call<unknown>(userFile, 'put', { path: destPath });
+      }
       return Ok(true);
     } catch (error: unknown) {
       const errorMsg: string = error instanceof Error ? error.message : String(error);

@@ -1,5 +1,26 @@
 # @fnndsc/cumin
 
+## 3.11.0
+
+### Minor Changes
+
+- 14f8ee8: Deletion works from any context. `rm` no longer depends on the session's
+  current directory or a prior listing: `files_delete` anchors at the target's
+  parent folder and loads its collection itself, and chili's `rm` passes that
+  parent explicitly. New path-addressed deletion API: cumin
+  `folder_deleteByPath` and salsa `folderByPath_delete`, which return only
+  once the CUBE confirms the folder no longer resolves. Context writes are
+  ordered after session-filename resolution, fixing a fresh session's first
+  `cd` intermittently losing its value.
+
+### Patch Changes
+
+- 69b0617: Typed chell API, third tranche: `cp` and `mv` join the facade with their
+  existing `fs.cp`/`fs.mv` models. Fixing what their first typed run
+  surfaced: file rename was silently broken against current CUBEs (the PUT
+  field drifted from `path` to `upload_path`); cumin now sends the current
+  field and falls back for older servers.
+
 ## 3.10.0
 
 ### Minor Changes

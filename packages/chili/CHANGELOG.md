@@ -1,5 +1,24 @@
 # @fnndsc/chili
 
+## 3.6.5
+
+### Patch Changes
+
+- 14f8ee8: Deletion works from any context. `rm` no longer depends on the session's
+  current directory or a prior listing: `files_delete` anchors at the target's
+  parent folder and loads its collection itself, and chili's `rm` passes that
+  parent explicitly. New path-addressed deletion API: cumin
+  `folder_deleteByPath` and salsa `folderByPath_delete`, which return only
+  once the CUBE confirms the folder no longer resolves. Context writes are
+  ordered after session-filename resolution, fixing a fresh session's first
+  `cd` intermittently losing its value.
+- 4da2673: POSIX rm -f semantics: a missing operand under `-f` is success, not an
+  error, making remove-then-recreate scripts idempotent.
+- Updated dependencies [14f8ee8]
+- Updated dependencies [69b0617]
+  - @fnndsc/cumin@3.11.0
+  - @fnndsc/salsa@3.7.0
+
 ## 3.6.4
 
 ### Patch Changes

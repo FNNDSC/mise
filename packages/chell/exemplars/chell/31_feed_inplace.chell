@@ -1,0 +1,32 @@
+# Exemplar 31 — root an analysis in place, chell style.
+#
+# Registered plugins are executables: /bin lists them, and running one
+# inside a data directory creates the feed (with a pl-dircopy root),
+# attaches the plugin, and schedules it — no ids change hands, which is
+# what makes this expressible as a static script at all. Point it at a
+# directory of DICOMs (for example a pulled series) for a real
+# conversion; the flow is identical for any plugin and any data.
+#
+# Manual exemplar: it creates a feed the CUBE keeps, so run it, inspect
+# the result, and clean up when done. The residue-free, self-cleaning
+# form of this workflow (with polling and verification) is the TS
+# exemplar 03_feedDcm2niix.
+#
+# Connect once first, then:
+#   chell -e -f exemplars/chell/31_feed_inplace.chell
+
+# Which dcm2niix builds does this CUBE offer? Every registered plugin
+# also appears as an executable under /bin.
+plugin search dcm2niix
+
+# Enter the directory whose contents should root the feed.
+cd ~/data/SAG-anon
+
+# Run the plugin as a command. chell creates the feed from the current
+# directory and chains the analysis onto its root; the context after
+# `--` sets feed-level fields.
+pl-dcm2niix-v1.0.2 -- feed_title="SAG anon conversion"
+
+# The feed exists immediately; the job appears under /proc as it runs.
+feed list --limit 1
+ls /proc/jobs

@@ -40,10 +40,21 @@ Both examples below run in continuous integration against a live CUBE; the `.che
 
 The shell analogue of a bash script: run with `-e` (stop on error) and `-f`, a clean exit is the assertion. This is exemplar `10_fs_roundtrip.chell`, included whole:
 
-[source,shell]
+[source,bash]
 ----
 include::../../packages/chell/exemplars/chell/10_fs_roundtrip.chell[]
 ----
+
+=== Rooting an analysis in place
+
+Feed creation with a chained analysis is the one workflow a static script would seem unable to express, because ids normally flow between steps (feed to root instance to analysis instance). The projection dissolves that: registered plugins are executables, and *running one inside a data directory* creates the feed, roots it on the directory's contents, and chains the analysis, no ids in sight. This is exemplar `31_feed_inplace.chell`, a manual exemplar (it creates a feed the CUBE keeps, so it is run and cleaned up deliberately rather than by the nightly; its self-cleaning TS twin is exemplar `03_feedDcm2niix`):
+
+[source,bash]
+----
+include::../../packages/chell/exemplars/chell/31_feed_inplace.chell[]
+----
+
+The in-place verb was verified against the public CUBE while writing this page: one command in a directory of files produced the feed, the `pl-dircopy` root, and the scheduled `pl-dcm2niix` instance, with the output path announced in the rendered result.
 
 One-shot lines work the same way without a file: `chell -c 'ls /home'` executes and exits with the command's status, which makes chell itself usable from cron jobs and CI steps.
 
@@ -57,6 +68,79 @@ include::{example-root}/standalone/chell_typed.ts[]
 ----
 
 The typed surface currently covers `pwd`, `cd`, `mkdir`, `touch` and `rm`; the vocabulary joins it command by command (see `docs/typed-chell-api.adoc` in the repository for the governing design), and until a command joins, the line form below drives it.
+
+== The typed envelope, in detail
+
+Every command in mise, however invoked, concludes in exactly one *command envelope*: the single currency in which results travel from execution to whatever hosts it, a terminal, a daemon, a pipe, or your program. Understanding its four fields is understanding the whole result model.
+
+[cols="1,1,4"]
+|===
+| Field | Type | Meaning
+
+| `status` | `'ok' \| 'error'` | The command's terminal verdict. This is the error channel: a failed command is an error-status envelope, never a thrown exception, so control flow is a field check rather than a try/catch.
+| `rendered` | `string` | The printable output, exactly what a terminal would show (ANSI permitted; the typed API's `cat` disables highlighting so this channel is clean data). Piping, redirection and capture all consume this field.
+| `renderedErr` | `string?` | Printable error-stream text, when the command produced any. The place to look, and to show your users, when `status` is `'error'`.
+| `model` | `{ kind, data }?` | The same result as data: a discriminated slot whose `kind` names the payload shape and whose `data` carries it. This is what a graphical panel, a bot, or your program reads instead of parsing `rendered`.
+|===
+
+=== From untyped slot to `TypedEnvelope<K>`
+
+On the wire and in the shell the model slot is deliberately loose: `kind` is a string and `data` is unknown, so the envelope's shape never changes as commands evolve. The typed API adds the compile-time layer: a *kind map* (`FsModelMap`) declares, for every kind a command emits, the exact payload type its implementation builds, and `TypedEnvelope<K>` is nothing more than a `CommandEnvelope` whose model slot is narrowed to one entry of that map. Structurally the two are identical; the narrowing exists only in the type system, which is why the wire, the REPL and the typed API can share one envelope without conversion.
+
+Each facade method declares its kind in its return type, so the payload arrives typed with no cast:
+
+[source,typescript]
+----
+const where: TypedEnvelope<'fs.cwd'> = await sh.pwd();
+if (where.status === 'ok' && where.model) {
+  where.model.kind;        // 'fs.cwd' — the literal, not string
+  where.model.data.path;   // string — the compiler knows the shape
+}
+----
+
+The one place trust enters is a single audited helper (`envelope_typed`) inside the facade: each command core is the sole producer of its kind, so the envelope it returns carries that kind's payload by construction. Nothing downstream ever asserts.
+
+=== The kinds and their payloads
+
+The filesystem vocabulary currently maps these kinds; the map grows as commands join the typed surface, and the generated link:api/modules/_fnndsc_brasa.html[brasa reference] documents each payload interface in full.
+
+[cols="1,2,4"]
+|===
+| Kind | Payload | Carried by
+
+| `fs.cwd` | `{ path, shown? }` | `pwd`, `cd`: the working directory, and its title-substituted display form when requested.
+| `fs.listing` | `LsListing[]` | `ls`: one entry per listed target, each holding the resolved `path` and its `ListingItem[]` (name, type, size, owner, date).
+| `fs.mkdir` | `MkdirOutcome[]` | `mkdir`: per-directory `{ path, created }`.
+| `fs.touch` | `TouchOutcome[]` | `touch`: per-file `{ path, created }`.
+| `fs.cat` | `CatOutcome[]` | `cat`: per-file `{ path, ok, binary, bytes? }`; the content itself is the `rendered` channel.
+| `fs.rm` | `RmOutcome[]` | `rm`: per-target `{ path, removed, skipped }`.
+| `fs.cp` | `CpModelData` | `cp`: the destination plus per-source outcomes and copied/failed counts.
+| `fs.mv` | `MvModelData` | `mv`: the destination plus per-source outcomes and moved/failed counts.
+|===
+
+=== Consumption patterns
+
+Three idioms cover practical use. Gate on status and presence, then read data:
+
+[source,typescript]
+----
+const listing = await sh.ls('data');
+if (listing.status !== 'ok' || !listing.model) {
+  console.error(listing.renderedErr ?? 'ls failed');
+  return;
+}
+const names: string[] = listing.model.data[0].items.map((item) => item.name);
+----
+
+Treat per-target commands as batch reports rather than booleans, because one failed target yields an error-status envelope whose model still reports every outcome:
+
+[source,typescript]
+----
+const removed = await sh.rm(['a.txt', 'b.txt']);
+const failures = (removed.model?.data ?? []).filter((outcome) => !outcome.removed);
+----
+
+And keep the channels in their lanes: `model.data` is for logic, `rendered` is for display (or for content, in `cat`'s case), and `renderedErr` is for humans when things fail. A program that parses `rendered` where a model exists is reintroducing the screen-scraping this envelope exists to end.
 
 == The vocabulary as lines from TypeScript
 

@@ -218,7 +218,24 @@ async function cdReal_handle(logicalPath: string, pathArg: string): Promise<Comm
  * @returns An envelope carrying the new working directory on success.
  */
 export async function builtin_cd(args: string[]): Promise<CommandEnvelope> {
-  const pathArg: string | undefined = args.length > 0 ? args.join(' ') : undefined;
+  return cd_run({ path: args.length > 0 ? args.join(' ') : undefined });
+}
+
+/** Typed invocation options for cd. */
+export interface CdOptions {
+  /** Target directory; omitted means home, '-' means the previous cwd. */
+  path?: string;
+}
+
+/**
+ * Changes the working directory: the shared typed core behind the parsed
+ * builtin and the typed API.
+ *
+ * @param options - The target directory.
+ * @returns An envelope carrying the fs.cwd model on success.
+ */
+export async function cd_run(options: CdOptions): Promise<CommandEnvelope> {
+  const pathArg: string | undefined = options.path;
 
   // 'cd' with no args goes to home
   if (!pathArg) {

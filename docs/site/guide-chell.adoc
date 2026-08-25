@@ -47,9 +47,20 @@ include::../../packages/chell/exemplars/chell/10_fs_roundtrip.chell[]
 
 One-shot lines work the same way without a file: `chell -c 'ls /home'` executes and exits with the command's status, which makes chell itself usable from cron jobs and CI steps.
 
-== The vocabulary from TypeScript
+== The typed API
 
-The complete program: connect with cumin, create the engine chell's own REPL drives, and work in shell lines. No salsa calls appear; the API is the vocabulary, and every line comes back as a typed envelope your program can inspect:
+The vocabulary is also callable as functions: `chellApi_create()` returns an object whose methods are the commands themselves, entered one layer above the parser. Typed options in, typed envelopes out; each method runs the same implementation the shell's parsed command runs, so the two entry points cannot drift, and the envelope's model slot is typed per command (`fs.mkdir` carries its outcomes, `fs.cwd` the working directory), read as data without a cast. The complete program, run in continuous integration like everything else on this page:
+
+[source,typescript]
+----
+include::{example-root}/standalone/chell_typed.ts[]
+----
+
+The typed surface currently covers `pwd`, `cd`, `mkdir`, `touch` and `rm`; the vocabulary joins it command by command (see `docs/typed-chell-api.adoc` in the repository for the governing design), and until a command joins, the line form below drives it.
+
+== The vocabulary as lines from TypeScript
+
+Anything the shell can run, including commands not yet on the typed surface, can be driven as lines through the engine, each returning envelopes. The complete program:
 
 [source,typescript]
 ----

@@ -1,0 +1,54 @@
+= The typed chell API: invocation and results without strings
+:toc:
+:toclevels: 2
+
+== What this is
+
+A typed, programmatic form of the chell command vocabulary: `sh.mkdir(path)`, `sh.ls(path, { long: true })`, `sh.pacs.pull({ accessionNumber })`, each returning a command envelope whose model slot is typed per command. It is the pairing of two halves designed together on 2026-08-25: *typed invocation* (function calls with options objects replace parsed command lines) and *typed results* (the envelope's existing discriminated model slot gains a compile-time kind map, the work previously tracked as envelope Phase-2).
+
+== Why this is
+
+The shell's projection is a development surface (see the link:site/guide-chell.adoc[chell vocabulary guide]), but until now a program could only speak it by assembling strings for `line_execute`, putting the parser between typed code and typed results twice over. Surfaces have the mirrored problem on the way out: the envelope's `model` is `{ kind: string, data: unknown }`, so a graphical panel or bot narrows payloads by faith. Closing both gaps with one design gives every non-terminal consumer, scripts, bots, argus panels, the same currency: typed options in, typed envelope out.
+
+== How this relates to the existing architecture
+
+Nothing new is invented at the bottom: the facade enters the same per-command implementations the parser enters, one layer above the string. The envelope keeps its shape (`status`, `rendered`, `renderedErr`, `model`); typing narrows, never changes, the wire. The intent API (cumin and salsa) remains the floor everything calls; the session API (calypso) later carries the same typed calls remotely.
+
+== Decisions (grilled 2026-08-25)
+
+Seven forks were put to the maintainer; all resolved to the recommended arm.
+
+*Shared options-object core.* Each command's logic moves into one typed core, `<command>_run(options)`, returning the envelope. The argv parser becomes a thin front that parses flags into that same options object and calls the same core; the facade calls it directly. One implementation per command, parser and API provably identical, and the stringly `args: string[]` builtin interiors die command by command as they join.
+
+*Typed envelope return.* Every facade call returns the command's envelope with its model slot typed: `ls` yields `fs.listing` carrying `ListingItem[]`, and so on. Status stays the envelope's error channel; no second `Result` wrapper competes with it. The kind-to-type map is the Phase-2 artifact: a `ModelMap` interface mapping each `kind` string to its payload type, with `TypedEnvelope<K>` narrowing `model.data` by kind.
+
+*In-process v1; wire with Phase-2.* `chellApi_create()` requires a local engine session. The remote form needs an `invoke` protocol message and model schemas on the wire; both land together in one calypso contract revision, with zod validating exactly the models that cross the boundary.
+
+*Home: brasa.* The facade lives in `packages/brasa/src/api/`, versioned with the engine and the builtins whose cores it shares. No new package.
+
+*Global session in v1.* The facade wraps the process-global session: `sh.cd()` moves the same cwd the engine and any in-process REPL share. Instance-scoped sessions are a later refactor aligned with calypso's multi-session direction.
+
+*Models as TypeScript interfaces now.* Runtime validation arrives only when models cross the wire; local calls pay nothing.
+
+*Grind order: filesystem first.* `pwd`, `mkdir`, `touch`, `cat`, `rm`, `cd`, `ls` (then `cp`, `mv`), because the documentation exemplars already exercise them live in CI, so the typed example enters the chell guide in the same pull request that makes it true. The PACS surface is the second grind.
+
+== Shape
+
+[source,typescript]
+----
+const sh: ChellApi = await chellApi_create();      // wraps the global session
+await sh.cd(`/home/${user}`);
+const made = await sh.mkdir('scratch');            // TypedEnvelope<'fs.mkdir'>
+await sh.touch('scratch/hello.txt', { contents: 'hi' });
+const listing = await sh.ls('scratch', { long: true });
+if (listing.status === 'ok') {
+  const items = listing.model.data;                // ListingItem[], no cast
+}
+await sh.rm('scratch', { recursive: true });
+----
+
+Command method names keep the shell vocabulary verbatim (`ls`, `mkdir`, `rm`): they are the projection's external schema, the same exemption the style guide grants wire field names, while the cores beneath them follow RPN (`mkdir_run`, `ls_run`).
+
+== Consequences accepted
+
+The refactor touches every command it converges, so the vocabulary joins the facade incrementally and the two entry points share one test surface as they do. Until the wire revision lands, a remote surface keeps speaking lines; that asymmetry is deliberate, priced, and closes with Phase-2.

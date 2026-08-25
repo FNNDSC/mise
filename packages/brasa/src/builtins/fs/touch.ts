@@ -11,21 +11,31 @@ import { files_touch as chefs_touch_cmd, TouchOptions } from '@fnndsc/chili/comm
 import { touch_render } from '@fnndsc/chili/views/fs.js';
 
 /** Outcome of one touch target, for the envelope model. */
-interface TouchOutcome {
+export interface TouchOutcome {
   path: string;
   created: boolean;
 }
 
+/** Typed invocation options for touch. */
+export interface TouchRunOptions {
+  /** File paths to create or update, absolute or relative to the session cwd. */
+  paths: string[];
+  /** Literal content to write into the (single) target file. */
+  contents?: string;
+  /** Local file whose content is uploaded into the (single) target file. */
+  contentsFromFile?: string;
+}
+
 /**
- * Creates empty files or updates timestamps.
+ * Creates empty files or updates timestamps: the shared typed core behind
+ * the parsed builtin and the typed API.
  *
- * @param args - Command line arguments (file paths).
+ * @param runOptions - Target paths and optional content source.
  * @returns An envelope whose rendered text reports each created file and
  *   whose model lists per-target outcomes.
  */
-export async function builtin_touch(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args);
-  const pathArgs: string[] = parsed._ as string[];
+export async function touch_run(runOptions: TouchRunOptions): Promise<CommandEnvelope> {
+  const pathArgs: string[] = runOptions.paths;
 
   if (pathArgs.length === 0) {
     return envelope_error(
@@ -35,19 +45,18 @@ export async function builtin_touch(args: string[]): Promise<CommandEnvelope> {
     );
   }
 
-  // Build options from parsed flags
   const options: TouchOptions = {};
-  if (parsed['withContents']) {
-    options.withContents = String(parsed['withContents']);
+  if (runOptions.contents) {
+    options.withContents = runOptions.contents;
   }
-  if (parsed['withContentsFromFile']) {
-    options.withContentsFromFile = String(parsed['withContentsFromFile']);
+  if (runOptions.contentsFromFile) {
+    options.withContentsFromFile = runOptions.contentsFromFile;
   }
 
-  // Only process the first file argument when using content options
+  // Only process the first file argument when injecting content
   const filesToTouch: string[] = (options.withContents || options.withContentsFromFile)
-    ? [pathArgs[0]]  // Only one file when injecting content
-    : pathArgs;      // Multiple files allowed for empty touch
+    ? [pathArgs[0]]
+    : pathArgs;
 
   let rendered: string = '';
   let renderedErr: string = '';
@@ -90,4 +99,19 @@ export async function builtin_touch(args: string[]): Promise<CommandEnvelope> {
     return envelope;
   }
   return envelope_ok(rendered, model);
+}
+
+/**
+ * Creates files from parsed command-line arguments.
+ *
+ * @param args - Command line arguments (paths and --withContents flags).
+ * @returns The envelope from {@link touch_run}.
+ */
+export async function builtin_touch(args: string[]): Promise<CommandEnvelope> {
+  const parsed: ParsedArgs = commandArgs_process(args);
+  return touch_run({
+    paths: parsed._ as string[],
+    contents: parsed['withContents'] !== undefined ? String(parsed['withContents']) : undefined,
+    contentsFromFile: parsed['withContentsFromFile'] !== undefined ? String(parsed['withContentsFromFile']) : undefined,
+  });
 }

@@ -15,7 +15,24 @@ import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
  *   carries the raw path.
  */
 export async function builtin_pwd(args: string[] = []): Promise<CommandEnvelope> {
-  const showTitles: boolean = args.includes('--title');
+  return pwd_run({ titles: args.includes('--title') });
+}
+
+/** Typed invocation options for pwd. */
+export interface PwdOptions {
+  /** Replace feed/plugin path segments with their human titles. */
+  titles?: boolean;
+}
+
+/**
+ * Reports the current working directory: the shared typed core behind the
+ * parsed builtin and the typed API.
+ *
+ * @param options - Title substitution preference.
+ * @returns An envelope carrying the fs.cwd model.
+ */
+export async function pwd_run(options: PwdOptions = {}): Promise<CommandEnvelope> {
+  const showTitles: boolean = options.titles ?? false;
   const cwd: string = await session.getCWD();
   const shown: string = showTitles ? await path_withTitles(cwd) : cwd;
   return envelope_ok(`${shown}\n`, { kind: 'fs.cwd', data: { path: cwd, shown } });

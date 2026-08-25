@@ -20,6 +20,8 @@ import type { TouchOutcome } from '../builtins/fs/touch.js';
 import type { RmOutcome } from '../builtins/fs/rm.js';
 import type { LsListing } from '../builtins/fs/ls.js';
 import type { CatOutcome } from '../builtins/fs/cat.js';
+import type { CpModelData } from '../builtins/fs/cp.js';
+import type { MvModelData } from '../builtins/fs/mv.js';
 
 /**
  * The payload the `fs.cwd` kind carries.
@@ -42,6 +44,8 @@ export interface FsModelMap {
   'fs.rm': RmOutcome[];
   'fs.listing': LsListing[];
   'fs.cat': CatOutcome[];
+  'fs.cp': CpModelData;
+  'fs.mv': MvModelData;
 }
 
 /** Every kind the typed API currently maps. */

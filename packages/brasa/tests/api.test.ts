@@ -11,6 +11,8 @@ const rmRun = jest.fn();
 const pwdRun = jest.fn();
 const lsRun = jest.fn();
 const catRun = jest.fn();
+const cpRun = jest.fn();
+const mvRun = jest.fn();
 const cdRun = jest.fn();
 
 jest.unstable_mockModule('../src/builtins/fs/mkdir.js', () => ({ mkdir_run: mkdirRun }));
@@ -19,6 +21,8 @@ jest.unstable_mockModule('../src/builtins/fs/rm.js', () => ({ rm_run: rmRun }));
 jest.unstable_mockModule('../src/builtins/fs/pwd.js', () => ({ pwd_run: pwdRun }));
 jest.unstable_mockModule('../src/builtins/fs/ls.js', () => ({ ls_run: lsRun }));
 jest.unstable_mockModule('../src/builtins/fs/cat.js', () => ({ cat_run: catRun }));
+jest.unstable_mockModule('../src/builtins/fs/cp.js', () => ({ cp_run: cpRun }));
+jest.unstable_mockModule('../src/builtins/fs/mv.js', () => ({ mv_run: mvRun }));
 jest.unstable_mockModule('../src/builtins/fs/cd.js', () => ({ cd_run: cdRun }));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { init: jest.fn() } }));
 
@@ -96,6 +100,16 @@ describe('chellApi_create', () => {
     expect(result.model?.data[0]?.ok).toBe(true);
     await sh.cat(['/a', '/b'], { binary: true });
     expect(catRun).toHaveBeenCalledWith({ filePaths: ['/a', '/b'], binaryMode: true, highlightMode: 'never' });
+  });
+
+  it('cp and mv thread sources and destination', async () => {
+    cpRun.mockResolvedValue(envelope_of('fs.cp', { dest: '/d', outcomes: [], copied: 0, failed: 0 }));
+    mvRun.mockResolvedValue(envelope_of('fs.mv', { dest: '/d', outcomes: [], moved: 0, failed: 0 }));
+    const sh = await chellApi_create();
+    await sh.cp('a', '/d', { recursive: true });
+    expect(cpRun).toHaveBeenCalledWith({ sources: ['a'], dest: '/d', recursive: true });
+    await sh.mv(['a', 'b'], '/d');
+    expect(mvRun).toHaveBeenCalledWith({ sources: ['a', 'b'], dest: '/d' });
   });
 
   it('propagates an error-status envelope unchanged', async () => {

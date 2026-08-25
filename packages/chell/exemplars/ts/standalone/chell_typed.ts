@@ -77,6 +77,20 @@ async function main(): Promise<void> {
   }
   console.log('content verified');
 
+  // Copy and rename, still as data.
+  await sh.mkdir(`${scratch}/sub`);
+  const copied: TypedEnvelope<'fs.cp'> = await sh.cp(`${scratch}/hello.txt`, `${scratch}/sub`);
+  if (copied.status !== 'ok' || copied.model?.data.copied !== 1) {
+    console.error('cp failed');
+    process.exit(1);
+  }
+  const renamed: TypedEnvelope<'fs.mv'> = await sh.mv(`${scratch}/sub/hello.txt`, `${scratch}/sub/renamed.txt`);
+  if (renamed.status !== 'ok') {
+    console.error(renamed.renderedErr ?? 'mv failed');
+    process.exit(1);
+  }
+  console.log('copied and renamed');
+
   const gone: TypedEnvelope<'fs.rm'> = await sh.rm(scratch, { recursive: true });
   if (gone.status !== 'ok') {
     console.error(gone.renderedErr ?? 'rm failed');

@@ -11,13 +11,13 @@ import { files_mv as chefs_mv_cmd } from '@fnndsc/chili/commands/fs/mv.js';
 import { mv_render } from '@fnndsc/chili/views/fs.js';
 
 /** Outcome of one move source, for the envelope model. */
-interface MvOutcome {
+export interface MvOutcome {
   source: string;
   moved: boolean;
 }
 
 /** Model payload for the fs.mv envelope. */
-interface MvModelData {
+export interface MvModelData {
   dest: string;
   outcomes: MvOutcome[];
   moved: number;
@@ -36,13 +36,36 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
 
-  if (pathArgs.length < 2) {
+  // Last arg is destination, all others are sources
+  return mv_run({
+    sources: pathArgs.slice(0, -1),
+    dest: pathArgs.length > 0 ? pathArgs[pathArgs.length - 1] : '',
+  });
+}
+
+/** Typed invocation options for mv. */
+export interface MvOptions {
+  /** Source paths, absolute or relative to the session cwd. */
+  sources: string[];
+  /** Destination path (a directory when several sources are given). */
+  dest: string;
+}
+
+/**
+ * Moves or renames files or directories: the shared typed core behind the
+ * parsed builtin and the typed API.
+ *
+ * @param options - Sources and destination.
+ * @returns An envelope whose rendered text reports results and whose
+ *   `fs.mv` model carries per-source outcomes.
+ */
+export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
+  const sources: string[] = options.sources;
+  const dest: string = options.dest;
+
+  if (sources.length === 0 || dest === '') {
     return envelope_error(`${chalk.red('Usage: mv <source...> <dest>')}\n`);
   }
-
-  // Last arg is destination, all others are sources
-  const dest: string = pathArgs[pathArgs.length - 1];
-  const sources: string[] = pathArgs.slice(0, -1);
 
   const destPath: string = await path_resolve(dest);
   const listCache: ListCache = listCache_get();

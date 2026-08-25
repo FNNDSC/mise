@@ -47,6 +47,31 @@ describe('init', () => {
   });
 });
 
+describe('file_moveById field drift', () => {
+  it('renames with upload_path on current CUBEs', async () => {
+    const put = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({ getUserFile: jest.fn(async () => ({ put })) });
+    expect((await io().file_moveById(5, '/new/name.txt')).ok).toBe(true);
+    expect(put).toHaveBeenCalledWith({ upload_path: '/new/name.txt' });
+  });
+
+  it('falls back to path for older CUBEs', async () => {
+    const put = jest.fn()
+      .mockRejectedValueOnce(new Error('At least one of the fields'))
+      .mockResolvedValueOnce({});
+    mockClientGet.mockResolvedValue({ getUserFile: jest.fn(async () => ({ put })) });
+    expect((await io().file_moveById(5, '/new/name.txt')).ok).toBe(true);
+    expect(put).toHaveBeenNthCalledWith(1, { upload_path: '/new/name.txt' });
+    expect(put).toHaveBeenNthCalledWith(2, { path: '/new/name.txt' });
+  });
+
+  it('fails when both field spellings are rejected', async () => {
+    const put = jest.fn(async () => { throw new Error('403'); });
+    mockClientGet.mockResolvedValue({ getUserFile: jest.fn(async () => ({ put })) });
+    expect((await io().file_moveById(5, '/new/name.txt')).ok).toBe(false);
+  });
+});
+
 describe('folder_deleteByPath', () => {
   it('deletes and confirms disappearance', async () => {
     const del = jest.fn(async () => undefined);
@@ -237,7 +262,7 @@ describe('folder operations', () => {
     const put = jest.fn(async () => ({}));
     mockClientGet.mockResolvedValue({ getUserFile: jest.fn(async () => ({ put })) });
     expect((await io().file_moveById(9, '/b/c.txt')).ok).toBe(true);
-    expect(put).toHaveBeenCalledWith({ path: '/b/c.txt' });
+    expect(put).toHaveBeenCalledWith({ upload_path: '/b/c.txt' });
   });
 
   it('errors when the move target is missing', async () => {

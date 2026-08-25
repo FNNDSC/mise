@@ -1,5 +1,15 @@
 # @fnndsc/brasa
 
+## 0.11.1
+
+### Patch Changes
+
+- b0b478b: PACS payload and path-grammar consolidation. Cumin gains `dicomPayload`, the one home for DICOM query-payload interpretation (tag unwrapping including the DICOM-JSON `{Value: [...]}` form, study and series array location, UID lookups), replacing four diverged private copies. Salsa's `pacsHelpers` becomes the single authority for the PACS folder grammar, adding `folderUID_get`, `queryLabel_extractFromFolder`, and `queryFolderName_build`; the query path a surface builds now always matches the name the listing shows, including the title fallback the old builder lacked. Brasa's `pacsUtils` and `query` builtins consume the shared helpers; `pacs_tagValueExtract` remains as a compatibility alias.
+- Updated dependencies [b0b478b]
+- Updated dependencies [bb4e06a]
+  - @fnndsc/cumin@3.12.0
+  - @fnndsc/salsa@3.8.0
+
 ## 0.11.0
 
 ### Minor Changes

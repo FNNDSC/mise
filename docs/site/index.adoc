@@ -21,7 +21,7 @@ Read the paper for the argument in full, its alternatives analysis, and its open
 
 == Choose your API
 
-Two personas, two entry points. Both are documented with examples that are not illustrations: every code block on these pages is included verbatim, by asciidoc tag, from an exemplar program that continuous integration runs against a live CUBE. If an example on this site stopped working, the build would be red.
+Three personas, three entry points: programs that think in typed operations, programs that think in operator actions, and programs that host or attach to a live session. All three are documented with examples that are not illustrations: every code block on these pages is a complete program (or an excerpt of one) that continuous integration runs, most against a live CUBE. If an example on this site stopped working, the build would be red.
 
 === The intent API
 

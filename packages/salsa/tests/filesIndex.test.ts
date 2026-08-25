@@ -7,6 +7,7 @@ const mockObjCreate = jest.fn();
 const mockCtxGet = jest.fn();
 const mockIO = {
   file_upload: jest.fn(),
+  folder_deleteByPath: jest.fn(),
   file_download: jest.fn(),
   folder_create: jest.fn(),
   folder_moveByPath: jest.fn(),
@@ -43,6 +44,7 @@ import {
   files_listAll,
   fileFields_get,
   files_delete,
+  folderByPath_delete,
   files_create,
   files_touch,
   files_mkdir,
@@ -130,11 +132,25 @@ describe('list / fields / delete delegate to the group asset', () => {
     mockObjCreate.mockResolvedValue(group({ resourceFields_get: jest.fn().mockResolvedValue(null) }));
     expect(await fileFields_get('files')).toBeNull();
   });
-  it('files_delete', async () => {
-    mockObjCreate.mockResolvedValue(group({ resourceItem_delete: jest.fn().mockResolvedValue(true) }));
-    expect(await files_delete(3, 'files')).toBe(true);
+  it('files_delete loads the parent folder collection before deleting', async () => {
+    const load = jest.fn().mockResolvedValue({});
+    const del = jest.fn().mockResolvedValue(true);
+    mockObjCreate.mockResolvedValue(group({ resources_getAll: load, resourceItem_delete: del }));
+    expect(await files_delete(3, 'files', '/home/alice/scratch')).toBe(true);
+    // The group must be anchored at the given parent, not the ambient cwd.
+    expect(mockObjCreate).toHaveBeenCalledWith(expect.any(String), 'folder:/home/alice/scratch');
+    // Deletion resolves the id against the loaded collection.
+    expect(load.mock.invocationCallOrder[0]).toBeLessThan(del.mock.invocationCallOrder[0]);
     mockObjCreate.mockResolvedValue(null);
     expect(await files_delete(3, 'files')).toBe(false);
+  });
+
+  it('folderByPath_delete unwraps the chrisIO result', async () => {
+    mockIO.folder_deleteByPath.mockResolvedValue(Ok(true));
+    expect(await folderByPath_delete('/home/alice/scratch')).toBe(true);
+    expect(mockIO.folder_deleteByPath).toHaveBeenCalledWith('/home/alice/scratch', {});
+    mockIO.folder_deleteByPath.mockResolvedValue(Err());
+    expect(await folderByPath_delete('/home/alice/scratch')).toBe(false);
   });
 });
 

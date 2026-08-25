@@ -56,7 +56,7 @@ The complete program: connect with cumin, create the engine chell's own REPL dri
 include::{example-root}/standalone/chell_vocabulary.ts[]
 ----
 
-Two honesty notes, visible in the program rather than hidden. Deletion from a headless engine currently trips a known defect (interactive chell and `.chell` scripts are unaffected), so cleanup drops to the filebrowser REST endpoint; and richer vocabulary (`pacs pull`, `feed`, the `/proc` tree) works through exactly the same `line_execute` call, one line in, envelopes out.
+The richer vocabulary (`pacs pull`, `feed`, the `/proc` tree) works through exactly the same `line_execute` call, one line in, envelopes out.
 
 == Where to go next
 

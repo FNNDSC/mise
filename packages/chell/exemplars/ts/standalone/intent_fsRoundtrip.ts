@@ -3,10 +3,9 @@
  * itself.
  *
  * The complete program: connect with cumin, then use salsa to make a scratch
- * directory, write a file, read it back and verify the content. Cleanup
- * drops to CUBE's filebrowser REST endpoint, because path-addressed folder
- * deletion has no salsa wrapper yet; the three small helpers at the bottom
- * show exactly what that takes, escape hatch included.
+ * directory, write a file, read it back, verify the content, and delete the
+ * scratch directory by path. Every call is the public API; nothing here
+ * depends on a test harness.
  *
  * Run with the CUBE settings in the environment:
  *
@@ -17,7 +16,7 @@
  * @module
  */
 import { chrisConnection_init, NodeStorageProvider, type ChRISConnection, type Result } from '@fnndsc/cumin';
-import { files_mkdir, files_touch, fileContent_get } from '@fnndsc/salsa';
+import { files_mkdir, files_touch, fileContent_get, folderByPath_delete } from '@fnndsc/salsa';
 
 /**
  * Connects, round-trips one file, verifies it, and removes the evidence.
@@ -52,60 +51,11 @@ async function main(): Promise<void> {
 
     console.log(`Round trip verified through ${filePath}.`);
   } finally {
-    const removed: boolean = await folder_delete(url, user, password, scratchDir.slice(1));
+    // Path-addressed deletion; resolves only once the CUBE confirms the
+    // folder is gone (server-side deletion is asynchronous).
+    const removed: boolean = await folderByPath_delete(scratchDir);
     console.log(removed ? `Removed ${scratchDir}.` : `Could not remove ${scratchDir}; delete it via chell or the UI.`);
   }
-}
-
-/**
- * Deletes a CUBE folder by path over the filebrowser REST endpoint and waits
- * until the CUBE confirms it is gone (deletion is asynchronous: 202).
- *
- * @param url - CUBE API base URL.
- * @param user - Owner of the folder.
- * @param password - The owner's password.
- * @param folderPath - CUBE path without its leading slash.
- * @returns True when the folder is verifiably gone.
- */
-async function folder_delete(url: string, user: string, password: string, folderPath: string): Promise<boolean> {
-  const tokenResponse: Response = await fetch(`${url}auth-token/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: user, password }),
-  });
-  if (!tokenResponse.ok) return false;
-  const token: string = ((await tokenResponse.json()) as { token: string }).token;
-  const auth: Record<string, string> = { Authorization: `Token ${token}`, Accept: 'application/json' };
-
-  const folderId: number | null = await folderId_find(url, auth, folderPath);
-  if (folderId === null) return true;
-
-  const deleted: Response = await fetch(`${url}filebrowser/${folderId}/`, { method: 'DELETE', headers: auth });
-  if (deleted.status !== 202 && deleted.status !== 204) return false;
-
-  // Poll until the folder stops resolving; the 202 only queued the delete.
-  for (let attempt: number = 0; attempt < 20; attempt++) {
-    if ((await folderId_find(url, auth, folderPath)) === null) return true;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  return false;
-}
-
-/**
- * Looks up a filebrowser folder id by CUBE path.
- *
- * @param url - CUBE API base URL.
- * @param auth - Authorization headers.
- * @param folderPath - CUBE path without its leading slash.
- * @returns The folder id, or null when the folder does not exist.
- */
-async function folderId_find(url: string, auth: Record<string, string>, folderPath: string): Promise<number | null> {
-  const search: string = `${url}filebrowser/search/?path=${encodeURIComponent(folderPath)}`;
-  const response: Response = await fetch(search, { headers: auth });
-  if (!response.ok) return null;
-  const body: { count: number; results: Array<{ id: number }> } =
-    (await response.json()) as { count: number; results: Array<{ id: number }> };
-  return body.count > 0 ? body.results[0].id : null;
 }
 
 main().catch((error: unknown) => {

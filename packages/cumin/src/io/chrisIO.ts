@@ -414,6 +414,49 @@ export class ChrisIO {
   }
 
   /**
+   * Deletes a folder (and its contents) addressed by path, waiting until the
+   * CUBE confirms it is gone.
+   *
+   * Deletion is asynchronous server-side (the DELETE is only accepted), so
+   * success is defined as the path no longer resolving within the timeout.
+   *
+   * @param path - The folder's CUBE path (leading slash optional).
+   * @param options - `timeoutMs` bounds the disappearance poll (default 10s).
+   * @returns Ok(true) when the folder is verifiably gone (or never existed),
+   *   Err on failure or timeout.
+   */
+  async folder_deleteByPath(path: string, options: { timeoutMs?: number } = {}): Promise<Result<boolean>> {
+    const client: Client | null = await this.client_get();
+    if (!client) {
+      errorStack.stack_push("error", "ChRIS client is not initialized");
+      return Err<boolean>();
+    }
+
+    const cleanPath: string = path.startsWith('/') ? path.slice(1) : path;
+    try {
+      const folder: FileBrowserFolder | null = await client.getFileBrowserFolderByPath(cleanPath);
+      if (!folder) {
+        return Ok(true);
+      }
+      await resource_call<unknown>(folder, 'delete');
+
+      const deadline: number = Date.now() + (options.timeoutMs ?? 10_000);
+      while (Date.now() < deadline) {
+        if (!(await client.getFileBrowserFolderByPath(cleanPath))) {
+          return Ok(true);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      errorStack.stack_push("error", `Folder ${cleanPath} still resolves after queued deletion`);
+      return Err<boolean>();
+    } catch (error: unknown) {
+      const errorMsg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to delete folder ${cleanPath}: ${errorMsg}`);
+      return Err<boolean>();
+    }
+  }
+
+  /**
    * Moves (renames) a file in ChRIS by updating its path.
    * @param fileId - The file ID.
    * @param destPath - The target path including filename.

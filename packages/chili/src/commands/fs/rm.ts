@@ -119,9 +119,12 @@ export async function files_rm(targetPath: string, options: RmOptions = {}): Pro
       };
     }
 
-    // Delete the resource
+    // Delete the resource, anchored at the target's parent folder so the
+    // lookup works regardless of the session's current directory.
     const assetName: string = info.type === 'dir' ? 'dirs' : info.type === 'link' ? 'links' : 'files';
-    const deleted: boolean = await salsaFiles_delete(info.id, assetName);
+    const lastSlash: number = resolvedPath.lastIndexOf('/');
+    const parentPath: string = lastSlash > 0 ? resolvedPath.slice(0, lastSlash) : '/';
+    const deleted: boolean = await salsaFiles_delete(info.id, assetName, parentPath);
 
     return {
       success: deleted,

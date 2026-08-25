@@ -474,12 +474,43 @@ export async function fileFields_get(assetName: string = "files"): Promise<strin
  * @param assetName - The type of asset ('files', 'links', 'dirs').
  * @returns A Promise resolving to true on success, false on failure.
  */
-export async function files_delete(id: number, assetName: string = "files"): Promise<boolean> {
-  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName);
+export async function files_delete(
+  id: number,
+  assetName: string = "files",
+  parentPath?: string,
+): Promise<boolean> {
+  // The group must be anchored at the item's parent folder: deletion looks
+  // the id up in that folder's loaded collection, so falling back to the
+  // ambient folder context only works when the caller's cwd happens to be
+  // the parent. Callers that know the path must pass it.
+  const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName, parentPath);
   if (!group) {
     return false;
   }
+  // A freshly created group has no loaded collection, and deletion resolves
+  // the id against the loaded list; load it explicitly so deleting works
+  // without depending on a prior listing of the same folder.
+  await group.asset.resources_getAll({ limit: 1000, offset: 0 });
   return await group.asset.resourceItem_delete(id);
+}
+
+/**
+ * Deletes a folder (and its contents) addressed by CUBE path.
+ *
+ * The path-addressed complement to `files_delete`: no id lookup, no ambient
+ * folder context, and the call returns only once the CUBE confirms the
+ * folder no longer resolves (server-side deletion is asynchronous).
+ *
+ * @param path - The folder's CUBE path (e.g. `/home/alice/scratch`).
+ * @param options - `timeoutMs` bounds the disappearance poll (default 10s).
+ * @returns True when the folder is verifiably gone (or never existed).
+ */
+export async function folderByPath_delete(
+  path: string,
+  options: { timeoutMs?: number } = {},
+): Promise<boolean> {
+  const result: Result<boolean> = await chrisIO.folder_deleteByPath(path, options);
+  return result.ok;
 }
 
 /**

@@ -13,7 +13,7 @@
  */
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CalypsoDaemon, daemonSurface_create, DaemonSink } from '@fnndsc/calypso';
-import { engine_create, sinkScope_run, surface_set } from '@fnndsc/brasa';
+import { engine_create, sinkScope_run, surface_set, type BrasaEngine } from '@fnndsc/brasa';
 import { RemoteEngine } from '@fnndsc/chell/dist/remote/remoteEngine.js';
 
 /**
@@ -22,7 +22,7 @@ import { RemoteEngine } from '@fnndsc/chell/dist/remote/remoteEngine.js';
 async function main(): Promise<void> {
   // The engine is the same one chell's REPL drives; disconnected it still
   // parses, dispatches and runs the builtins that need no CUBE.
-  const engine = await engine_create();
+  const engine: BrasaEngine = await engine_create();
 
   // The daemon hosts the engine behind a WebSocket. Scoping the daemon sink
   // around each executed line streams live output to the executing surface;

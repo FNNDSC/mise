@@ -16,7 +16,7 @@
  *
  * @module
  */
-import { chrisConnection_init, NodeStorageProvider, type Result } from '@fnndsc/cumin';
+import { chrisConnection_init, NodeStorageProvider, type ChRISConnection, type Result } from '@fnndsc/cumin';
 import { files_mkdir, files_touch, fileContent_get } from '@fnndsc/salsa';
 
 /**
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const connection = await chrisConnection_init(new NodeStorageProvider());
+  const connection: ChRISConnection = await chrisConnection_init(new NodeStorageProvider());
   if (!(await connection.connection_connect({ url, user, password, debug: false }))) {
     console.error('Authentication failed.');
     process.exit(1);
@@ -84,7 +84,7 @@ async function folder_delete(url: string, user: string, password: string, folder
   if (deleted.status !== 202 && deleted.status !== 204) return false;
 
   // Poll until the folder stops resolving; the 202 only queued the delete.
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt: number = 0; attempt < 20; attempt++) {
     if ((await folderId_find(url, auth, folderPath)) === null) return true;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }

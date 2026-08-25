@@ -21,7 +21,7 @@ import {
   ChRISFeed, ChRISPlugin, feed_delete, listData_get,
   Result, Ok, Err, Dictionary, PluginInstance, SimpleRecord, Client,
 } from '@fnndsc/cumin';
-import { job_statusFetch, job_logFetch, vfsDispatcher } from '@fnndsc/salsa';
+import { job_statusFetch, job_logFetch, vfsDispatcher, type VFSItem } from '@fnndsc/salsa';
 import {
   env_load, adminEnv_require, pacsFixture_require, config_isolate, cube_connect, connection_active,
   check, step, section, summary_exit, poll_until, runId_make, restToken_get,
@@ -173,7 +173,7 @@ async function analysis_runAndVerify(parentId: number, runId: string): Promise<v
   const outputPath: string = String(instanceDict?.output_path ?? '');
   if (!check('instance reports an output path', outputPath.length > 0)) return;
 
-  const listing = await step('listed the output directory', vfsDispatcher.list(`/${outputPath}`));
+  const listing: Result<VFSItem[]> = await step('listed the output directory', vfsDispatcher.list(`/${outputPath}`));
   if (!listing.ok) return;
   const hasNii: boolean = listing.value.some((item: { name: string }) => item.name.includes('.nii'));
   check('output contains a NIfTI file', hasNii);

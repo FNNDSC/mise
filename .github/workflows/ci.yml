@@ -7,6 +7,26 @@ on:
     branches: [main]
 
 jobs:
+  # Production-dependency advisory gate: a high-severity advisory in a
+  # shipped dependency fails the PR instead of surfacing during a release
+  # review. Dev-only advisories are deliberately out of scope (coverage
+  # tooling pins js-yaml 3.x, which has no backported fix). This job can
+  # go red on a PR that touched nothing: that is the gate working, and the
+  # fix is a dependency bump, not a revert.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g npm@11.19.0
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: packages/cumin
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: packages/salsa
+
   check:
     runs-on: ubuntu-latest
     strategy:
@@ -22,7 +42,8 @@ jobs:
       # across npm majors (node 22 ships npm 10, node 24 npm 11) but within
       # a major (11.6 omitted @emnapi optional-dep entries that 11.19
       # requires). The lockfile is maintained with this exact version; bump
-      # it here, in release.yml, and regenerate the lockfile together.
+      # it here, in the audit job above, and in release.yml, and regenerate
+      # the lockfile together.
       - run: npm install -g npm@11.19.0
       - run: npm ci
       - run: npm run build

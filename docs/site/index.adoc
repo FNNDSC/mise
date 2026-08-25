@@ -5,31 +5,39 @@
 
 == What this is
 
-mise is a TypeScript framework for programming against link:https://chrisproject.org[ChRIS], the open-source medical-imaging compute platform, without speaking its REST vocabulary. The backend, CUBE, exposes feeds, plugin instances, PACS queries and file collections through a collection+json API (see the link:https://github.com/FNNDSC/ChRIS_ultron_backEnd[CUBE repository]); mise projects that surface into two developer-facing APIs, one for programs that know what they want and one for programs that host an interactive session.
+`mise` is a TypeScript framework for programming against link:https://chrisproject.org[ChRIS], the open-source medical-imaging compute platform, without speaking its REST vocabulary. The backend, CUBE, exposes feeds, plugin instances, PACS queries and file collections through a collection+json API (see the link:https://github.com/FNNDSC/ChRIS_ultron_backEnd[CUBE repository]); `mise` projects that surface into three developer-facing APIs: one for programs that state typed outcomes, one for programs that speak the shell's own vocabulary, and one for programs that host or attach to a live session.
 
 == Why this is
 
-The canonical JavaScript client, link:https://github.com/FNNDSC/fnndsc[@fnndsc/chrisapi] (reference at link:https://fnndsc.github.io/fnndsc/chrisdoc/index.html[chrisdoc]), is a faithful mapping of the REST collections: correct, complete, and demanding. A developer using it must know which collection holds what, how pagination works, and how a dozen resources relate before the first useful program runs. mise absorbs that knowledge once, behind an intent-shaped surface, so downstream programs state outcomes rather than orchestrate requests.
+The canonical JavaScript client, link:https://github.com/FNNDSC/fnndsc[@fnndsc/chrisapi] (reference at link:https://fnndsc.github.io/fnndsc/chrisdoc/index.html[chrisdoc]), is a faithful mapping of the REST collections: correct, complete, and demanding. A developer using it must know which collection holds what, how pagination works, and how a dozen resources relate before the first useful program runs. `mise` absorbs that knowledge once, behind an intent-shaped surface, so downstream programs state outcomes rather than orchestrate requests.
+
+== Background: the intent-action thesis
+
+`mise` is the working form of an architectural argument developed at length in the link:https://github.com/FNNDSC/intent-server[Intent-Action Service white paper]. The paper's diagnosis: CUBE's Collection+JSON hypermedia model (link:http://amundsen.com/media-types/collection/[Amundsen, 2011]) is a sound declarative substrate, describing what exists rather than what to do, but hypermedia systems historically stagnate for want of an intermediate layer that interprets *intent* and performs orchestration. Without one, every client re-implements the same procedural choreography against the declarative graph, slightly differently and slightly wrongly, until the platform is usable only through a single privileged client. This is the intent-orchestration impedance mismatch, and the paper argues it explains both hypermedia's marginal adoption at large (few APIs ever reached link:https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm[Fielding's] full REST constraint) and CUBE's own client-ecosystem stagnation. The proposed remedy is not to discard Collection+JSON but to complete it: an Intent-Action Service that accepts high-level intentions and performs the orchestration once, leaving the declarative model intact beneath.
+
+`mise` is that layer, built and operating. The intent API performs the choreography the paper describes, once, in one audited place: a program states an outcome (stage this series, run this analysis) and the layer translates it into the resource-level conversation CUBE actually speaks. The session API carries the same idea one step further, exactly as the paper's agentic argument anticipates: an engine that accepts intentions in an operational grammar humans and language models both already know (the shell vocabulary), hostable in-process or as a long-lived daemon, returning structured envelopes rather than screens to scrape. The typed `chell` API closes the loop by making intent and result both compile-time artifacts. Even the paper's research program is visibly underway here: the live exemplar suite that gates this documentation is the empirical half, measuring in running code whether intent-level access reduces client complexity (it does: compare the ten-line programs in these guides with their resource-level equivalents) and whether the layer can absorb CUBE's evolution without breaking clients (it has: wire-dialect drift between CUBE versions is handled inside the layer, invisibly to every consumer above it).
+
+Read the paper for the argument in full, its alternatives analysis, and its open research questions; read these guides for the thing itself.
 
 == Choose your API
 
-Two personas, two entry points. Both are documented with examples that are not illustrations: every code block on these pages is included verbatim, by asciidoc tag, from an exemplar program that continuous integration runs against a live CUBE. If an example on this site stopped working, the build would be red.
+Three personas, three entry points: programs that think in typed operations, programs that think in operator actions, and programs that host or attach to a live session. All three are documented with examples that are not illustrations: every code block on these pages is a complete program (or an excerpt of one) that continuous integration runs, most against a live CUBE. If an example on this site stopped working, the build would be red.
 
 === The intent API
 
-You are writing a program, a script, a bot, an analysis pipeline driver. You want to connect, move files, run plugins, query a PACS, and get typed results back. Start with the link:guide-intent.html[intent API guide], then use the reference for link:api/modules/_fnndsc_cumin.html[cumin] (connection, wire contract, resource primitives) and link:api/modules/_fnndsc_salsa.html[salsa] (files, feeds, jobs, pipelines, PACS retrieve).
+You are writing a program, a script, a bot, an analysis pipeline driver. You want to connect, move files, run plugins, query a PACS, and get typed results back. Start with the link:guide-intent.html[intent API guide], then use the reference for link:api/modules/_fnndsc_cumin.html[`cumin`] (connection, wire contract, resource primitives) and link:api/modules/_fnndsc_salsa.html[`salsa`] (files, feeds, jobs, pipelines, PACS retrieve).
 
 === The chell vocabulary
 
-You think in operator actions: paths, `ls`, `cp`, `pacs pull`, the `/proc` tree. The shell's projection is itself a development surface, scriptable as `.chell` files and drivable line-by-line from TypeScript with typed envelopes coming back. Start with the link:guide-chell.html[chell vocabulary guide].
+You think in operator actions: paths, `ls`, `cp`, `pacs pull`, the `/proc` tree. The shell's projection is itself a development surface, scriptable as `.chell` files and drivable line-by-line from TypeScript with typed envelopes coming back. Start with the link:guide-chell.html[`chell` vocabulary guide].
 
 === The session API
 
-You are building a surface: a web terminal, a chat bot, an agent, anything that hosts or attaches to a live ChRIS session and exchanges command lines for structured envelopes. Start with the link:guide-session.html[session API guide], then use the reference for link:api/modules/_fnndsc_brasa.html[brasa] (the hostable engine) and link:api/modules/_fnndsc_calypso.html[calypso] (the daemon and its validated wire contract).
+You are building a surface: a web terminal, a chat bot, an agent, anything that hosts or attaches to a live ChRIS session and exchanges command lines for structured envelopes. Start with the link:guide-session.html[session API guide], then use the reference for link:api/modules/_fnndsc_brasa.html[`brasa`] (the hostable engine) and link:api/modules/_fnndsc_calypso.html[`calypso`] (the daemon and its validated wire contract).
 
 == How this relates to the rest of the ecosystem
 
-Within the ChRIS orbit, link:https://github.com/FNNDSC/ChRIS_ui[ChRIS_ui] serves clinical end users through a React application, link:https://github.com/FNNDSC/chrs[chrs] offers a stateless Rust command line, and raw chrisapi serves scripts that are content to speak REST. mise occupies the position none of them do: stateful, multi-surface, intent-driven interaction, with one engine hostable in-process, as a daemon, or behind a remote client. The shell most readers know it by, chell, is itself just one surface over the session API documented here.
+Within the ChRIS orbit, link:https://github.com/FNNDSC/ChRIS_ui[ChRIS_ui] serves clinical end users through a React application, link:https://github.com/FNNDSC/chrs[chrs] offers a stateless Rust command line, and raw chrisapi serves scripts that are content to speak REST. `mise` occupies the position none of them do: stateful, multi-surface, intent-driven interaction, with one engine hostable in-process, as a daemon, or behind a remote client. The shell most readers know it by, `chell`, is itself just one surface over the session API documented here.
 
 == Reference
 

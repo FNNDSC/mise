@@ -6,7 +6,7 @@
 
 == What this is
 
-The session API is the pairing of brasa (the engine: parser, dispatch, builtins, pipes, session state, output sinks, surface capabilities) and calypso (the daemon that hosts an engine behind a WebSocket, plus the zod-validated wire contract a client speaks); the packages install as `@fnndsc/brasa` and `@fnndsc/calypso`. A program on this API exchanges command lines for command envelopes: structured results carrying rendered text, error text and status, exactly what the chell shell itself runs on.
+The session API is the pairing of `brasa` (the engine: parser, dispatch, builtins, pipes, session state, output sinks, surface capabilities) and `calypso` (the daemon that hosts an engine behind a WebSocket, plus the zod-validated wire contract a client speaks); the packages install as `@fnndsc/brasa` and `@fnndsc/calypso`. A program on this API exchanges command lines for command envelopes: structured results carrying rendered text, error text and status, exactly what the `chell` shell itself runs on.
 
 == Why this is
 
@@ -14,7 +14,7 @@ Some programs are not scripts but surfaces: a web terminal, a chat integration, 
 
 == How this relates to existing session machinery
 
-chell's interactive REPL, `chell -c` one-shots, the `chell --daemon` host and `chell --remote` client are all thin arrangements of these same parts; nothing documented here is a side door. The forthcoming web surface is planned as another such arrangement. For the protocol itself, every message crossing the socket validates against the schemas in the link:api/modules/_fnndsc_calypso.html[calypso reference].
+`chell`'s interactive REPL, `chell -c` one-shots, the `chell --daemon` host and `chell --remote` client are all thin arrangements of these same parts; nothing documented here is a side door. The forthcoming web surface is planned as another such arrangement. For the protocol itself, every message crossing the socket validates against the schemas in the link:api/modules/_fnndsc_calypso.html[`calypso` reference].
 
 == The example is a program, and the program is a test
 
@@ -22,7 +22,7 @@ The example below is a complete, standalone program, included in full: it needs 
 
 == Host, attach, execute
 
-One program, both roles. It creates the real brasa engine, hosts it behind a real calypso daemon on an ephemeral port, attaches chell's production `RemoteEngine` client over the WebSocket, executes one line, and reads the typed envelope back:
+One program, both roles. It creates the real `brasa` engine, hosts it behind a real `calypso` daemon on an ephemeral port, attaches `chell`'s production `RemoteEngine` client over the WebSocket, executes one line, and reads the typed envelope back:
 
 [source,typescript]
 ----
@@ -42,4 +42,4 @@ include::{example-root}/06_wireRoundtrip.ts[tag=daemonHost]
 
 == Where to go next
 
-link:api/modules/_fnndsc_brasa.html[brasa reference] for the engine, sinks, surfaces and envelope delivery; link:api/modules/_fnndsc_calypso.html[calypso reference] for `CalypsoDaemon`, the request brokers and the message schemas.
+link:api/modules/_fnndsc_brasa.html[`brasa` reference] for the engine, sinks, surfaces and envelope delivery; link:api/modules/_fnndsc_calypso.html[`calypso` reference] for `CalypsoDaemon`, the request brokers and the message schemas.

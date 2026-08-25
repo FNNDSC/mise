@@ -6,7 +6,7 @@
 
 == What this is
 
-The intent API is the pairing of cumin (connection lifecycle, the typed wire contract, resource primitives, the `Result<T>` error discipline) and salsa (file operations, feeds, jobs, pipelines, PACS retrieval); the packages install as `@fnndsc/cumin` and `@fnndsc/salsa`. A program built on them states intentions: connect as this user, make this directory, stage this series, run this plugin, and receives typed results rather than raw collection documents.
+The intent API is the pairing of `cumin` (connection lifecycle, the typed wire contract, resource primitives, the `Result<T>` error discipline) and `salsa` (file operations, feeds, jobs, pipelines, PACS retrieval); the packages install as `@fnndsc/cumin` and `@fnndsc/salsa`. A program built on them states intentions: connect as this user, make this directory, stage this series, run this plugin, and receives typed results rather than raw collection documents.
 
 == Why this is
 
@@ -14,7 +14,7 @@ CUBE's REST surface is correct but request-shaped: creating a feed, attaching an
 
 == How this relates to existing clients
 
-link:https://fnndsc.github.io/fnndsc/chrisdoc/index.html[@fnndsc/chrisapi] remains the canonical low-level client, and cumin consumes it behind a single adapter seam rather than competing with it; the type-laundering casts that once spread through consuming code are confined there and held by a ratchet. If your program needs a raw collection the intent layer does not model, the escape hatch is deliberate and typed: see the wire contract in the link:api/modules/_fnndsc_cumin.html[cumin reference].
+link:https://fnndsc.github.io/fnndsc/chrisdoc/index.html[@fnndsc/chrisapi] remains the canonical low-level client, and `cumin` consumes it behind a single adapter seam rather than competing with it; the type-laundering casts that once spread through consuming code are confined there and held by a ratchet. If your program needs a raw collection the intent layer does not model, the escape hatch is deliberate and typed: see the wire contract in the link:api/modules/_fnndsc_cumin.html[`cumin` reference].
 
 == The examples are programs, and the programs are tests
 
@@ -22,7 +22,7 @@ Every example below is a complete, standalone program, included on this page in 
 
 == Connect and identify
 
-The minimal life of a cumin program. The Node storage provider persists the session under the XDG config directory, which is the same session store chell itself uses; a connected program and a connected shell are interchangeable.
+The minimal life of a `cumin` program. The Node storage provider persists the session under the XDG config directory, which is the same session store `chell` itself uses; a connected program and a connected shell are interchangeable.
 
 [source,typescript]
 ----
@@ -31,7 +31,7 @@ include::{example-root}/standalone/intent_connect.ts[]
 
 == A filesystem round trip
 
-Files live in the ChRIS filesystem, addressed by absolute paths under `/home/<user>`. This program makes a scratch directory with salsa's `files_mkdir`, writes with `files_touch`, reads back with `fileContent_get`, verifies the content, and then removes its own evidence with `folderByPath_delete`, which returns only once the CUBE confirms the folder no longer resolves (server-side deletion is asynchronous, so a fire-and-forget delete would race any rerun).
+Files live in the ChRIS filesystem, addressed by absolute paths under `/home/<user>`. This program makes a scratch directory with `salsa`'s `files_mkdir`, writes with `files_touch`, reads back with `fileContent_get`, verifies the content, and then removes its own evidence with `folderByPath_delete`, which returns only once the CUBE confirms the folder no longer resolves (server-side deletion is asynchronous, so a fire-and-forget delete would race any rerun).
 
 [source,typescript]
 ----
@@ -40,7 +40,7 @@ include::{example-root}/standalone/intent_fsRoundtrip.ts[]
 
 == Feeds and analyses
 
-An analysis is a feed rooted in data plus plugin instances attached to it. The excerpt below is the feed-and-analysis heart of the fuller exemplar `03_feedDcm2niix.ts` (a complete program in the same repository directory, one level up from `standalone/`): it roots a feed on a staged DICOM series with `pl-dircopy`, attaches `pl-dcm2niix`, and polls it to completion. The `check` and `section` calls are that exemplar's assertion helpers; the salsa and cumin calls inside `feed_root` and `analysis_runAndVerify` are the API.
+An analysis is a feed rooted in data plus plugin instances attached to it. The excerpt below is the feed-and-analysis heart of the fuller exemplar `03_feedDcm2niix.ts` (a complete program in the same repository directory, one level up from `standalone/`): it roots a feed on a staged DICOM series with `pl-dircopy`, attaches `pl-dcm2niix`, and polls it to completion. The `check` and `section` calls are that exemplar's assertion helpers; the `salsa` and `cumin` calls inside `feed_root` and `analysis_runAndVerify` are the API.
 
 [source,typescript]
 ----
@@ -51,4 +51,4 @@ Read that exemplar whole for the staging above this excerpt (PACS query and retr
 
 == Where to go next
 
-The generated reference documents every exported function with its parameters and result shape: link:api/modules/_fnndsc_cumin.html[cumin] for connection, wire contract and primitives; link:api/modules/_fnndsc_salsa.html[salsa] for files, feeds, jobs, pipelines and PACS. For the PACS retrieve engine specifically (firing bounded pulls, LONK progress watching, storage resolution), read `retrieve_fireAndWatch` and its neighbours in the salsa reference; exemplar `04_pacsQR.ts` exercises the full query, retrieve, verify and restore cycle.
+The generated reference documents every exported function with its parameters and result shape: link:api/modules/_fnndsc_cumin.html[`cumin`] for connection, wire contract and primitives; link:api/modules/_fnndsc_salsa.html[`salsa`] for files, feeds, jobs, pipelines and PACS. For the PACS retrieve engine specifically (firing bounded pulls, LONK progress watching, storage resolution), read `retrieve_fireAndWatch` and its neighbours in the `salsa` reference; exemplar `04_pacsQR.ts` exercises the full query, retrieve, verify and restore cycle.

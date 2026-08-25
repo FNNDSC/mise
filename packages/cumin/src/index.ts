@@ -60,9 +60,12 @@ export {
   pipeline_get,
   pipelineSourceFilesPage_get,
   downloadToken_create,
+  listPages_walk,
 } from "./chrisapi/contract";
 export type {
   ListPage,
+  PageWalkOptions,
+  PageWalkStep,
   FeedData,
   PluginInstanceData,
   InstanceParameterData,

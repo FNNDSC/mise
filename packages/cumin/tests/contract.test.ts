@@ -14,7 +14,9 @@ import {
   pipeline_get,
   pipelineSourceFilesPage_get,
   downloadToken_create,
+  listPages_walk,
   ListPage,
+  PageWalkStep,
   FeedData,
   PluginInstanceData,
   InstanceParameterData,
@@ -286,5 +288,122 @@ describe('downloadToken_create', () => {
     const client: Client = client_fake({ createDownloadToken: async () => ({}) });
     const token: DownloadToken = await downloadToken_create(client);
     expect(token).toEqual({ token: '', url: '' });
+  });
+});
+
+describe('listPages_walk', () => {
+  /**
+   * Builds a page fetcher over a canned row array, recording every
+   * (offset, limit) request it receives.
+   *
+   * @param rows - The full collection the fake server holds.
+   * @param totalCount - The total the server reports, or null for none.
+   * @param calls - Receives one [offset, limit] entry per fetch.
+   * @returns Fetcher slicing rows by offset and limit.
+   */
+  function pageFetch_fake(
+    rows: number[],
+    totalCount: number | null,
+    calls: Array<[number, number]>,
+  ): (offset: number, limit: number) => Promise<ListPage<number>> {
+    return async (offset: number, limit: number): Promise<ListPage<number>> => {
+      calls.push([offset, limit]);
+      return { data: rows.slice(offset, offset + limit), totalCount };
+    };
+  }
+
+  /** Drains a walk into a flat row list. */
+  async function walk_collect(
+    steps: AsyncGenerator<PageWalkStep<number>, void, void>,
+  ): Promise<number[]> {
+    const collected: number[] = [];
+    for await (const step of steps) collected.push(...step.items);
+    return collected;
+  }
+
+  test('walks every page up to the reported total', async () => {
+    const rows: number[] = Array.from({ length: 25 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const collected: number[] = await walk_collect(
+      listPages_walk(pageFetch_fake(rows, 25, calls), { pageSize: 10 }),
+    );
+    expect(collected).toEqual(rows);
+    expect(calls).toEqual([[0, 10], [10, 10], [20, 10]]);
+  });
+
+  test('stops without an extra fetch when the total lands on a page boundary', async () => {
+    const rows: number[] = Array.from({ length: 20 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const collected: number[] = await walk_collect(
+      listPages_walk(pageFetch_fake(rows, 20, calls), { pageSize: 10 }),
+    );
+    expect(collected).toEqual(rows);
+    expect(calls).toEqual([[0, 10], [10, 10]]);
+  });
+
+  test('stops on a short page when the server reports no total', async () => {
+    const rows: number[] = Array.from({ length: 13 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const collected: number[] = await walk_collect(
+      listPages_walk(pageFetch_fake(rows, null, calls), { pageSize: 10 }),
+    );
+    expect(collected).toEqual(rows);
+    expect(calls).toEqual([[0, 10], [10, 10]]);
+  });
+
+  test('stops on an empty page when full pages carry no total', async () => {
+    const rows: number[] = Array.from({ length: 20 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const collected: number[] = await walk_collect(
+      listPages_walk(pageFetch_fake(rows, null, calls), { pageSize: 10 }),
+    );
+    expect(collected).toEqual(rows);
+    expect(calls).toEqual([[0, 10], [10, 10], [20, 10]]);
+  });
+
+  test('yields one empty step for an empty collection', async () => {
+    const calls: Array<[number, number]> = [];
+    const steps: PageWalkStep<number>[] = [];
+    for await (const step of listPages_walk(pageFetch_fake([], 0, calls))) {
+      steps.push(step);
+    }
+    expect(steps).toEqual([{ items: [], offset: 0, total: 0 }]);
+    expect(calls).toEqual([[0, 100]]);
+  });
+
+  test('latches a total first reported after the opening page', async () => {
+    const rows: number[] = Array.from({ length: 15 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    let requestIndex: number = 0;
+    const fetch = async (offset: number, limit: number): Promise<ListPage<number>> => {
+      calls.push([offset, limit]);
+      requestIndex += 1;
+      return {
+        data: rows.slice(offset, offset + limit),
+        totalCount: requestIndex === 1 ? null : 15,
+      };
+    };
+    const collected: number[] = await walk_collect(listPages_walk(fetch, { pageSize: 10 }));
+    expect(collected).toEqual(rows);
+    expect(calls).toEqual([[0, 10], [10, 10]]);
+  });
+
+  test('resumes from a prior offset and latched total', async () => {
+    const rows: number[] = Array.from({ length: 30 }, (_, i) => i);
+    const calls: Array<[number, number]> = [];
+    const collected: number[] = await walk_collect(
+      listPages_walk(pageFetch_fake(rows, 30, calls), {
+        pageSize: 10, startOffset: 20, startTotal: 30,
+      }),
+    );
+    expect(collected).toEqual(rows.slice(20));
+    expect(calls).toEqual([[20, 10]]);
+  });
+
+  test('propagates a fetch failure to the consumer', async () => {
+    const fetch = async (): Promise<ListPage<number>> => {
+      throw new Error('wire down');
+    };
+    await expect(walk_collect(listPages_walk(fetch))).rejects.toThrow('wire down');
   });
 });

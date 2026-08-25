@@ -17,6 +17,7 @@ import {
   procCache_get,
   pluginInstance_get,
   pluginInstancesPage_get,
+  listPages_walk,
   PluginInstanceHandle,
   ListPage,
   PluginInstanceData,
@@ -273,29 +274,27 @@ export async function jobs_find(
       return Err();
     }
 
-    const searchParam: Record<string, unknown> = isID
-      ? { id: numeric, limit: 1, offset: 0 }
-      : { plugin_name: term, limit: 100, offset: 0 };
-
     const apiResults: Array<{ id: number; feedID: number; pluginName: string }> = [];
-    let offset: number = 0;
-
-    while (true) {
-      const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
-        ...searchParam,
-        offset,
+    const result_collect = (inst: PluginInstanceData): void => {
+      apiResults.push({
+        id: Number(inst.id),
+        feedID: Number(inst.feed_id),
+        pluginName: String(inst.plugin_name),
       });
+    };
 
-      const chunk: PluginInstanceData[] = page.data;
-      for (const inst of chunk) {
-        apiResults.push({
-          id: Number(inst.id),
-          feedID: Number(inst.feed_id),
-          pluginName: String(inst.plugin_name),
-        });
+    if (isID) {
+      const page: ListPage<PluginInstanceData> = await pluginInstancesPage_get(client, {
+        id: numeric, limit: 1, offset: 0,
+      });
+      page.data.forEach(result_collect);
+    } else {
+      for await (const step of listPages_walk(
+        (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
+          pluginInstancesPage_get(client, { plugin_name: term, limit, offset }),
+      )) {
+        step.items.forEach(result_collect);
       }
-      if (isID || chunk.length < 100) break;
-      offset += 100;
     }
 
     return Ok(apiResults);

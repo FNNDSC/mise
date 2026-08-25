@@ -266,6 +266,33 @@ option mentioned in documentation. ChELL should label that boundary plainly.
 provenance or a verified manifest state, ChELL may show it, but it must not
 invent an executable parameter from README prose.
 
+== Confirmed proposal: server version identification
+
+=== Operator requirement
+
+A client cannot ask a CUBE what version it is. Neither the unauthenticated nor the authenticated API root reports a server version, no response header carries one, and no dedicated endpoint exists. A client that must interoperate across CUBE versions is therefore reduced to behavioral fingerprinting: attempting a request in the current dialect and interpreting the failure.
+
+This stopped being hypothetical on 2026-08-25. The `userfiles` rename field drifted from `path` to `upload_path` between the CUBE version deployed at BCH and the one at cube.chrisproject.org, which silently broke every mise file move against current servers until a typed-API test tripped over it. The client-side remedy, send the current field and fall back to the legacy one on rejection, works but is exactly the kind of guess-and-retry that version negotiation exists to prevent, and it costs a failed round trip per affected call on older servers. Each future wire drift will force another such probe pair unless the server can simply be asked.
+
+=== Proposed interface
+
+A single unauthenticated read, stable across versions from its introduction onward:
+
+[source,console]
+----
+GET /api/v1/version/
+----
+
+returning at minimum the CUBE semantic version, and ideally the versions of the co-deployed services a client may speak to through CUBE's mediation (pfcon, pfdcm) where CUBE knows them. Unauthenticated because version discovery must precede login: a client that adapts its dialect needs the answer before it sends its first mutating request. An `Accept: application/json` body of the shape `{ "version": "6.11.0" }` suffices; a C-J rendering may accompany it for uniformity.
+
+=== Why an existing collection is insufficient
+
+The API root was probed on both reference deployments: the authenticated root returns a plain paginated collection with no version-bearing field, link, or header, and nothing else in the collection graph carries deployment identity. There is no existing seam to expand; absence is the defect.
+
+=== Client policy until then
+
+mise carries dialect fallbacks where drift is known (currently the `userfiles` rename field) and treats any newly discovered drift the same way: current dialect first, legacy on rejection, with the drift recorded in the relevant module and guarded by the live nightly against a current-version CUBE. These fallbacks are removable the day a version endpoint exists.
+
 == Adoption rule
 
 For every proposed gap, add an entry here before CUBE implementation with:

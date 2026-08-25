@@ -6,7 +6,6 @@
     "rootDir": "./src",
     "moduleResolution": "node",
     "strict": true,
-    "noImplicitAny": false,
     "esModuleInterop": true,
     "typeRoots": ["./node_modules/@types", "../../node_modules/@types", "./types"],
     "skipLibCheck": true,

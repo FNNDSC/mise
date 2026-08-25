@@ -26,6 +26,7 @@ import {
 } from "../resources/chrisResources.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { ChRISPlugin } from "../plugins/chrisPlugins.js";
+import { listPages_drain, type ListPage } from "../chrisapi/contract.js";
 import {
   QueryHits,
   keyPairParams_apply,
@@ -172,8 +173,12 @@ export async function feed_resolve(specifier: string): Promise<Result<FeedRecord
       return Err();
     }
 
-    const list: ListResource = await client.getFeeds({ name: specifier, limit: 1000 });
-    const matches: FeedRecord[] = listData_get<FeedRecord>(list);
+    const matches: FeedRecord[] = await listPages_drain(
+      async (offset: number, limit: number): Promise<ListPage<FeedRecord>> => {
+        const list: ListResource = await client.getFeeds({ name: specifier, limit, offset });
+        return { data: listData_get<FeedRecord>(list), totalCount: list.totalCount >= 0 ? list.totalCount : null, hasMore: list.hasNextPage };
+      },
+    );
     const exact: FeedRecord[] = matches.filter((feed: FeedRecord): boolean => feed.name === specifier);
     const candidates: FeedRecord[] = exact.length > 0 ? exact : matches;
     if (candidates.length === 1) return Ok(candidates[0]);
@@ -431,8 +436,12 @@ export async function feedComments_list(feedId: number): Promise<Result<FeedComm
       errorStack.stack_push('error', `Feed ${feedId} not found.`);
       return Err();
     }
-    const commentList: CommentList = await feed.getComments({ limit: 1000 });
-    const comments: FeedComment[] = listData_get<FeedComment>(commentList);
+    const comments: FeedComment[] = await listPages_drain(
+      async (offset: number, limit: number): Promise<ListPage<FeedComment>> => {
+        const commentList: CommentList = await feed.getComments({ limit, offset });
+        return { data: listData_get<FeedComment>(commentList), totalCount: commentList.totalCount >= 0 ? commentList.totalCount : null, hasMore: commentList.hasNextPage };
+      },
+    );
     return Ok(comments);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);

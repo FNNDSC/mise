@@ -14,6 +14,7 @@ import {
   type GroupUserList,
   type User,
 } from '../chrisapi/adapter.js';
+import { listPages_drain, listPages_walk, type ListPage } from '../chrisapi/contract.js';
 import { errorStack } from '../error/errorStack.js';
 import { ChRISResourceGroup } from '../resources/chrisResourceGroup.js';
 import { Err, Ok, type Result } from '../utils/result.js';
@@ -67,15 +68,12 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
         errorStack.stack_push('error', 'Not connected to ChRIS. Please log in.');
         return Err();
       }
-      const groups: ChrisGroup[] = [];
-      let offset: number = 0;
-      while (true) {
-        const page: GroupList = await client.getGroups({ offset });
-        const pageGroups: ChrisGroup[] = listData_get<ChrisGroup>(page);
-        groups.push(...pageGroups);
-        if (!page.hasNextPage || pageGroups.length === 0) break;
-        offset += pageGroups.length;
-      }
+      const groups: ChrisGroup[] = await listPages_drain(
+        async (offset: number, limit: number): Promise<ListPage<ChrisGroup>> => {
+          const page: GroupList = await client.getGroups({ limit, offset });
+          return { data: listData_get<ChrisGroup>(page), totalCount: page.totalCount >= 0 ? page.totalCount : null, hasMore: page.hasNextPage };
+        },
+      );
       return Ok(groups);
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
@@ -95,12 +93,16 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
       const group: Group | null = await this.group_get(groupID);
       if (!group) return Err();
       const members: ChrisGroupMember[] = [];
-      let offset: number = 0;
-      while (true) {
-        const page: GroupUserList = await group.getUsers({ offset });
-        const membershipResources: GroupUser[] = items_get<GroupUser>(page);
+      for await (const step of listPages_walk(
+        async (offset: number, limit: number): Promise<ListPage<GroupUser>> => {
+          const page: GroupUserList = await group.getUsers({ limit, offset });
+          return { data: items_get<GroupUser>(page), totalCount: page.totalCount >= 0 ? page.totalCount : null, hasMore: page.hasNextPage };
+        },
+      )) {
+        // Membership rows carry only a link to the user; one detail request
+        // per row (parallel within the page) is what the API offers.
         const pageMembers: ChrisGroupMember[] = await Promise.all(
-          membershipResources.map(async (membershipResource: GroupUser): Promise<ChrisGroupMember> => {
+          step.items.map(async (membershipResource: GroupUser): Promise<ChrisGroupMember> => {
             const userResource: User = await membershipResource.getUser();
             const member: ChrisGroupMember | null = itemData_get<ChrisGroupMember>(userResource);
             if (!member) throw new Error('group membership carried no linked user data');
@@ -108,8 +110,6 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
           }),
         );
         members.push(...pageMembers);
-        if (!page.hasNextPage || membershipResources.length === 0) break;
-        offset += membershipResources.length;
       }
       return Ok(members);
     } catch (error: unknown) {

@@ -13,6 +13,7 @@
 
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { itemData_get, items_get, listData_get, resource_call } from "../chrisapi/adapter.js";
+import { listPages_drain, type ListPage } from "../chrisapi/contract.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { errorStack } from "../error/errorStack.js";
 import { Result, Ok, Err } from "../utils/result.js";
@@ -31,6 +32,7 @@ interface PipelineSourceFileItem {
 /** Slice of a list resource that only exposes its items. */
 interface ItemListSlice {
   getItems: () => unknown[];
+  hasNextPage?: boolean;
 }
 
 /** Record slice carrying just a numeric id. */
@@ -239,10 +241,14 @@ export async function pipeline_createWorkflow(
         return Err();
       }
 
-      const pipingsResponse: ItemListSlice = await resource_call<ItemListSlice>(
-        pipeline, 'getPluginPipings', { limit: 1000 }
+      const pipings: Array<{ data: IdRecord }> = await listPages_drain(
+        async (offset: number, limit: number): Promise<ListPage<{ data: IdRecord }>> => {
+          const response: ItemListSlice = await resource_call<ItemListSlice>(
+            pipeline, 'getPluginPipings', { limit, offset }
+          );
+          return { data: items_get<{ data: IdRecord }>(response), totalCount: null, hasMore: response.hasNextPage };
+        },
       );
-      const pipings: Array<{ data: IdRecord }> = items_get<{ data: IdRecord }>(pipingsResponse);
       nodes_info = pipings.map((p: { data: IdRecord }) => ({ piping_id: p.data.id }));
     }
 
@@ -263,10 +269,14 @@ export async function pipeline_createWorkflow(
     }
     const workflowId: number = workflowRecord.id;
 
-    const instancesResponse: ItemListSlice = await resource_call<ItemListSlice>(
-      workflow, 'getPluginInstances', { limit: 1000 }
+    const instances: Array<{ data: IdRecord }> = await listPages_drain(
+      async (offset: number, limit: number): Promise<ListPage<{ data: IdRecord }>> => {
+        const response: ItemListSlice = await resource_call<ItemListSlice>(
+          workflow, 'getPluginInstances', { limit, offset }
+        );
+        return { data: items_get<{ data: IdRecord }>(response), totalCount: null, hasMore: response.hasNextPage };
+      },
     );
-    const instances: Array<{ data: IdRecord }> = items_get<{ data: IdRecord }>(instancesResponse);
     const pluginInstanceIds: number[] = instances.map(
       (inst: { data: IdRecord }) => inst.data.id
     );

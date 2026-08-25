@@ -1,5 +1,35 @@
 # @fnndsc/brasa
 
+## 0.11.0
+
+### Minor Changes
+
+- 69b0617: Typed chell API, third tranche: `cp` and `mv` join the facade with their
+  existing `fs.cp`/`fs.mv` models. Fixing what their first typed run
+  surfaced: file rename was silently broken against current CUBEs (the PUT
+  field drifted from `path` to `upload_path`); cumin now sends the current
+  field and falls back for older servers.
+- 7ed8e1c: Typed chell API, second tranche: `ls` and `cat`. `ls` gains the
+  `fs.listing` model (entries per target as data), `cat` joins with its
+  existing `fs.cat` outcomes and content in the rendered channel, and both
+  enter the same cores the parsed builtins enter. Programmatic `cat` never
+  injects syntax highlighting.
+- 7dc3bca: The typed chell API, first tranche. `chellApi_create()` returns the shell's
+  vocabulary as function calls: `pwd`, `cd`, `mkdir`, `touch` and `rm` take
+  typed options, enter the same per-command cores the parsed builtins enter,
+  and return envelopes whose model slot is typed per command
+  (`TypedEnvelope<K>` over the new `FsModelMap`). No command line is
+  assembled or parsed anywhere on the path.
+
+### Patch Changes
+
+- Updated dependencies [14f8ee8]
+- Updated dependencies [4da2673]
+- Updated dependencies [69b0617]
+  - @fnndsc/cumin@3.11.0
+  - @fnndsc/salsa@3.7.0
+  - @fnndsc/chili@3.6.5
+
 ## 0.10.1
 
 ### Patch Changes

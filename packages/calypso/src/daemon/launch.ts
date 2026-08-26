@@ -11,6 +11,7 @@
  *
  * @module
  */
+import { hostname } from 'node:os';
 import * as path from 'node:path';
 import chalk from 'chalk';
 import { CalypsoDaemon } from './server.js';
@@ -126,10 +127,15 @@ export async function daemon_launch(
     process.env['CALYPSO_WEB_ROOT'],
     path.join(process.cwd(), 'apps', 'argus', 'dist'),
   ]);
+  // Loopback is the posture; CALYPSO_BIND is a deliberate, per-launch
+  // opt-out for demos on a trusted network. The attach token still gates
+  // every session, but the web bundle and the wire become reachable from
+  // any host that can route here.
+  const bindHost: string = process.env['CALYPSO_BIND'] ?? '127.0.0.1';
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
     token,
-    host: '127.0.0.1',
+    host: bindHost,
     port: 0,
     ...(webRoot !== null ? { webRoot } : {}),
     // Only the daemon holds the session context, so it renders the themed
@@ -159,7 +165,10 @@ export async function daemon_launch(
   console.log(chalk.gray(`    berth:     ${berth_path(identity)}`));
   console.log(chalk.gray(`    attach a surface with:  chell --remote${attachHint}`));
   if (webRoot !== null) {
-    console.log(chalk.green(`[+] ARGUS web surface at http://127.0.0.1:${port}/?token=${token}`));
+    // A wildcard bind has no routable form for a URL; name the machine so
+    // the printed address works from another host.
+    const displayHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
+    console.log(chalk.green(`[+] ARGUS web surface at http://${displayHost}:${port}/?token=${token}`));
     console.log(chalk.gray(`    serving:   ${webRoot}`));
   }
 }

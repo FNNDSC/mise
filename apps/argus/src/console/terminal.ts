@@ -17,12 +17,42 @@ import '@xterm/xterm/css/xterm.css';
 import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
 import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
 
-/** ANSI palette entries used for the prompt, LCARS-adjacent. */
-const ANSI_ORANGE: string = '\x1b[38;5;214m';
-const ANSI_SKY: string = '\x1b[38;5;111m';
-const ANSI_LAVENDER: string = '\x1b[38;5;183m';
+/** ANSI palette entries used for terminal chrome. */
 const ANSI_GRAY: string = '\x1b[38;5;245m';
 const ANSI_RESET: string = '\x1b[0m';
+
+/** Foreground/background hex pair for one powerline segment. */
+interface SegmentColor {
+  bg: string;
+  fg: string;
+}
+
+/**
+ * The prompt segment palette, mirroring chell's Powerlevel10k theme
+ * (`packages/chell/src/core/prompt/palette.ts`) so the browser console and
+ * the CLI surface read as one family. Duplicated by value because argus may
+ * not import the execution stack.
+ */
+const SEGMENT_PALETTE: Record<'host' | 'user' | 'dir' | 'duration' | 'status', SegmentColor> = {
+  host: { bg: '#00AFFF', fg: '#001018' },
+  user: { bg: '#00D787', fg: '#00140C' },
+  dir: { bg: '#FFD75F', fg: '#201800' },
+  duration: { bg: '#FF8700', fg: '#201000' },
+  status: { bg: '#FF005F', fg: '#FFFFFF' },
+};
+
+/** Powerline separator and Font Awesome glyphs; need a Nerd Font. */
+const GLYPHS = {
+  powerline: '',
+  cube: '',
+  user: '',
+  folder: '',
+  bolt: '',
+  error: '',
+} as const;
+
+/** Minimum command duration (ms) before the duration segment appears. */
+const DURATION_THRESHOLD_MS: number = 3_000;
 
 /**
  * The indwelling ARGUS terminal: one xterm instance attached to a container,
@@ -42,6 +72,7 @@ export class ArgusTerminal {
   private inputBuffer: string = '';
   private inputLocked: boolean = true;
   private promptContext: PromptContext | null = null;
+  private readonly nerdFont: boolean;
 
   /**
    * @param container - The DOM element the terminal renders into.
@@ -50,11 +81,14 @@ export class ArgusTerminal {
    */
   constructor(container: HTMLElement, submit: (line: string) => Promise<void>) {
     this.submit = submit;
-    // The data voice: Inconsolata at comfortable size over a black ground,
-    // with LCARS-warm defaults; the CRT glow is applied in CSS.
+    // The data voice: MesloLGS NF first (the Powerlevel10k companion font,
+    // carrying the powerline and icon glyphs), then the Inconsolata webfont.
+    // The caller preloads webfonts before constructing, so xterm measures
+    // its cell grid against the real face rather than a fallback.
+    this.nerdFont = fontAvailable_check('MesloLGS NF');
     this.term = new Terminal({
       cursorBlink: true,
-      fontFamily: '"Inconsolata", "Fira Code", "Cascadia Code", Menlo, monospace',
+      fontFamily: '"MesloLGS NF", "Inconsolata", "Fira Code", Menlo, monospace',
       fontSize: 15,
       lineHeight: 1.15,
       theme: {
@@ -92,20 +126,68 @@ export class ArgusTerminal {
   }
 
   /**
-   * Draws the prompt from the stored context and unlocks input.
+   * Draws the two-line Powerlevel10k-style prompt from the stored context
+   * and unlocks input: a segment bar with background fills and powerline
+   * separators, then a `❯` input line, matching chell's p10k theme.
    */
   public prompt_draw(): void {
     const context: PromptContext | null = this.promptContext;
     if (context === null) {
-      this.term.write(`${ANSI_ORANGE}argus${ANSI_RESET}> `);
-    } else {
-      const host: string = context.uri.replace(/^https?:\/\//, '');
-      this.term.write(
-        `${ANSI_ORANGE}${context.user}${ANSI_RESET}@${ANSI_SKY}${host}${ANSI_RESET}:` +
-          `${ANSI_LAVENDER}${context.cwd}${ANSI_RESET}$ `,
-      );
+      this.term.write(`\x1b[38;2;255;153;0margus${ANSI_RESET} ❯ `);
+      this.inputLocked = false;
+      return;
     }
+
+    const host: string = context.uri.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
+    const homePrefix: string = `/home/${context.user}`;
+    const displayPath: string = context.cwd.startsWith(homePrefix)
+      ? `~${context.cwd.slice(homePrefix.length)}`
+      : context.cwd;
+
+    const segments: Array<{ text: string; color: SegmentColor }> = [
+      { text: this.glyph_lead(GLYPHS.cube, host), color: SEGMENT_PALETTE.host },
+      { text: this.glyph_lead(GLYPHS.user, context.user), color: SEGMENT_PALETTE.user },
+      { text: this.glyph_lead(GLYPHS.folder, displayPath), color: SEGMENT_PALETTE.dir },
+    ];
+    if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
+      const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
+      segments.push({ text: this.glyph_lead(GLYPHS.bolt, `${seconds}s`), color: SEGMENT_PALETTE.duration });
+    }
+    if (context.lastExitCode !== 0) {
+      segments.push({
+        text: this.glyph_lead(GLYPHS.error, String(context.lastExitCode)),
+        color: SEGMENT_PALETTE.status,
+      });
+    }
+
+    let bar: string = '';
+    for (let index: number = 0; index < segments.length; index++) {
+      const segment = segments[index];
+      if (segment === undefined) {
+        continue;
+      }
+      bar += `${ansiColor_make(segment.color.fg, segment.color.bg)} ${segment.text} ${ANSI_RESET}`;
+      const next = segments[index + 1];
+      if (this.nerdFont) {
+        bar += next !== undefined
+          ? `${ansiColor_make(segment.color.bg, next.color.bg)}${GLYPHS.powerline}${ANSI_RESET}`
+          : `${ansiColor_make(segment.color.bg)}${GLYPHS.powerline}${ANSI_RESET}`;
+      }
+    }
+    const glyphColor: string = context.lastExitCode === 0 ? '#00D787' : '#FF005F';
+    this.term.write(`${bar}\r\n${ansiColor_make(glyphColor)}❯${ANSI_RESET} `);
     this.inputLocked = false;
+  }
+
+  /**
+   * Prefixes text with a Nerd Font glyph when the font carries one.
+   *
+   * @param glyph - The icon codepoint.
+   * @param text - The segment text.
+   * @returns The composed segment text.
+   */
+  private glyph_lead(glyph: string, text: string): string {
+    return this.nerdFont ? `${glyph} ${text}` : text;
   }
 
   /**
@@ -242,4 +324,46 @@ export class ArgusTerminal {
  */
 function crlf_normalize(text: string): string {
   return text.replace(/\r?\n/g, '\r\n');
+}
+
+/**
+ * Builds a truecolor ANSI sequence.
+ *
+ * @param fgHex - Foreground color as `#rrggbb`.
+ * @param bgHex - Optional background color as `#rrggbb`.
+ * @returns The escape sequence.
+ */
+function ansiColor_make(fgHex: string, bgHex?: string): string {
+  const fg: [number, number, number] = hex_toRgb(fgHex);
+  let sequence: string = `\x1b[38;2;${fg[0]};${fg[1]};${fg[2]}m`;
+  if (bgHex !== undefined) {
+    const bg: [number, number, number] = hex_toRgb(bgHex);
+    sequence += `\x1b[48;2;${bg[0]};${bg[1]};${bg[2]}m`;
+  }
+  return sequence;
+}
+
+/**
+ * Parses a `#rrggbb` color into its channels.
+ *
+ * @param hex - The color string.
+ * @returns The `[r, g, b]` triple.
+ */
+function hex_toRgb(hex: string): [number, number, number] {
+  const value: number = parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+}
+
+/**
+ * Reports whether a locally installed font family is available.
+ *
+ * @param family - The font family name.
+ * @returns True when the browser can render with it.
+ */
+function fontAvailable_check(family: string): boolean {
+  try {
+    return document.fonts.check(`15px "${family}"`);
+  } catch {
+    return false;
+  }
 }

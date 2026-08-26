@@ -18,7 +18,7 @@
 import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
 import { ArgusClient, type AttachInfo, type ExecuteOutcome, type OutputChannel } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
-import { FilesPanel } from '../features/files/panel.js';
+import { FilesPanel, type FileAction } from '../features/files/panel.js';
 import { StatusBar } from './status.js';
 import '../lcars/theme/lower-decks.css';
 import '../lcars/argus.css';
@@ -91,7 +91,16 @@ function drawer_wire(
   close: HTMLElement,
   terminal: ArgusTerminal,
 ): void {
+  // A drag leaves an inline height on the drawer, which would defeat the
+  // closed class; stash it while closed and restore it on reopen.
+  let openHeight: string = '';
   const closed_set = (closed: boolean): void => {
+    if (closed) {
+      openHeight = drawer.style.height;
+      drawer.style.height = '';
+    } else if (openHeight !== '') {
+      drawer.style.height = openHeight;
+    }
     drawer.classList.toggle('drawer-closed', closed);
     toggle.classList.toggle('lcars-beckon', closed);
     sound_play('audio3');
@@ -155,16 +164,35 @@ function cascade_build(): void {
     }
     wrapper.appendChild(column);
   }
-  // The 800ms flicker loop, the prototype's telemetry rhythm: a few cells
-  // shift each beat, so the top panel reads as a live system.
+  // The flicker loop, the prototype's telemetry rhythm made visible: a
+  // handful of cells shift every beat so the top panel reads as a live
+  // system, and every few seconds one column sweeps bright.
   window.setInterval((): void => {
-    for (let flickerCount: number = 0; flickerCount < 3; flickerCount++) {
+    for (let flickerCount: number = 0; flickerCount < 5; flickerCount++) {
       const cell = cells[Math.floor(Math.random() * cells.length)];
       if (cell !== undefined) {
         cell.element.textContent = figure_random(cell.width);
       }
     }
-  }, 800);
+  }, 300);
+  const columns: HTMLDivElement[] = Array.from(wrapper.querySelectorAll('.data-column'));
+  window.setInterval((): void => {
+    const column = columns[Math.floor(Math.random() * columns.length)];
+    if (column !== undefined) {
+      column.classList.add('dc-sweep');
+      window.setTimeout((): void => column.classList.remove('dc-sweep'), 650);
+    }
+  }, 2600);
+}
+
+/**
+ * Strips ANSI escape sequences from rendered text.
+ *
+ * @param text - The ANSI-decorated text.
+ * @returns The plain text.
+ */
+function ansi_strip(text: string): string {
+  return text.replace(/\x1b\[[0-9;:]*[A-Za-z]/g, '');
 }
 
 /**
@@ -195,12 +223,33 @@ function panelSounds_wire(): void {
  * @throws {Error} When the attach is refused.
  */
 async function surface_start(token: string): Promise<void> {
+  // Load the console webfonts before xterm measures its cell grid, so the
+  // terminal renders in its real face rather than a fallback.
+  await Promise.allSettled([
+    document.fonts.load('15px "Inconsolata"'),
+    document.fonts.load('15px "MesloLGS NF"'),
+  ]);
+
   const statusBar: StatusBar = new StatusBar(document);
-  const filesPanel: FilesPanel = new FilesPanel(element_require('files-panel'), (path: string): void => {
-    // A graphical gesture lowers to the same bounded commands an operator
-    // could type; the terminal shows them as typed lines, in order.
-    void terminal.line_run(`cd "${path}"`).then((): Promise<void> => terminal.line_run('ls'));
-  });
+  const filesPanel: FilesPanel = new FilesPanel(
+    element_require('files-panel'),
+    (action: FileAction): void => {
+      if (action.kind === 'dir') {
+        // Entering a directory lowers to the same command an operator could
+        // type; the listing refresh follows from the fs.cwd model.
+        void terminal.line_run(`cd "${action.path}"`);
+        return;
+      }
+      // Opening a file renders its content in the panel; the cat runs
+      // silently so a large file does not flood the transcript.
+      void client.line_execute(`cat "${action.path}"`).then((outcome: ExecuteOutcome): void => {
+        const content: string = ansi_strip(
+          outcome.envelopes.map((envelope): string => envelope.rendered).join('\n'),
+        );
+        filesPanel.content_show(action.path, content);
+      });
+    },
+  );
 
   const drawerStatus: HTMLElement = element_require('drawer-status');
   const mode_show = (mode: string): void => {
@@ -218,6 +267,12 @@ async function surface_start(token: string): Promise<void> {
       try {
         const outcome: ExecuteOutcome = await client.line_execute(line);
         terminal.outcome_write(outcome);
+        // The panel is slaved to the working directory: any command that
+        // moved it (an fs.cwd model) triggers a silent listing refresh,
+        // whose fs.listing envelope repaints the panel on observation.
+        if (outcome.envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
+          void client.line_execute('ls');
+        }
       } catch (error: unknown) {
         const reason: string = error instanceof Error ? error.message : String(error);
         terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\r\n`);

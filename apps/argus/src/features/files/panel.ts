@@ -58,18 +58,32 @@ const TYPE_GLYPHS: Record<FsListingEntry['type'], string> = {
 };
 
 /**
- * The Files panel: renders the latest `fs.listing` the session produced.
+ * An operator gesture on a panel row, for the composer to lower into
+ * session commands.
+ *
+ * @property kind - Whether a directory was entered or a file opened.
+ * @property path - The full path of the activated entry.
+ */
+export interface FileAction {
+  kind: 'dir' | 'file';
+  path: string;
+}
+
+/**
+ * The Files panel: renders the latest `fs.listing` the session produced,
+ * and can present one file's content with a way back to the listing.
  */
 export class FilesPanel {
   private readonly container: HTMLElement;
-  private readonly activate: (path: string) => void;
+  private readonly activate: (action: FileAction) => void;
+  private lastListings: FsListing[] = [];
 
   /**
    * @param container - The DOM element the panel renders into.
-   * @param activate - Called with a directory's path when the operator
-   *   activates its row; the caller lowers this to session commands.
+   * @param activate - Called when the operator activates a row; the caller
+   *   lowers the gesture to session commands.
    */
-  constructor(container: HTMLElement, activate: (path: string) => void) {
+  constructor(container: HTMLElement, activate: (action: FileAction) => void) {
     this.container = container;
     this.activate = activate;
     this.empty_render();
@@ -88,7 +102,44 @@ export class FilesPanel {
     if (listings === null || listings.length === 0) {
       return;
     }
+    this.lastListings = listings;
     this.listings_render(listings);
+  }
+
+  /**
+   * Presents one file's content in place of the grid, with a CLOSE pill
+   * returning to the last listing.
+   *
+   * @param path - The file's path, shown as the view's header.
+   * @param content - The file content, already stripped of ANSI codes.
+   */
+  public content_show(path: string, content: string): void {
+    this.container.replaceChildren();
+
+    const header: HTMLElement = document.createElement('header');
+    header.className = 'files-path files-content-header';
+    const title: HTMLSpanElement = document.createElement('span');
+    title.textContent = path;
+    const closePill: HTMLButtonElement = document.createElement('button');
+    closePill.className = 'files-close-pill';
+    closePill.textContent = 'CLOSE';
+    closePill.addEventListener('click', (): void => this.listing_restore());
+    header.append(title, closePill);
+
+    const body: HTMLPreElement = document.createElement('pre');
+    body.className = 'files-content';
+    body.textContent = content;
+
+    this.container.append(header, body);
+  }
+
+  /** Returns from a content view to the most recent listing. */
+  public listing_restore(): void {
+    if (this.lastListings.length > 0) {
+      this.listings_render(this.lastListings);
+    } else {
+      this.empty_render();
+    }
   }
 
   /** Paints the waiting state shown before any listing arrives. */
@@ -158,7 +209,12 @@ export class FilesPanel {
     if (item.type === 'dir' || item.type === 'vfs') {
       row.classList.add('files-activatable');
       row.addEventListener('click', (): void => {
-        this.activate(path_join(parentPath, item.name));
+        this.activate({ kind: 'dir', path: path_join(parentPath, item.name) });
+      });
+    } else if (item.type === 'file' || item.type === 'link') {
+      row.classList.add('files-activatable');
+      row.addEventListener('click', (): void => {
+        this.activate({ kind: 'file', path: path_join(parentPath, item.name) });
       });
     }
     return row;

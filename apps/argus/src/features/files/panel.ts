@@ -1,0 +1,222 @@
+/**
+ * @file The Files instrument: a graphical projection of `fs.listing` models.
+ *
+ * The panel subscribes to every envelope the session shows this surface —
+ * its own results and session-bus broadcasts alike — and repaints whenever
+ * one carries an `fs.listing` model. Typing `ls` in the terminal therefore
+ * updates this panel as data: two projections of one session. A directory
+ * row lowers to the same bounded command an operator could type (`cd` then
+ * `ls`), never to a graphical-only mutation path.
+ *
+ * The payload types below are a local mirror of the wire shape the stack
+ * emits (authoritative source: brasa's typed kind map, which the browser
+ * boundary rule forbids importing). Promotion of the kind map into the
+ * published calypso contract is queued with the next contract bump; until
+ * then this mirror validates structurally before rendering.
+ *
+ * @module
+ */
+import type { WireEnvelope } from '@fnndsc/calypso/protocol';
+
+/**
+ * One entry of a directory listing, as the `fs.listing` payload carries it.
+ *
+ * @property name - The display name of the entry.
+ * @property type - The entry kind within the ChRIS VFS/CFS namespace.
+ * @property size - Size in bytes.
+ * @property owner - Username of the owner.
+ * @property date - Creation date (ISO string).
+ */
+export interface FsListingEntry {
+  name: string;
+  type: 'dir' | 'file' | 'link' | 'plugin' | 'pipeline' | 'vfs' | 'job';
+  size: number;
+  owner: string;
+  date: string;
+}
+
+/**
+ * One listed directory: its path and its entries.
+ *
+ * @property path - The listed directory's path.
+ * @property items - The directory's entries.
+ */
+export interface FsListing {
+  path: string;
+  items: FsListingEntry[];
+}
+
+/** Glyphs for the entry kinds, chosen to read at LCARS contrast. */
+const TYPE_GLYPHS: Record<FsListingEntry['type'], string> = {
+  dir: '▸',
+  file: '·',
+  link: '→',
+  plugin: '⚙',
+  pipeline: '⛓',
+  vfs: '◆',
+  job: '▷',
+};
+
+/**
+ * The Files panel: renders the latest `fs.listing` the session produced.
+ */
+export class FilesPanel {
+  private readonly container: HTMLElement;
+  private readonly activate: (path: string) => void;
+
+  /**
+   * @param container - The DOM element the panel renders into.
+   * @param activate - Called with a directory's path when the operator
+   *   activates its row; the caller lowers this to session commands.
+   */
+  constructor(container: HTMLElement, activate: (path: string) => void) {
+    this.container = container;
+    this.activate = activate;
+    this.empty_render();
+  }
+
+  /**
+   * Inspects one envelope and repaints when it carries a listing model.
+   *
+   * @param envelope - Any envelope the session showed this surface.
+   */
+  public envelope_observe(envelope: WireEnvelope): void {
+    if (envelope.model?.kind !== 'fs.listing') {
+      return;
+    }
+    const listings: FsListing[] | null = listings_validate(envelope.model.data);
+    if (listings === null || listings.length === 0) {
+      return;
+    }
+    this.listings_render(listings);
+  }
+
+  /** Paints the waiting state shown before any listing arrives. */
+  private empty_render(): void {
+    this.container.replaceChildren();
+    const hint: HTMLParagraphElement = document.createElement('p');
+    hint.className = 'files-empty';
+    hint.textContent = 'AWAITING LISTING — TYPE ls IN THE CONSOLE';
+    this.container.appendChild(hint);
+  }
+
+  /**
+   * Paints the listings: one block per listed directory, one row per entry.
+   *
+   * @param listings - The listings to paint.
+   */
+  private listings_render(listings: FsListing[]): void {
+    this.container.replaceChildren();
+    for (const listing of listings) {
+      const block: HTMLElement = document.createElement('section');
+      block.className = 'files-listing';
+
+      const header: HTMLElement = document.createElement('header');
+      header.className = 'files-path';
+      header.textContent = listing.path;
+      block.appendChild(header);
+
+      const table: HTMLElement = document.createElement('div');
+      table.className = 'files-grid';
+      for (const item of listing.items) {
+        table.appendChild(this.row_build(listing.path, item));
+      }
+      block.appendChild(table);
+      this.container.appendChild(block);
+    }
+  }
+
+  /**
+   * Builds one entry row; directory rows are activatable.
+   *
+   * @param parentPath - The listed directory containing the entry.
+   * @param item - The entry to render.
+   * @returns The row element.
+   */
+  private row_build(parentPath: string, item: FsListingEntry): HTMLElement {
+    const row: HTMLElement = document.createElement('div');
+    row.className = `files-row files-type-${item.type}`;
+
+    const glyph: HTMLSpanElement = document.createElement('span');
+    glyph.className = 'files-glyph';
+    glyph.textContent = TYPE_GLYPHS[item.type];
+
+    const name: HTMLSpanElement = document.createElement('span');
+    name.className = 'files-name';
+    name.textContent = item.name;
+
+    const size: HTMLSpanElement = document.createElement('span');
+    size.className = 'files-size';
+    size.textContent = item.type === 'dir' ? '' : size_format(item.size);
+
+    const owner: HTMLSpanElement = document.createElement('span');
+    owner.className = 'files-owner';
+    owner.textContent = item.owner;
+
+    row.append(glyph, name, size, owner);
+
+    if (item.type === 'dir' || item.type === 'vfs') {
+      row.classList.add('files-activatable');
+      row.addEventListener('click', (): void => {
+        this.activate(path_join(parentPath, item.name));
+      });
+    }
+    return row;
+  }
+}
+
+/**
+ * Structurally validates an `fs.listing` payload before rendering.
+ *
+ * The wire model slot is `{ kind, data: unknown }`; this check is the local
+ * boundary between that unknown and the panel's typed rendering.
+ *
+ * @param data - The model payload.
+ * @returns The typed listings, or null when the shape does not match.
+ */
+function listings_validate(data: unknown): FsListing[] | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  for (const listing of data) {
+    if (typeof listing !== 'object' || listing === null) {
+      return null;
+    }
+    const candidate: { path?: unknown; items?: unknown } = listing as { path?: unknown; items?: unknown };
+    if (typeof candidate.path !== 'string' || !Array.isArray(candidate.items)) {
+      return null;
+    }
+  }
+  return data as FsListing[];
+}
+
+/**
+ * Joins a parent path and an entry name with exactly one separator.
+ *
+ * @param parentPath - The containing directory.
+ * @param name - The entry name.
+ * @returns The joined path.
+ */
+function path_join(parentPath: string, name: string): string {
+  return parentPath.endsWith('/') ? `${parentPath}${name}` : `${parentPath}/${name}`;
+}
+
+/**
+ * Formats a byte count for the grid, compactly.
+ *
+ * @param bytes - The size in bytes.
+ * @returns The human form (e.g. `2.4K`, `13M`).
+ */
+function size_format(bytes: number): string {
+  if (bytes < 1024) {
+    return String(bytes);
+  }
+  const units: string[] = ['K', 'M', 'G', 'T'];
+  let value: number = bytes;
+  let unitIndex: number = -1;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value = value / 1024;
+    unitIndex = unitIndex + 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)}${units[unitIndex]}`;
+}

@@ -113,7 +113,6 @@ they are not prerequisites for proving the local CALYPSO web surface.
 
 == LCARS source
 
-The visual starting point is the Lower Decks theme from TheLCARS.com Version 26.
-Template redistribution and attribution must be resolved before its HTML, CSS,
-fonts, sounds, or images are committed to the public repository. The initial
-tree therefore contains no downloaded LCARS assets.
+ARGUS uses the genuine Lower Decks theme from TheLCARS.com Version 26. The TheLCARS.com EULA (https://www.thelcars.com/license/) permits free non-commercial use with attribution while forbidding redistribution of the template or any portion of it, and the author publishes no npm package, so the theme is consumed as a reference rather than a copy: no template file is committed to this repository. The theme directory (`apps/argus/src/lcars/theme/`) is gitignored and materialized per machine by `apps/argus/scripts/theme_ensure.mjs`, which extracts the needed CSS, fonts, and sounds from the official `LCARS-26.zip` the operator downloads from https://www.thelcars.com/download.php. Every real copy of the theme therefore comes from the author's own distribution, exactly as a package dependency would, with the download step manual only because no registry endpoint exists. When no zip is present the script writes a generated stand-in so builds (CI included) still succeed with a degraded look. The page footer carries the attribution the EULA requires, with the adaptation noted.
+
+Two considerations remain live. The non-commercial clause fits ARGUS's academic open-source context but would need the author's written consent if that context ever changed, and LCARS itself is CBS/Paramount trade dress, which ARGUS engages in the long-standing fan-project manner: with attribution to the template author and no claim of affiliation.

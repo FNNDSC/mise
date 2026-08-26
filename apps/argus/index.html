@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="format-detection" content="date=no" />
+    <title>ARGUS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <audio id="audio1" src="/src/lcars/theme/beep1.mp3" preload="auto"></audio>
+    <audio id="audio2" src="/src/lcars/theme/beep2.mp3" preload="auto"></audio>
+    <audio id="audio3" src="/src/lcars/theme/beep3.mp3" preload="auto"></audio>
+    <audio id="audio4" src="/src/lcars/theme/beep4.mp3" preload="auto"></audio>
+
+    <div id="attach-form" class="attach-overlay">
+      <div class="attach-card">
+        <h1>ARGUS</h1>
+        <p>Attach to a CALYPSO session. The daemon printed the token at launch.</p>
+        <input id="attach-token" type="password" placeholder="ATTACH TOKEN" autocomplete="off" />
+        <button id="attach-submit" type="button">ATTACH</button>
+        <p id="attach-error" class="attach-error"></p>
+      </div>
+    </div>
+
+    <div class="wrap-all">
+      <div class="wrap">
+        <div class="left-frame-top">
+          <button class="panel-1">ARGUS<span class="hop">&nbsp;WEB</span></button>
+          <button class="panel-2">02<span class="hop">-CALYPSO</span></button>
+        </div>
+        <div class="right-frame-top">
+          <div class="banner"><a href="">ARGUS</a> &bull; CALYPSO SESSION</div>
+          <div class="data-cascade-button-group">
+            <!-- The data cascade is generated at boot; see cascade_build in main.ts. -->
+            <div class="data-wrapper" id="data-cascade"></div>
+          </div>
+          <div class="bar-panel first-bar-panel">
+            <div class="bar-1"></div>
+            <div class="bar-2"></div>
+            <div class="bar-3"></div>
+            <div class="bar-4"></div>
+          </div>
+        </div>
+      </div>
+      <div class="wrap" id="gap">
+        <div class="left-frame">
+          <div>
+            <button class="panel-3 domain-live">FILES<span class="hop">-01</span></button>
+            <button class="panel-4 domain-inert">RUNS<span class="hop">-02</span></button>
+            <button class="panel-5 domain-inert">TOOLS<span class="hop">-03</span></button>
+            <button class="panel-6 domain-inert">SOURCES<span class="hop">-04</span></button>
+            <div class="panel-spacer"></div>
+          </div>
+          <div>
+            <button class="panel-7 domain-inert">COMPUTE<span class="hop">-05</span></button>
+          </div>
+        </div>
+        <div class="right-frame">
+          <!-- The tactical drawer: the console unfurls from behind the
+               workspace lid (the bar-panel below), per the prototype's
+               interaction design. -->
+          <section id="drawer">
+            <div id="drawer-header">
+              <span class="drawer-title">CALYPSO CONSOLE</span>
+              <span id="drawer-status">MODE: [OFFLINE]</span>
+              <button id="drawer-close" title="retract console" aria-label="retract console"></button>
+            </div>
+            <div id="terminal"></div>
+            <div id="drawer-strip" title="drag to resize"></div>
+          </section>
+          <div class="bar-panel">
+            <div class="bar-6"></div>
+            <div class="bar-7"></div>
+            <div class="bar-8"></div>
+            <div class="bar-9"></div>
+            <div class="bar-10" id="drawer-toggle" title="console" role="button" tabindex="0"></div>
+          </div>
+          <main>
+            <div id="status-strip">
+              <span id="status-identity" class="readout">&mdash;</span>
+              <span id="status-session" class="readout">&mdash;</span>
+              <span id="status-contract" class="readout">&mdash;</span>
+              <span id="status-stack" class="readout">&mdash;</span>
+              <span id="status-lamp" class="readout lamp-offline">OFFLINE</span>
+            </div>
+            <section id="files-panel" aria-label="Files"></section>
+          </main>
+          <footer>
+            Content &copy; 2026 FNNDSC &bull; ARGUS is part of the mise project.<br />
+            <!-- The following attribution must not be removed: -->
+            LCARS Inspired Website Template by <a href="https://www.thelcars.com">www.TheLCARS.com</a>,
+            adapted for ARGUS.
+          </footer>
+        </div>
+      </div>
+    </div>
+    <div class="headtrim"></div>
+    <div class="baseboard"></div>
+
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>

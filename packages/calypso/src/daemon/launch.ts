@@ -11,8 +11,10 @@
  *
  * @module
  */
+import * as path from 'node:path';
 import chalk from 'chalk';
 import { CalypsoDaemon } from './server.js';
+import { webRoot_resolve } from './static.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
@@ -116,11 +118,20 @@ export async function daemon_launch(
   }
 
   const token: string = token_generate();
+  // The web surface (argus) is served from the same port as the wire when a
+  // built bundle is found: an explicit CALYPSO_WEB_ROOT wins, and a monorepo
+  // checkout's bundle is picked up from the working directory so a dev-tree
+  // `chell --daemon` serves the surface with no configuration at all.
+  const webRoot: string | null = webRoot_resolve([
+    process.env['CALYPSO_WEB_ROOT'],
+    path.join(process.cwd(), 'apps', 'argus', 'dist'),
+  ]);
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
     token,
     host: '127.0.0.1',
     port: 0,
+    ...(webRoot !== null ? { webRoot } : {}),
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces.
     promptProvider: (): Promise<SessionPromptContext> => sessionPromptContext_build(),
@@ -147,4 +158,8 @@ export async function daemon_launch(
   console.log(chalk.gray(`    token:     ${token}`));
   console.log(chalk.gray(`    berth:     ${berth_path(identity)}`));
   console.log(chalk.gray(`    attach a surface with:  chell --remote${attachHint}`));
+  if (webRoot !== null) {
+    console.log(chalk.green(`[+] ARGUS web surface at http://127.0.0.1:${port}/?token=${token}`));
+    console.log(chalk.gray(`    serving:   ${webRoot}`));
+  }
 }

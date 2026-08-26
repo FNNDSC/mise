@@ -1,0 +1,4 @@
+# The LCARS theme is EULA-restricted (no redistribution) and is materialized
+# per-machine by scripts/theme_ensure.mjs from the official LCARS-26.zip.
+src/lcars/theme/
+dist/

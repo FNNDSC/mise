@@ -25,9 +25,11 @@
  * @module
  */
 import { randomBytes } from 'node:crypto';
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { HostedEngine, CompletionResult } from './engine.js';
+import { staticRequest_handle } from './static.js';
 import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
@@ -97,6 +99,9 @@ const SCROLLBACK_DEFAULT: number = 200;
  *   which the daemon pushes to surfaces after each command and on attach; each
  *   surface renders it with its own theme. Omitted when a host does not push a
  *   prompt (e.g. tests).
+ * @property webRoot - A directory of static files (the built web surface) the
+ *   daemon's HTTP side serves alongside the WebSocket contract. Omitted, plain
+ *   HTTP requests receive 404 and only the WebSocket upgrade is answered.
  */
 export interface DaemonOptions {
   engine: HostedEngine;
@@ -107,6 +112,7 @@ export interface DaemonOptions {
   promptProvider?: () => PromptContext | Promise<PromptContext>;
   /** The hosting process's versions and build hash, reported on attach. */
   stack?: DaemonStackInfo;
+  webRoot?: string;
 }
 
 /**
@@ -125,7 +131,9 @@ export class CalypsoDaemon {
   private readonly sessionId: string = randomBytes(8).toString('hex');
   private readonly surfaces: Set<Surface> = new Set<Surface>();
   private readonly scrollback: SessionEntry[] = [];
+  private readonly webRoot: string | undefined;
   private wss: WebSocketServer | null = null;
+  private httpServer: Server | null = null;
   /**
    * Execution is serialized across the whole session (one foreground command
    * at a time), so a prompt raised mid-command has one unambiguous surface to
@@ -154,20 +162,39 @@ export class CalypsoDaemon {
     this.scrollbackSize = options.scrollbackSize ?? SCROLLBACK_DEFAULT;
     this.promptProvider = options.promptProvider;
     this.stack = options.stack;
+    this.webRoot = options.webRoot;
   }
 
   /**
    * Starts listening.
    *
+   * The daemon owns an explicit HTTP server: WebSocket upgrades carry the
+   * session contract, and plain requests serve the configured web root (404
+   * when none is configured), so one loopback port carries both the wire and
+   * the web surface that speaks it.
+   *
    * @returns The bound port (useful when an ephemeral port was requested).
    */
   public start(): Promise<number> {
     return new Promise((resolve: (port: number) => void, reject: (err: Error) => void) => {
-      const wss: WebSocketServer = new WebSocketServer({ host: this.host, port: this.port });
-      wss.on('listening', () => resolve((wss.address() as AddressInfo).port));
-      wss.on('error', reject);
+      const httpServer: Server = createServer(
+        (request: IncomingMessage, response: ServerResponse) => {
+          if (this.webRoot !== undefined) {
+            staticRequest_handle(this.webRoot, request, response);
+            return;
+          }
+          response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+          response.end('not found');
+        },
+      );
+      const wss: WebSocketServer = new WebSocketServer({ server: httpServer });
       wss.on('connection', (socket: WebSocket) => this.connection_handle(socket));
+      httpServer.on('error', reject);
+      httpServer.listen(this.port, this.host, () => {
+        resolve((httpServer.address() as AddressInfo).port);
+      });
       this.wss = wss;
+      this.httpServer = httpServer;
     });
   }
 
@@ -178,15 +205,19 @@ export class CalypsoDaemon {
    */
   public stop(): Promise<void> {
     return new Promise((resolve: () => void) => {
-      if (!this.wss) {
+      if (!this.wss || !this.httpServer) {
         resolve();
         return;
       }
       for (const client of this.wss.clients) {
         client.terminate();
       }
-      this.wss.close(() => resolve());
+      const httpServer: Server = this.httpServer;
+      this.wss.close(() => {
+        httpServer.close(() => resolve());
+      });
       this.wss = null;
+      this.httpServer = null;
     });
   }
 

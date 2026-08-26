@@ -102,9 +102,7 @@ apps/argus/
     `-- lcars/                Lower Decks layout and ARGUS adaptations
 ----
 
-The directories are deliberately empty scaffolds at this stage. Build tooling,
-runtime entry points, and the licensed LCARS assets will arrive with an explicit
-implementation increment.
+The first implementation increment now occupies this tree: `app/` composes the page, `calypso/` holds the browser wire client, `console/` the indwelling xterm terminal, `features/files/` the first graphical instrument, and `lcars/` the ARGUS instrument styling plus the gitignored `theme/` directory into which the Lower Decks theme is materialized per machine (see the LCARS source section of the mise-level ARGUS design for the licensing model). The remaining feature directories stay as scaffolds for later slices.
 
 == Boundary rules
 

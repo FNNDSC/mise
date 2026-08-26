@@ -1,0 +1,330 @@
+/*
+ * ARGUS instrument styling, layered over the Lower Decks theme.
+ *
+ * The theme (src/lcars/theme/lower-decks.css, by Jim Robertus,
+ * www.thelcars.com, adapted for ARGUS) owns the frame: the wraps, elbows,
+ * bars, panels, and typography. This layer styles only what ARGUS adds
+ * inside the frame's <main>: the session status strip, the Files
+ * instrument, the console drawer, and the attach overlay. Colors reuse the
+ * theme's custom properties so the instruments sit inside its palette.
+ */
+
+/* The left frame reads better ~30% slimmer than the template's default
+ * 240px; every frame element derives from this one variable. */
+:root {
+  --lfw: 168px;
+}
+
+/* ------------------------------------------------------------ status strip */
+
+#status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  margin-bottom: 0.8rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#status-strip .readout {
+  color: var(--honey);
+}
+
+.lamp-online {
+  background: #6f6;
+  color: #030;
+  padding: 0 0.5rem;
+  border-radius: 0.6rem;
+}
+
+.lamp-offline {
+  background: #f22;
+  color: var(--butter);
+  padding: 0 0.5rem;
+  border-radius: 0.6rem;
+}
+
+/* ---------------------------------------------------------- files instrument */
+
+#files-panel {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.files-empty {
+  color: var(--honey);
+  opacity: 0.6;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+}
+
+.files-listing {
+  margin-bottom: 1rem;
+}
+
+.files-path {
+  color: var(--orange);
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--orange);
+  padding-bottom: 0.2rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.files-grid {
+  display: grid;
+  grid-template-columns: 1.4em 1fr 6em 10em;
+  row-gap: 2px;
+  font-size: 0.8rem;
+}
+
+.files-row {
+  display: contents;
+}
+
+.files-row > span {
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.files-glyph {
+  color: var(--harvestgold);
+}
+
+.files-name {
+  color: var(--butter);
+}
+
+.files-type-dir .files-name,
+.files-type-vfs .files-name {
+  color: var(--harvestgold);
+  font-weight: bold;
+}
+
+.files-type-plugin .files-name,
+.files-type-pipeline .files-name {
+  color: var(--honey);
+}
+
+.files-size,
+.files-owner {
+  color: var(--pumpkin-pie);
+  text-align: right;
+}
+
+.files-activatable {
+  cursor: pointer;
+}
+
+.files-activatable:hover > span {
+  background: rgb(255 119 0 / 18%);
+}
+
+/* ------------------------------------------------------- the tactical drawer */
+
+/* The console unfurls from behind the workspace lid (the bar-panel below
+ * it). Closed, the drawer collapses entirely and the lid's bar-10 segment
+ * beckons; open, the terminal sits above the lid with its access strip
+ * floating between them, per the prototype's tactical-drawer design. */
+#drawer {
+  display: flex;
+  flex-direction: column;
+  height: 42vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#drawer.drawer-closed {
+  height: 0;
+}
+
+#drawer-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.15rem 0.4rem 0.15rem 0;
+}
+
+.drawer-title {
+  color: var(--honey);
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+}
+
+#drawer-status {
+  flex: 1;
+  color: var(--orange);
+  font-family: 'Inconsolata', 'Courier New', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+}
+
+/* The tactical close: a glowing mars pill, beckoning while the drawer is
+ * open, per the prototype ("pulses with lcars-beckon-mars"). */
+#drawer-close {
+  flex: none;
+  width: 2.2rem;
+  height: 0.65rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: #f22;
+  cursor: pointer;
+  animation: beckon-mars 3s ease-in-out infinite;
+}
+
+#drawer-close:hover {
+  animation: none;
+  filter: brightness(1.35);
+}
+
+#terminal {
+  flex: 1;
+  min-height: 0;
+  background: black;
+  padding: 0.3rem 0 0 0.3rem;
+}
+
+/* The soft CRT glow of the console's data voice. */
+#terminal .xterm {
+  text-shadow: 0 0 6px rgb(255 238 204 / 35%);
+}
+
+/* The access strip: a pullable orange bar floating just above the lid.
+ * Grabbing it resizes the console; it glows under the pointer and breathes
+ * gently while the drawer is open to signal the affordance. */
+#drawer-strip {
+  flex: none;
+  height: 6px;
+  margin: 5px 0 5px 0;
+  background: var(--october-sunset);
+  border-radius: 3px;
+  cursor: row-resize;
+  animation: beckon 3.5s ease-in-out infinite;
+}
+
+#drawer-strip:hover,
+#drawer-strip:active {
+  animation: none;
+  background: var(--harvestgold);
+  box-shadow: 0 0 8px rgb(255 170 68 / 60%);
+}
+
+/* The lid's toggle segment: clickable, and beckoning while the drawer is
+ * closed (the class is toggled from main.ts). */
+#drawer-toggle {
+  cursor: pointer;
+}
+
+.lcars-beckon {
+  animation: beckon 3.5s ease-in-out infinite;
+}
+
+@keyframes beckon {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.2);
+    box-shadow: 0 0 8px rgb(255 119 0 / 45%);
+  }
+}
+
+@keyframes beckon-mars {
+  0%,
+  100% {
+    filter: brightness(1);
+    box-shadow: none;
+  }
+  50% {
+    filter: brightness(1.3);
+    box-shadow: 0 0 10px rgb(255 34 34 / 60%);
+  }
+}
+
+/* ------------------------------------------------------------ attach overlay */
+
+.attach-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 88%);
+  z-index: 100;
+}
+
+.attach-hidden {
+  display: none;
+}
+
+.attach-card {
+  width: 20rem;
+  border: 2px solid var(--orange);
+  border-radius: 1.2rem 0 1.2rem 0;
+  padding: 1.2rem 1.4rem;
+  background: black;
+}
+
+.attach-card h1 {
+  margin: 0 0 0.3rem 0;
+  color: var(--orange);
+  letter-spacing: 0.2em;
+}
+
+.attach-card p {
+  margin: 0 0 0.7rem 0;
+  font-size: 0.7rem;
+  color: var(--honey);
+}
+
+.attach-card input {
+  width: 100%;
+  background: #111;
+  color: var(--butter);
+  border: 1px solid var(--harvestgold);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.6rem;
+  box-sizing: border-box;
+}
+
+.attach-card button {
+  background: var(--orange);
+  color: black;
+  border: none;
+  border-radius: 0.65rem;
+  padding: 0.4rem 1.1rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.attach-card button:hover {
+  filter: brightness(1.15);
+}
+
+.attach-error {
+  color: #f22;
+  min-height: 1.2em;
+  margin-top: 0.5rem;
+}
+
+/* ------------------------------------------------------------- domain state */
+
+/* Inert domains in the demo: present, dimmed, honest scaffolding. */
+.domain-inert {
+  opacity: 0.5;
+}

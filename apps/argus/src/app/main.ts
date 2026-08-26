@@ -195,6 +195,20 @@ function ansi_strip(text: string): string {
   return text.replace(/\x1b\[[0-9;:]*[A-Za-z]/g, '');
 }
 
+/** Extensions the panel renders as images through the /vfs route. */
+const IMAGE_EXTENSIONS: Set<string> = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']);
+
+/**
+ * Reports whether a path's extension names a browser-renderable image.
+ *
+ * @param filePath - The file path.
+ * @returns True for image extensions.
+ */
+function extension_isImage(filePath: string): boolean {
+  const extension: string = filePath.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_EXTENSIONS.has(extension);
+}
+
 /**
  * Produces one zero-padded cascade figure.
  *
@@ -223,13 +237,6 @@ function panelSounds_wire(): void {
  * @throws {Error} When the attach is refused.
  */
 async function surface_start(token: string): Promise<void> {
-  // Load the console webfonts before xterm measures its cell grid, so the
-  // terminal renders in its real face rather than a fallback.
-  await Promise.allSettled([
-    document.fonts.load('15px "Inconsolata"'),
-    document.fonts.load('15px "MesloLGS NF"'),
-  ]);
-
   const statusBar: StatusBar = new StatusBar(document);
   const filesPanel: FilesPanel = new FilesPanel(
     element_require('files-panel'),
@@ -237,11 +244,19 @@ async function surface_start(token: string): Promise<void> {
       if (action.kind === 'dir') {
         // Entering a directory lowers to the same command an operator could
         // type; the listing refresh follows from the fs.cwd model.
-        void terminal.line_run(`cd "${action.path}"`);
+        terminal.line_run(`cd "${action.path}"`);
         return;
       }
-      // Opening a file renders its content in the panel; the cat runs
-      // silently so a large file does not flood the transcript.
+      if (extension_isImage(action.path)) {
+        // Images render natively from the daemon's token-gated /vfs route,
+        // never as terminal strings.
+        const url: string =
+          `/vfs?path=${encodeURIComponent(action.path)}&token=${encodeURIComponent(token)}`;
+        filesPanel.contentImage_show(action.path, url);
+        return;
+      }
+      // Text renders from a silent cat, so a large file does not flood the
+      // transcript.
       void client.line_execute(`cat "${action.path}"`).then((outcome: ExecuteOutcome): void => {
         const content: string = ansi_strip(
           outcome.envelopes.map((envelope): string => envelope.rendered).join('\n'),
@@ -259,11 +274,8 @@ async function surface_start(token: string): Promise<void> {
   const terminal: ArgusTerminal = new ArgusTerminal(
     element_require('terminal'),
     async (line: string): Promise<void> => {
-      if (line.trim().length === 0) {
-        terminal.prompt_draw();
-        return;
-      }
       mode_show('BUSY');
+      const startedAt: number = performance.now();
       try {
         const outcome: ExecuteOutcome = await client.line_execute(line);
         terminal.outcome_write(outcome);
@@ -275,11 +287,13 @@ async function surface_start(token: string): Promise<void> {
         }
       } catch (error: unknown) {
         const reason: string = error instanceof Error ? error.message : String(error);
-        terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\r\n`);
+        terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
       }
-      mode_show('READY');
+      // The felt latency, measured: command round-trip in the MODE strip.
+      mode_show(`READY ${Math.round(performance.now() - startedAt)}ms`);
       terminal.prompt_draw();
     },
+    (prefix: string) => client.line_complete(prefix),
   );
 
   const attached: { client: ArgusClient; attach: AttachInfo } = await ArgusClient.session_attach(

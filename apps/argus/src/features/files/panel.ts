@@ -133,6 +133,34 @@ export class FilesPanel {
     this.container.append(header, body);
   }
 
+  /**
+   * Presents one image in place of the grid, streamed from the daemon's
+   * `/vfs` route, with a CLOSE pill returning to the last listing.
+   *
+   * @param path - The file's path, shown as the view's header.
+   * @param url - The token-gated `/vfs` URL serving the image bytes.
+   */
+  public contentImage_show(path: string, url: string): void {
+    this.container.replaceChildren();
+
+    const header: HTMLElement = document.createElement('header');
+    header.className = 'files-path files-content-header';
+    const title: HTMLSpanElement = document.createElement('span');
+    title.textContent = path;
+    const closePill: HTMLButtonElement = document.createElement('button');
+    closePill.className = 'files-close-pill';
+    closePill.textContent = 'CLOSE';
+    closePill.addEventListener('click', (): void => this.listing_restore());
+    header.append(title, closePill);
+
+    const image: HTMLImageElement = document.createElement('img');
+    image.className = 'files-image';
+    image.src = url;
+    image.alt = path;
+
+    this.container.append(header, image);
+  }
+
   /** Returns from a content view to the most recent listing. */
   public listing_restore(): void {
     if (this.lastListings.length > 0) {

@@ -1,25 +1,27 @@
 /**
- * @file The indwelling terminal: xterm.js wired to the CALYPSO session.
+ * @file The indwelling console: a DOM terminal in the ARGUS prototype's
+ * tradition.
  *
- * The terminal renders the daemon's rendered stream natively (the engine
- * emits ANSI; xterm is a real terminal emulator, so text is first-class in
- * the browser). This module owns the line discipline — echo, backspace,
- * submit — and the prompt, themed here from the context facts the daemon
- * pushes. Execution is delegated to a submit handler so the terminal knows
- * the session only through the line it hands over and the outcome it is
- * asked to render.
+ * Not a character-grid emulator: the console is a styled document, exactly
+ * as the original ARGUS prototype built it. A native `<input>` carries the
+ * command line (free cursor movement, selection, IME), an HTML transcript
+ * carries the session's rendered stream (ANSI converted to styled spans by
+ * `ansi.ts`), and a Powerlevel10k-style segment bar renders the prompt
+ * context the daemon pushes. Line history, tab completion (through the
+ * wire's `complete` request), and typeahead queueing are native here, the
+ * things a grid emulator made hard.
  *
  * @module
  */
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import '@xterm/xterm/css/xterm.css';
+import { ansi_toHtml, html_escape } from './ansi.js';
 import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
 import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
 
-/** ANSI palette entries used for terminal chrome. */
-const ANSI_GRAY: string = '\x1b[38;5;245m';
-const ANSI_RESET: string = '\x1b[0m';
+/** A completion answer from the wire: candidates and the prefix they complete. */
+export interface CompletionAnswer {
+  candidates: string[];
+  prefix: string;
+}
 
 /** Foreground/background hex pair for one powerline segment. */
 interface SegmentColor {
@@ -41,79 +43,87 @@ const SEGMENT_PALETTE: Record<'host' | 'user' | 'dir' | 'duration' | 'status', S
   status: { bg: '#FF005F', fg: '#FFFFFF' },
 };
 
-/** Powerline separator and Font Awesome glyphs; need a Nerd Font. */
+/** Powerline separator and Font Awesome glyphs, from the bundled Nerd Font. */
 const GLYPHS = {
-  powerline: '',
-  cube: '',
-  user: '',
-  folder: '',
-  bolt: '',
-  error: '',
+  powerline: '',
+  cube: '',
+  user: '',
+  folder: '',
+  bolt: '',
+  error: '',
 } as const;
 
 /** Minimum command duration (ms) before the duration segment appears. */
 const DURATION_THRESHOLD_MS: number = 3_000;
 
+/** How many submitted lines the arrow-key history retains. */
+const HISTORY_LIMIT: number = 200;
+
 /**
- * The indwelling ARGUS terminal: one xterm instance attached to a container,
- * submitting lines to the session and rendering what comes back.
+ * The ARGUS console: transcript, prompt bar, and input line in one screen.
  *
  * @example
  * ```
- * const terminal = new ArgusTerminal(container, async (line) => { ... });
+ * const terminal = new ArgusTerminal(container, submit_handle, complete_ask);
  * terminal.promptContext_set(context);
  * terminal.prompt_draw();
  * ```
  */
 export class ArgusTerminal {
-  private readonly term: Terminal;
-  private readonly fitAddon: FitAddon;
+  private readonly output: HTMLElement;
+  private readonly promptBar: HTMLElement;
+  private readonly inputGlyph: HTMLElement;
+  private readonly input: HTMLInputElement;
   private readonly submit: (line: string) => Promise<void>;
-  private inputBuffer: string = '';
-  private inputLocked: boolean = true;
+  private readonly complete: (prefix: string) => Promise<CompletionAnswer>;
   private promptContext: PromptContext | null = null;
-  private readonly nerdFont: boolean;
+  private busy: boolean = true;
+  private readonly queuedLines: string[] = [];
+  private readonly history: string[] = [];
+  private historyIndex: number = 0;
+  private streamBlock: HTMLElement | null = null;
 
   /**
-   * @param container - The DOM element the terminal renders into.
-   * @param submit - Handles one submitted line; the terminal locks input
-   *   until the returned promise settles.
+   * Builds the console into a container and wires its input events.
+   *
+   * @param container - The DOM element the console renders into.
+   * @param submit - Handles one submitted line; the console queues further
+   *   lines until the returned promise settles.
+   * @param complete - Answers a tab-completion request for a line prefix.
    */
-  constructor(container: HTMLElement, submit: (line: string) => Promise<void>) {
+  constructor(
+    container: HTMLElement,
+    submit: (line: string) => Promise<void>,
+    complete: (prefix: string) => Promise<CompletionAnswer>,
+  ) {
     this.submit = submit;
-    // The data voice: MesloLGS NF first (the Powerlevel10k companion font,
-    // carrying the powerline and icon glyphs), then the Inconsolata webfont.
-    // The caller preloads webfonts before constructing, so xterm measures
-    // its cell grid against the real face rather than a fallback.
-    this.nerdFont = fontAvailable_check('MesloLGS NF');
-    this.term = new Terminal({
-      cursorBlink: true,
-      fontFamily: '"MesloLGS NF", "Inconsolata", "Fira Code", Menlo, monospace',
-      fontSize: 15,
-      lineHeight: 1.15,
-      theme: {
-        background: '#000000',
-        foreground: '#ffeecc',
-        cursor: '#ff9900',
-        cursorAccent: '#000000',
-        selectionBackground: '#663300',
-      },
-    });
-    this.fitAddon = new FitAddon();
-    this.term.loadAddon(this.fitAddon);
-    this.term.open(container);
-    this.fitAddon.fit();
-    this.term.onData((data: string): void => this.input_handle(data));
+    this.complete = complete;
+    container.innerHTML = `
+      <div class="argus-screen">
+        <div class="argus-output"></div>
+        <div class="argus-prompt-bar"></div>
+        <div class="argus-input-line">
+          <span class="argus-input-glyph">❯</span>
+          <input type="text" autocomplete="off" spellcheck="false" aria-label="console input" />
+        </div>
+      </div>`;
+    this.output = element_query(container, '.argus-output');
+    this.promptBar = element_query(container, '.argus-prompt-bar');
+    this.inputGlyph = element_query(container, '.argus-input-glyph');
+    this.input = element_query(container, 'input') as HTMLInputElement;
+
+    container.addEventListener('click', (): void => this.input.focus());
+    this.input.addEventListener('keydown', (event: KeyboardEvent): void => this.key_handle(event));
   }
 
-  /** Refits the terminal grid to its container's current size. */
+  /** Scrolls the transcript to its end (called after drawer resizes too). */
   public size_fit(): void {
-    this.fitAddon.fit();
+    this.output.scrollTop = this.output.scrollHeight;
   }
 
-  /** Focuses the terminal so keystrokes land in the session. */
+  /** Focuses the input so keystrokes land in the session. */
   public focus_take(): void {
-    this.term.focus();
+    this.input.focus();
   }
 
   /**
@@ -126,78 +136,30 @@ export class ArgusTerminal {
   }
 
   /**
-   * Draws the two-line Powerlevel10k-style prompt from the stored context
-   * and unlocks input: a segment bar with background fills and powerline
-   * separators, then a `❯` input line, matching chell's p10k theme.
+   * Redraws the prompt bar from the stored context, unlocks input, and
+   * drains any typeahead-queued line.
    */
   public prompt_draw(): void {
-    const context: PromptContext | null = this.promptContext;
-    if (context === null) {
-      this.term.write(`\x1b[38;2;255;153;0margus${ANSI_RESET} ❯ `);
-      this.inputLocked = false;
-      return;
+    this.stream_close();
+    this.promptBar.innerHTML = this.promptSegments_render();
+    const exitOk: boolean = (this.promptContext?.lastExitCode ?? 0) === 0;
+    this.inputGlyph.style.color = exitOk ? '#00D787' : '#FF005F';
+    this.busy = false;
+    const queued: string | undefined = this.queuedLines.shift();
+    if (queued !== undefined) {
+      this.line_run(queued);
     }
-
-    const host: string = context.uri.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
-    const homePrefix: string = `/home/${context.user}`;
-    const displayPath: string = context.cwd.startsWith(homePrefix)
-      ? `~${context.cwd.slice(homePrefix.length)}`
-      : context.cwd;
-
-    const segments: Array<{ text: string; color: SegmentColor }> = [
-      { text: this.glyph_lead(GLYPHS.cube, host), color: SEGMENT_PALETTE.host },
-      { text: this.glyph_lead(GLYPHS.user, context.user), color: SEGMENT_PALETTE.user },
-      { text: this.glyph_lead(GLYPHS.folder, displayPath), color: SEGMENT_PALETTE.dir },
-    ];
-    if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
-      const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
-      segments.push({ text: this.glyph_lead(GLYPHS.bolt, `${seconds}s`), color: SEGMENT_PALETTE.duration });
-    }
-    if (context.lastExitCode !== 0) {
-      segments.push({
-        text: this.glyph_lead(GLYPHS.error, String(context.lastExitCode)),
-        color: SEGMENT_PALETTE.status,
-      });
-    }
-
-    let bar: string = '';
-    for (let index: number = 0; index < segments.length; index++) {
-      const segment = segments[index];
-      if (segment === undefined) {
-        continue;
-      }
-      bar += `${ansiColor_make(segment.color.fg, segment.color.bg)} ${segment.text} ${ANSI_RESET}`;
-      const next = segments[index + 1];
-      if (this.nerdFont) {
-        bar += next !== undefined
-          ? `${ansiColor_make(segment.color.bg, next.color.bg)}${GLYPHS.powerline}${ANSI_RESET}`
-          : `${ansiColor_make(segment.color.bg)}${GLYPHS.powerline}${ANSI_RESET}`;
-      }
-    }
-    const glyphColor: string = context.lastExitCode === 0 ? '#00D787' : '#FF005F';
-    this.term.write(`${bar}\r\n${ansiColor_make(glyphColor)}❯${ANSI_RESET} `);
-    this.inputLocked = false;
+    this.size_fit();
   }
 
   /**
-   * Prefixes text with a Nerd Font glyph when the font carries one.
+   * Writes greeting lines above the first prompt.
    *
-   * @param glyph - The icon codepoint.
-   * @param text - The segment text.
-   * @returns The composed segment text.
-   */
-  private glyph_lead(glyph: string, text: string): string {
-    return this.nerdFont ? `${glyph} ${text}` : text;
-  }
-
-  /**
-   * Writes greeting lines before the first prompt.
-   *
-   * @param lines - The lines to write.
+   * @param lines - The lines to write (may carry ANSI color).
    */
   public banner_write(lines: string[]): void {
     for (const line of lines) {
-      this.term.write(`${crlf_normalize(line)}\r\n`);
+      this.block_append('argus-banner-line', ansi_toHtml(line));
     }
   }
 
@@ -208,11 +170,10 @@ export class ArgusTerminal {
    * @param chunk - The text chunk.
    */
   public output_write(channel: OutputChannel, chunk: string): void {
-    if (channel === 'status') {
-      this.term.write(`${ANSI_GRAY}${crlf_normalize(chunk)}${ANSI_RESET}`);
-      return;
-    }
-    this.term.write(crlf_normalize(chunk));
+    const block: HTMLElement = this.stream_ensure();
+    const html: string = ansi_toHtml(chunk);
+    block.insertAdjacentHTML('beforeend', channel === 'status' ? `<span class="dim">${html}</span>` : html);
+    this.size_fit();
   }
 
   /**
@@ -224,18 +185,17 @@ export class ArgusTerminal {
   public outcome_write(outcome: ExecuteOutcome): void {
     for (const envelope of outcome.envelopes) {
       if (!outcome.liveChannels.has('data') && envelope.rendered.length > 0) {
-        this.text_writeBlock(envelope.rendered);
+        this.block_append('argus-result', ansi_toHtml(envelope.rendered));
       }
       const renderedErr: string = envelope.renderedErr ?? '';
       if (!outcome.liveChannels.has('err') && renderedErr.length > 0) {
-        this.text_writeBlock(renderedErr);
+        this.block_append('argus-result error', ansi_toHtml(renderedErr));
       }
     }
   }
 
   /**
-   * Renders an envelope another surface produced, prefixed with its surface
-   * tag, mirroring how the remote ChELL client shows bus traffic.
+   * Renders an envelope another surface produced, tagged with its origin.
    *
    * @param surface - The originating surface's bus id.
    * @param envelope - The broadcast envelope.
@@ -244,126 +204,204 @@ export class ArgusTerminal {
     if (envelope.rendered.length === 0) {
       return;
     }
-    this.term.write(`\r\n${ANSI_GRAY}[surface ${surface.slice(0, 6)}]${ANSI_RESET}\r\n`);
-    this.text_writeBlock(envelope.rendered);
+    this.block_append('dim', `[surface ${html_escape(surface.slice(0, 6))}]`);
+    this.block_append('argus-result', ansi_toHtml(envelope.rendered));
+    this.size_fit();
   }
 
   /**
-   * Writes a text block, normalized for the terminal and terminated with a
-   * newline exactly once.
-   *
-   * @param text - The block to write.
-   */
-  private text_writeBlock(text: string): void {
-    const normalized: string = crlf_normalize(text);
-    this.term.write(normalized.endsWith('\r\n') ? normalized : `${normalized}\r\n`);
-  }
-
-  /**
-   * Runs a line as if the operator had typed it at the prompt: the line is
-   * echoed, input locks, and the submit handler receives it. A graphical
-   * gesture lowers through here, so the terminal transcript shows the same
-   * bounded command an operator could have issued. Ignored while a command
-   * is already executing.
+   * Runs a line as if the operator had typed it: echoed into the
+   * transcript, then submitted. While a command is executing the line is
+   * queued and runs when the prompt returns, so lowered gestures and
+   * typeahead never disappear.
    *
    * @param line - The command line to run.
-   * @returns Resolves when the submit handler settles, so lowered gestures
-   *   can chain commands in order.
    */
-  public line_run(line: string): Promise<void> {
-    if (this.inputLocked) {
-      return Promise.resolve();
+  public line_run(line: string): void {
+    if (this.busy) {
+      this.queuedLines.push(line);
+      return;
     }
-    this.term.write(`${line}\r\n`);
-    this.inputBuffer = '';
-    this.inputLocked = true;
-    return this.submit(line);
+    this.busy = true;
+    this.history_push(line);
+    this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+    this.size_fit();
+    void this.submit(line);
   }
 
   /**
-   * Applies the line discipline to raw keyboard data: echo printables,
-   * handle backspace, submit on Enter, and ignore everything else. Input is
-   * ignored while a command is executing.
+   * Routes input-line keys: Enter submits or queues, arrows walk history,
+   * Tab asks the wire for completion.
    *
-   * @param data - Raw data from xterm (a keystroke or a paste).
+   * @param event - The keyboard event.
    */
-  private input_handle(data: string): void {
-    if (this.inputLocked) {
+  private key_handle(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      const line: string = this.input.value;
+      this.input.value = '';
+      if (line.trim().length > 0) {
+        this.line_run(line);
+      } else if (!this.busy) {
+        this.block_append('argus-echo', '<span class="prompt-glyph">❯</span>');
+      }
       return;
     }
-    for (const char of data) {
-      if (char === '\r') {
-        this.term.write('\r\n');
-        const line: string = this.inputBuffer;
-        this.inputBuffer = '';
-        this.inputLocked = true;
-        void this.submit(line);
-        return;
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (this.historyIndex > 0) {
+        this.historyIndex -= 1;
+        this.input.value = this.history[this.historyIndex] ?? '';
       }
-      if (char === '\x7f') {
-        if (this.inputBuffer.length > 0) {
-          this.inputBuffer = this.inputBuffer.slice(0, -1);
-          this.term.write('\b \b');
-        }
-        continue;
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (this.historyIndex < this.history.length) {
+        this.historyIndex += 1;
+        this.input.value = this.history[this.historyIndex] ?? '';
       }
-      if (char >= ' ') {
-        this.inputBuffer += char;
-        this.term.write(char);
-      }
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      void this.completion_apply();
     }
   }
-}
 
-/**
- * Converts bare newlines to CRLF, which xterm requires for correct line
- * starts, leaving existing CRLF pairs untouched.
- *
- * @param text - The text to normalize.
- * @returns The normalized text.
- */
-function crlf_normalize(text: string): string {
-  return text.replace(/\r?\n/g, '\r\n');
-}
-
-/**
- * Builds a truecolor ANSI sequence.
- *
- * @param fgHex - Foreground color as `#rrggbb`.
- * @param bgHex - Optional background color as `#rrggbb`.
- * @returns The escape sequence.
- */
-function ansiColor_make(fgHex: string, bgHex?: string): string {
-  const fg: [number, number, number] = hex_toRgb(fgHex);
-  let sequence: string = `\x1b[38;2;${fg[0]};${fg[1]};${fg[2]}m`;
-  if (bgHex !== undefined) {
-    const bg: [number, number, number] = hex_toRgb(bgHex);
-    sequence += `\x1b[48;2;${bg[0]};${bg[1]};${bg[2]}m`;
+  /**
+   * Asks the wire for completions of the current input and applies the
+   * answer: a single candidate completes in place; several are listed in
+   * the transcript, prototype-style.
+   */
+  private async completion_apply(): Promise<void> {
+    const line: string = this.input.value;
+    if (line.length === 0) {
+      return;
+    }
+    let answer: CompletionAnswer;
+    try {
+      answer = await this.complete(line);
+    } catch {
+      return;
+    }
+    if (answer.candidates.length === 1) {
+      const sole: string = answer.candidates[0] ?? '';
+      this.input.value = line.slice(0, line.length - answer.prefix.length) + sole;
+      return;
+    }
+    if (answer.candidates.length > 1) {
+      this.block_append('dim', html_escape(answer.candidates.join('  ')));
+      this.size_fit();
+    }
   }
-  return sequence;
-}
 
-/**
- * Parses a `#rrggbb` color into its channels.
- *
- * @param hex - The color string.
- * @returns The `[r, g, b]` triple.
- */
-function hex_toRgb(hex: string): [number, number, number] {
-  const value: number = parseInt(hex.slice(1), 16);
-  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
-}
-
-/**
- * Reports whether a locally installed font family is available.
- *
- * @param family - The font family name.
- * @returns True when the browser can render with it.
- */
-function fontAvailable_check(family: string): boolean {
-  try {
-    return document.fonts.check(`15px "${family}"`);
-  } catch {
-    return false;
+  /**
+   * Records a line in the arrow-key history, bounded and deduplicated
+   * against the immediately previous entry.
+   *
+   * @param line - The submitted line.
+   */
+  private history_push(line: string): void {
+    if (this.history[this.history.length - 1] !== line) {
+      this.history.push(line);
+      if (this.history.length > HISTORY_LIMIT) {
+        this.history.shift();
+      }
+    }
+    this.historyIndex = this.history.length;
   }
+
+  /**
+   * Appends one block to the transcript.
+   *
+   * @param className - The block's CSS class(es).
+   * @param html - The block's inner HTML (already escaped/converted).
+   */
+  private block_append(className: string, html: string): void {
+    const block: HTMLDivElement = document.createElement('div');
+    block.className = `argus-line ${className}`;
+    block.innerHTML = html;
+    this.output.appendChild(block);
+  }
+
+  /**
+   * Returns the open live-stream block for the executing command, creating
+   * it on first use.
+   *
+   * @returns The stream block element.
+   */
+  private stream_ensure(): HTMLElement {
+    if (this.streamBlock === null) {
+      const block: HTMLDivElement = document.createElement('div');
+      block.className = 'argus-line argus-stream';
+      this.output.appendChild(block);
+      this.streamBlock = block;
+    }
+    return this.streamBlock;
+  }
+
+  /** Closes the live-stream block at the end of a command. */
+  private stream_close(): void {
+    this.streamBlock = null;
+  }
+
+  /**
+   * Renders the Powerlevel10k segment bar from the stored context.
+   *
+   * @returns The prompt bar's inner HTML.
+   */
+  private promptSegments_render(): string {
+    const context: PromptContext | null = this.promptContext;
+    if (context === null) {
+      return '<span class="dim">argus</span>';
+    }
+    const host: string = context.uri.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
+    const homePrefix: string = `/home/${context.user}`;
+    const displayPath: string = context.cwd.startsWith(homePrefix)
+      ? `~${context.cwd.slice(homePrefix.length)}`
+      : context.cwd;
+
+    const segments: Array<{ text: string; color: SegmentColor }> = [
+      { text: `${GLYPHS.cube} ${host}`, color: SEGMENT_PALETTE.host },
+      { text: `${GLYPHS.user} ${context.user}`, color: SEGMENT_PALETTE.user },
+      { text: `${GLYPHS.folder} ${displayPath}`, color: SEGMENT_PALETTE.dir },
+    ];
+    if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
+      const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
+      segments.push({ text: `${GLYPHS.bolt} ${seconds}s`, color: SEGMENT_PALETTE.duration });
+    }
+    if (context.lastExitCode !== 0) {
+      segments.push({ text: `${GLYPHS.error} ${context.lastExitCode}`, color: SEGMENT_PALETTE.status });
+    }
+
+    let bar: string = '';
+    for (let index: number = 0; index < segments.length; index++) {
+      const segment = segments[index];
+      if (segment === undefined) {
+        continue;
+      }
+      bar += `<span style="color:${segment.color.fg};background-color:${segment.color.bg}"> ${html_escape(segment.text)} </span>`;
+      const next = segments[index + 1];
+      bar += next !== undefined
+        ? `<span style="color:${segment.color.bg};background-color:${next.color.bg}">${GLYPHS.powerline}</span>`
+        : `<span style="color:${segment.color.bg}">${GLYPHS.powerline}</span>`;
+    }
+    return bar;
+  }
+}
+
+/**
+ * Queries a required child element.
+ *
+ * @param root - The element to query within.
+ * @param selector - The CSS selector.
+ * @returns The matched element.
+ * @throws {Error} When nothing matches.
+ */
+function element_query(root: HTMLElement, selector: string): HTMLElement {
+  const element: HTMLElement | null = root.querySelector(selector);
+  if (element === null) {
+    throw new Error(`console structure is missing '${selector}'`);
+  }
+  return element;
 }

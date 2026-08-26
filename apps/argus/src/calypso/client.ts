@@ -96,6 +96,18 @@ interface PendingExecute {
   liveChannels: Set<'data' | 'err'>;
 }
 
+/** A completion reply: the candidates and the prefix they complete. */
+export interface CompleteOutcome {
+  candidates: string[];
+  prefix: string;
+}
+
+/** A pending completion request awaiting its correlated reply. */
+interface PendingComplete {
+  resolve: (outcome: CompleteOutcome) => void;
+  reject: (error: Error) => void;
+}
+
 /**
  * A browser surface attached to one CALYPSO session.
  *
@@ -109,6 +121,7 @@ export class ArgusClient {
   private readonly socket: WebSocket;
   private readonly handlers: ClientHandlers;
   private readonly pending: Map<string, PendingExecute> = new Map();
+  private readonly pendingCompletions: Map<string, PendingComplete> = new Map();
   private nextId: number = 0;
 
   private constructor(socket: WebSocket, handlers: ClientHandlers) {
@@ -191,6 +204,21 @@ export class ArgusClient {
     });
   }
 
+  /**
+   * Requests completion candidates for a partial input line.
+   *
+   * @param prefix - The input line up to the cursor.
+   * @returns The candidates and the prefix they complete.
+   * @throws {Error} When the daemon reports an error for the request.
+   */
+  public line_complete(prefix: string): Promise<CompleteOutcome> {
+    const id: string = `argus-c-${this.nextId++}`;
+    return new Promise((resolve, reject) => {
+      this.pendingCompletions.set(id, { resolve, reject });
+      this.socket.send(JSON.stringify({ type: 'complete', id, prefix }));
+    });
+  }
+
   /** Closes the WebSocket. */
   public connection_close(): void {
     this.socket.close();
@@ -220,6 +248,14 @@ export class ArgusClient {
         }
         break;
       }
+      case 'complete': {
+        const request: PendingComplete | undefined = this.pendingCompletions.get(message.id);
+        if (request) {
+          this.pendingCompletions.delete(message.id);
+          request.resolve({ candidates: message.candidates, prefix: message.prefix });
+        }
+        break;
+      }
       case 'output': {
         if (message.channel === 'data' || message.channel === 'err') {
           this.pending.get(message.id)?.liveChannels.add(message.channel);
@@ -242,6 +278,11 @@ export class ArgusClient {
           if (request) {
             this.pending.delete(message.id);
             request.reject(new Error(message.reason));
+          }
+          const completion: PendingComplete | undefined = this.pendingCompletions.get(message.id);
+          if (completion) {
+            this.pendingCompletions.delete(message.id);
+            completion.reject(new Error(message.reason));
           }
         }
         break;

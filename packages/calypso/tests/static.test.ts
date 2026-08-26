@@ -125,6 +125,67 @@ describe('CalypsoDaemon static serving', () => {
   });
 });
 
+describe('CalypsoDaemon /vfs route', () => {
+  let daemon: CalypsoDaemon;
+  let port: number;
+
+  /** A stub engine that serves one known file through file_read. */
+  function vfsEngine_create(): HostedEngine {
+    return {
+      ...stubEngine_create(),
+      file_read: async (filePath: string): Promise<Buffer> => {
+        if (filePath === '/home/demo/brain.png') {
+          return Buffer.from('png-bytes');
+        }
+        throw new Error('no such file');
+      },
+    };
+  }
+
+  beforeEach(async () => {
+    daemon = new CalypsoDaemon({ engine: vfsEngine_create(), token: TOKEN });
+    port = await daemon.start();
+  });
+
+  afterEach(async () => {
+    await daemon.stop();
+  });
+
+  it('serves file bytes with the extension content type', async () => {
+    const reply = await http_get(
+      `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/home/demo/brain.png')}&token=${TOKEN}`,
+    );
+    expect(reply.status).toBe(200);
+    expect(reply.type).toContain('image/png');
+    expect(reply.body).toBe('png-bytes');
+  });
+
+  it('refuses a bad token with 404', async () => {
+    const reply = await http_get(
+      `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/home/demo/brain.png')}&token=wrong`,
+    );
+    expect(reply.status).toBe(404);
+  });
+
+  it('404s a read failure', async () => {
+    const reply = await http_get(
+      `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/nope')}&token=${TOKEN}`,
+    );
+    expect(reply.status).toBe(404);
+  });
+
+  it('404s when the engine offers no file_read', async () => {
+    const bare = new CalypsoDaemon({ engine: stubEngine_create(), token: TOKEN });
+    const barePort = await bare.start();
+    try {
+      const reply = await http_get(`http://127.0.0.1:${barePort}/vfs?path=/x&token=${TOKEN}`);
+      expect(reply.status).toBe(404);
+    } finally {
+      await bare.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon without a web root', () => {
   it('404s plain HTTP while the wire still answers', async () => {
     const daemon = new CalypsoDaemon({ engine: stubEngine_create(), token: TOKEN });

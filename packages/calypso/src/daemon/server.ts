@@ -29,7 +29,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { HostedEngine, CompletionResult } from './engine.js';
-import { staticRequest_handle } from './static.js';
+import { staticRequest_handle, contentType_forPath } from './static.js';
 import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '../protocol/version.js';
@@ -179,6 +179,11 @@ export class CalypsoDaemon {
     return new Promise((resolve: (port: number) => void, reject: (err: Error) => void) => {
       const httpServer: Server = createServer(
         (request: IncomingMessage, response: ServerResponse) => {
+          const requestPath: string = (request.url ?? '/').split('?')[0] ?? '/';
+          if (requestPath === '/vfs') {
+            void this.vfs_serve(request, response);
+            return;
+          }
           if (this.webRoot !== undefined) {
             staticRequest_handle(this.webRoot, request, response);
             return;
@@ -219,6 +224,50 @@ export class CalypsoDaemon {
       this.wss = null;
       this.httpServer = null;
     });
+  }
+
+  /**
+   * Serves one ChRIS file's bytes over HTTP: `GET /vfs?path=...&token=...`.
+   *
+   * The route exists so browser surfaces can render file content natively
+   * (an image in a panel) instead of through the terminal stream. It is
+   * gated by the same attach token as the wire (compared in constant time)
+   * and requires the hosted engine to provide `file_read`; refusals and
+   * failures answer 404 so the response does not confirm what exists.
+   *
+   * @param request - The incoming HTTP request.
+   * @param response - The response to write.
+   */
+  private async vfs_serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const refuse = (status: number, message: string): void => {
+      response.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end(message);
+    };
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      refuse(405, 'method not allowed');
+      return;
+    }
+    const query: URLSearchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+    if (!token_matches(this.token, query.get('token') ?? '')) {
+      refuse(404, 'not found');
+      return;
+    }
+    const filePath: string | null = query.get('path');
+    const read = this.engine.file_read?.bind(this.engine);
+    if (filePath === null || filePath.length === 0 || read === undefined) {
+      refuse(404, 'not found');
+      return;
+    }
+    try {
+      const bytes: Buffer = await read(filePath);
+      response.writeHead(200, {
+        'content-type': contentType_forPath(filePath),
+        'content-length': bytes.length,
+      });
+      response.end(request.method === 'HEAD' ? undefined : bytes);
+    } catch {
+      refuse(404, 'not found');
+    }
   }
 
   /**

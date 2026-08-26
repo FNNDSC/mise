@@ -1,0 +1,15 @@
+MesloLGS NF (Regular, Bold)
+
+These font files are the "MesloLGS NF" builds distributed with the
+Powerlevel10k project (https://github.com/romkatv/powerlevel10k), vendored
+here unmodified so the ARGUS console renders its full glyph set (powerline
+separators, icons, box drawing) identically on every viewing machine.
+
+Provenance and licensing:
+- Meslo LG is by Andre Berg, a customization of Apple's Menlo, itself
+  derived from Bitstream Vera Sans Mono. Distributed under the Apache
+  License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+- The Nerd Fonts patching that adds the icon glyphs is MIT licensed
+  (https://github.com/ryanoasis/nerd-fonts).
+
+Both licenses permit redistribution; this notice preserves attribution.

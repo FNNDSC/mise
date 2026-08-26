@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
   </head>
@@ -67,10 +67,12 @@
                workspace lid (the bar-panel below), per the prototype's
                interaction design. -->
           <section id="drawer">
-            <div id="drawer-header">
-              <span class="drawer-title">CALYPSO CONSOLE</span>
-              <span id="drawer-status">MODE: [OFFLINE]</span>
-              <button id="drawer-close" title="retract console" aria-label="retract console"></button>
+            <div class="lcars-terminal-header-bar">
+              <div class="lcars-bar-horizontal">
+                <span class="lcars-title">CALYPSO CONSOLE</span>
+                <span class="lcars-terminal-status" id="drawer-status">MODE: [OFFLINE]</span>
+              </div>
+              <div class="lcars-bar-end" id="drawer-close" title="retract console" role="button" tabindex="0"></div>
             </div>
             <div id="terminal"></div>
             <div id="drawer-strip" title="drag to resize"></div>

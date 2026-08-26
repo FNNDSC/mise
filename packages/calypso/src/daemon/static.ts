@@ -16,7 +16,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 
-/** Content types for the file extensions a web bundle actually ships. */
+/** Content types for web-bundle assets and the file kinds `/vfs` serves. */
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -26,12 +26,29 @@ const CONTENT_TYPES: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
   '.ico': 'image/x-icon',
+  '.pdf': 'application/pdf',
+  '.ttf': 'font/ttf',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.wasm': 'application/wasm',
 };
+
+/**
+ * Resolves the content type a path's extension implies.
+ *
+ * @param filePath - The path whose extension to inspect.
+ * @returns The content type; a binary octet-stream when unrecognized.
+ */
+export function contentType_forPath(filePath: string): string {
+  return CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+}
 
 /**
  * Picks the first candidate directory that holds a servable web bundle.
@@ -104,9 +121,7 @@ export function staticRequest_handle(
     return;
   }
 
-  const contentType: string =
-    CONTENT_TYPES[path.extname(resolvedPath).toLowerCase()] ?? 'application/octet-stream';
-  response.writeHead(200, { 'content-type': contentType });
+  response.writeHead(200, { 'content-type': contentType_forPath(resolvedPath) });
   if (request.method === 'HEAD') {
     response.end();
     return;

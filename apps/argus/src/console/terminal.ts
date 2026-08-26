@@ -1,0 +1,407 @@
+/**
+ * @file The indwelling console: a DOM terminal in the ARGUS prototype's
+ * tradition.
+ *
+ * Not a character-grid emulator: the console is a styled document, exactly
+ * as the original ARGUS prototype built it. A native `<input>` carries the
+ * command line (free cursor movement, selection, IME), an HTML transcript
+ * carries the session's rendered stream (ANSI converted to styled spans by
+ * `ansi.ts`), and a Powerlevel10k-style segment bar renders the prompt
+ * context the daemon pushes. Line history, tab completion (through the
+ * wire's `complete` request), and typeahead queueing are native here, the
+ * things a grid emulator made hard.
+ *
+ * @module
+ */
+import { ansi_toHtml, html_escape } from './ansi.js';
+import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
+import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
+
+/** A completion answer from the wire: candidates and the prefix they complete. */
+export interface CompletionAnswer {
+  candidates: string[];
+  prefix: string;
+}
+
+/** Foreground/background hex pair for one powerline segment. */
+interface SegmentColor {
+  bg: string;
+  fg: string;
+}
+
+/**
+ * The prompt segment palette, mirroring chell's Powerlevel10k theme
+ * (`packages/chell/src/core/prompt/palette.ts`) so the browser console and
+ * the CLI surface read as one family. Duplicated by value because argus may
+ * not import the execution stack.
+ */
+const SEGMENT_PALETTE: Record<'host' | 'user' | 'dir' | 'duration' | 'status', SegmentColor> = {
+  host: { bg: '#00AFFF', fg: '#001018' },
+  user: { bg: '#00D787', fg: '#00140C' },
+  dir: { bg: '#FFD75F', fg: '#201800' },
+  duration: { bg: '#FF8700', fg: '#201000' },
+  status: { bg: '#FF005F', fg: '#FFFFFF' },
+};
+
+/** Powerline separator and Font Awesome glyphs, from the bundled Nerd Font. */
+const GLYPHS = {
+  powerline: '',
+  cube: '',
+  user: '',
+  folder: '',
+  bolt: '',
+  error: '',
+} as const;
+
+/** Minimum command duration (ms) before the duration segment appears. */
+const DURATION_THRESHOLD_MS: number = 3_000;
+
+/** How many submitted lines the arrow-key history retains. */
+const HISTORY_LIMIT: number = 200;
+
+/**
+ * The ARGUS console: transcript, prompt bar, and input line in one screen.
+ *
+ * @example
+ * ```
+ * const terminal = new ArgusTerminal(container, submit_handle, complete_ask);
+ * terminal.promptContext_set(context);
+ * terminal.prompt_draw();
+ * ```
+ */
+export class ArgusTerminal {
+  private readonly output: HTMLElement;
+  private readonly promptBar: HTMLElement;
+  private readonly inputGlyph: HTMLElement;
+  private readonly input: HTMLInputElement;
+  private readonly submit: (line: string) => Promise<void>;
+  private readonly complete: (prefix: string) => Promise<CompletionAnswer>;
+  private promptContext: PromptContext | null = null;
+  private busy: boolean = true;
+  private readonly queuedLines: string[] = [];
+  private readonly history: string[] = [];
+  private historyIndex: number = 0;
+  private streamBlock: HTMLElement | null = null;
+
+  /**
+   * Builds the console into a container and wires its input events.
+   *
+   * @param container - The DOM element the console renders into.
+   * @param submit - Handles one submitted line; the console queues further
+   *   lines until the returned promise settles.
+   * @param complete - Answers a tab-completion request for a line prefix.
+   */
+  constructor(
+    container: HTMLElement,
+    submit: (line: string) => Promise<void>,
+    complete: (prefix: string) => Promise<CompletionAnswer>,
+  ) {
+    this.submit = submit;
+    this.complete = complete;
+    container.innerHTML = `
+      <div class="argus-screen">
+        <div class="argus-output"></div>
+        <div class="argus-prompt-bar"></div>
+        <div class="argus-input-line">
+          <span class="argus-input-glyph">❯</span>
+          <input type="text" autocomplete="off" spellcheck="false" aria-label="console input" />
+        </div>
+      </div>`;
+    this.output = element_query(container, '.argus-output');
+    this.promptBar = element_query(container, '.argus-prompt-bar');
+    this.inputGlyph = element_query(container, '.argus-input-glyph');
+    this.input = element_query(container, 'input') as HTMLInputElement;
+
+    container.addEventListener('click', (): void => this.input.focus());
+    this.input.addEventListener('keydown', (event: KeyboardEvent): void => this.key_handle(event));
+  }
+
+  /** Scrolls the transcript to its end (called after drawer resizes too). */
+  public size_fit(): void {
+    this.output.scrollTop = this.output.scrollHeight;
+  }
+
+  /** Focuses the input so keystrokes land in the session. */
+  public focus_take(): void {
+    this.input.focus();
+  }
+
+  /**
+   * Stores the freshest prompt context pushed by the daemon.
+   *
+   * @param context - The engine-known prompt facts.
+   */
+  public promptContext_set(context: PromptContext): void {
+    this.promptContext = context;
+  }
+
+  /**
+   * Redraws the prompt bar from the stored context, unlocks input, and
+   * drains any typeahead-queued line.
+   */
+  public prompt_draw(): void {
+    this.stream_close();
+    this.promptBar.innerHTML = this.promptSegments_render();
+    const exitOk: boolean = (this.promptContext?.lastExitCode ?? 0) === 0;
+    this.inputGlyph.style.color = exitOk ? '#00D787' : '#FF005F';
+    this.busy = false;
+    const queued: string | undefined = this.queuedLines.shift();
+    if (queued !== undefined) {
+      this.line_run(queued);
+    }
+    this.size_fit();
+  }
+
+  /**
+   * Writes greeting lines above the first prompt.
+   *
+   * @param lines - The lines to write (may carry ANSI color).
+   */
+  public banner_write(lines: string[]): void {
+    for (const line of lines) {
+      this.block_append('argus-banner-line', ansi_toHtml(line));
+    }
+  }
+
+  /**
+   * Writes one live output chunk from the executing command.
+   *
+   * @param channel - The producing channel; status renders dimmed.
+   * @param chunk - The text chunk.
+   */
+  public output_write(channel: OutputChannel, chunk: string): void {
+    const block: HTMLElement = this.stream_ensure();
+    const html: string = ansi_toHtml(chunk);
+    block.insertAdjacentHTML('beforeend', channel === 'status' ? `<span class="dim">${html}</span>` : html);
+    this.size_fit();
+  }
+
+  /**
+   * Renders one executed line's final envelopes, suppressing channels whose
+   * output already streamed live so nothing prints twice.
+   *
+   * @param outcome - The envelopes and the channels that streamed live.
+   */
+  public outcome_write(outcome: ExecuteOutcome): void {
+    for (const envelope of outcome.envelopes) {
+      if (!outcome.liveChannels.has('data') && envelope.rendered.length > 0) {
+        this.block_append('argus-result', ansi_toHtml(envelope.rendered));
+      }
+      const renderedErr: string = envelope.renderedErr ?? '';
+      if (!outcome.liveChannels.has('err') && renderedErr.length > 0) {
+        this.block_append('argus-result error', ansi_toHtml(renderedErr));
+      }
+    }
+  }
+
+  /**
+   * Renders an envelope another surface produced, tagged with its origin.
+   *
+   * @param surface - The originating surface's bus id.
+   * @param envelope - The broadcast envelope.
+   */
+  public session_write(surface: string, envelope: WireEnvelope): void {
+    if (envelope.rendered.length === 0) {
+      return;
+    }
+    this.block_append('dim', `[surface ${html_escape(surface.slice(0, 6))}]`);
+    this.block_append('argus-result', ansi_toHtml(envelope.rendered));
+    this.size_fit();
+  }
+
+  /**
+   * Runs a line as if the operator had typed it: echoed into the
+   * transcript, then submitted. While a command is executing the line is
+   * queued and runs when the prompt returns, so lowered gestures and
+   * typeahead never disappear.
+   *
+   * @param line - The command line to run.
+   */
+  public line_run(line: string): void {
+    if (this.busy) {
+      this.queuedLines.push(line);
+      return;
+    }
+    this.busy = true;
+    this.history_push(line);
+    this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+    this.size_fit();
+    void this.submit(line);
+  }
+
+  /**
+   * Routes input-line keys: Enter submits or queues, arrows walk history,
+   * Tab asks the wire for completion.
+   *
+   * @param event - The keyboard event.
+   */
+  private key_handle(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      const line: string = this.input.value;
+      this.input.value = '';
+      if (line.trim().length > 0) {
+        this.line_run(line);
+      } else if (!this.busy) {
+        this.block_append('argus-echo', '<span class="prompt-glyph">❯</span>');
+      }
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (this.historyIndex > 0) {
+        this.historyIndex -= 1;
+        this.input.value = this.history[this.historyIndex] ?? '';
+      }
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (this.historyIndex < this.history.length) {
+        this.historyIndex += 1;
+        this.input.value = this.history[this.historyIndex] ?? '';
+      }
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      void this.completion_apply();
+    }
+  }
+
+  /**
+   * Asks the wire for completions of the current input and applies the
+   * answer: a single candidate completes in place; several are listed in
+   * the transcript, prototype-style.
+   */
+  private async completion_apply(): Promise<void> {
+    const line: string = this.input.value;
+    if (line.length === 0) {
+      return;
+    }
+    let answer: CompletionAnswer;
+    try {
+      answer = await this.complete(line);
+    } catch {
+      return;
+    }
+    if (answer.candidates.length === 1) {
+      const sole: string = answer.candidates[0] ?? '';
+      this.input.value = line.slice(0, line.length - answer.prefix.length) + sole;
+      return;
+    }
+    if (answer.candidates.length > 1) {
+      this.block_append('dim', html_escape(answer.candidates.join('  ')));
+      this.size_fit();
+    }
+  }
+
+  /**
+   * Records a line in the arrow-key history, bounded and deduplicated
+   * against the immediately previous entry.
+   *
+   * @param line - The submitted line.
+   */
+  private history_push(line: string): void {
+    if (this.history[this.history.length - 1] !== line) {
+      this.history.push(line);
+      if (this.history.length > HISTORY_LIMIT) {
+        this.history.shift();
+      }
+    }
+    this.historyIndex = this.history.length;
+  }
+
+  /**
+   * Appends one block to the transcript.
+   *
+   * @param className - The block's CSS class(es).
+   * @param html - The block's inner HTML (already escaped/converted).
+   */
+  private block_append(className: string, html: string): void {
+    const block: HTMLDivElement = document.createElement('div');
+    block.className = `argus-line ${className}`;
+    block.innerHTML = html;
+    this.output.appendChild(block);
+  }
+
+  /**
+   * Returns the open live-stream block for the executing command, creating
+   * it on first use.
+   *
+   * @returns The stream block element.
+   */
+  private stream_ensure(): HTMLElement {
+    if (this.streamBlock === null) {
+      const block: HTMLDivElement = document.createElement('div');
+      block.className = 'argus-line argus-stream';
+      this.output.appendChild(block);
+      this.streamBlock = block;
+    }
+    return this.streamBlock;
+  }
+
+  /** Closes the live-stream block at the end of a command. */
+  private stream_close(): void {
+    this.streamBlock = null;
+  }
+
+  /**
+   * Renders the Powerlevel10k segment bar from the stored context.
+   *
+   * @returns The prompt bar's inner HTML.
+   */
+  private promptSegments_render(): string {
+    const context: PromptContext | null = this.promptContext;
+    if (context === null) {
+      return '<span class="dim">argus</span>';
+    }
+    const host: string = context.uri.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
+    const homePrefix: string = `/home/${context.user}`;
+    const displayPath: string = context.cwd.startsWith(homePrefix)
+      ? `~${context.cwd.slice(homePrefix.length)}`
+      : context.cwd;
+
+    const segments: Array<{ text: string; color: SegmentColor }> = [
+      { text: `${GLYPHS.cube} ${host}`, color: SEGMENT_PALETTE.host },
+      { text: `${GLYPHS.user} ${context.user}`, color: SEGMENT_PALETTE.user },
+      { text: `${GLYPHS.folder} ${displayPath}`, color: SEGMENT_PALETTE.dir },
+    ];
+    if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
+      const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
+      segments.push({ text: `${GLYPHS.bolt} ${seconds}s`, color: SEGMENT_PALETTE.duration });
+    }
+    if (context.lastExitCode !== 0) {
+      segments.push({ text: `${GLYPHS.error} ${context.lastExitCode}`, color: SEGMENT_PALETTE.status });
+    }
+
+    let bar: string = '';
+    for (let index: number = 0; index < segments.length; index++) {
+      const segment = segments[index];
+      if (segment === undefined) {
+        continue;
+      }
+      bar += `<span style="color:${segment.color.fg};background-color:${segment.color.bg}"> ${html_escape(segment.text)} </span>`;
+      const next = segments[index + 1];
+      bar += next !== undefined
+        ? `<span style="color:${segment.color.bg};background-color:${next.color.bg}">${GLYPHS.powerline}</span>`
+        : `<span style="color:${segment.color.bg}">${GLYPHS.powerline}</span>`;
+    }
+    return bar;
+  }
+}
+
+/**
+ * Queries a required child element.
+ *
+ * @param root - The element to query within.
+ * @param selector - The CSS selector.
+ * @returns The matched element.
+ * @throws {Error} When nothing matches.
+ */
+function element_query(root: HTMLElement, selector: string): HTMLElement {
+  const element: HTMLElement | null = root.querySelector(selector);
+  if (element === null) {
+    throw new Error(`console structure is missing '${selector}'`);
+  }
+  return element;
+}

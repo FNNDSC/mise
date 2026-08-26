@@ -51,4 +51,16 @@ export interface HostedEngine {
    * @returns The matching candidates and the prefix they complete.
    */
   line_complete(linePrefix: string): Promise<CompletionResult>;
+
+  /**
+   * Reads one ChRIS file's raw bytes, resolved against the session's
+   * working directory. When the engine provides it, the daemon exposes a
+   * token-gated `/vfs` HTTP route so browser surfaces can render file
+   * content natively (images in a panel) instead of through the terminal
+   * stream.
+   *
+   * @param filePath - The file's path (absolute or cwd-relative).
+   * @returns The file's bytes.
+   */
+  file_read?(filePath: string): Promise<Buffer>;
 }

@@ -1,0 +1,22 @@
+{
+  "name": "@fnndsc/argus",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ARGUS: an LCARS web console and terminal surface for mise, attached to a CALYPSO session",
+  "type": "module",
+  "scripts": {
+    "theme": "node scripts/theme_ensure.mjs",
+    "build": "npm run theme && tsc --noEmit && vite build",
+    "dev": "npm run theme && vite",
+    "test": "tsc --noEmit"
+  },
+  "author": "Rudolph Pienaar",
+  "license": "MIT",
+  "dependencies": {
+    "@fnndsc/calypso": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vite": "^7.1.0"
+  }
+}

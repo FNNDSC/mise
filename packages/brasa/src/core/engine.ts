@@ -87,6 +87,17 @@ export interface BrasaEngine {
    * @returns The matching candidates and the prefix they complete.
    */
   line_complete(linePrefix: string): Promise<CompletionResult>;
+
+  /**
+   * Reads one ChRIS file's raw bytes, resolved against the session's
+   * working directory. The seam a hosting daemon uses to serve file
+   * content to surfaces that render it natively (an image in a browser
+   * panel) rather than through a terminal stream.
+   *
+   * @param filePath - The file's path (absolute or cwd-relative).
+   * @returns The file's bytes.
+   */
+  file_read?(filePath: string): Promise<Buffer>;
 }
 
 /**
@@ -323,5 +334,22 @@ async function vfsProviders_register(): Promise<void> {
 export async function engine_create(): Promise<BrasaEngine> {
   await session.init();
   await vfsProviders_register();
-  return { line_execute, line_cancel, line_complete };
+  return { line_execute, line_cancel, line_complete, file_read };
+}
+
+/**
+ * Reads one ChRIS file's raw bytes through ChILI, resolved against the
+ * session's working directory.
+ *
+ * @param filePath - The file's path (absolute or cwd-relative).
+ * @returns The file's bytes.
+ * @throws {Error} When the path does not resolve to a readable file.
+ */
+export async function file_read(filePath: string): Promise<Buffer> {
+  const { files_catBinary } = await import('@fnndsc/chili/commands/fs/cat.js');
+  const result: Result<Buffer> = await files_catBinary(filePath);
+  if (!result.ok) {
+    throw new Error(`cannot read ${filePath}`);
+  }
+  return result.value;
 }

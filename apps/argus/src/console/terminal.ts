@@ -82,6 +82,12 @@ export class ArgusTerminal {
   private readonly history: string[] = [];
   private historyIndex: number = 0;
   private streamBlock: HTMLElement | null = null;
+  /** The trailing element holding the not-yet-completed stream line. */
+  private streamPendingElement: HTMLElement | null = null;
+  /** Raw text of the current stream line, rewound by `\r` and cleared by `\n`. */
+  private streamPendingText: string = '';
+  /** The channel that opened the current stream line, for its styling. */
+  private streamPendingChannel: OutputChannel = 'data';
 
   /**
    * Builds the console into a container and wires its input events.
@@ -166,14 +172,76 @@ export class ArgusTerminal {
   /**
    * Writes one live output chunk from the executing command.
    *
+   * A chunk is not a line. Progress output redraws itself by returning to
+   * column zero with `\r` and rewriting, so the stream is kept as completed
+   * lines plus one pending line: `\n` completes the pending line, `\r`
+   * discards it, and anything else extends it. Without this a spinner's
+   * every frame would append, turning one redrawing line into thousands.
+   *
    * @param channel - The producing channel; status renders dimmed.
    * @param chunk - The text chunk.
    */
   public output_write(channel: OutputChannel, chunk: string): void {
-    const block: HTMLElement = this.stream_ensure();
-    const html: string = ansi_toHtml(chunk);
-    block.insertAdjacentHTML('beforeend', channel === 'status' ? `<span class="dim">${html}</span>` : html);
+    this.stream_ensure();
+    let rest: string = chunk;
+    while (rest.length > 0) {
+      const breakAt: number = rest.search(/[\r\n]/);
+      if (breakAt === -1) {
+        this.pending_extend(channel, rest);
+        break;
+      }
+      this.pending_extend(channel, rest.slice(0, breakAt));
+      // A `\r\n` pair is one line ending, not a rewind followed by a blank
+      // line; only a lone `\r` means the line is about to be rewritten.
+      const isCrLf: boolean = rest[breakAt] === '\r' && rest[breakAt + 1] === '\n';
+      if (rest[breakAt] === '\n' || isCrLf) {
+        this.pending_commit();
+      } else {
+        this.streamPendingText = '';
+      }
+      rest = rest.slice(breakAt + (isCrLf ? 2 : 1));
+    }
+    this.pending_paint();
     this.size_fit();
+  }
+
+  /**
+   * Extends the pending line, adopting the channel when the line is new.
+   *
+   * @param channel - The producing channel.
+   * @param text - The text to append (free of line breaks).
+   */
+  private pending_extend(channel: OutputChannel, text: string): void {
+    if (this.streamPendingText.length === 0) {
+      this.streamPendingChannel = channel;
+    }
+    this.streamPendingText += text;
+  }
+
+  /** Moves the pending line into the committed transcript above it. */
+  private pending_commit(): void {
+    this.streamPendingElement?.insertAdjacentHTML('beforebegin', `${this.pending_toHtml()}\n`);
+    this.streamPendingText = '';
+  }
+
+  /** Repaints the pending line in place. */
+  private pending_paint(): void {
+    if (this.streamPendingElement !== null) {
+      this.streamPendingElement.innerHTML = this.pending_toHtml();
+    }
+  }
+
+  /**
+   * Renders the pending line's text with its channel's styling.
+   *
+   * @returns The pending line's HTML, empty when the line is empty.
+   */
+  private pending_toHtml(): string {
+    if (this.streamPendingText.length === 0) {
+      return '';
+    }
+    const html: string = ansi_toHtml(this.streamPendingText);
+    return this.streamPendingChannel === 'status' ? `<span class="dim">${html}</span>` : html;
   }
 
   /**
@@ -334,14 +402,32 @@ export class ArgusTerminal {
     if (this.streamBlock === null) {
       const block: HTMLDivElement = document.createElement('div');
       block.className = 'argus-line argus-stream';
+      const pending: HTMLSpanElement = document.createElement('span');
+      pending.className = 'argus-stream-pending';
+      block.appendChild(pending);
       this.output.appendChild(block);
       this.streamBlock = block;
+      this.streamPendingElement = pending;
+      this.streamPendingText = '';
+      this.streamPendingChannel = 'data';
     }
     return this.streamBlock;
   }
 
-  /** Closes the live-stream block at the end of a command. */
+  /**
+   * Closes the live-stream block at the end of a command.
+   *
+   * A command may end mid-line — a spinner's last frame carries no newline —
+   * so the pending line is committed rather than dropped, unless the spinner
+   * already erased it, in which case there is nothing to keep.
+   */
   private stream_close(): void {
+    if (this.streamPendingText.length > 0) {
+      this.pending_commit();
+    }
+    this.streamPendingElement?.remove();
+    this.streamPendingElement = null;
+    this.streamPendingText = '';
     this.streamBlock = null;
   }
 

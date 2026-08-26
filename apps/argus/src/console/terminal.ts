@@ -35,22 +35,38 @@ interface SegmentColor {
  * the CLI surface read as one family. Duplicated by value because argus may
  * not import the execution stack.
  */
-const SEGMENT_PALETTE: Record<'host' | 'user' | 'dir' | 'duration' | 'status', SegmentColor> = {
+const SEGMENT_PALETTE: Record<
+  'pacs' | 'host' | 'user' | 'dir' | 'physical' | 'duration' | 'status',
+  SegmentColor
+> = {
+  pacs: { bg: '#875FFF', fg: '#FFFFFF' },
   host: { bg: '#00AFFF', fg: '#001018' },
   user: { bg: '#00D787', fg: '#00140C' },
   dir: { bg: '#FFD75F', fg: '#201800' },
+  physical: { bg: '#FF5F5F', fg: '#1B0000' },
   duration: { bg: '#FF8700', fg: '#201000' },
   status: { bg: '#FF005F', fg: '#FFFFFF' },
 };
 
-/** Powerline separator and Font Awesome glyphs, from the bundled Nerd Font. */
+/**
+ * Powerline separator and Font Awesome glyphs, from the bundled Nerd Font.
+ *
+ * Written as `\u` escapes rather than literal characters: these live in the
+ * Private Use Area, and a literal copy is one careless re-encoding away from
+ * becoming an empty string — which renders as a prompt with no separators and
+ * no icons, exactly as if the font had failed to load. The values match
+ * chell's p10k theme (`packages/chell/src/core/prompt/theme_p10k.ts`) so the
+ * two surfaces read as one family.
+ */
 const GLYPHS = {
-  powerline: '',
-  cube: '',
-  user: '',
-  folder: '',
-  bolt: '',
-  error: '',
+  powerline: '\ue0b0',
+  cube: '\uf1b2',
+  database: '\uf1c0',
+  user: '\uf007',
+  folder: '\uf07c',
+  microscope: '\uf610',
+  bolt: '\uf0e7',
+  error: '\uf057',
 } as const;
 
 /** Minimum command duration (ms) before the duration segment appears. */
@@ -447,11 +463,23 @@ export class ArgusTerminal {
       ? `~${context.cwd.slice(homePrefix.length)}`
       : context.cwd;
 
-    const segments: Array<{ text: string; color: SegmentColor }> = [
+    // Segment order tracks chell's p10k theme: [pacs] host user dir
+    // [physical] [duration] [status]. The daemon pushes every fact used here.
+    const segments: Array<{ text: string; color: SegmentColor }> = [];
+    if (context.pacsserver !== null && context.pacsserver.length > 0) {
+      segments.push({
+        text: `${GLYPHS.database} ${context.pacsserver}`,
+        color: SEGMENT_PALETTE.pacs,
+      });
+    }
+    segments.push(
       { text: `${GLYPHS.cube} ${host}`, color: SEGMENT_PALETTE.host },
       { text: `${GLYPHS.user} ${context.user}`, color: SEGMENT_PALETTE.user },
       { text: `${GLYPHS.folder} ${displayPath}`, color: SEGMENT_PALETTE.dir },
-    ];
+    );
+    if (context.physicalMode) {
+      segments.push({ text: `${GLYPHS.microscope} PHYSICAL`, color: SEGMENT_PALETTE.physical });
+    }
     if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
       const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
       segments.push({ text: `${GLYPHS.bolt} ${seconds}s`, color: SEGMENT_PALETTE.duration });

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { webRoot_resolve } from '../src/daemon/static';
+import { bundledWebRoot_find, webRoot_resolve } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '../src/protocol/version';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -60,6 +60,27 @@ describe('webRoot_resolve', () => {
 
   it('returns null with no candidates', () => {
     expect(webRoot_resolve([undefined, undefined])).toBeNull();
+  });
+});
+
+describe('bundledWebRoot_find', () => {
+  it('answers the same from any working directory', () => {
+    const fromHere: string | null = bundledWebRoot_find();
+    const original: string = process.cwd();
+    try {
+      process.chdir(tmpdir());
+      expect(bundledWebRoot_find()).toBe(fromHere);
+    } finally {
+      process.chdir(original);
+    }
+  });
+
+  it('answers an absolute bundle path or nothing at all', () => {
+    const found: string | null = bundledWebRoot_find();
+    const wellFormed: boolean =
+      found === null ||
+      (path.isAbsolute(found) && found.endsWith(path.join('apps', 'argus', 'dist')));
+    expect(wellFormed).toBe(true);
   });
 });
 

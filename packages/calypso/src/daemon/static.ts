@@ -15,6 +15,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Content types for web-bundle assets and the file kinds `/vfs` serves. */
 const CONTENT_TYPES: Record<string, string> = {
@@ -71,6 +72,43 @@ export function webRoot_resolve(candidates: Array<string | undefined>): string |
     if (existsSync(path.join(resolved, 'index.html'))) {
       return resolved;
     }
+  }
+  return null;
+}
+
+/**
+ * How many directory levels above this module may hold a source checkout.
+ *
+ * A built calypso sits at `packages/calypso/dist/daemon/`, four levels below
+ * the checkout root; the extra margin covers a workspace symlinked through
+ * `node_modules/@fnndsc/calypso`.
+ */
+const CHECKOUT_SEARCH_DEPTH: number = 6;
+
+/**
+ * Finds the argus bundle belonging to the checkout that built this calypso.
+ *
+ * The daemon is launched from wherever the operator happens to stand, so the
+ * working directory cannot locate the bundle; this walks up from this module's
+ * own path instead, which ties the served surface to the same tree as the
+ * engine serving it. A published install has no such enclosing checkout and
+ * simply finds nothing.
+ *
+ * @returns The absolute bundle directory, or null when no checkout encloses
+ *   this module.
+ */
+export function bundledWebRoot_find(): string | null {
+  let directory: string = path.dirname(fileURLToPath(import.meta.url));
+  for (let level: number = 0; level < CHECKOUT_SEARCH_DEPTH; level++) {
+    const candidate: string = path.join(directory, 'apps', 'argus', 'dist');
+    if (existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+    const parent: string = path.dirname(directory);
+    if (parent === directory) {
+      break;
+    }
+    directory = parent;
   }
   return null;
 }

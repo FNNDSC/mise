@@ -27,6 +27,7 @@
 #   make remote       - Build and attach to a running daemon as a surface
 #
 # Front of house (git + GitHub operations; need an authenticated `gh`):
+#   make branch BR=name - Start a new branch off the current HEAD
 #   make save MSG=".." - Commit tracked changes with the given message
 #   make push          - Push the current branch to origin (sets upstream)
 #   make pr            - Push, then open a PR against main
@@ -61,8 +62,8 @@ BRANCH = $(shell git branch --show-current)
 .DEFAULT_GOAL := help
 .PHONY: help shop prep cook taste taste-flight serve scrub run binaries \
         login connect daemon remote taco meal install build test clean link all \
-        save push pr ci-watch merge publish vp-approve verify-npm lockfile \
-        ci-dispatch release-dispatch sync tidy
+        branch save push pr ci-watch merge publish vp-approve verify-npm \
+        lockfile ci-dispatch release-dispatch sync tidy
 
 help:
 	@echo "ChELL Stack Kitchen"
@@ -88,6 +89,7 @@ help:
 	@echo "  make binaries      - Build standalone chell executables (no Node needed)"
 	@echo ""
 	@echo "Front of house (git + GitHub; needs an authenticated 'gh'):"
+	@echo "  make branch BR=name - Start a new branch off the current HEAD"
 	@echo "  make save MSG=\"..\" - Commit tracked changes with MSG as the message"
 	@echo "                       (new files need an explicit 'git add' first)"
 	@echo "  make push          - Push the current branch to origin, setting upstream"
@@ -195,6 +197,13 @@ binaries: cook
 #
 #   make save MSG=".." -> make pr -> make merge -> make publish -> make verify-npm
 # ---------------------------------------------------------------------------
+
+# A new branch off the current HEAD; work never starts on protected main.
+branch:
+ifndef BR
+	$(error BR is required: make branch BR=feature-name)
+endif
+	git checkout -b $(BR)
 
 # Commit tracked changes only (`git add -u`): untracked scratch files never
 # ride along by accident. Stage new files explicitly before saving.

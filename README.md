@@ -304,6 +304,57 @@ no more cloning siblings or hand-linking, npm workspaces does it:
 
 Standard aliases also work: `make install` `build` `test` `clean` `link`.
 
+The kitchen also runs front of house. The operational chores around a change
+(branching, committing, the PR, CI, merging, releasing) are targets too, so the
+flow lives in the repo rather than in anyone's memory. These need an
+authenticated [`gh`](https://cli.github.com/):
+
+| `make` | does |
+|--------|------|
+| `branch BR=name` | start a new branch off the current HEAD |
+| `save MSG=".."` | commit tracked changes (new files need `git add` first) |
+| `push` | push the current branch to origin, setting upstream |
+| `pr` | push, then open a PR against `main` (body drawn from commits) |
+| `ci-watch` | wait for this branch's PR checks (audit, Node 22/24) |
+| `merge` | `ci-watch`, then merge this branch's PR |
+| `publish` | green-wait + merge the Version Packages PR (releases to npm) |
+| `verify-npm` | local package versions vs what the registry serves |
+| `lockfile` | regenerate `package-lock.json` with CI's pinned npm |
+| `ci-dispatch` / `release-dispatch` | fire a workflow when events lag |
+| `sync` | back to `main`, fast-forwarded, stale remotes pruned |
+| `tidy BR=name` | delete a merged branch, locally and on origin |
+
+### From branch to main, all through make
+
+A typical change travels like this. `main` is protected, so the PR is the only
+road in; the required checks are the dependency audit and the build+test matrix
+on Node 22 and 24.
+
+```bash
+make branch BR=my-change      # 1. start a branch; work never sits on main
+# ... edit ...
+make cook taste               # 2. build the stack, run the full suite
+npx changeset                 # 3. if a published package changed: record the bump
+git add path/to/new-file      # 4. stage any NEW files ('save' commits tracked only)
+make save MSG="scope: what changed and why"
+make pr                       # 5. push and open the PR against main
+make merge                    # 6. wait out the required checks, then merge
+make sync                     # 7. return to main, fast-forwarded
+make tidy BR=my-change        # 8. delete the merged branch, local and origin
+```
+
+If the change bumped a published package, the merge causes CI to open a
+**Version Packages** PR, and the release continues in the next section with
+`make publish`. If not, step 8 is the end of the story.
+
+Two escape hatches cover the operational failure modes that actually occur.
+When GitHub's event delivery lags and no CI run appears on a fresh PR,
+`make ci-dispatch` fires the workflow by hand (then `make ci-watch` as usual).
+When CI fails `npm ci` with EUSAGE ("lock file out of sync"), the lockfile was
+written by a different npm major than CI's pin: `make lockfile` regenerates it
+with the pinned version and proves the result with the same dry-run `npm ci`
+that CI runs first, after which `make save` and `make push` send the fix.
+
 ### The dev loop
 
 One `make prep` (or `npm install`) links all workspaces to each other. Edit
@@ -331,7 +382,17 @@ npx changeset        # record what changed, per PR
 
 On merge to `main`, CI opens a **Version Packages** PR; merging it builds and
 publishes the changed packages to npm. Each package keeps its own version and
-its own `<name>-vX.Y.Z` tag.
+its own `<name>-vX.Y.Z` tag. The chores around that PR are targets too:
+
+```bash
+make publish           # approve its bot CI runs, wait for green, merge it
+make verify-npm        # confirm the registry now serves the new versions
+make release-dispatch  # re-fire the publish workflow if no run appears (idempotent)
+```
+
+`make publish` is deliberately its own step, never chained onto `make merge`:
+merging the Version Packages PR is the irreversible, outward-facing act that
+puts new versions on npm.
 
 ---
 
@@ -339,7 +400,7 @@ its own `<name>-vX.Y.Z` tag.
 
 ```
 mise/
-├── Makefile                 # the kitchen (cooking-metaphor dev commands)
+├── Makefile                 # the kitchen + front of house (dev, git, release)
 ├── package.json             # npm workspaces + topological build/release scripts
 ├── .changeset/              # changesets config + pending changes
 ├── .github/workflows/       # ci.yml (build+test) · release.yml (changesets publish)

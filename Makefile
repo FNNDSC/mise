@@ -26,6 +26,20 @@
 #   make daemon       - Build and run the CALYPSO session daemon
 #   make remote       - Build and attach to a running daemon as a surface
 #
+# Front of house (git + GitHub operations; need an authenticated `gh`):
+#   make save MSG=".." - Commit tracked changes with the given message
+#   make push          - Push the current branch to origin (sets upstream)
+#   make pr            - Push, then open a PR against main
+#   make ci-watch      - Wait for the current PR's required checks to settle
+#   make merge         - Merge the current branch's PR once checks are green
+#   make publish       - Approve, green-wait, and merge the Version Packages PR
+#   make verify-npm    - Compare local package versions against the registry
+#   make lockfile      - Regenerate package-lock.json with CI's pinned npm
+#   make ci-dispatch   - Manually fire the CI workflow (Actions event lag)
+#   make release-dispatch - Manually fire the Release workflow on main
+#   make sync          - Return to main and fast-forward it
+#   make tidy BR=name  - Delete a merged branch locally and on origin
+#
 # Standard aliases (muscle memory):
 #   make install -> prep   make build -> cook   make test -> taste
 #   make clean   -> scrub  make link  -> serve  make connect -> login
@@ -35,9 +49,20 @@
 CUBE_URL  ?= http://localhost:8000/api/v1/
 CUBE_USER ?= chris
 
+# The npm version CI installs in every job (ci.yml, release.yml). Lockfiles
+# written by a different npm major can omit optional peer entries, and
+# `npm ci` then fails with EUSAGE. Everything here that touches the lockfile
+# uses this pin.
+CI_NPM ?= 11.19.0
+
+# The branch under the knife, for the git-facing targets below.
+BRANCH = $(shell git branch --show-current)
+
 .DEFAULT_GOAL := help
 .PHONY: help shop prep cook taste taste-flight serve scrub run binaries \
-        login connect daemon remote taco meal install build test clean link all
+        login connect daemon remote taco meal install build test clean link all \
+        save push pr ci-watch merge publish vp-approve verify-npm lockfile \
+        ci-dispatch release-dispatch sync tidy
 
 help:
 	@echo "ChELL Stack Kitchen"
@@ -62,6 +87,26 @@ help:
 	@echo "  make remote        - Build and attach to a running daemon"
 	@echo "  make binaries      - Build standalone chell executables (no Node needed)"
 	@echo ""
+	@echo "Front of house (git + GitHub; needs an authenticated 'gh'):"
+	@echo "  make save MSG=\"..\" - Commit tracked changes with MSG as the message"
+	@echo "                       (new files need an explicit 'git add' first)"
+	@echo "  make push          - Push the current branch to origin, setting upstream"
+	@echo "  make pr            - Push, then open a PR against main (body from commits)"
+	@echo "  make ci-watch      - Wait for this branch's PR checks (audit, node 22/24)"
+	@echo "  make merge         - ci-watch, then merge this branch's PR (merge commit)"
+	@echo "  make publish       - The release step: approve the Version Packages PR's"
+	@echo "                       bot CI runs, wait for green, merge. Merging it makes"
+	@echo "                       the Release workflow publish to npm (IRREVERSIBLE)."
+	@echo "  make verify-npm    - Local package.json versions vs the npm registry"
+	@echo "  make lockfile      - Regenerate package-lock.json with npm@$(CI_NPM)"
+	@echo "                       (CI's pin) and prove it with a dry-run 'npm ci'"
+	@echo "  make ci-dispatch   - Fire CI by hand on this branch (when GitHub's"
+	@echo "                       push/PR events lag and no run appears)"
+	@echo "  make release-dispatch - Fire Release by hand on main (same lag, or to"
+	@echo "                       retry a publish; publishing is idempotent)"
+	@echo "  make sync          - Checkout main, fast-forward, prune stale remotes"
+	@echo "  make tidy BR=name  - Delete a merged branch locally and on origin"
+	@echo ""
 	@echo "Aliases: install=prep  build=cook  test=taste  clean=scrub  link=serve  connect=login"
 
 # --- Shop (freshen the pantry) ---
@@ -73,12 +118,12 @@ shop:
 
 # --- Prep (install dependencies) ---
 # One install hydrates every workspace AND links them to each other.
-# Uses the repo-pinned npm (see "packageManager" in package.json): newer npm
-# majors regenerate the lockfile differently (breaking npm ci in CI) and
-# npm 11 prints spurious ERESOLVE peer warnings when overrides are present.
+# Uses CI's pinned npm ($(CI_NPM), matching "packageManager" in package.json):
+# an install with a different npm major rewrites the lockfile in a shape
+# `npm ci` under the CI pin then refuses (EUSAGE, missing optional peers).
 prep:
-	@echo "Prepping all packages (npm install, pinned npm)..."
-	npx --yes npm@10.9.8 install
+	@echo "Prepping all packages (npm install, npm@$(CI_NPM))..."
+	npx --yes npm@$(CI_NPM) install
 
 # --- Cook (build) ---
 # Root build script already enforces topological order: cumin->salsa->chili->brasa->calypso->chell.
@@ -141,6 +186,108 @@ binaries: cook
 	@echo "Building standalone chell executables (esbuild bundle -> pkg)..."
 	npm run binaries -w @fnndsc/chell
 	@echo "Binaries in packages/chell/build/bin/"
+
+# ---------------------------------------------------------------------------
+# Front of house: the git and GitHub chores of getting work merged and
+# published, encoded so the flow does not depend on anyone (or any LLM)
+# remembering it. Everything below the commit itself needs an authenticated
+# `gh`. The flow, end to end:
+#
+#   make save MSG=".." -> make pr -> make merge -> make publish -> make verify-npm
+# ---------------------------------------------------------------------------
+
+# Commit tracked changes only (`git add -u`): untracked scratch files never
+# ride along by accident. Stage new files explicitly before saving.
+save:
+ifndef MSG
+	$(error MSG is required: make save MSG="what changed and why")
+endif
+	git add -u
+	git commit -m "$(MSG)"
+
+push:
+	git push -u origin $(BRANCH)
+
+# Opens the PR against main with title and body drawn from the branch's
+# commits (--fill). Edit on GitHub afterwards if the autogenerated body
+# undersells it.
+pr: push
+	gh pr create --base main --fill
+
+# Waits for the required contexts (audit, check 22, check 24) on this
+# branch's PR. The first loop covers the gap before GitHub registers any
+# checks at all; --watch then follows them to a verdict.
+ci-watch:
+	@gh pr view --json number >/dev/null || { echo "No PR for $(BRANCH); run 'make pr' first."; exit 1; }
+	@echo "Waiting for required checks on the $(BRANCH) PR..."
+	@until gh pr checks --required 2>/dev/null | grep -q .; do sleep 15; done
+	@gh pr checks --watch --interval 30 --required
+
+merge: ci-watch
+	gh pr merge --merge
+	@echo "Merged. 'make sync' fast-forwards local main; 'make publish' releases"
+	@echo "any pending changesets via the Version Packages PR."
+
+# Bot-opened PRs (the changesets Version Packages PR) get their CI runs
+# parked as action_required; this approves them so the checks can run.
+vp-approve:
+	@for id in $$(gh api "repos/{owner}/{repo}/actions/runs?branch=changeset-release/main&status=action_required" --jq '.workflow_runs[].id'); do \
+		echo "Approving CI run $$id..."; \
+		gh api -X POST "repos/{owner}/{repo}/actions/runs/$$id/approve" >/dev/null; \
+	done
+
+# The release step. Merging the Version Packages PR triggers the Release
+# workflow on main, which publishes every bumped package to npm — an
+# irreversible, outward-facing act, which is why it is its own target and
+# never chained onto `merge`.
+publish: vp-approve
+	@pr=$$(gh pr list --head changeset-release/main --state open --json number --jq '.[0].number'); \
+	if [ -z "$$pr" ]; then echo "No open Version Packages PR (nothing to publish)."; exit 1; fi; \
+	echo "Version Packages PR #$$pr — waiting for required checks..."; \
+	until gh pr checks $$pr --required 2>/dev/null | grep -q .; do sleep 15; done; \
+	gh pr checks $$pr --watch --interval 30 --required && \
+	gh pr merge $$pr --merge
+	@echo "Publish merge done; the Release workflow on main now pushes to npm."
+	@echo "If no Release run appears (Actions event lag): make release-dispatch"
+	@echo "Then confirm with: make verify-npm"
+
+# Local package.json versions against what the registry serves, one line
+# per package. After a publish the two columns must agree.
+verify-npm:
+	@for p in cumin salsa chili brasa calypso chell; do \
+		printf "%-8s local %-8s npm %s\n" $$p \
+			"$$(node -p "require('./packages/$$p/package.json').version")" \
+			"$$(npm view @fnndsc/$$p version 2>/dev/null || echo '?')"; \
+	done
+
+# Regenerates the lockfile with CI's npm pin and proves the result with a
+# dry-run `npm ci` — the exact command CI runs first.
+lockfile:
+	@echo "Regenerating package-lock.json with npm@$(CI_NPM) (CI's pin)..."
+	npx --yes npm@$(CI_NPM) install --package-lock-only
+	@echo "Verifying with a dry-run npm ci..."
+	@npx --yes npm@$(CI_NPM) ci --dry-run >/dev/null && echo "Lockfile in sync."
+
+# GitHub's push/pull_request event delivery occasionally lags for minutes
+# and no workflow run appears; these fire the workflows by hand.
+ci-dispatch:
+	gh workflow run ci.yml --ref $(BRANCH)
+	@echo "CI dispatched on $(BRANCH); follow with 'make ci-watch'."
+
+release-dispatch:
+	gh workflow run release.yml --ref main
+
+sync:
+	git checkout main
+	git pull --ff-only
+	git fetch --prune
+
+tidy:
+ifndef BR
+	$(error BR is required: make tidy BR=branch-name)
+endif
+	git branch -d $(BR)
+	git push origin --delete $(BR) || echo "(remote branch already gone)"
 
 # --- The Big One ---
 taco: scrub prep cook taste serve

@@ -1,5 +1,11 @@
 # @fnndsc/brasa
 
+## 0.12.0
+
+### Minor Changes
+
+- 0ad04f2: The engine can now hand raw file bytes to a hosting daemon: brasa's `BrasaEngine` gains an optional `file_read(filePath)` that resolves a ChRIS VFS path to a `Buffer` through chili's binary cat. Calypso's daemon exposes it as a token-gated `/vfs?path=&token=` HTTP route with extension-derived content types, letting a web surface render images and other binary content that a text transcript cannot carry.
+
 ## 0.11.1
 
 ### Patch Changes

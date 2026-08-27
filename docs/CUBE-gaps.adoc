@@ -249,9 +249,11 @@ The plugin route is not an interface. It is a client compensating for a missing 
 
 === Client policy until then
 
-`mise` continues to use the plugin workflow, but it lives in `brasa` rather than in a surface: the orchestration is an intent, so every surface reaches one implementation and no client re-derives the sequence. The resulting archive is a CUBE artifact with an ordinary path, so it is delivered through the surface capability like any other file (see issue #232) and no daemon filesystem is involved.
+`mise` walks the directory and fetches each file individually — `files_listRecursive` plus one request per file. That is the N+1 traversal this document objects to elsewhere, chosen because it needs no compute and leaves the compute graph clean, and acceptable only because a local shell writes the files as they arrive.
 
-The workaround is announced rather than silent: a directory download reports that it is creating a feed to do so.
+It does not survive a surface with no filesystem. A browser cannot receive several hundred files as several hundred saves, so `mise` adopts the archive workflow — `pl-dircopy` into a zip plugin — for exactly that case. It lives in `brasa`, not in a surface: the orchestration is an intent, so every surface reaches one implementation and no client re-derives the sequence, which is the failure the web UI ran into. The resulting archive is a CUBE artifact with an ordinary path, delivered through the surface capability like any other file (issue #232), so no daemon filesystem is involved.
+
+The workaround announces itself rather than running silently: a directory download reports that it is creating a feed in order to do so, and says why.
 
 == Confirmed proposal: server version identification
 

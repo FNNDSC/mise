@@ -29,6 +29,19 @@ through the vocabulary and the bytes travel through the byte route.
 The local path is unchanged: a local `chell` still uses the existing transfer
 machinery, with its globs, directory walks and progress reporting.
 
+A directory has no bytes to hand over, and a browser cannot receive several
+hundred DICOM instances as several hundred saves. So a directory requested by a
+surface with no filesystem is archived into a single CUBE file first, through
+the registered `zip v20240311` pipeline — `pl-dircopy` into a zip plugin, the
+same mechanism the ChRIS web UI has used for years, but living in `brasa` where
+every surface reaches one implementation instead of each client re-deriving the
+sequence. `CHRIS_ARCHIVE_PIPELINE` names a different pipeline where a
+deployment registered one. When it is absent, the failure says which pipeline
+is missing and that it can be registered from the store.
+
+The archive run announces itself rather than creating a feed silently, because
+it is a workaround for CUBE having no directory-archive route: issue #233.
+
 `upload` has the mirror problem — it reads from the engine host's disk — and is
 not addressed here, because the browser direction needs a file picker. See
 issue #232.

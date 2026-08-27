@@ -193,7 +193,13 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 }));
 
 // Mock salsa
+const isDirectoryMock = jest.fn(async (): Promise<boolean> => false);
+const archiveMock = jest.fn(async (): Promise<unknown> => null);
+jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
+  directory_archive: archiveMock,
+}));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  files_path_isDirectory: isDirectoryMock,
   retrieveTask_make: (info: Record<string, unknown>) => ({ ...info, syntheticQueryId: null, retrieveId: null, status: 'pending', actualFiles: 0, lastProgressFiles: 0, lastProgressTime: 0, startTime: 0, lonkConfirmed: false, cubePathDir: null }),
   retrieveTasks_fire: jest.fn(),
   retrieveTasks_skipComplete: jest.fn(async () => 0),
@@ -842,6 +848,46 @@ describe('Builtins - Core Functions', () => {
 
       expect(envelope.status).toBe('error');
       expect(envelope.rendered).toContain('the browser refused it');
+    });
+
+    it('archives a directory into one file and delivers that', async () => {
+      const deliver = jest.fn(async (request: { filename: string }) => ({
+        location: `/downloads/${request.filename}`, bytes: 90210,
+      }));
+      await deliveringSurface(deliver as never);
+      isDirectoryMock.mockResolvedValueOnce(true);
+      archiveMock.mockResolvedValueOnce({
+        path: '/home/me/feeds/feed_9/pl-dircopy_1/pl-pfdorun_2/data/series.zip',
+        filename: 'series.zip',
+        size: 90210,
+      });
+
+      const envelope = await builtin_download(['/remote/series', '/downloads']);
+
+      // A browser cannot receive several hundred DICOM instances as several
+      // hundred saves, so the directory becomes one CUBE file first.
+      expect(archiveMock).toHaveBeenCalledWith('/remote/series');
+      expect(deliver).toHaveBeenCalledTimes(1);
+      expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+        path: '/home/me/feeds/feed_9/pl-dircopy_1/pl-pfdorun_2/data/series.zip',
+        filename: 'series.zip',
+        size: 90210,
+      }));
+      expect(envelope.status).toBe('ok');
+    });
+
+    it('reports why an archive failed rather than attempting the delivery', async () => {
+      const deliver = jest.fn(async () => ({ location: '', bytes: 0 }));
+      await deliveringSurface(deliver as never);
+      isDirectoryMock.mockResolvedValueOnce(true);
+      archiveMock.mockResolvedValueOnce(null);
+
+      const envelope = await builtin_download(['/remote/series', '/downloads']);
+
+      // Fetching the bytes of a directory would 404 and teach nobody anything.
+      expect(deliver).not.toHaveBeenCalled();
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('could not archive');
     });
 
     it('uses aggregate transfer for sources expanded by the shell', async () => {

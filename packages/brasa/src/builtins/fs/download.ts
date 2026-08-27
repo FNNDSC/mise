@@ -14,11 +14,13 @@ import {
   type DownloadSummary,
   bytes_format
 } from '@fnndsc/chili/commands/fs/download.js';
-import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { type CommandEnvelope, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
 import { path_resolve } from '../utils.js';
 import { surface_get, type Surface } from '../../core/surface.js';
+import { files_path_isDirectory } from '@fnndsc/salsa';
+import { directory_archive, type ArchiveResult } from './archive.js';
 import type { FileDeliverResult } from '@fnndsc/menu';
 
 /**
@@ -62,16 +64,42 @@ async function surfaceDownload_run(
   }
 
   const sources: string[] = await Promise.all(sourceArgs.map(path_resolve));
+
+  // A directory has no bytes to hand over. The local path walks it and writes
+  // each file as it arrives, which a surface with no filesystem cannot do —
+  // several hundred DICOM instances would be several hundred saves. So a
+  // directory is archived into a single CUBE file first, and that file is what
+  // gets delivered. See issue #233 for why this is a workaround.
+  const targets: { path: string; filename: string; size?: number }[] = [];
+  for (const source of sources) {
+    if (await files_path_isDirectory(source)) {
+      const archived: ArchiveResult | null = await directory_archive(source);
+      if (!archived) {
+        process.exitCode = 1;
+        const reasons: string = errorStack.stack_getAll?.()
+          .map((entry: unknown): string =>
+            typeof entry === 'string' ? entry : ((entry as { message?: string }).message ?? String(entry)))
+          .join('\n  ') ?? '';
+        return envelope_error('', undefined,
+          `${chalk.red(`download: could not archive ${source}.`)}\n${reasons ? `  ${chalk.red(reasons)}\n` : ''}`);
+      }
+      targets.push(archived);
+    } else {
+      targets.push({ path: source, filename: source.split('/').filter(Boolean).pop() ?? 'download' });
+    }
+  }
+
   const delivered: string[] = [];
   const failed: string[] = [];
 
-  for (const source of sources) {
-    const filename: string = source.split('/').filter(Boolean).pop() ?? 'download';
+  for (const target of targets) {
+    const filename: string = target.filename;
     try {
       const result: FileDeliverResult = await surface.fileDeliver({
-        path: source,
+        path: target.path,
         filename,
         destination,
+        ...(target.size !== undefined ? { size: target.size } : {}),
       });
       delivered.push(`${chalk.gray(`  ${filename} → ${result.location}`)} ${chalk.gray(`(${bytes_format(result.bytes)})`)}`);
     } catch (error: unknown) {

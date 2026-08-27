@@ -1,4 +1,4 @@
-import { CONTRACT_VERSION, version_isCompatible } from '../src/protocol/version';
+import { CONTRACT_VERSION, version_isCompatible } from '../src/version';
 
 describe('contract version', () => {
   it('exposes a positive integer contract version', () => {

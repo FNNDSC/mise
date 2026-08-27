@@ -12,14 +12,14 @@
  * @module
  */
 import { z } from 'zod';
-import { PROC_PROMPT_STATES } from '@fnndsc/cumin/proc-prompt';
+import { PROC_PROMPT_STATES } from './proc.js';
 import {
   PROGRESS_KINDS,
   PROGRESS_OPERATIONS,
   PROGRESS_PHASES,
   PROGRESS_STATUSES,
   PROGRESS_UNITS,
-} from '@fnndsc/brasa/progress';
+} from './progress.js';
 import { commandEnvelopeSchema } from './envelope.js';
 
 /** The sink channel an output event belongs to. */

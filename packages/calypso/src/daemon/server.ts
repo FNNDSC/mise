@@ -32,9 +32,9 @@ import type { HostedEngine, CompletionResult } from './engine.js';
 import { staticRequest_handle, contentType_forPath } from './static.js';
 import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
-import { CONTRACT_VERSION } from '../protocol/version.js';
-import { clientMessage_parse, attach_parse } from '../protocol/validate.js';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext } from '../protocol/messages.js';
+import { CONTRACT_VERSION } from '@fnndsc/menu';
+import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 

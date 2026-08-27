@@ -1,0 +1,260 @@
+= menu: the wire contract as a package
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-08-27: Plan of record
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: PLAN (not yet built)
+
+== What this is
+
+The plan for two pieces of work that turn out to be one: extracting the wire contract from `calypso` into a package of its own, and giving every command a typed result model (envelope Phase-2).
+
+They are one piece because the second has nowhere to live without the first. A model payload must be reachable by its producer (`brasa`) and its validator (a browser surface), and those two can only meet below both — which is what the new package is.
+
+The forcing function is two `argus` panels: a PACS query/retrieve facade and a file browser. The file browser is unblocked today. The Q/R panel is not, and the reason is instructive: `pacs query` emits no model at all, so a panel built now would parse rendered terminal text to fill a table. That is the string problem, and it is on the *result* side of the wire, not the request side.
+
+This document records the decisions and the sequence. It is not normative; link:principles.adoc[principles.adoc] is. Where this plan touches a principle it says so.
+
+== The package
+
+`@fnndsc/menu`. The kitchen names its parts, and a menu declares what may be asked for and what comes back. A surface can order anything on the menu and nothing off it, which is the architectural claim in one word.
+
+=== What it contains
+
+Everything now under `packages/calypso/src/protocol/`:
+
+* the envelope — `CommandEnvelope`, its status, its stack messages, its resolution trace;
+* the session protocol — attach, execute, complete, output, progress, prompt, pipe, shell, edit;
+* the contract version and its compatibility rule;
+* boundary validation;
+* *new*: the model payload schemas, one per model kind.
+
+`CommandEnvelope` moves out of `cumin`, where it is declared and never used — `packages/cumin/src/utils/envelope.ts` is its only mention in that package. The move costs `cumin` nothing.
+
+=== Why a package and not a subpath
+
+`calypso/protocol` is already browser-safe and already imported by `argus`. The gain is not technical isolation, which exists; it is that a surface author depends on the contract rather than on the daemon.
+
+That matters for the position this architecture takes. A third-party surface — a Q/R TUI, a viewer, a report generator — is conformant by construction, because "what is in this directory" and "what is in this file" are intents with no other route to an answer. Making the contract a first-class artifact rather than a subpath of the daemon's package is what makes that dependency honest.
+
+`menu` imports nothing from the stack. It sits below `cumin` and publishes first.
+
+=== Position in the release order
+
+[source]
+----
+menu → cumin → salsa → chili → brasa → calypso → chell
+----
+
+== Decisions
+
+=== Scope: the full sweep
+
+Every command gets a typed model, not only the ones the two panels need. Coverage informs the design: thirty models designed together reveal the shared shape, two designed alone do not.
+
+=== Payloads are authored as zod, types inferred
+
+[source,typescript]
+----
+export const pacsStatusSchema = z.object({ /* … */ });
+export type PACSQueryStatusReport = z.infer<typeof pacsStatusSchema>;
+----
+
+One declaration. Drift is not prevented by a check, it is structurally impossible.
+
+Only shapes that cross the daemon boundary move into `menu`. A `cumin` type used purely to talk to CUBE stays in `cumin`.
+
+The cost, accepted: a payload is a JSON shape. No `Date`, no `Map`, no class instances, no methods. A survey of the candidate payloads is the first task of the sweep, and any type that cannot be expressed this way is recorded rather than quietly projected into a second type.
+
+=== Open world at both levels
+
+`kind` stays a free string. An unknown kind leaves `data` unknown and the surface falls back to `rendered`. The original kind survives, so a surface can report what it could not render.
+
+An unknown `resourceType` within a listing parses its common fields and leaves the variant unknown. One unrecognised row must not fail a listing of ten.
+
+No payload schema is ever declared `.strict()`. A plain `z.object()` strips unknown keys, so a field added by a newer peer is ignored rather than fatal. `.strict()` looks like rigour and is a compatibility break — the same shape as the enum defect closed in issue #221.
+
+This is link:principles.adoc#degradation[Principle 0] expressed in the wire format.
+
+=== One listing kind, discriminated items
+
+Not thirty bespoke listing kinds. One, whose items carry a type discriminator.
+
+The discriminator already exists: `ListingItem` in `packages/chili/src/models/listing.ts` has `type: 'dir' | 'file' | 'link' | 'plugin' | 'pipeline' | 'vfs' | 'job'`, with `version?` for plugins and `target?` for links. A second `res.listing` vocabulary would have duplicated it — two model shapes for one fact, which is the second-API failure arriving with a schema.
+
+`ListingItem` lives in `chili`, which issue #214 dissolves into `salsa`. Moving it into `menu` is convergent with that work rather than in conflict with it.
+
+Composition, not subtyping: `baseSchema.extend({ … })` for authoring, but parsing must remain open, because an unknown variant has to render generically rather than fail.
+
+=== `path` is optional on a listing
+
+Most listings correspond to a VFS path, and a surface can offer navigation when one is present. Five do not, each for a reason:
+
+|===
+| Command | Why no path
+
+| `group`, `user`, `compute`
+| Projected as *files* — `/etc/group`, `/etc/passwd`, `/etc/compute.yaml`. A POSIX `/etc/group` is a file, and rendering CUBE groups in that format is the point of the projection, not a shortfall.
+
+| `store`
+| A different service (the remote ChRIS store), not projected into the namespace. Tracked separately.
+
+| `context`
+| Session state rather than a resource.
+|===
+
+The optional field marks these honestly instead of hiding them behind a second model kind.
+
+=== `rendered` is derived from the model
+
+A command produces its model; a renderer turns that model into text. One source of facts, and the terminal text is provably a view of what every surface receives — which makes "the terminal is the least mediated rendering of the vocabulary" a fact about the code rather than a claim.
+
+A command that builds `rendered` independently is an exception with a documented reason. Elaborate renderings are the expected exceptions: `pacs status` fill bars, the `query` hint lines, the ASCII feed diagram.
+
+*This entrenches a known compromise and should be recorded as one.* `rendered` is presentation, and it is produced by `brasa`, the kernel. Deriving it from the model does not fix that; it makes it structural. The justification is the degradation floor — a text path must exist even for a surface that understands no model kinds. The exit, if it is ever taken, is that surfaces derive their own text from the model and the kernel stops rendering. So the derivation lives in its own module with no other `brasa` coupling, in order to remain movable.
+
+== VFS projections this adds
+
+Three resources have no path today. Each is a relation, and each resolves to a directory of links — nothing new is needed in `ListingItem`, since `type: 'link'` and `target` already exist.
+
+=== Tags
+
+A `Tag` is a first-class user-owned resource pointing at many feeds; a `Tagging` is the join. A per-feed list would flatten a many-to-many and make editing the same tag from two feeds ambiguous.
+
+[source]
+----
+~/tags/urgent                      the tag itself
+~/feeds/feed_WXYZ/tags/urgent  →   symlink to ~/tags/urgent
+----
+
+The operations fall out: `ln` is tagging, `rm` is untagging, editing the tag file renames it everywhere. The `Tagging` join object *is* the symlink.
+
+=== Workflows
+
+A `Workflow` is an instantiated pipeline: it owns the plugin instances it created and names the pipeline it ran. That is runtime state, so it belongs beside the jobs.
+
+[source]
+----
+/proc/workflows/<id>/
+/proc/workflows/<id>/pipeline  →   symlink into /bin
+/proc/workflows/<id>/jobs/     →   symlinks into /proc/jobs
+----
+
+=== Plugin metadata
+
+A `PluginMeta` is a plugin's version-independent identity — the record its versions hang off. It is currently collapsed into the `/bin` entry name.
+
+`/bin` stays *flat*. Nesting it would make an executable a directory, which is the macOS application-bundle trick: a directory the system sees as a tree and the user sees as one object. It works, but it costs a permanently divided view that every surface must be taught separately, and Plan 9 declined the idea outright.
+
+The Unix answer is already in the codebase — `/bin` holds executables and `/usr/bin` holds their help text. Metadata extends that parallel tree rather than nesting the first:
+
+[source]
+----
+/bin/pl-dcm2niix              the executable, flat, unchanged
+/usr/bin/pl-dcm2niix          help text (exists today)
+/usr/share/pl-dcm2niix/       versions, authors, repo, license, README
+----
+
+== Sequence
+
+=== 1. Scaffold
+
+Create `menu`. Move `packages/calypso/src/protocol/` into it wholesale. Re-point every importer. No new models, no behaviour change — a pure relocation, reviewable as such.
+
+`menu` is created `"private": true` and workspace-linked. It is *not published* until the sweep lands, because thirty payload shapes settling at the bottom of the dependency order would otherwise force a full-stack release on every adjustment.
+
+=== 2. Proving tranche
+
+Two commands, each end to end: schema, model, derived renderer, and a real consumer.
+
+* `compute` — exercises the shared listing shape and the optional `path`.
+* `pacs query` — a genuine one-off, and the model the Q/R panel needs.
+
+*The tranche ends in pixels.* `compute` rendered as cards in `argus`, not a schema and a passing test. The shared listing shape is the thing every later model inherits; if it is wrong, this is where it must be found, and a green test does not find it.
+
+=== 3. The sweep, by area
+
+`fs`, `res`, `pacs`, `feed`, `sys`. Each tranche: payload schemas into `menu`, models emitted, renderers re-pointed, exceptions registered with reasons.
+
+=== 4. VFS projections
+
+`~/tags`, `/proc/workflows`, `/usr/share/<plugin>`.
+
+=== 5. Panels
+
+The **file browser starts now**, in parallel with everything above, on the existing `fs.listing` and its hand-written validation. It adopts the schema when the `fs` tranche lands; the change is deleting `listing_isValid` and importing a schema. Building it early also gives the `fs` tranche a real consumer.
+
+The **Q/R panel** follows the `pacs.query` model.
+
+=== 6. Publish, then issue #229
+
+`menu` publishes when the sweep is done and its shapes have consumers. Typed invocation over the wire — issue #229 — comes after the panels, because the panels are what say what typed invocation should look like. Designing `invoke` arguments for `pacs` with no consumer would repeat the mistake this sequence exists to avoid.
+
+== Enforcement
+
+`lint:models`, in the idiom of the five existing checks but not a bare ratchet.
+
+An exported registry in `brasa` maps a command name to the reason it has no model, or no derived renderer. The check verifies the partition is total: every command is either covered or registered. It fails on a command in neither, on an empty reason, and on an entry whose command no longer exists.
+
+A count would tell you how many remain and nothing about why. Thirty becomes twelve becomes four, and the last four sit for a year with nobody remembering whether they are hard or merely unloved. Reasons make the residue self-explaining.
+
+The registry is *capped*: the check fails above a declared maximum, lowered in the change that improves it. That restores the downward pressure a ratchet has and a registry does not.
+
+== The module-format split
+
+`cumin` and `salsa` emit CommonJS. `menu`, `chili`, `brasa`, `calypso`, `chell`
+and `argus` are ES modules. The boundary sits between `salsa` and `chili`, and
+it is not a decision anyone made — `chili` declares `"type": "module"` and
+`salsa`, directly beneath it, declares nothing, so its `"module": "node16"`
+setting silently resolves to CommonJS.
+
+The two formats differ in when a file's exports are known. `require` runs, so a
+tool must execute a file to learn what comes out of it; `import` is declared, so
+a tool can read it. Everything downstream follows from that: bundlers can shake
+unused code out of ES modules and largely cannot out of CommonJS, and an ES
+module importing CommonJS has to *guess* the exported names, because
+`module.exports` is a value assembled at runtime.
+
+The split is tolerable today only because the arrow points the safe way — the
+CommonJS layers are at the bottom and everything importing them is ESM.
+Extracting `menu` reversed that arrow for the first time, since `menu` sits
+below `cumin`. Built as CommonJS it broke the `argus` bundle outright:
+
+....
+"CONTRACT_VERSION" is not exported by "packages/menu/dist/index.js"
+....
+
+Rollup read the file, found no `export` keyword, and could not know the name
+would exist once the code ran. `menu` is therefore ESM, and `cumin` takes only
+*types* from it — types are erased at compile time, so `cumin` never requires
+`menu` at runtime and stays loadable from either format.
+
+That works, but it is a constraint held in place by care rather than by
+structure: the moment anything in `cumin` or `salsa` needs a runtime value from
+`menu`, it breaks again, and the failure appears in a bundler rather than at
+the call site.
+
+*Resolution: convert `cumin` and `salsa` to ES modules — issue #230.* There is
+no reason for the split beyond history. It is not part of this plan — it has its
+own blast radius and deserves its own change — but it should be done rather than
+maintained. Until it is, the type-only constraint is recorded at the call site in
+`packages/cumin/src/cache/index.ts`, where breaking it would be easiest.
+
+== Open items
+
+* Which commands end up as exceptions — discovered during the sweep, not guessed now.
+* Whether `pacs.query`'s model covers table mode and the `cd`/`pull` hint lines, or whether those stay renderer-side.
+* `/net/store` — projecting the remote ChRIS store. Tracked separately from this work.
+* Converting `cumin` and `salsa` to ES modules — issue #230, per the section above.
+* `docs/principles.adoc` needs a pass: the `rendered`-in-the-kernel compromise recorded as a known violation, and the enforcement table gaining `lint:models`.
+
+== Documentation this owes
+
+* this document, kept current as the design record;
+* `packages/menu/README.md`;
+* the root README, where the stack is described and `menu` is currently absent;
+* the `principles.adoc` pass noted above.

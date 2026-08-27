@@ -13,7 +13,8 @@
   "author": "Rudolph Pienaar",
   "license": "MIT",
   "dependencies": {
-    "@fnndsc/calypso": "*"
+    "@fnndsc/calypso": "*",
+    "@fnndsc/menu": "*"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

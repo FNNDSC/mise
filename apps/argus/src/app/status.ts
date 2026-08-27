@@ -8,7 +8,7 @@
  *
  * @module
  */
-import type { PromptContext } from '@fnndsc/calypso/protocol';
+import type { PromptContext } from '@fnndsc/menu';
 import type { AttachInfo } from '../calypso/client.js';
 
 /** The ids of the status fields the bar owns, as they appear in index.html. */

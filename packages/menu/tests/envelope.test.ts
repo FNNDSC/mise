@@ -1,4 +1,4 @@
-import { commandEnvelopeSchema } from '../src/protocol/envelope';
+import { commandEnvelopeSchema } from '../src/envelope';
 
 describe('commandEnvelopeSchema', () => {
   it('accepts a minimal ok envelope', () => {

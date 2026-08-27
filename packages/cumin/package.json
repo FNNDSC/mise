@@ -28,11 +28,6 @@
       "types": "./dist/pacs/dicomPayload.d.ts",
       "require": "./dist/pacs/dicomPayload.js"
     },
-    "./proc-prompt": {
-      "import": "./dist/cache/procPrompt.js",
-      "types": "./dist/cache/procPrompt.d.ts",
-      "require": "./dist/cache/procPrompt.js"
-    },
     "./runtime-output": {
       "import": "./dist/output/runtimeOutput.js",
       "types": "./dist/output/runtimeOutput.d.ts",
@@ -67,6 +62,7 @@
   "dependencies": {
     "@fnndsc/chrisapi": "^1.25.0",
     "chalk": "^4.1.2",
-    "figlet": "^1.7.0"
+    "figlet": "^1.7.0",
+    "@fnndsc/menu": "*"
   }
 }

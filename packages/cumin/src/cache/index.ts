@@ -15,8 +15,17 @@ export type {
   ProcCacheLifecycle,
   ProcCacheSnapshot,
 } from './procCache.js';
-export { procPromptState_get, PROC_PROMPT_STATES } from './procPrompt.js';
-export type { ProcPromptState, ProcPromptProgress } from './procPrompt.js';
+// Prompt-facing process-index state is contract vocabulary: it lives in
+// `@fnndsc/menu`, and callers import it from there.
+//
+// Only its *types* are named here, and that is a constraint rather than a
+// preference. cumin emits CommonJS while menu is an ES module, so a runtime
+// import would break any bundle that reaches cumin — the failure surfacing in
+// a bundler rather than at the call site. Types are erased at compile time, so
+// this file carries no runtime dependency on menu at all. The constraint lifts
+// when cumin becomes an ES module; see "The module-format split" in
+// docs/menu.adoc.
+export type { ProcPromptState, ProcPromptProgress } from '@fnndsc/menu';
 export {
   procCheckpointPath_get,
   procCheckpoint_restore,

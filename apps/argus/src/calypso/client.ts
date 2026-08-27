@@ -9,7 +9,7 @@
  * are answered with the matching error reply so the engine fails the request
  * cleanly instead of hanging the session.
  *
- * Boundary rule: this module imports only `@fnndsc/calypso/protocol` — the
+ * Boundary rule: this module imports only `@fnndsc/menu` — the
  * published contract — never the execution stack.
  *
  * @module
@@ -21,7 +21,7 @@ import {
   type PromptContext,
   type ProgressMessage,
   type WireEnvelope,
-} from '@fnndsc/calypso/protocol';
+} from '@fnndsc/menu';
 
 /** The output channels a command can stream on. */
 export type OutputChannel = 'data' | 'err' | 'status';

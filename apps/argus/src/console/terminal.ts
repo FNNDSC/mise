@@ -14,7 +14,7 @@
  * @module
  */
 import { ansi_toHtml, html_escape } from './ansi.js';
-import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
+import type { PromptContext, WireEnvelope } from '@fnndsc/menu';
 import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
 
 /** A completion answer from the wire: candidates and the prefix they complete. */

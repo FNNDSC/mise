@@ -19,7 +19,7 @@
 [![codecov](https://codecov.io/gh/FNNDSC/mise/branch/main/graph/badge.svg)](https://codecov.io/gh/FNNDSC/mise)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-`cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso` — one sandwich, one engine, one daemon, *mise en place* in one kitchen.
+`menu` · `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso` — one menu, one sandwich, one engine, one daemon, *mise en place* in one kitchen.
 
 </div>
 
@@ -165,7 +165,7 @@ Requires Node.js ≥ 20.12 (22.x recommended).
    ┌──────────────────────────┐      ┌──────────────────────────┐
    │ chell    @fnndsc/chell   │      │ calypso  @fnndsc/calypso │
    │ CLI surface: REPL,       │      │ session daemon: bus,     │
-   │ rendering, remote client │      │ wire contract, routing   │
+   │ rendering, remote client │      │ berths, routing          │
    └────────────┬─────────────┘      └────────────┬─────────────┘
                 │ hosts in-process                │ hosts for its surfaces
                 └────────────────┬────────────────┘
@@ -187,6 +187,14 @@ Requires Node.js ≥ 20.12 (22.x recommended).
    ├────────────────────────────────────────────────────────────┤
    │  @fnndsc/chrisapi          raw ChRIS REST client           │  external (npm)
    └────────────────────────────────────────────────────────────┘
+
+   Spoken by every layer and every surface
+   ═══════════════════════════════════════
+
+   ┌────────────────────────────────────────────────────────────┐
+   │  menu     @fnndsc/menu     the wire contract —             │  contract
+   │           envelope · session protocol · result models      │
+   └────────────────────────────────────────────────────────────┘
 ```
 
 The lower packages are the strict Sandwich Model: each layer talks **only** to
@@ -196,7 +204,10 @@ one surface over that engine; a local shell drives brasa in-process, paying no
 tax for a boundary it doesn't need. **CALYPSO** is not a layer stacked above the
 engine but the session/daemon boundary: it hosts the same brasa engine and serves
 it to remote and future web surfaces, so they drive it without ever learning
-CUBE's Collection+JSON API.
+CUBE's Collection+JSON API. **menu** is the contract all of them speak: what a
+command returns and what a session exchanges, in a package that depends on
+nothing, so a surface author takes a dependency on the contract rather than on
+the daemon that happens to serve it.
 
 Frontends other than the local shell (`chili` as a scriptable CLI, a future web
 app, or a remote ChELL surface attached through CALYPSO) tap in at the layer they

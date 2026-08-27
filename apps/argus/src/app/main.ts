@@ -15,7 +15,7 @@
  *
  * @module
  */
-import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
+import type { PromptContext, WireEnvelope } from '@fnndsc/menu';
 import {
   ArgusClient,
   type AttachInfo,

@@ -24,76 +24,23 @@
 
 import { StackMessage } from "../error/errorStack";
 
-/**
- * Terminal status of a completed command.
- *
- * Additional statuses may be added over time; consumers must treat the
- * union as open and handle unknown values conservatively.
- */
-export type EnvelopeStatus = "ok" | "error";
+// The envelope's shape is contract, declared once in `@fnndsc/menu` and
+// inferred from the schema that validates it on the wire. These names are
+// re-exported here because cumin's helpers below produce and consume them, and
+// because most of the stack has always reached them at this address.
+// `StackMessage` is not re-exported: cumin's error stack owns that name and
+// produces the values the wire shape describes.
+export type {
+  EnvelopeStatus,
+  EnvelopeModel,
+  ResolutionTrace,
+  CommandEnvelope,
+} from '@fnndsc/menu';
 
-/**
- * Discriminated slot for a command's typed result.
- *
- * @property kind - Namespaced model identifier (e.g. `fs.listing`,
- *   `feed.detail`). The set of kinds is owned by the layer that produces
- *   the models, not by cumin.
- * @property data - The typed payload. Opaque at this altitude; consumers
- *   narrow it via the kind map exported by the producing layer.
- */
-export interface EnvelopeModel {
-  kind: string;
-  data: unknown;
-}
+import type { EnvelopeModel, CommandEnvelope } from '@fnndsc/menu';
 
-/**
- * Record of how a natural-language input was resolved into a command.
- *
- * Present only on envelopes produced through intent resolution, so that
- * surfaces can show what was proposed and what actually ran rather than
- * hiding the mediation.
- *
- * @property input - The user's original input, verbatim.
- * @property proposed - The command line proposed by the resolver.
- * @property validated - Whether the proposal passed validation against the
- *   live command vocabulary.
- * @property executed - The command line that actually ran, when execution
- *   proceeded. Absent when validation failed or confirmation was declined.
- */
-export interface ResolutionTrace {
-  input: string;
-  proposed: string;
-  validated: boolean;
-  executed?: string;
-}
 
-/**
- * The envelope in which one command's complete outcome travels.
- *
- * Exactly one envelope concludes each executed command. Streaming output
- * that preceded completion is a transport concern; the envelope's rendered
- * field holds the accumulated data-channel text, so capture, piping, and
- * redirection consume the envelope alone.
- *
- * @property status - Terminal status of the command.
- * @property rendered - Accumulated printable output (ANSI permitted).
- * @property renderedErr - Printable error-stream output (ANSI permitted),
- *   exactly what a terminal host writes to stderr. Kept separate from
- *   `rendered` so pipes and capture consume only the data stream.
- * @property model - Optional typed result for structural consumers.
- * @property errors - Structured error detail drained from the errorStack at
- *   the dispatch boundary, for machine consumers; presentation of errors on
- *   a terminal travels in `renderedErr`.
- * @property trace - Resolution record for intent-derived commands.
- */
-export interface CommandEnvelope {
-  status: EnvelopeStatus;
-  rendered: string;
-  renderedErr?: string;
-  model?: EnvelopeModel;
-  errors?: StackMessage[];
-  trace?: ResolutionTrace;
-}
+
 
 /**
  * Creates a successful envelope.

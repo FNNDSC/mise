@@ -381,6 +381,13 @@ describe('RemoteEngine live output', () => {
           extension: '.txt',
         })));
         ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'deliver',
+          deliverId: 'deliver1',
+          path: '/home/me/scan.dcm',
+          filename: 'scan.dcm',
+          destination: '/tmp',
+        })));
+        ws.emit('message', Buffer.from(JSON.stringify({
           type: 'result',
           id,
           envelopes: [{ status: 'ok', rendered: '' }],
@@ -393,6 +400,7 @@ describe('RemoteEngine live output', () => {
       token: 'token',
       onPipe: async (_command, input) => Buffer.from(input.toString().toUpperCase()),
       onEdit: async (content) => ({ content: `${content} after`, changed: true }),
+      onDeliver: async (request) => ({ location: `/tmp/${request.filename}`, bytes: 2048 }),
       onClose: () => { closed = true; },
     });
     await remote.line_execute('callbacks');
@@ -401,8 +409,38 @@ describe('RemoteEngine live output', () => {
     expect(FakeWebSocket.instances[0].sent).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'pipeResult', pipeId: 'pipe1', output: Buffer.from('ABC').toString('base64') }),
       expect.objectContaining({ type: 'editResult', editId: 'edit1', content: 'before after', changed: true }),
+      expect.objectContaining({ type: 'deliverResult', deliverId: 'deliver1', location: '/tmp/scan.dcm', bytes: 2048 }),
     ]));
     expect(closed).toBe(true);
+  });
+
+  it('refuses a delivery when the surface cannot receive files', async () => {
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      const id: string = String(sent.id);
+      process.nextTick(() => {
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'deliver',
+          deliverId: 'deliver9',
+          path: '/home/me/scan.dcm',
+          filename: 'scan.dcm',
+        })));
+        ws.emit('message', Buffer.from(JSON.stringify({
+          type: 'result',
+          id,
+          envelopes: [{ status: 'ok', rendered: '' }],
+        })));
+      });
+    };
+
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    await remote.line_execute('deliver');
+    remote.close();
+
+    // Reporting success for a file nobody received would send the operator
+    // looking for it.
+    expect(FakeWebSocket.instances[0].sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'deliverError', deliverId: 'deliver9' }),
+    ]));
   });
 
   it('returns a pipe error when the local segment fails', async () => {

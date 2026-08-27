@@ -15,6 +15,7 @@ import chalk from 'chalk';
 import { serverMessage_parse, CONTRACT_VERSION, RequestBroker, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
+import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { envelope_deliver, sink_get, type OutputSink } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
 
@@ -34,6 +35,7 @@ export interface RemoteEngineOptions {
   onShell?: (command: string) => Promise<number>;
   /** Opens content in this machine's editor and returns the edited result. */
   onEdit?: (content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>;
+  onDeliver?: (request: FileDeliverRequest) => Promise<FileDeliverResult>;
   /** Called when the connection closes unexpectedly. */
   onClose?: () => void;
 }
@@ -71,6 +73,7 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onPipe: ((command: string, input: Buffer) => Promise<Buffer>) | undefined;
   private readonly onShell: ((command: string) => Promise<number>) | undefined;
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
+  private readonly onDeliver: ((request: FileDeliverRequest) => Promise<FileDeliverResult>) | undefined;
   private latestPrompt: string = '';
   private stackReport: DaemonStack | undefined;
   private nextId: number = 0;
@@ -88,6 +91,7 @@ export class RemoteEngine implements BrasaEngine {
     this.onPipe = options.onPipe;
     this.onShell = options.onShell;
     this.onEdit = options.onEdit;
+    this.onDeliver = options.onDeliver;
   }
 
   /**
@@ -254,6 +258,15 @@ export class RemoteEngine implements BrasaEngine {
       case 'edit':
         void this.edit_run(message.editId, message.content, message.extension);
         break;
+      case 'deliver':
+        void this.deliver_run(message.deliverId, {
+          path: message.path,
+          filename: message.filename,
+          ...(message.destination !== undefined ? { destination: message.destination } : {}),
+          ...(message.size !== undefined ? { size: message.size } : {}),
+          ...(message.contentType !== undefined ? { contentType: message.contentType } : {}),
+        });
+        break;
       case 'error':
         if (message.id !== undefined) {
           this.requests.fail(this.ws, message.id, message.reason);
@@ -354,6 +367,29 @@ export class RemoteEngine implements BrasaEngine {
     } catch (error: unknown) {
       const reason: string = error instanceof Error ? error.message : String(error);
       this.ws.send(JSON.stringify({ type: 'editError', editId, reason }));
+    }
+  }
+
+  /**
+   * Places a file on this client's machine at the daemon's request.
+   *
+   * @param deliverId - The delivery correlation id.
+   * @param request - What to deliver and where the operator asked for it.
+   */
+  private async deliver_run(deliverId: string, request: FileDeliverRequest): Promise<void> {
+    try {
+      if (!this.onDeliver) {
+        // Reporting success for a file nobody received would be worse than
+        // failing: the operator would go looking for it.
+        throw new Error('this surface cannot receive a file');
+      }
+      const result: FileDeliverResult = await this.onDeliver(request);
+      this.ws.send(JSON.stringify({
+        type: 'deliverResult', deliverId, location: result.location, bytes: result.bytes,
+      }));
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.ws.send(JSON.stringify({ type: 'deliverError', deliverId, reason }));
     }
   }
 

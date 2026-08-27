@@ -41,6 +41,15 @@
  * @property shellCommands - The surface can run a `!`-prefixed host-shell
  *   command on its own machine. A daemon delegates this capability to the
  *   command's originating surface and never launches the process itself.
+ * @property fileDelivery - The surface can put a file where its operator can
+ *   reach it. What that means is the surface's business — a path on the local
+ *   CLI's disk, a path on a remote CLI's client machine, a saved file in a
+ *   browser — but never the daemon host's disk.
+ * @property engineFilesystem - The surface's operator sits at the same
+ *   filesystem the engine runs on, so a path the engine resolves is a path
+ *   they can open. True only for an in-process local shell. When false, a
+ *   builtin that would write to disk must deliver through the surface instead,
+ *   because the engine's disk is somebody else's machine.
  */
 export interface SurfaceCapabilities {
   hiddenInput: boolean;
@@ -48,6 +57,8 @@ export interface SurfaceCapabilities {
   tty: boolean;
   pipeSegments: boolean;
   shellCommands: boolean;
+  fileDelivery: boolean;
+  engineFilesystem: boolean;
 }
 
 /**
@@ -73,6 +84,16 @@ export interface LocalEditRequest {
   content: string;
   extension?: string;
 }
+
+// The delivery request and result cross the wire, so they are declared once in
+// the contract package and named here rather than repeated. Where a surface
+// gets the bytes is its own business: the local CLI reads through the
+// in-process engine, a remote CLI and a browser both fetch the daemon's
+// token-gated byte route. Pushing bytes through the session bus instead would
+// base64 a DICOM series across a channel meant for session state.
+export type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
+
+import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 
 /**
  * The outcome of a local edit.
@@ -138,6 +159,20 @@ export interface Surface {
    *   capability.
    */
   localEdit(request: LocalEditRequest): Promise<LocalEditResult>;
+
+  /**
+   * Places one file where this surface's operator can reach it.
+   *
+   * The mechanics are the surface's: a write to the resolved path for the
+   * local CLI, a write on the client machine for a remote CLI, a saved file
+   * for a browser. A daemon never writes to its own disk on a surface's
+   * behalf, for the same reason it never spawns a shell there.
+   *
+   * @param request - What to deliver and where the operator asked for it.
+   * @returns Where it landed and how large it was.
+   * @throws {CapabilityError} When the surface lacks `fileDelivery`.
+   */
+  fileDeliver(request: FileDeliverRequest): Promise<FileDeliverResult>;
 }
 
 /**
@@ -174,6 +209,8 @@ export class HeadlessSurface implements Surface {
     tty: false,
     pipeSegments: false,
     shellCommands: false,
+    fileDelivery: false,
+    engineFilesystem: false,
   };
 
   /** @inheritdoc */
@@ -194,6 +231,11 @@ export class HeadlessSurface implements Surface {
   /** @inheritdoc */
   public localEdit(_request: LocalEditRequest): Promise<LocalEditResult> {
     throw new CapabilityError('localEdit', 'This surface cannot open a local editor.');
+  }
+
+  /** @inheritdoc */
+  public fileDeliver(_request: FileDeliverRequest): Promise<FileDeliverResult> {
+    throw new CapabilityError('fileDelivery', 'This surface cannot receive a file.');
   }
 }
 

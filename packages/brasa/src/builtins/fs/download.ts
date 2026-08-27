@@ -18,7 +18,8 @@ import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
 import { path_resolve } from '../utils.js';
-import { surface_get } from '../../core/surface.js';
+import { surface_get, type Surface } from '../../core/surface.js';
+import type { FileDeliverResult } from '@fnndsc/menu';
 
 /**
  * Asks the issuing surface to confirm a local download overwrite or merge.
@@ -35,7 +36,65 @@ async function downloadConfirmation_request(message: string): Promise<void> {
 }
 
 /**
- * Downloads a remote ChRIS file or directory to the local filesystem.
+ * Hands each requested file to the surface, for a session whose engine runs
+ * somewhere its operator is not.
+ *
+ * Only the request travels: the surface fetches the bytes itself, through
+ * whichever route suits it. Multiple sources become multiple deliveries, since
+ * a surface with no filesystem — a browser — has no directory to fill.
+ *
+ * @param surface - The surface running this command.
+ * @param sourceArgs - The requested source paths, before resolution.
+ * @param destination - Where the operator asked for it. A surface with a
+ *   filesystem treats an existing directory as a place to fill and anything
+ *   else as the filename; a surface without one ignores it.
+ * @returns An envelope summarising where the files landed.
+ */
+async function surfaceDownload_run(
+  surface: Surface,
+  sourceArgs: string[],
+  destination: string,
+): Promise<CommandEnvelope> {
+  if (!surface.capabilities.fileDelivery) {
+    process.exitCode = 1;
+    return envelope_error('', undefined,
+      `${chalk.red('download: this surface cannot receive a file, and the engine will not write to its own host.')}\n`);
+  }
+
+  const sources: string[] = await Promise.all(sourceArgs.map(path_resolve));
+  const delivered: string[] = [];
+  const failed: string[] = [];
+
+  for (const source of sources) {
+    const filename: string = source.split('/').filter(Boolean).pop() ?? 'download';
+    try {
+      const result: FileDeliverResult = await surface.fileDeliver({
+        path: source,
+        filename,
+        destination,
+      });
+      delivered.push(`${chalk.gray(`  ${filename} → ${result.location}`)} ${chalk.gray(`(${bytes_format(result.bytes)})`)}`);
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      failed.push(`${chalk.red(`  ${filename}: ${reason}`)}`);
+    }
+  }
+
+  let rendered: string = '\n';
+  if (failed.length === 0) {
+    rendered += `${chalk.green(`✓ Delivered ${delivered.length} file(s)`)}\n`;
+  } else {
+    rendered += `${chalk.yellow(`⚠ Delivered ${delivered.length} file(s), ${failed.length} failed`)}\n`;
+    process.exitCode = 1;
+  }
+  rendered += [...delivered, ...failed].join('\n');
+  if (delivered.length > 0 || failed.length > 0) rendered += '\n';
+  return failed.length === 0 ? envelope_ok(rendered) : envelope_error(rendered, undefined, '');
+}
+
+/**
+ * Downloads a remote ChRIS file or directory to the local filesystem, or hands
+ * it to the surface when the engine's disk is not the operator's.
  *
  * @param args - [remotePathOrGlob, localPath] plus optional -f/--force to overwrite.
  * @returns An envelope carrying the download summary.
@@ -57,6 +116,18 @@ export async function builtin_download(args: string[]): Promise<CommandEnvelope>
   const sourceWasExpanded: boolean = positionalIndexes
     .slice(0, -1)
     .some((index: number): boolean => shellArguments_pathnameExpanded(args, index));
+
+  // A path resolved here is a path on the *engine's* disk. That is the
+  // operator's disk only when a local shell hosts the engine in its own
+  // process; under a daemon it is a machine nobody attending the session is
+  // sitting at. So when the surface does not share the engine's filesystem,
+  // the file is handed to the surface, which puts it somewhere its operator
+  // can actually reach — the client's disk for a remote shell, the download
+  // manager for a browser.
+  const surface: Surface = surface_get();
+  if (!surface.capabilities.engineFilesystem) {
+    return surfaceDownload_run(surface, sourceArgs, localPathArg);
+  }
 
   const targetLocal: string = path.resolve(localPathArg);
 

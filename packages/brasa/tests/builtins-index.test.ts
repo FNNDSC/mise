@@ -739,6 +739,40 @@ describe('Builtins - Core Functions', () => {
   });
 
   describe('builtin_download()', () => {
+    // `download` writes to the engine's disk only when the operator is sitting
+    // at it. These cases exercise that path, so they install a surface that
+    // says so; the delivery path is covered separately below.
+    const localSurface = async (): Promise<void> => {
+      const { surface_set, HeadlessSurface } = await import('../src/core/surface.js');
+      const surface = new HeadlessSurface() as unknown as {
+        capabilities: { engineFilesystem: boolean; fileDelivery: boolean };
+      };
+      surface.capabilities = { ...surface.capabilities, engineFilesystem: true };
+      surface_set(surface as never);
+    };
+
+    /**
+     * Installs a surface standing in for a browser or a remote client: it can
+     * receive a file, but the engine's disk is not its operator's.
+     */
+    const deliveringSurface = async (
+      deliver: (request: { path: string; filename: string; destination?: string }) => Promise<{ location: string; bytes: number }>,
+      canDeliver = true,
+    ): Promise<void> => {
+      const { surface_set } = await import('../src/core/surface.js');
+      surface_set({
+        capabilities: {
+          hiddenInput: false, localEdit: false, tty: false, pipeSegments: false,
+          shellCommands: false, fileDelivery: canDeliver, engineFilesystem: false,
+        },
+        prompt: async (): Promise<string> => '',
+        pipeSegment: async (): Promise<Buffer> => Buffer.from(''),
+        shellCommand: async (): Promise<number> => 0,
+        localEdit: async (): Promise<{ content: string; changed: boolean }> => ({ content: '', changed: false }),
+        fileDeliver: deliver,
+      } as never);
+    };
+
     it('should show usage with insufficient args', async () => {
       const envelope = await builtin_download(['remote.txt']);
 
@@ -747,6 +781,7 @@ describe('Builtins - Core Functions', () => {
 
     it('should invoke chili download helper', async () => {
       const downloadModule = await import('@fnndsc/chili/commands/fs/download.js');
+      await localSurface();
 
       await builtin_download(['/remote/file.txt', './local.txt']);
 
@@ -758,9 +793,61 @@ describe('Builtins - Core Functions', () => {
       }));
     });
 
+    it('hands the file to the surface when the engine disk is not the operator\'s', async () => {
+      const deliver = jest.fn(async (request: { path: string; filename: string }) => ({
+        location: `/downloads/${request.filename}`, bytes: 4096,
+      }));
+      await deliveringSurface(deliver as never);
+
+      const envelope = await builtin_download(['/remote/scan.dcm', '/downloads']);
+
+      // The request travels; the bytes do not. A daemon writing to its own
+      // host would put the file on a machine nobody is sitting at.
+      expect(mockChefsDownload).not.toHaveBeenCalled();
+      expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+        path: '/remote/scan.dcm', filename: 'scan.dcm', destination: '/downloads',
+      }));
+      expect(envelope.status).toBe('ok');
+      expect(envelope.rendered).toContain('/downloads/scan.dcm');
+    });
+
+    it('delivers each source when several are named', async () => {
+      const deliver = jest.fn(async (request: { filename: string }) => ({
+        location: `/d/${request.filename}`, bytes: 1,
+      }));
+      await deliveringSurface(deliver as never);
+
+      await builtin_download(['/remote/one.txt', '/remote/two.txt', '/d']);
+
+      expect(deliver).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses rather than writing to the engine host when the surface cannot receive', async () => {
+      await deliveringSurface(async () => ({ location: '', bytes: 0 }), false);
+
+      const envelope = await builtin_download(['/remote/scan.dcm', '/downloads']);
+
+      expect(mockChefsDownload).not.toHaveBeenCalled();
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('cannot receive a file');
+    });
+
+    it('reports a failed delivery without claiming success', async () => {
+      const deliver = jest.fn(async (): Promise<{ location: string; bytes: number }> => {
+        throw new Error('the browser refused it');
+      });
+      await deliveringSurface(deliver as never);
+
+      const envelope = await builtin_download(['/remote/scan.dcm', '/downloads']);
+
+      expect(envelope.status).toBe('error');
+      expect(envelope.rendered).toContain('the browser refused it');
+    });
+
     it('uses aggregate transfer for sources expanded by the shell', async () => {
       const args: ShellArguments = ['/remote/one.txt', '/remote/two.txt', './downloads'];
       args.pathnameExpanded = [true, true, false];
+      await localSurface();
 
       await builtin_download(args);
 

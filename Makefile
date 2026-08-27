@@ -10,7 +10,7 @@
 # The Menu (main commands):
 #   make shop    - Freshen the pantry (git pull)
 #   make prep    - Install dependencies (one install links all workspaces)
-#   make cook    - Build all packages in dependency order (cumin->salsa->chili->brasa->calypso->chell)
+#   make cook    - Build all packages in dependency order (menu->cumin->salsa->chili->brasa->calypso->chell)
 #   make taste   - Run the full test suite (all workspaces)
 #   make serve   - Link `chell` globally so you can run it from anywhere
 #   make scrub   - Clean the kitchen (remove dist/ and node_modules)
@@ -128,7 +128,7 @@ prep:
 	npx --yes npm@$(CI_NPM) install
 
 # --- Cook (build) ---
-# Root build script already enforces topological order: cumin->salsa->chili->brasa->calypso->chell.
+# Root build script already enforces topological order: menu->cumin->salsa->chili->brasa->calypso->chell.
 cook:
 	@echo "Cooking the whole stack (dependency order)..."
 	npm run build

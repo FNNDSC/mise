@@ -83,7 +83,9 @@ describe('provider matching', () => {
     } as never);
     expect(d.provider_get('/net/pacs/queries/q1').prefix).toBe('/net/pacs/queries');
     expect(d.provider_get('/net/pacs/other').prefix).toBe('/net/pacs');
-    expect(d.providers_get().length).toBe(4);
+    // native, /etc, /proc/jobs, /net/pacs, /tags, /usr/share, plus the one
+    // registered above.
+    expect(d.providers_get().length).toBe(7);
   });
 });
 
@@ -96,7 +98,7 @@ describe('list', () => {
     if (result.ok) {
       const names: string[] = result.value.map((i: VFSItem) => i.name).sort();
       // 'etc' from native is deduplicated against the virtual 'etc'
-      expect(names).toEqual(['etc', 'home', 'net', 'proc']);
+      expect(names).toEqual(['etc', 'home', 'net', 'proc', 'tags', 'usr']);
     }
   });
 

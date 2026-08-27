@@ -1,0 +1,128 @@
+= Lineage: Where This Architecture Comes From
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-08-26: Initial draft
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: DRAFT (companion essay to principles.adoc)
+
+[abstract]
+== Abstract
+
+This is the argument behind link:principles.adoc[principles.adoc], separated from it so that the normative document can stay short and the reasoning can stay long. Nothing here binds: a principle is enforced because it appears in that document, not because it is defended in this one. What this essay supplies is the *why* — the precedents each principle descends from, the failure modes those precedents documented, an honest account of what in this architecture is genuinely particular, and one direction of forward work that is not yet built.
+
+The short version: the shape of this architecture is not novel and that is a recommendation. Its parts have been tried at scale and their failure modes are well attested. What is particular is placement, and whether the discipline holds.
+
+[[lineage]]
+== Lineage and precedent
+
+The shape of this architecture — one kernel, many faithful surfaces, typed messages between them — is not novel, and that is a recommendation rather than an apology. Each of its parts has been tried at scale, and the failure modes are as well documented as the successes. What is particular to `mise` is placement: the same shape applied *above* a hypermedia API, as a completion layer, with the command vocabulary made normative rather than convenient.
+
+*Separating dialogue from presentation.* The Seeheim model <<seeheim-1985>> divided an interactive system into application, dialogue, and presentation; the Arch metamodel <<arch-1992>> refined this with the dialogue component as the keystone. link:principles.adoc#surfaces-are-views[Surfaces are views, not applications] is that separation with the dialogue component made durable and remote — the session daemon is the dialogue layer, and surfaces are presentation.
+
+*One kernel, many frontends.* Jupyter <<jupyter-2016>> is the closest structural relative: kernels implement a documented wire protocol <<jupyter-messaging>> and any number of frontends attach. LSP <<lsp-spec>> generalised the same move for language tooling, and the reported effect was precisely decoupling capability from editor <<lsp-bunder-2019>>. Both validate the shape; neither makes the text path normative, which is where `mise` differs.
+
+*Structure on the pipeline.* Unix composition <<unix-1974>> bought universality with text and paid in perpetual reparsing. The Monad manifesto <<monad-2002>> argued for piping structured objects instead, which became PowerShell; `nushell` <<nushell-book>> carries the same idea into a modern shell with typed values in place of text streams. The envelope model is this move applied to a domain API rather than to a local process pipeline.
+
+*Every affordance is a command.* `emacs` <<emacs-1981>> is the deepest precedent for link:principles.adoc#intent-equivalence[Intent equivalence]: extensibility through a uniform command vocabulary, with the interface expressed in terms of that vocabulary rather than beside it. Oberon <<oberon-1989>> pursued the same idea system-wide, with commands invocable from any text.
+
+*Text as interface inside a graphical surface.* Acme <<acme-1994>> is the nearest ancestor of what `argus` is attempting, and the most important reference in this section. Acme is a hybrid of window system, shell, and editor in which any text anywhere is executable as a command — the interface is made of the same substance as the content. It settles a question that otherwise looks like a dilemma: a text-normative system need not look like a terminal. Terminal-as-truth is a claim about the *vocabulary*, not about the appearance, and Acme is the existence proof.
+
+*Namespace projection.* Plan 9 <<plan9-namespaces-1993>> made resources reachable as files in a per-process namespace rather than through service-specific APIs. `mise` projects CUBE's resource graph the same way — `/proc/jobs`, `/net/pacs`, `/etc/group` — so that navigating a compute platform is navigating a filesystem.
+
+*Dethroning the application.* BTRON, the workstation arm of the TRON project <<btron-1987>>, inverted the usual relationship: rather than launching an application and opening a document inside it, the user selects the document and the system summons whatever can present it. Its interchange format, TAD, carried typed chunks with length headers so that an application could *skip data it did not understand and still render the rest*.
+
+Both halves recur here, arrived at independently. A panel that renders `/bin` as plugin cards and a feed directory as a graph is dispatching presentation on what the content is, not launching an app. And an envelope whose `model` a surface does not recognise falls back to its rendered text — a surface skipping what it cannot present while still showing the rest, which is link:principles.adoc#degradation[Principle 0: graceful degradation] expressed in the wire format rather than in the surface. That TAD reached the same construction in the 1980s is a useful check: it suggests the property belongs to the format, not to any particular renderer.
+
+The divergence is equally instructive. BTRON abolished the hierarchy in favour of a directed graph of linked objects. `mise` does the opposite and makes the namespace the user model. That looks like the more conservative choice, and it is — but it is forced by link:principles.adoc#intent-equivalence[Intent equivalence]: a graph node has no name a person can type, and a path does. CUBE's feed DAG is a graph underneath; projecting it into a tree is what keeps it reachable from a command line.
+
+*A session that outlives its surface.* `tmux` and its predecessors <<tmux>> detached a live session from the terminal displaying it, so the session persists and any number of clients attach. `calypso` is that idea for a ChRIS session. The older split is X <<x-window-1986>>, which separated an application from its display across a wire — the daemon/surface relationship a decade before the web.
+
+=== What is particular here
+
+Given how much of the above is inherited, it is worth stating precisely what is not. Three things, narrowly:
+
+*The namespace is the user model, over a remote compute platform, and it reaches the browser.* Plan 9 made local resources files. `mise` projects a remote Collection+JSON resource graph as a navigable namespace, and then makes that namespace — not a set of screens — the organising model for a graphical surface. The prevailing pattern in this domain is a single-page application over REST endpoints, in which the filesystem metaphor appears nowhere and every interaction is an API call. Here a directory listing of `/bin` and a panel of plugin cards are the same fact rendered twice.
+
+*The kernel/surface split is placed above someone else's hypermedia API, as completion rather than convenience.* Jupyter and LSP put a kernel beneath their own surfaces. A backend-for-frontend or an SDK sits above a foreign API but claims nothing architecturally — it is a convenience layer, and it will happily bend the backend to suit a client. The position taken here is different: `mise` completes an architecture it does not own, and binds itself not to erode the thing it completes (link:principles.adoc#no-silent-workaround[no silent workaround]).
+
+*The text path is normative rather than incidental.* `emacs` and Acme hold this discipline for a local system; Jupyter and LSP do not hold it at all. Requiring that every capability reduce to an expressible intent — and treating a capability that cannot as evidence the vocabulary is incomplete — is the constraint that makes a single vocabulary serve humans, panels, and machine assistance without divergence. It is also the most expensive commitment in this document, and the one most likely to be abandoned quietly.
+
+Whether this combination is a contribution or merely an unoccupied position is not yet settled, and the difference is empirical. A position can be unoccupied because nobody thought of it, or because its economics do not hold. The evidence will be whether the discipline survives contact with a graphical surface that people enjoy using — which is what link:principles.adoc#known-violations[Known violations] is for.
+
+=== The known failure mode
+
+Co-equal surfaces tend not to remain co-equal. The pattern is visible in Jupyter's own ecosystem, where the notebook and lab frontends accrued investment far beyond the console — an observation about ecosystem dynamics rather than a claim sourced to the protocol design, but a caution worth taking seriously: a protocol nominally neutral between frontends drifts toward the one that is actually used. Nothing in link:principles.adoc#surfaces-are-views[Surfaces are views, not applications] enforces parity of investment, and the economics run one way: the visual surface is where demonstrations happen.
+
+`emacs` avoided this by refusing frontend-only affordances outright — a harsher discipline than the one adopted here. Known violation 5 is this drift beginning, and the honest test of this document is whether that violation is repaired or quietly becomes precedent.
+
+There is a second, larger graveyard worth staring at. Document-centric computing — the idea that content is primary and applications are summoned to present it — has been attempted repeatedly and has lost every time it met a market: BTRON, OpenDoc, compound documents under OLE, and the object filesystems of Cairo and WinFS. BTRON's collapse is usually told as a trade-politics story, and partly is, but the same idea died on its own merits elsewhere. The recurring cause is economic rather than technical: applications are ownable, sellable units and documents are not, so every vendor has an interest in owning the user.
+
+That pressure is largely absent here, which is the reason to think this attempt differs. `mise` is not competing in an application market; the platform it completes has already dethroned the application, since ChRIS plugins are units of computation rather than of interface. The pressure it does face is the one named above — its own gradient toward the surface that demonstrates well. Worth noting too that the piece of TRON that survived was ITRON, the embedded sibling, which faced no incumbent on its ground.
+
+[[interaction-dag]]
+== Forward work: the interaction DAG
+
+NOTE: This section is not yet normative. It records a direction and the reasoning behind it, so that the decisions it depends on are made deliberately rather than by accident. It becomes binding only when something is built.
+
+The exploration had a second kind of DAG that `mise` has no equivalent for, and losing it would be a mistake.
+
+CUBE's DAG is *compute*: which plugin instance produced which artifact. The exploration also declared an *interaction* DAG in its manifests — a topology of what a user is doing, so the surface could say "you have searched and gathered; the next sensible move is to harmonize." Those two are unrelated. A pipeline is a graph of computations; a workflow of that second kind is a graph of a person's moves through the system, and only the first exists here today.
+
+This matters most for machine assistance, and it is the reason link:principles.adoc#one-declaration[One declaration per command] left preconditions unspecified rather than dropping them.
+
+An assistant guiding an interaction is a source of nondeterminism: at the same apparent point in a session it may propose different next moves, and without a structure to guide, "the same point in a session" is not even a well-defined phrase. An interaction DAG makes it definable, and fingerprinting makes it *identifiable* — `fp(step) = hash(intent, parameters, fp(parents))`, exactly the exploration's construction applied to interaction rather than to computation. That yields four things worth having:
+
+* *a stable identity for session state*, so "where the user is" is a value rather than an impression;
+* *invalidation*, so revising an earlier step marks the guidance that descended from it as stale rather than silently keeping it;
+* *reproducibility*, so a session can be replayed and a divergence located — a model proposing different moves at the same fingerprint becomes a measurable event rather than an anecdote;
+* *a cache key*, so guidance at a known state need not be re-inferred.
+
+The problem being addressed is real and current. Non-determinism is intrinsic to language models rather than a configuration mistake, and evaluation that ignores it draws unsound conclusions <<nondeterminism-naacl-2025>>; agent systems compound this, because tool calls and external state make a prior run unreproducible even when the model is pinned, which has prompted replay infrastructure that captures and re-serves external interactions <<agent-replay-2026>>. Those approaches record a *trace*. An interaction DAG differs by recording *structure*: not only what happened, but what position in the interaction it happened from, which is what makes two runs comparable rather than merely re-executable. The fingerprint construction is Merkle's <<merkle-1987>>, applied to interaction.
+
+Note that this is where the exploration's fingerprinting genuinely belongs. Applied to compute it duplicates what CUBE already owns (see link:principles.adoc#inherited[Inherited invariants]); applied to interaction it addresses something nothing in the stack currently answers.
+
+Three threads converge on the same missing metadata: a panel that renders `/bin` as cards wants to know what a command *is*; guidance wants to know what is *ready*; an assistant must be jailed to what is *valid*. That is one declaration serving three consumers, which is the argument for building it once and properly.
+
+== References
+
+* [[[btron-1987]]] K. Sakamura. “BTRON: The Business-oriented Operating System.” _IEEE Micro_ 7(2), pp. 53–65, April 1987. https://doi.org/10.1109/MM.1987.304846
+
+* [[[acme-1994]]] R. Pike. “Acme: A User Interface for Programmers.” In _Proceedings of the USENIX Winter 1994 Technical Conference_, San Francisco, CA, January 1994. https://research.swtch.com/acme.pdf
+
+* [[[plan9-namespaces-1993]]] R. Pike, D. Presotto, K. Thompson, H. Trickey, and P. Winterbottom. “The Use of Name Spaces in Plan 9.” _ACM SIGOPS Operating Systems Review_ 27(2), pp. 72–76, 1993. https://doi.org/10.1145/155848.155861
+
+* [[[oberon-1989]]] N. Wirth and J. Gutknecht. “The Oberon System.” _Software: Practice and Experience_ 19(9), pp. 857–893, 1989. https://doi.org/10.1002/spe.4380190905
+
+* [[[x-window-1986]]] R. W. Scheifler and J. Gettys. “The X Window System.” _ACM Transactions on Graphics_ 5(2), pp. 79–109, 1986. https://doi.org/10.1145/22949.24053
+
+* [[[tmux]]] N. Marriott et al. _tmux: a terminal multiplexer_. Detachable sessions that persist independently of any attached client. https://github.com/tmux/tmux (accessed 2026-08-26).
+
+* [[[emacs-1981]]] R. M. Stallman. “EMACS: the extensible, customizable self-documenting display editor.” In _Proceedings of the ACM SIGPLAN SIGOA Symposium on Text Manipulation_, pp. 147–156, 1981. https://doi.org/10.1145/800209.806466
+
+* [[[seeheim-1985]]] G. E. Pfaff (ed.). _User Interface Management Systems: Proceedings of the Workshop on User Interface Management Systems, Seeheim_. Springer-Verlag, 1985. The origin of the application/dialogue/presentation separation known as the Seeheim model.
+
+* [[[arch-1992]]] The UIMS Tool Developers Workshop. “A metamodel for the runtime architecture of an interactive system.” _ACM SIGCHI Bulletin_ 24(1), pp. 32–37, 1992. https://doi.org/10.1145/142394.142401
+
+* [[[jupyter-2016]]] T. Kluyver, B. Ragan-Kelley, F. Pérez, B. Granger, M. Bussonnier, J. Frederic, K. Kelley, J. Hamrick, J. Grout, S. Corlay, P. Ivanov, D. Avila, S. Abdalla, and C. Willing. “Jupyter Notebooks—a publishing format for reproducible computational workflows.” In _Positioning and Power in Academic Publishing: Players, Agents and Agendas (ELPUB 2016)_, pp. 87–90, 2016. https://doi.org/10.3233/978-1-61499-649-1-87
+
+* [[[jupyter-messaging]]] Project Jupyter. _Messaging in Jupyter: the Jupyter kernel wire protocol_. https://jupyter-client.readthedocs.io/en/latest/messaging.html (accessed 2026-08-26).
+
+* [[[lsp-spec]]] Microsoft. _Language Server Protocol Specification_, version 3.17. https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ (accessed 2026-08-26).
+
+* [[[lsp-bunder-2019]]] H. Bünder. “Decoupling Language and Editor — The Impact of the Language Server Protocol on Textual Domain-Specific Languages.” In _Proceedings of the 7th International Conference on Model-Driven Engineering and Software Development (MODELSWARD)_, pp. 129–140, 2019. https://doi.org/10.5220/0007556301290140
+
+* [[[monad-2002]]] J. P. Snover. _Monad Manifesto_. Microsoft, 8 August 2002. The design argument for piping structured objects rather than text, which became PowerShell. https://www.jsnover.com/Docs/MonadManifesto.pdf (accessed 2026-08-26).
+
+* [[[nushell-book]]] The Nushell Project. _The Nushell Book: Pipelines_. Structured values rather than text streams between commands. https://www.nushell.sh/book/pipelines.html (accessed 2026-08-26).
+
+* [[[unix-1974]]] D. M. Ritchie and K. Thompson. “The UNIX Time-Sharing System.” _Communications of the ACM_ 17(7), pp. 365–375, 1974. https://doi.org/10.1145/361011.361061
+
+* [[[merkle-1987]]] R. C. Merkle. “A Digital Signature Based on a Conventional Encryption Function.” In _Advances in Cryptology — CRYPTO '87_, Lecture Notes in Computer Science 293, pp. 369–378. Springer, 1988. https://doi.org/10.1007/3-540-48184-2_32
+
+* [[[nondeterminism-naacl-2025]]] Y. Song, G. Wang, S. Li, and B. Y. Lin. “The Good, The Bad, and The Greedy: Evaluation of LLMs Should Not Ignore Non-Determinism.” In _Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers)_, pp. 4195–4206, 2025. https://aclanthology.org/2025.naacl-long.211/
+
+* [[[agent-replay-2026]]] R. Mudasiru. _Deterministic Replay for AI Agent Systems_. arXiv:2607.16200, 2026. https://arxiv.org/abs/2607.16200

@@ -5,6 +5,24 @@ what has shipped, where the project is going, and why. This is not primarily use
 documentation; for using the shell and the packages, see the per-package READMEs (start with
 [packages/chell](../packages/chell/README.md)).
 
+- **[principles.adoc](principles.adoc)** — the load-bearing beliefs, and the only
+  normative document here: a principle wins over a conflicting design decision, or
+  it is explicitly revised. Records what mise inherits from CUBE versus what it
+  owns, why a workaround may never be silent, the boundary between an intent and
+  a surface's own view state, and the six violations known today. Several
+  principles are enforced mechanically; the rest are cited in review. It states
+  the rules and deliberately does not argue for them.
+
+- **[lineage.adoc](lineage.adoc)** — the companion essay to the above: what each
+  principle descends from (Seeheim and Arch, Jupyter and LSP, Unix and the Monad
+  manifesto, `emacs` and Acme, Plan 9, BTRON), the failure modes those
+  precedents documented, an honest account of what in this architecture is
+  actually particular rather than inherited, and the interaction-DAG direction
+  that is not yet built. Nothing here binds. Sources are traced to primary
+  literature, with the claim-to-source map and its qualifications — including
+  what was verified only secondarily — recorded in
+  **[principles-references.md](principles-references.md)**.
+
 - **[mise.adoc](mise.adoc)** — the scientific architecture paper: ChRIS and
   CUBE's historical context, the Collection+JSON intent gap, mise's taxonomic
   placement and state model, adversarial analysis of the multilayer design, and

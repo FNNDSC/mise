@@ -12,9 +12,23 @@ sink any more; `scripts/wire-escapes.mjs` holds that count at zero.
 Two consequences worth knowing before adding a producer. First, only state
 changes are announced: animation frames and elapsed counters belong to the
 renderer, so a wait of any length costs the wire the same two events. Second,
-an unknown `operation` or `phase` from a newer peer degrades to `task` and
-`working` rather than failing the parse, because a dropped message is invisible
-and a generic indicator is not.
+every enum on the progress message degrades rather than rejects: an unknown
+`operation` reads as `task`, `phase` as `working`, `status` as `unknown`, and
+`kind` and `unit` as absent. A dropped message is invisible; a generic
+indicator is not.
+
+## Rule: a new enum value ships with a fallback
+
+`safeParse` fails the whole message on one unknown enum value, and a failed
+parse drops it silently. So when you add a value to any enum on the wire, give
+that enum a `.catch()` in the same change if it has none. Otherwise the
+addition is only additive for peers that already know it, which is the opposite
+of what the contract promises.
+
+The fallback is forward insurance and never retroactive: it lives in the build
+doing the reading, so the peer that has not yet been updated is the one that
+drops the message. Every enum reachable from `serverMessageSchema` or
+`clientMessageSchema` is in scope, not only the progress ones.
 
 It exists because the broader `calypso.adoc` is the architectural essay, while
 this is the implementation contract future agents should follow.

@@ -197,8 +197,13 @@ export const outputMessageSchema = z.object({
  */
 export const progressOperationSchema = z.enum(PROGRESS_OPERATIONS).catch('task');
 
-/** Broad class of progress producer. */
-export const progressKindSchema = z.enum(PROGRESS_KINDS);
+/**
+ * Broad class of progress producer.
+ *
+ * Optional, so an unknown class degrades to absent: the event still renders
+ * from its operation and phase, one axis poorer.
+ */
+export const progressKindSchema = z.enum(PROGRESS_KINDS).catch(undefined as never);
 
 /**
  * Lifecycle phase of a progress operation.
@@ -212,11 +217,21 @@ export const progressKindSchema = z.enum(PROGRESS_KINDS);
  */
 export const progressPhaseSchema = z.enum(PROGRESS_PHASES).catch('working');
 
-/** Unit used by the primary progress counter. */
-export const progressUnitSchema = z.enum(PROGRESS_UNITS);
+/**
+ * Unit used by the primary progress counter.
+ *
+ * Optional, so an unknown unit degrades to absent and the counter renders
+ * unqualified — 3/10 rather than nothing at all.
+ */
+export const progressUnitSchema = z.enum(PROGRESS_UNITS).catch(undefined as never);
 
-/** State of the operation or item being reported. */
-export const progressStatusSchema = z.enum(PROGRESS_STATUSES);
+/**
+ * State of the operation or item being reported.
+ *
+ * An unknown state degrades to `unknown`, which the vocabulary already carries
+ * for precisely this: a state that cannot be named is still a state.
+ */
+export const progressStatusSchema = z.enum(PROGRESS_STATUSES).catch('unknown');
 
 /** A structured progress event correlated to a command. */
 export const progressMessageSchema = z.object({

@@ -21,10 +21,12 @@ label, and `argus` gained a full progress renderer — indeterminate work spins,
 counted work fills a bar — which also surfaces the download progress it had
 been silently discarding.
 
-The `operation` and `phase` enums gained `task` and `working`, and unknown
-values from a newer peer now degrade to them rather than failing the parse and
-dropping the message, making good the contract's promise that change within a
-major is additive.
+The `operation` and `phase` enums gained `task` and `working`. Every enum on
+the progress message now degrades on an unknown value instead of failing the
+parse and dropping the message whole: `operation` to `task`, `phase` to
+`working`, `status` to `unknown`, `kind` and `unit` to absent. That makes good
+the contract's promise that change within a major is additive — for future
+additions, since the fallback lives in the build doing the reading.
 
 The spinner keeps its call signature, so its callers are unchanged. Its
 `showTiming` and `clearLine` arguments are now ignored: both are rendering

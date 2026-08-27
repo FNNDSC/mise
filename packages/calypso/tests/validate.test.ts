@@ -169,6 +169,20 @@ describe('serverMessage_parse', () => {
       type: 'progress', id: '1', operation: 'task', phase: 'working', label: 'Hmm',
     });
   });
+
+  it('degrades the remaining progress enums rather than dropping the message', () => {
+    // Half-tolerance is worse than either extreme: the message type would look
+    // additive-safe while three of its five enums still failed the parse.
+    const parsed = serverMessage_parse({
+      type: 'progress', id: '1', operation: 'upload', phase: 'transferring',
+      kind: 'divination', unit: 'furlongs', status: 'perplexed', current: 3, total: 10,
+    });
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.value).toEqual({
+      type: 'progress', id: '1', operation: 'upload', phase: 'transferring',
+      status: 'unknown', current: 3, total: 10,
+    });
+  });
 });
 
 describe('clientMessage_fromJson', () => {

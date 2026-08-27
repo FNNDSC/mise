@@ -1,0 +1,218 @@
+= mise Architectural Principles
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-08-26: Initial draft
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: NORMATIVE
+
+== Status and purpose
+
+These principles are normative. They are not preferences, conventions, or aspirations. When a design decision conflicts with one of them, the principle wins, or the principle is explicitly revised here with a documented reason.
+
+A normative document that lists no violations is a document that has not been checked against its own codebase. <<known-violations>> records every breach known at the time of writing, each with a resolution or an explicit decision not to resolve it. That section is a work queue, not an apology. Adding to it is the honest way to ship a compromise; removing an entry silently is not.
+
+Where a principle can be checked by a machine it is, and <<enforcement>> says how. An unenforced principle and an aspiration are the same object.
+
+This document states the rules. It does not argue for them. The argument — what each principle descends from, which precedents documented its failure mode, what in this architecture is genuinely particular, and the forward work that is not yet built — is the companion essay, link:lineage.adoc[lineage.adoc]. A reader deciding whether to *obey* a principle needs only this document; a reader deciding whether to *change* one should read that one first.
+
+=== Provenance
+
+These principles descend from an earlier exploration, ARGUS (`docs/PRINCIPLES.md` in that project), which simulated its own backend. That prototype re-invented ideas ChRIS already owned — DAGs, artifact materialization, a workflow manifest — because it had no real backend to lean on. Several of its principles were therefore descriptions of a simulation.
+
+`mise` has the real thing. The exploration has graduated from thought experiment to live surface. Principles that described ARGUS's internal simulation are recorded here as *inherited* from CUBE rather than owned by `mise` (<<inherited>>); principles about surfaces, kernels, and intent carry over intact.
+
+== The relationship to CUBE
+
+`mise` is not a client sitting on top of CUBE. CUBE has a flavour — Collection+JSON, a normalized resource model — that is architecturally incomplete. `mise` completes that architecture: anchored to CUBE, transformative on it.
+
+We own CUBE. That is a reason for more discipline, not less. The temptation to reach into the backend and bend it to whatever this week's client needs is exactly the erosion this section exists to prevent. CUBE's internal discipline — C-J purity, normalized durable state, one source of truth — is an asset, and client convenience does not outrank it.
+
+[[no-silent-workaround]]
+=== Principle: no silent workaround
+
+*`mise` may work around CUBE. It may never do so silently, and every workaround is filed as a CUBE gap.*
+
+Four things `mise` legitimately does when CUBE falls short:
+
+* *renders a view* over what CUBE has (`/etc/group` as a POSIX projection over CUBE groups and memberships);
+* *mirrors a convention* CUBE owns (the feed output paths constructed in `packages/salsa/src/plugins/internal/plugin_executeNewFeed.ts`);
+* *works around a weakness* it cannot cure (idempotent `pacs pull`, retry, brown-out recovery);
+* *refuses and says so* when it cannot honestly proceed.
+
+None of these is forbidden. What is forbidden is doing any of them quietly.
+
+The rule comes from an incident, not from taste. On 2026-08-21 a routine accession pull lost six of fourteen series. The loss was invisible: the summary showed an undifferentiated `[ERROR]` and the server's explanation was swallowed entirely (see link:pacs-pull-recovery.adoc[pacs-pull-recovery.adoc]). The sin was not that the client compensated — as that document says, *"the client cannot cure this mode, only avoid amplifying it and recover from what it breaks."* The sin was compensating without saying so.
+
+A silent workaround makes the architecture look complete while the guarantee is fiction. Worse, it removes the pressure to fix CUBE: a gap nobody feels is a gap nobody funds. Therefore every workaround is filed in link:CUBE-gaps.adoc[CUBE-gaps.adoc], which turns a client habit into an upstream obligation.
+
+[[inherited]]
+=== Inherited invariants
+
+Two properties `mise` depends on and does not own. They are recorded because `mise`'s correctness rests on them, and stated as inherited because a `mise` developer cannot enforce CUBE's data model. In the exploration these were principles 1 and 2; there they described an in-memory simulation, and here they describe something real that belongs to CUBE.
+
+*Data-state computation.* Progress is proven by materialized artifacts, not asserted by a controller. A stage is complete when its artifact exists at the correct path. There is no separate progress counter to fall out of sync, workflow state survives restarts and reconnections, and provenance is intrinsic rather than recorded alongside.
+
+The known weakness is that a filesystem has no transaction. "The artifact exists" and "the stage completed" diverge if a write is interrupted, and a truncated artifact reads as success — the exact failure the property exists to prevent. Where `mise` depends on this, it must check for completion rather than mere existence.
+
+*Topological provenance.* The path of an artifact encodes the lineage of its production. Auditors do not need a log because the tree is the log.
+
+Two cautions. A path is an *assertion* of ancestry, not proof — anything that can create a directory can fabricate one. Verification is a *query*, not a hash: CUBE owns the plugin-instance graph and can be asked. The exploration's Merkle fingerprint chain is deliberately absent here, and the reason is worth recording, because its absence otherwise looks like an omission. That chain existed for staleness detection in a build graph — `fp(stage) = hash(content, fp(parents))`, so that re-running a stage with identical output would not cascade downstream. CUBE's DAG is a provenance record rather than a build graph: plugin instances are immutable and feeds append, so nothing is ever recomputed, and there is no cascade to suppress. `mise`'s real staleness problem is client cache freshness against server truth, which validators and refresh solve; a content-addressed ancestor chain would be machinery aimed at the wrong problem.
+
+And `mise` *mirrors* this convention rather than reading it: `packages/salsa/src/plugins/internal/plugin_executeNewFeed.ts` and `plugin_executeContinueFeed.ts` each construct the expected output path client-side. That is a legitimate mirror under <<no-silent-workaround>>, and those two files are its entire blast radius: if CUBE's layout moves, they are what breaks.
+
+[[degradation]]
+== Principle 0: graceful degradation
+
+*Every capability degrades to a working text path, and every degradation announces itself.*
+
+This is stated first because it is what makes "the terminal is the central driver" true rather than aspirational. The text path is the floor, not the fallback. No LLM, no fonts, no image rendering, no browser — still a usable session.
+
+`mise` already behaves this way in places: a generated stand-in when the LCARS theme is absent, autoplay refusal swallowed harmlessly, offline mode in the boot warm-up, the attach card when no token is in the URL.
+
+The announcement clause is scoped: *a degradation must announce itself where a user could otherwise be misled about what they are seeing.* A stand-in theme presented as the real one misleads. A font silently falling back to `monospace` misleads. A beep that fails to play does not, and needs no banner.
+
+== Principles inherited intact from the exploration
+
+[[semantics]]
+=== Own the semantics, delegate the mechanics
+
+*Novel ideas require custom semantic foundations. Standard operations do not.*
+
+A semantic foundation is one where a change requires reasoning about what `mise` means. A mechanical foundation provides services the thesis uses but does not implement the thesis itself. `mise` owns the intent kernel, the envelope model, the VFS projection, and the prompt contract. It delegates HTTP and WebSocket transport, JSON and YAML serialization, process management, and rendering primitives.
+
+Owning a mechanical foundation adds failure surface and draws effort away from the semantic layers. The substrate must be trusted so the ideas built on it can be examined clearly.
+
+[[surfaces-are-views]]
+=== Surfaces are views, not applications
+
+*`chell` and `argus` are co-equal renderers of the same session state. They are not separate applications.*
+
+A surface does not own the session. The session lives in the daemon. A surface is a rendering idiom: `chell` renders envelopes as text in a terminal; `argus` renders them as a document in a browser. Both respond to the same events, and the secondary surface receives a full rendering rather than a summary.
+
+The sharpest consequence, and the one most often violated: *what crosses the wire is state, not one surface's rendering of it.* `docs/structured-progress.md` states this for progress specifically — "Progress must cross the daemon wire as facts, not as terminal escape-frame text. A terminal progress bar is a renderer. It is not the protocol and not the source of truth." That rule is general, and this principle generalizes it. Terminal escape sequences on the wire are a category error: they make every non-terminal surface reconstruct meaning from another surface's pixels.
+
+[[intent-equivalence]]
+=== Intent equivalence
+
+*A visual gesture and a typed command are the same thing at the kernel level.*
+
+Clicking a plugin card produces the same intent as typing the command. The card is not a button that calls an endpoint — it is a surface-specific translator that expresses a command through a visual gesture. The input modality is surface-specific; the intent is surface-agnostic.
+
+This is what keeps "the terminal is the central driver" honest. A panel that can do something the terminal cannot has grown a second API, and the two will drift.
+
+==== What is actually the source of truth
+
+A precision that matters, because the loose version of this principle is false and will break in exactly the place this project cares about.
+
+*The command vocabulary is the source of truth. The terminal is its least mediated rendering.*
+
+The claim is emphatically not that `chell` has parity with every surface for every interaction. Some interactions have no good textual form: drawing a region of interest, windowing a study, dragging a graph into a readable layout. In medical imaging that is not a corner case, it is the clinical core. A principle asserting terminal parity would be strained by the first viewer and quietly abandoned by the second.
+
+What survives is the vocabulary. A drag that adjusts a window level is a surface idiom; the intent it produces (`window 400/40`) is the truth, and it is expressible, loggable, scriptable, replayable, and reachable by an assistant. The gesture is a way of composing an intent that would be tedious to type — not a capability living outside the vocabulary.
+
+So the test for a new affordance is not "can the terminal do this?" but "does this reduce to an intent the vocabulary can express?" If yes, build the richest surface idiom you like. If no, the vocabulary is incomplete, and *that* is the thing to fix — not the surface to bypass.
+
+This lineage is old: `emacs` and Acme hold stricter forms of the same rule, and the failure mode is equally well attested. See link:lineage.adoc[lineage.adoc].
+
+==== The intent / view-state boundary
+
+The principle is unlivable without a line, and the test is: *would another surface care?*
+
+* *Yes — it is an intent.* It goes through the command vocabulary and onto the bus. Both surfaces render it, each in its own idiom.
+* *No — it is view state.* It stays local. Scroll position, drawer open or closed, panel widths, current selection, sort order.
+
+View *modes* are local. Whether a directory renders as cards or as a detail listing is idiom, not state, and a colleague on `chell` is not owed a notification about it.
+
+A worked example. Clicking an image in the Files panel should emit an intent — "show me this file" — which crosses the bus, so a colleague on `chell` sees it happen and renders it their own way (a binary-file notice, ASCII art, an inline-image protocol). The envelope comes back identifying an image at a path, and *then* the browser fetches the bytes from the token-gated `/vfs` route. Fetching pixels is mechanics, delegated per <<semantics>>. The byte route is correct; it is only wrong as an *entry point*.
+
+[[layered-defense]]
+=== Layered defense of semantic foundations
+
+*Every semantic layer is defended at multiple levels, in proportion to its centrality.*
+
+|===
+| Level | Mechanism | Catches
+
+| 1 | TypeScript static types | Structural contract violations at compile time
+| 2 | Zod schemas at seams | Malformed data crossing trust boundaries
+| 3 | Unit tests | Known edge cases and regression
+| 4 | Property tests | Invariant violations across the input space
+| 5 | Exemplars against a live CUBE | Systemic behavioural drift
+| 6 | Import-boundary enforcement | Architectural principle violations
+|===
+
+The envelope model, the intent kernel, the wire contract, and the VFS path projection warrant all six. Infrastructure warrants levels 1 and 3 at most — which is exactly why it should be delegated rather than reimplemented.
+
+[[kernel-isolation]]
+=== Kernel isolation
+
+*The kernel must not import from any surface. Ever.*
+
+`brasa` is the kernel. It does not know that surfaces exist: not what a WebSocket is, not what a browser panel is, not what a terminal renderer is. It processes an intent and returns typed envelopes. An import from `chell`, `calypso`, or `argus` anywhere in `brasa` is an architectural violation to be corrected immediately, not discussed.
+
+This principle is already banked — the `brasa`/`chell` split was this principle made structural — and it is now mechanically enforced rather than left to vigilance.
+
+== Principles `mise` owns
+
+[[one-declaration]]
+=== One declaration per command
+
+*A command declares itself in exactly one place: name, usage, parameters, and handler together.*
+
+The exploration stated this as "manifest as law" — if a command is not in the active manifest, it does not exist. `mise` cannot adopt that as written, and the reason matters.
+
+*For plugins, the manifest already exists and CUBE owns it.* CUBE declares plugin parameters, and `mise` reads them (`packages/brasa/src/builtins/parametersofplugin.ts`). `mise` must not reinvent that; doing so would be exactly the erosion <<no-silent-workaround>> forbids.
+
+*For `mise`'s own builtins, nothing declares anything.* Commands are entries in `ENVELOPE_HANDLERS` — a name pointing at a function, carrying no metadata — with a separate, hand-maintained `helpText` table beside it. Two registries, no link between them, and they have already drifted.
+
+One declaration per command is therefore `mise`'s own obligation, and it pays three times over: it is the help a human reads, the metadata completion consumes, and the contract an assistant must be jailed to.
+
+==== Consequence for machine assistance
+
+Deterministic resolution precedes probabilistic resolution, always. Any future natural-language layer compiles to intents that already exist, and its vocabulary is jailed to what is declared and currently valid — it cannot invent a command, and it cannot invent an argument.
+
+Until <<one-declaration>> is met, that guardrail has no anchor: the vocabulary can be jailed to 67 command *names* and nothing more, which stops invented commands but not invented arguments, and arguments are where the damage lives. This is a precondition for the work, not a refinement of it.
+
+[[known-violations]]
+== Known violations
+
+Six breaches known at the time of writing.
+
+*1. Status output crosses the wire as terminal escapes.* `packages/brasa/src/lib/spinner.ts:57` writes `\r\x1b[K<frame>` to the status channel, and `:42`/`:71` write cursor hide and show. Every attached surface receives terminal choreography whether or not it is a terminal. Violates <<surfaces-are-views>>. `docs/structured-progress.md` already forbids this but binds only `pull`, `upload`, and `download`. The `argus`-side carriage-return handling shipped in PR #219 is a renderer-side stopgap that makes the violation less visible, which is its own hazard. *Resolution: generalize the structured-progress contract to all status output — issue #221.*
+
+*2. Commands are declared twice and have drifted.* 67 handlers in `ENVELOPE_HANDLERS`, a separate `helpText` table, and four commands (`computes`, `pipelines`, `users`, `version`) with handlers but no help entry. Violates <<one-declaration>>. *Resolution: unify into one declaration per builtin — issue #222.*
+
+*3. `calypso` knows a surface by name.* The daemon resolves `apps/argus/dist` as a literal path fragment. `brasa` is the kernel, so this is not a strict <<kernel-isolation>> breach — but it is surface knowledge in a layer that claims to have none, and `bundledWebRoot_find` deepened it. *Noted, not resolved: surface registration is more machinery than this problem currently deserves. Revisit when a second web surface exists.*
+
+*4. `argus` duplicates `chell`'s prompt theme by value.* `apps/argus/src/console/terminal.ts:35` says so plainly — "Duplicated by value because `argus` may not import the execution stack." That duplication produced two defects at once: the glyph table degraded to empty strings and nobody noticed, and the PACS segment was never wired despite arriving on the wire. The duplication itself is defensible (a surface themes itself, per <<surfaces-are-views>>); its silence is not. *Resolution: a parity test asserting `argus`'s glyph codepoints and palette match `chell`'s p10k theme — issue #223.*
+
+*5. The Files panel bypasses the command vocabulary.* `apps/argus/src/app/main.ts:254` fetches `/vfs?path=&token=` directly on an image click. No command, no envelope, no bus, and no other surface learns it happened. Violates <<intent-equivalence>>. *Resolution: the click emits an intent; the byte fetch stays as mechanics. Folded into the panel work rather than filed separately.*
+
+*6. The stand-in theme does not announce itself.* `apps/argus/scripts/theme_ensure.mjs` warns on the build console when `LCARS-26.zip` is absent, but the served page carries no marker, so a viewer cannot distinguish the real theme from the generated stand-in. Violates <<degradation>>. *Resolution: a visible marker in the page when the stand-in is in use.*
+
+[[enforcement]]
+== Enforcement
+
+Patterned on `scripts/cast-ratchet.mjs`: a count that may only fall, where CI requires the baseline to be lowered in the same change that improves it.
+
+|===
+| Principle | Mechanism | Kind
+
+| <<kernel-isolation>> | `brasa` imports nothing from `chell`, `calypso`, or `argus` | Hard check
+| <<one-declaration>> | Every `ENVELOPE_HANDLERS` key has a declaration | Ratchet
+| Prompt parity (violation 4) | `argus` glyphs and palette match `theme_p10k.ts` | Hard check
+| <<surfaces-are-views>> | Count of sink writes containing `\r` or `\x1b` | Ratchet
+| <<intent-equivalence>>, <<degradation>> | Human judgement, cited in review | Review only
+|===
+
+The last row is not an admission of defeat. Neither mechanizes without inventing a great deal of machinery to catch very little, and a check that fires spuriously is a check that gets deleted.
+
+== Revising this document
+
+A principle may be revised or removed. It may not be quietly ignored. A change to this document is a normal pull request that says which principle changed and why, and a violation that will not be fixed becomes an entry in <<known-violations>> with the reasoning stated — not an omission.
+
+[bibliography]

@@ -59,6 +59,10 @@ by a web console or an AI agent, none of them ever touching the raw ChRIS API.
 **mise is the framework; chell is the shell you run today.** See
 **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)** for the client's view and
 **[docs/history.adoc](docs/history.adoc)** for how it got here.
+**[docs/principles.adoc](docs/principles.adoc)** states the rules that bind the
+design — including the ones this codebase currently breaks — and
+**[docs/lineage.adoc](docs/lineage.adoc)** is the companion essay arguing where
+they come from.
 
 ---
 

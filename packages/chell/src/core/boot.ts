@@ -471,7 +471,12 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     // A `<user>@<url>` target names the identity to attach to; a bare `--remote`
     // resolves the sole/most-suitable berth (identity undefined).
     const identity: string | undefined = cc?.user && cc?.url ? identity_forSession(cc.user, cc.url) : undefined;
-    await remote_run(identity, config.commandToExecute);
+    // An explicit address wins over identity resolution: a daemon on another
+    // machine has no berth in this host's runtime directory to resolve.
+    const attach = config.attach !== undefined
+      ? { address: config.attach, ...(config.attachToken !== undefined ? { token: config.attachToken } : {}) }
+      : undefined;
+    await remote_run(identity, config.commandToExecute, attach);
     if (config.commandToExecute !== undefined) {
       process.exit(process.exitCode ?? 0);
     }

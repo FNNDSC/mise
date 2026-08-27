@@ -167,7 +167,13 @@ export async function daemon_launch(
   surface_set(daemonSurface_create(daemon));
 
   const port: number = await daemon.start();
-  const url: string = `ws://127.0.0.1:${port}`;
+  // The berth records where this daemon can actually be reached. Loopback is
+  // right for the ordinary case and wrong the moment CALYPSO_BIND opens the
+  // wire to the network: a berth copied to another machine, or an address
+  // pasted into `chell --remote --attach`, has to name a host that resolves
+  // from somewhere else.
+  const wireHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
+  const url: string = `ws://${wireHost}:${port}`;
   const berth: Berth = { identity, url, token };
   berth_write(berth);
 
@@ -182,6 +188,12 @@ export async function daemon_launch(
   console.log(chalk.gray(`    token:     ${token}`));
   console.log(chalk.gray(`    berth:     ${berth_path(identity)}`));
   console.log(chalk.gray(`    attach a surface with:  chell --remote${attachHint}`));
+  if (bindHost !== '127.0.0.1') {
+    // Berth discovery is a file in this host's runtime directory, so it cannot
+    // reach another machine. An explicit address is how a surface elsewhere
+    // attaches, and it is worth printing ready to paste.
+    console.log(chalk.gray(`    from another machine:   chell --remote --attach ${url} --token ${token}`));
+  }
   if (webRoot !== null) {
     // A wildcard bind has no routable form for a URL; name the machine so
     // the printed address works from another host.

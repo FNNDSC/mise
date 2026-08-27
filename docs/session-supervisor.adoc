@@ -53,6 +53,34 @@ cross-host auth. Tier 2 is not "more of tier 1"; it is a different perimeter. Bu
 tier 2 only when the web surface (argus,
 link:surfaces.adoc[the surfaces model]) forces it.
 
+=== Attaching across hosts without tier 2
+
+`CALYPSO_BIND` opens the wire to the network for a demo on a trusted network, and
+the attach token still gates every session. But *discovery* stays local: a berth
+is a file in one host's runtime directory, so a surface on another machine has
+none to read. For a while that meant the wire was reachable and nothing could
+tell a remote `chell` where to point — the browser could attach and a terminal
+could not, which is a topology accident rather than a policy.
+
+An explicit address closes that without a listener or a directory service:
+
+[source,bash]
+----
+chell --remote --attach http://pangea:41234/?token=abc123
+----
+
+The address accepted is the one the daemon prints. The web surface and the wire
+share a port, so the ARGUS link names both, and pasting it is the whole
+interaction; `--token` supplies the token separately where an address carries
+none. The berth this builds is constructed in memory and never written, because
+nothing about another machine's daemon belongs in this machine's berth
+directory.
+
+This is not tier 2. There is no listener beyond the one `CALYPSO_BIND` already
+opened, no cross-host auth beyond the attach token, and no way to discover a
+daemon you were not told about. It removes an accident; the perimeter is
+unchanged.
+
 == The invariant: the process is the isolation boundary
 
 Multiplicity costs almost nothing because `chell --daemon` hosts a brasa engine

@@ -125,13 +125,16 @@ interface PendingComplete {
 export class ArgusClient {
   private readonly socket: WebSocket;
   private readonly handlers: ClientHandlers;
+  /** The attach token, reused to authorise byte-route fetches. */
+  private readonly token: string;
   private readonly pending: Map<string, PendingExecute> = new Map();
   private readonly pendingCompletions: Map<string, PendingComplete> = new Map();
   private nextId: number = 0;
 
-  private constructor(socket: WebSocket, handlers: ClientHandlers) {
+  private constructor(socket: WebSocket, handlers: ClientHandlers, token: string) {
     this.socket = socket;
     this.handlers = handlers;
+    this.token = token;
     this.socket.onmessage = (event: MessageEvent): void => this.message_handle(String(event.data));
     this.socket.onclose = (): void => this.handlers.close_handle?.();
   }
@@ -160,7 +163,14 @@ export class ArgusClient {
             type: 'attach',
             protocolVersion: CONTRACT_VERSION,
             token,
-            capabilities: { shellCommands: false, hiddenInput: false },
+            capabilities: {
+              shellCommands: false,
+              hiddenInput: false,
+              // A browser can save a file but has no directory to fill, so a
+              // folder must be archived into one file before it can arrive.
+              fileDelivery: true,
+              localFilesystem: false,
+            },
           }),
         );
       };
@@ -181,7 +191,7 @@ export class ArgusClient {
           socket.close();
           return;
         }
-        const client: ArgusClient = new ArgusClient(socket, handlers);
+        const client: ArgusClient = new ArgusClient(socket, handlers, token);
         resolve({
           client,
           attach: {
@@ -314,8 +324,59 @@ export class ArgusClient {
         this.reply_send({ type: 'editError', editId: message.editId, reason: 'the argus surface cannot open an editor' });
         break;
       }
+      // File delivery is the one capability a browser has and a terminal
+      // fakes: it hands the file to the download manager, where the person
+      // sitting in front of it can find it.
+      case 'deliver': {
+        void this.deliver_run(message);
+        break;
+      }
       default:
         break;
+    }
+  }
+
+  /**
+   * Saves a delivered file through the browser.
+   *
+   * The bytes come from the daemon's token-gated byte route rather than the
+   * session bus, so a large file does not cross a channel meant for session
+   * state — and the browser streams it the way it streams any download.
+   *
+   * @param message - The delivery request from the daemon.
+   */
+  private async deliver_run(message: {
+    deliverId: string;
+    path: string;
+    filename: string;
+  }): Promise<void> {
+    try {
+      const url: string =
+        `/vfs?path=${encodeURIComponent(message.path)}&token=${encodeURIComponent(this.token)}`;
+      const response: Response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`the daemon refused to serve this file (HTTP ${response.status})`);
+      }
+      const blob: Blob = await response.blob();
+      const objectUrl: string = URL.createObjectURL(blob);
+      const anchor: HTMLAnchorElement = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = message.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      // Revoking immediately can cancel a download the browser has not yet
+      // started reading, so the handle is released on the next turn.
+      setTimeout((): void => URL.revokeObjectURL(objectUrl), 0);
+      this.reply_send({
+        type: 'deliverResult',
+        deliverId: message.deliverId,
+        location: message.filename,
+        bytes: blob.size,
+      });
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.reply_send({ type: 'deliverError', deliverId: message.deliverId, reason });
     }
   }
 

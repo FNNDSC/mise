@@ -24,8 +24,33 @@ import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
 import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, fortune_random } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
+import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
+
+/**
+ * Fetches a file's bytes from a daemon's token-gated byte route.
+ *
+ * A remote client's engine is on another machine, so it cannot read the file
+ * itself. It uses the same `/vfs` route a browser surface uses to render a
+ * file natively — the intent travelled through the vocabulary, and only the
+ * bytes travel here.
+ *
+ * @param berth - The daemon to fetch from, carrying its URL and attach token.
+ * @returns A fetch bound to that daemon.
+ */
+function berthBytes_fetch(berth: Berth): (filePath: string) => Promise<Buffer> {
+  return async (filePath: string): Promise<Buffer> => {
+    const base: string = berth.url.replace(/^ws/, 'http');
+    const url: string =
+      `${base}/vfs?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(berth.token)}`;
+    const response: Response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`the daemon refused to serve ${filePath} (HTTP ${response.status})`);
+    }
+    return Buffer.from(await response.arrayBuffer());
+  };
+}
 
 /**
  * Probes whether a berth's daemon is reachable, by performing the real attach
@@ -152,6 +177,9 @@ export async function remote_run(identity?: string, commandToExecute?: string): 
       onEdit: (content: string, extension: string | undefined): Promise<{ content: string; changed: boolean }> =>
         // Editing happens in this machine's editor.
         surface_get().localEdit({ content, extension }),
+      onDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>
+        // A downloaded file lands on this machine's disk, never the daemon's.
+        surface_get().fileDeliver(request),
       onClose: (): void => {
         if (intentionalClose) return;
         console.log(chalk.yellow('\n[!] Daemon disconnected.'));
@@ -168,7 +196,7 @@ export async function remote_run(identity?: string, commandToExecute?: string): 
   if (commandToExecute !== undefined) {
     const progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
     sink_set(new StdoutSink(progressRenderer));
-    surface_set(cliSurface_create());
+    surface_set(cliSurface_create(undefined, berthBytes_fetch(berth)));
     try {
       const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, commandToExecute);
       process.exitCode = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error') ? 1 : 0;
@@ -217,6 +245,9 @@ export async function remote_run(identity?: string, commandToExecute?: string): 
   // daemon last sent, falling back until the first push arrives.
   const repl: REPL = new REPL(engine, {
     promptText: (): string => engine.promptLine() || 'chell(remote) ❯ ',
+    // The engine is on the daemon, so this surface fetches bytes from it
+    // rather than reading a file it has no access to.
+    bytesFetch: berthBytes_fetch(berth),
   });
   await repl.start();
 }

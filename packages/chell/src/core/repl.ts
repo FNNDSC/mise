@@ -14,7 +14,7 @@ import { session } from '@fnndsc/brasa';
 import { settings } from '../config/settings.js';
 import { sessionPrompt_render } from './prompt/session.js';
 import { surface_set } from '@fnndsc/brasa';
-import { cliSurface_create } from './cliSurface.js';
+import { cliSurface_create, type BytesFetch } from './cliSurface.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import { surfaceLine_executeSafely } from './surfaceDispatch.js';
@@ -34,6 +34,13 @@ import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
  */
 export interface ReplOptions {
   promptText?: string | (() => string);
+  /**
+   * How this session's surface obtains a file's bytes when asked to deliver
+   * one. Defaults to reading through the in-process engine, which is right for
+   * a local shell; a remote client passes a fetch against its daemon, because
+   * its engine is on another machine.
+   */
+  bytesFetch?: BytesFetch;
 }
 
 /**
@@ -46,6 +53,7 @@ export class REPL {
   private lastCommandDurationMs: number = 0;
   private lastExitCode: number = 0;
   private promptText: string | (() => string) | undefined;
+  private readonly bytesFetch: BytesFetch | undefined;
 
   /**
    * Initializes the REPL interface around an engine.
@@ -56,6 +64,7 @@ export class REPL {
   constructor(engine: BrasaEngine, options?: ReplOptions) {
     this.engine = engine;
     this.promptText = options?.promptText;
+    this.bytesFetch = options?.bytesFetch;
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -81,7 +90,7 @@ export class REPL {
     // single readline interface, so builtins never assume a terminal exists.
     const progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
     sink_set(new StdoutSink(progressRenderer));
-    surface_set(cliSurface_create(this.rl));
+    surface_set(cliSurface_create(this.rl, this.bytesFetch));
 
     await this.history_load();
     await this.prompt_update();

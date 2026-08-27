@@ -79,8 +79,12 @@ describe('HeadlessSurface', () => {
       tty: false,
       pipeSegments: false,
       shellCommands: false,
+      fileDelivery: false,
+      engineFilesystem: false,
+      localFilesystem: false,
     });
     expect(() => surface.prompt({ message: 'x' })).toThrow(CapabilityError);
+    expect(() => surface.fileDeliver({ path: '/x', filename: 'x' })).toThrow(CapabilityError);
     expect(() => (surface as unknown as { shellCommand(command: string): Promise<number> })
       .shellCommand('pwd')).toThrow(CapabilityError);
   });

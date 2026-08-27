@@ -1,92 +1,14 @@
-= CUBE Read-Model Gaps Exposed by ChELL
+= CUBE Gaps Exposed by mise
 :toc:
 :toclevels: 3
 
-== Status and purpose
+== What this is
 
-This is a living design record. ChELL and CALYPSO deliberately create a long-lived, interactive operator session. Their boot caches reveal where CUBE's existing resource collections serve a normal operation efficiently and where a client must reconstruct an aggregate through excessive remote traversal.
+A record of places where a normal operation costs a client more than it should, and what CUBE could offer instead. Each entry states the operator requirement, the burden the gap currently imposes, and the Collection+JSON interface that would remove it.
 
-This document does not call for non-Collection+JSON endpoints. A proposed collection is a *read projection*, not a new source of truth or a stored substitute for CUBE's normalized state. CUBE remains authoritative for durable users, groups, feeds, plugin instances, files, and permissions.
+Filing here is an obligation, not a courtesy. `mise` may work around a CUBE weakness; it may never do so silently (see link:principles.adoc#no-silent-workaround[no silent workaround]). A compensation nobody records is a gap nobody funds, and every later client inherits the same trick without knowing why it exists.
 
-The purpose is to turn observed client pain into measured, C-J-native CUBE collection requirements. It is not a backlog of endpoints to add speculatively.
-
-== Operating model
-
-=== Snapshot, not truth
-
-A read projection answers a bounded question about the current CUBE state. It may be calculated on demand, cached within CUBE, or eventually materialized by CUBE if measurement justifies it. It does not make its representation canonical.
-
-For example, `/etc/group` is a POSIX-shaped snapshot over CUBE group and membership relations. The snapshot is useful because membership normally changes less frequently than it is read. It is not the group model.
-
-Each projection must declare:
-
-* its authoritative CUBE facts;
-* its authorization and visibility scope;
-* pagination and result bounds;
-* snapshot/freshness semantics; and
-* the stable fields that clients may rely on.
-
-=== C-J, not an escape hatch
-
-New read models remain ordinary CUBE Collection+JSON collections:
-
-* a collection URL with normal pagination and link relations;
-* C-J item `data` for projection fields;
-* item or collection links to the canonical resources where useful; and
-* normal HTTP cache validators such as `ETag` when CUBE can provide them.
-
-They are not RPC-shaped ``getGroupFile`` calls, shell-specific text endpoints, or a parallel non-C-J transport. ChELL renders C-J data into its POSIX views; CUBE does not need to know that a consumer calls one view `/etc/group`.
-
-=== When a boot cache is a CUBE gap
-
-A cache alone is not evidence of bad backend design. Completion indexes, renderer state, and a session's recent navigation are legitimate client working-set state.
-
-A CUBE read-model gap is indicated when all of the following hold:
-
-. A normal operator action needs a cross-resource aggregate.
-. The client must fan out into N resource requests, or otherwise reconstruct a relation CUBE already owns.
-. The resulting projection would also help another legitimate CUBE client, such as the web UI or an administrative surface.
-. The cost is measured on a representative CUBE and exceeds the interaction budget.
-
-The response is to propose a small, deep collection interface that hides joins, authorization filtering, and pagination inside CUBE. It is not to make ChELL's local cache authoritative.
-
-== Current boot inventory
-
-[cols="1,1,2,2",options="header"]
-|===
-| Boot/cache item | Current client work | Judgment | Next action
-
-| `/bin` tool and pipeline index
-| Fetches CUBE plugin and pipeline collections and caches names for navigation and completion.
-| Normal session working-set cache. The data is already collection-shaped and the warm-up is not known to reconstruct an N+1 relation.
-| Measure cold latency and pagination cost; do not propose a new CUBE collection without evidence.
-
-| CFS feed and public-path listings
-| Prefetches ordinary native filesystem listings for navigation and completion.
-| Normal path/list cache unless a measured path listing itself fans out through several CUBE resource collections.
-| Keep the cache client-owned; investigate only a measured server-side listing inefficiency.
-
-| `/proc` feed index
-| Builds a ChELL job-history index from visible feeds and their counters, then retains a session/checkpoint view.
-| Candidate gap. A run dashboard, shell, and future Argus surface may all need a compact visible-run index, but the existing C-J feeds collection may already satisfy the requirement.
-| Record query count, payload, cold latency, and the fields unavailable without follow-up requests before proposing a collection.
-
-| `/proc` topology index
-| Performs a paginated plugin-instance sweep to construct parent/child topology and support global name/ID lookup.
-| Strong candidate gap, but not yet a conclusion. The client may legitimately own its navigation index; CUBE may need only a more selective collection query rather than a new topology object.
-| Measure sweep cost and identify the minimum shared projection: node identity, feed identity, parent/previous relation, plugin identity, and status/counters.
-
-| `/etc/group`
-| Lists groups, then enumerates each group's members (bounded client concurrency), and renders POSIX lines.
-| Confirmed aggregate-read gap. On the observed production CUBE the cold read can exceed ten seconds. The cost is dominated by remote N+1 traversal of a relationship CUBE already owns.
-| Specify and evaluate the `group-memberships` collection below. ChELL currently hides the cost with boot hydration and a five-minute, identity-scoped cache.
-
-| Administrator identity directory
-| An elevated operator needs to enumerate CUBE identities for account administration, group-member selection, and an administrative `/etc/passwd` projection.
-| Confirmed collection and authorization gap. CUBE already has `GET /api/v1/users/`, but its current list handler renders an empty queryset for every caller. Its user-detail permission currently allows any authenticated caller to read a known user's record. Neither behavior expresses the intended operator-versus-administrator visibility policy.
-| Repair the existing C-J `users` collection and detail permission policy as specified below. Do not create a shell-specific account-directory endpoint.
-
-|===
+Nothing here proposes a non-C-J endpoint. A proposal is a *read projection* or a repair to an existing collection. CUBE remains authoritative for users, groups, feeds, plugin instances, files, and permissions; a projection answers a bounded question about that state and never becomes a second source of truth. The criteria a proposal must meet are in <<criteria>>; the shape every entry follows is requirement, burden, interface, client policy.
 
 == Confirmed proposal: group memberships
 
@@ -266,6 +188,73 @@ option mentioned in documentation. ChELL should label that boundary plainly.
 provenance or a verified manifest state, ChELL may show it, but it must not
 invent an executable parameter from README prose.
 
+== Confirmed proposal: directory archive
+
+Issue #233.
+
+=== Operator requirement
+
+Take a copy of a directory. A feed's output, a series pulled from PACS, a plugin's working set — the everyday act of getting a tree of files out of CUBE and onto the machine a person is sitting at.
+
+[source,bash]
+----
+download /home/me/feed_123/pl-dcm2niix_45/data ~/scans
+----
+
+A single file is straightforward: CUBE serves its bytes. A *directory* has no representation CUBE can hand over, and that absence is the gap.
+
+=== The burden today
+
+There is no directory-archive route, so a client must build the archive out of the platform's own parts. The established workaround — arrived at independently in the ChRIS web UI years before `mise` — is to run one:
+
+. create a feed;
+. attach `pl-dircopy` rooted at the directory being copied;
+. attach a zip plugin downstream of it;
+. poll until the job completes; and
+. serve the resulting archive as an ordinary file.
+
+Using a plugin for the archiving itself is correct. "Make an archive" is a computation, and on this platform computations are plugins; inventing a separate zip service would be the erosion this document exists to prevent. The problem is everything around it.
+
+*The orchestration has no home.* Feed creation, plugin attachment and completion polling are a workflow, and CUBE offers no way to express it as one thing. So every client re-implements it, and the sequence exists only as a series of REST calls inside somebody's source. In the web UI this is precisely how a presentation layer became an orchestrator — the point at which business logic and rendering co-mingled in a client no other client could reuse. `mise` at least confines it to the intent kernel, where every surface reaches the same implementation, but it is still a workflow standing in for a missing route.
+
+*It pollutes provenance.* A download creates a feed. The compute DAG — the record of which plugin instance produced which artifact — acquires an entry asserting that someone took a copy, as though that were an analysis step. A user's feed list fills with archive jobs, and the graph that exists to answer "how was this derived" now answers a question nobody asked.
+
+*It is slow and failure-prone out of proportion to the request.* Copying a directory should not require scheduling compute, waiting on a job queue, or recovering from a plugin that failed halfway. The latency is that of a pipeline run rather than of a read.
+
+*It leaves an artifact nobody asked for.* The archive persists in CUBE storage after the person has their copy, and no client currently owns cleaning it up.
+
+=== Proposed interface
+
+An archive representation of an existing directory, requested through the ordinary collection graph rather than by scheduling compute:
+
+----
+GET /api/v1/filebrowser/<path>/archive/?format=zip
+----
+
+The precise shape is CUBE's to choose — a link relation on the existing filebrowser collection item is the natural seam, since that collection already represents a directory and already knows its contents and the caller's permission to see them. What matters is that a directory acquires a fetchable representation.
+
+Required semantics:
+
+* it applies CUBE's normal authorization, and never includes a file the caller could not fetch individually;
+* it streams, so a large tree does not require CUBE to materialize the whole archive before responding;
+* it creates no feed, no plugin instance and no durable artifact — a read leaves the compute graph untouched;
+* it bounds or reports its size, so a client can refuse or warn before starting; and
+* it names its format explicitly rather than implying one.
+
+=== Why an existing collection is insufficient
+
+The filebrowser collection already enumerates a directory's contents, so a client can fetch every file and assemble an archive locally. That is the same N+1 traversal this document objects to elsewhere, with the added cost that a browser must hold the whole tree in memory to build a zip it then hands to the download manager.
+
+The plugin route is not an interface. It is a client compensating for a missing one, and it is filed here because it works well enough to be invisible — which is exactly the condition under which a gap stops being felt and never gets fixed.
+
+=== Client policy until then
+
+`mise` walks the directory and fetches each file individually — `files_listRecursive` plus one request per file. That is the N+1 traversal this document objects to elsewhere, chosen because it needs no compute and leaves the compute graph clean, and acceptable only because a local shell writes the files as they arrive.
+
+It does not survive a surface with no filesystem. A browser cannot receive several hundred files as several hundred saves, so `mise` adopts the archive workflow — `pl-dircopy` into a zip plugin — for exactly that case. It lives in `brasa`, not in a surface: the orchestration is an intent, so every surface reaches one implementation and no client re-derives the sequence, which is the failure the web UI ran into. The resulting archive is a CUBE artifact with an ordinary path, delivered through the surface capability like any other file (issue #232), so no daemon filesystem is involved.
+
+The workaround announces itself rather than running silently: a directory download reports that it is creating a feed in order to do so, and says why.
+
 == Confirmed proposal: server version identification
 
 === Operator requirement
@@ -293,18 +282,74 @@ The API root was probed on both reference deployments: the authenticated root re
 
 mise carries dialect fallbacks where drift is known (currently the `userfiles` rename field) and treats any newly discovered drift the same way: current dialect first, legacy on rejection, with the drift recorded in the relevant module and guarded by the live nightly against a current-version CUBE. These fallbacks are removable the day a version endpoint exists.
 
-== Adoption rule
 
-For every proposed gap, add an entry here before CUBE implementation with:
+[[criteria]]
+== Appendix: what qualifies
+
+=== When client work is a CUBE gap
+
+A cache is not evidence of a backend defect. Completion indexes, renderer state, and a session's recent navigation are legitimate client working-set state.
+
+A gap is indicated when all of the following hold:
+
+. a normal operator action needs a cross-resource aggregate;
+. the client must fan out into N requests, or otherwise reconstruct a relation CUBE already owns;
+. the resulting projection would also serve another legitimate CUBE client, such as the web UI or an administrative surface; and
+. the cost is measured on a representative CUBE and exceeds the interaction budget.
+
+The response is a small, deep collection interface that hides joins, authorization filtering and pagination inside CUBE — never making a client's local cache authoritative.
+
+=== What a projection must declare
+
+* its authoritative CUBE facts;
+* its authorization and visibility scope;
+* pagination and result bounds;
+* snapshot and freshness semantics; and
+* the stable fields clients may rely on.
+
+A projection is a snapshot, not truth. `/etc/group` is a POSIX-shaped view over CUBE group and membership relations, useful because membership changes less often than it is read. It is not the group model.
+
+=== Still C-J
+
+A new read model is an ordinary CUBE collection: a collection URL with normal pagination and link relations, C-J item `data` for projection fields, links to the canonical resources where useful, and normal HTTP validators such as `ETag` where CUBE can provide them.
+
+Not RPC-shaped `getGroupFile` calls, not shell-specific text endpoints, not a parallel transport. `mise` renders C-J data into its POSIX views; CUBE does not need to know that a consumer calls one view `/etc/group`.
+
+== Appendix: examined and not proposed
+
+Client caches that were measured against the criteria above and judged normal working-set state. Recorded so the same ground is not re-argued, and so a later measurement can promote one.
+
+[cols="1,2,2",options="header"]
+|===
+| Client work | Judgment | What would change it
+
+| `/bin` tool and pipeline index
+| Normal session working-set cache. The data is already collection-shaped and the warm-up is not known to reconstruct an N+1 relation.
+| A measured cold latency or pagination cost that exceeds the interaction budget.
+
+| CFS feed and public-path listings
+| Normal path/list cache.
+| A measured path listing that itself fans out through several CUBE resource collections.
+
+| `/proc` feed index
+| Candidate. A run dashboard, a shell, and the argus surface may all want a compact visible-run index, but the existing C-J feeds collection may already satisfy it.
+| Query count, payload, cold latency, and the fields unavailable without follow-up requests.
+
+| `/proc` topology index
+| Strong candidate, not a conclusion. The client may legitimately own its navigation index; CUBE may need only a more selective collection query rather than a new topology object.
+| Sweep cost, plus the minimum shared projection: node identity, feed identity, parent/previous relation, plugin identity, status counters.
+|===
+
+== Adding an entry
+
+Before CUBE implements anything, the entry here must carry:
 
 . a captured cold-path trace and representative timing;
-. the consumer-facing operation and latency budget;
+. the consumer-facing operation and its latency budget;
 . the authoritative CUBE resources and permission rules;
-. the proposed Collection+JSON interface, including pagination and freshness;
-. an explanation of why an existing collection/query expansion is insufficient; and
-. a compatibility plan for clients that do not yet use the projection.
-
-This keeps boot caching honest: it remains a useful session optimization while also acting as instrumentation for improving the CUBE C-J interface.
+. the proposed C-J interface, including pagination and freshness;
+. why an existing collection or query expansion is insufficient; and
+. a compatibility plan for clients not yet using the projection.
 
 == References
 

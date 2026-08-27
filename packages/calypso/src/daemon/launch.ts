@@ -20,7 +20,8 @@ import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
-import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
+import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
+import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
@@ -49,21 +50,34 @@ export class DaemonSink implements OutputSink {
  * Builds the surface a daemon-hosted engine talks to.
  *
  * Interactivity is a surface capability: prompts, pipeline segments, shell
- * escapes, and local editing reach the surface running the command through
- * the daemon's brokers, without knowing the transport. Nothing ever spawns
- * on the daemon host.
+ * escapes, local editing and file delivery reach the surface running the
+ * command through the daemon's brokers, without knowing the transport. Nothing
+ * ever spawns on the daemon host, and nothing is ever written to its disk.
  *
  * @param daemon - The daemon whose brokers deliver the capability requests.
  * @returns The surface to install with `surface_set` on the daemon host.
  */
 export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
   return {
-    capabilities: {
-      hiddenInput: true,
-      localEdit: true,
-      tty: true,
-      pipeSegments: true,
-      shellCommands: true,
+    // A daemon has no capabilities of its own to offer. Those that vary by
+    // surface are read from whichever one is executing, as it declared them on
+    // attach — a browser and a remote shell differ, and answering for both
+    // would either archive a directory a shell wanted whole or hand a browser
+    // a tree it cannot hold.
+    get capabilities(): SurfaceCapabilities {
+      const attached = daemon.capabilities_current();
+      return {
+        hiddenInput: true,
+        localEdit: true,
+        tty: true,
+        pipeSegments: true,
+        shellCommands: true,
+        fileDelivery: attached?.fileDelivery ?? false,
+        // The daemon's disk belongs to nobody attending this session, so a
+        // builtin that would write must deliver through the surface instead.
+        engineFilesystem: false,
+        localFilesystem: attached?.localFilesystem ?? false,
+      };
     },
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current(request.message, request.hidden ?? false),
@@ -73,6 +87,8 @@ export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
       daemon.shell_current(command),
     localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
       daemon.edit_current(request.content, request.extension),
+    fileDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>
+      daemon.deliver_current(request),
   };
 }
 

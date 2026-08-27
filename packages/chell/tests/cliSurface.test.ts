@@ -36,9 +36,13 @@ jest.unstable_mockModule('child_process', () => ({
   spawnSync: spawnSyncMock,
 }));
 // Isolate this surface unit from the engine: cliSurface uses only
-// segment_pipeThrough from brasa at runtime (the rest are erased types).
+// segment_pipeThrough and file_read from brasa at runtime (the rest are
+// erased types). file_read is the default byte source for delivery, so a
+// stub stands in for a real session.
+const fileReadMock = jest.fn(async (): Promise<Buffer> => Buffer.from('delivered bytes'));
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   segment_pipeThrough: jest.fn(async (): Promise<Buffer> => Buffer.from('')),
+  file_read: fileReadMock,
 }));
 
 const { cliSurface_create } = await import('../src/core/cliSurface.js');
@@ -165,5 +169,68 @@ describe('local editing', () => {
     await surface.localEdit({ content: 'x', extension: '' });
     const [, editorArgs] = spawnSyncMock.mock.calls[0] as [string, string[]];
     expect(editorArgs[0]).toContain('.txt');
+  });
+
+  describe('fileDeliver', () => {
+    const tmpRoot = async (): Promise<string> => {
+      const os = await import('os');
+      const path = await import('path');
+      return path.join(os.tmpdir(), `chell-deliver-${process.pid}`);
+    };
+
+    it('writes the delivered bytes to the resolved path', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = await tmpRoot();
+      fs.mkdirSync(dir, { recursive: true });
+      const target = path.join(dir, 'out.txt');
+
+      const surface = cliSurface_create();
+      const result = await surface.fileDeliver({ path: '/remote/out.txt', filename: 'out.txt', destination: target });
+
+      expect(fs.readFileSync(target, 'utf8')).toBe('delivered bytes');
+      expect(result).toEqual({ location: target, bytes: 'delivered bytes'.length });
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('treats an existing directory as a place to put the file', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = await tmpRoot();
+      fs.mkdirSync(dir, { recursive: true });
+
+      const surface = cliSurface_create();
+      const result = await surface.fileDeliver({ path: '/remote/x.dcm', filename: 'x.dcm', destination: dir });
+
+      expect(result.location).toBe(path.join(dir, 'x.dcm'));
+      expect(fs.existsSync(result.location)).toBe(true);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('fetches through the supplied source, not the engine, when one is given', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const dir = await tmpRoot();
+      fs.mkdirSync(dir, { recursive: true });
+      // A remote client's engine is on another machine; it passes a fetch
+      // against its daemon instead of reading a file it cannot see.
+      const remoteFetch = jest.fn(async (): Promise<Buffer> => Buffer.from('from the daemon'));
+
+      const surface = cliSurface_create(undefined, remoteFetch);
+      const result = await surface.fileDeliver({
+        path: '/remote/y.txt', filename: 'y.txt', destination: path.join(dir, 'y.txt'),
+      });
+
+      expect(remoteFetch).toHaveBeenCalledWith('/remote/y.txt');
+      expect(fileReadMock).not.toHaveBeenCalled();
+      expect(fs.readFileSync(result.location, 'utf8')).toBe('from the daemon');
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('claims the engine filesystem only when it reads through the engine', () => {
+      expect(cliSurface_create().capabilities.engineFilesystem).toBe(true);
+      const remoteFetch = async (): Promise<Buffer> => Buffer.from('');
+      expect(cliSurface_create(undefined, remoteFetch).capabilities.engineFilesystem).toBe(false);
+    });
   });
 });

@@ -193,7 +193,15 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 }));
 
 // Mock salsa
+const isDirectoryMock = jest.fn(async (): Promise<boolean> => false);
+const listRecursiveMock = jest.fn(async (): Promise<unknown[]> => []);
+const archiveMock = jest.fn(async (): Promise<unknown> => null);
+jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
+  directory_archive: archiveMock,
+}));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  files_path_isDirectory: isDirectoryMock,
+  files_listRecursive: listRecursiveMock,
   retrieveTask_make: (info: Record<string, unknown>) => ({ ...info, syntheticQueryId: null, retrieveId: null, status: 'pending', actualFiles: 0, lastProgressFiles: 0, lastProgressTime: 0, startTime: 0, lonkConfirmed: false, cubePathDir: null }),
   retrieveTasks_fire: jest.fn(),
   retrieveTasks_skipComplete: jest.fn(async () => 0),
@@ -739,6 +747,43 @@ describe('Builtins - Core Functions', () => {
   });
 
   describe('builtin_download()', () => {
+    // `download` writes to the engine's disk only when the operator is sitting
+    // at it. These cases exercise that path, so they install a surface that
+    // says so; the delivery path is covered separately below.
+    const localSurface = async (): Promise<void> => {
+      const { surface_set, HeadlessSurface } = await import('../src/core/surface.js');
+      const surface = new HeadlessSurface() as unknown as {
+        capabilities: { engineFilesystem: boolean; fileDelivery: boolean };
+      };
+      surface.capabilities = { ...surface.capabilities, engineFilesystem: true };
+      surface_set(surface as never);
+    };
+
+    /**
+     * Installs a surface for which the engine's disk is not its operator's.
+     * `hasDisk` distinguishes a remote shell, which owns a filesystem and
+     * should receive a folder as a folder, from a browser, which does not.
+     */
+    const deliveringSurface = async (
+      deliver: (request: { path: string; filename: string; destination?: string }) => Promise<{ location: string; bytes: number }>,
+      canDeliver = true,
+      hasDisk = false,
+    ): Promise<void> => {
+      const { surface_set } = await import('../src/core/surface.js');
+      surface_set({
+        capabilities: {
+          hiddenInput: false, localEdit: false, tty: false, pipeSegments: false,
+          shellCommands: false, fileDelivery: canDeliver, engineFilesystem: false,
+          localFilesystem: hasDisk,
+        },
+        prompt: async (): Promise<string> => '',
+        pipeSegment: async (): Promise<Buffer> => Buffer.from(''),
+        shellCommand: async (): Promise<number> => 0,
+        localEdit: async (): Promise<{ content: string; changed: boolean }> => ({ content: '', changed: false }),
+        fileDeliver: deliver,
+      } as never);
+    };
+
     it('should show usage with insufficient args', async () => {
       const envelope = await builtin_download(['remote.txt']);
 
@@ -747,6 +792,7 @@ describe('Builtins - Core Functions', () => {
 
     it('should invoke chili download helper', async () => {
       const downloadModule = await import('@fnndsc/chili/commands/fs/download.js');
+      await localSurface();
 
       await builtin_download(['/remote/file.txt', './local.txt']);
 
@@ -758,9 +804,123 @@ describe('Builtins - Core Functions', () => {
       }));
     });
 
+    it('hands the file to the surface when the engine disk is not the operator\'s', async () => {
+      const deliver = jest.fn(async (request: { path: string; filename: string }) => ({
+        location: `/downloads/${request.filename}`, bytes: 4096,
+      }));
+      await deliveringSurface(deliver as never);
+
+      const envelope = await builtin_download(['/remote/scan.dcm', '/downloads']);
+
+      // The request travels; the bytes do not. A daemon writing to its own
+      // host would put the file on a machine nobody is sitting at.
+      expect(mockChefsDownload).not.toHaveBeenCalled();
+      expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+        path: '/remote/scan.dcm', filename: 'scan.dcm', destination: '/downloads',
+      }));
+      expect(envelope.status).toBe('ok');
+      expect(envelope.rendered).toContain('/downloads/scan.dcm');
+    });
+
+    it('delivers each source when several are named', async () => {
+      const deliver = jest.fn(async (request: { filename: string }) => ({
+        location: `/d/${request.filename}`, bytes: 1,
+      }));
+      await deliveringSurface(deliver as never);
+
+      await builtin_download(['/remote/one.txt', '/remote/two.txt', '/d']);
+
+      expect(deliver).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses rather than writing to the engine host when the surface cannot receive', async () => {
+      await deliveringSurface(async () => ({ location: '', bytes: 0 }), false);
+
+      const envelope = await builtin_download(['/remote/scan.dcm', '/downloads']);
+
+      expect(mockChefsDownload).not.toHaveBeenCalled();
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('cannot receive a file');
+    });
+
+    it('reports a failed delivery without claiming success', async () => {
+      const deliver = jest.fn(async (): Promise<{ location: string; bytes: number }> => {
+        throw new Error('the browser refused it');
+      });
+      await deliveringSurface(deliver as never);
+
+      const envelope = await builtin_download(['/remote/scan.dcm', '/downloads']);
+
+      expect(envelope.status).toBe('error');
+      expect(envelope.rendered).toContain('the browser refused it');
+    });
+
+    it('delivers a directory file by file to a surface that has its own disk', async () => {
+      const deliver = jest.fn(async (request: { filename: string }) => ({
+        location: `/scans/${request.filename}`, bytes: 10,
+      }));
+      await deliveringSurface(deliver as never, true, true);
+      isDirectoryMock.mockResolvedValueOnce(true);
+      listRecursiveMock.mockResolvedValueOnce([
+        { path: '/remote/series/a.dcm', type: 'file', size: 10 },
+        { path: '/remote/series/sub', type: 'dir' },
+        { path: '/remote/series/sub/b.dcm', type: 'file', size: 10 },
+      ]);
+
+      const envelope = await builtin_download(['/remote/series', '/scans']);
+
+      // A shell asked for a folder and gets a folder. Archiving it would also
+      // create a feed, which is a heavy side effect for a case that is fine.
+      expect(archiveMock).not.toHaveBeenCalled();
+      expect(deliver).toHaveBeenCalledTimes(2);
+      expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ filename: 'sub/b.dcm' }));
+      expect(envelope.status).toBe('ok');
+    });
+
+    it('archives a directory into one file for a surface with no disk', async () => {
+      const deliver = jest.fn(async (request: { filename: string }) => ({
+        location: `/downloads/${request.filename}`, bytes: 90210,
+      }));
+      await deliveringSurface(deliver as never);
+      isDirectoryMock.mockResolvedValueOnce(true);
+      archiveMock.mockResolvedValueOnce({
+        path: '/home/me/feeds/feed_9/pl-dircopy_1/pl-pfdorun_2/data/series.zip',
+        filename: 'series.zip',
+        size: 90210,
+      });
+
+      const envelope = await builtin_download(['/remote/series', '/downloads']);
+
+      // A browser cannot receive several hundred DICOM instances as several
+      // hundred saves, so the directory becomes one CUBE file first.
+      expect(archiveMock).toHaveBeenCalledWith('/remote/series');
+      expect(deliver).toHaveBeenCalledTimes(1);
+      expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+        path: '/home/me/feeds/feed_9/pl-dircopy_1/pl-pfdorun_2/data/series.zip',
+        filename: 'series.zip',
+        size: 90210,
+      }));
+      expect(envelope.status).toBe('ok');
+    });
+
+    it('reports why an archive failed rather than attempting the delivery', async () => {
+      const deliver = jest.fn(async () => ({ location: '', bytes: 0 }));
+      await deliveringSurface(deliver as never);
+      isDirectoryMock.mockResolvedValueOnce(true);
+      archiveMock.mockResolvedValueOnce(null);
+
+      const envelope = await builtin_download(['/remote/series', '/downloads']);
+
+      // Fetching the bytes of a directory would 404 and teach nobody anything.
+      expect(deliver).not.toHaveBeenCalled();
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('could not archive');
+    });
+
     it('uses aggregate transfer for sources expanded by the shell', async () => {
       const args: ShellArguments = ['/remote/one.txt', '/remote/two.txt', './downloads'];
       args.pathnameExpanded = [true, true, false];
+      await localSurface();
 
       await builtin_download(args);
 

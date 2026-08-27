@@ -27,10 +27,24 @@ export const channelSchema = z.enum(['data', 'err', 'status']);
 
 // --- Surface → daemon ------------------------------------------------------
 
-/** Capabilities an attaching surface can safely execute on its own machine. */
+/**
+ * Capabilities an attaching surface can safely execute on its own machine.
+ *
+ * Optional throughout, and absent means false: a surface built against an older
+ * contract simply declares less, and the daemon refuses what it did not claim
+ * rather than assuming.
+ */
 export const surfaceCapabilitiesMessageSchema = z.object({
   shellCommands: z.boolean(),
   hiddenInput: z.boolean().optional(),
+  /** Can put a file where its operator can reach it. */
+  fileDelivery: z.boolean().optional(),
+  /**
+   * Has a filesystem of its own, so it can receive many files as a directory
+   * structure. A browser cannot, and needs a directory archived into one file
+   * before it can be handed over.
+   */
+  localFilesystem: z.boolean().optional(),
 });
 
 /** Attach to a session: declares the contract version, token, and surface capabilities. */
@@ -119,6 +133,27 @@ export const editErrorMessageSchema = z.object({
   reason: z.string(),
 });
 
+/**
+ * Reports a completed file delivery, correlated by `deliverId`.
+ *
+ * `location` is wherever the surface can honestly say the file went — an
+ * absolute path for a filesystem, a bare filename for a browser that handed it
+ * to the download manager.
+ */
+export const deliverResultMessageSchema = z.object({
+  type: z.literal('deliverResult'),
+  deliverId: z.string(),
+  location: z.string(),
+  bytes: z.number().nonnegative(),
+});
+
+/** Reports a failed file delivery to the daemon, correlated by `deliverId`. */
+export const deliverErrorMessageSchema = z.object({
+  type: z.literal('deliverError'),
+  deliverId: z.string(),
+  reason: z.string(),
+});
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
@@ -133,6 +168,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   shellErrorMessageSchema,
   editResultMessageSchema,
   editErrorMessageSchema,
+  deliverResultMessageSchema,
+  deliverErrorMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -348,6 +385,34 @@ export const editMessageSchema = z.object({
   extension: z.string().optional(),
 });
 
+/**
+ * Asks the surface running the current command to place a file where its
+ * operator can reach it.
+ *
+ * The message names what to deliver, never the bytes. A surface fetches those
+ * itself from the daemon's token-gated byte route, so a large file does not
+ * cross the session bus base64-encoded — the intent travels through the
+ * vocabulary and the bytes travel through the byte route.
+ */
+export const deliverMessageSchema = z.object({
+  type: z.literal('deliver'),
+  deliverId: z.string(),
+  path: z.string(),
+  filename: z.string(),
+  destination: z.string().optional(),
+  size: z.number().nonnegative().optional(),
+  contentType: z.string().optional(),
+});
+
+/** What to deliver, before the daemon adds the correlation id. */
+export type FileDeliverRequest = Omit<z.infer<typeof deliverMessageSchema>, 'type' | 'deliverId'>;
+
+/** Where a delivered file landed, as the surface reports it. */
+export type FileDeliverResult = Omit<
+  z.infer<typeof deliverResultMessageSchema>,
+  'type' | 'deliverId'
+>;
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -362,6 +427,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   pipeMessageSchema,
   shellMessageSchema,
   editMessageSchema,
+  deliverMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

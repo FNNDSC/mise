@@ -34,7 +34,7 @@ import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, FileDeliverRequest } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
@@ -68,6 +68,8 @@ interface Surface {
   capabilities: {
     shellCommands: boolean;
     hiddenInput: boolean;
+    fileDelivery: boolean;
+    localFilesystem: boolean;
   };
 }
 
@@ -75,6 +77,17 @@ interface Surface {
 interface SessionEntry {
   surface: string;
   envelope: CommandEnvelope;
+}
+
+/**
+ * Where a delivered file landed, returned by {@link CalypsoDaemon.deliver_current}.
+ *
+ * @property location - The surface's honest account of the destination.
+ * @property bytes - How many bytes it delivered.
+ */
+export interface DeliverOutcome {
+  location: string;
+  bytes: number;
 }
 
 /** The result of a surface's local edit, returned by {@link CalypsoDaemon.edit_current}. */
@@ -149,6 +162,7 @@ export class CalypsoDaemon {
   private readonly pipes: RequestBroker<Buffer> = new RequestBroker<Buffer>('x', 'surface disconnected before returning pipe output');
   private readonly shells: RequestBroker<number> = new RequestBroker<number>('h', 'surface disconnected before returning the shell result');
   private readonly edits: RequestBroker<EditOutcome> = new RequestBroker<EditOutcome>('e', 'surface disconnected before returning the edit');
+  private readonly deliveries: RequestBroker<DeliverOutcome> = new RequestBroker<DeliverOutcome>('d', 'surface disconnected before the file was delivered');
 
   /**
    * @param options - The engine to host, the attach token, the bind address,
@@ -324,6 +338,10 @@ export class CalypsoDaemon {
         this.edits.settle(socket, value.editId, { content: value.content, changed: value.changed });
       } else if (value.type === 'editError') {
         this.edits.fail(socket, value.editId, value.reason);
+      } else if (value.type === 'deliverResult') {
+        this.deliveries.settle(socket, value.deliverId, { location: value.location, bytes: value.bytes });
+      } else if (value.type === 'deliverError') {
+        this.deliveries.fail(socket, value.deliverId, value.reason);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -383,6 +401,8 @@ export class CalypsoDaemon {
       capabilities: {
         shellCommands: attach.value.capabilities?.shellCommands ?? false,
         hiddenInput: attach.value.capabilities?.hiddenInput ?? false,
+        fileDelivery: attach.value.capabilities?.fileDelivery ?? false,
+        localFilesystem: attach.value.capabilities?.localFilesystem ?? false,
       },
     };
     this.surfaces.add(surface);
@@ -615,6 +635,57 @@ export class CalypsoDaemon {
     }
     return this.edits.open(origin.socket, (editId: string): void => {
       this.send(origin.socket, { type: 'edit', editId, content, extension });
+    });
+  }
+
+  /**
+   * Reports what the surface running the current command can do on its own
+   * machine. A daemon has no capabilities of its own to offer: every one it
+   * presents belongs to whichever surface asked.
+   *
+   * @returns The executing surface's declared capabilities; nothing when no
+   *   command is running.
+   */
+  public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean } | null {
+    const origin: Surface | null = this.currentOrigin;
+    return origin ? {
+      fileDelivery: origin.capabilities.fileDelivery,
+      localFilesystem: origin.capabilities.localFilesystem,
+    } : null;
+  }
+
+  /**
+   * Asks the surface running the current command to place a file where its
+   * operator can reach it. The host installs a `fileDeliver` on its engine-side
+   * surface that calls this, so `download` writes to the operator's machine and
+   * never to the daemon host's disk.
+   *
+   * Only the request crosses here. The surface fetches the bytes itself from
+   * `/vfs`, which is the same token-gated route a browser already uses to
+   * render a file natively.
+   *
+   * @param request - What to deliver and where the operator asked for it.
+   * @returns Where the file landed and how large it was.
+   * @throws {Error} When no command is executing or the surface disconnects.
+   */
+  public deliver_current(request: FileDeliverRequest): Promise<DeliverOutcome> {
+    const origin: Surface | null = this.currentOrigin;
+    if (!origin) {
+      return Promise.reject(new Error('no active command to deliver a file for'));
+    }
+    if (!origin.capabilities.fileDelivery) {
+      return Promise.reject(new Error('this surface cannot receive a file'));
+    }
+    return this.deliveries.open(origin.socket, (deliverId: string): void => {
+      this.send(origin.socket, {
+        type: 'deliver',
+        deliverId,
+        path: request.path,
+        filename: request.filename,
+        ...(request.destination !== undefined ? { destination: request.destination } : {}),
+        ...(request.size !== undefined ? { size: request.size } : {}),
+        ...(request.contentType !== undefined ? { contentType: request.contentType } : {}),
+      });
     });
   }
 

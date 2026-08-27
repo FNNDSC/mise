@@ -16,11 +16,14 @@
 import * as readline from 'readline';
 import { Writable } from 'stream';
 import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, statSync } from 'fs';
+import * as fs from 'fs/promises';
 import { tmpdir } from 'os';
+import * as path from 'path';
 import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
-import { segment_pipeThrough } from '@fnndsc/brasa';
+import { segment_pipeThrough, file_read } from '@fnndsc/brasa';
+import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 
 /**
  * Prompts on a persistent readline interface (the REPL's), suppressing echo
@@ -146,20 +149,88 @@ function shellCommand_run(command: string): Promise<number> {
 }
 
 /**
+ * How a surface obtains the bytes of a file it has been asked to deliver.
+ *
+ * @param path - The path in the session's namespace.
+ * @returns The file's bytes.
+ */
+export type BytesFetch = (path: string) => Promise<Buffer>;
+
+/**
+ * Resolves where a delivered file should be written.
+ *
+ * A destination naming an existing directory receives the file under its
+ * suggested name; anything else is taken as the filename itself. With no
+ * destination the file lands in the working directory.
+ *
+ * @param destination - Where the operator asked for it, if they said.
+ * @param filename - The suggested name.
+ * @returns An absolute path to write.
+ */
+function destination_resolve(destination: string | undefined, filename: string): string {
+  if (destination === undefined || destination.length === 0) {
+    return path.resolve(filename);
+  }
+  const resolved: string = path.resolve(destination);
+  if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+    return path.join(resolved, filename);
+  }
+  return resolved;
+}
+
+/**
+ * Writes a delivered file to this machine's disk.
+ *
+ * The destination is resolved here, on the surface's machine, which is the
+ * whole point: the engine may be hosted anywhere, and a daemon must never
+ * write to its own disk on an operator's behalf.
+ *
+ * @param request - What to deliver and where the operator asked for it.
+ * @param bytes_fetch - How to obtain the file's bytes.
+ * @returns The absolute path written and the byte count.
+ * @throws {Error} When the bytes cannot be read or the write fails.
+ */
+async function fileDeliver_run(
+  request: FileDeliverRequest,
+  bytes_fetch: BytesFetch,
+): Promise<FileDeliverResult> {
+  const target: string = destination_resolve(request.destination, request.filename);
+  const bytes: Buffer = await bytes_fetch(request.path);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, bytes);
+  return { location: target, bytes: bytes.length };
+}
+
+/**
  * Creates the CLI host's surface.
  *
  * @param rl - The REPL's persistent readline interface, when running
  *   interactively. Omitted in execute and script modes, where each prompt
  *   uses a one-shot interface.
+ * @param bytes_fetch - How this surface obtains a file's bytes. The default
+ *   reads through the in-process engine, which is right for a local shell; a
+ *   remote client supplies a fetch against its daemon's byte route, because
+ *   its engine is on another machine.
  * @returns A surface backed by the local terminal.
  */
-export function cliSurface_create(rl?: readline.Interface): Surface {
+export function cliSurface_create(
+  rl?: readline.Interface,
+  bytes_fetch: BytesFetch | undefined = file_read,
+): Surface {
   const capabilities: SurfaceCapabilities = {
     hiddenInput: true,
     localEdit: true,
     tty: !!process.stdout.isTTY,
     pipeSegments: true,
     shellCommands: true,
+    fileDelivery: true,
+    // A local shell hosts the engine in its own process, so a path the engine
+    // resolves is a path the operator can open. A remote client supplies a
+    // byte fetch precisely because that is not true for it.
+    engineFilesystem: bytes_fetch === undefined || bytes_fetch === file_read,
+    // Remote or not, a shell has a disk and directories. Asked for a folder it
+    // should get a folder, not an archive of one.
+    localFilesystem: true,
   };
 
   return {
@@ -176,6 +247,9 @@ export function cliSurface_create(rl?: readline.Interface): Surface {
     },
     localEdit(request: LocalEditRequest): Promise<LocalEditResult> {
       return localEdit_run(request);
+    },
+    fileDeliver(request: FileDeliverRequest): Promise<FileDeliverResult> {
+      return fileDeliver_run(request, bytes_fetch ?? file_read);
     },
   };
 }

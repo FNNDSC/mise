@@ -53,14 +53,18 @@ function send(ws: WebSocket, message: unknown): void {
 }
 
 /** Attaches with the valid token and awaits the ack. */
-async function client_attach(port: number, shellCommands: boolean = false): Promise<WebSocket> {
+async function client_attach(
+  port: number,
+  shellCommands: boolean = false,
+  extra: Record<string, boolean> = {},
+): Promise<WebSocket> {
   const ws = await client_open(port);
   const acked = message_next(ws);
   send(ws, {
     type: 'attach',
     protocolVersion: CONTRACT_VERSION,
     token: TOKEN,
-    capabilities: { hiddenInput: true, shellCommands },
+    capabilities: { hiddenInput: true, shellCommands, ...extra },
   });
   await acked;
   return ws;
@@ -676,6 +680,86 @@ describe('CalypsoDaemon local edit over the wire', () => {
       const result = await replied;
       expect(result.type).toBe('result');
       expect((result.envelopes as { rendered: string }[])[0].rendered).toBe('edited(true): after');
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
+describe('CalypsoDaemon file delivery over the wire', () => {
+  it('routes a delivery to the executing surface and reports where it landed', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        if (line === '__deliver__') {
+          const delivered = await (daemonRef as CalypsoDaemon).deliver_current({
+            path: '/home/me/scan.dcm', filename: 'scan.dcm', destination: '/tmp', size: 2048,
+          });
+          return [{ status: 'ok', rendered: `${delivered.bytes} bytes to ${delivered.location}` }];
+        }
+        return [{ status: 'ok', rendered: `ran: ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port = await daemon.start();
+    try {
+      const ws = await client_attach(port, false, { fileDelivery: true });
+      const asked = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '__deliver__' });
+      const deliver = await asked;
+      // Only the request crosses; the surface fetches the bytes itself.
+      expect(deliver.type).toBe('deliver');
+      expect(deliver.path).toBe('/home/me/scan.dcm');
+      expect(deliver.filename).toBe('scan.dcm');
+      expect(deliver.destination).toBe('/tmp');
+      expect(deliver.size).toBe(2048);
+      expect(deliver).not.toHaveProperty('bytes');
+
+      const replied = message_next(ws);
+      send(ws, {
+        type: 'deliverResult',
+        deliverId: deliver.deliverId as string,
+        location: '/tmp/scan.dcm',
+        bytes: 2048,
+      });
+      const result = await replied;
+      expect((result.envelopes as { rendered: string }[])[0].rendered).toBe('2048 bytes to /tmp/scan.dcm');
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('fails the command when the surface cannot deliver', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        if (line === '__deliver__') {
+          try {
+            await (daemonRef as CalypsoDaemon).deliver_current({ path: '/x', filename: 'x' });
+          } catch (error: unknown) {
+            return [{ status: 'error', rendered: '', renderedErr: String((error as Error).message) }];
+          }
+        }
+        return [{ status: 'ok', rendered: '' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port = await daemon.start();
+    try {
+      const ws = await client_attach(port, false, { fileDelivery: true });
+      const asked = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: '__deliver__' });
+      const deliver = await asked;
+      const replied = message_next(ws);
+      send(ws, { type: 'deliverError', deliverId: deliver.deliverId as string, reason: 'no disk here' });
+      const result = await replied;
+      expect((result.envelopes as { renderedErr: string }[])[0].renderedErr).toContain('no disk here');
       ws.terminate();
     } finally {
       await daemon.stop();

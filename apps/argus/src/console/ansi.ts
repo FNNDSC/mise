@@ -159,17 +159,30 @@ export function html_escape(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-/** Matches one ANSI escape sequence (CSI, OSC, or lone ESC forms). */
+/**
+ * Matches one ANSI escape sequence (CSI, OSC, or lone ESC forms).
+ *
+ * The CSI branch follows ECMA-48: parameter bytes `0x30-0x3F` (digits and
+ * `;:?<=>`), optional intermediate bytes `0x20-0x2F`, one final byte
+ * `0x40-0x7E`. The private-parameter forms matter here because a spinner
+ * brackets its frames with `\x1b[?25l`/`\x1b[?25h`; a pattern accepting only
+ * `[0-9;:]` fails to match those and spills `[?25l` into the transcript as
+ * literal text.
+ */
 const ANSI_PATTERN: RegExp =
   // eslint-disable-next-line no-control-regex
-  /\x1b(?:\[([0-9;:]*)([A-Za-z])|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
+  /\x1b(?:\[([0-?]*)[ -/]*([@-~])|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
 
 /**
  * Converts ANSI-decorated text to HTML span runs.
  *
  * SGR sequences (`...m`) become styled spans; every other escape sequence
- * is dropped. Carriage returns are removed (the transcript flows as a
- * document) and newlines are preserved for `white-space: pre-wrap` layout.
+ * is dropped. Newlines are preserved for `white-space: pre-wrap` layout.
+ *
+ * This function renders one line's worth of text and holds no cursor state,
+ * so carriage returns mean nothing at this layer and are stripped. Honouring
+ * a `\r` rewind belongs to the caller that owns the transcript (see
+ * `ArgusTerminal.output_write`), which alone knows what the current line is.
  *
  * @param text - The ANSI-decorated text.
  * @returns HTML markup safe to insert into the transcript.

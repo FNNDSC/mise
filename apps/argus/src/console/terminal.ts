@@ -35,22 +35,38 @@ interface SegmentColor {
  * the CLI surface read as one family. Duplicated by value because argus may
  * not import the execution stack.
  */
-const SEGMENT_PALETTE: Record<'host' | 'user' | 'dir' | 'duration' | 'status', SegmentColor> = {
+const SEGMENT_PALETTE: Record<
+  'pacs' | 'host' | 'user' | 'dir' | 'physical' | 'duration' | 'status',
+  SegmentColor
+> = {
+  pacs: { bg: '#875FFF', fg: '#FFFFFF' },
   host: { bg: '#00AFFF', fg: '#001018' },
   user: { bg: '#00D787', fg: '#00140C' },
   dir: { bg: '#FFD75F', fg: '#201800' },
+  physical: { bg: '#FF5F5F', fg: '#1B0000' },
   duration: { bg: '#FF8700', fg: '#201000' },
   status: { bg: '#FF005F', fg: '#FFFFFF' },
 };
 
-/** Powerline separator and Font Awesome glyphs, from the bundled Nerd Font. */
+/**
+ * Powerline separator and Font Awesome glyphs, from the bundled Nerd Font.
+ *
+ * Written as `\u` escapes rather than literal characters: these live in the
+ * Private Use Area, and a literal copy is one careless re-encoding away from
+ * becoming an empty string — which renders as a prompt with no separators and
+ * no icons, exactly as if the font had failed to load. The values match
+ * chell's p10k theme (`packages/chell/src/core/prompt/theme_p10k.ts`) so the
+ * two surfaces read as one family.
+ */
 const GLYPHS = {
-  powerline: '',
-  cube: '',
-  user: '',
-  folder: '',
-  bolt: '',
-  error: '',
+  powerline: '\ue0b0',
+  cube: '\uf1b2',
+  database: '\uf1c0',
+  user: '\uf007',
+  folder: '\uf07c',
+  microscope: '\uf610',
+  bolt: '\uf0e7',
+  error: '\uf057',
 } as const;
 
 /** Minimum command duration (ms) before the duration segment appears. */
@@ -82,6 +98,12 @@ export class ArgusTerminal {
   private readonly history: string[] = [];
   private historyIndex: number = 0;
   private streamBlock: HTMLElement | null = null;
+  /** The trailing element holding the not-yet-completed stream line. */
+  private streamPendingElement: HTMLElement | null = null;
+  /** Raw text of the current stream line, rewound by `\r` and cleared by `\n`. */
+  private streamPendingText: string = '';
+  /** The channel that opened the current stream line, for its styling. */
+  private streamPendingChannel: OutputChannel = 'data';
 
   /**
    * Builds the console into a container and wires its input events.
@@ -166,14 +188,76 @@ export class ArgusTerminal {
   /**
    * Writes one live output chunk from the executing command.
    *
+   * A chunk is not a line. Progress output redraws itself by returning to
+   * column zero with `\r` and rewriting, so the stream is kept as completed
+   * lines plus one pending line: `\n` completes the pending line, `\r`
+   * discards it, and anything else extends it. Without this a spinner's
+   * every frame would append, turning one redrawing line into thousands.
+   *
    * @param channel - The producing channel; status renders dimmed.
    * @param chunk - The text chunk.
    */
   public output_write(channel: OutputChannel, chunk: string): void {
-    const block: HTMLElement = this.stream_ensure();
-    const html: string = ansi_toHtml(chunk);
-    block.insertAdjacentHTML('beforeend', channel === 'status' ? `<span class="dim">${html}</span>` : html);
+    this.stream_ensure();
+    let rest: string = chunk;
+    while (rest.length > 0) {
+      const breakAt: number = rest.search(/[\r\n]/);
+      if (breakAt === -1) {
+        this.pending_extend(channel, rest);
+        break;
+      }
+      this.pending_extend(channel, rest.slice(0, breakAt));
+      // A `\r\n` pair is one line ending, not a rewind followed by a blank
+      // line; only a lone `\r` means the line is about to be rewritten.
+      const isCrLf: boolean = rest[breakAt] === '\r' && rest[breakAt + 1] === '\n';
+      if (rest[breakAt] === '\n' || isCrLf) {
+        this.pending_commit();
+      } else {
+        this.streamPendingText = '';
+      }
+      rest = rest.slice(breakAt + (isCrLf ? 2 : 1));
+    }
+    this.pending_paint();
     this.size_fit();
+  }
+
+  /**
+   * Extends the pending line, adopting the channel when the line is new.
+   *
+   * @param channel - The producing channel.
+   * @param text - The text to append (free of line breaks).
+   */
+  private pending_extend(channel: OutputChannel, text: string): void {
+    if (this.streamPendingText.length === 0) {
+      this.streamPendingChannel = channel;
+    }
+    this.streamPendingText += text;
+  }
+
+  /** Moves the pending line into the committed transcript above it. */
+  private pending_commit(): void {
+    this.streamPendingElement?.insertAdjacentHTML('beforebegin', `${this.pending_toHtml()}\n`);
+    this.streamPendingText = '';
+  }
+
+  /** Repaints the pending line in place. */
+  private pending_paint(): void {
+    if (this.streamPendingElement !== null) {
+      this.streamPendingElement.innerHTML = this.pending_toHtml();
+    }
+  }
+
+  /**
+   * Renders the pending line's text with its channel's styling.
+   *
+   * @returns The pending line's HTML, empty when the line is empty.
+   */
+  private pending_toHtml(): string {
+    if (this.streamPendingText.length === 0) {
+      return '';
+    }
+    const html: string = ansi_toHtml(this.streamPendingText);
+    return this.streamPendingChannel === 'status' ? `<span class="dim">${html}</span>` : html;
   }
 
   /**
@@ -334,14 +418,32 @@ export class ArgusTerminal {
     if (this.streamBlock === null) {
       const block: HTMLDivElement = document.createElement('div');
       block.className = 'argus-line argus-stream';
+      const pending: HTMLSpanElement = document.createElement('span');
+      pending.className = 'argus-stream-pending';
+      block.appendChild(pending);
       this.output.appendChild(block);
       this.streamBlock = block;
+      this.streamPendingElement = pending;
+      this.streamPendingText = '';
+      this.streamPendingChannel = 'data';
     }
     return this.streamBlock;
   }
 
-  /** Closes the live-stream block at the end of a command. */
+  /**
+   * Closes the live-stream block at the end of a command.
+   *
+   * A command may end mid-line — a spinner's last frame carries no newline —
+   * so the pending line is committed rather than dropped, unless the spinner
+   * already erased it, in which case there is nothing to keep.
+   */
   private stream_close(): void {
+    if (this.streamPendingText.length > 0) {
+      this.pending_commit();
+    }
+    this.streamPendingElement?.remove();
+    this.streamPendingElement = null;
+    this.streamPendingText = '';
     this.streamBlock = null;
   }
 
@@ -361,11 +463,23 @@ export class ArgusTerminal {
       ? `~${context.cwd.slice(homePrefix.length)}`
       : context.cwd;
 
-    const segments: Array<{ text: string; color: SegmentColor }> = [
+    // Segment order tracks chell's p10k theme: [pacs] host user dir
+    // [physical] [duration] [status]. The daemon pushes every fact used here.
+    const segments: Array<{ text: string; color: SegmentColor }> = [];
+    if (context.pacsserver !== null && context.pacsserver.length > 0) {
+      segments.push({
+        text: `${GLYPHS.database} ${context.pacsserver}`,
+        color: SEGMENT_PALETTE.pacs,
+      });
+    }
+    segments.push(
       { text: `${GLYPHS.cube} ${host}`, color: SEGMENT_PALETTE.host },
       { text: `${GLYPHS.user} ${context.user}`, color: SEGMENT_PALETTE.user },
       { text: `${GLYPHS.folder} ${displayPath}`, color: SEGMENT_PALETTE.dir },
-    ];
+    );
+    if (context.physicalMode) {
+      segments.push({ text: `${GLYPHS.microscope} PHYSICAL`, color: SEGMENT_PALETTE.physical });
+    }
     if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
       const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
       segments.push({ text: `${GLYPHS.bolt} ${seconds}s`, color: SEGMENT_PALETTE.duration });

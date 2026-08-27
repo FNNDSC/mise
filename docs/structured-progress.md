@@ -3,6 +3,19 @@
 This note records the scoped design for issue #70: structured progress over the
 CALYPSO daemon wire for `pull`, `upload`, and `download`.
 
+Issue #221 extended it to cover *all* status output. Indeterminate work — a
+PACS query, a directory scan, a cache warm-up — now announces itself as
+`operation: "task"`, `kind: "inspection"`, `phase: "working"`, with no counts,
+and closes with `phase: "complete"`. Nothing writes terminal escapes to the
+sink any more; `scripts/wire-escapes.mjs` holds that count at zero.
+
+Two consequences worth knowing before adding a producer. First, only state
+changes are announced: animation frames and elapsed counters belong to the
+renderer, so a wait of any length costs the wire the same two events. Second,
+an unknown `operation` or `phase` from a newer peer degrades to `task` and
+`working` rather than failing the parse, because a dropped message is invisible
+and a generic indicator is not.
+
 It exists because the broader `calypso.adoc` is the architectural essay, while
 this is the implementation contract future agents should follow.
 

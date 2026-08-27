@@ -186,14 +186,31 @@ export const outputMessageSchema = z.object({
   chunk: z.string(),
 });
 
-/** The operation producing structured progress. */
-export const progressOperationSchema = z.enum(PROGRESS_OPERATIONS);
+/**
+ * The operation producing structured progress.
+ *
+ * Within a major, the contract promises additive change only, which is a
+ * promise a bare enum cannot keep: an unknown value fails the whole message,
+ * and a failed parse drops it. An operation a peer names but this build does
+ * not know is therefore read as `task` — none of the above — so the work still
+ * shows, generically, instead of vanishing.
+ */
+export const progressOperationSchema = z.enum(PROGRESS_OPERATIONS).catch('task');
 
 /** Broad class of progress producer. */
 export const progressKindSchema = z.enum(PROGRESS_KINDS);
 
-/** Lifecycle phase of a progress operation. */
-export const progressPhaseSchema = z.enum(PROGRESS_PHASES);
+/**
+ * Lifecycle phase of a progress operation.
+ *
+ * An unknown phase degrades to `working` for the reason given on
+ * {@link progressOperationSchema}: an unrecognised phase still means work is
+ * under way, and that much is worth showing. `complete` and `failed` are
+ * terminal and will not be inferred, so a surface that cannot read a newer
+ * peer's terminal phase leaves the announcement open rather than closing it
+ * wrongly.
+ */
+export const progressPhaseSchema = z.enum(PROGRESS_PHASES).catch('working');
 
 /** Unit used by the primary progress counter. */
 export const progressUnitSchema = z.enum(PROGRESS_UNITS);
@@ -217,8 +234,11 @@ export const progressMessageSchema = z.object({
   status: progressStatusSchema.optional(),
 });
 
+/** A progress event as it appears on the wire, correlated to its command. */
+export type ProgressMessage = z.infer<typeof progressMessageSchema>;
+
 /** The progress payload before command correlation is added by the daemon. */
-export type ProgressEvent = Omit<z.infer<typeof progressMessageSchema>, 'type' | 'id'>;
+export type ProgressEvent = Omit<ProgressMessage, 'type' | 'id'>;
 
 /** A session-bus broadcast: an envelope tagged with its originating surface. */
 export const sessionMessageSchema = z.object({

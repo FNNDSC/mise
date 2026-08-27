@@ -79,7 +79,8 @@ export class REPL {
     // reaches the terminal through the sink it installs, and interactive
     // prompts run through the surface it installs — both backed by the REPL's
     // single readline interface, so builtins never assume a terminal exists.
-    sink_set(new StdoutSink(new TerminalProgressRenderer()));
+    const progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
+    sink_set(new StdoutSink(progressRenderer));
     surface_set(cliSurface_create(this.rl));
 
     await this.history_load();
@@ -101,6 +102,10 @@ export class REPL {
       const startMs: number = Date.now();
       process.exitCode = 0;
       await surfaceLine_executeSafely(this.engine, line);
+      // Progress is telemetry about a running command, so nothing may outlive
+      // the command. A builtin that throws between announcing work and closing
+      // it would otherwise leave an indicator running against nothing.
+      progressRenderer.clear();
       this.lastCommandDurationMs = Date.now() - startMs;
       this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
 

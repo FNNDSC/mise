@@ -51,12 +51,17 @@ function zodError_format(error: z.ZodError): string {
 /**
  * Validates a raw value against a schema, never throwing.
  *
+ * Generic over the schema rather than over a value type, because a schema that
+ * degrades unknown values (see `progressOperationSchema`) reads a wider input
+ * than it produces, and only the schema's own output type states what a caller
+ * receives.
+ *
  * @param schema - The schema to validate against.
  * @param raw - The untrusted input.
  * @returns The parse result.
  */
-function schema_parse<T>(schema: z.ZodType<T>, raw: unknown): ParseResult<T> {
-  const result: z.SafeParseReturnType<unknown, T> = schema.safeParse(raw);
+function schema_parse<S extends z.ZodTypeAny>(schema: S, raw: unknown): ParseResult<z.output<S>> {
+  const result: z.SafeParseReturnType<unknown, z.output<S>> = schema.safeParse(raw);
   if (result.success) {
     return { ok: true, value: result.data };
   }

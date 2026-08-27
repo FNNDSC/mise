@@ -152,10 +152,22 @@ describe('serverMessage_parse', () => {
     expect(serverMessage_parse({ type: 'output', id: '1', channel: 'sideband', chunk: 'x' }).ok).toBe(false);
   });
 
-  it('rejects malformed progress fields', () => {
+  it('rejects malformed progress counters', () => {
     expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'transferring', current: -1 }).ok).toBe(false);
     expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'transferring', percent: 101 }).ok).toBe(false);
-    expect(serverMessage_parse({ type: 'progress', id: '1', operation: 'upload', phase: 'nope' }).ok).toBe(false);
+  });
+
+  it('degrades an unknown operation or phase instead of dropping the message', () => {
+    // The contract promises additive change within a major. A surface built
+    // against an older enum must therefore still show a newer peer's work,
+    // generically, rather than failing the parse and discarding it.
+    const parsed = serverMessage_parse({
+      type: 'progress', id: '1', operation: 'teleport', phase: 'vibrating', label: 'Hmm',
+    });
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.value).toEqual({
+      type: 'progress', id: '1', operation: 'task', phase: 'working', label: 'Hmm',
+    });
   });
 });
 

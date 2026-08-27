@@ -327,6 +327,80 @@
   opacity: 0.45;
 }
 
+/*
+ * Live progress: one row per running operation, between the transcript and
+ * the prompt. Indeterminate work spins in CSS and counted work fills a bar,
+ * so nothing here depends on the daemon redrawing a line of characters.
+ */
+.argus-progress {
+  flex: none;
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  text-shadow: none;
+  line-height: 1.6;
+}
+
+.argus-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--butter);
+  opacity: 0.85;
+}
+
+.argus-progress-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.argus-progress-counts {
+  opacity: 0.6;
+}
+
+.argus-progress-elapsed {
+  flex: none;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.argus-progress-spin {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid var(--pumpkin-pie);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: argus-progress-turn 0.8s linear infinite;
+}
+
+.argus-progress-bar {
+  flex: 2;
+  height: 0.4rem;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 0.2rem;
+  overflow: hidden;
+}
+
+.argus-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--pumpkin-pie);
+  transition: width 120ms linear;
+}
+
+@keyframes argus-progress-turn {
+  to { transform: rotate(360deg); }
+}
+
+/* A reader who has asked for less motion gets a steady mark, not a spin. */
+@media (prefers-reduced-motion: reduce) {
+  .argus-progress-spin { animation: none; }
+  .argus-progress-fill { transition: none; }
+}
+
 /* The p10k segment bar above the input line. */
 .argus-prompt-bar {
   flex: none;

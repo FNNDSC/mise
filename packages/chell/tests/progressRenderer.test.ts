@@ -135,6 +135,51 @@ describe('TerminalProgressRenderer', () => {
     }
   });
 
+  it('measures elapsed time locally for indeterminate work', () => {
+    // The producer reports only that work is under way. How long it has been
+    // under way is the renderer's to measure, which is what lets a wait of any
+    // length cost the wire two events.
+    jest.useFakeTimers();
+    const dataStream = stream_create(true);
+    const statusStream = stream_create(true);
+    const renderer = new TerminalProgressRenderer({
+      stream: dataStream,
+      statusStream,
+      isTTY: true,
+      factory: fakeFactory_create(),
+    });
+
+    try {
+      renderer.write({ operation: 'task', kind: 'inspection', phase: 'working', label: 'Scanning' });
+      expect(statusStream.writes.join('')).toContain('(0.0s)');
+
+      jest.advanceTimersByTime(2400);
+      expect(statusStream.writes.join('')).toContain('(2.4s)');
+    } finally {
+      renderer.clear();
+      jest.useRealTimers();
+    }
+  });
+
+  it('renders a task with an indeterminate phase as inspection', () => {
+    const dataStream = stream_create(true);
+    const statusStream = stream_create(true);
+    const renderer = new TerminalProgressRenderer({
+      stream: dataStream,
+      statusStream,
+      isTTY: true,
+      factory: fakeFactory_create(),
+    });
+
+    try {
+      renderer.write({ operation: 'task', kind: 'inspection', phase: 'working', label: 'Querying PACS' });
+      expect(dataStream.writes).toEqual([]);
+      expect(statusStream.writes.join('')).toContain('Querying PACS');
+    } finally {
+      renderer.clear();
+    }
+  });
+
   it('suppresses Pipeline inspection when command stdout is piped', () => {
     const dataStream = stream_create(false);
     const statusStream = stream_create(true);

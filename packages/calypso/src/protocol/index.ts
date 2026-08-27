@@ -31,6 +31,7 @@ export {
   sessionMessageSchema,
   outputMessageSchema,
   progressMessageSchema,
+  type ProgressMessage,
   promptLineMessageSchema,
   promptContextSchema,
   errorMessageSchema,

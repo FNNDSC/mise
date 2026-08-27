@@ -87,7 +87,10 @@ jest.unstable_mockModule('../src/core/cliSurface.js', () => ({
   cliSurface_create: jest.fn(() => ({ capabilities: {} })),
 }));
 jest.unstable_mockModule('../src/core/progressRenderer.js', () => ({
-  TerminalProgressRenderer: class MockTerminalProgressRenderer {},
+  TerminalProgressRenderer: class MockTerminalProgressRenderer {
+    write(): void {}
+    clear(): void {}
+  },
 }));
 jest.unstable_mockModule('../src/core/surfaceDispatch.js', () => ({
   surfaceLine_execute: surfaceLineExecute_mock,

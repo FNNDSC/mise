@@ -87,6 +87,8 @@ const HISTORY_LIMIT: number = 200;
  */
 export class ArgusTerminal {
   private readonly output: HTMLElement;
+  /** Live progress rows, between the transcript and the prompt. */
+  private readonly progressRegion: HTMLElement;
   private readonly promptBar: HTMLElement;
   private readonly inputGlyph: HTMLElement;
   private readonly input: HTMLInputElement;
@@ -123,6 +125,7 @@ export class ArgusTerminal {
     container.innerHTML = `
       <div class="argus-screen">
         <div class="argus-output"></div>
+        <div class="argus-progress"></div>
         <div class="argus-prompt-bar"></div>
         <div class="argus-input-line">
           <span class="argus-input-glyph">❯</span>
@@ -130,12 +133,22 @@ export class ArgusTerminal {
         </div>
       </div>`;
     this.output = element_query(container, '.argus-output');
+    this.progressRegion = element_query(container, '.argus-progress');
     this.promptBar = element_query(container, '.argus-prompt-bar');
     this.inputGlyph = element_query(container, '.argus-input-glyph');
     this.input = element_query(container, 'input') as HTMLInputElement;
 
     container.addEventListener('click', (): void => this.input.focus());
     this.input.addEventListener('keydown', (event: KeyboardEvent): void => this.key_handle(event));
+  }
+
+  /**
+   * The element live progress rows render into.
+   *
+   * @returns The console's progress region.
+   */
+  public progressRegion_get(): HTMLElement {
+    return this.progressRegion;
   }
 
   /** Scrolls the transcript to its end (called after drawer resizes too). */

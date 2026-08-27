@@ -1,80 +1,96 @@
 /**
- * @file Terminal spinner utility for long-running operations.
+ * @file Indeterminate-progress announcer for long-running work.
+ *
+ * A command that cannot say how much work remains still owes the operator the
+ * fact that work is under way. This announces that fact as a structured
+ * progress event; it does not draw it. Frame choreography — the braille cycle,
+ * the erase-line, the elapsed counter — belongs to whichever renderer is
+ * attached, because a browser, a terminal and a log each express waiting
+ * differently and none of them should have to recover meaning from cursor
+ * movement.
+ *
+ * The class keeps its former name and call signature so its many callers need
+ * no change, but it is no longer a terminal utility: it emits `operation:
+ * 'task'` with `kind: 'inspection'`, and the surface decides the rest.
  *
  * @module
  */
 
-import chalk from 'chalk';
 import { sink_get } from '../core/sink.js';
 
 /**
- * Terminal spinner indicating progress of async work.
+ * Announces indeterminate progress for async work.
+ *
+ * `start` opens an announcement, `updateMessage` revises its label, and `stop`
+ * closes it. Only state changes cross the wire: a spin that lasts a minute
+ * costs two events, not one per animation frame.
  */
 export class Spinner {
-  private interval: NodeJS.Timeout | null = null;
   private message: string = '';
-  private frames: string[] = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
-  private frameIndex: number = 0;
   private spinnerActive: boolean = false;
-  private startTime: number = 0;
-  private showTiming: boolean = false;
 
+  /**
+   * @param initialMessage - Label used when `start` is called without one.
+   */
   constructor(initialMessage: string = 'Loading...') {
     this.message = initialMessage;
   }
 
-  public start(message?: string, showTiming: boolean = false): void {
-    // Do not start spinner if not in a TTY (e.g. piped output)
-    if (!process.stdout.isTTY) {
+  /**
+   * Opens an indeterminate-progress announcement.
+   *
+   * @param message - Label describing the work; defaults to the last label set.
+   * @param _showTiming - Retained for call-site compatibility. Elapsed time is
+   *   now the renderer's to measure and display, since only the renderer knows
+   *   whether it can show a live counter at all.
+   */
+  public start(message?: string, _showTiming: boolean = false): void {
+    if (this.spinnerActive) {
+      this.stop();
+    }
+    this.message = message ?? this.message;
+    this.spinnerActive = true;
+    this.progress_emit('working');
+  }
+
+  /**
+   * Closes the announcement.
+   *
+   * @param _clearLine - Retained for call-site compatibility. Whether closing
+   *   erases anything is a rendering decision.
+   */
+  public stop(_clearLine: boolean = true): void {
+    if (!this.spinnerActive) {
       return;
     }
-
-    if (this.spinnerActive) {
-      this.stop(); // Stop any existing spinner
-    }
-    this.message = message || this.message;
-    this.spinnerActive = true;
-    this.frameIndex = 0;
-    this.showTiming = showTiming;
-    this.startTime = Date.now();
-
-    // Hide cursor
-    sink_get().status_write('\x1B[?25l');
-
-    this.interval = setInterval(() => {
-      const frame: string = this.frames[this.frameIndex = (this.frameIndex + 1) % this.frames.length];
-      let displayMessage: string = this.message;
-
-      // Add timing if enabled
-      if (this.showTiming) {
-        const elapsedSeconds: string = ((Date.now() - this.startTime) / 1000).toFixed(1);
-        displayMessage = `${this.message} (${elapsedSeconds}s)`;
-      }
-
-      // Note: We use chalk.gray for the message to match the existing "Fetching..." style.
-      // \x1b[K erases to end-of-line so a shorter message never leaves the
-      // tail of a longer previous one behind.
-      sink_get().status_write(`\r\x1b[K${chalk.bgBlack.cyanBright.bold(frame)} ${chalk.gray(displayMessage)}`);
-    }, 80);
+    this.spinnerActive = false;
+    this.progress_emit('complete');
   }
 
-  public stop(clearLine: boolean = true): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    if (this.spinnerActive) {
-      if (clearLine) {
-        sink_get().status_write('\r\x1b[K'); // Clear line
-      }
-      // Show cursor
-      sink_get().status_write('\x1B[?25h');
-      this.spinnerActive = false;
-    }
-  }
-
+  /**
+   * Revises the label of an open announcement.
+   *
+   * @param newMessage - The label to show from now on.
+   */
   public updateMessage(newMessage: string): void {
     this.message = newMessage;
+    if (this.spinnerActive) {
+      this.progress_emit('working');
+    }
+  }
+
+  /**
+   * Emits one progress event for the current label.
+   *
+   * @param phase - The lifecycle phase this event reports.
+   */
+  private progress_emit(phase: 'working' | 'complete'): void {
+    sink_get().progress_write({
+      operation: 'task',
+      kind: 'inspection',
+      phase,
+      label: this.message,
+    });
   }
 }
 

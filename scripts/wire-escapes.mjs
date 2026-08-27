@@ -7,12 +7,12 @@
  * to reconstruct meaning from it, and each one reconstructs it slightly
  * differently.
  *
- * docs/structured-progress.md already states the rule — "Progress must cross
- * the daemon wire as facts, not as terminal escape-frame text" — but binds
- * only pull, upload and download. The remaining call sites are the spinner,
- * and they cannot be fixed without the typed status events tracked in issue
- * #221. So this is a ratchet, not a hard check: it cannot repair what exists,
- * but it makes a *second* spinner impossible to add quietly.
+ * docs/structured-progress.md states the rule — "Progress must cross the
+ * daemon wire as facts, not as terminal escape-frame text". Issue #221 brought
+ * the last producer, the spinner, into line: it now announces indeterminate
+ * progress as a typed event and each surface draws waiting in its own idiom.
+ * The count is zero, so this is effectively a hard check; the baseline is kept
+ * because a future refactor may legitimately need to park a number here.
  *
  * Enforces "Surfaces are views, not applications" in docs/principles.adoc. Run
  * via `npm run lint:wire`.
@@ -24,7 +24,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Sink writes carrying terminal escapes. Lower this whenever it drops. */
-const BASELINE = 4;
+const BASELINE = 0;
 
 /** A write to the session sink whose argument contains an escape or a return. */
 const PATTERN = /sink_get\(\)\.\w*write\([^)]*\\(?:r|x1[bB])/g;

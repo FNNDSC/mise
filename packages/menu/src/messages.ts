@@ -27,10 +27,24 @@ export const channelSchema = z.enum(['data', 'err', 'status']);
 
 // --- Surface → daemon ------------------------------------------------------
 
-/** Capabilities an attaching surface can safely execute on its own machine. */
+/**
+ * Capabilities an attaching surface can safely execute on its own machine.
+ *
+ * Optional throughout, and absent means false: a surface built against an older
+ * contract simply declares less, and the daemon refuses what it did not claim
+ * rather than assuming.
+ */
 export const surfaceCapabilitiesMessageSchema = z.object({
   shellCommands: z.boolean(),
   hiddenInput: z.boolean().optional(),
+  /** Can put a file where its operator can reach it. */
+  fileDelivery: z.boolean().optional(),
+  /**
+   * Has a filesystem of its own, so it can receive many files as a directory
+   * structure. A browser cannot, and needs a directory archived into one file
+   * before it can be handed over.
+   */
+  localFilesystem: z.boolean().optional(),
 });
 
 /** Attach to a session: declares the contract version, token, and surface capabilities. */

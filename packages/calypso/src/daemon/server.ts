@@ -68,6 +68,8 @@ interface Surface {
   capabilities: {
     shellCommands: boolean;
     hiddenInput: boolean;
+    fileDelivery: boolean;
+    localFilesystem: boolean;
   };
 }
 
@@ -399,6 +401,8 @@ export class CalypsoDaemon {
       capabilities: {
         shellCommands: attach.value.capabilities?.shellCommands ?? false,
         hiddenInput: attach.value.capabilities?.hiddenInput ?? false,
+        fileDelivery: attach.value.capabilities?.fileDelivery ?? false,
+        localFilesystem: attach.value.capabilities?.localFilesystem ?? false,
       },
     };
     this.surfaces.add(surface);
@@ -635,6 +639,22 @@ export class CalypsoDaemon {
   }
 
   /**
+   * Reports what the surface running the current command can do on its own
+   * machine. A daemon has no capabilities of its own to offer: every one it
+   * presents belongs to whichever surface asked.
+   *
+   * @returns The executing surface's declared capabilities; nothing when no
+   *   command is running.
+   */
+  public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean } | null {
+    const origin: Surface | null = this.currentOrigin;
+    return origin ? {
+      fileDelivery: origin.capabilities.fileDelivery,
+      localFilesystem: origin.capabilities.localFilesystem,
+    } : null;
+  }
+
+  /**
    * Asks the surface running the current command to place a file where its
    * operator can reach it. The host installs a `fileDeliver` on its engine-side
    * surface that calls this, so `download` writes to the operator's machine and
@@ -652,6 +672,9 @@ export class CalypsoDaemon {
     const origin: Surface | null = this.currentOrigin;
     if (!origin) {
       return Promise.reject(new Error('no active command to deliver a file for'));
+    }
+    if (!origin.capabilities.fileDelivery) {
+      return Promise.reject(new Error('this surface cannot receive a file'));
     }
     return this.deliveries.open(origin.socket, (deliverId: string): void => {
       this.send(origin.socket, {

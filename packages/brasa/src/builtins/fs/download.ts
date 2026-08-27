@@ -19,7 +19,7 @@ import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
 import { path_resolve } from '../utils.js';
 import { surface_get, type Surface } from '../../core/surface.js';
-import { files_path_isDirectory } from '@fnndsc/salsa';
+import { files_path_isDirectory, files_listRecursive, type FsItem } from '@fnndsc/salsa';
 import { directory_archive, type ArchiveResult } from './archive.js';
 import type { FileDeliverResult } from '@fnndsc/menu';
 
@@ -65,28 +65,48 @@ async function surfaceDownload_run(
 
   const sources: string[] = await Promise.all(sourceArgs.map(path_resolve));
 
-  // A directory has no bytes to hand over. The local path walks it and writes
-  // each file as it arrives, which a surface with no filesystem cannot do —
-  // several hundred DICOM instances would be several hundred saves. So a
-  // directory is archived into a single CUBE file first, and that file is what
-  // gets delivered. See issue #233 for why this is a workaround.
+  // A directory has no bytes to hand over, and what to do about that depends on
+  // what the surface has. A shell — remote or not — owns a filesystem, so it
+  // receives the tree file by file and gets the folder it asked for. A browser
+  // owns no directory and can only take files one at a time, so several hundred
+  // DICOM instances would be several hundred saves; for that surface alone the
+  // directory is archived into one CUBE file first. See issue #233 for why an
+  // archive is a workaround rather than a feature.
   const targets: { path: string; filename: string; size?: number }[] = [];
   for (const source of sources) {
-    if (await files_path_isDirectory(source)) {
-      const archived: ArchiveResult | null = await directory_archive(source);
-      if (!archived) {
-        process.exitCode = 1;
-        const reasons: string = errorStack.stack_getAll?.()
-          .map((entry: unknown): string =>
-            typeof entry === 'string' ? entry : ((entry as { message?: string }).message ?? String(entry)))
-          .join('\n  ') ?? '';
-        return envelope_error('', undefined,
-          `${chalk.red(`download: could not archive ${source}.`)}\n${reasons ? `  ${chalk.red(reasons)}\n` : ''}`);
-      }
-      targets.push(archived);
-    } else {
+    if (!(await files_path_isDirectory(source))) {
       targets.push({ path: source, filename: source.split('/').filter(Boolean).pop() ?? 'download' });
+      continue;
     }
+
+    if (surface.capabilities.localFilesystem) {
+      const items: FsItem[] = await files_listRecursive(source);
+      for (const item of items) {
+        if (item.type === 'dir') continue;
+        targets.push({
+          path: item.path,
+          // Keep the tree: a surface with directories reproduces the shape
+          // under the destination rather than flattening it.
+          filename: item.path.startsWith(source)
+            ? item.path.slice(source.length).replace(/^\/+/, '')
+            : (item.path.split('/').filter(Boolean).pop() ?? 'download'),
+          ...(typeof item.size === 'number' ? { size: item.size } : {}),
+        });
+      }
+      continue;
+    }
+
+    const archived: ArchiveResult | null = await directory_archive(source);
+    if (!archived) {
+      process.exitCode = 1;
+      const reasons: string = errorStack.stack_getAll?.()
+        .map((entry: unknown): string =>
+          typeof entry === 'string' ? entry : ((entry as { message?: string }).message ?? String(entry)))
+        .join('\n  ') ?? '';
+      return envelope_error('', undefined,
+        `${chalk.red(`download: could not archive ${source}.`)}\n${reasons ? `  ${chalk.red(reasons)}\n` : ''}`);
+    }
+    targets.push(archived);
   }
 
   const delivered: string[] = [];

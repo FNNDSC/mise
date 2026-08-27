@@ -163,7 +163,14 @@ export class ArgusClient {
             type: 'attach',
             protocolVersion: CONTRACT_VERSION,
             token,
-            capabilities: { shellCommands: false, hiddenInput: false },
+            capabilities: {
+              shellCommands: false,
+              hiddenInput: false,
+              // A browser can save a file but has no directory to fill, so a
+              // folder must be archived into one file before it can arrive.
+              fileDelivery: true,
+              localFilesystem: false,
+            },
           }),
         );
       };

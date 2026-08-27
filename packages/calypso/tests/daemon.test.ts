@@ -53,14 +53,18 @@ function send(ws: WebSocket, message: unknown): void {
 }
 
 /** Attaches with the valid token and awaits the ack. */
-async function client_attach(port: number, shellCommands: boolean = false): Promise<WebSocket> {
+async function client_attach(
+  port: number,
+  shellCommands: boolean = false,
+  extra: Record<string, boolean> = {},
+): Promise<WebSocket> {
   const ws = await client_open(port);
   const acked = message_next(ws);
   send(ws, {
     type: 'attach',
     protocolVersion: CONTRACT_VERSION,
     token: TOKEN,
-    capabilities: { hiddenInput: true, shellCommands },
+    capabilities: { hiddenInput: true, shellCommands, ...extra },
   });
   await acked;
   return ws;
@@ -702,7 +706,7 @@ describe('CalypsoDaemon file delivery over the wire', () => {
     daemonRef = daemon;
     const port = await daemon.start();
     try {
-      const ws = await client_attach(port);
+      const ws = await client_attach(port, false, { fileDelivery: true });
       const asked = message_next(ws);
       send(ws, { type: 'execute', id: '1', line: '__deliver__' });
       const deliver = await asked;
@@ -748,7 +752,7 @@ describe('CalypsoDaemon file delivery over the wire', () => {
     daemonRef = daemon;
     const port = await daemon.start();
     try {
-      const ws = await client_attach(port);
+      const ws = await client_attach(port, false, { fileDelivery: true });
       const asked = message_next(ws);
       send(ws, { type: 'execute', id: '1', line: '__deliver__' });
       const deliver = await asked;

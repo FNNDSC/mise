@@ -116,6 +116,10 @@ export class RemoteEngine implements BrasaEngine {
           capabilities: {
             shellCommands: options.onShell !== undefined,
             hiddenInput: options.onPrompt !== undefined,
+            fileDelivery: options.onDeliver !== undefined,
+            // A shell has a disk and directories wherever it runs, so a folder
+            // it asks for arrives as a folder rather than an archive of one.
+            localFilesystem: options.onDeliver !== undefined,
           },
         }));
         ws.once('message', (data: Buffer) => {

@@ -29,9 +29,14 @@ through the vocabulary and the bytes travel through the byte route.
 The local path is unchanged: a local `chell` still uses the existing transfer
 machinery, with its globs, directory walks and progress reporting.
 
-A directory has no bytes to hand over, and a browser cannot receive several
-hundred DICOM instances as several hundred saves. So a directory requested by a
-surface with no filesystem is archived into a single CUBE file first, through
+A directory has no bytes to hand over, and what to do about that depends on
+what the surface has — a third capability, `localFilesystem`, declared in the
+attach handshake and answered by the surface rather than by the daemon. A shell
+owns a filesystem wherever it runs, so `chell --remote` receives the tree file
+by file and gets the folder it asked for. A browser owns no directory and can
+take files only one at a time, so several hundred DICOM instances would be
+several hundred saves; for that surface alone a directory is archived into a
+single CUBE file first, through
 the registered `zip v20240311` pipeline — `pl-dircopy` into a zip plugin, the
 same mechanism the ChRIS web UI has used for years, but living in `brasa` where
 every surface reaches one implementation instead of each client re-deriving the

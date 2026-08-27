@@ -194,12 +194,14 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 
 // Mock salsa
 const isDirectoryMock = jest.fn(async (): Promise<boolean> => false);
+const listRecursiveMock = jest.fn(async (): Promise<unknown[]> => []);
 const archiveMock = jest.fn(async (): Promise<unknown> => null);
 jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
   directory_archive: archiveMock,
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_path_isDirectory: isDirectoryMock,
+  files_listRecursive: listRecursiveMock,
   retrieveTask_make: (info: Record<string, unknown>) => ({ ...info, syntheticQueryId: null, retrieveId: null, status: 'pending', actualFiles: 0, lastProgressFiles: 0, lastProgressTime: 0, startTime: 0, lonkConfirmed: false, cubePathDir: null }),
   retrieveTasks_fire: jest.fn(),
   retrieveTasks_skipComplete: jest.fn(async () => 0),
@@ -758,18 +760,21 @@ describe('Builtins - Core Functions', () => {
     };
 
     /**
-     * Installs a surface standing in for a browser or a remote client: it can
-     * receive a file, but the engine's disk is not its operator's.
+     * Installs a surface for which the engine's disk is not its operator's.
+     * `hasDisk` distinguishes a remote shell, which owns a filesystem and
+     * should receive a folder as a folder, from a browser, which does not.
      */
     const deliveringSurface = async (
       deliver: (request: { path: string; filename: string; destination?: string }) => Promise<{ location: string; bytes: number }>,
       canDeliver = true,
+      hasDisk = false,
     ): Promise<void> => {
       const { surface_set } = await import('../src/core/surface.js');
       surface_set({
         capabilities: {
           hiddenInput: false, localEdit: false, tty: false, pipeSegments: false,
           shellCommands: false, fileDelivery: canDeliver, engineFilesystem: false,
+          localFilesystem: hasDisk,
         },
         prompt: async (): Promise<string> => '',
         pipeSegment: async (): Promise<Buffer> => Buffer.from(''),
@@ -850,7 +855,29 @@ describe('Builtins - Core Functions', () => {
       expect(envelope.rendered).toContain('the browser refused it');
     });
 
-    it('archives a directory into one file and delivers that', async () => {
+    it('delivers a directory file by file to a surface that has its own disk', async () => {
+      const deliver = jest.fn(async (request: { filename: string }) => ({
+        location: `/scans/${request.filename}`, bytes: 10,
+      }));
+      await deliveringSurface(deliver as never, true, true);
+      isDirectoryMock.mockResolvedValueOnce(true);
+      listRecursiveMock.mockResolvedValueOnce([
+        { path: '/remote/series/a.dcm', type: 'file', size: 10 },
+        { path: '/remote/series/sub', type: 'dir' },
+        { path: '/remote/series/sub/b.dcm', type: 'file', size: 10 },
+      ]);
+
+      const envelope = await builtin_download(['/remote/series', '/scans']);
+
+      // A shell asked for a folder and gets a folder. Archiving it would also
+      // create a feed, which is a heavy side effect for a case that is fine.
+      expect(archiveMock).not.toHaveBeenCalled();
+      expect(deliver).toHaveBeenCalledTimes(2);
+      expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ filename: 'sub/b.dcm' }));
+      expect(envelope.status).toBe('ok');
+    });
+
+    it('archives a directory into one file for a surface with no disk', async () => {
       const deliver = jest.fn(async (request: { filename: string }) => ({
         location: `/downloads/${request.filename}`, bytes: 90210,
       }));

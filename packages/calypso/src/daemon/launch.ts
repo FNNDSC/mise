@@ -20,7 +20,7 @@ import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
-import { surface_set, type Surface, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
+import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
@@ -59,16 +59,25 @@ export class DaemonSink implements OutputSink {
  */
 export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
   return {
-    capabilities: {
-      hiddenInput: true,
-      localEdit: true,
-      tty: true,
-      pipeSegments: true,
-      shellCommands: true,
-      fileDelivery: true,
-      // The daemon's disk belongs to nobody attending this session, so a
-      // builtin that would write must deliver through the surface instead.
-      engineFilesystem: false,
+    // A daemon has no capabilities of its own to offer. Those that vary by
+    // surface are read from whichever one is executing, as it declared them on
+    // attach — a browser and a remote shell differ, and answering for both
+    // would either archive a directory a shell wanted whole or hand a browser
+    // a tree it cannot hold.
+    get capabilities(): SurfaceCapabilities {
+      const attached = daemon.capabilities_current();
+      return {
+        hiddenInput: true,
+        localEdit: true,
+        tty: true,
+        pipeSegments: true,
+        shellCommands: true,
+        fileDelivery: attached?.fileDelivery ?? false,
+        // The daemon's disk belongs to nobody attending this session, so a
+        // builtin that would write must deliver through the surface instead.
+        engineFilesystem: false,
+        localFilesystem: attached?.localFilesystem ?? false,
+      };
     },
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current(request.message, request.hidden ?? false),

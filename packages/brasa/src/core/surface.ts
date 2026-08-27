@@ -50,6 +50,11 @@
  *   they can open. True only for an in-process local shell. When false, a
  *   builtin that would write to disk must deliver through the surface instead,
  *   because the engine's disk is somebody else's machine.
+ * @property localFilesystem - The surface can put many files into a directory
+ *   structure of its own. True for any shell, remote included; false for a
+ *   browser, which has no directory to fill and can only accept files one at a
+ *   time. It answers a different question from `engineFilesystem`: not *whose*
+ *   disk, but whether there is one at all.
  */
 export interface SurfaceCapabilities {
   hiddenInput: boolean;
@@ -59,6 +64,7 @@ export interface SurfaceCapabilities {
   shellCommands: boolean;
   fileDelivery: boolean;
   engineFilesystem: boolean;
+  localFilesystem: boolean;
 }
 
 /**
@@ -211,6 +217,7 @@ export class HeadlessSurface implements Surface {
     shellCommands: false,
     fileDelivery: false,
     engineFilesystem: false,
+    localFilesystem: false,
   };
 
   /** @inheritdoc */

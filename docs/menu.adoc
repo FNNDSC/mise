@@ -204,11 +204,52 @@ A count would tell you how many remain and nothing about why. Thirty becomes twe
 
 The registry is *capped*: the check fails above a declared maximum, lowered in the change that improves it. That restores the downward pressure a ratchet has and a registry does not.
 
+== The module-format split
+
+`cumin` and `salsa` emit CommonJS. `menu`, `chili`, `brasa`, `calypso`, `chell`
+and `argus` are ES modules. The boundary sits between `salsa` and `chili`, and
+it is not a decision anyone made — `chili` declares `"type": "module"` and
+`salsa`, directly beneath it, declares nothing, so its `"module": "node16"`
+setting silently resolves to CommonJS.
+
+The two formats differ in when a file's exports are known. `require` runs, so a
+tool must execute a file to learn what comes out of it; `import` is declared, so
+a tool can read it. Everything downstream follows from that: bundlers can shake
+unused code out of ES modules and largely cannot out of CommonJS, and an ES
+module importing CommonJS has to *guess* the exported names, because
+`module.exports` is a value assembled at runtime.
+
+The split is tolerable today only because the arrow points the safe way — the
+CommonJS layers are at the bottom and everything importing them is ESM.
+Extracting `menu` reversed that arrow for the first time, since `menu` sits
+below `cumin`. Built as CommonJS it broke the `argus` bundle outright:
+
+....
+"CONTRACT_VERSION" is not exported by "packages/menu/dist/index.js"
+....
+
+Rollup read the file, found no `export` keyword, and could not know the name
+would exist once the code ran. `menu` is therefore ESM, and `cumin` takes only
+*types* from it — types are erased at compile time, so `cumin` never requires
+`menu` at runtime and stays loadable from either format.
+
+That works, but it is a constraint held in place by care rather than by
+structure: the moment anything in `cumin` or `salsa` needs a runtime value from
+`menu`, it breaks again, and the failure appears in a bundler rather than at
+the call site.
+
+*Resolution: convert `cumin` and `salsa` to ES modules — issue #230.* There is
+no reason for the split beyond history. It is not part of this plan — it has its
+own blast radius and deserves its own change — but it should be done rather than
+maintained. Until it is, the type-only constraint is recorded at the call site in
+`packages/cumin/src/cache/index.ts`, where breaking it would be easiest.
+
 == Open items
 
 * Which commands end up as exceptions — discovered during the sweep, not guessed now.
 * Whether `pacs.query`'s model covers table mode and the `cd`/`pull` hint lines, or whether those stay renderer-side.
 * `/net/store` — projecting the remote ChRIS store. Tracked separately from this work.
+* Converting `cumin` and `salsa` to ES modules — issue #230, per the section above.
 * `docs/principles.adoc` needs a pass: the `rendered`-in-the-kernel compromise recorded as a known violation, and the enforcement table gaining `lint:models`.
 
 == Documentation this owes

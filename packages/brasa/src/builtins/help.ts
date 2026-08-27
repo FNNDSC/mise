@@ -670,6 +670,11 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Print the currently authenticated ChRIS username',
     examples: ['whoami'],
   },
+  version: {
+    usage: 'version',
+    description: 'Report the versions of the mise stack layers running this session',
+    examples: ['version'],
+  },
   id: {
     usage: 'id',
     description: 'Print the current CUBE user as a Unix-style UID, projected primary GID, and complete list of CUBE group memberships.',

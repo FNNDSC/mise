@@ -91,4 +91,10 @@ jobs:
       - run: npm run lint:seam
       # Cast ratchet: the repo's `as unknown as` count may only decrease.
       - run: npm run lint:casts
+      # Principle checks (docs/principles.adoc). Two are hard checks; two are
+      # ratchets that cannot repair what exists but stop it growing.
+      - run: npm run lint:kernel
+      - run: npm run lint:commands
+      - run: npm run lint:prompt
+      - run: npm run lint:wire
       - run: npm run lint --if-present

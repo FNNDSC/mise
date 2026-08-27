@@ -166,7 +166,8 @@ export async function remote_run(identity?: string, commandToExecute?: string): 
   }
 
   if (commandToExecute !== undefined) {
-    sink_set(new StdoutSink(new TerminalProgressRenderer()));
+    const progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
+    sink_set(new StdoutSink(progressRenderer));
     surface_set(cliSurface_create());
     try {
       const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, commandToExecute);
@@ -176,6 +177,9 @@ export async function remote_run(identity?: string, commandToExecute?: string): 
       process.exitCode = 1;
       console.error(chalk.red(`Command error: ${message}`));
     } finally {
+      // Nothing announced by the command may outlive it; see the same clear in
+      // the REPL's line handler.
+      progressRenderer.clear();
       intentionalClose = true;
       engine.close();
     }

@@ -180,9 +180,9 @@ Until <<one-declaration>> is met, that guardrail has no anchor: the vocabulary c
 [[known-violations]]
 == Known violations
 
-Six breaches known at the time of writing.
+Six breaches were known at the time of writing. One is now closed.
 
-*1. Status output crosses the wire as terminal escapes.* `packages/brasa/src/lib/spinner.ts:57` writes `\r\x1b[K<frame>` to the status channel, and `:42`/`:71` write cursor hide and show. Every attached surface receives terminal choreography whether or not it is a terminal. Violates <<surfaces-are-views>>. `docs/structured-progress.md` already forbids this but binds only `pull`, `upload`, and `download`. The `argus`-side carriage-return handling shipped in PR #219 is a renderer-side stopgap that makes the violation less visible, which is its own hazard. *Resolution: generalize the structured-progress contract to all status output — issue #221.*
+*1. Status output crosses the wire as terminal escapes.* [.line-through]#`packages/brasa/src/lib/spinner.ts` wrote `\r\x1b[K<frame>` to the status channel, plus cursor hide and show, so every attached surface received terminal choreography whether or not it was a terminal.# *Closed by issue #221.* The spinner announces `operation: task`, `kind: inspection`, `phase: working` and each surface draws waiting in its own idiom: `chell` spins a braille frame on its status stream, `argus` spins a CSS element in a live region. Elapsed time moved to the renderers, which also collapsed a spin from twelve wire messages a second to two for the whole operation. `scripts/wire-escapes.mjs` holds the count at zero.
 
 *2. Commands are declared twice.* 51 commands are bound under 67 names in `ENVELOPE_HANDLERS`, with a separate, unlinked `helpText` table beside it. The drift this produced is closed — every command now carries help — but the duplication that caused it remains: nothing keeps the two tables in step except a check, and the alias relationship between names exists only implicitly, as two keys sharing a handler. Violates <<one-declaration>>. *Resolution: unify into one declaration per builtin — issue #222.*
 

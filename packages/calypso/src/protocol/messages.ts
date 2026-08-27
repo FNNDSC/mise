@@ -186,20 +186,52 @@ export const outputMessageSchema = z.object({
   chunk: z.string(),
 });
 
-/** The operation producing structured progress. */
-export const progressOperationSchema = z.enum(PROGRESS_OPERATIONS);
+/**
+ * The operation producing structured progress.
+ *
+ * Within a major, the contract promises additive change only, which is a
+ * promise a bare enum cannot keep: an unknown value fails the whole message,
+ * and a failed parse drops it. An operation a peer names but this build does
+ * not know is therefore read as `task` — none of the above — so the work still
+ * shows, generically, instead of vanishing.
+ */
+export const progressOperationSchema = z.enum(PROGRESS_OPERATIONS).catch('task');
 
-/** Broad class of progress producer. */
-export const progressKindSchema = z.enum(PROGRESS_KINDS);
+/**
+ * Broad class of progress producer.
+ *
+ * Optional, so an unknown class degrades to absent: the event still renders
+ * from its operation and phase, one axis poorer.
+ */
+export const progressKindSchema = z.enum(PROGRESS_KINDS).catch(undefined as never);
 
-/** Lifecycle phase of a progress operation. */
-export const progressPhaseSchema = z.enum(PROGRESS_PHASES);
+/**
+ * Lifecycle phase of a progress operation.
+ *
+ * An unknown phase degrades to `working` for the reason given on
+ * {@link progressOperationSchema}: an unrecognised phase still means work is
+ * under way, and that much is worth showing. `complete` and `failed` are
+ * terminal and will not be inferred, so a surface that cannot read a newer
+ * peer's terminal phase leaves the announcement open rather than closing it
+ * wrongly.
+ */
+export const progressPhaseSchema = z.enum(PROGRESS_PHASES).catch('working');
 
-/** Unit used by the primary progress counter. */
-export const progressUnitSchema = z.enum(PROGRESS_UNITS);
+/**
+ * Unit used by the primary progress counter.
+ *
+ * Optional, so an unknown unit degrades to absent and the counter renders
+ * unqualified — 3/10 rather than nothing at all.
+ */
+export const progressUnitSchema = z.enum(PROGRESS_UNITS).catch(undefined as never);
 
-/** State of the operation or item being reported. */
-export const progressStatusSchema = z.enum(PROGRESS_STATUSES);
+/**
+ * State of the operation or item being reported.
+ *
+ * An unknown state degrades to `unknown`, which the vocabulary already carries
+ * for precisely this: a state that cannot be named is still a state.
+ */
+export const progressStatusSchema = z.enum(PROGRESS_STATUSES).catch('unknown');
 
 /** A structured progress event correlated to a command. */
 export const progressMessageSchema = z.object({
@@ -217,8 +249,11 @@ export const progressMessageSchema = z.object({
   status: progressStatusSchema.optional(),
 });
 
+/** A progress event as it appears on the wire, correlated to its command. */
+export type ProgressMessage = z.infer<typeof progressMessageSchema>;
+
 /** The progress payload before command correlation is added by the daemon. */
-export type ProgressEvent = Omit<z.infer<typeof progressMessageSchema>, 'type' | 'id'>;
+export type ProgressEvent = Omit<ProgressMessage, 'type' | 'id'>;
 
 /** A session-bus broadcast: an envelope tagged with its originating surface. */
 export const sessionMessageSchema = z.object({

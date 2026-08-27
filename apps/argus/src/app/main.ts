@@ -16,8 +16,15 @@
  * @module
  */
 import type { PromptContext, WireEnvelope } from '@fnndsc/calypso/protocol';
-import { ArgusClient, type AttachInfo, type ExecuteOutcome, type OutputChannel } from '../calypso/client.js';
+import {
+  ArgusClient,
+  type AttachInfo,
+  type ExecuteOutcome,
+  type OutputChannel,
+  type ProgressMessage,
+} from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
+import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction } from '../features/files/panel.js';
 import { StatusBar } from './status.js';
 import '../lcars/theme/lower-decks.css';
@@ -289,6 +296,7 @@ async function surface_start(token: string): Promise<void> {
         const reason: string = error instanceof Error ? error.message : String(error);
         terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
       }
+      progress.clear();
       // The felt latency, measured: command round-trip in the MODE strip.
       mode_show(`READY ${Math.round(performance.now() - startedAt)}ms`);
       terminal.prompt_draw();
@@ -296,11 +304,19 @@ async function surface_start(token: string): Promise<void> {
     (prefix: string) => client.line_complete(prefix),
   );
 
+  // Progress describes a running command, so nothing it draws may outlive
+  // one; the submit handler clears the region once the command settles.
+  const progress: ArgusProgress = new ArgusProgress(
+    terminal.progressRegion_get(),
+    (text: string): void => terminal.output_write('err', text),
+  );
+
   const attached: { client: ArgusClient; attach: AttachInfo } = await ArgusClient.session_attach(
     wsUrl_resolve(),
     token,
     {
       output_receive: (channel: OutputChannel, chunk: string): void => terminal.output_write(channel, chunk),
+      progress_receive: (message: ProgressMessage): void => progress.write(message),
       promptline_receive: (context: PromptContext): void => {
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);

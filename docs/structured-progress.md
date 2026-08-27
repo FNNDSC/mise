@@ -3,6 +3,33 @@
 This note records the scoped design for issue #70: structured progress over the
 CALYPSO daemon wire for `pull`, `upload`, and `download`.
 
+Issue #221 extended it to cover *all* status output. Indeterminate work — a
+PACS query, a directory scan, a cache warm-up — now announces itself as
+`operation: "task"`, `kind: "inspection"`, `phase: "working"`, with no counts,
+and closes with `phase: "complete"`. Nothing writes terminal escapes to the
+sink any more; `scripts/wire-escapes.mjs` holds that count at zero.
+
+Two consequences worth knowing before adding a producer. First, only state
+changes are announced: animation frames and elapsed counters belong to the
+renderer, so a wait of any length costs the wire the same two events. Second,
+every enum on the progress message degrades rather than rejects: an unknown
+`operation` reads as `task`, `phase` as `working`, `status` as `unknown`, and
+`kind` and `unit` as absent. A dropped message is invisible; a generic
+indicator is not.
+
+## Rule: a new enum value ships with a fallback
+
+`safeParse` fails the whole message on one unknown enum value, and a failed
+parse drops it silently. So when you add a value to any enum on the wire, give
+that enum a `.catch()` in the same change if it has none. Otherwise the
+addition is only additive for peers that already know it, which is the opposite
+of what the contract promises.
+
+The fallback is forward insurance and never retroactive: it lives in the build
+doing the reading, so the peer that has not yet been updated is the one that
+drops the message. Every enum reachable from `serverMessageSchema` or
+`clientMessageSchema` is in scope, not only the progress ones.
+
 It exists because the broader `calypso.adoc` is the architectural essay, while
 this is the implementation contract future agents should follow.
 

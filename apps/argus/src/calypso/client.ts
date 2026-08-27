@@ -19,11 +19,15 @@ import {
   serverMessage_parse,
   type ServerMessage,
   type PromptContext,
+  type ProgressMessage,
   type WireEnvelope,
 } from '@fnndsc/calypso/protocol';
 
 /** The output channels a command can stream on. */
 export type OutputChannel = 'data' | 'err' | 'status';
+
+/** Re-exported so console modules need not know the protocol package's shape. */
+export type { ProgressMessage };
 
 /**
  * The stack identity a daemon reports in its attach ack.
@@ -83,6 +87,7 @@ export interface ExecuteOutcome {
  */
 export interface ClientHandlers {
   output_receive?: (channel: OutputChannel, chunk: string) => void;
+  progress_receive?: (message: ProgressMessage) => void;
   promptline_receive?: (context: PromptContext) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
@@ -261,6 +266,10 @@ export class ArgusClient {
           this.pending.get(message.id)?.liveChannels.add(message.channel);
         }
         this.handlers.output_receive?.(message.channel, message.chunk);
+        break;
+      }
+      case 'progress': {
+        this.handlers.progress_receive?.(message);
         break;
       }
       case 'session': {

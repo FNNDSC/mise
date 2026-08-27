@@ -160,6 +160,7 @@ export class TerminalProgressRenderer implements ProgressRenderer {
   private inspectionInterval: NodeJS.Timeout | null = null;
   private inspectionFrameIndex: number = 0;
   private inspectionLabel: string = '';
+  private inspectionStartedAt: number = 0;
 
   constructor(options: ProgressRendererOptions = {}) {
     this.stream = options.stream ?? process.stdout;
@@ -217,6 +218,7 @@ export class TerminalProgressRenderer implements ProgressRenderer {
     this.inspectionLabel = event.label ?? 'Reading registered pipeline…';
     if (this.inspectionInterval !== null) return;
     this.inspectionFrameIndex = 0;
+    this.inspectionStartedAt = Date.now();
     this.statusStream.write('\x1B[?25l');
     this.inspection_render();
     this.inspectionInterval = setInterval((): void => {
@@ -227,13 +229,20 @@ export class TerminalProgressRenderer implements ProgressRenderer {
 
   private inspection_render(): void {
     const frame: string = INSPECTION_FRAMES[this.inspectionFrameIndex];
-    this.statusStream.write(`\r\x1b[K${chalk.cyanBright(frame)} ${chalk.gray(this.inspectionLabel)}`);
+    // The producer reports only that work is under way; how long it has been
+    // under way is measured here, where the clock and the display are.
+    const elapsed: string = ((Date.now() - this.inspectionStartedAt) / 1000).toFixed(1);
+    const suffix: string = this.inspectionStartedAt === 0 ? '' : ` (${elapsed}s)`;
+    this.statusStream.write(
+      `\r\x1b[K${chalk.cyanBright(frame)} ${chalk.gray(this.inspectionLabel)}${chalk.gray(suffix)}`,
+    );
   }
 
   private inspection_stop(): void {
     if (this.inspectionInterval === null) return;
     clearInterval(this.inspectionInterval);
     this.inspectionInterval = null;
+    this.inspectionStartedAt = 0;
     this.statusStream.write('\r\x1b[K');
     this.statusStream.write('\x1B[?25h');
   }

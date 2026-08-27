@@ -1,23 +1,20 @@
 {
-  "name": "@fnndsc/calypso",
-  "version": "0.6.1",
-  "description": "CALYPSO: the ChRIS session daemon \u2014 hosts a brasa engine for attached surfaces over a WebSocket",
+  "name": "@fnndsc/menu",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The mise wire contract: envelope, session protocol, and result-model schemas that surfaces and the kernel both speak",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/FNNDSC/mise.git",
-    "directory": "packages/calypso"
+    "directory": "packages/menu"
   },
-  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/calypso#readme",
+  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/menu#readme",
   "bugs": {
     "url": "https://github.com/FNNDSC/mise/issues"
   },
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "type": "module",
-  "bin": {
-    "calypso": "dist/calypso.js"
-  },
   "files": [
     "dist"
   ],
@@ -29,33 +26,28 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "rm -fr dist && tsc && chmod +x ./dist/calypso.js",
+    "build": "rm -fr dist && tsc",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage",
     "prepublishOnly": "test -f dist/index.js && test -f dist/index.d.ts"
   },
   "keywords": [
     "chris",
-    "calypso",
+    "mise",
     "wire-contract",
-    "websocket",
+    "schema",
     "fnndsc"
   ],
   "author": "Rudolph Pienaar",
   "license": "MIT",
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^22.0.0",
-    "@types/ws": "^8.5.10",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.5",
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
     "typescript": "^5.0.0"
   },
-  "dependencies": {
-    "@fnndsc/brasa": "^0.12.0",
-    "@fnndsc/cumin": "^3.11.0",
-    "chalk": "^4.1.2",
-    "ws": "^8.18.0",
-    "zod": "^3.23.8",
-    "@fnndsc/menu": "*"
-  }
+  "type": "module"
 }

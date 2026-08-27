@@ -1,7 +1,7 @@
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
 import type { HostedEngine } from '../src/daemon/engine';
-import { CONTRACT_VERSION } from '../src/protocol/version';
+import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 const TOKEN = 'test-attach-token';

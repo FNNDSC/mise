@@ -3,8 +3,8 @@ import {
   serverMessage_parse,
   clientMessage_fromJson,
   attach_parse,
-} from '../src/protocol/validate';
-import { CONTRACT_VERSION } from '../src/protocol/version';
+} from '../src/validate';
+import { CONTRACT_VERSION } from '../src/version';
 
 describe('clientMessage_parse', () => {
   it('accepts each client message shape', () => {

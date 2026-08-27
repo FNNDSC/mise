@@ -23,7 +23,7 @@ import type { AddressInfo } from 'net';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CalypsoDaemon } from '../src/daemon/server';
 import type { HostedEngine } from '../src/daemon/engine';
-import { CONTRACT_VERSION } from '../src/protocol/version';
+import { CONTRACT_VERSION } from '@fnndsc/menu';
 
 const TOKEN: string = 'browser-smoke-token';
 const PASS_MARKER: string = 'CALYPSO_BROWSER_SMOKE_PASS';

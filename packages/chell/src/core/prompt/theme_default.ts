@@ -12,7 +12,7 @@
  */
 
 import chalk from 'chalk';
-import { procPromptState_get, type ProcPromptState } from '@fnndsc/cumin/proc-prompt';
+import { procPromptState_get, type ProcPromptState } from '@fnndsc/menu';
 import type { PromptContext, PromptTheme } from './index.js';
 import { PROMPT_PALETTE, statusColor_get, type HexColor } from './palette.js';
 import {

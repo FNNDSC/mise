@@ -8,7 +8,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   PROC_PROMPT_STATES,
   procPromptState_get,
-} from '../src/cache/procPrompt';
+} from '../src/proc';
 
 describe('process-index prompt state', (): void => {
   it('publishes the complete wire vocabulary', (): void => {

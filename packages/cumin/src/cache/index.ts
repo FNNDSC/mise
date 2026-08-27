@@ -15,8 +15,12 @@ export type {
   ProcCacheLifecycle,
   ProcCacheSnapshot,
 } from './procCache.js';
-export { procPromptState_get, PROC_PROMPT_STATES } from './procPrompt.js';
-export type { ProcPromptState, ProcPromptProgress } from './procPrompt.js';
+// Prompt-facing process-index state is contract vocabulary: it lives in
+// `@fnndsc/menu`, and callers import it from there. Only its types are named
+// here, so cumin — which CommonJS consumers require — carries no runtime
+// dependency on the contract package and stays loadable from either module
+// system.
+export type { ProcPromptState, ProcPromptProgress } from '@fnndsc/menu';
 export {
   procCheckpointPath_get,
   procCheckpoint_restore,

@@ -11,7 +11,6 @@
  * @module
  */
 import { z } from 'zod';
-import type { CommandEnvelope } from '@fnndsc/cumin';
 
 /** Terminal status of a completed command. */
 export const envelopeStatusSchema = z.enum(['ok', 'error']);
@@ -48,17 +47,27 @@ export const commandEnvelopeSchema = z.object({
   trace: resolutionTraceSchema.optional(),
 });
 
-/** The envelope type inferred from the wire schema. */
-export type WireEnvelope = z.infer<typeof commandEnvelopeSchema>;
-
 /**
- * Compile-time guard: everything cumin can produce must validate on the
- * wire. If cumin's `CommandEnvelope` gains a member the schema above does
- * not model, `CommandEnvelope` stops being assignable to `WireEnvelope`,
- * this type resolves to `never`, and the constant below fails to compile —
- * surfacing contract drift as a build error rather than a runtime surprise
- * at the boundary. This is a type-level assertion with no runtime behavior.
+ * The envelope in which one command's outcome crosses the wire.
+ *
+ * Inferred from the schema rather than declared beside it. The engine and the
+ * wire once carried separate declarations of this shape, tied together by a
+ * compile-time assertion that one remained assignable to the other; a single
+ * inferred type makes that drift impossible instead of detected.
  */
-type EnvelopeCoversCumin = CommandEnvelope extends WireEnvelope ? true : never;
-const _envelopeCoversCumin: EnvelopeCoversCumin = true;
-void _envelopeCoversCumin;
+export type CommandEnvelope = z.infer<typeof commandEnvelopeSchema>;
+
+/** Prior name for {@link CommandEnvelope}, kept for existing importers. */
+export type WireEnvelope = CommandEnvelope;
+
+/** Terminal status of a completed command. */
+export type EnvelopeStatus = z.infer<typeof envelopeStatusSchema>;
+
+/** A command's typed result: a namespaced kind and an opaque payload. */
+export type EnvelopeModel = z.infer<typeof envelopeModelSchema>;
+
+/** A structured error or warning drained from the error stack. */
+export type StackMessage = z.infer<typeof stackMessageSchema>;
+
+/** The record of how a natural-language input resolved into a command. */
+export type ResolutionTrace = z.infer<typeof resolutionTraceSchema>;

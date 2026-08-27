@@ -1,8 +1,9 @@
 /**
  * @file Prompt-facing process-index lifecycle state.
  *
- * Kept separate from the cache implementation so frontends and wire schemas
- * can consume this small contract without loading Cumin's full runtime barrel.
+ * This is contract vocabulary: it is narrowed by the prompt-context schema and
+ * read by every surface that draws a prompt, so it lives with the contract
+ * rather than with the cache that happens to produce it.
  *
  * @module
  */

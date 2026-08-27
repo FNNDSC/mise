@@ -16,7 +16,7 @@
  *
  * @module
  */
-import type { WireEnvelope } from '@fnndsc/calypso/protocol';
+import type { WireEnvelope } from '@fnndsc/menu';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.

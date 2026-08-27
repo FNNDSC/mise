@@ -200,14 +200,16 @@ Six breaches known at the time of writing.
 Patterned on `scripts/cast-ratchet.mjs`: a count that may only fall, where CI requires the baseline to be lowered in the same change that improves it.
 
 |===
-| Principle | Mechanism | Kind
+| Principle | Mechanism | Kind | Script
 
-| <<kernel-isolation>> | `brasa` imports nothing from `chell`, `calypso`, or `argus` | Hard check
-| <<one-declaration>> | Every `ENVELOPE_HANDLERS` key has a declaration | Ratchet
-| Prompt parity (violation 4) | `argus` glyphs and palette match `theme_p10k.ts` | Hard check
-| <<surfaces-are-views>> | Count of sink writes containing `\r` or `\x1b` | Ratchet
-| <<intent-equivalence>>, <<degradation>> | Human judgement, cited in review | Review only
+| <<kernel-isolation>> | `brasa` imports nothing from `chell`, `calypso`, or `argus` | Hard check | `lint:kernel`
+| <<one-declaration>> | Every `ENVELOPE_HANDLERS` key has a declaration | Ratchet, baseline 4 | `lint:commands`
+| Prompt parity (violation 4) | `argus` glyphs and palette match `theme_p10k.ts` | Hard check | `lint:prompt`
+| <<surfaces-are-views>> | Sink writes carrying `\r` or `\x1b` | Ratchet, baseline 4 | `lint:wire`
+| <<intent-equivalence>>, <<degradation>> | Human judgement, cited in review | Review only | —
 |===
+
+All four run in CI on every pull request, beside the cast ratchet. A ratchet that finds fewer than its baseline also fails, with instructions to lower the baseline in the same change, so an improvement locks in rather than eroding quietly.
 
 The last row is not an admission of defeat. Neither mechanizes without inventing a great deal of machinery to catch very little, and a check that fires spuriously is a check that gets deleted.
 

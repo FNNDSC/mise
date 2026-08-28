@@ -32,6 +32,8 @@ export interface PacsPanelHandlers {
   command_run: (line: string) => void;
   /** Runs a command visibly in the console (the big, auditable actions). */
   command_show: (line: string) => void;
+  /** The mars pill: dismiss this workspace. */
+  workspace_close: () => void;
 }
 
 /** One gathered series: the cohort's unit. */
@@ -96,9 +98,9 @@ export class PacsPanel {
     });
     element_query(root, '#pacs-gather-save').addEventListener('click', (): void => this.manifest_save());
     element_query(root, '#pacs-gather-feed').addEventListener('click', (): void => this.feed_create());
-    element_query(root, '#pacs-close').addEventListener('click', (): void => {
-      delete document.body.dataset['workspace'];
-    });
+    element_query(root, '#pacs-close').addEventListener('click', (): void =>
+      handlers.workspace_close(),
+    );
   }
 
   /** Regenerates the editable command line from the form's filled terms. */

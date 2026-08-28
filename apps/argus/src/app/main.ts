@@ -32,6 +32,7 @@ import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
 import { pane_register } from './panes.js';
+import { LayoutManager, type LayoutNode } from './layout.js';
 import '../lcars/theme/lower-decks.css';
 import '../lcars/argus.css';
 
@@ -494,6 +495,7 @@ async function surface_start(token: string): Promise<void> {
       node_enter: (vfsPath: string): void => {
         terminal.line_run(`cd "${vfsPath}"`);
       },
+      feed_shown: (): void => dag_summon(),
     },
   );
   const cycler: PipelineCycler = new PipelineCycler(
@@ -503,11 +505,6 @@ async function surface_start(token: string): Promise<void> {
       void client.line_execute(line, { silent: true });
     },
   );
-  // RUNS-02: the gutter's feeds gesture — the DAG pane hosts the chooser.
-  element_require('gutter-runs').addEventListener('click', (): void =>
-    dagPanel.feedsChooser_request(),
-  );
-
   const pacsPanel: PacsPanel = new PacsPanel(element_require('pacs-workspace'), {
     command_run: (line: string): void => {
       void client.line_execute(line, { silent: true });
@@ -515,18 +512,71 @@ async function surface_start(token: string): Promise<void> {
     command_show: (line: string): void => {
       terminal.line_run(line);
     },
+    workspace_close: (): void => home_apply(),
   });
-  // PACS-03: the gutter toggles the PACS workspace in and out.
-  element_require('gutter-tools').addEventListener('click', (): void => {
-    if (document.body.dataset['workspace'] === 'pacs') {
-      delete document.body.dataset['workspace'];
-    } else {
-      document.body.dataset['workspace'] = 'pacs';
-    }
-  });
+
   pane_register({ id: 'console', title: 'CALYPSO CONSOLE', mount: element_require('drawer') });
   pane_register({ id: 'dag', title: 'DAG', mount: element_require('pane-dag') });
   pane_register({ id: 'files', title: 'WORKSPACE', mount: element_require('pane-files') });
+  pane_register({ id: 'pacs', title: 'PACS QUERY / RETRIEVE', mount: element_require('pacs-workspace') });
+
+  // The tiling tree: presets are the gutter's trees; a feed in view varies
+  // home by materializing the DAG pane (files left, DAG right).
+  const layout: LayoutManager = new LayoutManager(
+    element_require('layout-root'),
+    new Map([
+      ['dag', element_require('pane-dag')],
+      ['files', element_require('pane-files')],
+      ['pacs', element_require('pacs-workspace')],
+    ]),
+  );
+  let dagShown: boolean = false;
+  const homeTree = (): LayoutNode =>
+    dagShown
+      ? {
+          dir: 'col',
+          ratio: 0.45,
+          first: { pane: 'files' },
+          second: { pane: 'dag' },
+        }
+      : { pane: 'files' };
+  layout.preset_register('files', homeTree);
+  layout.preset_register('pacs', (): LayoutNode => ({ pane: 'pacs' }));
+
+  const home_apply = (): void => {
+    layout.preset_apply('files');
+    dagPanel.size_fit();
+  };
+  const dag_summon = (): void => {
+    if (dagShown && layout.activePreset_get() === 'files') return;
+    dagShown = true;
+    if (layout.activePreset_get() !== 'pacs') {
+      home_apply();
+    }
+  };
+
+  // FILES-01: home. RUNS-02: home + the feed chooser. PACS-03: toggles the
+  // PACS tree against home. The DAG pane's mars pill dismisses it from home.
+  element_require('gutter-files').addEventListener('click', (): void => home_apply());
+  element_require('gutter-runs').addEventListener('click', (): void => {
+    dagShown = true;
+    home_apply();
+    dagPanel.feedsChooser_request();
+  });
+  element_require('gutter-tools').addEventListener('click', (): void => {
+    if (layout.activePreset_get() === 'pacs') {
+      home_apply();
+    } else {
+      layout.preset_apply('pacs');
+    }
+  });
+  element_require('dag-close').addEventListener('click', (): void => {
+    dagShown = false;
+    home_apply();
+  });
+
+  // Boot: the remembered preset, or home.
+  layout.preset_apply(layout.savedPreset_get() ?? 'files');
 
   const drawerStatus: HTMLElement = element_require('drawer-status');
   const mode_show = (mode: string): void => {

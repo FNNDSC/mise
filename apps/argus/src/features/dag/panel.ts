@@ -35,6 +35,8 @@ export interface DagPanelHandlers {
   command_run: (line: string) => void;
   /** Lowers a node activation to a visible cd. */
   node_enter: (vfsPath: string) => void;
+  /** A feed came into view: the layout should summon this pane. */
+  feed_shown?: () => void;
 }
 
 /** Feed-id extraction from a working directory. */
@@ -154,6 +156,7 @@ export class DagPanel {
       })),
     });
     this.scene.size_fit();
+    this.handlers.feed_shown?.();
     this.factsPayloads.clear();
     for (const node of model.nodes) {
       this.factsPayloads.set(node.id, node);

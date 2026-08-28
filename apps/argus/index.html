@@ -69,7 +69,7 @@
       <div class="wrap" id="gap">
         <div class="left-frame">
           <div>
-            <button class="panel-3 domain-live">FILES<span class="hop">-01</span></button>
+            <button class="panel-3 domain-live" id="gutter-files">FILES<span class="hop">-01</span></button>
             <button class="panel-4 domain-live" id="gutter-runs">RUNS<span class="hop">-02</span></button>
             <button class="panel-5 domain-live" id="gutter-tools">PACS<span class="hop">-03</span></button>
             <button class="panel-6 domain-inert">SOURCES<span class="hop">-04</span></button>
@@ -111,9 +111,35 @@
               <span id="status-mismatch" class="readout mismatch"></span>
               <span id="status-lamp" class="readout lamp-offline">OFFLINE</span>
             </div>
-            <!-- The PACS workspace: summoned by PACS-03, replacing the
-                 workspace row; the same button dismisses it. -->
-            <div id="pacs-workspace">
+            <!-- The layout root: the binary split tree renders here,
+                 arranging the registered panes. Presets (the gutter) pick
+                 the tree; context (a feed in view) can vary it. -->
+            <div id="layout-root"></div>
+            <!-- Pane mounts: long-lived elements the tree reparents. -->
+            <div class="workspace-pane" id="pane-dag">
+              <div class="lcars-terminal-header-bar files-header-bar">
+                <div class="lcars-bar-horizontal">
+                  <span class="lcars-title" id="dag-title">DAG</span>
+                  <button id="dag-strategy" class="strategy-pill" title="layout: ranked tiers or force molecule">RANKED</button>
+                </div>
+                <div class="lcars-bar-zoom" data-pane="dag" title="zoom DAG (Esc restores)" role="button" tabindex="0"></div>
+                <div class="lcars-bar-end" id="dag-close" title="dismiss the DAG pane" role="button" tabindex="0"></div>
+              </div>
+              <div id="dag-canvas"></div>
+              <div id="dag-feedlist"></div>
+              <div id="dag-empty" class="files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
+              <div id="dag-facts"></div>
+            </div>
+            <div class="workspace-pane" id="pane-files">
+              <div class="lcars-terminal-header-bar files-header-bar">
+                <div class="lcars-bar-horizontal">
+                  <span class="lcars-title">WORKSPACE</span>
+                </div>
+                <div class="lcars-bar-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
+              </div>
+              <section id="files-panel" aria-label="Files"></section>
+            </div>
+            <div class="workspace-pane" id="pacs-workspace">
               <div class="lcars-terminal-header-bar files-header-bar">
                 <div class="lcars-bar-horizontal">
                   <span class="lcars-title" id="pacs-title">PACS QUERY / RETRIEVE</span>
@@ -140,33 +166,6 @@
                   <button id="pacs-gather-feed" class="pacs-capsule" title="create a feed rooted on the cohort">CREATE FEED</button>
                 </div>
                 <div id="pacs-gather-rows"></div>
-              </div>
-            </div>
-            <!-- The workspace row: two panes over one address space. Every
-                 pane wears the same chrome — a header bar with its title and
-                 the zoom capsule. -->
-            <div id="workspace-row">
-              <div class="workspace-pane" id="pane-dag">
-                <div class="lcars-terminal-header-bar files-header-bar">
-                  <div class="lcars-bar-horizontal">
-                    <span class="lcars-title" id="dag-title">DAG</span>
-                    <button id="dag-strategy" class="strategy-pill" title="layout: ranked tiers or force molecule">RANKED</button>
-                  </div>
-                  <div class="lcars-bar-zoom" data-pane="dag" title="zoom DAG (Esc restores)" role="button" tabindex="0"></div>
-                </div>
-                <div id="dag-canvas"></div>
-                <div id="dag-feedlist"></div>
-                <div id="dag-empty" class="files-empty">NO FEED IN VIEW — PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
-                <div id="dag-facts"></div>
-              </div>
-              <div class="workspace-pane" id="pane-files">
-                <div class="lcars-terminal-header-bar files-header-bar">
-                  <div class="lcars-bar-horizontal">
-                    <span class="lcars-title">WORKSPACE</span>
-                  </div>
-                  <div class="lcars-bar-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
-                </div>
-                <section id="files-panel" aria-label="Files"></section>
               </div>
             </div>
           </main>

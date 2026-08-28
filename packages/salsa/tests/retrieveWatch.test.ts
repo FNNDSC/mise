@@ -198,17 +198,54 @@ describe('retrieve_fireAndWatch', () => {
     expect(t.lonkConfirmed).toBe(false);
   });
 
-  it('fails in-flight series when the websocket errors', async () => {
+  it('reconnects a dropped socket and keeps watching the same retrieve', async () => {
+    // The retrieve runs on the server; the socket is only how the client
+    // watches it. Losing the view is not losing the work, so a reconnect
+    // resumes reporting instead of repeating anything.
+    jest.useFakeTimers();
+    const t = task();
+    const reconnects: number[] = [];
+    const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, {
+      reconnect: (attempt: number): void => { reconnects.push(attempt); },
+    });
+    await flush();
+    const firedBefore = mockRetrieveCreate.mock.calls.length;
+
+    wsInstances[0].emit('error', new Error('dropped'));
+    await flush();
+
+    expect(reconnects).toEqual([1]);
+    expect(wsInstances.length).toBe(2);
+    // Re-subscribed, not re-fired.
+    expect(wsInstances[1].sent[0]).toMatchObject({ action: 'subscribe', SeriesInstanceUID: t.seriesUID });
+    expect(mockRetrieveCreate.mock.calls.length).toBe(firedBefore);
+
+    wsInstances[1].emit('message', Buffer.from(JSON.stringify({
+      SeriesInstanceUID: t.seriesUID, message: { done: true },
+    })));
+    await jest.advanceTimersByTimeAsync(2_000);
+    await run;
+
+    expect(t.status).toBe('pulled');
+    expect(t.lonkConfirmed).toBe(true);
+  });
+
+  it('gives up after repeated drops, recording what it no longer knows', async () => {
     jest.useFakeTimers();
     const t = task();
     const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, {});
     await flush();
-    wsInstances[0].emit('error', new Error('dropped'));
-    await flush();
+
+    // One original socket plus three reconnects; the fourth drop exhausts them.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      wsInstances[wsInstances.length - 1].emit('error', new Error('dropped'));
+      await flush();
+    }
     await run;
-    // A dead socket says the watch ended, not that the retrieve failed: CUBE
-    // goes on registering whatever the PACS goes on pushing.
+
+    // Still not a failure: nothing here knows the retrieve failed.
     expect(t.status).toBe('unconfirmed');
+    expect(wsInstances.length).toBe(4);
   });
 });
 

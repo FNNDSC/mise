@@ -94,6 +94,13 @@ function pullEvents_make(): RetrieveWatchEvents {
       pullProgress_emit(task, status, phase),
     retryRound: (attempt: number, retryMax: number, count: number): void =>
       sink_dataLine(chalk.yellow(`\nRetry ${attempt}/${retryMax} for ${count} unconfirmed series...`)),
+    // Said out loud: a silent reconnection during a long pull is
+    // indistinguishable from a stall, and this one takes seconds.
+    reconnect: (attempt: number, maxAttempts: number, watching: number): void =>
+      sink_dataLine(chalk.gray(
+        `  Retrieve watch reconnecting (${attempt}/${maxAttempts}) — ${watching} series still in flight; ` +
+        'the retrieves themselves are unaffected.',
+      )),
   };
 }
 

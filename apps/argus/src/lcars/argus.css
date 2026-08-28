@@ -347,21 +347,39 @@ body[data-header='telemetry'] #header-telemetry {
   display: block;
 }
 
+/* Rows in the ritos idiom: the name lives in a black-on-color capsule with
+ * a rounded left cap, the figure sits bright beside it. */
 .telemetry-row {
   display: flex;
-  justify-content: space-between;
-  gap: 1.5rem;
+  align-items: center;
+  gap: 0.7rem;
   break-inside: avoid;
-  line-height: 1.5;
+  margin-bottom: 0.35rem;
 }
 
 .telemetry-label {
-  color: var(--honey);
-  opacity: 0.8;
+  flex: none;
+  min-width: 9.5rem;
+  padding: 0 0.7rem;
+  border-radius: 0.6rem 0 0 0.6rem;
+  background-color: var(--honey);
+  color: black;
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  font-size: 0.7rem;
+  line-height: 1.2rem;
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+#header-about .telemetry-label {
+  background-color: var(--october-sunset);
 }
 
 .telemetry-value {
   color: var(--daybreak);
+  font-size: 0.9rem;
 }
 
 .about-credits {
@@ -374,16 +392,20 @@ body[data-header='telemetry'] #header-telemetry {
 
 /* -------------------------------------------------------------- audio pill */
 
-/* The audio pill: the panel voice's switch. Green speaks, red is silent. */
+/* The audio pill: the panel voice's switch, a labeled LCARS capsule in the
+ * ritos idiom. Green speaks, red is silent. */
 .audio-pill {
   align-self: flex-end;
-  width: 3.2rem;
-  height: 0.9rem;
   margin-top: 0.4rem;
-  margin-right: var(--left-frame-padding, 0.75rem);
+  padding: 0.1rem 0.9rem;
   border: none;
-  border-radius: 0.45rem;
+  border-radius: 0.8rem;
   background-color: #3c6;
+  color: black;
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
   cursor: pointer;
 }
 
@@ -394,6 +416,10 @@ body[data-header='telemetry'] #header-telemetry {
 
 .audio-pill.audio-off {
   background-color: #f22;
+}
+
+.audio-pill.audio-off::after {
+  content: ' OFF';
 }
 
 /* ------------------------------------------------------- the tactical drawer */

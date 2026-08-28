@@ -129,6 +129,8 @@ function drawer_wire(
     dragging = true;
     dragStartY = event.clientY;
     dragStartHeight = drawer.getBoundingClientRect().height;
+    // Dragging steers the height directly; the zoom transition would lag it.
+    drawer.classList.add('drawer-dragging');
     event.preventDefault();
   });
   window.addEventListener('mousemove', (event: MouseEvent): void => {
@@ -142,6 +144,54 @@ function drawer_wire(
   });
   window.addEventListener('mouseup', (): void => {
     dragging = false;
+    drawer.classList.remove('drawer-dragging');
+  });
+}
+
+/**
+ * Wires pane zoom: any control carrying data-pane names a pane, and
+ * activating it zooms that pane to the full viewport — the gutter glides
+ * off stage left, the header off stage top. Esc (or the same control
+ * again) restores the composition, which zoom never touches: zoom is a
+ * modifier over the layout, not a layout of its own.
+ *
+ * @param terminal - The terminal to refit once the glide settles.
+ */
+function zoom_wire(terminal: ArgusTerminal): void {
+  const body: HTMLElement = document.body;
+  const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
+
+  const zoom_set = (pane: string | null): void => {
+    if (pane === null) {
+      delete body.dataset['zoom'];
+    } else {
+      // The header's height is content-driven; measure it at zoom time so
+      // the slide and the space reclaim travel by the same distance.
+      if (header !== null) {
+        body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
+      }
+      body.dataset['zoom'] = pane;
+    }
+    sound_play('audio3');
+  };
+
+  for (const control of document.querySelectorAll<HTMLElement>('[data-pane]')) {
+    const pane: string = control.dataset['pane'] ?? '';
+    control.addEventListener('click', (): void =>
+      zoom_set(body.dataset['zoom'] === pane ? null : pane),
+    );
+  }
+
+  window.addEventListener('keydown', (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && body.dataset['zoom'] !== undefined) {
+      zoom_set(null);
+    }
+  });
+
+  element_require('drawer').addEventListener('transitionend', (event: Event): void => {
+    if ((event as TransitionEvent).propertyName === 'height') {
+      terminal.size_fit();
+    }
   });
 }
 
@@ -350,6 +400,7 @@ async function surface_start(token: string): Promise<void> {
     element_require('drawer-close'),
     terminal,
   );
+  zoom_wire(terminal);
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());
 }

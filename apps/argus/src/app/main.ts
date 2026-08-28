@@ -258,22 +258,96 @@ function cascade_build(): Cascade | null {
 }
 
 /**
- * Wires the header faces: the two gutter-top buttons swap what the header
- * pane shows. ARGUS WEB reveals the stack/about face, 02-CALYPSO the
- * labeled telemetry face; pressing the active one again restores the
- * cascade. One declaration (`data-header` on the body) carries the state.
+ * Wires the header faces. The two gutter-top buttons SELECT: ARGUS WEB
+ * shows the live stats and controls face, 02-CALYPSO the versions face.
+ * Pressing the already-selected button sends the whole header gliding off
+ * the top, leaving the lid strip; the strip (or Esc) restores it to the
+ * cascade. One declaration (`data-header` on the body) carries the state:
+ * absent (cascade), 'stats', 'versions', or 'away'.
  */
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
-  const face_toggle = (face: string): void => {
+  const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
+
+  const face_select = (face: string): void => {
     if (body.dataset['header'] === face) {
-      delete body.dataset['header'];
+      // Second press on the selected face: the header itself departs. The
+      // slide distance is its measured height, same as the zoom glide.
+      if (header !== null) {
+        body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
+      }
+      body.dataset['header'] = 'away';
     } else {
       body.dataset['header'] = face;
     }
   };
-  document.querySelector('.panel-1')?.addEventListener('click', (): void => face_toggle('about'));
-  document.querySelector('.panel-2')?.addEventListener('click', (): void => face_toggle('telemetry'));
+  document.querySelector('.panel-1')?.addEventListener('click', (): void => face_select('stats'));
+  document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('versions'));
+
+  const header_restore = (): void => {
+    delete body.dataset['header'];
+    sound_play('audio3');
+  };
+  element_require('header-restore').addEventListener('click', header_restore);
+  window.addEventListener('keydown', (event: KeyboardEvent): void => {
+    // Esc restores the header, but a zoomed pane's Esc comes first.
+    if (
+      event.key === 'Escape' &&
+      body.dataset['header'] === 'away' &&
+      body.dataset['zoom'] === undefined
+    ) {
+      header_restore();
+    }
+  });
+}
+
+/** The LCARS color schemes the theme pill cycles through. */
+const LCARS_SCHEMES: ReadonlyArray<{ key: string; label: string }> = [
+  { key: 'lower-decks', label: 'LOWER DECKS' },
+  { key: 'gold', label: 'CERRITOS GOLD' },
+  { key: 'sickbay', label: 'SICKBAY' },
+  { key: 'nemesis', label: 'NEMESIS' },
+];
+
+/** The localStorage key remembering the color scheme. */
+const LCARS_STORAGE_KEY: string = 'argus-lcars';
+
+/**
+ * Wires the theme pill: each press advances to the next LCARS color scheme.
+ * The scheme is one declaration (`data-lcars` on the body); the palettes
+ * live in CSS. The choice persists per browser.
+ */
+function themePill_wire(): void {
+  const pill: HTMLElement = element_require('theme-pill');
+  const body: HTMLElement = document.body;
+  let index: number = 0;
+  try {
+    const saved: string | null = window.localStorage.getItem(LCARS_STORAGE_KEY);
+    const found: number = LCARS_SCHEMES.findIndex((scheme): boolean => scheme.key === saved);
+    index = found >= 0 ? found : 0;
+  } catch {
+    index = 0;
+  }
+  const paint = (): void => {
+    const scheme = LCARS_SCHEMES[index] ?? LCARS_SCHEMES[0]!;
+    if (scheme.key === 'lower-decks') {
+      delete body.dataset['lcars'];
+    } else {
+      body.dataset['lcars'] = scheme.key;
+    }
+    pill.textContent = scheme.label;
+  };
+  paint();
+  pill.addEventListener('click', (): void => {
+    index = (index + 1) % LCARS_SCHEMES.length;
+    paint();
+    try {
+      window.localStorage.setItem(LCARS_STORAGE_KEY, LCARS_SCHEMES[index]?.key ?? 'lower-decks');
+    } catch {
+      // A browser without storage still gets the session-long choice.
+    }
+    sound_play('audio2');
+  });
 }
 
 /**
@@ -498,6 +572,7 @@ function page_boot(): void {
   cascade = cascade_build();
   headerFaces_wire();
   audioPill_wire();
+  themePill_wire();
   const params: URLSearchParams = new URLSearchParams(window.location.search);
   const urlToken: string | null = params.get('token');
   const attachForm: HTMLElement = element_require('attach-form');

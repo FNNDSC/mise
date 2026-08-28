@@ -34,12 +34,17 @@
         <div class="left-frame-top">
           <button class="panel-1">ARGUS<span class="hop">&nbsp;WEB</span></button>
           <button class="panel-2">02<span class="hop">-CALYPSO</span></button>
+          <button id="audio-pill" class="audio-pill" title="audio on/off" aria-label="toggle audio"></button>
         </div>
         <div class="right-frame-top">
           <div class="banner"><a href="">ARGUS</a> &bull; CALYPSO SESSION</div>
           <div class="data-cascade-button-group">
-            <!-- The data cascade is generated at boot; see cascade_build in main.ts. -->
+            <!-- The header pane: data-header on <body> picks which of the
+                 three faces shows — the cascade (default), the stack/about
+                 face (ARGUS WEB), or the labeled telemetry face (02-CALYPSO). -->
             <div class="data-wrapper" id="data-cascade"></div>
+            <div class="header-face" id="header-about"></div>
+            <div class="header-face" id="header-telemetry"></div>
           </div>
           <div class="bar-panel first-bar-panel">
             <div class="bar-1"></div>

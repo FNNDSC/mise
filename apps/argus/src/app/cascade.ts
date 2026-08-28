@@ -24,6 +24,12 @@ interface CascadeCell {
   source: () => number;
 }
 
+/** One labeled telemetry row: the value element and its text source. */
+interface TelemetryRow {
+  element: HTMLElement;
+  source: () => string;
+}
+
 /** The column widths of the cascade grid, per the prototype's proportions. */
 const COLUMN_WIDTHS: readonly number[] = [2, 3, 3, 2, 2, 11, 2, 2];
 
@@ -82,6 +88,7 @@ export class Cascade {
     connected: 0,
   };
   private readonly activeOperations: Set<string> = new Set<string>();
+  private readonly telemetryRows: TelemetryRow[] = [];
 
   /**
    * Builds the cascade grid inside the wrapper and starts the beat and
@@ -181,6 +188,43 @@ export class Cascade {
     this.wrapper.classList.toggle('dc-stale', !connected);
   }
 
+  /**
+   * Builds the labeled telemetry face: the same figures the cascade renders
+   * as bare numbers, each against its name. The beat loop keeps it current
+   * whether or not it is visible, so revealing it costs nothing.
+   *
+   * @param container - The element to render the labeled rows into.
+   */
+  public telemetryPanel_bind(container: HTMLElement): void {
+    const t: Telemetry = this.telemetry;
+    const rows: Array<[string, () => string]> = [
+      ['LINK', (): string => (t.connected === 1 ? 'ONLINE' : 'OFFLINE')],
+      ['JOBS INDEXED', (): string => `${t.jobsLoaded} / ${t.jobsTotal}`],
+      ['OPS ACTIVE', (): string => String(t.opsActive)],
+      ['OPS DONE', (): string => String(t.opsDone)],
+      ['OPS FAILED', (): string => String(t.opsFailed)],
+      ['ITEMS', (): string => `${t.itemsCurrent} / ${t.itemsTotal}`],
+      ['LAST COMMAND', (): string => `${t.lastLatencyMs} MS`],
+      ['LATENCY SUM', (): string => `${t.latencySumMs} MS`],
+      ['COMMANDS RUN', (): string => String(t.commandsRun)],
+      ['LAST EXIT', (): string => String(t.lastExitCode)],
+      ['UPTIME', (): string => `${this.uptimeSeconds_get()} S`],
+    ];
+    for (const [label, source] of rows) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = 'telemetry-row';
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'telemetry-label';
+      name.textContent = label;
+      const value: HTMLSpanElement = document.createElement('span');
+      value.className = 'telemetry-value';
+      value.textContent = source();
+      row.append(name, value);
+      container.appendChild(row);
+      this.telemetryRows.push({ element: value, source });
+    }
+  }
+
   /** Sources for the narrow (2-3 digit) cells, cycled across the grid. */
   private narrowSources_list(): Array<() => number> {
     const t: Telemetry = this.telemetry;
@@ -215,12 +259,18 @@ export class Cascade {
     return Math.floor((Date.now() - this.bootedAt) / 1000);
   }
 
-  /** Repaints every cell whose backing figure changed since the last beat. */
+  /** Repaints every cell and row whose backing figure changed since last beat. */
   private beat_paint(): void {
     for (const cell of this.cells) {
       const figure: string = figure_format(cell.source(), cell.width);
       if (cell.element.textContent !== figure) {
         cell.element.textContent = figure;
+      }
+    }
+    for (const row of this.telemetryRows) {
+      const value: string = row.source();
+      if (row.element.textContent !== value) {
+        row.element.textContent = value;
       }
     }
   }

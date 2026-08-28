@@ -38,17 +38,59 @@ const BANNER_LINES: string[] = [
   '',
 ];
 
+/** The localStorage key remembering the operator's audio choice. */
+const AUDIO_STORAGE_KEY: string = 'argus-audio';
+
+/** The panel beeps' volume; the theme's files are mastered hot. */
+const AUDIO_VOLUME: number = 0.4;
+
+/** Whether the panel beeps are muted; the audio pill owns this. */
+let audioMuted: boolean = false;
+
 /**
  * Plays one of the page's LCARS beeps, silently tolerating autoplay refusal.
+ * The audio pill can mute the whole voice.
  *
  * @param audioId - The id of the audio element to play.
  */
 function sound_play(audioId: string): void {
+  if (audioMuted) {
+    return;
+  }
   const audio: HTMLElement | null = document.getElementById(audioId);
   if (audio instanceof HTMLAudioElement) {
     audio.currentTime = 0;
+    audio.volume = AUDIO_VOLUME;
     void audio.play().catch((): void => undefined);
   }
+}
+
+/**
+ * Wires the audio pill: green means the panel voice is live, red means
+ * muted. The choice persists per browser.
+ */
+function audioPill_wire(): void {
+  const pill: HTMLElement = element_require('audio-pill');
+  try {
+    audioMuted = window.localStorage.getItem(AUDIO_STORAGE_KEY) === 'off';
+  } catch {
+    audioMuted = false;
+  }
+  const paint: () => void = (): void => {
+    pill.classList.toggle('audio-off', audioMuted);
+  };
+  paint();
+  pill.addEventListener('click', (): void => {
+    audioMuted = !audioMuted;
+    try {
+      window.localStorage.setItem(AUDIO_STORAGE_KEY, audioMuted ? 'off' : 'on');
+    } catch {
+      // A browser without storage still gets the session-long choice.
+    }
+    paint();
+    // Unmuting speaks; muting is, fittingly, silent.
+    sound_play('audio2');
+  });
 }
 
 /**
@@ -197,13 +239,93 @@ function zoom_wire(terminal: ArgusTerminal): void {
 }
 
 /**
- * Builds the top frame's data cascade, live from boot.
+ * Builds the top frame's data cascade, live from boot, and binds the
+ * labeled telemetry face beside it.
  *
  * @returns The cascade, or null when the page has no cascade element.
  */
 function cascade_build(): Cascade | null {
   const wrapper: HTMLElement | null = document.getElementById('data-cascade');
-  return wrapper === null ? null : new Cascade(wrapper);
+  if (wrapper === null) {
+    return null;
+  }
+  const cascadeInstance: Cascade = new Cascade(wrapper);
+  const telemetryFace: HTMLElement | null = document.getElementById('header-telemetry');
+  if (telemetryFace !== null) {
+    cascadeInstance.telemetryPanel_bind(telemetryFace);
+  }
+  return cascadeInstance;
+}
+
+/**
+ * Wires the header faces: the two gutter-top buttons swap what the header
+ * pane shows. ARGUS WEB reveals the stack/about face, 02-CALYPSO the
+ * labeled telemetry face; pressing the active one again restores the
+ * cascade. One declaration (`data-header` on the body) carries the state.
+ */
+function headerFaces_wire(): void {
+  const body: HTMLElement = document.body;
+  const face_toggle = (face: string): void => {
+    if (body.dataset['header'] === face) {
+      delete body.dataset['header'];
+    } else {
+      body.dataset['header'] = face;
+    }
+  };
+  document.querySelector('.panel-1')?.addEventListener('click', (): void => face_toggle('about'));
+  document.querySelector('.panel-2')?.addEventListener('click', (): void => face_toggle('telemetry'));
+}
+
+/**
+ * Fills the about face: the mise stack and its versions, this bundle's
+ * git hash and build time, the wire contract, and the page's credits.
+ *
+ * @param attach - The attach ack, carrying the daemon's stack report.
+ */
+function aboutFace_fill(attach: AttachInfo): void {
+  const face: HTMLElement | null = document.getElementById('header-about');
+  if (face === null) {
+    return;
+  }
+  face.replaceChildren();
+  const stack: Record<string, string | undefined> = {
+    cumin: attach.stack?.cumin,
+    salsa: attach.stack?.salsa,
+    chili: attach.stack?.chili,
+    brasa: attach.stack?.brasa,
+    calypso: attach.stack?.calypso,
+    chell: attach.stack?.chell,
+  };
+  const rows: Array<[string, string]> = [];
+  for (const [name, version] of Object.entries(stack)) {
+    if (version !== undefined) {
+      rows.push([name.toUpperCase(), version]);
+    }
+  }
+  rows.push(
+    ['ARGUS', `${__ARGUS_GIT__} · ${__ARGUS_BUILT__}Z`],
+    ['WIRE', `V${attach.protocolVersion}`],
+  );
+  if (attach.stack?.build !== undefined) {
+    rows.push(['BUILD', attach.stack.build]);
+  }
+  for (const [label, value] of rows) {
+    const row: HTMLDivElement = document.createElement('div');
+    row.className = 'telemetry-row';
+    const name: HTMLSpanElement = document.createElement('span');
+    name.className = 'telemetry-label';
+    name.textContent = label;
+    const figure: HTMLSpanElement = document.createElement('span');
+    figure.className = 'telemetry-value';
+    figure.textContent = value;
+    row.append(name, figure);
+    face.appendChild(row);
+  }
+  const credits: HTMLDivElement = document.createElement('div');
+  credits.className = 'about-credits';
+  credits.textContent =
+    'Content © 2026 FNNDSC · ARGUS is part of the mise project · LCARS inspired template by www.TheLCARS.com';
+  face.appendChild(credits);
 }
 
 /**
@@ -349,6 +471,7 @@ async function surface_start(token: string): Promise<void> {
   statusBar.attach_show(attached.attach);
   statusBar.connection_show(true);
   cascade?.connection_show(true);
+  aboutFace_fill(attached.attach);
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();
@@ -372,6 +495,8 @@ async function surface_start(token: string): Promise<void> {
  */
 function page_boot(): void {
   cascade = cascade_build();
+  headerFaces_wire();
+  audioPill_wire();
   const params: URLSearchParams = new URLSearchParams(window.location.search);
   const urlToken: string | null = params.get('token');
   const attachForm: HTMLElement = element_require('attach-form');

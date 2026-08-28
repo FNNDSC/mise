@@ -197,6 +197,23 @@ export class FilesPanel {
 
       const table: HTMLElement = document.createElement('div');
       table.className = 'files-grid';
+      // Navigation goes both ways: every listing below the root leads with
+      // an updir row, lowering to the same `cd ..` an operator would type.
+      if (listing.path !== '/') {
+        const updir: HTMLElement = document.createElement('div');
+        updir.className = 'files-row files-type-dir files-activatable';
+        const glyph: HTMLSpanElement = document.createElement('span');
+        glyph.className = 'files-glyph';
+        glyph.textContent = '▴';
+        const name: HTMLSpanElement = document.createElement('span');
+        name.className = 'files-name';
+        name.textContent = '..';
+        updir.append(glyph, name, document.createElement('span'), document.createElement('span'));
+        updir.addEventListener('click', (): void => {
+          this.activate({ kind: 'dir', path: parentPath_of(listing.path) });
+        });
+        table.appendChild(updir);
+      }
       for (const item of listing.items) {
         table.appendChild(this.row_build(listing.path, item));
       }
@@ -283,6 +300,18 @@ function listings_validate(data: unknown): FsListing[] | null {
  */
 function path_join(parentPath: string, name: string): string {
   return parentPath.endsWith('/') ? `${parentPath}${name}` : `${parentPath}/${name}`;
+}
+
+/**
+ * Resolves a path's parent directory.
+ *
+ * @param path - The path whose parent is wanted.
+ * @returns The parent path; `/` is its own parent.
+ */
+function parentPath_of(path: string): string {
+  const trimmed: string = path.endsWith('/') ? path.slice(0, -1) : path;
+  const cut: number = trimmed.lastIndexOf('/');
+  return cut <= 0 ? '/' : trimmed.slice(0, cut);
 }
 
 /**

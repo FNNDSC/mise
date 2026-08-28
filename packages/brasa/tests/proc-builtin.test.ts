@@ -71,7 +71,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): TestEnvelope => ({
     status: 'error', rendered, renderedErr,
   }),
-  envelope_ok: (rendered: string): TestEnvelope => ({ status: 'ok', rendered }),
+  envelope_ok: (rendered: string, model?: unknown): TestEnvelope => (model !== undefined ? { status: 'ok', rendered, model } as TestEnvelope : { status: 'ok', rendered }),
   procCache_get: jest.fn(() => mockCache),
   path_extractFeedID: pathExtractFeedID_mock,
   path_extractPluginInstanceID: pathExtractPluginInstanceID_mock,
@@ -350,6 +350,23 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.rendered).toContain('in progress');
     expect(envelope.rendered).toContain('25/100');
     expect(procTopologyAwait_mock).not.toHaveBeenCalled();
+  });
+
+  it('lists the whole roster with a feed.list model when no query is given', async () => {
+    mockWarmupComplete = true;
+    mockFeeds = [
+      { id: 2, title: 'older run', ownerUsername: 'alice', public: false, creationDate: '2026-01-01T00:00:00Z', finishedJobs: 1, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 },
+      { id: 5, title: 'newer run', ownerUsername: 'bob', public: true, creationDate: '2026-06-01T00:00:00Z', finishedJobs: 0, erroredJobs: 1, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 },
+    ];
+
+    const envelope: TestEnvelope = await builtin_proc(['feeds']);
+
+    expect(envelope.status).toBe('ok');
+    const model = (envelope as { model?: { kind: string; data: { feeds: Array<Record<string, unknown>> } } }).model;
+    expect(model?.kind).toBe('feed.list');
+    // Newest first, id + title + owner + derived status carried.
+    expect(model?.data.feeds[0]).toMatchObject({ id: 5, title: 'newer run', owner: 'bob' });
+    expect(model?.data.feeds[1]).toMatchObject({ id: 2, title: 'older run' });
   });
 
   it('reports zero loaded jobs deterministically after an empty sweep', async () => {

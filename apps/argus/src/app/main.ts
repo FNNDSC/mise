@@ -27,6 +27,7 @@ import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing } from '../features/files/panel.js';
 import { DagPanel } from '../features/dag/panel.js';
+import { PacsPanel } from '../features/pacs/panel.js';
 import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
@@ -486,6 +487,7 @@ async function surface_start(token: string): Promise<void> {
     element_require('dag-facts'),
     element_require('dag-empty'),
     element_require('dag-strategy'),
+    element_require('dag-feedlist'),
     {
       command_run: (line: string): void => {
         void client.line_execute(line, { silent: true });
@@ -502,6 +504,27 @@ async function surface_start(token: string): Promise<void> {
       void client.line_execute(line, { silent: true });
     },
   );
+  // RUNS-02: the gutter's feeds gesture — the DAG pane hosts the chooser.
+  element_require('gutter-runs').addEventListener('click', (): void =>
+    dagPanel.feedsChooser_request(),
+  );
+
+  const pacsPanel: PacsPanel = new PacsPanel(element_require('pacs-workspace'), {
+    command_run: (line: string): void => {
+      void client.line_execute(line, { silent: true });
+    },
+    command_show: (line: string): void => {
+      terminal.line_run(line);
+    },
+  });
+  // PACS-03: the gutter toggles the PACS workspace in and out.
+  element_require('gutter-tools').addEventListener('click', (): void => {
+    if (document.body.dataset['workspace'] === 'pacs') {
+      delete document.body.dataset['workspace'];
+    } else {
+      document.body.dataset['workspace'] = 'pacs';
+    }
+  });
   pane_register({ id: 'console', title: 'CALYPSO CONSOLE', mount: element_require('drawer') });
   pane_register({ id: 'dag', title: 'DAG', mount: element_require('pane-dag') });
   pane_register({ id: 'files', title: 'WORKSPACE', mount: element_require('pane-files') });
@@ -555,6 +578,7 @@ async function surface_start(token: string): Promise<void> {
         statusBar.progress_observe(message);
         cascade?.progress_observe(message);
         dagPanel.progress_observe(message);
+        pacsPanel.progress_observe(message);
       },
       promptline_receive: (context: PromptContext): void => {
         terminal.promptContext_set(context);
@@ -570,6 +594,7 @@ async function surface_start(token: string): Promise<void> {
         filesPanel.envelope_observe(envelope);
         dagPanel.envelope_observe(envelope);
         cycler.envelope_observe(envelope);
+        pacsPanel.envelope_observe(envelope);
       },
       close_handle: (): void => {
         statusBar.connection_show(false);

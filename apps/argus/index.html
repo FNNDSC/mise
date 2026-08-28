@@ -73,8 +73,8 @@
         <div class="left-frame">
           <div>
             <button class="panel-3 domain-live">FILES<span class="hop">-01</span></button>
-            <button class="panel-4 domain-inert">RUNS<span class="hop">-02</span></button>
-            <button class="panel-5 domain-inert">TOOLS<span class="hop">-03</span></button>
+            <button class="panel-4 domain-live" id="gutter-runs">RUNS<span class="hop">-02</span></button>
+            <button class="panel-5 domain-live" id="gutter-tools">PACS<span class="hop">-03</span></button>
             <button class="panel-6 domain-inert">SOURCES<span class="hop">-04</span></button>
             <div class="panel-spacer"></div>
           </div>
@@ -114,6 +114,37 @@
               <span id="status-mismatch" class="readout mismatch"></span>
               <span id="status-lamp" class="readout lamp-offline">OFFLINE</span>
             </div>
+            <!-- The PACS workspace: summoned by PACS-03, replacing the
+                 workspace row; the same button dismisses it. -->
+            <div id="pacs-workspace">
+              <div class="lcars-terminal-header-bar files-header-bar">
+                <div class="lcars-bar-horizontal">
+                  <span class="lcars-title" id="pacs-title">PACS QUERY / RETRIEVE</span>
+                </div>
+                <div class="lcars-bar-end" id="pacs-close" title="dismiss PACS" role="button" tabindex="0"></div>
+              </div>
+              <div id="pacs-form">
+                <label>MRN <input id="pacs-f-mrn" autocomplete="off" /></label>
+                <label>PATIENT NAME <input id="pacs-f-name" autocomplete="off" /></label>
+                <label>STUDY DATE <input id="pacs-f-date" placeholder="YYYYMMDD" autocomplete="off" /></label>
+                <label>MODALITY <input id="pacs-f-modality" autocomplete="off" /></label>
+                <label>ACCESSION <input id="pacs-f-accession" autocomplete="off" /></label>
+              </div>
+              <div id="pacs-commandline">
+                <input id="pacs-command" spellcheck="false" autocomplete="off" placeholder="pacs query ..." />
+                <button id="pacs-run" class="pacs-capsule">QUERY</button>
+              </div>
+              <div id="pacs-results"></div>
+              <div id="pacs-gather">
+                <div class="pacs-gather-head">
+                  <span class="pacs-gather-title">GATHER</span>
+                  <input id="pacs-gather-name" placeholder="cohort name" autocomplete="off" />
+                  <button id="pacs-gather-save" class="pacs-capsule" title="write ~/gather/&lt;name&gt; manifest">SAVE</button>
+                  <button id="pacs-gather-feed" class="pacs-capsule" title="create a feed rooted on the cohort">CREATE FEED</button>
+                </div>
+                <div id="pacs-gather-rows"></div>
+              </div>
+            </div>
             <!-- The workspace row: two panes over one address space. Every
                  pane wears the same chrome — a header bar with its title and
                  the zoom capsule. -->
@@ -127,7 +158,8 @@
                   <div class="lcars-bar-zoom" data-pane="dag" title="zoom DAG (Esc restores)" role="button" tabindex="0"></div>
                 </div>
                 <div id="dag-canvas"></div>
-                <div id="dag-empty" class="files-empty">NO FEED IN VIEW — cd INTO A FEED OR RUN `feed diagram &lt;feed&gt;`</div>
+                <div id="dag-feedlist"></div>
+                <div id="dag-empty" class="files-empty">NO FEED IN VIEW — PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
                 <div id="dag-facts"></div>
               </div>
               <div class="workspace-pane" id="pane-files">

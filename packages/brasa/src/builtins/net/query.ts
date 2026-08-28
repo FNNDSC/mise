@@ -27,6 +27,7 @@ import {
   listCache_get,
 } from '@fnndsc/cumin';
 import { queryFolderName_build } from '@fnndsc/salsa';
+import { PACS_QUERY_MODEL_KIND, type PacsQueryModel, type PacsStudy } from '@fnndsc/menu';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
@@ -293,6 +294,73 @@ function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string
 }
 
 /**
+ * Projects a decoded query result onto the wire's `pacs.query` model:
+ * studies containing series, each series carrying its instance UID so a
+ * surface can lower a selection straight to a pull.
+ *
+ * @param decoded - The decoded query payload.
+ * @param facts - The query's identity facts.
+ * @returns The typed model payload.
+ */
+export function pacsQueryModel_build(
+  decoded: PACSQueryDecodedResult,
+  facts: { queryId: number; vfsPath: string; pacsName: string; expression: string },
+): PacsQueryModel {
+  const tagVal = (v: unknown): string => {
+    if (v && typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
+      return String((v as Record<string, unknown>).value ?? '');
+    }
+    return String(v ?? '');
+  };
+  const payload: unknown = decoded.json;
+  const payloadArr: unknown[] = Array.isArray(payload) ? payload : payload ? [payload] : [];
+  const studies: PacsStudy[] = [];
+  for (const studyRaw of payloadArr) {
+    if (!studyRaw || typeof studyRaw !== 'object') continue;
+    const study: Record<string, unknown> = studyRaw as Record<string, unknown>;
+    const seriesArr: unknown[] =
+      Array.isArray(study.series) ? study.series :
+      Array.isArray(study.Series) ? study.Series :
+      Array.isArray(study.results) ? study.results :
+      [];
+    const studyUID: string = tagVal(study.StudyInstanceUID ?? '');
+    const studyDesc: string = tagVal(study.StudyDescription ?? '');
+    // The provider's folder grammar, mirrored: a path built here is a path
+    // the VFS resolves, which is what makes a series row pullable.
+    const studyFolder: string = `Study_${studyUID}_${studyDesc.replace(/[\s/]/g, '_')}`;
+    const series: PacsStudy['series'] = [];
+    for (const seriesRaw of seriesArr) {
+      if (!seriesRaw || typeof seriesRaw !== 'object') continue;
+      const one: Record<string, unknown> = seriesRaw as Record<string, unknown>;
+      const files: number = parseInt(tagVal(one.NumberOfSeriesRelatedInstances ?? ''), 10);
+      const seriesUID: string = tagVal(one.SeriesInstanceUID ?? '');
+      const seriesDesc: string = tagVal(one.SeriesDescription ?? '');
+      const seriesFolder: string = `Series_${seriesUID}_${seriesDesc.replace(/[\s/]/g, '_')}`;
+      series.push({
+        seriesUID,
+        description: seriesDesc,
+        modality: tagVal(one.Modality ?? ''),
+        ...(Number.isFinite(files) ? { fileCount: files } : {}),
+        ...(studyUID && seriesUID
+          ? { vfsPath: `${facts.vfsPath}/${studyFolder}/${seriesFolder}` }
+          : {}),
+      });
+    }
+    studies.push({
+      ...(studyUID ? { studyUID } : {}),
+      description: studyDesc,
+      patientName: tagVal(study.PatientName ?? study.patient_name ?? ''),
+      patientId: tagVal(study.PatientID ?? study.patient_id ?? ''),
+      date: tagVal(study.StudyDate ?? ''),
+      modalities: tagVal(study.ModalitiesInStudy ?? ''),
+      accession: tagVal(study.AccessionNumber ?? ''),
+      series,
+    });
+  }
+  return { ...facts, studies };
+}
+
+/**
  * Creates a PACS query, waits for results, displays findings, and prints the VFS path.
  *
  * @param args - `<queryExpression> [--title <title>] [--pacsserver <id>] [--table] [--help]`
@@ -379,10 +447,21 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
     : queryResult_render(result.decoded);
 
+  const model: PacsQueryModel = pacsQueryModel_build(result.decoded, {
+    queryId: result.queryId,
+    vfsPath: result.vfsPath,
+    pacsName: pacsserver,
+    expression: queryExpr,
+  });
+
   if (!renderedResult) {
     // Nothing matched: browsing or pulling the empty query would be
-    // meaningless, so no hints.
-    return envelope_ok(`${chalk.yellow(`⚠ Query ${result.queryId} complete — no studies found.`)}\n`);
+    // meaningless, so no hints. The empty model still crosses, so a
+    // graphical surface can say "no studies" in its own voice.
+    return envelope_ok(
+      `${chalk.yellow(`⚠ Query ${result.queryId} complete — no studies found.`)}\n`,
+      { kind: PACS_QUERY_MODEL_KIND, data: model },
+    );
   }
 
   let rendered: string = `${chalk.green(`✓ Query ${result.queryId} complete`)}\n`;
@@ -390,5 +469,5 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   rendered += `${chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`)}\n`;
   rendered += `${chalk.gray(`  cd ${result.vfsPath}`)}\n`;
   rendered += `${chalk.gray(`  pull ${result.vfsPath}`)}\n`;
-  return envelope_ok(rendered);
+  return envelope_ok(rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
 }

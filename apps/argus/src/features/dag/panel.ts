@@ -17,9 +17,12 @@
  */
 import {
   feedDagModelSchema,
+  feedListModelSchema,
   DAG_MODEL_KINDS,
+  FEED_LIST_MODEL_KIND,
   type FeedDagModel,
   type FeedDagNode,
+  type FeedListEntry,
   type PromptContext,
   type WireEnvelope,
 } from '@fnndsc/menu';
@@ -56,6 +59,7 @@ export class DagPanel {
   private readonly facts: HTMLElement;
   private readonly empty: HTMLElement;
   private readonly strategyPill: HTMLElement;
+  private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
   private shownFeedId: number | null = null;
   private pinnedFeedId: number | null = null;
@@ -75,8 +79,10 @@ export class DagPanel {
     facts: HTMLElement,
     empty: HTMLElement,
     strategyPill: HTMLElement,
+    feedList: HTMLElement,
     handlers: DagPanelHandlers,
   ) {
+    this.feedList = feedList;
     this.title = title;
     this.facts = facts;
     this.empty = empty;
@@ -112,6 +118,13 @@ export class DagPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
+      const roster = feedListModelSchema.safeParse(envelope.model.data);
+      if (roster.success) {
+        this.chooser_show(roster.data.feeds);
+      }
+      return;
+    }
     if (envelope.model?.kind !== DAG_MODEL_KINDS.feedDag) {
       return;
     }
@@ -129,6 +142,7 @@ export class DagPanel {
     this.shownFeedId = model.feedId;
     this.title.textContent = `DAG · FEED ${model.feedId} — ${model.feedName}`.toUpperCase();
     this.empty.style.display = 'none';
+    this.feedList.style.display = 'none';
     this.scene.graph_set({
       nodes: model.nodes.map((node: FeedDagNode): SceneNode => ({
         id: node.id,
@@ -191,6 +205,46 @@ export class DagPanel {
   /** Refits the scene after a zoom transition settles. */
   public size_fit(): void {
     this.scene.size_fit();
+  }
+
+  /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
+  public feedsChooser_request(): void {
+    this.handlers.command_run('proc feeds');
+  }
+
+  /**
+   * Shows the titled feed chooser over the pane; picking one loads its DAG.
+   *
+   * @param feeds - The roster, newest first.
+   */
+  private chooser_show(feeds: FeedListEntry[]): void {
+    this.empty.style.display = 'none';
+    this.feedList.replaceChildren();
+    for (const feed of feeds) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = `feedlist-row feedlist-${feed.status}`;
+      const idBadge: HTMLSpanElement = document.createElement('span');
+      idBadge.className = 'feedlist-id';
+      idBadge.textContent = String(feed.id);
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'feedlist-title';
+      name.textContent = feed.title || '(untitled)';
+      const status: HTMLSpanElement = document.createElement('span');
+      status.className = 'feedlist-status';
+      status.textContent = feed.status.toUpperCase();
+      const owner: HTMLSpanElement = document.createElement('span');
+      owner.className = 'feedlist-owner';
+      owner.textContent = feed.owner;
+      row.append(idBadge, name, status, owner);
+      row.addEventListener('click', (): void => {
+        this.handlers.command_run(`feed diagram feed_${feed.id}`);
+        // The arrival will hide the list; pin, since this was an explicit pick.
+        this.pinnedFeedId = feed.id;
+        this.requestedFeedId = null;
+      });
+      this.feedList.appendChild(row);
+    }
+    this.feedList.style.display = 'block';
   }
 
   /** Paints the selection facts chip. */

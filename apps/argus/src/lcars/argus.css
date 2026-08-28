@@ -157,6 +157,188 @@ body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
   background-color: var(--october-sunset);
 }
 
+/* ----------------------------------------------------------- PACS workspace */
+
+/* The PACS workspace replaces the workspace row when summoned: one
+ * declaration (`data-workspace` on the body) picks which shows, and the
+ * incoming face slides on stage. Hitting PACS-03 (or the mars pill)
+ * toggles it back out. */
+#pacs-workspace {
+  display: none;
+}
+
+body[data-workspace='pacs'] #workspace-row {
+  display: none;
+}
+
+body[data-workspace='pacs'] #pacs-workspace {
+  display: block;
+  animation: workspace-arrive 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes workspace-arrive {
+  from {
+    transform: translateX(60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+#pacs-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.2rem;
+  margin: 0.3rem 0 0.5rem;
+}
+
+#pacs-form label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--honey);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+
+#pacs-form input,
+#pacs-gather-name {
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--butter);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  outline: none;
+}
+
+#pacs-form input:focus,
+#pacs-command:focus,
+#pacs-gather-name:focus {
+  border-color: var(--harvestgold);
+  box-shadow: 0 0 6px rgb(255 170 68 / 40%);
+}
+
+#pacs-commandline {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+#pacs-command {
+  flex: 1;
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  outline: none;
+}
+
+.pacs-capsule {
+  border: none;
+  border-radius: 0.8rem;
+  padding: 0.1rem 0.9rem;
+  background-color: var(--harvestgold);
+  color: black;
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.pacs-capsule:hover {
+  filter: brightness(1.3);
+  box-shadow: 0 0 8px var(--harvestgold);
+}
+
+.pacs-capsule:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#pacs-results {
+  max-height: 34vh;
+  overflow-y: auto;
+  margin-bottom: 0.6rem;
+}
+
+.pacs-study {
+  margin-bottom: 0.7rem;
+}
+
+.pacs-study-head {
+  color: var(--orange);
+  font-weight: bold;
+  border-bottom: 2px solid var(--orange);
+  padding-bottom: 0.15rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.pacs-series {
+  display: grid;
+  grid-template-columns: 1fr 4em 6em 10em 5em;
+  align-items: center;
+  gap: 0 0.8rem;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+}
+
+.pacs-series:hover {
+  background: rgb(255 119 0 / 12%);
+}
+
+.pacs-series-desc { color: var(--butter); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pacs-series-modality { color: var(--harvestgold); }
+.pacs-series-files { color: var(--pumpkin-pie); }
+
+.pacs-badge {
+  font-size: 0.7rem;
+  color: var(--honey);
+}
+
+.pacs-badge[data-state='running'] { color: var(--orange); }
+.pacs-badge[data-state='done'] { color: #3c6; }
+.pacs-badge[data-state='error'] { color: #f22; }
+.pacs-badge[data-state='unconfirmed'] { color: var(--honey); }
+
+#pacs-gather {
+  border-top: 2px solid var(--pumpkin-pie);
+  padding-top: 0.4rem;
+}
+
+.pacs-gather-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.4rem;
+}
+
+.pacs-gather-title {
+  color: var(--harvestgold);
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+}
+
+.pacs-gather-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  padding: 1px 6px;
+}
+
+.pacs-gather-label { color: var(--butter); }
+
 /* ------------------------------------------------------------ workspace row */
 
 /* Two panes over one address space: the DAG left, the files right, each in
@@ -208,6 +390,60 @@ body[data-zoom='files'] #pane-dag {
 #dag-facts {
   margin-top: 0.4rem;
   font-size: 0.75rem;
+}
+
+/* The feed chooser: the titled roster hosted by the DAG pane. */
+#dag-feedlist {
+  display: none;
+  max-height: 42vh;
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+
+.feedlist-row {
+  display: grid;
+  grid-template-columns: 4em 1fr 8em 8em;
+  gap: 0 0.8rem;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.feedlist-row:hover {
+  background: rgb(255 119 0 / 18%);
+}
+
+.feedlist-id {
+  color: var(--pumpkin-pie);
+  text-align: right;
+}
+
+.feedlist-title {
+  color: var(--butter);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.feedlist-status {
+  color: var(--honey);
+  font-size: 0.7rem;
+}
+
+.feedlist-finishedWithError .feedlist-status,
+.feedlist-cancelled .feedlist-status {
+  color: #f22;
+}
+
+.feedlist-started .feedlist-status,
+.feedlist-running .feedlist-status {
+  color: var(--orange);
+}
+
+.feedlist-owner {
+  color: var(--pumpkin-pie);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .strategy-pill {

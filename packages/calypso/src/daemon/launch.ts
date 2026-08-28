@@ -26,6 +26,7 @@ import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/b
 import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
+import { attachFile_write, attachFile_remove } from './attachFile.js';
 
 /** The daemon sink forwards live command output to the executing surface. */
 export class DaemonSink implements OutputSink {
@@ -178,6 +179,26 @@ export async function daemon_launch(
   berth_write(berth);
 
   const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
+  // The boot animation keeps repainting this terminal, and scrollback dies with
+  // the next clear. The same addresses go to a file so they can be read back
+  // without fighting either.
+  const noteLines: string[] = [
+    `identity:  ${identity}`,
+    `wire:      ${url}`,
+    `token:     ${token}`,
+    ...(webRoot !== null
+      ? [`ARGUS:     http://${bindHost === '0.0.0.0' ? hostname() : bindHost}:${port}/?token=${token}`]
+      : []),
+    `attach:    chell --remote --attach ${url} --token ${token}`,
+  ];
+  const notePath: string | null = attachFile_write(noteLines);
+  if (notePath !== null) {
+    const cleanup = (): void => attachFile_remove();
+    process.once('exit', cleanup);
+    process.once('SIGINT', (): void => { cleanup(); process.exit(0); });
+    process.once('SIGTERM', (): void => { cleanup(); process.exit(0); });
+  }
+
   console.log(chalk.bold.cyan(welcomeLine_build('calypso')));
   for (const line of versionReport_build().split('\n')) {
     console.log(chalk.gray(`    ${line}`));
@@ -200,5 +221,9 @@ export async function daemon_launch(
     const displayHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
     console.log(chalk.green(`[+] ARGUS web surface at http://${displayHost}:${port}/?token=${token}`));
     console.log(chalk.gray(`    serving:   ${webRoot}`));
+  }
+  if (notePath !== null) {
+    console.log(chalk.gray(`    these lines also in:  ${notePath}`));
+    console.log(chalk.gray('    or run:               calypso --berths'));
   }
 }

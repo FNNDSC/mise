@@ -527,12 +527,6 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
       publicFeeds: prefetchPublicFeeds,
       jobs: prefetchJobs,
     };
-    // A daemon is not an interactive shell. The brain-activity pulse repaints
-    // the logo ten times a second for as long as the process lives, which
-    // makes the banner below — the one thing anyone needs from this terminal —
-    // impossible to select. The interactive path stops it once boot finishes;
-    // this path never did.
-    logo_animateStop();
     await daemonSession_run(
       engine,
       currentContext.user ?? undefined,

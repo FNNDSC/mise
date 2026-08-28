@@ -25,9 +25,12 @@ import {
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
-import { FilesPanel, type FileAction } from '../features/files/panel.js';
+import { FilesPanel, type FileAction, type FsListing } from '../features/files/panel.js';
+import { DagPanel } from '../features/dag/panel.js';
 import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
+import { PipelineCycler } from './cycler.js';
+import { pane_register } from './panes.js';
 import '../lcars/theme/lower-decks.css';
 import '../lcars/argus.css';
 
@@ -477,6 +480,32 @@ async function surface_start(token: string): Promise<void> {
     },
   );
 
+  const dagPanel: DagPanel = new DagPanel(
+    element_require('dag-canvas'),
+    element_require('dag-title'),
+    element_require('dag-facts'),
+    element_require('dag-empty'),
+    element_require('dag-strategy'),
+    {
+      command_run: (line: string): void => {
+        void client.line_execute(line, { silent: true });
+      },
+      node_enter: (vfsPath: string): void => {
+        terminal.line_run(`cd "${vfsPath}"`);
+      },
+    },
+  );
+  const cycler: PipelineCycler = new PipelineCycler(
+    element_require('pipeline-cycler'),
+    element_require('pipeline-cycler-name'),
+    (line: string): void => {
+      void client.line_execute(line, { silent: true });
+    },
+  );
+  pane_register({ id: 'console', title: 'CALYPSO CONSOLE', mount: element_require('drawer') });
+  pane_register({ id: 'dag', title: 'DAG', mount: element_require('pane-dag') });
+  pane_register({ id: 'files', title: 'WORKSPACE', mount: element_require('pane-files') });
+
   const drawerStatus: HTMLElement = element_require('drawer-status');
   const mode_show = (mode: string): void => {
     drawerStatus.textContent = `MODE: [${mode}]`;
@@ -525,17 +554,23 @@ async function surface_start(token: string): Promise<void> {
         progress.write(message);
         statusBar.progress_observe(message);
         cascade?.progress_observe(message);
+        dagPanel.progress_observe(message);
       },
       promptline_receive: (context: PromptContext): void => {
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);
         cascade?.promptContext_observe(context);
+        dagPanel.promptContext_observe(context);
       },
       telemetry_receive: (index: { jobs: number; feeds: number }): void =>
         cascade?.index_observe(index),
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
-      envelope_observe: (envelope: WireEnvelope): void => filesPanel.envelope_observe(envelope),
+      envelope_observe: (envelope: WireEnvelope): void => {
+        filesPanel.envelope_observe(envelope);
+        dagPanel.envelope_observe(envelope);
+        cycler.envelope_observe(envelope);
+      },
       close_handle: (): void => {
         statusBar.connection_show(false);
         cascade?.connection_show(false);
@@ -549,6 +584,20 @@ async function surface_start(token: string): Promise<void> {
   statusBar.connection_show(true);
   cascade?.connection_show(true);
   aboutFace_fill(attached.attach);
+
+  // Seed the ambient cycler: the registered pipelines are already listed
+  // in /bin, so one silent ls names them all.
+  void client.line_execute('ls /bin', { silent: true }).then((outcome: ExecuteOutcome): void => {
+    const listing: WireEnvelope | undefined = outcome.envelopes.find(
+      (envelope: WireEnvelope): boolean => envelope.model?.kind === 'fs.listing',
+    );
+    const data: FsListing[] | undefined = listing?.model?.data as FsListing[] | undefined;
+    const names: string[] = (data ?? [])
+      .flatMap((entry: FsListing) => entry.items)
+      .filter((item): boolean => item.type === 'pipeline')
+      .map((item): string => item.name);
+    cycler.names_set(names);
+  });
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();

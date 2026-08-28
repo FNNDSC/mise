@@ -73,6 +73,107 @@
   border-radius: 0.6rem;
 }
 
+/* ------------------------------------------------------------------- zoom */
+
+/* One declaration on the body names the zoomed pane; everything below
+ * reads it. The gutter glides off stage left, the header off stage top,
+ * and the named pane takes the whole viewport. Esc (or the same control
+ * again) restores the composition, which zoom never touches: zoom is a
+ * modifier over the layout, not a layout of its own. */
+
+.wrap:not(#gap),
+.left-frame {
+  transition:
+    translate 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    margin 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body[data-zoom] {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* The header slides up by its measured height (set from main.ts at zoom
+ * time) while a negative margin reclaims its space in the same motion. */
+body[data-zoom] .wrap:not(#gap) {
+  translate: 0 calc(-1 * var(--zoom-header-height, 100vh));
+  margin-bottom: calc(-1 * var(--zoom-header-height, 0px));
+}
+
+body[data-zoom] .left-frame {
+  translate: calc(-100% - 20px) 0;
+  margin-right: calc(-1 * var(--lfw));
+}
+
+/* The drawer glides between its resting, zoomed, and retracted heights;
+ * a drag must steer it directly, so the transition lifts while dragging. */
+#drawer {
+  transition: height 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#drawer.drawer-dragging {
+  transition: none;
+}
+
+/* !important: a drag leaves an inline height on the drawer, and the zoom
+ * states must win over it without erasing it. */
+body[data-zoom='console'] #drawer {
+  height: calc(100dvh - 3.6rem) !important;
+}
+
+body[data-zoom='files'] #drawer {
+  height: 0 !important;
+}
+
+body[data-zoom='files'] #files-panel {
+  max-height: calc(100dvh - 7rem);
+}
+
+/* The console's zoom segment: a butter block beside the mars close pill. */
+.lcars-bar-zoom {
+  width: 40px;
+  height: 28px;
+  background-color: var(--butter);
+  margin-left: 0.5rem;
+  cursor: pointer;
+}
+
+.lcars-bar-zoom:hover {
+  filter: brightness(1.3);
+  box-shadow: 0 0 12px var(--butter);
+}
+
+body[data-zoom='console'] .lcars-bar-zoom {
+  background-color: var(--october-sunset);
+}
+
+/* The files pane's zoom pill: a quiet harvest-gold cap at the top right. */
+main {
+  position: relative;
+}
+
+.pane-zoom {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.5rem;
+  width: 40px;
+  height: 14px;
+  border-radius: 7px;
+  background-color: var(--harvestgold);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.pane-zoom:hover {
+  opacity: 1;
+  box-shadow: 0 0 8px var(--harvestgold);
+}
+
+body[data-zoom='files'] .pane-zoom {
+  background-color: var(--october-sunset);
+  opacity: 1;
+}
+
 /* ---------------------------------------------------------- files instrument */
 
 #files-panel {

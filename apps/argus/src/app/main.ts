@@ -468,7 +468,7 @@ async function surface_start(token: string): Promise<void> {
       }
       // Text renders from a silent cat, so a large file does not flood the
       // transcript.
-      void client.line_execute(`cat "${action.path}"`).then((outcome: ExecuteOutcome): void => {
+      void client.line_execute(`cat "${action.path}"`, { silent: true }).then((outcome: ExecuteOutcome): void => {
         const content: string = ansi_strip(
           outcome.envelopes.map((envelope): string => envelope.rendered).join('\n'),
         );
@@ -494,7 +494,7 @@ async function surface_start(token: string): Promise<void> {
         // moved it (an fs.cwd model) triggers a silent listing refresh,
         // whose fs.listing envelope repaints the panel on observation.
         if (outcome.envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
-          void client.line_execute('ls');
+          void client.line_execute('ls', { silent: true });
         }
       } catch (error: unknown) {
         const reason: string = error instanceof Error ? error.message : String(error);

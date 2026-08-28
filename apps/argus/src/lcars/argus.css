@@ -47,6 +47,18 @@
   color: var(--honey);
 }
 
+/* An empty readout must not leave a gap where a fact used to be. */
+#status-strip .readout:empty {
+  display: none;
+}
+
+/* A contract or stack disagreement is the one time a version number changes
+   what an operator should do, so it is the one time one is shown. */
+#status-strip .mismatch {
+  color: #ff5f5f;
+  font-weight: bold;
+}
+
 .lamp-online {
   background: #6f6;
   color: #030;

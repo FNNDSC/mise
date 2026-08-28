@@ -319,7 +319,6 @@ const LCARS_STORAGE_KEY: string = 'argus-lcars';
  */
 function themePill_wire(): void {
   const pill: HTMLElement = element_require('theme-pill');
-  const body: HTMLElement = document.body;
   let index: number = 0;
   try {
     const saved: string | null = window.localStorage.getItem(LCARS_STORAGE_KEY);
@@ -328,12 +327,16 @@ function themePill_wire(): void {
   } catch {
     index = 0;
   }
+  // The scheme lives on the root element: the theme's derived variables
+  // (--panel-4-color and kin) are resolved where they are defined — :root —
+  // so a body-level override would leave them holding the original palette.
+  const root: HTMLElement = document.documentElement;
   const paint = (): void => {
     const scheme = LCARS_SCHEMES[index] ?? LCARS_SCHEMES[0]!;
     if (scheme.key === 'lower-decks') {
-      delete body.dataset['lcars'];
+      delete root.dataset['lcars'];
     } else {
-      body.dataset['lcars'] = scheme.key;
+      root.dataset['lcars'] = scheme.key;
     }
     pill.textContent = scheme.label;
   };

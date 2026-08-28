@@ -455,7 +455,7 @@ body[data-header='away'] #header-restore {
 
 /* Each scheme re-seats the theme's seven base colors; every other color in
  * the frame derives from these, so the whole surface follows. */
-body[data-lcars='gold'] {
+:root[data-lcars='gold'] {
   --butter: #fff3cd;
   --daybreak: #fc3;
   --harvestgold: #ffd75e;
@@ -465,7 +465,7 @@ body[data-lcars='gold'] {
   --pumpkin-pie: #a07800;
 }
 
-body[data-lcars='sickbay'] {
+:root[data-lcars='sickbay'] {
   --butter: #dceeff;
   --daybreak: #7ec8ff;
   --harvestgold: #66c2ff;
@@ -475,7 +475,7 @@ body[data-lcars='sickbay'] {
   --pumpkin-pie: #0d4f8b;
 }
 
-body[data-lcars='nemesis'] {
+:root[data-lcars='nemesis'] {
   --butter: #f0e4fc;
   --daybreak: #cfa0ff;
   --harvestgold: #d0a8f0;

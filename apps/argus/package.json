@@ -14,7 +14,10 @@
   "license": "MIT",
   "dependencies": {
     "@fnndsc/calypso": "*",
-    "@fnndsc/menu": "*"
+    "@fnndsc/menu": "*",
+    "@types/three": "^0.185.4",
+    "d3-force-3d": "^3.0.6",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

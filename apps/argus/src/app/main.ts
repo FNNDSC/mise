@@ -297,6 +297,7 @@ async function surface_start(token: string): Promise<void> {
         terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
       }
       progress.clear();
+      statusBar.activity_clear();
       // The felt latency, measured: command round-trip in the MODE strip.
       mode_show(`READY ${Math.round(performance.now() - startedAt)}ms`);
       terminal.prompt_draw();
@@ -316,7 +317,10 @@ async function surface_start(token: string): Promise<void> {
     token,
     {
       output_receive: (channel: OutputChannel, chunk: string): void => terminal.output_write(channel, chunk),
-      progress_receive: (message: ProgressMessage): void => progress.write(message),
+      progress_receive: (message: ProgressMessage): void => {
+        progress.write(message);
+        statusBar.progress_observe(message);
+      },
       promptline_receive: (context: PromptContext): void => {
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);

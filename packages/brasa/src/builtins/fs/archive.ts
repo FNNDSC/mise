@@ -24,8 +24,11 @@ import {
   feed_create,
   files_listRecursive,
   job_statusFetch,
+  feed_delete,
+  pipeline_readiness,
   pipeline_run,
   type FeedCreationResult,
+  type PipelineReadiness,
   type FsItem,
 } from '@fnndsc/salsa';
 import type { WorkflowResult } from '@fnndsc/cumin';
@@ -113,6 +116,20 @@ export async function directory_archive(directory: string): Promise<ArchiveResul
     return null;
   }
 
+  // Ask whether the pipeline can run before creating anything. Preparing it
+  // needs no feed, and a feed created for a run that never happens is litter
+  // on someone's CUBE that nobody knows to clean up.
+  const readiness: PipelineReadiness = await pipeline_readiness(ARCHIVE_PIPELINE);
+  if (!readiness.ready) {
+    errorStack.stack_push('error', readiness.reason === 'unregistered'
+      ? `The '${ARCHIVE_PIPELINE}' pipeline is not registered on this CUBE, so a directory cannot be archived. ` +
+        'Register it from the ChRIS store, or set CHRIS_ARCHIVE_PIPELINE to one that is.'
+      : `The '${ARCHIVE_PIPELINE}' pipeline is registered but cannot run here — see the reason above, which is ` +
+        'usually a node not registered on the target compute environment. Fix that, or set ' +
+        'CHRIS_ARCHIVE_PIPELINE to a pipeline that can run.');
+    return null;
+  }
+
   sink_get().status_write(
     `${chalk.yellow('⚠ CUBE cannot hand over a directory, so this runs the ')}` +
     `${chalk.bold(ARCHIVE_PIPELINE)}${chalk.yellow(' pipeline to make an archive first.')}\n` +
@@ -128,9 +145,9 @@ export async function directory_archive(directory: string): Promise<ArchiveResul
 
   const workflow: Result<WorkflowResult> = await pipeline_run(ARCHIVE_PIPELINE, dircopyId);
   if (!workflow.ok || workflow.value.pluginInstanceIds.length === 0) {
-    errorStack.stack_push('error',
-      `The '${ARCHIVE_PIPELINE}' pipeline is not registered on this CUBE, so a directory cannot be archived. ` +
-      'Register it from the ChRIS store, or set CHRIS_ARCHIVE_PIPELINE to one that is.');
+    // Readiness passed, so this failed between then and now. Say what was left
+    // behind rather than overwriting a reason the stack already carries.
+    await feed_discard(feed.id, name);
     return null;
   }
 
@@ -140,14 +157,34 @@ export async function directory_archive(directory: string): Promise<ArchiveResul
 
   if (status === null) {
     errorStack.stack_push('error', `Archiving ${name} did not finish within the time allowed.`);
+    // The run may yet finish, so its feed is left alone rather than deleted
+    // out from under a job that is still going.
     return null;
   }
   if (status !== 'finishedSuccessfully') {
     errorStack.stack_push('error', `Archiving ${name} ended as ${status}.`);
+    await feed_discard(feed.id, name);
     return null;
   }
 
   return archiveOutput_find(feed.id, dircopyId, archiveInstanceId, name);
+}
+
+/**
+ * Removes a feed created for an archive run that then failed.
+ *
+ * The feed exists only to root the archive. Left behind it is litter in
+ * someone's feed list and a copy in the compute graph asserting an analysis
+ * that produced nothing — so it is removed, and named when it cannot be.
+ *
+ * @param feedId - The feed to discard.
+ * @param name - The directory's name, for the message.
+ */
+async function feed_discard(feedId: number, name: string): Promise<void> {
+  const removed: boolean = await feed_delete(feedId);
+  errorStack.stack_push('error', removed
+    ? `Archiving ${name} failed; the feed it created was removed.`
+    : `Archiving ${name} failed, and feed ${feedId} could not be removed. Delete it when convenient.`);
 }
 
 /**

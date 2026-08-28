@@ -11,6 +11,8 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 const dataGet = jest.fn();
 const feedCreate = jest.fn();
 const pipelineRun = jest.fn();
+const pipelineReadiness = jest.fn();
+const feedDelete = jest.fn();
 const statusFetch = jest.fn();
 const listRecursive = jest.fn();
 const stackPush = jest.fn();
@@ -21,6 +23,8 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feed_create: feedCreate,
   pipeline_run: pipelineRun,
+  pipeline_readiness: pipelineReadiness,
+  feed_delete: feedDelete,
   job_statusFetch: statusFetch,
   files_listRecursive: listRecursive,
 }));
@@ -41,7 +45,9 @@ describe('directory_archive', () => {
     jest.clearAllMocks();
     dataGet.mockResolvedValue(binWithDircopy as never);
     feedCreate.mockResolvedValue(feed as never);
+    pipelineReadiness.mockResolvedValue({ ready: true } as never);
     pipelineRun.mockResolvedValue({ ok: true, value: { workflowId: 3, pluginInstanceIds: [42] } } as never);
+    feedDelete.mockResolvedValue(true as never);
     statusFetch.mockResolvedValue({ ok: true, value: 'finishedSuccessfully' } as never);
     listRecursive.mockResolvedValue([
       { path: 'feeds/feed_9/pl-dircopy_41/data/scan.dcm', type: 'file', size: 10 },
@@ -70,7 +76,7 @@ describe('directory_archive', () => {
   });
 
   it('names the missing pipeline and where to get it', async () => {
-    pipelineRun.mockResolvedValueOnce({ ok: false } as never);
+    pipelineReadiness.mockResolvedValueOnce({ ready: false, reason: 'unregistered' } as never);
 
     const result = await directory_archive('/home/me/series');
 
@@ -78,6 +84,48 @@ describe('directory_archive', () => {
     const [, message] = stackPush.mock.calls.at(-1) as [string, string];
     expect(message).toContain('zip v20240311');
     expect(message).toContain('store');
+  });
+
+  it('distinguishes a pipeline that will not run from one that is absent', async () => {
+    // Sending someone to the store for a pipeline already registered wastes
+    // their time and contradicts the reason printed directly above.
+    pipelineReadiness.mockResolvedValueOnce({ ready: false, reason: 'unpreparable' } as never);
+
+    const result = await directory_archive('/home/me/series');
+
+    expect(result).toBeNull();
+    const [, message] = stackPush.mock.calls.at(-1) as [string, string];
+    expect(message).toContain('registered but cannot run');
+    expect(message).toContain('compute');
+  });
+
+  it('creates no feed when the pipeline cannot run', async () => {
+    // A feed for a run that never happens is litter in someone's feed list and
+    // an analysis in the compute graph that produced nothing.
+    pipelineReadiness.mockResolvedValueOnce({ ready: false, reason: 'unpreparable' } as never);
+
+    await directory_archive('/home/me/series');
+
+    expect(feedCreate).not.toHaveBeenCalled();
+  });
+
+  it('removes the feed when the run fails after it was created', async () => {
+    pipelineRun.mockResolvedValueOnce({ ok: false } as never);
+
+    const result = await directory_archive('/home/me/series');
+
+    expect(result).toBeNull();
+    expect(feedDelete).toHaveBeenCalledWith(9);
+  });
+
+  it('names a feed it could not remove, so someone can', async () => {
+    pipelineRun.mockResolvedValueOnce({ ok: false } as never);
+    feedDelete.mockResolvedValueOnce(false as never);
+
+    await directory_archive('/home/me/series');
+
+    const [, message] = stackPush.mock.calls.at(-1) as [string, string];
+    expect(message).toContain('feed 9');
   });
 
   it('names pl-dircopy when a feed cannot be created at all', async () => {
@@ -98,8 +146,23 @@ describe('directory_archive', () => {
 
     expect(result).toBeNull();
     expect(listRecursive).not.toHaveBeenCalled();
-    const [, message] = stackPush.mock.calls.at(-1) as [string, string];
-    expect(message).toContain('finishedWithError');
+    expect(feedDelete).toHaveBeenCalledWith(9);
+    const messages = stackPush.mock.calls.map((call) => (call as [string, string])[1]);
+    expect(messages.some((m) => m.includes('finishedWithError'))).toBe(true);
+  });
+
+  it('leaves the feed alone when the job merely ran out of time', async () => {
+    // It may yet finish. Deleting the feed would remove it from under a job
+    // that is still going.
+    statusFetch.mockResolvedValue({ ok: true, value: 'started' } as never);
+    jest.useFakeTimers();
+    const pending = directory_archive('/home/me/series');
+    await jest.advanceTimersByTimeAsync(16 * 60 * 1000);
+    const result = await pending;
+    jest.useRealTimers();
+
+    expect(result).toBeNull();
+    expect(feedDelete).not.toHaveBeenCalled();
   });
 
   it('reports an empty output rather than returning a directory as the archive', async () => {

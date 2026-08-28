@@ -247,6 +247,46 @@ export interface PipelineRunOptions {
 }
 
 /**
+ * Why a pipeline cannot be run, when it cannot.
+ *
+ * The two reasons call for different actions and must not be conflated: a
+ * pipeline nobody registered is fetched from the store, while one whose nodes
+ * are not placed on a compute environment is a deployment problem in a
+ * pipeline that is already present.
+ */
+export type PipelineReadiness =
+  | { ready: true }
+  | { ready: false; reason: 'unregistered' | 'unpreparable' };
+
+/**
+ * Reports whether a pipeline exists and could be prepared for a run.
+ *
+ * Preparation needs no previous instance, so this answers before a caller
+ * commits to anything — which matters when the commitment is a feed that would
+ * otherwise be left behind when the run fails.
+ *
+ * @param nameOrId - Pipeline name or numeric ID string.
+ * @param invocationOptions - The overlays a real run would use, since a
+ *   placement that fails here fails there.
+ * @returns Whether the pipeline is runnable, and why not when it is not.
+ *   Detail is on the error stack either way.
+ */
+export async function pipeline_readiness(
+  nameOrId: string,
+  invocationOptions: PipelineRunOptions = {},
+): Promise<PipelineReadiness> {
+  const manifestResult: Result<PipelineManifest> = await pipelineManifest_get(nameOrId);
+  if (!manifestResult.ok) return { ready: false, reason: 'unregistered' };
+  const prepared: Result<PreparedPipelineInvocation> = pipelineInvocation_prepare({
+    manifest: manifestResult.value,
+    globalCompute: invocationOptions.globalCompute,
+    parameterFile: invocationOptions.parameterFile,
+    cliBindings: invocationOptions.cliBindings,
+  });
+  return prepared.ok ? { ready: true } : { ready: false, reason: 'unpreparable' };
+}
+
+/**
  * Run a pipeline by name or ID, attaching it to a previous plugin instance.
  *
  * @param nameOrId - Pipeline name or numeric ID string.

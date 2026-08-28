@@ -277,11 +277,33 @@ describe('builtin_pull engine consumption', () => {
       return 1;
     });
     await builtin_pull([QUERY_PATH]);
-    expect(sinkData).toContain('0/2 series complete');
+    expect(sinkData).toContain('0/2 series confirmed');
     expect(sinkData).toContain('FAILED TO FIRE');
     expect(sinkData).toContain('[ERROR — verify with: pacs status]');
     expect(sinkData).toContain('1 retrieve(s) were never fired');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('reports a lost watch as unknown, and does not fail the command for it', async () => {
+    // The socket dying says nobody is watching, not that a retrieve failed:
+    // the PACS keeps pushing and CUBE keeps registering afterwards. Calling
+    // that a failure sends an operator looking for files that are arriving.
+    mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
+    mockFireAndWatch.mockImplementation(async (tasks: TestTask[]) => {
+      tasks[0].status = 'pulled';
+      tasks[0].lonkConfirmed = true;
+      tasks[1].status = 'unconfirmed';
+      return 0;
+    });
+    process.exitCode = 0;
+
+    await builtin_pull([QUERY_PATH]);
+
+    expect(sinkData).toContain('1/2 series confirmed');
+    expect(sinkData).toContain('WATCH ENDED');
+    expect(sinkData).toContain('not a failed retrieve');
+    expect(sinkData).not.toContain('FAILED TO FIRE');
+    expect(process.exitCode).toBe(0);
   });
 
   it('skips series already fully registered and fires only the missing', async () => {

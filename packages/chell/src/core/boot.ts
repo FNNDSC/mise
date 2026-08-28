@@ -20,7 +20,7 @@ import { REPL } from './repl.js';
 import { session } from '@fnndsc/brasa';
 import { Result, Ok, Err, Client, type CommandEnvelope } from '@fnndsc/cumin';
 import { spinner } from '@fnndsc/brasa';
-import { logo_print, logo_animatePulse, logo_animateStop } from '../lib/logo.js';
+import { logo_print, logo_animatePulse, logo_animateStop, logo_reviveOnScreen } from '../lib/logo.js';
 import {
   BootInfoItem,
   BootInfoItem3,
@@ -512,9 +512,12 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     currentContext = { ...currentContext, folder: '/' };
   }
 
-  // Login phase complete — start the brain activity animation now
+  // Credentials are good: reset the screen and bring the brain to life above a
+  // clear one. Animating in place would leave it anchored off the top of a
+  // screen the login output has already scrolled, where it paints over the
+  // boot report and the daemon's own addresses instead of over itself.
   if (isInteractiveSession && showLogo && !useAsciiBoot) {
-    logo_animatePulse();
+    logo_reviveOnScreen();
   }
 
 

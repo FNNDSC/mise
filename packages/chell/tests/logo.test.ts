@@ -21,6 +21,7 @@ import {
   rowsPrinted_track,
   rowsPrinted_untrack,
   logo_isAnimating,
+  logo_reviveOnScreen,
 } from '../src/lib/logo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -164,6 +165,52 @@ describe('animation and a scrolled screen', () => {
     } finally {
       logo_animateStop();
       rowsPrinted_untrack();
+    }
+  });
+});
+
+describe('logo_reviveOnScreen', () => {
+  beforeEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 160, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 60, configurable: true });
+    jest.useFakeTimers();
+  });
+
+  it('clears the screen, redraws the logo, and starts the pulse', () => {
+    const written: string[] = [];
+    const original = process.stdout.write;
+    process.stdout.write = ((chunk: string): boolean => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      expect(logo_reviveOnScreen()).toBe(true);
+      // Home, then erase below: the logo lands at row zero with the whole
+      // screen beneath it for boot output to flow into.
+      expect(written[0]).toBe('\x1b[H\x1b[J');
+      expect(logo_isAnimating()).toBe(true);
+    } finally {
+      logo_animateStop();
+      process.stdout.write = original;
+    }
+  });
+
+  it('re-anchors, so output printed before login cannot displace the logo', () => {
+    const original = process.stdout.write;
+    process.stdout.write = ((): boolean => true) as typeof process.stdout.write;
+    try {
+      // A login phase long enough to scroll the logo away entirely.
+      rowsPrinted_track();
+      for (let line = 0; line < 200; line++) process.stdout.write('login output\n');
+      logo_reviveOnScreen();
+      jest.advanceTimersByTime(500);
+      // Without the reset the guard would have stopped it at once.
+      expect(logo_isAnimating()).toBe(true);
+    } finally {
+      logo_animateStop();
+      rowsPrinted_untrack();
+      process.stdout.write = original;
     }
   });
 });

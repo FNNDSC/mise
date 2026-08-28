@@ -315,6 +315,11 @@ body[data-zoom='files'] .pane-zoom {
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }
 
+/* A lost daemon link dims the cascade: stale figures should look stale. */
+#data-cascade.dc-stale {
+  filter: brightness(0.45) saturate(0.5);
+}
+
 /* ------------------------------------------------------- the tactical drawer */
 
 /* The console unfurls from behind the workspace lid (the bar-panel below
@@ -409,7 +414,8 @@ body[data-zoom='files'] .pane-zoom {
   font-size: 0.75rem;
   line-height: 1.35;
   letter-spacing: 1px;
-  text-shadow: 0 0 2px var(--daybreak);
+  /* No glow on the transcript: at this size a shadow reads as blur, not
+   * phosphor. The banner keeps its own. */
   white-space: pre-wrap;
   word-break: break-word;
 }

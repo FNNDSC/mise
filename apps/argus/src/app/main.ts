@@ -27,6 +27,7 @@ import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction } from '../features/files/panel.js';
 import { StatusBar } from './status.js';
+import { Cascade } from './cascade.js';
 import '../lcars/theme/lower-decks.css';
 import '../lcars/argus.css';
 
@@ -196,50 +197,13 @@ function zoom_wire(terminal: ArgusTerminal): void {
 }
 
 /**
- * Populates the top frame's data cascade with generated figures.
+ * Builds the top frame's data cascade, live from boot.
  *
- * The cascade is the LCARS top panel's ambient number field. Generating it
- * here keeps template markup out of the repository and opens the door to
- * feeding it live telemetry later.
+ * @returns The cascade, or null when the page has no cascade element.
  */
-function cascade_build(): void {
+function cascade_build(): Cascade | null {
   const wrapper: HTMLElement | null = document.getElementById('data-cascade');
-  if (wrapper === null) {
-    return;
-  }
-  const columnWidths: number[] = [2, 3, 3, 2, 2, 11, 2, 2];
-  const cells: Array<{ element: HTMLDivElement; width: number }> = [];
-  for (const width of columnWidths) {
-    const column: HTMLDivElement = document.createElement('div');
-    column.className = 'data-column';
-    for (let rowIndex: number = 1; rowIndex <= 4; rowIndex++) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = `dc-row-${rowIndex}`;
-      row.textContent = figure_random(width);
-      column.appendChild(row);
-      cells.push({ element: row, width });
-    }
-    wrapper.appendChild(column);
-  }
-  // The flicker loop, the prototype's telemetry rhythm made visible: a
-  // handful of cells shift every beat so the top panel reads as a live
-  // system, and every few seconds one column sweeps bright.
-  window.setInterval((): void => {
-    for (let flickerCount: number = 0; flickerCount < 5; flickerCount++) {
-      const cell = cells[Math.floor(Math.random() * cells.length)];
-      if (cell !== undefined) {
-        cell.element.textContent = figure_random(cell.width);
-      }
-    }
-  }, 300);
-  const columns: HTMLDivElement[] = Array.from(wrapper.querySelectorAll('.data-column'));
-  window.setInterval((): void => {
-    const column = columns[Math.floor(Math.random() * columns.length)];
-    if (column !== undefined) {
-      column.classList.add('dc-sweep');
-      window.setTimeout((): void => column.classList.remove('dc-sweep'), 650);
-    }
-  }, 2600);
+  return wrapper === null ? null : new Cascade(wrapper);
 }
 
 /**
@@ -267,16 +231,6 @@ function extension_isImage(filePath: string): boolean {
 }
 
 /**
- * Produces one zero-padded cascade figure.
- *
- * @param width - The digit count.
- * @returns The figure as text.
- */
-function figure_random(width: number): string {
-  return String(Math.floor(Math.random() * 10 ** width)).padStart(width, '0');
-}
-
-/**
  * Wires the LCARS panel beeps: every frame button clicks with the theme's
  * voice, live or inert alike.
  */
@@ -293,6 +247,9 @@ function panelSounds_wire(): void {
  * @returns Resolves when the surface is attached and interactive.
  * @throws {Error} When the attach is refused.
  */
+/** The data cascade, built at page boot and fed by the session's wiring. */
+let cascade: Cascade | null = null;
+
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
   const filesPanel: FilesPanel = new FilesPanel(
@@ -370,16 +327,19 @@ async function surface_start(token: string): Promise<void> {
       progress_receive: (message: ProgressMessage): void => {
         progress.write(message);
         statusBar.progress_observe(message);
+        cascade?.progress_observe(message);
       },
       promptline_receive: (context: PromptContext): void => {
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);
+        cascade?.promptContext_observe(context);
       },
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
       envelope_observe: (envelope: WireEnvelope): void => filesPanel.envelope_observe(envelope),
       close_handle: (): void => {
         statusBar.connection_show(false);
+        cascade?.connection_show(false);
         mode_show('OFFLINE');
       },
     },
@@ -388,6 +348,7 @@ async function surface_start(token: string): Promise<void> {
 
   statusBar.attach_show(attached.attach);
   statusBar.connection_show(true);
+  cascade?.connection_show(true);
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();
@@ -410,7 +371,7 @@ async function surface_start(token: string): Promise<void> {
  * form and start on submit.
  */
 function page_boot(): void {
-  cascade_build();
+  cascade = cascade_build();
   const params: URLSearchParams = new URLSearchParams(window.location.search);
   const urlToken: string | null = params.get('token');
   const attachForm: HTMLElement = element_require('attach-form');

@@ -417,6 +417,20 @@ export type FileDeliverResult = Omit<
   'type' | 'deliverId'
 >;
 
+/**
+ * The daemon's heartbeat, pushed roughly once a second while any surface is
+ * attached: the live process-index counts. Event-driven facts (progress,
+ * command latency) travel on their own messages; this carries only what
+ * changes without a command.
+ */
+export const telemetryMessageSchema = z.object({
+  type: z.literal('telemetry'),
+  index: z.object({
+    jobs: z.number(),
+    feeds: z.number(),
+  }),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -428,6 +442,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   errorMessageSchema,
   promptMessageSchema,
   promptLineMessageSchema,
+  telemetryMessageSchema,
   pipeMessageSchema,
   shellMessageSchema,
   editMessageSchema,

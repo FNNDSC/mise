@@ -190,6 +190,18 @@ export class Cascade {
   }
 
   /**
+   * Folds a telemetry heartbeat into the counts: the daemon's live index,
+   * arriving about once a second whether or not a command runs.
+   *
+   * @param index - The live process-index counts.
+   */
+  public index_observe(index: { jobs: number; feeds: number }): void {
+    this.telemetry.jobsLoaded = index.jobs;
+    this.telemetry.jobsTotal = index.jobs;
+    this.telemetry.feeds = index.feeds;
+  }
+
+  /**
    * Records the connection state; a lost link dims the whole cascade.
    *
    * @param connected - True while the daemon link is up.

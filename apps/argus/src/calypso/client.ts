@@ -89,6 +89,7 @@ export interface ClientHandlers {
   output_receive?: (channel: OutputChannel, chunk: string) => void;
   progress_receive?: (message: ProgressMessage) => void;
   promptline_receive?: (context: PromptContext) => void;
+  telemetry_receive?: (index: { jobs: number; feeds: number }) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
   close_handle?: () => void;
@@ -289,6 +290,10 @@ export class ArgusClient {
       }
       case 'promptline': {
         this.handlers.promptline_receive?.(message.context);
+        break;
+      }
+      case 'telemetry': {
+        this.handlers.telemetry_receive?.(message.index);
         break;
       }
       case 'error': {

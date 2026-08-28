@@ -404,12 +404,14 @@ body[data-header='away'] #header-restore {
   font-size: 0.9rem;
 }
 
-.about-credits {
+/* The attribution, exactly as the page footer wore it, now living in the
+ * versions face. The theme's `footer` rule supplies the type; only the
+ * spacing is retuned for the header. */
+.about-footer {
   column-span: all;
-  margin-top: 0.4rem;
-  color: var(--honey);
-  opacity: 0.6;
-  font-size: 0.65rem;
+  margin-top: 0.6rem;
+  padding-bottom: 0;
+  padding-left: 0;
 }
 
 /* -------------------------------------------------------------- audio pill */

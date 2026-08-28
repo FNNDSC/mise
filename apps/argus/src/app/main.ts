@@ -360,7 +360,9 @@ function themePill_wire(): void {
  * @param attach - The attach ack, carrying the daemon's stack report.
  */
 function aboutFace_fill(attach: AttachInfo): void {
-  const face: HTMLElement | null = document.getElementById('header-about');
+  // The rows container only: the face's static footer (the attribution,
+  // moved up from the page bottom) stays untouched.
+  const face: HTMLElement | null = document.getElementById('about-rows');
   if (face === null) {
     return;
   }
@@ -399,11 +401,6 @@ function aboutFace_fill(attach: AttachInfo): void {
     row.append(name, figure);
     face.appendChild(row);
   }
-  const credits: HTMLDivElement = document.createElement('div');
-  credits.className = 'about-credits';
-  credits.textContent =
-    'Content © 2026 FNNDSC · ARGUS is part of the mise project · LCARS inspired template by www.TheLCARS.com';
-  face.appendChild(credits);
 }
 
 /**
@@ -534,6 +531,8 @@ async function surface_start(token: string): Promise<void> {
         statusBar.promptContext_show(context);
         cascade?.promptContext_observe(context);
       },
+      telemetry_receive: (index: { jobs: number; feeds: number }): void =>
+        cascade?.index_observe(index),
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
       envelope_observe: (envelope: WireEnvelope): void => filesPanel.envelope_observe(envelope),

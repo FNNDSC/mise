@@ -55,6 +55,20 @@ export interface SessionPromptContextOptions {
 }
 
 /**
+ * Snapshots the live process-index counts, cheaply: no network, just the
+ * cache's own registers. The daemon's telemetry heartbeat reads this.
+ *
+ * @returns The jobs and feeds the index currently holds.
+ */
+export function procIndex_snapshot(): { jobs: number; feeds: number } {
+  const cache = procCache_get();
+  return {
+    jobs: cache.warmupProgress_get().loaded,
+    feeds: cache.feedScopeCounts_get('').total,
+  };
+}
+
+/**
  * Builds the current session's prompt context.
  *
  * @param options - The last-command inputs the session cannot know.

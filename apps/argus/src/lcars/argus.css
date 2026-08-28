@@ -163,28 +163,13 @@ body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
  * declaration (`data-workspace` on the body) picks which shows, and the
  * incoming face slides on stage. Hitting PACS-03 (or the mars pill)
  * toggles it back out. */
-#pacs-workspace {
+/* Pane mounts start offstage; the layout tree reparents them in. */
+.workspace-pane {
   display: none;
 }
 
-body[data-workspace='pacs'] #workspace-row {
-  display: none;
-}
-
-body[data-workspace='pacs'] #pacs-workspace {
+.layout-leaf > .workspace-pane {
   display: block;
-  animation: workspace-arrive 0.45s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes workspace-arrive {
-  from {
-    transform: translateX(60px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
 }
 
 #pacs-form {
@@ -341,22 +326,73 @@ body[data-workspace='pacs'] #pacs-workspace {
 
 /* ------------------------------------------------------------ workspace row */
 
-/* Two panes over one address space: the DAG left, the files right, each in
- * the shared pane chrome. Narrow screens stack them. */
-#workspace-row {
+/* The layout tree: nested flex scaffolding, dividers, and the focus ring. */
+#layout-root {
+  width: 100%;
+}
+
+#layout-root.layout-arrive {
+  animation: layout-arrive 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes layout-arrive {
+  from {
+    transform: translateX(60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.layout-split {
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
 }
 
-#pane-dag {
-  flex: 1 1 52%;
-  min-width: 320px;
+.layout-col {
+  flex-direction: row;
 }
 
-#pane-files {
-  flex: 1 1 40%;
-  min-width: 280px;
+.layout-row {
+  flex-direction: column;
+}
+
+.layout-leaf {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.layout-leaf.pane-focused {
+  box-shadow: inset 0 0 0 1px rgb(255 170 68 / 45%);
+}
+
+.layout-divider {
+  flex: none;
+  background: var(--pumpkin-pie);
+  opacity: 0.35;
+  border-radius: 3px;
+}
+
+.layout-col > .layout-divider {
+  width: 6px;
+  margin: 0 4px;
+  cursor: col-resize;
+}
+
+.layout-row > .layout-divider {
+  height: 6px;
+  margin: 4px 0;
+  cursor: row-resize;
+}
+
+.layout-divider:hover {
+  opacity: 1;
+  background: var(--harvestgold);
+  box-shadow: 0 0 8px rgb(255 170 68 / 60%);
 }
 
 #dag-canvas {

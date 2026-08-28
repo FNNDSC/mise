@@ -46,6 +46,13 @@ export class PipelineCycler {
       document.documentElement,
       { attributes: true, attributeFilter: ['data-lcars'] },
     );
+    // The cycler is a header face now: returning to it after another face
+    // (or a slid-away header) leaves the canvas at whatever size the hidden
+    // box had, so refit whenever the face changes.
+    new MutationObserver((): void => {
+      window.setTimeout((): void => this.scene.size_fit(), 60);
+    }).observe(document.body, { attributes: true, attributeFilter: ['data-header'] });
+    window.addEventListener('resize', (): void => this.scene.size_fit());
   }
 
   /**

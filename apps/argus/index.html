@@ -37,28 +37,25 @@
         </div>
         <div class="right-frame-top">
           <div class="banner"><a href="">ARGUS</a> &bull; CALYPSO SESSION</div>
-          <!-- The ambient pipeline cycler: registered pipelines take turns
-               rotating in the header's left field. -->
-          <div id="pipeline-cycler"><span id="pipeline-cycler-name"></span></div>
           <div class="data-cascade-button-group">
-            <!-- The header pane: data-header on <body> picks which of the
-                 three faces shows — the cascade (default), the stack/about
-                 face (ARGUS WEB), or the labeled telemetry face (02-CALYPSO). -->
-            <div class="data-wrapper" id="data-cascade"></div>
-            <div class="header-face" id="header-about">
-              <div id="about-rows"></div>
-              <footer class="about-footer">
-                Content &copy; 2026 FNNDSC &bull; ARGUS is part of the mise project.<br />
-                <!-- The following attribution must not be removed: -->
-                LCARS Inspired Website Template by <a href="https://www.thelcars.com">www.TheLCARS.com</a>,
-                adapted for ARGUS.
-              </footer>
+            <!-- The header pane: data-header on <body> picks the face.
+                 Resting face: the pipeline DAG cycler (also 02-CALYPSO).
+                 ARGUS WEB: live stats, controls, versions, credits. -->
+            <div class="header-face" id="header-dag">
+              <div id="pipeline-cycler"><span id="pipeline-cycler-name"></span></div>
             </div>
             <div class="header-face" id="header-telemetry">
               <div class="header-controls">
                 <button id="audio-pill" class="audio-pill" title="audio on/off">AUDIO</button>
                 <button id="theme-pill" class="theme-pill" title="cycle LCARS color scheme">LOWER DECKS</button>
               </div>
+              <div id="about-rows"></div>
+              <footer class="about-footer">
+                Content &copy; 2026 FNNDSC &bull; ARGUS is part of the mise project, a ChRIS system interface.<br />
+                <!-- The following attribution must not be removed: -->
+                LCARS Inspired Website Template by <a href="https://www.thelcars.com">www.TheLCARS.com</a>,
+                adapted for ARGUS.
+              </footer>
             </div>
           </div>
           <div class="bar-panel first-bar-panel">

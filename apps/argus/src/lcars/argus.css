@@ -466,14 +466,12 @@ body[data-zoom='files'] #pane-dag {
 
 /* --------------------------------------------------------- pipeline cycler */
 
-/* The ambient cycler: a small rotating pipeline DAG living in the header's
- * left field, under the banner. Hidden with the cascade when a face shows. */
+/* The ambient cycler: the header's resting face — registered pipelines
+ * taking turns as a slowly rotating DAG across the black field. */
 #pipeline-cycler {
-  position: absolute;
-  top: 3.4rem;
-  left: 1.2rem;
-  width: 15rem;
-  height: 9.5rem;
+  position: relative;
+  width: 100%;
+  height: 11rem;
 }
 
 #pipeline-cycler canvas {
@@ -484,17 +482,13 @@ body[data-zoom='files'] #pane-dag {
 
 #pipeline-cycler-name {
   position: absolute;
-  bottom: -0.2rem;
-  left: 0;
+  bottom: 0.2rem;
+  left: 0.6rem;
   color: var(--pumpkin-pie);
   font-family: 'Antonio', sans-serif;
   font-size: 0.65rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-body[data-header] #pipeline-cycler {
-  display: none;
 }
 
 /* ---------------------------------------------------------- files instrument */
@@ -658,11 +652,9 @@ body[data-header] #pipeline-cycler {
   letter-spacing: 0.06em;
 }
 
-body[data-header] #data-cascade {
-  display: none;
-}
-
-body[data-header='versions'] #header-about {
+/* The resting face is the pipeline DAG; 02-CALYPSO names it explicitly. */
+body:not([data-header]) #header-dag,
+body[data-header='dag'] #header-dag {
   display: block;
 }
 

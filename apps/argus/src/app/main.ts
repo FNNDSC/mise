@@ -249,11 +249,9 @@ function zoom_wire(terminal: ArgusTerminal): void {
  * @returns The cascade, or null when the page has no cascade element.
  */
 function cascade_build(): Cascade | null {
-  const wrapper: HTMLElement | null = document.getElementById('data-cascade');
-  if (wrapper === null) {
-    return null;
-  }
-  const cascadeInstance: Cascade = new Cascade(wrapper);
+  // The ambient number grid has retired; the class remains the keeper of
+  // the labeled telemetry rows in the stats face.
+  const cascadeInstance: Cascade = new Cascade(document.getElementById('data-cascade'));
   const telemetryFace: HTMLElement | null = document.getElementById('header-telemetry');
   if (telemetryFace !== null) {
     cascadeInstance.telemetryPanel_bind(telemetryFace);
@@ -263,7 +261,8 @@ function cascade_build(): Cascade | null {
 
 /**
  * Wires the header faces. The two gutter-top buttons SELECT: ARGUS WEB
- * shows the live stats and controls face, 02-CALYPSO the versions face.
+ * shows the live stats/controls/versions face, 02-CALYPSO the pipeline
+ * DAG cycler (also the resting face).
  * Pressing the already-selected button sends the whole header gliding off
  * the top, leaving the lid strip; the strip (or Esc) restores it to the
  * cascade. One declaration (`data-header` on the body) carries the state:
@@ -286,7 +285,7 @@ function headerFaces_wire(): void {
     }
   };
   document.querySelector('.panel-1')?.addEventListener('click', (): void => face_select('stats'));
-  document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('versions'));
+  document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('dag'));
 
   const header_restore = (): void => {
     delete body.dataset['header'];

@@ -71,7 +71,7 @@ interface Telemetry {
  * telemetry source and repaints on a steady beat.
  */
 export class Cascade {
-  private readonly wrapper: HTMLElement;
+  private readonly wrapper: HTMLElement | null;
   private readonly cells: CascadeCell[] = [];
   private readonly bootedAt: number = Date.now();
   private readonly telemetry: Telemetry = {
@@ -93,13 +93,18 @@ export class Cascade {
   private readonly telemetryRows: TelemetryRow[] = [];
 
   /**
-   * Builds the cascade grid inside the wrapper and starts the beat and
-   * sweep loops.
+   * Builds the cascade grid inside the wrapper (when one exists — the
+   * number field has retired, but the class remains the telemetry keeper)
+   * and starts the beat loop.
    *
-   * @param wrapper - The `#data-cascade` element to populate.
+   * @param wrapper - The `#data-cascade` element, or null for no grid.
    */
-  constructor(wrapper: HTMLElement) {
+  constructor(wrapper: HTMLElement | null) {
     this.wrapper = wrapper;
+    if (wrapper === null) {
+      window.setInterval((): void => this.beat_paint(), BEAT_MS);
+      return;
+    }
     const narrowSources: Array<() => number> = this.narrowSources_list();
     const wideSources: Array<() => number> = this.wideSources_list();
     let narrowIndex: number = 0;
@@ -208,7 +213,7 @@ export class Cascade {
    */
   public connection_show(connected: boolean): void {
     this.telemetry.connected = connected ? 1 : 0;
-    this.wrapper.classList.toggle('dc-stale', !connected);
+    this.wrapper?.classList.toggle('dc-stale', !connected);
   }
 
   /**
@@ -302,6 +307,9 @@ export class Cascade {
 
   /** Starts the bright sweep: every few seconds one column flares. */
   private sweep_start(): void {
+    if (this.wrapper === null) {
+      return;
+    }
     const columns: HTMLDivElement[] = Array.from(
       this.wrapper.querySelectorAll('.data-column'),
     );

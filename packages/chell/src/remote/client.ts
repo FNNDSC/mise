@@ -29,6 +29,46 @@ import { TerminalProgressRenderer } from '../core/progressRenderer.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
 
 /**
+ * Builds a berth from an address given on the command line.
+ *
+ * Berth discovery reads this machine's runtime directory, so it cannot see a
+ * daemon on another host. An explicit address is how a surface elsewhere
+ * attaches, and the address accepted is the one the daemon prints — either the
+ * ARGUS link, token and all, or the bare wire URL with `--token` beside it.
+ *
+ * @param address - `ws://host:port`, or `http://host:port/?token=…`.
+ * @param token - The attach token, when the address does not carry one.
+ * @returns The berth to attach, or null when the address cannot be read (a
+ *   message is printed).
+ */
+export function berth_fromAddress(address: string, token?: string): Berth | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(address);
+  } catch {
+    console.error(chalk.red(`[!] '${address}' is not a URL. Paste the address the daemon printed.`));
+    return null;
+  }
+
+  const carried: string | null = parsed.searchParams.get('token');
+  const attachToken: string | undefined = token ?? carried ?? undefined;
+  if (attachToken === undefined) {
+    console.error(chalk.red('[!] No attach token. Pass --token, or paste the URL the daemon printed, which carries one.'));
+    return null;
+  }
+
+  // The daemon serves the web surface and the wire on one port, so an http
+  // address names the same endpoint as its ws form.
+  const scheme: string = parsed.protocol === 'https:' || parsed.protocol === 'wss:' ? 'wss' : 'ws';
+  if (!parsed.hostname) {
+    console.error(chalk.red(`[!] '${address}' names no host.`));
+    return null;
+  }
+  const url: string = `${scheme}://${parsed.host}`;
+  return { identity: `${url} (attached by address)`, url, token: attachToken };
+}
+
+/**
  * Fetches a file's bytes from a daemon's token-gated byte route.
  *
  * A remote client's engine is on another machine, so it cannot read the file
@@ -141,10 +181,18 @@ async function berth_select(identity: string | undefined): Promise<Berth | null>
  *   resolve the sole/most-suitable berth.
  * @param commandToExecute - An optional one-shot command. When present, execute
  *   it and detach without creating an interactive REPL.
+ * @param attach - An explicit daemon address, for a daemon on another machine
+ *   that this host's berth directory cannot know about. Bypasses discovery.
  * @returns A promise that resolves when the client session ends.
  */
-export async function remote_run(identity?: string, commandToExecute?: string): Promise<void> {
-  const berth: Berth | null = await berth_select(identity);
+export async function remote_run(
+  identity?: string,
+  commandToExecute?: string,
+  attach?: { address: string; token?: string },
+): Promise<void> {
+  const berth: Berth | null = attach
+    ? berth_fromAddress(attach.address, attach.token)
+    : await berth_select(identity);
   if (!berth) {
     process.exit(1);
   }

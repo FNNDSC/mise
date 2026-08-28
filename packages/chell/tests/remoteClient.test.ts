@@ -96,7 +96,7 @@ jest.unstable_mockModule('../src/core/surfaceDispatch.js', () => ({
   surfaceLine_execute: surfaceLineExecute_mock,
 }));
 
-const { berth_probeLive, remote_run } = await import('../src/remote/client.js');
+const { berth_probeLive, remote_run, berth_fromAddress } = await import('../src/remote/client.js');
 
 describe('berth_probeLive', () => {
   beforeEach(() => {
@@ -156,6 +156,19 @@ describe('remote_run', () => {
     expect(resolverList_mock).toHaveBeenCalledTimes(1);
     expect(remoteConnect_mock).toHaveBeenCalledWith(expect.objectContaining({ url: berth.url }));
     expect(remoteClose_mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches by address without consulting this host\'s berths', async () => {
+    await remote_run(undefined, 'pwd', { address: 'http://pangea:41234/?token=abc123' });
+
+    // A daemon on another machine leaves no berth in this host's runtime
+    // directory, so discovery must not be reached at all — asking it would
+    // find nothing and refuse an attach that is perfectly possible.
+    expect(resolverList_mock).not.toHaveBeenCalled();
+    expect(resolverResolve_mock).not.toHaveBeenCalled();
+    expect(remoteConnect_mock).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'ws://pangea:41234', token: 'abc123' }),
+    );
   });
 
   it('exits unsuccessfully when no daemon berth is available', async () => {
@@ -278,5 +291,45 @@ describe('remote_run', () => {
     await expect(remote_run(berth.identity)).rejects.toThrow('exit 1');
     expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('handshake failed'));
     expect(exit_spy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('berth_fromAddress', () => {
+  it('takes the ARGUS link the daemon prints, token and all', () => {
+    // One thing to copy: the same URL that opens the web surface also names
+    // the wire, because the daemon serves both on one port.
+    const berth = berth_fromAddress('http://pangea:41234/?token=abc123');
+
+    expect(berth).toEqual({
+      identity: 'ws://pangea:41234 (attached by address)',
+      url: 'ws://pangea:41234',
+      token: 'abc123',
+    });
+  });
+
+  it('takes a bare wire URL with the token beside it', () => {
+    const berth = berth_fromAddress('ws://pangea:41234', 'abc123');
+
+    expect(berth?.url).toBe('ws://pangea:41234');
+    expect(berth?.token).toBe('abc123');
+  });
+
+  it('prefers an explicit token over one carried in the URL', () => {
+    const berth = berth_fromAddress('http://pangea:41234/?token=stale', 'fresh');
+
+    expect(berth?.token).toBe('fresh');
+  });
+
+  it('keeps TLS when the address is secure', () => {
+    expect(berth_fromAddress('https://pangea/?token=t')?.url).toBe('wss://pangea');
+    expect(berth_fromAddress('wss://pangea:9/?token=t')?.url).toBe('wss://pangea:9');
+  });
+
+  it('refuses an address with no token rather than attaching anonymously', () => {
+    expect(berth_fromAddress('ws://pangea:41234')).toBeNull();
+  });
+
+  it('refuses something that is not a URL', () => {
+    expect(berth_fromAddress('pangea:41234', 't')).toBeNull();
   });
 });

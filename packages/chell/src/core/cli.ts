@@ -30,6 +30,14 @@ export interface ChellCLIConfig {
     password?: string;
     url?: string;
   };
+  /**
+   * An explicit daemon address, bypassing berth discovery. Berths are files in
+   * a host's own runtime directory, so a surface on another machine has none
+   * to read; this is how it attaches instead.
+   */
+  attach?: string;
+  /** The attach token, when the {@link attach} URL does not carry one. */
+  attachToken?: string;
   output?: string; // For help/version text
 }
 
@@ -51,6 +59,8 @@ export interface CliActionOptions {
   logo?: boolean;
   daemon?: boolean;
   remote?: boolean;
+  attach?: string;
+  token?: string;
   info?: boolean;
 }
 
@@ -93,6 +103,15 @@ export function cliConfig_fromArgs(
     // connection, or CUBE credentials — but a `<user>@<url>` target names which
     // identity's daemon to attach to when several run on this machine.
     config = { mode: 'remote', connectConfig };
+    // Berth discovery reads this machine's runtime directory, so it cannot see
+    // a daemon on another host. An explicit address is how a surface elsewhere
+    // attaches, and it bypasses discovery entirely.
+    if (options.attach !== undefined) {
+      config.attach = options.attach;
+    }
+    if (options.token !== undefined) {
+      config.attachToken = options.token;
+    }
     if (options.command !== undefined) {
       config.commandToExecute = options.command;
     }
@@ -221,6 +240,8 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
     .option('--daemon', 'Run as a CALYPSO session daemon, hosting the engine over WebSocket')
     .option('--remote', 'Attach to a running CALYPSO daemon as a remote surface')
+    .option('--attach <url>', 'Address of a daemon on another machine; accepts the URL the daemon prints, token and all')
+    .option('--token <token>', 'Attach token, when the --attach URL does not carry one')
     .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
     .addHelpText('after', `
 ${chalk.bold.cyan('INTERACTIVE COMMANDS')}

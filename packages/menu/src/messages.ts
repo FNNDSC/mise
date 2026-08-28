@@ -340,6 +340,10 @@ export const promptContextSchema = z.object({
     restored: z.boolean().optional(),
     state: z.enum(PROC_PROMPT_STATES).optional(),
   }).optional(),
+  procIndex: z.object({
+    jobs: z.number(),
+    feeds: z.number(),
+  }).optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;
@@ -413,6 +417,20 @@ export type FileDeliverResult = Omit<
   'type' | 'deliverId'
 >;
 
+/**
+ * The daemon's heartbeat, pushed roughly once a second while any surface is
+ * attached: the live process-index counts. Event-driven facts (progress,
+ * command latency) travel on their own messages; this carries only what
+ * changes without a command.
+ */
+export const telemetryMessageSchema = z.object({
+  type: z.literal('telemetry'),
+  index: z.object({
+    jobs: z.number(),
+    feeds: z.number(),
+  }),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -424,6 +442,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   errorMessageSchema,
   promptMessageSchema,
   promptLineMessageSchema,
+  telemetryMessageSchema,
   pipeMessageSchema,
   shellMessageSchema,
   editMessageSchema,
@@ -432,3 +451,12 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
 
 /** A message the daemon sends to a surface. */
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+
+/**
+ * The message types this contract build knows. A surface receiving a typed
+ * message outside this set is talking to a newer daemon: the open-world rule
+ * is to skip it quietly, not to warn on every arrival.
+ */
+export const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set(
+  serverMessageSchema.options.map((option): string => option.shape.type.value),
+);

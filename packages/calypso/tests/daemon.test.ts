@@ -139,6 +139,30 @@ describe('CalypsoDaemon', () => {
     expect(engine.executed).toEqual([]);
   });
 
+  it('broadcasts a telemetry heartbeat to attached surfaces', async () => {
+    await daemon.stop();
+    daemon = new CalypsoDaemon({
+      engine,
+      token: TOKEN,
+      telemetryProvider: (): { jobs: number; feeds: number } => ({ jobs: 7, feeds: 3 }),
+    });
+    port = await daemon.start();
+    const ws = await client_attach(port);
+    clients.push(ws);
+
+    const beat = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no heartbeat within 3s')), 3000);
+      ws.on('message', (data) => {
+        const msg = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (msg['type'] === 'telemetry') {
+          clearTimeout(timer);
+          resolve(msg);
+        }
+      });
+    });
+    expect(beat['index']).toEqual({ jobs: 7, feeds: 3 });
+  });
+
   it('executes a line and returns its result envelopes', async () => {
     const ws = await client_attach(port);
     clients.push(ws);

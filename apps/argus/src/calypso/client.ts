@@ -89,6 +89,7 @@ export interface ClientHandlers {
   output_receive?: (channel: OutputChannel, chunk: string) => void;
   progress_receive?: (message: ProgressMessage) => void;
   promptline_receive?: (context: PromptContext) => void;
+  telemetry_receive?: (index: { jobs: number; feeds: number }) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
   close_handle?: () => void;
@@ -129,6 +130,8 @@ export class ArgusClient {
   private readonly token: string;
   private readonly pending: Map<string, PendingExecute> = new Map();
   private readonly pendingCompletions: Map<string, PendingComplete> = new Map();
+  /** Requests whose live output must not reach the transcript. */
+  private readonly silentIds: Set<string> = new Set();
   private nextId: number = 0;
 
   private constructor(socket: WebSocket, handlers: ClientHandlers, token: string) {
@@ -211,8 +214,13 @@ export class ArgusClient {
    * @returns The line's envelopes and which channels already streamed live.
    * @throws {Error} When the daemon reports an execution error.
    */
-  public line_execute(line: string): Promise<ExecuteOutcome> {
+  public line_execute(line: string, options?: { silent?: boolean }): Promise<ExecuteOutcome> {
     const id: string = `argus-${this.nextId++}`;
+    if (options?.silent === true) {
+      // A silent command feeds instruments (the files panel, a viewer), not
+      // the transcript: its live output is swallowed on arrival.
+      this.silentIds.add(id);
+    }
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject, liveChannels: new Set<'data' | 'err'>() });
       this.socket.send(JSON.stringify({ type: 'execute', id, line }));
@@ -253,6 +261,7 @@ export class ArgusClient {
     }
     switch (message.type) {
       case 'result': {
+        this.silentIds.delete(message.id);
         const request: PendingExecute | undefined = this.pending.get(message.id);
         if (request) {
           this.pending.delete(message.id);
@@ -275,7 +284,9 @@ export class ArgusClient {
         if (message.channel === 'data' || message.channel === 'err') {
           this.pending.get(message.id)?.liveChannels.add(message.channel);
         }
-        this.handlers.output_receive?.(message.channel, message.chunk);
+        if (!this.silentIds.has(message.id)) {
+          this.handlers.output_receive?.(message.channel, message.chunk);
+        }
         break;
       }
       case 'progress': {
@@ -289,6 +300,10 @@ export class ArgusClient {
       }
       case 'promptline': {
         this.handlers.promptline_receive?.(message.context);
+        break;
+      }
+      case 'telemetry': {
+        this.handlers.telemetry_receive?.(message.index);
         break;
       }
       case 'error': {

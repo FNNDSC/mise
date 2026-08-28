@@ -22,7 +22,7 @@ import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
-import { sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
+import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
@@ -159,7 +159,13 @@ export async function daemon_launch(
     ...(webRoot !== null ? { webRoot } : {}),
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces.
-    promptProvider: (): Promise<SessionPromptContext> => sessionPromptContext_build(),
+    telemetryProvider: procIndex_snapshot,
+    promptProvider: (last): Promise<SessionPromptContext> =>
+      sessionPromptContext_build(
+        last !== undefined
+          ? { lastCommandDurationMs: last.durationMs, lastExitCode: last.exitCode }
+          : {},
+      ),
     // Report this process's own versions and build hash so attaching surfaces
     // greet with the daemon's truth rather than their local install's.
     stack: { ...versions_get(), build: buildHash_get() },

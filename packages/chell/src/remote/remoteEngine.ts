@@ -15,7 +15,7 @@ import chalk from 'chalk';
 import { serverMessage_parse, CONTRACT_VERSION, RequestBroker, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
-import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
+import { SERVER_MESSAGE_TYPES, type FileDeliverRequest, type FileDeliverResult } from '@fnndsc/menu';
 import { envelope_deliver, sink_get, type OutputSink } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
 
@@ -68,6 +68,8 @@ export class RemoteEngine implements BrasaEngine {
   // requests; here it correlates this client's execute/complete requests and
   // rejects them if the daemon connection closes first.
   private readonly requests: RequestBroker<unknown> = new RequestBroker<unknown>('r', 'daemon disconnected before replying');
+  /** Message types from a newer daemon, each noted once then skipped. */
+  private readonly unknownTypesSeen: Set<string> = new Set<string>();
   private readonly onSession: ((surface: string, envelope: CommandEnvelope) => void) | undefined;
   private readonly onPrompt: ((message: string, hidden: boolean) => Promise<string>) | undefined;
   private readonly onPipe: ((command: string, input: Buffer) => Promise<Buffer>) | undefined;
@@ -209,11 +211,29 @@ export class RemoteEngine implements BrasaEngine {
    * @param payload - The raw message bytes.
    */
   private message_handle(payload: Buffer): void {
-    const parsed = serverMessage_parse(safeJson_parse(payload.toString()));
+    const raw: unknown = safeJson_parse(payload.toString());
+    const parsed = serverMessage_parse(raw);
     if (!parsed.ok || parsed.value === undefined) {
-      // An invalid daemon message usually means protocol drift between the
-      // daemon and this client; dropping it silently would leave any
-      // correlated pending request hanging with no explanation.
+      // A well-formed message of a type this client does not know is a
+      // newer daemon speaking a wider vocabulary — the open-world rule says
+      // skip it, and say so once per type rather than once per second.
+      const rawType: string | undefined =
+        typeof raw === 'object' && raw !== null && typeof (raw as { type?: unknown }).type === 'string'
+          ? (raw as { type: string }).type
+          : undefined;
+      const unknownType: string | undefined =
+        rawType !== undefined && !SERVER_MESSAGE_TYPES.has(rawType) ? rawType : undefined;
+      if (unknownType !== undefined) {
+        if (!this.unknownTypesSeen.has(unknownType)) {
+          this.unknownTypesSeen.add(unknownType);
+          console.error(chalk.dim(
+            `[i] The daemon sends '${unknownType}' messages this chell predates; ignoring them.`,
+          ));
+        }
+        return;
+      }
+      // A malformed message is real protocol drift; dropping it silently
+      // would leave any correlated pending request hanging unexplained.
       console.error(chalk.yellow(`[!] Ignoring invalid daemon message: ${parsed.ok ? 'empty payload' : (parsed.error ?? 'unparseable')}`));
       return;
     }

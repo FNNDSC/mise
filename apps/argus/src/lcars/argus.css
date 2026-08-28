@@ -143,35 +143,18 @@ body[data-zoom='files'] #files-panel {
   box-shadow: 0 0 12px var(--butter);
 }
 
-body[data-zoom='console'] .lcars-bar-zoom {
+body[data-zoom='console'] #drawer .lcars-bar-zoom {
   background-color: var(--october-sunset);
 }
 
-/* The files pane's zoom pill: a quiet harvest-gold cap at the top right. */
-main {
-  position: relative;
+/* The workspace pane's header bar: the console's chrome, reused, so every
+ * pane maximizes from the same place. */
+.files-header-bar {
+  margin: 0.2rem 0 0.5rem;
 }
 
-.pane-zoom {
-  position: absolute;
-  top: 0.1rem;
-  right: 0.5rem;
-  width: 40px;
-  height: 14px;
-  border-radius: 7px;
-  background-color: var(--harvestgold);
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.pane-zoom:hover {
-  opacity: 1;
-  box-shadow: 0 0 8px var(--harvestgold);
-}
-
-body[data-zoom='files'] .pane-zoom {
+body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
   background-color: var(--october-sunset);
-  opacity: 1;
 }
 
 /* ---------------------------------------------------------- files instrument */
@@ -315,6 +298,195 @@ body[data-zoom='files'] .pane-zoom {
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }
 
+/* A lost daemon link dims the cascade: stale figures should look stale. */
+#data-cascade.dc-stale {
+  filter: brightness(0.45) saturate(0.5);
+}
+
+/* ------------------------------------------------------------ header faces */
+
+/* The header pane has three faces — the cascade (default), the stack/about
+ * face, and the labeled telemetry face. One declaration on the body picks
+ * which shows; the buttons in the gutter top toggle it. */
+.header-face {
+  display: none;
+  padding: 0.2rem 0.5rem;
+  columns: 2;
+  column-gap: 2.5rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+}
+
+body[data-header] #data-cascade {
+  display: none;
+}
+
+body[data-header='versions'] #header-about {
+  display: block;
+}
+
+body[data-header='stats'] #header-telemetry {
+  display: block;
+}
+
+/* Pressing the selected face's button again sends the whole header off the
+ * top — the same glide the pane zoom uses — and the lid strip appears. */
+body[data-header='away'] .wrap:not(#gap) {
+  translate: 0 calc(-1 * var(--zoom-header-height, 100vh));
+  margin-bottom: calc(-1 * var(--zoom-header-height, 0px));
+}
+
+#header-restore {
+  display: none;
+}
+
+body[data-header='away'] #header-restore {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 12px;
+  z-index: 1000;
+  border-radius: 0 0 6px 6px;
+  background-color: var(--october-sunset);
+  cursor: pointer;
+  animation: beckon 3.5s ease-in-out infinite;
+}
+
+#header-restore:hover {
+  animation: none;
+  background-color: var(--harvestgold);
+  box-shadow: 0 0 8px rgb(255 170 68 / 60%);
+}
+
+/* The stats face's control capsules. */
+.header-controls {
+  column-span: all;
+  display: flex;
+  gap: 0.7rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Rows in the ritos idiom: the name lives in a black-on-color capsule with
+ * a rounded left cap, the figure sits bright beside it. */
+.telemetry-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  break-inside: avoid;
+  margin-bottom: 0.35rem;
+}
+
+.telemetry-label {
+  flex: none;
+  min-width: 9.5rem;
+  padding: 0 0.7rem;
+  border-radius: 0.6rem 0 0 0.6rem;
+  background-color: var(--honey);
+  color: black;
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  font-size: 0.7rem;
+  line-height: 1.2rem;
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+#header-about .telemetry-label {
+  background-color: var(--october-sunset);
+}
+
+.telemetry-value {
+  color: var(--daybreak);
+  font-size: 0.9rem;
+}
+
+/* The attribution, exactly as the page footer wore it, now living in the
+ * versions face. The theme's `footer` rule supplies the type; only the
+ * spacing is retuned for the header. */
+.about-footer {
+  column-span: all;
+  margin-top: 0.6rem;
+  padding-bottom: 0;
+  padding-left: 0;
+}
+
+/* -------------------------------------------------------------- audio pill */
+
+/* The control capsules, ritos idiom: labeled LCARS pills. The audio pill's
+ * green speaks and red is silent; the theme pill wears the current scheme. */
+.audio-pill,
+.theme-pill {
+  padding: 0.1rem 0.9rem;
+  border: none;
+  border-radius: 0.8rem;
+  color: black;
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.audio-pill {
+  background-color: #3c6;
+}
+
+.theme-pill {
+  background-color: var(--harvestgold);
+}
+
+.audio-pill:hover,
+.theme-pill:hover {
+  filter: brightness(1.3);
+  box-shadow: 0 0 8px currentcolor;
+}
+
+.audio-pill.audio-off {
+  background-color: #f22;
+}
+
+.audio-pill.audio-off::after {
+  content: ' OFF';
+}
+
+/* ------------------------------------------------------------ LCARS schemes */
+
+/* Each scheme re-seats the theme's seven base colors; every other color in
+ * the frame derives from these, so the whole surface follows. */
+:root[data-lcars='gold'] {
+  --butter: #fff3cd;
+  --daybreak: #fc3;
+  --harvestgold: #ffd75e;
+  --honey: #ffe49c;
+  --october-sunset: #c99700;
+  --orange: #e9b200;
+  --pumpkin-pie: #a07800;
+}
+
+:root[data-lcars='sickbay'] {
+  --butter: #dceeff;
+  --daybreak: #7ec8ff;
+  --harvestgold: #66c2ff;
+  --honey: #a6d8ff;
+  --october-sunset: #1467b3;
+  --orange: #3a9bdc;
+  --pumpkin-pie: #0d4f8b;
+}
+
+:root[data-lcars='nemesis'] {
+  --butter: #f0e4fc;
+  --daybreak: #cfa0ff;
+  --harvestgold: #d0a8f0;
+  --honey: #e0c8f8;
+  --october-sunset: #8c5fc0;
+  --orange: #b48ae0;
+  --pumpkin-pie: #7a4ea8;
+}
+
 /* ------------------------------------------------------- the tactical drawer */
 
 /* The console unfurls from behind the workspace lid (the bar-panel below
@@ -409,7 +581,8 @@ body[data-zoom='files'] .pane-zoom {
   font-size: 0.75rem;
   line-height: 1.35;
   letter-spacing: 1px;
-  text-shadow: 0 0 2px var(--daybreak);
+  /* No glow on the transcript: at this size a shadow reads as blur, not
+   * phosphor. The banner keeps its own. */
   white-space: pre-wrap;
   word-break: break-word;
 }

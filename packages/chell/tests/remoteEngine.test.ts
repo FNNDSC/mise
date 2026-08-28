@@ -46,7 +46,15 @@ class FakeWebSocket extends EventEmitter {
 jest.unstable_mockModule('ws', () => ({ WebSocket: FakeWebSocket }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   CONTRACT_VERSION: 1,
-  serverMessage_parse: (value: unknown) => ({ ok: true, value }),
+  serverMessage_parse: (value: unknown) => {
+    // Mirror the real parser's one behavior under test: a message whose
+    // type the union does not know fails validation.
+    const record = value as { type?: unknown; __malformed?: unknown } | null;
+    if (record?.__malformed === true || record?.type === 'from-the-future') {
+      return { ok: false, error: 'type: Invalid discriminator value' };
+    }
+    return { ok: true, value };
+  },
   // Minimal real-shaped broker: the engine under test depends on genuine
   // correlation behavior (open/settle/fail), not just the class existing.
   RequestBroker: class {
@@ -485,5 +493,25 @@ describe('RemoteEngine live output', () => {
 
     await expect(RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'bad' }))
       .rejects.toThrow('attach refused: invalid token');
+  });
+
+  it('skips unknown daemon message types quietly, noting each once', async () => {
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    const ws: FakeWebSocket = FakeWebSocket.instances[0];
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => { /* captured */ });
+
+    // A newer daemon's message type: skipped, with one dim notice — not a
+    // warning per arrival (the heartbeat case: one per second, mid-input).
+    ws.emit('message', Buffer.from(JSON.stringify({ type: 'from-the-future' })));
+    ws.emit('message', Buffer.from(JSON.stringify({ type: 'from-the-future' })));
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(String(spy.mock.calls[0]?.[0])).toContain('from-the-future');
+
+    // A malformed message of a KNOWN type is real drift: still loud.
+    ws.emit('message', Buffer.from(JSON.stringify({ type: 'result', __malformed: true })));
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(String(spy.mock.calls[1]?.[0])).toContain('Ignoring invalid daemon message');
+
+    spy.mockRestore();
   });
 });

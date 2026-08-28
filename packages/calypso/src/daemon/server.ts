@@ -110,19 +110,31 @@ const SCROLLBACK_DEFAULT: number = 200;
  *   to an attaching surface; defaults to 200.
  * @property promptProvider - Supplies the current session's prompt context,
  *   which the daemon pushes to surfaces after each command and on attach; each
- *   surface renders it with its own theme. Omitted when a host does not push a
- *   prompt (e.g. tests).
+ *   surface renders it with its own theme. The daemon passes the last executed
+ *   command's measured facts so the context can carry them. Omitted when a
+ *   host does not push a prompt (e.g. tests).
  * @property webRoot - A directory of static files (the built web surface) the
  *   daemon's HTTP side serves alongside the WebSocket contract. Omitted, plain
  *   HTTP requests receive 404 and only the WebSocket upgrade is answered.
  */
+/** The last executed command's measured facts, for the prompt context. */
+export interface PromptLastCommand {
+  durationMs: number;
+  exitCode: number;
+}
+
 export interface DaemonOptions {
   engine: HostedEngine;
   token: string;
   port?: number;
   host?: string;
   scrollbackSize?: number;
-  promptProvider?: () => PromptContext | Promise<PromptContext>;
+  promptProvider?: (last?: PromptLastCommand) => PromptContext | Promise<PromptContext>;
+  /**
+   * Supplies the live process-index counts for the once-a-second telemetry
+   * heartbeat. Omitted, no heartbeat is sent (e.g. tests).
+   */
+  telemetryProvider?: () => { jobs: number; feeds: number };
   /** The hosting process's versions and build hash, reported on attach. */
   stack?: DaemonStackInfo;
   webRoot?: string;
@@ -138,7 +150,13 @@ export class CalypsoDaemon {
   private readonly port: number;
   private readonly host: string;
   private readonly scrollbackSize: number;
-  private readonly promptProvider: (() => PromptContext | Promise<PromptContext>) | undefined;
+  private readonly promptProvider:
+    | ((last?: PromptLastCommand) => PromptContext | Promise<PromptContext>)
+    | undefined;
+  /** The last executed command's measured facts, sticky across pushes. */
+  private lastCommand: PromptLastCommand | undefined;
+  private readonly telemetryProvider: (() => { jobs: number; feeds: number }) | undefined;
+  private telemetryTimer: NodeJS.Timeout | null = null;
   private readonly stack: DaemonStackInfo | undefined;
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
@@ -175,8 +193,31 @@ export class CalypsoDaemon {
     this.host = options.host ?? '127.0.0.1';
     this.scrollbackSize = options.scrollbackSize ?? SCROLLBACK_DEFAULT;
     this.promptProvider = options.promptProvider;
+    this.telemetryProvider = options.telemetryProvider;
     this.stack = options.stack;
     this.webRoot = options.webRoot;
+  }
+
+  /**
+   * Starts the telemetry heartbeat: once a second, the live index counts go
+   * to every attached surface. Idle wires stay quiet — no surfaces, no send.
+   */
+  private telemetry_start(): void {
+    if (this.telemetryProvider === undefined || this.telemetryTimer !== null) {
+      return;
+    }
+    const provider: () => { jobs: number; feeds: number } = this.telemetryProvider;
+    this.telemetryTimer = setInterval((): void => {
+      if (this.surfaces.size === 0) {
+        return;
+      }
+      const index: { jobs: number; feeds: number } = provider();
+      for (const surface of this.surfaces) {
+        this.send(surface.socket, { type: 'telemetry', index });
+      }
+    }, 1000);
+    // The heartbeat must not hold the process open on its own.
+    this.telemetryTimer.unref();
   }
 
   /**
@@ -214,6 +255,7 @@ export class CalypsoDaemon {
       });
       this.wss = wss;
       this.httpServer = httpServer;
+      this.telemetry_start();
     });
   }
 
@@ -223,6 +265,10 @@ export class CalypsoDaemon {
    * @returns A promise resolving when the server has closed.
    */
   public stop(): Promise<void> {
+    if (this.telemetryTimer !== null) {
+      clearInterval(this.telemetryTimer);
+      this.telemetryTimer = null;
+    }
     return new Promise((resolve: () => void) => {
       if (!this.wss || !this.httpServer) {
         resolve();
@@ -429,7 +475,7 @@ export class CalypsoDaemon {
     if (!this.promptProvider) {
       return;
     }
-    const context: PromptContext = await this.promptProvider();
+    const context: PromptContext = await this.promptProvider(this.lastCommand);
     if (target) {
       this.send(target.socket, { type: 'promptline', context });
       return;
@@ -485,12 +531,21 @@ export class CalypsoDaemon {
     this.currentId = message.id;
     let envelopes: CommandEnvelope[] | undefined;
     let failureReason: string | undefined;
+    const startedAt: number = performance.now();
     try {
       try {
         envelopes = await this.engine.line_execute(message.line);
       } catch (err: unknown) {
         failureReason = err instanceof Error ? err.message : String(err);
       }
+      this.lastCommand = {
+        durationMs: Math.round(performance.now() - startedAt),
+        exitCode:
+          failureReason !== undefined ||
+          (envelopes?.some((envelope): boolean => envelope.status === 'error') ?? false)
+            ? 1
+            : 0,
+      };
       // A remote REPL draws its next prompt as soon as `result` resolves the
       // command. Push the refreshed context first so that prompt cannot lag
       // one command behind state changes such as `cd`.

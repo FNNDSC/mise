@@ -38,8 +38,25 @@
         <div class="right-frame-top">
           <div class="banner"><a href="">ARGUS</a> &bull; CALYPSO SESSION</div>
           <div class="data-cascade-button-group">
-            <!-- The data cascade is generated at boot; see cascade_build in main.ts. -->
+            <!-- The header pane: data-header on <body> picks which of the
+                 three faces shows — the cascade (default), the stack/about
+                 face (ARGUS WEB), or the labeled telemetry face (02-CALYPSO). -->
             <div class="data-wrapper" id="data-cascade"></div>
+            <div class="header-face" id="header-about">
+              <div id="about-rows"></div>
+              <footer class="about-footer">
+                Content &copy; 2026 FNNDSC &bull; ARGUS is part of the mise project.<br />
+                <!-- The following attribution must not be removed: -->
+                LCARS Inspired Website Template by <a href="https://www.thelcars.com">www.TheLCARS.com</a>,
+                adapted for ARGUS.
+              </footer>
+            </div>
+            <div class="header-face" id="header-telemetry">
+              <div class="header-controls">
+                <button id="audio-pill" class="audio-pill" title="audio on/off">AUDIO</button>
+                <button id="theme-pill" class="theme-pill" title="cycle LCARS color scheme">LOWER DECKS</button>
+              </div>
+            </div>
           </div>
           <div class="bar-panel first-bar-panel">
             <div class="bar-1"></div>
@@ -86,7 +103,6 @@
             <div class="bar-10" id="drawer-toggle" title="console" role="button" tabindex="0"></div>
           </div>
           <main>
-            <div class="pane-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
             <div id="status-strip">
               <span id="status-identity" class="readout">&mdash;</span>
               <span id="status-jobs" class="readout">&mdash;</span>
@@ -95,19 +111,24 @@
               <span id="status-mismatch" class="readout mismatch"></span>
               <span id="status-lamp" class="readout lamp-offline">OFFLINE</span>
             </div>
+            <!-- The workspace pane wears the same chrome as the console:
+                 a header bar carrying the title and the zoom capsule. -->
+            <div class="lcars-terminal-header-bar files-header-bar">
+              <div class="lcars-bar-horizontal">
+                <span class="lcars-title">WORKSPACE</span>
+              </div>
+              <div class="lcars-bar-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
+            </div>
             <section id="files-panel" aria-label="Files"></section>
           </main>
-          <footer>
-            Content &copy; 2026 FNNDSC &bull; ARGUS is part of the mise project.<br />
-            <!-- The following attribution must not be removed: -->
-            LCARS Inspired Website Template by <a href="https://www.thelcars.com">www.TheLCARS.com</a>,
-            adapted for ARGUS.
-          </footer>
         </div>
       </div>
     </div>
     <div class="headtrim"></div>
     <div class="baseboard"></div>
+    <!-- The header's lid strip: appears when the header glides away; click
+         (or Esc) restores it. Same idiom as the console drawer's lid. -->
+    <div id="header-restore" title="restore header" role="button" tabindex="0"></div>
 
     <script type="module" src="/src/app/main.ts"></script>
   </body>

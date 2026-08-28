@@ -7,10 +7,33 @@
  *
  * @module
  */
+import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
+
+const require: NodeRequire = createRequire(import.meta.url);
+
+/**
+ * The checkout's short git hash, or 'unhashed' outside a git checkout (a
+ * published tarball build). Stamped into the bundle for the about face.
+ */
+function gitHash_read(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unhashed';
+  }
+}
 
 export default defineConfig({
   base: './',
+  define: {
+    __ARGUS_GIT__: JSON.stringify(gitHash_read()),
+    __ARGUS_BUILT__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+    __ARGUS_MENU__: JSON.stringify(
+      (require('@fnndsc/menu/package.json') as { version: string }).version,
+    ),
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

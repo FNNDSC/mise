@@ -79,6 +79,8 @@ export {
   editMessageSchema,
   deliverMessageSchema,
   serverMessageSchema,
+  telemetryMessageSchema,
+  SERVER_MESSAGE_TYPES,
   type ClientMessage,
   type ServerMessage,
   type ProgressMessage,

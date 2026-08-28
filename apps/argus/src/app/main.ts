@@ -27,6 +27,7 @@ import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction } from '../features/files/panel.js';
 import { StatusBar } from './status.js';
+import { Cascade } from './cascade.js';
 import '../lcars/theme/lower-decks.css';
 import '../lcars/argus.css';
 
@@ -37,17 +38,59 @@ const BANNER_LINES: string[] = [
   '',
 ];
 
+/** The localStorage key remembering the operator's audio choice. */
+const AUDIO_STORAGE_KEY: string = 'argus-audio';
+
+/** The panel beeps' volume; the theme's files are mastered hot. */
+const AUDIO_VOLUME: number = 0.4;
+
+/** Whether the panel beeps are muted; the audio pill owns this. */
+let audioMuted: boolean = false;
+
 /**
  * Plays one of the page's LCARS beeps, silently tolerating autoplay refusal.
+ * The audio pill can mute the whole voice.
  *
  * @param audioId - The id of the audio element to play.
  */
 function sound_play(audioId: string): void {
+  if (audioMuted) {
+    return;
+  }
   const audio: HTMLElement | null = document.getElementById(audioId);
   if (audio instanceof HTMLAudioElement) {
     audio.currentTime = 0;
+    audio.volume = AUDIO_VOLUME;
     void audio.play().catch((): void => undefined);
   }
+}
+
+/**
+ * Wires the audio pill: green means the panel voice is live, red means
+ * muted. The choice persists per browser.
+ */
+function audioPill_wire(): void {
+  const pill: HTMLElement = element_require('audio-pill');
+  try {
+    audioMuted = window.localStorage.getItem(AUDIO_STORAGE_KEY) === 'off';
+  } catch {
+    audioMuted = false;
+  }
+  const paint: () => void = (): void => {
+    pill.classList.toggle('audio-off', audioMuted);
+  };
+  paint();
+  pill.addEventListener('click', (): void => {
+    audioMuted = !audioMuted;
+    try {
+      window.localStorage.setItem(AUDIO_STORAGE_KEY, audioMuted ? 'off' : 'on');
+    } catch {
+      // A browser without storage still gets the session-long choice.
+    }
+    paint();
+    // Unmuting speaks; muting is, fittingly, silent.
+    sound_play('audio2');
+  });
 }
 
 /**
@@ -196,50 +239,168 @@ function zoom_wire(terminal: ArgusTerminal): void {
 }
 
 /**
- * Populates the top frame's data cascade with generated figures.
+ * Builds the top frame's data cascade, live from boot, and binds the
+ * labeled telemetry face beside it.
  *
- * The cascade is the LCARS top panel's ambient number field. Generating it
- * here keeps template markup out of the repository and opens the door to
- * feeding it live telemetry later.
+ * @returns The cascade, or null when the page has no cascade element.
  */
-function cascade_build(): void {
+function cascade_build(): Cascade | null {
   const wrapper: HTMLElement | null = document.getElementById('data-cascade');
   if (wrapper === null) {
+    return null;
+  }
+  const cascadeInstance: Cascade = new Cascade(wrapper);
+  const telemetryFace: HTMLElement | null = document.getElementById('header-telemetry');
+  if (telemetryFace !== null) {
+    cascadeInstance.telemetryPanel_bind(telemetryFace);
+  }
+  return cascadeInstance;
+}
+
+/**
+ * Wires the header faces. The two gutter-top buttons SELECT: ARGUS WEB
+ * shows the live stats and controls face, 02-CALYPSO the versions face.
+ * Pressing the already-selected button sends the whole header gliding off
+ * the top, leaving the lid strip; the strip (or Esc) restores it to the
+ * cascade. One declaration (`data-header` on the body) carries the state:
+ * absent (cascade), 'stats', 'versions', or 'away'.
+ */
+function headerFaces_wire(): void {
+  const body: HTMLElement = document.body;
+  const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
+
+  const face_select = (face: string): void => {
+    if (body.dataset['header'] === face) {
+      // Second press on the selected face: the header itself departs. The
+      // slide distance is its measured height, same as the zoom glide.
+      if (header !== null) {
+        body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
+      }
+      body.dataset['header'] = 'away';
+    } else {
+      body.dataset['header'] = face;
+    }
+  };
+  document.querySelector('.panel-1')?.addEventListener('click', (): void => face_select('stats'));
+  document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('versions'));
+
+  const header_restore = (): void => {
+    delete body.dataset['header'];
+    sound_play('audio3');
+  };
+  element_require('header-restore').addEventListener('click', header_restore);
+  window.addEventListener('keydown', (event: KeyboardEvent): void => {
+    // Esc restores the header, but a zoomed pane's Esc comes first.
+    if (
+      event.key === 'Escape' &&
+      body.dataset['header'] === 'away' &&
+      body.dataset['zoom'] === undefined
+    ) {
+      header_restore();
+    }
+  });
+}
+
+/** The LCARS color schemes the theme pill cycles through. */
+const LCARS_SCHEMES: ReadonlyArray<{ key: string; label: string }> = [
+  { key: 'lower-decks', label: 'LOWER DECKS' },
+  { key: 'gold', label: 'CERRITOS GOLD' },
+  { key: 'sickbay', label: 'SICKBAY' },
+  { key: 'nemesis', label: 'NEMESIS' },
+];
+
+/** The localStorage key remembering the color scheme. */
+const LCARS_STORAGE_KEY: string = 'argus-lcars';
+
+/**
+ * Wires the theme pill: each press advances to the next LCARS color scheme.
+ * The scheme is one declaration (`data-lcars` on the body); the palettes
+ * live in CSS. The choice persists per browser.
+ */
+function themePill_wire(): void {
+  const pill: HTMLElement = element_require('theme-pill');
+  let index: number = 0;
+  try {
+    const saved: string | null = window.localStorage.getItem(LCARS_STORAGE_KEY);
+    const found: number = LCARS_SCHEMES.findIndex((scheme): boolean => scheme.key === saved);
+    index = found >= 0 ? found : 0;
+  } catch {
+    index = 0;
+  }
+  // The scheme lives on the root element: the theme's derived variables
+  // (--panel-4-color and kin) are resolved where they are defined — :root —
+  // so a body-level override would leave them holding the original palette.
+  const root: HTMLElement = document.documentElement;
+  const paint = (): void => {
+    const scheme = LCARS_SCHEMES[index] ?? LCARS_SCHEMES[0]!;
+    if (scheme.key === 'lower-decks') {
+      delete root.dataset['lcars'];
+    } else {
+      root.dataset['lcars'] = scheme.key;
+    }
+    pill.textContent = scheme.label;
+  };
+  paint();
+  pill.addEventListener('click', (): void => {
+    index = (index + 1) % LCARS_SCHEMES.length;
+    paint();
+    try {
+      window.localStorage.setItem(LCARS_STORAGE_KEY, LCARS_SCHEMES[index]?.key ?? 'lower-decks');
+    } catch {
+      // A browser without storage still gets the session-long choice.
+    }
+    sound_play('audio2');
+  });
+}
+
+/**
+ * Fills the about face: the mise stack and its versions, this bundle's
+ * git hash and build time, the wire contract, and the page's credits.
+ *
+ * @param attach - The attach ack, carrying the daemon's stack report.
+ */
+function aboutFace_fill(attach: AttachInfo): void {
+  // The rows container only: the face's static footer (the attribution,
+  // moved up from the page bottom) stays untouched.
+  const face: HTMLElement | null = document.getElementById('about-rows');
+  if (face === null) {
     return;
   }
-  const columnWidths: number[] = [2, 3, 3, 2, 2, 11, 2, 2];
-  const cells: Array<{ element: HTMLDivElement; width: number }> = [];
-  for (const width of columnWidths) {
-    const column: HTMLDivElement = document.createElement('div');
-    column.className = 'data-column';
-    for (let rowIndex: number = 1; rowIndex <= 4; rowIndex++) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = `dc-row-${rowIndex}`;
-      row.textContent = figure_random(width);
-      column.appendChild(row);
-      cells.push({ element: row, width });
+  face.replaceChildren();
+  const stack: Record<string, string | undefined> = {
+    cumin: attach.stack?.cumin,
+    salsa: attach.stack?.salsa,
+    chili: attach.stack?.chili,
+    brasa: attach.stack?.brasa,
+    calypso: attach.stack?.calypso,
+    chell: attach.stack?.chell,
+  };
+  const rows: Array<[string, string]> = [];
+  for (const [name, version] of Object.entries(stack)) {
+    if (version !== undefined) {
+      rows.push([name.toUpperCase(), version]);
     }
-    wrapper.appendChild(column);
   }
-  // The flicker loop, the prototype's telemetry rhythm made visible: a
-  // handful of cells shift every beat so the top panel reads as a live
-  // system, and every few seconds one column sweeps bright.
-  window.setInterval((): void => {
-    for (let flickerCount: number = 0; flickerCount < 5; flickerCount++) {
-      const cell = cells[Math.floor(Math.random() * cells.length)];
-      if (cell !== undefined) {
-        cell.element.textContent = figure_random(cell.width);
-      }
-    }
-  }, 300);
-  const columns: HTMLDivElement[] = Array.from(wrapper.querySelectorAll('.data-column'));
-  window.setInterval((): void => {
-    const column = columns[Math.floor(Math.random() * columns.length)];
-    if (column !== undefined) {
-      column.classList.add('dc-sweep');
-      window.setTimeout((): void => column.classList.remove('dc-sweep'), 650);
-    }
-  }, 2600);
+  rows.push(
+    ['MENU', __ARGUS_MENU__],
+    ['ARGUS', `${__ARGUS_GIT__} · ${__ARGUS_BUILT__}Z`],
+    ['WIRE', `V${attach.protocolVersion}`],
+  );
+  if (attach.stack?.build !== undefined) {
+    rows.push(['BUILD', attach.stack.build]);
+  }
+  for (const [label, value] of rows) {
+    const row: HTMLDivElement = document.createElement('div');
+    row.className = 'telemetry-row';
+    const name: HTMLSpanElement = document.createElement('span');
+    name.className = 'telemetry-label';
+    name.textContent = label;
+    const figure: HTMLSpanElement = document.createElement('span');
+    figure.className = 'telemetry-value';
+    figure.textContent = value;
+    row.append(name, figure);
+    face.appendChild(row);
+  }
 }
 
 /**
@@ -267,16 +428,6 @@ function extension_isImage(filePath: string): boolean {
 }
 
 /**
- * Produces one zero-padded cascade figure.
- *
- * @param width - The digit count.
- * @returns The figure as text.
- */
-function figure_random(width: number): string {
-  return String(Math.floor(Math.random() * 10 ** width)).padStart(width, '0');
-}
-
-/**
  * Wires the LCARS panel beeps: every frame button clicks with the theme's
  * voice, live or inert alike.
  */
@@ -293,6 +444,9 @@ function panelSounds_wire(): void {
  * @returns Resolves when the surface is attached and interactive.
  * @throws {Error} When the attach is refused.
  */
+/** The data cascade, built at page boot and fed by the session's wiring. */
+let cascade: Cascade | null = null;
+
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
   const filesPanel: FilesPanel = new FilesPanel(
@@ -314,7 +468,7 @@ async function surface_start(token: string): Promise<void> {
       }
       // Text renders from a silent cat, so a large file does not flood the
       // transcript.
-      void client.line_execute(`cat "${action.path}"`).then((outcome: ExecuteOutcome): void => {
+      void client.line_execute(`cat "${action.path}"`, { silent: true }).then((outcome: ExecuteOutcome): void => {
         const content: string = ansi_strip(
           outcome.envelopes.map((envelope): string => envelope.rendered).join('\n'),
         );
@@ -340,7 +494,7 @@ async function surface_start(token: string): Promise<void> {
         // moved it (an fs.cwd model) triggers a silent listing refresh,
         // whose fs.listing envelope repaints the panel on observation.
         if (outcome.envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
-          void client.line_execute('ls');
+          void client.line_execute('ls', { silent: true });
         }
       } catch (error: unknown) {
         const reason: string = error instanceof Error ? error.message : String(error);
@@ -370,16 +524,21 @@ async function surface_start(token: string): Promise<void> {
       progress_receive: (message: ProgressMessage): void => {
         progress.write(message);
         statusBar.progress_observe(message);
+        cascade?.progress_observe(message);
       },
       promptline_receive: (context: PromptContext): void => {
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);
+        cascade?.promptContext_observe(context);
       },
+      telemetry_receive: (index: { jobs: number; feeds: number }): void =>
+        cascade?.index_observe(index),
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
       envelope_observe: (envelope: WireEnvelope): void => filesPanel.envelope_observe(envelope),
       close_handle: (): void => {
         statusBar.connection_show(false);
+        cascade?.connection_show(false);
         mode_show('OFFLINE');
       },
     },
@@ -388,6 +547,8 @@ async function surface_start(token: string): Promise<void> {
 
   statusBar.attach_show(attached.attach);
   statusBar.connection_show(true);
+  cascade?.connection_show(true);
+  aboutFace_fill(attached.attach);
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();
@@ -410,7 +571,10 @@ async function surface_start(token: string): Promise<void> {
  * form and start on submit.
  */
 function page_boot(): void {
-  cascade_build();
+  cascade = cascade_build();
+  headerFaces_wire();
+  audioPill_wire();
+  themePill_wire();
   const params: URLSearchParams = new URLSearchParams(window.location.search);
   const urlToken: string | null = params.get('token');
   const attachForm: HTMLElement = element_require('attach-form');

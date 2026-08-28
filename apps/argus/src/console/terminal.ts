@@ -387,6 +387,12 @@ export class ArgusTerminal {
       return;
     }
     if (answer.candidates.length > 1) {
+      // Readline manners: grow the input to the candidates' longest common
+      // prefix first, then show the remaining choices.
+      const common: string = commonPrefix_find(answer.candidates);
+      if (common.length > answer.prefix.length) {
+        this.input.value = line.slice(0, line.length - answer.prefix.length) + common;
+      }
       this.block_append('dim', html_escape(answer.candidates.join('  ')));
       this.size_fit();
     }
@@ -531,4 +537,29 @@ function element_query(root: HTMLElement, selector: string): HTMLElement {
     throw new Error(`console structure is missing '${selector}'`);
   }
   return element;
+}
+
+/**
+ * Finds the longest prefix shared by every candidate.
+ *
+ * @param candidates - The completion candidates (at least one).
+ * @returns The longest common prefix, possibly empty.
+ */
+function commonPrefix_find(candidates: string[]): string {
+  let common: string = candidates[0] ?? '';
+  for (const candidate of candidates) {
+    let length: number = 0;
+    while (
+      length < common.length &&
+      length < candidate.length &&
+      common[length] === candidate[length]
+    ) {
+      length++;
+    }
+    common = common.slice(0, length);
+    if (common.length === 0) {
+      break;
+    }
+  }
+  return common;
 }

@@ -451,3 +451,12 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
 
 /** A message the daemon sends to a surface. */
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+
+/**
+ * The message types this contract build knows. A surface receiving a typed
+ * message outside this set is talking to a newer daemon: the open-world rule
+ * is to skip it quietly, not to warn on every arrival.
+ */
+export const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set(
+  serverMessageSchema.options.map((option): string => option.shape.type.value),
+);

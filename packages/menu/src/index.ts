@@ -122,3 +122,12 @@ export {
   type FeedListEntry,
   type FeedListModel,
 } from './dag.js';
+export {
+  pacsSeriesSchema,
+  pacsStudySchema,
+  pacsQueryModelSchema,
+  PACS_QUERY_MODEL_KIND,
+  type PacsSeries,
+  type PacsStudy,
+  type PacsQueryModel,
+} from './pacs.js';

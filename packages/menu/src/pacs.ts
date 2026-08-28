@@ -19,11 +19,17 @@ export const pacsSeriesSchema = z.object({
   fileCount: z.number().optional(),
   /** The series' own VFS path under the query — the pull's argument. */
   vfsPath: z.string().optional(),
+  /** True when CUBE already holds this series (a pull would just confirm). */
+  pulled: z.boolean().optional(),
+  /** How many files CUBE holds, when known. */
+  pulledFiles: z.number().optional(),
 });
 
 /** One found study and its series. */
 export const pacsStudySchema = z.object({
   studyUID: z.string().optional(),
+  /** The study's VFS path under the query — a study-level pull's argument. */
+  vfsPath: z.string().optional(),
   description: z.string(),
   patientName: z.string(),
   patientId: z.string(),

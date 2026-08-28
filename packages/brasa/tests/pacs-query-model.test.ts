@@ -1,6 +1,10 @@
 import { jest, describe, it, expect } from '@jest/globals';
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
+  tag_extractValue: (v) => (v && typeof v === 'object' && 'value' in v ? String(v.value ?? '') : String(v ?? '')),
+  studies_extractFromDecoded: jest.fn(() => []),
+  series_extractFromStudy: jest.fn(() => []),
   errorStack: { stack_getAll: jest.fn(() => []) },
   chrisContext: { current_get: jest.fn() },
   Context: {},
@@ -12,7 +16,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_error: (rendered: string, _e?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: jest.fn(() => ({ cache_set: jest.fn() })),
 }));
-jest.unstable_mockModule('@fnndsc/salsa', () => ({ queryFolderName_build: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/salsa', () => ({ queryId_extractFromFolder: jest.fn(), queryLabel_extractFromFolder: jest.fn(), folderUID_get: jest.fn(), queryFolderName_build: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ screen: { table_output: jest.fn(() => '') } }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({
   spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() },

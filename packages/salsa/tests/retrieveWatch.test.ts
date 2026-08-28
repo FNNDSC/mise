@@ -206,7 +206,9 @@ describe('retrieve_fireAndWatch', () => {
     wsInstances[0].emit('error', new Error('dropped'));
     await flush();
     await run;
-    expect(t.status).toBe('error');
+    // A dead socket says the watch ended, not that the retrieve failed: CUBE
+    // goes on registering whatever the PACS goes on pushing.
+    expect(t.status).toBe('unconfirmed');
   });
 });
 
@@ -219,6 +221,21 @@ describe('retrieve_confirmLoop', () => {
     expect(await retrieve_confirmLoop([t], 1, 'PACSDCM', fakeClient, {})).toBe(0);
     expect(t.lonkConfirmed).toBe(true);
     expect(t.cubePathDir).toBe('/SERVICES/PACS/x');
+  });
+
+  it('asks CUBE about a series the watch lost, and calls it pulled when it is there', async () => {
+    // The defect this closes: a socket drop marked every in-flight series
+    // failed, while the files were landing in CUBE the whole time.
+    const t = task();
+    t.status = 'unconfirmed';
+    mockStorageResolve.mockResolvedValue(ok({ fileCount: 68, folderPath: '/SERVICES/PACS/y' }));
+
+    expect(await retrieve_confirmLoop([t], 1, 'PACSDCM', fakeClient, {})).toBe(0);
+
+    expect(t.status).toBe('pulled');
+    expect(t.lonkConfirmed).toBe(true);
+    expect(t.actualFiles).toBe(68);
+    expect(t.cubePathDir).toBe('/SERVICES/PACS/y');
   });
 
   it('marks still-unconfirmed series errored after retries are exhausted', async () => {

@@ -97,18 +97,32 @@ function pullEvents_make(): RetrieveWatchEvents {
   };
 }
 
-function pullProgress_complete(allTasks: RetrieveTask[], failed: boolean): void {
+/**
+ * Closes the pull's progress channel with an honest terminal state.
+ *
+ * A pull that lost its watch is neither a success nor a failure: the surface
+ * should stop showing work in flight without claiming an outcome nobody
+ * observed.
+ *
+ * @param allTasks - Every task this pull covered.
+ * @param failed - Whether any series genuinely failed or was never fired.
+ * @param unconfirmed - How many series the watch stopped following.
+ */
+function pullProgress_complete(allTasks: RetrieveTask[], failed: boolean, unconfirmed: number): void {
   const done: number = allTasks.filter((t: RetrieveTask) => t.status === 'pulled').length;
+  const label: string = failed
+    ? 'Pull incomplete'
+    : (unconfirmed > 0 ? `Pull ended — ${unconfirmed} series unconfirmed` : 'Pull complete');
   sink_get().progress_write({
     operation: 'pull',
     kind: 'retrieve',
     phase: failed ? 'failed' : 'complete',
-    label: failed ? 'Pull incomplete' : 'Pull complete',
+    label,
     current: done,
     total: allTasks.length,
     percent: allTasks.length > 0 ? (done / allTasks.length) * 100 : 100,
     unit: 'series',
-    status: failed ? 'error' : 'done',
+    status: failed ? 'error' : (unconfirmed > 0 ? 'unconfirmed' : 'done'),
   });
 }
 
@@ -183,15 +197,21 @@ async function paths_resolveToVfs(
 function pullSummary_print(allTasks: RetrieveTask[], totalFiringErrors: number): void {
   const pulled: number = allTasks.filter((t: RetrieveTask) => t.status === 'pulled').length;
   const totalCount: number = allTasks.length;
-  const failures: RetrieveTask[] = allTasks.filter((t: RetrieveTask) => t.status !== 'pulled');
+  // Not seeing the end of a retrieve is not the same as it failing. The PACS
+  // keeps pushing and CUBE keeps registering after a watch drops, so a series
+  // the client lost sight of is reported as unknown rather than lost — and it
+  // does not fail the command, because nothing here knows that it failed.
+  const unconfirmed: RetrieveTask[] = allTasks.filter((t: RetrieveTask) => t.status === 'unconfirmed');
+  const failures: RetrieveTask[] = allTasks.filter(
+    (t: RetrieveTask) => t.status !== 'pulled' && t.status !== 'unconfirmed',
+  );
 
-  if (failures.length === 0) {
+  if (failures.length === 0 && unconfirmed.length === 0) {
     sink_dataLine(chalk.green(`\n✓ ${pulled}/${totalCount} series pulled successfully.`));
   } else {
-    sink_dataLine(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series complete.`));
-    // An unfired series is permanent loss for this run (no retrieve exists,
-    // nothing will ever arrive); a watch failure is usually cosmetic — the
-    // PACS keeps pushing and CUBE keeps registering after detach.
+    sink_dataLine(chalk.yellow(`\n⚠ ${pulled}/${totalCount} series confirmed.`));
+    // An unfired series is permanent loss for this run: no retrieve exists, so
+    // nothing will ever arrive for it.
     for (const f of failures) {
       if (f.status === 'unfired') {
         sink_dataLine(chalk.red(`  ✗ ${f.label} [FAILED TO FIRE — will not arrive; re-run pull]`));
@@ -199,7 +219,19 @@ function pullSummary_print(allTasks: RetrieveTask[], totalFiringErrors: number):
         sink_dataLine(chalk.yellow(`  ✗ ${f.label} [${f.status.toUpperCase()} — verify with: pacs status]`));
       }
     }
-    process.exitCode = 1;
+    for (const u of unconfirmed) {
+      sink_dataLine(chalk.gray(`  ? ${u.label} [WATCH ENDED — may still be arriving; check with: pacs status]`));
+    }
+    if (unconfirmed.length > 0) {
+      sink_dataLine(chalk.gray(
+        `  The retrieve watch ended before ${unconfirmed.length} series finished. ` +
+        'That is a lost connection, not a failed retrieve.',
+      ));
+    }
+    // Only a real failure fails the command.
+    if (failures.length > 0) {
+      process.exitCode = 1;
+    }
   }
 
   if (totalFiringErrors > 0) {
@@ -207,7 +239,7 @@ function pullSummary_print(allTasks: RetrieveTask[], totalFiringErrors: number):
     process.exitCode = 1;
   }
 
-  pullProgress_complete(allTasks, failures.length > 0 || totalFiringErrors > 0);
+  pullProgress_complete(allTasks, failures.length > 0 || totalFiringErrors > 0, unconfirmed.length);
 }
 
 /**

@@ -32,8 +32,18 @@ import {
   type Client,
 } from '@fnndsc/cumin';
 
-/** Lifecycle states of one series retrieve. */
-export type RetrieveStatus = 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error' | 'unfired';
+/**
+ * Lifecycle states of one series retrieve.
+ *
+ * `unconfirmed` is the state of a series the client stopped watching before it
+ * could see the end. It is not a failure: the PACS keeps pushing and CUBE keeps
+ * registering after a watch ends, so the retrieve is very likely still running
+ * or already done. Reporting such a series as `error` claims knowledge the
+ * client does not have, and a caller that treats it as failure will tell an
+ * operator that nothing arrived while the files land behind them.
+ */
+export type RetrieveStatus =
+  | 'pending' | 'pulling' | 'pulled' | 'stalled' | 'timeout' | 'error' | 'unfired' | 'unconfirmed';
 
 /** Progress classification reported to event consumers. */
 export type RetrieveProgressStatus = 'running' | 'done' | 'unconfirmed' | 'error' | 'stalled' | 'timeout';
@@ -317,7 +327,7 @@ export async function retrieve_fireAndWatch(
       let allTerminal: boolean = true;
 
       for (const t of fired) {
-        if (t.status === 'pulled' || t.status === 'error' || t.status === 'unfired' || t.status === 'stalled' || t.status === 'timeout') {
+        if (t.status === 'pulled' || t.status === 'error' || t.status === 'unfired' || t.status === 'stalled' || t.status === 'timeout' || t.status === 'unconfirmed') {
           continue;
         }
         allTerminal = false;
@@ -377,11 +387,14 @@ export async function retrieve_fireAndWatch(
       }
     });
 
+    // The socket dying says the watch ended, not that any retrieve failed.
+    // CUBE goes on registering whatever the PACS goes on pushing, so what is
+    // known here is only that nobody is looking any more.
     ws.on('error', () => {
       for (const t of fired) {
         if (t.status === 'pending' || t.status === 'pulling') {
-          t.status = 'error';
-          emit(t, 'error');
+          t.status = 'unconfirmed';
+          emit(t, 'unconfirmed');
         }
       }
       done();
@@ -414,8 +427,11 @@ export async function retrieve_confirmLoop(
   events: RetrieveWatchEvents = {},
 ): Promise<number> {
   let extraFiringErrors: number = 0;
+  // A series the watch lost sight of is a candidate for exactly the same
+  // treatment as one whose confirmation went missing: ask CUBE. Both are
+  // "we did not see the end", and CUBE is the only thing that knows.
   let retryCandidates: RetrieveTask[] = allTasks.filter(
-    (t: RetrieveTask) => t.status === 'pulled' && !t.lonkConfirmed,
+    (t: RetrieveTask) => (t.status === 'pulled' && !t.lonkConfirmed) || t.status === 'unconfirmed',
   );
 
   for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
@@ -424,6 +440,10 @@ export async function retrieve_confirmLoop(
       if (stateResult.ok && stateResult.value.folderPath !== null) {
         t.lonkConfirmed = true;
         t.cubePathDir = stateResult.value.folderPath;
+        // A series found in CUBE arrived, whatever the watch managed to see.
+        t.status = 'pulled';
+        t.actualFiles = stateResult.value.fileCount;
+        events.task?.(t, 'done', 'retrying');
       }
     }));
 

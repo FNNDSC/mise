@@ -370,6 +370,32 @@ export function logo_print(useColor: boolean): void {
 }
 
 /**
+ * Redraws the brain at the top of a cleared screen and brings it to life.
+ *
+ * The pulse repaints by moving the cursor up to where the logo is, so the logo
+ * has to still be on screen. By the time a session has logged in, the logo and
+ * the login output have usually scrolled past the top — and an animation that
+ * cannot find its anchor paints at row zero instead, over whatever is there.
+ *
+ * Clearing and redrawing restores the anchor and gives boot output a full
+ * screen to flow into beneath it. It also happens to be the gesture: the brain
+ * is dead while credentials are checked, and lights up once they are good.
+ *
+ * @returns True when the screen was reset and the pulse started.
+ */
+export function logo_reviveOnScreen(): boolean {
+  if (!process.stdout.isTTY) return false;
+  logo_animateStop();
+  stdoutTrack_stop();
+  // Home the cursor and clear everything below it, so the logo is at row zero
+  // with the whole screen underneath.
+  process.stdout.write('\x1b[H\x1b[J');
+  logo_print(true);
+  logo_animatePulse();
+  return true;
+}
+
+/**
  * Starts the pulsing brain activity animation in-place above already-printed output.
  * Must be called after logo_print(true); no-op if already running or non-TTY.
  */

@@ -245,21 +245,62 @@ export function logo_frameRender(frameIndex: number, isStaticEndState: boolean =
 
 let originalWrite: typeof process.stdout.write | null = null;
 let linesPrinted: number = 0;
+/** Columns occupied by output not yet terminated by a newline. */
+let pendingColumns: number = 0;
 
 /**
- * Starts hijacking process.stdout.write to dynamically count the number
- * of newlines printed since the logo animation was launched.
+ * Matches every ANSI escape, not only the colour codes {@link ANSI_PATTERN}
+ * strips: anything that moves a cursor or sets a mode occupies no columns
+ * either, and a width count that ignores it over-shoots.
+ */
+const ESCAPE_PATTERN: RegExp = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
+
+/**
+ * Counts the screen rows a run of printed text occupies.
+ *
+ * The animation repaints by moving the cursor up a fixed number of rows, so it
+ * must know rows and not newlines. A line longer than the terminal is wrapped
+ * by the terminal into several rows while contributing one newline; counting
+ * newlines therefore under-shoots, and the animation paints over whatever was
+ * printed. Long lines — a URL carrying a token, say — make that immediate.
+ *
+ * @param text - The text written to stdout, escapes included.
+ * @returns The rows it occupied, advancing the pending-column position.
+ */
+export function rows_count(text: string): number {
+  const columns: number = process.stdout.columns || 80;
+  const segments: string[] = text.replace(ESCAPE_PATTERN, '').split('\n');
+  let rows: number = 0;
+  segments.forEach((segment: string, index: number): void => {
+    const width: number = pendingColumns + segment.length;
+    if (index < segments.length - 1) {
+      // A completed line occupies at least one row, and one more for each
+      // full width it wrapped past.
+      rows += Math.max(1, Math.ceil(width / columns) || 1);
+      pendingColumns = 0;
+    } else {
+      pendingColumns = width % columns;
+      // Text that wrapped but has not yet ended still consumed rows.
+      rows += Math.floor(width / columns);
+    }
+  });
+  return rows;
+}
+
+/**
+ * Starts hijacking process.stdout.write to count the screen rows printed
+ * since the logo animation was launched.
  */
 function stdoutTrack_start(): void {
   if (originalWrite) return;
   originalWrite = process.stdout.write.bind(process.stdout);
   linesPrinted = 0;
+  pendingColumns = 0;
   process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]): boolean => {
     const str: string = typeof chunk === 'string'
       ? chunk
       : (chunk && chunk.toString ? chunk.toString() : '');
-    const newlines: number = (str.match(/\n/g) || []).length;
-    linesPrinted += newlines;
+    linesPrinted += rows_count(str);
     return (originalWrite as (...a: unknown[]) => boolean)(chunk, ...args);
   }) as typeof process.stdout.write;
 }

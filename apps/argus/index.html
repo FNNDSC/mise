@@ -73,7 +73,7 @@
         <div class="left-frame">
           <div>
             <button class="panel-3 domain-live">FILES<span class="hop">-01</span></button>
-            <button class="panel-4 domain-inert">RUNS<span class="hop">-02</span></button>
+            <button class="panel-4 domain-live" id="gutter-runs">RUNS<span class="hop">-02</span></button>
             <button class="panel-5 domain-inert">TOOLS<span class="hop">-03</span></button>
             <button class="panel-6 domain-inert">SOURCES<span class="hop">-04</span></button>
             <div class="panel-spacer"></div>
@@ -127,7 +127,8 @@
                   <div class="lcars-bar-zoom" data-pane="dag" title="zoom DAG (Esc restores)" role="button" tabindex="0"></div>
                 </div>
                 <div id="dag-canvas"></div>
-                <div id="dag-empty" class="files-empty">NO FEED IN VIEW — cd INTO A FEED OR RUN `feed diagram &lt;feed&gt;`</div>
+                <div id="dag-feedlist"></div>
+                <div id="dag-empty" class="files-empty">NO FEED IN VIEW — PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
                 <div id="dag-facts"></div>
               </div>
               <div class="workspace-pane" id="pane-files">

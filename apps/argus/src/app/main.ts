@@ -486,6 +486,7 @@ async function surface_start(token: string): Promise<void> {
     element_require('dag-facts'),
     element_require('dag-empty'),
     element_require('dag-strategy'),
+    element_require('dag-feedlist'),
     {
       command_run: (line: string): void => {
         void client.line_execute(line, { silent: true });
@@ -501,6 +502,10 @@ async function surface_start(token: string): Promise<void> {
     (line: string): void => {
       void client.line_execute(line, { silent: true });
     },
+  );
+  // RUNS-02: the gutter's feeds gesture — the DAG pane hosts the chooser.
+  element_require('gutter-runs').addEventListener('click', (): void =>
+    dagPanel.feedsChooser_request(),
   );
   pane_register({ id: 'console', title: 'CALYPSO CONSOLE', mount: element_require('drawer') });
   pane_register({ id: 'dag', title: 'DAG', mount: element_require('pane-dag') });

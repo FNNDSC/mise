@@ -210,6 +210,60 @@ body[data-zoom='files'] #pane-dag {
   font-size: 0.75rem;
 }
 
+/* The feed chooser: the titled roster hosted by the DAG pane. */
+#dag-feedlist {
+  display: none;
+  max-height: 42vh;
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+
+.feedlist-row {
+  display: grid;
+  grid-template-columns: 4em 1fr 8em 8em;
+  gap: 0 0.8rem;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.feedlist-row:hover {
+  background: rgb(255 119 0 / 18%);
+}
+
+.feedlist-id {
+  color: var(--pumpkin-pie);
+  text-align: right;
+}
+
+.feedlist-title {
+  color: var(--butter);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.feedlist-status {
+  color: var(--honey);
+  font-size: 0.7rem;
+}
+
+.feedlist-finishedWithError .feedlist-status,
+.feedlist-cancelled .feedlist-status {
+  color: #f22;
+}
+
+.feedlist-started .feedlist-status,
+.feedlist-running .feedlist-status {
+  color: var(--orange);
+}
+
+.feedlist-owner {
+  color: var(--pumpkin-pie);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .strategy-pill {
   border: none;
   border-radius: 0.7rem;

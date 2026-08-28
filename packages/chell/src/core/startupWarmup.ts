@@ -19,6 +19,8 @@ import {
   type PrefetchResult,
 } from '@fnndsc/brasa';
 import { daemon_launch, identity_forSession } from '@fnndsc/calypso';
+import { sink_set, StdoutSink } from '@fnndsc/brasa';
+import { TerminalProgressRenderer } from './progressRenderer.js';
 import {
   chrisContext,
   errorStack,
@@ -354,6 +356,13 @@ export async function daemonSession_run(
   recovery: DaemonWarmupRecovery = daemonWarmupFailure_decide,
 ): Promise<void> {
   try {
+    // Warm-up runs before the daemon installs its own sink, so the engine is
+    // still writing to this terminal — and a daemon boot is the one time
+    // anyone watches it. Without a renderer the migrated spinner emits typed
+    // events into StdoutSink's null renderer and the boot looks frozen.
+    if (interactive) {
+      sink_set(new StdoutSink(new TerminalProgressRenderer()));
+    }
     await daemon_launch(engine, async (): Promise<void> => {
       const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
       if (cache.failures.length === 0) {

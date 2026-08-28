@@ -29,6 +29,30 @@ import {
   type DiagramTreeWalk,
 } from './diagram.tree.js';
 import { signalflowDoc_build, type SfDoc } from './feed.tree.signalflow.js';
+import { DAG_MODEL_KINDS, type PipelineDiagramModel } from '@fnndsc/menu';
+
+/**
+ * Projects the salsa diagram onto the wire's `pipeline.diagram` model: the
+ * full authored topology, so a surface can draw the DAG rather than merely
+ * count it. Layout is deliberately absent — that is the surface's business.
+ *
+ * @param graph - The resolved pipeline diagram.
+ * @returns The typed model payload.
+ */
+function pipelineDiagramModel_build(graph: PipelineDiagram): PipelineDiagramModel {
+  return {
+    name: graph.name,
+    pipelineId: graph.pipelineID,
+    nodes: graph.nodes.map((node: PipelineDiagramNode) => ({
+      id: String(node.id),
+      label: node.title,
+      parentIds: node.parentID === null ? [] : [String(node.parentID)],
+      joinParentIds: node.joinParentIDs.map((joinId: number): string => String(joinId)),
+      pluginName: node.pluginName,
+      arguments: node.arguments.map((argument: PipelineDiagramArgument) => ({ ...argument })),
+    })),
+  };
+}
 
 /** Pipeline diagram output mode. */
 export type PipelineDiagramMode = 'shallow' | 'shallow-withargs' | 'signalflow';
@@ -83,15 +107,15 @@ export async function pipelineDiagram_handle(
     });
     const yaml: string = yamlDump(doc, { lineWidth: -1, noRefs: true });
     return envelope_ok(yaml, {
-      kind: 'pipeline.diagram',
-      data: { pipelineID: graph.pipelineID, name: graph.name, dialect: 'signalflow', nodes: graph.nodes.length },
+      kind: DAG_MODEL_KINDS.pipelineDiagram,
+      data: pipelineDiagramModel_build(graph),
     });
   }
 
   const walk: DiagramTreeWalk = diagramTree_walk(roots, 0, mode === 'shallow-withargs');
   const header: string = `${chalk.bold(`pipeline ${graph.pipelineID}`)} ${chalk.gray(`"${graph.name}"`)} — ${graph.nodes.length} nodes`;
   return envelope_ok(`${header}\n${walk.rendered}\n`, {
-    kind: 'pipeline.diagram',
-    data: { pipelineID: graph.pipelineID, name: graph.name, dialect: 'shallow', nodes: graph.nodes.length },
+    kind: DAG_MODEL_KINDS.pipelineDiagram,
+    data: pipelineDiagramModel_build(graph),
   });
 }

@@ -33,7 +33,7 @@ import {
 } from '@fnndsc/cumin';
 import { noteEditBody_format, noteEditBody_parse } from './feed.notes.js';
 import { feedTree_handle } from './feed.tree.js';
-import { feedDiagram_handle } from './feed.diagram.js';
+import { feedDag_handle, feedDiagram_handle } from './feed.diagram.js';
 import { session } from '../../session/index.js';
 
 /**
@@ -274,7 +274,9 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       if (!feedResult.ok) return feedResolution_error('Usage: feed diagram [--signalflow] [<feed>]');
       if (wantSignalflow) return await feedDiagram_handle(feedResult.value, 'signalflow');
       const options: FeedTreeOptions = feedTreeOptions_parse(parsed);
-      return await feedTree_handle(feedResult.value, options.focusID, options.maxNodes, options.flat);
+      // Plain `feed diagram` renders the tree AND carries the feed.dag model,
+      // so one declaration serves the terminal and a graphical surface alike.
+      return await feedDag_handle(feedResult.value, options.focusID, options.maxNodes, options.flat);
     }
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree|diagram>`)}\n`);

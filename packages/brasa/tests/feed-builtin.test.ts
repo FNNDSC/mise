@@ -70,8 +70,13 @@ jest.unstable_mockModule('child_process', () => ({ spawnSync: mockSpawnSync }));
 
 const mockFeedTreeHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `TREE ${id}` }));
 const mockFeedDiagramHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `SIGNALFLOW ${id}` }));
+const mockFeedDagHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `DAG ${id}` }));
 jest.unstable_mockModule('../src/builtins/res/feed.tree.js', () => ({ feedTree_handle: mockFeedTreeHandle }));
-jest.unstable_mockModule('../src/builtins/res/feed.diagram.js', () => ({ feedDiagram_handle: mockFeedDiagramHandle }));
+jest.unstable_mockModule('../src/builtins/res/feed.diagram.js', () => ({
+  feedDiagram_handle: mockFeedDiagramHandle,
+  feedDag_handle: mockFeedDagHandle,
+  feedDagModel_build: jest.fn(),
+}));
 
 const { writeFileSync } = await import('fs');
 const { builtin_feed } = await import('../src/builtins/res/feed.js');
@@ -151,16 +156,16 @@ describe('builtin_feed', () => {
     expect(mockFeedsList).toHaveBeenCalledWith(expect.objectContaining({ search: 'brain' }));
   });
 
-  it('draws a shallow feed diagram through the tree handler', async () => {
+  it('draws a shallow feed diagram through the dag handler', async () => {
     const env: CommandEnvelope = await builtin_feed(['diagram', 'feed_12']);
-    expect(mockFeedTreeHandle).toHaveBeenCalledWith(12, undefined, 0, false);
-    expect(env.rendered).toBe('TREE 12');
+    expect(mockFeedDagHandle).toHaveBeenCalledWith(12, undefined, 0, false);
+    expect(env.rendered).toBe('DAG 12');
   });
 
   it('passes tree rendering options through the shallow diagram alias', async () => {
     await builtin_feed(['diagram', 'feed_12', '--focus', '31', '--max-nodes', '8', '--flat']);
 
-    expect(mockFeedTreeHandle).toHaveBeenCalledWith(12, 31, 8, true);
+    expect(mockFeedDagHandle).toHaveBeenCalledWith(12, 31, 8, true);
   });
 
   it('resolves a feed title for tree and SignalFlow diagram output', async () => {

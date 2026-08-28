@@ -34,10 +34,10 @@
         <div class="left-frame-top">
           <button class="panel-1">ARGUS<span class="hop">&nbsp;WEB</span></button>
           <button class="panel-2">02<span class="hop">-CALYPSO</span></button>
-          <button id="audio-pill" class="audio-pill" title="audio on/off">AUDIO</button>
         </div>
         <div class="right-frame-top">
           <div class="banner"><a href="">ARGUS</a> &bull; CALYPSO SESSION</div>
+          <button id="audio-pill" class="audio-pill" title="audio on/off">AUDIO</button>
           <div class="data-cascade-button-group">
             <!-- The header pane: data-header on <body> picks which of the
                  three faces shows — the cascade (default), the stack/about
@@ -91,7 +91,6 @@
             <div class="bar-10" id="drawer-toggle" title="console" role="button" tabindex="0"></div>
           </div>
           <main>
-            <div class="pane-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
             <div id="status-strip">
               <span id="status-identity" class="readout">&mdash;</span>
               <span id="status-jobs" class="readout">&mdash;</span>
@@ -99,6 +98,14 @@
               <span id="status-latency" class="readout"></span>
               <span id="status-mismatch" class="readout mismatch"></span>
               <span id="status-lamp" class="readout lamp-offline">OFFLINE</span>
+            </div>
+            <!-- The workspace pane wears the same chrome as the console:
+                 a header bar carrying the title and the zoom capsule. -->
+            <div class="lcars-terminal-header-bar files-header-bar">
+              <div class="lcars-bar-horizontal">
+                <span class="lcars-title">WORKSPACE</span>
+              </div>
+              <div class="lcars-bar-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
             </div>
             <section id="files-panel" aria-label="Files"></section>
           </main>

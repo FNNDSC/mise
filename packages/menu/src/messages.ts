@@ -340,6 +340,10 @@ export const promptContextSchema = z.object({
     restored: z.boolean().optional(),
     state: z.enum(PROC_PROMPT_STATES).optional(),
   }).optional(),
+  procIndex: z.object({
+    jobs: z.number(),
+    feeds: z.number(),
+  }).optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;

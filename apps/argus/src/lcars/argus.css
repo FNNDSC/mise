@@ -143,35 +143,18 @@ body[data-zoom='files'] #files-panel {
   box-shadow: 0 0 12px var(--butter);
 }
 
-body[data-zoom='console'] .lcars-bar-zoom {
+body[data-zoom='console'] #drawer .lcars-bar-zoom {
   background-color: var(--october-sunset);
 }
 
-/* The files pane's zoom pill: a quiet harvest-gold cap at the top right. */
-main {
-  position: relative;
+/* The workspace pane's header bar: the console's chrome, reused, so every
+ * pane maximizes from the same place. */
+.files-header-bar {
+  margin: 0.2rem 0 0.5rem;
 }
 
-.pane-zoom {
-  position: absolute;
-  top: 0.1rem;
-  right: 0.5rem;
-  width: 40px;
-  height: 14px;
-  border-radius: 7px;
-  background-color: var(--harvestgold);
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.pane-zoom:hover {
-  opacity: 1;
-  box-shadow: 0 0 8px var(--harvestgold);
-}
-
-body[data-zoom='files'] .pane-zoom {
+body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
   background-color: var(--october-sunset);
-  opacity: 1;
 }
 
 /* ---------------------------------------------------------- files instrument */
@@ -393,10 +376,16 @@ body[data-header='telemetry'] #header-telemetry {
 /* -------------------------------------------------------------- audio pill */
 
 /* The audio pill: the panel voice's switch, a labeled LCARS capsule in the
- * ritos idiom. Green speaks, red is silent. */
+ * ritos idiom, seated in the header space. Green speaks, red is silent. */
+.right-frame-top {
+  position: relative;
+}
+
 .audio-pill {
-  align-self: flex-end;
-  margin-top: 0.4rem;
+  position: absolute;
+  top: 4.6rem;
+  left: 1.2rem;
+  z-index: 2;
   padding: 0.1rem 0.9rem;
   border: none;
   border-radius: 0.8rem;

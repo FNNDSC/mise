@@ -159,7 +159,12 @@ export async function daemon_launch(
     ...(webRoot !== null ? { webRoot } : {}),
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces.
-    promptProvider: (): Promise<SessionPromptContext> => sessionPromptContext_build(),
+    promptProvider: (last): Promise<SessionPromptContext> =>
+      sessionPromptContext_build(
+        last !== undefined
+          ? { lastCommandDurationMs: last.durationMs, lastExitCode: last.exitCode }
+          : {},
+      ),
     // Report this process's own versions and build hash so attaching surfaces
     // greet with the daemon's truth rather than their local install's.
     stack: { ...versions_get(), build: buildHash_get() },

@@ -53,6 +53,7 @@ const SWEEP_HOLD_MS: number = 650;
 interface Telemetry {
   jobsLoaded: number;
   jobsTotal: number;
+  feeds: number;
   lastLatencyMs: number;
   latencySumMs: number;
   lastExitCode: number;
@@ -76,6 +77,7 @@ export class Cascade {
   private readonly telemetry: Telemetry = {
     jobsLoaded: 0,
     jobsTotal: 0,
+    feeds: 0,
     lastLatencyMs: 0,
     latencySumMs: 0,
     lastExitCode: 0,
@@ -143,6 +145,15 @@ export class Cascade {
       this.telemetry.jobsLoaded = warmup.loaded;
       this.telemetry.jobsTotal = warmup.total ?? warmup.loaded;
     }
+    // Steady state: warm-up has settled and the index counts are the truth.
+    const index = context.procIndex;
+    if (index !== undefined) {
+      if (warmup === undefined) {
+        this.telemetry.jobsLoaded = index.jobs;
+        this.telemetry.jobsTotal = index.jobs;
+      }
+      this.telemetry.feeds = index.feeds;
+    }
     if (context.lastCommandDurationMs > 0) {
       this.telemetry.lastLatencyMs = context.lastCommandDurationMs;
       this.telemetry.latencySumMs += context.lastCommandDurationMs;
@@ -200,6 +211,7 @@ export class Cascade {
     const rows: Array<[string, () => string]> = [
       ['LINK', (): string => (t.connected === 1 ? 'ONLINE' : 'OFFLINE')],
       ['JOBS INDEXED', (): string => `${t.jobsLoaded} / ${t.jobsTotal}`],
+      ['FEEDS VISIBLE', (): string => String(t.feeds)],
       ['OPS ACTIVE', (): string => String(t.opsActive)],
       ['OPS DONE', (): string => String(t.opsDone)],
       ['OPS FAILED', (): string => String(t.opsFailed)],
@@ -230,6 +242,7 @@ export class Cascade {
     const t: Telemetry = this.telemetry;
     return [
       (): number => t.jobsLoaded,
+      (): number => t.feeds,
       (): number => t.lastLatencyMs,
       (): number => t.opsActive,
       (): number => t.opsDone,

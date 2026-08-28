@@ -303,6 +303,7 @@ function aboutFace_fill(attach: AttachInfo): void {
     }
   }
   rows.push(
+    ['MENU', __ARGUS_MENU__],
     ['ARGUS', `${__ARGUS_GIT__} · ${__ARGUS_BUILT__}Z`],
     ['WIRE', `V${attach.protocolVersion}`],
   );

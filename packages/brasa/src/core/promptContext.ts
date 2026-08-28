@@ -39,6 +39,8 @@ export interface SessionPromptContext {
   lastCommandDurationMs: number;
   /** Present while /proc indexing is active, reconciling, or has failed. */
   procWarmup?: ProcPromptProgress;
+  /** Steady-state index counts, present whenever the cache holds anything. */
+  procIndex?: { jobs: number; feeds: number };
 }
 
 /**
@@ -75,6 +77,15 @@ export async function sessionPromptContext_build(
     warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed'
       ? { loaded: warmupRaw.loaded, total: warmupRaw.total, restored, state: procState }
       : undefined;
+  // Steady-state counts stay visible after warm-up settles: warmup progress
+  // retains its final figures, and the feed map is the live index.
+  const procIndex: { jobs: number; feeds: number } | undefined =
+    warmupRaw.loaded > 0 || procCache_get().feedScopeCounts_get(context.user ?? '').total > 0
+      ? {
+          jobs: warmupRaw.loaded,
+          feeds: procCache_get().feedScopeCounts_get(context.user ?? '').total,
+        }
+      : undefined;
 
   return {
     user:                  isOffline ? 'disconnected' : (context.user ?? 'disconnected'),
@@ -85,5 +96,6 @@ export async function sessionPromptContext_build(
     lastExitCode:          options.lastExitCode ?? 0,
     lastCommandDurationMs: options.lastCommandDurationMs ?? 0,
     procWarmup,
+    procIndex,
   };
 }

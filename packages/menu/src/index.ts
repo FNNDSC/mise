@@ -96,3 +96,22 @@ export {
   attach_parse,
   type ParseResult,
 } from './validate.js';
+export {
+  dagNodeCoreSchema,
+  dagArgumentSchema,
+  pipelineDiagramNodeSchema,
+  pipelineDiagramModelSchema,
+  DAG_NODE_STATUSES,
+  dagNodeStatusSchema,
+  dagNodeMetricsSchema,
+  feedDagNodeSchema,
+  feedDagModelSchema,
+  DAG_MODEL_KINDS,
+  type DagNodeCore,
+  type PipelineDiagramNode,
+  type PipelineDiagramModel,
+  type DagNodeStatus,
+  type DagNodeMetrics,
+  type FeedDagNode,
+  type FeedDagModel,
+} from './dag.js';

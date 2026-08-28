@@ -20,6 +20,7 @@ import {
   rowsPrinted_peek,
   rowsPrinted_track,
   rowsPrinted_untrack,
+  logo_isAnimating,
 } from '../src/lib/logo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -122,6 +123,46 @@ describe('animation and the row counter', () => {
       logo_animateStop();
       expect(rowsPrinted_peek()).toBe(before);
     } finally {
+      rowsPrinted_untrack();
+    }
+  });
+});
+
+describe('animation and a scrolled screen', () => {
+  beforeEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 160, configurable: true });
+    jest.useFakeTimers();
+  });
+
+  it('stops once output has pushed the logo off the top', () => {
+    // The repaint is cursor-relative. Past the top of the screen, moving up
+    // clamps at row zero and the logo lands on whatever is visible there —
+    // on a daemon boot, the address and token just printed.
+    Object.defineProperty(process.stdout, 'rows', { value: 24, configurable: true });
+    rowsPrinted_track();
+    try {
+      logo_animatePulse();
+      // A daemon boot prints far more than a window holds.
+      for (let line = 0; line < 60; line++) process.stdout.write('output\n');
+      jest.advanceTimersByTime(500);
+      expect(logo_isAnimating()).toBe(false);
+    } finally {
+      logo_animateStop();
+      rowsPrinted_untrack();
+    }
+  });
+
+  it('keeps animating while the logo is still on screen', () => {
+    Object.defineProperty(process.stdout, 'rows', { value: 200, configurable: true });
+    rowsPrinted_track();
+    try {
+      logo_animatePulse();
+      process.stdout.write('a few lines\n');
+      jest.advanceTimersByTime(500);
+      expect(logo_isAnimating()).toBe(true);
+    } finally {
+      logo_animateStop();
       rowsPrinted_untrack();
     }
   });

@@ -291,6 +291,11 @@ export function rows_count(text: string): number {
  * Starts hijacking process.stdout.write to count the screen rows printed
  * since the logo animation was launched.
  */
+/** Whether the pulse is currently running. */
+export function logo_isAnimating(): boolean {
+  return logoInterval !== null;
+}
+
 /** Test seam: the rows counted since tracking began. */
 export function rowsPrinted_peek(): number {
   return linesPrinted;
@@ -374,9 +379,21 @@ export function logo_animatePulse(): void {
   const totalLines: number = plainLogoLines.length;
 
   logoInterval = setInterval(() => {
-    logoFrameIndex++;
-
     const upOffset: number = totalLines + 1 + linesPrinted;
+
+    // The repaint is cursor-relative, which holds only while the logo is still
+    // on screen. Once output has pushed it past the top, moving up clamps at
+    // row zero and the logo is painted over whatever is visible there instead
+    // — on a daemon boot, the address and token it had just printed. There is
+    // no arithmetic that recovers a scrolled-away anchor, so the animation
+    // stops while it is still correct.
+    const rows: number = process.stdout.rows || 24;
+    if (upOffset >= rows) {
+      logo_animateStop();
+      return;
+    }
+
+    logoFrameIndex++;
     write_untracked('\x1b[s');
     write_untracked(`\x1b[${upOffset}A\r`);
 

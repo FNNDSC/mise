@@ -26,6 +26,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      # One exact npm version everywhere, matching ci.yml. Node 22 ships npm
+      # 10, the root package.json requires >=11, and `npm ci` refuses the
+      # mismatch outright — so without this the job fails before it builds.
+      - run: npm install -g npm@11.19.0
+
       - run: npm ci
 
       # Build the whole stack (cumin -> salsa -> chili -> chell) so the bundle

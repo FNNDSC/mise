@@ -9,6 +9,10 @@ const mockDecode = jest.fn();
 const mockCreate = jest.fn();
 const mockServersList = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
+  tag_extractValue: (v) => (v && typeof v === 'object' && 'value' in v ? String(v.value ?? '') : String(v ?? '')),
+  studies_extractFromDecoded: jest.fn(() => []),
+  series_extractFromStudy: jest.fn(() => []),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },

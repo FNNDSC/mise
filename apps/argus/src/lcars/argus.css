@@ -1197,3 +1197,49 @@ body[data-header='away'] #header-restore {
 .domain-inert {
   opacity: 0.5;
 }
+
+/* --------------------------------------------------- PACS nits (round two) */
+
+/* Folded studies hide their series; the head stays as the handle. */
+.pacs-study-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.pacs-study-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pacs-collapsed .pacs-series {
+  display: none;
+}
+
+.pacs-fold {
+  color: var(--harvestgold);
+}
+
+/* The study-level pull wears the deeper shade. */
+.pacs-capsule-study {
+  background-color: var(--october-sunset);
+  color: black;
+}
+
+.pacs-capsule-study:hover {
+  box-shadow: 0 0 8px var(--october-sunset);
+}
+
+/* A series already home: a filled bar, quietly green. */
+.pacs-bar-full {
+  display: inline-block;
+  width: 3.4rem;
+  height: 0.45rem;
+  margin-right: 0.4rem;
+  border-radius: 0.25rem;
+  background: linear-gradient(90deg, #2a5, #3c6);
+  vertical-align: middle;
+}

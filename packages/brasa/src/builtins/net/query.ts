@@ -28,6 +28,7 @@ import {
 } from '@fnndsc/cumin';
 import { queryFolderName_build } from '@fnndsc/salsa';
 import { PACS_QUERY_MODEL_KIND, type PacsQueryModel, type PacsStudy } from '@fnndsc/menu';
+import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
@@ -348,6 +349,7 @@ export function pacsQueryModel_build(
     }
     studies.push({
       ...(studyUID ? { studyUID } : {}),
+      ...(studyUID ? { vfsPath: `${facts.vfsPath}/${studyFolder}` } : {}),
       description: studyDesc,
       patientName: tagVal(study.PatientName ?? study.patient_name ?? ''),
       patientId: tagVal(study.PatientID ?? study.patient_id ?? ''),
@@ -358,6 +360,31 @@ export function pacsQueryModel_build(
     });
   }
   return { ...facts, studies };
+}
+
+/** How many already-in-CUBE checks run at once. */
+const PULLED_CHECK_CONCURRENCY: number = 4;
+
+/**
+ * Fills each series' `pulled` state by asking CUBE what it already holds.
+ * Single-attempt lookups, a few at a time; an unreachable check leaves the
+ * flag unset rather than guessing.
+ *
+ * @param model - The query model to annotate in place.
+ */
+async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
+  const allSeries = model.studies.flatMap((study) => study.series);
+  for (let start: number = 0; start < allSeries.length; start += PULLED_CHECK_CONCURRENCY) {
+    const batch = allSeries.slice(start, start + PULLED_CHECK_CONCURRENCY);
+    await Promise.all(batch.map(async (series): Promise<void> => {
+      if (!series.seriesUID) return;
+      const home = await series_cubePathGet(series.seriesUID, 1, 0);
+      if (home !== null) {
+        series.pulled = true;
+        series.pulledFiles = home.fileCount;
+      }
+    }));
+  }
 }
 
 /**
@@ -453,6 +480,9 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     pacsName: pacsserver,
     expression: queryExpr,
   });
+  // Mark what CUBE already holds: a surface then offers gather instead of
+  // pull for series that are already home. One bounded sweep, no retries.
+  await modelPulledState_fill(model);
 
   if (!renderedResult) {
     // Nothing matched: browsing or pulling the empty query would be

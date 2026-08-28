@@ -27,12 +27,13 @@ interface SgrState {
   bold: boolean;
   dim: boolean;
   italic: boolean;
+  inverse: boolean;
   underline: boolean;
 }
 
 /** A fresh, attribute-free state. */
 function state_initial(): SgrState {
-  return { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false };
+  return { fg: null, bg: null, bold: false, dim: false, italic: false, inverse: false, underline: false };
 }
 
 /**
@@ -76,6 +77,10 @@ function sgr_apply(state: SgrState, params: number[]): void {
       state.italic = true;
     } else if (code === 4) {
       state.underline = true;
+    } else if (code === 7) {
+      state.inverse = true;
+    } else if (code === 27) {
+      state.inverse = false;
     } else if (code === 22) {
       state.bold = false;
       state.dim = false;
@@ -125,11 +130,15 @@ function sgr_apply(state: SgrState, params: number[]): void {
  */
 function state_toStyle(state: SgrState): string {
   const rules: string[] = [];
-  if (state.fg !== null) {
-    rules.push(`color:${state.fg}`);
+  // Inverse swaps the roles; the screen's defaults stand in for unset sides
+  // (daybreak text on the black glass).
+  const fg: string | null = state.inverse ? (state.bg ?? '#000') : state.fg;
+  const bg: string | null = state.inverse ? (state.fg ?? 'var(--daybreak)') : state.bg;
+  if (fg !== null) {
+    rules.push(`color:${fg}`);
   }
-  if (state.bg !== null) {
-    rules.push(`background-color:${state.bg}`);
+  if (bg !== null) {
+    rules.push(`background-color:${bg}`);
   }
   if (state.bold) {
     rules.push('font-weight:bold');

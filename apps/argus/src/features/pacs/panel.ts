@@ -140,9 +140,13 @@ export class PacsPanel {
     if (message.operation !== 'pull' || message.itemId === undefined) return;
     const badge: HTMLElement | undefined = this.badges.get(message.itemId);
     if (!badge) return;
-    if (message.phase === 'complete') {
-      badge.textContent = BADGE_TEXT[message.status ?? 'done'] ?? BADGE_TEXT['done'] ?? '';
-      badge.dataset['state'] = message.status ?? 'done';
+    // Per-series messages stay in the 'watching' phase for their whole
+    // life; the terminal states arrive in `status`, so that is the truth
+    // the badge follows.
+    const status: string = message.status ?? 'running';
+    if (status !== 'running') {
+      badge.textContent = BADGE_TEXT[status] ?? status.toUpperCase();
+      badge.dataset['state'] = status;
       return;
     }
     const counted: string =
@@ -158,25 +162,71 @@ export class PacsPanel {
       this.results.appendChild(element_note('NO STUDIES FOUND'));
       return;
     }
+    // One study opens itself; a crowd arrives folded.
+    const collapsed: boolean = model.studies.length > 1;
     for (const study of model.studies) {
-      this.results.appendChild(this.study_render(study));
+      this.results.appendChild(this.study_render(study, collapsed));
     }
   }
 
-  /** Renders one study block. */
-  private study_render(study: PacsStudy): HTMLElement {
+  /** Renders one study block: a toggling head, a study-level pull, series. */
+  private study_render(study: PacsStudy, collapsed: boolean): HTMLElement {
     const block: HTMLElement = document.createElement('section');
-    block.className = 'pacs-study';
+    block.className = collapsed ? 'pacs-study pacs-collapsed' : 'pacs-study';
     const head: HTMLDivElement = document.createElement('div');
     head.className = 'pacs-study-head';
-    head.textContent =
+    const fold: HTMLSpanElement = document.createElement('span');
+    fold.className = 'pacs-fold';
+    fold.textContent = collapsed ? '▸' : '▾';
+    const label: HTMLSpanElement = document.createElement('span');
+    label.className = 'pacs-study-label';
+    label.textContent =
       `${study.patientName || '(unknown)'} · MRN ${study.patientId || '—'} · ` +
-      `${study.description || '(no description)'} · ${study.date}`;
+      `${study.description || '(no description)'} · ${study.date} · ${study.series.length} SERIES`;
+    head.append(fold, label);
+    if (study.vfsPath !== undefined) {
+      const vfsPath: string = study.vfsPath;
+      const pullAll: HTMLButtonElement = document.createElement('button');
+      pullAll.className = 'pacs-capsule pacs-capsule-study';
+      pullAll.textContent = 'PULL STUDY';
+      pullAll.addEventListener('click', (event: MouseEvent): void => {
+        event.stopPropagation();
+        this.handlers.command_run(`pull ${vfsPath}`);
+        for (const series of study.series) {
+          if (series.vfsPath !== undefined && series.pulled !== true) {
+            this.gather_note(study, series);
+            const badge: HTMLElement | undefined = this.badges.get(series.seriesUID);
+            if (badge) {
+              badge.textContent = 'QUEUED';
+              badge.dataset['state'] = 'running';
+            }
+          }
+        }
+      });
+      head.appendChild(pullAll);
+    }
+    head.addEventListener('click', (): void => {
+      const nowCollapsed: boolean = block.classList.toggle('pacs-collapsed');
+      fold.textContent = nowCollapsed ? '▸' : '▾';
+    });
     block.appendChild(head);
     for (const series of study.series) {
       block.appendChild(this.series_render(study, series));
     }
     return block;
+  }
+
+  /** Records one series into the gather without touching badges. */
+  private gather_note(study: PacsStudy, series: PacsSeries): void {
+    if (series.vfsPath === undefined) return;
+    this.gather_add({
+      seriesUID: series.seriesUID,
+      description: series.description,
+      modality: series.modality,
+      patient: study.patientId || study.patientName,
+      vfsPath: series.vfsPath,
+      selected: true,
+    });
   }
 
   /** Renders one series row: facts, badge, and the PULL capsule. */
@@ -194,6 +244,24 @@ export class PacsPanel {
     files.textContent = series.fileCount !== undefined ? `${series.fileCount} FILES` : '';
     const badge: HTMLSpanElement = document.createElement('span');
     badge.className = 'pacs-badge';
+    if (series.pulled === true) {
+      // Already home: a filled bar says so, and the action is gather, not pull.
+      const bar: HTMLSpanElement = document.createElement('span');
+      bar.className = 'pacs-bar-full';
+      badge.appendChild(bar);
+      const note: HTMLSpanElement = document.createElement('span');
+      note.textContent = series.pulledFiles !== undefined
+        ? `✓ ${series.pulledFiles} IN CUBE`
+        : '✓ IN CUBE';
+      badge.appendChild(note);
+      badge.dataset['state'] = 'done';
+      const gatherButton: HTMLButtonElement = document.createElement('button');
+      gatherButton.className = 'pacs-capsule';
+      gatherButton.textContent = 'GATHER';
+      gatherButton.addEventListener('click', (): void => this.gather_note(study, series));
+      row.append(desc, modality, files, badge, gatherButton);
+      return row;
+    }
     this.badges.set(series.seriesUID, badge);
     const pull: HTMLButtonElement = document.createElement('button');
     pull.className = 'pacs-capsule';
@@ -207,14 +275,7 @@ export class PacsPanel {
         this.handlers.command_run(`pull ${vfsPath}`);
         badge.textContent = 'QUEUED';
         badge.dataset['state'] = 'running';
-        this.gather_add({
-          seriesUID: series.seriesUID,
-          description: series.description,
-          modality: series.modality,
-          patient: study.patientId || study.patientName,
-          vfsPath,
-          selected: true,
-        });
+        this.gather_note(study, series);
       });
     }
     row.append(desc, modality, files, badge, pull);

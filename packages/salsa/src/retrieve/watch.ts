@@ -53,6 +53,14 @@ const FIRE_CONCURRENCY: number = 4;
 /** Retry attempts for one retrieve creation, with backoff between them. */
 const FIRE_ATTEMPTS: number = 3;
 const FIRE_BACKOFF_MS: readonly number[] = [250, 500];
+/**
+ * Reconnection attempts for a dropped LONK socket.
+ *
+ * A long retrieve gives a socket more chances to die, which is why a large
+ * study failed where a small one did not. The retrieves are unaffected by the
+ * loss, so reconnecting resumes reporting rather than repeating work.
+ */
+const WATCH_RECONNECT_ATTEMPTS: number = 3;
 
 const STALL_TIMEOUT_MS: number = 30_000;
 const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
@@ -103,6 +111,11 @@ export interface RetrieveTask {
 export interface RetrieveWatchEvents {
   task?: (task: RetrieveTask, status: RetrieveProgressStatus, phase: 'watching' | 'retrying') => void;
   retryRound?: (attempt: number, retryMax: number, count: number) => void;
+  /**
+   * The watch socket dropped and is being reopened. Reported because a silent
+   * reconnection during a long pull looks identical to a stall.
+   */
+  reconnect?: (attempt: number, maxAttempts: number, watching: number) => void;
 }
 
 
@@ -280,16 +293,28 @@ export async function retrieve_fireAndWatch(
   };
 
   const downloadToken: DownloadToken = await downloadToken_create(client);
-  const ws: WebSocket = new WebSocket(lonkWsUrl_build(downloadToken.url, downloadToken.token));
+  const lonkUrl: string = lonkWsUrl_build(downloadToken.url, downloadToken.token);
 
-  await new Promise<void>((openResolve: () => void, openReject: (err: Error) => void) => {
-    ws.once('open', openResolve);
-    ws.once('error', (err: Error) => openReject(err));
-  });
+  /**
+   * Opens a LONK socket and subscribes it to the series given.
+   *
+   * A reconnect subscribes only what is still in flight: the retrieves are
+   * already running on the server, so re-firing them would duplicate work that
+   * was never lost.
+   */
+  const socket_open = async (subscribe: RetrieveTask[]): Promise<WebSocket> => {
+    const socket: WebSocket = new WebSocket(lonkUrl);
+    await new Promise<void>((openResolve: () => void, openReject: (err: Error) => void) => {
+      socket.once('open', openResolve);
+      socket.once('error', (err: Error) => openReject(err));
+    });
+    for (const t of subscribe) {
+      socket.send(JSON.stringify({ SeriesInstanceUID: t.seriesUID, pacs_name: t.pacsName, action: 'subscribe' }));
+    }
+    return socket;
+  };
 
-  for (const t of tasks) {
-    ws.send(JSON.stringify({ SeriesInstanceUID: t.seriesUID, pacs_name: t.pacsName, action: 'subscribe' }));
-  }
+  let ws: WebSocket = await socket_open(tasks);
 
   await tasks_fireBounded(tasks, pacsserver);
 
@@ -314,12 +339,55 @@ export async function retrieve_fireAndWatch(
 
   await new Promise<void>((resolve: () => void) => {
     let resolved: boolean = false;
+    let reconnectsLeft: number = WATCH_RECONNECT_ATTEMPTS;
     const done = (): void => {
       if (resolved) return;
       resolved = true;
       clearInterval(checker);
       try { ws.close(); } catch { /* best-effort socket cleanup */ }
       resolve();
+    };
+
+    /** The series this watch is still waiting on. */
+    const inFlight = (): RetrieveTask[] =>
+      fired.filter((t: RetrieveTask) => t.status === 'pending' || t.status === 'pulling');
+
+    /**
+     * Replaces a dead socket, or gives up and records what is unknown.
+     *
+     * A LONK socket carries no state a client cannot rebuild: the retrieves run
+     * on the server regardless, and a fresh subscription resumes reporting on
+     * them. Only when reconnection is exhausted does the watch admit it stopped
+     * looking — and even then it says so rather than calling the retrieves
+     * failed.
+     */
+    const socket_replace = (): void => {
+      if (resolved) return;
+      const remaining: RetrieveTask[] = inFlight();
+      if (remaining.length === 0) {
+        done();
+        return;
+      }
+      if (reconnectsLeft <= 0) {
+        for (const t of remaining) {
+          t.status = 'unconfirmed';
+          emit(t, 'unconfirmed');
+        }
+        done();
+        return;
+      }
+      reconnectsLeft -= 1;
+      events.reconnect?.(WATCH_RECONNECT_ATTEMPTS - reconnectsLeft, WATCH_RECONNECT_ATTEMPTS, remaining.length);
+      void socket_open(remaining)
+        .then((replacement: WebSocket): void => {
+          if (resolved) {
+            try { replacement.close(); } catch { /* the watch already ended */ }
+            return;
+          }
+          ws = replacement;
+          socket_listen();
+        })
+        .catch((): void => socket_replace());
     };
 
     const checker: NodeJS.Timeout = setInterval(() => {
@@ -355,6 +423,8 @@ export async function retrieve_fireAndWatch(
       if (allTerminal) done();
     }, CHECKER_INTERVAL_MS);
 
+    /** Attaches this watch's handlers to whichever socket is current. */
+    const socket_listen = (): void => {
     ws.on('message', (data: WebSocket.RawData) => {
       try {
         const outer: Record<string, unknown> = JSON.parse(data.toString()) as Record<string, unknown>;
@@ -387,20 +457,14 @@ export async function retrieve_fireAndWatch(
       }
     });
 
-    // The socket dying says the watch ended, not that any retrieve failed.
-    // CUBE goes on registering whatever the PACS goes on pushing, so what is
-    // known here is only that nobody is looking any more.
-    ws.on('error', () => {
-      for (const t of fired) {
-        if (t.status === 'pending' || t.status === 'pulling') {
-          t.status = 'unconfirmed';
-          emit(t, 'unconfirmed');
-        }
-      }
-      done();
-    });
+    // A dead socket is a lost view, not a lost retrieve: reconnect and keep
+    // watching. Only when that fails repeatedly does the watch stop, and even
+    // then it records what it no longer knows rather than declaring failure.
+    ws.on('error', () => { socket_replace(); });
+    ws.on('close', () => { socket_replace(); });
+    };
 
-    ws.on('close', () => { done(); });
+    socket_listen();
   });
 
   return firingErrors;

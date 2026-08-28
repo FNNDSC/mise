@@ -291,6 +291,21 @@ export function rows_count(text: string): number {
  * Starts hijacking process.stdout.write to count the screen rows printed
  * since the logo animation was launched.
  */
+/** Test seam: the rows counted since tracking began. */
+export function rowsPrinted_peek(): number {
+  return linesPrinted;
+}
+
+/** Test seam: starts row tracking without printing a logo first. */
+export function rowsPrinted_track(): void {
+  stdoutTrack_start();
+}
+
+/** Test seam: stops row tracking. */
+export function rowsPrinted_untrack(): void {
+  stdoutTrack_stop();
+}
+
 function stdoutTrack_start(): void {
   if (originalWrite) return;
   originalWrite = process.stdout.write.bind(process.stdout);
@@ -303,6 +318,24 @@ function stdoutTrack_start(): void {
     linesPrinted += rows_count(str);
     return (originalWrite as (...a: unknown[]) => boolean)(chunk, ...args);
   }) as typeof process.stdout.write;
+}
+
+/**
+ * Writes without being counted.
+ *
+ * The animation repaints through stdout, and stdout is what the row counter
+ * hijacks. Counting the animation's own output would feed the offset that
+ * positions it: each repaint would push the next one further up the screen,
+ * ten times a second, until the logo climbed over everything above it.
+ *
+ * @param text - The text to write.
+ */
+function write_untracked(text: string): void {
+  if (originalWrite) {
+    (originalWrite as (chunk: string) => boolean)(text);
+  } else {
+    process.stdout.write(text);
+  }
 }
 
 /**
@@ -344,15 +377,15 @@ export function logo_animatePulse(): void {
     logoFrameIndex++;
 
     const upOffset: number = totalLines + 1 + linesPrinted;
-    process.stdout.write('\x1b[s');
-    process.stdout.write(`\x1b[${upOffset}A\r`);
+    write_untracked('\x1b[s');
+    write_untracked(`\x1b[${upOffset}A\r`);
 
     const frameLines: string[] = logo_frameRender(logoFrameIndex, false);
     frameLines.forEach((line: string) => {
-      process.stdout.write(`\r${line}\x1b[1B`);
+      write_untracked(`\r${line}\x1b[1B`);
     });
 
-    process.stdout.write('\x1b[u');
+    write_untracked('\x1b[u');
   }, 100);
 }
 
@@ -379,15 +412,15 @@ export function logo_animateStop(): void {
 
     const totalLines: number = plainLogoLines.length;
     const upOffset: number = totalLines + 1 + linesPrinted;
-    process.stdout.write('\x1b[s');
-    process.stdout.write(`\x1b[${upOffset}A\r`);
+    write_untracked('\x1b[s');
+    write_untracked(`\x1b[${upOffset}A\r`);
     
     const finalLines: string[] = logo_frameRender(0, true); // Static steady state (holes blank)
     finalLines.forEach((line: string) => {
-      process.stdout.write(`\r${line}\x1b[1B`);
+      write_untracked(`\r${line}\x1b[1B`);
     });
     
-    process.stdout.write('\x1b[u');
+    write_untracked('\x1b[u');
 
     // Restore stdout write hook
     stdoutTrack_stop();

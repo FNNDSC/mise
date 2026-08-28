@@ -38,6 +38,10 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   prefetch_withSpinner: mockPrefetchWithSpinner,
   repl_question: mockQuestion,
   error_stripDebugPrefix: (message: string): string => message,
+  // Daemon warm-up installs a real progress renderer so its spinners reach
+  // the terminal it is booting in; the sink itself is inert here.
+  sink_set: jest.fn(),
+  StdoutSink: class MockStdoutSink {},
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: { read: mockVfsRead },

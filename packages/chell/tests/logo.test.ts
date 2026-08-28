@@ -7,11 +7,20 @@
  *
  * @module
  */
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { logo_frameRender, logo_linesRender, rows_count } from '../src/lib/logo.js';
+import {
+  logo_frameRender,
+  logo_linesRender,
+  rows_count,
+  logo_animatePulse,
+  logo_animateStop,
+  rowsPrinted_peek,
+  rowsPrinted_track,
+  rowsPrinted_untrack,
+} from '../src/lib/logo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const golden = JSON.parse(readFileSync(path.join(__dirname, 'fixtures-logo.json'), 'utf-8'));
@@ -89,5 +98,31 @@ describe('rows_count', () => {
     columns_set(20);
     rows_count('\n');
     expect(rows_count(`${'x'.repeat(60)}\n`)).toBe(3);
+  });
+});
+
+describe('animation and the row counter', () => {
+  beforeEach(() => {
+    // The animation is a no-op off a TTY, so it must look like one here.
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 80, configurable: true });
+    jest.useFakeTimers();
+  });
+
+  it('does not count its own repaints', () => {
+    // The animation repaints through stdout, and stdout is what the counter
+    // hijacks. Counting its own output feeds the offset that positions it, so
+    // every repaint pushes the next one further up — ten times a second, until
+    // the logo climbs over everything above it.
+    rowsPrinted_track();
+    try {
+      const before = rowsPrinted_peek();
+      logo_animatePulse();
+      jest.advanceTimersByTime(2000);
+      logo_animateStop();
+      expect(rowsPrinted_peek()).toBe(before);
+    } finally {
+      rowsPrinted_untrack();
+    }
   });
 });

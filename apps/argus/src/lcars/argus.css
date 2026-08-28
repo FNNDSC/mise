@@ -157,6 +157,110 @@ body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
   background-color: var(--october-sunset);
 }
 
+/* ------------------------------------------------------------ workspace row */
+
+/* Two panes over one address space: the DAG left, the files right, each in
+ * the shared pane chrome. Narrow screens stack them. */
+#workspace-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+#pane-dag {
+  flex: 1 1 52%;
+  min-width: 320px;
+}
+
+#pane-files {
+  flex: 1 1 40%;
+  min-width: 280px;
+}
+
+#dag-canvas {
+  height: 42vh;
+  overflow: hidden;
+}
+
+#dag-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+body[data-zoom='dag'] #pane-files,
+body[data-zoom='dag'] #drawer {
+  display: none;
+}
+
+body[data-zoom='dag'] #dag-canvas {
+  height: calc(100dvh - 9rem);
+}
+
+body[data-zoom='dag'] .files-header-bar .lcars-bar-zoom {
+  background-color: var(--october-sunset);
+}
+
+body[data-zoom='files'] #pane-dag {
+  display: none;
+}
+
+#dag-facts {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.strategy-pill {
+  border: none;
+  border-radius: 0.7rem;
+  padding: 0 0.7rem;
+  background-color: black;
+  color: var(--harvestgold);
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.strategy-pill:hover {
+  color: var(--butter);
+  box-shadow: 0 0 8px var(--harvestgold);
+}
+
+/* --------------------------------------------------------- pipeline cycler */
+
+/* The ambient cycler: a small rotating pipeline DAG living in the header's
+ * left field, under the banner. Hidden with the cascade when a face shows. */
+#pipeline-cycler {
+  position: absolute;
+  top: 3.4rem;
+  left: 1.2rem;
+  width: 15rem;
+  height: 9.5rem;
+}
+
+#pipeline-cycler canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#pipeline-cycler-name {
+  position: absolute;
+  bottom: -0.2rem;
+  left: 0;
+  color: var(--pumpkin-pie);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+body[data-header] #pipeline-cycler {
+  display: none;
+}
+
 /* ---------------------------------------------------------- files instrument */
 
 #files-panel {

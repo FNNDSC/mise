@@ -368,7 +368,26 @@ describe('builtin_pipeline', () => {
     const env: CommandEnvelope = await builtin_pipeline(['diagram', '--signalflow', 'Brain', 'Segmentation']);
     expect(env.rendered).toContain('tree:');
     expect(env.rendered).toContain('input');
-    expect(env.model).toMatchObject({ kind: 'pipeline.diagram', data: { pipelineID: 7, dialect: 'signalflow' } });
+    expect(env.model).toMatchObject({ kind: 'pipeline.diagram', data: { pipelineId: 7 } });
+  });
+
+  it('carries the full authored topology in the pipeline.diagram model', async () => {
+    mockDiagramGet.mockResolvedValue(ok({
+      pipelineID: 8, name: 'Fan in', rootIDs: [1], nodes: [
+        { id: 1, title: 'input', pluginName: 'pl-root', parentID: null, joinParentIDs: [], arguments: [] },
+        { id: 2, title: 'left', pluginName: 'pl-same', parentID: 1, joinParentIDs: [], arguments: [] },
+        { id: 4, title: 'combine', pluginName: 'pl-ts', parentID: 2, joinParentIDs: [3], arguments: [{ name: 'plugininstances', value: '2,3' }] },
+      ],
+    }));
+
+    const env: CommandEnvelope = await builtin_pipeline(['diagram', 'Fan in']);
+
+    expect(env.model?.kind).toBe('pipeline.diagram');
+    const data = env.model?.data as { name: string; nodes: Array<Record<string, unknown>> };
+    expect(data.name).toBe('Fan in');
+    expect(data.nodes).toHaveLength(3);
+    expect(data.nodes[0]).toMatchObject({ id: '1', label: 'input', parentIds: [], joinParentIds: [], pluginName: 'pl-root' });
+    expect(data.nodes[2]).toMatchObject({ id: '4', parentIds: ['2'], joinParentIds: ['3'] });
   });
 
   it('rejects --withargs with --signalflow', async () => {

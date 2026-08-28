@@ -114,3 +114,27 @@ export const DAG_MODEL_KINDS = {
   pipelineDiagram: 'pipeline.diagram',
   feedDag: 'feed.dag',
 } as const;
+
+/** One feed in the titled chooser list, from the process cache. */
+export const feedListEntrySchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  owner: z.string(),
+  status: z.string(),
+  createdAt: z.string(),
+});
+
+/**
+ * The `feed.list` model: the cache-resident feed roster — id, title, and
+ * derived status, with no CUBE round-trip. The DAG pane's chooser reads it;
+ * the terminal reads the same command's rendered lines.
+ */
+export const feedListModelSchema = z.object({
+  feeds: z.array(feedListEntrySchema),
+});
+
+export type FeedListEntry = z.infer<typeof feedListEntrySchema>;
+export type FeedListModel = z.infer<typeof feedListModelSchema>;
+
+/** The chooser model's envelope kind. */
+export const FEED_LIST_MODEL_KIND = 'feed.list' as const;

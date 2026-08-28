@@ -5,6 +5,7 @@
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { FEED_LIST_MODEL_KIND, type FeedListModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
@@ -399,21 +400,23 @@ async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
  */
 async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args.slice(1));
-  const query: string | undefined = parsed._[0];
-  if (!query) {
-    process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red('Usage: proc feeds <title_substring>')}\n`);
-  }
+  // No query lists the whole cache-resident roster — the chooser's case.
+  const query: string = parsed._[0] ?? '';
 
-  const blocked: CommandEnvelope | null = await procWarmup_guard(`proc feeds ${query}`, !!parsed['force']);
+  const blocked: CommandEnvelope | null = await procWarmup_guard(
+    `proc feeds${query ? ` ${query}` : ''}`, !!parsed['force'],
+  );
   if (blocked) return blocked;
 
   const cache: ProcCache = procCache_get();
-  const matches: ProcFeed[] = cache.feeds_find(query);
+  const matches: ProcFeed[] = cache.feeds_find(query)
+    .sort((a: ProcFeed, b: ProcFeed) => b.creationDate.localeCompare(a.creationDate));
 
   if (matches.length === 0) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.yellow(`No feeds found with title containing "${query}".`)}\n`);
+    return envelope_error('', undefined, `${chalk.yellow(
+      query ? `No feeds found with title containing "${query}".` : 'No feeds in the cache.',
+    )}\n`);
   }
 
   let rendered: string = '';
@@ -421,7 +424,16 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
     const status: string = feedStatus_derive(feed);
     rendered += `/proc/jobs/feed_${feed.id}  ${statusColor(status)}  ${chalk.dim(feed.title)}\n`;
   }
-  return envelope_ok(rendered);
+  const model: FeedListModel = {
+    feeds: matches.map((feed: ProcFeed): FeedListModel['feeds'][number] => ({
+      id: feed.id,
+      title: feed.title,
+      owner: feed.ownerUsername,
+      status: feedStatus_derive(feed),
+      createdAt: feed.creationDate,
+    })),
+  };
+  return envelope_ok(rendered, { kind: FEED_LIST_MODEL_KIND, data: model });
 }
 
 /**

@@ -115,3 +115,10 @@ export {
   type FeedDagNode,
   type FeedDagModel,
 } from './dag.js';
+export {
+  feedListEntrySchema,
+  feedListModelSchema,
+  FEED_LIST_MODEL_KIND,
+  type FeedListEntry,
+  type FeedListModel,
+} from './dag.js';

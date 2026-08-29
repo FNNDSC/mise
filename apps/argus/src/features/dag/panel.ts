@@ -210,6 +210,11 @@ export class DagPanel {
     this.scene.size_fit();
   }
 
+  /** Releases the pane's scene (a disposed instance). */
+  public dispose(): void {
+    this.scene.dispose();
+  }
+
   /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
   public feedsChooser_request(): void {
     this.handlers.command_run('proc feeds');

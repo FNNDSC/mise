@@ -100,6 +100,9 @@ interface PendingExecute {
   resolve: (outcome: ExecuteOutcome) => void;
   reject: (error: Error) => void;
   liveChannels: Set<'data' | 'err'>;
+  /** When false, the result's envelopes skip the global observe broadcast:
+   * the issuing pane consumes them alone (the claim rule). */
+  observed: boolean;
 }
 
 /** A completion reply: the candidates and the prefix they complete. */
@@ -214,7 +217,10 @@ export class ArgusClient {
    * @returns The line's envelopes and which channels already streamed live.
    * @throws {Error} When the daemon reports an execution error.
    */
-  public line_execute(line: string, options?: { silent?: boolean }): Promise<ExecuteOutcome> {
+  public line_execute(
+    line: string,
+    options?: { silent?: boolean; observe?: boolean },
+  ): Promise<ExecuteOutcome> {
     const id: string = `argus-${this.nextId++}`;
     if (options?.silent === true) {
       // A silent command feeds instruments (the files panel, a viewer), not
@@ -222,7 +228,12 @@ export class ArgusClient {
       this.silentIds.add(id);
     }
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, liveChannels: new Set<'data' | 'err'>() });
+      this.pending.set(id, {
+        resolve,
+        reject,
+        liveChannels: new Set<'data' | 'err'>(),
+        observed: options?.observe !== false,
+      });
       this.socket.send(JSON.stringify({ type: 'execute', id, line }));
     });
   }
@@ -267,8 +278,12 @@ export class ArgusClient {
           this.pending.delete(message.id);
           request.resolve({ envelopes: message.envelopes, liveChannels: request.liveChannels });
         }
-        for (const envelope of message.envelopes) {
-          this.handlers.envelope_observe?.(envelope);
+        // A pane-claimed request (observe: false) resolves to its issuer
+        // alone; everything else feeds the shared instruments.
+        if (request === undefined || request.observed) {
+          for (const envelope of message.envelopes) {
+            this.handlers.envelope_observe?.(envelope);
+          }
         }
         break;
       }

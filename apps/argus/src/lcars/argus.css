@@ -121,11 +121,13 @@ body[data-zoom='console'] #drawer {
   height: calc(100dvh - 3.6rem) !important;
 }
 
-body[data-zoom='files'] #drawer {
+/* Zooming any tree pane retracts the console; only the console's own zoom
+ * keeps it. */
+body[data-zoom]:not([data-zoom='console']) #drawer {
   height: 0 !important;
 }
 
-body[data-zoom='files'] #files-panel {
+body[data-zoom] .pane-zoomed .files-panel {
   max-height: calc(100dvh - 7rem);
 }
 
@@ -153,8 +155,29 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   margin: 0.2rem 0 0.5rem;
 }
 
-body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
+.pane-zoomed .files-header-bar .lcars-bar-zoom {
   background-color: var(--october-sunset);
+}
+
+/* The split capsules: a pane's own tmux verbs, beside the zoom block. The
+ * side-by-side capsule reads as two columns, the stacked one as two rows. */
+.lcars-bar-split {
+  width: 28px;
+  height: 28px;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  background:
+    linear-gradient(to right, var(--pumpkin-pie) 45%, transparent 45%, transparent 55%, var(--pumpkin-pie) 55%);
+}
+
+.lcars-bar-split.lcars-split-row {
+  background:
+    linear-gradient(to bottom, var(--pumpkin-pie) 45%, transparent 45%, transparent 55%, var(--pumpkin-pie) 55%);
+}
+
+.lcars-bar-split:hover {
+  filter: brightness(1.4);
+  box-shadow: 0 0 10px var(--pumpkin-pie);
 }
 
 /* ----------------------------------------------------------- PACS workspace */
@@ -395,41 +418,35 @@ body[data-zoom='files'] .files-header-bar .lcars-bar-zoom {
   box-shadow: 0 0 8px rgb(255 170 68 / 60%);
 }
 
-#dag-canvas {
+.dag-canvas {
   height: 42vh;
   overflow: hidden;
 }
 
-#dag-canvas canvas {
+.dag-canvas canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
 }
 
-body[data-zoom='dag'] #pane-files,
-body[data-zoom='dag'] #drawer {
+/* A zoomed tree pane takes the whole region: its siblings and the
+ * dividers step offstage, whichever instance it is. */
+body[data-zoom]:not([data-zoom='console']) .layout-leaf:not(.pane-zoomed),
+body[data-zoom]:not([data-zoom='console']) .layout-divider {
   display: none;
 }
 
-body[data-zoom='dag'] #dag-canvas {
+.pane-zoomed .dag-canvas {
   height: calc(100dvh - 9rem);
 }
 
-body[data-zoom='dag'] .files-header-bar .lcars-bar-zoom {
-  background-color: var(--october-sunset);
-}
-
-body[data-zoom='files'] #pane-dag {
-  display: none;
-}
-
-#dag-facts {
+.dag-facts {
   margin-top: 0.4rem;
   font-size: 0.75rem;
 }
 
 /* The feed chooser: the titled roster hosted by the DAG pane. */
-#dag-feedlist {
+.dag-feedlist {
   display: none;
   max-height: 42vh;
   overflow-y: auto;
@@ -547,10 +564,52 @@ body[data-header='dag'] #header-dag {
 
 /* ---------------------------------------------------------- files instrument */
 
-#files-panel {
+.files-panel {
   max-height: 42vh;
   overflow-y: auto;
   padding-right: 0.5rem;
+}
+
+/* ------------------------------------------------------------- empty pane */
+
+/* The empty pane a split creates: shortcut capsules for the frequent, a
+ * prompt for the universe, and a one-shot result card for commands with no
+ * pane projection. */
+.empty-shortcuts {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0.3rem 0 0.6rem;
+}
+
+.empty-promptline {
+  display: flex;
+  margin-bottom: 0.6rem;
+}
+
+.empty-prompt {
+  flex: 1;
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  outline: none;
+}
+
+.empty-prompt:focus {
+  border-color: var(--harvestgold);
+  box-shadow: 0 0 6px rgb(255 170 68 / 40%);
+}
+
+.empty-result {
+  max-height: 38vh;
+  overflow: auto;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--daybreak);
+  white-space: pre-wrap;
 }
 
 .files-empty {

@@ -1,0 +1,122 @@
+= The workspace model: tiling, relevance, and where layout lives
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+ARGUS composes its display as a tiling workspace: a binary split tree of panes, in the tmux tradition, wearing LCARS. This document is the *living design record* for that workspace — what the tiling model is, why LCARS and tiling are a natural pair, and the foundational decision of where the layout logic lives in the mise stack. The settled doctrine, in one sentence: **brasa states facts and relevance; surfaces decide geometry.** This is a working document, updated as the design conversation progresses.
+
+== Status
+
+[cols="1,3"]
+|===
+| 2026-08-28 | Document created. Doctrine settled: three-layer split (vocabulary / relevance / geometry). Binary split tree shipped in ARGUS (PR #252). Relevance promotion (feed detection into brasa) identified as first concrete follow-through. Interactive-split design grilled and settled: pane instances, request-correlation claim rule, result-card fallback, header-capsule gesture. Implementation on branch `argus-tiling-interactive`: pane factories, split/close/replace tree ops, the empty pane and its claiming prompt, targeted result delivery (`observe: false`). Carved trees are session-only; presets persist and reset to givens.
+|===
+
+== LCARS and tiling: why the pairing is structural
+
+LCARS was a tiling paradigm before the term existed. The canonical screens are rigid rectilinear partitions: panels butted against elbows, no floating chrome, no overlap, no window decorations. That is precisely a tiling window manager's world model, and the fit is deep rather than cosmetic:
+
+* *No overlap, ever.* LCARS has no z-order idiom — nothing floats, nothing stacks. A tiling layout makes the same vow. An overlapping window would read as instantly wrong in this visual language.
+* *Frames are structural, not decorative.* Elbows and bars already read as split boundaries. The layout divider is, semantically, an LCARS gutter.
+* *Buttons are layout verbs.* The left-gutter panels (FILES-01, RUNS-02, PACS-03) selecting preset trees is exactly how LCARS panels behave in-fiction: press a region and the whole console reconfigures. Not "open a window" — *reconfigure the display*.
+* *Shared lineage.* tmux semantics and the LCARS aesthetic both descend from fixed-grid, keyboard-first cultures. The binary split tree is the honest kernel for both.
+
+=== The hybrid position
+
+One tension is worth naming. A pure tiling window manager is *user-driven*: the operator splits at will. LCARS in-fiction is *system-driven*: the computer reconfigures the console for the situation. ARGUS deliberately occupies the hybrid: presets the operator picks, context that summons panes (a feed coming into view materializes the DAG), and operator-owned geometry (ratios, pins, dismissals). Layout as a *dialogue* between operator gesture and system context — not pure manual tmux, not pure autopilot. This hybrid is the design position, not an accident.
+
+== The tiling model (shipped)
+
+The display is one region; a split divides a region into exactly two — a row or a column, with a ratio; leaves are panes. Recursion gives every layout a fixed grid could produce and many it could not.
+
+[source]
+----
+LayoutNode = { pane: string }
+           | { dir: 'row' | 'col', ratio: number,
+               first: LayoutNode, second: LayoutNode }
+----
+
+* The tree is the state. No layout enum, no per-pane boolean soup.
+* Gutter buttons apply *presets* — named tree builders, "reset to givens."
+* Panes are long-lived DOM mounts; rendering *reparents* them into fresh split scaffolding, so listeners, scenes, and scroll state survive every rearrangement.
+* Dividers drag their split's ratio; ratios and the active preset persist per browser. Which panes a tree holds is *context* — derived live, never persisted.
+* Zoom remains a modifier above whatever tree is active; the console drawer lives outside the tree (its lid idiom stands).
+
+Shipped in `apps/argus/src/app/layout.ts` (PR #252).
+
+== The foundational question: where does layout live?
+
+Argus is arguably just the display renderer; brasa is the kernel every client shares. Putting layout in brasa would let a text client and a web client share layout logic. Should it?
+
+**No — and the reason is decisive.** tmux gets away with server-side layout because every tmux client is the same device: a character-cell grid. Layout expressed in cells is portable across attachments. mise surfaces are heterogeneous — a 4K browser, a phone someday, chell in a terminal, perhaps ncurses. One tree cannot serve them: a 45/55 column split is meaningless to a REPL, and a phone wants stacking, not splitting. Push geometry into brasa and you either (a) dumb it down to a lowest common denominator or (b) grow per-surface-type layout logic inside the kernel — the kernel now knows about pixels. Both are wrong.
+
+=== The three-layer split (settled)
+
+The question dissolves once "layout logic" is split into three layers with different homes:
+
+[cols="1,2,1,3"]
+|===
+| Layer | What it is | Home | Rationale
+
+| Vocabulary
+| The tree algebra itself: `LayoutNode`, split semantics, pane-kind identifiers. Pure data, no pixels.
+| `menu` (schema)
+| Same tier as envelope models. Cheap to share, zero harm; any future surface speaks the same shapes.
+
+| Relevance
+| "What should be visible now": the cwd entered a feed, so the DAG is relevant; a PACS query is running, so the PACS workspace is relevant.
+| `brasa`
+| Session truth, not rendering. The kernel already half-owns this — the promptContext push *is* this signal.
+
+| Geometry
+| Which tree actually renders: ratios, animation, drag, presets, pins, persistence.
+| the surface (argus)
+| Viewport-shaped by nature. Per-client preference, persisted per browser.
+|===
+
+The doctrine restated: *brasa states facts and relevance; surfaces decide geometry.* It is the envelope-model doctrine one level up — the model carries topology and zero layout (link:envelope-model.adoc[]); the workspace carries relevance and zero geometry.
+
+Reuse between clients, answered precisely: layout itself — no. Layout *vocabulary* and *relevance* — yes. That is the line.
+
+== Consequences and follow-through
+
+=== Relevance promotion: feed detection belongs in brasa
+
+Today argus detects "cwd is inside a feed" by regex-matching the working directory (`CWD_FEED_PATTERNS` in `apps/argus/src/features/dag/panel.ts`). That is business logic leaked client-side: the kernel already knows the cwd sits inside a feed's tree and should say so — e.g. a `feedId` (or a small context descriptor) on the prompt context — rather than making every client re-derive it from path shapes. A text client benefits identically: chell could show a feed banner from the same field. *First concrete follow-through of the doctrine; not yet implemented.*
+
+=== Workspace restore across attachments
+
+Per-surface geometry persistence is localStorage today. If cross-machine restore is ever wanted, brasa may act as a *dumb store* for an opaque per-surface blob (the way a shell stores history) — stored, never interpreted. The kernel must never parse a tree it is forbidden to understand.
+
+=== Interactive splits: settled design
+
+The interactive-split design (grilled and settled 2026-08-28). The gesture itself is cheap: an active pane offers *split horizontal / split vertical / close* — three fixed choices. The real question is what appears in the new pane, and how the operator specifies it. A flat pane-kind list scales badly as kinds multiply.
+
+Candidate resolution — *the pane specifier is an intent, not a menu*:
+
+* tmux never asks "what goes here"; a split gets a shell, the universal thing from which everything is reachable. mise's universal thing is the command line, and argus panes are already projections of envelope models.
+* So a split creates an *empty leaf holding a small prompt*. Whatever runs there claims the pane: `feed diagram feed_12` projects the DAG, `ls ~/feeds` roots a file browser, `pacs query ...` opens the PACS workspace. New pane kinds arrive with new models — the chooser problem does not scale badly, it disappears.
+* Second lens, same answer: everything in mise has a VFS address, so "what this pane shows" can equal "what address this pane looks at" — panes as windows onto the namespace (the Plan 9 move). The empty-pane prompt is then an address bar that also takes verbs; address ⊂ intent.
+* The list demotes rather than dies: the empty pane may show a few curated shortcut capsules (FILES / DAG / PACS / CONSOLE) above its prompt — a browser new-tab page: shortcuts for the frequent, the prompt for the universe.
+* Symmetry for free: split/close also become console commands (`layout split`, `layout close`), since the pane prompt and the main console share the engine. Mouse path and text path converge on the same intents.
+
+The four forks, grilled and settled:
+
+* *Pane instances, not singletons.* Pane kinds become factories creating fresh mounts per leaf — two file browsers at different paths, two DAGs comparing feeds. The files/DAG/PACS controllers refactor from element-bound singletons to instantiable classes.
+* *Claim rule = request correlation.* A pane's prompt tags its command with a request id; the envelope carries it back; only the issuing pane consumes the model. Console-issued models go to the focused pane of matching kind. No focused-pane guessing.
+* *No-projection commands become a result card.* A pane prompt running a command with no pane model (`whoami`) shows the rendered output one-shot in the pane — every command is projectable; the prompt stays for the next command.
+* *Gesture surface = header capsules.* Small split-horizontal / split-vertical / close capsules on the pane's own header bar. Local, no modal interrupt; keyboard shortcuts may join later.
+
+Focus semantics follow tmux: a new pane takes focus.
+
+=== Open threads
+
+* Interactive splits: operator-carved arbitrary trees (split/close gestures, a pane picker), a `layout` console command, the console as a tree citizen. Deferred by design after PR #252. *Now in discussion — see above.*
+* An explicit `workspace.relevance` signal shape in `menu` (pane-kind ids + relevance events), if relevance grows past what prompt context carries naturally.
+* System-driven reconfiguration beyond the DAG summon — how far toward in-fiction LCARS ("the computer rearranges the console") the hybrid should lean.

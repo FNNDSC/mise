@@ -28,10 +28,19 @@ import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing } from '../features/files/panel.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
+import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
-import { pane_register } from './panes.js';
+import {
+  paneFactory_register,
+  paneInstance_adopt,
+  paneInstance_create,
+  paneInstance_dispose,
+  paneInstance_get,
+  paneInstances_list,
+  type PaneInstance,
+} from './panes.js';
 import { LayoutManager, type LayoutNode } from './layout.js';
 import '../lcars/theme/lower-decks.css';
 import '../lcars/argus.css';
@@ -111,6 +120,41 @@ function element_require(id: string): HTMLElement {
     throw new Error(`required element #${id} is missing`);
   }
   return element;
+}
+
+/**
+ * Stamps one pane element from a template.
+ *
+ * @param templateId - The template's id.
+ * @returns The cloned pane element, not yet in the document.
+ * @throws {Error} When the template is missing or empty.
+ */
+function template_stamp(templateId: string): HTMLElement {
+  const template: HTMLElement = element_require(templateId);
+  if (!(template instanceof HTMLTemplateElement)) {
+    throw new Error(`#${templateId} is not a template`);
+  }
+  const first: Element | null = template.content.firstElementChild;
+  if (!(first instanceof HTMLElement)) {
+    throw new Error(`template #${templateId} is empty`);
+  }
+  return first.cloneNode(true) as HTMLElement;
+}
+
+/**
+ * Finds a required descendant of a stamped pane.
+ *
+ * @param mount - The pane element.
+ * @param selector - The descendant's selector.
+ * @returns The element.
+ * @throws {Error} When absent.
+ */
+function pane_find(mount: HTMLElement, selector: string): HTMLElement {
+  const found: HTMLElement | null = mount.querySelector<HTMLElement>(selector);
+  if (found === null) {
+    throw new Error(`pane template is missing ${selector}`);
+  }
+  return found;
 }
 
 /**
@@ -210,6 +254,9 @@ function zoom_wire(terminal: ArgusTerminal): void {
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
 
   const zoom_set = (pane: string | null): void => {
+    for (const marked of document.querySelectorAll('.pane-zoomed')) {
+      marked.classList.remove('pane-zoomed');
+    }
     if (pane === null) {
       delete body.dataset['zoom'];
     } else {
@@ -219,16 +266,29 @@ function zoom_wire(terminal: ArgusTerminal): void {
         body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
       }
       body.dataset['zoom'] = pane;
+      // A tree pane's zoom marks its leaf; siblings step offstage in CSS.
+      const mount: HTMLElement | undefined = paneInstance_get(pane)?.mount;
+      mount?.parentElement?.classList.add('pane-zoomed');
     }
     sound_play('audio3');
   };
 
-  for (const control of document.querySelectorAll<HTMLElement>('[data-pane]')) {
+  // Delegated: pane instances (and their zoom capsules) arrive live.
+  document.addEventListener('click', (event: Event): void => {
+    const target: EventTarget | null = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const control: HTMLElement | null = target.closest<HTMLElement>('[data-pane]');
+    if (control === null) {
+      return;
+    }
     const pane: string = control.dataset['pane'] ?? '';
-    control.addEventListener('click', (): void =>
-      zoom_set(body.dataset['zoom'] === pane ? null : pane),
-    );
-  }
+    if (pane === '') {
+      return;
+    }
+    zoom_set(body.dataset['zoom'] === pane ? null : pane);
+  });
 
   window.addEventListener('keydown', (event: KeyboardEvent): void => {
     if (event.key === 'Escape' && body.dataset['zoom'] !== undefined) {
@@ -453,51 +513,116 @@ let cascade: Cascade | null = null;
 
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
-  const filesPanel: FilesPanel = new FilesPanel(
-    element_require('files-panel'),
-    (action: FileAction): void => {
-      if (action.kind === 'dir') {
-        // Entering a directory lowers to the same command an operator could
-        // type; the listing refresh follows from the fs.cwd model.
+
+  // Panel rosters: every live controller by instance id, for routing —
+  // targeted progress, and the claim rule for console-issued models.
+  const filesPanels: Map<string, FilesPanel> = new Map();
+  const dagPanels: Map<string, DagPanel> = new Map();
+
+  // Lowers a file activation. The primary browser is slaved to the session
+  // cwd and navigates by real `cd`; a rooted browser (a split's instance)
+  // navigates independently by targeted silent listings.
+  const fileAction_handle = (panel: FilesPanel, action: FileAction, primary: boolean): void => {
+    if (action.kind === 'dir') {
+      if (primary) {
         terminal.line_run(`cd "${action.path}"`);
-        return;
+      } else {
+        void client
+          .line_execute(`ls "${action.path}"`, { silent: true, observe: false })
+          .then((outcome: ExecuteOutcome): void => {
+            for (const envelope of outcome.envelopes) {
+              panel.envelope_observe(envelope);
+            }
+          });
       }
-      if (extension_isImage(action.path)) {
-        // Images render natively from the daemon's token-gated /vfs route,
-        // never as terminal strings.
-        const url: string =
-          `/vfs?path=${encodeURIComponent(action.path)}&token=${encodeURIComponent(token)}`;
-        filesPanel.contentImage_show(action.path, url);
-        return;
-      }
-      // Text renders from a silent cat, so a large file does not flood the
-      // transcript.
-      void client.line_execute(`cat "${action.path}"`, { silent: true }).then((outcome: ExecuteOutcome): void => {
+      return;
+    }
+    if (extension_isImage(action.path)) {
+      // Images render natively from the daemon's token-gated /vfs route,
+      // never as terminal strings.
+      const url: string =
+        `/vfs?path=${encodeURIComponent(action.path)}&token=${encodeURIComponent(token)}`;
+      panel.contentImage_show(action.path, url);
+      return;
+    }
+    // Text renders from a silent cat, so a large file does not flood the
+    // transcript.
+    void client
+      .line_execute(`cat "${action.path}"`, { silent: true, observe: false })
+      .then((outcome: ExecuteOutcome): void => {
         const content: string = ansi_strip(
           outcome.envelopes.map((envelope): string => envelope.rendered).join('\n'),
         );
-        filesPanel.content_show(action.path, content);
+        panel.content_show(action.path, content);
       });
-    },
-  );
+  };
 
-  const dagPanel: DagPanel = new DagPanel(
-    element_require('dag-canvas'),
-    element_require('dag-title'),
-    element_require('dag-facts'),
-    element_require('dag-empty'),
-    element_require('dag-strategy'),
-    element_require('dag-feedlist'),
-    {
-      command_run: (line: string): void => {
-        void client.line_execute(line, { silent: true });
+  // Builds one files pane instance from the template.
+  const filesInstance_build = (id: string, primary: boolean): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-files');
+    const panel: FilesPanel = new FilesPanel(
+      pane_find(mount, '.files-panel'),
+      (action: FileAction): void => fileAction_handle(panel, action, primary),
+    );
+    filesPanels.set(id, panel);
+    return {
+      id,
+      kind: 'files',
+      mount,
+      dispose: (): void => {
+        filesPanels.delete(id);
       },
-      node_enter: (vfsPath: string): void => {
-        terminal.line_run(`cd "${vfsPath}"`);
+    };
+  };
+
+  // Builds one DAG pane instance. Only the primary follows the session cwd
+  // and summons itself; a split's instance stays with what it was given.
+  const dagInstance_build = (id: string, primary: boolean): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-dag');
+    const panel: DagPanel = new DagPanel(
+      pane_find(mount, '.dag-canvas'),
+      pane_find(mount, '.dag-title'),
+      pane_find(mount, '.dag-facts'),
+      pane_find(mount, '.dag-empty'),
+      pane_find(mount, '.dag-strategy'),
+      pane_find(mount, '.dag-feedlist'),
+      {
+        command_run: (line: string): void => {
+          // The claim rule: a pane's own requests resolve to it alone.
+          void client
+            .line_execute(line, { silent: true, observe: false })
+            .then((outcome: ExecuteOutcome): void => {
+              for (const envelope of outcome.envelopes) {
+                panel.envelope_observe(envelope);
+              }
+            });
+        },
+        node_enter: (vfsPath: string): void => {
+          terminal.line_run(`cd "${vfsPath}"`);
+        },
+        ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
-      feed_shown: (): void => dag_summon(),
-    },
-  );
+    );
+    dagPanels.set(id, panel);
+    return {
+      id,
+      kind: 'dag',
+      mount,
+      dispose: (): void => {
+        dagPanels.delete(id);
+        panel.dispose();
+      },
+    };
+  };
+
+  // The primary instances carry the preset ids the gutter's trees name.
+  const filesPrimary: PaneInstance = filesInstance_build('files', true);
+  paneInstance_adopt(filesPrimary);
+  const dagPrimary: PaneInstance = dagInstance_build('dag', true);
+  paneInstance_adopt(dagPrimary);
+  const filesPanel: FilesPanel = filesPanels.get('files') as FilesPanel;
+  const dagPanel: DagPanel = dagPanels.get('dag') as DagPanel;
+
   const cycler: PipelineCycler = new PipelineCycler(
     element_require('pipeline-cycler'),
     element_require('pipeline-cycler-name'),
@@ -514,19 +639,16 @@ async function surface_start(token: string): Promise<void> {
     },
     workspace_close: (): void => home_apply(),
   });
-
-  pane_register({ id: 'console', title: 'CALYPSO CONSOLE', mount: element_require('drawer') });
-  pane_register({ id: 'dag', title: 'DAG', mount: element_require('pane-dag') });
-  pane_register({ id: 'files', title: 'WORKSPACE', mount: element_require('pane-files') });
-  pane_register({ id: 'pacs', title: 'PACS QUERY / RETRIEVE', mount: element_require('pacs-workspace') });
+  paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
 
   // The tiling tree: presets are the gutter's trees; a feed in view varies
-  // home by materializing the DAG pane (files left, DAG right).
+  // home by materializing the DAG pane (files left, DAG right); splits
+  // carve the current tree until the next preset resets to givens.
   const layout: LayoutManager = new LayoutManager(
     element_require('layout-root'),
     new Map([
-      ['dag', element_require('pane-dag')],
-      ['files', element_require('pane-files')],
+      ['dag', dagPrimary.mount],
+      ['files', filesPrimary.mount],
       ['pacs', element_require('pacs-workspace')],
     ]),
   );
@@ -543,8 +665,21 @@ async function surface_start(token: string): Promise<void> {
   layout.preset_register('files', homeTree);
   layout.preset_register('pacs', (): LayoutNode => ({ pane: 'pacs' }));
 
+  // Disposes split-born instances the current tree no longer holds; the
+  // primaries (the presets' panes) always survive offstage.
+  const orphans_dispose = (): void => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    for (const instance of paneInstances_list()) {
+      if (shown.has(instance.id)) continue;
+      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs') continue;
+      paneInstance_dispose(instance.id);
+      layout.mount_remove(instance.id);
+    }
+  };
+
   const home_apply = (): void => {
     layout.preset_apply('files');
+    orphans_dispose();
     dagPanel.size_fit();
   };
   const dag_summon = (): void => {
@@ -555,8 +690,86 @@ async function surface_start(token: string): Promise<void> {
     }
   };
 
+  // Creates a fresh pane instance, registered and chromed for the tree.
+  const instance_spawn = (kind: string): PaneInstance => {
+    const instance: PaneInstance = paneInstance_create(kind);
+    layout.mount_register(instance.id, instance.mount);
+    pane_chrome_wire(instance.id, instance.mount);
+    return instance;
+  };
+
+  // Wires one pane's header capsules: the zoom block takes the instance's
+  // identity, the split capsules carve the tree, the mars pill closes.
+  const pane_chrome_wire = (id: string, mount: HTMLElement): void => {
+    const zoomCapsule: HTMLElement | null = mount.querySelector<HTMLElement>('.lcars-bar-zoom');
+    if (zoomCapsule !== null) {
+      zoomCapsule.dataset['pane'] = id;
+    }
+    for (const splitter of mount.querySelectorAll<HTMLElement>('[data-split]')) {
+      splitter.addEventListener('click', (): void => {
+        const dir: 'row' | 'col' = splitter.dataset['split'] === 'row' ? 'row' : 'col';
+        const empty: PaneInstance = instance_spawn('empty');
+        if (!layout.leaf_split(id, dir, empty.id)) {
+          paneInstance_dispose(empty.id);
+          layout.mount_remove(empty.id);
+        }
+        sound_play('audio3');
+      });
+    }
+    mount.querySelector<HTMLElement>('.pane-close')?.addEventListener('click', (): void => {
+      if (id === 'dag') {
+        // The primary DAG's mars pill is its dismissal from home.
+        dagShown = false;
+        home_apply();
+        return;
+      }
+      if (!layout.leaf_close(id)) {
+        // The root leaf: closing the last pane means home.
+        home_apply();
+      }
+      orphans_dispose();
+      sound_play('audio3');
+    });
+  };
+  pane_chrome_wire('files', filesPrimary.mount);
+  pane_chrome_wire('dag', dagPrimary.mount);
+
+  // A claimed empty pane becomes what its command projected.
+  const pane_claim = (emptyId: string, kind: ClaimKind, envelopes: WireEnvelope[]): void => {
+    if (kind === 'pacs') {
+      // The PACS workspace claims the whole region by design.
+      layout.preset_apply('pacs');
+      orphans_dispose();
+      for (const envelope of envelopes) {
+        pacsPanel.envelope_observe(envelope);
+      }
+      return;
+    }
+    const instance: PaneInstance = instance_spawn(kind);
+    layout.leaf_replace(emptyId, instance.id);
+    paneInstance_dispose(emptyId);
+    layout.mount_remove(emptyId);
+    const panel: FilesPanel | DagPanel | undefined =
+      kind === 'files' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
+    for (const envelope of envelopes) {
+      panel?.envelope_observe(envelope);
+    }
+  };
+
+  paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
+  paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
+  paneFactory_register('empty', (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-empty');
+    new EmptyPanel(mount, {
+      execute: (line: string): Promise<ExecuteOutcome> =>
+        client.line_execute(line, { silent: true, observe: false }),
+      claim: (kind: ClaimKind, envelopes: WireEnvelope[]): void => pane_claim(id, kind, envelopes),
+    });
+    return { id, kind: 'empty', mount };
+  });
+
   // FILES-01: home. RUNS-02: home + the feed chooser. PACS-03: toggles the
-  // PACS tree against home. The DAG pane's mars pill dismisses it from home.
+  // PACS tree against home.
   element_require('gutter-files').addEventListener('click', (): void => home_apply());
   element_require('gutter-runs').addEventListener('click', (): void => {
     dagShown = true;
@@ -568,11 +781,8 @@ async function surface_start(token: string): Promise<void> {
       home_apply();
     } else {
       layout.preset_apply('pacs');
+      orphans_dispose();
     }
-  });
-  element_require('dag-close').addEventListener('click', (): void => {
-    dagShown = false;
-    home_apply();
   });
 
   // Boot: the remembered preset, or home.
@@ -626,7 +836,9 @@ async function surface_start(token: string): Promise<void> {
         progress.write(message);
         statusBar.progress_observe(message);
         cascade?.progress_observe(message);
-        dagPanel.progress_observe(message);
+        for (const panel of dagPanels.values()) {
+          panel.progress_observe(message);
+        }
         pacsPanel.progress_observe(message);
       },
       promptline_receive: (context: PromptContext): void => {
@@ -640,10 +852,21 @@ async function surface_start(token: string): Promise<void> {
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
       envelope_observe: (envelope: WireEnvelope): void => {
-        filesPanel.envelope_observe(envelope);
-        dagPanel.envelope_observe(envelope);
+        // The claim rule for console-issued models: a DAG-shaped model goes
+        // to the focused DAG instance when one is focused, else the primary.
+        const kind: string | undefined = envelope.model?.kind;
+        if (kind === 'feed.dag' || kind === 'feed.list') {
+          const focused: string | null = layout.focused_get();
+          const target: DagPanel =
+            focused !== null && dagPanels.has(focused)
+              ? (dagPanels.get(focused) as DagPanel)
+              : dagPanel;
+          target.envelope_observe(envelope);
+        } else {
+          filesPanel.envelope_observe(envelope);
+          pacsPanel.envelope_observe(envelope);
+        }
         cycler.envelope_observe(envelope);
-        pacsPanel.envelope_observe(envelope);
       },
       close_handle: (): void => {
         statusBar.connection_show(false);

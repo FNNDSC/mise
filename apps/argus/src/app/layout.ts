@@ -77,6 +77,97 @@ export class LayoutManager {
     this.presets.set(name, preset);
   }
 
+  /**
+   * Registers a pane mount so trees can hold it (instances arrive live).
+   *
+   * @param id - The pane instance's id.
+   * @param mount - Its mount element.
+   */
+  public mount_register(id: string, mount: HTMLElement): void {
+    this.mounts.set(id, mount);
+  }
+
+  /**
+   * Forgets a pane mount (a disposed instance).
+   *
+   * @param id - The pane instance's id.
+   */
+  public mount_remove(id: string): void {
+    this.mounts.delete(id);
+    if (this.focusedPane === id) {
+      this.focusedPane = null;
+    }
+  }
+
+  /**
+   * Splits a leaf in two: the existing pane keeps the first half, the new
+   * pane takes the second, at an even ratio. Renders and focuses the new
+   * pane (tmux semantics).
+   *
+   * @param target - The pane id whose leaf splits.
+   * @param dir - 'col' for side-by-side, 'row' for stacked.
+   * @param newPane - The pane id filling the second half.
+   * @returns True when the target was found and split.
+   */
+  public leaf_split(target: string, dir: 'row' | 'col', newPane: string): boolean {
+    if (this.tree === null) return false;
+    const replaced: LayoutNode | null = tree_replaceLeaf(this.tree, target, {
+      dir,
+      ratio: 0.5,
+      first: { pane: target },
+      second: { pane: newPane },
+    });
+    if (replaced === null) return false;
+    this.tree = replaced;
+    this.focusedPane = newPane;
+    this.render();
+    return true;
+  }
+
+  /**
+   * Replaces one leaf's pane with another (a claim: the empty pane
+   * becoming what its command projected).
+   *
+   * @param target - The pane id being replaced.
+   * @param newPane - The pane id standing in its place.
+   * @returns True when the target was found.
+   */
+  public leaf_replace(target: string, newPane: string): boolean {
+    if (this.tree === null) return false;
+    const replaced: LayoutNode | null = tree_replaceLeaf(this.tree, target, { pane: newPane });
+    if (replaced === null) return false;
+    this.tree = replaced;
+    if (this.focusedPane === target) {
+      this.focusedPane = newPane;
+    }
+    this.render();
+    return true;
+  }
+
+  /**
+   * Closes a leaf: its sibling takes the whole region. Closing the root
+   * leaf is refused — the host decides what an empty workspace means.
+   *
+   * @param target - The pane id whose leaf closes.
+   * @returns True when the leaf was found below the root and removed.
+   */
+  public leaf_close(target: string): boolean {
+    if (this.tree === null || 'pane' in this.tree) return false;
+    const pruned: LayoutNode | null = tree_pruneLeaf(this.tree, target);
+    if (pruned === null) return false;
+    this.tree = pruned;
+    if (this.focusedPane === target) {
+      this.focusedPane = null;
+    }
+    this.render();
+    return true;
+  }
+
+  /** @returns The focused pane's id, when one is focused. */
+  public focused_get(): string | null {
+    return this.focusedPane;
+  }
+
   /** @returns The persisted preset name, when it names a registered preset. */
   public savedPreset_get(): string | null {
     return this.prefs.preset !== undefined && this.presets.has(this.prefs.preset)
@@ -214,7 +305,7 @@ export class LayoutManager {
   }
 
   /** Marks one pane focused and repaints the rings. */
-  private focus_set(pane: string): void {
+  public focus_set(pane: string): void {
     if (this.focusedPane === pane) return;
     this.focusedPane = pane;
     for (const leaf of this.root.querySelectorAll('.layout-leaf')) {
@@ -250,4 +341,61 @@ export class LayoutManager {
       // A browser without storage keeps the session-long geometry.
     }
   }
+}
+
+/**
+ * Returns a tree with the named leaf replaced by another node, or null when
+ * the leaf does not appear.
+ *
+ * @param node - The tree to transform.
+ * @param target - The pane id of the leaf to replace.
+ * @param replacement - The node standing in its place.
+ * @returns The transformed tree, or null.
+ */
+function tree_replaceLeaf(
+  node: LayoutNode,
+  target: string,
+  replacement: LayoutNode,
+): LayoutNode | null {
+  if ('pane' in node) {
+    return node.pane === target ? replacement : null;
+  }
+  const first: LayoutNode | null = tree_replaceLeaf(node.first, target, replacement);
+  if (first !== null) {
+    return { ...node, first };
+  }
+  const second: LayoutNode | null = tree_replaceLeaf(node.second, target, replacement);
+  if (second !== null) {
+    return { ...node, second };
+  }
+  return null;
+}
+
+/**
+ * Returns a tree with the named leaf removed — its sibling takes the
+ * parent's region — or null when the leaf does not appear below a split.
+ *
+ * @param node - The tree to transform (must be a split).
+ * @param target - The pane id of the leaf to remove.
+ * @returns The transformed tree, or null.
+ */
+function tree_pruneLeaf(node: LayoutNode, target: string): LayoutNode | null {
+  if ('pane' in node) {
+    return null;
+  }
+  if ('pane' in node.first && node.first.pane === target) {
+    return node.second;
+  }
+  if ('pane' in node.second && node.second.pane === target) {
+    return node.first;
+  }
+  const first: LayoutNode | null = tree_pruneLeaf(node.first, target);
+  if (first !== null) {
+    return { ...node, first };
+  }
+  const second: LayoutNode | null = tree_pruneLeaf(node.second, target);
+  if (second !== null) {
+    return { ...node, second };
+  }
+  return null;
 }

@@ -116,30 +116,67 @@
                  arranging the registered panes. Presets (the gutter) pick
                  the tree; context (a feed in view) can vary it. -->
             <div id="layout-root"></div>
-            <!-- Pane mounts: long-lived elements the tree reparents. -->
-            <div class="workspace-pane" id="pane-dag">
-              <div class="lcars-terminal-header-bar files-header-bar">
-                <div class="lcars-bar-horizontal">
-                  <span class="lcars-title" id="dag-title">DAG</span>
-                  <button id="dag-strategy" class="strategy-pill" title="layout: ranked tiers or force molecule">RANKED</button>
+            <!-- Pane templates: the registry stamps instances from these;
+                 every instance is a long-lived mount the tree reparents.
+                 Header capsules: split side-by-side, split stacked, zoom,
+                 and the mars close pill. -->
+            <template id="tpl-pane-dag">
+              <div class="workspace-pane pane-dag">
+                <div class="lcars-terminal-header-bar files-header-bar">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title dag-title">DAG</span>
+                    <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
+                  </div>
+                  <div class="lcars-bar-split" data-split="col" title="split side by side" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-split lcars-split-row" data-split="row" title="split stacked" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-zoom" data-pane="" title="zoom (Esc restores)" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end pane-close" title="close pane" role="button" tabindex="0"></div>
                 </div>
-                <div class="lcars-bar-zoom" data-pane="dag" title="zoom DAG (Esc restores)" role="button" tabindex="0"></div>
-                <div class="lcars-bar-end" id="dag-close" title="dismiss the DAG pane" role="button" tabindex="0"></div>
+                <div class="dag-canvas"></div>
+                <div class="dag-feedlist"></div>
+                <div class="dag-empty files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
+                <div class="dag-facts"></div>
               </div>
-              <div id="dag-canvas"></div>
-              <div id="dag-feedlist"></div>
-              <div id="dag-empty" class="files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
-              <div id="dag-facts"></div>
-            </div>
-            <div class="workspace-pane" id="pane-files">
-              <div class="lcars-terminal-header-bar files-header-bar">
-                <div class="lcars-bar-horizontal">
-                  <span class="lcars-title">WORKSPACE</span>
+            </template>
+            <template id="tpl-pane-files">
+              <div class="workspace-pane pane-files">
+                <div class="lcars-terminal-header-bar files-header-bar">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title pane-title">WORKSPACE</span>
+                  </div>
+                  <div class="lcars-bar-split" data-split="col" title="split side by side" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-split lcars-split-row" data-split="row" title="split stacked" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-zoom" data-pane="" title="zoom (Esc restores)" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end pane-close" title="close pane" role="button" tabindex="0"></div>
                 </div>
-                <div class="lcars-bar-zoom" data-pane="files" title="zoom files (Esc restores)" role="button" tabindex="0"></div>
+                <section class="files-panel" aria-label="Files"></section>
               </div>
-              <section id="files-panel" aria-label="Files"></section>
-            </div>
+            </template>
+            <!-- The empty pane: what a split creates. Its prompt is the pane
+                 specifier — whatever command runs there claims the pane; the
+                 capsules are shortcuts for the frequent. -->
+            <template id="tpl-pane-empty">
+              <div class="workspace-pane pane-empty">
+                <div class="lcars-terminal-header-bar files-header-bar">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title pane-title">NEW PANE</span>
+                  </div>
+                  <div class="lcars-bar-split" data-split="col" title="split side by side" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-split lcars-split-row" data-split="row" title="split stacked" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end pane-close" title="close pane" role="button" tabindex="0"></div>
+                </div>
+                <div class="empty-shortcuts">
+                  <button class="pacs-capsule empty-go-files">FILES</button>
+                  <button class="pacs-capsule empty-go-dag">DAG</button>
+                  <button class="pacs-capsule empty-go-pacs">PACS</button>
+                </div>
+                <div class="empty-promptline">
+                  <input class="empty-prompt" spellcheck="false" autocomplete="off"
+                         placeholder="run a command to claim this pane &mdash; feed diagram feed_12, ls ~/feeds, pacs query ..." />
+                </div>
+                <div class="empty-result"></div>
+              </div>
+            </template>
             <div class="workspace-pane" id="pacs-workspace">
               <div class="lcars-terminal-header-bar files-header-bar">
                 <div class="lcars-bar-horizontal">

@@ -77,6 +77,13 @@ const SIBLING_SPACING: number = 2.0;
 const SPIN_INTERACTIVE: number = 0.0022;
 const SPIN_AMBIENT: number = 0.006;
 
+/**
+ * How fast the ambient tumble axis wanders, radians of phase per frame.
+ * Well below the spin rate, so the motion reads as one continuous freeform
+ * tumble rather than a wobble.
+ */
+const TUMBLE_DRIFT: number = 0.0035;
+
 /** Statuses grouped for coloring. */
 const RUNNING_STATUSES: ReadonlySet<string> = new Set([
   'created', 'waiting', 'scheduled', 'started', 'registeringFiles',
@@ -226,6 +233,10 @@ export class DagScene {
   private selectedId: string | null = null;
   private frameHandle: number | null = null;
   private disposed: boolean = false;
+  /** The ambient tumble's wandering rotation axis, reused across frames. */
+  private readonly tumbleAxis: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
+  /** Phase driving the axis wander; seeded randomly so miniatures desync. */
+  private tumblePhase: number = Math.random() * Math.PI * 2;
 
   /**
    * @param container - The element the canvas fills.
@@ -258,7 +269,23 @@ export class DagScene {
     }
     const animate = (): void => {
       if (this.disposed) return;
-      this.group.rotation.y += this.ambient ? SPIN_AMBIENT : SPIN_INTERACTIVE;
+      if (this.ambient) {
+        // Freeform tumble: constant angular speed around an axis that itself
+        // drifts slowly, so the graph turns through every orientation instead
+        // of orbiting one axis. Incommensurate frequencies keep the wander
+        // from ever settling into a repeating figure.
+        this.tumblePhase += TUMBLE_DRIFT;
+        this.tumbleAxis
+          .set(
+            Math.sin(this.tumblePhase * 0.7),
+            Math.cos(this.tumblePhase * 0.4) + 0.6,
+            Math.sin(this.tumblePhase * 0.3) * 0.8,
+          )
+          .normalize();
+        this.group.rotateOnWorldAxis(this.tumbleAxis, SPIN_AMBIENT);
+      } else {
+        this.group.rotation.y += SPIN_INTERACTIVE;
+      }
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
     };

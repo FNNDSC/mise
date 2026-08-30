@@ -577,8 +577,14 @@ export class CalypsoDaemon {
       await this.promptline_push();
       if (envelopes !== undefined) {
         this.send(origin.socket, { type: 'result', id: message.id, envelopes });
-        for (const envelope of envelopes) {
-          this.bus_publish(origin, envelope);
+        // Instrument traffic (a panel's silent refresh, an ambient cycler)
+        // is surface-internal: it never enters the session bus or the
+        // scrollback, so siblings and reattach replays carry only what the
+        // operator actually did.
+        if (message.instrument !== true) {
+          for (const envelope of envelopes) {
+            this.bus_publish(origin, envelope);
+          }
         }
       } else {
         this.send(origin.socket, {

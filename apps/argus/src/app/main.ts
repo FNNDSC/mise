@@ -551,6 +551,22 @@ async function surface_start(token: string): Promise<void> {
   // is an indication: it writes the pane's group regard, and when the group
   // holds a viewer, the viewer renders it — the browser overlays its own
   // content only as the viewerless fallback.
+  // A rooted browser's own navigation history, for its BACK verb; the
+  // primary's back is the session's own `cd -`.
+  const rootedHistory: Map<string, string[]> = new Map();
+
+  const rootedListing_show = (id: string, panel: FilesPanel, path: string): void => {
+    // A bare `~` must reach the shell unquoted or it would not expand.
+    const line: string = path === '~' ? 'ls ~' : `ls "${path}"`;
+    void client
+      .line_execute(line, { silent: true, observe: false })
+      .then((outcome: ExecuteOutcome): void => {
+        for (const envelope of outcome.envelopes) {
+          panel.envelope_observe(envelope);
+        }
+      });
+  };
+
   const fileAction_handle = (
     id: string,
     panel: FilesPanel,
@@ -561,13 +577,11 @@ async function surface_start(token: string): Promise<void> {
       if (primary) {
         terminal.line_run(`cd "${action.path}"`);
       } else {
-        void client
-          .line_execute(`ls "${action.path}"`, { silent: true, observe: false })
-          .then((outcome: ExecuteOutcome): void => {
-            for (const envelope of outcome.envelopes) {
-              panel.envelope_observe(envelope);
-            }
-          });
+        const previous: string | null = panel.path_current();
+        if (previous !== null) {
+          rootedHistory.get(id)?.push(previous);
+        }
+        rootedListing_show(id, panel, action.path);
       }
       return;
     }
@@ -596,12 +610,14 @@ async function surface_start(token: string): Promise<void> {
       (action: FileAction): void => fileAction_handle(id, panel, action, primary),
     );
     filesPanels.set(id, panel);
+    rootedHistory.set(id, []);
     return {
       id,
       kind: 'files',
       mount,
       dispose: (): void => {
         filesPanels.delete(id);
+        rootedHistory.delete(id);
         subjects.pane_leave(id);
       },
     };
@@ -858,6 +874,37 @@ async function surface_start(token: string): Promise<void> {
       });
       children.appendChild(capsule);
     };
+    if (kind === 'files') {
+      // Navigation verbs: the primary browser is slaved to the session, so
+      // its back/home are the session's own; a rooted browser walks its own
+      // history.
+      const primary: boolean = id === 'files';
+      child_offer('HOME', 'back to the home directory', (): void => {
+        if (primary) {
+          terminal.line_run('cd ~');
+        } else {
+          const panel: FilesPanel | undefined = filesPanels.get(id);
+          if (panel !== undefined) {
+            const previous: string | null = panel.path_current();
+            if (previous !== null) {
+              rootedHistory.get(id)?.push(previous);
+            }
+            rootedListing_show(id, panel, '~');
+          }
+        }
+      });
+      child_offer('BACK', 'return to the previous listing', (): void => {
+        if (primary) {
+          terminal.line_run('cd -');
+          return;
+        }
+        const panel: FilesPanel | undefined = filesPanels.get(id);
+        const previous: string | undefined = rootedHistory.get(id)?.pop();
+        if (panel !== undefined && previous !== undefined) {
+          rootedListing_show(id, panel, previous);
+        }
+      });
+    }
     if (kind === 'files' || kind === 'dag') {
       child_offer('VIEWER', 'a pane slaved to what this pane indicates', (): void => {
         const viewer: PaneInstance = instance_spawn('view', id);
@@ -892,6 +939,53 @@ async function surface_start(token: string): Promise<void> {
   };
   pane_chrome_wire('files', 'files', filesPrimary.mount);
   pane_chrome_wire('dag', 'dag', dagPrimary.mount);
+
+  // Keyboard machinery, tmux-shaped: Ctrl-B is the prefix — it opens the
+  // focused pane's drawer with keyboard focus on its first verb (Tab walks,
+  // Enter fires); Esc closes any open drawer before anything else claims it.
+  const drawers_close = (): boolean => {
+    let closed: boolean = false;
+    for (const drawer of document.querySelectorAll<HTMLElement>('.pane-drawer:not([hidden])')) {
+      drawer.hidden = true;
+      closed = true;
+    }
+    return closed;
+  };
+  window.addEventListener(
+    'keydown',
+    (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        if (drawers_close()) {
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+        }
+        return;
+      }
+      if (event.key === 'b' && event.ctrlKey && !event.altKey && !event.metaKey) {
+        // The console and pane prompts keep their own Ctrl-B (cursor-back).
+        if (
+          event.target instanceof HTMLElement &&
+          event.target.closest('#terminal, .empty-prompt, input, textarea') !== null
+        ) {
+          return;
+        }
+        const focused: string = layout.focused_get() ?? 'files';
+        const mount: HTMLElement | undefined = paneInstance_get(focused)?.mount;
+        const drawer: HTMLElement | null =
+          mount?.querySelector<HTMLElement>('.pane-drawer') ?? null;
+        if (drawer === null) {
+          return;
+        }
+        event.preventDefault();
+        drawer.hidden = !drawer.hidden;
+        if (!drawer.hidden) {
+          drawer.querySelector<HTMLButtonElement>('button')?.focus();
+        }
+        sound_play('audio3');
+      }
+    },
+    { capture: true },
+  );
 
   // A claimed empty pane becomes what its command projected.
   const pane_claim = (emptyId: string, kind: ClaimKind, envelopes: WireEnvelope[]): void => {

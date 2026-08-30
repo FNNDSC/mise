@@ -237,7 +237,16 @@ export class ArgusClient {
         liveChannels: new Set<'data' | 'err'>(),
         observed: options?.observe !== false,
       });
-      this.socket.send(JSON.stringify({ type: 'execute', id, line }));
+      // Silent commands are instrument traffic: the daemon keeps them off
+      // the session bus and out of scrollback.
+      this.socket.send(
+        JSON.stringify({
+          type: 'execute',
+          id,
+          line,
+          ...(options?.silent === true ? { instrument: true } : {}),
+        }),
+      );
     });
   }
 

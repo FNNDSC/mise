@@ -161,6 +161,11 @@ export class FilesPanel {
     this.container.append(header, image);
   }
 
+  /** @returns The path of the listing currently shown, or null before the first. */
+  public path_current(): string | null {
+    return this.lastListings[0]?.path ?? null;
+  }
+
   /** Returns from a content view to the most recent listing. */
   public listing_restore(): void {
     if (this.lastListings.length > 0) {

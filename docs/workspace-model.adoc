@@ -15,6 +15,7 @@ ARGUS composes its display as a tiling workspace: a binary split tree of panes, 
 
 [cols="1,3"]
 |===
+| 2026-08-30 | AEGIS created (link:../apps/argus/docs/aegis.adoc[]) as the surface's design language; this document remains the stack-placement doctrine. The doctrine ruled a third time: pane linkage = hub-and-spoke *subjects* (vocabulary in `menu`, session-truth subjects in brasa, view-state subjects argus-local), with the *addressability test* (VFS address = session truth; view coordinates = view state) and *regard* (what the operator indicates) locked as a brasa session subject.
 | 2026-08-28 | Document created. Doctrine settled: three-layer split (vocabulary / relevance / geometry). Binary split tree shipped in ARGUS (PR #252). Relevance promotion (feed detection into brasa) identified as first concrete follow-through. Interactive-split design grilled and settled: pane instances, request-correlation claim rule, result-card fallback, header-capsule gesture. Implementation on branch `argus-tiling-interactive`: pane factories, split/close/replace tree ops, the empty pane and its claiming prompt, targeted result delivery (`observe: false`). Carved trees are session-only; presets persist and reset to givens.
 |===
 

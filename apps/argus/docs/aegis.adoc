@@ -1,0 +1,137 @@
+= AEGIS: the ARGUS Ergonomics & Graphical Interface Standard
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+AEGIS — the *ARGUS Ergonomics & Graphical Interface Standard* — is the design language of the ARGUS surface: the visual grammar, the interface philosophy, and the behavioural canon everything on the console obeys. The name is deliberate: an aegis is a protective canon, and everything on the surface is built *under the AEGIS*. Where link:../../../docs/workspace-model.adoc[the workspace model] rules on where logic lives in the mise stack, AEGIS rules on what the surface *is* — what a pane may show, where its machinery hides, what links panes together, and what LCARS means when it is taken seriously. This is a *living document*, updated as the design conversation progresses.
+
+== Status
+
+[cols="1,3"]
+|===
+| 2026-08-30 | Document created from the first AEGIS thought sprint. Settled: the machinery-behind-the-frame principle (pane drawer as the mouse-native prefix key), semantic children as parent-contextualized pre-composed intents, pane linkage as hub-and-spoke subjects (never pane-to-pane edges), the addressability test, and *regard* as a session-truth subject in brasa. Open: palette roles, shape grammar, motion canon, the violations audit.
+|===
+
+== Why AEGIS exists: LCARS taken seriously
+
+Nobody has done this. Decades of LCARS artifacts exist — launchers, skins, dashboards, templates — and all of them are cosmetic: they repaint chrome while nothing underneath obeys the language. The fiction shipped an appearance, never an interaction model, so every imitator cloned the only thing there was to clone: the paint. The absence of a serious attempt is therefore evidence of nothing; there is no failed attempt on record.
+
+Meanwhile the *discipline* underneath LCARS is already proven under other names. Fixed rectilinear partitions, no overlap, color as system role, glanceable state under operator load — that is avionics (ECAM color semantics are law), that is the radiology workstation, that is tmux culture. ARGUS joins two proven halves that were never joined: LCARS-the-costume and LCARS-the-discipline, with live PACS traffic and execution graphs underneath — the real workload every fan project lacked.
+
+The prop DNA carries real hazards, and policing them is AEGIS's job. Okuda designed for camera distance: glanceability over density, ornament tolerated, contrast questionable, uppercase everywhere. Where the costume fights ergonomics, AEGIS sides with the operator — and says so explicitly, rule by rule, rather than inheriting the prop by mood.
+
+== What ARGUS is, in desktop terms
+
+ARGUS is an unnamed tiling window manager wearing load-bearing decoration. In real tiling WMs, decoration is what got exiled — the frame shrinks to a one-pixel border, negative space. LCARS inverts this: the frame is the control surface. Capsules are verbs, the gutter is a preset switcher, elbows declare structure. The titlebar never died here; it got promoted.
+
+The second difference matters more: jurisdiction. A window manager manages *foreign* windows and its rules stop at the border. ARGUS panes are native projections of one envelope-model family, so AEGIS rules reach inside the pane — anatomy, palette roles, claim behaviour, linkage. ARGUS is closer to acme or an avionics console than to a desktop: not a manager of applications, but a single instrument with subdivisions.
+
+== The first principle: machinery behind the frame
+
+*At rest, a pane shows only work and state. Machinery lives behind the frame; the frame is the handle.*
+
+"No chrome" is the wrong reading of LCARS — the vow is no *dead* chrome and no *floating* chrome; frame-as-control is canonical. But always-visible generic meta-verbs (split, zoom, close) on every pane header multiply with every pane: six panes, six identical capsule clusters. That is noise scaling linearly with success, and in-fiction consoles show no window-management buttons at all.
+
+The resolution is the *pane drawer*: every pane carries a top LCARS border; a gesture on that border (click) glides open a hidden control surface holding the pane's machinery — layout verbs, semantic children, pane-local controls. This is the mouse-native prefix key: tmux shows zero chrome because its verbs live behind a modal gesture, and the drawer is the same structure, pointer-shaped. ARGUS already owns the motif (the console lid), and the fiction backs it — LCARS panels slide away to reveal the machinery behind.
+
+Corollaries:
+
+* Every pane carries the top border. The border is a wide target (Fitts-friendly) and doubles as the pane's title bar.
+* Zoom and close migrate into the drawer with everything else, or the principle is hypocrisy on day one.
+* Jurisdiction split: the left gutter is *global* reconfiguration (presets, "reset to givens"); the drawer is *per-pane* machinery. The two never trade verbs.
+* Every drawer verb has a command-line twin (`layout ...`), under the settled symmetry: mouse path and text path converge on the same intents.
+
+Costs, accepted with eyes open: hidden machinery is invisible until taught — the first session must teach the gesture (a subtle border affordance, and the operator companion). The extra click on layout verbs is the correct trade: split is rare relative to work, and optimizing rare verbs for invisibility beats optimizing them for speed.
+
+*Known violation (transitional):* the shipped header split/zoom/close capsules (PR #254) are the cheap version of this principle and are superseded by the drawer. They stand until the drawer lands.
+
+== Semantic children: what goes into a new pane
+
+The workspace model settled the universal answer: the pane specifier is an intent — a split yields an empty pane whose prompt claims it. The drawer completes that design rather than overthrowing it: alongside the raw split verbs, a pane's drawer offers *semantic children* — parent-contextualized, pre-composed intents.
+
+* A file browser's drawer offers "browser here" — literally `ls <this pane's root>`, pre-filled.
+* It offers "content viewer" — a view intent slaved to the parent's selection, showing whatever file the parent regards.
+* A DAG pane's drawer might offer "browser into selected node" — the node's `vfsPath`, pre-filled.
+
+These are shortcuts, not a chooser: they feed the same claim pipeline the empty-pane prompt feeds, and the empty pane remains the universal fallback item in every drawer. Because the offers derive from the parent's kind and state, the list grows with envelope models — it never becomes the hand-curated menu that scales badly.
+
+== Pane linkage: subjects, not edges
+
+The terminal and the file browser were linked "by accident" — and the accident is instructive: they are not linked to each other at all. Both observe the same shared truth, the session cwd. No pane-to-pane edge exists, which is exactly why it works. The radiology precedent has the same skeleton: MPR viewers (axial/sagittal/coronal) never message each other — all three observe one crosshair position in volume space. Nobody is master; the *subject* is.
+
+AEGIS elevates the accident to law:
+
+*Panes link by subscribing to named subjects — hub-and-spoke, never pane-to-pane.*
+
+* *Direction for free:* slave = reads the subject; master = writes it; bidirectional = both write. Uni- versus bi-directional linkage is just read versus read/write membership.
+* *Scope is membership, not ancestry.* Link groups are an overlay orthogonal to the layout tree — the tree stays pure geometry (radiology sync groups, exactly). Coupling links to tree topology would be a category error. One default is right, though: a child spawned from a parent's drawer inherits the parent's subjects — that is the semantic tracing the drawer promises.
+* *Lifecycle dissolves.* A master closing leaves the subject standing; slaves hold the last value. No orphan-edge cleanup, no ownership fight.
+
+=== Where subjects live
+
+The workspace-model doctrine — *brasa states facts and relevance; surfaces decide geometry* — rules a third time without amendment:
+
+[cols="1,2,1"]
+|===
+| Class | Examples | Home
+
+| Subject vocabulary
+| What a subject is: naming, value shape, read/write membership.
+| `menu` (schema tier, beside the LayoutNode algebra)
+
+| Session-truth subjects
+| cwd, current feed, active PACS query, *regard* (below).
+| `brasa` — the prompt-context push *is* this mechanism already
+
+| View-state subjects
+| MPR crosshair, scroll positions, hover.
+| argus-local bus — view physics never crosses the wire
+|===
+
+=== The addressability test (locked)
+
+The line between session truth and view state is principled, not case-by-case:
+
+*If a subject's value is a VFS address (or a model reference), it is session truth and belongs to brasa. If it is continuous view-space coordinates, it is view state and stays in the surface.*
+
+This matches the doctrine verbatim: the kernel speaks names in the namespace, never pixels. A selected file has an address — brasa. A selected DAG node has an address (`vfsPath` is on the model) — brasa. A crosshair has voxel coordinates in a rendering — argus. Frequency agrees: address-valued subjects change at human click-rate; coordinate-valued subjects change at drag-rate.
+
+=== Regard: what the operator indicates (locked)
+
+Selection is session truth masquerading as view state, and the precedents are decisive: X11 primary selection lives in the *server* so any client can consume it without the pointing client knowing who listens; Plan 9's plumber makes "the thing the user indicated" system truth, and whole ecosystems exist only because it was promoted from day one. brasa is the server analog.
+
+The skeletal foundation, deliberately small: one session subject in brasa named *regard* — the thing the operator currently indicates — valued as a VFS address plus model kind, riding the same push channel as prompt context, with its schema in `menu`. The slaved content viewer subscribes to regard; the terminal's `cd` already writes the sibling subject (cwd). One subject, one schema, an existing channel.
+
+What it buys immediately: the accidental terminal↔browser link and the deliberate viewer link become the same mechanism, and any future assist layer can ask the kernel "what is the operator looking at."
+
+== Precedents and references
+
+Every load-bearing claim in this document leans on prior art. The precedents, what each grounds, and where to read them:
+
+* *X11 primary selection — selection is server truth.* The selection mechanism lives in the X server precisely so any client can consume an indication without the pointing client knowing who listens; grounds the promotion of *regard* to brasa. David S. H. Rosenthal, _Inter-Client Communication Conventions Manual_ (ICCCM), MIT X Consortium, drafted 1988 (X11R2); v2.0, X Consortium Standard, 1994, ch. 2 "Peer-to-Peer Communication by Means of Selections". https://www.x.org/releases/current/doc/xorg-docs/icccm/icccm.pdf
+* *Plan 9 plumber — the indicated thing is system truth.* "The thing the user pointed at" is a first-class, system-wide message; ecosystems (plumb anywhere) exist only because it was promoted from day one. Rob Pike, "Plumbing and Other Utilities", _Proc. USENIX Annual Technical Conference_, San Diego, 2000. https://9p.io/sys/doc/plumb.html
+* *acme — the single instrument with subdivisions.* A tiled, mouse-verb interface with total jurisdiction over its panes, not a manager of foreign windows; grounds ARGUS's desktop framing. Rob Pike, "Acme: A User Interface for Programmers", _Proc. USENIX Winter 1994 Technical Conference_, San Francisco, January 1994. https://www.usenix.org/legacy/publications/library/proceedings/sf94/full_papers/pike.pdf
+* *tmux — verbs behind a modal gesture.* Zero visible chrome; every layout verb lives behind the prefix key; grounds the pane drawer as the mouse-native prefix. Nicholas Marriott et al., `tmux(1)` manual, OpenBSD.
+* *Tiling window-manager culture — the exiled frame.* dwm and i3 shrink decoration to a one-pixel border; the contrast grounds "the titlebar never died here, it got promoted". suckless.org dwm documentation; i3wm.org user's guide.
+* *Airbus ECAM and flight-deck color law — color as role, not decoration.* Certified cockpits assign colors by semantic role (red = warning, amber = caution) as regulation, not style; grounds the palette-roles thread and the "discipline proven under other names" claim. FAA 14 CFR §25.1322 "Flightcrew Alerting" (Amdt. 25-131, 2010) with Advisory Circular AC 25.1322-1 (December 13, 2010: red = warning, amber/yellow = caution, colors restricted to those roles) and the harmonized EASA CS-25.1322; Airbus A320 FCOM display-system design philosophy (the "dark cockpit" doctrine: at rest, annunciate nothing).
+* *Radiology MPR and sync groups — subjects, not edges.* Orthogonal slice viewers synchronize through a shared crosshair position in volume space, and linked scrolling is explicit group membership, not viewer-to-viewer wiring; grounds hub-and-spoke linkage. Rosset A., Spadola L., Ratib O., "OsiriX: An Open-Source Software for Navigating in Multidimensional DICOM Images", _J. Digital Imaging_ 17(3):205–216, 2004. doi:10.1007/s10278-004-1014-6
+* *Fitts's law — the border as target.* Target acquisition time falls with target width; a full-width top border is the cheapest large target a pane owns. Paul M. Fitts, "The Information Capacity of the Human Motor System in Controlling the Amplitude of Movement", _J. Experimental Psychology_ 47(6):381–391, 1954.
+* *LCARS itself.* Michael Okuda's display language for _Star Trek: The Next Generation_ (1987–). Rick Sternbach & Michael Okuda, _Star Trek: The Next Generation Technical Manual_, Pocket Books, 1991. Okuda's later real-world design work for NASA — mission patches and insignia, honored with the Exceptional Public Service Medal (Johnson Space Center, July 9, 2009) — is the closest the language's author came to operational practice. The ARGUS visual tokens derive from Jim Robertus's TheLCARS.com theme work.
+* *The cosmetic graveyard.* LCARS skins, launchers, and dashboards (Rainmeter suites, Android LCARS launchers, Home Assistant themes, TheLCARS.com templates) — cited as the pattern AEGIS breaks: appearance cloned, mechanics absent.
+
+== Open threads
+
+* *Palette roles.* The LCARS tokens exist (`--pumpkin-pie`, `--harvestgold`, `--butter`, `--orange`, `--honey`, `--october-sunset`, `--daybreak`, `--sky`) but are used by feel, not by rule. AEGIS should assign semantic roles — structure, actionable, state/attention, data — and then audit the CSS against its own canon.
+* *Shape grammar.* Capsule, bar, elbow, pill-toggle, divider: a small closed vocabulary; no new shapes without a new category of meaning.
+* *Motion canon.* Motion only for continuity of place, never ornament; duration tokens (the 600ms zoom settle is currently hard-coded).
+* *Uppercase: law or habit.* Inherited from the prop; unexamined.
+* *Sound.* In-fiction LCARS chirps. Reserved and off by default, or banished.
+* *Drawer mechanics.* The border affordance, the open/close glide, keyboard path, first-run teaching.
+* *Slaved-viewer lifecycle details.* What a viewer shows before its first regard value; whether it can re-root to a different subject.
+* *Violations audit.* An honest standing list of where the shipped surface breaks its own canon (the header capsules are the first entry).

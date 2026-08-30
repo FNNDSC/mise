@@ -173,14 +173,14 @@ PHAROS carries two readings, both true. The shallow read is the recursive phrase
 
 === The naming law
 
-The fleet has two naming registers, and the split is load-bearing. *Kitchen names* (cumin, salsa, chili, brasa, menu, chell — the mise en place) are ingredients: lowercase, and they never expand. *Harbor names* (ARGUS, CALYPSO, HARBOR, AEGIS, PHAROS) are charters: capitals, and each expands recursively — through the layer beneath it, until the chain grounds out in a fixed point:
+The fleet has two naming registers, and each has its own recursion style. *Kitchen names* (cumin, salsa, chili, brasa, chell — the mise en place) are ingredients, and each is a *self-recursive* backronym, GNU-style, per the table in the root README (*Cumin Underpins Management Infrastructure Needs*, *BRASA Runs Abstracted Shell Actions*, ...): a closed definition of its own function, with the layering left to the architecture docs. *Harbor names* (ARGUS, AEGIS, PHAROS, CALYPSO, HARBOR) are charters, and each expands *chain-recursively* — through the layer beneath it — so the presentation stack's dependency reads straight out of the expansions:
 
 * *PHAROS* — Presentation House for *AEGIS*: Roles, Ornament, Shapes.
 * *AEGIS* — *ARGUS* Ergonomics & Graphical Interface Standard.
 * *ARGUS* — the All-*Regarding* Graphical User Surface: the hundred-eyed watchman named for what it does, and "regarding" is meant literally — *regard*, the session subject, is what the surface projects. The skin names the standard, the standard names the surface, the surface names the session truth it renders.
-* *CALYPSO* — *CALYPSO* Accepts Language, Yielding Permitted Shell Operations: self-recursive, the chain's fixed point, as recorded in link:../../../docs/calypso.adoc[the CALYPSO design].
+* *CALYPSO* — *CALYPSO* Accepts Language, Yielding Permitted Shell Operations: the junction node. CALYPSO sits in both registers — kitchen package and harbor keeper — so it is self-recursive by kitchen convention, and precisely thereby the fixed point where the harbor chain grounds. The daemon is where the kitchen serves the harbor; the names encode it.
 
-Expansion dependency mirrors actual dependency; a new harbor name that cannot say which layer it expands through is a sign the layer itself is unclear.
+Expansion dependency mirrors actual dependency; a new harbor name that cannot say which layer it expands through is a sign the layer itself is unclear. And exactly one fixed point: a second self-recursive harbor name would mean a layer has lost its footing.
 
 == Precedents and references
 

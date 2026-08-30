@@ -816,4 +816,56 @@ describe('CalypsoDaemon scrollback bound', () => {
       await daemon.stop();
     }
   });
+
+  it('retains a regard write, mirrors it into the engine, and rebroadcasts to every surface', async () => {
+    const engine = stubEngine_create();
+    const noted: unknown[] = [];
+    (engine as { regard_note?: (regard: unknown) => void }).regard_note = (regard): void => {
+      noted.push(regard);
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const writer = await client_attach(port);
+      const sibling = await client_attach(port);
+      const regard = { address: '/vfs/feeds/feed_12/data', modelKind: 'feed.node', groupId: 'g1', paneId: 'dag-1' };
+      const echoed = message_next(writer);
+      const relayed = message_next(sibling);
+      send(writer, { type: 'regard', regard });
+      expect(await echoed).toEqual({ type: 'regard', regard });
+      expect(await relayed).toEqual({ type: 'regard', regard });
+      expect(noted).toEqual([regard]);
+      // A late attacher receives the retained cell with its ack, before any
+      // new indication.
+      const late = await client_open(port);
+      const collected = messages_collect(late, 2); // attached + retained regard
+      send(late, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      const messages = await collected;
+      expect(messages[0].type).toBe('attached');
+      expect(messages[1]).toEqual({ type: 'regard', regard });
+      writer.terminate();
+      sibling.terminate();
+      late.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('serves a retained regard from the engine when the daemon itself holds none', async () => {
+    const engine = stubEngine_create();
+    const engineRegard = { address: '/home/user/report.txt', groupId: 'g2', paneId: 'files-1' };
+    (engine as { regard_get?: () => unknown }).regard_get = () => engineRegard;
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const collected = messages_collect(ws, 2);
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      const messages = await collected;
+      expect(messages[1]).toEqual({ type: 'regard', regard: engineRegard });
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
 });

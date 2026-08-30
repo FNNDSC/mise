@@ -180,6 +180,66 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   box-shadow: 0 0 10px var(--pumpkin-pie);
 }
 
+/* ------------------------------------------------------------- pane drawer */
+
+/* Machinery behind the frame: at rest a pane shows only work and state; the
+ * header is the handle, and clicking it slides this strip of verbs open —
+ * layout verbs first, then the kind's semantic children (docs/aegis.adoc). */
+.pane-handle {
+  cursor: pointer;
+}
+
+.pane-handle .pane-hint {
+  opacity: 0.55;
+}
+
+.pane-handle:hover .pane-hint {
+  opacity: 1;
+  box-shadow: 0 0 10px var(--butter);
+}
+
+.pane-drawer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  margin: -0.3rem 0 0.5rem;
+  background-color: rgba(0, 0, 0, 0.35);
+  border-left: 6px solid var(--pumpkin-pie);
+  border-radius: 0 12px 12px 0;
+}
+
+.pane-drawer[hidden] {
+  display: none;
+}
+
+.pane-drawer .drawer-children {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-left: 0.6rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--harvestgold);
+}
+
+/* The zoom verb keeps its state color when its pane is zoomed. */
+.pane-zoomed .pane-drawer .drawer-zoom {
+  background-color: var(--october-sunset);
+  color: #000;
+}
+
+/* --------------------------------------------------------------- view pane */
+
+/* The viewer body: the group's regard, rendered. */
+.pane-view .view-body {
+  overflow: auto;
+  max-height: calc(100dvh - 22rem);
+}
+
+body[data-zoom] .pane-zoomed .view-body {
+  max-height: calc(100dvh - 7rem);
+}
+
 /* ----------------------------------------------------------- PACS workspace */
 
 /* The PACS workspace replaces the workspace row when summoned: one

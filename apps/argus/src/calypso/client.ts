@@ -20,6 +20,7 @@ import {
   type ServerMessage,
   type PromptContext,
   type ProgressMessage,
+  type Regard,
   type WireEnvelope,
 } from '@fnndsc/menu';
 
@@ -92,6 +93,8 @@ export interface ClientHandlers {
   telemetry_receive?: (index: { jobs: number; feeds: number }) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
+  /** The session's retained regard, pushed on any surface's write and on attach. */
+  regard_receive?: (regard: Regard) => void;
   close_handle?: () => void;
 }
 
@@ -253,6 +256,17 @@ export class ArgusClient {
     });
   }
 
+  /**
+   * Reports a regard write to the daemon: the operator indicated an
+   * addressable thing on this surface. The daemon retains it as session
+   * truth and rebroadcasts to every surface.
+   *
+   * @param regard - The indicated address with its provenance.
+   */
+  public regard_send(regard: Regard): void {
+    this.socket.send(JSON.stringify({ type: 'regard', regard }));
+  }
+
   /** Closes the WebSocket. */
   public connection_close(): void {
     this.socket.close();
@@ -319,6 +333,10 @@ export class ArgusClient {
       }
       case 'telemetry': {
         this.handlers.telemetry_receive?.(message.index);
+        break;
+      }
+      case 'regard': {
+        this.handlers.regard_receive?.(message.regard);
         break;
       }
       case 'error': {

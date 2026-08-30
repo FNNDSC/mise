@@ -26,6 +26,7 @@
  */
 import chalk from 'chalk';
 import type { CommandEnvelope, Result } from '@fnndsc/cumin';
+import type { Regard } from '@fnndsc/menu';
 import { session } from '../session/index.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
 import {
@@ -98,6 +99,24 @@ export interface BrasaEngine {
    * @returns The file's bytes.
    */
   file_read?(filePath: string): Promise<Buffer>;
+
+  /**
+   * Notes a regard write from a surface: the addressable thing the operator
+   * most recently indicated. The engine retains it as session truth (last
+   * write wins) so engine-side consumers can answer "what is the operator
+   * regarding" without any surface geometry crossing the seam.
+   *
+   * @param regard - The indicated address with its provenance.
+   */
+  regard_note?(regard: Regard): void;
+
+  /**
+   * Returns the session's retained regard, or null before the first
+   * indication.
+   *
+   * @returns The retained regard, or null.
+   */
+  regard_get?(): Regard | null;
 }
 
 /**
@@ -334,7 +353,14 @@ async function vfsProviders_register(): Promise<void> {
 export async function engine_create(): Promise<BrasaEngine> {
   await session.init();
   await vfsProviders_register();
-  return { line_execute, line_cancel, line_complete, file_read };
+  return {
+    line_execute,
+    line_cancel,
+    line_complete,
+    file_read,
+    regard_note: (regard: Regard): void => session.regard_set(regard),
+    regard_get: (): Regard | null => session.regard_get(),
+  };
 }
 
 /**

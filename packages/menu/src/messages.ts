@@ -154,6 +154,38 @@ export const deliverErrorMessageSchema = z.object({
   reason: z.string(),
 });
 
+/**
+ * The operator's regard: the addressable thing most recently indicated on a
+ * surface — a file clicked in a browser, a DAG node selected.
+ *
+ * The value is an address in the namespace (plus the model kind it was
+ * indicated through), never view-space coordinates: what has no address is
+ * view state and stays surface-side. `groupId` and `paneId` are provenance —
+ * which link group and pane the indication happened in — so session-level
+ * consumers know where regard came from without the surface's geometry ever
+ * crossing the wire.
+ */
+export const regardSchema = z.object({
+  address: z.string(),
+  modelKind: z.string().optional(),
+  groupId: z.string(),
+  paneId: z.string(),
+});
+
+/** The session's retained regard value. */
+export type Regard = z.infer<typeof regardSchema>;
+
+/**
+ * A regard write, travelling both directions under one shape: a surface
+ * reports an indication to the daemon, and the daemon pushes the retained
+ * session regard to every surface (last write wins; a late attacher receives
+ * the retained value on attach).
+ */
+export const regardMessageSchema = z.object({
+  type: z.literal('regard'),
+  regard: regardSchema,
+});
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
@@ -170,6 +202,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   editErrorMessageSchema,
   deliverResultMessageSchema,
   deliverErrorMessageSchema,
+  regardMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -447,6 +480,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   shellMessageSchema,
   editMessageSchema,
   deliverMessageSchema,
+  regardMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

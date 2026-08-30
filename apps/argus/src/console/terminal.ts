@@ -14,7 +14,7 @@
  * @module
  */
 import { ansi_toHtml, html_escape } from './ansi.js';
-import type { PromptContext, WireEnvelope } from '@fnndsc/menu';
+import { procPromptState_get, type ProcPromptState, type PromptContext, type WireEnvelope } from '@fnndsc/menu';
 import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
 
 /** A completion answer from the wire: candidates and the prefix they complete. */
@@ -46,6 +46,17 @@ const SEGMENT_PALETTE: Record<
   physical: { bg: '#FF5F5F', fg: '#1B0000' },
   duration: { bg: '#FF8700', fg: '#201000' },
   status: { bg: '#FF005F', fg: '#FFFFFF' },
+};
+
+/**
+ * Presentation for each process-index state, mirroring chell's p10k theme:
+ * cold indexing on the duration orange, cached reconciliation on the time
+ * violet, failure on the status red.
+ */
+const PROC_STATE_SEGMENTS: Record<ProcPromptState, { icon: string; label: string; color: SegmentColor }> = {
+  cold: { icon: '\uf2dc', label: 'proc cold', color: { bg: '#FF8700', fg: '#201000' } },
+  cached: { icon: '\uf021', label: 'proc cached, refreshing', color: { bg: '#5F5F87', fg: '#FFFFFF' } },
+  failed: { icon: '\uf071', label: 'proc failed', color: { bg: '#FF005F', fg: '#FFFFFF' } },
 };
 
 /**
@@ -168,6 +179,12 @@ export class ArgusTerminal {
    */
   public promptContext_set(context: PromptContext): void {
     this.promptContext = context;
+    // An idle console repaints immediately: warm-up pushes arrive between
+    // commands, and the percentage should climb without an Enter press. A
+    // busy console leaves the bar to prompt_draw, which owns the unlock.
+    if (!this.busy) {
+      this.promptBar.innerHTML = this.promptSegments_render();
+    }
   }
 
   /**
@@ -499,6 +516,14 @@ export class ArgusTerminal {
     if (context.physicalMode) {
       segments.push({ text: `${GLYPHS.microscope} PHYSICAL`, color: SEGMENT_PALETTE.physical });
     }
+    if (context.procWarmup !== undefined) {
+      const state: ProcPromptState = procPromptState_get(context.procWarmup);
+      const presentation = PROC_STATE_SEGMENTS[state];
+      segments.push({
+        text: `${presentation.icon} ${presentation.label}: ${procProgress_format(context.procWarmup.loaded, context.procWarmup.total ?? 0)}`,
+        color: presentation.color,
+      });
+    }
     if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
       const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
       segments.push({ text: `${GLYPHS.bolt} ${seconds}s`, color: SEGMENT_PALETTE.duration });
@@ -562,4 +587,18 @@ function commonPrefix_find(candidates: string[]): string {
     }
   }
   return common;
+}
+
+/**
+ * Formats warm-up progress for the proc segment, mirroring chell's prompt
+ * utils (duplicated by value: argus may not import the execution stack).
+ *
+ * @param loaded - Plugin instances currently indexed.
+ * @param total - Authoritative total, or 0 when CUBE has not reported one.
+ * @returns `loaded/total percent%`, or `loaded/?` without a total.
+ */
+function procProgress_format(loaded: number, total: number): string {
+  if (total <= 0) return `${loaded}/?`;
+  const percent: number = Math.min(99, Math.floor((loaded / total) * 100));
+  return `${loaded}/${total} ${percent}%`;
 }

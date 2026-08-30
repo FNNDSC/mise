@@ -157,6 +157,10 @@ export class CalypsoDaemon {
   private lastCommand: PromptLastCommand | undefined;
   private readonly telemetryProvider: (() => { jobs: number; feeds: number }) | undefined;
   private telemetryTimer: NodeJS.Timeout | null = null;
+  /** The index counts at the last heartbeat, to detect movement. */
+  private telemetryLastIndex: { jobs: number; feeds: number } | null = null;
+  /** Whether the last pushed prompt context carried active warm-up. */
+  private promptWarmupActive: boolean = false;
   private readonly stack: DaemonStackInfo | undefined;
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
@@ -216,6 +220,18 @@ export class CalypsoDaemon {
       const index: { jobs: number; feeds: number } = provider();
       for (const surface of this.surfaces) {
         this.send(surface.socket, { type: 'telemetry', index });
+      }
+      // Warm-up is a prompt-context change no command announces: the counts
+      // climb while every surface sits idle. While the index moves — or the
+      // last pushed context still showed active warm-up (its settling is a
+      // change the counts alone cannot signal) — refresh the promptline too.
+      const moved: boolean =
+        this.telemetryLastIndex === null ||
+        index.jobs !== this.telemetryLastIndex.jobs ||
+        index.feeds !== this.telemetryLastIndex.feeds;
+      this.telemetryLastIndex = index;
+      if (moved || this.promptWarmupActive) {
+        void this.promptline_push();
       }
     }, 1000);
     // The heartbeat must not hold the process open on its own.
@@ -501,6 +517,7 @@ export class CalypsoDaemon {
       return;
     }
     const context: PromptContext = await this.promptProvider(this.lastCommand);
+    this.promptWarmupActive = context.procWarmup !== undefined;
     if (target) {
       this.send(target.socket, { type: 'promptline', context });
       return;

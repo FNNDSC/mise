@@ -422,6 +422,50 @@ describe('CalypsoDaemon prompt line push', () => {
     }
   });
 
+  it('pushes the promptline from the heartbeat while warm-up counts climb', async () => {
+    // No command runs during warm-up, so the only path that can refresh an
+    // idle surface's prompt is the telemetry heartbeat noticing movement.
+    let jobs = 0;
+    const engine = stubEngine_create();
+    const promptContext = () => ({
+      user: 'chris', uri: 'http://cube/', cwd: '~', pacsserver: null,
+      physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+      procWarmup: { loaded: jobs, total: 100, state: 'cached' as const },
+    });
+    const daemon = new CalypsoDaemon({
+      engine,
+      token: TOKEN,
+      promptProvider: promptContext,
+      telemetryProvider: (): { jobs: number; feeds: number } => ({ jobs: ++jobs, feeds: 0 }),
+    });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const prompts: Record<string, unknown>[] = [];
+      ws.on('message', (d) => {
+        const msg = JSON.parse(d.toString()) as Record<string, unknown>;
+        if (msg['type'] === 'promptline') prompts.push(msg);
+      });
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      // One push rides the attach; at least one more must ride a heartbeat.
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no heartbeat prompt push within 3s')), 3000);
+        const poll = setInterval(() => {
+          if (prompts.length >= 2) {
+            clearTimeout(timer);
+            clearInterval(poll);
+            resolve();
+          }
+        }, 20);
+      });
+      const last = prompts[prompts.length - 1] as { context: { procWarmup?: { loaded: number } } };
+      expect(last.context.procWarmup?.loaded).toBeGreaterThan(0);
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
   it('does not push a prompt when no provider is configured', async () => {
     const engine = stubEngine_create();
     const daemon = new CalypsoDaemon({ engine, token: TOKEN });

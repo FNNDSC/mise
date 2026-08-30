@@ -15,10 +15,17 @@ AEGIS — the *ARGUS Ergonomics & Graphical Interface Standard* — is the desig
 
 [cols="1,3"]
 |===
+| 2026-08-30 (PHAROS) | LCARS grounded properly (what it is, why chosen, whose property). Longevity strategy settled: PHAROS house language as default (chamfer, beacon, harbor palette; recursive name — Presentation House for AEGIS — and the six-chapter inventory), LCARS demoted to operator-supplied skin via theme import, functional carve-out grounded in _Lotus v. Borland_ / _Apple v. Microsoft_. Naming law recorded: kitchen names never expand; harbor names expand through the layer below, grounding at CALYPSO's fixed point; ARGUS coined the All-Regarding Graphical User Surface.
 | 2026-08-30 (slice 1 built) | Regard + drawer + slaved viewer implemented: `regard` wire message (menu), brasa session retention, calypso retain/mirror/rebroadcast with late-attach replay, argus SubjectBus (groups, retained cells, LWW), pane drawer behind the header on all stamped panes, VIEWER semantic child (slaved) and BROWSE NODE (rooted) in the drawer, viewer pane kind subscribed to group regard.
 | 2026-08-30 (later) | Subjects grilled and locked: two-layer regard (group-scoped rendering + session aggregate in brasa), retained-cell write semantics, rooted-versus-slaved children, lifecycle (groups session-only, session regard survives surface reload). Durable layer settled in direction: per-user config and named layout schemas as CFS files under `~/.config`. Build of the first slice (regard skeleton, pane drawer, slaved viewer) begun.
 | 2026-08-30 | Document created from the first AEGIS thought sprint. Settled: the machinery-behind-the-frame principle (pane drawer as the mouse-native prefix key), semantic children as parent-contextualized pre-composed intents, pane linkage as hub-and-spoke subjects (never pane-to-pane edges), the addressability test, and *regard* as a session-truth subject in brasa. Open: palette roles, shape grammar, motion canon, the violations audit.
 |===
+
+== LCARS: what it is, and why ARGUS started there
+
+LCARS — the *Library Computer Access and Retrieval System* — is the fictional computer interface of the Starfleet universe, designed by scenic artist Michael Okuda for _Star Trek: The Next Generation_ (1987) and elaborated across the franchise since. Its look is unmistakable: flat rectilinear panels in warm color families, swept "elbow" junctions, pill-shaped buttons, condensed uppercase type, and dense numeric captions — all butted edge to edge with no overlap, no window chrome, no cursor-centric idiom at all. The name and the visual designs are the property of CBS Studios / Paramount; this document uses "LCARS" only as a historical and technical reference to that body of work (see the precedents section for sources).
+
+ARGUS started from LCARS for three honest reasons. First, fit: a live operator console for medical compute wants exactly what the fiction depicts — glanceable state, fixed geometry, controls that read as regions of a single instrument rather than floating windows; the structural argument is made in link:../../../docs/workspace-model.adoc[the workspace model]. Second, discipline: beneath the costume sits a real design discipline (no overlap, color as role, frame as control) that certified operator interfaces — cockpits, radiology workstations — arrived at independently, so building against it is building against proven practice. Third, candidly, resonance: the aesthetic communicates instantly what kind of instrument this wants to be. The early experiments validated the fit — a consistent UI language formed faster under LCARS constraints than the previous ChRIS UI ever achieved without them.
 
 == Why AEGIS exists: LCARS taken seriously
 
@@ -142,6 +149,39 @@ Terminology guard: gutter presets remain *givens* (system-owned, reset semantics
 
 `~/gathers` is flagged as a further durable-CFS concept central to future operation; its definition is owed and deliberately not invented here.
 
+== Longevity: the clean-room strategy, and PHAROS
+
+Building a serious instrument on another studio's trade dress has a shelf life, and the risk is worth naming precisely. (What follows is an engineering posture, not legal advice; institutional counsel reviews before any of it is relied on.)
+
+What CBS/Paramount can plausibly reach: the word "LCARS" itself (an asserted trademark — historical reference in documentation is commentary; product naming is exposure); and the signature ornament — the swept elbow silhouette, the salmon/orange/lavender palette families, the Okudagram numeric-caption idiom, reproductions of actual screens. What they cannot reach is the discipline: _Lotus v. Borland_ held an interface's method of operation uncopyrightable, and _Apple v. Microsoft_ left GUI elements largely unprotectable under the merger and scènes à faire doctrines. Rectilinear tiling, no-overlap, frame-as-control, color-as-role, panels-as-verbs — functional paradigm, free to all, and independently practiced by avionics long before the fiction. The sharper near-term risk is not litigation at all but adoption: an institutional deployment wearing recognizable franchise trade dress invites a compliance veto long before a studio notices.
+
+The architecture already contains the answer: AEGIS-the-standard — the drawer, subjects, regard, the claim rule, the tiling algebra — contains zero LCARS. The costume is one theme over tokenized CSS. The strategy is therefore dual-track:
+
+* *PHAROS, the house visual language, becomes the default.* It keeps the entire discipline and replaces the signature ornament: the chamfer (cut stone) where the elbow was, the beacon where color-wash attention was, a role-derived harbor palette (night harbor, limestone, beacon amber, sweep white, seaglass, port/starboard for direction), its own type voice. First light — a side-by-side design study against the current look, with the keep/replace verdicts — exists as a published study; the full definition will live in `pharos.adoc`.
+* *LCARS demotes to an operator-supplied skin.* The existing theme-import mechanism (fetched to the operator's machine at their choice) is exactly the right legal posture: the operator themes their own console, as with any desktop; the theme never ships in the repo. This also resolves the vendoring question around TheLCARS.com assets — they never enter the tree either way.
+
+=== PHAROS, expanded
+
+PHAROS carries two readings, both true. The shallow read is the recursive phrase: *Presentation House for AEGIS — Roles, Ornament, Shapes*. The deep read is an inventory — six letters, the six dimensions a visual language must define, and the chapters of the future style guide:
+
+* *P*alette — color as role, never decoration.
+* *H*ierarchy — type scale, weight, and the case law (uppercase for labels only; content keeps its case).
+* *A*ffordance — what reads as operable.
+* *R*hythm — spacing, cadence, motion (the beacon's sweep period, the drawer glide).
+* *O*rnament — the motifs: beacon, light line, tier.
+* *S*hape — the grammar: chamfer, capsule, divider.
+
+=== The naming law
+
+The fleet has two naming registers, and the split is load-bearing. *Kitchen names* (cumin, salsa, chili, brasa, menu, chell — the mise en place) are ingredients: lowercase, and they never expand. *Harbor names* (ARGUS, CALYPSO, HARBOR, AEGIS, PHAROS) are charters: capitals, and each expands recursively — through the layer beneath it, until the chain grounds out in a fixed point:
+
+* *PHAROS* — Presentation House for *AEGIS*: Roles, Ornament, Shapes.
+* *AEGIS* — *ARGUS* Ergonomics & Graphical Interface Standard.
+* *ARGUS* — the All-*Regarding* Graphical User Surface: the hundred-eyed watchman named for what it does, and "regarding" is meant literally — *regard*, the session subject, is what the surface projects. The skin names the standard, the standard names the surface, the surface names the session truth it renders.
+* *CALYPSO* — *CALYPSO* Accepts Language, Yielding Permitted Shell Operations: self-recursive, the chain's fixed point, as recorded in link:../../../docs/calypso.adoc[the CALYPSO design].
+
+Expansion dependency mirrors actual dependency; a new harbor name that cannot say which layer it expands through is a sign the layer itself is unclear.
+
 == Precedents and references
 
 Every load-bearing claim in this document leans on prior art. The precedents, what each grounds, and where to read them:
@@ -154,7 +194,8 @@ Every load-bearing claim in this document leans on prior art. The precedents, wh
 * *Airbus ECAM and flight-deck color law — color as role, not decoration.* Certified cockpits assign colors by semantic role (red = warning, amber = caution) as regulation, not style; grounds the palette-roles thread and the "discipline proven under other names" claim. FAA 14 CFR §25.1322 "Flightcrew Alerting" (Amdt. 25-131, 2010) with Advisory Circular AC 25.1322-1 (December 13, 2010: red = warning, amber/yellow = caution, colors restricted to those roles) and the harmonized EASA CS-25.1322; Airbus A320 FCOM display-system design philosophy (the "dark cockpit" doctrine: at rest, annunciate nothing).
 * *Radiology MPR and sync groups — subjects, not edges.* Orthogonal slice viewers synchronize through a shared crosshair position in volume space, and linked scrolling is explicit group membership, not viewer-to-viewer wiring; grounds hub-and-spoke linkage. Rosset A., Spadola L., Ratib O., "OsiriX: An Open-Source Software for Navigating in Multidimensional DICOM Images", _J. Digital Imaging_ 17(3):205–216, 2004. doi:10.1007/s10278-004-1014-6
 * *Fitts's law — the border as target.* Target acquisition time falls with target width; a full-width top border is the cheapest large target a pane owns. Paul M. Fitts, "The Information Capacity of the Human Motor System in Controlling the Amplitude of Movement", _J. Experimental Psychology_ 47(6):381–391, 1954.
-* *LCARS itself.* Michael Okuda's display language for _Star Trek: The Next Generation_ (1987–). Rick Sternbach & Michael Okuda, _Star Trek: The Next Generation Technical Manual_, Pocket Books, 1991. Okuda's later real-world design work for NASA — mission patches and insignia, honored with the Exceptional Public Service Medal (Johnson Space Center, July 9, 2009) — is the closest the language's author came to operational practice. The ARGUS visual tokens derive from Jim Robertus's TheLCARS.com theme work.
+* *Interface law — the functional carve-out.* _Lotus Development Corp. v. Borland International, Inc._, 49 F.3d 807 (1st Cir. 1995), aff'd by an equally divided Court, 516 U.S. 233 (1996): a menu command hierarchy is an uncopyrightable "method of operation". _Apple Computer, Inc. v. Microsoft Corp._, 35 F.3d 1435 (9th Cir. 1994): GUI elements largely unprotectable under merger and scènes à faire. Together they ground the keep/replace line the PHAROS strategy draws: discipline free, signature ornament not.
+* *LCARS itself.* Michael Okuda's display language for _Star Trek: The Next Generation_ (1987–); "LCARS" and the screen designs are the property of CBS Studios / Paramount, referenced here as prior art. Rick Sternbach & Michael Okuda, _Star Trek: The Next Generation Technical Manual_, Pocket Books, 1991. Okuda's later real-world design work for NASA — mission patches and insignia, honored with the Exceptional Public Service Medal (Johnson Space Center, July 9, 2009) — is the closest the language's author came to operational practice. The ARGUS visual tokens derive from Jim Robertus's TheLCARS.com theme work.
 * *The cosmetic graveyard.* LCARS skins, launchers, and dashboards (Rainmeter suites, Android LCARS launchers, Home Assistant themes, TheLCARS.com templates) — cited as the pattern AEGIS breaks: appearance cloned, mechanics absent.
 
 == Open threads

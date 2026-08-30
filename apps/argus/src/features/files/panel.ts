@@ -256,12 +256,15 @@ export class FilesPanel {
 
     row.append(glyph, name, size, owner);
 
-    if (item.type === 'dir' || item.type === 'vfs') {
+    // Links navigate: in this VFS a link names a place (a node's `data`
+    // pointing into the feed tree), so following it is a directory move —
+    // the engine resolves the target. Only plain files are viewable content.
+    if (item.type === 'dir' || item.type === 'vfs' || item.type === 'link') {
       row.classList.add('files-activatable');
       row.addEventListener('click', (): void => {
         this.activate({ kind: 'dir', path: path_join(parentPath, item.name) });
       });
-    } else if (item.type === 'file' || item.type === 'link') {
+    } else if (item.type === 'file') {
       row.classList.add('files-activatable');
       row.addEventListener('click', (): void => {
         this.activate({ kind: 'file', path: path_join(parentPath, item.name) });

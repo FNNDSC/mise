@@ -6,6 +6,7 @@
  * @module
  */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
+import type { Regard } from '@fnndsc/menu';
 
 /**
  * Manages the shell session state (Connection, Context).
@@ -17,6 +18,7 @@ export class Session {
   private _physicalMode: boolean = false;
   private _timingEnabled: boolean = false;
   private _previousCWD: string | undefined;
+  private _regard: Regard | null = null;
 
   /**
    * Private constructor for Singleton.
@@ -153,6 +155,27 @@ export class Session {
    */
   timingEnabled_set(enabled: boolean): void {
     this._timingEnabled = enabled;
+  }
+
+  /**
+   * Returns the session's retained regard: the addressable thing the operator
+   * most recently indicated on any surface, or null before the first
+   * indication. Last write wins; the value survives surface reattachment for
+   * the life of the session.
+   *
+   * @returns The retained regard, or null when nothing has been indicated.
+   */
+  regard_get(): Regard | null {
+    return this._regard;
+  }
+
+  /**
+   * Retains a regard write from a surface.
+   *
+   * @param regard - The indicated address with its provenance.
+   */
+  regard_set(regard: Regard): void {
+    this._regard = regard;
   }
 }
 

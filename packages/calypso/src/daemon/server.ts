@@ -34,7 +34,7 @@ import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, FileDeliverRequest } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, FileDeliverRequest, Regard } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
@@ -171,6 +171,8 @@ export class CalypsoDaemon {
    * ask — the one running the current command.
    */
   private queue: Promise<void> = Promise.resolve();
+  /** The session's retained regard: the last indication from any surface. */
+  private regard: Regard | null = null;
   private currentOrigin: Surface | null = null;
   private currentId: string | null = null;
   // One RequestBroker per surface-delegated request kind. The broker owns the
@@ -388,6 +390,8 @@ export class CalypsoDaemon {
         this.deliveries.settle(socket, value.deliverId, { location: value.location, bytes: value.bytes });
       } else if (value.type === 'deliverError') {
         this.deliveries.fail(socket, value.deliverId, value.reason);
+      } else if (value.type === 'regard') {
+        this.regard_receive(value.regard);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -461,7 +465,28 @@ export class CalypsoDaemon {
     this.scrollback_replay(socket);
     // The newcomer shows the right prompt immediately, before any command.
     void this.promptline_push(surface);
+    // Regard is a retained cell: a late attacher receives the current value
+    // rather than waiting for the operator's next indication.
+    const retained: Regard | null = this.regard ?? this.engine.regard_get?.() ?? null;
+    if (retained !== null) {
+      this.send(socket, { type: 'regard', regard: retained });
+    }
     return surface;
+  }
+
+  /**
+   * Retains a regard write (last write wins), mirrors it into the engine as
+   * session truth, and rebroadcasts it to every attached surface — the
+   * writer included, so all surfaces converge on the same retained value.
+   *
+   * @param regard - The indicated address with its provenance.
+   */
+  private regard_receive(regard: Regard): void {
+    this.regard = regard;
+    this.engine.regard_note?.(regard);
+    for (const surface of this.surfaces) {
+      this.send(surface.socket, { type: 'regard', regard });
+    }
   }
 
   /**

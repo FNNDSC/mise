@@ -118,19 +118,25 @@
             <div id="layout-root"></div>
             <!-- Pane templates: the registry stamps instances from these;
                  every instance is a long-lived mount the tree reparents.
-                 Header capsules: split side-by-side, split stacked, zoom,
-                 and the mars close pill. -->
+                 At rest a pane shows only work and state: the machinery
+                 (split, zoom, close, semantic children) lives in the pane
+                 drawer behind the top border — click the header to open it.
+                 Design record: docs/aegis.adoc. -->
             <template id="tpl-pane-dag">
               <div class="workspace-pane pane-dag">
-                <div class="lcars-terminal-header-bar files-header-bar">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title dag-title">DAG</span>
                     <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
                   </div>
-                  <div class="lcars-bar-split" data-split="col" title="split side by side" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-split lcars-split-row" data-split="row" title="split stacked" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-zoom" data-pane="" title="zoom (Esc restores)" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-end pane-close" title="close pane" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <button class="pacs-capsule drawer-split" data-split="col" title="split side by side">SPLIT ◫</button>
+                  <button class="pacs-capsule drawer-split" data-split="row" title="split stacked">SPLIT ⊟</button>
+                  <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                  <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  <span class="drawer-children"></span>
                 </div>
                 <div class="dag-canvas"></div>
                 <div class="dag-feedlist"></div>
@@ -140,16 +146,41 @@
             </template>
             <template id="tpl-pane-files">
               <div class="workspace-pane pane-files">
-                <div class="lcars-terminal-header-bar files-header-bar">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title pane-title">WORKSPACE</span>
                   </div>
-                  <div class="lcars-bar-split" data-split="col" title="split side by side" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-split lcars-split-row" data-split="row" title="split stacked" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-zoom" data-pane="" title="zoom (Esc restores)" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-end pane-close" title="close pane" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <button class="pacs-capsule drawer-split" data-split="col" title="split side by side">SPLIT ◫</button>
+                  <button class="pacs-capsule drawer-split" data-split="row" title="split stacked">SPLIT ⊟</button>
+                  <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                  <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  <span class="drawer-children"></span>
                 </div>
                 <section class="files-panel" aria-label="Files"></section>
+              </div>
+            </template>
+            <!-- The viewer pane: a slaved projection of its group's regard —
+                 indicate a file or node anywhere in the group and it renders
+                 here. -->
+            <template id="tpl-pane-view">
+              <div class="workspace-pane pane-view">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title view-title">VIEWER</span>
+                  </div>
+                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <button class="pacs-capsule drawer-split" data-split="col" title="split side by side">SPLIT ◫</button>
+                  <button class="pacs-capsule drawer-split" data-split="row" title="split stacked">SPLIT ⊟</button>
+                  <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                  <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  <span class="drawer-children"></span>
+                </div>
+                <div class="view-body"></div>
               </div>
             </template>
             <!-- The empty pane: what a split creates. Its prompt is the pane
@@ -157,13 +188,17 @@
                  capsules are shortcuts for the frequent. -->
             <template id="tpl-pane-empty">
               <div class="workspace-pane pane-empty">
-                <div class="lcars-terminal-header-bar files-header-bar">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title pane-title">NEW PANE</span>
                   </div>
-                  <div class="lcars-bar-split" data-split="col" title="split side by side" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-split lcars-split-row" data-split="row" title="split stacked" role="button" tabindex="0"></div>
-                  <div class="lcars-bar-end pane-close" title="close pane" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <button class="pacs-capsule drawer-split" data-split="col" title="split side by side">SPLIT ◫</button>
+                  <button class="pacs-capsule drawer-split" data-split="row" title="split stacked">SPLIT ⊟</button>
+                  <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  <span class="drawer-children"></span>
                 </div>
                 <div class="empty-shortcuts">
                   <button class="pacs-capsule empty-go-files">FILES</button>

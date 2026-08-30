@@ -29,6 +29,8 @@ import { FilesPanel, type FileAction, type FsListing } from '../features/files/p
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
+import { ViewerPanel } from '../features/view/panel.js';
+import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
@@ -519,10 +521,42 @@ async function surface_start(token: string): Promise<void> {
   const filesPanels: Map<string, FilesPanel> = new Map();
   const dagPanels: Map<string, DagPanel> = new Map();
 
+  // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
+  // write also flows to the daemon as session truth (the two-layer model).
+  const subjects: SubjectBus = new SubjectBus();
+  subjects.writeObserver_set((value: RegardValue, groupId: string): void => {
+    client.regard_send({
+      address: value.address,
+      ...(value.modelKind !== undefined ? { modelKind: value.modelKind } : {}),
+      groupId,
+      paneId: value.paneId,
+    });
+  });
+
+  /** Builds the token-gated /vfs URL serving a path's bytes. */
+  const vfsUrl_build = (path: string): string =>
+    `/vfs?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+
+  /** Fetches a file's text through a silent, pane-local cat. */
+  const fileText_fetch = (path: string): Promise<string> =>
+    client
+      .line_execute(`cat "${path}"`, { silent: true, observe: false })
+      .then((outcome: ExecuteOutcome): string =>
+        ansi_strip(outcome.envelopes.map((envelope): string => envelope.rendered).join('\n')),
+      );
+
   // Lowers a file activation. The primary browser is slaved to the session
   // cwd and navigates by real `cd`; a rooted browser (a split's instance)
-  // navigates independently by targeted silent listings.
-  const fileAction_handle = (panel: FilesPanel, action: FileAction, primary: boolean): void => {
+  // navigates independently by targeted silent listings. A file activation
+  // is an indication: it writes the pane's group regard, and when the group
+  // holds a viewer, the viewer renders it — the browser overlays its own
+  // content only as the viewerless fallback.
+  const fileAction_handle = (
+    id: string,
+    panel: FilesPanel,
+    action: FileAction,
+    primary: boolean,
+  ): void => {
     if (action.kind === 'dir') {
       if (primary) {
         terminal.line_run(`cd "${action.path}"`);
@@ -537,24 +571,21 @@ async function surface_start(token: string): Promise<void> {
       }
       return;
     }
+    subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });
+    if (subjects.groupHasViewer(id)) {
+      return;
+    }
     if (extension_isImage(action.path)) {
       // Images render natively from the daemon's token-gated /vfs route,
       // never as terminal strings.
-      const url: string =
-        `/vfs?path=${encodeURIComponent(action.path)}&token=${encodeURIComponent(token)}`;
-      panel.contentImage_show(action.path, url);
+      panel.contentImage_show(action.path, vfsUrl_build(action.path));
       return;
     }
     // Text renders from a silent cat, so a large file does not flood the
     // transcript.
-    void client
-      .line_execute(`cat "${action.path}"`, { silent: true, observe: false })
-      .then((outcome: ExecuteOutcome): void => {
-        const content: string = ansi_strip(
-          outcome.envelopes.map((envelope): string => envelope.rendered).join('\n'),
-        );
-        panel.content_show(action.path, content);
-      });
+    void fileText_fetch(action.path).then((content: string): void => {
+      panel.content_show(action.path, content);
+    });
   };
 
   // Builds one files pane instance from the template.
@@ -562,7 +593,7 @@ async function surface_start(token: string): Promise<void> {
     const mount: HTMLElement = template_stamp('tpl-pane-files');
     const panel: FilesPanel = new FilesPanel(
       pane_find(mount, '.files-panel'),
-      (action: FileAction): void => fileAction_handle(panel, action, primary),
+      (action: FileAction): void => fileAction_handle(id, panel, action, primary),
     );
     filesPanels.set(id, panel);
     return {
@@ -571,6 +602,34 @@ async function surface_start(token: string): Promise<void> {
       mount,
       dispose: (): void => {
         filesPanels.delete(id);
+        subjects.pane_leave(id);
+      },
+    };
+  };
+
+  // Builds one viewer pane instance: a slaved projection of its group's
+  // regard. The subscription happens at spawn time, after the instance has
+  // joined its group (the retained cell then replays immediately).
+  const viewerPanels: Map<string, ViewerPanel> = new Map();
+  const viewInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-view');
+    const panel: ViewerPanel = new ViewerPanel(
+      pane_find(mount, '.view-body'),
+      pane_find(mount, '.view-title'),
+      {
+        content_fetch: fileText_fetch,
+        imageUrl_build: vfsUrl_build,
+        path_isImage: extension_isImage,
+      },
+    );
+    viewerPanels.set(id, panel);
+    return {
+      id,
+      kind: 'view',
+      mount,
+      dispose: (): void => {
+        viewerPanels.delete(id);
+        subjects.pane_leave(id);
       },
     };
   };
@@ -600,6 +659,9 @@ async function surface_start(token: string): Promise<void> {
         node_enter: (vfsPath: string): void => {
           terminal.line_run(`cd "${vfsPath}"`);
         },
+        node_regard: (vfsPath: string): void => {
+          subjects.regard_write(id, { address: vfsPath, modelKind: 'feed.node' });
+        },
         ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
     );
@@ -610,6 +672,7 @@ async function surface_start(token: string): Promise<void> {
       mount,
       dispose: (): void => {
         dagPanels.delete(id);
+        subjects.pane_leave(id);
         panel.dispose();
       },
     };
@@ -690,22 +753,52 @@ async function surface_start(token: string): Promise<void> {
     }
   };
 
-  // Creates a fresh pane instance, registered and chromed for the tree.
-  const instance_spawn = (kind: string): PaneInstance => {
+  // Creates a fresh pane instance, registered and chromed for the tree. A
+  // pane spawned from another's drawer inherits the parent's link group —
+  // the semantic tracing; otherwise it starts a group of its own. A viewer
+  // marks itself and subscribes here, after joining, so the retained cell
+  // replays immediately.
+  const instance_spawn = (kind: string, inheritFrom?: string): PaneInstance => {
     const instance: PaneInstance = paneInstance_create(kind);
+    subjects.pane_join(
+      instance.id,
+      inheritFrom !== undefined ? subjects.group_of(inheritFrom) : instance.id,
+    );
+    if (kind === 'view') {
+      subjects.viewer_mark(instance.id);
+      subjects.regard_subscribe(instance.id, (value: RegardValue): void => {
+        viewerPanels.get(instance.id)?.regard_show(value);
+      });
+    }
     layout.mount_register(instance.id, instance.mount);
-    pane_chrome_wire(instance.id, instance.mount);
+    pane_chrome_wire(instance.id, kind, instance.mount);
     return instance;
   };
 
-  // Wires one pane's header capsules: the zoom block takes the instance's
-  // identity, the split capsules carve the tree, the mars pill closes.
-  const pane_chrome_wire = (id: string, mount: HTMLElement): void => {
-    const zoomCapsule: HTMLElement | null = mount.querySelector<HTMLElement>('.lcars-bar-zoom');
+  // Wires one pane's chrome under the machinery-behind-the-frame rule: at
+  // rest the pane shows only work and state; clicking the header (the
+  // frame) toggles the pane drawer, which holds the layout verbs and the
+  // kind's semantic children (docs/aegis.adoc).
+  const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
+    const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
+    const handle: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-handle');
+    if (drawer === null || handle === null) {
+      return;
+    }
+    handle.addEventListener('click', (event: Event): void => {
+      // Working controls riding the header (the strategy pill) keep their
+      // own meaning; only the frame itself is the drawer's handle.
+      if (event.target instanceof Element && event.target.closest('button') !== null) {
+        return;
+      }
+      drawer.hidden = !drawer.hidden;
+      sound_play('audio3');
+    });
+    const zoomCapsule: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-zoom');
     if (zoomCapsule !== null) {
       zoomCapsule.dataset['pane'] = id;
     }
-    for (const splitter of mount.querySelectorAll<HTMLElement>('[data-split]')) {
+    for (const splitter of drawer.querySelectorAll<HTMLElement>('[data-split]')) {
       splitter.addEventListener('click', (): void => {
         const dir: 'row' | 'col' = splitter.dataset['split'] === 'row' ? 'row' : 'col';
         const empty: PaneInstance = instance_spawn('empty');
@@ -713,12 +806,13 @@ async function surface_start(token: string): Promise<void> {
           paneInstance_dispose(empty.id);
           layout.mount_remove(empty.id);
         }
+        drawer.hidden = true;
         sound_play('audio3');
       });
     }
-    mount.querySelector<HTMLElement>('.pane-close')?.addEventListener('click', (): void => {
+    drawer.querySelector<HTMLElement>('.drawer-close')?.addEventListener('click', (): void => {
       if (id === 'dag') {
-        // The primary DAG's mars pill is its dismissal from home.
+        // The primary DAG's close is its dismissal from home.
         dagShown = false;
         home_apply();
         return;
@@ -730,9 +824,57 @@ async function surface_start(token: string): Promise<void> {
       orphans_dispose();
       sound_play('audio3');
     });
+    // Semantic children: parent-contextualized intents, per pane kind.
+    const children: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-children');
+    if (children === null) {
+      return;
+    }
+    const child_offer = (label: string, hint: string, spawn: () => void): void => {
+      const capsule: HTMLButtonElement = document.createElement('button');
+      capsule.className = 'pacs-capsule drawer-child';
+      capsule.textContent = label;
+      capsule.title = hint;
+      capsule.addEventListener('click', (): void => {
+        spawn();
+        drawer.hidden = true;
+        sound_play('audio3');
+      });
+      children.appendChild(capsule);
+    };
+    if (kind === 'files' || kind === 'dag') {
+      child_offer('VIEWER', 'a pane slaved to what this pane indicates', (): void => {
+        const viewer: PaneInstance = instance_spawn('view', id);
+        if (!layout.leaf_split(id, 'col', viewer.id)) {
+          paneInstance_dispose(viewer.id);
+          layout.mount_remove(viewer.id);
+        }
+      });
+    }
+    if (kind === 'dag') {
+      child_offer('BROWSE NODE', 'a browser rooted at the indicated node', (): void => {
+        const regard: RegardValue | null = subjects.regard_get(id);
+        if (regard === null) {
+          return;
+        }
+        // Rooted, not slaved: the regard value is consumed at spawn time.
+        const browser: PaneInstance = instance_spawn('files');
+        if (!layout.leaf_split(id, 'col', browser.id)) {
+          paneInstance_dispose(browser.id);
+          layout.mount_remove(browser.id);
+          return;
+        }
+        void client
+          .line_execute(`ls "${regard.address}"`, { silent: true, observe: false })
+          .then((outcome: ExecuteOutcome): void => {
+            for (const envelope of outcome.envelopes) {
+              filesPanels.get(browser.id)?.envelope_observe(envelope);
+            }
+          });
+      });
+    }
   };
-  pane_chrome_wire('files', filesPrimary.mount);
-  pane_chrome_wire('dag', dagPrimary.mount);
+  pane_chrome_wire('files', 'files', filesPrimary.mount);
+  pane_chrome_wire('dag', 'dag', dagPrimary.mount);
 
   // A claimed empty pane becomes what its command projected.
   const pane_claim = (emptyId: string, kind: ClaimKind, envelopes: WireEnvelope[]): void => {
@@ -758,6 +900,7 @@ async function surface_start(token: string): Promise<void> {
 
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
+  paneFactory_register('view', viewInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {

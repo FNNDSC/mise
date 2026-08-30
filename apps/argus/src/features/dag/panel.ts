@@ -35,6 +35,8 @@ export interface DagPanelHandlers {
   command_run: (line: string) => void;
   /** Lowers a node activation to a visible cd. */
   node_enter: (vfsPath: string) => void;
+  /** A node was selected: the pane indicates its data address (a regard write). */
+  node_regard?: (vfsPath: string) => void;
   /** A feed came into view: the layout should summon this pane. */
   feed_shown?: () => void;
 }
@@ -262,6 +264,9 @@ export class DagPanel {
       this.facts.textContent = node.label;
       return;
     }
+    // A selection is an indication: the node's data address becomes the
+    // pane's regard, feeding any slaved viewer in its group.
+    this.handlers.node_regard?.(payload.vfsPath);
     this.facts.replaceChildren();
     const rows: Array<[string, string]> = [
       ['PLUGIN', payload.pluginName],

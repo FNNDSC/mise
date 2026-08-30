@@ -11,6 +11,7 @@
  * @module
  */
 import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { Regard } from '@fnndsc/menu';
 
 /**
  * A completion answer: the candidates and the prefix they complete.
@@ -63,4 +64,21 @@ export interface HostedEngine {
    * @returns The file's bytes.
    */
   file_read?(filePath: string): Promise<Buffer>;
+
+  /**
+   * Notes a regard write relayed from a surface, retaining it as session
+   * truth engine-side. Optional: a daemon still retains and rebroadcasts
+   * regard on the wire without it.
+   *
+   * @param regard - The indicated address with its provenance.
+   */
+  regard_note?(regard: Regard): void;
+
+  /**
+   * Returns the engine's retained regard, or null before the first
+   * indication.
+   *
+   * @returns The retained regard, or null.
+   */
+  regard_get?(): Regard | null;
 }

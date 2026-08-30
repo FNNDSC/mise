@@ -15,6 +15,8 @@ AEGIS — the *ARGUS Ergonomics & Graphical Interface Standard* — is the desig
 
 [cols="1,3"]
 |===
+| 2026-08-30 (slice 1 built) | Regard + drawer + slaved viewer implemented: `regard` wire message (menu), brasa session retention, calypso retain/mirror/rebroadcast with late-attach replay, argus SubjectBus (groups, retained cells, LWW), pane drawer behind the header on all stamped panes, VIEWER semantic child (slaved) and BROWSE NODE (rooted) in the drawer, viewer pane kind subscribed to group regard.
+| 2026-08-30 (later) | Subjects grilled and locked: two-layer regard (group-scoped rendering + session aggregate in brasa), retained-cell write semantics, rooted-versus-slaved children, lifecycle (groups session-only, session regard survives surface reload). Durable layer settled in direction: per-user config and named layout schemas as CFS files under `~/.config`. Build of the first slice (regard skeleton, pane drawer, slaved viewer) begun.
 | 2026-08-30 | Document created from the first AEGIS thought sprint. Settled: the machinery-behind-the-frame principle (pane drawer as the mouse-native prefix key), semantic children as parent-contextualized pre-composed intents, pane linkage as hub-and-spoke subjects (never pane-to-pane edges), the addressability test, and *regard* as a session-truth subject in brasa. Open: palette roles, shape grammar, motion canon, the violations audit.
 |===
 
@@ -49,7 +51,7 @@ Corollaries:
 
 Costs, accepted with eyes open: hidden machinery is invisible until taught — the first session must teach the gesture (a subtle border affordance, and the operator companion). The extra click on layout verbs is the correct trade: split is rare relative to work, and optimizing rare verbs for invisibility beats optimizing them for speed.
 
-*Known violation (transitional):* the shipped header split/zoom/close capsules (PR #254) are the cheap version of this principle and are superseded by the drawer. They stand until the drawer lands.
+*Status:* the drawer shipped with the first slice — stamped panes (files, DAG, viewer, empty) carry their machinery behind the frame, header capsules gone. Remaining violation: the static PACS workspace pane keeps its old chrome until it joins the instance model.
 
 == Semantic children: what goes into a new pane
 
@@ -109,6 +111,36 @@ Selection is session truth masquerading as view state, and the precedents are de
 The skeletal foundation, deliberately small: one session subject in brasa named *regard* — the thing the operator currently indicates — valued as a VFS address plus model kind, riding the same push channel as prompt context, with its schema in `menu`. The slaved content viewer subscribes to regard; the terminal's `cd` already writes the sibling subject (cwd). One subject, one schema, an existing channel.
 
 What it buys immediately: the accidental terminal↔browser link and the deliberate viewer link become the same mechanism, and any future assist layer can ask the kernel "what is the operator looking at."
+
+=== Regard, grilled: the two-layer model (locked)
+
+Scope is neither purely global (X11's one PRIMARY) nor purely scoped (radiology sync groups) — it is both layers, from a single write path:
+
+* *Group layer — where things render.* Every indicating pane sits in a link group (possibly of one). A regard write lands in the writer's group. One rendering rule: the group's regard renders in the group's viewer member; absent a viewer, the writing pane renders it inline as an overlay (exit restores the pane). The lone browser overlaying its own content and the browser routing to a spawned viewer are the same mechanism — membership differs, nothing else.
+* *Session layer — what the operator regards.* Every regard write, whatever its group, also flows to brasa tagged `{address, modelKind, groupId, paneId}`; the session's current regard is the latest write with provenance attached. Not a second mechanism — the same write, observed at session level. The kernel's one-answer question stays answerable without disturbing any group's viewer.
+
+Write semantics: a subject is a *retained cell, not an event stream* (MQTT retained-message semantics). Last write wins — a "conflict" between two writers in one group is just the operator moving their attention; the provenance tag says who wrote. A late joiner immediately receives the retained value, so spawn-then-see workflows feel alive. "No value yet" is a schema-legal state rendered as a defined LCARS awaiting-state, not an error.
+
+Lifecycle: a group dies when its last member leaves; nothing is retained. Session regard lives in brasa and survives a surface reload. Groups and carved trees do not survive reload — session-only, consistent with the carved-tree rule.
+
+=== Rooted versus slaved children
+
+A DAG node click showcases the composition: the click writes group regard; the drawer's semantic children are parameterized by pane kind *and current regard value* — file view of this node, runtime inspector (execution state and progression), log view, note editor. Two distinct bindings, both from the same drawer:
+
+* *Rooted child:* consumes the regard value at spawn time, then frozen — a browser rooted at the node's data directory stays there as other nodes are clicked. Not a group member; an intent pre-composed with a snapshot.
+* *Slaved child:* subscribes to group regard and follows — click across nodes and the runtime and log panes retarget live. The MPR moment for compute.
+
+The retained cell makes both feel right: a log pane spawned after the click shows that node's logs instantly.
+
+== The durable layer: config and named schemas in CFS
+
+Per-user preference and captured layouts live as files in the operator's CUBE home — the Linux dotfile tradition, on CFS (durable CUBE file storage, not the synthesized VFS overlays). `~/.config/chell/` holds prompt choice; `~/.config/argus/` holds color scheme and layout schemas. The kernel stores bytes and never interprets them; each surface parses only its own directory. This concretizes the workspace-model dumb-store principle with zero new kernel machinery.
+
+A *named layout schema* is a captured pane arrangement — but the capture is a template parameterized by regard, never a materialized layout: tree shape, pane kinds, and binding modes (slaved/rooted), with no concrete addresses. Addresses flow in at apply time from the regard that triggers it. The old ChRIS UI's fixed four-pane feed view (DAG, runtime, browser, context — all slaved to the current node) becomes one user-editable schema file, offered in the drawer alongside semantic children when a node is clicked. Schema files are written in the LayoutNode vocabulary already shelved in `menu`.
+
+Terminology guard: gutter presets remain *givens* (system-owned, reset semantics); named captures are *user schemas* (operator-owned, durable). The strata, bottom to top: retained cell (live) → session regard (session) → named schema (durable).
+
+`~/gathers` is flagged as a further durable-CFS concept central to future operation; its definition is owed and deliberately not invented here.
 
 == Precedents and references
 

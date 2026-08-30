@@ -84,6 +84,12 @@ const SPIN_AMBIENT: number = 0.006;
  */
 const TUMBLE_DRIFT: number = 0.0035;
 
+/** How long after the last touch the idle spin stays paused. */
+const SPIN_RESUME_MS: number = 10_000;
+
+/** Pointer travel (px) past which a press counts as a drag, not a click. */
+const DRAG_THRESHOLD_PX: number = 4;
+
 /** Statuses grouped for coloring. */
 const RUNNING_STATUSES: ReadonlySet<string> = new Set([
   'created', 'waiting', 'scheduled', 'started', 'registeringFiles',
@@ -239,7 +245,18 @@ export class DagScene {
   private readonly group: THREE.Group = new THREE.Group();
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
   private meshes: Map<string, THREE.Mesh> = new Map();
+  /** Edge lines with their endpoint identities, for live re-anchoring. */
+  private edges: Array<{ line: THREE.Line; fromId: string; toId: string; dashed: boolean }> = [];
   private graph: SceneGraph = { nodes: [] };
+  /** Idle spin stays paused until this clock time (0 = spinning). */
+  private spinIdleUntil: number = 0;
+  /** The grab in progress: which node, its drag plane, and travel so far. */
+  private drag: { nodeId: string; plane: THREE.Plane; startX: number; startY: number; moved: boolean } | null = null;
+  /** The live reaction simulation while (and shortly after) a grab. */
+  private dragSim: ReturnType<typeof forceSimulation> | null = null;
+  private dragSimNodes: Array<{ id: string; x: number; y: number; z: number; fx?: number | null; fy?: number | null; fz?: number | null }> = [];
+  /** Swallows the click that ends a drag, so a pull is not a select. */
+  private suppressClick: boolean = false;
   private strategy: LayoutStrategy = 'ranked';
   private selectedId: string | null = null;
   private frameHandle: number | null = null;
@@ -273,21 +290,35 @@ export class DagScene {
     container.appendChild(this.renderer.domElement);
     this.size_fit();
     if (!this.ambient) {
-      this.renderer.domElement.addEventListener('click', (event: MouseEvent): void =>
-        this.pick_handle(event, 'select'),
-      );
+      this.renderer.domElement.addEventListener('click', (event: MouseEvent): void => {
+        // The click that ends a pull is the pull's release, not a select.
+        if (this.suppressClick) {
+          this.suppressClick = false;
+          return;
+        }
+        this.pick_handle(event, 'select');
+      });
       this.renderer.domElement.addEventListener('dblclick', (event: MouseEvent): void =>
         this.pick_handle(event, 'activate'),
       );
+      this.renderer.domElement.addEventListener('pointerdown', (event: PointerEvent): void =>
+        this.press_handle(event),
+      );
+      this.renderer.domElement.addEventListener('pointerup', (): void => this.drag_end());
+      this.renderer.domElement.addEventListener('pointercancel', (): void => this.drag_end());
       // Hovering names the node: a small tip follows the pointer over a
       // sphere, so identity does not cost a click.
       this.tip = document.createElement('div');
       this.tip.className = 'dag-node-tip';
       this.tip.hidden = true;
       container.appendChild(this.tip);
-      this.renderer.domElement.addEventListener('pointermove', (event: PointerEvent): void =>
-        this.hover_handle(event),
-      );
+      this.renderer.domElement.addEventListener('pointermove', (event: PointerEvent): void => {
+        if (this.drag !== null) {
+          this.drag_move(event);
+        } else {
+          this.hover_handle(event);
+        }
+      });
       this.renderer.domElement.addEventListener('pointerleave', (): void => {
         if (this.tip) this.tip.hidden = true;
       });
@@ -309,7 +340,21 @@ export class DagScene {
           .normalize();
         this.group.rotateOnWorldAxis(this.tumbleAxis, SPIN_AMBIENT);
       } else {
-        this.group.rotation.y += SPIN_INTERACTIVE;
+        // A touched graph holds still; the idle spin resumes after the wait.
+        if (Date.now() >= this.spinIdleUntil) {
+          this.group.rotation.y += SPIN_INTERACTIVE;
+        }
+        // The reaction simulation runs while hot: during a grab, and cooling
+        // after release until it settles.
+        if (this.dragSim !== null) {
+          if (this.drag !== null || this.dragSim.alpha() > 0.02) {
+            this.dragSim.tick();
+            this.positions_sync();
+          } else {
+            this.dragSim = null;
+            this.dragSimNodes = [];
+          }
+        }
       }
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
@@ -386,6 +431,10 @@ export class DagScene {
   private rebuild(): void {
     this.group.clear();
     this.meshes = new Map();
+    this.edges = [];
+    this.dragSim = null;
+    this.dragSimNodes = [];
+    this.drag = null;
     const palette = palette_read();
     const placed: PlacedNode[] =
       this.strategy === 'molecule' ? layout_molecule(this.graph.nodes) : layout_ranked(this.graph.nodes);
@@ -411,11 +460,11 @@ export class DagScene {
     for (const { node, position } of placed) {
       for (const parentId of node.parentIds) {
         const parent: PlacedNode | undefined = byId.get(parentId);
-        if (parent) this.edge_add(parent.position, position, palette.edge, false);
+        if (parent) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
-        if (parent) this.edge_add(parent.position, position, palette.join, true);
+        if (parent) this.edge_add(joinId, node.id, parent.position, position, palette.join, true);
       }
     }
 
@@ -426,22 +475,144 @@ export class DagScene {
     this.camera.position.z = span * 1.9;
   }
 
-  /** Adds one edge line; joins are dashed. */
-  private edge_add(from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dashed: boolean): void {
+  /** Adds one edge line; joins are dashed. Endpoint ids allow live re-anchoring. */
+  private edge_add(
+    fromId: string,
+    toId: string,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    color: THREE.Color,
+    dashed: boolean,
+  ): void {
     const geometry: THREE.BufferGeometry = new THREE.BufferGeometry().setFromPoints([from, to]);
+    let line: THREE.Line;
     if (dashed) {
       const material: THREE.LineDashedMaterial = new THREE.LineDashedMaterial({
         color, dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: 0.9,
       });
-      const line: THREE.Line = new THREE.Line(geometry, material);
+      line = new THREE.Line(geometry, material);
       line.computeLineDistances();
-      this.group.add(line);
-      return;
+    } else {
+      const material: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: 0.75,
+      });
+      line = new THREE.Line(geometry, material);
     }
-    const material: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
-      color, transparent: true, opacity: 0.75,
-    });
-    this.group.add(new THREE.Line(geometry, material));
+    this.group.add(line);
+    this.edges.push({ line, fromId, toId, dashed });
+  }
+
+  /** Copies simulation positions onto meshes and re-anchors every edge. */
+  private positions_sync(): void {
+    for (const simNode of this.dragSimNodes) {
+      this.meshes.get(simNode.id)?.position.set(simNode.x, simNode.y, simNode.z);
+    }
+    for (const edge of this.edges) {
+      const from: THREE.Mesh | undefined = this.meshes.get(edge.fromId);
+      const to: THREE.Mesh | undefined = this.meshes.get(edge.toId);
+      if (from === undefined || to === undefined) continue;
+      edge.line.geometry.setFromPoints([from.position, to.position]);
+      if (edge.dashed) edge.line.computeLineDistances();
+    }
+  }
+
+  /**
+   * A press touches the graph: the view snaps to first orientation, the
+   * idle spin pauses, and a press on a node begins a pull — the structure
+   * reacts through a live force simulation anchored at the grabbed node.
+   */
+  private press_handle(event: PointerEvent): void {
+    this.group.rotation.set(0, 0, 0);
+    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    const hit: THREE.Mesh | null = this.mesh_under(event);
+    const nodeId: unknown = hit?.userData['nodeId'];
+    if (hit === null || typeof nodeId !== 'string') return;
+    // Drag in the plane through the node, facing the camera: intuitive
+    // pull, no depth surprises.
+    const normal: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+    const plane: THREE.Plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.position);
+    this.drag = { nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false };
+    this.renderer.domElement.setPointerCapture(event.pointerId);
+    if (this.tip) this.tip.hidden = true;
+
+    // The reaction simulation starts from the meshes' current positions,
+    // with the grabbed node fixed to the pointer. Links and charge only —
+    // no centering force, or the pull would fight a recentering spring.
+    const links: Array<{ source: string; target: string }> = [];
+    for (const node of this.graph.nodes) {
+      for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
+        if (this.meshes.has(parentId)) links.push({ source: parentId, target: node.id });
+      }
+    }
+    this.dragSimNodes = [...this.meshes.entries()].map(([id, mesh]) => ({
+      id, x: mesh.position.x, y: mesh.position.y, z: mesh.position.z,
+    }));
+    this.dragSim = forceSimulation(this.dragSimNodes, 3)
+      .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(2.2))
+      .force('charge', forceManyBody().strength(-6))
+      .alpha(0.5)
+      .alphaTarget(0.3)
+      .stop();
+    const grabbed = this.dragSimNodes.find((n) => n.id === nodeId);
+    if (grabbed) {
+      grabbed.fx = grabbed.x;
+      grabbed.fy = grabbed.y;
+      grabbed.fz = grabbed.z;
+    }
+  }
+
+  /** Follows the pointer during a pull: the grabbed node tracks the drag plane. */
+  private drag_move(event: PointerEvent): void {
+    if (this.drag === null) return;
+    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    if (
+      Math.abs(event.clientX - this.drag.startX) + Math.abs(event.clientY - this.drag.startY) >
+      DRAG_THRESHOLD_PX
+    ) {
+      this.drag.moved = true;
+    }
+    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
+    const pointer: THREE.Vector2 = new THREE.Vector2(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(pointer, this.camera);
+    const point: THREE.Vector3 = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this.drag.plane, point) === null) return;
+    const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
+    if (grabbed) {
+      grabbed.fx = point.x;
+      grabbed.fy = point.y;
+      grabbed.fz = point.z;
+    }
+  }
+
+  /** Releases a pull: the grip opens and the simulation cools to rest. */
+  private drag_end(): void {
+    if (this.drag === null) return;
+    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    if (this.drag.moved) this.suppressClick = true;
+    const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
+    if (grabbed) {
+      grabbed.fx = null;
+      grabbed.fy = null;
+      grabbed.fz = null;
+    }
+    this.dragSim?.alphaTarget(0);
+    this.drag = null;
+  }
+
+  /** @returns The node mesh under a pointer event, or null. */
+  private mesh_under(event: MouseEvent): THREE.Mesh | null {
+    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
+    const pointer: THREE.Vector2 = new THREE.Vector2(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(pointer, this.camera);
+    const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
+    const object: THREE.Object3D | undefined = hits[0]?.object;
+    return object instanceof THREE.Mesh ? object : null;
   }
 
   /** Names the node under the pointer in the hover tip, or hides it. */

@@ -8,11 +8,18 @@ declare module 'd3-force-3d' {
     x?: number;
     y?: number;
     z?: number;
+    /** Fixed-position anchors: a non-null value pins that axis. */
+    fx?: number | null;
+    fy?: number | null;
+    fz?: number | null;
   }
   export interface Simulation {
     force(name: string, force: unknown): Simulation;
     stop(): Simulation;
     tick(): Simulation;
+    alpha(): number;
+    alpha(value: number): Simulation;
+    alphaTarget(value: number): Simulation;
   }
   export interface LinkForce {
     id(accessor: (d: { id: string }) => string): LinkForce;

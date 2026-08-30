@@ -727,6 +727,18 @@ async function surface_start(token: string): Promise<void> {
       : { pane: 'files' };
   layout.preset_register('files', homeTree);
   layout.preset_register('pacs', (): LayoutNode => ({ pane: 'pacs' }));
+  // RUNS-02 is a full-workspace preset like PACS-03, not a split variation.
+  layout.preset_register('dag', (): LayoutNode => ({ pane: 'dag' }));
+  // Any geometry change (split, close, claim, preset, a settled divider
+  // drag) refits the measured canvases once the DOM has settled; a
+  // reparented WebGL canvas otherwise keeps its old pixel size.
+  layout.renderObserver_set((): void => {
+    window.requestAnimationFrame((): void => {
+      for (const panel of dagPanels.values()) {
+        panel.size_fit();
+      }
+    });
+  });
 
   // Disposes split-born instances the current tree no longer holds; the
   // primaries (the presets' panes) always survive offstage.
@@ -746,11 +758,16 @@ async function surface_start(token: string): Promise<void> {
     dagPanel.size_fit();
   };
   const dag_summon = (): void => {
-    if (dagShown && layout.activePreset_get() === 'files') return;
-    dagShown = true;
-    if (layout.activePreset_get() !== 'pacs') {
-      home_apply();
+    const preset: string = layout.activePreset_get();
+    if (preset === 'pacs' || preset === 'dag') {
+      // A full-workspace preset is the operator's choice; the summon only
+      // notes that home should include the DAG when they return to it.
+      dagShown = true;
+      return;
     }
+    if (dagShown && preset === 'files') return;
+    dagShown = true;
+    home_apply();
   };
 
   // Creates a fresh pane instance, registered and chromed for the tree. A
@@ -915,8 +932,9 @@ async function surface_start(token: string): Promise<void> {
   // PACS tree against home.
   element_require('gutter-files').addEventListener('click', (): void => home_apply());
   element_require('gutter-runs').addEventListener('click', (): void => {
-    dagShown = true;
-    home_apply();
+    // The DAG takes the whole workspace, PACS-style; the chooser overlays it.
+    layout.preset_apply('dag');
+    orphans_dispose();
     dagPanel.feedsChooser_request();
   });
   element_require('gutter-tools').addEventListener('click', (): void => {

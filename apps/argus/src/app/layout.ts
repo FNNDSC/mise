@@ -51,6 +51,7 @@ export class LayoutManager {
   private activePreset: string = '';
   private tree: LayoutNode | null = null;
   private focusedPane: string | null = null;
+  private renderObserver: (() => void) | null = null;
 
   /**
    * @param root - The element the tree renders into.
@@ -65,6 +66,18 @@ export class LayoutManager {
     } catch {
       this.prefs = {};
     }
+  }
+
+  /**
+   * Sets the observer called after every geometry change — a render (tree
+   * mutation, preset) or a settled divider drag. Panes with measured
+   * canvases (the DAG's scene) refit there; without it a reparented canvas
+   * keeps its old pixel size and paints smushed.
+   *
+   * @param observer - Called after geometry settles.
+   */
+  public renderObserver_set(observer: () => void): void {
+    this.renderObserver = observer;
   }
 
   /**
@@ -236,6 +249,7 @@ export class LayoutManager {
       mount.remove();
     }
     this.root.replaceChildren(this.node_render(this.tree, ''));
+    this.renderObserver?.();
   }
 
   /** Builds one node's DOM. `path` names the split for ratio persistence. */
@@ -301,6 +315,7 @@ export class LayoutManager {
       if (!dragging) return;
       dragging = false;
       this.ratio_remember(path, node.ratio);
+      this.renderObserver?.();
     });
   }
 

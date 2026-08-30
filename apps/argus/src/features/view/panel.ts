@@ -66,6 +66,15 @@ export class ViewerPanel {
         return;
       }
       this.container.replaceChildren();
+      // A blank result (an unreadable address, a directory) stays a defined
+      // state, never a silently empty pane.
+      if (content.trim().length === 0) {
+        const hint: HTMLParagraphElement = document.createElement('p');
+        hint.className = 'files-empty';
+        hint.textContent = `NO PREVIEW — ${value.address.toUpperCase()}`;
+        this.container.appendChild(hint);
+        return;
+      }
       const body: HTMLPreElement = document.createElement('pre');
       body.className = 'files-content';
       body.textContent = content;

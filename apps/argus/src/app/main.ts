@@ -825,6 +825,11 @@ async function surface_start(token: string): Promise<void> {
         return;
       }
       drawer.hidden = !drawer.hidden;
+      // An open drawer is keyboard-live either way it opened: first verb
+      // takes focus so arrows/Tab/Enter/Esc work without a prefix press.
+      if (!drawer.hidden) {
+        drawer.querySelector<HTMLButtonElement>('button')?.focus();
+      }
       sound_play('audio3');
     });
     const zoomCapsule: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-zoom');
@@ -958,6 +963,26 @@ async function surface_start(token: string): Promise<void> {
         if (drawers_close()) {
           event.stopImmediatePropagation();
           sound_play('audio3');
+        }
+        return;
+      }
+      // Arrows walk an open drawer's verbs (Tab still works); wrap at the
+      // ends. Only claimed while a drawer verb actually holds focus.
+      if (
+        (event.key === 'ArrowRight' || event.key === 'ArrowLeft' ||
+         event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+        document.activeElement instanceof HTMLButtonElement
+      ) {
+        const drawer: HTMLElement | null = document.activeElement.closest('.pane-drawer');
+        if (drawer !== null && !drawer.hidden) {
+          const verbs: HTMLButtonElement[] = [...drawer.querySelectorAll<HTMLButtonElement>('button')];
+          const at: number = verbs.indexOf(document.activeElement);
+          const forward: boolean = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+          const next: HTMLButtonElement | undefined =
+            verbs[(at + (forward ? 1 : verbs.length - 1)) % verbs.length];
+          next?.focus();
+          event.preventDefault();
+          event.stopImmediatePropagation();
         }
         return;
       }

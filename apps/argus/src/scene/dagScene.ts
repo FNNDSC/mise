@@ -97,6 +97,7 @@ const RUNNING_STATUSES: ReadonlySet<string> = new Set([
 function palette_read(): {
   running: THREE.Color; done: THREE.Color; error: THREE.Color;
   template: THREE.Color; unknown: THREE.Color; edge: THREE.Color; join: THREE.Color;
+  root: THREE.Color;
 } {
   const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
   const varColor = (name: string, fallback: string): THREE.Color =>
@@ -109,16 +110,26 @@ function palette_read(): {
     unknown: new THREE.Color('#555'),
     edge: varColor('--pumpkin-pie', '#c50'),
     join: varColor('--honey', '#fc9'),
+    // The root wears a cool color against the warm status palette, so the
+    // graph's origin reads at a glance in either layout. Themeable via
+    // `--dag-root`; the fallback is the harbor seaglass.
+    root: varColor('--dag-root', '#6fbfae'),
   };
 }
 
 /**
- * Colors one node by its state: errors are always visible, activity is the
+ * Colors one node by its state: errors are always visible, the root wears
+ * its own cool color (unless it errored — errors win), activity is the
  * theme's accent, settled work is quiet, templates wear the gold.
  */
-function nodeColor_pick(node: SceneNode, palette: ReturnType<typeof palette_read>): THREE.Color {
-  if (node.status === undefined) return palette.template;
+function nodeColor_pick(
+  node: SceneNode,
+  palette: ReturnType<typeof palette_read>,
+  isRoot: boolean,
+): THREE.Color {
   if (node.status === 'finishedWithError' || node.status === 'cancelled') return palette.error;
+  if (isRoot) return palette.root;
+  if (node.status === undefined) return palette.template;
   if (node.status === 'finishedSuccessfully') return palette.done;
   if (RUNNING_STATUSES.has(node.status)) return palette.running;
   return palette.unknown;
@@ -233,6 +244,8 @@ export class DagScene {
   private selectedId: string | null = null;
   private frameHandle: number | null = null;
   private disposed: boolean = false;
+  /** The hover tip naming the node under the pointer (pane mode only). */
+  private tip: HTMLDivElement | null = null;
   /** The ambient tumble's wandering rotation axis, reused across frames. */
   private readonly tumbleAxis: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
   /** Phase driving the axis wander; seeded randomly so miniatures desync. */
@@ -266,6 +279,18 @@ export class DagScene {
       this.renderer.domElement.addEventListener('dblclick', (event: MouseEvent): void =>
         this.pick_handle(event, 'activate'),
       );
+      // Hovering names the node: a small tip follows the pointer over a
+      // sphere, so identity does not cost a click.
+      this.tip = document.createElement('div');
+      this.tip.className = 'dag-node-tip';
+      this.tip.hidden = true;
+      container.appendChild(this.tip);
+      this.renderer.domElement.addEventListener('pointermove', (event: PointerEvent): void =>
+        this.hover_handle(event),
+      );
+      this.renderer.domElement.addEventListener('pointerleave', (): void => {
+        if (this.tip) this.tip.hidden = true;
+      });
     }
     const animate = (): void => {
       if (this.disposed) return;
@@ -330,7 +355,8 @@ export class DagScene {
     node.status = status;
     const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
     if (mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
-      mesh.material.color = nodeColor_pick(node, palette_read());
+      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
+      mesh.material.color = nodeColor_pick(node, palette_read(), isRoot);
     }
   }
 
@@ -366,9 +392,10 @@ export class DagScene {
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
+      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       const geometry: THREE.SphereGeometry = new THREE.SphereGeometry(radius, 24, 18);
       const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
-        color: nodeColor_pick(node, palette),
+        color: nodeColor_pick(node, palette, isRoot),
         roughness: 0.35,
         metalness: 0.15,
         emissive: node.id === this.selectedId ? new THREE.Color('#ffffff') : new THREE.Color('#000000'),
@@ -415,6 +442,33 @@ export class DagScene {
       color, transparent: true, opacity: 0.75,
     });
     this.group.add(new THREE.Line(geometry, material));
+  }
+
+  /** Names the node under the pointer in the hover tip, or hides it. */
+  private hover_handle(event: PointerEvent): void {
+    if (this.tip === null) return;
+    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
+    const pointer: THREE.Vector2 = new THREE.Vector2(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(pointer, this.camera);
+    const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
+    const nodeId: unknown = hits[0]?.object.userData['nodeId'];
+    const node: SceneNode | undefined =
+      typeof nodeId === 'string'
+        ? this.graph.nodes.find((n: SceneNode) => n.id === nodeId)
+        : undefined;
+    if (node === undefined) {
+      this.tip.hidden = true;
+      this.renderer.domElement.style.cursor = '';
+      return;
+    }
+    this.tip.textContent = node.label;
+    this.tip.style.left = `${event.clientX - bounds.left + 14}px`;
+    this.tip.style.top = `${event.clientY - bounds.top + 10}px`;
+    this.tip.hidden = false;
+    this.renderer.domElement.style.cursor = 'pointer';
   }
 
   /** Resolves a pointer event to a node and fires the matching handler. */

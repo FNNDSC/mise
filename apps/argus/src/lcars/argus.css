@@ -214,6 +214,14 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   display: none;
 }
 
+/* Keyboard focus on a drawer verb must be unmistakable: the prefix key
+ * lands here, and arrows/Tab walk it. */
+.pane-drawer button:focus {
+  outline: 2px solid var(--butter);
+  outline-offset: 2px;
+  box-shadow: 0 0 8px var(--butter);
+}
+
 .pane-drawer .drawer-children {
   display: inline-flex;
   gap: 0.4rem;
@@ -481,6 +489,23 @@ body[data-zoom] .pane-zoomed .view-body {
 .dag-canvas {
   height: 42vh;
   overflow: hidden;
+  position: relative; /* anchors the hover tip */
+}
+
+/* The hover tip naming the node under the pointer. */
+.dag-node-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  padding: 0.15rem 0.55rem;
+  background: rgb(0 0 0 / 85%);
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.6rem 0.2rem 0.6rem 0.2rem;
+  color: var(--butter);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .dag-canvas canvas {

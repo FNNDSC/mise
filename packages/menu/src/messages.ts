@@ -56,11 +56,19 @@ export const attachMessageSchema = z.object({
   capabilities: surfaceCapabilitiesMessageSchema.optional(),
 });
 
-/** Execute one input line, correlated by `id`. */
+/**
+ * Execute one input line, correlated by `id`.
+ *
+ * `instrument` marks surface-internal traffic (a panel's silent refresh, an
+ * ambient cycler) rather than something the operator said: the daemon runs
+ * it normally but keeps it off the session bus and out of scrollback, so
+ * sibling surfaces and reattach replays carry only operator activity.
+ */
 export const executeMessageSchema = z.object({
   type: z.literal('execute'),
   id: z.string(),
   line: z.string(),
+  instrument: z.boolean().optional(),
 });
 
 /** Requests cancellation of the caller's currently executing command. */

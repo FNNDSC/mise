@@ -55,6 +55,7 @@ Corollaries:
 * Zoom and close migrate into the drawer with everything else, or the principle is hypocrisy on day one.
 * Jurisdiction split: the left gutter is *global* reconfiguration (presets, "reset to givens"); the drawer is *per-pane* machinery. The two never trade verbs.
 * Every drawer verb has a command-line twin (`layout ...`), under the settled symmetry: mouse path and text path converge on the same intents.
+* The keyboard path is tmux-shaped: Ctrl-B is the prefix, opening the focused pane's drawer with keyboard focus on its first verb (Tab walks, Enter fires); Esc closes any open drawer before anything else claims the key. The drawer being one surface for mouse and keyboard is the point — no second, parallel shortcut map to memorize.
 
 Costs, accepted with eyes open: hidden machinery is invisible until taught — the first session must teach the gesture (a subtle border affordance, and the operator companion). The extra click on layout verbs is the correct trade: split is rare relative to work, and optimizing rare verbs for invisibility beats optimizing them for speed.
 

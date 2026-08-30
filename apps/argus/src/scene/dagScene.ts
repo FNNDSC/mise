@@ -87,6 +87,15 @@ const TUMBLE_DRIFT: number = 0.0035;
 /** How long after the last touch the idle spin stays paused. */
 const SPIN_RESUME_MS: number = 10_000;
 
+/** Wave delay between one dependency tier firing and the next. */
+const WAVE_STEP_MS: number = 450;
+
+/** How long one node's wave flare lasts (rise and fall). */
+const WAVE_FLARE_MS: number = 700;
+
+/** Rest between wave loops in the ambient miniature. */
+const WAVE_LOOP_GAP_MS: number = 2_500;
+
 /** Pointer travel (px) past which a press counts as a drag, not a click. */
 const DRAG_THRESHOLD_PX: number = 4;
 
@@ -257,6 +266,24 @@ export class DagScene {
   private dragSimNodes: Array<{ id: string; x: number; y: number; z: number; fx?: number | null; fy?: number | null; fz?: number | null }> = [];
   /** Swallows the click that ends a drag, so a pull is not a select. */
   private suppressClick: boolean = false;
+  /** The pulse wave's schedule: node id to flare time (ms into the wave). */
+  private waveTimes: Map<string, number> = new Map();
+  /** Wall-clock start of the running wave, or null when no wave runs. */
+  private waveStartAt: number | null = null;
+  /** The camera flight in progress, or null. */
+  private flight: {
+    fromPos: THREE.Vector3;
+    toPos: THREE.Vector3;
+    fromQuat: THREE.Quaternion;
+    toQuat: THREE.Quaternion;
+    startedAt: number;
+    durationMs: number;
+    onDone: () => void;
+  } | null = null;
+  /** Camera home before a fly-in, restored by the fly-back. */
+  private flightHome: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
+  /** While inside a node (overlay up), the spin and picking hold still. */
+  private holding: boolean = false;
   private strategy: LayoutStrategy = 'ranked';
   private selectedId: string | null = null;
   private frameHandle: number | null = null;
@@ -339,9 +366,11 @@ export class DagScene {
           )
           .normalize();
         this.group.rotateOnWorldAxis(this.tumbleAxis, SPIN_AMBIENT);
+        this.wave_animate();
       } else {
         // A touched graph holds still; the idle spin resumes after the wait.
-        if (Date.now() >= this.spinIdleUntil) {
+        // A flight or a stay inside a node holds it unconditionally.
+        if (Date.now() >= this.spinIdleUntil && !this.holding && this.flight === null) {
           this.group.rotation.y += SPIN_INTERACTIVE;
         }
         // The reaction simulation runs while hot: during a grab, and cooling
@@ -355,6 +384,8 @@ export class DagScene {
             this.dragSimNodes = [];
           }
         }
+        this.wave_animate();
+        this.flight_animate();
       }
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
@@ -370,6 +401,151 @@ export class DagScene {
   public graph_set(graph: SceneGraph): void {
     this.graph = graph;
     this.rebuild();
+    // Every arriving graph gets one wave; the ambient miniature loops it.
+    this.wave_start();
+  }
+
+  /**
+   * Starts the pulse wave: nodes flare in dependency order, a join waiting
+   * for its last parent. History-honest — only nodes that actually executed
+   * (terminal success or error, or an authored template node) fire, so on a
+   * running feed the wave halts at the execution frontier.
+   */
+  public wave_start(): void {
+    this.waveTimes = this.waveSchedule_compute();
+    this.waveStartAt = this.waveTimes.size > 0 ? Date.now() : null;
+  }
+
+  /**
+   * Flies the camera into a node: a dolly toward the sphere until it fills
+   * the frame. The idle spin holds for the whole stay; `flight_back` reverses.
+   *
+   * @param nodeId - The node to fly into.
+   * @param onArrived - Called once the camera is inside the node.
+   */
+  public flight_into(nodeId: string, onArrived: () => void): void {
+    const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
+    if (mesh === undefined || this.flight !== null || this.holding) {
+      return;
+    }
+    this.group.rotation.set(0, 0, 0);
+    this.holding = true;
+    this.flightHome = {
+      position: this.camera.position.clone(),
+      quaternion: this.camera.quaternion.clone(),
+    };
+    // Aim the camera at the node from its current stance, then dolly to just
+    // shy of the surface — arrival reads as passing inside.
+    const target: THREE.Vector3 = mesh.position.clone();
+    const toPos: THREE.Vector3 = target
+      .clone()
+      .add(this.camera.position.clone().sub(target).normalize().multiplyScalar(0.4));
+    const aim: THREE.Camera = this.camera.clone();
+    aim.position.copy(this.camera.position);
+    aim.lookAt(target);
+    this.flight = {
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromQuat: this.camera.quaternion.clone(),
+      toQuat: aim.quaternion.clone(),
+      startedAt: Date.now(),
+      durationMs: 700,
+      onDone: onArrived,
+    };
+  }
+
+  /**
+   * Flies the camera back out to its pre-dive stance and releases the hold.
+   *
+   * @param onDone - Called once the camera is home.
+   */
+  public flight_back(onDone: () => void): void {
+    if (this.flightHome === null) {
+      this.holding = false;
+      onDone();
+      return;
+    }
+    const home: { position: THREE.Vector3; quaternion: THREE.Quaternion } = this.flightHome;
+    this.flight = {
+      fromPos: this.camera.position.clone(),
+      toPos: home.position.clone(),
+      fromQuat: this.camera.quaternion.clone(),
+      toQuat: home.quaternion.clone(),
+      startedAt: Date.now(),
+      durationMs: 700,
+      onDone: (): void => {
+        this.flightHome = null;
+        this.holding = false;
+        this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+        onDone();
+      },
+    };
+  }
+
+  /** Advances the camera flight, easing position and aim together. */
+  private flight_animate(): void {
+    if (this.flight === null) return;
+    const raw: number = (Date.now() - this.flight.startedAt) / this.flight.durationMs;
+    const t: number = Math.min(1, raw);
+    // Smoothstep: gentle leave, gentle arrive.
+    const eased: number = t * t * (3 - 2 * t);
+    this.camera.position.lerpVectors(this.flight.fromPos, this.flight.toPos, eased);
+    this.camera.quaternion.slerpQuaternions(this.flight.fromQuat, this.flight.toQuat, eased);
+    if (t >= 1) {
+      const done: () => void = this.flight.onDone;
+      this.flight = null;
+      done();
+    }
+  }
+
+  /** Computes each fireable node's flare time, in ms into the wave. */
+  private waveSchedule_compute(): Map<string, number> {
+    const times: Map<string, number> = new Map();
+    const present: Set<string> = new Set(this.graph.nodes.map((n: SceneNode) => n.id));
+    const fired = (node: SceneNode): boolean =>
+      node.status === undefined ||
+      node.status === 'finishedSuccessfully' ||
+      node.status === 'finishedWithError';
+    // Relaxation to a fixpoint: cheap at feed scale, and immune to input order.
+    let settled: boolean = false;
+    while (!settled) {
+      settled = true;
+      for (const node of this.graph.nodes) {
+        if (times.has(node.id) || !fired(node)) continue;
+        const parents: string[] = [...node.parentIds, ...node.joinParentIds].filter(
+          (id: string) => present.has(id),
+        );
+        if (!parents.every((id: string) => times.has(id))) continue;
+        const latest: number = parents.reduce(
+          (max: number, id: string) => Math.max(max, times.get(id) ?? 0), -WAVE_STEP_MS,
+        );
+        times.set(node.id, latest + WAVE_STEP_MS);
+        settled = false;
+      }
+    }
+    return times;
+  }
+
+  /** Applies the wave's flares for this frame; loops in ambient mode. */
+  private wave_animate(): void {
+    if (this.waveStartAt === null) return;
+    const elapsed: number = Date.now() - this.waveStartAt;
+    let peak: number = 0;
+    for (const [id, fireAt] of this.waveTimes) {
+      peak = Math.max(peak, fireAt);
+      const mesh: THREE.Mesh | undefined = this.meshes.get(id);
+      if (mesh === undefined || !(mesh.material instanceof THREE.MeshStandardMaterial)) continue;
+      const dt: number = elapsed - fireAt;
+      const flare: number =
+        dt >= 0 && dt <= WAVE_FLARE_MS ? Math.sin((dt / WAVE_FLARE_MS) * Math.PI) : 0;
+      const selectedBase: number = id === this.selectedId ? 0.35 : 0;
+      mesh.material.emissive.setScalar(flare > 0 || id === this.selectedId ? 1 : 0);
+      mesh.material.emissiveIntensity = Math.max(selectedBase, flare * 0.9);
+    }
+    if (elapsed > peak + WAVE_FLARE_MS) {
+      // A future start leaves the graph quiet through the gap, then loops.
+      this.waveStartAt = this.ambient ? Date.now() + WAVE_LOOP_GAP_MS : null;
+    }
   }
 
   /**
@@ -522,6 +698,7 @@ export class DagScene {
    * reacts through a live force simulation anchored at the grabbed node.
    */
   private press_handle(event: PointerEvent): void {
+    if (this.holding || this.flight !== null) return;
     this.group.rotation.set(0, 0, 0);
     this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
     const hit: THREE.Mesh | null = this.mesh_under(event);

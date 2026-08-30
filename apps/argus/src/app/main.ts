@@ -652,6 +652,78 @@ async function surface_start(token: string): Promise<void> {
 
   // Builds one DAG pane instance. Only the primary follows the session cwd
   // and summons itself; a split's instance stays with what it was given.
+  // The fly-in overlay: dblclick dives the camera into a node, and a rooted
+  // browser on the node's data directory overlays the same pane. The overlay
+  // IS the DAG pane transformed — same id, same group — so file clicks write
+  // the pane's regard and slaved viewers follow. Esc reverses the dolly.
+  const nodeOverlays: Map<string, { element: HTMLElement; panel: FilesPanel; history: string[] }> =
+    new Map();
+
+  const nodeOverlay_open = (id: string, vfsPath: string): void => {
+    const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
+    const canvas: HTMLElement | null = mount?.querySelector<HTMLElement>('.dag-canvas') ?? null;
+    if (canvas === null || nodeOverlays.has(id)) {
+      return;
+    }
+    const element: HTMLElement = document.createElement('div');
+    element.className = 'node-overlay';
+    const header: HTMLElement = document.createElement('header');
+    header.className = 'node-overlay-header';
+    const title: HTMLSpanElement = document.createElement('span');
+    title.textContent = `INSIDE ${vfsPath}`.toUpperCase();
+    const hint: HTMLSpanElement = document.createElement('span');
+    hint.className = 'node-overlay-hint';
+    hint.textContent = 'ESC EXITS NODE';
+    header.append(title, hint);
+    const body: HTMLElement = document.createElement('div');
+    body.className = 'node-overlay-body';
+    element.append(header, body);
+    const history: string[] = [];
+    const panel: FilesPanel = new FilesPanel(body, (action: FileAction): void => {
+      if (action.kind === 'dir') {
+        const previous: string | null = panel.path_current();
+        if (previous !== null) {
+          history.push(previous);
+        }
+        rootedListing_show(id, panel, action.path);
+        return;
+      }
+      // A file click inside the node is an indication on the DAG pane's own
+      // group (the overlay shares its identity), feeding any slaved viewer.
+      subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });
+      if (subjects.groupHasViewer(id)) {
+        return;
+      }
+      if (extension_isImage(action.path)) {
+        panel.contentImage_show(action.path, vfsUrl_build(action.path));
+        return;
+      }
+      void fileText_fetch(action.path).then((content: string): void => {
+        panel.content_show(action.path, content);
+      });
+    });
+    nodeOverlays.set(id, { element, panel, history });
+    canvas.appendChild(element);
+    window.requestAnimationFrame((): void => element.classList.add('node-overlay-open'));
+    rootedListing_show(id, panel, vfsPath);
+  };
+
+  const nodeOverlay_close = (id: string): void => {
+    const record = nodeOverlays.get(id);
+    if (record === undefined) {
+      return;
+    }
+    nodeOverlays.delete(id);
+    record.element.classList.remove('node-overlay-open');
+    const finish = (): void => record.element.remove();
+    const panel: DagPanel | undefined = dagPanels.get(id);
+    if (panel !== undefined) {
+      panel.flight_back(finish);
+    } else {
+      finish();
+    }
+  };
+
   const dagInstance_build = (id: string, primary: boolean): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-dag');
     const panel: DagPanel = new DagPanel(
@@ -675,6 +747,9 @@ async function surface_start(token: string): Promise<void> {
         node_enter: (vfsPath: string): void => {
           terminal.line_run(`cd "${vfsPath}"`);
         },
+        node_dive: (vfsPath: string): void => {
+          nodeOverlay_open(id, vfsPath);
+        },
         node_regard: (vfsPath: string): void => {
           subjects.regard_write(id, { address: vfsPath, modelKind: 'feed.node' });
         },
@@ -687,6 +762,8 @@ async function surface_start(token: string): Promise<void> {
       kind: 'dag',
       mount,
       dispose: (): void => {
+        nodeOverlays.get(id)?.element.remove();
+        nodeOverlays.delete(id);
         dagPanels.delete(id);
         subjects.pane_leave(id);
         panel.dispose();
@@ -920,6 +997,22 @@ async function surface_start(token: string): Promise<void> {
       });
     }
     if (kind === 'dag') {
+      child_offer('PULSE', 'replay execution as a dependency wave', (): void => {
+        dagPanels.get(id)?.wave_start();
+      });
+      child_offer('ENTER NODE', 'move the session into the indicated node', (): void => {
+        const regard: RegardValue | null = subjects.regard_get(id);
+        if (regard !== null) {
+          terminal.line_run(`cd "${regard.address}"`);
+        }
+      });
+      child_offer('BACK', 'return to the previous listing inside the node', (): void => {
+        const record = nodeOverlays.get(id);
+        const previous: string | undefined = record?.history.pop();
+        if (record !== undefined && previous !== undefined) {
+          rootedListing_show(id, record.panel, previous);
+        }
+      });
       child_offer('BROWSE NODE', 'a browser rooted at the indicated node', (): void => {
         const regard: RegardValue | null = subjects.regard_get(id);
         if (regard === null) {
@@ -960,6 +1053,15 @@ async function surface_start(token: string): Promise<void> {
     'keydown',
     (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        // The Esc stack: node overlay, then drawers, then zoom. One press
+        // exits the node — never a walk back up invisible browser depth.
+        const overlayId: string | undefined = [...nodeOverlays.keys()].pop();
+        if (overlayId !== undefined) {
+          nodeOverlay_close(overlayId);
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
         if (drawers_close()) {
           event.stopImmediatePropagation();
           sound_play('audio3');

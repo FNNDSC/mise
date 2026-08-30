@@ -35,6 +35,11 @@ export interface DagPanelHandlers {
   command_run: (line: string) => void;
   /** Lowers a node activation to a visible cd. */
   node_enter: (vfsPath: string) => void;
+  /**
+   * A dblclick dive arrived inside a node: the host overlays the rooted
+   * browser. When absent, activation falls back to `node_enter`.
+   */
+  node_dive?: (vfsPath: string) => void;
   /** A node was selected: the pane indicates its data address (a regard write). */
   node_regard?: (vfsPath: string) => void;
   /** A feed came into view: the layout should summon this pane. */
@@ -288,12 +293,32 @@ export class DagPanel {
     }
   }
 
-  /** Activation: fly into the node's data space by navigating to it. */
+  /** Activation: fly into the node — literally when the host can overlay. */
   private node_activate(node: SceneNode): void {
     const payload: FeedDagNode | undefined = this.factsPayloads.get(node.id);
-    if (payload) {
+    if (!payload) {
+      return;
+    }
+    if (this.handlers.node_dive !== undefined) {
+      const dive: (vfsPath: string) => void = this.handlers.node_dive;
+      this.scene.flight_into(node.id, (): void => dive(payload.vfsPath));
+    } else {
       this.handlers.node_enter(payload.vfsPath);
     }
+  }
+
+  /** Fires one pulse wave: dependency-order replay, honest to history. */
+  public wave_start(): void {
+    this.scene.wave_start();
+  }
+
+  /**
+   * Flies the camera back out of a node once its overlay has closed.
+   *
+   * @param onDone - Called when the camera is home.
+   */
+  public flight_back(onDone: () => void): void {
+    this.scene.flight_back(onDone);
   }
 }
 

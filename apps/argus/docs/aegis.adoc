@@ -15,6 +15,7 @@ AEGIS — the *ARGUS Ergonomics & Graphical Interface Standard* — is the desig
 
 [cols="1,3"]
 |===
+| 2026-08-30 (pulse + fly-in) | Two DAG behaviors grilled and locked: the pulse wave (dependency-order replay; a join fires only when all parents have; history-honest — the wave halts at the execution frontier; drawer verb plus one wave on load, always-on only in the ambient miniature) and the fly-in (dblclick dollies the camera into a node and overlays a rooted browser in the same pane; Esc exits the node in one press; the overlay shares the DAG pane's group so regard writes feed its slaved viewers; ENTER NODE stays in the drawer as the session-global cd).
 | 2026-08-30 (PHAROS) | LCARS grounded properly (what it is, why chosen, whose property). Longevity strategy settled: PHAROS house language as default (chamfer, beacon, harbor palette; recursive name — Presentation House for AEGIS — and the six-chapter inventory), LCARS demoted to operator-supplied skin via theme import, functional carve-out grounded in _Lotus v. Borland_ / _Apple v. Microsoft_. Naming law recorded: kitchen names never expand; harbor names expand through the layer below, grounding at CALYPSO's fixed point; ARGUS coined the All-Regarding Graphical User Surface.
 | 2026-08-30 (slice 1 built) | Regard + drawer + slaved viewer implemented: `regard` wire message (menu), brasa session retention, calypso retain/mirror/rebroadcast with late-attach replay, argus SubjectBus (groups, retained cells, LWW), pane drawer behind the header on all stamped panes, VIEWER semantic child (slaved) and BROWSE NODE (rooted) in the drawer, viewer pane kind subscribed to group regard.
 | 2026-08-30 (later) | Subjects grilled and locked: two-layer regard (group-scoped rendering + session aggregate in brasa), retained-cell write semantics, rooted-versus-slaved children, lifecycle (groups session-only, session regard survives surface reload). Durable layer settled in direction: per-user config and named layout schemas as CFS files under `~/.config`. Build of the first slice (regard skeleton, pane drawer, slaved viewer) begun.
@@ -139,6 +140,14 @@ A DAG node click showcases the composition: the click writes group regard; the d
 * *Slaved child:* subscribes to group regard and follows — click across nodes and the runtime and log panes retarget live. The MPR moment for compute.
 
 The retained cell makes both feel right: a log pane spawned after the click shows that node's logs instantly.
+
+=== The pulse wave and the fly-in (grilled, locked)
+
+Two DAG behaviors, both settled by grilling on 2026-08-30.
+
+*The pulse wave* animates the graph in dependency order: a node flares when every parent — join parents included — has flared, so a topological join visibly waits for its last input. The wave is history-honest: only nodes that actually executed (terminal success or error) fire; cancelled and still-pending nodes block their subtrees, so on a running feed the wave washes up to exactly the execution frontier and stops there. True timestamp replay (and pulse spacing that encodes wall time) upgrades this when the proc-cache metric slice lands; the dependency wave needs no new data. Trigger discipline: one wave on graph load, then a PULSE drawer verb on demand — the reference pane is a status instrument, not a screensaver. The ambient miniature is the opposite case and pulses always.
+
+*The fly-in* makes activation literal navigation: dblclick dollies the camera into the node, and on arrival a rooted browser on the node's data directory overlays the same pane — the scene pauses underneath, never torn down, so Esc reverses the dolly and the DAG is back. One Esc press exits the node (directory back-walking is the drawer's BACK verb; Esc never depends on invisible browser depth), and the Esc stack is: node overlay, then drawers, then zoom. The overlay is the DAG pane transformed, not a new pane: it keeps the pane's identity and group, so file clicks inside the node write the pane's regard and any slaved viewer follows. The session-global gesture survives in the drawer as ENTER NODE — the old visible `cd` into the node — keeping fly-in view-local and side-effect free.
 
 == The durable layer: config and named schemas in CFS
 

@@ -122,6 +122,11 @@ export class DagPanel {
       this.scene.projection_set(next);
       projectionPill.textContent = next.toUpperCase();
     });
+    // PULSE is a display-content control (it acts on the visualization, not
+    // the pane), so it rides the rail with the other display pills.
+    strategyPill.parentElement
+      ?.querySelector<HTMLElement>('.dag-pulse')
+      ?.addEventListener('click', (): void => this.scene.wave_start());
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,

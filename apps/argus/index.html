@@ -143,11 +143,14 @@
                   <div class="dag-rail">
                     <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
                     <button class="strategy-pill dag-projection" title="projection: sculpted 3D or flat schematic">3D</button>
+                    <button class="strategy-pill dag-pulse" title="replay execution as a dependency wave">PULSE</button>
                   </div>
+                  <!-- Selection facts overlay the scene: the graph never
+                       resizes when a node is indicated. -->
+                  <div class="dag-facts"></div>
                 </div>
                 <div class="dag-feedlist"></div>
                 <div class="dag-empty files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
-                <div class="dag-facts"></div>
               </div>
             </template>
             <template id="tpl-pane-files">

@@ -1003,9 +1003,6 @@ async function surface_start(token: string): Promise<void> {
       });
     }
     if (kind === 'dag') {
-      child_offer('PULSE', 'replay execution as a dependency wave', (): void => {
-        dagPanels.get(id)?.wave_start();
-      });
       child_offer('ENTER NODE', 'move the session into the indicated node', (): void => {
         const regard: RegardValue | null = subjects.regard_get(id);
         if (regard !== null) {

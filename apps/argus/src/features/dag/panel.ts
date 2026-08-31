@@ -190,6 +190,12 @@ export class DagPanel {
     // scrubbing returns when a context split exists to receive it.)
     this.feedList.style.display = 'none';
     this.canvas.style.display = 'block';
+    if (this.lastModel !== null && this.lastModel.feedId !== model.feedId) {
+      // A different feed owes nothing to the old one: stale selection facts
+      // must not haunt the new graph.
+      this.facts.replaceChildren();
+      this.scene.selection_clear();
+    }
     this.lastModel = model;
     this.graph_show(model);
     this.handlers.feed_shown?.();
@@ -282,6 +288,8 @@ export class DagPanel {
    * repaint what was just dismissed.
    */
   public list_reset(): void {
+    this.facts.replaceChildren();
+    this.scene.selection_clear();
     this.canvas.style.display = 'none';
     this.pinnedFeedId = null;
     this.requestedFeedId = null;
@@ -314,6 +322,8 @@ export class DagPanel {
     this.pinnedFeedId = null;
     this.requestedFeedId = null;
     this.title.textContent = this.defaultTitle;
+    this.facts.replaceChildren();
+    this.scene.selection_clear();
     this.feedList.style.display = 'block';
     return true;
   }

@@ -595,6 +595,11 @@ export class DagScene {
     this.rebuild();
   }
 
+  /** Clears the node selection (a new graph owes nothing to the old one). */
+  public selection_clear(): void {
+    this.selectedId = null;
+  }
+
   /** @returns The active layout strategy. */
   public strategy_get(): LayoutStrategy {
     return this.strategy;
@@ -664,6 +669,34 @@ export class DagScene {
     this.renderer.domElement.remove();
   }
 
+  /**
+   * Fits the camera to the placed graph: distance from the bounding sphere
+   * so a sprawling molecule (or a wide 2D settle) sits inside the frustum
+   * instead of clipping through the near plane as black voids — or leaving
+   * the view entirely.
+   */
+  private camera_fit(placed: PlacedNode[]): void {
+    if (placed.length === 0) return;
+    const center: THREE.Vector3 = new THREE.Vector3();
+    for (const item of placed) center.add(item.position);
+    center.divideScalar(placed.length);
+    let radius: number = 1;
+    for (const item of placed) {
+      radius = Math.max(radius, center.distanceTo(item.position) + item.radius);
+    }
+    const fov: number = (this.camera.fov * Math.PI) / 180;
+    const fitH: number = radius / Math.tan(fov / 2);
+    const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
+    const distance: number = Math.max(8, Math.max(fitH, fitW) * 1.15);
+    this.group.position.set(-center.x, -center.y, -center.z);
+    this.camera.position.set(0, 0, distance);
+    // The far plane always clears the framed graph: the fixed 200 clipped
+    // sprawling molecules into black voids (and swallowed 2D whole).
+    this.camera.far = Math.max(200, (distance + radius) * 2);
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(0, 0, 0);
+  }
+
   /** Rebuilds meshes and edges from the current graph and strategy. */
   private rebuild(): void {
     this.group.clear();
@@ -683,6 +716,7 @@ export class DagScene {
       // parallax hash — its layout was two-dimensional by construction.
       for (const item of placed) item.position.z = 0;
     }
+    if (!this.ambient) this.camera_fit(placed);
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
@@ -719,11 +753,6 @@ export class DagScene {
       }
     }
 
-    // Frame the graph: pull the camera back far enough to hold it all.
-    const span: number = placed.reduce(
-      (widest: number, p: PlacedNode) => Math.max(widest, p.position.length() + 2), 6,
-    );
-    this.camera.position.z = span * 1.9;
   }
 
   /** Adds one edge line; joins are dashed. Endpoint ids allow live re-anchoring. */

@@ -1,5 +1,348 @@
 # @fnndsc/chell
 
+## 5.4.0
+
+### Minor Changes
+
+- 0adb4f2: The daemon terminal gets a resting state: the console face.
+
+  The boot-phase brain animation repainted by cursor arithmetic against a
+  scrolling buffer — counting rows printed beneath it and jumping up — so a
+  retry warning landing mid-frame interleaved with the art, and the pulse had
+  to kill itself the moment output scrolled the logo away: the brain went
+  silent exactly when the daemon came alive.
+
+  Boot is unchanged and text-first: the brain prints, pulses while
+  credentials are checked, and every address and token scrolls into ordinary
+  scrollback. What is new is what happens when boot completes on a TTY: the
+  daemon switches to the alternate screen buffer — the same screen vim and
+  htop own — where the brain pulses forever at fixed coordinates over an
+  identity panel (identity, wire, ARGUS URL, token, berth, attach line,
+  uptime, attached surfaces, index counts), with the last few log lines caged
+  in a dim strip beneath. The pulse is honest: idle is a slow shimmer, an
+  executing command quickens it, a surface attaching flares it.
+
+  Esc or `q` drops to the normal buffer, restored byte-perfect with the boot
+  log intact and the lines captured while the face was up flushed beneath it;
+  any key returns. Ctrl-C stops the daemon from either mode. Off a TTY
+  (systemd, nohup) nothing changes: sequential logging, as before.
+
+  The brain art and its frame renderer moved from chell to brasa
+  (`logo_frameRender`, `logo_linesRender`, and the new `logoRows_count` /
+  `logoColumns_count`), so any surface can draw it; chell keeps only its
+  boot-terminal animation host. `daemon_launch` now returns the launched
+  daemon's addresses and handle, which both launch paths (`chell --daemon`
+  and the standalone `calypso` binary) feed to the face.
+
+- 9ed68cd: `download` no longer writes to the daemon host's disk. File delivery is now a
+  surface capability, like prompting, piping and editing already were.
+
+  The builtin resolved its destination with `path.resolve()` inside the engine,
+  so the bytes landed on whatever machine hosted the engine. For a local shell
+  that is right — the engine is in-process and the operator's disk is the
+  engine's disk. Under a daemon it put files on a machine nobody attending the
+  session was sitting at, and from a browser the question "download to where?"
+  had no answer at all.
+
+  `Surface` gains `fileDeliver`, and `SurfaceCapabilities` gains `fileDelivery`
+  alongside `engineFilesystem` — which says whether a path the engine resolves is
+  a path this surface's operator can open. Only an in-process local shell claims
+  it. When it is false, `download` hands the file to the surface, which puts it
+  somewhere its operator can actually reach: the client's disk for
+  `chell --remote`, the download manager for `argus`.
+
+  Only the request crosses the wire. Each surface fetches the bytes itself
+  through the daemon's existing token-gated `/vfs` route, so a DICOM series is
+  not base64'd across a channel meant for session state — the intent travels
+  through the vocabulary and the bytes travel through the byte route.
+
+  The local path is unchanged: a local `chell` still uses the existing transfer
+  machinery, with its globs, directory walks and progress reporting.
+
+  A directory has no bytes to hand over, and what to do about that depends on
+  what the surface has — a third capability, `localFilesystem`, declared in the
+  attach handshake and answered by the surface rather than by the daemon. A shell
+  owns a filesystem wherever it runs, so `chell --remote` receives the tree file
+  by file and gets the folder it asked for. A browser owns no directory and can
+  take files only one at a time, so several hundred DICOM instances would be
+  several hundred saves; for that surface alone a directory is archived into a
+  single CUBE file first, through
+  the registered `zip v20240311` pipeline — `pl-dircopy` into a zip plugin, the
+  same mechanism the ChRIS web UI has used for years, but living in `brasa` where
+  every surface reaches one implementation instead of each client re-deriving the
+  sequence. `CHRIS_ARCHIVE_PIPELINE` names a different pipeline where a
+  deployment registered one. When it is absent, the failure says which pipeline
+  is missing and that it can be registered from the store.
+
+  The archive run announces itself rather than creating a feed silently, because
+  it is a workaround for CUBE having no directory-archive route: issue #233.
+
+  `upload` has the mirror problem — it reads from the engine host's disk — and is
+  not addressed here, because the browser direction needs a file picker. See
+  issue #232.
+
+- 976c753: `chell --remote` can attach to a daemon on another machine.
+
+  `CALYPSO_BIND` has always opened the wire to the network, and the attach token
+  has always gated the session — but _discovery_ is local. A berth is a file in
+  one host's runtime directory, so a surface on another machine has none to read,
+  and the berth recorded `ws://127.0.0.1:<port>` regardless of what the daemon
+  bound. The wire was reachable and nothing could tell a remote `chell` where to
+  point: a browser could attach and a terminal could not.
+
+  `--attach` takes an explicit address and skips discovery:
+
+  ```
+  chell --remote --attach http://pangea:41234/?token=abc123
+  ```
+
+  The address is the one the daemon prints. The web surface and the wire share a
+  port, so the ARGUS link names both and pasting it is the whole interaction;
+  `--token` supplies the token separately where an address carries none, and
+  `https`/`wss` are preserved. The berth is built in memory and never written,
+  since another machine's daemon does not belong in this machine's berth
+  directory.
+
+  A daemon bound to anything but loopback now records a routable URL in its own
+  berth and prints the ready-to-paste attach command beside the ARGUS link.
+
+  This is not the `porter` server. There is no listener beyond the one
+  `CALYPSO_BIND` already opened, no cross-host auth beyond the attach token, and
+  no way to discover a daemon you were not told about.
+
+- 8842ab4: Indeterminate progress now crosses the daemon wire as typed facts rather than
+  terminal escapes.
+
+  The spinner used to write `\r\x1b[K<frame>` and cursor hide/show to the status
+  channel twelve times a second, so every attached surface received terminal
+  choreography whether or not it was a terminal — a web surface had to emulate a
+  character grid to recover the meaning, and got it subtly wrong. It now announces
+  `operation: 'task'`, `kind: 'inspection'`, `phase: 'working'` with a label, and
+  closes with `phase: 'complete'`. Each surface draws waiting in its own idiom.
+
+  Only state changes cross the wire: frames and elapsed counters are the
+  renderer's, so a spin of any length costs two events instead of dozens per
+  second. `chell` gained the elapsed counter its spinner used to bake into the
+  label, and `argus` gained a full progress renderer — indeterminate work spins,
+  counted work fills a bar — which also surfaces the download progress it had
+  been silently discarding.
+
+  The `operation` and `phase` enums gained `task` and `working`. Every enum on
+  the progress message now degrades on an unknown value instead of failing the
+  parse and dropping the message whole: `operation` to `task`, `phase` to
+  `working`, `status` to `unknown`, `kind` and `unit` to absent. That makes good
+  the contract's promise that change within a major is additive — for future
+  additions, since the fallback lives in the build doing the reading.
+
+  The spinner keeps its call signature, so its callers are unchanged. Its
+  `showTiming` and `clearLine` arguments are now ignored: both are rendering
+  decisions. It also no longer inspects `process.stdout.isTTY` before announcing,
+  which had suppressed progress inside the daemon, where the engine's own stdout
+  is never a terminal but the attached surface may well be able to draw.
+
+### Patch Changes
+
+- eebdc7d: A daemon writes its attach addresses to a file, and keeps its boot animation.
+
+  Stopping the brain-activity pulse in daemon mode made the terminal easy to
+  select from and the session feel dead. The animation stays; the addresses are
+  written where they can be read without fighting a repainting screen or
+  surviving a `clear`.
+
+  The note lands at `/tmp/calypso-<user>.attach`, and the banner names it. It
+  carries the attach token, which is a credential, in a world-readable directory
+  — so it is created `0600`, created exclusively so a symlink planted at the path
+  makes the write fail rather than land somewhere of an attacker's choosing, and
+  removed when the daemon exits.
+
+  `calypso --berths` reads the same facts from the berth — `0600` in the user's
+  own runtime directory — and remains the safer route for anything scripted.
+
+- 5d131c8: A daemon's terminal stops repainting itself, and its attach addresses can be
+  read back.
+
+  `logo_animatePulse` starts a 100ms interval that saves the cursor, jumps up the
+  screen, repaints the logo and restores — and it runs for as long as the process
+  does. The interactive path stops it once boot finishes; the daemon path never
+  did. So a daemon's terminal was being rewritten ten times a second forever,
+  which made the banner it had just printed — the URLs and the attach token, the
+  only thing anyone needs from that terminal — impossible to select.
+
+  `calypso --berths` prints how to attach to every live daemon: the ARGUS link
+  and the ready-to-paste `chell --remote --attach` command, per identity.
+
+  The facts are read from the berth rather than copied to a more convenient
+  place. A berth already holds the url and token at mode `0600` in the user's
+  runtime directory; `/tmp` would be easier to reach and is world-readable, and
+  the token is a credential.
+
+- 58e3a37: A daemon boot keeps its normal buffer text-only, by law.
+
+  The boot-phase pulse (revive-and-animate after login) could outlive the
+  whole boot on a tall terminal, and its final repaint — cursor arithmetic
+  over wrapped, ANSI-heavy lines — stamped the static brain over the daemon's
+  token and attach lines, which the console face's Esc view then faithfully
+  restored, mangled. Daemon mode now skips the revive entirely: the animated
+  brain lives solely on the face's alternate screen, and the boot report and
+  addresses survive verbatim for Esc. The interactive chell REPL keeps its
+  boot animation unchanged.
+
+- a3bd3e9: The console face now covers the whole daemon boot, in two phases.
+
+  From warm-up on, the alternate screen shows the brain in a frenetic boot
+  pulse over a tall strip of the streaming boot log — the messages are the
+  point while the machine comes up. When the daemon is listening, the same
+  screen settles in place into the steady instrument: calm ambient pulse,
+  identity panel, live telemetry, and the closing hint "HIT ESC TO TOGGLE
+  THE BOOT LOG". Esc toggles to the raw text log in either phase; any key
+  returns.
+
+  Along the way: the log ring now treats a carriage return as a redraw, so a
+  spinner's thousand frames stay one line; the face steps aside
+  (`face_suspend`/`face_resume`) when warm-up failure asks the operator a
+  question, so the prompt's readline owns the terminal; and a boot dying with
+  the face up flushes the ring — the abort reason included — into the normal
+  buffer instead of vanishing with it. New calypso API: `face_boot`,
+  `face_ready`, `face_suspend`, `face_resume`.
+
+- 19a4d5b: The daemon boot experience, settled: classic boot, minimal face.
+
+  Booting is the classic in-scroll experience again — the brain lights up at
+  connect and the boot log with its in-stage progress scrolls beneath it
+  (frames now paint as one buffered write, so concurrent log lines cannot
+  tear the art). When the daemon is ready, the boot screen is replaced by a
+  minimal console face on the alternate buffer: the animating brain,
+  vertically centered, one status line (DAEMON RUNNING · SESSION ESTABLISHED,
+  or ENGINE EXECUTING while a command runs), and the Esc hint. Nothing else.
+  Esc shows the verbatim text record — boot log, addresses, token — which the
+  ready handoff now halts the pulse without repainting, so it can never again
+  be stamped over; any key returns to the brain.
+
+- 7672c6e: Two regressions found by running a daemon.
+
+  **The boot animation fed its own position counter.** The pulse repaints through
+  `process.stdout.write`, which is what the row counter hijacks. Counting
+  newlines it was accidentally safe, since a repaint emits none; counting screen
+  rows it was not, because each repaint writes thirty lines with no newline and
+  the pending-column position accumulated. The offset grew by roughly 380 rows a
+  second, and the logo climbed the screen painting over everything above it. The
+  animation now writes through the unhijacked handle, and a test asserts the
+  counter does not move while it runs — against the broken version it moved 762
+  rows in two seconds.
+
+  **Daemon boot showed no spinners.** Warm-up runs before the daemon installs its
+  own sink, so the engine is still writing to the terminal it is booting in — but
+  nothing installed a progress renderer there, and the migrated spinner's typed
+  events went into `StdoutSink`'s null renderer. Before the spinner emitted typed
+  events it wrote escapes straight to the status channel, so this only appeared
+  once it stopped doing that, and only in daemon mode. Warm-up now installs a
+  terminal renderer when the session is interactive.
+
+- 79fdd4a: The brain lights up on a clear screen when credentials are accepted.
+
+  The pulse repaints by moving the cursor up to where the logo is, so the logo
+  must still be on screen. By the time login finishes it usually is not — the
+  logo and the login output have scrolled past the top — and an animation that
+  cannot reach its anchor paints at row zero instead, over the boot report and
+  the daemon's own addresses. The flickering brain and the mangled banner were
+  the same defect.
+
+  `logo_reviveOnScreen` homes the cursor, clears below it, and redraws the logo
+  alive at row zero. The anchor is restored and boot output has a whole screen to
+  flow into beneath it, so the animation runs through warm-up and the banner
+  without reaching anything else.
+
+  It also restores the sequence the animation existed for: the brain is dead
+  while credentials are checked, and comes to life once they are good.
+
+- bcd9c5c: The boot animation stops before it can paint over what a daemon prints.
+
+  The pulse repaints by moving the cursor up a fixed number of rows, which holds
+  only while the logo is still on screen. A daemon boot prints far more than a
+  window holds — the logo, the warm-up panels, then the addresses — and once the
+  buffer scrolls, moving up clamps at row zero. The logo is then painted over
+  whatever is visible there, which is the ARGUS link and the attach token it had
+  printed a moment earlier.
+
+  No arithmetic recovers an anchor that has scrolled away, so the animation now
+  stops while it is still correct: it runs while the logo is on screen and holds
+  still once output has pushed it past the top.
+
+- e86b5df: The boot animation no longer paints over long output.
+
+  The pulse repaints the logo by moving the cursor up a fixed number of rows, and
+  it counted rows by counting newline characters. A line longer than the terminal
+  is wrapped into several screen rows while contributing one newline, so the
+  count under-shot and the animation painted on top of whatever had been printed.
+
+  The daemon banner made it plain: its identity line and its ARGUS URL, which
+  carries a 64-character token, both wrap — and both were the lines that came out
+  mangled.
+
+  Rows are now counted as rows, with escapes stripped so cursor and colour codes
+  do not inflate a width, and with the column position carried across writes that
+  do not end in a newline.
+
+- e58bf58: The wire contract moves out of `calypso` into a package of its own,
+  `@fnndsc/menu`.
+
+  A surface author should depend on the contract, not on the daemon that happens
+  to serve it. Until now the contract was a subpath of `@fnndsc/calypso`, so a
+  third-party surface took a dependency on the session host to learn the shape of
+  a result. `menu` imports nothing from the stack and sits below `cumin`, so both
+  the engine that produces envelopes and the browser that renders them can load
+  it.
+
+  Two vocabularies the contract narrows to moved with it, because they were
+  declared above the thing that describes them: the structured-progress values
+  (previously `@fnndsc/brasa/progress`) and the prompt-facing process-index state
+  (previously `@fnndsc/cumin/proc-prompt`). Both are re-exported from their old
+  homes, so existing importers are unaffected; `@fnndsc/cumin/proc-prompt` as a
+  subpath is gone, and its types are available from `@fnndsc/cumin` directly.
+
+  `CommandEnvelope` is now inferred from the schema that validates it. The engine
+  and the wire previously carried separate declarations of the same shape, tied
+  together by a compile-time assertion that one stayed assignable to the other; a
+  single inferred type makes that drift impossible rather than detected.
+  `@fnndsc/cumin` re-exports the name, so nothing that imports it changes.
+
+  `@fnndsc/calypso/protocol` no longer exists as a subpath. Import
+  `@fnndsc/menu`. The names remain re-exported from `@fnndsc/calypso` itself for
+  now, since most of the stack has always reached them there.
+
+  This is the scaffold for envelope Phase-2 — a typed result model for every
+  command — recorded in `docs/menu.adoc`. `menu` itself is unpublished until that
+  work lands, so thirty payload shapes can settle without forcing a release each
+  time.
+
+- Updated dependencies [1d600ac]
+- Updated dependencies [eebdc7d]
+- Updated dependencies [5d131c8]
+- Updated dependencies [0adb4f2]
+- Updated dependencies [31c2a50]
+- Updated dependencies [a78b5ee]
+- Updated dependencies [1c195a7]
+- Updated dependencies [a3bd3e9]
+- Updated dependencies [19a4d5b]
+- Updated dependencies [9ed68cd]
+- Updated dependencies [790f994]
+- Updated dependencies [e58bf58]
+- Updated dependencies [e062dbf]
+- Updated dependencies [87f7c59]
+- Updated dependencies [56ade16]
+- Updated dependencies [2bb9c29]
+- Updated dependencies [3125517]
+- Updated dependencies [28b9a9f]
+- Updated dependencies [976c753]
+- Updated dependencies [8842ab4]
+- Updated dependencies [2c38d8b]
+- Updated dependencies [bf09355]
+- Updated dependencies [b39b584]
+  - @fnndsc/salsa@3.10.0
+  - @fnndsc/brasa@0.13.0
+  - @fnndsc/calypso@0.7.0
+  - @fnndsc/cumin@3.15.0
+
 ## 5.3.3
 
 ### Patch Changes

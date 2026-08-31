@@ -567,12 +567,21 @@ describe('cache build / warmup / refresh', () => {
     cache.built_set();
     cache.feed_add(feed({ id: 5 }));
     mockClientGet.mockResolvedValue(
-      pagingClient([], [{ id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 's' }])
+      pagingClient([], [{
+        id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 's',
+        start_date: '2026-08-31T10:00:00Z', end_date: '2026-08-31T10:01:00Z', size: 2048,
+      }])
     );
     await procTopology_warmup();
     expect(cache.warmupComplete).toBe(true);
     expect(cache.warmupProgress_get()).toEqual({ loaded: 1, total: 1, active: false });
     expect(cache.instance_get(10)).toBeDefined();
+    // Execution metrics ride the same warmup rows — captured, not fetched.
+    expect(cache.instance_get(10)).toMatchObject({
+      startedAt: '2026-08-31T10:00:00Z',
+      finishedAt: '2026-08-31T10:01:00Z',
+      outputBytes: 2048,
+    });
     expect(cache.feed_get(5)).toBeDefined();
   });
 

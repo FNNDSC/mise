@@ -27,6 +27,10 @@ export interface FeedNode {
   joinParentIDs: number[];
   /** Status snapshot at build time; null when not yet observed. */
   status: string | null;
+  /** ISO execution start/end and output bytes, when the cache observed them. */
+  startedAt?: string;
+  finishedAt?: string;
+  outputBytes?: number;
 }
 
 /** A whole feed's DAG skeleton — flat node list plus feed-level metadata. */
@@ -99,6 +103,9 @@ export function feedGraph_build(feedID: number): FeedGraph | null {
       signature: signature_compute(cache, id, memo),
       joinParentIDs: cache.joinParents_get(id),
       status: inst?.status ?? null,
+      ...(inst?.startedAt !== undefined ? { startedAt: inst.startedAt } : {}),
+      ...(inst?.finishedAt !== undefined ? { finishedAt: inst.finishedAt } : {}),
+      ...(inst?.outputBytes !== undefined ? { outputBytes: inst.outputBytes } : {}),
     };
   });
 

@@ -72,6 +72,16 @@ export function feedDagModel_build(graph: FeedGraph): FeedDagModel {
     feedName: graph.title,
     nodes: graph.nodes.map((node: FeedNode) => {
       const status: DagNodeStatus = dagNodeStatusSchema.parse(node.status ?? 'unknown');
+      // Wall time and output size ride the warmup's own list rows — the
+      // cache observed them for free, and the molecule scales by them.
+      const computeSeconds: number | undefined =
+        node.startedAt !== undefined && node.finishedAt !== undefined
+          ? Math.max(0, (Date.parse(node.finishedAt) - Date.parse(node.startedAt)) / 1000)
+          : undefined;
+      const metrics: { computeSeconds?: number; dataBytes?: number } = {
+        ...(computeSeconds !== undefined && !Number.isNaN(computeSeconds) ? { computeSeconds } : {}),
+        ...(node.outputBytes !== undefined ? { dataBytes: node.outputBytes } : {}),
+      };
       return {
         id: String(node.id),
         label: node.pluginName,
@@ -81,6 +91,7 @@ export function feedDagModel_build(graph: FeedGraph): FeedDagModel {
         pluginName: node.pluginName,
         status,
         vfsPath: `/proc/jobs/feed_${graph.feedID}/${node.pluginName}_${node.id}/data`,
+        ...(Object.keys(metrics).length > 0 ? { metrics } : {}),
       };
     }),
   };

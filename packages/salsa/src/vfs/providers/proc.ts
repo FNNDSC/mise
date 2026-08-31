@@ -152,6 +152,17 @@ async function cache_ensure(): Promise<void> {
  * Loads instance topology for a single feed.
  * Uses in-flight map to prevent duplicate API calls.
  */
+/** Pulls the execution metrics a CUBE list row carries, defined-only. */
+function instanceMetrics_fromRow(inst: PluginInstanceData): {
+  startedAt?: string; finishedAt?: string; outputBytes?: number;
+} {
+  return {
+    ...(typeof inst.start_date === 'string' ? { startedAt: inst.start_date } : {}),
+    ...(typeof inst.end_date === 'string' ? { finishedAt: inst.end_date } : {}),
+    ...(typeof inst.size === 'number' ? { outputBytes: inst.size } : {}),
+  };
+}
+
 async function feedInstances_load(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   const client = await chrisConnection.client_get();
@@ -179,6 +190,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
       params: null,
       outputPath: outputPath_normalize(inst.output_path) ?? undefined,
       status: String(inst.status ?? 'unknown'),
+      ...instanceMetrics_fromRow(inst),
     });
   }
 
@@ -726,6 +738,7 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
   )) {
     for (const inst of step.items) {
       cache.status_update(Number(inst.id), String(inst.status ?? 'unknown'));
+      cache.instanceMetrics_set(Number(inst.id), instanceMetrics_fromRow(inst));
     }
   }
 }
@@ -782,6 +795,7 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
         params: null,
         outputPath: outputPath_normalize(inst.output_path) ?? undefined,
         status: String(inst.status ?? 'unknown'),
+        ...instanceMetrics_fromRow(inst),
       });
       state.seenInstanceIDs.add(instanceID);
       state.seenFeedIDs.add(feedID);

@@ -744,6 +744,56 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
   display: none;
 }
 
+/* The subway strip: a node's lifecycle as stops on a line, filled to where
+ * the job is (the classic ChRIS UI progression, in LCARS dress). */
+.dag-subway {
+  display: flex;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.subway-stop {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid var(--pumpkin-pie);
+  background: transparent;
+  flex: none;
+}
+
+.subway-stop.subway-passed {
+  background: var(--harvestgold);
+  border-color: var(--harvestgold);
+}
+
+.subway-stop.subway-here {
+  background: var(--orange);
+  border-color: var(--orange);
+  box-shadow: 0 0 7px var(--orange);
+}
+
+.subway-stop.subway-terminal.subway-done {
+  background: var(--butter);
+  border-color: var(--butter);
+}
+
+.subway-stop.subway-terminal.subway-failed {
+  background: #f22;
+  border-color: #f22;
+  box-shadow: 0 0 7px #f22;
+}
+
+.subway-link {
+  height: 2px;
+  flex: 1 1 8px;
+  min-width: 8px;
+  background: rgb(204 85 0 / 45%);
+}
+
+.subway-link.subway-passed {
+  background: var(--harvestgold);
+}
+
 /* The feed chooser: the titled roster hosted by the DAG pane. */
 .dag-feedlist {
   display: none;

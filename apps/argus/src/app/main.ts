@@ -687,6 +687,21 @@ async function surface_start(token: string): Promise<void> {
     const history: string[] = [];
     const panel: FilesPanel = new FilesPanel(body, (action: FileAction): void => {
       if (action.kind === 'dir') {
+        // A descendant plugin instance is a node of the same graph: the
+        // experience is a hop — fly out of this node, fly into that one —
+        // never a directory descent that leaves the graph behind.
+        const instMatch: RegExpMatchArray | null =
+          action.path.startsWith('/proc/jobs/') ? (action.path.split('/').pop() ?? '').match(/_(\d+)$/) : null;
+        if (instMatch !== null) {
+          const instanceID: number = parseInt(instMatch[1] ?? '', 10);
+          nodeOverlay_close(id, (): void => {
+            if (dagPanels.get(id)?.node_flyTo(instanceID) !== true) {
+              // Not a node of this graph after all: fall back to descent.
+              nodeOverlay_open(id, action.path);
+            }
+          });
+          return;
+        }
         const previous: string | null = panel.path_current();
         if (previous !== null) {
           history.push(previous);
@@ -714,14 +729,18 @@ async function surface_start(token: string): Promise<void> {
     rootedListing_show(id, panel, vfsPath);
   };
 
-  const nodeOverlay_close = (id: string): void => {
+  const nodeOverlay_close = (id: string, onDone?: () => void): void => {
     const record = nodeOverlays.get(id);
     if (record === undefined) {
+      onDone?.();
       return;
     }
     nodeOverlays.delete(id);
     record.element.classList.remove('node-overlay-open');
-    const finish = (): void => record.element.remove();
+    const finish = (): void => {
+      record.element.remove();
+      onDone?.();
+    };
     const panel: DagPanel | undefined = dagPanels.get(id);
     if (panel !== undefined) {
       panel.flight_back(finish);
@@ -754,7 +773,9 @@ async function surface_start(token: string): Promise<void> {
           terminal.line_run(`cd "${vfsPath}"`);
         },
         node_dive: (vfsPath: string): void => {
-          nodeOverlay_open(id, vfsPath);
+          // The immersive root is the node itself — status, params, log,
+          // data, children — not its data link; the label stays honest.
+          nodeOverlay_open(id, vfsPath.replace(/\/data$/, ''));
         },
         node_regard: (vfsPath: string): void => {
           subjects.regard_write(id, { address: vfsPath, modelKind: 'feed.node' });

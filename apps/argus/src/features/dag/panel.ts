@@ -74,6 +74,7 @@ export class DagPanel {
   private shownFeedId: number | null = null;
   private pinnedFeedId: number | null = null;
   private requestedFeedId: number | null = null;
+  private readonly defaultTitle: string;
 
   /**
    * @param canvas - The element the scene renders into.
@@ -98,6 +99,7 @@ export class DagPanel {
     // empty-state hint is dead space. First arrival shows it.
     canvas.style.display = 'none';
     this.title = title;
+    this.defaultTitle = title.textContent ?? '';
     this.facts = facts;
     this.empty = empty;
     this.strategyPill = strategyPill;
@@ -237,6 +239,47 @@ export class DagPanel {
   /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
   public feedsChooser_request(): void {
     this.handlers.command_run('proc feeds');
+  }
+
+  /**
+   * Declares the list level: RUNS-02 always lands on the feed roster and
+   * nothing else. A graph retained from an earlier visit would be a ghost
+   * render above the list, so the canvas hides and any pin releases; the
+   * shown-feed memory survives so the cwd follow does not immediately
+   * repaint what was just dismissed.
+   */
+  public list_reset(): void {
+    this.canvas.style.display = 'none';
+    this.pinnedFeedId = null;
+    this.requestedFeedId = null;
+    this.title.textContent = this.defaultTitle;
+    this.empty.style.display = '';
+  }
+
+  /**
+   * Pops one navigation level: a shown graph (entered or previewed) steps
+   * back to the feed list. Scrubbing the list is one level however many
+   * previews it painted — the pop clears whatever graph is up and restores
+   * the pure list.
+   *
+   * @returns True when a level was popped; false when the pane is already
+   * at its list (or never had one), letting Esc fall through.
+   */
+  public nav_pop(): boolean {
+    if (this.canvas.style.display === 'none') {
+      return false;
+    }
+    if (this.feedList.childElementCount === 0) {
+      // No roster was ever shown: this pane arrived by cwd-follow, and
+      // there is no list level beneath it to return to.
+      return false;
+    }
+    this.canvas.style.display = 'none';
+    this.pinnedFeedId = null;
+    this.requestedFeedId = null;
+    this.title.textContent = this.defaultTitle;
+    this.feedList.style.display = 'block';
+    return true;
   }
 
   /**

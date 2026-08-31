@@ -342,6 +342,8 @@ export class DagScene {
       this.renderer.domElement.addEventListener('pointermove', (event: PointerEvent): void => {
         if (this.drag !== null) {
           this.drag_move(event);
+        } else if (this.viewDrag !== null) {
+          this.view_move(event);
         } else {
           this.hover_handle(event);
         }
@@ -349,7 +351,20 @@ export class DagScene {
       this.renderer.domElement.addEventListener('pointerleave', (): void => {
         if (this.tip) this.tip.hidden = true;
       });
+      // The wheel dollies: closer to read a dense graph, back for the whole.
+      this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
+        event.preventDefault();
+        this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+        this.camera.position.z = Math.min(40, Math.max(3, this.camera.position.z + event.deltaY * 0.02));
+      }, { passive: false });
+      // Right-drag pans; the browser menu would eat the gesture.
+      this.renderer.domElement.addEventListener('contextmenu', (event: Event): void =>
+        event.preventDefault(),
+      );
     }
+    // A pane resize (a collapsed console, a divider drag) reshapes the box
+    // without a window resize; an unfitted canvas would stretch the graph.
+    new ResizeObserver((): void => this.size_fit()).observe(container);
     const animate = (): void => {
       if (this.disposed) return;
       if (this.ambient) {
@@ -692,24 +707,56 @@ export class DagScene {
     }
   }
 
+  /** An empty-space drag steering the view: orbit, or pan with shift/right. */
+  private viewDrag: {
+    lastX: number;
+    lastY: number;
+    startX: number;
+    startY: number;
+    pan: boolean;
+    moved: boolean;
+  } | null = null;
+
   /**
-   * A press touches the graph: the view snaps to first orientation, the
-   * idle spin pauses, and a press on a node begins a pull — the structure
-   * reacts through a live force simulation anchored at the grabbed node.
+   * A press touches the graph: the idle spin pauses exactly where it is —
+   * never a snap — and what follows depends on what was under the pointer.
+   * A node press begins a pull (the structure reacts through a live force
+   * simulation anchored at the grabbed node); an empty-space press begins a
+   * view drag — orbit, or pan with shift or the right button.
    */
   private press_handle(event: PointerEvent): void {
     if (this.holding || this.flight !== null) return;
-    this.group.rotation.set(0, 0, 0);
     this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
     const hit: THREE.Mesh | null = this.mesh_under(event);
     const nodeId: unknown = hit?.userData['nodeId'];
-    if (hit === null || typeof nodeId !== 'string') return;
+    if (hit === null || typeof nodeId !== 'string') {
+      this.viewDrag = {
+        lastX: event.clientX,
+        lastY: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
+        pan: event.shiftKey || event.button === 2 || event.button === 1,
+        moved: false,
+      };
+      try {
+        this.renderer.domElement.setPointerCapture(event.pointerId);
+      } catch {
+        // A capture refusal (synthetic events, a vanished pointer) only
+        // costs drag continuity outside the canvas.
+      }
+      if (this.tip) this.tip.hidden = true;
+      return;
+    }
     // Drag in the plane through the node, facing the camera: intuitive
     // pull, no depth surprises.
     const normal: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3()).negate();
     const plane: THREE.Plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.position);
     this.drag = { nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false };
-    this.renderer.domElement.setPointerCapture(event.pointerId);
+    try {
+      this.renderer.domElement.setPointerCapture(event.pointerId);
+    } catch {
+      // See above: capture is a nicety, not a dependency.
+    }
     if (this.tip) this.tip.hidden = true;
   }
 
@@ -773,8 +820,43 @@ export class DagScene {
     }
   }
 
+  /** Steers the view from an empty-space drag: orbit, or pan. */
+  private view_move(event: PointerEvent): void {
+    if (this.viewDrag === null) return;
+    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    const dx: number = event.clientX - this.viewDrag.lastX;
+    const dy: number = event.clientY - this.viewDrag.lastY;
+    this.viewDrag.lastX = event.clientX;
+    this.viewDrag.lastY = event.clientY;
+    if (
+      !this.viewDrag.moved &&
+      Math.abs(event.clientX - this.viewDrag.startX) +
+        Math.abs(event.clientY - this.viewDrag.startY) > DRAG_THRESHOLD_PX
+    ) {
+      this.viewDrag.moved = true;
+    }
+    if (!this.viewDrag.moved) return;
+    if (this.viewDrag.pan) {
+      // Screen-proportional pan: the graph follows the pointer.
+      const factor: number = this.camera.position.z * 0.0016;
+      this.camera.position.x -= dx * factor;
+      this.camera.position.y += dy * factor;
+    } else {
+      this.group.rotation.y += dx * 0.005;
+      this.group.rotation.x = Math.min(
+        1.2,
+        Math.max(-1.2, this.group.rotation.x + dy * 0.005),
+      );
+    }
+  }
+
   /** Releases a pull: the grip opens and the simulation cools to rest. */
   private drag_end(): void {
+    if (this.viewDrag !== null) {
+      if (this.viewDrag.moved) this.suppressClick = true;
+      this.viewDrag = null;
+      this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    }
     if (this.drag === null) return;
     this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
     if (this.drag.moved) this.suppressClick = true;

@@ -127,7 +127,6 @@
                 <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title dag-title">DAG</span>
-                    <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
                   </div>
                   <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
                 </div>
@@ -138,7 +137,13 @@
                   <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
                   <span class="drawer-children"></span>
                 </div>
-                <div class="dag-canvas"></div>
+                <div class="dag-canvas">
+                  <!-- View-state pills ride inside the instrument (the
+                       drawer holds actions; the rail holds modes). -->
+                  <div class="dag-rail">
+                    <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
+                  </div>
+                </div>
                 <div class="dag-feedlist"></div>
                 <div class="dag-empty files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
                 <div class="dag-facts"></div>

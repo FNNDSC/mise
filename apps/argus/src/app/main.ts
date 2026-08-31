@@ -940,13 +940,50 @@ async function surface_start(token: string): Promise<void> {
     if (zoomCapsule !== null) {
       zoomCapsule.dataset['pane'] = id;
     }
+    // The binding radio: what the next split creates. UNLINKED is the
+    // unmarked case; the selection is per-pane drawer state.
+    for (const bind of drawer.querySelectorAll<HTMLElement>('.drawer-bind')) {
+      bind.addEventListener('click', (): void => {
+        for (const peer of drawer.querySelectorAll('.drawer-bind')) {
+          peer.classList.remove('drawer-bind-selected');
+        }
+        bind.classList.add('drawer-bind-selected');
+        sound_play('audio3');
+      });
+    }
+    // The four placement pills: SPLIT is the one verb that creates a pane;
+    // the selected binding says what the created pane IS.
     for (const splitter of drawer.querySelectorAll<HTMLElement>('[data-split]')) {
       splitter.addEventListener('click', (): void => {
         const dir: 'row' | 'col' = splitter.dataset['split'] === 'row' ? 'row' : 'col';
-        const empty: PaneInstance = instance_spawn('empty');
-        if (!layout.leaf_split(id, dir, empty.id)) {
-          paneInstance_dispose(empty.id);
-          layout.mount_remove(empty.id);
+        const before: boolean = splitter.dataset['place'] === 'before';
+        const binding: string =
+          drawer.querySelector<HTMLElement>('.drawer-bind-selected')?.dataset['bind'] ?? 'unlinked';
+        const spawned: PaneInstance =
+          binding === 'viewer' ? instance_spawn('view', id)
+          : binding === 'fs' ? instance_spawn('files', id)
+          : instance_spawn('empty');
+        if (!layout.leaf_split(id, dir, spawned.id, before)) {
+          paneInstance_dispose(spawned.id);
+          layout.mount_remove(spawned.id);
+          return;
+        }
+        if (binding === 'fs') {
+          // Linked filesystem: follows the parent's regard at the DIRECTORY
+          // level — an indicated file shows its directory, an indicated node
+          // shows the node's data space.
+          const browser_show = (value: RegardValue): void => {
+            const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+            if (panel === undefined) return;
+            const dirPath: string =
+              value.modelKind === 'fs.file'
+                ? value.address.replace(/\/[^/]*$/, '') || '/'
+                : value.address;
+            rootedListing_show(spawned.id, panel, dirPath);
+          };
+          subjects.regard_subscribe(spawned.id, browser_show);
+          const current: RegardValue | null = subjects.regard_get(id);
+          if (current !== null) browser_show(current);
         }
         drawer.hidden = true;
         sound_play('audio3');
@@ -971,9 +1008,9 @@ async function surface_start(token: string): Promise<void> {
     if (children === null) {
       return;
     }
-    const child_offer = (label: string, hint: string, spawn: () => void): void => {
+    const child_offer = (label: string, hint: string, spawn: () => void, flavor: string = ''): void => {
       const capsule: HTMLButtonElement = document.createElement('button');
-      capsule.className = 'pacs-capsule drawer-child';
+      capsule.className = `pacs-capsule drawer-child${flavor === '' ? '' : ` ${flavor}`}`;
       capsule.textContent = label;
       capsule.title = hint;
       capsule.addEventListener('click', (): void => {
@@ -1013,15 +1050,20 @@ async function surface_start(token: string): Promise<void> {
           rootedListing_show(id, panel, previous);
         }
       });
-    }
-    if (kind === 'files' || kind === 'dag') {
-      child_offer('VIEWER', 'a pane slaved to what this pane indicates', (): void => {
-        const viewer: PaneInstance = instance_spawn('view', id);
-        if (!layout.leaf_split(id, 'col', viewer.id)) {
-          paneInstance_dispose(viewer.id);
-          layout.mount_remove(viewer.id);
+      child_offer('DOWNLOAD', 'download the indicated file', (): void => {
+        const regard: RegardValue | null = subjects.regard_get(id);
+        if (regard !== null && regard.modelKind === 'fs.file') {
+          window.open(vfsUrl_build(regard.address), '_blank');
         }
       });
+      // Destructive verbs run as VISIBLE terminal commands: auditable in the
+      // transcript, never a silent mutation behind a pill.
+      child_offer('DELETE', 'rm the indicated file (runs visibly in the console)', (): void => {
+        const regard: RegardValue | null = subjects.regard_get(id);
+        if (regard !== null && regard.modelKind === 'fs.file') {
+          terminal.line_run(`rm "${regard.address}"`);
+        }
+      }, 'drawer-destructive');
     }
     if (kind === 'dag') {
       child_offer('ENTER NODE', 'move the session into the indicated node', (): void => {
@@ -1036,26 +1078,6 @@ async function surface_start(token: string): Promise<void> {
         if (record !== undefined && previous !== undefined) {
           rootedListing_show(id, record.panel, previous);
         }
-      });
-      child_offer('BROWSE NODE', 'a browser rooted at the indicated node', (): void => {
-        const regard: RegardValue | null = subjects.regard_get(id);
-        if (regard === null) {
-          return;
-        }
-        // Rooted, not slaved: the regard value is consumed at spawn time.
-        const browser: PaneInstance = instance_spawn('files');
-        if (!layout.leaf_split(id, 'col', browser.id)) {
-          paneInstance_dispose(browser.id);
-          layout.mount_remove(browser.id);
-          return;
-        }
-        void client
-          .line_execute(`ls "${regard.address}"`, { silent: true, observe: false })
-          .then((outcome: ExecuteOutcome): void => {
-            for (const envelope of outcome.envelopes) {
-              filesPanels.get(browser.id)?.envelope_observe(envelope);
-            }
-          });
       });
     }
   };

@@ -231,9 +231,58 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 .pane-drawer .drawer-children {
   display: inline-flex;
   gap: 0.4rem;
-  margin-left: 0.6rem;
-  padding-left: 0.6rem;
-  border-left: 2px solid var(--harvestgold);
+}
+
+/* --------------------------------------------------- the drawer grammar */
+/* Three groups, three colors, one sentence: shape the tile (structure,
+ * harvestgold), bind a neighbor (binding, butter), act on the content
+ * (verbs, orange). Destructive verbs are red, by color law. */
+.drawer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.drawer-group + .drawer-group {
+  margin-left: 0.7rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid rgb(255 170 68 / 35%);
+}
+
+.drawer-group:empty {
+  display: none;
+}
+
+.drawer-structure .pacs-capsule {
+  background-color: var(--harvestgold);
+  color: #000;
+}
+
+/* The binding radio: the selected binding is lit, the others recede. */
+.drawer-binding .drawer-bind {
+  background-color: rgb(255 238 204 / 22%);
+  color: var(--butter);
+}
+
+.drawer-binding .drawer-bind.drawer-bind-selected {
+  background-color: var(--butter);
+  color: #000;
+  box-shadow: 0 0 8px rgb(255 238 204 / 60%);
+}
+
+.drawer-children .drawer-child {
+  background-color: var(--orange);
+  color: #000;
+}
+
+.drawer-children .drawer-child.drawer-destructive {
+  background-color: #d22;
+  color: var(--butter);
+}
+
+/* Zoom is offered only when the pane is not zoomed (Esc is the way back). */
+.pane-zoomed .pane-drawer .drawer-zoom {
+  display: none;
 }
 
 /* The zoom verb keeps its state color when its pane is zoomed. */

@@ -178,6 +178,14 @@ The daemon's terminal is a surface too, and AEGIS reaches it. The settled shape,
 
 The pulse stays honest the dark-cockpit way — idle shimmer, executing quickens, attach flares — and the mechanics beneath survive from the earlier drafts: stray writes while the face is up are caged in a ring (carriage-return redraws collapse, so a spinner's thousand frames stay one line) and flushed verbatim on Esc or on a dying boot; interactive prompts suspend the face so their readline owns the terminal; off a TTY nothing happens at all.
 
+=== The drawer grammar (grilled, locked 2026-08-31)
+
+The behind-pane drawer is a sentence, not a menu: *shape the tile, bind a neighbor, act on the content*. Three groups, three colors, identical on every pane at every depth — a newly spawned pane exposes exactly the same drawer, so composition nests indefinitely under one grammar.
+
+*Structure* (harvestgold) acts on the pane as a tile: four placement pills — the new pane opens LEFT, RIGHT, ABOVE, or BELOW — plus ZOOM (offered only while unzoomed; Esc is the way back) and CLOSE. *Binding* (butter) is a radio, not a set of actions: UNLINKED (the unmarked default), LINKED FS (a browser following this pane's regard at the directory level — an indicated file shows its directory, an indicated node its data space), LINKED VIEWER (a renderer for whatever this pane indicates, by content type). SPLIT is the one verb that creates a pane; the selected binding says what the created pane IS. *Context verbs* (orange; red for destructive) act on the content, per pane kind, starting lean: files carries HOME, BACK, DOWNLOAD, DELETE; the DAG carries ENTER NODE and BACK. Destructive verbs run as visible console commands — a DELETE is an `rm` in the transcript, auditable, never a silent mutation behind a pill.
+
+This completes the control taxonomy: the in-pane rail holds display-content modes, the drawer's structure and binding groups hold composition, and its verb group holds content actions. The old VIEWER and BROWSE NODE verbs retired into the binding radio.
+
 == The durable layer: config and named schemas in CFS
 
 Per-user preference and captured layouts live as files in the operator's CUBE home — the Linux dotfile tradition, on CFS (durable CUBE file storage, not the synthesized VFS overlays). `~/.config/chell/` holds prompt choice; `~/.config/argus/` holds color scheme and layout schemas. The kernel stores bytes and never interprets them; each surface parses only its own directory. This concretizes the workspace-model dumb-store principle with zero new kernel machinery.

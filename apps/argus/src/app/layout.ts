@@ -122,13 +122,20 @@ export class LayoutManager {
    * @param newPane - The pane id filling the second half.
    * @returns True when the target was found and split.
    */
-  public leaf_split(target: string, dir: 'row' | 'col', newPane: string): boolean {
+  public leaf_split(
+    target: string,
+    dir: 'row' | 'col',
+    newPane: string,
+    before: boolean = false,
+  ): boolean {
     if (this.tree === null) return false;
+    // `before` places the new pane left (col) or above (row) the target;
+    // the drawer's four placement pills each name one of these positions.
     const replaced: LayoutNode | null = tree_replaceLeaf(this.tree, target, {
       dir,
       ratio: 0.5,
-      first: { pane: target },
-      second: { pane: newPane },
+      first: before ? { pane: newPane } : { pane: target },
+      second: before ? { pane: target } : { pane: newPane },
     });
     if (replaced === null) return false;
     this.tree = replaced;

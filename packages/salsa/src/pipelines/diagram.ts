@@ -88,6 +88,13 @@ function joinParentIDs_parse(value: unknown, anchorID: number | null): number[] 
 }
 
 /**
+ * Built diagrams by pipeline id, per client. A registered pipeline's
+ * topology is immutable, so an entry never expires: the first build is the
+ * only CUBE traffic a pipeline's diagram ever costs a session.
+ */
+const diagramCaches: WeakMap<object, Map<number, PipelineDiagram>> = new WeakMap();
+
+/**
  * Fetches a registered pipeline as a diagram-ready flat DAG.
  *
  * @param specifier - Pipeline numeric ID, exact name, slug, or unambiguous search.
@@ -102,6 +109,14 @@ export async function pipelineDiagram_get(specifier: string): Promise<Result<Pip
     errorStack.stack_push('error', 'Not connected to ChRIS. Cannot draw pipeline.');
     return Err();
   }
+
+  let diagramCache: Map<number, PipelineDiagram> | undefined = diagramCaches.get(client as object);
+  if (diagramCache === undefined) {
+    diagramCache = new Map();
+    diagramCaches.set(client as object, diagramCache);
+  }
+  const cached: PipelineDiagram | undefined = diagramCache.get(resolved.value.id);
+  if (cached !== undefined) return Ok(cached);
 
   try {
     const pipeline: PipelineHandle | null = await pipeline_get(client, resolved.value.id);
@@ -142,13 +157,15 @@ export async function pipelineDiagram_get(specifier: string): Promise<Result<Pip
       };
     });
 
-    return Ok({
+    const diagram: PipelineDiagram = {
       pipelineID: resolved.value.id,
       name: resolved.value.name,
       rootIDs: nodes.filter((node: PipelineDiagramNode): boolean => node.parentID === null)
         .map((node: PipelineDiagramNode): number => node.id),
       nodes,
-    });
+    };
+    diagramCache.set(resolved.value.id, diagram);
+    return Ok(diagram);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('error', `pipelineDiagram_get: ${msg}`);

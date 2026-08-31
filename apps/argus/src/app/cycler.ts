@@ -32,6 +32,8 @@ export class PipelineCycler {
   private names: string[] = [];
   private cursor: number = 0;
   private timer: number | null = null;
+  /** Models already received, by pipeline name — repainted without a fetch. */
+  private readonly seen: Map<string, PipelineDiagramModel> = new Map();
 
   /**
    * @param mount - The header element the miniature renders into.
@@ -92,6 +94,15 @@ export class PipelineCycler {
       return;
     }
     const model: PipelineDiagramModel = parsed.data;
+    // A registered pipeline is immutable: remember its model, and every
+    // later visit repaints from memory — the session queue never carries
+    // a cycler fetch for a pipeline already seen.
+    this.seen.set(model.name, model);
+    this.model_stage(model);
+  }
+
+  /** Puts one remembered or arriving model on stage. */
+  private model_stage(model: PipelineDiagramModel): void {
     this.nameplate.textContent = model.name;
     this.scene.graph_set({
       nodes: model.nodes.map((node: PipelineDiagramNode): SceneNode => ({
@@ -104,12 +115,18 @@ export class PipelineCycler {
     this.scene.size_fit();
   }
 
-  /** Asks for the next pipeline's diagram, silently. */
+  /** Advances the cycle: remembered models repaint locally, new ones fetch. */
   private next_request(): void {
     const name: string | undefined = this.names[this.cursor % this.names.length];
     this.cursor++;
-    if (name !== undefined) {
-      this.command_run(`pipeline diagram ${name}`);
+    if (name === undefined) {
+      return;
     }
+    const remembered: PipelineDiagramModel | undefined = this.seen.get(name);
+    if (remembered !== undefined) {
+      this.model_stage(remembered);
+      return;
+    }
+    this.command_run(`pipeline diagram ${name}`);
   }
 }

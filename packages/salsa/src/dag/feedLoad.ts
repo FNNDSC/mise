@@ -12,9 +12,27 @@
  *
  * @module
  */
-import { procCache_get, ProcCache } from '@fnndsc/cumin';
+import { procCache_get, ProcCache, status_isTerminal, type ProcInstance } from '@fnndsc/cumin';
 import { feedInstances_ensureLoaded, feedMeta_ensure, feedStatus_refresh } from '../vfs/providers/proc.js';
 import { feedJoins_ensure } from './feedJoins.js';
+
+/**
+ * Whether every cached instance of a feed carries a terminal status. A feed
+ * that has fully settled can never change again, so a status refresh for it
+ * is pure waste — and for a feed of thousands of nodes, that waste is
+ * dozens of list calls on every diagram render.
+ *
+ * @param cache - The process cache.
+ * @param feedID - The feed to inspect.
+ * @returns True when no instance could still change status.
+ */
+function feed_isSettled(cache: ProcCache, feedID: number): boolean {
+  for (const id of cache.feedInstanceIDs_get(feedID)) {
+    const inst: ProcInstance | undefined = cache.instance_get(id);
+    if (inst === undefined || !status_isTerminal(inst.status)) return false;
+  }
+  return true;
+}
 
 /**
  * Ensures a feed's topology, metadata, current status, and join edges are in ProcCache,
@@ -28,8 +46,9 @@ export async function feedGraphData_ensure(feedID: number): Promise<void> {
 
   await feedInstances_ensureLoaded(feedID);
   await feedMeta_ensure(feedID);
-  // A cold load just fetched fresh status with the topology; only a warm reuse needs a
-  // cheap status refresh (active nodes only — terminal status is frozen).
-  if (wasWarm) await feedStatus_refresh(feedID);
+  // A cold load just fetched fresh status with the topology. A warm reuse
+  // refreshes status only while something can still change: a fully settled
+  // feed renders from cache alone, with zero CUBE traffic.
+  if (wasWarm && !feed_isSettled(cache, feedID)) await feedStatus_refresh(feedID);
   await feedJoins_ensure(feedID);
 }

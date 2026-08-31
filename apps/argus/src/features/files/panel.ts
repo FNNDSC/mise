@@ -259,7 +259,9 @@ export class FilesPanel {
     // Links navigate: in this VFS a link names a place (a node's `data`
     // pointing into the feed tree), so following it is a directory move —
     // the engine resolves the target. Only plain files are viewable content.
-    if (item.type === 'dir' || item.type === 'vfs' || item.type === 'link') {
+    // 'job' is /proc's directory kind for a plugin instance — navigable,
+    // and inside a node's overlay it is the hop target.
+    if (item.type === 'dir' || item.type === 'vfs' || item.type === 'link' || item.type === 'job') {
       row.classList.add('files-activatable');
       row.addEventListener('click', (): void => {
         this.activate({ kind: 'dir', path: path_join(parentPath, item.name) });

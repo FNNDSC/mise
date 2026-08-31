@@ -18,7 +18,16 @@ import {
   type BrasaEngine,
   type PrefetchResult,
 } from '@fnndsc/brasa';
-import { daemon_launch, identity_forSession } from '@fnndsc/calypso';
+import {
+  daemon_launch,
+  face_start,
+  identity_forSession,
+  type DaemonLaunchInfo,
+  type FaceInfo,
+  type FaceTelemetry,
+} from '@fnndsc/calypso';
+import { procIndex_snapshot } from '@fnndsc/brasa';
+import { logo_animateStop } from '../lib/logo.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import {
@@ -363,7 +372,7 @@ export async function daemonSession_run(
     if (interactive) {
       sink_set(new StdoutSink(new TerminalProgressRenderer()));
     }
-    await daemon_launch(engine, async (): Promise<void> => {
+    const info: DaemonLaunchInfo = await daemon_launch(engine, async (): Promise<void> => {
       const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
       if (cache.failures.length === 0) {
         reporter.log('ok', 'Engine', 'Ready');
@@ -376,6 +385,34 @@ export async function daemonSession_run(
       }
       reporter.log('fail', 'Engine', `Starting with incomplete warm-up: ${cache.failures.join(', ')}`);
     });
+
+    if (interactive) {
+      // Boot is over: the boot-phase pulse (cursor arithmetic over a scrolling
+      // buffer) retires, and the daemon terminal's resting state becomes the
+      // console face on the alternate screen — the brain pulsing over the
+      // identity panel, with the boot log intact underneath for Esc/q.
+      logo_animateStop();
+      const faceInfo: FaceInfo[] = [
+        { label: 'identity', value: info.identity },
+        { label: 'wire', value: info.url },
+        ...(info.argusUrl !== null ? [{ label: 'ARGUS', value: info.argusUrl }] : []),
+        { label: 'token', value: info.token },
+        { label: 'berth', value: info.berthPath },
+        { label: 'attach', value: `chell --remote --attach ${info.url} --token ${info.token}` },
+      ];
+      face_start({
+        info: faceInfo,
+        telemetry_get: (): FaceTelemetry => {
+          const index: { jobs: number; feeds: number } = procIndex_snapshot();
+          return {
+            sessions: info.daemon.surfaces_count(),
+            busy: info.daemon.busy_get(),
+            jobs: index.jobs,
+            feeds: index.feeds,
+          };
+        },
+      });
+    }
   } catch (error: unknown) {
     if (error instanceof DaemonWarmupAbortedError) {
       process.exitCode = 1;

@@ -28,6 +28,7 @@ export * from './builtins/index.js';
 export * from './config/storeConfig.js';
 export * from './lib/vfs/vfs.js';
 export * from './lib/spinner.js';
+export * from './logo/brain.js';
 export * from './lib/prefetch.js';
 export * from './lib/parser.js';
 export * from './lib/pipe.js';

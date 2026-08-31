@@ -10,6 +10,10 @@ module.exports = {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    // The real brasa dist carries the brain art as one very long encoded
+    // line, which jest's CJS export scanner cannot digest; the stub keeps
+    // the brain's geometry and nothing else (see tests/stubs/brasa.ts).
+    '^@fnndsc/brasa$': '<rootDir>/tests/stubs/brasa.ts',
   },
   collectCoverageFrom: [
     '<rootDir>/src/**/*.ts',

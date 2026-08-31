@@ -10,6 +10,10 @@ module.exports = {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\.{1,2}/.*)\.js$': '$1', // Handle ESM imports in tests
+    // Jest's CJS export scanner cannot digest the built brasa barrel; suites
+    // that need real brasa code get it through the stub (which re-exports
+    // the brain renderer from source), and wholesale mocks still win.
+    '^@fnndsc/brasa$': '<rootDir>/tests/stubs/brasa.ts',
   },
   // Excluded from coverage: barrels, REPL loop, prompt rendering and boot
   // glue. The parse/dispatch logic lives in core/dispatch.ts and is covered.

@@ -13,9 +13,10 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { engine_create, sessionConnect_fromSaved, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
+import { engine_create, procIndex_snapshot, sessionConnect_fromSaved, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
 import chalk from 'chalk';
-import { daemon_launch } from './daemon/launch.js';
+import { daemon_launch, type DaemonLaunchInfo } from './daemon/launch.js';
+import { face_start, type FaceTelemetry } from './daemon/face.js';
 import { LocalBerthResolver, berthUrl_isAlive, type Berth } from './daemon/berth.js';
 
 /**
@@ -34,7 +35,28 @@ async function calypso_start(): Promise<void> {
     console.error(`[!] No active session (${result.status}). Log in with 'chell' first; hosting offline.`);
   }
 
-  await daemon_launch(engine);
+  const info: DaemonLaunchInfo = await daemon_launch(engine);
+  // On a TTY, the terminal's resting state is the console face; off one
+  // (systemd, nohup) face_start declines and logging stays sequential.
+  face_start({
+    info: [
+      { label: 'identity', value: info.identity },
+      { label: 'wire', value: info.url },
+      ...(info.argusUrl !== null ? [{ label: 'ARGUS', value: info.argusUrl }] : []),
+      { label: 'token', value: info.token },
+      { label: 'berth', value: info.berthPath },
+      { label: 'attach', value: `chell --remote --attach ${info.url} --token ${info.token}` },
+    ],
+    telemetry_get: (): FaceTelemetry => {
+      const index: { jobs: number; feeds: number } = procIndex_snapshot();
+      return {
+        sessions: info.daemon.surfaces_count(),
+        busy: info.daemon.busy_get(),
+        jobs: index.jobs,
+        feeds: index.feeds,
+      };
+    },
+  });
 }
 
 /**

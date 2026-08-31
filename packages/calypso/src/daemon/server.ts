@@ -166,6 +166,17 @@ export class CalypsoDaemon {
   private readonly sessionId: string = randomBytes(8).toString('hex');
   private readonly surfaces: Set<Surface> = new Set<Surface>();
   private readonly scrollback: SessionEntry[] = [];
+
+  /** The number of currently attached surfaces (console-face telemetry). */
+  public surfaces_count(): number {
+    return this.surfaces.size;
+  }
+
+  /** Whether a foreground command is executing right now. */
+  public busy_get(): boolean {
+    return this.currentId !== null;
+  }
+
   private readonly webRoot: string | undefined;
   private wss: WebSocketServer | null = null;
   private httpServer: Server | null = null;

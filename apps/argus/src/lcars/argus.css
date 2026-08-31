@@ -293,6 +293,17 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   flex-direction: column;
 }
 
+/* The theme's corner-mask rectangle (.left-frame::before, 340px of black,
+ * absolute) was sized to the original fixed FILES-01; elastic buttons can
+ * be shorter than it, and unpositioned buttons paint UNDER it — RUNS-02
+ * vanished beneath the mask. Positioning every segment lifts them all
+ * above the mask, which keeps doing its one job: blacking out the frame
+ * color behind FILES-01's rounded corners. */
+.left-frame button[class^='panel-'],
+.left-frame .panel-spacer {
+  position: relative;
+}
+
 .left-frame .panel-3 {
   height: auto;
   max-height: none;
@@ -348,6 +359,12 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* As flex items the wraps shrink to content under the theme's auto
+ * margins; the console is an instrument, not an article — full width. */
+.wrap-all > .wrap {
+  width: 100%;
 }
 
 .wrap:not(#gap) {
@@ -1238,7 +1255,9 @@ body[data-header='away'] #header-restore {
 #drawer {
   display: flex;
   flex-direction: column;
-  height: 42vh;
+  /* Resting height: a console murmur, not a wall — the workspace is the
+   * point of the page. Drag the strip or zoom for a full console. */
+  height: 28vh;
   min-height: 0;
   overflow: hidden;
 }

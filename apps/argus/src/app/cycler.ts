@@ -55,6 +55,9 @@ export class PipelineCycler {
       window.setTimeout((): void => this.scene.size_fit(), 60);
     }).observe(document.body, { attributes: true, attributeFilter: ['data-header'] });
     window.addEventListener('resize', (): void => this.scene.size_fit());
+    // CSS reshapes the cycler's box without a window resize (the header
+    // diet, a face change mid-transition); follow the element itself.
+    new ResizeObserver((): void => this.scene.size_fit()).observe(mount);
   }
 
   /**

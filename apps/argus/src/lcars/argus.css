@@ -121,6 +121,12 @@ body[data-zoom='console'] #drawer {
   height: calc(100dvh - 3.6rem) !important;
 }
 
+/* A zoomed console owns the stage: the workspace floor steps aside so the
+ * shrinkable drawer can actually reach its zoomed height. */
+body[data-zoom='console'] main {
+  min-height: 0;
+}
+
 /* Zooming any tree pane retracts the console; only the console's own zoom
  * keeps it. */
 body[data-zoom]:not([data-zoom='console']) #drawer {
@@ -309,14 +315,19 @@ body {
   min-height: 0;
 }
 
-#drawer,
+/* The console drawer keeps its height machinery (toggle, drag, zoom all
+ * set `height`) but stays a shrinkable flex item: when the header and the
+ * drawer together outgrow the viewport, the drawer yields — never the
+ * workspace. Freezing it (flex: none) crushed the workspace to a sliver. */
 .bar-panel {
   flex: none;
 }
 
 main {
   flex: 1;
-  min-height: 0;
+  /* The workspace floor: panes are the point of the page; whatever else is
+   * on stage, they keep a working height. */
+  min-height: 20rem;
   display: flex;
   flex-direction: column;
 }
@@ -568,7 +579,7 @@ main {
 }
 
 .dag-canvas {
-  flex: 2 1 0;
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
   position: relative; /* anchors the hover tip */

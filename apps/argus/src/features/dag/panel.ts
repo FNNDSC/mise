@@ -149,12 +149,8 @@ export class DagPanel {
       return;
     }
     const model: FeedDagModel = parsed.data;
-    let preview: boolean = false;
     if (this.requestedFeedId === model.feedId) {
       this.requestedFeedId = null;
-      // A panel-requested arrival while the chooser is up is a preview:
-      // the graph paints above the list, and the list stays for browsing.
-      preview = this.feedList.style.display !== 'none';
     } else {
       // The operator asked for this one by hand: pin it.
       this.pinnedFeedId = model.feedId;
@@ -162,9 +158,10 @@ export class DagPanel {
     this.shownFeedId = model.feedId;
     this.title.textContent = `DAG · FEED ${model.feedId} — ${model.feedName}`.toUpperCase();
     this.empty.style.display = 'none';
-    if (!preview) {
-      this.feedList.style.display = 'none';
-    }
+    // A graph arrival always takes the whole pane: selecting a feed IS
+    // entering it. (The half-pane "preview above the list" is gone; live
+    // scrubbing returns when a context split exists to receive it.)
+    this.feedList.style.display = 'none';
     this.canvas.style.display = 'block';
     this.scene.graph_set({
       nodes: model.nodes.map((node: FeedDagNode): SceneNode => ({
@@ -309,15 +306,10 @@ export class DagPanel {
       owner.className = 'feedlist-owner';
       owner.textContent = feed.owner;
       row.append(idBadge, name, status, owner);
-      row.title = 'click previews the DAG; double-click enters the feed';
-      // Selecting-but-not-entering: a click previews the feed's DAG above
-      // the list, which stays put; a dblclick commits — pin and the list
-      // steps aside on arrival.
+      row.title = 'enter the feed (Esc returns to this list)';
+      // Selecting a feed enters it: the full graph takes the pane and the
+      // list steps aside. Esc (contextual back) returns here.
       row.addEventListener('click', (): void => {
-        this.requestedFeedId = feed.id;
-        this.handlers.command_run(`feed diagram feed_${feed.id}`);
-      });
-      row.addEventListener('dblclick', (): void => {
         this.pinnedFeedId = feed.id;
         this.requestedFeedId = null;
         this.handlers.command_run(`feed diagram feed_${feed.id}`);

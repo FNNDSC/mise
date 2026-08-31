@@ -24,12 +24,22 @@ const mockCheckpointWatch = jest.fn();
 const mockCacheClear = jest.fn();
 let mockCacheLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
 const mockDaemonListen = jest.fn();
+const mockLaunchInfo = {
+  identity: 'me@https://cube.example.org/api/v1/',
+  url: 'ws://pangea:42479',
+  token: 'tok',
+  berthPath: '/run/user/1/calypso/berth.json',
+  argusUrl: 'http://pangea:42479/?token=tok',
+  daemon: { surfaces_count: (): number => 0, busy_get: (): boolean => false },
+};
 const mockDaemonLaunch = jest.fn(
-  async (_engine: BrasaEngine, beforeListen?: () => Promise<void>): Promise<void> => {
+  async (_engine: BrasaEngine, beforeListen?: () => Promise<void>): Promise<typeof mockLaunchInfo> => {
     await beforeListen?.();
     mockDaemonListen();
+    return mockLaunchInfo;
   },
 );
+const mockFaceStart = jest.fn((): boolean => true);
 
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   session: mockSession,
@@ -42,6 +52,12 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   // the terminal it is booting in; the sink itself is inert here.
   sink_set: jest.fn(),
   StdoutSink: class MockStdoutSink {},
+  procIndex_snapshot: (): { jobs: number; feeds: number } => ({ jobs: 12, feeds: 3 }),
+  // The boot logo module rides along with startupWarmup's import graph.
+  logo_frameRender: (): string[] => [],
+  logo_linesRender: (): string[] => [],
+  logoRows_count: (): number => 0,
+  logoColumns_count: (): number => 0,
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: { read: mockVfsRead },
@@ -71,6 +87,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   daemon_launch: mockDaemonLaunch,
+  face_start: mockFaceStart,
   identity_forSession: (user: string, url: string): string => `${user}@${url}`,
 }));
 
@@ -100,6 +117,33 @@ describe('daemonSession_run', () => {
       ok: true,
       count: path === '/PUBLIC' ? 9 : 4,
     }));
+  });
+
+  it('hands the daemon terminal to the console face once boot is over', async () => {
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+    const flags = { plugins: false, feeds: false, publicFeeds: false, jobs: false };
+
+    await daemonSession_run(engine, 'rudolph', flags, true, { log: jest.fn() });
+    expect(mockFaceStart).toHaveBeenCalledTimes(1);
+    const options = mockFaceStart.mock.calls[0]![0] as {
+      info: Array<{ label: string; value: string }>;
+      telemetry_get: () => { sessions: number; busy: boolean; jobs: number; feeds: number };
+    };
+    // The face panel carries the launch's addresses verbatim.
+    expect(options.info).toEqual(expect.arrayContaining([
+      { label: 'wire', value: 'ws://pangea:42479' },
+      { label: 'ARGUS', value: 'http://pangea:42479/?token=tok' },
+    ]));
+    // Live readings come from the daemon handle plus the proc index.
+    expect(options.telemetry_get()).toEqual({ sessions: 0, busy: false, jobs: 12, feeds: 3 });
+
+    // A non-interactive host (systemd) never takes the terminal over.
+    mockFaceStart.mockClear();
+    await daemonSession_run(engine, 'rudolph', flags, false, { log: jest.fn() });
+    expect(mockFaceStart).not.toHaveBeenCalled();
   });
 
   it('warms and reports every startup cache before advertising the daemon', async () => {

@@ -28,6 +28,22 @@ import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
 
+/** What a launched daemon hands back to its host (the console face's feed). */
+export interface DaemonLaunchInfo {
+  /** The CUBE identity this daemon hosts. */
+  identity: string;
+  /** The WebSocket wire address. */
+  url: string;
+  /** The attach token gating every session. */
+  token: string;
+  /** The berth file advertising this daemon. */
+  berthPath: string;
+  /** The ARGUS web-surface address, when a bundle is served. */
+  argusUrl: string | null;
+  /** The running daemon, for live telemetry. */
+  daemon: CalypsoDaemon;
+}
+
 /** The daemon sink forwards live command output to the executing surface. */
 export class DaemonSink implements OutputSink {
   constructor(private readonly daemon: CalypsoDaemon) {}
@@ -99,13 +115,13 @@ export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
  * @param engine - The engine to host (already created and connected by boot).
  * @param beforeListen - Optional host preparation run after the duplicate guard
  *   and before the socket binds or the berth is published.
- * @returns A promise that resolves once the daemon is listening; the process
- *   then stays alive on the WebSocket server.
+ * @returns The launched daemon's addresses and handle, once it is listening;
+ *   the process then stays alive on the WebSocket server.
  */
 export async function daemon_launch(
   engine: BrasaEngine,
   beforeListen?: () => Promise<void>,
-): Promise<void> {
+): Promise<DaemonLaunchInfo> {
   // Force color into the engine's rendered text: no TTY here to auto-detect.
   if (chalk.level < 1) {
     chalk.level = 3;
@@ -232,4 +248,14 @@ export async function daemon_launch(
     console.log(chalk.gray(`    these lines also in:  ${notePath}`));
     console.log(chalk.gray('    or run:               calypso --berths'));
   }
+
+  const displayHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
+  return {
+    identity,
+    url,
+    token,
+    berthPath: berth_path(identity),
+    argusUrl: webRoot !== null ? `http://${displayHost}:${port}/?token=${token}` : null,
+    daemon,
+  };
 }

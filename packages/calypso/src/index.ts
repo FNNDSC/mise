@@ -61,7 +61,19 @@ export { type HostedEngine, type CompletionResult } from './daemon/engine.js';
 export { token_generate, token_writeFile, token_matches } from './daemon/token.js';
 export { CalypsoDaemon, type DaemonOptions, type EditOutcome } from './daemon/server.js';
 export { RequestBroker } from './daemon/broker.js';
-export { daemon_launch, daemonSurface_create, DaemonSink } from './daemon/launch.js';
+export { daemon_launch, daemonSurface_create, DaemonSink, type DaemonLaunchInfo } from './daemon/launch.js';
+export {
+  face_start,
+  face_stop,
+  face_isActive,
+  face_frameCompose,
+  uptime_format,
+  FaceLogRing,
+  type FaceInfo,
+  type FaceTelemetry,
+  type FaceOptions,
+  type FaceFrame,
+} from './daemon/face.js';
 export { discovery_read, discovery_write, discovery_path, type Discovery } from './daemon/discovery.js';
 export {
   identity_normalise,

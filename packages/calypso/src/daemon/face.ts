@@ -51,8 +51,10 @@ const ESCAPE_PATTERN: RegExp = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07
 
 /** Log lines kept for the drop-to-text flush. */
 const RING_CAPACITY: number = 400;
-/** Log lines shown in the face's strip. */
+/** Log lines shown in the steady face's strip. */
 const STRIP_LINES: number = 5;
+/** Log lines shown while booting — the messages are the point then. */
+const BOOT_STRIP_LINES: number = 10;
 /** Frame period. */
 const TICK_MS: number = 100;
 /** Ambient pulse advances one frame per this many ticks. */
@@ -76,13 +78,18 @@ export class FaceLogRing {
   /**
    * Absorbs one raw write, splitting it into stripped, stored lines.
    *
+   * A carriage return without a newline is a redraw (a spinner frame): it
+   * discards what preceded it on the line rather than appending, so a
+   * thousand frames stay one line, not one enormous one.
+   *
    * @param chunk - The text a hijacked stdout/stderr write carried.
    */
   public push(chunk: string): void {
     const text: string = this.pending + chunk.replace(ESCAPE_PATTERN, '');
     const parts: string[] = text.split('\n');
-    this.pending = parts.pop() ?? '';
-    for (const line of parts) {
+    this.pending = (parts.pop() ?? '').split('\r').pop() ?? '';
+    for (const part of parts) {
+      const line: string = part.split('\r').pop() ?? '';
       this.lines.push(line);
       this.unflushed += 1;
     }
@@ -120,6 +127,8 @@ export interface FaceFrame {
   rows: number;
   columns: number;
   frameIndex: number;
+  /** 'boot': frenetic pulse over the streaming boot log; 'ready': the steady instrument. */
+  phase: 'boot' | 'ready';
   info: FaceInfo[];
   telemetry: FaceTelemetry | null;
   logTail: string[];
@@ -161,9 +170,10 @@ function line_clip(line: string, columns: number): string {
  */
 export function face_frameCompose(frame: FaceFrame): string[] {
   const lines: string[] = [];
+  const booting: boolean = frame.phase === 'boot';
   const label_pad: number = Math.max(...frame.info.map((row: FaceInfo): number => row.label.length), 8);
 
-  const statusRows: FaceInfo[] = [
+  const statusRows: FaceInfo[] = booting ? [] : [
     { label: 'uptime', value: uptime_format(frame.uptimeSeconds) },
     ...(frame.telemetry !== null
       ? [
@@ -173,10 +183,16 @@ export function face_frameCompose(frame: FaceFrame): string[] {
         ]
       : []),
   ];
-  const panel: FaceInfo[] = [...frame.info, ...statusRows];
+  const panel: FaceInfo[] = booting ? [] : [...frame.info, ...statusRows];
+  // Booting, the messages are the point: a headline and a tall strip. Ready,
+  // the identity panel leads and the strip shrinks to a murmur, with the
+  // toggle hint closing the frame.
+  const headline: string | null = booting ? 'SYSTEMS INITIALIZING' : null;
+  const hint: string | null = booting ? null : 'HIT ESC TO TOGGLE THE BOOT LOG · CTRL-C STOPS THE DAEMON';
   const stripHeight: number = frame.logTail.length > 0 ? frame.logTail.length + 1 : 0;
+  const trimHeight: number = (headline !== null ? 2 : 0) + (hint !== null ? 2 : 0);
   const brainFits: boolean =
-    logoRows_count() + panel.length + stripHeight + 3 <= frame.rows - 1 &&
+    logoRows_count() + panel.length + stripHeight + trimHeight + 3 <= frame.rows - 1 &&
     logoColumns_count() <= frame.columns;
 
   if (brainFits) {
@@ -184,6 +200,12 @@ export function face_frameCompose(frame: FaceFrame): string[] {
     for (const brainLine of logo_frameRender(frame.frameIndex)) {
       lines.push(indent + brainLine);
     }
+    lines.push('');
+  }
+
+  if (headline !== null) {
+    const pad: string = ' '.repeat(Math.max(0, Math.floor((frame.columns - headline.length) / 2)));
+    lines.push(chalk.cyan(pad + headline));
     lines.push('');
   }
 
@@ -201,6 +223,11 @@ export function face_frameCompose(frame: FaceFrame): string[] {
     }
   }
 
+  if (hint !== null) {
+    lines.push('');
+    lines.push(chalk.gray(line_clip(`  ${hint}`, frame.columns)));
+  }
+
   return lines.slice(0, Math.max(0, frame.rows - 1));
 }
 
@@ -209,6 +236,8 @@ interface FaceState {
   options: FaceOptions;
   ring: FaceLogRing;
   mode: 'face' | 'text';
+  phase: 'boot' | 'ready';
+  suspended: boolean;
   interval: NodeJS.Timeout | null;
   frameIndex: number;
   tick: number;
@@ -267,7 +296,10 @@ function frame_paint(): void {
   }
   const quickened: boolean = (telemetry?.busy ?? false) || Date.now() < state.flareUntil;
   state.tick += 1;
-  if (quickened || state.tick % AMBIENT_STRIDE === 0) {
+  if (state.phase === 'boot') {
+    // Booting is frenetic: the pulse races while the machine comes up.
+    state.frameIndex += 2;
+  } else if (quickened || state.tick % AMBIENT_STRIDE === 0) {
     state.frameIndex += 1;
   }
 
@@ -275,9 +307,10 @@ function frame_paint(): void {
     rows: process.stdout.rows || 24,
     columns: process.stdout.columns || 80,
     frameIndex: state.frameIndex,
+    phase: state.phase,
     info: state.options.info,
     telemetry,
-    logTail: state.ring.tail(STRIP_LINES),
+    logTail: state.ring.tail(state.phase === 'boot' ? BOOT_STRIP_LINES : STRIP_LINES),
     uptimeSeconds: Math.floor((Date.now() - state.startedAt) / 1000),
   });
   state.realOut('\x1b[H' + lines.map((line: string): string => line + '\x1b[K').join('\r\n') + '\x1b[J');
@@ -321,7 +354,7 @@ function text_drop(): void {
  * @param options - Identity rows and live-telemetry hook.
  * @returns True when the face took the screen.
  */
-export function face_start(options: FaceOptions): boolean {
+export function face_start(options: FaceOptions, phase: 'boot' | 'ready' = 'ready'): boolean {
   if (state !== null) return true;
   if (!process.stdout.isTTY || !process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
     return false;
@@ -357,6 +390,8 @@ export function face_start(options: FaceOptions): boolean {
     options,
     ring: new FaceLogRing(),
     mode: 'text',
+    phase,
+    suspended: false,
     interval: null,
     frameIndex: 0,
     tick: 0,
@@ -380,12 +415,70 @@ export function face_start(options: FaceOptions): boolean {
   return true;
 }
 
+/**
+ * Takes the terminal over for the boot phase: the brain in its frenetic
+ * boot pulse over a tall strip of the streaming boot log — no identity
+ * panel yet, because there is nothing to identify. A no-op off a TTY.
+ *
+ * @returns True when the boot face took the screen.
+ */
+export function face_boot(): boolean {
+  return face_start({ info: [] }, 'boot');
+}
+
+/**
+ * Settles the face into its steady state: the calm ambient pulse, the
+ * identity panel, live telemetry, and the toggle hint. Called on a face
+ * already up (the boot phase) it repaints in place; called with no face
+ * (a host that skipped the boot phase) it starts one. Off a TTY, nothing.
+ *
+ * @param options - Identity rows and live-telemetry hook.
+ * @returns True when a face is showing the steady state.
+ */
+export function face_ready(options: FaceOptions): boolean {
+  if (state === null) {
+    return face_start(options);
+  }
+  state.options = options;
+  state.phase = 'ready';
+  state.lastSessions = options.telemetry_get?.().sessions ?? state.lastSessions;
+  if (state.mode === 'face') frame_paint();
+  return true;
+}
+
+/**
+ * Steps aside for an interactive prompt: the terminal returns to the
+ * normal buffer with cooked stdin, and the face's key handler stops
+ * listening so the prompt's readline owns every keystroke.
+ */
+export function face_suspend(): void {
+  if (state === null || state.suspended) return;
+  state.suspended = true;
+  if (state.mode !== 'text') text_drop();
+  process.stdin.off('data', state.keyHandler);
+  if (typeof process.stdin.setRawMode === 'function') process.stdin.setRawMode(false);
+}
+
+/** Returns from a prompt: raw keys again, and back onto the face. */
+export function face_resume(): void {
+  if (state === null || !state.suspended) return;
+  state.suspended = false;
+  if (typeof process.stdin.setRawMode === 'function') process.stdin.setRawMode(true);
+  process.stdin.on('data', state.keyHandler);
+  face_enter();
+}
+
 /** Releases the terminal entirely: buffers, writes, raw mode, listeners. */
 export function face_stop(): void {
   if (state === null) return;
   if (state.interval !== null) clearInterval(state.interval);
   writes_restore();
   if (state.mode === 'face') state.realOut('\x1b[?1049l\x1b[?25h');
+  // Lines still caged in the ring (a dying boot's abort reason, say) land
+  // in the normal buffer rather than vanishing with the face.
+  for (const line of state.ring.drain()) {
+    state.realOut(line + '\n');
+  }
   process.stdin.off('data', state.keyHandler);
   if (typeof process.stdin.setRawMode === 'function') process.stdin.setRawMode(false);
   process.stdin.pause();

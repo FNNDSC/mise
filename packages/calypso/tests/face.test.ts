@@ -12,10 +12,14 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
   FaceLogRing,
+  face_boot,
   face_frameCompose,
   face_isActive,
+  face_ready,
+  face_resume,
   face_start,
   face_stop,
+  face_suspend,
   uptime_format,
   type FaceFrame,
   type FaceTelemetry,
@@ -39,6 +43,15 @@ describe('FaceLogRing', () => {
     expect(ring.tail(5)).toEqual([]);
     ring.push('2%\n');
     expect(ring.tail(5)).toEqual(['progress: 42%']);
+  });
+
+  it('treats a carriage return as a redraw, keeping only the last frame', () => {
+    // A spinner redraws its line with \r many times a second; concatenating
+    // frames made one enormous line once before (the argus spinner bug).
+    const ring: FaceLogRing = new FaceLogRing();
+    ring.push('\r[|] warming\r[/] warming\r[-] warming');
+    ring.push('\r[+] warmed\n');
+    expect(ring.tail(1)).toEqual(['[+] warmed']);
   });
 
   it('strips escapes, storing what the operator would have read', () => {
@@ -80,6 +93,7 @@ describe('face_frameCompose', () => {
     rows: 60,
     columns: 120,
     frameIndex: 3,
+    phase: 'ready' as const,
     info: [{ label: 'wire', value: 'ws://pangea:42479' }],
     telemetry,
     logTail: [],
@@ -131,6 +145,22 @@ describe('face_frameCompose', () => {
     const text: string = face_frameCompose(frame({ telemetry: null })).map(plain).join('\n');
     expect(text).toContain('uptime');
     expect(text).not.toContain('surfaces');
+  });
+
+  it('boot phase: headline and tall log strip, no panel, no hint', () => {
+    const text: string = face_frameCompose(frame({
+      phase: 'boot',
+      logTail: ['Prefetching /bin', 'Indexed 3 feed(s)'],
+    })).map(plain).join('\n');
+    expect(text).toContain('SYSTEMS INITIALIZING');
+    expect(text).toContain('Indexed 3 feed(s)');
+    expect(text).not.toContain('uptime');
+    expect(text).not.toContain('HIT ESC');
+  });
+
+  it('ready phase closes the frame with the toggle hint', () => {
+    const text: string = face_frameCompose(frame()).map(plain).join('\n');
+    expect(text).toContain('HIT ESC TO TOGGLE THE BOOT LOG');
   });
 });
 
@@ -248,6 +278,39 @@ describe('face runtime', () => {
     const before: number = written.length;
     process.stdout.write('back to normal\n');
     expect(written.length).toBe(before + 1);
+  });
+
+  it('settles from boot to ready in place, on the same screen', () => {
+    expect(face_boot()).toBe(true);
+    jest.advanceTimersByTime(300);
+    expect(written.join('')).toContain('SYSTEMS INITIALIZING');
+    face_ready({ info: [{ label: 'wire', value: 'ws://x:1' }] });
+    jest.advanceTimersByTime(300);
+    const text: string = written.join('');
+    expect(text).toContain('HIT ESC TO TOGGLE THE BOOT LOG');
+    // One alternate-screen entry: the transition repaints, never re-enters.
+    expect(written.filter((chunk) => chunk.includes('\x1b[?1049h')).length).toBe(1);
+  });
+
+  it('steps aside for a prompt and returns afterwards', () => {
+    face_boot();
+    face_suspend();
+    // Suspended: normal buffer, cooked keys — a keypress must NOT re-enter.
+    const entries = (): number => written.filter((chunk) => chunk.includes('\x1b[?1049h')).length;
+    const before: number = entries();
+    process.stdin.emit('data', Buffer.from('c'));
+    expect(entries()).toBe(before);
+    face_resume();
+    expect(entries()).toBe(before + 1);
+    expect(face_isActive()).toBe(true);
+  });
+
+  it('flushes caged lines when stopped mid-face', () => {
+    face_boot();
+    process.stdout.write('Startup aborted: Plugins\n');
+    face_stop();
+    const afterLeave: string = written.join('').split('\x1b[?1049l').pop() ?? '';
+    expect(afterLeave).toContain('Startup aborted: Plugins');
   });
 
   it('re-raises Ctrl-C so the daemon shutdown path runs', () => {

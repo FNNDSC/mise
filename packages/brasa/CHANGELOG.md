@@ -1,5 +1,266 @@
 # @fnndsc/brasa
 
+## 0.13.0
+
+### Minor Changes
+
+- 0adb4f2: The daemon terminal gets a resting state: the console face.
+
+  The boot-phase brain animation repainted by cursor arithmetic against a
+  scrolling buffer — counting rows printed beneath it and jumping up — so a
+  retry warning landing mid-frame interleaved with the art, and the pulse had
+  to kill itself the moment output scrolled the logo away: the brain went
+  silent exactly when the daemon came alive.
+
+  Boot is unchanged and text-first: the brain prints, pulses while
+  credentials are checked, and every address and token scrolls into ordinary
+  scrollback. What is new is what happens when boot completes on a TTY: the
+  daemon switches to the alternate screen buffer — the same screen vim and
+  htop own — where the brain pulses forever at fixed coordinates over an
+  identity panel (identity, wire, ARGUS URL, token, berth, attach line,
+  uptime, attached surfaces, index counts), with the last few log lines caged
+  in a dim strip beneath. The pulse is honest: idle is a slow shimmer, an
+  executing command quickens it, a surface attaching flares it.
+
+  Esc or `q` drops to the normal buffer, restored byte-perfect with the boot
+  log intact and the lines captured while the face was up flushed beneath it;
+  any key returns. Ctrl-C stops the daemon from either mode. Off a TTY
+  (systemd, nohup) nothing changes: sequential logging, as before.
+
+  The brain art and its frame renderer moved from chell to brasa
+  (`logo_frameRender`, `logo_linesRender`, and the new `logoRows_count` /
+  `logoColumns_count`), so any surface can draw it; chell keeps only its
+  boot-terminal animation host. `daemon_launch` now returns the launched
+  daemon's addresses and handle, which both launch paths (`chell --daemon`
+  and the standalone `calypso` binary) feed to the face.
+
+- 31c2a50: `pipeline diagram` and `feed diagram` now carry their graphs as typed
+  envelope models: `pipeline.diagram` (the authored topology) and `feed.dag`
+  (the live instance graph with statuses and each node's `/proc` data
+  address). The rendered trees are unchanged; a graphical surface reads the
+  model where a terminal reads the text — one command, two projections.
+- 9ed68cd: `download` no longer writes to the daemon host's disk. File delivery is now a
+  surface capability, like prompting, piping and editing already were.
+
+  The builtin resolved its destination with `path.resolve()` inside the engine,
+  so the bytes landed on whatever machine hosted the engine. For a local shell
+  that is right — the engine is in-process and the operator's disk is the
+  engine's disk. Under a daemon it put files on a machine nobody attending the
+  session was sitting at, and from a browser the question "download to where?"
+  had no answer at all.
+
+  `Surface` gains `fileDeliver`, and `SurfaceCapabilities` gains `fileDelivery`
+  alongside `engineFilesystem` — which says whether a path the engine resolves is
+  a path this surface's operator can open. Only an in-process local shell claims
+  it. When it is false, `download` hands the file to the surface, which puts it
+  somewhere its operator can actually reach: the client's disk for
+  `chell --remote`, the download manager for `argus`.
+
+  Only the request crosses the wire. Each surface fetches the bytes itself
+  through the daemon's existing token-gated `/vfs` route, so a DICOM series is
+  not base64'd across a channel meant for session state — the intent travels
+  through the vocabulary and the bytes travel through the byte route.
+
+  The local path is unchanged: a local `chell` still uses the existing transfer
+  machinery, with its globs, directory walks and progress reporting.
+
+  A directory has no bytes to hand over, and what to do about that depends on
+  what the surface has — a third capability, `localFilesystem`, declared in the
+  attach handshake and answered by the surface rather than by the daemon. A shell
+  owns a filesystem wherever it runs, so `chell --remote` receives the tree file
+  by file and gets the folder it asked for. A browser owns no directory and can
+  take files only one at a time, so several hundred DICOM instances would be
+  several hundred saves; for that surface alone a directory is archived into a
+  single CUBE file first, through
+  the registered `zip v20240311` pipeline — `pl-dircopy` into a zip plugin, the
+  same mechanism the ChRIS web UI has used for years, but living in `brasa` where
+  every surface reaches one implementation instead of each client re-deriving the
+  sequence. `CHRIS_ARCHIVE_PIPELINE` names a different pipeline where a
+  deployment registered one. When it is absent, the failure says which pipeline
+  is missing and that it can be registered from the store.
+
+  The archive run announces itself rather than creating a feed silently, because
+  it is a workaround for CUBE having no directory-archive route: issue #233.
+
+  `upload` has the mirror problem — it reads from the engine host's disk — and is
+  not addressed here, because the browser direction needs a file picker. See
+  issue #232.
+
+- e58bf58: The wire contract moves out of `calypso` into a package of its own,
+  `@fnndsc/menu`.
+
+  A surface author should depend on the contract, not on the daemon that happens
+  to serve it. Until now the contract was a subpath of `@fnndsc/calypso`, so a
+  third-party surface took a dependency on the session host to learn the shape of
+  a result. `menu` imports nothing from the stack and sits below `cumin`, so both
+  the engine that produces envelopes and the browser that renders them can load
+  it.
+
+  Two vocabularies the contract narrows to moved with it, because they were
+  declared above the thing that describes them: the structured-progress values
+  (previously `@fnndsc/brasa/progress`) and the prompt-facing process-index state
+  (previously `@fnndsc/cumin/proc-prompt`). Both are re-exported from their old
+  homes, so existing importers are unaffected; `@fnndsc/cumin/proc-prompt` as a
+  subpath is gone, and its types are available from `@fnndsc/cumin` directly.
+
+  `CommandEnvelope` is now inferred from the schema that validates it. The engine
+  and the wire previously carried separate declarations of the same shape, tied
+  together by a compile-time assertion that one stayed assignable to the other; a
+  single inferred type makes that drift impossible rather than detected.
+  `@fnndsc/cumin` re-exports the name, so nothing that imports it changes.
+
+  `@fnndsc/calypso/protocol` no longer exists as a subpath. Import
+  `@fnndsc/menu`. The names remain re-exported from `@fnndsc/calypso` itself for
+  now, since most of the stack has always reached them there.
+
+  This is the scaffold for envelope Phase-2 — a typed result model for every
+  command — recorded in `docs/menu.adoc`. `menu` itself is unpublished until that
+  work lands, so thirty payload shapes can settle without forcing a release each
+  time.
+
+- e062dbf: Two more commands speak in models: `proc feeds` (now listing the whole
+  cache-resident roster when unqueried) carries a `feed.list` model, and
+  `pacs query` carries a `pacs.query` model — studies and series with their
+  instance UIDs and pullable VFS paths. Terminal renderings are unchanged.
+- 28b9a9f: Regard: the session learns what the operator is indicating.
+
+  The wire contract gains one message, `regard`, travelling both directions
+  under one shape: a surface reports the addressable thing the operator most
+  recently indicated (a file clicked in a browser, a DAG node selected), and
+  the daemon retains it as session truth — last write wins — mirrors it into
+  the engine, and rebroadcasts it to every attached surface. A late attacher
+  receives the retained value with its ack, so spawn-then-see workflows start
+  seeing immediately.
+
+  The value is an address in the namespace plus the model kind it was
+  indicated through, never view-space coordinates: what has no address is view
+  state and stays surface-side. The brasa session retains the value behind
+  `regard_get`/`regard_set`, so engine-side consumers can answer "what is the
+  operator regarding" without any surface geometry crossing the seam. Design
+  record: apps/argus/docs/aegis.adoc.
+
+- 8842ab4: Indeterminate progress now crosses the daemon wire as typed facts rather than
+  terminal escapes.
+
+  The spinner used to write `\r\x1b[K<frame>` and cursor hide/show to the status
+  channel twelve times a second, so every attached surface received terminal
+  choreography whether or not it was a terminal — a web surface had to emulate a
+  character grid to recover the meaning, and got it subtly wrong. It now announces
+  `operation: 'task'`, `kind: 'inspection'`, `phase: 'working'` with a label, and
+  closes with `phase: 'complete'`. Each surface draws waiting in its own idiom.
+
+  Only state changes cross the wire: frames and elapsed counters are the
+  renderer's, so a spin of any length costs two events instead of dozens per
+  second. `chell` gained the elapsed counter its spinner used to bake into the
+  label, and `argus` gained a full progress renderer — indeterminate work spins,
+  counted work fills a bar — which also surfaces the download progress it had
+  been silently discarding.
+
+  The `operation` and `phase` enums gained `task` and `working`. Every enum on
+  the progress message now degrades on an unknown value instead of failing the
+  parse and dropping the message whole: `operation` to `task`, `phase` to
+  `working`, `status` to `unknown`, `kind` and `unit` to absent. That makes good
+  the contract's promise that change within a major is additive — for future
+  additions, since the fallback lives in the build doing the reading.
+
+  The spinner keeps its call signature, so its callers are unchanged. Its
+  `showTiming` and `clearLine` arguments are now ignored: both are rendering
+  decisions. It also no longer inspects `process.stdout.isTTY` before announcing,
+  which had suppressed progress inside the daemon, where the engine's own stdout
+  is never a terminal but the attached surface may well be able to draw.
+
+### Patch Changes
+
+- 1d600ac: An archive that cannot run no longer leaves a feed behind, and says the right
+  reason for not running.
+
+  Live testing found both. `download <dir>` from a browser reported that the
+  `zip v20240311` pipeline was not registered, directly below a line explaining
+  that one of its nodes was not registered on the target compute environment. The
+  pipeline was present; the advice to fetch it from the store was wrong. Every
+  `pipeline_run` failure had been collapsed into the one message.
+
+  `pipeline_readiness` in salsa answers whether a pipeline exists and could be
+  prepared, distinguishing _unregistered_ from _registered but unpreparable_ —
+  different problems calling for different actions.
+
+  Preparing a pipeline needs no previous instance, so readiness is now checked
+  _before_ the feed is created. The failed run above had already created a feed
+  that nothing then used, leaving litter in a feed list and a copy in the compute
+  graph asserting an analysis that produced nothing.
+
+  A run that fails after its feed exists now removes it, and names the feed when
+  removal fails. A run that merely exceeds its time limit is left alone, since it
+  may yet finish and deleting would remove the feed from under a running job.
+
+- 1c195a7: Execution metrics ride the warmup for free: node differentiation lands.
+
+  Every CUBE plugin-instance list row already carries `start_date`,
+  `end_date`, and `size` — the same rows warmup and status refresh page
+  through. They are now typed on the contract, captured into the proc cache
+  (`ProcInstance.startedAt/finishedAt/outputBytes`, merged defined-only so a
+  refresh never erases what warmup saw), persisted by the checkpoint, and
+  projected by `feed diagram` onto each node's `metrics` (wall-clock
+  `computeSeconds`, `dataBytes`). Zero new CUBE calls at any point.
+
+  The molecule rendering scales by them (a SCALE pill flips between wall
+  time and output bytes, re-projecting the remembered model locally), and
+  timestamp-true pulse replay becomes possible.
+
+- 87f7c59: The `pacs.query` model now says what CUBE already holds: each series carries
+  a `pulled` flag and file count (one bounded sweep of single-attempt lookups),
+  and studies carry their own VFS path so a surface can pull a whole study.
+- 3125517: A dropped retrieve watch is no longer reported as a failed pull.
+
+  Pulling a 22-series study reported `0/22 series complete` with every series
+  marked `ERROR` — and the CUBE path report printed immediately below it listed
+  four of those same series with real paths and file counts. The retrieves were
+  fine; the watch had died.
+
+  One websocket failure marked every in-flight series `error`, because
+  `RetrieveStatus` had no value meaning _the client stopped watching and does not
+  know the outcome_. The code knew the difference — a comment in `pull` says a
+  watch failure "is usually cosmetic, the PACS keeps pushing and CUBE keeps
+  registering after detach" — but nothing downstream acted on it.
+
+  A lost watch now marks its series `unconfirmed`. The confirmation loop, which
+  already asks CUBE about series whose confirmation went missing, now asks about
+  these too: a series CUBE reports as stored is `pulled`, with its file count and
+  path, whatever the watch managed to see.
+
+  What remains unconfirmed is reported as unknown rather than lost — `? … [WATCH
+ENDED — may still be arriving]` — and does not fail the command, because
+  nothing in the client knows that it failed. A series that was never fired is
+  still a real failure and still fails the command.
+
+- b39b584: A dropped retrieve watch reconnects instead of giving up.
+
+  The LONK socket is only how a client watches a retrieve; the retrieve itself
+  runs on the server and is unaffected by the socket dying. Losing the view was
+  nonetheless the end of the watch — which is why a 22-series study failed where
+  a 2-series one did not: a longer retrieve gives the socket more chances to
+  drop.
+
+  A dropped socket is now reopened, up to three times, and re-subscribed to the
+  series still in flight. Nothing is re-fired: those retrieves were never lost.
+  The reconnection is announced, because a silent one during a long pull is
+  indistinguishable from a stall.
+
+  Only when reconnection is exhausted does the watch stop, and it still records
+  the remaining series as `unconfirmed` rather than failed.
+
+- Updated dependencies [1d600ac]
+- Updated dependencies [a78b5ee]
+- Updated dependencies [1c195a7]
+- Updated dependencies [e58bf58]
+- Updated dependencies [56ade16]
+- Updated dependencies [2bb9c29]
+- Updated dependencies [3125517]
+- Updated dependencies [2c38d8b]
+- Updated dependencies [b39b584]
+  - @fnndsc/salsa@3.10.0
+  - @fnndsc/cumin@3.15.0
+
 ## 0.12.0
 
 ### Minor Changes

@@ -1,5 +1,125 @@
 # @fnndsc/salsa
 
+## 3.10.0
+
+### Minor Changes
+
+- 1d600ac: An archive that cannot run no longer leaves a feed behind, and says the right
+  reason for not running.
+
+  Live testing found both. `download <dir>` from a browser reported that the
+  `zip v20240311` pipeline was not registered, directly below a line explaining
+  that one of its nodes was not registered on the target compute environment. The
+  pipeline was present; the advice to fetch it from the store was wrong. Every
+  `pipeline_run` failure had been collapsed into the one message.
+
+  `pipeline_readiness` in salsa answers whether a pipeline exists and could be
+  prepared, distinguishing _unregistered_ from _registered but unpreparable_ —
+  different problems calling for different actions.
+
+  Preparing a pipeline needs no previous instance, so readiness is now checked
+  _before_ the feed is created. The failed run above had already created a feed
+  that nothing then used, leaving litter in a feed list and a copy in the compute
+  graph asserting an analysis that produced nothing.
+
+  A run that fails after its feed exists now removes it, and names the feed when
+  removal fails. A run that merely exceeds its time limit is left alone, since it
+  may yet finish and deleting would remove the feed from under a running job.
+
+- 1c195a7: Execution metrics ride the warmup for free: node differentiation lands.
+
+  Every CUBE plugin-instance list row already carries `start_date`,
+  `end_date`, and `size` — the same rows warmup and status refresh page
+  through. They are now typed on the contract, captured into the proc cache
+  (`ProcInstance.startedAt/finishedAt/outputBytes`, merged defined-only so a
+  refresh never erases what warmup saw), persisted by the checkpoint, and
+  projected by `feed diagram` onto each node's `metrics` (wall-clock
+  `computeSeconds`, `dataBytes`). Zero new CUBE calls at any point.
+
+  The molecule rendering scales by them (a SCALE pill flips between wall
+  time and output bytes, re-projecting the remembered model locally), and
+  timestamp-true pulse replay becomes possible.
+
+- 2bb9c29: Registered pipelines gain a durable package store: a warm-up tail sweeps the registry after the topology index settles, fetching only never-seen pipelines and checkpointing identity plus registered manifest to a local CUBE-keyed file. The `/usr/share/packages/<pipeline>` tree serves each pipeline's fields and canonical `manifest.yaml` from that store, and `pipeline diagram` answers from it with no wire traffic at all. The same settlement tail also resolves every unresolved topological-join edge in the background, so a feed's first diagram — however large — renders from cache.
+- 3125517: A dropped retrieve watch is no longer reported as a failed pull.
+
+  Pulling a 22-series study reported `0/22 series complete` with every series
+  marked `ERROR` — and the CUBE path report printed immediately below it listed
+  four of those same series with real paths and file counts. The retrieves were
+  fine; the watch had died.
+
+  One websocket failure marked every in-flight series `error`, because
+  `RetrieveStatus` had no value meaning _the client stopped watching and does not
+  know the outcome_. The code knew the difference — a comment in `pull` says a
+  watch failure "is usually cosmetic, the PACS keeps pushing and CUBE keeps
+  registering after detach" — but nothing downstream acted on it.
+
+  A lost watch now marks its series `unconfirmed`. The confirmation loop, which
+  already asks CUBE about series whose confirmation went missing, now asks about
+  these too: a series CUBE reports as stored is `pulled`, with its file count and
+  path, whatever the watch managed to see.
+
+  What remains unconfirmed is reported as unknown rather than lost — `? … [WATCH
+ENDED — may still be arriving]` — and does not fail the command, because
+  nothing in the client knows that it failed. A series that was never fired is
+  still a real failure and still fails the command.
+
+- 2c38d8b: Three relations CUBE owns that the namespace could not reach are now projected.
+
+  **`/proc/workflows`** — instantiated pipelines, beside the jobs they own. A
+  workflow names the pipeline it ran and owns the plugin instances the run
+  created, which is runtime state, so it sits with `/proc/jobs` rather than with
+  the pipeline definitions in `/bin`. It projects as a directory of links: the
+  `pipeline` entry into `/bin`, each entry under `jobs/` into `/proc/jobs`.
+  Nothing restates a job's own representation. Links are lazy — a listing names a
+  link without paying to resolve it.
+
+  **`/tags`** — the tags themselves. A tag is a first-class user-owned resource
+  pointing at many feeds, so projecting it inside a feed would flatten a
+  many-to-many and make editing ambiguous about which copy changed. One object,
+  one path.
+
+  **`/usr/share/<plugin>`** — a plugin's version-independent identity: authors,
+  licence, type, repository. `/bin` stays flat; nesting versions under a plugin
+  directory would make an executable a directory, which is the application-bundle
+  trick and costs a permanently divided view. The Unix answer was already here —
+  `/bin` holds executables and `/usr/bin` holds their help text — so metadata
+  extends that parallel tree. A name given with a `/bin` version suffix resolves
+  to the version-independent record.
+
+- b39b584: A dropped retrieve watch reconnects instead of giving up.
+
+  The LONK socket is only how a client watches a retrieve; the retrieve itself
+  runs on the server and is unaffected by the socket dying. Losing the view was
+  nonetheless the end of the watch — which is why a 22-series study failed where
+  a 2-series one did not: a longer retrieve gives the socket more chances to
+  drop.
+
+  A dropped socket is now reopened, up to three times, and re-subscribed to the
+  series still in flight. Nothing is re-fired: those retrieves were never lost.
+  The reconnection is announced, because a silent one during a long pull is
+  indistinguishable from a stall.
+
+  Only when reconnection is exhausted does the watch stop, and it still records
+  the remaining series as `unconfirmed` rather than failed.
+
+### Patch Changes
+
+- a78b5ee: Everything under a job's `data` link now belongs to the link's target.
+
+  `ls /proc/jobs/feed_N/<plugin>_<id>/data` silently re-listed the instance
+  directory (status, params, log, data) instead of the job's output space, so
+  a browser rooted at the link showed the wrong entries and built nonsense
+  paths like `.../data/log` from them. The proc provider now recognizes the
+  `data` segment anywhere after an instance and delegates the whole subtree —
+  listing, text reads, and binary reads (new `readBinary`, so images in an
+  output space render) — to the resolved CFS target path.
+
+- 56ade16: Pipeline diagrams are cached per client keyed by pipeline id (registered pipelines are immutable, so the first build is the only CUBE traffic a diagram ever costs a session), and a fully settled feed's diagram now renders from the process cache with no status refresh at all — the refresh runs only while some instance can still change.
+- Updated dependencies [1c195a7]
+- Updated dependencies [e58bf58]
+  - @fnndsc/cumin@3.15.0
+
 ## 3.9.0
 
 ### Minor Changes

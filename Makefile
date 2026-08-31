@@ -91,7 +91,8 @@ help:
 	@echo "Front of house (git + GitHub; needs an authenticated 'gh'):"
 	@echo "  make branch BR=name - Start a new branch off the current HEAD"
 	@echo "  make save MSG=\"..\" - Commit tracked changes with MSG as the message"
-	@echo "                       (new files need an explicit 'git add' first)"
+	@echo "                       (.changeset/ is always staged too; other new"
+	@echo "                        files need an explicit 'git add' first)"
 	@echo "  make push          - Push the current branch to origin, setting upstream"
 	@echo "  make pr            - Push, then open a PR against main (body from commits)"
 	@echo "  make ci-watch      - Wait for this branch's PR checks (audit, node 22/24)"
@@ -212,6 +213,7 @@ ifndef MSG
 	$(error MSG is required: make save MSG="what changed and why")
 endif
 	git add -u
+	git add .changeset
 	git commit -m "$(MSG)"
 
 push:

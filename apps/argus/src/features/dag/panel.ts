@@ -113,6 +113,15 @@ export class DagPanel {
       this.scene.strategy_set(next);
       strategyPill.textContent = next.toUpperCase();
     });
+    // The projection pill lives beside the strategy pill on the rail; the
+    // label always names the CURRENT mode, same as RANKED/MOLECULE.
+    const projectionPill: HTMLElement | null =
+      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-projection') ?? null;
+    projectionPill?.addEventListener('click', (): void => {
+      const next: '3d' | '2d' = this.scene.projection_get() === '3d' ? '2d' : '3d';
+      this.scene.projection_set(next);
+      projectionPill.textContent = next.toUpperCase();
+    });
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,

@@ -801,9 +801,23 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
   align-items: flex-end;
 }
 
+/* Rail pills are canon capsules: filled color blocks with black text —
+ * the color IS the interface. (The black-filled look was inherited from
+ * the header-bar styling, where a cutout read correctly; on the canvas it
+ * read as an empty outline.) */
 .dag-rail .strategy-pill {
-  border: 1px solid var(--pumpkin-pie);
-  line-height: 1.5;
+  border: none;
+  background-color: var(--harvestgold);
+  color: #000;
+  line-height: 1.7;
+  min-width: 5.2rem;
+  text-align: center;
+}
+
+.dag-rail .strategy-pill:hover {
+  background-color: var(--butter);
+  color: #000;
+  box-shadow: 0 0 10px var(--butter);
 }
 
 .strategy-pill {

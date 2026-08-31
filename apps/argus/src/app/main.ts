@@ -268,6 +268,9 @@ function zoom_wire(terminal: ArgusTerminal): void {
         body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
       }
       body.dataset['zoom'] = pane;
+      // A scrolled page would carry its offset into the clamped zoom view,
+      // hiding the pane's top edge; zoom always starts from the origin.
+      window.scrollTo(0, 0);
       // A tree pane's zoom marks its leaf; siblings step offstage in CSS.
       const mount: HTMLElement | undefined = paneInstance_get(pane)?.mount;
       mount?.parentElement?.classList.add('pane-zoomed');
@@ -1096,7 +1099,13 @@ async function surface_start(token: string): Promise<void> {
         ) {
           return;
         }
-        const focused: string = layout.focused_get() ?? 'files';
+        // A zoomed tree pane is the only one on stage: the prefix key must
+        // reach its drawer, whatever the layout focus was before the zoom.
+        const zoomed: string | undefined = document.body.dataset['zoom'];
+        const focused: string =
+          zoomed !== undefined && zoomed !== 'console'
+            ? zoomed
+            : (layout.focused_get() ?? 'files');
         const mount: HTMLElement | undefined = paneInstance_get(focused)?.mount;
         const drawer: HTMLElement | null =
           mount?.querySelector<HTMLElement>('.pane-drawer') ?? null;

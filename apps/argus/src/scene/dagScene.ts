@@ -711,10 +711,16 @@ export class DagScene {
     this.drag = { nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false };
     this.renderer.domElement.setPointerCapture(event.pointerId);
     if (this.tip) this.tip.hidden = true;
+  }
 
-    // The reaction simulation starts from the meshes' current positions,
-    // with the grabbed node fixed to the pointer. Links and charge only —
-    // no centering force, or the pull would fight a recentering spring.
+  /**
+   * Builds the reaction simulation, from the meshes' current positions with
+   * the grabbed node fixed. Deferred to the first real pointer movement: a
+   * heated simulation on a mere press would shift nodes out from under the
+   * click and dblclick raycasts. Links and charge only — no centering
+   * force, or the pull would fight a recentering spring.
+   */
+  private dragSim_begin(nodeId: string): void {
     const links: Array<{ source: string; target: string }> = [];
     for (const node of this.graph.nodes) {
       for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
@@ -743,11 +749,14 @@ export class DagScene {
     if (this.drag === null) return;
     this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
     if (
+      !this.drag.moved &&
       Math.abs(event.clientX - this.drag.startX) + Math.abs(event.clientY - this.drag.startY) >
-      DRAG_THRESHOLD_PX
+        DRAG_THRESHOLD_PX
     ) {
       this.drag.moved = true;
+      this.dragSim_begin(this.drag.nodeId);
     }
+    if (!this.drag.moved) return;
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
     const pointer: THREE.Vector2 = new THREE.Vector2(
       ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
@@ -786,6 +795,9 @@ export class DagScene {
       ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
       -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
     );
+    // A raycast can land between a rebuild and its first render, when the
+    // fresh meshes still carry identity matrices; bring them current.
+    this.group.updateMatrixWorld(true);
     this.raycaster.setFromCamera(pointer, this.camera);
     const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
     const object: THREE.Object3D | undefined = hits[0]?.object;
@@ -795,14 +807,7 @@ export class DagScene {
   /** Names the node under the pointer in the hover tip, or hides it. */
   private hover_handle(event: PointerEvent): void {
     if (this.tip === null) return;
-    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    const pointer: THREE.Vector2 = new THREE.Vector2(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(pointer, this.camera);
-    const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
-    const nodeId: unknown = hits[0]?.object.userData['nodeId'];
+    const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
     const node: SceneNode | undefined =
       typeof nodeId === 'string'
         ? this.graph.nodes.find((n: SceneNode) => n.id === nodeId)
@@ -812,6 +817,7 @@ export class DagScene {
       this.renderer.domElement.style.cursor = '';
       return;
     }
+    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
     this.tip.textContent = node.label;
     this.tip.style.left = `${event.clientX - bounds.left + 14}px`;
     this.tip.style.top = `${event.clientY - bounds.top + 10}px`;
@@ -821,14 +827,7 @@ export class DagScene {
 
   /** Resolves a pointer event to a node and fires the matching handler. */
   private pick_handle(event: MouseEvent, kind: 'select' | 'activate'): void {
-    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    const pointer: THREE.Vector2 = new THREE.Vector2(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(pointer, this.camera);
-    const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
-    const nodeId: unknown = hits[0]?.object.userData['nodeId'];
+    const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
     if (typeof nodeId !== 'string') return;
     const node: SceneNode | undefined = this.graph.nodes.find((n: SceneNode) => n.id === nodeId);
     if (!node) return;

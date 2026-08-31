@@ -278,6 +278,56 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   overflow: hidden;
 }
 
+/* ----------------------------------------------------------- elastic gutter */
+/* The theme sizes the gutter buttons in fixed viewport fractions (21vw,
+ * 30vh, ...) that sum past any real window once the page stopped
+ * scrolling — the bottom givens were simply clipped off stage. LCARS
+ * frames are made of elastic segments, so the column becomes elastic:
+ * the buttons share the available height in the theme's own visual
+ * proportions, with floors that keep every label legible. Every given is
+ * always on stage — a preset hidden behind a scroll is not a given. */
+.left-frame > div:first-child {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.left-frame .panel-3 {
+  height: auto;
+  max-height: none;
+  flex: 3 1 0;
+  min-height: 3.5rem;
+}
+
+.left-frame .panel-4 {
+  height: auto;
+  min-height: 3rem;
+  flex: 2 1 0;
+}
+
+.left-frame .panel-5 {
+  height: auto;
+  flex: 4 1 0;
+  min-height: 3rem;
+}
+
+.left-frame .panel-6 {
+  height: auto;
+  flex: 2 1 0;
+  min-height: 3rem;
+}
+
+.left-frame .panel-spacer {
+  height: auto;
+  flex: 1 1 0;
+  min-height: 0.8rem;
+}
+
+.left-frame .panel-7 {
+  height: clamp(3.5rem, 12vh, 30vh);
+}
+
 /* ------------------------------------------------------------- the desktop */
 /* The workspace is a desktop, not a document. The shell owns the viewport:
  * the header takes what it needs, the console drawer its declared height,

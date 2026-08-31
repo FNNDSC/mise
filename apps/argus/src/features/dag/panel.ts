@@ -233,6 +233,12 @@ export class DagPanel {
    * @param context - The pushed prompt context.
    */
   public promptContext_observe(context: PromptContext): void {
+    // An offstage pane must not queue diagram traffic: following the cwd
+    // while nobody can see the graph is pure session-queue congestion (and
+    // exactly the kind of delay RUNS-02 then sits behind).
+    if (!this.canvas.isConnected) {
+      return;
+    }
     const feedId: number | null = cwdFeed_find(context.cwd);
     if (feedId === null) {
       return;
@@ -277,6 +283,14 @@ export class DagPanel {
 
   /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
   public feedsChooser_request(): void {
+    // The roster itself is cache-resident, but the request waits in the
+    // session queue behind whatever is executing — honesty demands the wait
+    // be visible from the first frame.
+    const loading: HTMLDivElement = document.createElement('div');
+    loading.className = 'feedlist-loading';
+    loading.textContent = 'RETRIEVING FEED ROSTER…';
+    this.feedList.replaceChildren(loading);
+    this.feedList.style.display = 'block';
     this.handlers.command_run('proc feeds');
   }
 

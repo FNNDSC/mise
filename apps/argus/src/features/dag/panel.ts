@@ -362,6 +362,7 @@ export class DagPanel {
       row.append(name, figure);
       this.facts.appendChild(row);
     }
+    this.facts.appendChild(subway_build(payload.status));
   }
 
   /** Activation: fly into the node — literally when the host can overlay. */
@@ -391,6 +392,79 @@ export class DagPanel {
   public flight_back(onDone: () => void): void {
     this.scene.flight_back(onDone);
   }
+
+  /**
+   * Flies into the node hosting the given plugin instance — the immersive
+   * hop: clicking a descendant instance inside a node is graph navigation,
+   * not directory descent. Call after the current overlay's `flight_back`
+   * has landed.
+   *
+   * @param instanceID - The CUBE plugin-instance id to dive into.
+   * @returns True when the instance is a node of the shown graph.
+   */
+  public node_flyTo(instanceID: number): boolean {
+    for (const [sceneId, node] of this.factsPayloads) {
+      if (node.instanceId !== instanceID) continue;
+      if (this.handlers.node_dive === undefined) return false;
+      const dive: (vfsPath: string) => void = this.handlers.node_dive;
+      this.facts_show({ id: sceneId, label: node.label, parentIds: [], joinParentIds: [] });
+      this.scene.flight_into(sceneId, (): void => dive(node.vfsPath));
+      return true;
+    }
+    return false;
+  }
+}
+
+/** The job lifecycle, in order — the subway line a node rides. */
+const SUBWAY_STAGES: ReadonlyArray<{ key: string; label: string }> = [
+  { key: 'created', label: 'created' },
+  { key: 'waiting', label: 'waiting' },
+  { key: 'scheduled', label: 'scheduled' },
+  { key: 'started', label: 'started' },
+  { key: 'registeringFiles', label: 'registering' },
+];
+
+/**
+ * Builds the subway strip: the node's lifecycle as stops on a line, filled
+ * to where the job actually is — the classic ChRIS UI progression carried
+ * over. A happy terminal fills the whole line; an error or cancellation
+ * ends the line at a red terminal stop.
+ *
+ * @param status - The node's current CUBE status.
+ * @returns The strip element.
+ */
+function subway_build(status: string): HTMLElement {
+  const strip: HTMLDivElement = document.createElement('div');
+  strip.className = 'dag-subway';
+  const doneAll: boolean = status === 'finishedSuccessfully';
+  const failed: boolean = status === 'finishedWithError' || status === 'cancelled';
+  const at: number = SUBWAY_STAGES.findIndex((stage): boolean => stage.key === status);
+  const reached: number = doneAll || failed ? SUBWAY_STAGES.length : at;
+  SUBWAY_STAGES.forEach((stage, index): void => {
+    if (index > 0) {
+      const link: HTMLSpanElement = document.createElement('span');
+      link.className = 'subway-link' + (index <= reached ? ' subway-passed' : '');
+      strip.appendChild(link);
+    }
+    const stop: HTMLSpanElement = document.createElement('span');
+    stop.className =
+      'subway-stop' +
+      (index < reached ? ' subway-passed' : '') +
+      (index === at && !doneAll && !failed ? ' subway-here' : '');
+    stop.title = stage.label;
+    strip.appendChild(stop);
+  });
+  const lastLink: HTMLSpanElement = document.createElement('span');
+  lastLink.className = 'subway-link' + (doneAll || failed ? ' subway-passed' : '');
+  strip.appendChild(lastLink);
+  const terminal: HTMLSpanElement = document.createElement('span');
+  terminal.className =
+    'subway-stop subway-terminal' +
+    (doneAll ? ' subway-done' : '') +
+    (failed ? ' subway-failed' : '');
+  terminal.title = doneAll ? 'finished' : failed ? status : 'pending';
+  strip.appendChild(terminal);
+  return strip;
 }
 
 /**

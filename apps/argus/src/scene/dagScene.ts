@@ -112,7 +112,7 @@ const RUNNING_STATUSES: ReadonlySet<string> = new Set([
 function palette_read(): {
   running: THREE.Color; done: THREE.Color; error: THREE.Color;
   template: THREE.Color; unknown: THREE.Color; edge: THREE.Color; join: THREE.Color;
-  root: THREE.Color;
+  root: THREE.Color; pulse: THREE.Color;
 } {
   const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
   const varColor = (name: string, fallback: string): THREE.Color =>
@@ -129,6 +129,9 @@ function palette_read(): {
     // graph's origin reads at a glance in either layout. Themeable via
     // `--dag-root`; the fallback is the harbor seaglass.
     root: varColor('--dag-root', '#6fbfae'),
+    // The wave flares COOL against the warm status palette: a white flare
+    // vanished on butter (finished) nodes. Themeable via `--dag-pulse`.
+    pulse: varColor('--dag-pulse', '#48d8f0'),
   };
 }
 
@@ -206,7 +209,7 @@ function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
  * the metric (degree when no metric arrived). The graph finds its own
  * shape; scale carries meaning.
  */
-function layout_molecule(nodes: SceneNode[]): PlacedNode[] {
+function layout_molecule(nodes: SceneNode[], dimensions: 2 | 3 = 3): PlacedNode[] {
   const degree: Map<string, number> = new Map();
   const links: Array<{ source: string; target: string }> = [];
   for (const node of nodes) {
@@ -223,10 +226,12 @@ function layout_molecule(nodes: SceneNode[]): PlacedNode[] {
 
   const simNodes: Array<{ id: string; x?: number; y?: number; z?: number }> =
     nodes.map((n: SceneNode) => ({ id: n.id }));
-  const simulation = forceSimulation(simNodes, 3)
+  // In 2D the simulation itself is two-dimensional: a 3D settle flattened
+  // afterwards piles nodes that resolved their overlaps in depth.
+  const simulation = forceSimulation(simNodes, dimensions)
     .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(2.2))
     .force('charge', forceManyBody().strength(-6))
-    .force('center', forceCenter(0, 0, 0))
+    .force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0))
     .stop();
   for (let tick: number = 0; tick < 150; tick++) simulation.tick();
 
@@ -294,6 +299,8 @@ export class DagScene {
   private readonly tumbleAxis: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
   /** Phase driving the axis wander; seeded randomly so miniatures desync. */
   private tumblePhase: number = Math.random() * Math.PI * 2;
+  /** The wave's flare color, re-read from the palette on every rebuild. */
+  private pulseColor: THREE.Color = new THREE.Color('#48d8f0');
 
   /**
    * @param container - The element the canvas fills.
@@ -561,9 +568,16 @@ export class DagScene {
       const dt: number = elapsed - fireAt;
       const flare: number =
         dt >= 0 && dt <= WAVE_FLARE_MS ? Math.sin((dt / WAVE_FLARE_MS) * Math.PI) : 0;
-      const selectedBase: number = id === this.selectedId ? 0.35 : 0;
-      mesh.material.emissive.setScalar(flare > 0 || id === this.selectedId ? 1 : 0);
-      mesh.material.emissiveIntensity = Math.max(selectedBase, flare * 0.9);
+      // The flare pops in two channels at once: a cool color (white died on
+      // the butter of finished nodes) and a size swell.
+      mesh.scale.setScalar(1 + flare * 0.45);
+      if (flare > 0) {
+        mesh.material.emissive.copy(this.pulseColor);
+        mesh.material.emissiveIntensity = flare * 1.2;
+      } else {
+        mesh.material.emissive.setScalar(id === this.selectedId ? 1 : 0);
+        mesh.material.emissiveIntensity = id === this.selectedId ? 0.35 : 0;
+      }
     }
     if (elapsed > peak + WAVE_FLARE_MS) {
       // A future start leaves the graph quiet through the gap, then loops.
@@ -659,18 +673,27 @@ export class DagScene {
     this.dragSimNodes = [];
     this.drag = null;
     const palette = palette_read();
+    this.pulseColor = palette.pulse;
     const placed: PlacedNode[] =
-      this.strategy === 'molecule' ? layout_molecule(this.graph.nodes) : layout_ranked(this.graph.nodes);
+      this.strategy === 'molecule'
+        ? layout_molecule(this.graph.nodes, this.projection === '2d' ? 2 : 3)
+        : layout_ranked(this.graph.nodes);
     if (this.projection === '2d') {
-      // The schematic: whatever shape the strategy found, flattened to the
-      // plane the camera faces.
+      // The molecule already settled in-plane; ranked drops only its
+      // parallax hash — its layout was two-dimensional by construction.
       for (const item of placed) item.position.z = 0;
     }
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
       const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
-      const geometry: THREE.SphereGeometry = new THREE.SphereGeometry(radius, 24, 18);
+      // 2D is drawn flat: discs, not lit spheres — the schematic reading
+      // all the way down. Uniform normals face the camera, so the shared
+      // material pipeline (status color, selection, flare) carries over.
+      const geometry: THREE.BufferGeometry =
+        this.projection === '2d'
+          ? new THREE.CircleGeometry(radius, 36)
+          : new THREE.SphereGeometry(radius, 24, 18);
       const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
         color: nodeColor_pick(node, palette, isRoot),
         roughness: 0.35,
@@ -814,7 +837,7 @@ export class DagScene {
     this.dragSimNodes = [...this.meshes.entries()].map(([id, mesh]) => ({
       id, x: mesh.position.x, y: mesh.position.y, z: mesh.position.z,
     }));
-    this.dragSim = forceSimulation(this.dragSimNodes, 3)
+    this.dragSim = forceSimulation(this.dragSimNodes, this.projection === '2d' ? 2 : 3)
       .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(2.2))
       .force('charge', forceManyBody().strength(-6))
       .alpha(0.5)

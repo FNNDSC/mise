@@ -28,5 +28,5 @@ declare module 'd3-force-3d' {
   export function forceSimulation(nodes: SimulationNode[], dimensions?: number): Simulation;
   export function forceLink(links: Array<{ source: string; target: string }>): LinkForce;
   export function forceManyBody(): { strength(value: number): unknown };
-  export function forceCenter(x: number, y: number, z: number): unknown;
+  export function forceCenter(x: number, y: number, z?: number): unknown;
 }

@@ -787,6 +787,25 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
   text-overflow: ellipsis;
 }
 
+/* The view-state rail: mode pills riding inside the instrument, top-right.
+ * The pane drawer holds actions (PULSE, ENTER NODE); the rail holds modes
+ * — always visible, because a mode is state the operator must read. */
+.dag-rail {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-end;
+}
+
+.dag-rail .strategy-pill {
+  border: 1px solid var(--pumpkin-pie);
+  line-height: 1.5;
+}
+
 .strategy-pill {
   border: none;
   border-radius: 0.7rem;

@@ -385,7 +385,12 @@ export class DagScene {
       } else {
         // A touched graph holds still; the idle spin resumes after the wait.
         // A flight or a stay inside a node holds it unconditionally.
-        if (Date.now() >= this.spinIdleUntil && !this.holding && this.flight === null) {
+        if (
+          Date.now() >= this.spinIdleUntil &&
+          !this.holding &&
+          this.flight === null &&
+          this.projection === '3d'
+        ) {
           this.group.rotation.y += SPIN_INTERACTIVE;
         }
         // The reaction simulation runs while hot: during a grab, and cooling
@@ -578,6 +583,30 @@ export class DagScene {
     return this.strategy;
   }
 
+  /** The active projection: the sculpted 3D stage, or the flat schematic. */
+  private projection: '3d' | '2d' = '3d';
+
+  /**
+   * Switches projection. 2D is the schematic reading: the layout flattens
+   * to the plane, the view squares up face-on, the idle spin rests, and an
+   * empty-space drag pans (there is no depth to orbit). 3D restores the
+   * sculpted stage.
+   *
+   * @param projection - The projection to show.
+   */
+  public projection_set(projection: '3d' | '2d'): void {
+    this.projection = projection;
+    if (projection === '2d') {
+      this.group.rotation.set(0, 0, 0);
+    }
+    this.rebuild();
+  }
+
+  /** @returns The active projection. */
+  public projection_get(): '3d' | '2d' {
+    return this.projection;
+  }
+
   /**
    * Updates one node's status in place (progress-channel driven) without
    * re-laying the graph.
@@ -629,6 +658,11 @@ export class DagScene {
     const palette = palette_read();
     const placed: PlacedNode[] =
       this.strategy === 'molecule' ? layout_molecule(this.graph.nodes) : layout_ranked(this.graph.nodes);
+    if (this.projection === '2d') {
+      // The schematic: whatever shape the strategy found, flattened to the
+      // plane the camera faces.
+      for (const item of placed) item.position.z = 0;
+    }
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
@@ -836,7 +870,7 @@ export class DagScene {
       this.viewDrag.moved = true;
     }
     if (!this.viewDrag.moved) return;
-    if (this.viewDrag.pan) {
+    if (this.viewDrag.pan || this.projection === '2d') {
       // Screen-proportional pan: the graph follows the pointer.
       const factor: number = this.camera.position.z * 0.0016;
       this.camera.position.x -= dx * factor;

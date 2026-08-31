@@ -1003,6 +1003,21 @@ body[data-header='away'] .wrap:not(#gap) {
   display: none;
 }
 
+/* A zoomed pane owns every pixel: the theme's fixed black trim strips
+ * (headtrim/baseboard, z-index 999) and the header's lid otherwise cover
+ * its first and last rows of content. */
+body[data-zoom] .headtrim,
+body[data-zoom] .baseboard,
+body[data-zoom] #header-restore {
+  display: none;
+}
+
+/* Header away without a zoom: the lid strip gets its height reserved
+ * instead of overlaying the workspace's top pixels. */
+body[data-header='away']:not([data-zoom]) #gap {
+  margin-top: 12px;
+}
+
 body[data-header='away'] #header-restore {
   display: block;
   position: fixed;

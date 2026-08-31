@@ -852,6 +852,19 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
   font-size: 0.8rem;
 }
 
+/* The roster's queue-wait indicator: a breathing LCARS bar. */
+.feedlist-loading {
+  padding: 0.5rem 0.6rem;
+  color: var(--harvestgold);
+  letter-spacing: 0.12em;
+  animation: roster-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes roster-breathe {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 .feedlist-row {
   display: grid;
   grid-template-columns: 4em 1fr 8em 8em;

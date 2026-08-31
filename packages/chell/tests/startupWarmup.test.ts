@@ -127,7 +127,7 @@ describe('daemonSession_run', () => {
     }));
   });
 
-  it('boots on the face and settles it once the daemon is up', async () => {
+  it('keeps the classic boot and raises the face once the daemon is up', async () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
@@ -135,7 +135,8 @@ describe('daemonSession_run', () => {
     const flags = { plugins: false, feeds: false, publicFeeds: false, jobs: false };
 
     await daemonSession_run(engine, 'rudolph', flags, true, { log: jest.fn() });
-    expect(mockFaceBoot).toHaveBeenCalledTimes(1);
+    // The boot itself stays in the normal buffer (no boot-phase face).
+    expect(mockFaceBoot).not.toHaveBeenCalled();
     expect(mockFaceReady).toHaveBeenCalledTimes(1);
     const options = mockFaceReady.mock.calls[0]![0] as {
       info: Array<{ label: string; value: string }>;
@@ -150,10 +151,8 @@ describe('daemonSession_run', () => {
     expect(options.telemetry_get()).toEqual({ sessions: 0, busy: false, jobs: 12, feeds: 3 });
 
     // A non-interactive host (systemd) never takes the terminal over.
-    mockFaceBoot.mockClear();
     mockFaceReady.mockClear();
     await daemonSession_run(engine, 'rudolph', flags, false, { log: jest.fn() });
-    expect(mockFaceBoot).not.toHaveBeenCalled();
     expect(mockFaceReady).not.toHaveBeenCalled();
   });
 

@@ -101,50 +101,41 @@ describe('face_frameCompose', () => {
     ...overrides,
   });
 
-  it('draws the brain above the panel when the terminal is tall enough', () => {
+  it('ready is minimal by law: brain, one status line, the hint — nothing else', () => {
     const lines: string[] = face_frameCompose(frame());
     expect(lines.length).toBeGreaterThan(logoRows_count());
     const text: string = lines.map(plain).join('\n');
-    expect(text).toContain('wire');
-    expect(text).toContain('ws://pangea:42479');
-    expect(text).toContain('surfaces');
-    expect(text).toContain('120 jobs · 8 feeds');
+    expect(text).toContain('DAEMON RUNNING · SESSION ESTABLISHED');
+    expect(text).toContain('HIT ESC TO TOGGLE THE BOOT LOG');
+    // The addresses and telemetry live on the Esc side, not here.
+    expect(text).not.toContain('ws://pangea:42479');
+    expect(text).not.toContain('surfaces');
+    expect(text).not.toContain('─');
   });
 
-  it('drops the brain, never the identity panel, on a short terminal', () => {
+  it('says so while the engine executes', () => {
+    const busyFrame = frame({ telemetry: { ...telemetry, busy: true } });
+    const text: string = face_frameCompose(busyFrame).map(plain).join('\n');
+    expect(text).toContain('DAEMON RUNNING · ENGINE EXECUTING');
+  });
+
+  it('drops the brain, never the status line, on a short terminal', () => {
     const lines: string[] = face_frameCompose(frame({ rows: 12 }));
     expect(lines.length).toBeLessThanOrEqual(11);
     const text: string = lines.map(plain).join('\n');
-    expect(text).toContain('wire');
-    expect(text).toContain('uptime');
+    expect(text).toContain('DAEMON RUNNING');
   });
 
-  it('shows the log strip only when there are log lines', () => {
-    const quiet: string = face_frameCompose(frame()).map(plain).join('\n');
-    expect(quiet).not.toContain('─');
-    const noisy: string = face_frameCompose(frame({ logTail: ['retrying group 32'] }))
-      .map(plain)
-      .join('\n');
-    expect(noisy).toContain('─');
-    expect(noisy).toContain('retrying group 32');
-  });
-
-  it('clips every line so nothing can wrap', () => {
+  it('clips every boot-strip line so nothing can wrap', () => {
     const lines: string[] = face_frameCompose(frame({
+      phase: 'boot',
       rows: 12,
       columns: 30,
-      info: [{ label: 'attach', value: 'chell --remote --attach ws://somewhere:9999 --token deadbeef'.repeat(2) }],
       logTail: ['x'.repeat(500)],
     }));
     for (const line of lines) {
       expect(plain(line).length).toBeLessThanOrEqual(30);
     }
-  });
-
-  it('renders an idle panel when no telemetry hook is wired', () => {
-    const text: string = face_frameCompose(frame({ telemetry: null })).map(plain).join('\n');
-    expect(text).toContain('uptime');
-    expect(text).not.toContain('surfaces');
   });
 
   it('boot phase: headline and tall log strip, no panel, no hint', () => {

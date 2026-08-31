@@ -515,15 +515,13 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // Credentials are good: reset the screen and bring the brain to life above a
   // clear one. Animating in place would leave it anchored off the top of a
   // screen the login output has already scrolled, where it paints over the
-  // boot report and the daemon's own addresses instead of over itself.
-  //
-  // A daemon boot is the exception, by law: the normal buffer is text only —
-  // the boot report and addresses must survive verbatim for the console
-  // face's Esc view — and the animated brain lives solely on the face's
-  // alternate screen. On a tall terminal the pulse could outlive the whole
-  // boot, and its final repaint (cursor arithmetic over wrapped, ANSI-heavy
-  // lines) stamped the brain over the token and attach lines.
-  if (isInteractiveSession && showLogo && !useAsciiBoot && config.mode !== 'daemon') {
+  // boot report and the daemon's own addresses instead of over itself. This
+  // is the boot experience for every interactive mode, daemon included: the
+  // brain lights up at connect and the boot log scrolls beneath it. What a
+  // daemon boot must NOT do is repaint the brain after the addresses print —
+  // the ready handoff halts the pulse without a final repaint (logo_animateHalt)
+  // so the text record stays verbatim for the console face's Esc view.
+  if (isInteractiveSession && showLogo && !useAsciiBoot) {
     logo_reviveOnScreen();
   }
 

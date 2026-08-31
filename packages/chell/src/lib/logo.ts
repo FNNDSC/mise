@@ -194,15 +194,15 @@ export function logo_animatePulse(): void {
     }
 
     logoFrameIndex++;
-    write_untracked('\x1b[s');
-    write_untracked(`\x1b[${upOffset}A\r`);
-
+    // One buffered write per frame: interleaving a dozen small writes with
+    // concurrent log output tears the repaint mid-brain.
     const frameLines: string[] = logo_frameRender(logoFrameIndex, false);
-    frameLines.forEach((line: string) => {
-      write_untracked(`\r${line}\x1b[1B`);
-    });
-
-    write_untracked('\x1b[u');
+    write_untracked(
+      '\x1b[s' +
+      `\x1b[${upOffset}A\r` +
+      frameLines.map((line: string): string => `\r${line}\x1b[1B`).join('') +
+      '\x1b[u',
+    );
   }, 100);
 }
 
@@ -222,6 +222,23 @@ export function logo_animateStart(useColor: boolean): void {
 /**
  * Stops the brain activity pulsing animation, rendering the final steady state.
  */
+/**
+ * Halts the pulse without touching the screen.
+ *
+ * The final-repaint in {@link logo_animateStop} positions itself by row
+ * arithmetic that drifts over wrapped, ANSI-heavy output; on a daemon boot
+ * that stamped the brain over the token and attach lines just printed. The
+ * ready handoff (the console face taking the alternate screen) wants the
+ * pulse simply gone, with the text record left exactly as it stands.
+ */
+export function logo_animateHalt(): void {
+  if (logoInterval) {
+    clearInterval(logoInterval);
+    logoInterval = null;
+  }
+  stdoutTrack_stop();
+}
+
 export function logo_animateStop(): void {
   if (logoInterval) {
     clearInterval(logoInterval);

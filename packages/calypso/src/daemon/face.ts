@@ -169,31 +169,26 @@ function line_clip(line: string, columns: number): string {
  * @returns The lines to paint, at most `frame.rows - 1` of them.
  */
 export function face_frameCompose(frame: FaceFrame): string[] {
-  const lines: string[] = [];
-  const booting: boolean = frame.phase === 'boot';
-  const label_pad: number = Math.max(...frame.info.map((row: FaceInfo): number => row.label.length), 8);
+  return frame.phase === 'boot' ? bootFrame_compose(frame) : readyFrame_compose(frame);
+}
 
-  const statusRows: FaceInfo[] = booting ? [] : [
-    { label: 'uptime', value: uptime_format(frame.uptimeSeconds) },
-    ...(frame.telemetry !== null
-      ? [
-          { label: 'surfaces', value: String(frame.telemetry.sessions) },
-          { label: 'engine', value: frame.telemetry.busy ? 'EXECUTING' : 'idle' },
-          { label: 'index', value: `${frame.telemetry.jobs} jobs · ${frame.telemetry.feeds} feeds` },
-        ]
-      : []),
-  ];
-  const panel: FaceInfo[] = booting ? [] : [...frame.info, ...statusRows];
-  // Booting, the messages are the point: a headline and a tall strip. Ready,
-  // the identity panel leads and the strip shrinks to a murmur, with the
-  // toggle hint closing the frame.
-  const headline: string | null = booting ? 'SYSTEMS INITIALIZING' : null;
-  const hint: string | null = booting ? null : 'HIT ESC TO TOGGLE THE BOOT LOG · CTRL-C STOPS THE DAEMON';
+/** Centers one plain line, colored after clipping. */
+function centered_line(text: string, columns: number, paint: (s: string) => string): string {
+  const clipped: string = line_clip(text, columns);
+  const pad: string = ' '.repeat(Math.max(0, Math.floor((columns - clipped.length) / 2)));
+  return pad + paint(clipped);
+}
+
+/**
+ * The boot flavor: the brain over a headline and a tall strip of the
+ * streaming boot log. (Kept for hosts that want an animated boot on the
+ * alternate screen; the chell daemon boot uses the classic in-scroll boot.)
+ */
+function bootFrame_compose(frame: FaceFrame): string[] {
+  const lines: string[] = [];
   const stripHeight: number = frame.logTail.length > 0 ? frame.logTail.length + 1 : 0;
-  const trimHeight: number = (headline !== null ? 2 : 0) + (hint !== null ? 2 : 0);
   const brainFits: boolean =
-    logoRows_count() + panel.length + stripHeight + trimHeight + 3 <= frame.rows - 1 &&
-    logoColumns_count() <= frame.columns;
+    logoRows_count() + stripHeight + 5 <= frame.rows - 1 && logoColumns_count() <= frame.columns;
 
   if (brainFits) {
     const indent: string = ' '.repeat(Math.max(0, Math.floor((frame.columns - logoColumns_count()) / 2)));
@@ -202,32 +197,43 @@ export function face_frameCompose(frame: FaceFrame): string[] {
     }
     lines.push('');
   }
-
-  if (headline !== null) {
-    const pad: string = ' '.repeat(Math.max(0, Math.floor((frame.columns - headline.length) / 2)));
-    lines.push(chalk.cyan(pad + headline));
-    lines.push('');
-  }
-
-  for (const row of panel) {
-    const plain: string = `  ${row.label.padEnd(label_pad)}  ${row.value}`;
-    const clipped: string = line_clip(plain, frame.columns);
-    const labelEnd: number = 2 + row.label.length;
-    lines.push(chalk.cyan(clipped.slice(0, labelEnd)) + clipped.slice(labelEnd));
-  }
-
+  lines.push(centered_line('SYSTEMS INITIALIZING', frame.columns, chalk.cyan));
+  lines.push('');
   if (frame.logTail.length > 0) {
     lines.push(chalk.gray('  ' + '─'.repeat(Math.min(40, Math.max(0, frame.columns - 4)))));
     for (const logLine of frame.logTail) {
       lines.push(chalk.gray(line_clip(`  ${logLine}`, frame.columns)));
     }
   }
+  return lines.slice(0, Math.max(0, frame.rows - 1));
+}
 
-  if (hint !== null) {
-    lines.push('');
-    lines.push(chalk.gray(line_clip(`  ${hint}`, frame.columns)));
+/**
+ * The steady face, minimal by law: the animating brain, one status line,
+ * and the toggle hint — vertically centered. Everything informational (the
+ * addresses, the boot report) lives on the Esc side, verbatim.
+ */
+function readyFrame_compose(frame: FaceFrame): string[] {
+  const busy: boolean = frame.telemetry?.busy ?? false;
+  const status: string = busy ? 'DAEMON RUNNING · ENGINE EXECUTING' : 'DAEMON RUNNING · SESSION ESTABLISHED';
+  const hint: string = 'HIT ESC TO TOGGLE THE BOOT LOG · CTRL-C STOPS THE DAEMON';
+
+  const content: string[] = [];
+  const brainFits: boolean =
+    logoRows_count() + 5 <= frame.rows - 1 && logoColumns_count() <= frame.columns;
+  if (brainFits) {
+    const indent: string = ' '.repeat(Math.max(0, Math.floor((frame.columns - logoColumns_count()) / 2)));
+    for (const brainLine of logo_frameRender(frame.frameIndex)) {
+      content.push(indent + brainLine);
+    }
+    content.push('');
   }
+  content.push(centered_line(status, frame.columns, chalk.cyan));
+  content.push('');
+  content.push(centered_line(hint, frame.columns, chalk.gray));
 
+  const topPad: number = Math.max(0, Math.floor((frame.rows - 1 - content.length) / 2));
+  const lines: string[] = [...Array<string>(topPad).fill(''), ...content];
   return lines.slice(0, Math.max(0, frame.rows - 1));
 }
 

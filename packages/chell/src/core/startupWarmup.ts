@@ -20,18 +20,15 @@ import {
 } from '@fnndsc/brasa';
 import {
   daemon_launch,
-  face_boot,
   face_ready,
-  face_resume,
   face_stop,
-  face_suspend,
   identity_forSession,
   type DaemonLaunchInfo,
   type FaceInfo,
   type FaceTelemetry,
 } from '@fnndsc/calypso';
 import { procIndex_snapshot } from '@fnndsc/brasa';
-import { logo_animateStop } from '../lib/logo.js';
+import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import {
@@ -375,22 +372,7 @@ export async function daemonSession_run(
     // events into StdoutSink's null renderer and the boot looks frozen.
     if (interactive) {
       sink_set(new StdoutSink(new TerminalProgressRenderer()));
-      // The boot face: the brain races over the streaming boot log on the
-      // alternate screen. Everything printed from here on is captured into
-      // the face's ring — visible live in its strip, and flushed verbatim
-      // into the normal buffer on the first Esc.
-      face_boot();
     }
-    // A warm-up failure asks the operator a question; the face steps aside
-    // so the prompt's readline owns the terminal and every keystroke.
-    const recovery_askAside = async (failures: string[]): Promise<DaemonWarmupFailureDecision> => {
-      face_suspend();
-      try {
-        return await recovery(failures);
-      } finally {
-        face_resume();
-      }
-    };
     const info: DaemonLaunchInfo = await daemon_launch(engine, async (): Promise<void> => {
       const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
       if (cache.failures.length === 0) {
@@ -398,7 +380,7 @@ export async function daemonSession_run(
         return;
       }
 
-      if (await recovery_askAside(cache.failures) === 'exit') {
+      if (await recovery(cache.failures) === 'exit') {
         reporter.log('fail', 'Engine', `Startup aborted after incomplete warm-up: ${cache.failures.join(', ')}`);
         throw new DaemonWarmupAbortedError();
       }
@@ -406,11 +388,11 @@ export async function daemonSession_run(
     });
 
     if (interactive) {
-      // Boot is over: the face settles from its boot phase into the steady
-      // instrument — calm pulse, identity panel, toggle hint — repainting
-      // the same alternate screen in place. (animateStop is a safety catch:
-      // daemon boots start no normal-buffer pulse any more.)
-      logo_animateStop();
+      // Boot is over. The in-scroll pulse halts without a final repaint —
+      // the text record (addresses included) stays verbatim for the face's
+      // Esc view — and the alternate screen takes over as the resting
+      // state: the animating brain and one status line, nothing else.
+      logo_animateHalt();
       const faceInfo: FaceInfo[] = [
         { label: 'identity', value: info.identity },
         { label: 'wire', value: info.url },

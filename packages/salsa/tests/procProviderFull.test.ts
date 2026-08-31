@@ -82,30 +82,26 @@ describe('feedStatus_derive', () => {
 
 describe('procPath_parse', () => {
   it('parses a feed path', () => {
-    expect(procPath_parse('/proc/jobs/feed_5')).toEqual({ feedID: 5, instanceID: null, virtualFile: null });
+    expect(procPath_parse('/proc/jobs/feed_5')).toEqual({ feedID: 5, instanceID: null, virtualFile: null, dataRemainder: null });
   });
   it('parses an instance path', () => {
     expect(procPath_parse('/proc/jobs/feed_5/pl-dircopy_10')).toEqual({
-      feedID: 5, instanceID: 10, virtualFile: null,
-    });
+      feedID: 5, instanceID: 10, virtualFile: null, dataRemainder: null });
   });
   it('parses a feed virtual file', () => {
     expect(procPath_parse('/proc/jobs/feed_5/status')).toEqual({
-      feedID: 5, instanceID: null, virtualFile: 'status',
-    });
+      feedID: 5, instanceID: null, virtualFile: 'status', dataRemainder: null });
   });
   it('parses an instance virtual file', () => {
     expect(procPath_parse('/proc/jobs/feed_5/pl-x_10/status')).toEqual({
-      feedID: 5, instanceID: 10, virtualFile: 'status',
-    });
+      feedID: 5, instanceID: 10, virtualFile: 'status', dataRemainder: null });
   });
   it('parses an instance data link', () => {
     expect(procPath_parse('/proc/jobs/feed_5/pl-x_10/data')).toEqual({
-      feedID: 5, instanceID: 10, virtualFile: 'data',
-    });
+      feedID: 5, instanceID: 10, virtualFile: 'data', dataRemainder: '' });
   });
   it('returns nulls for a non-feed path', () => {
-    expect(procPath_parse('/proc/jobs/other')).toEqual({ feedID: null, instanceID: null, virtualFile: null });
+    expect(procPath_parse('/proc/jobs/other')).toEqual({ feedID: null, instanceID: null, virtualFile: null, dataRemainder: null });
   });
 });
 
@@ -172,6 +168,61 @@ describe('ProcVfsProvider.list', () => {
     expect(items.filter((i) => i.type === 'file').map((i) => i.name)).toEqual(['status', 'params', 'log']);
     expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-child_11', status: 'finishedSuccessfully' });
     expect(client.getPluginInstances).not.toHaveBeenCalled();
+  });
+
+  it('delegates everything under the data link to its CFS target', async () => {
+    // `ls .../data` must show the target's real contents — not silently
+    // re-list the instance (the defect: the browser rooted at the link
+    // showed status/params/log and built .../data/log paths from them).
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({
+      id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null,
+      status: 'finishedSuccessfully', outputPath: '/home/alice/outputs/result-set',
+    } as ProcInstance);
+    cache.topologyLoaded_mark(5);
+    const { vfsDispatcher } = await import('../src/vfs/dispatcher');
+    const listSpy = jest.spyOn(vfsDispatcher, 'list').mockResolvedValue(
+      Ok([{ name: 'brain.mgz', type: 'file', size: 7, owner: 'alice', date: '' }]),
+    );
+    const readSpy = jest.spyOn(vfsDispatcher, 'read').mockResolvedValue(Ok('bytes'));
+    const binSpy = jest.spyOn(vfsDispatcher, 'readBinary').mockResolvedValue(Ok(Buffer.from('img')));
+    try {
+      const listing = await provider.list('/proc/jobs/feed_5/pl-root_10/data');
+      expect(listSpy).toHaveBeenCalledWith('/home/alice/outputs/result-set', undefined);
+      expect(listing.ok && listing.value[0]?.name).toBe('brain.mgz');
+
+      const deep = await provider.list('/proc/jobs/feed_5/pl-root_10/data/sub/dir');
+      expect(deep.ok).toBe(true);
+      expect(listSpy).toHaveBeenLastCalledWith('/home/alice/outputs/result-set/sub/dir', undefined);
+
+      const text = await provider.read('/proc/jobs/feed_5/pl-root_10/data/notes.txt');
+      expect(text.ok && text.value).toBe('bytes');
+      expect(readSpy).toHaveBeenCalledWith('/home/alice/outputs/result-set/notes.txt');
+
+      const bytes = await provider.readBinary('/proc/jobs/feed_5/pl-root_10/data/brain.mgz');
+      expect(bytes.ok).toBe(true);
+      expect(binSpy).toHaveBeenCalledWith('/home/alice/outputs/result-set/brain.mgz');
+
+      // Outside the data subtree there are no binary files to read.
+      const refused = await provider.readBinary('/proc/jobs/feed_5/pl-root_10/status');
+      expect(refused.ok).toBe(false);
+    } finally {
+      listSpy.mockRestore();
+      readSpy.mockRestore();
+      binSpy.mockRestore();
+    }
+  });
+
+  it('refuses the data subtree when the job has no output space', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({
+      id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null,
+      status: 'finishedSuccessfully', outputPath: null,
+    } as ProcInstance);
+    cache.topologyLoaded_mark(5);
+
+    expect((await provider.list('/proc/jobs/feed_5/pl-root_10/data')).ok).toBe(false);
+    expect((await provider.readBinary('/proc/jobs/feed_5/pl-root_10/data/x')).ok).toBe(false);
   });
 
   it('projects a job output as a navigable data link', async () => {

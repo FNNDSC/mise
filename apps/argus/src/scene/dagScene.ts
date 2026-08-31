@@ -448,15 +448,18 @@ export class DagScene {
     if (mesh === undefined || this.flight !== null || this.holding) {
       return;
     }
-    this.group.rotation.set(0, 0, 0);
+    // The dive leaves the graph exactly as the operator has it — no reset
+    // snap. Holding first: the spin must not move the target mid-aim.
     this.holding = true;
     this.flightHome = {
       position: this.camera.position.clone(),
       quaternion: this.camera.quaternion.clone(),
     };
     // Aim the camera at the node from its current stance, then dolly to just
-    // shy of the surface — arrival reads as passing inside.
-    const target: THREE.Vector3 = mesh.position.clone();
+    // shy of the surface — arrival reads as passing inside. World position:
+    // the camera flies in world space, and the group may be rotated.
+    this.group.updateMatrixWorld(true);
+    const target: THREE.Vector3 = mesh.getWorldPosition(new THREE.Vector3());
     const toPos: THREE.Vector3 = target
       .clone()
       .add(this.camera.position.clone().sub(target).normalize().multiplyScalar(0.4));

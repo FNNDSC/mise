@@ -253,7 +253,10 @@ export class DagPanel {
     this.pinnedFeedId = null;
     this.requestedFeedId = null;
     this.title.textContent = this.defaultTitle;
-    this.empty.style.display = '';
+    // The empty-state hint ("no feed in view — press RUNS-02...") is for a
+    // pane that arrived with nothing to say; RUNS-02 itself is the answer to
+    // that hint, so flashing it here before the roster lands is nonsense.
+    this.empty.style.display = 'none';
   }
 
   /**

@@ -240,12 +240,16 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 
 /* The viewer body: the group's regard, rendered. */
 .pane-view .view-body {
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
-  max-height: calc(100dvh - 22rem);
 }
 
-body[data-zoom] .pane-zoomed .view-body {
-  max-height: calc(100dvh - 7rem);
+/* The PACS workspace keeps its internal sections; the pane itself scrolls
+ * if they outgrow the leaf. */
+#pacs-workspace {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* ----------------------------------------------------------- PACS workspace */
@@ -260,7 +264,84 @@ body[data-zoom] .pane-zoomed .view-body {
 }
 
 .layout-leaf > .workspace-pane {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------- the desktop */
+/* The workspace is a desktop, not a document. The shell owns the viewport:
+ * the header takes what it needs, the console drawer its declared height,
+ * and the main region flexes into the rest. Every pane fills its leaf, and
+ * scrolling happens inside instruments — never on the page. Fixed viewport
+ * fractions (the old 42vh caps) are gone: a full-workspace preset really is
+ * full-workspace. */
+html,
+body {
+  height: 100dvh;
+}
+
+body {
+  overflow: hidden;
+}
+
+.wrap-all {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.wrap:not(#gap) {
+  flex: none;
+}
+
+#gap {
+  flex: 1;
+  min-height: 0;
+}
+
+.right-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#drawer,
+.bar-panel {
+  flex: none;
+}
+
+main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#status-strip {
+  flex: none;
+}
+
+#layout-root {
+  flex: 1;
+  min-height: 0;
+}
+
+#layout-root > .layout-split,
+#layout-root > .layout-leaf {
+  height: 100%;
+}
+
+.layout-split {
+  min-height: 0;
+}
+
+.layout-leaf {
+  display: flex;
+  min-height: 0;
 }
 
 #pacs-form {
@@ -487,7 +568,8 @@ body[data-zoom] .pane-zoomed .view-body {
 }
 
 .dag-canvas {
-  height: 42vh;
+  flex: 2 1 0;
+  min-height: 0;
   overflow: hidden;
   position: relative; /* anchors the hover tip */
 }
@@ -564,9 +646,8 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
   display: none;
 }
 
-.pane-zoomed .dag-canvas {
-  height: calc(100dvh - 9rem);
-}
+/* Zoom needs no special canvas height: the desktop contract already lets
+ * the zoomed leaf's flex column fill whatever the glide reclaims. */
 
 .dag-facts {
   margin-top: 0.4rem;
@@ -576,7 +657,8 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
 /* The feed chooser: the titled roster hosted by the DAG pane. */
 .dag-feedlist {
   display: none;
-  max-height: 42vh;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   font-size: 0.8rem;
 }
@@ -693,7 +775,8 @@ body[data-header='dag'] #header-dag {
 /* ---------------------------------------------------------- files instrument */
 
 .files-panel {
-  max-height: 42vh;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 0.5rem;
 }
@@ -732,7 +815,8 @@ body[data-header='dag'] #header-dag {
 }
 
 .empty-result {
-  max-height: 38vh;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.8rem;

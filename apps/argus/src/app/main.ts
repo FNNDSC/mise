@@ -298,6 +298,9 @@ function zoom_wire(terminal: ArgusTerminal): void {
   window.addEventListener('keydown', (event: KeyboardEvent): void => {
     if (event.key === 'Escape' && body.dataset['zoom'] !== undefined) {
       zoom_set(null);
+      // One press, one level: the header-restore listener must not also
+      // consume this Esc.
+      event.stopImmediatePropagation();
     }
   });
 
@@ -1056,8 +1059,19 @@ async function surface_start(token: string): Promise<void> {
     'keydown',
     (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        // The Esc stack: node overlay, then drawers, then zoom. One press
-        // exits the node — never a walk back up invisible browser depth.
+        // Esc is a contextual back: transient chrome first (drawer, then
+        // zoom), then one navigation pop — node immersion back to the
+        // graph, the graph back to the feed list. Each press retreats
+        // exactly one level; never a walk back up invisible browser depth.
+        if (drawers_close()) {
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
+        if (document.body.dataset['zoom'] !== undefined) {
+          // The zoom listener (bubble phase) takes this press.
+          return;
+        }
         const overlayId: string | undefined = [...nodeOverlays.keys()].pop();
         if (overlayId !== undefined) {
           nodeOverlay_close(overlayId);
@@ -1065,9 +1079,12 @@ async function surface_start(token: string): Promise<void> {
           sound_play('audio3');
           return;
         }
-        if (drawers_close()) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
+        for (const panel of dagPanels.values()) {
+          if (panel.nav_pop()) {
+            event.stopImmediatePropagation();
+            sound_play('audio3');
+            return;
+          }
         }
         return;
       }
@@ -1168,9 +1185,12 @@ async function surface_start(token: string): Promise<void> {
     home_apply();
   });
   element_require('gutter-runs').addEventListener('click', (): void => {
-    // The DAG takes the whole workspace, PACS-style; the chooser overlays it.
+    // The DAG takes the whole workspace, PACS-style, and always lands on
+    // the feed list: a graph retained from an earlier visit is dismissed
+    // before the roster paints.
     layout.preset_apply('dag');
     orphans_dispose();
+    dagPanel.list_reset();
     dagPanel.feedsChooser_request();
   });
   element_require('gutter-tools').addEventListener('click', (): void => {

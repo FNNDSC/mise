@@ -1160,7 +1160,13 @@ async function surface_start(token: string): Promise<void> {
 
   // FILES-01: home. RUNS-02: home + the feed chooser. PACS-03: toggles the
   // PACS tree against home.
-  element_require('gutter-files').addEventListener('click', (): void => home_apply());
+  element_require('gutter-files').addEventListener('click', (): void => {
+    // A gutter press is a preset declaration and must be deterministic:
+    // FILES-01 always yields the full files pane. The DAG rejoins home only
+    // when a feed next comes into view (the summon), never as leftovers.
+    dagShown = false;
+    home_apply();
+  });
   element_require('gutter-runs').addEventListener('click', (): void => {
     // The DAG takes the whole workspace, PACS-style; the chooser overlays it.
     layout.preset_apply('dag');

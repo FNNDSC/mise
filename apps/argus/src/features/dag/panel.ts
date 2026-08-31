@@ -279,12 +279,6 @@ export class DagPanel {
       this.feedList.appendChild(row);
     }
     this.feedList.style.display = 'block';
-    // An empty canvas above the chooser is dead space; preview the newest
-    // feed so the pane opens showing a graph.
-    if (this.shownFeedId === null && feeds.length > 0 && feeds[0] !== undefined) {
-      this.requestedFeedId = feeds[0].id;
-      this.handlers.command_run(`feed diagram feed_${feeds[0].id}`);
-    }
   }
 
   /** Paints the selection facts chip. */

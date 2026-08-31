@@ -17,6 +17,18 @@ const metasListAll = jest.fn();
 jest.mock('../src/workflows/index', () => ({ workflows_listAll: (...a: unknown[]) => workflowsListAll(...a) }));
 jest.mock('../src/tags/index', () => ({ tags_listAll: (...a: unknown[]) => tagsListAll(...a) }));
 jest.mock('../src/pluginmetas/index', () => ({ pluginMetas_listAll: (...a: unknown[]) => metasListAll(...a) }));
+const PACKAGE_FIXTURE = {
+  id: 7,
+  name: 'brainy',
+  authors: 'FNNDSC',
+  category: 'MRI',
+  manifest: { pipelineID: 7, name: 'brainy', rootIDs: [1], nodes: [] },
+};
+jest.mock('../src/pipelines/packages', () => ({
+  pipelinePackages_restore: async (): Promise<void> => undefined,
+  pipelinePackages_all: () => [PACKAGE_FIXTURE],
+  pipelinePackage_find: (name: string) => (name === 'brainy' ? PACKAGE_FIXTURE : null),
+}));
 
 import { WorkflowsVfsProvider } from '../src/vfs/providers/workflows';
 import { TagsVfsProvider } from '../src/vfs/providers/tags';
@@ -205,8 +217,42 @@ describe('ShareVfsProvider', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toEqual([expect.objectContaining({ name: 'pl-dcm2niix', type: 'dir' })]);
+      // The packages subdirectory (registered pipelines) leads; plugin
+      // directories stay flat beside it.
+      expect(result.value).toEqual([
+        expect.objectContaining({ name: 'packages', type: 'dir' }),
+        expect.objectContaining({ name: 'pl-dcm2niix', type: 'dir' }),
+      ]);
     }
+  });
+
+  it('lists the packages tree: pipeline dirs, then fields plus manifest.yaml', async () => {
+    const provider = new ShareVfsProvider();
+    const roster = await provider.list('/usr/share/packages');
+    expect(roster.ok).toBe(true);
+    if (roster.ok) {
+      expect(roster.value).toEqual([expect.objectContaining({ name: 'brainy', type: 'dir', id: 7 })]);
+    }
+    const files = await provider.list('/usr/share/packages/brainy');
+    expect(files.ok).toBe(true);
+    if (files.ok) {
+      const names = files.value.map((item) => item.name);
+      expect(names).toEqual(expect.arrayContaining(['name', 'authors', 'category', 'manifest.yaml']));
+    }
+    const missing = await provider.list('/usr/share/packages/ghost');
+    expect(missing.ok).toBe(false);
+  });
+
+  it('reads a package field and the canonical manifest as YAML', async () => {
+    const provider = new ShareVfsProvider();
+    const field = await provider.read('/usr/share/packages/brainy/category');
+    expect(field.ok).toBe(true);
+    if (field.ok) expect(field.value).toBe('MRI\n');
+    const manifest = await provider.read('/usr/share/packages/brainy/manifest.yaml');
+    expect(manifest.ok).toBe(true);
+    if (manifest.ok) expect(manifest.value).toContain('pipelineID: 7');
+    const bogus = await provider.read('/usr/share/packages/brainy/nonsense');
+    expect(bogus.ok).toBe(false);
   });
 
   it('omits fields the plugin left empty rather than showing blanks', async () => {

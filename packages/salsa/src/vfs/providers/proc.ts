@@ -36,6 +36,8 @@ import {
 } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
 import { job_cancel, job_delete, job_statusFetch, job_logFetch, jobs_statusBatch } from '../../jobs/index.js';
+import { procJoins_sweep } from '../../dag/feedJoins.js';
+import { pipelinePackages_sweep } from '../../pipelines/packages.js';
 
 /** Fetches one page of a paginated feed collection through the wire contract. */
 type FeedPageFetch = (params: Record<string, unknown>) => Promise<ListPage<FeedData>>;
@@ -756,6 +758,7 @@ function procTopology_start(state: ProcTopologySweepState): Promise<void> {
       if (procCache_get().warmupComplete) {
         procTopologyFailure = undefined;
         procTopologyResumeState = null;
+        procSettlementTails_run();
       } else {
         procTopologyFailure = 'the topology sweep ended before the index completed';
       }
@@ -771,6 +774,18 @@ function procTopology_start(state: ProcTopologySweepState): Promise<void> {
 }
 
 /**
+ * Kicks the quiet settlement tails once the topology index is complete:
+ * every unresolved `ts` join resolves in the background (so first diagrams
+ * are pure cache, and the checkpoint persists them), and the pipeline
+ * package store sweeps unseen registered pipelines. Both are best-effort —
+ * a failure leaves the lazy paths intact.
+ */
+function procSettlementTails_run(): void {
+  void procJoins_sweep().catch((): void => { /* lazy resolution remains */ });
+  void pipelinePackages_sweep().catch((): void => { /* lazy fetch remains */ });
+}
+
+/**
  * Runs a feed-scoped topology reconciliation selected after checkpoint restore.
  *
  * @param feedIDs - Canonical feed IDs whose topology needs a fresh load.
@@ -781,6 +796,7 @@ async function procTopologyScoped_run(feedIDs: number[]): Promise<void> {
   cache.lifecycle_set('reconciling');
   for (const feedID of feedIDs) await procCache_refresh(feedID);
   cache.warmup_complete();
+  procSettlementTails_run();
 }
 
 /**

@@ -224,6 +224,12 @@ export function procPath_parse(pathStr: string): {
   feedID: number | null;
   instanceID: number | null;
   virtualFile: string | null;
+  /**
+   * Set when the path descends THROUGH an instance's `data` link: the
+   * portion after `data`, '' for the link itself. Everything under the
+   * link belongs to the link's CFS target, not to `/proc`.
+   */
+  dataRemainder: string | null;
 } {
   let relativePath: string = pathStr;
   if (pathStr === PROC_JOBS_PREFIX) {
@@ -235,10 +241,24 @@ export function procPath_parse(pathStr: string): {
   let feedID: number | null = null;
   let instanceID: number | null = null;
   let virtualFile: string | null = null;
+  let dataRemainder: string | null = null;
 
   if (parts.length >= 1) {
     const feedMatch: RegExpMatchArray | null = parts[0].match(/^feed_(\d+)$/);
     if (feedMatch) feedID = parseInt(feedMatch[1], 10);
+  }
+
+  // A `data` segment directly after an instance segment starts the link's
+  // subtree: the instance is the one before it, whatever follows is the
+  // remainder inside the CFS target.
+  for (let index: number = 2; index < parts.length; index++) {
+    if (parts[index] !== 'data') continue;
+    const instMatch: RegExpMatchArray | null = parts[index - 1].match(/_(\d+)$/);
+    if (!instMatch) continue;
+    instanceID = parseInt(instMatch[1], 10);
+    virtualFile = 'data';
+    dataRemainder = parts.slice(index + 1).join('/');
+    return { feedID, instanceID, virtualFile, dataRemainder };
   }
 
   if (parts.length >= 2) {
@@ -255,7 +275,7 @@ export function procPath_parse(pathStr: string): {
     }
   }
 
-  return { feedID, instanceID, virtualFile };
+  return { feedID, instanceID, virtualFile, dataRemainder };
 }
 
 /** Formats instance params as key=value lines. */
@@ -284,6 +304,22 @@ function outputPath_normalize(value: unknown): string | null {
  * @param instanceID - Plugin-instance ID whose output path is needed.
  * @returns Absolute output path, or null when CUBE has not recorded one.
  */
+/**
+ * Resolves a path inside an instance's `data` link to its CFS target.
+ *
+ * @param instanceID - The instance whose output space the path enters.
+ * @param remainder - The path below `data`, '' for the link itself.
+ * @returns The absolute CFS path, or Err when the job has no output space.
+ */
+async function dataTarget_resolve(instanceID: number, remainder: string): Promise<Result<string>> {
+  const outputPath: string | null = await instanceOutputPath_ensure(instanceID);
+  if (!outputPath) {
+    errorStack.stack_push('error', `No CFS output path is available for job ${instanceID}`);
+    return Err();
+  }
+  return Ok(remainder === '' ? outputPath : `${outputPath}/${remainder}`);
+}
+
 async function instanceOutputPath_ensure(instanceID: number): Promise<string | null> {
   const cache: ProcCache = procCache_get();
   const inst: ProcInstance | undefined = cache.instance_get(instanceID);
@@ -396,7 +432,17 @@ export class ProcVfsProvider implements VFSProvider {
       return Ok(items);
     }
 
-    const { feedID, instanceID } = procPath_parse(clean);
+    const { feedID, instanceID, virtualFile, dataRemainder } = procPath_parse(clean);
+
+    // Anything under an instance's `data` link belongs to the link's CFS
+    // target: resolve and delegate, so `ls .../data` (and deeper) shows the
+    // target's real contents instead of silently re-listing the instance.
+    if (instanceID !== null && virtualFile === 'data' && dataRemainder !== null) {
+      const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
+      if (!target.ok) return Err();
+      const { vfsDispatcher } = await import('../dispatcher.js');
+      return vfsDispatcher.list(target.value, _options);
+    }
 
     // /proc/jobs/feed_N — list root instances + feed virtual files
     if (feedID !== null && instanceID === null) {
@@ -475,11 +521,40 @@ export class ProcVfsProvider implements VFSProvider {
     return Ok([]);
   }
 
+  /**
+   * Binary bytes exist only under the `data` link (an image in a job's
+   * output space); everything else in `/proc` is synthesized text.
+   *
+   * @param pathStr - Absolute `/proc/jobs/.../data/...` path.
+   * @returns The target file's bytes.
+   */
+  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+    await cache_ensure();
+    const clean: string = pathStr.replace(/\/$/, '');
+    const { instanceID, virtualFile, dataRemainder } = procPath_parse(clean);
+    if (instanceID === null || virtualFile !== 'data' || dataRemainder === null || dataRemainder === '') {
+      errorStack.stack_push('error', `${pathStr} is not a binary file.`);
+      return Err();
+    }
+    const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
+    if (!target.ok) return Err();
+    const { vfsDispatcher } = await import('../dispatcher.js');
+    return vfsDispatcher.readBinary(target.value);
+  }
+
   async read(pathStr: string): Promise<Result<string>> {
     await cache_ensure();
     const cache: ProcCache = procCache_get();
     const clean: string = pathStr.replace(/\/$/, '');
-    const { feedID, instanceID, virtualFile } = procPath_parse(clean);
+    const { feedID, instanceID, virtualFile, dataRemainder } = procPath_parse(clean);
+
+    // A file under the `data` link is the CFS target's file.
+    if (instanceID !== null && virtualFile === 'data' && dataRemainder !== null && dataRemainder !== '') {
+      const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
+      if (!target.ok) return Err();
+      const { vfsDispatcher } = await import('../dispatcher.js');
+      return vfsDispatcher.read(target.value);
+    }
 
     // Feed-level virtual files
     if (feedID !== null && instanceID === null && virtualFile !== null) {

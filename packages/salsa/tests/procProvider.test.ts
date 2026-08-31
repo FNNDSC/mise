@@ -20,7 +20,7 @@ describe('feedStatus_derive', () => {
 
 describe('procPath_parse', () => {
   it('extracts the feed id', () => {
-    expect(procPath_parse('/proc/jobs/feed_42')).toEqual({ feedID: 42, instanceID: null, virtualFile: null });
+    expect(procPath_parse('/proc/jobs/feed_42')).toEqual({ feedID: 42, instanceID: null, virtualFile: null, dataRemainder: null });
   });
   it('extracts an instance id from a trailing _<n> segment', () => {
     const r = procPath_parse('/proc/jobs/feed_42/dircopy_7');
@@ -29,6 +29,6 @@ describe('procPath_parse', () => {
     expect(r.virtualFile).toBeNull();
   });
   it('returns nulls for the bare /proc/jobs root', () => {
-    expect(procPath_parse('/proc/jobs')).toEqual({ feedID: null, instanceID: null, virtualFile: null });
+    expect(procPath_parse('/proc/jobs')).toEqual({ feedID: null, instanceID: null, virtualFile: null, dataRemainder: null });
   });
 });

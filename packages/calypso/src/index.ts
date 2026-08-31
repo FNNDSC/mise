@@ -64,6 +64,10 @@ export { RequestBroker } from './daemon/broker.js';
 export { daemon_launch, daemonSurface_create, DaemonSink, type DaemonLaunchInfo } from './daemon/launch.js';
 export {
   face_start,
+  face_boot,
+  face_ready,
+  face_suspend,
+  face_resume,
   face_stop,
   face_isActive,
   face_frameCompose,

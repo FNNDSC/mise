@@ -39,7 +39,11 @@ const mockDaemonLaunch = jest.fn(
     return mockLaunchInfo;
   },
 );
-const mockFaceStart = jest.fn((): boolean => true);
+const mockFaceBoot = jest.fn((): boolean => true);
+const mockFaceReady = jest.fn((): boolean => true);
+const mockFaceSuspend = jest.fn();
+const mockFaceResume = jest.fn();
+const mockFaceStop = jest.fn();
 
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   session: mockSession,
@@ -87,7 +91,11 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   daemon_launch: mockDaemonLaunch,
-  face_start: mockFaceStart,
+  face_boot: mockFaceBoot,
+  face_ready: mockFaceReady,
+  face_suspend: mockFaceSuspend,
+  face_resume: mockFaceResume,
+  face_stop: mockFaceStop,
   identity_forSession: (user: string, url: string): string => `${user}@${url}`,
 }));
 
@@ -119,7 +127,7 @@ describe('daemonSession_run', () => {
     }));
   });
 
-  it('hands the daemon terminal to the console face once boot is over', async () => {
+  it('boots on the face and settles it once the daemon is up', async () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
@@ -127,8 +135,9 @@ describe('daemonSession_run', () => {
     const flags = { plugins: false, feeds: false, publicFeeds: false, jobs: false };
 
     await daemonSession_run(engine, 'rudolph', flags, true, { log: jest.fn() });
-    expect(mockFaceStart).toHaveBeenCalledTimes(1);
-    const options = mockFaceStart.mock.calls[0]![0] as {
+    expect(mockFaceBoot).toHaveBeenCalledTimes(1);
+    expect(mockFaceReady).toHaveBeenCalledTimes(1);
+    const options = mockFaceReady.mock.calls[0]![0] as {
       info: Array<{ label: string; value: string }>;
       telemetry_get: () => { sessions: number; busy: boolean; jobs: number; feeds: number };
     };
@@ -141,9 +150,11 @@ describe('daemonSession_run', () => {
     expect(options.telemetry_get()).toEqual({ sessions: 0, busy: false, jobs: 12, feeds: 3 });
 
     // A non-interactive host (systemd) never takes the terminal over.
-    mockFaceStart.mockClear();
+    mockFaceBoot.mockClear();
+    mockFaceReady.mockClear();
     await daemonSession_run(engine, 'rudolph', flags, false, { log: jest.fn() });
-    expect(mockFaceStart).not.toHaveBeenCalled();
+    expect(mockFaceBoot).not.toHaveBeenCalled();
+    expect(mockFaceReady).not.toHaveBeenCalled();
   });
 
   it('warms and reports every startup cache before advertising the daemon', async () => {

@@ -93,7 +93,12 @@ function procInstance_check(value: unknown): value is ProcInstance {
     (typeof instance.status === 'string' && status_isTerminal(instance.status));
   const joinsValid: boolean = instance.joinParentIDs === undefined ||
     (Array.isArray(instance.joinParentIDs) && instance.joinParentIDs.every(integer_check));
-  return integer_check(instance.id) &&
+  const metricsValid: boolean =
+    (instance.startedAt === undefined || typeof instance.startedAt === 'string') &&
+    (instance.finishedAt === undefined || typeof instance.finishedAt === 'string') &&
+    (instance.outputBytes === undefined || typeof instance.outputBytes === 'number');
+  return metricsValid &&
+    integer_check(instance.id) &&
     integer_check(instance.feedID) &&
     parentValid &&
     typeof instance.pluginName === 'string' &&

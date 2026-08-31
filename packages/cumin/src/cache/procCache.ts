@@ -94,6 +94,12 @@ export interface ProcInstance {
    * tracked; callers should fall back to a name match when undefined.
    */
   pluginType?: string;
+  /** ISO execution start, from the CUBE list row; undefined when unobserved. */
+  startedAt?: string;
+  /** ISO execution end; undefined until the job is terminal. */
+  finishedAt?: string;
+  /** Output size in bytes, as CUBE reports it; undefined when unobserved. */
+  outputBytes?: number;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
   /**
@@ -353,6 +359,21 @@ export class ProcCache {
       }
     }
     this.change_emit();
+  }
+
+  /**
+   * Merges observed execution metrics onto an instance. Only defined values
+   * land, so a refresh that carries no timing never erases what warmup saw.
+   */
+  instanceMetrics_set(
+    id: number,
+    metrics: { startedAt?: string; finishedAt?: string; outputBytes?: number },
+  ): void {
+    const inst: ProcInstance | undefined = this.instances.get(id);
+    if (!inst) return;
+    if (metrics.startedAt !== undefined) inst.startedAt = metrics.startedAt;
+    if (metrics.finishedAt !== undefined) inst.finishedAt = metrics.finishedAt;
+    if (metrics.outputBytes !== undefined) inst.outputBytes = metrics.outputBytes;
   }
 
   instance_get(id: number): ProcInstance | undefined {

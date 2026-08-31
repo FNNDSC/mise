@@ -75,6 +75,10 @@ export class DagPanel {
   private pinnedFeedId: number | null = null;
   private requestedFeedId: number | null = null;
   private readonly defaultTitle: string;
+  /** What scales a molecule node: execution wall time, or output bytes. */
+  private metricMode: 'time' | 'size' = 'time';
+  /** The last shown model, re-projected locally when the scale flips. */
+  private lastModel: FeedDagModel | null = null;
 
   /**
    * @param canvas - The element the scene renders into.
@@ -127,6 +131,15 @@ export class DagPanel {
     strategyPill.parentElement
       ?.querySelector<HTMLElement>('.dag-pulse')
       ?.addEventListener('click', (): void => this.scene.wave_start());
+    // SCALE is a display-content control: it re-projects the remembered
+    // model locally — no wire traffic, the metrics are already resident.
+    const scalePill: HTMLElement | null =
+      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-scale') ?? null;
+    scalePill?.addEventListener('click', (): void => {
+      this.metricMode = this.metricMode === 'time' ? 'size' : 'time';
+      scalePill.textContent = this.metricMode === 'time' ? 'TIME' : 'SIZE';
+      if (this.lastModel !== null) this.graph_show(this.lastModel);
+    });
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,
@@ -177,6 +190,13 @@ export class DagPanel {
     // scrubbing returns when a context split exists to receive it.)
     this.feedList.style.display = 'none';
     this.canvas.style.display = 'block';
+    this.lastModel = model;
+    this.graph_show(model);
+    this.handlers.feed_shown?.();
+  }
+
+  /** Renders a model into the scene under the current metric mode. */
+  private graph_show(model: FeedDagModel): void {
     this.scene.graph_set({
       nodes: model.nodes.map((node: FeedDagNode): SceneNode => ({
         id: node.id,
@@ -184,11 +204,13 @@ export class DagPanel {
         parentIds: node.parentIds,
         joinParentIds: node.joinParentIds,
         status: node.status,
-        metric: node.metrics?.computeSeconds ?? node.metrics?.dataBytes,
+        metric:
+          this.metricMode === 'time'
+            ? node.metrics?.computeSeconds
+            : node.metrics?.dataBytes,
       })),
     });
     this.scene.size_fit();
-    this.handlers.feed_shown?.();
     this.factsPayloads.clear();
     for (const node of model.nodes) {
       this.factsPayloads.set(node.id, node);

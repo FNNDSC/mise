@@ -27,6 +27,22 @@ function graph_fixture() {
 
 beforeEach(() => { jest.clearAllMocks(); process.exitCode = 0; feedGraph_build.mockReturnValue(graph_fixture()); });
 
+describe('feedDagModel_build metrics', () => {
+  it('projects wall time and output bytes when the cache observed them', () => {
+    const graph = graph_fixture();
+    graph.nodes[0] = {
+      ...graph.nodes[0],
+      startedAt: '2026-08-31T10:00:00Z',
+      finishedAt: '2026-08-31T10:02:30Z',
+      outputBytes: 4096,
+    };
+    const model = feedDagModel_build(graph);
+    expect(model.nodes[0].metrics).toEqual({ computeSeconds: 150, dataBytes: 4096 });
+    // A node the cache never timed carries no metrics at all.
+    expect(model.nodes[1].metrics).toBeUndefined();
+  });
+});
+
 describe('feedDiagram_handle', () => {
   it('emits a valid SignalFlow YAML document to stdout', async () => {
     const env = await feedDiagram_handle(5, 'signalflow') as { status: string; rendered: string; model: { kind: string; data: { dialect: string; nodes: number } } };

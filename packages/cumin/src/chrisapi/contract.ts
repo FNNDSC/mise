@@ -209,6 +209,12 @@ export interface PluginInstanceData {
   plugin_type?: string;
   status?: string;
   output_path?: string;
+  /** ISO timestamp CUBE recorded for execution start. */
+  start_date?: string;
+  /** ISO timestamp CUBE recorded for execution end. */
+  end_date?: string;
+  /** Output size in bytes, as CUBE reports it on the list row. */
+  size?: number;
   raw?: string;
   [key: string]: unknown;
 }

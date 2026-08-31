@@ -37,6 +37,14 @@ export {
   type PipelineDiagramNode,
 } from './diagram.js';
 export {
+  pipelinePackages_sweep,
+  pipelinePackages_restore,
+  pipelinePackages_all,
+  pipelinePackage_find,
+  pipelinePackagesPath_get,
+  type PipelinePackage,
+} from './packages.js';
+export {
   pipelineManifest_get,
   type PipelineManifest,
   type PipelineManifestGetOptions,

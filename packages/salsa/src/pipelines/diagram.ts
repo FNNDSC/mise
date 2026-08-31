@@ -21,6 +21,12 @@ import {
   type PipingDefaultParameterData,
   type PipelineRecord,
 } from '@fnndsc/cumin';
+import {
+  pipelinePackage_find,
+  pipelinePackages_restore,
+  type PipelinePackage,
+} from './packages.js';
+import type { PipelineManifest } from './manifest.js';
 
 /** One stored plugin argument default. */
 export interface PipelineDiagramArgument {
@@ -95,12 +101,53 @@ function joinParentIDs_parse(value: unknown, anchorID: number | null): number[] 
 const diagramCaches: WeakMap<object, Map<number, PipelineDiagram>> = new WeakMap();
 
 /**
+ * Projects a cached registered manifest onto the diagram shape. Join edges
+ * come from each node's stored `plugininstances` default, exactly as the
+ * live build parses them.
+ *
+ * @param manifest - The registered manifest from the package store.
+ * @returns The diagram-ready flat DAG.
+ */
+function diagramFromManifest_build(manifest: PipelineManifest): PipelineDiagram {
+  const nodes: PipelineDiagramNode[] = manifest.nodes.map((node): PipelineDiagramNode => {
+    const joinDefault = node.parameterDefaults.find(
+      (parameter): boolean => parameter.name === 'plugininstances',
+    );
+    return {
+      id: node.pipingID,
+      title: node.title,
+      pluginName: node.pluginName,
+      parentID: node.parentID,
+      joinParentIDs: joinParentIDs_parse(joinDefault?.value, node.parentID),
+      arguments: node.parameterDefaults.map((parameter): PipelineDiagramArgument => ({
+        name: parameter.name,
+        value: parameter.value,
+      })),
+    };
+  });
+  return {
+    pipelineID: manifest.pipelineID,
+    name: manifest.name,
+    rootIDs: manifest.rootIDs,
+    nodes,
+  };
+}
+
+/**
  * Fetches a registered pipeline as a diagram-ready flat DAG.
  *
  * @param specifier - Pipeline numeric ID, exact name, slug, or unambiguous search.
  * @returns The pipeline DAG, or Err when resolution or retrieval fails.
  */
 export async function pipelineDiagram_get(specifier: string): Promise<Result<PipelineDiagram>> {
+  // The package store answers first: a durably cached manifest yields the
+  // diagram with no wire traffic at all — not even name resolution.
+  await pipelinePackages_restore();
+  const packaged: PipelinePackage | null = pipelinePackage_find(specifier);
+  if (packaged !== null) {
+    return Ok(diagramFromManifest_build(packaged.manifest));
+  }
+
   const resolved: Result<PipelineRecord> = await pipeline_resolve(specifier);
   if (!resolved.ok) return Err();
 

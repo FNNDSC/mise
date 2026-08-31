@@ -90,3 +90,18 @@ export async function feedJoins_ensure(feedID: number): Promise<void> {
     }
   }
 }
+
+/**
+ * Resolves every unresolved `ts` join in the whole cache — the warm-up tail.
+ *
+ * Runs quietly after the topology sweep settles, so the first diagram of any
+ * feed finds its joins already cached; the checkpoint writer then persists
+ * them, making the resolution once-ever per node. Sequential awaits are the
+ * throttle. Failures leave nodes unresolved for the lazy path to retry.
+ */
+export async function procJoins_sweep(): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  for (const feedID of cache.feedIDs_get()) {
+    await feedJoins_ensure(feedID);
+  }
+}

@@ -89,10 +89,9 @@
               <div class="lcars-bar-horizontal">
                 <span class="lcars-title">CALYPSO CONSOLE</span>
                 <span class="lcars-terminal-status" id="drawer-status">MODE: [OFFLINE]</span>
-                <button class="pacs-capsule" id="lang-pill" title="the argus command line (Ctrl-B :)">LANG</button>
+
               </div>
-              <div class="lcars-bar-zoom" id="drawer-zoom" data-pane="console" title="zoom console (Esc restores)" role="button" tabindex="0"></div>
-              <div class="lcars-bar-end" id="drawer-close" title="retract console" role="button" tabindex="0"></div>
+              <div class="lcars-bar-end bar-punctuation"></div>
             </div>
             <div id="terminal"></div>
             <div id="drawer-strip" title="drag to resize"></div>
@@ -103,6 +102,7 @@
             <div class="bar-8"></div>
             <div class="bar-9"></div>
             <div class="bar-10" id="drawer-toggle" title="console" role="button" tabindex="0"></div>
+            <button class="pacs-capsule" id="lang-pill" title="the argus command line (Ctrl-B :)">LANG</button>
           </div>
           <main>
             <div id="status-strip">
@@ -129,17 +129,18 @@
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title dag-title">DAG</span>
                   </div>
-                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
                 </div>
                 <div class="pane-drawer" hidden>
                   <!-- The drawer grammar (docs/aegis.adoc): shape the tile,
                        bind a neighbor, act on the content. Three groups,
                        three colors, identical on every pane at every depth. -->
                   <span class="drawer-group drawer-structure">
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens LEFT">&#9664;</button>
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens RIGHT">&#9654;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens ABOVE">&#9650;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens BELOW">&#9660;</button>
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
                     <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
                     <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
                   </span>
@@ -173,17 +174,18 @@
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title pane-title">WORKSPACE</span>
                   </div>
-                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
                 </div>
                 <div class="pane-drawer" hidden>
                   <!-- The drawer grammar (docs/aegis.adoc): shape the tile,
                        bind a neighbor, act on the content. Three groups,
                        three colors, identical on every pane at every depth. -->
                   <span class="drawer-group drawer-structure">
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens LEFT">&#9664;</button>
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens RIGHT">&#9654;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens ABOVE">&#9650;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens BELOW">&#9660;</button>
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
                     <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
                     <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
                   </span>
@@ -206,17 +208,18 @@
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title view-title">VIEWER</span>
                   </div>
-                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
                 </div>
                 <div class="pane-drawer" hidden>
                   <!-- The drawer grammar (docs/aegis.adoc): shape the tile,
                        bind a neighbor, act on the content. Three groups,
                        three colors, identical on every pane at every depth. -->
                   <span class="drawer-group drawer-structure">
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens LEFT">&#9664;</button>
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens RIGHT">&#9654;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens ABOVE">&#9650;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens BELOW">&#9660;</button>
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
                     <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
                     <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
                   </span>
@@ -239,17 +242,18 @@
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title pane-title">NEW PANE</span>
                   </div>
-                  <div class="lcars-bar-end pane-hint" role="button" tabindex="0"></div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
                 </div>
                 <div class="pane-drawer" hidden>
                   <!-- The drawer grammar (docs/aegis.adoc): shape the tile,
                        bind a neighbor, act on the content. Three groups,
                        three colors, identical on every pane at every depth. -->
                   <span class="drawer-group drawer-structure">
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens LEFT">&#9664;</button>
-                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens RIGHT">&#9654;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens ABOVE">&#9650;</button>
-                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens BELOW">&#9660;</button>
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
                     <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
                     <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
                   </span>

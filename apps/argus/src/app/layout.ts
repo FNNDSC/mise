@@ -269,7 +269,7 @@ export class LayoutManager {
     if ('pane' in node) {
       const leaf: HTMLDivElement = document.createElement('div');
       leaf.className = 'layout-leaf';
-      leaf.dataset['pane'] = node.pane;
+      leaf.dataset['leaf'] = node.pane;
       const mount: HTMLElement | undefined = this.mounts.get(node.pane);
       if (mount !== undefined) {
         leaf.appendChild(mount);

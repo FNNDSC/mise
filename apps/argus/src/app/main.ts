@@ -35,6 +35,12 @@ import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
 import { argusLine_run, type ArgusHost } from '../console/argusLang.js';
+
+/** Console zoom, exposed for the language (the bar carries no control). */
+let consoleZoom_set: (pane: string | null) => void = () => undefined;
+export function consoleZoom_toggle(): void {
+  consoleZoom_set(document.body.dataset['zoom'] === 'console' ? null : 'console');
+}
 import {
   paneFactory_register,
   paneInstance_adopt,
@@ -190,7 +196,6 @@ function drawer_wire(
   drawer: HTMLElement,
   strip: HTMLElement,
   toggle: HTMLElement,
-  close: HTMLElement,
   terminal: ArgusTerminal,
 ): void {
   // A drag leaves an inline height on the drawer, which would defeat the
@@ -215,7 +220,6 @@ function drawer_wire(
   toggle.addEventListener('click', (): void =>
     closed_set(!drawer.classList.contains('drawer-closed')),
   );
-  close.addEventListener('click', (): void => closed_set(true));
 
   let dragStartY: number = 0;
   let dragStartHeight: number = 0;
@@ -252,7 +256,7 @@ function drawer_wire(
  *
  * @param terminal - The terminal to refit once the glide settles.
  */
-function zoom_wire(terminal: ArgusTerminal): void {
+function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
 
@@ -310,6 +314,7 @@ function zoom_wire(terminal: ArgusTerminal): void {
       terminal.size_fit();
     }
   });
+  return zoom_set;
 }
 
 /**
@@ -1180,6 +1185,9 @@ async function surface_start(token: string): Promise<void> {
           event.preventDefault();
           return;
         }
+        // Past the terminal exclusion the prefix belongs to argus, drawer
+        // or no drawer — the browser must never see it (bookmarks!).
+        event.preventDefault();
         // A zoomed tree pane is the only one on stage: the prefix key must
         // reach its drawer, whatever the layout focus was before the zoom.
         const zoomed: string | undefined = document.body.dataset['zoom'];
@@ -1285,13 +1293,14 @@ async function surface_start(token: string): Promise<void> {
     },
     panes_shown: (): string[] => layout.panes_shown(),
     paneRect_get: (id: string): DOMRect | null => {
-      const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-pane="${id}"]`);
+      const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`);
       return leaf?.getBoundingClientRect() ?? null;
     },
     paneMount_get: (id: string): HTMLElement | null => paneInstance_get(id)?.mount ?? null,
     paneKind_get,
     paneLinked_get: (id: string): boolean => subjects.group_of(id) !== id,
     feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
+    consoleZoom_toggle,
     node_immerse: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
@@ -1566,10 +1575,9 @@ async function surface_start(token: string): Promise<void> {
     element_require('drawer'),
     element_require('drawer-strip'),
     element_require('drawer-toggle'),
-    element_require('drawer-close'),
     terminal,
   );
-  zoom_wire(terminal);
+  consoleZoom_set = zoom_wire(terminal);
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());
 }

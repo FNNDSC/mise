@@ -87,13 +87,23 @@
                workspace lid (the bar-panel below), per the prototype's
                interaction design. -->
           <section id="drawer">
-            <div class="lcars-terminal-header-bar">
+            <div class="lcars-terminal-header-bar pane-handle" id="console-handle" title="console controls">
               <div class="lcars-bar-horizontal">
                 <span class="lcars-title">CALYPSO CONSOLE</span>
                 <span class="lcars-terminal-status" id="drawer-status">MODE: [OFFLINE]</span>
 
               </div>
               <div class="lcars-bar-end bar-punctuation"></div>
+            </div>
+            <!-- The console is a pane that does not split: the same handle
+                 and drawer as every pane, with only the verbs that apply —
+                 no SPLIT (one session, one voice), hence no binding. -->
+            <div class="pane-drawer" id="console-drawer" hidden>
+              <span class="drawer-group drawer-structure">
+                <span class="drawer-label">CONSOLE</span>
+                <button class="pacs-capsule drawer-zoom" data-pane="console" title="zoom the console (Esc restores)">ZOOM</button>
+                <button class="pacs-capsule console-retract" title="retract the console (the lid reopens it)">CLOSE</button>
+              </span>
             </div>
             <div id="terminal"></div>
             <div id="drawer-strip" title="drag to resize"></div>

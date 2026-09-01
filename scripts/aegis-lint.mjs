@@ -37,7 +37,10 @@ function panes_extract() {
 
 /** Extracts the inner markup of every terminal-header bar. */
 function bars_extract() {
-  return [...html.matchAll(/<div class="lcars-terminal-header-bar[^"]*"[^>]*>([\s\S]*?)\n\s*<\/div>\n\s*(?:<div class="pane-drawer"|<div id="terminal"|<div id="pacs-form"|<div class="pane-drawer")/g)]
+  // A header bar always terminates in its end-cap; capture through the cap
+  // rather than guessing at the next sibling (a comment between siblings
+  // once made this swallow a drawer's buttons into the "bar").
+  return [...html.matchAll(/<div class="lcars-terminal-header-bar[^"]*"[^>]*>([\s\S]*?<div class="lcars-bar-end[^"]*"[^>]*>[^<]*<\/div>)/g)]
     .map((m) => m[1]);
 }
 

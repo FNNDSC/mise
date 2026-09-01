@@ -1419,7 +1419,7 @@ async function surface_start(token: string): Promise<void> {
     dag: ['layout', 'projection', 'scale', 'pulse'],
     file: ['home', 'back', 'download', 'delete'],
     header: ['stats', 'dag', 'away', 'restore'],
-    console: ['open', 'close', 'toggle', 'height'],
+    console: ['open', 'close', 'toggle', 'zoom', 'height'],
     desktop: ['save', 'load', 'show', 'list', 'delete'],
     split: ['left', 'right', 'above', 'below'],
     bind: ['unlinked', 'fs', 'viewer'],
@@ -1600,6 +1600,24 @@ async function surface_start(token: string): Promise<void> {
     element_require('drawer-toggle'),
     terminal,
   );
+  // The console joins the drawer grammar: its header is a handle, its
+  // drawer carries only the verbs that apply (zoom via the shared
+  // data-pane path; CLOSE retracts through the lid's own toggle).
+  const consoleDrawer: HTMLElement = element_require('console-drawer');
+  element_require('console-handle').addEventListener('click', (event: Event): void => {
+    if (event.target instanceof Element && event.target.closest('button') !== null) {
+      return;
+    }
+    consoleDrawer.hidden = !consoleDrawer.hidden;
+    if (!consoleDrawer.hidden) {
+      consoleDrawer.querySelector<HTMLButtonElement>('button')?.focus();
+    }
+    sound_play('audio3');
+  });
+  consoleDrawer.querySelector<HTMLElement>('.console-retract')?.addEventListener('click', (): void => {
+    consoleDrawer.hidden = true;
+    element_require('drawer-toggle').click();
+  });
   consoleZoom_set = zoom_wire(terminal);
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());

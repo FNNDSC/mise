@@ -285,8 +285,19 @@ function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
       const mount: HTMLElement | undefined = paneInstance_get(pane)?.mount;
       mount?.parentElement?.classList.add('pane-zoomed');
     }
+    // The capsule is a toggle and must read as its next action.
+    for (const capsule of document.querySelectorAll<HTMLElement>('.drawer-zoom')) {
+      capsule.textContent = pane !== null && capsule.dataset['pane'] === pane ? 'RESTORE' : 'ZOOM';
+    }
     sound_play('audio3');
   };
+  // While zoomed, the thin top strip is the restore control (the
+  // header-away listener yields to the zoom state).
+  element_require('header-restore').addEventListener('click', (): void => {
+    if (body.dataset['zoom'] !== undefined) {
+      zoom_set(null);
+    }
+  });
 
   // Delegated: pane instances (and their zoom capsules) arrive live.
   document.addEventListener('click', (event: Event): void => {
@@ -368,6 +379,10 @@ function headerFaces_wire(): void {
   document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('dag'));
 
   const header_restore = (): void => {
+    if (body.dataset['zoom'] !== undefined) {
+      // The strip belongs to the zoom while one is active.
+      return;
+    }
     delete body.dataset['header'];
     sound_play('audio3');
   };
@@ -1268,12 +1283,10 @@ async function surface_start(token: string): Promise<void> {
     dagPanel.feedsChooser_request();
   });
   element_require('gutter-tools').addEventListener('click', (): void => {
-    if (layout.activePreset_get() === 'pacs') {
-      home_apply();
-    } else {
-      layout.preset_apply('pacs');
-      orphans_dispose();
-    }
+    // A given always renders its target (gutter law) — no toggling;
+    // dismissal is the pane drawer's CLOSE.
+    layout.preset_apply('pacs');
+    orphans_dispose();
   });
 
   // ------------------------------------------------------------ the language

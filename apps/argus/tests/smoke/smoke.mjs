@@ -52,6 +52,14 @@ try {
     check(`${preset}: drawer opens from the handle`, result.opened === true);
   }
 
+  console.log('gutter-idempotency');
+  const pacsTwice = await evalIn(`
+    document.getElementById('gutter-tools').click(); await sleep(500);
+    document.getElementById('gutter-tools').click(); await sleep(500);
+    const pacs = document.getElementById('pacs-workspace');
+    return { shown: pacs.getBoundingClientRect().height > 100 };`);
+  check('PACS-03 always renders PACS (a given never toggles)', pacsTwice.shown === true);
+
   console.log('zoom-completeness');
   const zoom = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(700);
@@ -60,10 +68,21 @@ try {
     pane.querySelector('.drawer-zoom').click(); await sleep(700);
     const header = document.querySelector('.wrap:not(#gap)');
     const gutter = document.querySelector('.left-frame');
+    const lid = document.getElementById('drawer-toggle');
+    const status = document.getElementById('status-strip');
+    const strip = document.getElementById('header-restore');
     const zoomed = {
       headerBottom: header.getBoundingClientRect().bottom,
       gutterRight: gutter.getBoundingClientRect().right,
+      lidHidden: lid.getBoundingClientRect().height === 0,
+      statusHidden: status.getBoundingClientRect().height === 0,
+      stripShown: strip.getBoundingClientRect().height > 0,
+      capsule: pane.querySelector('.drawer-zoom').textContent,
     };
+    strip.click(); await sleep(700);
+    zoomed.stripRestored = header.getBoundingClientRect().bottom > 50;
+    zoomed.capsuleAfter = pane.querySelector('.drawer-zoom').textContent;
+    pane.querySelector('.drawer-zoom').click(); await sleep(700);
     // Contextual back is a stack: the open pane drawer takes the first
     // Esc, the zoom the next.
     for (let i = 0; i < 3 && header.getBoundingClientRect().bottom <= 1; i++) {
@@ -74,6 +93,9 @@ try {
     return zoomed;`);
   check('zoom slides the whole header off stage', zoom.headerBottom <= 1, `bottom=${zoom.headerBottom}`);
   check('zoom slides the gutter off stage', zoom.gutterRight <= 1, `right=${zoom.gutterRight}`);
+  check('zoom hides the lid and the status readouts', zoom.lidHidden && zoom.statusHidden);
+  check('zoom leaves the thin restore strip, and it restores', zoom.stripShown && zoom.stripRestored);
+  check('the capsule reads RESTORE while zoomed, ZOOM after', zoom.capsule === 'RESTORE' && zoom.capsuleAfter === 'ZOOM', `${zoom.capsule}/${zoom.capsuleAfter}`);
   check('Esc restores the header', zoom.restoredHeaderBottom > 50, `bottom=${zoom.restoredHeaderBottom}`);
 
   console.log('lid-parity + single-beckon-author');

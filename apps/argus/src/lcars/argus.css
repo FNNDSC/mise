@@ -1284,18 +1284,28 @@ body[data-header='away'] .wrap:not(#gap) {
  * (headtrim/baseboard, z-index 999) and the header's lid otherwise cover
  * its first and last rows of content. */
 body[data-zoom] .headtrim,
-body[data-zoom] .baseboard,
-body[data-zoom] #header-restore {
+body[data-zoom] .baseboard {
   display: none;
 }
 
-/* Header away without a zoom: the lid strip gets its height reserved
- * instead of overlaying the workspace's top pixels. */
-body[data-header='away']:not([data-zoom]) #gap {
+/* A zoomed pane is an immersive intent: the lid and the status readouts
+ * step offstage with the header, and the only furniture left is the thin
+ * restore strip — functional, like the header-away strip: touch it (or
+ * Esc) and the composition returns. */
+body[data-zoom]:not([data-zoom='console']) #drawer-toggle,
+body[data-zoom]:not([data-zoom='console']) #status-strip,
+body[data-zoom]:not([data-zoom='console']) .right-frame::before {
+  display: none;
+}
+
+/* Strip states reserve its height instead of overlaying content. */
+body[data-header='away']:not([data-zoom]) #gap,
+body[data-zoom]:not([data-zoom='console']) #gap {
   margin-top: 12px;
 }
 
-body[data-header='away'] #header-restore {
+body[data-header='away'] #header-restore,
+body[data-zoom] #header-restore {
   display: block;
   position: fixed;
   top: 0;

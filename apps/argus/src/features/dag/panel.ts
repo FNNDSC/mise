@@ -281,6 +281,13 @@ export class DagPanel {
     this.scene.dispose();
   }
 
+  /** Enters a feed by id: pins it and fetches its graph (the textual verb). */
+  public feed_enter(feedId: number): void {
+    this.pinnedFeedId = feedId;
+    this.requestedFeedId = null;
+    this.handlers.command_run(`feed diagram feed_${feedId}`);
+  }
+
   /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
   public feedsChooser_request(): void {
     // The roster itself is cache-resident, but the request waits in the

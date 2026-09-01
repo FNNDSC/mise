@@ -47,7 +47,7 @@ const mockPipeline = jest.fn();
 const mockUpload = jest.fn();
 const mockDownload = jest.fn();
 const BUILTIN_NAMES = [
-  'builtin_cd', 'builtin_ls', 'builtin_pwd', 'builtin_connect', 'builtin_logout',
+  'builtin_config', 'builtin_cd', 'builtin_ls', 'builtin_pwd', 'builtin_connect', 'builtin_logout',
   'builtin_cat', 'builtin_cp', 'builtin_mv', 'builtin_upload', 'builtin_pacs',
   'builtin_pipeline', 'builtin_pull', 'builtin_query', 'builtin_cubepath',
   'builtin_rm', 'builtin_touch', 'builtin_mkdir', 'builtin_plugin', 'builtin_feed',

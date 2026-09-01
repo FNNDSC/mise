@@ -226,6 +226,11 @@ export class LayoutManager {
    *
    * @param tree - The tree to render.
    */
+  /** @returns A deep copy of the live tree, for serializers. */
+  public tree_get(): LayoutNode | null {
+    return this.tree === null ? null : (JSON.parse(JSON.stringify(this.tree)) as LayoutNode);
+  }
+
   public tree_set(tree: LayoutNode): void {
     this.tree = this.ratios_restore(tree, this.activePreset, '');
     this.render();
@@ -264,6 +269,7 @@ export class LayoutManager {
     if ('pane' in node) {
       const leaf: HTMLDivElement = document.createElement('div');
       leaf.className = 'layout-leaf';
+      leaf.dataset['pane'] = node.pane;
       const mount: HTMLElement | undefined = this.mounts.get(node.pane);
       if (mount !== undefined) {
         leaf.appendChild(mount);

@@ -89,6 +89,7 @@
               <div class="lcars-bar-horizontal">
                 <span class="lcars-title">CALYPSO CONSOLE</span>
                 <span class="lcars-terminal-status" id="drawer-status">MODE: [OFFLINE]</span>
+                <button class="pacs-capsule" id="lang-pill" title="the argus command line (Ctrl-B :)">LANG</button>
               </div>
               <div class="lcars-bar-zoom" id="drawer-zoom" data-pane="console" title="zoom console (Esc restores)" role="button" tabindex="0"></div>
               <div class="lcars-bar-end" id="drawer-close" title="retract console" role="button" tabindex="0"></div>
@@ -309,6 +310,15 @@
     <!-- The header's lid strip: appears when the header glides away; click
          (or Esc) restores it. Same idiom as the console drawer's lid. -->
     <div id="header-restore" title="restore header" role="button" tabindex="0"></div>
+    <!-- The argus command line: prefix-: in the tmux tradition. One line,
+         floating over the workspace; sentences run client-side, anything
+         else falls through to the session. -->
+    <div id="lang-palette" hidden>
+      <span class="lang-glyph">:</span>
+      <input id="lang-input" type="text" autocomplete="off" spellcheck="false"
+             placeholder="pane split right &middot; view runs &middot; desktop save &hellip; (Tab completes, Esc closes)" />
+      <div id="lang-result"></div>
+    </div>
 
     <script type="module" src="/src/app/main.ts"></script>
   </body>

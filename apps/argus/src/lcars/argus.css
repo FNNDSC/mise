@@ -1689,10 +1689,6 @@ body[data-header='away'] #header-restore {
   cursor: pointer;
 }
 
-.lcars-beckon {
-  animation: beckon 3.5s ease-in-out infinite;
-}
-
 @keyframes beckon {
   0%,
   100% {

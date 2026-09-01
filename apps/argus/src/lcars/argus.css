@@ -1826,22 +1826,20 @@ body[data-header='away'] #header-restore {
 /* Prefix-: in the tmux tradition: one floating line for the argus
  * language, noice-style. Sentences run client-side; anything else falls
  * through to the session console. */
+/* The command strip: an LCARS bar dropped from the frame's top edge —
+ * color block, black field, punctuation cap — not a floating dialog. */
 #lang-palette {
   position: fixed;
-  top: 18%;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1200;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 34rem;
-  padding: 0.5rem 0.8rem;
-  background: rgb(0 0 0 / 92%);
-  border: 2px solid var(--harvestgold);
-  border-left-width: 10px;
-  border-radius: 0 14px 14px 0;
-  box-shadow: 0 0 24px rgb(255 170 68 / 35%);
+  align-items: stretch;
+  width: min(52rem, 70vw);
+  height: 30px;
+  background: #000;
+  border-bottom: 2px solid var(--pumpkin-pie);
 }
 
 #lang-palette[hidden] {
@@ -1849,9 +1847,15 @@ body[data-header='away'] #header-restore {
 }
 
 .lang-glyph {
-  color: var(--harvestgold);
+  display: flex;
+  align-items: center;
+  padding: 0 0.9rem 0 1.1rem;
+  background: var(--harvestgold);
+  color: #000;
   font-family: 'Antonio', sans-serif;
-  font-size: 1.1rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  border-radius: 0 0 0 14px;
 }
 
 #lang-input {
@@ -1859,9 +1863,19 @@ body[data-header='away'] #header-restore {
   background: transparent;
   border: none;
   outline: none;
+  padding: 0 0.7rem;
   color: var(--butter);
-  font-family: 'MesloLGS NF', monospace;
-  font-size: 0.95rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+/* Punctuation cap closing the strip. */
+#lang-palette::after {
+  content: '';
+  width: 34px;
+  background: var(--harvestgold);
+  border-radius: 0 0 14px 0;
 }
 
 #lang-result {
@@ -1869,12 +1883,13 @@ body[data-header='away'] #header-restore {
   top: 100%;
   left: 0;
   right: 0;
-  margin-top: 0.3rem;
-  padding: 0.2rem 0.8rem;
+  padding: 0.25rem 0.9rem;
   color: var(--honey);
-  font-size: 0.75rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
   white-space: pre-wrap;
-  background: rgb(0 0 0 / 85%);
+  background: rgb(0 0 0 / 92%);
+  border-bottom: 1px solid rgb(204 85 0 / 55%);
 }
 
 #lang-result:empty {
@@ -1886,4 +1901,15 @@ body[data-header='away'] #header-restore {
   background-color: var(--butter);
   color: #000;
   align-self: center;
+}
+
+/* A closed console reads as ONE bar: the lid row's decorative segments
+ * step aside (two adjacent near-twin bars with unaligned cutouts read as
+ * a glitch), leaving the beckoning toggle and the LANG capsule on black —
+ * a minimal machinery row, dark-cockpit quiet. */
+#drawer.drawer-closed + .bar-panel .bar-6,
+#drawer.drawer-closed + .bar-panel .bar-7,
+#drawer.drawer-closed + .bar-panel .bar-8,
+#drawer.drawer-closed + .bar-panel .bar-9 {
+  visibility: hidden;
 }

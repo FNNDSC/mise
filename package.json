@@ -21,7 +21,8 @@
     "docs:site": "typedoc && asciidoctor -D site docs/site/*.adoc",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "npm run build && changeset publish",
+    "lint:aegis": "node scripts/aegis-lint.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

@@ -15,6 +15,7 @@ AEGIS — the *ARGUS Ergonomics & Graphical Interface Standard* — is the desig
 
 [cols="1,3"]
 |===
+| 2026-09-01 (doctrine grows teeth) | The operator's question — why do regressions of WRITTEN law keep landing — had one honest answer: the ledger was prose and nothing mechanical read it. AEGIS now opens with "The laws (machine-checked)": twelve laws, each naming its enforcement — five static checks in scripts/aegis-lint.mjs (drawer-everywhere, bar-no-machinery, caps-are-punctuation, lid-is-mute, single-animation-author) gating every pull request in CI, seven scenario references into the smoke suite. The gate also enforces the table itself: a law naming a nonexistent check or scenario fails CI, so doctrine cannot be written without teeth again. Proven against history — re-introducing the CONSOLE lid label fails the gate with lid-is-mute.
 | 2026-09-01 (zoom is immersive; a given never toggles) | Three operator catches in one report. PACS-03 toggled between PACS and home — a GIVEN ALWAYS RENDERS ITS TARGET (gutter law, now explicit): the toggle died, dismissal is the drawer's CLOSE. Zoom carried too much frame for an immersive intent: the lid, the status readouts, and the stray corner gradient now step offstage with the header, leaving only the thin restore strip — functional, as it always was for header-away: touch it (or Esc) and the composition returns. And the drawer's ZOOM capsule now reads as its next action — RESTORE while its pane is zoomed (the missing-control report; RESTORE over "unzoom", matching the strip's own verb). All three joined the smoke suite (gutter-idempotency; framing, strip, and capsule assertions) — 21 green.
 | 2026-09-01 (invariants become a suite) | Two more operator catches — zoom left a crushed header band on stage (offsetHeight missed the first bar's collapsed top margin; the slide now travels the header's measured viewport bottom) and PACS-03 had NO pane controls (its workspace was legacy markup: no handle, no drawer, and a red machinery cap on its bar — it now carries the standard drawer grammar, a passive cap, and chrome wiring like every pane). The pattern (every violation was of a LAW this ledger already states) demanded teeth: tests/smoke/smoke.mjs drives a live argus headless (CDP) and asserts the laws — drawer-everywhere, zoom-completeness, lid parity, single-beckon-author, LANG toggle, runs honesty, the nameplate seal. Every scenario names the shipped violation that created it. `npm run smoke` against the attach-file daemon; 17 green at birth (and it caught the Esc stack's drawer-then-zoom order on its first run).
 | 2026-09-01 (the nameplate seal) | Grilled and settled: surfaces carry marks as SEALS, never logos on chrome. The top-left block is the LCARS nameplate, and a mark there is engraved in the panel's own black — like its type, never full-color art (a color logo is a sticker; an engraving belongs to the panel). Rendered as a CSS mask over the vendored ChRIS SVG (src/assets/brand/), so one rule obeys every skin without variants — verified on Lower Decks and sickbay. The ChRIS mark names the SYSTEM in the nameplate; the INSTITUTION speaks through the palette (sickbay = BCH navy+cyan). The rule binds PHAROS too: same nameplate slot, same black. Sanctioned seal sites beyond the nameplate: the attach card and an idle face — nowhere else.
@@ -54,6 +55,28 @@ AEGIS — the *ARGUS Ergonomics & Graphical Interface Standard* — is the desig
 | 2026-08-30 (slice 1 built) | Regard + drawer + slaved viewer implemented: `regard` wire message (menu), brasa session retention, calypso retain/mirror/rebroadcast with late-attach replay, argus SubjectBus (groups, retained cells, LWW), pane drawer behind the header on all stamped panes, VIEWER semantic child (slaved) and BROWSE NODE (rooted) in the drawer, viewer pane kind subscribed to group regard.
 | 2026-08-30 (later) | Subjects grilled and locked: two-layer regard (group-scoped rendering + session aggregate in brasa), retained-cell write semantics, rooted-versus-slaved children, lifecycle (groups session-only, session regard survives surface reload). Durable layer settled in direction: per-user config and named layout schemas as CFS files under `~/.config`. Build of the first slice (regard skeleton, pane drawer, slaved viewer) begun.
 | 2026-08-30 | Document created from the first AEGIS thought sprint. Settled: the machinery-behind-the-frame principle (pane drawer as the mouse-native prefix key), semantic children as parent-contextualized pre-composed intents, pane linkage as hub-and-spoke subjects (never pane-to-pane edges), the addressability test, and *regard* as a session-truth subject in brasa. Open: palette roles, shape grammar, motion canon, the violations audit.
+|===
+
+== The laws (machine-checked)
+
+Doctrine without teeth decays into apology. Every law below is enforced mechanically: `lint:` checks run in `scripts/aegis-lint.mjs` on every pull request; `smoke:` scenarios run in `apps/argus/tests/smoke/smoke.mjs` against a live surface. The lint gate also verifies this table itself — a law whose named enforcement does not exist fails CI, so new doctrine cannot be written without teeth.
+
+[cols="1,3,1"]
+|===
+| Law | Statement | Enforcement
+
+| drawer-everywhere | Every workspace pane — template-stamped or static — carries the pane handle and the three-group drawer. | lint:drawer-everywhere
+| bar-no-machinery | No machinery rides a title bar: no buttons, roles, or control text inside a bar beyond the handle itself. | lint:bar-no-machinery
+| caps-are-punctuation | Every bar end-cap is passive frame punctuation: the punctuation class, no text, no role. | lint:caps-are-punctuation
+| lid-is-mute | The lid's segments carry no text — the lid is punctuation, and the whole lid is the toggle. | lint:lid-is-mute
+| single-animation-author | An animation has one author: CSS declares it; script never stamps an animation-bearing class. | lint:single-animation-author
+| lid-parity | The lid is identical open and closed; only the end block may breathe, and only while closed. | smoke:lid segments identical
+| zoom-immersive | A zoomed pane owns the stage: header, gutter, lid, and status offstage; only the thin restore strip remains, and it restores. | smoke:zoom slides the whole header
+| given-idempotent | A gutter given always renders its target; it never toggles. | smoke:a given never toggles
+| control-reads-next-action | A toggle control reads as what it will do next (ZOOM/RESTORE, open/close). | smoke:the capsule reads RESTORE
+| honest-wait | A wait or refusal is always visible and truthful; a loading row never outlives its request. | smoke:RUNS-02 answers
+| touch-first | Every affordance works by touch: no keyboard-only control. | smoke:LANG opens the line
+| nameplate-seal | Marks are engraved seals in the nameplate's own black — never full-color logos on chrome. | smoke:nameplate seal
 |===
 
 == LCARS: what it is, and why ARGUS started there

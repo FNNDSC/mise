@@ -215,6 +215,12 @@ endif
 	git add -u
 	git add .changeset
 	git commit -m "$(MSG)"
+	@untracked=$$(git status --porcelain | grep '^??' | grep -v 'claude.resume' || true); \
+	if [ -n "$$untracked" ]; then \
+	  echo ""; \
+	  echo "WARNING: untracked files NOT in this commit (git add them if they belong):"; \
+	  echo "$$untracked" | sed 's/^?? /  /'; \
+	fi
 
 push:
 	git push -u origin $(BRANCH)

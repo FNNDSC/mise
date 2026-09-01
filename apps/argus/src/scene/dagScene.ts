@@ -271,7 +271,15 @@ export class DagScene {
   /** Idle spin stays paused until this clock time (0 = spinning). */
   private spinIdleUntil: number = 0;
   /** The grab in progress: which node, its drag plane, and travel so far. */
-  private drag: { nodeId: string; plane: THREE.Plane; startX: number; startY: number; moved: boolean } | null = null;
+  private drag: {
+    nodeId: string;
+    plane: THREE.Plane;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    solo: boolean;
+    home: THREE.Vector3;
+  } | null = null;
   /** The live reaction simulation while (and shortly after) a grab. */
   private dragSim: ReturnType<typeof forceSimulation> | null = null;
   private dragSimNodes: Array<{ id: string; x: number; y: number; z: number; fx?: number | null; fy?: number | null; fz?: number | null }> = [];
@@ -416,6 +424,16 @@ export class DagScene {
             this.dragSim = null;
             this.dragSimNodes = [];
           }
+        }
+        if (this.dragReturns.length > 0) {
+          const now: number = Date.now();
+          this.dragReturns = this.dragReturns.filter((entry): boolean => {
+            const t: number = Math.min(1, (now - entry.startedAt) / 300);
+            const eased: number = t * t * (3 - 2 * t);
+            entry.mesh.position.lerpVectors(entry.from, entry.to, eased);
+            return t < 1;
+          });
+          this.positions_sync();
         }
         this.wave_animate();
         this.flight_animate();
@@ -862,7 +880,14 @@ export class DagScene {
     // pull, no depth surprises.
     const normal: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3()).negate();
     const plane: THREE.Plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.position);
-    this.drag = { nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false };
+    this.drag = {
+      nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false,
+      // Ranked is deterministic truth: a pull peeks at ONE node and the
+      // release returns it home. The whole-graph elastic reaction belongs
+      // to the molecule — heating it under ranked dissolved the tiers.
+      solo: this.strategy === 'ranked',
+      home: hit.position.clone(),
+    };
     try {
       this.renderer.domElement.setPointerCapture(event.pointerId);
     } catch {
@@ -912,7 +937,7 @@ export class DagScene {
         DRAG_THRESHOLD_PX
     ) {
       this.drag.moved = true;
-      this.dragSim_begin(this.drag.nodeId);
+      if (!this.drag.solo) this.dragSim_begin(this.drag.nodeId);
     }
     if (!this.drag.moved) return;
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
@@ -923,6 +948,14 @@ export class DagScene {
     this.raycaster.setFromCamera(pointer, this.camera);
     const point: THREE.Vector3 = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.drag.plane, point) === null) return;
+    if (this.drag.solo) {
+      const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);
+      if (mesh !== undefined) {
+        mesh.position.copy(point);
+        this.positions_sync();
+      }
+      return;
+    }
     const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
     if (grabbed) {
       grabbed.fx = point.x;
@@ -961,6 +994,9 @@ export class DagScene {
     }
   }
 
+  /** Nodes easing home after a ranked peek: mesh, from, to, start time. */
+  private dragReturns: Array<{ mesh: THREE.Mesh; from: THREE.Vector3; to: THREE.Vector3; startedAt: number }> = [];
+
   /** Releases a pull: the grip opens and the simulation cools to rest. */
   private drag_end(): void {
     if (this.viewDrag !== null) {
@@ -971,6 +1007,14 @@ export class DagScene {
     if (this.drag === null) return;
     this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
     if (this.drag.moved) this.suppressClick = true;
+    if (this.drag.solo && this.drag.moved) {
+      const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);
+      if (mesh !== undefined) {
+        this.dragReturns.push({
+          mesh, from: mesh.position.clone(), to: this.drag.home.clone(), startedAt: Date.now(),
+        });
+      }
+    }
     const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
     if (grabbed) {
       grabbed.fx = null;

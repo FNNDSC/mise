@@ -1171,13 +1171,9 @@ async function surface_start(token: string): Promise<void> {
         return;
       }
       if (event.key === 'b' && event.ctrlKey && !event.altKey && !event.metaKey) {
-        // The console and pane prompts keep their own Ctrl-B (cursor-back).
-        if (
-          event.target instanceof HTMLElement &&
-          event.target.closest('#terminal, .empty-prompt, input, textarea') !== null
-        ) {
-          return;
-        }
+        // The prefix belongs to argus EVERYWHERE — the terminal implements
+        // no readline Ctrl-B, so an exclusion only donated the key to the
+        // browser's bookmarks. Claim it unconditionally.
         if (document.querySelector('.pane-drawer:not([hidden])') !== null) {
           // Second prefix press: the command line.
           drawers_close();

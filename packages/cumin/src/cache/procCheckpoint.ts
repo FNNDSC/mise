@@ -19,7 +19,11 @@ import {
   type ProcInstance,
 } from './procCache';
 
-const PROC_CHECKPOINT_SCHEMA: number = 1;
+// v2: instances carry execution metrics (startedAt/finishedAt/outputBytes).
+// The bump is deliberate: metrics ride the warmup's list rows, and settled
+// feeds never re-page — a v1 checkpoint would never backfill them. One
+// fresh warmup repopulates with metrics, then the checkpoint carries them.
+const PROC_CHECKPOINT_SCHEMA: number = 2;
 
 interface ProcCheckpointFile {
   schemaVersion: number;

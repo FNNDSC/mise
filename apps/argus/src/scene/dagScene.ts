@@ -159,6 +159,8 @@ function nodeColor_pick(
  * same graph always lands the same way.
  */
 function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
+  const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? 0);
+  const metricPeak: number = Math.max(...metrics, 0);
   const depths: Map<string, number> = new Map();
   const byId: Map<string, SceneNode> = new Map(nodes.map((n: SceneNode) => [n.id, n]));
   const depth_find = (node: SceneNode, trail: Set<string>): number => {
@@ -198,7 +200,11 @@ function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
       let hash: number = 0;
       for (const ch of node.id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
       const z: number = ((hash % 100) / 100 - 0.5) * 1.2;
-      placed.push({ node, position: new THREE.Vector3(x, y, z), radius: NODE_RADIUS });
+      // Metric scaling applies in every layout: a mode pill that changes
+      // nothing on screen reads as broken. No metric = uniform.
+      const metric: number = node.metric ?? 0;
+      const scale: number = metricPeak > 0 ? 0.55 + (metric / metricPeak) * 1.0 : 1;
+      placed.push({ node, position: new THREE.Vector3(x, y, z), radius: NODE_RADIUS * scale });
     });
   }
   return placed;
@@ -265,7 +271,15 @@ export class DagScene {
   /** Idle spin stays paused until this clock time (0 = spinning). */
   private spinIdleUntil: number = 0;
   /** The grab in progress: which node, its drag plane, and travel so far. */
-  private drag: { nodeId: string; plane: THREE.Plane; startX: number; startY: number; moved: boolean } | null = null;
+  private drag: {
+    nodeId: string;
+    plane: THREE.Plane;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    solo: boolean;
+    home: THREE.Vector3;
+  } | null = null;
   /** The live reaction simulation while (and shortly after) a grab. */
   private dragSim: ReturnType<typeof forceSimulation> | null = null;
   private dragSimNodes: Array<{ id: string; x: number; y: number; z: number; fx?: number | null; fy?: number | null; fz?: number | null }> = [];
@@ -411,6 +425,16 @@ export class DagScene {
             this.dragSimNodes = [];
           }
         }
+        if (this.dragReturns.length > 0) {
+          const now: number = Date.now();
+          this.dragReturns = this.dragReturns.filter((entry): boolean => {
+            const t: number = Math.min(1, (now - entry.startedAt) / 300);
+            const eased: number = t * t * (3 - 2 * t);
+            entry.mesh.position.lerpVectors(entry.from, entry.to, eased);
+            return t < 1;
+          });
+          this.positions_sync();
+        }
         this.wave_animate();
         this.flight_animate();
       }
@@ -425,11 +449,27 @@ export class DagScene {
    *
    * @param graph - The normalized graph.
    */
-  public graph_set(graph: SceneGraph): void {
+  public graph_set(graph: SceneGraph, options: { wave?: boolean } = {}): void {
     this.graph = graph;
     this.rebuild();
-    // Every arriving graph gets one wave; the ambient miniature loops it.
-    this.wave_start();
+    // An ARRIVING graph gets one wave; a local re-projection (a scale or
+    // layout flip) must not fire one — an unasked pulse reads as a glitch.
+    if (options.wave !== false) this.wave_start();
+  }
+
+  /** Whether the pane's wave loops continuously (the PULSE ON state). */
+  private waveLooping: boolean = false;
+
+  /** Sets continuous wave looping; enabling fires a wave immediately. */
+  public waveLoop_set(on: boolean): void {
+    this.waveLooping = on;
+    if (on) this.wave_start();
+    // Turning it off lets the current wave finish and simply not renew.
+  }
+
+  /** @returns Whether the wave is looping. */
+  public waveLoop_get(): boolean {
+    return this.waveLooping;
   }
 
   /**
@@ -581,7 +621,7 @@ export class DagScene {
     }
     if (elapsed > peak + WAVE_FLARE_MS) {
       // A future start leaves the graph quiet through the gap, then loops.
-      this.waveStartAt = this.ambient ? Date.now() + WAVE_LOOP_GAP_MS : null;
+      this.waveStartAt = this.ambient || this.waveLooping ? Date.now() + WAVE_LOOP_GAP_MS : null;
     }
   }
 
@@ -840,7 +880,14 @@ export class DagScene {
     // pull, no depth surprises.
     const normal: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3()).negate();
     const plane: THREE.Plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.position);
-    this.drag = { nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false };
+    this.drag = {
+      nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false,
+      // Ranked is deterministic truth: a pull peeks at ONE node and the
+      // release returns it home. The whole-graph elastic reaction belongs
+      // to the molecule — heating it under ranked dissolved the tiers.
+      solo: this.strategy === 'ranked',
+      home: hit.position.clone(),
+    };
     try {
       this.renderer.domElement.setPointerCapture(event.pointerId);
     } catch {
@@ -890,7 +937,7 @@ export class DagScene {
         DRAG_THRESHOLD_PX
     ) {
       this.drag.moved = true;
-      this.dragSim_begin(this.drag.nodeId);
+      if (!this.drag.solo) this.dragSim_begin(this.drag.nodeId);
     }
     if (!this.drag.moved) return;
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
@@ -901,6 +948,14 @@ export class DagScene {
     this.raycaster.setFromCamera(pointer, this.camera);
     const point: THREE.Vector3 = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.drag.plane, point) === null) return;
+    if (this.drag.solo) {
+      const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);
+      if (mesh !== undefined) {
+        mesh.position.copy(point);
+        this.positions_sync();
+      }
+      return;
+    }
     const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
     if (grabbed) {
       grabbed.fx = point.x;
@@ -939,6 +994,9 @@ export class DagScene {
     }
   }
 
+  /** Nodes easing home after a ranked peek: mesh, from, to, start time. */
+  private dragReturns: Array<{ mesh: THREE.Mesh; from: THREE.Vector3; to: THREE.Vector3; startedAt: number }> = [];
+
   /** Releases a pull: the grip opens and the simulation cools to rest. */
   private drag_end(): void {
     if (this.viewDrag !== null) {
@@ -949,6 +1007,14 @@ export class DagScene {
     if (this.drag === null) return;
     this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
     if (this.drag.moved) this.suppressClick = true;
+    if (this.drag.solo && this.drag.moved) {
+      const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);
+      if (mesh !== undefined) {
+        this.dragReturns.push({
+          mesh, from: mesh.position.clone(), to: this.drag.home.clone(), startedAt: Date.now(),
+        });
+      }
+    }
     const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
     if (grabbed) {
       grabbed.fx = null;

@@ -1368,9 +1368,11 @@ async function surface_start(token: string): Promise<void> {
   const palette: HTMLElement = element_require('lang-palette');
   const paletteInput: HTMLInputElement = element_require('lang-input') as HTMLInputElement;
   const paletteResult: HTMLElement = element_require('lang-result');
+  const langPill: HTMLElement = element_require('lang-pill');
   const palette_open = (): void => {
     drawers_close();
     palette.hidden = false;
+    langPill.classList.add('lang-live');
     paletteResult.textContent = '';
     paletteInput.value = '';
     paletteInput.focus();
@@ -1378,9 +1380,15 @@ async function surface_start(token: string): Promise<void> {
   };
   const palette_close = (): void => {
     palette.hidden = true;
+    langPill.classList.remove('lang-live');
     paletteResult.textContent = '';
   };
-  element_require('lang-pill').addEventListener('click', palette_open);
+  // LCARS has no keyboard: the gutter given is a show/remove toggle, and
+  // it wears a lit dress while the line is on stage.
+  langPill.addEventListener('click', (): void => {
+    if (palette.hidden) palette_open();
+    else palette_close();
+  });
   const LANG_SUBJECT_WORDS: string[] = [
     'pane', 'view', 'runs', 'node', 'dag', 'file', 'header', 'console', 'back', 'desktop', 'argus',
   ];

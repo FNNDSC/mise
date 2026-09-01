@@ -170,10 +170,20 @@ export class DagPanel {
    */
   public envelope_observe(envelope: WireEnvelope): void {
     if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
+      this.rosterPending = false;
       const roster = feedListModelSchema.safeParse(envelope.model.data);
       if (roster.success) {
         this.chooser_show(roster.data.feeds);
       }
+      return;
+    }
+    if (this.rosterPending && envelope.status === 'error') {
+      // The roster request was refused (the warmup guard declines global
+      // queries over a half-built index). A loading row that outlives its
+      // request is a lie: show the refusal, and let the prompt context
+      // keep the warming figure honest below it.
+      this.rosterPending = false;
+      this.rosterRefusal_show(envelope);
       return;
     }
     if (envelope.model?.kind !== DAG_MODEL_KINDS.feedDag) {
@@ -252,6 +262,19 @@ export class DagPanel {
    * @param context - The pushed prompt context.
    */
   public promptContext_observe(context: PromptContext): void {
+    if (this.rosterProgress !== null && this.rosterProgress.isConnected) {
+      const warm = context.procWarmup;
+      if (warm?.total !== undefined && warm.total > 0) {
+        const percent: number = Math.floor((warm.loaded / warm.total) * 100);
+        this.rosterProgress.textContent =
+          `INDEX WARMING \u2014 ${warm.loaded}/${warm.total} (${percent}%). The roster opens when the index is whole.`;
+      }
+      if (warm === undefined || warm.state === 'cached') {
+        // The index came whole: ask again on the operator's behalf.
+        this.rosterProgress = null;
+        this.feedsChooser_request();
+      }
+    }
     // An offstage pane must not queue diagram traffic: following the cwd
     // while nobody can see the graph is pure session-queue congestion (and
     // exactly the kind of delay RUNS-02 then sits behind).
@@ -317,7 +340,40 @@ export class DagPanel {
     loading.textContent = 'RETRIEVING FEED ROSTER…';
     this.feedList.replaceChildren(loading);
     this.feedList.style.display = 'block';
+    this.rosterPending = true;
     this.handlers.command_run('proc feeds');
+  }
+
+  /** An unanswered roster request, awaiting its envelope. */
+  private rosterPending: boolean = false;
+
+  /** The live progress line of a refused roster, fed by the prompt. */
+  private rosterProgress: HTMLElement | null = null;
+
+  /**
+   * Paints the roster refusal in place of the loading row: the daemon's
+   * own reason, with a live warming figure beneath it.
+   *
+   * @param envelope - The error envelope that answered `proc feeds`.
+   */
+  private rosterRefusal_show(envelope: WireEnvelope): void {
+    const raw: string = (envelope.renderedErr || envelope.rendered || '').replace(
+      // eslint-disable-next-line no-control-regex
+      /\u001b\[[0-9;]*m/g,
+      '',
+    );
+    const reason: string =
+      raw.split('\n').find((line: string): boolean => line.trim().length > 0)?.trim() ??
+      'the roster request was refused';
+    const refusal: HTMLDivElement = document.createElement('div');
+    refusal.className = 'feedlist-refusal';
+    refusal.textContent = reason;
+    const progress: HTMLDivElement = document.createElement('div');
+    progress.className = 'feedlist-warming';
+    progress.textContent = 'INDEX WARMING\u2026 the roster opens when the index is whole.';
+    this.feedList.replaceChildren(refusal, progress);
+    this.feedList.style.display = 'block';
+    this.rosterProgress = progress;
   }
 
   /**
@@ -416,10 +472,29 @@ export class DagPanel {
     // pane's regard, feeding any slaved viewer in its group.
     this.handlers.node_regard?.(payload.vfsPath);
     this.facts.replaceChildren();
+    const settled: boolean =
+      payload.status === 'finishedSuccessfully' ||
+      payload.status === 'finishedWithError' ||
+      payload.status === 'cancelled';
+    // Metrics ride the warmed ProcCache; a settled node without them has
+    // simply not been backfilled yet.
+    const pending: string = settled ? 'awaiting warmup' : 'in flight';
     const rows: Array<[string, string]> = [
       ['PLUGIN', payload.pluginName],
       ['INSTANCE', String(payload.instanceId)],
       ['STATUS', payload.status],
+      [
+        'WALL',
+        payload.metrics?.computeSeconds !== undefined
+          ? duration_format(payload.metrics.computeSeconds)
+          : pending,
+      ],
+      [
+        'SIZE',
+        payload.metrics?.dataBytes !== undefined
+          ? size_format(payload.metrics.dataBytes)
+          : pending,
+      ],
       ['DATA', payload.vfsPath],
     ];
     for (const [label, value] of rows) {
@@ -485,6 +560,43 @@ export class DagPanel {
     }
     return false;
   }
+}
+
+/**
+ * Formats a wall-clock duration for the facts chip.
+ *
+ * @param seconds - The duration in seconds.
+ * @returns The human form (e.g. `42s`, `4m 12s`, `2h 05m`).
+ */
+function duration_format(seconds: number): string {
+  const whole: number = Math.round(seconds);
+  if (whole < 60) {
+    return `${whole}s`;
+  }
+  if (whole < 3600) {
+    return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, '0')}s`;
+  }
+  return `${Math.floor(whole / 3600)}h ${String(Math.floor((whole % 3600) / 60)).padStart(2, '0')}m`;
+}
+
+/**
+ * Formats a byte count for the facts chip, compactly.
+ *
+ * @param bytes - The size in bytes.
+ * @returns The human form (e.g. `2.4K`, `13M`).
+ */
+function size_format(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes}B`;
+  }
+  const units: string[] = ['K', 'M', 'G', 'T'];
+  let value: number = bytes;
+  let unitIndex: number = -1;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value = value / 1024;
+    unitIndex = unitIndex + 1;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)}${units[unitIndex]}`;
 }
 
 /** The job lifecycle, in order — the subway line a node rides. */

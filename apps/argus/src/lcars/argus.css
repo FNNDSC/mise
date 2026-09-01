@@ -865,6 +865,23 @@ body[data-zoom]:not([data-zoom='console']) .layout-divider {
   animation: roster-breathe 1.2s ease-in-out infinite;
 }
 
+/* A refused roster says why; the warming line keeps the figure live. */
+.feedlist-refusal {
+  padding: 0.5rem 0.9rem 0.15rem;
+  color: var(--honey);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.feedlist-warming {
+  padding: 0.15rem 0.9rem 0.5rem;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+}
+
 @keyframes roster-breathe {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
@@ -1388,14 +1405,17 @@ body[data-header='away'] #header-restore {
   --pumpkin-pie: #a07800;
 }
 
+/* Sickbay wears the BCH flag: the ramp is anchored on the two colors of
+ * bch-logo.svg — navy #164989 (frame, elbows) and cyan #1EBEF0 (primary
+ * bars) — with the rest interpolated between them. */
 :root[data-lcars='sickbay'] {
-  --butter: #dceeff;
-  --daybreak: #7ec8ff;
-  --harvestgold: #66c2ff;
-  --honey: #a6d8ff;
-  --october-sunset: #1467b3;
-  --orange: #3a9bdc;
-  --pumpkin-pie: #0d4f8b;
+  --butter: #dff5fd;
+  --daybreak: #7edcf7;
+  --harvestgold: #1ebef0;
+  --honey: #7fd9f7;
+  --october-sunset: #164989;
+  --orange: #1878b8;
+  --pumpkin-pie: #0f3566;
 }
 
 :root[data-lcars='nemesis'] {
@@ -1912,6 +1932,11 @@ body[data-header='away'] #header-restore {
   border-bottom: var(--panel-border);
 }
 
+/* The command line is on stage: its given glows butter until dismissed. */
+.left-frame .panel-lang.lang-live {
+  background-color: var(--butter);
+}
+
 /* The lid is the theme's own segmented divider — the same punctuation
  * vocabulary as the frame, identical open and closed (the flattened band
  * that replaced it read as a regression, and the old closed-state
@@ -1924,11 +1949,14 @@ body[data-header='away'] #header-restore {
   cursor: pointer;
 }
 
-#drawer ~ .bar-panel:hover {
+/* Beckon and hover glow live on the END BLOCK only: a filter across the
+ * whole bar visibly detaches its first segment from the static elbow arm
+ * it joins (on sickbay the seam pulsed on a live display). */
+#drawer ~ .bar-panel:hover .bar-10 {
   filter: brightness(1.2);
 }
 
-#drawer.drawer-closed ~ .bar-panel {
+#drawer.drawer-closed ~ .bar-panel .bar-10 {
   animation: lid-beckon 3.5s ease-in-out infinite;
 }
 

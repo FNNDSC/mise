@@ -41,6 +41,8 @@ export interface ArgusHost {
   node_immerse(paneId: string): boolean;
   /** Runs a session command silently, returning rendered output. */
   session_run(line: string): Promise<string>;
+  /** Toggles the console's full-screen zoom (the bar carries no control). */
+  consoleZoom_toggle(): void;
   /** The serialized desktop of the current composition. */
   desktop_serialize(): string;
 }
@@ -172,7 +174,7 @@ const VERBS_HELP: string = [
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse',
   'file [@id] home|back|download|delete',
   'header stats|dag|away|restore',
-  'console open|close|toggle|height <px>',
+  'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
   'desktop save|load|show|list|delete [name]',
   'argus verbs                 (this table)',
@@ -233,8 +235,13 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (drawer === null) return 'console: no drawer';
     const closed: boolean = drawer.classList.contains('drawer-closed');
     if (verb === 'toggle' || (verb === 'open' && closed) || (verb === 'close' && !closed)) {
-      document.getElementById(closed || verb === 'open' ? 'drawer-toggle' : 'drawer-close')?.click();
+      // The lid is the one mechanism (the bar law): it toggles both ways.
+      document.getElementById('drawer-toggle')?.click();
       return `console ${verb}`;
+    }
+    if (verb === 'zoom') {
+      host.consoleZoom_toggle();
+      return 'console zoom';
     }
     if (verb === 'height') {
       const px: number = parseInt(arg, 10);
@@ -243,7 +250,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       return `console height ${px}`;
     }
     if (verb === 'open' || verb === 'close') return `console already ${verb === 'open' ? 'open' : 'closed'}`;
-    return `console: unknown verb '${verb}' (open|close|toggle|height)`;
+    return `console: unknown verb '${verb}' (open|close|toggle|zoom|height)`;
   }
 
   if (subject === 'runs') {

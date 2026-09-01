@@ -195,13 +195,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   cursor: pointer;
 }
 
-.pane-handle .pane-hint {
-  opacity: 0.55;
-}
-
-.pane-handle:hover .pane-hint {
-  opacity: 1;
-  box-shadow: 0 0 10px var(--butter);
+/* The whole bar is the drawer handle; hovering brightens the frame itself
+ * rather than annunciating on a control that does not exist. */
+.pane-handle:hover .lcars-bar-end {
+  filter: brightness(1.25);
 }
 
 .pane-drawer {
@@ -1464,20 +1461,15 @@ body[data-header='away'] #header-restore {
   text-transform: none;
 }
 
+/* The bar law (docs/aegis.adoc): an end-cap is frame PUNCTUATION — it
+ * terminates the bar in the frame's own color. Red exists on a bar only
+ * when something is actually wrong; machinery never rides a title bar. */
 .lcars-bar-end {
   width: 60px;
   height: 28px;
-  background-color: #f22;
+  background-color: var(--harvestgold);
   border-radius: 0 14px 14px 0;
   margin-left: 0.5rem;
-  cursor: pointer;
-  animation: beckon-mars 2.5s ease-in-out infinite;
-}
-
-.lcars-bar-end:hover {
-  animation: none;
-  filter: brightness(1.4);
-  box-shadow: 0 0 20px #f22;
 }
 
 #terminal {
@@ -1890,7 +1882,8 @@ body[data-header='away'] #header-restore {
 }
 
 #lang-pill {
-  margin-left: 0.6rem;
+  margin-left: 0.5rem;
   background-color: var(--butter);
   color: #000;
+  align-self: center;
 }

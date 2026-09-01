@@ -1,5 +1,15 @@
 # @fnndsc/brasa
 
+## 0.14.1
+
+### Patch Changes
+
+- 1bc0953: `ls` on a ChRIS link (`~/public`, `~/shared`) follows the link instead of rendering the link entry itself: the parent-cache leaf shortcut no longer captures links, so resolution falls through to the dispatcher's PathMapper. Native listings are also name-deduplicated (CUBE's links search can return the same row twice, observed on /PUBLIC).
+- Updated dependencies [44ba77a]
+- Updated dependencies [1bc0953]
+  - @fnndsc/cumin@3.15.1
+  - @fnndsc/salsa@3.10.1
+
 ## 0.14.0
 
 ### Minor Changes

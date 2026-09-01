@@ -226,6 +226,56 @@ describe('VFS', () => {
     });
   });
 
+  describe('leaf shortcut vs links', () => {
+    it('follows a link through the dispatcher instead of returning the link entry', async () => {
+      mockGetCWD.mockResolvedValue('/home/testuser');
+      const parentListing = {
+        data: [
+          { name: 'public', type: 'link', size: 6, owner: 'testuser', date: '', target: '/PUBLIC' },
+          { name: 'hello.txt', type: 'file', size: 92, owner: 'testuser', date: '' },
+        ],
+        fresh: true,
+      };
+      mockListCache.cache_get.mockImplementation((p: string) =>
+        p === '/home/testuser' ? parentListing : undefined,
+      );
+      mockFiles_list.mockResolvedValue([
+        { name: 'shared_thing', type: 'dir', size: 0, owner: 'other', date: '' },
+      ]);
+      const vfs = new VFS();
+      const result = await vfs.data_get('/home/testuser/public');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.map((i: any) => i.name)).toEqual(['shared_thing']);
+      }
+      expect(mockVfsDispatcher.list).toHaveBeenCalledWith(
+        '/home/testuser/public',
+        expect.anything(),
+      );
+    });
+
+    it('still serves a plain file from the cached parent listing', async () => {
+      mockGetCWD.mockResolvedValue('/home/testuser');
+      const parentListing = {
+        data: [
+          { name: 'hello.txt', type: 'file', size: 92, owner: 'testuser', date: '' },
+        ],
+        fresh: true,
+      };
+      mockListCache.cache_get.mockImplementation((p: string) =>
+        p === '/home/testuser' ? parentListing : undefined,
+      );
+      mockVfsDispatcher.list.mockClear();
+      const vfs = new VFS();
+      const result = await vfs.data_get('/home/testuser/hello.txt');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.map((i: any) => i.name)).toEqual(['hello.txt']);
+      }
+      expect(mockVfsDispatcher.list).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listVirtualBin()', () => {
     it('should list plugins from /bin', async () => {
       mockGetCWD.mockResolvedValue('/');

@@ -129,7 +129,17 @@ export class NativeVfsProvider implements VFSProvider {
         );
       }
 
-      const sorted: VFSItem[] = vfsItems_sort(items, options?.sort, options?.reverse);
+      // A directory listing is name-unique by definition; CUBE's links
+      // search can return the same row more than once (observed on /PUBLIC),
+      // so keep the first occurrence of each name.
+      const seen: Set<string> = new Set();
+      const unique: VFSItem[] = items.filter((item: VFSItem): boolean => {
+        if (seen.has(item.name)) return false;
+        seen.add(item.name);
+        return true;
+      });
+
+      const sorted: VFSItem[] = vfsItems_sort(unique, options?.sort, options?.reverse);
       return Ok(sorted);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);

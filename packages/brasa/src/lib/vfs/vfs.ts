@@ -144,7 +144,11 @@ export class VFS {
     const item: ListingItem | undefined = cached.data.find(
       (candidate: ListingItem): boolean => candidate.name === baseName,
     );
-    if (!item || item.type === 'dir' || item.type === 'vfs' || item.type === 'job') {
+    // A link is not a leaf: plain `ls` follows a link to a directory (POSIX),
+    // so it must fall through to the dispatcher, whose PathMapper resolves
+    // the target. Returning the link entry here rendered `ls ~/public` as
+    // the link itself whenever the parent listing happened to be cached.
+    if (!item || item.type === 'dir' || item.type === 'vfs' || item.type === 'job' || item.type === 'link') {
       return null;
     }
     return item;

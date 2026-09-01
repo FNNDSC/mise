@@ -1484,7 +1484,6 @@ body[data-header='away'] #header-restore {
   flex: 1;
   min-width: 0;
   background-color: black;
-  border-left: 4px solid var(--harvestgold);
   padding: 0.8rem 1rem;
   display: flex;
   flex-direction: column;
@@ -1840,7 +1839,6 @@ body[data-header='away'] #header-restore {
   width: min(52rem, 70vw);
   height: 30px;
   background: #000;
-  border-bottom: 2px solid var(--pumpkin-pie);
 }
 
 #lang-palette[hidden] {
@@ -1863,6 +1861,9 @@ body[data-header='away'] #header-restore {
   flex: 1;
   background: transparent;
   border: none;
+  /* The strip's baseline bridges glyph and cap; on the container it
+   * overran their curves. */
+  border-bottom: 2px solid var(--pumpkin-pie);
   outline: none;
   padding: 0 0.7rem;
   color: var(--butter);
@@ -1898,71 +1899,43 @@ body[data-header='away'] #header-restore {
 }
 
 /* LANG is a gutter given: the command line is workspace-scope machinery,
- * so it lives in the givens column, not on the workspace. */
+ * so it lives in the givens column, dressed exactly like its siblings
+ * (the theme's padding rule enumerates panel-2..7 and skipped it). */
 .left-frame .panel-lang {
+  display: flex;
+  justify-content: flex-end;
   height: auto;
   flex: 1.2 1 0;
   min-height: 2.4rem;
-  background-color: var(--butter);
+  padding: var(--left-frame-padding);
+  background-color: var(--harvestgold);
   border-bottom: var(--panel-border);
 }
 
-/* The lid is a purpose-built STRIP, not a second frame bar: the old lid
- * reused the divider's segment vocabulary and the two bars stuttered
- * against each other (unaligned cutouts, offset left edges) whenever the
- * console was open — and hiding segments when closed left the toggle
- * floating as a lone red block. One thin continuous band, identical in
- * both states: harvestgold, the toggle an integrated ORANGE segment (red
- * is reserved for alerts, per the bar law), LANG riding its end. */
+/* The lid is the theme's own segmented divider — the same punctuation
+ * vocabulary as the frame, identical open and closed (the flattened band
+ * that replaced it read as a regression, and the old closed-state
+ * overrides were what broke segment alignment between states). No
+ * machinery rides the bar and no label either (bar law: end-caps are
+ * passive punctuation): the whole lid is the console's toggle — a lid
+ * opens by being touched — and it breathes only while closed. */
 #drawer ~ .bar-panel {
-  display: flex;
-  align-items: center;
-  height: 16px;
-  margin: 4px 0 6px;
-  background: var(--harvestgold);
-  border-radius: 0;
-}
-
-#drawer ~ .bar-panel .bar-6,
-#drawer ~ .bar-panel .bar-7,
-#drawer ~ .bar-panel .bar-8,
-#drawer ~ .bar-panel .bar-9 {
-  display: none;
-}
-
-/* The toggle is the band's labeled end segment — a control must READ as
- * one. (The theme's bar-border left edge was the black slot.) */
-#drawer ~ .bar-panel .bar-10 {
-  width: auto;
-  height: 100%;
-  margin-left: auto;
-  padding: 0 0.9rem;
-  border: none;
-  background-color: var(--orange);
-  border-radius: 0 8px 8px 0;
+  flex-wrap: nowrap;
   cursor: pointer;
-  animation: none;
-  display: flex;
-  align-items: center;
-  color: #000;
-  font-family: 'Antonio', sans-serif;
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
 }
 
-#drawer.drawer-closed ~ .bar-panel .bar-10 {
-  animation: lid-beckon 3s ease-in-out infinite;
+#drawer ~ .bar-panel:hover {
+  filter: brightness(1.2);
+}
+
+#drawer.drawer-closed ~ .bar-panel {
+  animation: lid-beckon 3.5s ease-in-out infinite;
 }
 
 @keyframes lid-beckon {
   0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.45); }
+  50% { filter: brightness(1.35); }
 }
-
-#drawer ~ .bar-panel .bar-10:hover {
-  filter: brightness(1.35);
-}
-
 
 /* Rail state weights: a quiet mode recedes, a missing-data mode says so. */
 .dag-rail .strategy-pill.rail-off {

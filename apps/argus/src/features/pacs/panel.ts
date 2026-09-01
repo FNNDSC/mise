@@ -98,9 +98,7 @@ export class PacsPanel {
     });
     element_query(root, '#pacs-gather-save').addEventListener('click', (): void => this.manifest_save());
     element_query(root, '#pacs-gather-feed').addEventListener('click', (): void => this.feed_create());
-    element_query(root, '#pacs-close').addEventListener('click', (): void =>
-      handlers.workspace_close(),
-    );
+
   }
 
   /** Regenerates the editable command line from the form's filled terms. */

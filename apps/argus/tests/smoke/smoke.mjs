@@ -142,6 +142,33 @@ try {
     return document.querySelector('.feedlist-loading') ? 'loading' : 'silent-empty';`);
   check('RUNS-02 answers with roster, refusal, or visible wait', runs !== 'silent-empty', runs);
 
+  console.log('console-grammar');
+  const consoleGrammar = await evalIn(`
+    const drawerEl = document.getElementById('drawer');
+    if (drawerEl.classList.contains('drawer-closed')) {
+      document.getElementById('drawer-toggle').click(); await sleep(500);
+    }
+    const handle = document.getElementById('console-handle');
+    const cdrawer = document.getElementById('console-drawer');
+    handle.click(); await sleep(150);
+    const out = { opened: !cdrawer.hidden };
+    const capsule = cdrawer.querySelector('.drawer-zoom');
+    out.capsuleShown = capsule.getBoundingClientRect().height > 0;
+    capsule.click(); await sleep(600);
+    out.zoomed = document.body.dataset.zoom === 'console';
+    out.reads = capsule.textContent;
+    capsule.click(); await sleep(600);
+    out.restored = document.body.dataset.zoom === undefined;
+    out.readsAfter = capsule.textContent;
+    cdrawer.querySelector('.console-retract').click(); await sleep(500);
+    out.retracted = drawerEl.classList.contains('drawer-closed');
+    document.getElementById('drawer-toggle').click(); await sleep(300);
+    return out;`);
+  check('console drawer opens from its handle', consoleGrammar.opened && consoleGrammar.capsuleShown);
+  check('console drawer zooms the console and reads RESTORE', consoleGrammar.zoomed && consoleGrammar.reads === 'RESTORE');
+  check('console zoom restores and reads ZOOM', consoleGrammar.restored && consoleGrammar.readsAfter === 'ZOOM');
+  check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
+
   console.log('nameplate');
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');

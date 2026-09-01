@@ -1903,15 +1903,58 @@ body[data-header='away'] #header-restore {
   align-self: center;
 }
 
-/* A closed console reads as ONE bar: the lid row's decorative segments
- * step aside (two adjacent near-twin bars with unaligned cutouts read as
- * a glitch), leaving the beckoning toggle and the LANG capsule on black —
- * a minimal machinery row, dark-cockpit quiet. */
-#drawer.drawer-closed + .bar-panel .bar-6,
-#drawer.drawer-closed + .bar-panel .bar-7,
-#drawer.drawer-closed + .bar-panel .bar-8,
-#drawer.drawer-closed + .bar-panel .bar-9 {
-  visibility: hidden;
+/* The lid is a purpose-built STRIP, not a second frame bar: the old lid
+ * reused the divider's segment vocabulary and the two bars stuttered
+ * against each other (unaligned cutouts, offset left edges) whenever the
+ * console was open — and hiding segments when closed left the toggle
+ * floating as a lone red block. One thin continuous band, identical in
+ * both states: harvestgold, the toggle an integrated ORANGE segment (red
+ * is reserved for alerts, per the bar law), LANG riding its end. */
+#drawer ~ .bar-panel {
+  display: flex;
+  align-items: center;
+  height: 16px;
+  margin: 4px 0 6px;
+  background: var(--harvestgold);
+  border-radius: 0 8px 8px 0;
+}
+
+#drawer ~ .bar-panel .bar-6,
+#drawer ~ .bar-panel .bar-7,
+#drawer ~ .bar-panel .bar-8,
+#drawer ~ .bar-panel .bar-9 {
+  display: none;
+}
+
+#drawer ~ .bar-panel .bar-10 {
+  width: 110px;
+  height: 100%;
+  margin-left: auto;
+  background-color: var(--orange);
+  border-radius: 0;
+  cursor: pointer;
+  animation: none;
+}
+
+#drawer.drawer-closed ~ .bar-panel .bar-10 {
+  animation: lid-beckon 3s ease-in-out infinite;
+}
+
+@keyframes lid-beckon {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.45); }
+}
+
+#drawer ~ .bar-panel .bar-10:hover {
+  filter: brightness(1.35);
+}
+
+#drawer ~ .bar-panel #lang-pill {
+  margin: 0 4px 0 0.5rem;
+  height: 12px;
+  line-height: 12px;
+  padding: 0 0.7rem;
+  align-self: center;
 }
 
 /* Rail state weights: a quiet mode recedes, a missing-data mode says so. */

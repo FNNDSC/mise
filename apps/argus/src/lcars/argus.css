@@ -332,6 +332,25 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   overflow: hidden;
 }
 
+/* ------------------------------------------------------------ the nameplate */
+/* The top-left block is the LCARS nameplate: the mark is engraved in the
+ * panel's own black, like its type — never full-color art on the frame.
+ * A mask renders the vendored ChRIS logo as a silhouette, so it obeys
+ * every skin without variants. */
+.left-frame-top .panel-1 {
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.brand-mark {
+  width: 4.2rem;
+  aspect-ratio: 111 / 78;
+  background-color: #000;
+  mask: url('../assets/brand/ChRISlogo-color.svg') no-repeat center / contain;
+  -webkit-mask: url('../assets/brand/ChRISlogo-color.svg') no-repeat center / contain;
+}
+
 /* ----------------------------------------------------------- elastic gutter */
 /* The theme sizes the gutter buttons in fixed viewport fractions (21vw,
  * 30vh, ...) that sum past any real window once the page stopped

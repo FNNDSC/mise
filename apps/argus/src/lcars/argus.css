@@ -1646,14 +1646,15 @@ body[data-header='away'] #header-restore {
 /* The access strip: a pullable orange bar floating just above the lid.
  * Grabbing it resizes the console; it glows under the pointer and breathes
  * gently while the drawer is open to signal the affordance. */
+/* The drag strip is a quiet hairline, full-bleed: radius and a pulsing
+ * animation made it read as a misaligned double line. */
 #drawer-strip {
   flex: none;
-  height: 6px;
-  margin: 5px 0 5px 0;
-  background: var(--october-sunset);
-  border-radius: 3px;
+  height: 4px;
+  margin: 3px 0;
+  background: var(--pumpkin-pie);
+  border-radius: 0;
   cursor: row-resize;
-  animation: beckon 3.5s ease-in-out infinite;
 }
 
 #drawer-strip:hover,
@@ -1896,11 +1897,14 @@ body[data-header='away'] #header-restore {
   display: none;
 }
 
-#lang-pill {
-  margin-left: 0.5rem;
+/* LANG is a gutter given: the command line is workspace-scope machinery,
+ * so it lives in the givens column, not on the workspace. */
+.left-frame .panel-lang {
+  height: auto;
+  flex: 1.2 1 0;
+  min-height: 2.4rem;
   background-color: var(--butter);
-  color: #000;
-  align-self: center;
+  border-bottom: var(--panel-border);
 }
 
 /* The lid is a purpose-built STRIP, not a second frame bar: the old lid
@@ -1916,7 +1920,7 @@ body[data-header='away'] #header-restore {
   height: 16px;
   margin: 4px 0 6px;
   background: var(--harvestgold);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0;
 }
 
 #drawer ~ .bar-panel .bar-6,
@@ -1926,14 +1930,24 @@ body[data-header='away'] #header-restore {
   display: none;
 }
 
+/* The toggle is the band's labeled end segment — a control must READ as
+ * one. (The theme's bar-border left edge was the black slot.) */
 #drawer ~ .bar-panel .bar-10 {
-  width: 110px;
+  width: auto;
   height: 100%;
   margin-left: auto;
+  padding: 0 0.9rem;
+  border: none;
   background-color: var(--orange);
-  border-radius: 0;
+  border-radius: 0 8px 8px 0;
   cursor: pointer;
   animation: none;
+  display: flex;
+  align-items: center;
+  color: #000;
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
 }
 
 #drawer.drawer-closed ~ .bar-panel .bar-10 {
@@ -1949,13 +1963,6 @@ body[data-header='away'] #header-restore {
   filter: brightness(1.35);
 }
 
-#drawer ~ .bar-panel #lang-pill {
-  margin: 0 4px 0 0.5rem;
-  height: 12px;
-  line-height: 12px;
-  padding: 0 0.7rem;
-  align-self: center;
-}
 
 /* Rail state weights: a quiet mode recedes, a missing-data mode says so. */
 .dag-rail .strategy-pill.rail-off {

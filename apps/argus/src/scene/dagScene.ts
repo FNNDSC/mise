@@ -159,6 +159,8 @@ function nodeColor_pick(
  * same graph always lands the same way.
  */
 function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
+  const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? 0);
+  const metricPeak: number = Math.max(...metrics, 0);
   const depths: Map<string, number> = new Map();
   const byId: Map<string, SceneNode> = new Map(nodes.map((n: SceneNode) => [n.id, n]));
   const depth_find = (node: SceneNode, trail: Set<string>): number => {
@@ -198,7 +200,11 @@ function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
       let hash: number = 0;
       for (const ch of node.id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
       const z: number = ((hash % 100) / 100 - 0.5) * 1.2;
-      placed.push({ node, position: new THREE.Vector3(x, y, z), radius: NODE_RADIUS });
+      // Metric scaling applies in every layout: a mode pill that changes
+      // nothing on screen reads as broken. No metric = uniform.
+      const metric: number = node.metric ?? 0;
+      const scale: number = metricPeak > 0 ? 0.55 + (metric / metricPeak) * 1.0 : 1;
+      placed.push({ node, position: new THREE.Vector3(x, y, z), radius: NODE_RADIUS * scale });
     });
   }
   return placed;
@@ -425,11 +431,27 @@ export class DagScene {
    *
    * @param graph - The normalized graph.
    */
-  public graph_set(graph: SceneGraph): void {
+  public graph_set(graph: SceneGraph, options: { wave?: boolean } = {}): void {
     this.graph = graph;
     this.rebuild();
-    // Every arriving graph gets one wave; the ambient miniature loops it.
-    this.wave_start();
+    // An ARRIVING graph gets one wave; a local re-projection (a scale or
+    // layout flip) must not fire one — an unasked pulse reads as a glitch.
+    if (options.wave !== false) this.wave_start();
+  }
+
+  /** Whether the pane's wave loops continuously (the PULSE ON state). */
+  private waveLooping: boolean = false;
+
+  /** Sets continuous wave looping; enabling fires a wave immediately. */
+  public waveLoop_set(on: boolean): void {
+    this.waveLooping = on;
+    if (on) this.wave_start();
+    // Turning it off lets the current wave finish and simply not renew.
+  }
+
+  /** @returns Whether the wave is looping. */
+  public waveLoop_get(): boolean {
+    return this.waveLooping;
   }
 
   /**
@@ -581,7 +603,7 @@ export class DagScene {
     }
     if (elapsed > peak + WAVE_FLARE_MS) {
       // A future start leaves the graph quiet through the gap, then loops.
-      this.waveStartAt = this.ambient ? Date.now() + WAVE_LOOP_GAP_MS : null;
+      this.waveStartAt = this.ambient || this.waveLooping ? Date.now() + WAVE_LOOP_GAP_MS : null;
     }
   }
 

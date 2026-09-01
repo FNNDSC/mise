@@ -1913,3 +1913,15 @@ body[data-header='away'] #header-restore {
 #drawer.drawer-closed + .bar-panel .bar-9 {
   visibility: hidden;
 }
+
+/* Rail state weights: a quiet mode recedes, a missing-data mode says so. */
+.dag-rail .strategy-pill.rail-off {
+  background-color: rgb(255 170 68 / 30%);
+  color: var(--honey);
+}
+
+.dag-rail .strategy-pill.rail-na {
+  background-color: rgb(255 170 68 / 30%);
+  color: var(--honey);
+  text-decoration: line-through;
+}

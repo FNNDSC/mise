@@ -126,11 +126,18 @@ export class DagPanel {
       this.scene.projection_set(next);
       projectionPill.textContent = next.toUpperCase();
     });
-    // PULSE is a display-content control (it acts on the visualization, not
-    // the pane), so it rides the rail with the other display pills.
-    strategyPill.parentElement
-      ?.querySelector<HTMLElement>('.dag-pulse')
-      ?.addEventListener('click', (): void => this.scene.wave_start());
+    // PULSE is a MODE, not a one-shot: the pill shows the current state
+    // (rail convention) and carries its weight — lit when looping, dim
+    // when quiet. The one arrival-wave on graph load stays canon.
+    const pulsePill: HTMLElement | null =
+      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-pulse') ?? null;
+    pulsePill?.classList.add('rail-off');
+    pulsePill?.addEventListener('click', (): void => {
+      const on: boolean = !this.scene.waveLoop_get();
+      this.scene.waveLoop_set(on);
+      pulsePill.textContent = on ? 'PULSE ON' : 'PULSE OFF';
+      pulsePill.classList.toggle('rail-off', !on);
+    });
     // SCALE is a display-content control: it re-projects the remembered
     // model locally — no wire traffic, the metrics are already resident.
     const scalePill: HTMLElement | null =
@@ -138,8 +145,9 @@ export class DagPanel {
     scalePill?.addEventListener('click', (): void => {
       this.metricMode = this.metricMode === 'time' ? 'size' : 'time';
       scalePill.textContent = this.metricMode === 'time' ? 'TIME' : 'SIZE';
-      if (this.lastModel !== null) this.graph_show(this.lastModel);
+      if (this.lastModel !== null) this.graph_show(this.lastModel, false);
     });
+    this.scalePill = scalePill;
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,
@@ -201,8 +209,22 @@ export class DagPanel {
     this.handlers.feed_shown?.();
   }
 
+  /** The scale pill, dimmed when the feed carries no data for its mode. */
+  private scalePill: HTMLElement | null = null;
+
   /** Renders a model into the scene under the current metric mode. */
-  private graph_show(model: FeedDagModel): void {
+  private graph_show(model: FeedDagModel, wave: boolean = true): void {
+    const metric_of = (node: FeedDagNode): number | undefined =>
+      this.metricMode === 'time' ? node.metrics?.computeSeconds : node.metrics?.dataBytes;
+    // Honesty on the pill itself: a mode with no data behind it dims and
+    // says so, instead of silently rendering an unchanged graph.
+    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => metric_of(node) !== undefined);
+    this.scalePill?.classList.toggle('rail-na', !hasData);
+    if (this.scalePill !== null) {
+      this.scalePill.title = hasData
+        ? 'molecule node size: wall time or output bytes'
+        : `no ${this.metricMode === 'time' ? 'wall-time' : 'output-size'} data in this feed's cache yet`;
+    }
     this.scene.graph_set({
       nodes: model.nodes.map((node: FeedDagNode): SceneNode => ({
         id: node.id,
@@ -210,12 +232,9 @@ export class DagPanel {
         parentIds: node.parentIds,
         joinParentIds: node.joinParentIds,
         status: node.status,
-        metric:
-          this.metricMode === 'time'
-            ? node.metrics?.computeSeconds
-            : node.metrics?.dataBytes,
+        metric: metric_of(node),
       })),
-    });
+    }, { wave });
     this.scene.size_fit();
     this.factsPayloads.clear();
     for (const node of model.nodes) {

@@ -34,6 +34,7 @@ import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
+import { argusLine_run, type ArgusHost } from '../console/argusLang.js';
 import {
   paneFactory_register,
   paneInstance_adopt,
@@ -1099,6 +1100,13 @@ async function surface_start(token: string): Promise<void> {
     'keydown',
     (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        // The command line is the topmost transient: its Esc closes it and
+        // nothing else.
+        if (!palette.hidden) {
+          palette_close();
+          event.stopImmediatePropagation();
+          return;
+        }
         // Esc is a contextual back: transient chrome first (drawer, then
         // zoom), then one navigation pop — node immersion back to the
         // graph, the graph back to the feed list. Each press retreats
@@ -1148,12 +1156,28 @@ async function surface_start(token: string): Promise<void> {
         }
         return;
       }
+      // Prefix-: — a drawer opened by the prefix hands ':' to the command
+      // line (and a second Ctrl-B does the same).
+      if (event.key === ':' && document.querySelector('.pane-drawer:not([hidden])') !== null) {
+        drawers_close();
+        palette_open();
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       if (event.key === 'b' && event.ctrlKey && !event.altKey && !event.metaKey) {
         // The console and pane prompts keep their own Ctrl-B (cursor-back).
         if (
           event.target instanceof HTMLElement &&
           event.target.closest('#terminal, .empty-prompt, input, textarea') !== null
         ) {
+          return;
+        }
+        if (document.querySelector('.pane-drawer:not([hidden])') !== null) {
+          // Second prefix press: the command line.
+          drawers_close();
+          palette_open();
+          event.preventDefault();
           return;
         }
         // A zoomed tree pane is the only one on stage: the prefix key must
@@ -1242,6 +1266,176 @@ async function surface_start(token: string): Promise<void> {
     }
   });
 
+  // ------------------------------------------------------------ the language
+  // Every gesture as a sentence (docs/aegis.adoc: the argus language). The
+  // host hands the language the same controls the mouse uses.
+  const paneKind_get = (id: string): string | null => paneInstance_get(id)?.kind ?? null;
+  const argusHost: ArgusHost = {
+    focused_get: (): string | null => {
+      const zoomed: string | undefined = document.body.dataset['zoom'];
+      if (zoomed !== undefined && zoomed !== 'console') return zoomed;
+      // Before any click nothing is focused; the first shown pane is the
+      // sentence's natural default target.
+      return layout.focused_get() ?? layout.panes_shown()[0] ?? null;
+    },
+    focus_set: (id: string): boolean => {
+      if (paneInstance_get(id) === undefined) return false;
+      layout.focus_set(id);
+      return true;
+    },
+    panes_shown: (): string[] => layout.panes_shown(),
+    paneRect_get: (id: string): DOMRect | null => {
+      const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-pane="${id}"]`);
+      return leaf?.getBoundingClientRect() ?? null;
+    },
+    paneMount_get: (id: string): HTMLElement | null => paneInstance_get(id)?.mount ?? null,
+    paneKind_get,
+    paneLinked_get: (id: string): boolean => subjects.group_of(id) !== id,
+    feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
+    node_immerse: (paneId: string): boolean => {
+      const regard: RegardValue | null = subjects.regard_get(paneId);
+      const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
+      if (match === null) return false;
+      return dagPanels.get(paneId)?.node_flyTo(parseInt(match[1] ?? '', 10)) ?? false;
+    },
+    session_run: async (line: string): Promise<string> => {
+      try {
+        const outcome: ExecuteOutcome = await client.line_execute(line, { silent: true, observe: false });
+        return outcome.envelopes.map((envelope): string => envelope.renderedErr ?? envelope.rendered).join('\n');
+      } catch (error: unknown) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    },
+    desktop_serialize: (): string => {
+      const tree = layout.tree_get();
+      if (tree === null) return '# empty desktop';
+      const lines: string[] = [];
+      type Node = { pane: string } | { dir: 'row' | 'col'; first: Node; second: Node };
+      const firstLeaf = (node: Node): string => 'pane' in node ? node.pane : firstLeaf(node.first);
+      const anchorId: string = firstLeaf(tree as Node);
+      const anchorKind: string | null = paneKind_get(anchorId);
+      lines.push(`view ${anchorKind === 'dag' ? 'runs' : anchorKind === 'pacs' ? 'pacs' : 'files'}`);
+      let counter: number = 1;
+      const dress = (paneId: string, ordinal: number): void => {
+        const kind: string | null = paneKind_get(paneId);
+        if (kind === 'dag' && paneId !== anchorId) lines.push(`pane %${ordinal} claim runs`);
+        if (kind === 'files' && paneId !== anchorId && !(subjects.group_of(paneId) !== paneId)) {
+          lines.push(`pane %${ordinal} claim files`);
+        }
+        if (kind === 'dag') {
+          const mount: HTMLElement | undefined = paneInstance_get(paneId)?.mount;
+          const strategy: string = mount?.querySelector('.dag-strategy')?.textContent?.toLowerCase() ?? 'ranked';
+          const projection: string = mount?.querySelector('.dag-projection')?.textContent?.toLowerCase() ?? '3d';
+          if (strategy !== 'ranked') lines.push(`dag %${ordinal} layout ${strategy}`);
+          if (projection !== '3d') lines.push(`dag %${ordinal} projection ${projection}`);
+        }
+      };
+      const build = (node: Node, ordinal: number): void => {
+        if ('pane' in node) {
+          dress(node.pane, ordinal);
+          return;
+        }
+        const secondAnchor: string = firstLeaf(node.second);
+        const secondKind: string | null = paneKind_get(secondAnchor);
+        const binding: string = secondKind === 'view'
+          ? 'viewer'
+          : secondKind === 'files' && subjects.group_of(secondAnchor) !== secondAnchor
+            ? 'fs'
+            : 'unlinked';
+        lines.push(`pane %${ordinal} bind ${binding}`);
+        lines.push(`pane %${ordinal} split ${node.dir === 'col' ? 'right' : 'below'}`);
+        const newOrdinal: number = ++counter;
+        build(node.first, ordinal);
+        build(node.second, newOrdinal);
+      };
+      build(tree as Node, counter);
+      const headerFace: string | undefined = document.body.dataset['header'];
+      if (headerFace !== undefined) lines.push(`header ${headerFace}`);
+      const drawerEl: HTMLElement | null = document.getElementById('drawer');
+      if (drawerEl?.classList.contains('drawer-closed')) lines.push('console close');
+      return lines.join('\n');
+    },
+  };
+
+  // The command line: prefix-: (tmux tradition) or the LANG capsule. One
+  // floating line; sentences run client-side, anything else falls through
+  // to the session console with full echo.
+  const palette: HTMLElement = element_require('lang-palette');
+  const paletteInput: HTMLInputElement = element_require('lang-input') as HTMLInputElement;
+  const paletteResult: HTMLElement = element_require('lang-result');
+  const palette_open = (): void => {
+    drawers_close();
+    palette.hidden = false;
+    paletteResult.textContent = '';
+    paletteInput.value = '';
+    paletteInput.focus();
+    sound_play('audio3');
+  };
+  const palette_close = (): void => {
+    palette.hidden = true;
+    paletteResult.textContent = '';
+  };
+  element_require('lang-pill').addEventListener('click', palette_open);
+  const LANG_SUBJECT_WORDS: string[] = [
+    'pane', 'view', 'runs', 'node', 'dag', 'file', 'header', 'console', 'back', 'desktop', 'argus',
+  ];
+  const LANG_FOLLOWERS: Record<string, string[]> = {
+    pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus'],
+    view: ['files', 'runs', 'pacs'],
+    runs: ['enter'],
+    node: ['enter', 'immerse', 'back'],
+    dag: ['layout', 'projection', 'scale', 'pulse'],
+    file: ['home', 'back', 'download', 'delete'],
+    header: ['stats', 'dag', 'away', 'restore'],
+    console: ['open', 'close', 'toggle', 'height'],
+    desktop: ['save', 'load', 'show', 'list', 'delete'],
+    split: ['left', 'right', 'above', 'below'],
+    bind: ['unlinked', 'fs', 'viewer'],
+    claim: ['files', 'runs', 'pacs'],
+    layout: ['ranked', 'molecule'],
+    projection: ['2d', '3d'],
+    scale: ['time', 'size'],
+    argus: ['verbs'],
+  };
+  paletteInput.addEventListener('keydown', (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      palette_close();
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const words: string[] = paletteInput.value.split(/\s+/);
+      const prefix: string = words[words.length - 1] ?? '';
+      const context: string = words.length <= 1 ? '' : (words[words.length - 2] ?? '');
+      const pool: string[] = words.length <= 1
+        ? LANG_SUBJECT_WORDS
+        : LANG_FOLLOWERS[context] ?? LANG_FOLLOWERS[words[0] ?? ''] ?? [];
+      const match: string | undefined = pool.find((word: string): boolean => word.startsWith(prefix.toLowerCase()));
+      if (match !== undefined) {
+        words[words.length - 1] = match;
+        paletteInput.value = `${words.join(' ')} `;
+      }
+      return;
+    }
+    if (event.key === 'Enter') {
+      const line: string = paletteInput.value.trim();
+      if (line.length === 0) { palette_close(); return; }
+      void argusLine_run(argusHost, line).then((result: string | null): void => {
+        if (result !== null) {
+          paletteResult.textContent = result;
+          terminal.output_write('data', `: ${line}\n${result}\n`);
+          paletteInput.value = '';
+          paletteInput.select();
+        } else {
+          // Not an argus sentence: the session console takes it, visibly.
+          palette_close();
+          terminal.line_run(line);
+        }
+      });
+    }
+  });
+
   // Boot: the remembered preset, or home.
   layout.preset_apply(layout.savedPreset_get() ?? 'files');
 
@@ -1253,6 +1447,17 @@ async function surface_start(token: string): Promise<void> {
   const terminal: ArgusTerminal = new ArgusTerminal(
     element_require('terminal'),
     async (line: string): Promise<void> => {
+      // The argus language claims its reserved subjects client-side; the
+      // sentence never touches the wire.
+      const local: string | null = await argusLine_run(argusHost, line);
+      if (local !== null) {
+        terminal.output_write('data', `${local}\n`);
+        // No wire round-trip means no promptline push: the console must
+        // unlock itself or every following line queues forever.
+        terminal.prompt_draw();
+        mode_show('READY');
+        return;
+      }
       mode_show('BUSY');
       const startedAt: number = performance.now();
       try {

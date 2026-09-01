@@ -1821,3 +1821,68 @@ body[data-header='away'] #header-restore {
   background: linear-gradient(90deg, #2a5, #3c6);
   vertical-align: middle;
 }
+
+/* ------------------------------------------------------ the command line */
+/* Prefix-: in the tmux tradition: one floating line for the argus
+ * language, noice-style. Sentences run client-side; anything else falls
+ * through to the session console. */
+#lang-palette {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 34rem;
+  padding: 0.5rem 0.8rem;
+  background: rgb(0 0 0 / 92%);
+  border: 2px solid var(--harvestgold);
+  border-left-width: 10px;
+  border-radius: 0 14px 14px 0;
+  box-shadow: 0 0 24px rgb(255 170 68 / 35%);
+}
+
+#lang-palette[hidden] {
+  display: none;
+}
+
+.lang-glyph {
+  color: var(--harvestgold);
+  font-family: 'Antonio', sans-serif;
+  font-size: 1.1rem;
+}
+
+#lang-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--butter);
+  font-family: 'MesloLGS NF', monospace;
+  font-size: 0.95rem;
+}
+
+#lang-result {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.3rem;
+  padding: 0.2rem 0.8rem;
+  color: var(--honey);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  background: rgb(0 0 0 / 85%);
+}
+
+#lang-result:empty {
+  display: none;
+}
+
+#lang-pill {
+  margin-left: 0.6rem;
+  background-color: var(--butter);
+  color: #000;
+}

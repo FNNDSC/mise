@@ -217,6 +217,15 @@ export const helpText: Record<string, CommandHelp> = {
       'touch --withContentsFromFile template.json config.json  # Create from local file',
     ],
   },
+  config: {
+    usage: 'config write <cfs-path> <base64-content>',
+    description: 'Write a small configuration document into the user\'s CUBE home (the durable layer: argus desktops, surface preferences). Reads travel the ordinary cat. Documents are notes, not datasets: 256KB limit.',
+    options: [],
+    examples: [
+      'config write ~/.config/argus/desktops/quad.desk dmlldyBmaWxlcwo=   # a saved argus desktop',
+      'cat ~/.config/argus/desktops/quad.desk                             # reading one back',
+    ],
+  },
   mkdir: {
     usage: 'mkdir <directory> [directory...]',
     description: 'Create directories',

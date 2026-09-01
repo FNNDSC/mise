@@ -278,11 +278,28 @@
               </div>
             </template>
             <div class="workspace-pane" id="pacs-workspace">
-              <div class="lcars-terminal-header-bar files-header-bar">
+              <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                 <div class="lcars-bar-horizontal">
                   <span class="lcars-title" id="pacs-title">PACS QUERY / RETRIEVE</span>
                 </div>
-                <div class="lcars-bar-end" id="pacs-close" title="dismiss PACS" role="button" tabindex="0"></div>
+                <div class="lcars-bar-end bar-punctuation" id="pacs-close"></div>
+              </div>
+              <div class="pane-drawer" hidden>
+                <span class="drawer-group drawer-structure">
+                  <span class="drawer-label">SPLIT</span>
+                  <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                  <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                  <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                  <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                  <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                  <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                </span>
+                <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                  <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                  <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                  <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                </span>
+                <span class="drawer-group drawer-children"></span>
               </div>
               <div id="pacs-form">
                 <label>MRN <input id="pacs-f-mrn" autocomplete="off" /></label>

@@ -270,15 +270,17 @@ function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
     if (pane === null) {
       delete body.dataset['zoom'];
     } else {
-      // The header's height is content-driven; measure it at zoom time so
-      // the slide and the space reclaim travel by the same distance.
-      if (header !== null) {
-        body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
-      }
-      body.dataset['zoom'] = pane;
       // A scrolled page would carry its offset into the clamped zoom view,
       // hiding the pane's top edge; zoom always starts from the origin.
       window.scrollTo(0, 0);
+      // The header's height is content-driven; measure its viewport bottom
+      // (not offsetHeight — the first bar's top margin collapses OUT of the
+      // wrap, and an offsetHeight slide left that margin's worth of header
+      // crushed on stage).
+      if (header !== null) {
+        body.style.setProperty('--zoom-header-height', `${header.getBoundingClientRect().bottom}px`);
+      }
+      body.dataset['zoom'] = pane;
       // A tree pane's zoom marks its leaf; siblings step offstage in CSS.
       const mount: HTMLElement | undefined = paneInstance_get(pane)?.mount;
       mount?.parentElement?.classList.add('pane-zoomed');
@@ -1092,6 +1094,7 @@ async function surface_start(token: string): Promise<void> {
   };
   pane_chrome_wire('files', 'files', filesPrimary.mount);
   pane_chrome_wire('dag', 'dag', dagPrimary.mount);
+  pane_chrome_wire('pacs', 'pacs', element_require('pacs-workspace'));
 
   // Keyboard machinery, tmux-shaped: Ctrl-B is the prefix — it opens the
   // focused pane's drawer with keyboard focus on its first verb (Tab walks,

@@ -8,7 +8,8 @@
     "theme": "node scripts/theme_ensure.mjs",
     "build": "npm run theme && tsc --noEmit && vite build",
     "dev": "npm run theme && vite",
-    "test": "tsc --noEmit"
+    "test": "tsc --noEmit",
+    "smoke": "node tests/smoke/smoke.mjs"
   },
   "author": "Rudolph Pienaar",
   "license": "MIT",

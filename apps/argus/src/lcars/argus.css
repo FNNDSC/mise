@@ -285,15 +285,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   color: var(--butter);
 }
 
-/* Zoom is offered only when the pane is not zoomed (Esc is the way back). */
+/* The zoom capsule is a toggle and stays on stage: it reads RESTORE while
+ * its pane is zoomed (control-reads-next-action; the original hide-when-
+ * zoomed rule was repealed by that law), wearing the state color. */
 .pane-zoomed .pane-drawer .drawer-zoom {
-  display: none;
-}
-
-/* The zoom verb keeps its state color when its pane is zoomed. */
-.pane-zoomed .pane-drawer .drawer-zoom {
-  background-color: var(--october-sunset);
-  color: #000;
+  background-color: var(--butter);
 }
 
 /* --------------------------------------------------------------- view pane */

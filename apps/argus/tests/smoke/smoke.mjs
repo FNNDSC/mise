@@ -77,7 +77,8 @@ try {
       lidHidden: lid.getBoundingClientRect().height === 0,
       statusHidden: status.getBoundingClientRect().height === 0,
       stripShown: strip.getBoundingClientRect().height > 0,
-      capsule: pane.querySelector('.drawer-zoom').textContent,
+      capsule: (() => { const c = pane.querySelector('.drawer-zoom');
+        return c.getBoundingClientRect().height > 0 ? c.textContent : 'HIDDEN'; })(),
     };
     strip.click(); await sleep(700);
     zoomed.stripRestored = header.getBoundingClientRect().bottom > 50;

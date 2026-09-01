@@ -208,8 +208,11 @@ function drawer_wire(
     } else if (openHeight !== '') {
       drawer.style.height = openHeight;
     }
+    // The closed-state beckon is pure CSS on the lid's end block
+    // (#drawer.drawer-closed ~ .bar-panel .bar-10). Stamping a filter class
+    // on the whole bar here made every segment pulse against the static
+    // elbow arm it joins.
     drawer.classList.toggle('drawer-closed', closed);
-    toggle.classList.toggle('lcars-beckon', closed);
     sound_play('audio3');
     if (!closed) {
       terminal.size_fit();

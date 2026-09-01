@@ -1,0 +1,76 @@
+/**
+ * @file Tests for `config write`: the durable layer's write path.
+ *
+ * The command decodes base64, stages a host temp file, and rides the same
+ * upload (and replace-in-place fallback) the edit flow uses. What matters
+ * here: the decoded bytes reach the upload, replacement engages only when
+ * a fresh upload is refused, and refusals are honest.
+ */
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+
+const uploadPath = jest.fn<(local: string, remote: string) => Promise<boolean>>();
+const replaceContent = jest.fn<(remote: string, local: string) => Promise<{ success: boolean }>>();
+
+jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  files_uploadPath: uploadPath,
+}));
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
+  envelope_error: (rendered: string, _model?: unknown, renderedErr?: string) =>
+    ({ status: 'error', rendered, renderedErr }),
+}));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/edit.js', () => ({
+  file_replaceContent: replaceContent,
+}));
+jest.unstable_mockModule('../src/builtins/utils.js', () => ({
+  path_resolve: async (raw: string): Promise<string> => `/home/tester/${raw.replace(/^~\//, '')}`,
+}));
+
+const { builtin_config } = await import('../src/builtins/fs/configWrite.js');
+
+const encode = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
+
+describe('config write', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.exitCode = 0;
+    uploadPath.mockResolvedValue(true);
+    replaceContent.mockResolvedValue({ success: true });
+  });
+
+  it('uploads the decoded document to the resolved CFS path', async () => {
+    const env = await builtin_config(['config', 'write', '~/.config/argus/desktops/trio.desk', encode('view files\n')]);
+    expect(env.status).toBe('ok');
+    const [localPath, remotePath] = uploadPath.mock.calls[0] ?? [];
+    expect(remotePath).toBe('/home/tester/.config/argus/desktops/trio.desk');
+    expect(String(localPath)).toContain('chell-config-');
+    expect(replaceContent).not.toHaveBeenCalled();
+  });
+
+  it('replaces in place when a fresh upload is refused (an existing file)', async () => {
+    uploadPath.mockResolvedValue(false);
+    const env = await builtin_config(['config', 'write', '/home/t/x.desk', encode('a')]);
+    expect(env.status).toBe('ok');
+    expect(replaceContent).toHaveBeenCalledWith('/home/t/x.desk', expect.stringContaining('chell-config-'));
+  });
+
+  it('reports failure when both paths refuse', async () => {
+    uploadPath.mockResolvedValue(false);
+    replaceContent.mockResolvedValue({ success: false });
+    const env = await builtin_config(['config', 'write', '/home/t/x.desk', encode('a')]);
+    expect(env.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('refuses a document past the note-sized limit', async () => {
+    const big: string = encode('x'.repeat(300 * 1024));
+    const env = await builtin_config(['config', 'write', '/home/t/x', big]);
+    expect(env.status).toBe('error');
+    expect(uploadPath).not.toHaveBeenCalled();
+  });
+
+  it('demands its arguments and knows only write', async () => {
+    expect((await builtin_config(['config', 'write'])).status).toBe('error');
+    expect((await builtin_config(['config', 'read', 'x'])).status).toBe('error');
+  });
+});

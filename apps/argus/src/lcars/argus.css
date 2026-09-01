@@ -253,6 +253,14 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   display: none;
 }
 
+.drawer-label {
+  color: var(--harvestgold);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  margin-right: 0.1rem;
+}
+
 .drawer-structure .pacs-capsule {
   background-color: var(--harvestgold);
   color: #000;

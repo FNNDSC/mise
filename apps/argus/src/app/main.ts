@@ -1180,6 +1180,9 @@ async function surface_start(token: string): Promise<void> {
           event.preventDefault();
           return;
         }
+        // Past the terminal exclusion the prefix belongs to argus, drawer
+        // or no drawer — the browser must never see it (bookmarks!).
+        event.preventDefault();
         // A zoomed tree pane is the only one on stage: the prefix key must
         // reach its drawer, whatever the layout focus was before the zoom.
         const zoomed: string | undefined = document.body.dataset['zoom'];
@@ -1285,7 +1288,7 @@ async function surface_start(token: string): Promise<void> {
     },
     panes_shown: (): string[] => layout.panes_shown(),
     paneRect_get: (id: string): DOMRect | null => {
-      const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-pane="${id}"]`);
+      const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`);
       return leaf?.getBoundingClientRect() ?? null;
     },
     paneMount_get: (id: string): HTMLElement | null => paneInstance_get(id)?.mount ?? null,

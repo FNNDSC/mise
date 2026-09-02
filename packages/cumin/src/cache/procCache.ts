@@ -195,6 +195,53 @@ export interface ProcCacheSnapshot {
 }
 
 /**
+ * One feed's persistence-safe topology: what a per-feed checkpoint shard holds.
+ *
+ * @property feedID - The feed these instances belong to.
+ * @property loaded - Whether the feed's topology is known to be complete.
+ * @property instances - Normalized instances with terminal status only.
+ */
+export interface ProcFeedSnapshot {
+  feedID: number;
+  loaded: boolean;
+  instances: ProcInstance[];
+}
+
+/**
+ * What a cache mutation touched, so a persister can write only that part.
+ *
+ * - `roster`: the feed index (a feed row added, updated, or removed);
+ * - `feed`: one feed's topology, status, metrics, joins, or loaded mark;
+ * - `all`: every feed at once (a completed global sweep);
+ * - `lifecycle`: freshness state only — nothing durable changed.
+ */
+export type ProcCacheChange =
+  | { scope: 'roster' }
+  | { scope: 'feed'; feedID: number }
+  | { scope: 'all' }
+  | { scope: 'lifecycle' };
+
+/** A cache mutation listener, told what the mutation touched. */
+export type ProcCacheListener = (change: ProcCacheChange) => void;
+
+/**
+ * Strips an instance to its persistence-safe form: no params, no output
+ * path, and only a terminal status (an active one is re-observed live).
+ *
+ * @param inst - A cached instance.
+ * @returns A copy safe to checkpoint.
+ */
+function procInstance_persistent(inst: ProcInstance): ProcInstance {
+  const { outputPath: _outputPath, ...persistent }: ProcInstance = inst;
+  return {
+    ...persistent,
+    params: null,
+    status: status_isTerminal(inst.status) ? inst.status : null,
+    joinParentIDs: inst.joinParentIDs ? [...inst.joinParentIDs] : undefined,
+  };
+}
+
+/**
  * Session-scoped cache of feed and instance topology with restorable terminal state.
  */
 export class ProcCache {
@@ -220,7 +267,7 @@ export class ProcCache {
   private _built: boolean = false;
 
   private lifecycle: ProcCacheLifecycle = { state: 'empty' };
-  private listeners: Set<() => void> = new Set();
+  private listeners: Set<ProcCacheListener> = new Set();
 
   private constructor() {}
 
@@ -249,22 +296,22 @@ export class ProcCache {
    */
   lifecycle_set(state: ProcCacheState): void {
     this.lifecycle = { ...this.lifecycle, state };
-    this.change_emit();
+    this.change_emit({ scope: 'lifecycle' });
   }
 
   /**
    * Registers a callback for checkpoint-worthy cache mutations.
    *
-   * @param listener - Callback invoked after a cache mutation.
+   * @param listener - Callback invoked after a cache mutation with what it touched.
    * @returns Function that unregisters the callback.
    */
-  changeListener_add(listener: () => void): () => void {
+  changeListener_add(listener: ProcCacheListener): () => void {
     this.listeners.add(listener);
     return (): void => { this.listeners.delete(listener); };
   }
 
-  private change_emit(): void {
-    for (const listener of this.listeners) listener();
+  private change_emit(change: ProcCacheChange): void {
+    for (const listener of this.listeners) listener(change);
   }
 
   // ── Feed ──────────────────────────────────────────────────────────────────
@@ -277,7 +324,7 @@ export class ProcCache {
     if (!this.feedRoots.has(feed.id)) {
       this.feedRoots.set(feed.id, []);
     }
-    this.change_emit();
+    this.change_emit({ scope: 'roster' });
   }
 
   feed_get(feedID: number): ProcFeed | undefined {
@@ -323,7 +370,8 @@ export class ProcCache {
       this.instance_remove(inst.id);
     }
     this.feedRoots.delete(feedID);
-    this.change_emit();
+    this.change_emit({ scope: 'feed', feedID });
+    this.change_emit({ scope: 'roster' });
   }
 
   /**
@@ -369,7 +417,7 @@ export class ProcCache {
         this.children.set(inst.parentID, kids);
       }
     }
-    this.change_emit();
+    this.change_emit({ scope: 'feed', feedID: inst.feedID });
   }
 
   /**
@@ -382,9 +430,11 @@ export class ProcCache {
   ): void {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
-    if (metrics.startedAt !== undefined) inst.startedAt = metrics.startedAt;
-    if (metrics.finishedAt !== undefined) inst.finishedAt = metrics.finishedAt;
-    if (metrics.outputBytes !== undefined) inst.outputBytes = metrics.outputBytes;
+    let changed: boolean = false;
+    if (metrics.startedAt !== undefined && inst.startedAt !== metrics.startedAt) { inst.startedAt = metrics.startedAt; changed = true; }
+    if (metrics.finishedAt !== undefined && inst.finishedAt !== metrics.finishedAt) { inst.finishedAt = metrics.finishedAt; changed = true; }
+    if (metrics.outputBytes !== undefined && inst.outputBytes !== metrics.outputBytes) { inst.outputBytes = metrics.outputBytes; changed = true; }
+    if (changed) this.change_emit({ scope: 'feed', feedID: inst.feedID });
   }
 
   instance_get(id: number): ProcInstance | undefined {
@@ -439,7 +489,7 @@ export class ProcCache {
       const kids: number[] = this.children.get(inst.parentID) ?? [];
       this.children.set(inst.parentID, kids.filter((k: number) => k !== id));
     }
-    this.change_emit();
+    this.change_emit({ scope: 'feed', feedID: inst.feedID });
   }
 
   /**
@@ -453,7 +503,7 @@ export class ProcCache {
       if (!instanceIDs.has(id)) this.instance_remove(id);
     }
     for (const feedID of this.feedIDs_get()) this.topologyLoaded.add(feedID);
-    this.change_emit();
+    this.change_emit({ scope: 'all' });
   }
 
   /**
@@ -515,7 +565,7 @@ export class ProcCache {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
     if (status_isTerminal(inst.status)) return;
-    if (inst.status !== status) { inst.status = status; this.change_emit(); }
+    if (inst.status !== status) { inst.status = status; this.change_emit({ scope: 'feed', feedID: inst.feedID }); }
   }
 
   /**
@@ -527,7 +577,7 @@ export class ProcCache {
    */
   joinParents_update(id: number, ids: number[]): void {
     const inst: ProcInstance | undefined = this.instances.get(id);
-    if (inst) { inst.joinParentIDs = ids; this.change_emit(); }
+    if (inst) { inst.joinParentIDs = ids; this.change_emit({ scope: 'feed', feedID: inst.feedID }); }
   }
 
   /**
@@ -545,7 +595,7 @@ export class ProcCache {
 
   topologyLoaded_mark(feedID: number): void {
     this.topologyLoaded.add(feedID);
-    this.change_emit();
+    this.change_emit({ scope: 'feed', feedID });
   }
 
   topologyLoaded_has(feedID: number): boolean {
@@ -572,7 +622,7 @@ export class ProcCache {
     this._warmupComplete = true;
     this._warmupProgress = { ...this._warmupProgress, active: false };
     this.lifecycle = { ...this.lifecycle, state: 'current' };
-    this.change_emit();
+    this.change_emit({ scope: 'lifecycle' });
   }
 
   /**
@@ -584,7 +634,7 @@ export class ProcCache {
     this._warmupComplete = false;
     this._warmupProgress = { ...this._warmupProgress, active: false };
     this.lifecycle = { ...this.lifecycle, state: 'failed' };
-    this.change_emit();
+    this.change_emit({ scope: 'lifecycle' });
   }
 
   warmup_progress(loaded: number, total: number): void {
@@ -606,7 +656,7 @@ export class ProcCache {
     this.lifecycle = this.lifecycle.checkpointAt
       ? { ...this.lifecycle, state: 'restored' }
       : { state: 'empty' };
-    this.change_emit();
+    this.change_emit({ scope: 'lifecycle' });
   }
 
   // ── Path reconstruction ───────────────────────────────────────────────────
@@ -672,20 +722,40 @@ export class ProcCache {
    * @returns Serializable feed and terminal-topology state.
    */
   snapshot_create(): ProcCacheSnapshot {
-    const instances: ProcInstance[] = Array.from(this.instances.values()).map((inst: ProcInstance): ProcInstance => {
-      const { outputPath: _outputPath, ...persistent }: ProcInstance = inst;
-      return {
-        ...persistent,
-        params: null,
-        status: status_isTerminal(inst.status) ? inst.status : null,
-        joinParentIDs: inst.joinParentIDs ? [...inst.joinParentIDs] : undefined,
-      };
-    });
+    const instances: ProcInstance[] = Array.from(this.instances.values()).map(procInstance_persistent);
     return {
       feeds: Array.from(this.feeds.values()).map((feed: ProcFeed): ProcFeed => ({ ...feed })),
       instances,
       topologyLoaded: Array.from(this.topologyLoaded),
     };
+  }
+
+  /**
+   * Creates one feed's persistence-safe snapshot: its instances (terminal
+   * status only, no params or output paths) and whether its topology is
+   * complete. A per-feed checkpoint shard is exactly this.
+   *
+   * @param feedID - The feed to snapshot.
+   * @returns The feed's shard content; empty when the feed holds no instances.
+   */
+  feedSnapshot_create(feedID: number): ProcFeedSnapshot {
+    const instances: ProcInstance[] = [];
+    for (const inst of this.instances.values()) {
+      if (inst.feedID === feedID) instances.push(procInstance_persistent(inst));
+    }
+    return { feedID, loaded: this.topologyLoaded.has(feedID), instances };
+  }
+
+  /**
+   * Feed IDs that hold any instances or a loaded mark — the feeds a full
+   * checkpoint must shard.
+   *
+   * @returns Feed IDs with persistent topology state.
+   */
+  shardedFeedIDs_get(): number[] {
+    const ids: Set<number> = new Set(this.topologyLoaded);
+    for (const inst of this.instances.values()) ids.add(inst.feedID);
+    return Array.from(ids);
   }
 
   /**
@@ -708,7 +778,7 @@ export class ProcCache {
     this.topologyLoaded = new Set(snapshot.topologyLoaded.filter((id: number): boolean => this.feeds.has(id)));
     this._warmupProgress = { loaded: this.instances.size, total: this.instances.size, active: false };
     this.lifecycle = { state: 'restored', checkpointAt };
-    this.change_emit();
+    this.change_emit({ scope: 'lifecycle' });
   }
 
   /**
@@ -735,7 +805,7 @@ export class ProcCache {
     this._warmupProgress = { loaded: 0, total: 0, active: false };
     this._built = false;
     this.lifecycle = { state: 'empty' };
-    this.change_emit();
+    this.change_emit({ scope: 'all' });
   }
 }
 

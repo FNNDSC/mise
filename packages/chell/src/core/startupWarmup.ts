@@ -307,7 +307,7 @@ export async function startupWarmup_run(
     );
     if (jobsResult.ok) {
       const jobsMessage: string = checkpoint?.restored
-        ? `Restored ${checkpoint.count} job(s); indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`
+        ? `Restored ${checkpoint.count} job(s)${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`
         : `Indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`;
       reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {

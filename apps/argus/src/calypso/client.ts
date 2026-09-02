@@ -22,7 +22,11 @@ import {
   type ProgressMessage,
   type Regard,
   type WireEnvelope,
+  type WatchState,
 } from '@fnndsc/menu';
+
+/** The surface tag the daemon puts on session-bus envelopes it originates itself. */
+const DAEMON_SURFACE: string = 'daemon';
 
 /** The output channels a command can stream on. */
 export type OutputChannel = 'data' | 'err' | 'status';
@@ -95,6 +99,14 @@ export interface ClientHandlers {
   envelope_observe?: (envelope: WireEnvelope) => void;
   /** The session's retained regard, pushed on any surface's write and on attach. */
   regard_receive?: (regard: Regard) => void;
+  /**
+   * An envelope the daemon itself originated (a watched feed's refreshed
+   * model): state, not something an operator did — it never reaches the
+   * transcript, and it refreshes rather than pins.
+   */
+  ambient_receive?: (envelope: WireEnvelope) => void;
+  /** A watched subject's liveness changed: live, settled, or stale. */
+  watched_receive?: (subject: string, state: WatchState) => void;
   close_handle?: () => void;
 }
 
@@ -276,6 +288,25 @@ export class ArgusClient {
     this.socket.send(JSON.stringify({ type: 'regard', regard }));
   }
 
+  /**
+   * Opens this surface's watch on a subject: the session keeps it live
+   * while the watch is held, and reports its state with `watched`.
+   *
+   * @param subject - The subject address (`/proc/jobs/feed_N`).
+   */
+  public watch_send(subject: string): void {
+    this.socket.send(JSON.stringify({ type: 'watch', subject }));
+  }
+
+  /**
+   * Releases this surface's watch on a subject.
+   *
+   * @param subject - The subject address.
+   */
+  public unwatch_send(subject: string): void {
+    this.socket.send(JSON.stringify({ type: 'unwatch', subject }));
+  }
+
   /** Closes the WebSocket. */
   public connection_close(): void {
     this.socket.close();
@@ -332,8 +363,16 @@ export class ArgusClient {
         break;
       }
       case 'session': {
+        if (message.surface === DAEMON_SURFACE) {
+          this.handlers.ambient_receive?.(message.envelope);
+          break;
+        }
         this.handlers.session_receive?.(message.surface, message.envelope);
         this.handlers.envelope_observe?.(message.envelope);
+        break;
+      }
+      case 'watched': {
+        this.handlers.watched_receive?.(message.subject, message.state);
         break;
       }
       case 'promptline': {

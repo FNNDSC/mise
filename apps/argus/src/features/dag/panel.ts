@@ -25,6 +25,7 @@ import {
   type FeedListEntry,
   type PromptContext,
   type WireEnvelope,
+  type WatchState,
 } from '@fnndsc/menu';
 import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
 import { RosterOrder } from '../roster/order.js';
@@ -45,7 +46,15 @@ export interface DagPanelHandlers {
   node_regard?: (vfsPath: string) => void;
   /** A feed came into view: the layout should summon this pane. */
   feed_shown?: () => void;
+  /**
+   * The pane is the subscription: it holds a watch on the feed it shows
+   * and releases it when it stops showing one.
+   */
+  watch_set?: (subject: string, on: boolean) => void;
 }
+
+/** How often the roster re-asks the session while it stays on screen. */
+const ROSTER_TICK_MS: number = 60_000;
 
 /** Feed-id extraction from a working directory. */
 const CWD_FEED_PATTERNS: readonly RegExp[] = [
@@ -72,6 +81,7 @@ export class DagPanel {
   private readonly strategyPill: HTMLElement;
   private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
+  private rosterTimer: ReturnType<typeof setInterval> | null = null;
   private shownFeedId: number | null = null;
   private pinnedFeedId: number | null = null;
   private requestedFeedId: number | null = null;
@@ -84,8 +94,12 @@ export class DagPanel {
   private lastRoster: FeedListEntry[] = [];
   /** Per-column sort + filter over the resident roster. */
   private readonly order: RosterOrder<FeedListEntry>;
-  /** The title bar's state span (FILTERED n/m). */
+  /** The title bar's state span (FILTERED n/m on the list; LIVE / SETTLED / STALE on a graph). */
   private readonly stateSpan: HTMLElement | null;
+  /** The feed this pane currently holds a watch on. */
+  private watchedFeedId: number | null = null;
+  /** The watched feed's last reported liveness. */
+  private liveState: WatchState | null = null;
 
   /**
    * @param canvas - The element the scene renders into.
@@ -130,6 +144,15 @@ export class DagPanel {
     );
     const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
+    // The roster is the subscription too, at a slower beat: while the list
+    // stays on screen it re-asks the session, so a feed run from a console
+    // shows up without a reload. Nothing is asked while the pane is off
+    // stage or hidden behind another tab.
+    this.rosterTimer = setInterval((): void => {
+      if (!this.feedList.isConnected || this.feedList.style.display !== 'block') return;
+      if (this.rosterPending || document.visibilityState !== 'visible') return;
+      this.handlers.command_run('proc feeds');
+    }, ROSTER_TICK_MS);
     paneRootEl?.addEventListener('argus:roster', (event: Event): void => {
       const detail = (event as CustomEvent<{ op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }>).detail;
       if (detail.op === 'sort') this.order.sort_set(detail.key, detail.dir ?? 'asc');
@@ -280,7 +303,113 @@ export class DagPanel {
     }
     this.lastModel = model;
     this.graph_show(model);
+    this.watch_open(model.feedId);
     this.handlers.feed_shown?.();
+  }
+
+  /**
+   * Holds the pane's watch on the feed it shows, releasing any other.
+   *
+   * @param feedId - The feed now on stage.
+   */
+  private watch_open(feedId: number): void {
+    if (this.watchedFeedId === feedId) return;
+    this.watch_release();
+    this.watchedFeedId = feedId;
+    this.liveState_show(null);
+    this.handlers.watch_set?.(`/proc/jobs/feed_${feedId}`, true);
+  }
+
+  /** Releases the pane's watch, if any. */
+  private watch_release(): void {
+    if (this.watchedFeedId === null) return;
+    this.handlers.watch_set?.(`/proc/jobs/feed_${this.watchedFeedId}`, false);
+    this.watchedFeedId = null;
+    this.liveState_show(null);
+  }
+
+  /**
+   * Shows the watched feed's liveness in the bar: LIVE while sampled,
+   * SETTLED once it can no longer change, STALE when the last sample
+   * failed. Honest-wait: an observer must know whether what they see is
+   * current. Null clears it (no graph on stage, or none reported yet).
+   *
+   * @param state - The reported state, or null.
+   */
+  private liveState_show(state: WatchState | null): void {
+    this.liveState = state;
+    if (this.stateSpan === null) return;
+    this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale');
+    if (state === null) {
+      if (this.canvas.style.display !== 'none') this.stateSpan.textContent = '';
+      return;
+    }
+    this.stateSpan.textContent = state.toUpperCase();
+    this.stateSpan.classList.add(`state-${state}`);
+  }
+
+  /** The watched feed's last reported liveness (null before any report). */
+  public liveState_get(): WatchState | null {
+    return this.liveState;
+  }
+
+  /**
+   * A watched subject's liveness changed. Only the feed on stage is this
+   * pane's business.
+   *
+   * @param subject - The watched subject address.
+   * @param state - Its reported state.
+   */
+  public watched_observe(subject: string, state: WatchState): void {
+    const match: RegExpMatchArray | null = /feed_(\d+)$/.exec(subject);
+    // Only a watch this pane still holds is its business: the daemon also
+    // answers an unwatch with the subject's state, and a pane that just
+    // left the feed must not paint that answer.
+    if (!match || Number(match[1]) !== this.watchedFeedId) return;
+    this.liveState_show(state);
+  }
+
+  /**
+   * A refreshed model arrived from the session's sampler. It repaints only
+   * the feed on stage, never pins, never waves, and keeps the scene's
+   * positions: same groups with the same counts patch status and facts in
+   * place, anything else re-lays out warm from the last positions — so the
+   * census only re-expands when a group's count moved.
+   *
+   * @param model - The refreshed feed model.
+   */
+  public model_refresh(model: FeedDagModel): void {
+    if (this.shownFeedId !== model.feedId || this.canvas.style.display === 'none') return;
+    const previous: FeedDagModel | null = this.lastModel;
+    this.lastModel = model;
+    const shapeSame: boolean = previous !== null &&
+      previous.nodes.length === model.nodes.length &&
+      model.nodes.every((node: FeedDagNode, index: number): boolean => {
+        const before: FeedDagNode | undefined = previous.nodes[index];
+        return before !== undefined && before.id === node.id &&
+          (before.tally?.count ?? 1) === (node.tally?.count ?? 1) &&
+          before.parentIds.length === node.parentIds.length &&
+          before.joinParentIds.length === node.joinParentIds.length;
+      });
+    if (shapeSame) {
+      for (const node of model.nodes) {
+        this.scene.status_update(node.id, node.status);
+        this.factsPayloads.set(node.id, node);
+      }
+      return;
+    }
+    this.graph_show(model, false);
+  }
+
+  /**
+   * Revisits the feed on stage now (the drawer's REFRESH, or `dag refresh`).
+   * The answer is a fresh model through the ordinary request path; a watch
+   * keeps sampling on its own beat regardless.
+   */
+  public refresh(): void {
+    if (this.shownFeedId === null || this.canvas.style.display === 'none') return;
+    this.requestedFeedId = this.shownFeedId;
+    this.handlers.command_run(`feed diagram feed_${this.shownFeedId}`);
   }
 
   /** The scale pill, dimmed when the feed carries no data for its mode. */
@@ -385,6 +514,8 @@ export class DagPanel {
 
   /** Releases the pane's scene (a disposed instance). */
   public dispose(): void {
+    this.watch_release();
+    if (this.rosterTimer !== null) clearInterval(this.rosterTimer);
     this.scene.dispose();
   }
 
@@ -449,6 +580,7 @@ export class DagPanel {
    * repaint what was just dismissed.
    */
   public list_reset(): void {
+    this.watch_release();
     this.facts.replaceChildren();
     this.scene.selection_clear();
     this.canvas.style.display = 'none';
@@ -479,6 +611,7 @@ export class DagPanel {
       // there is no list level beneath it to return to.
       return false;
     }
+    this.watch_release();
     this.canvas.style.display = 'none';
     this.pinnedFeedId = null;
     this.requestedFeedId = null;
@@ -486,6 +619,7 @@ export class DagPanel {
     this.facts.replaceChildren();
     this.scene.selection_clear();
     this.feedList.style.display = 'block';
+    if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
     return true;
   }
 

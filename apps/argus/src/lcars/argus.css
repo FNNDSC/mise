@@ -420,6 +420,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   text-transform: none;
   opacity: 0.85;
 }
+/* A watched feed's liveness: the bar says whether what you see is current. */
+.pane-state.state-live { color: var(--harvestgold); opacity: 1; }
+.pane-state.state-settled { opacity: 0.7; }
+.pane-state.state-stale { color: var(--orange); opacity: 1; text-decoration: underline dotted; }
 
 /* ------------------------------------------------------------ the nameplate */
 /* The top-left block is the LCARS nameplate: the mark is engraved in the

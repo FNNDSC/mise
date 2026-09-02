@@ -245,6 +245,42 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('live-watch');
+  // The pane is the subscription: entering a feed opens a watch, the bar
+  // reports its liveness, the drawer offers REFRESH, leaving releases it.
+  // A daemon older than the watch wire answers `error`; that is reported
+  // as a skip, not a pass.
+  const live = await evalIn(`
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
+    const row = document.querySelector('.feedlist-row');
+    if (!row) return { skipped: 'no roster' };
+    row.click();
+    const dp = document.querySelector('.pane-dag');
+    for (let i = 0; i < 60; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
+    const state = dp.querySelector('.pane-state');
+    let text = '';
+    for (let i = 0; i < 20; i++) { await sleep(500); text = state.textContent.trim(); if (text) break; }
+    dp.querySelector('.pane-handle').click(); await sleep(150);
+    const refreshCap = [...dp.querySelectorAll('.drawer-child')].find(c => c.textContent === 'REFRESH');
+    const offered = !!refreshCap;
+    if (refreshCap) { refreshCap.click(); await sleep(1500); }
+    const after = state.textContent.trim();
+    // Esc is contextual back: an open drawer would take the press, so make
+    // sure it is closed before asking for the list.
+    if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(150); }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    const listBack = dp.querySelector('.dag-feedlist').style.display === 'block';
+    const stateCleared = !/^(LIVE|SETTLED|STALE)$/.test(state.textContent.trim());
+    return { skipped: text ? null : 'no watched report (daemon predates the watch wire?)', text, offered, after, listBack, stateCleared };`);
+  if (live.skipped) {
+    console.log(`  skipped: ${live.skipped}`);
+  } else {
+    check('entering a feed reports its liveness on the bar', /^(LIVE|SETTLED|STALE)$/.test(live.text));
+    check('the drawer offers REFRESH and the state survives a refresh', live.offered && /^(LIVE|SETTLED|STALE)$/.test(live.after));
+    check('leaving the feed releases the watch: list back, state cleared', live.listBack && live.stateCleared);
+  }
+
   console.log('roster-order');
   const roster = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);

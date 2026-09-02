@@ -15,7 +15,7 @@
  *
  * @module
  */
-import type { PromptContext, WireEnvelope } from '@fnndsc/menu';
+import { feedDagModelSchema, type PromptContext, type WireEnvelope, type WatchState } from '@fnndsc/menu';
 import {
   ArgusClient,
   type AttachInfo,
@@ -804,6 +804,10 @@ async function surface_start(token: string): Promise<void> {
               }
             });
         },
+        watch_set: (subject: string, on: boolean): void => {
+          if (on) client.watch_send(subject);
+          else client.unwatch_send(subject);
+        },
         node_enter: (vfsPath: string): void => {
           terminal.line_run(`cd "${vfsPath}"`);
         },
@@ -1119,6 +1123,9 @@ async function surface_start(token: string): Promise<void> {
       });
       child_offer('CLEAR DETAIL', 'dismiss the node facts (a click on empty space does too)', (): void => {
         dagPanels.get(id)?.detail_clear();
+      });
+      child_offer('REFRESH', 'revisit the feed now (a watch keeps sampling it while it runs)', (): void => {
+        dagPanels.get(id)?.refresh();
       });
       child_offer('FILTER', 'show/hide the roster filter strip (column caps sort)', (): void => {
         dagPanels.get(id)?.filter_toggle();
@@ -1466,7 +1473,7 @@ async function surface_start(token: string): Promise<void> {
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],
     node: ['enter', 'immerse', 'back', 'clear'],
-    dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics'],
+    dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics', 'refresh'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
     file: ['home', 'back', 'download', 'delete', 'sort', 'filter'],
     header: ['stats', 'dag', 'away', 'restore'],
@@ -1596,6 +1603,19 @@ async function surface_start(token: string): Promise<void> {
         cascade?.index_observe(index),
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
+      // The sampler's refreshed models: every DAG pane showing that feed
+      // repaints in place; nothing pins, nothing reaches the transcript.
+      ambient_receive: (envelope: WireEnvelope): void => {
+        if (envelope.model?.kind !== 'feed.dag') return;
+        const parsed = feedDagModelSchema.safeParse(envelope.model.data);
+        if (!parsed.success) return;
+        dagPanel.model_refresh(parsed.data);
+        for (const panel of dagPanels.values()) panel.model_refresh(parsed.data);
+      },
+      watched_receive: (subject: string, state: WatchState): void => {
+        dagPanel.watched_observe(subject, state);
+        for (const panel of dagPanels.values()) panel.watched_observe(subject, state);
+      },
       envelope_observe: (envelope: WireEnvelope): void => {
         // The claim rule for console-issued models: a DAG-shaped model goes
         // to the focused DAG instance when one is focused, else the primary.

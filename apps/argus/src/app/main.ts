@@ -1201,7 +1201,16 @@ async function surface_start(token: string): Promise<void> {
         }
         const overlayId: string | undefined = [...nodeOverlays.keys()].pop();
         if (overlayId !== undefined) {
-          nodeOverlay_close(overlayId);
+          // Inside a node, a file view is a level of its own: the first
+          // Esc returns to the node's listing, the next leaves the node.
+          // Directory depth inside the node stays BACK's job — it is not
+          // visible, and Esc never walks invisible depth.
+          const record = nodeOverlays.get(overlayId);
+          if (record !== undefined && record.panel.content_isShown()) {
+            record.panel.listing_restore();
+          } else {
+            nodeOverlay_close(overlayId);
+          }
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;

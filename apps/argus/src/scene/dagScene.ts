@@ -407,7 +407,13 @@ export class DagScene {
       this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
         event.preventDefault();
         this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
-        this.camera.position.z = Math.min(40, Math.max(3, this.camera.position.z + event.deltaY * 0.02));
+        // Dolly along the eye ray, not the z axis: census parks the camera
+        // off-axis (and far beyond the old 3..40 clamp), where a z-only
+        // dolly slid the whole cloud diagonally off screen.
+        const eyeDistance: number = this.camera.position.length();
+        const factor: number = Math.exp(event.deltaY * 0.001);
+        const next: number = Math.min(Math.max(eyeDistance * factor, 3), Math.max(40, this.camera.far * 0.45));
+        this.camera.position.multiplyScalar(next / Math.max(0.0001, eyeDistance));
       }, { passive: false });
       // Right-drag pans; the browser menu would eat the gesture.
       this.renderer.domElement.addEventListener('contextmenu', (event: Event): void =>

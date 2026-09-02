@@ -787,9 +787,24 @@ main {
 }
 
 /* A zoomed tree pane takes the whole region: its siblings and the
- * dividers step offstage, whichever instance it is. */
+ * dividers step offstage, whichever instance it is — and every split box
+ * on the path above it (marked from main.ts) yields its full region, or
+ * the leaf stays imprisoned in its old cell. */
 body[data-zoom]:not([data-zoom='console']) .layout-leaf:not(.pane-zoomed),
 body[data-zoom]:not([data-zoom='console']) .layout-divider {
+  display: none;
+}
+
+body[data-zoom]:not([data-zoom='console']) .pane-zoomed-path,
+body[data-zoom]:not([data-zoom='console']) .pane-zoomed {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+body[data-zoom]:not([data-zoom='console'])
+  .pane-zoomed-path
+  > :not(.pane-zoomed, .pane-zoomed-path, .layout-divider) {
   display: none;
 }
 

@@ -110,6 +110,24 @@ try {
   check('the capsule reads RESTORE while zoomed, ZOOM after', zoom.capsule === 'RESTORE' && zoom.capsuleAfter === 'ZOOM', `${zoom.capsule}/${zoom.capsuleAfter}`);
   check('Esc restores the header', zoom.restoredHeaderBottom > 50, `bottom=${zoom.restoredHeaderBottom}`);
 
+  console.log('split-zoom');
+  const splitZoom = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(600);
+    const pane = document.querySelector('.pane-files');
+    pane.querySelector('.pane-handle').click(); await sleep(150);
+    pane.querySelector('[data-split="col"][data-place="after"]').click(); await sleep(600);
+    const leaves = document.querySelectorAll('#layout-root .layout-leaf').length;
+    pane.querySelector('.pane-handle').click(); await sleep(150);
+    pane.querySelector('.drawer-zoom').click(); await sleep(900);
+    const r = pane.closest('.layout-leaf').getBoundingClientRect();
+    const full = r.width > window.innerWidth * 0.85;
+    for (let i = 0; i < 3 && document.body.dataset.zoom !== undefined; i++) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
+    }
+    document.getElementById('gutter-files').click(); await sleep(400);
+    return { leaves, full, w: Math.round(r.width) };`);
+  check('a zoomed leaf inside a split conquers the whole region', splitZoom.leaves >= 2 && splitZoom.full, `leaves=${splitZoom.leaves} w=${splitZoom.w}`);
+
   console.log('lid-parity + single-beckon-author');
   const lid = await evalIn(`
     const bar = document.getElementById('drawer-toggle');

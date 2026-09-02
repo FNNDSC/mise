@@ -350,7 +350,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * font-size (em columns resolve against the grid's own font), same
  * horizontal padding as a row. */
 .pane-files .roster-caps {
-  grid-template-columns: 1.4em 1fr 6em 7em 10em;
+  grid-template-columns: 1.4em 1fr 6em 6em 7em 10em;
   column-gap: 0;
   font-size: 0.8rem;
 }
@@ -1252,7 +1252,7 @@ body[data-header='dag'] #header-dag {
 
 .files-grid {
   display: grid;
-  grid-template-columns: 1.4em 1fr 6em 7em 10em;
+  grid-template-columns: 1.4em 1fr 6em 6em 7em 10em;
   row-gap: 2px;
   font-size: 0.8rem;
 }
@@ -1285,6 +1285,13 @@ body[data-header='dag'] #header-dag {
 .files-type-plugin .files-name,
 .files-type-pipeline .files-name {
   color: var(--honey);
+}
+
+.files-type {
+  color: var(--honey);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
 }
 
 .files-size,

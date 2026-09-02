@@ -263,18 +263,24 @@ try {
     let desc = false;
     for (let i = 0; i < 40; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /DESCRIPTION/.test(c.textContent)) { desc = true; break; } }
     const colored = fp.querySelectorAll('.files-content .man-head, .files-content span[style]').length > 0;
-    fp.querySelector('.files-close-pill')?.click(); await sleep(400);
+    // Esc is contextual back: the content view is a level above the listing
+    // (the command line, if still open, is the topmost transient and would
+    // take the press — close it first).
+    if (!document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    const escBack = !fp.querySelector('.files-content') && fp.querySelectorAll('.files-row').length > 0;
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
     if (!pipeline) return { skipped: null, desc, colored, pipelineSkipped: true };
     pipeline.click();
     let summary = false, canvas = false;
     for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
     fp.querySelector('.files-close-pill')?.click(); await sleep(300);
-    return { skipped: null, desc, colored, summary, canvas, pipelineSkipped: false };`);
+    return { skipped: null, desc, colored, escBack, summary, canvas, pipelineSkipped: false };`);
   if (binCtx.skipped) {
     console.log(`  skipped: ${binCtx.skipped}`);
   } else {
     check('a plugin opens as its description', binCtx.desc && binCtx.colored);
+    check('Esc returns a content view to its listing', binCtx.escBack === true);
     if (binCtx.pipelineSkipped) console.log('  skipped: no pipeline rows');
     else check('a pipeline opens as its summary with its DAG rendered', binCtx.summary && binCtx.canvas);
   }

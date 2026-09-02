@@ -171,7 +171,7 @@ const VERBS_HELP: string = [
   'view files|runs|pacs        (the gutter givens, workspace scope)',
   'runs enter <feedId>         (enter a feed on the DAG pane)',
   'node enter · immerse · back (the indicated node)',
-  'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census',
+  'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census · physics charge|link|collide|gravity on|off · physics reset',
   'file [@id] home|back|download|delete',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
@@ -313,7 +313,21 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (verb === 'scale') return railPill_setTo(host, paneId, '.dag-scale', arg.toUpperCase()) ? `scale ${arg}` : 'dag scale time|size';
     if (verb === 'pulse') return control_click(host, paneId, '.dag-pulse') ? 'pulse' : 'dag pulse: no rail';
     if (verb === 'census') return control_click(host, paneId, '.dag-census') ? 'census toggled' : 'dag census: no rail';
-    return `dag: unknown verb '${verb}' (layout|projection|scale|pulse|census)`;
+    if (verb === 'physics') {
+      const term: string = arg;
+      const mount: HTMLElement | null = host.paneMount_get(paneId);
+      const pane: HTMLElement | null = mount?.querySelector<HTMLElement>('.pane-dag') ?? mount;
+      if (pane === null) return 'dag physics: no DAG pane';
+      if (term === 'reset') {
+        pane.dispatchEvent(new CustomEvent('argus:dag-physics', { detail: 'reset' }));
+        return 'physics reset';
+      }
+      const on: boolean = (words[2] ?? 'on').toLowerCase() !== 'off';
+      if (!['charge', 'link', 'collide', 'gravity'].includes(term)) return `dag physics: unknown term '${term}' (charge|link|collide|gravity|reset)`;
+      pane.dispatchEvent(new CustomEvent('argus:dag-physics', { detail: { term, on } }));
+      return `physics ${term} ${on ? 'on' : 'off'}`;
+    }
+    return `dag: unknown verb '${verb}' (layout|projection|scale|pulse|census|physics)`;
   }
 
   if (subject === 'file') {
@@ -326,7 +340,8 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (verb === 'enter') return drawerChild_click(host, paneId, 'ENTER NODE') ? 'entering node' : 'node enter: no DAG drawer';
     if (verb === 'back') return drawerChild_click(host, paneId, 'BACK') ? 'node back' : 'node back: no DAG drawer';
     if (verb === 'immerse') return host.node_immerse(paneId) ? 'immersing' : 'node immerse: nothing indicated';
-    return `node: unknown verb '${verb}' (enter|immerse|back)`;
+    if (verb === 'clear') return drawerChild_click(host, paneId, 'CLEAR DETAIL') ? 'detail cleared' : 'node clear: no DAG drawer';
+    return `node: unknown verb '${verb}' (enter|immerse|back|clear)`;
   }
 
   return null;

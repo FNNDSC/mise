@@ -40,5 +40,11 @@ declare module 'd3-force-3d' {
   export function forceLink(links: Array<{ source: string; target: string }>): LinkForce;
   export function forceManyBody(): ManyBodyForce;
   export function forceCollide(): CollideForce;
+  export interface AxisForce {
+    strength(value: number | ((d: { id: string }) => number)): AxisForce;
+  }
+  export function forceX(x: number): AxisForce;
+  export function forceY(y: number): AxisForce;
+  export function forceZ(z: number): AxisForce;
   export function forceCenter(x: number, y: number, z?: number): unknown;
 }

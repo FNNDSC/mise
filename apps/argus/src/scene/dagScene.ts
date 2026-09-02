@@ -24,6 +24,9 @@ import {
   forceManyBody,
   forceCenter,
   forceCollide,
+  forceX,
+  forceY,
+  forceZ,
 } from 'd3-force-3d';
 
 /** One node as the scene understands it. */
@@ -52,7 +55,19 @@ export type LayoutStrategy = 'ranked' | 'molecule';
 export interface SceneHandlers {
   select?: (node: SceneNode) => void;
   activate?: (node: SceneNode) => void;
+  /** A click on empty space cleared the selection. */
+  deselect?: () => void;
 }
+
+/** The physics terms the molecule settle may honor (expert knobs; GRAVITY is a meaning). */
+export interface PhysicsTerms {
+  charge: boolean;
+  link: boolean;
+  collide: boolean;
+  gravity: boolean;
+}
+
+export const PHYSICS_DEFAULT: PhysicsTerms = { charge: true, link: true, collide: true, gravity: false };
 
 /** Rendering options that differ between the pane and the header miniature. */
 export interface SceneOptions {
@@ -231,6 +246,7 @@ function layout_molecule(
   nodes: SceneNode[],
   dimensions: 2 | 3 = 3,
   seed: Map<string, THREE.Vector3> = new Map(),
+  physics: PhysicsTerms = PHYSICS_DEFAULT,
 ): PlacedNode[] {
   const degree: Map<string, number> = new Map();
   const links: Array<{ source: string; target: string }> = [];
@@ -269,17 +285,33 @@ function layout_molecule(
       forceLink(links)
         .id((d: { id: string }) => d.id)
         // Edges reach surface to surface: a hub's children orbit its skin.
-        .distance((link: { source: { id: string }; target: { id: string } }): number =>
-          (radiusOf.get(link.source.id) ?? NODE_RADIUS) + (radiusOf.get(link.target.id) ?? NODE_RADIUS) + 1.4),
+        .distance(
+          physics.link
+            ? (link: { source: { id: string }; target: { id: string } }): number =>
+                (radiusOf.get(link.source.id) ?? NODE_RADIUS) + (radiusOf.get(link.target.id) ?? NODE_RADIUS) + 1.4
+            : 2.2,
+        ),
     )
     // Repulsion scales with cross-section: a heavy node carves its room.
-    .force('charge', forceManyBody().strength((d: { id: string }): number => {
-      const r: number = radiusOf.get(d.id) ?? NODE_RADIUS;
-      return -6 * (r / NODE_RADIUS) ** 2;
-    }))
-    .force('collide', forceCollide().radius((d: { id: string }): number => (radiusOf.get(d.id) ?? NODE_RADIUS) * 1.2))
+    .force(
+      'charge',
+      forceManyBody().strength(
+        physics.charge
+          ? (d: { id: string }): number => -6 * ((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2
+          : -6,
+      ),
+    )
     .force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0))
     .stop();
+  if (physics.collide) {
+    simulation.force('collide', forceCollide().radius((d: { id: string }): number => (radiusOf.get(d.id) ?? NODE_RADIUS) * 1.2));
+  }
+  if (physics.gravity) {
+    // Mass-weighted centering: the heaviest stage settles at the heart.
+    const pull = (d: { id: string }): number => (((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2) * 0.08;
+    simulation.force('gx', forceX(0).strength(pull)).force('gy', forceY(0).strength(pull));
+    if (dimensions === 3) simulation.force('gz', forceZ(0).strength(pull));
+  }
   for (let tick: number = 0; tick < (seed.size > 0 ? 90 : 150); tick++) simulation.tick();
 
   return nodes.map((node: SceneNode, index: number): PlacedNode => {
@@ -311,6 +343,19 @@ export class DagScene {
 
   /** CENSUS: render every member of every ×N group as an instanced point. */
   private census: boolean = false;
+
+  /** The molecule's physics terms (see PhysicsTerms). */
+  private physics: PhysicsTerms = { ...PHYSICS_DEFAULT };
+
+  /** Sets physics terms and re-settles (warm-started, so it morphs). */
+  public physics_set(terms: Partial<PhysicsTerms>): void {
+    this.physics = { ...this.physics, ...terms };
+    this.rebuild();
+  }
+
+  public physics_get(): PhysicsTerms {
+    return { ...this.physics };
+  }
 
   /** The census cloud, when drawn: instance index → group node id / local position. */
   private censusMesh: THREE.InstancedMesh | null = null;
@@ -961,7 +1006,7 @@ export class DagScene {
     this.pulseColor = palette.pulse;
     const placed: PlacedNode[] =
       this.strategy === 'molecule'
-        ? layout_molecule(this.graph.nodes, this.projection === '2d' ? 2 : 3, this.lastPositions)
+        ? layout_molecule(this.graph.nodes, this.projection === '2d' ? 2 : 3, this.lastPositions, this.physics)
         : layout_ranked(this.graph.nodes);
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
     if (this.projection === '2d') {
@@ -1309,7 +1354,15 @@ export class DagScene {
   /** Resolves a pointer event to a node and fires the matching handler. */
   private pick_handle(event: MouseEvent, kind: 'select' | 'activate'): void {
     const nodeId: string | null = this.census ? this.censusNode_under(event) : this.meshNode_under(event);
-    if (nodeId === null) return;
+    if (nodeId === null) {
+      // Empty space is the natural off switch for the node detail.
+      if (kind === 'select' && this.selectedId !== null) {
+        this.selection_clear();
+        if (!this.census) this.rebuild();
+        this.handlers.deselect?.();
+      }
+      return;
+    }
     const node: SceneNode | undefined = this.graph.nodes.find((n: SceneNode) => n.id === nodeId);
     if (!node) return;
     if (kind === 'select') {

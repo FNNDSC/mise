@@ -36,6 +36,7 @@ import {
   feedVisit_sync,
   feedCached_isSettled,
   procRoster_sync,
+  procRoster_bootSync,
   procVisitState_reset,
   FEED_RECHECK_MS,
   ROSTER_FULL_WALK_MS,
@@ -952,5 +953,42 @@ describe('visit-driven freshness', () => {
     mockClientGet.mockResolvedValue(client);
     await procRoster_sync();
     expect(client.getFeeds).not.toHaveBeenCalled();
+  });
+});
+
+describe('roster boot sync', () => {
+  it('brings a restored roster into service on a delta and marks the cache built', async () => {
+    cache.feed_add(feed({ id: 3, title: 'restored' }));
+    cache.lifecycle_set('restored');
+    const client = {
+      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
+        ({ data: params.min_id === 4 ? [{ id: 9, name: 'fresh', owner_username: 'chris' }] : [], totalCount: 1 })),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn(),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    expect(await procRoster_bootSync()).toEqual([9]);
+    expect(cache.built).toBe(true);
+    expect(cache.feedIDs_get().sort()).toEqual([3, 9]);
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 4 }));
+  });
+
+  it('refuses when nothing was restored, so the host falls back to the full build', async () => {
+    await expect(procRoster_bootSync()).rejects.toThrow('no restored roster');
+  });
+
+  it('a forced roster sync reports the reconciliation targets of the full walk', async () => {
+    cache.feed_add(feed({ id: 3, title: 'old', finishedJobs: 1 }));
+    cache.built_set();
+    cache.lifecycle_set('current');
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: [{ id: 3, name: 'old', owner_username: 'chris', finished_jobs: 2 }, { id: 5, name: 'new', owner_username: 'chris' }], totalCount: 2 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn(),
+    };
+    mockClientGet.mockResolvedValue(client);
+    expect((await procRoster_sync(true)).sort()).toEqual([3, 5]);
   });
 });

@@ -20,6 +20,9 @@ const mockTopologyReconcileFeeds = jest.fn(async (_feedIDs: number[]): Promise<v
 const mockProcCacheRefresh = jest.fn(async (): Promise<number[]> => []);
 const mockVfsRead = jest.fn();
 const mockCheckpointRestore = jest.fn(async () => ({ restored: false, count: 0 }));
+const mockRosterBootSync = jest.fn(async (): Promise<number[]> => []);
+const mockRosterSync = jest.fn(async (): Promise<number[]> => []);
+const mockWarmupComplete = jest.fn();
 const mockCheckpointWatch = jest.fn();
 const mockCacheClear = jest.fn();
 let mockCacheLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
@@ -66,6 +69,8 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: { read: mockVfsRead },
   procCache_refresh: mockProcCacheRefresh,
+  procRoster_bootSync: mockRosterBootSync,
+  procRoster_sync: mockRosterSync,
   procTopology_status: jest.fn(() => ({ state: 'complete', failure: undefined })),
   procTopology_reconcileFeeds: mockTopologyReconcileFeeds,
   procTopology_warmup: mockTopologyWarmup,
@@ -78,6 +83,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   },
   procCache_get: jest.fn(() => ({
     cache_clear: mockCacheClear,
+    warmup_complete: mockWarmupComplete,
     lifecycle_get: (): { state: string; checkpointAt?: string } => ({ ...mockCacheLifecycle }),
     feedIDs_get: (): number[] => [1, 2, 3],
     warmupProgress_get: (): { loaded: number; total: number; active: boolean } => ({
@@ -186,9 +192,10 @@ describe('daemonSession_run', () => {
     expect(readyOrder).toBeLessThan(mockDaemonListen.mock.invocationCallOrder[0]);
   });
 
-  it('restores an identity-scoped checkpoint before reconciling topology', async () => {
+  it('brings a restored checkpoint into service on a roster delta, with the full walk behind the listening daemon', async () => {
     mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 7009, writtenAt: '2026-07-16T00:00:00Z' });
-    mockProcCacheRefresh.mockResolvedValueOnce([17, 23]);
+    mockRosterBootSync.mockResolvedValueOnce([4446]);
+    mockRosterSync.mockResolvedValueOnce([17, 23]);
     const report = jest.fn();
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
@@ -199,10 +206,13 @@ describe('daemonSession_run', () => {
 
     expect(mockCheckpointRestore).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
     expect(mockCheckpointWatch).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 job(s); indexed 3 feed(s) — topology reconciling in background');
-    expect(mockCheckpointRestore.mock.invocationCallOrder[0]).toBeLessThan(mockProcCacheRefresh.mock.invocationCallOrder[0]);
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 job(s); 3 feed(s), 1 new — full roster refresh in background');
+    expect(mockProcCacheRefresh).not.toHaveBeenCalled();
+    expect(mockWarmupComplete).toHaveBeenCalled();
+    expect(mockRosterSync).toHaveBeenCalledWith(true);
     expect(mockTopologyWarmup).not.toHaveBeenCalled();
-    expect(mockTopologyReconcileFeeds).toHaveBeenCalledWith([17, 23]);
+    expect(mockTopologyReconcileFeeds).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledWith('ok', 'Roster', '2 feed(s) moved while away; each refreshes on its next visit');
   });
 
   it('reports a background topology failure after publishing engine readiness', async () => {
@@ -309,7 +319,7 @@ describe('daemonSession_run', () => {
   it('quarantines restored topology when CUBE visibility validation fails', async () => {
     mockCacheLifecycle = { state: 'restored', checkpointAt: '2026-07-16T00:00:00Z' };
     mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 10 });
-    mockProcCacheRefresh.mockRejectedValueOnce(new Error('visibility unavailable'));
+    mockRosterBootSync.mockRejectedValueOnce(new Error('visibility unavailable'));
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),

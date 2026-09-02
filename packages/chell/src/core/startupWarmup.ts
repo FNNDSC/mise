@@ -48,7 +48,8 @@ import {
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 import {
   procCache_refresh,
-  procTopology_reconcileFeeds,
+  procRoster_bootSync,
+  procRoster_sync,
   procTopology_status,
   procTopology_warmup,
   vfsDispatcher,
@@ -176,6 +177,22 @@ export async function startupWarmup_run(
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [] };
 
+  // Listings survive a restart as a stale-marked checkpoint: the first `ls`
+  // anywhere already listed renders at once and revalidates behind itself.
+  if (!session.offline && user) {
+    const cubeUrl: string | null = await chrisContext.ChRISURL_get();
+    if (cubeUrl) {
+      const identity: string = identity_forSession(user, cubeUrl);
+      const listings: ListCheckpointRestoreResult = await listCheckpoint_restore(identity);
+      listCheckpoint_watch(identity);
+      reporter?.log(
+        listings.restored ? 'ok' : 'skip',
+        'Listings',
+        listings.restored ? `Restored ${listings.count} cached listing(s), stale until revisited` : (listings.reason ?? 'No listing checkpoint'),
+      );
+    }
+  }
+
   if (!session.offline && flags.plugins) {
     const pluginsResult: PrefetchResult = await startupPrefetch_retry(
       'Plugins',
@@ -238,22 +255,6 @@ export async function startupWarmup_run(
     reporter?.log('skip', 'Groups', 'Offline mode');
   }
 
-  // Listings survive a restart as a stale-marked checkpoint: the first `ls`
-  // anywhere already listed renders at once and revalidates behind itself.
-  if (!session.offline && user) {
-    const cubeUrl: string | null = await chrisContext.ChRISURL_get();
-    if (cubeUrl) {
-      const identity: string = identity_forSession(user, cubeUrl);
-      const listings: ListCheckpointRestoreResult = await listCheckpoint_restore(identity);
-      listCheckpoint_watch(identity);
-      reporter?.log(
-        listings.restored ? 'ok' : 'skip',
-        'Listings',
-        listings.restored ? `Restored ${listings.count} cached listing(s), stale until revisited` : (listings.reason ?? 'No listing checkpoint'),
-      );
-    }
-  }
-
   if (!session.offline && flags.feeds) {
     const feedPath: string | undefined = user ? `/home/${user}/feeds` : undefined;
     if (feedPath) {
@@ -299,7 +300,7 @@ export async function startupWarmup_run(
 
   if (!session.offline && flags.jobs) {
     let checkpoint: ProcCheckpointRestoreResult | null = null;
-    let reconciliationFeedIDs: number[] = [];
+    let rosterAdded: number[] = [];
     if (reportTopologySettlement && user) {
       const cubeUrl: string | null = await chrisContext.ChRISURL_get();
       if (cubeUrl) {
@@ -315,7 +316,15 @@ export async function startupWarmup_run(
       reporter,
       async (): Promise<PrefetchResult> => {
         try {
-          reconciliationFeedIDs = await procCache_refresh();
+          if (checkpoint?.restored) {
+            // A restored roster goes into service on a delta (feeds newer
+            // than the highest restored id); the full index walk, which
+            // costs a page per hundred feeds, runs behind the listening
+            // daemon rather than in front of it.
+            rosterAdded = await procRoster_bootSync();
+          } else {
+            await procCache_refresh();
+          }
           return { ok: true, count: procCache_get().feedIDs_get().length };
         } catch (error: unknown) {
           if (procCache_get().lifecycle_get().checkpointAt) procCache_get().cache_clear();
@@ -326,13 +335,24 @@ export async function startupWarmup_run(
     );
     if (jobsResult.ok) {
       const jobsMessage: string = checkpoint?.restored
-        ? `Restored ${checkpoint.count} job(s)${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`
+        ? `Restored ${checkpoint.count} job(s)${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${jobsResult.count ?? 0} feed(s), ${rosterAdded.length} new — full roster refresh in background`
         : `Indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`;
       reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {
-        const topologySweep: Promise<void> = checkpoint?.restored
-          ? procTopology_reconcileFeeds(reconciliationFeedIDs)
-          : procTopology_warmup();
+        let topologySweep: Promise<void>;
+        if (checkpoint?.restored) {
+          // Restored topology is in service now; visits keep each feed
+          // current. The full roster walk catches feeds that changed or
+          // vanished while the daemon was away.
+          procCache_get().warmup_complete();
+          topologySweep = procRoster_sync(true).then((changed: number[]): void => {
+            if (changed.length > 0) {
+              reporter?.log('ok', 'Roster', `${changed.length} feed(s) moved while away; each refreshes on its next visit`);
+            }
+          });
+        } else {
+          topologySweep = procTopology_warmup();
+        }
         if (reportTopologySettlement) {
           void topologySweep.then(
             (): void => {

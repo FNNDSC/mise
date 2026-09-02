@@ -22,7 +22,7 @@ jest.mock('@fnndsc/cumin', () => {
   };
 });
 
-import { Ok, Err, errorStack } from '@fnndsc/cumin';
+import { Ok, Err, errorStack, listCache_get } from '@fnndsc/cumin';
 import { EtcVfsProvider } from '../src/vfs/providers/etc';
 import { groupUser_add } from '../src/groups/index';
 
@@ -31,6 +31,7 @@ let etc: EtcVfsProvider;
 beforeEach(() => {
   jest.clearAllMocks();
   errorStack.stack_clear();
+  listCache_get().cache_invalidate('/etc/group');
   mockCtx.ChRISURL_get.mockResolvedValue(null);
   mockCtx.ChRISuser_get.mockResolvedValue(null);
   etc = new EtcVfsProvider();
@@ -140,17 +141,21 @@ describe('group', () => {
     expect(mockGroupMembers).toHaveBeenCalledTimes(2);
   });
 
-  it('refreshes the projection after its five-minute freshness window', async (): Promise<void> => {
+  it('past its freshness window the projection serves stale at once and re-renders behind itself', async (): Promise<void> => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
     mockGroups.mockResolvedValue(Ok([{ name: 'pacs_users', id: 2 }]));
     mockGroupMembers.mockResolvedValue(Ok([]));
 
     await etc.read('/etc/group');
     now.mockReturnValue(301_001);
-    await etc.read('/etc/group');
-
+    mockGroups.mockResolvedValue(Ok([{ name: 'pacs_users', id: 2 }, { name: 'newcomers', id: 3 }]));
+    const stale = await etc.read('/etc/group');
+    expect(stale.ok && stale.value).toBe('pacs_users:x:2:\n'); // served at once, old content
+    for (let i = 0; i < 6; i++) await Promise.resolve();
     expect(mockGroups).toHaveBeenCalledTimes(2);
-    expect(mockGroupMembers).toHaveBeenCalledTimes(2);
+    const fresh = await etc.read('/etc/group');
+    expect(fresh.ok && fresh.value).toContain('newcomers:x:3:');
+    expect(mockGroups).toHaveBeenCalledTimes(2); // the re-render served this read; no third fetch
     now.mockRestore();
   });
 

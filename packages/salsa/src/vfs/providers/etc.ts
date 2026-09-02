@@ -10,7 +10,9 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack,
+  listCache_get,
+} from '@fnndsc/cumin';
 import {
   computeResources_getAll,
   ComputeResource,
@@ -34,11 +36,13 @@ const GROUP_MEMBERSHIP_CONCURRENCY: number = 4;
 /** How long external CUBE membership changes may remain cached. */
 const GROUP_PROJECTION_TTL_MS: number = 5 * 60 * 1000;
 
+/** The listing-cache key the rendered `/etc/group` projection lives under (so it checkpoints with the listings). */
+const GROUP_PROJECTION_KEY: string = '/etc/group';
+
 /** One connection-scoped, rendered `/etc/group` snapshot. */
-interface GroupProjectionCacheEntry {
+interface GroupProjection {
   connectionKey: string;
   content: string;
-  expiresAt: number;
   membershipRevision: number;
 }
 
@@ -47,7 +51,8 @@ interface GroupProjectionCacheEntry {
  */
 export class EtcVfsProvider implements VFSProvider {
   prefix = '/etc';
-  private groupProjectionCache: GroupProjectionCacheEntry | undefined;
+  /** A background re-render of the group projection in flight, if any. */
+  private groupRefresh: Promise<void> | null = null;
 
   /**
    * Lists contents of /etc — the four virtual config files.
@@ -120,21 +125,59 @@ export class EtcVfsProvider implements VFSProvider {
     return Ok(lines.join('\n') + '\n');
   }
 
-  /** Renders CUBE groups and their usernames in POSIX `/etc/group` form. */
+  /**
+   * Renders CUBE groups and their usernames in POSIX `/etc/group` form.
+   *
+   * The rendered projection lives in the listing cache (so it survives a
+   * restart with the listings) under a freshness window. A fresh projection
+   * serves as is. A stale one for the same connection and membership
+   * revision serves at once and re-renders behind itself — membership
+   * changes from outside are rare, and a boot must not wait tens of seconds
+   * for them. A local membership mutation bumps the revision and forces a
+   * synchronous re-render, as before.
+   */
   private async group_render(): Promise<Result<string>> {
     const cubeURL: string | null = await chrisContext.ChRISURL_get();
     const cubeUser: string | null = await chrisContext.ChRISuser_get();
     const connectionKey: string = `${cubeURL ?? ''}\u0000${cubeUser ?? ''}`;
     const membershipRevision: number = groupMembershipRevision_get();
-    const now: number = Date.now();
-    if (
-      this.groupProjectionCache?.connectionKey === connectionKey
-      && this.groupProjectionCache.membershipRevision === membershipRevision
-      && this.groupProjectionCache.expiresAt > now
-    ) {
-      return Ok(this.groupProjectionCache.content);
+    const cached = listCache_get().cache_get<GroupProjection>(GROUP_PROJECTION_KEY);
+    const usable: boolean = cached !== null
+      && cached.data.connectionKey === connectionKey
+      && cached.data.membershipRevision === membershipRevision;
+    if (usable && cached !== null) {
+      if (!cached.fresh) void this.groupProjection_refresh(connectionKey, membershipRevision);
+      return Ok(cached.data.content);
     }
+    const rendered: Result<string> = await this.groupProjection_build();
+    if (!rendered.ok) return Err();
+    listCache_get().cache_set<GroupProjection>(
+      GROUP_PROJECTION_KEY,
+      { connectionKey, content: rendered.value, membershipRevision },
+      { ttl: GROUP_PROJECTION_TTL_MS },
+    );
+    return Ok(rendered.value);
+  }
 
+  /** Re-renders the projection behind a stale serve; one in flight at a time. */
+  private groupProjection_refresh(connectionKey: string, membershipRevision: number): Promise<void> {
+    if (this.groupRefresh) return this.groupRefresh;
+    this.groupRefresh = (async (): Promise<void> => {
+      const rendered: Result<string> = await this.groupProjection_build();
+      if (!rendered.ok) return;
+      listCache_get().cache_set<GroupProjection>(
+        GROUP_PROJECTION_KEY,
+        { connectionKey, content: rendered.value, membershipRevision },
+        { ttl: GROUP_PROJECTION_TTL_MS },
+      );
+    })()
+      .catch((): void => { /* the stale projection stands until the next read */ })
+      .finally((): void => { this.groupRefresh = null; });
+    return this.groupRefresh;
+  }
+
+  /** Fetches every group and its members and renders the file body. */
+  private async groupProjection_build(): Promise<Result<string>> {
     const result: Result<ChrisGroup[]> = await groups_getAll();
     if (!result.ok) return Err();
 
@@ -154,14 +197,7 @@ export class EtcVfsProvider implements VFSProvider {
         lines.push(`${group.name}:x:${group.id}:${usernames}`);
       }
     }
-    const content: string = lines.join('\n') + '\n';
-    this.groupProjectionCache = {
-      connectionKey,
-      content,
-      expiresAt: Date.now() + GROUP_PROJECTION_TTL_MS,
-      membershipRevision,
-    };
-    return Ok(content);
+    return Ok(lines.join('\n') + '\n');
   }
 
   private async passwd_render(): Promise<Result<string>> {

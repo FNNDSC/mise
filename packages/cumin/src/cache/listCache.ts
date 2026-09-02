@@ -197,17 +197,22 @@ export class ListCache {
   }
 
   /**
-   * Replaces the cache with a snapshot's entries, keeping their original
+   * Merges a snapshot's entries into the cache, keeping their original
    * timestamps: what was stale stays stale and is revalidated on its next
-   * visit. Entries beyond the LRU bound are dropped oldest-first.
+   * visit. A path already cached in this process is newer than anything on
+   * disk and is kept as is. Entries beyond the LRU bound are dropped
+   * oldest-first.
    *
    * @param snapshot - A validated snapshot.
    */
   snapshot_restore(snapshot: ListCacheSnapshot): void {
+    const live: Map<string, CacheEntry<unknown>> = new Map(this.cache);
     this.cache.clear();
     for (const entry of snapshot.entries) {
+      if (live.has(entry.path)) continue;
       this.cache.set(entry.path, { data: entry.data, timestamp: entry.timestamp, dirty: entry.dirty, ttl: entry.ttl });
     }
+    for (const [path, entry] of live) this.cache.set(path, entry);
     this.evict_lru();
     this.change_emit();
   }

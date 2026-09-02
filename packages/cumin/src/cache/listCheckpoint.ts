@@ -67,7 +67,7 @@ function entry_check(value: unknown): value is ListCacheEntrySnapshot {
   if (!value || typeof value !== 'object') return false;
   const entry: Partial<ListCacheEntrySnapshot> = value as Partial<ListCacheEntrySnapshot>;
   return typeof entry.path === 'string' && entry.path.startsWith('/') &&
-    Array.isArray(entry.data) &&
+    entry.data !== undefined && entry.data !== null &&
     typeof entry.timestamp === 'number' && Number.isFinite(entry.timestamp) &&
     typeof entry.dirty === 'boolean' &&
     typeof entry.ttl === 'number' && Number.isFinite(entry.ttl) && entry.ttl > 0;

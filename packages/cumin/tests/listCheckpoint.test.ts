@@ -93,3 +93,13 @@ it('the default checkpoint path lives under the user cache home, keyed but never
   expect(path).toMatch(/\/chell\/vfs\/listings-[0-9a-f]{16}-v1\.json$/);
   expect(path).not.toContain('cube.example.org');
 });
+
+it('restore merges: a path already cached in this process outranks the checkpoint', async () => {
+  const cache = listCache_get();
+  cache.cache_set('/etc/group', { content: 'old' });
+  await listCheckpoint_save(identity, root);
+  cache.cache_invalidate();
+  cache.cache_set('/etc/group', { content: 'rendered just now' });
+  expect(await listCheckpoint_restore(identity, root)).toMatchObject({ restored: true, count: 1 });
+  expect(cache.cache_get<{ content: string }>('/etc/group')?.data.content).toBe('rendered just now');
+});

@@ -808,11 +808,28 @@ describe('visit-driven freshness', () => {
     const client = deltaClient({ id: 7, name: 'f', finished_jobs: 1 }, { since: [], active: [] });
     mockClientGet.mockResolvedValue(client);
 
-    await feedVisit_sync(7);
+    expect(await feedVisit_sync(7)).toBe(true);
     expect(client.getFeeds).toHaveBeenCalledTimes(1);
-    await feedVisit_sync(7);
+    expect(await feedVisit_sync(7)).toBe(true);
     expect(client.getFeeds).toHaveBeenCalledTimes(1);
     expect(client.getPluginInstances).not.toHaveBeenCalled();
+  });
+
+  it('visits within a second of each other on an active feed share one sync', async () => {
+    loadedFeed({ startedJobs: 1 });
+    cache.instance_add({ id: 71, feedID: 7, parentID: 70, pluginName: 'pl-ctl', params: null, status: 'started' });
+    const client = deltaClient({ id: 7, name: 'f', finished_jobs: 1, started_jobs: 1 }, { since: [], active: [] });
+    mockClientGet.mockResolvedValue(client);
+    const now: number = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    await feedVisit_sync(7);
+    await feedVisit_sync(7);
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    nowSpy.mockReturnValue(now + 1500);
+    await feedVisit_sync(7);
+    expect(client.getFeeds).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
   });
 
   it('a settled feed past its window pays one feed-row fetch, and nothing more when counters hold', async () => {
@@ -858,9 +875,12 @@ describe('visit-driven freshness', () => {
     });
     mockClientGet.mockResolvedValue(client);
 
+    const now: number = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
     await feedVisit_sync(7);
     expect(client.getPluginInstances).toHaveBeenNthCalledWith(1, expect.objectContaining({ min_end_date: '2026-09-02T10:02:00Z' }));
     expect(cache.instance_get(72)?.status).toBe('created');
+    nowSpy.mockReturnValue(now + 2000);
 
     client.getPluginInstances.mockImplementation((params: Record<string, unknown>) => {
       const data: unknown[] = params.active === true
@@ -873,12 +893,13 @@ describe('visit-driven freshness', () => {
     expect(client.getPluginInstances).toHaveBeenNthCalledWith(3, expect.objectContaining({ min_end_date: '2026-09-02T10:05:00Z' }));
     expect(cache.instance_get(71)?.status).toBe('finishedSuccessfully');
     expect(cache.instance_get(72)?.finishedAt).toBe('2026-09-02T10:09:00Z');
+    nowSpy.mockRestore();
   });
 
   it('a failed sync leaves the cache as it was and warns', async () => {
     loadedFeed({ startedJobs: 1 });
     mockClientGet.mockResolvedValue({ getFeeds: jest.fn().mockRejectedValue(new Error('cube down')) });
-    await expect(feedVisit_sync(7)).resolves.toBeUndefined();
+    await expect(feedVisit_sync(7)).resolves.toBe(false);
     expect(cache.instance_get(70)?.status).toBe('finishedSuccessfully');
   });
 

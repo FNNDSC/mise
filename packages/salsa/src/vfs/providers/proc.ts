@@ -66,6 +66,8 @@ const PAGE: number = 100;
 export const FEED_RECHECK_MS: number = 10 * 60 * 1000;
 /** How old the roster may be before a visit walks the whole feed index again. */
 export const ROSTER_FULL_WALK_MS: number = 10 * 60 * 1000;
+/** Visits to one feed closer together than this share the first visit's result. */
+export const FEED_VISIT_COALESCE_MS: number = 1000;
 
 /**
  * Per-feed visit bookkeeping. Session memory only — never checkpointed; a
@@ -82,7 +84,7 @@ interface FeedVisit {
 }
 
 const feedVisits: Map<number, FeedVisit> = new Map();
-const feedVisitInflight: Map<number, Promise<void>> = new Map();
+const feedVisitInflight: Map<number, Promise<boolean>> = new Map();
 let rosterWalkedAt: number = 0;
 let rosterSyncInflight: Promise<void> | null = null;
 let procTopologyPromise: Promise<void> | null = null;
@@ -913,19 +915,25 @@ async function feedRows_merge(
  * (CUBE stamps end_date at creation and again at completion) — followed by an
  * `active=true` sweep for the nodes still in flight.
  *
- * Concurrent visits share one in-flight sync. Failures are surfaced as
- * warnings and never fail the visit: the cache stays as it was.
+ * Concurrent visits share one in-flight sync, and visits within
+ * {@link FEED_VISIT_COALESCE_MS} of each other share the first one's result
+ * (a pane tick and an `ls` in the same second are one visit). Failures are
+ * surfaced as warnings and never fail the visit: the cache stays as it was.
  *
  * @param feedID - A feed whose topology is already loaded.
  * @param force - Ignore the settled-feed throttle (an explicit refresh).
+ * @returns True when the cache reflects CUBE as of this visit (including a
+ *   visit that needed no wire), false when the sync failed.
  */
-export async function feedVisit_sync(feedID: number, force: boolean = false): Promise<void> {
-  const inflight: Promise<void> | undefined = feedVisitInflight.get(feedID);
+export async function feedVisit_sync(feedID: number, force: boolean = false): Promise<boolean> {
+  const inflight: Promise<boolean> | undefined = feedVisitInflight.get(feedID);
   if (inflight) return inflight;
-  const run: Promise<void> = feedVisit_run(feedID, force)
-    .catch((error: unknown): void => {
+  const run: Promise<boolean> = feedVisit_run(feedID, force)
+    .then((): boolean => true)
+    .catch((error: unknown): boolean => {
       const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push('warning', `proc feed_${feedID}: live sync failed (${msg}); showing cached state`);
+      return false;
     })
     .finally((): void => { feedVisitInflight.delete(feedID); });
   feedVisitInflight.set(feedID, run);
@@ -940,6 +948,7 @@ async function feedVisit_run(feedID: number, force: boolean): Promise<void> {
   const visit: FeedVisit | undefined = feedVisits.get(feedID);
   const settled: boolean = feedCached_isSettled(cache, feedID) && !feed_isActive(feed);
   const now: number = Date.now();
+  if (!force && visit && now - visit.checkedAt < FEED_VISIT_COALESCE_MS) return;
   if (!force && settled && visit && now - visit.checkedAt < FEED_RECHECK_MS) return;
 
   const client = await chrisConnection.client_get();

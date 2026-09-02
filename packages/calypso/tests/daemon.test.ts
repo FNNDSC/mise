@@ -861,6 +861,61 @@ describe('CalypsoDaemon scrollback bound', () => {
     }
   });
 
+  it('a watch is owned by its surface: opened on the wire, answered with its state, released on detach', async () => {
+    const engine = stubEngine_create();
+    const calls: { subject: string; owner: string; on: boolean }[] = [];
+    const released: string[] = [];
+    (engine as { watch_set?: (subject: string, owner: string, on: boolean) => string | null }).watch_set =
+      (subject, owner, on): string | null => { calls.push({ subject, owner, on }); return subject.includes('feed_') ? 'live' : null; };
+    (engine as { watch_release?: (owner: string) => void }).watch_release = (owner): void => { released.push(owner); };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const watcher = await client_attach(port);
+      const answered = message_next(watcher);
+      send(watcher, { type: 'watch', subject: '/proc/jobs/feed_7' });
+      expect(await answered).toEqual({ type: 'watched', subject: '/proc/jobs/feed_7', state: 'live' });
+      expect(calls).toEqual([{ subject: '/proc/jobs/feed_7', owner: expect.any(String), on: true }]);
+
+      const refused = message_next(watcher);
+      send(watcher, { type: 'watch', subject: '/vfs/home' });
+      expect((await refused).type).toBe('error');
+
+      watcher.terminate();
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
+      expect(released).toEqual([calls[0].owner]);
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('relays ambient engine events to every surface: models on the bus as the daemon, watch states as their own message', async () => {
+    const engine = stubEngine_create();
+    let publish: ((event: unknown) => void) | null = null;
+    (engine as { ambient_listen?: (l: (event: unknown) => void) => () => void }).ambient_listen =
+      (listener): (() => void) => { publish = listener; return (): void => { publish = null; }; };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const a = await client_attach(port);
+      const b = await client_attach(port);
+      const envelope = { status: 'ok', rendered: 'dag', model: { kind: 'feed.dag', data: {} } };
+      const gotA = messages_collect(a, 2);
+      const gotB = messages_collect(b, 2);
+      publish!({ kind: 'envelope', envelope });
+      publish!({ kind: 'watched', subject: '/proc/jobs/feed_7', state: 'settled' });
+      for (const got of [await gotA, await gotB]) {
+        expect(got[0]).toMatchObject({ type: 'session', surface: 'daemon' });
+        expect(got[1]).toEqual({ type: 'watched', subject: '/proc/jobs/feed_7', state: 'settled' });
+      }
+      a.terminate();
+      b.terminate();
+    } finally {
+      await daemon.stop();
+    }
+    expect(publish).toBeNull();
+  });
+
   it('retains a regard write, mirrors it into the engine, and rebroadcasts to every surface', async () => {
     const engine = stubEngine_create();
     const noted: unknown[] = [];

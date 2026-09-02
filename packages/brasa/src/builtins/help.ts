@@ -717,7 +717,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['whereami'],
   },
   proc: {
-    usage: 'proc <jobs|stat|feeds|refresh|retry|find|here> [args]',
+    usage: 'proc <jobs|stat|feeds|refresh|retry|find|here|watch|unwatch> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
     description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. The daemon restores an identity-scoped local topology checkpoint, validates feed visibility with CUBE, and reconciles all plugin instances in the background. Restored queries remain usable while syncing; a cold cache still guards global queries until complete. CUBE remains authoritative.',
     subcommands: [
@@ -739,6 +739,9 @@ export const helpText: Record<string, CommandHelp> = {
       'find <id>                              Targeted instance lookup; available during warm-up',
       'find <name> [--force]                  Name search; --force waits for warm-up',
       'here                                   Navigate from a CFS feed/output path to its matching job',
+      'watch <feed>                           Keep a running feed live: sample it while it runs, push its DAG to every surface',
+      'watch                                  List the session\'s watches with their state',
+      'unwatch <feed>                         Release the watch on a feed',
     ],
     examples: [
       'proc jobs list',
@@ -754,6 +757,8 @@ export const helpText: Record<string, CommandHelp> = {
       'proc find 64306',
       'proc find pl-fshack',
       'proc here',
+      'proc watch feed_2583',
+      'proc unwatch 2583',
     ],
   },
   prompt: {

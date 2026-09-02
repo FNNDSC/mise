@@ -34,7 +34,7 @@ import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, FileDeliverRequest, Regard } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, FileDeliverRequest, Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
@@ -97,6 +97,9 @@ export interface EditOutcome {
 }
 
 /** The default number of envelopes retained for scrollback replay. */
+/** The surface tag on session-bus envelopes the daemon itself originates. */
+export const DAEMON_SURFACE: string = 'daemon';
+
 const SCROLLBACK_DEFAULT: number = 200;
 
 /**
@@ -188,6 +191,8 @@ export class CalypsoDaemon {
   private queue: Promise<void> = Promise.resolve();
   /** The session's retained regard: the last indication from any surface. */
   private regard: Regard | null = null;
+  /** Unsubscribes from the engine's ambient events; null until started. */
+  private ambientStop: (() => void) | null = null;
   private currentOrigin: Surface | null = null;
   private currentId: string | null = null;
   // One RequestBroker per surface-delegated request kind. The broker owns the
@@ -285,6 +290,7 @@ export class CalypsoDaemon {
       this.wss = wss;
       this.httpServer = httpServer;
       this.telemetry_start();
+      this.ambientStop = this.engine.ambient_listen?.((event: AmbientEvent): void => this.ambient_relay(event)) ?? null;
     });
   }
 
@@ -297,6 +303,10 @@ export class CalypsoDaemon {
     if (this.telemetryTimer !== null) {
       clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
+    }
+    if (this.ambientStop !== null) {
+      this.ambientStop();
+      this.ambientStop = null;
     }
     return new Promise((resolve: () => void) => {
       if (!this.wss || !this.httpServer) {
@@ -419,6 +429,8 @@ export class CalypsoDaemon {
         this.deliveries.fail(socket, value.deliverId, value.reason);
       } else if (value.type === 'regard') {
         this.regard_receive(value.regard);
+      } else if (value.type === 'watch' || value.type === 'unwatch') {
+        this.watch_receive(attached, value.subject, value.type === 'watch');
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -427,6 +439,9 @@ export class CalypsoDaemon {
     socket.on('close', () => {
       if (surface) {
         this.surfaces.delete(surface);
+        // A detached surface holds no watches: whatever it kept live is
+        // released, and a subject nobody else watches stops being sampled.
+        this.engine.watch_release?.(surface.id);
       }
     });
   }
@@ -499,6 +514,46 @@ export class CalypsoDaemon {
       this.send(socket, { type: 'regard', regard: retained });
     }
     return surface;
+  }
+
+  /**
+   * Opens or closes a surface's watch on a subject and answers with the
+   * subject's state. A daemon whose engine cannot watch says so rather than
+   * leaving the surface waiting for liveness that will never come.
+   *
+   * @param origin - The surface asking.
+   * @param subject - The subject address.
+   * @param on - True to watch, false to release.
+   */
+  private watch_receive(origin: Surface, subject: string, on: boolean): void {
+    if (this.engine.watch_set === undefined) {
+      this.send(origin.socket, { type: 'error', reason: 'this session cannot watch subjects' });
+      return;
+    }
+    const state: WatchState | null = this.engine.watch_set(subject, origin.id, on);
+    if (state === null) {
+      this.send(origin.socket, { type: 'error', reason: `not a watchable subject: ${subject}` });
+      return;
+    }
+    this.send(origin.socket, { type: 'watched', subject, state });
+  }
+
+  /**
+   * Relays an engine-originated event to every surface: a sampler's refreshed
+   * model rides the session bus tagged with the daemon as its surface (off
+   * the scrollback — it is state, not something the operator did), and a
+   * watch state change goes out as its own message.
+   *
+   * @param event - The ambient event.
+   */
+  private ambient_relay(event: AmbientEvent): void {
+    for (const surface of this.surfaces) {
+      if (event.kind === 'envelope') {
+        this.send(surface.socket, { type: 'session', surface: DAEMON_SURFACE, envelope: event.envelope });
+      } else {
+        this.send(surface.socket, { type: 'watched', subject: event.subject, state: event.state });
+      }
+    }
   }
 
   /**

@@ -1,0 +1,272 @@
+/**
+ * @file Watches: keeping a running feed live while someone is looking.
+ *
+ * A watch is a refcounted subscription on one feed. While any owner (a
+ * surface id, or the operator at a console) holds it, a sampler visits the
+ * feed on an adaptive cadence — {@link WATCH_FLOOR_MS} while it changes,
+ * doubling on quiet ticks to {@link WATCH_CAP_MS} — and, whenever the visit
+ * changed the cache, publishes the feed's refreshed `feed.dag` model on the
+ * ambient bus. When the feed settles (every node terminal, no work pending)
+ * the sampler reports `settled` and stops: a settled feed cannot change, so
+ * there is nothing left to keep live. A visit that fails reports `stale` and
+ * keeps trying at the capped cadence.
+ *
+ * The kernel never polls on its own. The open pane is the subscription.
+ *
+ * @module
+ */
+import type { CommandEnvelope, ProcCache, ProcCacheChange, ProcFeed } from '@fnndsc/cumin';
+import type { WatchState } from '@fnndsc/menu';
+import { ambient_publish } from '../core/ambient.js';
+
+// The cache, the visit, and the model builder are reached lazily: a host
+// that never opens a watch never loads the DAG projection, and the engine's
+// static import graph stays what it was.
+type Cumin = typeof import('@fnndsc/cumin');
+type SalsaVisit = typeof import('@fnndsc/salsa');
+type DagBuilder = typeof import('./res/feed.diagram.js');
+
+interface WatchDeps {
+  cumin: Cumin;
+  salsa: SalsaVisit;
+  dag: DagBuilder;
+}
+
+let depsLoading: Promise<WatchDeps> | null = null;
+
+/** Loads the sampler's collaborators once, on the first watch. */
+function deps_get(): Promise<WatchDeps> {
+  if (depsLoading === null) {
+    depsLoading = Promise.all([
+      import('@fnndsc/cumin'),
+      import('@fnndsc/salsa'),
+      import('./res/feed.diagram.js'),
+    ]).then(([cumin, salsa, dag]: [Cumin, SalsaVisit, DagBuilder]): WatchDeps => ({ cumin, salsa, dag }));
+  }
+  return depsLoading;
+}
+
+/** Sampling period while a watched feed keeps changing. */
+export const WATCH_FLOOR_MS: number = 3000;
+/** Sampling period a quiet watched feed backs off to. */
+export const WATCH_CAP_MS: number = 30000;
+
+/**
+ * One watch as the session reports it.
+ *
+ * @property feedID - The watched feed.
+ * @property owners - How many owners hold the watch.
+ * @property state - What the sampler last found.
+ */
+export interface ProcWatchEntry {
+  feedID: number;
+  owners: number;
+  state: WatchState;
+}
+
+interface Watch {
+  feedID: number;
+  owners: Set<string>;
+  state: WatchState;
+  delayMs: number;
+  timer: NodeJS.Timeout | null;
+  ticking: boolean;
+  first: boolean;
+}
+
+const watches: Map<number, Watch> = new Map();
+
+/**
+ * Parses a watch subject into a feed id: `/proc/jobs/feed_N`, `feed_N`, or
+ * a bare number.
+ *
+ * @param subject - The subject address as a surface or operator wrote it.
+ * @returns The feed id, or null when the subject is not a feed.
+ */
+export function watchSubject_parse(subject: string): number | null {
+  const match: RegExpMatchArray | null = /(?:^|\/)feed_(\d+)\/?$/.exec(subject.trim()) ?? /^(\d+)$/.exec(subject.trim());
+  if (!match) return null;
+  const feedID: number = Number(match[1]);
+  return Number.isInteger(feedID) && feedID > 0 ? feedID : null;
+}
+
+/** The subject address a feed watch is reported under. */
+function subject_of(feedID: number): string {
+  return `/proc/jobs/feed_${feedID}`;
+}
+
+/** Records and publishes a watch's state when it changed. */
+function state_set(watch: Watch, state: WatchState): void {
+  if (watch.state === state) return;
+  watch.state = state;
+  ambient_publish({ kind: 'watched', subject: subject_of(watch.feedID), state });
+}
+
+/** Whether a feed can no longer change: every cached node terminal and no work pending. */
+function feed_isSettled(cumin: Cumin, salsa: SalsaVisit, cache: ProcCache, feedID: number): boolean {
+  const feed: ProcFeed | undefined = cache.feed_get(feedID);
+  return feed !== undefined && salsa.feedCached_isSettled(cache, feedID) && !cumin.feed_isActive(feed);
+}
+
+/**
+ * Builds and publishes the feed's current model. The build itself runs the
+ * visit delta (coalesced with any visit of the last second), so a first
+ * tick on a never-visited feed loads it here.
+ *
+ * @param watch - The watch being sampled.
+ * @returns True when a model went out.
+ */
+async function model_publish(dag: DagBuilder, watch: Watch): Promise<boolean> {
+  const envelope: CommandEnvelope = await dag.feedDag_handle(watch.feedID, undefined, 0, false);
+  if (envelope.status !== 'ok') return false;
+  ambient_publish({ kind: 'envelope', envelope });
+  return true;
+}
+
+/**
+ * One sampler tick: visit the feed, publish a model when the visit changed
+ * anything, then either settle, back off, or re-arm at the floor.
+ *
+ * @param watch - The watch being sampled.
+ */
+async function watch_tick(watch: Watch): Promise<void> {
+  if (watch.ticking) return;
+  watch.ticking = true;
+  const { cumin, salsa, dag }: WatchDeps = await deps_get();
+  const cache: ProcCache = cumin.procCache_get();
+  try {
+    let changed: boolean = watch.first;
+    const listener_remove: () => void = cache.changeListener_add((change: ProcCacheChange): void => {
+      if (change.scope === 'all' || (change.scope === 'feed' && change.feedID === watch.feedID)) changed = true;
+    });
+    let synced: boolean;
+    try {
+      synced = watch.first ? true : await salsa.feedVisit_sync(watch.feedID);
+      if (changed) {
+        const published: boolean = await model_publish(dag, watch);
+        synced = synced && published;
+      }
+    } finally {
+      listener_remove();
+    }
+    watch.first = false;
+    if (!watches.has(watch.feedID)) return;
+
+    if (!synced) {
+      state_set(watch, 'stale');
+      watch.delayMs = WATCH_CAP_MS;
+    } else if (feed_isSettled(cumin, salsa, cache, watch.feedID)) {
+      state_set(watch, 'settled');
+      watch_stop(watch);
+      return;
+    } else {
+      state_set(watch, 'live');
+      watch.delayMs = changed ? WATCH_FLOOR_MS : Math.min(WATCH_CAP_MS, watch.delayMs * 2);
+    }
+    watch_arm(watch, watch.delayMs);
+  } finally {
+    watch.ticking = false;
+  }
+}
+
+/** Schedules the next tick. */
+function watch_arm(watch: Watch, delayMs: number): void {
+  if (watch.timer) clearTimeout(watch.timer);
+  watch.timer = setTimeout((): void => {
+    watch.timer = null;
+    void watch_tick(watch);
+  }, delayMs);
+  watch.timer.unref();
+}
+
+/** Ends a watch entirely: no timer, no entry. */
+function watch_stop(watch: Watch): void {
+  if (watch.timer) clearTimeout(watch.timer);
+  watch.timer = null;
+  watches.delete(watch.feedID);
+}
+
+/**
+ * Opens (or joins) a watch on a feed for one owner. A new watch samples
+ * immediately; joining an existing one changes nothing but the owner set.
+ * A watch on a feed that turns out settled runs one tick, reports
+ * `settled`, and ends.
+ *
+ * @param feedID - The feed to keep live.
+ * @param owner - Who holds the watch.
+ * @returns The watch's current state.
+ */
+export function procWatch_add(feedID: number, owner: string): WatchState {
+  const existing: Watch | undefined = watches.get(feedID);
+  if (existing) {
+    existing.owners.add(owner);
+    return existing.state;
+  }
+  const watch: Watch = {
+    feedID,
+    owners: new Set([owner]),
+    state: 'live',
+    delayMs: WATCH_FLOOR_MS,
+    timer: null,
+    ticking: false,
+    first: true,
+  };
+  watches.set(feedID, watch);
+  void watch_tick(watch);
+  return watch.state;
+}
+
+/**
+ * Releases one owner's hold on a feed watch; the last release stops the
+ * sampler.
+ *
+ * @param feedID - The watched feed.
+ * @param owner - The owner letting go.
+ */
+export function procWatch_remove(feedID: number, owner: string): void {
+  const watch: Watch | undefined = watches.get(feedID);
+  if (!watch) return;
+  watch.owners.delete(owner);
+  if (watch.owners.size === 0) watch_stop(watch);
+}
+
+/**
+ * Releases every watch one owner holds.
+ *
+ * @param owner - The owner letting go of everything.
+ */
+export function procWatch_release(owner: string): void {
+  for (const watch of Array.from(watches.values())) procWatch_remove(watch.feedID, owner);
+}
+
+/**
+ * Reports a feed's watch state: the sampler's last finding while watched,
+ * or `settled` once nothing watches it (a released or settled watch has
+ * nothing live to say).
+ *
+ * @param feedID - The feed in question.
+ * @returns The state.
+ */
+export function procWatch_state(feedID: number): WatchState {
+  return watches.get(feedID)?.state ?? 'settled';
+}
+
+/**
+ * Lists the session's watches.
+ *
+ * @returns One entry per watched feed.
+ */
+export function procWatch_list(): ProcWatchEntry[] {
+  return Array.from(watches.values()).map((watch: Watch): ProcWatchEntry => ({
+    feedID: watch.feedID,
+    owners: watch.owners.size,
+    state: watch.state,
+  }));
+}
+
+/**
+ * Ends every watch (tests, and engine teardown).
+ */
+export function procWatch_reset(): void {
+  for (const watch of Array.from(watches.values())) watch_stop(watch);
+}

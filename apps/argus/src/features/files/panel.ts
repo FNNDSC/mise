@@ -101,6 +101,7 @@ export class FilesPanel {
         key === 'size' ? row.size : key === 'date' ? row.date : key === 'owner' ? row.owner : row.name,
       (): void => this.listings_render(this.lastListings),
       { key: 'name', dir: 'asc' },
+      1,
     );
     this.stateSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-state') ?? null;
     // The language reaches ordering through a DOM event on the pane.
@@ -217,7 +218,7 @@ export class FilesPanel {
    */
   private listings_render(listings: FsListing[]): void {
     this.lastListings = listings;
-    this.container.replaceChildren(this.order.root);
+    this.order.host_prepare(this.container);
     for (const listing of listings) {
       const block: HTMLElement = document.createElement('section');
       block.className = 'files-listing';
@@ -240,7 +241,7 @@ export class FilesPanel {
         const name: HTMLSpanElement = document.createElement('span');
         name.className = 'files-name';
         name.textContent = '..';
-        updir.append(glyph, name, document.createElement('span'), document.createElement('span'));
+        updir.append(glyph, name, document.createElement('span'), document.createElement('span'), document.createElement('span'));
         updir.addEventListener('click', (): void => {
           this.activate({ kind: 'dir', path: parentPath_of(listing.path) });
         });
@@ -283,11 +284,15 @@ export class FilesPanel {
     size.className = 'files-size';
     size.textContent = item.type === 'dir' ? '' : size_format(item.size);
 
+    const date: HTMLSpanElement = document.createElement('span');
+    date.className = 'files-date';
+    date.textContent = item.date.slice(0, 10);
+
     const owner: HTMLSpanElement = document.createElement('span');
     owner.className = 'files-owner';
     owner.textContent = item.owner;
 
-    row.append(glyph, name, size, owner);
+    row.append(glyph, name, size, date, owner);
 
     // Links navigate: in this VFS a link names a place (a node's `data`
     // pointing into the feed tree), so following it is a directory move —

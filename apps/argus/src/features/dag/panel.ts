@@ -497,7 +497,7 @@ export class DagPanel {
   private chooser_show(feeds: FeedListEntry[]): void {
     this.lastRoster = feeds;
     this.empty.style.display = 'none';
-    this.feedList.replaceChildren(this.order.root);
+    this.order.host_prepare(this.feedList);
     for (const feed of this.order.apply(feeds)) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = `feedlist-row feedlist-${feed.status}`;
@@ -513,7 +513,10 @@ export class DagPanel {
       const owner: HTMLSpanElement = document.createElement('span');
       owner.className = 'feedlist-owner';
       owner.textContent = feed.owner;
-      row.append(idBadge, name, status, owner);
+      const created: HTMLSpanElement = document.createElement('span');
+      created.className = 'feedlist-created';
+      created.textContent = feed.createdAt.slice(0, 10);
+      row.append(idBadge, name, status, owner, created);
       row.title = 'enter the feed (Esc returns to this list)';
       // Selecting a feed enters it: the full graph takes the pane and the
       // list steps aside. Esc (contextual back) returns here.

@@ -42,6 +42,31 @@ export class RosterOrder<T> {
   private readonly value_of: RosterValue_of<T>;
   private readonly onChange: () => void;
   private state: RosterOrderState = { sortKey: null, sortDir: 'asc', filter: '' };
+  private changeQueued: boolean = false;
+
+  /** Coalesces state changes into one re-render per frame. */
+  private change_emit(): void {
+    if (this.changeQueued) return;
+    this.changeQueued = true;
+    window.requestAnimationFrame((): void => {
+      this.changeQueued = false;
+      this.onChange();
+    });
+  }
+
+  /**
+   * Ensures the caps + strip stand at the head of `host` WITHOUT being
+   * re-inserted (a re-insert blurs the filter input mid-word), then clears
+   * everything after them so the pane can paint fresh rows.
+   *
+   * @param host - The listing region.
+   */
+  public host_prepare(host: HTMLElement): void {
+    if (this.root.parentElement !== host) host.prepend(this.root);
+    for (const child of [...host.children]) {
+      if (child !== this.root) child.remove();
+    }
+  }
   private shown: number = 0;
   private total: number = 0;
 
@@ -56,6 +81,7 @@ export class RosterOrder<T> {
     value_of: RosterValue_of<T>,
     onChange: () => void,
     defaultSort?: { key: string; dir: 'asc' | 'desc' },
+    leadingCells: number = 0,
   ) {
     this.columns = columns;
     this.value_of = value_of;
@@ -67,6 +93,9 @@ export class RosterOrder<T> {
     this.root.className = 'roster-order';
     this.caps = document.createElement('div');
     this.caps.className = 'roster-caps';
+    // The caps row is the SAME grid as the rows it heads; columns the rows
+    // spend on glyphs get empty cells so every cap sits over its column.
+    for (let i = 0; i < leadingCells; i++) this.caps.appendChild(document.createElement('span'));
     for (const column of columns) {
       const cap: HTMLButtonElement = document.createElement('button');
       cap.className = 'roster-cap';
@@ -115,7 +144,7 @@ export class RosterOrder<T> {
     if (!this.columns.some((column: RosterColumn): boolean => column.key === key)) return;
     this.state = { ...this.state, sortKey: key, sortDir: dir };
     this.caps_paint();
-    this.onChange();
+    this.change_emit();
   }
 
   /** Sets the filter text; `syncInput` also writes it into the strip. */
@@ -123,7 +152,7 @@ export class RosterOrder<T> {
     this.state = { ...this.state, filter: text };
     if (syncInput) this.input.value = text;
     if (text.length > 0 && this.strip.hidden) this.strip.hidden = false;
-    this.onChange();
+    this.change_emit();
   }
 
   /** Shows or hides the filter strip; showing focuses the input. */

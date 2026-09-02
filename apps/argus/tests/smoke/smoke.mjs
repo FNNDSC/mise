@@ -351,6 +351,9 @@ try {
     for (let i = 0; i < 40; i++) { await sleep(500); const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => !l.trim().startsWith('❯') && l.includes('/proc/jobs/feed_')); const last = lines[lines.length - 1]; const m = last ? /\\/proc\\/jobs\\/feed_\\d+/.exec(last) : null; if (m) { path = m[0]; break; } }
     if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(100); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    // The session is shared with whoever else is attached: put its cwd back.
+    const input = document.querySelector('#terminal input'); input.value = 'cd ~';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500);
     return { skipped: null, offered: true, feedId, path };`);
   if (enterPlace.skipped) {
     console.log(`  skipped: ${enterPlace.skipped}`);

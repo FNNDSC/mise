@@ -104,6 +104,8 @@ export class DagPanel {
   private liveState: WatchState | null = null;
   /** A feed the operator selected whose graph has not arrived yet. */
   private pendingFeedId: number | null = null;
+  /** The cwd as last observed, so a follow answers a MOVE, not a promptline. */
+  private lastCwd: string | null = null;
 
   /**
    * @param canvas - The element the scene renders into.
@@ -494,6 +496,16 @@ export class DagPanel {
     // it): while it is on stage, a cwd that happens to sit inside a feed
     // must not paint that feed over it. Following resumes once a graph is up.
     if (this.feedList.style.display === 'block' || this.pendingFeedId !== null) {
+      return;
+    }
+    // Promptlines arrive after every command, the pane's own silent ones
+    // included; only a cwd that actually MOVED is a reason to follow. A
+    // pinned feed therefore survives until the operator cds somewhere else
+    // (observed: a session parked inside feed 21 replaced every pick with
+    // feed 21 a few seconds later).
+    const moved: boolean = this.lastCwd !== null && context.cwd !== this.lastCwd;
+    this.lastCwd = context.cwd;
+    if (!moved) {
       return;
     }
     const feedId: number | null = cwdFeed_find(context.cwd);

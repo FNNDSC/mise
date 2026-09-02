@@ -392,9 +392,12 @@ to be measured.
 Two narrow forms of state survive process restart. First, identity and working
 context are written through existing context files and rehydrated at launch.
 Second, `/proc` topology has an identity-keyed checkpoint under the user's cache
-directory. The checkpoint contains feed metadata, normalized plugin-instance
-topology, loaded-feed markers, and terminal status. It is schema-versioned,
-written by atomic rename to a mode-0600 file, and structurally validated before
+directory: a mode-0700 folder holding a roster file (feed metadata) and one shard
+per feed (normalized plugin-instance topology, loaded marker, terminal status,
+execution metrics). A mutation to one feed rewrites only that feed's shard,
+throttled per shard, so a growing feed never drags the whole index back to disk.
+Every file is schema-versioned, written by atomic rename at mode 0600, and the
+assembled whole is structurally validated before
 restoration, including parent and join relationships. Parameters are not
 persisted, and nonterminal status is never accepted as durable truth.
 

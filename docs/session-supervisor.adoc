@@ -348,8 +348,8 @@ WebSocket routing, resumable commands, or active-session failover.
 |===
 
 If node-portable checkpoints become operationally necessary, the natural second
-adapter is blob/object storage: the checkpoint is one versioned JSON value loaded
-and saved by identity, not a query workload. Add a small checkpoint-store seam
+adapter is blob/object storage: the checkpoint is a roster plus per-feed JSON
+shards loaded and saved by identity, not a query workload. Add a small checkpoint-store seam
 when that second adapter is built; do not layer it over the current file writer in
 advance. Distributed concerns remain separate: porter supplies authentication and
 routing, while Redis, PostgreSQL, or Kubernetes Lease objects can supply registry

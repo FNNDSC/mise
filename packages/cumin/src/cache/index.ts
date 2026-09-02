@@ -14,6 +14,9 @@ export type {
   ProcCacheState,
   ProcCacheLifecycle,
   ProcCacheSnapshot,
+  ProcFeedSnapshot,
+  ProcCacheChange,
+  ProcCacheListener,
 } from './procCache.js';
 // Prompt-facing process-index state is contract vocabulary: it lives in
 // `@fnndsc/menu`, and callers import it from there.
@@ -28,8 +31,11 @@ export type {
 export type { ProcPromptState, ProcPromptProgress } from '@fnndsc/menu';
 export {
   procCheckpointPath_get,
+  procCheckpointDir_get,
   procCheckpoint_restore,
   procCheckpoint_save,
+  procCheckpointFeed_save,
+  procCheckpointRoster_save,
   procCheckpoint_watch,
 } from './procCheckpoint.js';
 export type { ProcCheckpointRestoreResult } from './procCheckpoint.js';

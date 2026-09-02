@@ -68,7 +68,7 @@ const TYPE_GLYPHS: Record<FsListingEntry['type'], string> = {
  * @property path - The full path of the activated entry.
  */
 export interface FileAction {
-  kind: 'dir' | 'file';
+  kind: 'dir' | 'file' | 'plugin' | 'pipeline';
   path: string;
 }
 
@@ -231,7 +231,58 @@ export class FilesPanel {
     return this.contentShown;
   }
 
+  /** Releases whatever the current content view mounted (a diagram scene). */
+  private contentRelease: (() => void) | null = null;
+
+  /**
+   * Presents rendered markup in place of the grid — a /bin entry's
+   * description, a pipeline's summary — with a CLOSE pill returning to the
+   * listing, and optionally a work surface beneath it for a diagram.
+   *
+   * @param path - The entry's path, shown as the view's header.
+   * @param html - Safe markup for the text body.
+   * @param options - `diagram` asks for a mount beneath the text; `release`
+   *   runs when the view is replaced (dispose what was mounted).
+   * @returns The diagram mount when asked for, else null.
+   */
+  public contentHtml_show(
+    path: string,
+    html: string,
+    options: { diagram?: boolean; release?: () => void } = {},
+  ): HTMLElement | null {
+    this.contentRelease?.();
+    this.contentRelease = options.release ?? null;
+    this.contentShown = true;
+    this.container.replaceChildren();
+
+    const view: HTMLElement = document.createElement('section');
+    view.className = 'files-content-view';
+    const header: HTMLElement = document.createElement('header');
+    header.className = 'files-path files-content-header';
+    const title: HTMLSpanElement = document.createElement('span');
+    title.textContent = path;
+    const closePill: HTMLButtonElement = document.createElement('button');
+    closePill.className = 'files-close-pill';
+    closePill.textContent = 'CLOSE';
+    closePill.addEventListener('click', (): void => this.listing_restore());
+    header.append(title, closePill);
+    const body: HTMLPreElement = document.createElement('pre');
+    body.className = 'files-content';
+    body.innerHTML = html;
+    view.append(header, body);
+    let mount: HTMLElement | null = null;
+    if (options.diagram === true) {
+      mount = document.createElement('div');
+      mount.className = 'files-diagram';
+      view.appendChild(mount);
+    }
+    this.container.appendChild(view);
+    return mount;
+  }
+
   public listing_restore(): void {
+    this.contentRelease?.();
+    this.contentRelease = null;
     if (this.lastListings.length > 0) {
       this.listings_render(this.lastListings);
     } else {
@@ -376,6 +427,12 @@ export class FilesPanel {
       row.classList.add('files-activatable');
       row.addEventListener('click', (): void => {
         this.activate({ kind: 'file', path: path_join(parentPath, item.name) });
+      });
+    } else if (item.type === 'plugin' || item.type === 'pipeline') {
+      // A /bin entry opens as context: what this executable is.
+      row.classList.add('files-activatable');
+      row.addEventListener('click', (): void => {
+        this.activate({ kind: item.type as 'plugin' | 'pipeline', path: path_join(parentPath, item.name) });
       });
     }
     return row;

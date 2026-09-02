@@ -15,7 +15,9 @@
  *
  * @module
  */
-import { feedDagModelSchema, type PromptContext, type WireEnvelope, type WatchState } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, DAG_MODEL_KINDS, type PipelineDiagramNode, type PromptContext, type WireEnvelope, type WatchState } from '@fnndsc/menu';
+import { DagScene, type SceneNode } from '../scene/dagScene.js';
+import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
   ArgusClient,
   type AttachInfo,
@@ -625,6 +627,69 @@ async function surface_start(token: string): Promise<void> {
       });
   };
 
+  /**
+   * Highlights the /bin description grammar client-side when the daemon
+   * sent plain text: section headings, `Key:` labels, flags, and quoted
+   * values. ANSI-colored text is rendered as sent.
+   */
+  const binText_highlight = (text: string): string => {
+    if (/\x1b\[/.test(text)) return ansi_toHtml(text);
+    // Passes run inline-first, line-anchored last: the later patterns are
+    // anchored at line starts and cannot match inside markup the earlier
+    // ones inserted.
+    return html_escape(text)
+      .replace(/(&quot;[^&]*&quot;)/g, '<span class="man-str">$1</span>')
+      .replace(/(^|\s)(--?[a-zA-Z][\w-]*)/g, '$1<span class="man-flag">$2</span>')
+      .replace(/^(\s{0,2})([A-Za-z_ ]+):(\s)/gm, '$1<span class="man-key">$2:</span>$3')
+      .replace(/^([A-Z][A-Z ]{2,})$/gm, '<span class="man-head">$1</span>');
+  };
+
+  /**
+   * Opens a /bin entry as context: a plugin's description, highlighted; a
+   * pipeline's summary with its authored DAG rendered beneath it.
+   */
+  const binEntry_show = (panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => {
+    void client
+      .line_execute(`cat "${path}"`, { silent: true, observe: false })
+      .then((outcome: ExecuteOutcome): void => {
+        const text: string = outcome.envelopes.map((envelope): string => envelope.rendered).join('\n');
+        if (kind === 'plugin') {
+          panel.contentHtml_show(path, binText_highlight(text));
+          return;
+        }
+        let scene: DagScene | null = null;
+        const mount: HTMLElement | null = panel.contentHtml_show(path, binText_highlight(text), {
+          diagram: true,
+          release: (): void => { scene?.dispose(); scene = null; },
+        });
+        if (mount === null) return;
+        const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
+        void client
+          .line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false })
+          .then((diagram: ExecuteOutcome): void => {
+            if (!mount.isConnected) return;
+            for (const envelope of diagram.envelopes) {
+              if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
+              const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
+              if (!parsed.success) continue;
+              scene = new DagScene(mount, {}, {});
+              scene.graph_set({
+                nodes: parsed.data.nodes.map((node: PipelineDiagramNode): SceneNode => ({
+                  id: node.id,
+                  label: node.label,
+                  parentIds: node.parentIds,
+                  joinParentIds: node.joinParentIds,
+                })),
+              }, { wave: false });
+              scene.size_fit();
+              return;
+            }
+            mount.textContent = 'NO DIAGRAM FOR THIS PIPELINE';
+            mount.classList.add('files-diagram-empty');
+          });
+      });
+  };
+
   const fileAction_handle = (
     id: string,
     panel: FilesPanel,
@@ -640,6 +705,10 @@ async function surface_start(token: string): Promise<void> {
         }
         rootedListing_show(id, panel, action.path);
       }
+      return;
+    }
+    if (action.kind === 'plugin' || action.kind === 'pipeline') {
+      binEntry_show(panel, action.path, action.kind);
       return;
     }
     subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });

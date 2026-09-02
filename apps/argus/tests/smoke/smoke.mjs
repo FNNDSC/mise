@@ -245,6 +245,40 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('bin-context');
+  // /bin entries open as context: a plugin as its highlighted description,
+  // a pipeline as its summary with its DAG rendered beneath.
+  const binCtx = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const pill = document.getElementById('lang-pill');
+    if (document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+    const li = document.getElementById('lang-input'); li.value = 'ls /bin';
+    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+    pill.click(); await sleep(100);
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-row.files-type-plugin')) break; }
+    const plugin = fp.querySelector('.files-row.files-type-plugin');
+    if (!plugin) return { skipped: 'no plugin rows' };
+    plugin.click();
+    let desc = false;
+    for (let i = 0; i < 40; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /DESCRIPTION/.test(c.textContent)) { desc = true; break; } }
+    const colored = fp.querySelectorAll('.files-content .man-head, .files-content span[style]').length > 0;
+    fp.querySelector('.files-close-pill')?.click(); await sleep(400);
+    const pipeline = fp.querySelector('.files-row.files-type-pipeline');
+    if (!pipeline) return { skipped: null, desc, colored, pipelineSkipped: true };
+    pipeline.click();
+    let summary = false, canvas = false;
+    for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
+    fp.querySelector('.files-close-pill')?.click(); await sleep(300);
+    return { skipped: null, desc, colored, summary, canvas, pipelineSkipped: false };`);
+  if (binCtx.skipped) {
+    console.log(`  skipped: ${binCtx.skipped}`);
+  } else {
+    check('a plugin opens as its description', binCtx.desc && binCtx.colored);
+    if (binCtx.pipelineSkipped) console.log('  skipped: no pipeline rows');
+    else check('a pipeline opens as its summary with its DAG rendered', binCtx.summary && binCtx.canvas);
+  }
+
   console.log('follow-declared');
   // The following browser says so on its bar, and the binding is a verb
   // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.

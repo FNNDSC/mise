@@ -21,12 +21,24 @@ declare module 'd3-force-3d' {
     alpha(value: number): Simulation;
     alphaTarget(value: number): Simulation;
   }
+  /** A link after resolution: endpoints are the node objects themselves. */
+  export interface ResolvedLink {
+    source: { id: string };
+    target: { id: string };
+  }
   export interface LinkForce {
     id(accessor: (d: { id: string }) => string): LinkForce;
-    distance(value: number): LinkForce;
+    distance(value: number | ((link: ResolvedLink) => number)): LinkForce;
+  }
+  export interface ManyBodyForce {
+    strength(value: number | ((d: { id: string }) => number)): ManyBodyForce;
+  }
+  export interface CollideForce {
+    radius(value: number | ((d: { id: string }) => number)): CollideForce;
   }
   export function forceSimulation(nodes: SimulationNode[], dimensions?: number): Simulation;
   export function forceLink(links: Array<{ source: string; target: string }>): LinkForce;
-  export function forceManyBody(): { strength(value: number): unknown };
+  export function forceManyBody(): ManyBodyForce;
+  export function forceCollide(): CollideForce;
   export function forceCenter(x: number, y: number, z?: number): unknown;
 }

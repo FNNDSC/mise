@@ -23,6 +23,7 @@ import {
   forceLink,
   forceManyBody,
   forceCenter,
+  forceCollide,
 } from 'd3-force-3d';
 
 /** One node as the scene understands it. */
@@ -226,7 +227,11 @@ function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
  * the metric (degree when no metric arrived). The graph finds its own
  * shape; scale carries meaning.
  */
-function layout_molecule(nodes: SceneNode[], dimensions: 2 | 3 = 3): PlacedNode[] {
+function layout_molecule(
+  nodes: SceneNode[],
+  dimensions: 2 | 3 = 3,
+  seed: Map<string, THREE.Vector3> = new Map(),
+): PlacedNode[] {
   const degree: Map<string, number> = new Map();
   const links: Array<{ source: string; target: string }> = [];
   for (const node of nodes) {
@@ -241,24 +246,48 @@ function layout_molecule(nodes: SceneNode[], dimensions: 2 | 3 = 3): PlacedNode[
   );
   const metricPeak: number = Math.max(...metrics, 1);
 
-  const simNodes: Array<{ id: string; x?: number; y?: number; z?: number }> =
-    nodes.map((n: SceneNode) => ({ id: n.id }));
+  // Radius is physics, not paint: the metric sets each node's room in the
+  // settle, so TIME and SIZE reshape the molecule, not just its spheres.
+  const radii: number[] = metrics.map(
+    (metric: number): number => NODE_RADIUS * (0.5 + (metric / metricPeak) * 1.2),
+  );
+  const radiusOf: Map<string, number> = new Map(nodes.map((n: SceneNode, i: number): [string, number] => [n.id, radii[i] ?? NODE_RADIUS]));
+
+  // Warm start: a re-projection (a metric flip) morphs from where the
+  // graph stands instead of re-rolling a new equilibrium.
+  const simNodes: Array<{ id: string; x?: number; y?: number; z?: number }> = nodes.map(
+    (n: SceneNode) => {
+      const from: THREE.Vector3 | undefined = seed.get(n.id);
+      return from === undefined ? { id: n.id } : { id: n.id, x: from.x, y: from.y, z: from.z };
+    },
+  );
   // In 2D the simulation itself is two-dimensional: a 3D settle flattened
   // afterwards piles nodes that resolved their overlaps in depth.
   const simulation = forceSimulation(simNodes, dimensions)
-    .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(2.2))
-    .force('charge', forceManyBody().strength(-6))
+    .force(
+      'link',
+      forceLink(links)
+        .id((d: { id: string }) => d.id)
+        // Edges reach surface to surface: a hub's children orbit its skin.
+        .distance((link: { source: { id: string }; target: { id: string } }): number =>
+          (radiusOf.get(link.source.id) ?? NODE_RADIUS) + (radiusOf.get(link.target.id) ?? NODE_RADIUS) + 1.4),
+    )
+    // Repulsion scales with cross-section: a heavy node carves its room.
+    .force('charge', forceManyBody().strength((d: { id: string }): number => {
+      const r: number = radiusOf.get(d.id) ?? NODE_RADIUS;
+      return -6 * (r / NODE_RADIUS) ** 2;
+    }))
+    .force('collide', forceCollide().radius((d: { id: string }): number => (radiusOf.get(d.id) ?? NODE_RADIUS) * 1.2))
     .force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0))
     .stop();
-  for (let tick: number = 0; tick < 150; tick++) simulation.tick();
+  for (let tick: number = 0; tick < (seed.size > 0 ? 90 : 150); tick++) simulation.tick();
 
   return nodes.map((node: SceneNode, index: number): PlacedNode => {
     const sim = simNodes[index];
-    const scale: number = 0.5 + ((metrics[index] ?? 1) / metricPeak) * 1.2;
     return {
       node,
       position: new THREE.Vector3(sim?.x ?? 0, sim?.y ?? 0, sim?.z ?? 0),
-      radius: NODE_RADIUS * scale,
+      radius: radii[index] ?? NODE_RADIUS,
     };
   });
 }
@@ -276,6 +305,9 @@ export class DagScene {
   private readonly group: THREE.Group = new THREE.Group();
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
   private meshes: Map<string, THREE.Mesh> = new Map();
+
+  /** Where the last projection left every node — the next settle's seed. */
+  private lastPositions: Map<string, THREE.Vector3> = new Map();
 
   /** CENSUS: render every member of every ×N group as an instanced point. */
   private census: boolean = false;
@@ -929,8 +961,9 @@ export class DagScene {
     this.pulseColor = palette.pulse;
     const placed: PlacedNode[] =
       this.strategy === 'molecule'
-        ? layout_molecule(this.graph.nodes, this.projection === '2d' ? 2 : 3)
+        ? layout_molecule(this.graph.nodes, this.projection === '2d' ? 2 : 3, this.lastPositions)
         : layout_ranked(this.graph.nodes);
+    this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
     if (this.projection === '2d') {
       // The molecule already settled in-plane; ranked drops only its
       // parallax hash — its layout was two-dimensional by construction.

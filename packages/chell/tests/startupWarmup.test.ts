@@ -87,6 +87,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     }),
   })),
   procCheckpoint_restore: mockCheckpointRestore,
+  listCheckpoint_restore: jest.fn(async () => ({ restored: false, count: 0, reason: 'no listing checkpoint' })),
+  listCheckpoint_watch: jest.fn(() => (): void => undefined),
   procCheckpoint_watch: mockCheckpointWatch,
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({

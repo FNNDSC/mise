@@ -245,6 +245,21 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('follow-declared');
+  // The following browser says so on its bar, and the binding is a verb
+  // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.
+  const follow = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const state = () => fp.querySelector('.pane-state').textContent;
+    const atLogin = state();
+    const verb = async (label) => { fp.querySelector('.pane-handle').click(); await sleep(150); const cap = [...fp.querySelectorAll('.drawer-child')].find(c => c.textContent === label); if (!cap) return false; cap.click(); await sleep(400); return true; };
+    const rooted = await verb('ROOT HERE'); const afterRoot = state();
+    const followed = await verb('FOLLOW CWD'); await sleep(1500); const afterFollow = state();
+    return { atLogin, rooted, afterRoot, followed, afterFollow };`);
+  check('the following browser says CWD on its bar', /^CWD\b/.test(follow.atLogin));
+  check('ROOT HERE and FOLLOW CWD re-bind the browser, and the bar follows', follow.rooted && !/^CWD\b/.test(follow.afterRoot) && follow.followed && /^CWD\b/.test(follow.afterFollow));
+
   console.log('select-wait');
   // Selecting a feed answers at once: the roster steps aside, the pane says
   // what it is retrieving, and the bar reads LOADING until the graph lands.
@@ -366,7 +381,7 @@ try {
     fp.querySelector('.pane-handle').click(); await sleep(100);
     return { caps, sorted: before !== after && before.length > 0, lit, strip, state };`);
   check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
-  check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /^FILTERED 0\//.test(roster.state), roster.state);
+  check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);
 
   console.log('nameplate');
   const seal = await evalIn(`

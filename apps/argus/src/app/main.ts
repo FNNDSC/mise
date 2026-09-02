@@ -595,6 +595,23 @@ async function surface_start(token: string): Promise<void> {
   // A rooted browser's own navigation history, for its BACK verb; the
   // primary's back is the session's own `cd -`.
   const rootedHistory: Map<string, string[]> = new Map();
+  // Which browsers follow the session cwd. The primary does by default; a
+  // split-born browser is rooted by default; either can be re-bound from
+  // its drawer (FOLLOW CWD / ROOT HERE) or the language.
+  const filesFollow: Map<string, boolean> = new Map();
+  const filesFollow_set = (id: string, on: boolean): void => {
+    filesFollow.set(id, on);
+    const panel: FilesPanel | undefined = filesPanels.get(id);
+    panel?.follow_set(on);
+    if (on && panel !== undefined) {
+      // A browser that starts following shows the cwd at once.
+      void client
+        .line_execute('ls', { silent: true, observe: false })
+        .then((outcome: ExecuteOutcome): void => {
+          for (const envelope of outcome.envelopes) panel.envelope_observe(envelope);
+        });
+    }
+  };
 
   const rootedListing_show = (id: string, panel: FilesPanel, path: string): void => {
     // A bare `~` must reach the shell unquoted or it would not expand.
@@ -612,10 +629,9 @@ async function surface_start(token: string): Promise<void> {
     id: string,
     panel: FilesPanel,
     action: FileAction,
-    primary: boolean,
   ): void => {
     if (action.kind === 'dir') {
-      if (primary) {
+      if (filesFollow.get(id) === true) {
         terminal.line_run(`cd "${action.path}"`);
       } else {
         const previous: string | null = panel.path_current();
@@ -648,10 +664,12 @@ async function surface_start(token: string): Promise<void> {
     const mount: HTMLElement = template_stamp('tpl-pane-files');
     const panel: FilesPanel = new FilesPanel(
       pane_find(mount, '.files-panel'),
-      (action: FileAction): void => fileAction_handle(id, panel, action, primary),
+      (action: FileAction): void => fileAction_handle(id, panel, action),
     );
     filesPanels.set(id, panel);
     rootedHistory.set(id, []);
+    filesFollow.set(id, primary);
+    panel.follow_set(primary);
     return {
       id,
       kind: 'files',
@@ -1063,15 +1081,21 @@ async function surface_start(token: string): Promise<void> {
       children.appendChild(capsule);
     };
     if (kind === 'files') {
-      // Navigation verbs: the primary browser is slaved to the session, so
+      // Navigation verbs: a following browser is slaved to the session, so
       // its back/home are the session's own; a rooted browser walks its own
-      // history.
-      const primary: boolean = id === 'files';
+      // history. The binding itself is declared here, both ways.
+      const follows = (): boolean => filesFollow.get(id) === true;
+      child_offer('FOLLOW CWD', 'bind this browser to the session cwd (the console\'s browser)', (): void => {
+        if (!follows()) filesFollow_set(id, true);
+      });
+      child_offer('ROOT HERE', 'unbind from the cwd: this browser keeps its own place', (): void => {
+        if (follows()) filesFollow_set(id, false);
+      });
       child_offer('FILTER', 'show/hide the filter strip (column caps sort)', (): void => {
         filesPanels.get(id)?.filter_toggle();
       });
       child_offer('HOME', 'back to the home directory', (): void => {
-        if (primary) {
+        if (follows()) {
           terminal.line_run('cd ~');
         } else {
           const panel: FilesPanel | undefined = filesPanels.get(id);
@@ -1085,7 +1109,7 @@ async function surface_start(token: string): Promise<void> {
         }
       });
       child_offer('BACK', 'return to the previous listing', (): void => {
-        if (primary) {
+        if (follows()) {
           terminal.line_run('cd -');
           return;
         }
@@ -1497,7 +1521,7 @@ async function surface_start(token: string): Promise<void> {
     node: ['enter', 'immerse', 'back', 'clear'],
     dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics', 'refresh'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
-    file: ['home', 'back', 'download', 'delete', 'sort', 'filter'],
+    file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],
     desktop: ['save', 'load', 'show', 'list', 'delete'],
@@ -1657,7 +1681,10 @@ async function surface_start(token: string): Promise<void> {
               : dagPanel;
           target.envelope_observe(envelope);
         } else {
-          filesPanel.envelope_observe(envelope);
+          // A console listing reaches every browser bound to the cwd.
+          for (const [paneId, panel] of filesPanels) {
+            if (filesFollow.get(paneId) === true) panel.envelope_observe(envelope);
+          }
           pacsPanel.envelope_observe(envelope);
         }
         cycler.envelope_observe(envelope);

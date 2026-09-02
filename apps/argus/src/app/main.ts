@@ -634,11 +634,14 @@ async function surface_start(token: string): Promise<void> {
    */
   const binText_highlight = (text: string): string => {
     if (/\x1b\[/.test(text)) return ansi_toHtml(text);
+    // Passes run inline-first, line-anchored last: the later patterns are
+    // anchored at line starts and cannot match inside markup the earlier
+    // ones inserted.
     return html_escape(text)
-      .replace(/^([A-Z][A-Z ]{2,})$/gm, '<span class="man-head">$1</span>')
+      .replace(/(&quot;[^&]*&quot;)/g, '<span class="man-str">$1</span>')
+      .replace(/(^|\s)(--?[a-zA-Z][\w-]*)/g, '$1<span class="man-flag">$2</span>')
       .replace(/^(\s{0,2})([A-Za-z_ ]+):(\s)/gm, '$1<span class="man-key">$2:</span>$3')
-      .replace(/(--?[a-zA-Z][\w-]*)/g, '<span class="man-flag">$1</span>')
-      .replace(/(&quot;[^&]*&quot;)/g, '<span class="man-str">$1</span>');
+      .replace(/^([A-Z][A-Z ]{2,})$/gm, '<span class="man-head">$1</span>');
   };
 
   /**

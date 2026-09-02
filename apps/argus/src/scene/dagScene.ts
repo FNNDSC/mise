@@ -172,9 +172,12 @@ function nodeColor_pick(
 }
 
 /**
- * Deterministic ranked layout: tiers by depth from the roots, siblings
- * spread within a tier, a small depth-hashed z offset for parallax. The
- * same graph always lands the same way.
+ * Deterministic ranked layout, drawn as the tree it is: every node hangs
+ * beneath its anchor parent (a join's extra parents are edges, not
+ * placement), a subtree occupies a contiguous span of leaf slots and its
+ * root sits over the middle of that span, tiers by depth from the roots,
+ * a small id-hashed z offset for parallax. Relationships read straight
+ * down; the same graph always lands the same way.
  */
 /** The k-th of n points on a fibonacci sphere of the given radius. */
 function fibonacciPoint_make(k: number, n: number, radius: number): THREE.Vector3 {
@@ -208,31 +211,64 @@ function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
   };
   for (const node of nodes) depth_find(node, new Set());
 
-  const tiers: Map<number, SceneNode[]> = new Map();
+  // The anchor tree: each node under its first parent present in the
+  // graph; anything without one is a root. Children keep a stable order.
+  const children: Map<string, SceneNode[]> = new Map();
+  const roots: SceneNode[] = [];
+  const byIdSort = (a: SceneNode, b: SceneNode): number => a.id.localeCompare(b.id, undefined, { numeric: true });
+  for (const node of nodes) {
+    const anchor: string | undefined = node.parentIds.find((id: string): boolean => byId.has(id));
+    if (anchor === undefined) { roots.push(node); continue; }
+    const siblings: SceneNode[] = children.get(anchor) ?? [];
+    siblings.push(node);
+    children.set(anchor, siblings);
+  }
+  roots.sort(byIdSort);
+  for (const siblings of children.values()) siblings.sort(byIdSort);
+
+  // Leaf slots: a subtree spans as many slots as it has leaves; its root
+  // sits over the middle of its span. One DFS assigns every x.
+  const xs: Map<string, number> = new Map();
+  let slot: number = 0;
+  const seen: Set<string> = new Set();
+  const place = (node: SceneNode): [number, number] => {
+    seen.add(node.id);
+    const kids: SceneNode[] = (children.get(node.id) ?? []).filter((kid: SceneNode): boolean => !seen.has(kid.id));
+    if (kids.length === 0) {
+      const x: number = slot++;
+      xs.set(node.id, x);
+      return [x, x];
+    }
+    let first: number = Number.POSITIVE_INFINITY;
+    let last: number = Number.NEGATIVE_INFINITY;
+    for (const kid of kids) {
+      const [lo, hi]: [number, number] = place(kid);
+      first = Math.min(first, lo);
+      last = Math.max(last, hi);
+    }
+    const x: number = (first + last) / 2;
+    xs.set(node.id, x);
+    return [first, last];
+  };
+  for (const root of roots) place(root);
+  for (const node of nodes) if (!xs.has(node.id)) place(node); // cycles, if any, still land
+
+  const tierCount: number = Math.max(...Array.from(depths.values()), 0) + 1;
+  const width: number = Math.max(slot - 1, 0);
+  const placed: PlacedNode[] = [];
   for (const node of nodes) {
     const tier: number = depths.get(node.id) ?? 0;
-    const members: SceneNode[] = tiers.get(tier) ?? [];
-    members.push(node);
-    tiers.set(tier, members);
-  }
-
-  const placed: PlacedNode[] = [];
-  const tierCount: number = tiers.size;
-  for (const [tier, members] of tiers) {
-    members.sort((a: SceneNode, b: SceneNode) => a.id.localeCompare(b.id));
-    members.forEach((node: SceneNode, index: number) => {
-      const x: number = (index - (members.length - 1) / 2) * SIBLING_SPACING;
-      const y: number = ((tierCount - 1) / 2 - tier) * TIER_SPACING;
-      // A stable per-node z from its id keeps depth parallax deterministic.
-      let hash: number = 0;
-      for (const ch of node.id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
-      const z: number = ((hash % 100) / 100 - 0.5) * 1.2;
-      // Metric scaling applies in every layout: a mode pill that changes
-      // nothing on screen reads as broken. No metric = uniform.
-      const metric: number = node.metric ?? 0;
-      const scale: number = metricPeak > 0 ? 0.55 + (metric / metricPeak) * 1.0 : 1;
-      placed.push({ node, position: new THREE.Vector3(x, y, z), radius: NODE_RADIUS * scale });
-    });
+    const x: number = ((xs.get(node.id) ?? 0) - width / 2) * SIBLING_SPACING;
+    const y: number = ((tierCount - 1) / 2 - tier) * TIER_SPACING;
+    // A stable per-node z from its id keeps depth parallax deterministic.
+    let hash: number = 0;
+    for (const ch of node.id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+    const z: number = ((hash % 100) / 100 - 0.5) * 1.2;
+    // Metric scaling applies in every layout: a mode pill that changes
+    // nothing on screen reads as broken. No metric = uniform.
+    const metric: number = node.metric ?? 0;
+    const scale: number = metricPeak > 0 ? 0.55 + (metric / metricPeak) * 1.0 : 1;
+    placed.push({ node, position: new THREE.Vector3(x, y, z), radius: NODE_RADIUS * scale });
   }
   return placed;
 }

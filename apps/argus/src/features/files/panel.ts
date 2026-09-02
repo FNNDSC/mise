@@ -80,6 +80,8 @@ export class FilesPanel {
   private readonly container: HTMLElement;
   private readonly activate: (action: FileAction) => void;
   private lastListings: FsListing[] = [];
+  /** True while one file's content stands in place of the listing. */
+  private contentShown: boolean = false;
 
   /**
    * @param container - The DOM element the panel renders into.
@@ -165,6 +167,7 @@ export class FilesPanel {
    * @param content - The file content, already stripped of ANSI codes.
    */
   public content_show(path: string, content: string): void {
+    this.contentShown = true;
     this.container.replaceChildren();
 
     const header: HTMLElement = document.createElement('header');
@@ -192,6 +195,7 @@ export class FilesPanel {
    * @param url - The token-gated `/vfs` URL serving the image bytes.
    */
   public contentImage_show(path: string, url: string): void {
+    this.contentShown = true;
     this.container.replaceChildren();
 
     const header: HTMLElement = document.createElement('header');
@@ -218,6 +222,11 @@ export class FilesPanel {
   }
 
   /** Returns from a content view to the most recent listing. */
+  /** Whether a file view, not a listing, is on stage (a level Esc can pop). */
+  public content_isShown(): boolean {
+    return this.contentShown;
+  }
+
   public listing_restore(): void {
     if (this.lastListings.length > 0) {
       this.listings_render(this.lastListings);
@@ -241,6 +250,7 @@ export class FilesPanel {
    * @param listings - The listings to paint.
    */
   private listings_render(listings: FsListing[]): void {
+    this.contentShown = false;
     this.lastListings = listings;
     this.order.host_prepare(this.container);
     for (const listing of listings) {

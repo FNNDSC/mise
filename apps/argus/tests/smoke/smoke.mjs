@@ -236,8 +236,14 @@ try {
     pill.click(); await sleep(300);
     const after = pill.textContent;
     pill.click(); await sleep(300);
-    return { present: true, before, after, restored: pill.textContent === before };`);
+    const g = document.querySelector('.dag-gravity');
+    const gBefore = g ? g.textContent : null;
+    if (g) { g.click(); await sleep(300); }
+    const gAfter = g ? g.textContent : null;
+    if (g) { g.click(); await sleep(300); }
+    return { present: true, before, after, restored: pill.textContent === before, gBefore, gAfter, gRestored: g ? g.textContent === gBefore : false };`);
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
+  check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
   console.log('nameplate');
   const seal = await evalIn(`

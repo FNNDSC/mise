@@ -1114,6 +1114,9 @@ async function surface_start(token: string): Promise<void> {
           rootedListing_show(id, record.panel, previous);
         }
       });
+      child_offer('CLEAR DETAIL', 'dismiss the node facts (a click on empty space does too)', (): void => {
+        dagPanels.get(id)?.detail_clear();
+      });
     }
   };
   pane_chrome_wire('files', 'files', filesPrimary.mount);
@@ -1456,8 +1459,9 @@ async function surface_start(token: string): Promise<void> {
     pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus'],
     view: ['files', 'runs', 'pacs'],
     runs: ['enter'],
-    node: ['enter', 'immerse', 'back'],
-    dag: ['layout', 'projection', 'scale', 'pulse', 'census'],
+    node: ['enter', 'immerse', 'back', 'clear'],
+    dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics'],
+    physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
     file: ['home', 'back', 'download', 'delete'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],

@@ -26,7 +26,7 @@ import {
   type PromptContext,
   type WireEnvelope,
 } from '@fnndsc/menu';
-import { DagScene, type LayoutStrategy, type SceneNode } from '../../scene/dagScene.js';
+import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
 /** What the pane asks of its host. */
@@ -111,6 +111,7 @@ export class DagPanel {
     this.scene = new DagScene(canvas, {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
+      deselect: (): void => this.facts.replaceChildren(),
     });
     strategyPill.addEventListener('click', (): void => {
       const next: LayoutStrategy = this.scene.strategy_get() === 'ranked' ? 'molecule' : 'ranked';
@@ -156,6 +157,32 @@ export class DagPanel {
       const on: boolean = !this.scene.census_get();
       this.scene.census_set(on);
       censusPill.textContent = on ? 'CENSUS' : 'SHAPE';
+    });
+    // GRAVITY is a meaning (heaviest stage at the heart), so it earns a
+    // pill; the other physics terms are expert knobs and live in LANG.
+    const gravityPill: HTMLElement | null =
+      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-gravity') ?? null;
+    gravityPill?.classList.add('rail-off');
+    gravityPill?.addEventListener('click', (): void => {
+      const on: boolean = !this.scene.physics_get().gravity;
+      this.scene.physics_set({ gravity: on });
+      gravityPill.textContent = on ? 'GRAVITY ON' : 'GRAVITY OFF';
+      gravityPill.classList.toggle('rail-off', !on);
+    });
+    // The language reaches the expert knobs through DOM events on the pane
+    // (verbs run over the DOM, never a private API).
+    const paneRoot: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
+    paneRoot?.addEventListener('argus:dag-physics', (event: Event): void => {
+      const detail = (event as CustomEvent<{ term: string; on: boolean } | 'reset'>).detail;
+      if (detail === 'reset') {
+        this.scene.physics_set({ charge: true, link: true, collide: true });
+        return;
+      }
+      if (detail.term === 'gravity') {
+        if (this.scene.physics_get().gravity !== detail.on) gravityPill?.click();
+        return;
+      }
+      this.scene.physics_set({ [detail.term]: detail.on } as Partial<PhysicsTerms>);
     });
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
@@ -547,6 +574,12 @@ export class DagPanel {
     } else {
       this.handlers.node_enter(payload.vfsPath);
     }
+  }
+
+  /** Clears the node detail (selection + facts chip) — the drawer's CLEAR DETAIL. */
+  public detail_clear(): void {
+    this.scene.selection_clear();
+    this.facts.replaceChildren();
   }
 
   /** Fires one pulse wave: dependency-order replay, honest to history. */

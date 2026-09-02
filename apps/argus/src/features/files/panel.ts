@@ -17,6 +17,7 @@
  * @module
  */
 import type { WireEnvelope } from '@fnndsc/menu';
+import { RosterOrder } from '../roster/order.js';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.
@@ -83,7 +84,32 @@ export class FilesPanel {
    * @param activate - Called when the operator activates a row; the caller
    *   lowers the gesture to session commands.
    */
+  /** Per-column sort + filter over the resident entries. */
+  private readonly order: RosterOrder<FsListingEntry>;
+  /** The title bar's state span (FILTERED n/m). */
+  private readonly stateSpan: HTMLElement | null;
+
   constructor(container: HTMLElement, activate: (action: FileAction) => void) {
+    this.order = new RosterOrder<FsListingEntry>(
+      [
+        { key: 'name', label: 'NAME' },
+        { key: 'size', label: 'SIZE' },
+        { key: 'date', label: 'DATE' },
+        { key: 'owner', label: 'OWNER' },
+      ],
+      (row: FsListingEntry, key: string): string | number =>
+        key === 'size' ? row.size : key === 'date' ? row.date : key === 'owner' ? row.owner : row.name,
+      (): void => this.listings_render(this.lastListings),
+      { key: 'name', dir: 'asc' },
+    );
+    this.stateSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-state') ?? null;
+    // The language reaches ordering through a DOM event on the pane.
+    container.closest<HTMLElement>('.pane-files')?.addEventListener('argus:roster', (event: Event): void => {
+      const detail = (event as CustomEvent<{ op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }>).detail;
+      if (detail.op === 'sort') this.order.sort_set(detail.key, detail.dir ?? 'asc');
+      else if (detail.text === '') this.order.strip_toggle(false);
+      else this.order.filter_set(detail.text);
+    });
     this.container = container;
     this.activate = activate;
     this.empty_render();
@@ -190,7 +216,8 @@ export class FilesPanel {
    * @param listings - The listings to paint.
    */
   private listings_render(listings: FsListing[]): void {
-    this.container.replaceChildren();
+    this.lastListings = listings;
+    this.container.replaceChildren(this.order.root);
     for (const listing of listings) {
       const block: HTMLElement = document.createElement('section');
       block.className = 'files-listing';
@@ -219,12 +246,18 @@ export class FilesPanel {
         });
         table.appendChild(updir);
       }
-      for (const item of listing.items) {
+      for (const item of this.order.apply(listing.items)) {
         table.appendChild(this.row_build(listing.path, item));
       }
       block.appendChild(table);
       this.container.appendChild(block);
     }
+    if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
+  }
+
+  /** Shows or hides the filter strip (the drawer's FILTER, or `file filter`). */
+  public filter_toggle(open?: boolean): void {
+    this.order.strip_toggle(open);
   }
 
   /**

@@ -245,6 +245,35 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('roster-order');
+  const roster = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const pill = document.getElementById('lang-pill');
+    if (document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+    const li = document.getElementById('lang-input'); li.value = 'ls /bin';
+    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+    pill.click(); await sleep(100);
+    const fp = document.querySelector('.pane-files');
+    for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelectorAll('.files-row').length > 3) break; }
+    const caps = fp.querySelectorAll('.roster-cap').length;
+    const names = () => [...fp.querySelectorAll('.files-row .files-name')].map(e => e.textContent).filter(n => n !== '..');
+    const before = names().slice(0, 3).join('|');
+    fp.querySelector('.roster-cap[data-key="name"]').click(); await sleep(250);
+    const after = names().slice(0, 3).join('|');
+    const lit = fp.querySelector('.roster-cap.roster-active') !== null;
+    fp.querySelector('.pane-handle').click(); await sleep(150);
+    const filterCap = [...fp.querySelectorAll('.drawer-child')].find(c => c.textContent === 'FILTER');
+    filterCap.click(); await sleep(200);
+    const strip = !fp.querySelector('.roster-filter').hidden;
+    const input = fp.querySelector('.roster-filter-input');
+    input.value = 'zzzz-no-such-entry'; input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(250);
+    const state = fp.querySelector('.pane-state').textContent;
+    input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(200);
+    fp.querySelector('.pane-handle').click(); await sleep(100);
+    return { caps, sorted: before !== after && before.length > 0, lit, strip, state };`);
+  check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
+  check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /^FILTERED 0\//.test(roster.state), roster.state);
+
   console.log('nameplate');
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');

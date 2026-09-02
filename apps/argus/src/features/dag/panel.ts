@@ -27,6 +27,7 @@ import {
   type WireEnvelope,
 } from '@fnndsc/menu';
 import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
+import { RosterOrder } from '../roster/order.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
 /** What the pane asks of its host. */
@@ -79,6 +80,12 @@ export class DagPanel {
   private metricMode: 'time' | 'size' = 'time';
   /** The last shown model, re-projected locally when the scale flips. */
   private lastModel: FeedDagModel | null = null;
+  /** The roster last shown, re-rendered on any order change. */
+  private lastRoster: FeedListEntry[] = [];
+  /** Per-column sort + filter over the resident roster. */
+  private readonly order: RosterOrder<FeedListEntry>;
+  /** The title bar's state span (FILTERED n/m). */
+  private readonly stateSpan: HTMLElement | null;
 
   /**
    * @param canvas - The element the scene renders into.
@@ -108,6 +115,27 @@ export class DagPanel {
     this.empty = empty;
     this.strategyPill = strategyPill;
     this.handlers = handlers;
+    this.order = new RosterOrder<FeedListEntry>(
+      [
+        { key: 'id', label: 'ID' },
+        { key: 'title', label: 'TITLE' },
+        { key: 'status', label: 'STATUS' },
+        { key: 'owner', label: 'OWNER' },
+        { key: 'createdAt', label: 'CREATED' },
+      ],
+      (row: FeedListEntry, key: string): string | number =>
+        key === 'id' ? row.id : key === 'title' ? row.title : key === 'status' ? row.status : key === 'owner' ? row.owner : row.createdAt,
+      (): void => { if (this.lastRoster.length > 0) this.chooser_show(this.lastRoster); },
+      { key: 'createdAt', dir: 'desc' },
+    );
+    const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
+    this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
+    paneRootEl?.addEventListener('argus:roster', (event: Event): void => {
+      const detail = (event as CustomEvent<{ op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }>).detail;
+      if (detail.op === 'sort') this.order.sort_set(detail.key, detail.dir ?? 'asc');
+      else if (detail.text === '') this.order.strip_toggle(false);
+      else this.order.filter_set(detail.text);
+    });
     this.scene = new DagScene(canvas, {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
@@ -467,9 +495,10 @@ export class DagPanel {
    * @param feeds - The roster, newest first.
    */
   private chooser_show(feeds: FeedListEntry[]): void {
+    this.lastRoster = feeds;
     this.empty.style.display = 'none';
-    this.feedList.replaceChildren();
-    for (const feed of feeds) {
+    this.feedList.replaceChildren(this.order.root);
+    for (const feed of this.order.apply(feeds)) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = `feedlist-row feedlist-${feed.status}`;
       const idBadge: HTMLSpanElement = document.createElement('span');
@@ -496,6 +525,12 @@ export class DagPanel {
       this.feedList.appendChild(row);
     }
     this.feedList.style.display = 'block';
+    if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
+  }
+
+  /** Shows or hides the roster filter strip (the drawer's FILTER, or `runs filter`). */
+  public filter_toggle(open?: boolean): void {
+    this.order.strip_toggle(open);
   }
 
   /** Paints the selection facts chip. */

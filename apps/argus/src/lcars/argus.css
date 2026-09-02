@@ -328,6 +328,85 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   overflow: hidden;
 }
 
+/* ------------------------------------------------------------ roster order */
+/* Column caps are the table's own frame: touch one to sort, again to
+ * reverse; the active cap is lit. The filter strip is a mode, summoned
+ * from the drawer or the language; the bar carries its state. */
+.roster-caps {
+  display: flex;
+  gap: 4px;
+  margin: 0.2rem 0 0.35rem;
+}
+
+.roster-cap {
+  flex: 1 1 0;
+  height: 18px;
+  border: none;
+  border-radius: 0;
+  background-color: var(--harvestgold);
+  color: #000;
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-align: right;
+  padding: 0 0.6rem;
+  cursor: pointer;
+}
+
+.roster-cap:first-child {
+  border-radius: 9px 0 0 9px;
+}
+
+.roster-cap:last-child {
+  border-radius: 0 9px 9px 0;
+}
+
+.roster-cap.roster-active {
+  background-color: var(--butter);
+}
+
+.roster-filter {
+  display: flex;
+  align-items: stretch;
+  height: 26px;
+  margin: 0 0 0.4rem;
+  background: #000;
+}
+
+.roster-filter-glyph {
+  display: flex;
+  align-items: center;
+  padding: 0 0.8rem 0 1rem;
+  background: var(--harvestgold);
+  color: #000;
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  border-radius: 13px 0 0 13px;
+}
+
+.roster-filter-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--pumpkin-pie);
+  outline: none;
+  padding: 0 0.7rem;
+  color: var(--butter);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.74rem;
+}
+
+/* The pane bar's state readout (identity + STATE + handle). */
+.pane-state {
+  margin-left: 1rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  opacity: 0.85;
+}
+
 /* ------------------------------------------------------------ the nameplate */
 /* The top-left block is the LCARS nameplate: the mark is engraved in the
  * panel's own black, like its type — never full-color art on the frame.

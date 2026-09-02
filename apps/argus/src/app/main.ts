@@ -1060,6 +1060,9 @@ async function surface_start(token: string): Promise<void> {
       // its back/home are the session's own; a rooted browser walks its own
       // history.
       const primary: boolean = id === 'files';
+      child_offer('FILTER', 'show/hide the filter strip (column caps sort)', (): void => {
+        filesPanels.get(id)?.filter_toggle();
+      });
       child_offer('HOME', 'back to the home directory', (): void => {
         if (primary) {
           terminal.line_run('cd ~');
@@ -1116,6 +1119,9 @@ async function surface_start(token: string): Promise<void> {
       });
       child_offer('CLEAR DETAIL', 'dismiss the node facts (a click on empty space does too)', (): void => {
         dagPanels.get(id)?.detail_clear();
+      });
+      child_offer('FILTER', 'show/hide the roster filter strip (column caps sort)', (): void => {
+        dagPanels.get(id)?.filter_toggle();
       });
     }
   };
@@ -1458,11 +1464,11 @@ async function surface_start(token: string): Promise<void> {
   const LANG_FOLLOWERS: Record<string, string[]> = {
     pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus'],
     view: ['files', 'runs', 'pacs'],
-    runs: ['enter'],
+    runs: ['enter', 'sort', 'filter'],
     node: ['enter', 'immerse', 'back', 'clear'],
     dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
-    file: ['home', 'back', 'download', 'delete'],
+    file: ['home', 'back', 'download', 'delete', 'sort', 'filter'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],
     desktop: ['save', 'load', 'show', 'list', 'delete'],

@@ -253,6 +253,27 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     return `console: unknown verb '${verb}' (open|close|toggle|zoom|height)`;
   }
 
+  if (subject === 'runs' || subject === 'file') {
+    if (verb === 'sort' || verb === 'filter') {
+      const kind: string = subject === 'runs' ? '.pane-dag' : '.pane-files';
+      const targeted: string | null = target_resolve(host, sentence.target);
+      const mount: HTMLElement | null = targeted === null ? null : host.paneMount_get(targeted);
+      // The subject names the kind: fall back to any such pane on stage.
+      const pane: HTMLElement | null =
+        mount?.querySelector<HTMLElement>(kind) ?? document.querySelector<HTMLElement>(kind);
+      if (pane === null) return `${subject} ${verb}: no ${subject === 'runs' ? 'DAG' : 'files'} pane`;
+      if (verb === 'sort') {
+        if (arg === '') return `${subject} sort <column> [asc|desc]`;
+        const dir: 'asc' | 'desc' = (words[2] ?? 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+        pane.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'sort', key: arg, dir } }));
+        return `${subject} sorted by ${arg} ${dir}`;
+      }
+      const text: string = arg === 'off' ? '' : words.slice(1).join(' ');
+      pane.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'filter', text } }));
+      return text === '' ? `${subject} filter off` : `${subject} filtered: ${text}`;
+    }
+  }
+
   if (subject === 'runs') {
     if (verb === 'enter') {
       const feedId: number = parseInt(arg.replace(/^feed_/, ''), 10);
@@ -270,6 +291,8 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   // Everything below acts on a pane.
   const paneId: string | null = target_resolve(host, sentence.target);
   if (paneId === null) return `${subject}: no target pane (nothing focused?)`;
+
+
 
   if (subject === 'pane') {
     if (verb === 'split') {
@@ -332,7 +355,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
 
   if (subject === 'file') {
     const label: string = verb.toUpperCase();
-    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE'].includes(label)) return 'file home|back|download|delete';
+    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE'].includes(label)) return 'file home|back|download|delete|sort|filter';
     return drawerChild_click(host, paneId, label) ? `file ${verb}` : `file ${verb}: not offered by '${paneId}'`;
   }
 

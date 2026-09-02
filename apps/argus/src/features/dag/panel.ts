@@ -148,6 +148,15 @@ export class DagPanel {
       if (this.lastModel !== null) this.graph_show(this.lastModel, false);
     });
     this.scalePill = scalePill;
+    // CENSUS is spectacle: the full multiplicity, instanced. SHAPE is the
+    // semantic default; selection and facts belong to shape.
+    const censusPill: HTMLElement | null =
+      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-census') ?? null;
+    censusPill?.addEventListener('click', (): void => {
+      const on: boolean = !this.scene.census_get();
+      this.scene.census_set(on);
+      censusPill.textContent = on ? 'CENSUS' : 'SHAPE';
+    });
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,
@@ -243,6 +252,7 @@ export class DagPanel {
         joinParentIds: node.joinParentIds,
         status: node.status,
         metric: metric_of(node),
+        count: node.tally?.count,
       })),
     }, { wave });
     this.scene.size_fit();

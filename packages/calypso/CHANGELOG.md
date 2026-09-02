@@ -1,5 +1,23 @@
 # @fnndsc/calypso
 
+## 0.8.0
+
+### Minor Changes
+
+- 97af423: Watches: a surface can keep a running feed live. New wire pair `watch` / `unwatch` (subject = `/proc/jobs/feed_N`, owned per surface, released on detach) and a `watched` report (`live` | `settled` | `stale`). While anyone watches a feed the engine samples it on an adaptive cadence (3 s while it changes, backing off to 30 s when quiet), and whenever a visit changes the cache it publishes the refreshed `feed.dag` model to every surface as a session-bus envelope from the `daemon` surface, off the scrollback. A feed that settles reports `settled` and the watch ends; a failed sample reports `stale` and keeps trying. `proc watch <feed>` / `proc unwatch <feed>` are the console forms (`proc watch` lists). The engine gains an ambient event bus for events it originates on its own. Feed visits within one second of each other now share one sync, and `feedVisit_sync` reports whether it succeeded.
+
+### Patch Changes
+
+- Updated dependencies [920e0ac]
+- Updated dependencies [7a0f06e]
+- Updated dependencies [920e0ac]
+- Updated dependencies [c716624]
+- Updated dependencies [cece0dc]
+- Updated dependencies [97af423]
+  - @fnndsc/cumin@3.16.0
+  - @fnndsc/brasa@0.15.0
+  - @fnndsc/menu@0.2.0
+
 ## 0.7.1
 
 ### Patch Changes

@@ -1,5 +1,25 @@
 # @fnndsc/brasa
 
+## 0.15.0
+
+### Minor Changes
+
+- 920e0ac: The `feed.dag` wire model is now the COLLAPSED projection: isomorphic sibling subtrees merge into one ×N node (the terminal tree's own collapse transform), so a massive fan-out crosses the wire and reaches a rendering surface as its shape, not its census. Each collapsed node keeps a real representative instance (id and data address), wears its worst member's status (an error anywhere in the group is visible on the node that stands for it), sums member metrics, and carries a tally with jump-to-error anomaly ids.
+- c716624: Directory listings survive a restart. The listing cache is checkpointed (identity-keyed file under `~/.cache/chell/vfs/`, throttled writes) and restored at boot with each entry's original timestamp, so a restored listing is exactly as stale as it really is. Stale handling itself is fixed: the listing path used to serve any cached entry regardless of its TTL (a listing never refreshed until eviction or `ls -f`). Now a fresh entry serves as is; a stale one is served at once and revalidated behind itself when a host can carry the refresh (the daemon publishes the fresh `fs.listing` on the ambient bus, marked `fresh`), and is refetched in line at a plain console. `ls` models carry `fresh` per listing; `vfs.listing_get` exposes the listing with its freshness.
+- 97af423: Watches: a surface can keep a running feed live. New wire pair `watch` / `unwatch` (subject = `/proc/jobs/feed_N`, owned per surface, released on detach) and a `watched` report (`live` | `settled` | `stale`). While anyone watches a feed the engine samples it on an adaptive cadence (3 s while it changes, backing off to 30 s when quiet), and whenever a visit changes the cache it publishes the refreshed `feed.dag` model to every surface as a session-bus envelope from the `daemon` surface, off the scrollback. A feed that settles reports `settled` and the watch ends; a failed sample reports `stale` and keeps trying. `proc watch <feed>` / `proc unwatch <feed>` are the console forms (`proc watch` lists). The engine gains an ambient event bus for events it originates on its own. Feed visits within one second of each other now share one sync, and `feedVisit_sync` reports whether it succeeded.
+
+### Patch Changes
+
+- cece0dc: `/proc` freshness is now visit-driven. A revisit to `/proc/jobs/feed_N` (or a `feed diagram` re-render) is a delta, not a re-crawl: one feed-row fetch, and only when the job counters moved, a `min_end_date` walk of the nodes created or finished since the last visit plus an `active=true` sweep of the nodes still running. Nodes a dynamic pipeline spawns after the first load now appear on the next visit; previously they were invisible until `proc refresh`. Settled feeds are re-checked at most once per ten minutes, so work appended to a finished feed is still seen. A `/proc/jobs` visit (and `proc feeds` / `proc jobs list`) picks up feeds newer than the highest known id, and walks the whole index once the roster is older than ten minutes, so a feed shared later still appears.
+- Updated dependencies [920e0ac]
+- Updated dependencies [7a0f06e]
+- Updated dependencies [c716624]
+- Updated dependencies [cece0dc]
+- Updated dependencies [97af423]
+  - @fnndsc/cumin@3.16.0
+  - @fnndsc/salsa@3.11.0
+  - @fnndsc/menu@0.2.0
+
 ## 0.14.1
 
 ### Patch Changes

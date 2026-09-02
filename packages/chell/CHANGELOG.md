@@ -1,5 +1,23 @@
 # @fnndsc/chell
 
+## 5.4.2
+
+### Patch Changes
+
+- 7a0f06e: The `/proc` checkpoint is now a directory of per-feed shards (`~/.cache/chell/proc/<identity-key>/roster.json` + `feed-<id>.json`) instead of one file. A mutation to one feed rewrites only that feed's shard, throttled to one write per 30 seconds per shard with the last change never dropped, so a growing 80k-node feed no longer drags the whole index back to disk on every change; a torn write can damage at most one feed, and a shard whose feed left the roster is ignored on restore. Execution metrics observed on a revisit are now checkpointed too (they previously never triggered a save). A legacy v2 single-file checkpoint is read once and migrated into shards; the old file is left in place for this release. Cache change events now say what they touched (`roster`, `feed`, `all`, `lifecycle`).
+- c716624: Directory listings survive a restart. The listing cache is checkpointed (identity-keyed file under `~/.cache/chell/vfs/`, throttled writes) and restored at boot with each entry's original timestamp, so a restored listing is exactly as stale as it really is. Stale handling itself is fixed: the listing path used to serve any cached entry regardless of its TTL (a listing never refreshed until eviction or `ls -f`). Now a fresh entry serves as is; a stale one is served at once and revalidated behind itself when a host can carry the refresh (the daemon publishes the fresh `fs.listing` on the ambient bus, marked `fresh`), and is refetched in line at a plain console. `ls` models carry `fresh` per listing; `vfs.listing_get` exposes the listing with its freshness.
+- Updated dependencies [920e0ac]
+- Updated dependencies [7a0f06e]
+- Updated dependencies [920e0ac]
+- Updated dependencies [c716624]
+- Updated dependencies [cece0dc]
+- Updated dependencies [97af423]
+  - @fnndsc/cumin@3.16.0
+  - @fnndsc/salsa@3.11.0
+  - @fnndsc/brasa@0.15.0
+  - @fnndsc/menu@0.2.0
+  - @fnndsc/calypso@0.8.0
+
 ## 5.4.1
 
 ### Patch Changes

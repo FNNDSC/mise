@@ -280,6 +280,13 @@ export class DagScene {
   /** CENSUS: render every member of every ×N group as an instanced point. */
   private census: boolean = false;
 
+  /** The census cloud, when drawn: instance index → group node id / local position. */
+  private censusMesh: THREE.InstancedMesh | null = null;
+  private censusIds: string[] = [];
+  private censusPositions: THREE.Vector3[] = [];
+  /** The census cloud's resting colors, the wave's return point. */
+  private censusBase: Float32Array | null = null;
+
   /**
    * Toggles the census projection: the full multiplicity of the graph as
    * instanced members on analytic shells (spectacle), versus the semantic
@@ -411,6 +418,14 @@ export class DagScene {
         // off-axis (and far beyond the old 3..40 clamp), where a z-only
         // dolly slid the whole cloud diagonally off screen.
         const eyeDistance: number = this.camera.position.length();
+        if (this.census) {
+          // Census is a place: the wheel FLIES along the eye ray, untethered
+          // from the origin — through the core and out the other side.
+          const heading: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3());
+          const speed: number = Math.max(4, eyeDistance) * 0.0012;
+          this.camera.position.addScaledVector(heading, -event.deltaY * speed);
+          return;
+        }
         const factor: number = Math.exp(event.deltaY * 0.001);
         const next: number = Math.min(Math.max(eyeDistance * factor, 3), Math.max(40, this.camera.far * 0.45));
         this.camera.position.multiplyScalar(next / Math.max(0.0001, eyeDistance));
@@ -529,7 +544,9 @@ export class DagScene {
    */
   public flight_into(nodeId: string, onArrived: () => void): void {
     const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
-    if (mesh === undefined || this.flight !== null || this.holding) {
+    // In census there is no mesh per node: fly to the group's first member.
+    const censusIndex: number = mesh === undefined ? this.censusIds.indexOf(nodeId) : -1;
+    if ((mesh === undefined && censusIndex < 0) || this.flight !== null || this.holding) {
       return;
     }
     // The dive leaves the graph exactly as the operator has it — no reset
@@ -543,7 +560,10 @@ export class DagScene {
     // shy of the surface — arrival reads as passing inside. World position:
     // the camera flies in world space, and the group may be rotated.
     this.group.updateMatrixWorld(true);
-    const target: THREE.Vector3 = mesh.getWorldPosition(new THREE.Vector3());
+    const target: THREE.Vector3 =
+      mesh !== undefined
+        ? mesh.getWorldPosition(new THREE.Vector3())
+        : this.group.localToWorld((this.censusPositions[censusIndex] ?? new THREE.Vector3()).clone());
     const toPos: THREE.Vector3 = target
       .clone()
       .add(this.camera.position.clone().sub(target).normalize().multiplyScalar(0.4));
@@ -638,6 +658,30 @@ export class DagScene {
     if (this.waveStartAt === null) return;
     const elapsed: number = Date.now() - this.waveStartAt;
     let peak: number = 0;
+    if (this.census && this.censusMesh !== null && this.censusBase !== null && this.censusMesh.instanceColor) {
+      // The wave rides the cloud: every member flares with its group's
+      // fire time, written straight into the instance color buffer.
+      const colors: Float32Array = this.censusMesh.instanceColor.array as Float32Array;
+      const base: Float32Array = this.censusBase;
+      const pulse: THREE.Color = this.pulseColor;
+      for (let i = 0; i < this.censusIds.length; i++) {
+        const fireAt: number | undefined = this.waveTimes.get(this.censusIds[i] ?? '');
+        if (fireAt === undefined) continue;
+        peak = Math.max(peak, fireAt);
+        const dt: number = elapsed - fireAt;
+        const flare: number =
+          dt >= 0 && dt <= WAVE_FLARE_MS ? Math.sin((dt / WAVE_FLARE_MS) * Math.PI) : 0;
+        const o: number = i * 3;
+        colors[o] = base[o]! + (pulse.r - base[o]!) * flare;
+        colors[o + 1] = base[o + 1]! + (pulse.g - base[o + 1]!) * flare;
+        colors[o + 2] = base[o + 2]! + (pulse.b - base[o + 2]!) * flare;
+      }
+      this.censusMesh.instanceColor.needsUpdate = true;
+      if (elapsed > peak + WAVE_FLARE_MS) {
+        this.waveStartAt = this.ambient || this.waveLooping ? Date.now() + WAVE_LOOP_GAP_MS : null;
+      }
+      return;
+    }
     for (const [id, fireAt] of this.waveTimes) {
       peak = Math.max(peak, fireAt);
       const mesh: THREE.Mesh | undefined = this.meshes.get(id);
@@ -794,6 +838,8 @@ export class DagScene {
         const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
         color.set(nodeColor_pick(node, palette, isRoot));
         instanced.setColorAt(index, color);
+        this.censusIds.push(node.id);
+        this.censusPositions.push(point);
         index += 1;
         cloudRadius = Math.max(cloudRadius, center.distanceTo(point) + memberRadius);
       }
@@ -801,6 +847,8 @@ export class DagScene {
     }
     if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
     this.group.add(instanced);
+    this.censusMesh = instanced;
+    this.censusBase = instanced.instanceColor ? Float32Array.from(instanced.instanceColor.array) : null;
 
     const segments: number[] = [];
     for (const { node } of placed) {
@@ -870,6 +918,10 @@ export class DagScene {
     this.group.clear();
     this.meshes = new Map();
     this.edges = [];
+    this.censusMesh = null;
+    this.censusIds = [];
+    this.censusPositions = [];
+    this.censusBase = null;
     this.dragSim = null;
     this.dragSimNodes = [];
     this.drag = null;
@@ -1173,6 +1225,33 @@ export class DagScene {
     return object instanceof THREE.Mesh ? object : null;
   }
 
+  /** The node id behind a shape-mode mesh under the pointer. */
+  private meshNode_under(event: MouseEvent): string | null {
+    const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
+    return typeof nodeId === 'string' ? nodeId : null;
+  }
+
+  /**
+   * The group node id behind the census member under the pointer. A
+   * member is entered through its group's representative — the census is
+   * a place, not just a diorama. The touched member lights up.
+   */
+  private censusNode_under(event: MouseEvent): string | null {
+    if (this.censusMesh === null) return null;
+    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
+    const pointer: THREE.Vector2 = new THREE.Vector2(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    );
+    this.group.updateMatrixWorld(true);
+    this.raycaster.setFromCamera(pointer, this.camera);
+    const hit: THREE.Intersection | undefined = this.raycaster.intersectObject(this.censusMesh)[0];
+    if (hit === undefined || hit.instanceId === undefined) return null;
+    this.censusMesh.setColorAt(hit.instanceId, new THREE.Color('#ffffff'));
+    if (this.censusMesh.instanceColor) this.censusMesh.instanceColor.needsUpdate = true;
+    return this.censusIds[hit.instanceId] ?? null;
+  }
+
   /** Names the node under the pointer in the hover tip, or hides it. */
   private hover_handle(event: PointerEvent): void {
     if (this.tip === null) return;
@@ -1196,13 +1275,13 @@ export class DagScene {
 
   /** Resolves a pointer event to a node and fires the matching handler. */
   private pick_handle(event: MouseEvent, kind: 'select' | 'activate'): void {
-    const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
-    if (typeof nodeId !== 'string') return;
+    const nodeId: string | null = this.census ? this.censusNode_under(event) : this.meshNode_under(event);
+    if (nodeId === null) return;
     const node: SceneNode | undefined = this.graph.nodes.find((n: SceneNode) => n.id === nodeId);
     if (!node) return;
     if (kind === 'select') {
       this.selectedId = nodeId;
-      this.rebuild();
+      if (!this.census) this.rebuild();
       this.handlers.select?.(node);
     } else {
       this.handlers.activate?.(node);

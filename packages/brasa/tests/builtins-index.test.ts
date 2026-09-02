@@ -13,6 +13,10 @@ const mockClientGet = jest.fn();
 const mockGetFileBrowserFolderByPath = jest.fn();
 const mockVfsList = jest.fn(() => ({ status: 'ok', rendered: '' }));
 const mockVfsDataGet = jest.fn(async () => ({ ok: true, value: [] }));
+const mockVfsListingGet = jest.fn(async (target?: string) => {
+  const result = await mockVfsDataGet(target);
+  return result.ok ? { ok: true, value: { path: target ?? '/', items: result.value, fresh: true } } : { ok: false };
+});
 const mockVfsDispatcherList = jest.fn().mockResolvedValue({ ok: true, value: [] });
 const mockVfsDispatcherLinkTargetResolve = jest.fn();
 const mockContextGetSingle = jest.fn();
@@ -189,6 +193,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
   vfs: {
     list: mockVfsList,
     data_get: mockVfsDataGet,
+    listing_get: mockVfsListingGet,
   }
 }));
 

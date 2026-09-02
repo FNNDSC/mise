@@ -180,14 +180,38 @@ describe('VFS.list rendering and refresh', () => {
     expect(envelope.renderedErr).toContain('listing failed');
   });
 
-  it('serves stale cache with an indicator and refreshes in the background', async () => {
-    cacheStore.set('/home/chris', { data: [item('a')], fresh: false });
-    mockDispatcherList.mockResolvedValue(ok([item('a')]));
+  it('at a plain console a stale entry is refetched in line: fresh answer, no indicator', async () => {
+    cacheStore.set('/home/chris', { data: [item('old')], fresh: false });
+    mockDispatcherList.mockResolvedValue(ok([item('new')]));
     const envelope = await new VFS().list();
-    expect(envelope.rendered).toContain('(cached, refreshing...)');
-    // Let the un-awaited background refresh run.
-    await new Promise((r: (v: unknown) => void) => setImmediate(r));
-    expect(mockCacheInvalidate).toHaveBeenCalledWith('/home/chris');
+    expect(envelope.rendered).not.toContain('(cached, refreshing...)');
+    expect(mockDispatcherList).toHaveBeenCalledWith('/home/chris', expect.anything());
+    expect(mockCacheSet).toHaveBeenCalledWith('/home/chris', [item('new')]);
+  });
+
+  it('with a host listening a stale entry is served at once, marked, and revalidated onto the ambient bus', async () => {
+    const { ambient_listen } = await import('../src/core/ambient.js');
+    const events: unknown[] = [];
+    const stop = ambient_listen((event) => { events.push(event); });
+    try {
+      cacheStore.set('/home/chris', { data: [item('old')], fresh: false });
+      mockDispatcherList.mockResolvedValue(ok([item('new')]));
+      const vfs = new VFS();
+      const envelope = await vfs.list();
+      expect(envelope.rendered).toContain('(cached, refreshing...)');
+      for (let i = 0; i < 5; i++) await new Promise((r: (v: unknown) => void) => setImmediate(r));
+      // The revalidation landed: the next read is fresh and says so.
+      const listing = await vfs.listing_get();
+      expect(listing.ok && listing.value).toMatchObject({ path: '/home/chris', fresh: true });
+      expect(listing.ok && listing.value.items).toEqual([item('new')]);
+      expect(mockCacheSet).toHaveBeenCalledWith('/home/chris', [item('new')]);
+      expect(events).toEqual([{
+        kind: 'envelope',
+        envelope: { status: 'ok', rendered: '', model: { kind: 'fs.listing', data: [{ path: '/home/chris', items: [item('new')], fresh: true }] } },
+      }]);
+    } finally {
+      stop();
+    }
   });
 
   it('shows a spinner when a cache miss takes longer than 500ms', async () => {

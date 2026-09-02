@@ -71,6 +71,8 @@ export interface LsOptions {
 export interface LsListing {
   path: string;
   items: ListingItem[];
+  /** False when the listing was served stale; a refresh follows on the ambient bus. */
+  fresh?: boolean;
 }
 
 /**
@@ -145,9 +147,9 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
     }
     // Collect the entries for the model; vfs.list just populated the
     // listing cache, so this second read is served from it.
-    const items = await vfs.data_get(target, options);
-    if (items.ok) {
-      listings.push({ path: target ?? await session.getCWD(), items: items.value });
+    const listing = await vfs.listing_get(target, options);
+    if (listing.ok) {
+      listings.push({ path: listing.value.path, items: listing.value.items, fresh: listing.value.fresh });
     }
   }
 

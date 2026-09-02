@@ -39,3 +39,14 @@ export function ambient_publish(event: AmbientEvent): void {
     }
   }
 }
+
+/**
+ * Whether any host is listening. A producer with nobody to carry its
+ * event can choose the synchronous path instead (a console `ls` waits for
+ * a fresh listing rather than being handed a stale one nobody will refresh).
+ *
+ * @returns True when at least one subscriber exists.
+ */
+export function ambient_hasListeners(): boolean {
+  return listeners.size > 0;
+}

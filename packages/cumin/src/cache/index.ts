@@ -4,7 +4,14 @@
  * @module
  */
 export { ListCache, listCache_get } from './listCache.js';
-export type { CacheStats, CacheResult, CacheOptions } from './listCache.js';
+export type { CacheStats, CacheResult, CacheOptions, ListCacheSnapshot, ListCacheEntrySnapshot } from './listCache.js';
+export {
+  listCheckpointPath_get,
+  listCheckpoint_restore,
+  listCheckpoint_save,
+  listCheckpoint_watch,
+} from './listCheckpoint.js';
+export type { ListCheckpointRestoreResult } from './listCheckpoint.js';
 export { ProcCache, procCache_get, status_isTerminal, feed_isActive, feedTopology_changed, PROC_TERMINAL_STATUSES } from './procCache.js';
 export type {
   ProcInstance,

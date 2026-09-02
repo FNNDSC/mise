@@ -44,6 +44,8 @@ export interface DagPanelHandlers {
   node_dive?: (vfsPath: string) => void;
   /** A node was selected: the pane indicates its data address (a regard write). */
   node_regard?: (vfsPath: string) => void;
+  /** A feed was picked in the roster: the pane indicates the feed's address (a regard write). */
+  feed_regard?: (procPath: string) => void;
   /** A feed came into view: the layout should summon this pane. */
   feed_shown?: () => void;
   /**
@@ -359,6 +361,11 @@ export class DagPanel {
   /** The watched feed's last reported liveness (null before any report). */
   public liveState_get(): WatchState | null {
     return this.liveState;
+  }
+
+  /** The feed on stage or being retrieved, or null at the roster. */
+  public feed_get(): number | null {
+    return this.pendingFeedId ?? this.shownFeedId;
   }
 
   /**
@@ -725,6 +732,7 @@ export class DagPanel {
       row.addEventListener('click', (): void => {
         this.pinnedFeedId = feed.id;
         this.requestedFeedId = null;
+        this.handlers.feed_regard?.(`/proc/jobs/feed_${feed.id}`);
         this.feedRequest_show(feed.id);
         this.handlers.command_run(`feed diagram feed_${feed.id}`);
       });

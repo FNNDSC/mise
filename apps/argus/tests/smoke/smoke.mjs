@@ -273,6 +273,36 @@ try {
     check('the graph lands and LOADING clears', selectWait.landed && selectWait.stateAfter !== 'LOADING');
   }
 
+  console.log('enter-place');
+  // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
+  // session (and so the cwd-following browser) into /proc/jobs/feed_N.
+  const enterPlace = await evalIn(`
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
+    const dp = document.querySelector('.pane-dag');
+    const rows = dp.querySelectorAll('.feedlist-row');
+    if (rows.length === 0) return { skipped: 'no roster' };
+    const row = rows[rows.length - 1];
+    const feedId = row.querySelector('.feedlist-id') ? row.querySelector('.feedlist-id').textContent.trim() : null;
+    row.click();
+    for (let i = 0; i < 120; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
+    dp.querySelector('.pane-handle').click(); await sleep(150);
+    const cap = [...dp.querySelectorAll('.drawer-child')].find(c => c.textContent === 'ENTER FEED');
+    if (!cap) return { skipped: null, offered: false };
+    cap.click();
+    // RUNS-02 owns the whole workspace, so the cwd-following browser is off
+    // stage: the session's cwd is read from the console's prompt line.
+    let path = null;
+    for (let i = 0; i < 40; i++) { await sleep(500); const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => !l.trim().startsWith('❯') && l.includes('/proc/jobs/feed_')); const last = lines[lines.length - 1]; const m = last ? /\\/proc\\/jobs\\/feed_\\d+/.exec(last) : null; if (m) { path = m[0]; break; } }
+    if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(100); }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    return { skipped: null, offered: true, feedId, path };`);
+  if (enterPlace.skipped) {
+    console.log(`  skipped: ${enterPlace.skipped}`);
+  } else {
+    check('ENTER FEED moves the session into the feed', enterPlace.offered && typeof enterPlace.path === 'string' && enterPlace.path.startsWith('/proc/jobs/feed_'));
+  }
+
   console.log('live-watch');
   // The pane is the subscription: entering a feed opens a watch, the bar
   // reports its liveness, the drawer offers REFRESH, leaving releases it.

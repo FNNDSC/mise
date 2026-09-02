@@ -245,6 +245,34 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('select-wait');
+  // Selecting a feed answers at once: the roster steps aside, the pane says
+  // what it is retrieving, and the bar reads LOADING until the graph lands.
+  const selectWait = await evalIn(`
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
+    const dp = document.querySelector('.pane-dag');
+    const rows = dp.querySelectorAll('.feedlist-row');
+    if (rows.length === 0) return { skipped: 'no roster' };
+    rows[rows.length - 1].click();
+    await sleep(30);
+    const atOnce = {
+      listHidden: dp.querySelector('.dag-feedlist').style.display === 'none',
+      retrieving: /^RETRIEVING FEED \\d+/.test(dp.querySelector('.dag-empty').textContent),
+      state: dp.querySelector('.pane-state').textContent,
+    };
+    for (let i = 0; i < 120; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
+    const landed = dp.querySelector('.dag-canvas').style.display === 'block' && dp.querySelector('.dag-empty').style.display === 'none';
+    const stateAfter = dp.querySelector('.pane-state').textContent;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    return { skipped: null, atOnce, landed, stateAfter };`);
+  if (selectWait.skipped) {
+    console.log(`  skipped: ${selectWait.skipped}`);
+  } else {
+    check('selecting a feed answers at once', selectWait.atOnce.listHidden && selectWait.atOnce.retrieving && selectWait.atOnce.state === 'LOADING');
+    check('the graph lands and LOADING clears', selectWait.landed && selectWait.stateAfter !== 'LOADING');
+  }
+
   console.log('live-watch');
   // The pane is the subscription: entering a feed opens a watch, the bar
   // reports its liveness, the drawer offers REFRESH, leaving releases it.

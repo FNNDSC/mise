@@ -479,10 +479,23 @@ export class DagPanel {
     // Metrics ride the warmed ProcCache; a settled node without them has
     // simply not been backfilled yet.
     const pending: string = settled ? 'awaiting warmup' : 'in flight';
+    const tally = payload.tally;
     const rows: Array<[string, string]> = [
       ['PLUGIN', payload.pluginName],
-      ['INSTANCE', String(payload.instanceId)],
+      [tally ? 'REP. INSTANCE' : 'INSTANCE', String(payload.instanceId)],
       ['STATUS', payload.status],
+      ...(tally
+        ? ([[
+            'COUNT',
+            `×${tally.count} — ${tally.done} done, ${tally.error} err, ${tally.running} live, ${tally.other} other`,
+          ]] as Array<[string, string]>)
+        : []),
+      ...(tally?.anomalies !== undefined && tally.anomalies.length > 0
+        ? ([[
+            'FAULTS',
+            tally.anomalies.map((a): string => a.id).join(' ') + (tally.count > tally.done + tally.anomalies.length ? ' …' : ''),
+          ]] as Array<[string, string]>)
+        : []),
       [
         'WALL',
         payload.metrics?.computeSeconds !== undefined

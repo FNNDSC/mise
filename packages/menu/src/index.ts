@@ -116,6 +116,7 @@ export {
   type DagNodeStatus,
   type DagNodeMetrics,
   type FeedDagNode,
+  type DagNodeTally,
   type FeedDagModel,
 } from './dag.js';
 export {

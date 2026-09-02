@@ -18,6 +18,7 @@ import {
   type ProcFeed,
   type ProcInstance,
 } from './procCache';
+import { errorStack } from '../error/errorStack';
 
 // v2: instances carry execution metrics (startedAt/finishedAt/outputBytes).
 // The bump is deliberate: metrics ride the warmup's list rows, and settled
@@ -222,6 +223,20 @@ export async function procCheckpoint_save(
     writtenAt: new Date().toISOString(),
     snapshot: procCache_get().snapshot_create(),
   };
+  // A checkpoint must be internally consistent: every feed whose topology
+  // is loaded must exist in the roster. A snapshot violating that has been
+  // amputated in memory (observed: a transiently-empty public-feeds walk
+  // removed 641 feeds, and the debounced watcher persisted the amputation
+  // over a good checkpoint). Never durably replace good data with it.
+  const rosterIds: Set<number> = new Set(file.snapshot.feeds.map((feed): number => feed.id));
+  const orphaned: number = file.snapshot.topologyLoaded.filter((id: number): boolean => !rosterIds.has(id)).length;
+  if (orphaned > 0) {
+    errorStack.stack_push(
+      'warning',
+      `proc checkpoint skipped: ${orphaned} topology-loaded feeds missing from the roster (inconsistent snapshot)`,
+    );
+    return;
+  }
   await fs.mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await fs.chmod(dirname(path), 0o700);
   await fs.writeFile(temporaryPath, `${JSON.stringify(file)}\n`, { encoding: 'utf8', mode: 0o600 });

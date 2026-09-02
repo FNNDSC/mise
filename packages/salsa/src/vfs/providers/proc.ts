@@ -130,11 +130,27 @@ async function procCache_build(): Promise<number[]> {
   );
   // Older CUBEs lack a public-feeds endpoint: the contract answers null
   // without a wire call, and an empty first page ends the index loop.
+  const publicBefore: number = indexed.size;
   await procFeeds_index(
     async (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
       (await publicFeedsPage_get(client, params)) ?? { data: [], totalCount: 0 },
     indexed,
   );
+
+  // An empty public walk while the cache already holds public feeds is a
+  // failed SOURCE, not an authoritative absence: reconciling against it
+  // would amputate every public feed from the roster (and the checkpoint
+  // watcher would persist the amputation). Keep what we know and say so.
+  if (indexed.size === publicBefore) {
+    const knownPublic: ProcFeed[] = cache.feeds_find('').filter((feed: ProcFeed): boolean => feed.public);
+    if (knownPublic.length > 0) {
+      errorStack.stack_push(
+        'warning',
+        `proc roster: public-feeds source returned nothing while ${knownPublic.length} public feeds are known; keeping them`,
+      );
+      for (const feed of knownPublic) indexed.set(feed.id, feed);
+    }
+  }
 
   const reconciliationTargets: number[] = cache.feeds_reconcile(Array.from(indexed.values()));
   cache.built_set();

@@ -70,6 +70,22 @@ export const DAG_NODE_STATUSES = [
 
 export const dagNodeStatusSchema = z.enum(DAG_NODE_STATUSES).catch('unknown');
 
+/**
+ * Roll-up of an isomorphic ×N group collapsed behind one rendered node.
+ * Present only when `count > 1`; error visibility is not optional — a group
+ * carrying failures lists its first anomalous members for jump-to-error.
+ */
+export const dagNodeTallySchema = z.object({
+  count: z.number(),
+  done: z.number(),
+  error: z.number(),
+  running: z.number(),
+  other: z.number(),
+  anomalies: z.array(z.object({ id: z.string(), status: dagNodeStatusSchema })).optional(),
+});
+
+export type DagNodeTally = z.infer<typeof dagNodeTallySchema>;
+
 /** Per-node measurables that scale a molecule rendering. */
 export const dagNodeMetricsSchema = z.object({
   computeSeconds: z.number().optional(),
@@ -88,6 +104,7 @@ export const feedDagNodeSchema = dagNodeCoreSchema.extend({
   status: dagNodeStatusSchema,
   vfsPath: z.string(),
   metrics: dagNodeMetricsSchema.optional(),
+  tally: dagNodeTallySchema.optional(),
 });
 
 /**

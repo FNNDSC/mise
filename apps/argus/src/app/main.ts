@@ -1114,6 +1114,21 @@ async function surface_start(token: string): Promise<void> {
   // Keyboard machinery, tmux-shaped: Ctrl-B is the prefix — it opens the
   // focused pane's drawer with keyboard focus on its first verb (Tab walks,
   // Enter fires); Esc closes any open drawer before anything else claims it.
+  // Focus citizenship: the console is a pane for the prefix key's
+  // purposes. The operator's last touch decides — console area in,
+  // workspace tree out.
+  let consoleFocused: boolean = false;
+  const consoleFocused_set = (value: boolean): void => {
+    consoleFocused = value;
+  };
+  for (const eventName of ['click', 'focusin'] as const) {
+    document.addEventListener(eventName, (event: Event): void => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest('#drawer') !== null) consoleFocused = true;
+      else if (event.target.closest('#layout-root') !== null) consoleFocused = false;
+    });
+  }
+
   const drawers_close = (): boolean => {
     let closed: boolean = false;
     for (const drawer of document.querySelectorAll<HTMLElement>('.pane-drawer:not([hidden])')) {
@@ -1208,13 +1223,15 @@ async function surface_start(token: string): Promise<void> {
         // A zoomed tree pane is the only one on stage: the prefix key must
         // reach its drawer, whatever the layout focus was before the zoom.
         const zoomed: string | undefined = document.body.dataset['zoom'];
+        const consoleHasIt: boolean =
+          zoomed === 'console' || (zoomed === undefined && consoleFocused);
         const focused: string =
           zoomed !== undefined && zoomed !== 'console'
             ? zoomed
             : (layout.focused_get() ?? 'files');
-        const mount: HTMLElement | undefined = paneInstance_get(focused)?.mount;
-        const drawer: HTMLElement | null =
-          mount?.querySelector<HTMLElement>('.pane-drawer') ?? null;
+        const drawer: HTMLElement | null = consoleHasIt
+          ? element_require('console-drawer')
+          : (paneInstance_get(focused)?.mount?.querySelector<HTMLElement>('.pane-drawer') ?? null);
         if (drawer === null) {
           return;
         }
@@ -1272,6 +1289,8 @@ async function surface_start(token: string): Promise<void> {
     // when a feed next comes into view (the summon), never as leftovers.
     dagShown = false;
     home_apply();
+    layout.focus_set('files');
+    consoleFocused_set(false);
   });
   element_require('gutter-runs').addEventListener('click', (): void => {
     // The DAG takes the whole workspace, PACS-style, and always lands on
@@ -1281,6 +1300,8 @@ async function surface_start(token: string): Promise<void> {
     orphans_dispose();
     dagPanel.list_reset();
     dagPanel.feedsChooser_request();
+    layout.focus_set('dag');
+    consoleFocused_set(false);
   });
   // CONSOLE-05: a given always renders its target — the console open with
   // the prompt live; never a toggle (the lid and the drawer's CLOSE retract).
@@ -1289,12 +1310,15 @@ async function surface_start(token: string): Promise<void> {
       element_require('drawer-toggle').click();
     }
     terminal.focus_take();
+    consoleFocused_set(true);
   });
   element_require('gutter-tools').addEventListener('click', (): void => {
     // A given always renders its target (gutter law) — no toggling;
     // dismissal is the pane drawer's CLOSE.
     layout.preset_apply('pacs');
     orphans_dispose();
+    layout.focus_set('pacs');
+    consoleFocused_set(false);
   });
 
   // ------------------------------------------------------------ the language

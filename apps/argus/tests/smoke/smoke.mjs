@@ -180,6 +180,35 @@ try {
   check('console zoom restores and reads ZOOM', consoleGrammar.restored && consoleGrammar.readsAfter === 'ZOOM');
   check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
 
+  console.log('focus-citizenship');
+  const focusCit = await evalIn(`
+    const prefix = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));
+    const cdrawer = document.getElementById('console-drawer');
+    const drawerEl = document.getElementById('drawer');
+    if (drawerEl.classList.contains('drawer-closed')) { document.getElementById('drawer-toggle').click(); await sleep(400); }
+    // touch the workspace, prefix must address the pane
+    document.getElementById('gutter-files').click(); await sleep(500);
+    const fpane = document.querySelector('.pane-files');
+    fpane.querySelector('.files-panel').click(); await sleep(150);
+    prefix(); await sleep(200);
+    const fdrawer = fpane.querySelector('.pane-drawer');
+    const paneGot = !fdrawer.hidden && cdrawer.hidden;
+    if (!fdrawer.hidden) { prefix(); await sleep(200); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); await sleep(200); }
+    // touch the console, prefix must address the console
+    document.getElementById('terminal').click(); await sleep(150);
+    prefix(); await sleep(200);
+    const consoleGot = !cdrawer.hidden;
+    if (!cdrawer.hidden) cdrawer.hidden = true;
+    // the given focuses its channel too
+    document.getElementById('gutter-console').click(); await sleep(300);
+    prefix(); await sleep(200);
+    const givenGot = !cdrawer.hidden;
+    if (!cdrawer.hidden) cdrawer.hidden = true;
+    return { paneGot, consoleGot, givenGot };`);
+  check('focus citizenship: a touched pane owns the prefix', focusCit.paneGot === true);
+  check('focus citizenship: the touched console owns the prefix', focusCit.consoleGot === true);
+  check('focus citizenship: CONSOLE-05 hands the prefix to the console', focusCit.givenGot === true);
+
   console.log('nameplate');
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');

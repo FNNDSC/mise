@@ -86,7 +86,7 @@ interface FeedVisit {
 const feedVisits: Map<number, FeedVisit> = new Map();
 const feedVisitInflight: Map<number, Promise<boolean>> = new Map();
 let rosterWalkedAt: number = 0;
-let rosterSyncInflight: Promise<void> | null = null;
+let rosterSyncInflight: Promise<number[]> | null = null;
 let procTopologyPromise: Promise<void> | null = null;
 let procTopologyFailure: string | undefined;
 
@@ -983,30 +983,49 @@ async function feedVisit_run(feedID: number, force: boolean): Promise<void> {
  * seen. A roster still owned by warmup (not yet `current`) is left alone.
  *
  * @param force - Walk the whole index regardless of age.
+ * @returns Feed IDs the sync brought in or found changed: after a full
+ *   walk, the reconciliation targets (new, changed, or active feeds); after
+ *   a delta, the newly seen feeds. Empty when nothing moved or the roster
+ *   was left alone.
  */
-export async function procRoster_sync(force: boolean = false): Promise<void> {
+export async function procRoster_sync(force: boolean = false): Promise<number[]> {
   if (rosterSyncInflight) return rosterSyncInflight;
-  const run: Promise<void> = procRoster_run(force)
-    .catch((error: unknown): void => {
+  const run: Promise<number[]> = procRoster_run(force)
+    .catch((error: unknown): number[] => {
       const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push('warning', `proc roster: live sync failed (${msg}); showing cached roster`);
+      return [];
     })
     .finally((): void => { rosterSyncInflight = null; });
   rosterSyncInflight = run;
   return run;
 }
 
-async function procRoster_run(force: boolean): Promise<void> {
+async function procRoster_run(force: boolean): Promise<number[]> {
   const cache: ProcCache = procCache_get();
-  if (!cache.built || cache.lifecycle_get().state !== 'current') return;
+  if (!cache.built || cache.lifecycle_get().state !== 'current') return [];
 
   if (force || Date.now() - rosterWalkedAt >= ROSTER_FULL_WALK_MS) {
-    await procCache_build();
-    return;
+    return procCache_build();
   }
 
   const client = await chrisConnection.client_get();
-  if (!client) return;
+  if (!client) return [];
+  return procRosterDelta_run(cache, client);
+}
+
+/**
+ * Walks the feeds newer than the highest known id, in both collections,
+ * and adds them to the roster.
+ *
+ * @param cache - The process cache.
+ * @param client - Connected chrisapi client.
+ * @returns The feed IDs added.
+ */
+async function procRosterDelta_run(
+  cache: ProcCache,
+  client: NonNullable<Awaited<ReturnType<typeof chrisConnection.client_get>>>,
+): Promise<number[]> {
   const knownIDs: number[] = cache.feedIDs_get();
   const minID: number = (knownIDs.length > 0 ? Math.max(...knownIDs) : 0) + 1;
   const fresh: Map<number, ProcFeed> = new Map();
@@ -1021,6 +1040,28 @@ async function procRoster_run(force: boolean): Promise<void> {
     fresh,
   );
   for (const feed of fresh.values()) cache.feed_add(feed);
+  return Array.from(fresh.keys());
+}
+
+/**
+ * Brings a restored roster into service at boot without walking the whole
+ * feed index: feeds newer than the highest restored id are added (one call
+ * per collection when nothing is new), and the cache is marked built so
+ * visits can begin. Counters of restored feeds stay as checkpointed until a
+ * visit or the full walk the host runs in the background afterwards.
+ *
+ * @returns The feed IDs added.
+ * @throws {Error} When not connected or the roster is empty (nothing was
+ *   restored) — the host then falls back to the full index build.
+ */
+export async function procRoster_bootSync(): Promise<number[]> {
+  const cache: ProcCache = procCache_get();
+  if (cache.feedIDs_get().length === 0) throw new Error('no restored roster to bring into service');
+  const client = await chrisConnection.client_get();
+  if (!client) throw new Error('not connected');
+  const added: number[] = await procRosterDelta_run(cache, client);
+  cache.built_set();
+  return added;
 }
 
 /**

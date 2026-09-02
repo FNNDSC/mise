@@ -328,6 +328,32 @@ try {
     check('the graph lands and LOADING clears', selectWait.landed && selectWait.stateAfter !== 'LOADING');
   }
 
+  console.log('pin-survives');
+  // A pick survives promptlines: with the session cwd parked inside another
+  // feed, picking a feed must hold — the follow answers a move, not a
+  // promptline. (The regression this guards replaced every pick with the
+  // cwd's feed a few seconds later.) The session cwd is put back after.
+  const pin = await evalIn(`
+    const input = document.querySelector('#terminal input');
+    const run = async (line, ms) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    await run('cd /proc/jobs/feed_21', 2000);
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
+    const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
+    const rows = [...dp.querySelectorAll('.feedlist-row')].filter(r => r.querySelector('.feedlist-id')?.textContent.trim() !== '21');
+    if (rows.length === 0) { await run('cd ~', 1500); return { skipped: 'no other feed' }; }
+    rows[rows.length - 1].click();
+    for (let i = 0; i < 120; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
+    const picked = dp.querySelector('.dag-title').textContent;
+    await run('proc feeds', 1500); // a promptline, as any command brings
+    await sleep(5000);
+    const later = dp.querySelector('.dag-title').textContent;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    await run('cd ~', 1500);
+    return { skipped: null, picked, later };`);
+  if (pin.skipped) console.log(`  skipped: ${pin.skipped}`);
+  else check('a pick survives promptlines while the cwd sits elsewhere', pin.picked === pin.later && !/FEED 21\b/.test(pin.later), `${pin.picked} -> ${pin.later}`);
+
   console.log('enter-place');
   // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
   // session (and so the cwd-following browser) into /proc/jobs/feed_N.

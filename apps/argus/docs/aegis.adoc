@@ -109,6 +109,7 @@ Doctrine without teeth decays into apology. Every law below is enforced mechanic
 | enter-lands-in-a-place | ENTER moves the session into a directory, never a file: a regarded file resolves to its directory, a regarded node to its data, nothing regarded to the feed on stage; the roster pick offers ENTER FEED. | smoke:ENTER FEED moves the session into the feed
 | bin-is-browsable | A /bin entry opens as context, not a dead row: a plugin as its highlighted description, a pipeline as its summary with its authored DAG rendered beneath, both with the same CLOSE that a file view has. | smoke:a plugin opens as its description
 | following-is-declared | A browser bound to the session cwd says so on its bar (`CWD`); the binding is a verb both ways (FOLLOW CWD / ROOT HERE, `file follow` / `file root`), so any browser can be the console's and the console's can be frozen. A binding nobody can see is a hardcode. | smoke:the following browser says CWD on its bar
+| pin-survives-promptlines | An operator's pick holds until the operator moves: a cwd-follow answers a change of cwd, never the promptline every command brings, so a session parked inside one feed cannot replace a pick of another. | smoke:a pick survives promptlines while the cwd sits elsewhere
 | pane-is-the-subscription | A pane showing a running feed holds a watch on it and releases it on leaving; the bar reports LIVE / SETTLED / STALE; the kernel never polls on its own. | smoke:entering a feed reports its liveness
 |===
 

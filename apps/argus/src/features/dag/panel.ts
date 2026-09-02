@@ -100,6 +100,8 @@ export class DagPanel {
   private watchedFeedId: number | null = null;
   /** The watched feed's last reported liveness. */
   private liveState: WatchState | null = null;
+  /** A feed the operator selected whose graph has not arrived yet. */
+  private pendingFeedId: number | null = null;
 
   /**
    * @param canvas - The element the scene renders into.
@@ -264,6 +266,10 @@ export class DagPanel {
       }
       return;
     }
+    if (this.pendingFeedId !== null && envelope.status === 'error' && envelope.model === undefined) {
+      this.feedRequest_refuse(envelope.renderedErr ?? envelope.rendered ?? '');
+      return;
+    }
     if (this.rosterPending && envelope.status === 'error') {
       // The roster request was refused (the warmup guard declines global
       // queries over a half-built index). A loading row that outlives its
@@ -288,6 +294,8 @@ export class DagPanel {
       this.pinnedFeedId = model.feedId;
     }
     this.shownFeedId = model.feedId;
+    this.pendingFeedId = null;
+    this.stateSpan?.classList.remove('state-wait');
     this.title.textContent = `DAG · FEED ${model.feedId} — ${model.feedName}`.toUpperCase();
     this.empty.style.display = 'none';
     // A graph arrival always takes the whole pane: selecting a feed IS
@@ -523,7 +531,50 @@ export class DagPanel {
   public feed_enter(feedId: number): void {
     this.pinnedFeedId = feedId;
     this.requestedFeedId = null;
+    this.feedRequest_show(feedId);
     this.handlers.command_run(`feed diagram feed_${feedId}`);
+  }
+
+  /**
+   * Answers a selection at once: the roster steps aside, the pane says
+   * which feed it is retrieving, and the bar reads LOADING until the graph
+   * arrives (honest-wait). A large feed takes seconds to project; a roster
+   * that stays hoverable for those seconds says nothing was selected.
+   *
+   * @param feedId - The feed asked for.
+   */
+  private feedRequest_show(feedId: number): void {
+    this.pendingFeedId = feedId;
+    this.feedList.style.display = 'none';
+    this.canvas.style.display = 'none';
+    this.facts.replaceChildren();
+    this.title.textContent = `DAG · FEED ${feedId}`;
+    this.empty.textContent = `RETRIEVING FEED ${feedId}…`;
+    this.empty.style.display = 'block';
+    if (this.stateSpan !== null) {
+      this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale');
+      this.stateSpan.classList.add('state-wait');
+      this.stateSpan.textContent = 'LOADING';
+    }
+  }
+
+  /**
+   * A selection was refused (the feed is gone, or the session declined):
+   * the roster returns with the refusal above it, and the bar clears.
+   *
+   * @param reason - The session's rendered refusal.
+   */
+  private feedRequest_refuse(reason: string): void {
+    const feedId: number | null = this.pendingFeedId;
+    this.pendingFeedId = null;
+    this.empty.textContent = `FEED ${feedId ?? '?'}: ${reason.trim() || 'not available'}`.toUpperCase();
+    this.empty.style.display = 'block';
+    this.feedList.style.display = 'block';
+    this.title.textContent = this.defaultTitle;
+    if (this.stateSpan !== null) {
+      this.stateSpan.classList.remove('state-wait');
+      this.stateSpan.textContent = this.order.summary();
+    }
   }
 
   /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
@@ -580,6 +631,8 @@ export class DagPanel {
    * repaint what was just dismissed.
    */
   public list_reset(): void {
+    this.pendingFeedId = null;
+    this.stateSpan?.classList.remove('state-wait');
     this.watch_release();
     this.facts.replaceChildren();
     this.scene.selection_clear();
@@ -603,6 +656,21 @@ export class DagPanel {
    * at its list (or never had one), letting Esc fall through.
    */
   public nav_pop(): boolean {
+    if (this.pendingFeedId !== null && this.feedList.childElementCount > 0) {
+      // Backing out of a selection still in flight: the roster returns;
+      // the late graph, if it comes, is ignored by the pin having cleared.
+      this.pendingFeedId = null;
+      this.pinnedFeedId = null;
+      this.requestedFeedId = null;
+      this.empty.style.display = 'none';
+      this.feedList.style.display = 'block';
+      this.title.textContent = this.defaultTitle;
+      if (this.stateSpan !== null) {
+        this.stateSpan.classList.remove('state-wait');
+        this.stateSpan.textContent = this.order.summary();
+      }
+      return true;
+    }
     if (this.canvas.style.display === 'none') {
       return false;
     }
@@ -657,6 +725,7 @@ export class DagPanel {
       row.addEventListener('click', (): void => {
         this.pinnedFeedId = feed.id;
         this.requestedFeedId = null;
+        this.feedRequest_show(feed.id);
         this.handlers.command_run(`feed diagram feed_${feed.id}`);
       });
       this.feedList.appendChild(row);

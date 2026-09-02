@@ -424,6 +424,8 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 .pane-state.state-live { color: var(--harvestgold); opacity: 1; }
 .pane-state.state-settled { opacity: 0.7; }
 .pane-state.state-stale { color: var(--orange); opacity: 1; text-decoration: underline dotted; }
+/* A selection in flight: the bar says the pane is waiting, not idle. */
+.pane-state.state-wait { color: var(--butter); opacity: 1; }
 
 /* ------------------------------------------------------------ the nameplate */
 /* The top-left block is the LCARS nameplate: the mark is engraved in the

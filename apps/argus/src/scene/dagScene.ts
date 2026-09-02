@@ -35,6 +35,8 @@ export interface SceneNode {
   status?: string;
   /** Scalar for molecule radius scaling; undefined = degree fallback. */
   metric?: number;
+  /** Collapsed-group multiplicity (×N); undefined or 1 for singletons. */
+  count?: number;
 }
 
 /** The normalized graph the scene renders. */
@@ -158,6 +160,15 @@ function nodeColor_pick(
  * spread within a tier, a small depth-hashed z offset for parallax. The
  * same graph always lands the same way.
  */
+/** The k-th of n points on a fibonacci sphere of the given radius. */
+function fibonacciPoint_make(k: number, n: number, radius: number): THREE.Vector3 {
+  const golden: number = Math.PI * (3 - Math.sqrt(5));
+  const y: number = n === 1 ? 0 : 1 - (2 * k) / (n - 1);
+  const ring: number = Math.sqrt(Math.max(0, 1 - y * y));
+  const angle: number = golden * k;
+  return new THREE.Vector3(Math.cos(angle) * ring * radius, y * radius, Math.sin(angle) * ring * radius);
+}
+
 function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
   const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? 0);
   const metricPeak: number = Math.max(...metrics, 0);
@@ -265,6 +276,26 @@ export class DagScene {
   private readonly group: THREE.Group = new THREE.Group();
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
   private meshes: Map<string, THREE.Mesh> = new Map();
+
+  /** CENSUS: render every member of every ×N group as an instanced point. */
+  private census: boolean = false;
+
+  /**
+   * Toggles the census projection: the full multiplicity of the graph as
+   * instanced members on analytic shells (spectacle), versus the semantic
+   * shape (work). Selection belongs to shape; census draws, never picks.
+   *
+   * @param on - Whether census is active.
+   */
+  public census_set(on: boolean): void {
+    if (this.census === on) return;
+    this.census = on;
+    this.rebuild();
+  }
+
+  public census_get(): boolean {
+    return this.census;
+  }
   /** Edge lines with their endpoint identities, for live re-anchoring. */
   private edges: Array<{ line: THREE.Line; fromId: string; toId: string; dashed: boolean }> = [];
   private graph: SceneGraph = { nodes: [] };
@@ -715,6 +746,97 @@ export class DagScene {
    * instead of clipping through the near plane as black voids — or leaving
    * the view entirely.
    */
+  /**
+   * Builds the census: one instanced member per collapsed count, on a
+   * fibonacci shell around its group's anchor; equal-count parent/child
+   * groups pair members by index, so chains of ×N groups render as
+   * branched filaments over the shell — the cell-surface reading.
+   */
+  private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>): void {
+    let total: number = 0;
+    for (const item of placed) total += Math.max(1, item.node.count ?? 1);
+    const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, 1);
+    const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffffff',
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+    const instanced: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, total);
+    const color: THREE.Color = new THREE.Color();
+    const carrier: THREE.Object3D = new THREE.Object3D();
+    const memberPositions: Map<string, THREE.Vector3[]> = new Map();
+    let index: number = 0;
+    let cloudRadius: number = 1;
+    const center: THREE.Vector3 = new THREE.Vector3();
+    for (const item of placed) center.add(item.position);
+    center.divideScalar(Math.max(1, placed.length));
+
+    for (const { node, position, radius } of placed) {
+      const n: number = Math.max(1, node.count ?? 1);
+      const shellRadius: number = n === 1 ? 0 : radius * (1.6 + 0.55 * Math.cbrt(n));
+      const memberRadius: number =
+        n === 1 ? radius : Math.max(0.06, Math.min(radius * 0.5, (2.2 * shellRadius) / Math.sqrt(n)));
+      const points: THREE.Vector3[] = [];
+      for (let k = 0; k < n; k++) {
+        const point: THREE.Vector3 =
+          n === 1 ? position.clone() : fibonacciPoint_make(k, n, shellRadius).add(position);
+        points.push(point);
+        carrier.position.copy(point);
+        carrier.scale.setScalar(memberRadius);
+        carrier.updateMatrix();
+        instanced.setMatrixAt(index, carrier.matrix);
+        const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
+        color.set(nodeColor_pick(node, palette, isRoot));
+        instanced.setColorAt(index, color);
+        index += 1;
+        cloudRadius = Math.max(cloudRadius, center.distanceTo(point) + memberRadius);
+      }
+      memberPositions.set(node.id, points);
+    }
+    if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
+    this.group.add(instanced);
+
+    const segments: number[] = [];
+    for (const { node } of placed) {
+      const mine: THREE.Vector3[] = memberPositions.get(node.id) ?? [];
+      for (const parentId of node.parentIds) {
+        const theirs: THREE.Vector3[] | undefined = memberPositions.get(parentId);
+        if (!theirs || theirs.length === 0) continue;
+        for (let k = 0; k < mine.length; k++) {
+          const a: THREE.Vector3 | undefined = mine[k];
+          const b: THREE.Vector3 | undefined =
+            theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
+          if (a === undefined || b === undefined) continue;
+          segments.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+      }
+    }
+    if (segments.length > 0) {
+      const edgeGeometry: THREE.BufferGeometry = new THREE.BufferGeometry();
+      edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
+      const lines: THREE.LineSegments = new THREE.LineSegments(
+        edgeGeometry,
+        new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.35 }),
+      );
+      this.group.add(lines);
+    }
+
+    if (!this.ambient) {
+      const fov: number = (this.camera.fov * Math.PI) / 180;
+      const fitH: number = cloudRadius / Math.tan(fov / 2);
+      const fitW: number = cloudRadius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
+      const distance: number = Math.max(8, Math.max(fitH, fitW) * 1.15);
+      this.group.position.set(-center.x, -center.y, -center.z);
+      // A census cloud grown from near-planar anchors reads edge-on from
+      // the axis; open on a three-quarter orbit so the shells read as
+      // volume from the first frame.
+      this.camera.position.set(distance * 0.5, distance * 0.4, distance * 0.85);
+      this.camera.far = Math.max(200, (distance + cloudRadius) * 2.5);
+      this.camera.updateProjectionMatrix();
+      this.camera.lookAt(0, 0, 0);
+    }
+  }
+
   private camera_fit(placed: PlacedNode[]): void {
     if (placed.length === 0) return;
     const center: THREE.Vector3 = new THREE.Vector3();
@@ -755,6 +877,10 @@ export class DagScene {
       // The molecule already settled in-plane; ranked drops only its
       // parallax hash — its layout was two-dimensional by construction.
       for (const item of placed) item.position.z = 0;
+    }
+    if (this.census) {
+      this.censusBuild(placed, palette);
+      return;
     }
     if (!this.ambient) this.camera_fit(placed);
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));

@@ -209,6 +209,18 @@ try {
   check('focus citizenship: the touched console owns the prefix', focusCit.consoleGot === true);
   check('focus citizenship: CONSOLE-05 hands the prefix to the console', focusCit.givenGot === true);
 
+  console.log('census-pill');
+  const censusPill = await evalIn(`
+    document.getElementById('gutter-runs').click(); await sleep(500);
+    const pill = document.querySelector('.dag-census');
+    if (!pill) return { present: false };
+    const before = pill.textContent;
+    pill.click(); await sleep(300);
+    const after = pill.textContent;
+    pill.click(); await sleep(300);
+    return { present: true, before, after, restored: pill.textContent === before };`);
+  check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
+
   console.log('nameplate');
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');

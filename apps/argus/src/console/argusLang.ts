@@ -172,7 +172,7 @@ const VERBS_HELP: string = [
   'runs enter <feedId>         (enter a feed on the DAG pane)',
   'node enter · immerse · back (the indicated node)',
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
-  'file [@id] home|back|download|delete',
+  'file [@id] home|back|download|delete · follow · root',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
@@ -355,8 +355,8 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'file') {
-    const label: string = verb.toUpperCase();
-    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE'].includes(label)) return 'file home|back|download|delete|sort|filter';
+    const label: string = verb === 'follow' ? 'FOLLOW CWD' : verb === 'root' ? 'ROOT HERE' : verb.toUpperCase();
+    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE', 'FOLLOW CWD', 'ROOT HERE'].includes(label)) return 'file home|back|download|delete|sort|filter|follow|root';
     return drawerChild_click(host, paneId, label) ? `file ${verb}` : `file ${verb}: not offered by '${paneId}'`;
   }
 

@@ -82,6 +82,10 @@ export class FilesPanel {
   private lastListings: FsListing[] = [];
   /** True while one file's content stands in place of the listing. */
   private contentShown: boolean = false;
+  /** True when this browser follows the session cwd (the console's browser). */
+  private following: boolean = false;
+  /** Whether the listing on stage was served stale. */
+  private stale: boolean = false;
 
   /**
    * @param container - The DOM element the panel renders into.
@@ -289,11 +293,35 @@ export class FilesPanel {
     }
     // Honest-wait: a listing served stale says so on the bar until the
     // session's refresh replaces it.
-    const stale: boolean = listings.some((listing: FsListing): boolean => listing.fresh === false);
-    if (this.stateSpan !== null) {
-      this.stateSpan.classList.toggle('state-stale', stale);
-      this.stateSpan.textContent = stale ? 'STALE' : this.order.summary();
-    }
+    this.stale = listings.some((listing: FsListing): boolean => listing.fresh === false);
+    this.state_render();
+  }
+
+  /**
+   * Declares whether this browser follows the session cwd. The bar says so
+   * (`CWD`): a following browser and a rooted one wear the same chrome, and
+   * a binding nobody can see is a hardcode, not a binding.
+   *
+   * @param on - True to follow the cwd.
+   */
+  public follow_set(on: boolean): void {
+    this.following = on;
+    this.state_render();
+  }
+
+  /** Whether this browser follows the session cwd. */
+  public follow_get(): boolean {
+    return this.following;
+  }
+
+  /** The bar's state: what the browser is bound to, then what it shows. */
+  private state_render(): void {
+    if (this.stateSpan === null) return;
+    this.stateSpan.classList.toggle('state-stale', this.stale);
+    const parts: string[] = [];
+    if (this.following) parts.push('CWD');
+    parts.push(this.stale ? 'STALE' : this.order.summary());
+    this.stateSpan.textContent = parts.filter((part: string): boolean => part !== '').join(' · ');
   }
 
   /** Shows or hides the filter strip (the drawer's FILTER, or `file filter`). */

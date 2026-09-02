@@ -1308,6 +1308,21 @@ async function surface_start(token: string): Promise<void> {
           sound_play('audio3');
           return;
         }
+        // A files pane's content view (a file, a /bin entry) is a level:
+        // Esc returns it to its listing. The focused pane answers first
+        // (focus citizenship), else whichever pane has content up.
+        const focusedId: string | null = layout.focused_get();
+        const contentPanes: Array<[string, FilesPanel]> = [...filesPanels.entries()]
+          .filter(([, panel]: [string, FilesPanel]): boolean => panel.content_isShown())
+          .sort(([a]: [string, FilesPanel], [b]: [string, FilesPanel]): number =>
+            (a === focusedId ? -1 : b === focusedId ? 1 : 0));
+        const contentPane: [string, FilesPanel] | undefined = contentPanes[0];
+        if (contentPane !== undefined) {
+          contentPane[1].listing_restore();
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
         for (const panel of dagPanels.values()) {
           if (panel.nav_pop()) {
             event.stopImmediatePropagation();

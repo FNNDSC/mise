@@ -101,12 +101,13 @@ export class FilesPanel {
     this.order = new RosterOrder<FsListingEntry>(
       [
         { key: 'name', label: 'NAME' },
+        { key: 'type', label: 'TYPE' },
         { key: 'size', label: 'SIZE' },
         { key: 'date', label: 'DATE' },
         { key: 'owner', label: 'OWNER' },
       ],
       (row: FsListingEntry, key: string): string | number =>
-        key === 'size' ? row.size : key === 'date' ? row.date : key === 'owner' ? row.owner : row.name,
+        key === 'size' ? row.size : key === 'date' ? row.date : key === 'owner' ? row.owner : key === 'type' ? row.type : row.name,
       (): void => this.listings_render(this.lastListings),
       { key: 'name', dir: 'asc' },
       1,
@@ -330,7 +331,7 @@ export class FilesPanel {
         const name: HTMLSpanElement = document.createElement('span');
         name.className = 'files-name';
         name.textContent = '..';
-        updir.append(glyph, name, document.createElement('span'), document.createElement('span'), document.createElement('span'));
+        updir.append(glyph, name, document.createElement('span'), document.createElement('span'), document.createElement('span'), document.createElement('span'));
         updir.addEventListener('click', (): void => {
           this.activate({ kind: 'dir', path: parentPath_of(listing.path) });
         });
@@ -411,7 +412,12 @@ export class FilesPanel {
     owner.className = 'files-owner';
     owner.textContent = item.owner;
 
-    row.append(glyph, name, size, date, owner);
+    // The entry's kind is a column of its own: a name alone does not say
+    // whether it is a plugin, a pipeline, a link, or a directory.
+    const type: HTMLSpanElement = document.createElement('span');
+    type.className = 'files-type';
+    type.textContent = item.type;
+    row.append(glyph, name, type, size, date, owner);
 
     // Links navigate: in this VFS a link names a place (a node's `data`
     // pointing into the feed tree), so following it is a directory move —

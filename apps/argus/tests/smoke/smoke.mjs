@@ -59,6 +59,17 @@ try {
     const pacs = document.getElementById('pacs-workspace');
     return { shown: pacs.getBoundingClientRect().height > 100 };`);
   check('PACS-03 always renders PACS (a given never toggles)', pacsTwice.shown === true);
+  const consoleGiven = await evalIn(`
+    const drawerEl = document.getElementById('drawer');
+    if (!drawerEl.classList.contains('drawer-closed')) {
+      document.getElementById('drawer-toggle').click(); await sleep(500);
+    }
+    document.getElementById('gutter-console').click(); await sleep(500);
+    const first = !drawerEl.classList.contains('drawer-closed');
+    document.getElementById('gutter-console').click(); await sleep(500);
+    const second = !drawerEl.classList.contains('drawer-closed');
+    return { first, second };`);
+  check('CONSOLE-05 always renders the console open (never toggles)', consoleGiven.first && consoleGiven.second);
 
   console.log('zoom-completeness');
   const zoom = await evalIn(`

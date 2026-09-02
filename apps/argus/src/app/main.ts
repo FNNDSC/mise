@@ -1282,6 +1282,14 @@ async function surface_start(token: string): Promise<void> {
     dagPanel.list_reset();
     dagPanel.feedsChooser_request();
   });
+  // CONSOLE-05: a given always renders its target — the console open with
+  // the prompt live; never a toggle (the lid and the drawer's CLOSE retract).
+  element_require('gutter-console').addEventListener('click', (): void => {
+    if (element_require('drawer').classList.contains('drawer-closed')) {
+      element_require('drawer-toggle').click();
+    }
+    terminal.focus_take();
+  });
   element_require('gutter-tools').addEventListener('click', (): void => {
     // A given always renders its target (gutter law) — no toggling;
     // dismissal is the pane drawer's CLOSE.

@@ -107,6 +107,27 @@ LINT_CHECKS['single-animation-author'] = () => {
   }
 };
 
+LINT_CHECKS['ordinals-mark-channels'] = () => {
+  const gutter = html.match(/<div class="left-frame">([\s\S]*?)<\/div>\n\s*<div class="right-frame">/);
+  if (!gutter) { fail('ordinals-mark-channels', 'left-frame gutter not found'); return; }
+  const buttons = [...gutter[1].matchAll(/<button class="([^"]*)"[^>]*>([A-Z]+)(?:<span class="hop">([^<]*)<\/span>)?<\/button>/g)];
+  if (buttons.length === 0) { fail('ordinals-mark-channels', 'no gutter buttons parsed'); return; }
+  let expected = 1;
+  for (const [, cls, label, hop] of buttons) {
+    const isMeta = cls.includes('panel-lang');
+    if (isMeta) {
+      if (hop !== undefined) fail('ordinals-mark-channels', `meta given ${label} carries an ordinal '${hop}'`);
+      continue;
+    }
+    const m = (hop ?? '').match(/^-(\d\d)$/);
+    if (!m) { fail('ordinals-mark-channels', `channel ${label} lacks a -0N ordinal`); continue; }
+    if (Number(m[1]) !== expected) {
+      fail('ordinals-mark-channels', `channel ${label} is -${m[1]}, expected -${String(expected).padStart(2, '0')} (sequential down the column)`);
+    }
+    expected += 1;
+  }
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

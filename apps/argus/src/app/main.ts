@@ -819,6 +819,9 @@ async function surface_start(token: string): Promise<void> {
         node_regard: (vfsPath: string): void => {
           subjects.regard_write(id, { address: vfsPath, modelKind: 'feed.node' });
         },
+        feed_regard: (procPath: string): void => {
+          subjects.regard_write(id, { address: procPath, modelKind: 'feed' });
+        },
         ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
     );
@@ -1108,11 +1111,21 @@ async function surface_start(token: string): Promise<void> {
       }, 'drawer-destructive');
     }
     if (kind === 'dag') {
-      child_offer('ENTER NODE', 'move the session into the indicated node', (): void => {
+      // ENTER always lands in a place. A regard may point at a file (a
+      // file click inside a node writes the same cell): the place is its
+      // directory. Nothing regarded means the feed on stage.
+      child_offer('ENTER NODE', 'move the session into the indicated node (its data directory)', (): void => {
         const regard: RegardValue | null = subjects.regard_get(id);
-        if (regard !== null) {
-          terminal.line_run(`cd "${regard.address}"`);
-        }
+        const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        const place: string | null =
+          regard === null ? (feedId === null ? null : `/proc/jobs/feed_${feedId}`)
+          : regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/'
+          : regard.address;
+        if (place !== null) terminal.line_run(`cd "${place}"`);
+      });
+      child_offer('ENTER FEED', 'move the session into the feed on stage (or the one picked in the roster)', (): void => {
+        const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        if (feedId !== null) terminal.line_run(`cd "/proc/jobs/feed_${feedId}"`);
       });
       child_offer('BACK', 'return to the previous listing inside the node', (): void => {
         const record = nodeOverlays.get(id);

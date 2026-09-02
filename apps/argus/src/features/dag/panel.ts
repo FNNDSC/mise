@@ -490,6 +490,12 @@ export class DagPanel {
     if (!this.canvas.isConnected) {
       return;
     }
+    // The roster is a place the operator chose (RUNS-02 always lands on
+    // it): while it is on stage, a cwd that happens to sit inside a feed
+    // must not paint that feed over it. Following resumes once a graph is up.
+    if (this.feedList.style.display === 'block' || this.pendingFeedId !== null) {
+      return;
+    }
     const feedId: number | null = cwdFeed_find(context.cwd);
     if (feedId === null) {
       return;

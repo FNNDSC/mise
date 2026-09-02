@@ -332,9 +332,18 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 /* Column caps are the table's own frame: touch one to sort, again to
  * reverse; the active cap is lit. The filter strip is a mode, summoned
  * from the drawer or the language; the bar carries its state. */
+.roster-order {
+  /* The caps and the filter strip are the roster's frame: they stay put
+   * while the rows scroll beneath them. Opaque, so rows never show through. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #000;
+}
+
 .roster-caps {
   display: grid;
-  margin: 0.2rem 0 0.35rem;
+  margin: 0.2rem 0 0.45rem;
 }
 
 /* Each pane's caps grid mirrors its rows exactly — same template, same
@@ -354,17 +363,26 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 
 .roster-cap {
   min-width: 0;
-  height: 18px;
+  height: 24px;
   border: none;
   border-radius: 0;
   background-color: var(--harvestgold);
   color: #000;
   font-family: 'Antonio', sans-serif;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   letter-spacing: 0.12em;
-  text-align: right;
-  padding: 0 0.6rem;
+  /* A cap's label sits where its column's text sits: same edge, same
+   * alignment, no padding the cells do not have. */
+  text-align: left;
+  padding: 0 0.15rem;
   cursor: pointer;
+}
+
+.pane-dag .roster-cap[data-key="id"],
+.pane-files .roster-cap[data-key="size"],
+.pane-files .roster-cap[data-key="owner"],
+.pane-files .roster-cap[data-key="date"] {
+  text-align: right;
 }
 
 .roster-cap:first-of-type {

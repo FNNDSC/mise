@@ -112,7 +112,7 @@ export class RosterOrder<T> {
     glyph.textContent = 'FILTER :';
     this.input = document.createElement('input');
     this.input.className = 'roster-filter-input';
-    this.input.placeholder = 'text, or column:text (e.g. owner:sandip status:error)';
+    this.input.placeholder = 'text, or column:text (e.g. owner:<user> status:error)';
     this.input.setAttribute('autocomplete', 'off');
     this.input.addEventListener('input', (): void => this.filter_set(this.input.value, false));
     this.input.addEventListener('keydown', (event: KeyboardEvent): void => {

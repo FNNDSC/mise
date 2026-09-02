@@ -3,7 +3,7 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procRoster_sync, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, type FeedListModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
@@ -171,6 +171,7 @@ async function jobs_subcmd(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(listArgs);
   const blocked: CommandEnvelope | null = await procWarmup_guard('proc jobs list', !!parsed['force']);
   if (blocked) return blocked;
+  await procRoster_sync();
 
   let entries: ProcJobEntry[] = procEntries_fromCache(procCache_get());
   entries = procEntries_filterBySearch(entries, String(parsed['search'] ?? ''));
@@ -407,6 +408,7 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
     `proc feeds${query ? ` ${query}` : ''}`, !!parsed['force'],
   );
   if (blocked) return blocked;
+  await procRoster_sync();
 
   const cache: ProcCache = procCache_get();
   const matches: ProcFeed[] = cache.feeds_find(query)

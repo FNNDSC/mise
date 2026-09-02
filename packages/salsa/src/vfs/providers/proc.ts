@@ -2,12 +2,23 @@
  * @file /proc VFS Provider
  *
  * Surfaces ChRIS plugin instances as a navigable DAG under /proc/jobs/.
- * Backed by ProcCache (topology only — no status stored).
+ * Backed by ProcCache: an accumulating index whose terminal entries are
+ * immutable and whose freshness is visit-driven.
  *
- * Status is always fetched live:
- * - cat .../status        → getPluginInstance(id)
- * - ls -l /proc/jobs/N   → jobs_statusBatch(allNodeIDs) — parallel
- * - ls /proc/jobs        → aggregate from ProcFeed job counters (no API)
+ * Freshness model (every visit is a cheap delta, never a re-crawl):
+ * - ls /proc/jobs        → roster delta (feeds newer than the highest known
+ *                          id), and a full index walk once the roster is older
+ *                          than {@link ROSTER_FULL_WALK_MS} — so a feed shared
+ *                          later still appears within that window;
+ * - ls /proc/jobs/N      → first visit loads the topology once; every later
+ *                          visit runs {@link feedVisit_sync}: one feed-row
+ *                          fetch (job counters), then, only when something
+ *                          moved, a `min_end_date` delta walk (nodes created
+ *                          or finished since the cursor) plus an `active=true`
+ *                          sweep for the nodes still running;
+ * - settled feeds        → re-checked at most once per {@link FEED_RECHECK_MS},
+ *                          so work appended to a finished feed is still seen;
+ * - cat .../status       → getPluginInstance(id), always live.
  *
  * @module
  */
@@ -20,6 +31,8 @@ import {
   ProcInstance,
   ProcFeed,
   status_isTerminal,
+  feed_isActive,
+  feedTopology_changed,
   Result,
   Ok,
   Err,
@@ -49,6 +62,29 @@ const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 
 const PROC_JOBS_PREFIX: string = '/proc/jobs';
 const PAGE: number = 100;
+/** How long a settled feed's counters are trusted before a visit re-checks them. */
+export const FEED_RECHECK_MS: number = 10 * 60 * 1000;
+/** How old the roster may be before a visit walks the whole feed index again. */
+export const ROSTER_FULL_WALK_MS: number = 10 * 60 * 1000;
+
+/**
+ * Per-feed visit bookkeeping. Session memory only — never checkpointed; a
+ * restart simply re-derives the cursor from the cached instance timestamps.
+ *
+ * @property checkedAt - Wall-clock ms of the last feed-row check.
+ * @property cursor - Newest CUBE timestamp seen on this feed's rows, the
+ *   `min_end_date` lower bound for the next delta walk; null when no row has
+ *   carried a timestamp yet (the next delta is then a full walk).
+ */
+interface FeedVisit {
+  checkedAt: number;
+  cursor: string | null;
+}
+
+const feedVisits: Map<number, FeedVisit> = new Map();
+const feedVisitInflight: Map<number, Promise<void>> = new Map();
+let rosterWalkedAt: number = 0;
+let rosterSyncInflight: Promise<void> | null = null;
 let procTopologyPromise: Promise<void> | null = null;
 let procTopologyFailure: string | undefined;
 
@@ -153,7 +189,9 @@ async function procCache_build(): Promise<number[]> {
   }
 
   const reconciliationTargets: number[] = cache.feeds_reconcile(Array.from(indexed.values()));
+  for (const feedID of reconciliationTargets) feedVisits.delete(feedID);
   cache.built_set();
+  rosterWalkedAt = Date.now();
   return reconciliationTargets;
 }
 
@@ -179,6 +217,62 @@ function instanceMetrics_fromRow(inst: PluginInstanceData): {
   };
 }
 
+/**
+ * Converts a CUBE plugin-instance list row into the cache's instance model.
+ *
+ * @param inst - One list row.
+ * @returns The instance as ProcCache stores it (params unresolved).
+ */
+function procInstance_fromRow(inst: PluginInstanceData): ProcInstance {
+  const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
+    ? Number(inst.previous_id)
+    : null;
+  return {
+    id: Number(inst.id),
+    feedID: Number(inst.feed_id),
+    parentID: prevID,
+    pluginName: String(inst.plugin_name),
+    pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
+    params: null,
+    outputPath: outputPath_normalize(inst.output_path) ?? undefined,
+    status: String(inst.status ?? 'unknown'),
+    ...instanceMetrics_fromRow(inst),
+  };
+}
+
+/**
+ * Merges one CUBE list row into the cache: a known instance takes the row's
+ * status and metrics (terminal status never regresses), an unknown one is
+ * added to the topology.
+ *
+ * @param cache - The process cache.
+ * @param inst - One list row.
+ * @returns True when the row introduced a new instance.
+ */
+function procInstanceRow_merge(cache: ProcCache, inst: PluginInstanceData): boolean {
+  const id: number = Number(inst.id);
+  if (cache.instance_get(id)) {
+    cache.status_update(id, String(inst.status ?? 'unknown'));
+    cache.instanceMetrics_set(id, instanceMetrics_fromRow(inst));
+    return false;
+  }
+  cache.instance_add(procInstance_fromRow(inst));
+  return true;
+}
+
+/**
+ * The newer of two ISO timestamps, tolerant of absent values.
+ *
+ * @param a - A timestamp or null.
+ * @param b - A timestamp, or undefined when the row carried none.
+ * @returns The later of the two, or whichever exists.
+ */
+function isoNewest_pick(a: string | null, b: unknown): string | null {
+  if (typeof b !== 'string' || b === '') return a;
+  if (a === null) return b;
+  return Date.parse(b) > Date.parse(a) ? b : a;
+}
+
 async function feedInstances_load(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   const client = await chrisConnection.client_get();
@@ -193,22 +287,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
     for (const instance of step.items) instances.set(Number(instance.id), instance);
   }
 
-  for (const inst of instances.values()) {
-    const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
-      ? Number(inst.previous_id)
-      : null;
-    cache.instance_add({
-      id: Number(inst.id),
-      feedID: Number(inst.feed_id),
-      parentID: prevID,
-      pluginName: String(inst.plugin_name),
-      pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
-      params: null,
-      outputPath: outputPath_normalize(inst.output_path) ?? undefined,
-      status: String(inst.status ?? 'unknown'),
-      ...instanceMetrics_fromRow(inst),
-    });
-  }
+  for (const inst of instances.values()) cache.instance_add(procInstance_fromRow(inst));
 
   cache.topologyLoaded_mark(feedID);
 }
@@ -444,6 +523,7 @@ export class ProcVfsProvider implements VFSProvider {
 
     // /proc/jobs — list all feeds with aggregate status from counters
     if (clean === PROC_JOBS_PREFIX) {
+      await procRoster_sync();
       const items: VFSItem[] = cache.feedIDs_get().map((feedID: number): VFSItem => {
         const feed: ProcFeed | undefined = cache.feed_get(feedID);
         const status: string = feed ? feedStatus_derive(feed) : 'unknown';
@@ -479,13 +559,10 @@ export class ProcVfsProvider implements VFSProvider {
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
       if (!feed) return Ok([]);
 
+      // The initial load already carried live status and topology; a revisit
+      // is a delta (feed counters, then only what moved).
+      if (wasLoaded) await feedVisit_sync(feedID);
       const rootIDs: number[] = cache.feedRoots_get(feedID);
-      // The initial load already carried live status; only re-fetch when revisiting
-      // a feed that still has active (non-terminal) nodes among those shown. One
-      // feed-scoped list call updates all of them — no per-node detail fetches.
-      if (wasLoaded && rootIDs.some((id: number) => !status_isTerminal(cache.instance_get(id)?.status))) {
-        await feedStatus_refresh(feedID);
-      }
 
       const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
@@ -513,10 +590,8 @@ export class ProcVfsProvider implements VFSProvider {
       const inst: ProcInstance | undefined = cache.instance_get(instanceID);
       if (!inst) return Ok([]);
 
+      if (wasLoaded) await feedVisit_sync(feedID);
       const childIDs: number[] = cache.children_get(instanceID);
-      if (wasLoaded && childIDs.some((id: number) => !status_isTerminal(cache.instance_get(id)?.status))) {
-        await feedStatus_refresh(feedID);
-      }
 
       const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
@@ -759,6 +834,196 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
   }
 }
 
+// ── Visit-driven freshness ─────────────────────────────────────────────────
+
+/**
+ * Whether every cached instance of a feed carries a terminal status. A fully
+ * settled feed can only change by having work appended to it, which the
+ * feed-row counters reveal.
+ *
+ * @param cache - The process cache.
+ * @param feedID - The feed to inspect.
+ * @returns True when no cached instance could still change status.
+ */
+export function feedCached_isSettled(cache: ProcCache, feedID: number): boolean {
+  for (const id of cache.feedInstanceIDs_get(feedID)) {
+    const inst: ProcInstance | undefined = cache.instance_get(id);
+    if (inst === undefined || !status_isTerminal(inst.status)) return false;
+  }
+  return true;
+}
+
+/**
+ * Derives a feed's delta cursor from what the cache already holds: the newest
+ * start or end timestamp across its instances.
+ *
+ * @param cache - The process cache.
+ * @param feedID - The feed whose rows to scan.
+ * @returns The newest timestamp, or null when no row carried one.
+ */
+function feedCursor_derive(cache: ProcCache, feedID: number): string | null {
+  let newest: string | null = null;
+  for (const id of cache.feedInstanceIDs_get(feedID)) {
+    const inst: ProcInstance | undefined = cache.instance_get(id);
+    if (!inst) continue;
+    newest = isoNewest_pick(newest, inst.startedAt);
+    newest = isoNewest_pick(newest, inst.finishedAt);
+  }
+  return newest;
+}
+
+/**
+ * Walks one filtered plugin-instance listing for a feed, merging every row.
+ *
+ * @param cache - The process cache.
+ * @param client - Connected chrisapi client.
+ * @param params - CUBE filter params beyond feed_id/limit/offset.
+ * @param feedID - The feed being walked.
+ * @param cursor - The cursor to advance with the rows' timestamps.
+ * @returns The advanced cursor.
+ */
+async function feedRows_merge(
+  cache: ProcCache,
+  client: NonNullable<Awaited<ReturnType<typeof chrisConnection.client_get>>>,
+  params: Record<string, unknown>,
+  feedID: number,
+  cursor: string | null,
+): Promise<string | null> {
+  let newest: string | null = cursor;
+  for await (const step of listPages_walk(
+    (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
+      pluginInstancesPage_get(client, { ...params, feed_id: feedID, limit, offset }),
+    { pageSize: PAGE },
+  )) {
+    for (const inst of step.items) {
+      procInstanceRow_merge(cache, inst);
+      newest = isoNewest_pick(newest, inst.start_date);
+      newest = isoNewest_pick(newest, inst.end_date);
+    }
+  }
+  return newest;
+}
+
+/**
+ * Brings one already-loaded feed up to date with CUBE at the cost the change
+ * warrants: a settled feed pays one feed-row fetch per {@link FEED_RECHECK_MS};
+ * a feed with running work pays that fetch on every visit; and only when the
+ * counters moved (or work is running) does the visit walk the delta —
+ * `min_end_date` from the cursor, which yields nodes created OR finished since
+ * (CUBE stamps end_date at creation and again at completion) — followed by an
+ * `active=true` sweep for the nodes still in flight.
+ *
+ * Concurrent visits share one in-flight sync. Failures are surfaced as
+ * warnings and never fail the visit: the cache stays as it was.
+ *
+ * @param feedID - A feed whose topology is already loaded.
+ * @param force - Ignore the settled-feed throttle (an explicit refresh).
+ */
+export async function feedVisit_sync(feedID: number, force: boolean = false): Promise<void> {
+  const inflight: Promise<void> | undefined = feedVisitInflight.get(feedID);
+  if (inflight) return inflight;
+  const run: Promise<void> = feedVisit_run(feedID, force)
+    .catch((error: unknown): void => {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push('warning', `proc feed_${feedID}: live sync failed (${msg}); showing cached state`);
+    })
+    .finally((): void => { feedVisitInflight.delete(feedID); });
+  feedVisitInflight.set(feedID, run);
+  return run;
+}
+
+async function feedVisit_run(feedID: number, force: boolean): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  const feed: ProcFeed | undefined = cache.feed_get(feedID);
+  if (!feed || !cache.topologyLoaded_has(feedID)) return;
+
+  const visit: FeedVisit | undefined = feedVisits.get(feedID);
+  const settled: boolean = feedCached_isSettled(cache, feedID) && !feed_isActive(feed);
+  const now: number = Date.now();
+  if (!force && settled && visit && now - visit.checkedAt < FEED_RECHECK_MS) return;
+
+  const client = await chrisConnection.client_get();
+  if (!client) return;
+
+  const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
+  const row: FeedData | undefined = page.data[0];
+  let moved: boolean = !settled || force;
+  if (row) {
+    const fresh: ProcFeed = procFeed_create(row);
+    if (feedTopology_changed(feed, fresh)) moved = true;
+    cache.feed_add(fresh);
+  }
+  if (!moved) {
+    feedVisits.set(feedID, { checkedAt: now, cursor: visit?.cursor ?? null });
+    return;
+  }
+
+  let cursor: string | null = visit?.cursor ?? feedCursor_derive(cache, feedID);
+  const since: Record<string, unknown> = cursor ? { min_end_date: cursor } : {};
+  cursor = await feedRows_merge(cache, client, since, feedID, cursor);
+  cursor = await feedRows_merge(cache, client, { active: true }, feedID, cursor);
+  feedVisits.set(feedID, { checkedAt: Date.now(), cursor });
+}
+
+/**
+ * Brings the feed roster up to date on a `/proc/jobs` visit. While the roster
+ * is younger than {@link ROSTER_FULL_WALK_MS} this is a delta: feeds whose id
+ * exceeds the highest known one, from both the owned/shared and the public
+ * collections (one call each when nothing is new). Once older, it is the full
+ * index walk, which is the only way a feed shared later, or one deleted, is
+ * seen. A roster still owned by warmup (not yet `current`) is left alone.
+ *
+ * @param force - Walk the whole index regardless of age.
+ */
+export async function procRoster_sync(force: boolean = false): Promise<void> {
+  if (rosterSyncInflight) return rosterSyncInflight;
+  const run: Promise<void> = procRoster_run(force)
+    .catch((error: unknown): void => {
+      const msg: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push('warning', `proc roster: live sync failed (${msg}); showing cached roster`);
+    })
+    .finally((): void => { rosterSyncInflight = null; });
+  rosterSyncInflight = run;
+  return run;
+}
+
+async function procRoster_run(force: boolean): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  if (!cache.built || cache.lifecycle_get().state !== 'current') return;
+
+  if (force || Date.now() - rosterWalkedAt >= ROSTER_FULL_WALK_MS) {
+    await procCache_build();
+    return;
+  }
+
+  const client = await chrisConnection.client_get();
+  if (!client) return;
+  const knownIDs: number[] = cache.feedIDs_get();
+  const minID: number = (knownIDs.length > 0 ? Math.max(...knownIDs) : 0) + 1;
+  const fresh: Map<number, ProcFeed> = new Map();
+  await procFeeds_index(
+    (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
+      feedsPage_get(client, { ...params, min_id: minID }),
+    fresh,
+  );
+  await procFeeds_index(
+    async (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
+      (await publicFeedsPage_get(client, { ...params, min_id: minID })) ?? { data: [], totalCount: 0 },
+    fresh,
+  );
+  for (const feed of fresh.values()) cache.feed_add(feed);
+}
+
+/**
+ * Forgets all visit bookkeeping (tests, and a cache cleared underneath us).
+ */
+export function procVisitState_reset(): void {
+  feedVisits.clear();
+  feedVisitInflight.clear();
+  rosterWalkedAt = 0;
+  rosterSyncInflight = null;
+}
+
 /**
  * Background topology warm-up — single paginated sweep of all plugin instances
  * across all feeds. Replaces the per-feed fan-out that was O(feeds) round trips.
@@ -796,23 +1061,10 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
       const instanceID: number = Number(inst.id);
       const feedID: number = Number(inst.feed_id);
       state.fetchedInstanceIDs.add(instanceID);
-      const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
-        ? Number(inst.previous_id)
-        : null;
 
       if (!cache.feed_get(feedID)) continue;
 
-      cache.instance_add({
-        id: instanceID,
-        feedID,
-        parentID: prevID,
-        pluginName: String(inst.plugin_name),
-        pluginType: inst.plugin_type !== undefined ? String(inst.plugin_type) : undefined,
-        params: null,
-        outputPath: outputPath_normalize(inst.output_path) ?? undefined,
-        status: String(inst.status ?? 'unknown'),
-        ...instanceMetrics_fromRow(inst),
-      });
+      cache.instance_add(procInstance_fromRow(inst));
       state.seenInstanceIDs.add(instanceID);
       state.seenFeedIDs.add(feedID);
     }
@@ -1014,6 +1266,7 @@ export async function procTopology_await(): Promise<void> {
 export async function procCache_refresh(feedID?: number): Promise<number[]> {
   if (feedID !== undefined) {
     const cache: ProcCache = procCache_get();
+    feedVisits.delete(feedID);
     cache.feed_remove(feedID);
     // Re-fetch feed metadata with job counters
     const client = await chrisConnection.client_get();
@@ -1040,6 +1293,7 @@ export async function procCache_refresh(feedID?: number): Promise<number[]> {
     procTopologyResumeState = null;
     procTopologyScopedResumeFeedIDs = null;
     procCache_get().warmup_reset();
+    feedVisits.clear();
     return procCache_build();
   }
 }

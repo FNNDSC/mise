@@ -60,11 +60,14 @@ Two properties matter:
 
 The viewer reads the warm cache; it does not re-fetch a feed on every call. `feed tree`
 prepares data through `feedGraphData_ensure`, which reuses already-loaded topology,
-fetches feed metadata only when missing or a placeholder, refreshes volatile status
-cheaply (one feed-scoped list call, active nodes only, terminal status frozen) only when
-reusing a warm cache, and resolves join edges lazily. A cold invocation loads once; a warm
-one is near-instant. This is a hard design rule: *the FeedGraph is a projection of the
-cache, not a crawl of the backend.*
+fetches feed metadata only when missing or a placeholder, and resolves join edges lazily.
+A warm reuse runs the visit delta (`feedVisit_sync`): one feed-row fetch for the job
+counters, and only when they moved (or work is still running) a `min_end_date` walk of the
+nodes created or finished since the last visit plus an `active=true` sweep of the nodes
+still in flight — so a dynamic pipeline's new nodes appear on the next render, at a cost
+proportional to the change rather than the feed. A settled feed is re-checked at most once
+per ten minutes. A cold invocation loads once; a warm one is near-instant. This is a hard
+design rule: *the FeedGraph is a projection of the cache, not a crawl of the backend.*
 
 [[joins]]
 == Topological joins
@@ -479,7 +482,9 @@ order using shell-safe quoting. It applies only to shallow output. Pipelines exp
 * **Interactive size guard** — `feed tree` currently truncates only on explicit
   `--max-nodes`; the interactive "feed has N nodes — wait / focus / truncate?" prompt is
   unbuilt.
-* **Out-of-band freshness** — the cache learns of feeds it did not create only on a full
-  rebuild; there is no poll or TTL. Parked.
+* **Out-of-band freshness** — visit-driven since `salsa` 3.11: a `/proc/jobs` visit picks
+  up feeds newer than the highest known id and walks the whole index once the roster is ten
+  minutes old (so a feed shared later still appears); a feed visit merges the nodes created
+  or finished since the last one. Still no poll: a pane that wants liveness must revisit.
 * **Live status** — the diagram is a one-shot snapshot; live updates would re-render the
   reduced subgraph as status transitions arrive on the progress channel.

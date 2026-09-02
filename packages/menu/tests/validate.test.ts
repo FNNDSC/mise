@@ -22,6 +22,13 @@ describe('clientMessage_parse', () => {
     expect(clientMessage_parse({ type: 'shellError', shellId: 's2', reason: 'failed' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'promptError', promptId: 'p1', reason: 'cannot prompt' }).ok).toBe(true);
     expect(clientMessage_parse({ type: 'editError', editId: 'e1', reason: 'cannot edit' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'watch', subject: '/proc/jobs/feed_7' }).ok).toBe(true);
+    expect(clientMessage_parse({ type: 'unwatch', subject: '/proc/jobs/feed_7' }).ok).toBe(true);
+  });
+
+  it('a watched report names its subject and one of the known states', () => {
+    expect(serverMessage_parse({ type: 'watched', subject: '/proc/jobs/feed_7', state: 'live' }).ok).toBe(true);
+    expect(serverMessage_parse({ type: 'watched', subject: '/proc/jobs/feed_7', state: 'sleeping' }).ok).toBe(false);
   });
 
   it('accepts hidden-input capability declaration without requiring it from older surfaces', () => {

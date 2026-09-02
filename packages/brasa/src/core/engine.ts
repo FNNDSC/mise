@@ -26,7 +26,9 @@
  */
 import chalk from 'chalk';
 import type { CommandEnvelope, Result } from '@fnndsc/cumin';
-import type { Regard } from '@fnndsc/menu';
+import type { Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
+import { ambient_listen } from './ambient.js';
+import { procWatch_add, procWatch_remove, procWatch_release, procWatch_state, watchSubject_parse } from '../builtins/procWatch.js';
 import { session } from '../session/index.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
 import {
@@ -117,6 +119,34 @@ export interface BrasaEngine {
    * @returns The retained regard, or null.
    */
   regard_get?(): Regard | null;
+
+  /**
+   * Opens or closes a liveness watch on a subject for one owner (a surface
+   * id, or the operator at a console). While any owner watches a subject,
+   * the engine samples it and publishes refreshed models as ambient events.
+   *
+   * @param subject - The subject address (`/proc/jobs/feed_N`).
+   * @param owner - Who holds the watch.
+   * @param on - True to watch, false to release.
+   * @returns The subject's watch state, or null when the subject is not watchable.
+   */
+  watch_set?(subject: string, owner: string, on: boolean): WatchState | null;
+
+  /**
+   * Releases every watch one owner holds (a surface detached).
+   *
+   * @param owner - The owner whose watches end.
+   */
+  watch_release?(owner: string): void;
+
+  /**
+   * Subscribes to events the engine originates on its own: a sampler's
+   * refreshed model, a watch changing state.
+   *
+   * @param listener - Receives each ambient event.
+   * @returns Function that unsubscribes.
+   */
+  ambient_listen?(listener: (event: AmbientEvent) => void): () => void;
 }
 
 /**
@@ -360,6 +390,15 @@ export async function engine_create(): Promise<BrasaEngine> {
     file_read,
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
+    watch_set: (subject: string, owner: string, on: boolean): WatchState | null => {
+      const feedID: number | null = watchSubject_parse(subject);
+      if (feedID === null) return null;
+      if (on) return procWatch_add(feedID, owner);
+      procWatch_remove(feedID, owner);
+      return procWatch_state(feedID);
+    },
+    watch_release: (owner: string): void => procWatch_release(owner),
+    ambient_listen,
   };
 }
 

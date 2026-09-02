@@ -73,6 +73,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   }),
   envelope_ok: (rendered: string, model?: unknown): TestEnvelope => (model !== undefined ? { status: 'ok', rendered, model } as TestEnvelope : { status: 'ok', rendered }),
   procCache_get: jest.fn(() => mockCache),
+  feed_isActive: (feed: { startedJobs: number; scheduledJobs: number; createdJobs: number }): boolean => feed.startedJobs > 0 || feed.scheduledJobs > 0 || feed.createdJobs > 0,
   path_extractFeedID: pathExtractFeedID_mock,
   path_extractPluginInstanceID: pathExtractPluginInstanceID_mock,
   path_isInFeed: pathIsInFeed_mock,
@@ -83,6 +84,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   jobs_find: jobsFind_mock,
   procCache_refresh: procCacheRefresh_mock,
   procRoster_sync: jest.fn(async (): Promise<void> => undefined),
+  feedVisit_sync: jest.fn(async (): Promise<boolean> => true),
+  feedCached_isSettled: jest.fn((): boolean => true),
   procFeed_ensureLoaded: procFeedEnsureLoaded_mock,
   procTopology_await: procTopologyAwait_mock,
   procTopology_warmup: procTopologyWarmup_mock,
@@ -122,7 +125,52 @@ jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({
   table_render: jest.fn(() => ''),
 }));
 
+const procWatchAdd_mock = jest.fn((): string => 'live');
+const procWatchRemove_mock = jest.fn();
+const procWatchList_mock = jest.fn((): { feedID: number; owners: number; state: string }[] => []);
+jest.unstable_mockModule('../src/builtins/procWatch.js', () => ({
+  procWatch_add: procWatchAdd_mock,
+  procWatch_remove: procWatchRemove_mock,
+  procWatch_list: procWatchList_mock,
+  watchSubject_parse: (subject: string): number | null => {
+    const match: RegExpMatchArray | null = /feed_(\d+)$/.exec(subject) ?? /^(\d+)$/.exec(subject);
+    return match ? Number(match[1]) : null;
+  },
+}));
+
 const { builtin_proc } = await import('../src/builtins/proc.js');
+
+describe('builtin_proc watches', () => {
+  beforeEach(() => { jest.clearAllMocks(); process.exitCode = undefined; });
+
+  it('proc watch <feed> opens an operator watch and reports its state', async () => {
+    const envelope: TestEnvelope = await builtin_proc(['watch', 'feed_7']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('watching /proc/jobs/feed_7');
+    expect(procWatchAdd_mock).toHaveBeenCalledWith(7, 'operator');
+  });
+
+  it('proc watch with no argument lists the watches', async () => {
+    procWatchList_mock.mockReturnValueOnce([{ feedID: 7, owners: 2, state: 'live' }]);
+    const envelope: TestEnvelope = await builtin_proc(['watch']);
+    expect(envelope.rendered).toContain('/proc/jobs/feed_7');
+    expect(envelope.rendered).toContain('2 owner(s)');
+    expect((await builtin_proc(['watch'])).rendered).toContain('No watches');
+  });
+
+  it('proc watch refuses a subject that is not a feed', async () => {
+    const envelope: TestEnvelope = await builtin_proc(['watch', '/vfs/home']);
+    expect(envelope.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+    expect(procWatchAdd_mock).not.toHaveBeenCalled();
+  });
+
+  it('proc unwatch <feed> releases the operator watch, and needs a feed', async () => {
+    expect((await builtin_proc(['unwatch', '7'])).rendered).toContain('released /proc/jobs/feed_7');
+    expect(procWatchRemove_mock).toHaveBeenCalledWith(7, 'operator');
+    expect((await builtin_proc(['unwatch'])).status).toBe('error');
+  });
+});
 
 describe('builtin_proc warm-up policy', () => {
   const previousExitCode: number | string | undefined = process.exitCode;

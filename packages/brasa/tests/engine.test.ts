@@ -42,6 +42,19 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   },
 }));
 
+// Watches: the engine facade delegates to the sampler registry.
+const mockWatchAdd = jest.fn((): string => 'live');
+const mockWatchRemove = jest.fn();
+const mockWatchRelease = jest.fn();
+const mockWatchState = jest.fn((): string => 'settled');
+jest.unstable_mockModule('../src/builtins/procWatch.js', () => ({
+  procWatch_add: mockWatchAdd,
+  procWatch_remove: mockWatchRemove,
+  procWatch_release: mockWatchRelease,
+  procWatch_state: mockWatchState,
+  watchSubject_parse: (subject: string): number | null => (/feed_(\d+)$/.exec(subject) ? Number(/feed_(\d+)$/.exec(subject)![1]) : null),
+}));
+
 // Redirect targets: real preprocess resolves the path (statSync), dispatch writes it.
 const mockWriteFile = jest.fn();
 const mockAppendFile = jest.fn();
@@ -395,5 +408,19 @@ describe('engine_create', () => {
     expect(envelopes).toHaveLength(1);
     const completion = await engine.line_complete('l');
     expect(completion.candidates).toContain('ls');
+  });
+
+  it('exposes watches on the facade: open, release one, release an owner, refuse a non-feed', async () => {
+    const engine = await engine_create();
+    expect(engine.watch_set!('/proc/jobs/feed_7', 'pane-a', true)).toBe('live');
+    expect(mockWatchAdd).toHaveBeenCalledWith(7, 'pane-a');
+    expect(engine.watch_set!('/proc/jobs/feed_7', 'pane-a', false)).toBe('settled');
+    expect(mockWatchRemove).toHaveBeenCalledWith(7, 'pane-a');
+    expect(engine.watch_set!('/vfs/home', 'pane-a', true)).toBeNull();
+    engine.watch_release!('pane-a');
+    expect(mockWatchRelease).toHaveBeenCalledWith('pane-a');
+    const stop: () => void = engine.ambient_listen!((): void => undefined);
+    expect(typeof stop).toBe('function');
+    stop();
   });
 });

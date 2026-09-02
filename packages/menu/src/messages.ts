@@ -194,6 +194,50 @@ export const regardMessageSchema = z.object({
   regard: regardSchema,
 });
 
+/**
+ * A liveness subscription: the surface asks the session to keep one subject
+ * fresh while the surface is looking at it. The subject is an address in
+ * the namespace (`/proc/jobs/feed_N`), never a view. Regard is what the
+ * operator indicates; a watch is what a surface keeps open — a different
+ * noun, so it has its own message. Watches are owned per surface and
+ * released when the surface detaches.
+ */
+export const watchMessageSchema = z.object({
+  type: z.literal('watch'),
+  subject: z.string(),
+});
+
+/** Ends a surface's liveness subscription for one subject. */
+export const unwatchMessageSchema = z.object({
+  type: z.literal('unwatch'),
+  subject: z.string(),
+});
+
+/** What a watched subject is doing: sampled live, settled for good, or last sample failed. */
+export const WATCH_STATES = ['live', 'settled', 'stale'] as const;
+export const watchStateSchema = z.enum(WATCH_STATES);
+export type WatchState = z.infer<typeof watchStateSchema>;
+
+/**
+ * The daemon's report on a watched subject's liveness, pushed to every
+ * surface whenever it changes (a subject settling is news to all of them).
+ */
+export const watchedMessageSchema = z.object({
+  type: z.literal('watched'),
+  subject: z.string(),
+  state: watchStateSchema,
+});
+export type WatchedMessage = z.infer<typeof watchedMessageSchema>;
+
+/**
+ * An event the engine originates on its own — a sampler's refreshed model,
+ * a watch changing state — rather than in answer to a command. The daemon
+ * relays it to every surface; it never enters scrollback.
+ */
+export type AmbientEvent =
+  | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema> }
+  | { kind: 'watched'; subject: string; state: WatchState };
+
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
@@ -211,6 +255,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   deliverResultMessageSchema,
   deliverErrorMessageSchema,
   regardMessageSchema,
+  watchMessageSchema,
+  unwatchMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -489,6 +535,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   editMessageSchema,
   deliverMessageSchema,
   regardMessageSchema,
+  watchedMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

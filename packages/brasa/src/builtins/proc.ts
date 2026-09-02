@@ -9,6 +9,7 @@ import { FEED_LIST_MODEL_KIND, type FeedListModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
+import { procWatch_add, procWatch_remove, procWatch_list, watchSubject_parse, type ProcWatchEntry } from './procWatch.js';
 import { session } from '../session/index.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { screen, table_render } from '@fnndsc/chili/screen/screen.js';
@@ -507,6 +508,56 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
   return envelope_ok(rendered);
 }
 
+// ── Watches ───────────────────────────────────────────────────────────────────
+
+/** The operator at a console owns its watches under one name. */
+const OPERATOR_OWNER: string = 'operator';
+
+/**
+ * Handles `proc watch [feed]`: opens an operator watch on a feed (its DAG is
+ * then sampled while it runs, and every surface receives the refreshed
+ * model), or with no argument lists the session's watches.
+ *
+ * @param args - Full command args (`args[1]` is the feed).
+ * @returns An envelope reporting the watch state or the watch list.
+ */
+async function procWatch_handle(args: string[]): Promise<CommandEnvelope> {
+  const subject: string | undefined = args[1];
+  if (subject === undefined) {
+    const entries: ProcWatchEntry[] = procWatch_list();
+    if (entries.length === 0) return envelope_ok(`${chalk.gray('No watches.')}\n`);
+    let rendered: string = '';
+    for (const entry of entries) {
+      rendered += `/proc/jobs/feed_${entry.feedID}  ${chalk.cyan(entry.state)}  ${chalk.dim(`${entry.owners} owner(s)`)}\n`;
+    }
+    return envelope_ok(rendered);
+  }
+  const feedID: number | null = watchSubject_parse(subject);
+  if (feedID === null) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`proc watch: not a feed: '${subject}'`)}\n`);
+  }
+  const state: string = procWatch_add(feedID, OPERATOR_OWNER);
+  return envelope_ok(`${chalk.green(`watching /proc/jobs/feed_${feedID}`)} ${chalk.cyan(state)}\n`);
+}
+
+/**
+ * Handles `proc unwatch <feed>`: releases the operator's watch on a feed.
+ *
+ * @param args - Full command args (`args[1]` is the feed).
+ * @returns An envelope confirming the release.
+ */
+async function procUnwatch_handle(args: string[]): Promise<CommandEnvelope> {
+  const subject: string | undefined = args[1];
+  const feedID: number | null = subject === undefined ? null : watchSubject_parse(subject);
+  if (feedID === null) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('proc unwatch: a feed is required')}\n`);
+  }
+  procWatch_remove(feedID, OPERATOR_OWNER);
+  return envelope_ok(`${chalk.green(`released /proc/jobs/feed_${feedID}`)}\n`);
+}
+
 // ── Main dispatcher ───────────────────────────────────────────────────────────
 
 /**
@@ -538,6 +589,12 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
   }
   if (subcommand === 'stat') {
     return procStat_handle(args);
+  }
+  if (subcommand === 'watch') {
+    return procWatch_handle(args);
+  }
+  if (subcommand === 'unwatch') {
+    return procUnwatch_handle(args);
   }
 
   process.exitCode = 1;

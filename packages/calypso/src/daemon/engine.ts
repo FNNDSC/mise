@@ -11,7 +11,7 @@
  * @module
  */
 import type { CommandEnvelope } from '@fnndsc/cumin';
-import type { Regard } from '@fnndsc/menu';
+import type { Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
 
 /**
  * A completion answer: the candidates and the prefix they complete.
@@ -81,4 +81,31 @@ export interface HostedEngine {
    * @returns The retained regard, or null.
    */
   regard_get?(): Regard | null;
+
+  /**
+   * Opens or closes a liveness watch on a subject for one owner. Optional:
+   * a daemon whose engine lacks it refuses `watch` messages.
+   *
+   * @param subject - The subject address (`/proc/jobs/feed_N`).
+   * @param owner - Who holds the watch (a surface id).
+   * @param on - True to watch, false to release.
+   * @returns The subject's watch state, or null when not watchable.
+   */
+  watch_set?(subject: string, owner: string, on: boolean): WatchState | null;
+
+  /**
+   * Releases every watch one owner holds (its surface detached).
+   *
+   * @param owner - The owner whose watches end.
+   */
+  watch_release?(owner: string): void;
+
+  /**
+   * Subscribes to events the engine originates on its own, which the daemon
+   * relays to every surface off the scrollback.
+   *
+   * @param listener - Receives each ambient event.
+   * @returns Function that unsubscribes.
+   */
+  ambient_listen?(listener: (event: AmbientEvent) => void): () => void;
 }

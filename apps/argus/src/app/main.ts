@@ -264,8 +264,8 @@ function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
 
   const zoom_set = (pane: string | null): void => {
-    for (const marked of document.querySelectorAll('.pane-zoomed')) {
-      marked.classList.remove('pane-zoomed');
+    for (const marked of document.querySelectorAll('.pane-zoomed, .pane-zoomed-path')) {
+      marked.classList.remove('pane-zoomed', 'pane-zoomed-path');
     }
     if (pane === null) {
       delete body.dataset['zoom'];
@@ -281,9 +281,18 @@ function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
         body.style.setProperty('--zoom-header-height', `${header.getBoundingClientRect().bottom}px`);
       }
       body.dataset['zoom'] = pane;
-      // A tree pane's zoom marks its leaf; siblings step offstage in CSS.
+      // A tree pane's zoom marks its leaf AND the split path above it:
+      // hiding siblings alone left the leaf imprisoned in its old cell
+      // (half a pane of graph, half a pane of nothing) — every ancestor
+      // box on the path must also yield its full region.
       const mount: HTMLElement | undefined = paneInstance_get(pane)?.mount;
-      mount?.parentElement?.classList.add('pane-zoomed');
+      const leaf: HTMLElement | null = mount?.parentElement ?? null;
+      leaf?.classList.add('pane-zoomed');
+      let ancestor: HTMLElement | null = leaf?.parentElement ?? null;
+      while (ancestor !== null && ancestor.id !== 'layout-root') {
+        ancestor.classList.add('pane-zoomed-path');
+        ancestor = ancestor.parentElement;
+      }
     }
     // The capsule is a toggle and must read as its next action.
     for (const capsule of document.querySelectorAll<HTMLElement>('.drawer-zoom')) {

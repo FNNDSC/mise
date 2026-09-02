@@ -56,6 +56,29 @@ export interface CacheOptions {
 }
 
 /**
+ * A persistence-safe copy of one cache entry.
+ *
+ * @property path - The listed path.
+ * @property data - The cached listing.
+ * @property timestamp - When it was cached (ms since epoch); age is judged
+ *   against this on restore, so a restored entry is as stale as it really is.
+ * @property dirty - Whether a local mutation invalidated it.
+ * @property ttl - Its time-to-live in milliseconds.
+ */
+export interface ListCacheEntrySnapshot {
+  path: string;
+  data: unknown;
+  timestamp: number;
+  dirty: boolean;
+  ttl: number;
+}
+
+/** The whole cache, oldest entry first (the LRU order). */
+export interface ListCacheSnapshot {
+  entries: ListCacheEntrySnapshot[];
+}
+
+/**
  * Statistics about cache usage.
  */
 export interface CacheStats {
@@ -141,6 +164,53 @@ export class ListCache {
     staleHits: 0,
     evictions: 0,
   };
+  /** Listeners told after any mutation a persister would want to see. */
+  private listeners: Set<() => void> = new Set();
+
+  /**
+   * Registers a callback for checkpoint-worthy mutations (set, update,
+   * dirty, invalidate).
+   *
+   * @param listener - Callback invoked after a mutation.
+   * @returns Function that unregisters the callback.
+   */
+  changeListener_add(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return (): void => { this.listeners.delete(listener); };
+  }
+
+  private change_emit(): void {
+    for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * Creates a persistence-safe copy of every entry, oldest first.
+   *
+   * @returns The snapshot.
+   */
+  snapshot_create(): ListCacheSnapshot {
+    const entries: ListCacheEntrySnapshot[] = [];
+    for (const [path, entry] of this.cache) {
+      entries.push({ path, data: entry.data, timestamp: entry.timestamp, dirty: entry.dirty, ttl: entry.ttl });
+    }
+    return { entries };
+  }
+
+  /**
+   * Replaces the cache with a snapshot's entries, keeping their original
+   * timestamps: what was stale stays stale and is revalidated on its next
+   * visit. Entries beyond the LRU bound are dropped oldest-first.
+   *
+   * @param snapshot - A validated snapshot.
+   */
+  snapshot_restore(snapshot: ListCacheSnapshot): void {
+    this.cache.clear();
+    for (const entry of snapshot.entries) {
+      this.cache.set(entry.path, { data: entry.data, timestamp: entry.timestamp, dirty: entry.dirty, ttl: entry.ttl });
+    }
+    this.evict_lru();
+    this.change_emit();
+  }
 
   /**
    * Private constructor to enforce singleton pattern.
@@ -214,6 +284,7 @@ export class ListCache {
 
     // LRU eviction if over limit
     this.evict_lru();
+    this.change_emit();
   }
 
   /**
@@ -226,6 +297,7 @@ export class ListCache {
     const entry: CacheEntry<unknown> | undefined = this.cache.get(path);
     if (entry) {
       entry.dirty = true;
+      this.change_emit();
     }
   }
 
@@ -242,6 +314,7 @@ export class ListCache {
       entry.data = updater(entry.data as T);
       entry.timestamp = Date.now();  // Reset timestamp
       entry.dirty = false;            // Clean after update
+      this.change_emit();
     }
   }
 
@@ -257,6 +330,7 @@ export class ListCache {
     } else {
       this.cache.clear();
     }
+    this.change_emit();
   }
 
   /**
@@ -277,6 +351,7 @@ export class ListCache {
         this.cache.delete(key);
       }
     }
+    this.change_emit();
   }
 
   /**

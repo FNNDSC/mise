@@ -37,6 +37,9 @@ import {
   procCache_get,
   procCheckpoint_restore,
   procCheckpoint_watch,
+  listCheckpoint_restore,
+  listCheckpoint_watch,
+  type ListCheckpointRestoreResult,
   type ProcCheckpointRestoreResult,
   type ProcWarmupProgress,
   type Result,
@@ -233,6 +236,22 @@ export async function startupWarmup_run(
     }
   } else {
     reporter?.log('skip', 'Groups', 'Offline mode');
+  }
+
+  // Listings survive a restart as a stale-marked checkpoint: the first `ls`
+  // anywhere already listed renders at once and revalidates behind itself.
+  if (!session.offline && user) {
+    const cubeUrl: string | null = await chrisContext.ChRISURL_get();
+    if (cubeUrl) {
+      const identity: string = identity_forSession(user, cubeUrl);
+      const listings: ListCheckpointRestoreResult = await listCheckpoint_restore(identity);
+      listCheckpoint_watch(identity);
+      reporter?.log(
+        listings.restored ? 'ok' : 'skip',
+        'Listings',
+        listings.restored ? `Restored ${listings.count} cached listing(s), stale until revisited` : (listings.reason ?? 'No listing checkpoint'),
+      );
+    }
   }
 
   if (!session.offline && flags.feeds) {

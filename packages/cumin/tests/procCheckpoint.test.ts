@@ -186,3 +186,9 @@ it('the watcher spaces writes of one shard by the floor, never dropping the last
   expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('pl-b'); // trailing write landed
   watch_stop();
 });
+
+it('the default checkpoint directory lives under the user cache home, keyed but never naming the identity', () => {
+  const dir: string = procCheckpointDir_get(identity);
+  expect(dir).toMatch(/\/chell\/proc\/[0-9a-f]{16}$/);
+  expect(dir).not.toContain('cube.example.org');
+});

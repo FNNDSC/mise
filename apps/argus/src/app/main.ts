@@ -1606,6 +1606,13 @@ async function surface_start(token: string): Promise<void> {
       // The sampler's refreshed models: every DAG pane showing that feed
       // repaints in place; nothing pins, nothing reaches the transcript.
       ambient_receive: (envelope: WireEnvelope): void => {
+        if (envelope.model?.kind === 'fs.listing') {
+          // A stale listing's refresh: every Files pane showing that path
+          // swaps it in and drops its STALE readout.
+          filesPanel.ambient_observe(envelope);
+          for (const panel of filesPanels.values()) panel.ambient_observe(envelope);
+          return;
+        }
         if (envelope.model?.kind !== 'feed.dag') return;
         const parsed = feedDagModelSchema.safeParse(envelope.model.data);
         if (!parsed.success) return;

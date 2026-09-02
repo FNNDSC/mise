@@ -389,9 +389,14 @@ chatty Collection+JSON traversal from a wide-area browser connection to a
 long-lived process near the data, although the magnitude of that benefit remains
 to be measured.
 
-Two narrow forms of state survive process restart. First, identity and working
+Three narrow forms of state survive process restart. First, identity and working
 context are written through existing context files and rehydrated at launch.
-Second, `/proc` topology has an identity-keyed checkpoint under the user's cache
+Second, directory listings are checkpointed with their original timestamps, so a
+restored listing is exactly as stale as it really is: the first `ls` of a path
+already listed renders at once, marked stale, and revalidates behind itself —
+at a daemon the fresh listing then reaches every surface on its own; at a plain
+console a stale entry is refetched in line, since nobody would carry the refresh.
+Third, `/proc` topology has an identity-keyed checkpoint under the user's cache
 directory: a mode-0700 folder holding a roster file (feed metadata) and one shard
 per feed (normalized plugin-instance topology, loaded marker, terminal status,
 execution metrics). A mutation to one feed rewrites only that feed's shard,

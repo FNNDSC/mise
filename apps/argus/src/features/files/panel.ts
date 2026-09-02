@@ -45,6 +45,8 @@ export interface FsListingEntry {
 export interface FsListing {
   path: string;
   items: FsListingEntry[];
+  /** False when the session served this listing stale; a refresh follows on its own. */
+  fresh?: boolean;
 }
 
 /** Glyphs for the entry kinds, chosen to read at LCARS contrast. */
@@ -131,6 +133,28 @@ export class FilesPanel {
     }
     this.lastListings = listings;
     this.listings_render(listings);
+  }
+
+  /**
+   * A refreshed listing arrived from the session on its own (the
+   * revalidation behind a stale serve). Only a path this pane is showing
+   * is its business: that listing is replaced in place and the STALE
+   * readout clears.
+   *
+   * @param envelope - An ambient envelope.
+   */
+  public ambient_observe(envelope: WireEnvelope): void {
+    if (envelope.model?.kind !== 'fs.listing') return;
+    const incoming: FsListing[] | null = listings_validate(envelope.model.data);
+    if (incoming === null || this.lastListings.length === 0) return;
+    let touched: boolean = false;
+    const merged: FsListing[] = this.lastListings.map((shown: FsListing): FsListing => {
+      const fresh: FsListing | undefined = incoming.find((listing: FsListing): boolean => listing.path === shown.path);
+      if (fresh === undefined) return shown;
+      touched = true;
+      return fresh;
+    });
+    if (touched) this.listings_render(merged);
   }
 
   /**
@@ -253,7 +277,13 @@ export class FilesPanel {
       block.appendChild(table);
       this.container.appendChild(block);
     }
-    if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
+    // Honest-wait: a listing served stale says so on the bar until the
+    // session's refresh replaces it.
+    const stale: boolean = listings.some((listing: FsListing): boolean => listing.fresh === false);
+    if (this.stateSpan !== null) {
+      this.stateSpan.classList.toggle('state-stale', stale);
+      this.stateSpan.textContent = stale ? 'STALE' : this.order.summary();
+    }
   }
 
   /** Shows or hides the filter strip (the drawer's FILTER, or `file filter`). */

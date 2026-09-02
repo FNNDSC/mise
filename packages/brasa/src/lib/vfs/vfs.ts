@@ -10,6 +10,7 @@ import { plugins_listAll, vfsDispatcher } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
 import chalk from 'chalk';
 import * as path from 'path';
+import { ambient_publish, ambient_hasListeners } from '../../core/ambient.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
@@ -22,6 +23,20 @@ import { listingItemsFromVfs_make } from './listing.js';
  * Virtual File System Router.
  * Dispatches operations to Virtual or Native providers.
  */
+/**
+ * A resolved directory listing with its freshness.
+ *
+ * @property path - The absolute path listed.
+ * @property items - The entries.
+ * @property fresh - True when current; false when served stale with a
+ *   revalidation running behind it.
+ */
+export interface VfsListing {
+  path: string;
+  items: ListingItem[];
+  fresh: boolean;
+}
+
 export class VFS {
   /**
    * Gets data for a directory (Virtual or Native).
@@ -32,6 +47,52 @@ export class VFS {
    * @returns Result<ListingItem[]> - Ok with items or Err with error message.
    */
   async data_get(targetPath?: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<ListingItem[]>> {
+    const resolved: Result<VfsListing> = await this.listing_get(targetPath, options);
+    return resolved.ok ? Ok(resolved.value.items) : Err();
+  }
+
+  /** Background revalidations in flight, one per path. */
+  private revalidating: Map<string, Promise<void>> = new Map();
+
+  /**
+   * Re-fetches one listing behind a stale serve and publishes the fresh
+   * result as an ambient `fs.listing` envelope, so every surface showing
+   * that path repaints. One fetch per path at a time.
+   *
+   * @param effectivePath - The absolute path to refresh.
+   */
+  private listing_revalidate(effectivePath: string): Promise<void> {
+    const inflight: Promise<void> | undefined = this.revalidating.get(effectivePath);
+    if (inflight) return inflight;
+    const run: Promise<void> = (async (): Promise<void> => {
+      const fetched = await vfsDispatcher.list(effectivePath, {});
+      if (!fetched.ok) return;
+      const items: ListingItem[] = listingItemsFromVfs_make(fetched.value);
+      listCache_get().cache_set(effectivePath, items);
+      ambient_publish({
+        kind: 'envelope',
+        envelope: { status: 'ok', rendered: '', model: { kind: 'fs.listing', data: [{ path: effectivePath, items, fresh: true }] } },
+      });
+    })()
+      .catch((): void => { /* the stale listing stands until the next visit */ })
+      .finally((): void => { this.revalidating.delete(effectivePath); });
+    this.revalidating.set(effectivePath, run);
+    return run;
+  }
+
+  /**
+   * Resolves a directory listing with its freshness. A fresh cached
+   * listing is served as is. A stale one is served at once only when a
+   * host can carry the refresh (an ambient listener exists — the daemon),
+   * with the revalidation running behind it; at a plain console the stale
+   * entry is refetched in line, because nobody would deliver the refresh.
+   * `/proc` paths never touch this cache.
+   *
+   * @param targetPath - The path to list; the working directory when empty.
+   * @param options - Sort and `-d` options.
+   * @returns The listing, its absolute path, and whether it is current.
+   */
+  async listing_get(targetPath?: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<Result<VfsListing>> {
     try {
       const cwd: string = await session.getCWD();
       const effectivePath: string = targetPath
@@ -40,7 +101,8 @@ export class VFS {
 
       // -d: show the target entry itself rather than descending into it
       if (options.directory && targetPath) {
-        return this.directoryEntry_get(effectivePath, options);
+        const entry: Result<ListingItem[]> = await this.directoryEntry_get(effectivePath, options);
+        return entry.ok ? Ok({ path: effectivePath, items: entry.value, fresh: true }) : Err();
       }
 
       // /proc paths are backed by ProcCache which manages its own freshness —
@@ -51,10 +113,11 @@ export class VFS {
       const listCache = listCache_get();
       if (!isProcPath) {
         const cached = listCache.cache_get<ListingItem[]>(effectivePath);
-        if (cached) {
+        if (cached && (cached.fresh || ambient_hasListeners())) {
+          if (!cached.fresh) void this.listing_revalidate(effectivePath);
           const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
           const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
-          return Ok(sortedItems);
+          return Ok({ path: effectivePath, items: sortedItems, fresh: cached.fresh });
         }
 
         // Shell wildcard expansion reads and caches the parent directory before
@@ -62,7 +125,7 @@ export class VFS {
         // descend into, so return the matching cached entry itself.
         const parentLeaf: ListingItem | null = this.leafFromParentCache_get(effectivePath);
         if (parentLeaf) {
-          return Ok([parentLeaf]);
+          return Ok({ path: effectivePath, items: [parentLeaf], fresh: true });
         }
       }
 
@@ -76,7 +139,7 @@ export class VFS {
           listCache.cache_set(effectivePath, items);
         }
 
-        return Ok(items);
+        return Ok({ path: effectivePath, items, fresh: true });
       }
 
       return Err();
@@ -171,11 +234,10 @@ export class VFS {
       ? path.posix.resolve(cwd, targetPath)
       : cwd;
 
-    // Check if we're serving from stale cache BEFORE fetching
-    const listCache = listCache_get();
-    const cached = listCache.cache_get(effectivePath);
-    const wasStale: boolean | null = cached && !cached.fresh;
-    const isCacheMiss: boolean = !cached;
+    // A cache miss will wait on the wire; a stale entry may be served at
+    // once (listing_get decides, and revalidates behind it where a host can
+    // carry the refresh).
+    const isCacheMiss: boolean = !listCache_get().cache_get(effectivePath);
 
     // For cache miss, show loading indicator after 500ms timeout
     let spinnerStarted: boolean = false; // Flag to track if spinner was actually started
@@ -189,7 +251,8 @@ export class VFS {
     }
 
     // Fetch data (may be from cache)
-    const result: Result<ListingItem[]> = await this.data_get(targetPath, options);
+    const listing: Result<VfsListing> = await this.listing_get(targetPath, options);
+    const result: Result<ListingItem[]> = listing.ok ? Ok(listing.value.items) : Err();
 
     // Clear loading timeout and indicator
     if (spinnerDelayTimeout) {
@@ -214,43 +277,13 @@ export class VFS {
       ? `${long_render(result.value, { human: !!options.human })}\n`
       : `${grid_render(result.value, { oneColumn: !!options.oneColumn })}\n`;
 
-    // If we served stale cache, note it and refresh in background.
-    if (wasStale) {
+    // Served stale: say so. The refresh is already running behind this
+    // answer and reaches every surface as an ambient listing.
+    if (listing.ok && !listing.value.fresh) {
       rendered += `${chalk.gray('(cached, refreshing...)')}\n`;
-      // Trigger background refresh - don't await. Fenced in its own error-stack
-      // scope so its pushes/pops cannot corrupt a concurrent foreground
-      // command's error-drain window.
-      errorStack.scope_run(() => {
-        this.refreshInBackground(effectivePath, options).catch(() => {
-          // Silently ignore refresh errors - user has moved on
-        });
-      });
     }
 
     return envelope_ok(rendered);
-  }
-
-  /**
-   * Refreshes cache in the background without blocking or updating display.
-   * Used for optimistic rendering - fetch fresh data after serving stale cache.
-   *
-   * @param targetPath - The path to refresh.
-   * @param options - Options including sort and reverse.
-   */
-  private async refreshInBackground(targetPath: string, options: { sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean }): Promise<void> {
-    try {
-      // Invalidate cache to force fresh fetch
-      const listCache = listCache_get();
-      listCache.cache_invalidate(targetPath);
-
-      // Fetch fresh data - this will repopulate cache
-      await this.data_get(targetPath, options);
-
-      // Don't update display - user has moved on
-      // Fresh data is now cached for next access
-    } catch (_error: unknown) {
-      // Silently fail - background refresh is best-effort
-    }
   }
 
   // Removed legacy virtual directory list helpers (fully unified under StaticVfsProvider and VFSDispatcher)

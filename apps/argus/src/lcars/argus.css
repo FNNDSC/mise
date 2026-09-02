@@ -1953,6 +1953,19 @@ body[data-zoom] #header-restore {
   border-bottom: var(--panel-border);
 }
 
+/* CONSOLE-05: the console is summoned in the gutter's language like any
+ * other channel — the lid remains the tactile shortcut, not the only door. */
+.left-frame .panel-console {
+  display: flex;
+  justify-content: flex-end;
+  height: auto;
+  flex: 2 1 0;
+  min-height: 3rem;
+  padding: var(--left-frame-padding);
+  background-color: var(--october-sunset);
+  border-bottom: var(--panel-border);
+}
+
 /* The command line is on stage: its given glows butter until dismissed. */
 .left-frame .panel-lang.lang-live {
   background-color: var(--butter);

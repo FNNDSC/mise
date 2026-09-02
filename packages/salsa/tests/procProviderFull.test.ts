@@ -33,6 +33,12 @@ import {
   feedInstances_ensureLoaded,
   feedMeta_ensure,
   feedStatus_refresh,
+  feedVisit_sync,
+  feedCached_isSettled,
+  procRoster_sync,
+  procVisitState_reset,
+  FEED_RECHECK_MS,
+  ROSTER_FULL_WALK_MS,
 } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
@@ -57,6 +63,7 @@ function pagingClient(feeds: unknown[] = [], instances: unknown[] = []) {
 
 beforeEach(() => {
   cache.cache_clear();
+  procVisitState_reset();
   jest.clearAllMocks();
 });
 
@@ -133,18 +140,22 @@ describe('ProcVfsProvider.list', () => {
     expect(mockJobs.jobs_statusBatch).not.toHaveBeenCalled();
   });
 
-  it('refreshes active status via one feed-scoped list call, freezing terminal', async () => {
-    cache.feed_add(feed({ id: 5 }));
+  it('revisiting an active feed runs the visit delta: feed row, then the moved rows', async () => {
+    cache.feed_add(feed({ id: 5, startedJobs: 1 }));
     cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-dircopy', params: null, status: 'started' });
     cache.topologyLoaded_mark(5);
-    const client = pagingClient([], [
+    const client = pagingClient([{ id: 5, name: 'f', finished_jobs: 1 }], [
       { id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-dircopy', status: 'finishedSuccessfully' },
     ]);
     mockClientGet.mockResolvedValue(client);
 
     const r = await provider.list('/proc/jobs/feed_5');
     const items = r.ok ? r.value : [];
-    expect(client.getPluginInstances).toHaveBeenCalledTimes(1);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ id: 5 }));
+    // No cursor yet (no row carried a timestamp): the delta is one unfiltered
+    // walk, then the active sweep.
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(2);
+    expect(client.getPluginInstances).toHaveBeenLastCalledWith(expect.objectContaining({ feed_id: 5, active: true }));
     expect(mockJobs.jobs_statusBatch).not.toHaveBeenCalled();
     expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-dircopy_10', status: 'finishedSuccessfully' });
   });
@@ -760,5 +771,165 @@ describe('cache build / warmup / refresh', () => {
     mockClientGet.mockResolvedValue(null);
     await expect(procCache_refresh()).rejects.toThrow('not connected');
     expect(errorStack.stack_search('not connected').length).toBeGreaterThan(0);
+  });
+});
+
+describe('visit-driven freshness', () => {
+  /** A client whose instance listing answers by filter: since-cursor rows, active rows, or everything. */
+  function deltaClient(
+    feedRow: Record<string, unknown>,
+    rows: { since: unknown[]; active: unknown[]; all?: unknown[] },
+  ) {
+    return {
+      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
+        ({ data: params.id !== undefined ? [feedRow] : [], totalCount: 1 })),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn().mockImplementation((params: Record<string, unknown>) => {
+        const data: unknown[] = params.active === true
+          ? rows.active
+          : params.min_end_date !== undefined ? rows.since : (rows.all ?? rows.since);
+        return { data, totalCount: data.length };
+      }),
+      getPluginInstance: jest.fn(),
+    };
+  }
+
+  function loadedFeed(over: Partial<ProcFeed> = {}): void {
+    cache.feed_add(feed({ id: 7, finishedJobs: 1, ...over }));
+    cache.instance_add({
+      id: 70, feedID: 7, parentID: null, pluginName: 'pl-dircopy', params: null,
+      status: 'finishedSuccessfully', startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:01:00Z',
+    });
+    cache.topologyLoaded_mark(7);
+  }
+
+  it('a settled feed within its re-check window costs nothing', async () => {
+    loadedFeed();
+    const client = deltaClient({ id: 7, name: 'f', finished_jobs: 1 }, { since: [], active: [] });
+    mockClientGet.mockResolvedValue(client);
+
+    await feedVisit_sync(7);
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    await feedVisit_sync(7);
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    expect(client.getPluginInstances).not.toHaveBeenCalled();
+  });
+
+  it('a settled feed past its window pays one feed-row fetch, and nothing more when counters hold', async () => {
+    loadedFeed();
+    const client = deltaClient({ id: 7, name: 'f', finished_jobs: 1 }, { since: [], active: [] });
+    mockClientGet.mockResolvedValue(client);
+    const now: number = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    await feedVisit_sync(7);
+    nowSpy.mockReturnValue(now + FEED_RECHECK_MS + 1);
+    await feedVisit_sync(7);
+    expect(client.getFeeds).toHaveBeenCalledTimes(2);
+    expect(client.getPluginInstances).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
+  it('appended work on a settled feed is found through the counters: a min_end_date delta from the cached cursor', async () => {
+    loadedFeed();
+    const client = deltaClient({ id: 7, name: 'f', finished_jobs: 1, scheduled_jobs: 1 }, {
+      since: [{ id: 71, feed_id: 7, previous_id: 70, plugin_name: 'pl-new', status: 'scheduled', start_date: '2026-09-02T11:00:00Z', end_date: '2026-09-02T11:00:00Z' }],
+      active: [{ id: 71, feed_id: 7, previous_id: 70, plugin_name: 'pl-new', status: 'scheduled', start_date: '2026-09-02T11:00:00Z', end_date: '2026-09-02T11:00:00Z' }],
+    });
+    mockClientGet.mockResolvedValue(client);
+
+    await feedVisit_sync(7);
+    expect(client.getPluginInstances).toHaveBeenCalledWith(expect.objectContaining({ feed_id: 7, min_end_date: '2026-09-02T10:01:00Z' }));
+    expect(cache.instance_get(71)).toMatchObject({ parentID: 70, pluginName: 'pl-new', status: 'scheduled' });
+    expect(cache.children_get(70)).toEqual([71]);
+    expect(cache.feed_get(7)?.scheduledJobs).toBe(1);
+    expect(feedCached_isSettled(cache, 7)).toBe(false);
+  });
+
+  it('a growing feed advances its cursor and freezes finished nodes on the next visit', async () => {
+    loadedFeed({ startedJobs: 1 });
+    cache.instance_add({ id: 71, feedID: 7, parentID: 70, pluginName: 'pl-ctl', params: null, status: 'started', startedAt: '2026-09-02T10:02:00Z' });
+    const client = deltaClient({ id: 7, name: 'f', finished_jobs: 1, started_jobs: 1 }, {
+      since: [{ id: 72, feed_id: 7, previous_id: 71, plugin_name: 'pl-child', status: 'created', start_date: '2026-09-02T10:05:00Z', end_date: '2026-09-02T10:05:00Z' }],
+      active: [
+        { id: 71, feed_id: 7, previous_id: 70, plugin_name: 'pl-ctl', status: 'started', start_date: '2026-09-02T10:02:00Z' },
+        { id: 72, feed_id: 7, previous_id: 71, plugin_name: 'pl-child', status: 'created', start_date: '2026-09-02T10:05:00Z' },
+      ],
+    });
+    mockClientGet.mockResolvedValue(client);
+
+    await feedVisit_sync(7);
+    expect(client.getPluginInstances).toHaveBeenNthCalledWith(1, expect.objectContaining({ min_end_date: '2026-09-02T10:02:00Z' }));
+    expect(cache.instance_get(72)?.status).toBe('created');
+
+    client.getPluginInstances.mockImplementation((params: Record<string, unknown>) => {
+      const data: unknown[] = params.active === true
+        ? []
+        : [{ id: 72, feed_id: 7, previous_id: 71, plugin_name: 'pl-child', status: 'finishedSuccessfully', start_date: '2026-09-02T10:05:00Z', end_date: '2026-09-02T10:09:00Z' },
+           { id: 71, feed_id: 7, previous_id: 70, plugin_name: 'pl-ctl', status: 'finishedSuccessfully', start_date: '2026-09-02T10:02:00Z', end_date: '2026-09-02T10:10:00Z' }];
+      return { data, totalCount: data.length };
+    });
+    await feedVisit_sync(7);
+    expect(client.getPluginInstances).toHaveBeenNthCalledWith(3, expect.objectContaining({ min_end_date: '2026-09-02T10:05:00Z' }));
+    expect(cache.instance_get(71)?.status).toBe('finishedSuccessfully');
+    expect(cache.instance_get(72)?.finishedAt).toBe('2026-09-02T10:09:00Z');
+  });
+
+  it('a failed sync leaves the cache as it was and warns', async () => {
+    loadedFeed({ startedJobs: 1 });
+    mockClientGet.mockResolvedValue({ getFeeds: jest.fn().mockRejectedValue(new Error('cube down')) });
+    await expect(feedVisit_sync(7)).resolves.toBeUndefined();
+    expect(cache.instance_get(70)?.status).toBe('finishedSuccessfully');
+  });
+
+  it('/proc/jobs picks up feeds newer than the highest known id, from both collections', async () => {
+    cache.feed_add(feed({ id: 3, title: 'old' }));
+    cache.built_set();
+    cache.lifecycle_set('current');
+    const client = {
+      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
+        ({ data: params.min_id === 4 ? [{ id: 9, name: 'fresh', owner_username: 'chris' }] : [], totalCount: 1 })),
+      getPublicFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
+        ({ data: params.min_id === 4 ? [{ id: 8, name: 'pub', owner_username: 'other', public: true }] : [], totalCount: 1 })),
+      getPluginInstances: jest.fn(),
+    };
+    mockClientGet.mockResolvedValue(client);
+    jest.spyOn(Date, 'now').mockReturnValue(1);
+
+    const r = await provider.list('/proc/jobs');
+    const names: string[] = (r.ok ? r.value : []).map((i) => i.name).sort();
+    expect(names).toEqual(['feed_3', 'feed_8', 'feed_9']);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 4 }));
+    jest.restoreAllMocks();
+  });
+
+  it('an aged roster is walked whole on visit, and feeds gone from CUBE leave the roster', async () => {
+    cache.feed_add(feed({ id: 3, title: 'gone' }));
+    cache.feed_add(feed({ id: 4, title: 'kept' }));
+    cache.built_set();
+    cache.lifecycle_set('current');
+    const client = {
+      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
+        ({ data: params.min_id === undefined ? [{ id: 4, name: 'kept', owner_username: 'chris' }] : [], totalCount: 1 })),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn(),
+    };
+    mockClientGet.mockResolvedValue(client);
+    jest.spyOn(Date, 'now').mockReturnValue(ROSTER_FULL_WALK_MS + 1);
+
+    await procRoster_sync();
+    expect(cache.feedIDs_get()).toEqual([4]);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }));
+    jest.restoreAllMocks();
+  });
+
+  it('a roster still owned by warmup is left alone', async () => {
+    cache.feed_add(feed({ id: 3 }));
+    cache.built_set();
+    cache.lifecycle_set('reconciling');
+    const client = { getFeeds: jest.fn(), getPublicFeeds: jest.fn(), getPluginInstances: jest.fn() };
+    mockClientGet.mockResolvedValue(client);
+    await procRoster_sync();
+    expect(client.getFeeds).not.toHaveBeenCalled();
   });
 });

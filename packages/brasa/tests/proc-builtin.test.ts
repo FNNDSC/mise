@@ -82,6 +82,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: contextGetSingle_mock,
   jobs_find: jobsFind_mock,
   procCache_refresh: procCacheRefresh_mock,
+  procRoster_sync: jest.fn(async (): Promise<void> => undefined),
   procFeed_ensureLoaded: procFeedEnsureLoaded_mock,
   procTopology_await: procTopologyAwait_mock,
   procTopology_warmup: procTopologyWarmup_mock,

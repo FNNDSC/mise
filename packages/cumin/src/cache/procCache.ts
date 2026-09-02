@@ -64,13 +64,24 @@ const FEED_TOPOLOGY_COUNTERS: ReadonlyArray<keyof Pick<ProcFeed,
   'createdJobs',
 ];
 
-/** Reports whether a feed has work which can still change after checkpointing. */
-function feed_isActive(feed: ProcFeed): boolean {
+/**
+ * Reports whether a feed has work which can still change after checkpointing.
+ *
+ * @param feed - Feed summary with CUBE job counters.
+ * @returns True when any job is created, scheduled, or started.
+ */
+export function feed_isActive(feed: ProcFeed): boolean {
   return feed.startedJobs > 0 || feed.scheduledJobs > 0 || feed.createdJobs > 0;
 }
 
-/** Reports whether two feed summaries indicate different instance topology. */
-function feedTopology_changed(previous: ProcFeed, current: ProcFeed): boolean {
+/**
+ * Reports whether two feed summaries indicate different instance topology.
+ *
+ * @param previous - The cached feed summary.
+ * @param current - A freshly fetched feed summary.
+ * @returns True when any job counter differs.
+ */
+export function feedTopology_changed(previous: ProcFeed, current: ProcFeed): boolean {
   return FEED_TOPOLOGY_COUNTERS.some(
     (counter: keyof Pick<ProcFeed,
       'finishedJobs' | 'erroredJobs' | 'startedJobs' | 'scheduledJobs' | 'cancelledJobs' | 'createdJobs'

@@ -12,6 +12,8 @@ Nothing here proposes a non-C-J endpoint. A proposal is a *read projection* or a
 
 == Confirmed proposal: group memberships
 
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/730[ChRIS_ultron_backEnd#730].
+
 === Operator requirement
 
 A permitted client needs a bounded snapshot of the groups and memberships visible to its authenticated CUBE identity. It needs this for `/etc/group`, group administration views, and any surface that presents group membership as a relation rather than asking only about one known group.
@@ -69,6 +71,8 @@ The difference is that a cold snapshot becomes one paginated collection traversa
 
 == Confirmed proposal: administrator identity directory
 
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/727[ChRIS_ultron_backEnd#727].
+
 === Operator requirement
 
 An ordinary operator needs only the identity under which their ChELL session is connected. An elevated CUBE administrator also needs a complete, paginated directory of the CUBE identities that CUBE regards as administrable, including federated identities synchronized into CUBE. This supports account administration, group membership selection, and a familiar administrative inspection:
@@ -123,6 +127,8 @@ Avoid a universal, unbounded graph-document endpoint. It would couple clients to
 The required evidence is a trace showing the current request sequence, visible scope, response sizes, cold/warm latency, and which fields force the follow-up requests.
 
 == Confirmed contract-integrity gap: plugin execution schemas
+
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/729[ChRIS_ultron_backEnd#729].
 
 === Observed failure
 
@@ -190,7 +196,7 @@ invent an executable parameter from README prose.
 
 == Confirmed proposal: directory archive
 
-Issue #233.
+Issue #233. Upstream research ticket: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/731[ChRIS_ultron_backEnd#731] (streaming archive vs utility feeds; see the note at the end of this section).
 
 === Operator requirement
 
@@ -247,6 +253,8 @@ The filebrowser collection already enumerates a directory's contents, so a clien
 
 The plugin route is not an interface. It is a client compensating for a missing one, and it is filed here because it works well enough to be invisible — which is exactly the condition under which a gap stops being felt and never gets fixed.
 
+The narrower statement, settled 2026-09-03: the gap is that a directory has no *read* representation and that there is no non-provenance way to run utility compute. Two CUBE answers are plausible and may both be right — a streaming archive for trees under a size bound, and utility (ephemeral, provenance-hidden, auto-reaped) feeds that keep the plugin route for large trees. Which, and where the bound sits, is the research question in ChRIS_ultron_backEnd#731.
+
 === Client policy until then
 
 `mise` walks the directory and fetches each file individually — `files_listRecursive` plus one request per file. That is the N+1 traversal this document objects to elsewhere, chosen because it needs no compute and leaves the compute graph clean, and acceptable only because a local shell writes the files as they arrive.
@@ -256,6 +264,8 @@ It does not survive a surface with no filesystem. A browser cannot receive sever
 The workaround announces itself rather than running silently: a directory download reports that it is creating a feed in order to do so, and says why.
 
 == Confirmed proposal: server version identification
+
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/728[ChRIS_ultron_backEnd#728].
 
 === Operator requirement
 

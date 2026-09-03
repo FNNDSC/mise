@@ -1,0 +1,192 @@
+= The ARGUS language
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+
+== What this is
+
+Every gesture on the ARGUS surface has a sentence. Splitting a pane, entering a feed, turning gravity off in the molecule, binding a browser to the console's cwd: each is a line the operator can type, a script can replay, and a test can drive. This document is the reference for that language. The implementation is `apps/argus/src/console/argusLang.ts`; the completion vocabulary lives beside the palette in `apps/argus/src/app/main.ts`; `argus verbs` prints the short form at the console.
+
+The language is *subject-first*: a sentence names the thing acted on, then the action, then its arguments. `dag physics gravity off`, not `gravity off dag`. Subjects are the surface's own nouns (pane, view, runs, node, dag, file, header, console, desktop), never the session's; a line whose first word is not one of these subjects is an ordinary session command and goes to the daemon unchanged.
+
+Three laws govern it, all recorded in `aegis.adoc`:
+
+* *Fidelity by construction.* A verb drives the same control the mouse does: the drawer's capsule, the rail's pill, the gutter's given, the caps' sort. A sentence and a gesture cannot drift apart because they are one path.
+* *Client-side, wire-silent.* Language lines never cross the wire. What they lower to may (a `cd`, a silent `ls`), but the sentence itself is view machinery.
+* *Every affordance by touch, every affordance by word.* The language is the keyboard's door to what a finger can do, and the replayable record of it (desktops).
+
+== Reaching the language
+
+The LANG given on the gutter opens the command line on the lid strip; touching it again removes it. Tab completes the next word from the vocabulary below; Esc closes the line (the topmost transient, so Esc there never reaches a pane). `argus verbs` prints the table.
+
+== Sentence grammar
+
+----
+<subject> [@<pane-id> | %<n>] <verb> [<argument> ...]
+----
+
+* `@<pane-id>` names a pane explicitly (ids are session-local: `files`, `dag`, `pacs`, or a split-born instance id). Without a target a verb acts on the *focused* pane, the one the operator last touched (focus citizenship).
+* `%<n>` names the n-th pane created during a desktop replay. Ordinals are schema-safe where session ids are not, so saved desktops use them.
+* Words are case-insensitive. Arguments that name a mode are the pill's own label, lower-cased.
+
+Some verbs act at workspace scope and take no target: `view`, `header`, `console`, `back`, `desktop`, `argus`. `runs enter` acts on the primary DAG pane.
+
+== Subjects and verbs
+
+Each row says what the sentence lowers to. "Drawer" means the pane's drawer capsule of that label; "rail" means the pane's rail pill; "given" means a gutter button; "event" means a DOM event the pane listens for.
+
+=== pane — the tile itself
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `pane split left\|right\|above\|below` | drawer SPLIT LEFT / RIGHT / ABOVE / BELOW | Creates a new pane on that side; during a replay the new pane takes the next `%n`.
+| `pane zoom` | drawer ZOOM / RESTORE | Immersive zoom; the capsule reads as its next action. Esc restores.
+| `pane close` | drawer CLOSE | Closing the last pane re-homes; closing the primary DAG dismisses it from home.
+| `pane bind unlinked\|fs\|viewer` | drawer binding radio | What the *next* split creates: an unlinked pane, a rooted browser, or a viewer slaved to this pane's regard.
+| `pane claim files\|runs\|pacs` | the empty pane's claim pills | Only an unlinked (empty) pane can be claimed.
+| `pane focus left\|right\|up\|down` | spatial focus | Nearest shown pane in that screen direction.
+| `pane focus @<id>` | focus by id |
+|===
+
+=== view — the gutter givens
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `view files` | FILES-01 | The console's browser: the workspace, following the session cwd.
+| `view runs` | RUNS-02 | The feed roster, whole workspace; always lands on the roster.
+| `view pacs` | PACS-03 | The PACS workspace.
+|===
+
+A given always renders its target and never toggles (the gutter law).
+
+=== runs — the feed roster
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `runs enter <feedId>` | the roster pick | Enters the feed on the primary DAG pane: roster steps aside, bar reads LOADING, graph lands. View-local: the session cwd does not move (see `node enter` / ENTER FEED).
+| `runs sort <column> [asc\|desc]` | event `argus:roster` | Columns: `id`, `title`, `status`, `owner`, `createdAt`. Same as touching a cap.
+| `runs filter <text>` | event `argus:roster` | Free text, or `column:text` tokens (`owner:<user> status:error`). Summons the filter strip.
+| `runs filter off` | event `argus:roster` | Clears and retracts the strip.
+|===
+
+=== dag — the graph on stage
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `dag layout ranked\|molecule` | rail RANKED / MOLECULE | RANKED is the anchor tree (children beneath their first parent, a flat sheet); MOLECULE is the force layout.
+| `dag projection 2d\|3d` | rail 2D / 3D | In 3D an empty-space drag orbits; in 2D it pans.
+| `dag scale time\|size` | rail TIME / SIZE | What sizes a molecule node: wall time or output bytes. Dims when the feed carries no such data.
+| `dag pulse` | rail PULSE | Toggles the looping dependency-order wave.
+| `dag census` | rail SHAPE / CENSUS | Expands every ×N group into its members (the spectacle) and back.
+| `dag physics charge\|link\|collide\|gravity [on\|off]` | event `argus:dag-physics` | The molecule's force terms, individually; `on` is the default word.
+| `dag physics reset` | event `argus:dag-physics` | All terms back to default.
+| `dag refresh` | drawer REFRESH | Revisit the feed now. A watched feed keeps sampling on its own beat regardless.
+|===
+
+=== node — the indicated node
+
+These act on the DAG pane's *regard*: the node last selected (or the feed picked in the roster).
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `node enter` | drawer ENTER NODE | Moves the session (`cd`) into a place: a node regard into its data directory, a file regard into that file's directory, nothing regarded into the feed on stage. ENTER FEED in the drawer is the same move into `/proc/jobs/feed_N`.
+| `node immerse` | the dblclick dive | Flies into the regarded node and overlays a rooted browser in the pane.
+| `node back` | drawer BACK | One step back inside the node's browser (its own history).
+| `node clear` | drawer CLEAR DETAIL | Dismisses the facts chip.
+|===
+
+=== file — a files pane
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `file home` | drawer HOME | A following browser runs `cd ~`; a rooted one lists `~` silently.
+| `file back` | drawer BACK | A following browser runs `cd -`; a rooted one walks its own history.
+| `file download` | drawer DOWNLOAD | The regarded file.
+| `file delete` | drawer DELETE | The regarded file (destructive flavor).
+| `file follow` | drawer FOLLOW CWD | Binds this browser to the session cwd; the bar reads `CWD`; it lists the cwd at once.
+| `file root` | drawer ROOT HERE | Unbinds: the browser keeps its own place and navigates by silent listings.
+| `file sort <column> [asc\|desc]` | event `argus:roster` | Columns: `name`, `type`, `size`, `date`, `owner`.
+| `file filter <text>` / `file filter off` | event `argus:roster` | As for `runs filter`.
+|===
+
+=== header — the header face
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `header stats` | the STATS face button |
+| `header dag` | the DAG face button | The ambient pipeline cycler.
+| `header away` | slides the header off stage | Esc (or `header restore`) brings it back.
+| `header restore` | the thin restore strip |
+|===
+
+=== console — the daemon's terminal
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `console open` / `console close` / `console toggle` | the lid | One mechanism both ways; `open` on an open console says so.
+| `console zoom` | the console drawer's ZOOM / RESTORE | The console is a pane that does not split.
+| `console height <px>` | the drag strip | Sets the drawer height.
+|===
+
+=== back — contextual back
+
+`back` is exactly Esc: the topmost transient first (the command line, an open drawer, a zoom), then one navigation level (a file or /bin view back to its listing, a node's file view back to its listing, the node back to the graph, the graph back to the roster, a selection in flight back to the roster). Directory depth inside a node is not walked by Esc; that is `node back`.
+
+=== desktop — saved compositions
+
+A desktop is the composition written *in this language*: a script of verbs with no concrete addresses, replayed through the same dispatcher.
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Does | Notes
+| `desktop save <name>` | serializes the composition | Stored locally always; written through to `~/.config/argus/desktops/<name>.desk` when the daemon carries `config write`, and the answer says which.
+| `desktop load <name>` | replays the script | Local first, then the CFS copy. `%n` ordinals resolve as panes are created.
+| `desktop show [name]` | prints the script | Without a name, the current composition.
+| `desktop list` | names the local desktops |
+| `desktop delete <name>` | removes the local copy | A CFS copy is yours to `rm`.
+|===
+
+=== argus
+
+`argus verbs` prints the short table.
+
+== Completion vocabulary
+
+Tab completes from this table (first word, then the follower of the previous word):
+
+[cols="1,4",options="header"]
+|===
+| After | Candidates
+| (start) | pane view runs node dag file header console back desktop argus
+| pane | split zoom close bind claim focus
+| view | files runs pacs
+| runs | enter sort filter
+| node | enter immerse back clear
+| dag | layout projection scale pulse census physics refresh
+| physics | charge link collide gravity reset
+| file | home back download delete sort filter follow root
+| header | stats dag away restore
+| console | open close toggle zoom height
+| desktop | save load show list delete
+| split | left right above below
+| bind | unlinked fs viewer
+| claim | files runs pacs
+| layout | ranked molecule
+| projection | 2d 3d
+| scale | time size
+| argus | verbs
+|===
+
+== Keeping this document true
+
+The language has one implementation and one help table (`argus verbs`); this document is the long form of the same table. When a verb is added, all three move in the same pull request, with the AEGIS ledger row that explains why the verb exists. The smoke suite exercises the language where a law depends on it (`lang-toggle`, `roster-order`, the physics pill, `dag refresh`, `file follow`).

@@ -51,6 +51,8 @@ export interface PromptContext {
   p10kSegments: P10kSegmentConfig;
   /** Present while /proc indexing is active, reconciling, or has failed. */
   procWarmup?: ProcPromptProgress;
+  /** The daemon's declared host-control tiers; a `HOST` segment says `!` lands on the daemon host. */
+  hostControl?: string[];
 }
 
 /**

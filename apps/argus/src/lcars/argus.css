@@ -70,6 +70,18 @@
   border-radius: 0.6rem;
 }
 
+/* HOST CONTROL: amber, the annunciation color — a deviation, not an alert. */
+.lamp-host {
+  background: #ffaf00;
+  color: #000;
+  padding: 0 0.5rem;
+  border-radius: 0.6rem;
+}
+
+#status-strip .lamp-host {
+  color: #000;
+}
+
 .lamp-offline {
   background: #f22;
   color: var(--butter);

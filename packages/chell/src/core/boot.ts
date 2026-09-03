@@ -541,6 +541,8 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
       warmupFlags,
       isInteractiveSession,
       boot ?? bootLogger_create('ChELL Boot', useAsciiBoot),
+      undefined,
+      { flag: config.hostControl, env: process.env['CALYPSO_HOST_CONTROL'], exposed: config.exposeHostControl === true },
     );
     return;
   }

@@ -78,6 +78,8 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onDeliver: ((request: FileDeliverRequest) => Promise<FileDeliverResult>) | undefined;
   private latestPrompt: string = '';
   private stackReport: DaemonStack | undefined;
+  /** The daemon's declared host-control tiers (empty when off). */
+  public hostControl: string[] = [];
   private nextId: number = 0;
   private activeExecuteId: string | undefined;
   private readonly liveEnvelopeChannels: Map<string, Set<'data' | 'err'>> = new Map<string, Set<'data' | 'err'>>();
@@ -144,6 +146,7 @@ export class RemoteEngine implements BrasaEngine {
           }
           const engine: RemoteEngine = new RemoteEngine(ws, options);
           engine.stackReport = message.stack;
+          engine.hostControl = message.hostControl ?? [];
           ws.on('message', (payload: Buffer) => engine.message_handle(payload));
           if (options.onClose) {
             ws.on('close', () => options.onClose?.());

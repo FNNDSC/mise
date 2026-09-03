@@ -285,6 +285,12 @@ export async function remote_run(
       console.log(chalk.gray(`    ${pkg.padEnd(pkgWidth)}  ${version}`));
     }
   }
+  const hostControl: string[] = engine.hostControl ?? [];
+  if (hostControl.length > 0) {
+    // The daemon acts on its own host: `!`, pipes, and the disk are the
+    // daemon's, not this machine's. Said once here, and on every prompt.
+    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl.join(' ')} — \`!\` and pipes run on the daemon host, upload/download reach ITS disk`));
+  }
   console.log(chalk.gray("    Type 'exit' to detach.\n"));
   console.log(chalk.gray(fortune_random(4)));
   console.log('');

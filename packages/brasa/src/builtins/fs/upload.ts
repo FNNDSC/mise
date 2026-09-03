@@ -37,6 +37,15 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
   }
   const localPath: string = args[0];
   const remotePath: string = args[1];
+  // The local path is read by the ENGINE: under a daemon that is the daemon
+  // host's disk, which belongs to nobody attending the session unless the
+  // operator declared it theirs (--host-control=files). Without that, refuse
+  // — as download already refuses to write there.
+  if (!surface_get().capabilities.engineFilesystem) {
+    process.exitCode = 1;
+    return envelope_error('', undefined,
+      `${chalk.red("upload: the daemon host's disk is nobody's; start the daemon with --host-control=files, or upload from a surface that can supply the bytes.")}\n`);
+  }
   const localGlob: boolean = shellArguments_pathnameExpansion(args, 0);
 
   const targetRemote: string = await path_resolve(remotePath);

@@ -285,6 +285,8 @@ export const attachedMessageSchema = z.object({
       cumin: z.string().optional(),
     })
     .optional(),
+  /** The host-control tiers the daemon declared (`shell`, `files`, `pipes`); empty or absent when off. */
+  hostControl: z.array(z.string()).optional(),
 });
 
 /** The final result of one executed line: one envelope per command. */

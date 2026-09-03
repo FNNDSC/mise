@@ -38,6 +38,10 @@ export interface ChellCLIConfig {
   attach?: string;
   /** The attach token, when the {@link attach} URL does not carry one. */
   attachToken?: string;
+  /** `--host-control [tiers]` as typed (true for bare). */
+  hostControl?: string | boolean;
+  /** `--expose-host-control`. */
+  exposeHostControl?: boolean;
   output?: string; // For help/version text
 }
 
@@ -58,6 +62,8 @@ export interface CliActionOptions {
   asciiBoot?: boolean;
   logo?: boolean;
   daemon?: boolean;
+  hostControl?: string | boolean;
+  exposeHostControl?: boolean;
   remote?: boolean;
   attach?: string;
   token?: string;
@@ -116,7 +122,13 @@ export function cliConfig_fromArgs(
       config.commandToExecute = options.command;
     }
   } else if (options.daemon) {
-    config = { mode: 'daemon', physicalFS: options.physicalFS, connectConfig };
+    config = {
+      mode: 'daemon',
+      physicalFS: options.physicalFS,
+      connectConfig,
+      ...(options.hostControl !== undefined ? { hostControl: options.hostControl } : {}),
+      ...(options.exposeHostControl ? { exposeHostControl: true } : {}),
+    };
   } else if (options.file) {
     config = { mode: 'script', scriptFile: options.file, stopOnError: options.e || false, physicalFS: options.physicalFS, connectConfig };
   } else if (options.command) {
@@ -239,6 +251,8 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
     .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
     .option('--daemon', 'Run as a CALYPSO session daemon, hosting the engine over WebSocket')
+    .option('--host-control [tiers]', 'With --daemon: the daemon acts on its own host — `!` runs here, pipes run here, upload/download reach this disk (tiers: shell,files,pipes; bare = all; env CALYPSO_HOST_CONTROL)')
+    .option('--expose-host-control', 'With --host-control and a non-loopback CALYPSO_BIND: yes, hand a shell on this host to anyone holding the attach URL')
     .option('--remote', 'Attach to a running CALYPSO daemon as a remote surface')
     .option('--attach <url>', 'Address of a daemon on another machine; accepts the URL the daemon prints, token and all')
     .option('--token <token>', 'Attach token, when the --attach URL does not carry one')

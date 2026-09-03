@@ -42,6 +42,8 @@ export interface FaceTelemetry {
 export interface FaceOptions {
   /** Identity panel rows: identity, wire, web surface, token, berth. */
   info: FaceInfo[];
+  /** Host control, when declared: the tiers, and the bind it is exposed on. */
+  hostControl?: { tiers: string; exposedOn?: string };
   /** Live readings; omitted readings render as an idle daemon. */
   telemetry_get?: () => FaceTelemetry;
 }
@@ -133,6 +135,7 @@ export interface FaceFrame {
   telemetry: FaceTelemetry | null;
   logTail: string[];
   uptimeSeconds: number;
+  hostControl?: { tiers: string; exposedOn?: string };
 }
 
 /**
@@ -229,6 +232,14 @@ function readyFrame_compose(frame: FaceFrame): string[] {
     content.push('');
   }
   content.push(centered_line(status, frame.columns, chalk.cyan));
+  if (frame.hostControl !== undefined) {
+    // Not rest: this daemon acts on its own host, and the face says so
+    // for as long as it runs.
+    content.push(centered_line(`HOST CONTROL: ${frame.hostControl.tiers.toUpperCase()}`, frame.columns, chalk.yellow));
+    if (frame.hostControl.exposedOn !== undefined) {
+      content.push(centered_line(`HOST CONTROL EXPOSED ON ${frame.hostControl.exposedOn.toUpperCase()}`, frame.columns, chalk.red));
+    }
+  }
   content.push('');
   content.push(centered_line(hint, frame.columns, chalk.gray));
 
@@ -315,6 +326,7 @@ function frame_paint(): void {
     frameIndex: state.frameIndex,
     phase: state.phase,
     info: state.options.info,
+    ...(state.options.hostControl !== undefined ? { hostControl: state.options.hostControl } : {}),
     telemetry,
     logTail: state.ring.tail(state.phase === 'boot' ? BOOT_STRIP_LINES : STRIP_LINES),
     uptimeSeconds: Math.floor((Date.now() - state.startedAt) / 1000),

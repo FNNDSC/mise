@@ -60,6 +60,8 @@ export interface StackInfo {
  */
 export interface AttachInfo {
   session: string;
+  /** The daemon's declared host-control tiers (empty or absent when off). */
+  hostControl?: string[];
   protocolVersion: number;
   stack?: StackInfo;
 }
@@ -219,6 +221,7 @@ export class ArgusClient {
             session: message.session,
             protocolVersion: message.protocolVersion,
             ...(message.stack !== undefined ? { stack: message.stack } : {}),
+            ...(message.hostControl !== undefined ? { hostControl: message.hostControl } : {}),
           },
         });
       };

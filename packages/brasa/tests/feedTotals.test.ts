@@ -4,7 +4,7 @@
  * absent — never zero — for a feed whose topology is not resident.
  */
 import type { ProcInstance } from '@fnndsc/cumin';
-import { feedTotals_derive } from '../src/builtins/proc.js';
+import { feedTotals_derive } from '../src/builtins/feedTotals.js';
 
 function inst(over: Partial<ProcInstance>): ProcInstance {
   return { id: 1, feedID: 7, parentID: null, pluginName: 'pl', params: null, status: 'finishedSuccessfully', ...over };

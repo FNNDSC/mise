@@ -33,6 +33,7 @@ jest.mock('@fnndsc/cumin', () => ({
     current_set: jest.fn(),
     current_get: jest.fn(),
     currentContext_update: jest.fn(),
+    context_ensure: jest.fn(),
     fullContext_get: jest.fn(),
     singleContext: {
       URL: 'http://localhost:8000/api/v1/',

@@ -10,7 +10,7 @@ jest.mock('../src/plugins/chrisPlugins', () => ({
 import * as path from 'path';
 import { IStorageProvider } from '../src/io/io';
 import { ChrisContext, Context } from '../src/context/chrisContext';
-import { config_init, connectionConfig } from '../src/config/config';
+import { config_init, connectionConfig, sessionConfig } from '../src/config/config';
 
 class FakeStorage implements IStorageProvider {
   files = new Map<string, string>();
@@ -157,6 +157,29 @@ describe('ChrisContext — current_set switch', () => {
     );
     store.dirs.add(urlDir);
     expect(await ctx.current_set(Context.ChRISURL, 'http://c/api/')).toBe(true);
+  });
+});
+
+describe('ChrisContext — the process owns its session context', () => {
+  it('does not pick up another process\'s write to the cwd file mid-session', async () => {
+    const own: ChrisContext = new ChrisContext();
+    await own.ChRISfolder_set('/home/chris/mine');
+    expect(await own.current_get(Context.ChRISfolder)).toBe('/home/chris/mine');
+    // Another daemon of the same identity writes the shared file.
+    await sessionConfig.pathContext_set('/proc/jobs/feed_21');
+    expect(await own.current_get(Context.ChRISfolder)).toBe('/home/chris/mine');
+    // An explicit reload is the only way in.
+    await own.currentContext_update();
+    expect(await own.current_get(Context.ChRISfolder)).toBe('/proc/jobs/feed_21');
+  });
+
+  it('a fresh process restores from the file, and its own set is immediate', async () => {
+    await sessionConfig.pathContext_set('/home/chris/restored');
+    const fresh: ChrisContext = new ChrisContext();
+    expect(await fresh.current_get(Context.ChRISfolder)).toBe('/home/chris/restored');
+    await fresh.current_set(Context.ChRISfolder, '/home/chris/next');
+    expect(await fresh.current_get(Context.ChRISfolder)).toBe('/home/chris/next');
+    expect(await sessionConfig.pathContext_get()).toBe('/home/chris/next');
   });
 });
 

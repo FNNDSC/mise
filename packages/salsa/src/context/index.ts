@@ -44,7 +44,9 @@ export function context_getFull(): FullContext {
  * @returns Promise resolving to the single context.
  */
 export async function context_getSingle(): Promise<SingleContext> {
-  await chrisContext.currentContext_update();
+  // Loaded once; afterwards the process's own session state stands (a
+  // prompt must never pick up another daemon's `cd` through the file).
+  await chrisContext.context_ensure();
   return chrisContext.singleContext;
 }
 

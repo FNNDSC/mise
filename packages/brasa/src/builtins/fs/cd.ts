@@ -68,6 +68,23 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
 }
 
 /**
+ * The target of a CFS link at a path, from its parent's listing; null when
+ * the path is not a link (or its parent cannot be listed).
+ *
+ * @param cleanPath - The normalized absolute path.
+ * @returns The absolute target path, or null.
+ */
+export async function cfsLink_target(cleanPath: string): Promise<string | null> {
+  if (cleanPath === '/' || !cleanPath.startsWith('/')) return null;
+  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  const parentResult: Result<VFSItem[]> = await vfsDispatcher.list(path.posix.dirname(cleanPath));
+  if (!parentResult.ok) return null;
+  const entryName: string = path.posix.basename(cleanPath);
+  const entry: VFSItem | undefined = parentResult.value.find((item: VFSItem): boolean => item.name === entryName);
+  return entry?.type === 'link' && entry.target ? entry.target : null;
+}
+
+/**
  * Builds the success envelope for a completed directory change.
  *
  * @param newCwd - The working directory that is now current.
@@ -271,6 +288,16 @@ export async function cd_run(options: CdOptions): Promise<CommandEnvelope> {
 
     if (isVirtual) {
       return cdVirtual_handle(cleanPath, pathArg);
+    }
+
+    // A CFS link names a place: entering it moves to its target. The link's
+    // own path is not a folder CUBE would validate, so it must be followed
+    // here, and a refusal names the target the link points at.
+    const linkTarget: string | null = await cfsLink_target(cleanPath);
+    if (linkTarget !== null) {
+      const followed: CommandEnvelope = await cdReal_handle(linkTarget, pathArg);
+      if (followed.status === 'ok') return followed;
+      return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: link target ${linkTarget}: No such file or directory`)}\n`);
     }
 
     return cdReal_handle(logicalPath, pathArg);

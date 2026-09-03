@@ -355,7 +355,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 
 .dag-roster {
-  --roster-cols: 4em 1fr 8em 8em 7em;
+  --roster-cols: 4em 1fr 8em 5.5em 6em 7em 7em;
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
 }
@@ -1645,6 +1645,34 @@ body[data-header='dag'] #header-dag {
   opacity: 0.45;
 }
 
+.files-card-thumb svg {
+  width: 100%;
+  height: 100%;
+  color: var(--harvestgold);
+}
+
+.files-card-thumb.thumb-count {
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+}
+
+/* A link says where it points. */
+.files-target {
+  margin-left: 0.6em;
+  opacity: 0.6;
+  font-size: 0.85em;
+}
+
+.files-card-target {
+  margin-top: 0.25rem;
+  color: var(--pumpkin-pie);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .files-card-thumb img {
   width: 100%;
   height: 100%;
@@ -2549,3 +2577,15 @@ body[data-zoom] #header-restore {
   50% { filter: brightness(1.35); }
 }
 
+
+/* The roster's totals: right-aligned numbers, like SIZE in a files row. */
+.feedlist-size,
+.feedlist-time {
+  text-align: right;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.dag-roster .roster-cap[data-key="sizeBytes"],
+.dag-roster .roster-cap[data-key="wallSeconds"] {
+  text-align: right;
+}

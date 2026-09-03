@@ -140,11 +140,14 @@ export class DagPanel {
         { key: 'id', label: 'ID' },
         { key: 'title', label: 'TITLE' },
         { key: 'status', label: 'STATUS' },
+        { key: 'sizeBytes', label: 'SIZE' },
+        { key: 'wallSeconds', label: 'TIME' },
         { key: 'owner', label: 'OWNER' },
         { key: 'createdAt', label: 'CREATED' },
       ],
       (row: FeedListEntry, key: string): string | number =>
-        key === 'id' ? row.id : key === 'title' ? row.title : key === 'status' ? row.status : key === 'owner' ? row.owner : row.createdAt,
+        key === 'id' ? row.id : key === 'title' ? row.title : key === 'status' ? row.status : key === 'owner' ? row.owner
+          : key === 'sizeBytes' ? (row.sizeBytes ?? -1) : key === 'wallSeconds' ? (row.wallSeconds ?? -1) : row.createdAt,
       (): void => { if (this.lastRoster.length > 0) this.chooser_show(this.lastRoster); },
       { key: 'createdAt', dir: 'desc' },
     );
@@ -770,13 +773,21 @@ export class DagPanel {
       const status: HTMLSpanElement = document.createElement('span');
       status.className = 'feedlist-status';
       status.textContent = feed.status.toUpperCase();
+      // Totals are derived from resident nodes: a feed not yet resident
+      // reads a dash, never a zero.
+      const size: HTMLSpanElement = document.createElement('span');
+      size.className = 'feedlist-size';
+      size.textContent = feed.sizeBytes === undefined ? '—' : size_format(feed.sizeBytes);
+      const time: HTMLSpanElement = document.createElement('span');
+      time.className = 'feedlist-time';
+      time.textContent = feed.wallSeconds === undefined ? '—' : duration_format(feed.wallSeconds);
       const owner: HTMLSpanElement = document.createElement('span');
       owner.className = 'feedlist-owner';
       owner.textContent = feed.owner;
       const created: HTMLSpanElement = document.createElement('span');
       created.className = 'feedlist-created';
       created.textContent = feed.createdAt.slice(0, 10);
-      row.append(idBadge, name, status, owner, created);
+      row.append(idBadge, name, status, size, time, owner, created);
       row.title = 'enter the feed (Esc returns to this list)';
       // Selecting a feed enters it: the full graph takes the pane and the
       // list steps aside. Esc (contextual back) returns here.

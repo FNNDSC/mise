@@ -538,6 +538,21 @@ try {
   check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
   check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);
 
+  console.log('roster-totals');
+  // The roster's totals ride the same grid as its other columns: caps for
+  // SIZE and TIME, seven cells per row, a dash (never a zero) where a feed's
+  // nodes are not resident, a number where they are.
+  const totals = await evalIn(`
+    document.getElementById('gutter-runs').click(); await sleep(800);
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
+    const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
+    const caps = [...dp.querySelectorAll('.roster-cap')].map(c => c.textContent.replace(/[▲▼\\s]/g, ''));
+    const rows = [...dp.querySelectorAll('.feedlist-row')];
+    const cells = rows.map(r => r.children.length);
+    const sizes = rows.map(r => r.querySelector('.feedlist-size')?.textContent ?? '');
+    return { caps, cellsUniform: cells.every(n => n === 7), rows: rows.length, honest: sizes.every(s => s === '—' || /\\d/.test(s)) };`);
+  check('the roster carries SIZE and TIME on its grid, dashes where nodes are not resident', totals.caps.includes('SIZE') && totals.caps.includes('TIME') && totals.cellsUniform && totals.rows > 0 && totals.honest, JSON.stringify(totals));
+
   console.log('nameplate');
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');

@@ -27,7 +27,7 @@ import {
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
-import { FilesPanel, type FileAction, type FsListing, extension_isImage, type PreviewProvider } from '../features/files/panel.js';
+import { FilesPanel, type FileAction, type FsListing, extension_isImage, type PreviewProvider, type PipelineGlimpseNode } from '../features/files/panel.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -585,8 +585,39 @@ async function surface_start(token: string): Promise<void> {
     void reader.cancel().catch((): void => { /* the body is already released */ });
     return text.slice(0, maxBytes);
   };
+  /**
+   * A /bin entry has no bytes to serve: its description comes from the
+   * session's own `cat`, and a pipeline's graph from `pipeline diagram`.
+   */
+  const binHead_fetch = async (path: string, maxChars: number): Promise<string> => {
+    // The glimpse is what the plugin does: skip the name banner (its title
+    // line and the rule beneath) that the card already says.
+    const lines: string[] = (await fileText_fetch(path)).replace(/^\s+/, '').split('\n');
+    if (lines.length > 2 && /^[─━=\-]{4,}\s*$/.test(lines[1] ?? '')) lines.splice(0, 2);
+    while (lines.length > 0 && (lines[0] ?? '').trim() === '') lines.shift();
+    return lines.join('\n').slice(0, maxChars);
+  };
+  const pipelineGlimpse_fetch = async (path: string): Promise<PipelineGlimpseNode[] | null> => {
+    const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
+    const outcome: ExecuteOutcome = await client.line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false });
+    for (const envelope of outcome.envelopes) {
+      if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
+      const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
+      if (!parsed.success) continue;
+      return parsed.data.nodes.map((node: PipelineDiagramNode): PipelineGlimpseNode => ({
+        id: node.id,
+        parentIds: [...node.parentIds, ...(node.joinParentIds ?? [])],
+      }));
+    }
+    return null;
+  };
   /** What a files pane's PREVIEW projection fetches through. */
-  const previewProvider: PreviewProvider = { imageUrl: vfsUrl_build, textHead: fileHead_fetch };
+  const previewProvider: PreviewProvider = {
+    imageUrl: vfsUrl_build,
+    textHead: fileHead_fetch,
+    binHead: binHead_fetch,
+    pipelineGlimpse: pipelineGlimpse_fetch,
+  };
 
   /** Fetches a file's text through a silent, pane-local cat. */
   const fileText_fetch = (path: string): Promise<string> =>

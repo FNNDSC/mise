@@ -34,6 +34,8 @@ export interface FsListingEntry {
   size: number;
   owner: string;
   date: string;
+  /** Where a link points, when the listing knows. */
+  target?: string;
 }
 
 /**
@@ -125,6 +127,85 @@ function text_isBinary(head: string): boolean {
 export interface PreviewProvider {
   imageUrl: (path: string) => string;
   textHead: (path: string, maxBytes: number) => Promise<string>;
+  /** The head of a /bin entry's description (a plugin's), through the session. */
+  binHead: (path: string, maxChars: number) => Promise<string>;
+  /** A pipeline's authored graph, for a glimpse; null when it has none. */
+  pipelineGlimpse: (path: string) => Promise<PipelineGlimpseNode[] | null>;
+}
+
+/**
+ * One node of a pipeline as a glimpse needs it: identity and parents.
+ *
+ * @property id - The node id.
+ * @property parentIds - Its parents in the authored graph.
+ */
+export interface PipelineGlimpseNode {
+  id: string;
+  parentIds: string[];
+}
+
+/** The most nodes a glimpse draws before it says the count instead. */
+const GLIMPSE_NODE_MAX: number = 80;
+
+/**
+ * Draws a pipeline's graph small: tiers by depth, parents above children,
+ * as an SVG that scales to its card. Pure layout, no physics.
+ *
+ * @param nodes - The pipeline's nodes.
+ * @returns The SVG element.
+ */
+function pipelineSvg_build(nodes: PipelineGlimpseNode[]): SVGSVGElement {
+  const svgNs: string = 'http://www.w3.org/2000/svg';
+  const svg: SVGSVGElement = document.createElementNS(svgNs, 'svg') as SVGSVGElement;
+  svg.setAttribute('viewBox', '0 0 160 100');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  const depth: Map<string, number> = new Map();
+  const byId: Map<string, PipelineGlimpseNode> = new Map(nodes.map((node: PipelineGlimpseNode): [string, PipelineGlimpseNode] => [node.id, node]));
+  const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+    const known: number | undefined = depth.get(id);
+    if (known !== undefined) return known;
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const parents: string[] = (byId.get(id)?.parentIds ?? []).filter((parent: string): boolean => byId.has(parent));
+    const value: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((parent: string): number => depth_of(parent, seen)));
+    depth.set(id, value);
+    return value;
+  };
+  for (const node of nodes) depth_of(node.id);
+  const tiers: Map<number, string[]> = new Map();
+  for (const node of nodes) {
+    const tier: string[] = tiers.get(depth.get(node.id) ?? 0) ?? [];
+    tier.push(node.id);
+    tiers.set(depth.get(node.id) ?? 0, tier);
+  }
+  const tierCount: number = tiers.size;
+  const position: Map<string, { x: number; y: number }> = new Map();
+  for (const [level, ids] of tiers) {
+    const y: number = tierCount === 1 ? 50 : 12 + (76 * level) / (tierCount - 1);
+    ids.forEach((id: string, index: number): void => {
+      position.set(id, { x: (160 * (index + 1)) / (ids.length + 1), y });
+    });
+  }
+  for (const node of nodes) {
+    const to = position.get(node.id);
+    if (!to) continue;
+    for (const parent of node.parentIds) {
+      const from = position.get(parent);
+      if (!from) continue;
+      const line: SVGLineElement = document.createElementNS(svgNs, 'line') as SVGLineElement;
+      line.setAttribute('x1', String(from.x)); line.setAttribute('y1', String(from.y));
+      line.setAttribute('x2', String(to.x)); line.setAttribute('y2', String(to.y));
+      line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '1'); line.setAttribute('opacity', '0.6');
+      svg.appendChild(line);
+    }
+  }
+  for (const [, at] of position) {
+    const dot: SVGCircleElement = document.createElementNS(svgNs, 'circle') as SVGCircleElement;
+    dot.setAttribute('cx', String(at.x)); dot.setAttribute('cy', String(at.y)); dot.setAttribute('r', nodes.length > 30 ? '2.2' : '4');
+    dot.setAttribute('fill', 'currentColor');
+    svg.appendChild(dot);
+  }
+  return svg;
 }
 
 /**
@@ -570,6 +651,13 @@ export class FilesPanel {
     date.textContent = item.date.slice(0, 10);
     meta.append(owner, date);
     card.append(head, title, meta);
+    if (item.type === 'link' && item.target !== undefined) {
+      const target: HTMLElement = document.createElement('div');
+      target.className = 'files-card-target';
+      target.textContent = `→ ${item.target}`;
+      target.title = item.target;
+      card.appendChild(target);
+    }
     const path: string = path_join(parentPath, item.name);
     if (item.type === 'dir' || item.type === 'vfs' || item.type === 'link' || item.type === 'job') {
       card.classList.add('files-activatable');
@@ -599,8 +687,45 @@ export class FilesPanel {
     const thumb: HTMLElement = document.createElement('div');
     thumb.className = 'files-card-thumb';
     const glyph = (): void => { thumb.textContent = TYPE_GLYPHS[item.type]; };
-    if (item.type !== 'file' || this.preview === null) {
+    if (this.preview === null || !(item.type === 'file' || item.type === 'plugin' || item.type === 'pipeline')) {
       glyph();
+      return thumb;
+    }
+    if (item.type === 'plugin' || item.type === 'pipeline') {
+      // A plugin's glimpse is what it does: the head of its description. A
+      // pipeline's is its authored graph, drawn small.
+      const binProvider: PreviewProvider = this.preview;
+      const cachedHead: string | undefined = this.headCache.get(path);
+      if (cachedHead !== undefined && item.type === 'plugin') {
+        const pre: HTMLPreElement = document.createElement('pre');
+        pre.textContent = cachedHead;
+        thumb.appendChild(pre);
+        return thumb;
+      }
+      thumb.classList.add('thumb-wait');
+      thumb.textContent = TYPE_GLYPHS[item.type];
+      const loadBin = (): void => {
+        if (item.type === 'plugin') {
+          void binProvider.binHead(path, PREVIEW_HEAD_BYTES).then((head: string): void => {
+            thumb.classList.remove('thumb-wait');
+            if (head.trim() === '') { glyph(); return; }
+            if (this.headCache.size >= PREVIEW_CACHE_MAX) this.headCache.clear();
+            this.headCache.set(path, head);
+            const pre: HTMLPreElement = document.createElement('pre');
+            pre.textContent = head;
+            thumb.replaceChildren(pre);
+          }).catch((): void => { thumb.classList.remove('thumb-wait'); glyph(); });
+          return;
+        }
+        void binProvider.pipelineGlimpse(path).then((nodes: PipelineGlimpseNode[] | null): void => {
+          thumb.classList.remove('thumb-wait');
+          if (nodes === null || nodes.length === 0) { glyph(); return; }
+          if (nodes.length > GLIMPSE_NODE_MAX) { thumb.textContent = `${nodes.length} NODES`; thumb.classList.add('thumb-count'); return; }
+          thumb.replaceChildren(pipelineSvg_build(nodes));
+        }).catch((): void => { thumb.classList.remove('thumb-wait'); glyph(); });
+      };
+      this.thumbObserver_get().observe(thumb);
+      thumb.addEventListener('files:thumb-seen', loadBin, { once: true });
       return thumb;
     }
     const cached: string | undefined = this.headCache.get(path);
@@ -702,6 +827,14 @@ export class FilesPanel {
     const name: HTMLSpanElement = document.createElement('span');
     name.className = 'files-name';
     name.textContent = item.name;
+    if (item.type === 'link' && item.target !== undefined) {
+      // A link says where it points, the way `ls -l` does.
+      const target: HTMLSpanElement = document.createElement('span');
+      target.className = 'files-target';
+      target.textContent = `→ ${item.target}`;
+      name.appendChild(target);
+      name.title = item.target;
+    }
 
     const size: HTMLSpanElement = document.createElement('span');
     size.className = 'files-size';

@@ -151,6 +151,10 @@ export class DagPanel {
     const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
+    this.filterBlock = paneRootEl?.querySelector<HTMLElement>('.runs-filter') ?? null;
+    this.filterBlock?.classList.add('rail-off');
+    this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
+    this.order.stripChange_observe((): void => this.filterBlock_sync());
     // The roster is the subscription too, at a slower beat: while the list
     // stays on screen it re-asks the session, so a feed run from a console
     // shows up without a reload. Nothing is asked while the pane is off
@@ -312,7 +316,7 @@ export class DagPanel {
     // A graph arrival always takes the whole pane: selecting a feed IS
     // entering it. (The half-pane "preview above the list" is gone; live
     // scrubbing returns when a context split exists to receive it.)
-    this.feedList.style.display = 'none';
+    this.roster_show(false);
     this.canvas.style.display = 'block';
     if (this.lastModel !== null && this.lastModel.feedId !== model.feedId) {
       // A different feed owes nothing to the old one: stale selection facts
@@ -356,6 +360,8 @@ export class DagPanel {
    * @param state - The reported state, or null.
    */
   private modeSpan: HTMLElement | null = null;
+  /** The roster frame's FILTER block. */
+  private filterBlock: HTMLElement | null = null;
 
   /**
    * The bar's mode readout: every display mode that is not the default,
@@ -596,7 +602,7 @@ export class DagPanel {
    */
   private feedRequest_show(feedId: number): void {
     this.pendingFeedId = feedId;
-    this.feedList.style.display = 'none';
+    this.roster_show(false);
     this.canvas.style.display = 'none';
     this.facts.replaceChildren();
     this.title.textContent = `DAG · FEED ${feedId}`;
@@ -620,7 +626,7 @@ export class DagPanel {
     this.pendingFeedId = null;
     this.empty.textContent = `FEED ${feedId ?? '?'}: ${reason.trim() || 'not available'}`.toUpperCase();
     this.empty.style.display = 'block';
-    this.feedList.style.display = 'block';
+    this.roster_show(true);
     this.title.textContent = this.defaultTitle;
     if (this.stateSpan !== null) {
       this.stateSpan.classList.remove('state-wait');
@@ -637,7 +643,7 @@ export class DagPanel {
     loading.className = 'feedlist-loading';
     loading.textContent = 'RETRIEVING FEED ROSTER…';
     this.feedList.replaceChildren(loading);
-    this.feedList.style.display = 'block';
+    this.roster_show(true);
     this.rosterPending = true;
     this.handlers.command_run('proc feeds');
   }
@@ -670,7 +676,7 @@ export class DagPanel {
     progress.className = 'feedlist-warming';
     progress.textContent = 'INDEX WARMING\u2026 the roster opens when the index is whole.';
     this.feedList.replaceChildren(refusal, progress);
-    this.feedList.style.display = 'block';
+    this.roster_show(true);
     this.rosterProgress = progress;
   }
 
@@ -714,7 +720,7 @@ export class DagPanel {
       this.pinnedFeedId = null;
       this.requestedFeedId = null;
       this.empty.style.display = 'none';
-      this.feedList.style.display = 'block';
+      this.roster_show(true);
       this.title.textContent = this.defaultTitle;
       if (this.stateSpan !== null) {
         this.stateSpan.classList.remove('state-wait');
@@ -737,7 +743,7 @@ export class DagPanel {
     this.title.textContent = this.defaultTitle;
     this.facts.replaceChildren();
     this.scene.selection_clear();
-    this.feedList.style.display = 'block';
+    this.roster_show(true);
     if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
     return true;
   }
@@ -751,6 +757,7 @@ export class DagPanel {
     this.lastRoster = feeds;
     this.empty.style.display = 'none';
     this.order.host_prepare(this.feedList);
+    this.rosterFrame_track();
     for (const feed of this.order.apply(feeds)) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = `feedlist-row feedlist-${feed.status}`;
@@ -782,13 +789,54 @@ export class DagPanel {
       });
       this.feedList.appendChild(row);
     }
-    this.feedList.style.display = 'block';
+    this.roster_show(true);
     if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
   }
 
-  /** Shows or hides the roster filter strip (the drawer's FILTER, or `runs filter`). */
+  /** Shows or hides the roster filter strip (the mode frame's FILTER, or `runs filter`). */
   public filter_toggle(open?: boolean): void {
     this.order.strip_toggle(open);
+  }
+
+  /** The roster's FILTER block reads the strip's state, like every mode block. */
+  private filterBlock_sync(): void {
+    if (this.filterBlock === null) return;
+    const on: boolean = this.order.strip_isOpen();
+    this.filterBlock.textContent = on ? 'FILTER ON' : 'FILTER OFF';
+    this.filterBlock.classList.toggle('rail-off', !on);
+  }
+
+  /** Keeps the roster frame's rule beneath the caps (and the filter strip). */
+  private rosterFrameObserver: ResizeObserver | null = null;
+
+  /**
+   * The caps and filter strip are the roster's own frame, sticky at the top
+   * of its scroller; the field rule and the mode frame sit beneath them.
+   * The offset rides a CSS variable on the host, kept true as the filter
+   * strip comes and goes.
+   */
+  private rosterFrame_track(): void {
+    const host: HTMLElement | null = this.feedList.parentElement;
+    const roster: HTMLElement | null = this.feedList.querySelector<HTMLElement>('.roster-order');
+    this.rosterFrameObserver?.disconnect();
+    this.rosterFrameObserver = null;
+    if (host === null) return;
+    if (roster === null) {
+      host.style.removeProperty('--mode-frame-top');
+      return;
+    }
+    const sync = (): void => {
+      host.style.setProperty('--mode-frame-top', `${Math.ceil(roster.getBoundingClientRect().bottom - host.getBoundingClientRect().top)}px`);
+    };
+    sync();
+    this.rosterFrameObserver = new ResizeObserver(sync);
+    this.rosterFrameObserver.observe(roster);
+  }
+
+  /** Shows or hides the roster and its frame host together. */
+  private roster_show(on: boolean): void {
+    this.feedList.style.display = on ? 'block' : 'none';
+    this.feedList.parentElement?.classList.toggle('roster-shown', on);
   }
 
   /** Paints the selection facts chip. */

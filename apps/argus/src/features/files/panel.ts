@@ -144,6 +144,8 @@ export class FilesPanel {
   private readonly viewPill: HTMLElement | null;
   /** The title bar's mode readout (silent at the default projection). */
   private readonly modeSpan: HTMLElement | null;
+  /** The mode frame's FILTER block; it reads the strip's state. */
+  private readonly filterBlock: HTMLElement | null;
   /** What previews fetch through, when the surface offers it. */
   private readonly preview: PreviewProvider | null;
   /** Text heads already read, by path. */
@@ -187,6 +189,10 @@ export class FilesPanel {
     this.viewPill?.addEventListener('click', (): void => {
       this.view_set(VIEW_CYCLE[(VIEW_CYCLE.indexOf(this.viewMode) + 1) % VIEW_CYCLE.length] ?? 'list');
     });
+    this.filterBlock = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.files-filter') ?? null;
+    this.filterBlock?.classList.add('rail-off');
+    this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
+    this.order.stripChange_observe((): void => this.filterBlock_sync());
     // The language reaches ordering through a DOM event on the pane.
     container.closest<HTMLElement>('.pane-files')?.addEventListener('argus:roster', (event: Event): void => {
       const detail = (event as CustomEvent<{ op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }>).detail;
@@ -247,6 +253,7 @@ export class FilesPanel {
    */
   public content_show(path: string, content: string): void {
     this.contentShown = true;
+    this.container.parentElement?.classList.add('content-view');
     this.container.replaceChildren();
 
     const header: HTMLElement = document.createElement('header');
@@ -275,6 +282,7 @@ export class FilesPanel {
    */
   public contentImage_show(path: string, url: string): void {
     this.contentShown = true;
+    this.container.parentElement?.classList.add('content-view');
     this.container.replaceChildren();
 
     const header: HTMLElement = document.createElement('header');
@@ -328,6 +336,7 @@ export class FilesPanel {
     this.contentRelease?.();
     this.contentRelease = options.release ?? null;
     this.contentShown = true;
+    this.container.parentElement?.classList.add('content-view');
     this.container.replaceChildren();
 
     const view: HTMLElement = document.createElement('section');
@@ -381,6 +390,7 @@ export class FilesPanel {
    */
   private listings_render(listings: FsListing[]): void {
     this.contentShown = false;
+    this.container.parentElement?.classList.remove('content-view');
     this.lastListings = listings;
     this.thumbObserver?.disconnect();
     this.thumbObserver = null;
@@ -446,26 +456,33 @@ export class FilesPanel {
 
   /**
    * The caps and filter strip are the table's own frame, sticky at the top
-   * of the field; the mode frame (and its strip) start beneath them, never
-   * over them. The offset is a CSS variable on the body, kept true by a
+   * of the field, and the path header rides sticky beneath them; the field
+   * rule (and the mode frame under it) sit at the path header's bottom.
+   * Two CSS variables on the body carry those offsets, kept true by a
    * ResizeObserver as the filter strip comes and goes.
    */
   private frameTop_track(): void {
     const body: HTMLElement | null = this.container.parentElement;
     const roster: HTMLElement | null = this.container.querySelector<HTMLElement>('.roster-order');
+    const header: HTMLElement | null = this.container.querySelector<HTMLElement>('.files-path');
     this.frameTopObserver?.disconnect();
     this.frameTopObserver = null;
     if (body === null) return;
-    if (roster === null) {
+    if (roster === null || header === null) {
       body.style.removeProperty('--mode-frame-top');
+      body.style.removeProperty('--roster-frame-h');
       return;
     }
     const sync = (): void => {
-      body.style.setProperty('--mode-frame-top', `${Math.ceil(roster.getBoundingClientRect().bottom - body.getBoundingClientRect().top)}px`);
+      const top: number = body.getBoundingClientRect().top;
+      const rosterH: number = Math.ceil(roster.getBoundingClientRect().bottom - top);
+      body.style.setProperty('--roster-frame-h', `${rosterH}px`);
+      body.style.setProperty('--mode-frame-top', `${Math.ceil(header.getBoundingClientRect().bottom - top)}px`);
     };
     sync();
     this.frameTopObserver = new ResizeObserver(sync);
     this.frameTopObserver.observe(roster);
+    this.frameTopObserver.observe(header);
   }
 
   /**
@@ -637,9 +654,17 @@ export class FilesPanel {
     this.stateSpan.textContent = parts.filter((part: string): boolean => part !== '').join(' · ');
   }
 
-  /** Shows or hides the filter strip (the drawer's FILTER, or `file filter`). */
+  /** Shows or hides the filter strip (the mode frame's FILTER, or `file filter`). */
   public filter_toggle(open?: boolean): void {
     this.order.strip_toggle(open);
+  }
+
+  /** The FILTER block reads the strip's state, like every mode block. */
+  private filterBlock_sync(): void {
+    if (this.filterBlock === null) return;
+    const on: boolean = this.order.strip_isOpen();
+    this.filterBlock.textContent = on ? 'FILTER ON' : 'FILTER OFF';
+    this.filterBlock.classList.toggle('rail-off', !on);
   }
 
   /**

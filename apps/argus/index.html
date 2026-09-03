@@ -212,7 +212,13 @@
                   </span>
                   <span class="drawer-group drawer-children"></span>
                 </div>
-                <section class="files-panel" aria-label="Files"></section>
+                <!-- The listing body: the projection rail floats over it (never on the bar). -->
+                <div class="files-body">
+                  <div class="dag-rail files-rail">
+                    <button class="strategy-pill files-view" title="projection: rows, or cards">LIST</button>
+                  </div>
+                  <section class="files-panel" aria-label="Files"></section>
+                </div>
               </div>
             </template>
             <!-- The viewer pane: a slaved projection of its group's regard —

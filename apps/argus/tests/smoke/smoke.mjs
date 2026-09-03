@@ -245,6 +245,25 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('cards');
+  // CARDS projects the same listing: the pill reads the mode, cards carry
+  // the kind as badge, the count equals the rows', and LIST comes back.
+  const cards = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(300); if (fp.querySelectorAll('.files-row').length > 1) break; }
+    const rows = [...fp.querySelectorAll('.files-row')].filter(r => r.querySelector('.files-name')?.textContent !== '..').length;
+    const pill = fp.querySelector('.files-view');
+    const before = pill.textContent;
+    pill.click(); await sleep(300);
+    const after = pill.textContent;
+    const cardEls = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
+    const badgesMatch = cardEls.every(c => c.querySelector('.files-card-badge').textContent.toLowerCase() === [...c.classList].find(k => k.startsWith('files-type-')).replace('files-type-', ''));
+    pill.click(); await sleep(300);
+    const restored = pill.textContent === before && fp.querySelectorAll('.files-row').length > 1;
+    return { before, after, rows, cardCount: cardEls.length, badgesMatch, restored };`);
+  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch && cards.restored);
+
   console.log('bin-context');
   // /bin entries open as context: a plugin as its highlighted description,
   // a pipeline as its summary with its DAG rendered beneath.

@@ -113,6 +113,7 @@ These act on the DAG pane's *regard*: the node last selected (or the feed picked
 | `file delete` | drawer DELETE | The regarded file (destructive flavor).
 | `file follow` | drawer FOLLOW CWD | Binds this browser to the session cwd; the bar reads `CWD`; it lists the cwd at once.
 | `file root` | drawer ROOT HERE | Unbinds: the browser keeps its own place and navigates by silent listings.
+| `file list` / `file cards` | rail LIST / CARDS | The projection: rows on the grid, or cards (kind as badge, name, owner and date, size). Same listing, same sort and filter, same activation.
 | `file sort <column> [asc\|desc]` | event `argus:roster` | Columns: `name`, `type`, `size`, `date`, `owner`.
 | `file filter <text>` / `file filter off` | event `argus:roster` | As for `runs filter`.
 |===
@@ -174,7 +175,7 @@ Tab completes from this table (first word, then the follower of the previous wor
 | node | enter immerse back clear
 | dag | layout projection scale pulse census physics refresh
 | physics | charge link collide gravity reset
-| file | home back download delete sort filter follow root
+| file | home back download delete sort filter follow root list cards
 | header | stats dag away restore
 | console | open close toggle zoom height
 | desktop | save load show list delete

@@ -169,15 +169,15 @@ const VERBS_HELP: string = [
   'pane [@id|%n] split left|right|above|below · zoom · close · bind unlinked|fs|viewer',
   'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id',
   'view files|runs|pacs        (the gutter givens, workspace scope)',
-  'runs enter <feedId>         (enter a feed on the DAG pane)',
-  'node enter · immerse · back (the indicated node)',
+  'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
+  'node enter · immerse · back · clear (the indicated node)',
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
-  'file [@id] home|back|download|delete · follow · root',
+  'file [@id] home|back|download|delete · follow · root · sort <col> [asc|desc] · filter <text>|off',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
   'desktop save|load|show|list|delete [name]',
-  'argus verbs                 (this table)',
+  'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
 ].join('\n');
 
 /**

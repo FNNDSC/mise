@@ -215,9 +215,11 @@ describe('ProcVfsProvider.list', () => {
       expect(bytes.ok).toBe(true);
       expect(binSpy).toHaveBeenCalledWith('/home/alice/outputs/result-set/brain.mgz');
 
-      // Outside the data subtree there are no binary files to read.
-      const refused = await provider.readBinary('/proc/jobs/feed_5/pl-root_10/status');
-      expect(refused.ok).toBe(false);
+      // Outside the data subtree every file is synthesized text, served as
+      // its bytes so a byte reader sees what `cat` does.
+      const synthesized = await provider.readBinary('/proc/jobs/feed_5/pl-root_10/status');
+      expect(synthesized.ok && synthesized.value.toString('utf8')).toBe('finishedSuccessfully');
+      expect(binSpy).toHaveBeenCalledTimes(1);
     } finally {
       listSpy.mockRestore();
       readSpy.mockRestore();

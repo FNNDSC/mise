@@ -627,24 +627,26 @@ export class ProcVfsProvider implements VFSProvider {
   }
 
   /**
-   * Binary bytes exist only under the `data` link (an image in a job's
-   * output space); everything else in `/proc` is synthesized text.
+   * Raw bytes exist only under the `data` link (an image in a job's output
+   * space); everything else in `/proc` is synthesized text, served as its
+   * UTF-8 bytes so a byte reader (the daemon's `/vfs` route, a preview)
+   * sees the same file `cat` does.
    *
-   * @param pathStr - Absolute `/proc/jobs/.../data/...` path.
-   * @returns The target file's bytes.
+   * @param pathStr - Absolute `/proc/...` path.
+   * @returns The file's bytes.
    */
   async readBinary(pathStr: string): Promise<Result<Buffer>> {
     await cache_ensure();
     const clean: string = pathStr.replace(/\/$/, '');
     const { instanceID, virtualFile, dataRemainder } = procPath_parse(clean);
-    if (instanceID === null || virtualFile !== 'data' || dataRemainder === null || dataRemainder === '') {
-      errorStack.stack_push('error', `${pathStr} is not a binary file.`);
-      return Err();
+    if (instanceID !== null && virtualFile === 'data' && dataRemainder !== null && dataRemainder !== '') {
+      const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
+      if (!target.ok) return Err();
+      const { vfsDispatcher } = await import('../dispatcher.js');
+      return vfsDispatcher.readBinary(target.value);
     }
-    const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
-    if (!target.ok) return Err();
-    const { vfsDispatcher } = await import('../dispatcher.js');
-    return vfsDispatcher.readBinary(target.value);
+    const text: Result<string> = await this.read(pathStr);
+    return text.ok ? Ok(Buffer.from(text.value, 'utf8')) : text;
   }
 
   async read(pathStr: string): Promise<Result<string>> {

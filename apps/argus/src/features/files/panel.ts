@@ -102,6 +102,19 @@ function extension_of(filePath: string): string {
 }
 
 /**
+ * Reports whether a text head reads as binary: a NUL, or a run of
+ * replacement characters from decoding bytes that were never text.
+ *
+ * @param head - The decoded head of a file.
+ * @returns True when the bytes were not text.
+ */
+function text_isBinary(head: string): boolean {
+  if (head.includes('\u0000')) return true;
+  const bad: number = (head.match(/\uFFFD/g) ?? []).length;
+  return bad > 0 && bad / head.length > 0.02;
+}
+
+/**
  * What a preview needs from the surface: a URL that serves a file's bytes
  * natively, and a bounded read of a file's head. Both go through the
  * daemon's token-gated `/vfs` route, never the terminal stream.
@@ -598,7 +611,10 @@ export class FilesPanel {
       return thumb;
     }
     const isImage: boolean = extension_isImage(path) && item.size <= PREVIEW_IMAGE_MAX_BYTES;
-    const isText: boolean = TEXT_EXTENSIONS.has(extension_of(path)) && item.size <= PREVIEW_TEXT_MAX_BYTES;
+    // A file with no extension (a node's log, params, status) is read as
+    // text until its head proves otherwise.
+    const extension: string = extension_of(path);
+    const isText: boolean = (extension === '' || TEXT_EXTENSIONS.has(extension)) && item.size <= PREVIEW_TEXT_MAX_BYTES;
     if (!isImage && !isText) {
       glyph();
       return thumb;
@@ -620,7 +636,7 @@ export class FilesPanel {
         if (this.headCache.size >= PREVIEW_CACHE_MAX) this.headCache.clear();
         this.headCache.set(path, head);
         thumb.classList.remove('thumb-wait');
-        if (head.trim() === '') { glyph(); return; }
+        if (head.trim() === '' || text_isBinary(head)) { glyph(); return; }
         const pre: HTMLPreElement = document.createElement('pre');
         pre.textContent = head;
         thumb.replaceChildren(pre);

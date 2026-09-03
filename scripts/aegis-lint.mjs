@@ -153,6 +153,34 @@ LINT_CHECKS['field-is-content'] = () => {
   if (/\b(dag|files)-rail\b/.test(html)) fail('field-is-content', 'a floating-rail element survives in index.html');
 };
 
+LINT_CHECKS['hover-never-glares'] = () => {
+  // A hover brightens a control in its own hue; it never flips it to the
+  // palette's near-white (butter), which reads as a glare on the frame.
+  for (const m of css.matchAll(/([^{}]+):hover[^{]*\{([^}]*)\}/g)) {
+    if (/--butter/.test(m[2])) fail('hover-never-glares', `hover rule on '${m[1].trim().split(/\s*,\s*/).pop()}' uses --butter`);
+  }
+};
+
+LINT_CHECKS['roster-grid-single-source'] = () => {
+  // Caps and rows read one declaration: any roster grid that spells its own
+  // template has drifted from the caps (or will).
+  for (const selector of ['.roster-caps', '.files-grid', '.feedlist-row']) {
+    const m = css.match(new RegExp(`\n${selector.replace('.', '\\.')} \\{([^}]*)\\}`));
+    if (!m) { fail('roster-grid-single-source', `${selector} rule not found`); continue; }
+    if (!/grid-template-columns:\s*var\(--roster-cols\)/.test(m[1])) fail('roster-grid-single-source', `${selector} does not read --roster-cols`);
+  }
+  for (const m of css.matchAll(/grid-template-columns:\s*([^;]+);/g)) {
+    if (/\d(em|px|fr)\b/.test(m[1]) && /1fr/.test(m[1]) && /em/.test(m[1]) && !/var\(--roster-cols\)/.test(m[1])) {
+      // a hand-spelled roster-shaped template outside the single source
+      const before = css.slice(0, m.index);
+      const host = before.slice(before.lastIndexOf('\n\n')).trim().split('\n')[0];
+      if (/--roster-cols:/.test(m[0])) continue;
+      if (/roster-cols/.test(before.slice(-200))) continue;
+      if (/(files-grid|feedlist-row|roster-caps)/.test(host)) fail('roster-grid-single-source', `${host} spells its own roster template`);
+    }
+  }
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

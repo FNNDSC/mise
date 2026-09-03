@@ -265,7 +265,7 @@ try {
     const stripRect = strip.getBoundingClientRect();
     const atRest = {
       stripShown: stripRect.width > 0 && stripRect.height > 40,
-      frameOff: frame.getBoundingClientRect().left >= bodyRect.right - 1,
+      frameOff: getComputedStyle(frame).visibility === 'hidden' && stripRect.width < 12,
       fieldClean: inField.length === 0,
       // the frame is drawn at rest: a rule along the top meeting the spine through an elbow
       ruleDrawn: rule.width > 100 && rule.height >= 4 && Math.abs(rule.right - stripRect.left) <= 1,
@@ -274,14 +274,16 @@ try {
       filterFolded: fp.querySelector('.roster-filter').getBoundingClientRect().height === 0,
     };
     strip.click(); await sleep(400);
-    const opened = frame.getBoundingClientRect().right <= bodyRect.right + 1 && frame.getBoundingClientRect().left < bodyRect.right - 40 && fp.dataset.modes === 'open';
+    const barRect = strip.getBoundingClientRect();
+    const opened = barRect.width > 80 && frame.getBoundingClientRect().left < bodyRect.right - 40 && getComputedStyle(frame).visibility === 'visible' && fp.dataset.modes === 'open';
     const pill = fp.querySelector('.files-view');
     const pillWorks = (() => { const b = pill.textContent; pill.click(); const c = pill.textContent; return b === 'LIST' && c === 'CARDS'; })();
     await sleep(200);
     const modeRead = fp.querySelector('.pane-mode').textContent;
     // blocks sit flush against the spine, under the rule
     const frameRect = frame.getBoundingClientRect();
-    const blocksFlush = Math.abs(frameRect.right - stripRect.left) <= 1 && frameRect.top >= rule.bottom;
+    // the blocks are segments of the widened bar: same width, same right edge, under the elbow
+    const blocksFlush = Math.abs(frameRect.right - barRect.right) <= 1 && Math.abs(frameRect.width - barRect.width) <= 1 && frameRect.top >= rule.bottom;
     // FILTER is a block on the frame: it unfolds the strip and reads its state
     const fb = fp.querySelector('.files-filter');
     const filterBefore = fb.textContent;
@@ -290,7 +292,7 @@ try {
     fb.click(); await sleep(250);
     const filterClosed = fp.querySelector('.roster-filter').getBoundingClientRect().height === 0 && fb.textContent === filterBefore;
     fp.querySelector('.files-panel').click(); await sleep(400);
-    const fieldRetracts = fp.dataset.modes === undefined && frame.getBoundingClientRect().left >= bodyRect.right - 1;
+    const fieldRetracts = fp.dataset.modes === undefined && getComputedStyle(frame).visibility === 'hidden' && strip.getBoundingClientRect().width < 12;
     strip.click(); await sleep(300);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
     const escRetracts = fp.dataset.modes === undefined;

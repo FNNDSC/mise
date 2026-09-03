@@ -74,7 +74,7 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
  * @param cleanPath - The normalized absolute path.
  * @returns The absolute target path, or null.
  */
-async function cfsLink_target(cleanPath: string): Promise<string | null> {
+export async function cfsLink_target(cleanPath: string): Promise<string | null> {
   if (cleanPath === '/' || !cleanPath.startsWith('/')) return null;
   const { vfsDispatcher } = await import('@fnndsc/salsa');
   const parentResult: Result<VFSItem[]> = await vfsDispatcher.list(path.posix.dirname(cleanPath));

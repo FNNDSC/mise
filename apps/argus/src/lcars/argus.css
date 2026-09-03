@@ -54,6 +54,10 @@
 
 /* A contract or stack disagreement is the one time a version number changes
    what an operator should do, so it is the one time one is shown. */
+#status-strip .lamp-online {
+  color: #000;
+}
+
 #status-strip .mismatch {
   color: #ff5f5f;
   font-weight: bold;
@@ -147,8 +151,7 @@ body[data-zoom] .pane-zoomed .files-panel {
 }
 
 .lcars-bar-zoom:hover {
-  filter: brightness(1.3);
-  box-shadow: 0 0 12px var(--butter);
+  filter: brightness(1.18);
 }
 
 body[data-zoom='console'] #drawer .lcars-bar-zoom {
@@ -341,29 +344,38 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   background: #000;
 }
 
-.roster-caps {
-  display: grid;
-  margin: 0.2rem 0 0.45rem;
+/* ONE roster grid per pane: the columns, the gap, and the edge padding are
+ * declared once on the host (`--roster-cols`, `--roster-gap`,
+ * `--roster-pad`) and read by the caps AND the rows, so a cap's label can
+ * only ever sit where its column's text sits. */
+.files-body {
+  --roster-cols: 1.4em 1fr 6em 6em 7em 10em;
+  --roster-gap: 0px;
+  --roster-pad: 0px;
 }
 
-/* Each pane's caps grid mirrors its rows exactly — same template, same
- * font-size (em columns resolve against the grid's own font), same
- * horizontal padding as a row. */
-.files-body .roster-caps {
-  grid-template-columns: 1.4em 1fr 6em 6em 7em 10em;
-  column-gap: 0;
+.dag-roster {
+  --roster-cols: 4em 1fr 8em 8em 7em;
+  --roster-gap: 0.8rem;
+  --roster-pad: 6px;
+}
+
+.roster-caps {
+  display: grid;
+  grid-template-columns: var(--roster-cols);
+  column-gap: var(--roster-gap);
+  padding: 0 var(--roster-pad);
+  margin: 0.2rem 0 0.45rem;
   font-size: 0.8rem;
 }
 
-.dag-roster .roster-caps {
-  grid-template-columns: 4em 1fr 8em 8em 7em;
-  column-gap: 0.8rem;
-  padding: 0 6px;
-}
-
+/* Caps are bar SEGMENTS: a uniform 3px of black between them whatever the
+ * column gap (a cap grows into a wide gap, or gives up 3px of a tight one),
+ * each in its own hue from the frame's cycle, rounded at the bar's ends. */
 .roster-cap {
   min-width: 0;
   height: 24px;
+  margin-right: calc(3px - var(--roster-gap));
   border: none;
   border-radius: 0;
   background-color: var(--harvestgold);
@@ -393,6 +405,19 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 .roster-cap:last-of-type {
   border-radius: 0 9px 9px 0;
   padding-right: 0.7rem;
+  margin-right: 0;
+}
+
+/* The hue cycle every segmented frame member shares: caps, mode blocks,
+ * the bar's fill. Three hues the themes all map, black type on each. */
+.roster-cap:nth-of-type(3n+2),
+.mode-frame .strategy-pill:nth-of-type(3n+2) {
+  background-color: var(--daybreak);
+}
+
+.roster-cap:nth-of-type(3n+3),
+.mode-frame .strategy-pill:nth-of-type(3n+3) {
+  background-color: var(--orange);
 }
 
 .roster-cap.roster-active {
@@ -824,6 +849,17 @@ main {
 }
 
 .layout-leaf.pane-focused {
+  position: relative;
+}
+
+/* The ring is a veil over the whole leaf: sticky caps and headers paint
+ * their own black and would otherwise cut it. */
+.layout-leaf.pane-focused::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--harvestgold) 45%, transparent);
 }
 
@@ -1075,9 +1111,9 @@ body[data-zoom]:not([data-zoom='console'])
 
 .feedlist-row {
   display: grid;
-  grid-template-columns: 4em 1fr 8em 8em 7em;
-  gap: 0 0.8rem;
-  padding: 2px 6px;
+  grid-template-columns: var(--roster-cols);
+  gap: 0 var(--roster-gap);
+  padding: 2px var(--roster-pad);
   cursor: pointer;
 }
 
@@ -1202,8 +1238,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .mode-strip:hover {
-  background-color: var(--butter);
-  box-shadow: 0 0 8px var(--butter);
+  filter: brightness(1.18);
 }
 
 /* The elbow: the rule turning down into the spine — fatter than either, as
@@ -1274,11 +1309,22 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .mode-frame .strategy-pill:hover {
-  background-color: var(--butter);
-  color: #000;
+  filter: brightness(1.18);
 }
 
 /* Mode weights: a quiet mode recedes, a missing-data mode says so. */
+.mode-fill {
+  flex: 1 1 0;
+  min-height: 1rem;
+  background-color: var(--daybreak);
+  border-radius: 0 0 4px 4px;
+  cursor: pointer;
+}
+
+.mode-fill:hover {
+  filter: brightness(1.18);
+}
+
 .mode-frame .strategy-pill.rail-off {
   background-color: color-mix(in srgb, var(--harvestgold) 30%, transparent);
   color: var(--honey);
@@ -1290,17 +1336,6 @@ body[data-zoom]:not([data-zoom='console'])
   text-decoration: line-through;
 }
 
-.mode-fill {
-  flex: 1 1 0;
-  min-height: 1rem;
-  background-color: var(--harvestgold);
-  border-radius: 0 0 4px 4px;
-  cursor: pointer;
-}
-
-.mode-fill:hover {
-  background-color: var(--butter);
-}
 
 /* A content view (a file, a /bin entry) has no projection: no frame. And
  * while a node's browser is up over the canvas, the canvas's frame steps
@@ -1330,8 +1365,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .strategy-pill:hover {
-  color: var(--butter);
-  box-shadow: 0 0 8px var(--harvestgold);
+  filter: brightness(1.18);
 }
 
 /* --------------------------------------------------------- pipeline cycler */
@@ -1463,7 +1497,9 @@ body[data-header='dag'] #header-dag {
 
 .files-grid {
   display: grid;
-  grid-template-columns: 1.4em 1fr 6em 6em 7em 10em;
+  grid-template-columns: var(--roster-cols);
+  column-gap: var(--roster-gap);
+  padding: 0 var(--roster-pad);
   row-gap: 2px;
   font-size: 0.8rem;
 }

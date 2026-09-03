@@ -41,6 +41,8 @@ export interface SceneNode {
   metric?: number;
   /** Collapsed-group multiplicity (×N); undefined or 1 for singletons. */
   count?: number;
+  /** A hue the host assigns (a mode's color, e.g. by compute); errors still win. */
+  hue?: string;
 }
 
 /** The normalized graph the scene renders. */
@@ -158,12 +160,25 @@ function palette_read(): {
  * its own cool color (unless it errored — errors win), activity is the
  * theme's accent, settled work is quiet, templates wear the gold.
  */
+const hueColors: Map<string, THREE.Color> = new Map();
+
+/** A host-assigned hue as a scene color, parsed once per distinct value. */
+function hueColor_get(hue: string): THREE.Color {
+  let color: THREE.Color | undefined = hueColors.get(hue);
+  if (color === undefined) {
+    color = new THREE.Color(hue);
+    hueColors.set(hue, color);
+  }
+  return color;
+}
+
 function nodeColor_pick(
   node: SceneNode,
   palette: ReturnType<typeof palette_read>,
   isRoot: boolean,
 ): THREE.Color {
   if (node.status === 'finishedWithError' || node.status === 'cancelled') return palette.error;
+  if (node.hue !== undefined) return hueColor_get(node.hue);
   if (isRoot) return palette.root;
   if (node.status === undefined) return palette.template;
   if (node.status === 'finishedSuccessfully') return palette.done;

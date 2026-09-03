@@ -105,6 +105,8 @@ export const feedDagNodeSchema = dagNodeCoreSchema.extend({
   vfsPath: z.string(),
   metrics: dagNodeMetricsSchema.optional(),
   tally: dagNodeTallySchema.optional(),
+  /** Where the job ran; `mixed` for a group whose members ran on different resources. */
+  computeResource: z.string().optional(),
 });
 
 /**

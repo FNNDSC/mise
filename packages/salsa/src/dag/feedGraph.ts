@@ -31,6 +31,8 @@ export interface FeedNode {
   startedAt?: string;
   finishedAt?: string;
   outputBytes?: number;
+  /** The compute resource the job ran on, when observed. */
+  computeResource?: string;
 }
 
 /** A whole feed's DAG skeleton — flat node list plus feed-level metadata. */
@@ -106,6 +108,7 @@ export function feedGraph_build(feedID: number): FeedGraph | null {
       ...(inst?.startedAt !== undefined ? { startedAt: inst.startedAt } : {}),
       ...(inst?.finishedAt !== undefined ? { finishedAt: inst.finishedAt } : {}),
       ...(inst?.outputBytes !== undefined ? { outputBytes: inst.outputBytes } : {}),
+      ...(inst?.computeResource !== undefined ? { computeResource: inst.computeResource } : {}),
     };
   });
 

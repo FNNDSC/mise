@@ -110,6 +110,12 @@ export function feedDagModel_build(graph: FeedGraph): FeedDagModel {
       ...(seenSeconds ? { computeSeconds } : {}),
       ...(seenBytes ? { dataBytes } : {}),
     };
+    // Where the work ran: one resource when the members agree, `mixed`
+    // when they do not, nothing when none reported.
+    const computes: Set<string> = new Set(
+      members.map((member: FeedNode): string | undefined => member.computeResource).filter((name): name is string => name !== undefined),
+    );
+    const computeResource: string | undefined = computes.size === 0 ? undefined : computes.size === 1 ? [...computes][0] : 'mixed';
 
     // A group's status is its worst member's class — an error anywhere in
     // the set must be visible on the one node that stands for it.
@@ -134,6 +140,7 @@ export function feedDagModel_build(graph: FeedGraph): FeedDagModel {
       status,
       vfsPath: `/proc/jobs/feed_${graph.feedID}/${node.pluginName}_${rep}/data`,
       ...(Object.keys(metrics).length > 0 ? { metrics } : {}),
+      ...(computeResource !== undefined ? { computeResource } : {}),
       ...(node.count > 1
         ? {
             tally: {

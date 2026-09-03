@@ -1609,8 +1609,10 @@ async function surface_start(token: string): Promise<void> {
           const mount: HTMLElement | undefined = paneInstance_get(paneId)?.mount;
           const strategy: string = mount?.querySelector('.dag-strategy')?.textContent?.toLowerCase() ?? 'ranked';
           const projection: string = mount?.querySelector('.dag-projection')?.textContent?.toLowerCase() ?? '3d';
+          const hue: string = mount?.querySelector('.dag-hue')?.textContent?.toLowerCase() ?? 'status';
           if (strategy !== 'ranked') lines.push(`dag %${ordinal} layout ${strategy}`);
           if (projection !== '3d') lines.push(`dag %${ordinal} projection ${projection}`);
+          if (hue !== 'status') lines.push(`dag %${ordinal} hue ${hue}`);
         }
       };
       const build = (node: Node, ordinal: number): void => {
@@ -1675,7 +1677,7 @@ async function surface_start(token: string): Promise<void> {
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],
     node: ['enter', 'immerse', 'back', 'clear'],
-    dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics', 'refresh'],
+    dag: ['layout', 'projection', 'scale', 'hue', 'pulse', 'census', 'physics', 'refresh'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
     file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root', 'list', 'cards', 'preview'],
     header: ['stats', 'dag', 'away', 'restore'],
@@ -1687,6 +1689,7 @@ async function surface_start(token: string): Promise<void> {
     layout: ['ranked', 'molecule'],
     projection: ['2d', '3d'],
     scale: ['time', 'size'],
+    hue: ['status', 'compute'],
     argus: ['verbs'],
   };
   paletteInput.addEventListener('keydown', (event: KeyboardEvent): void => {

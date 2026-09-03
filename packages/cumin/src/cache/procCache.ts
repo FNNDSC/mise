@@ -111,6 +111,8 @@ export interface ProcInstance {
   finishedAt?: string;
   /** Output size in bytes, as CUBE reports it; undefined when unobserved. */
   outputBytes?: number;
+  /** The compute resource the job ran on; undefined when unobserved. */
+  computeResource?: string;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
   /**
@@ -426,7 +428,7 @@ export class ProcCache {
    */
   instanceMetrics_set(
     id: number,
-    metrics: { startedAt?: string; finishedAt?: string; outputBytes?: number },
+    metrics: { startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string },
   ): void {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
@@ -434,6 +436,7 @@ export class ProcCache {
     if (metrics.startedAt !== undefined && inst.startedAt !== metrics.startedAt) { inst.startedAt = metrics.startedAt; changed = true; }
     if (metrics.finishedAt !== undefined && inst.finishedAt !== metrics.finishedAt) { inst.finishedAt = metrics.finishedAt; changed = true; }
     if (metrics.outputBytes !== undefined && inst.outputBytes !== metrics.outputBytes) { inst.outputBytes = metrics.outputBytes; changed = true; }
+    if (metrics.computeResource !== undefined && inst.computeResource !== metrics.computeResource) { inst.computeResource = metrics.computeResource; changed = true; }
     if (changed) this.change_emit({ scope: 'feed', feedID: inst.feedID });
   }
 

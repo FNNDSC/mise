@@ -171,7 +171,7 @@ const VERBS_HELP: string = [
   'view files|runs|pacs        (the gutter givens, workspace scope)',
   'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
   'node enter · immerse · back · clear (the indicated node)',
-  'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
+  'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
   'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
@@ -334,6 +334,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (verb === 'layout') return modePill_setTo(host, paneId, '.dag-strategy', arg.toUpperCase()) ? `layout ${arg}` : 'dag layout ranked|molecule';
     if (verb === 'projection') return modePill_setTo(host, paneId, '.dag-projection', arg.toUpperCase()) ? `projection ${arg}` : 'dag projection 2d|3d';
     if (verb === 'scale') return modePill_setTo(host, paneId, '.dag-scale', arg.toUpperCase()) ? `scale ${arg}` : 'dag scale time|size';
+    if (verb === 'hue') return modePill_setTo(host, paneId, '.dag-hue', arg.toUpperCase()) ? `hue ${arg}` : 'dag hue status|compute';
     if (verb === 'pulse') return control_click(host, paneId, '.dag-pulse') ? 'pulse' : 'dag pulse: no mode frame';
     if (verb === 'census') return control_click(host, paneId, '.dag-census') ? 'census toggled' : 'dag census: no mode frame';
     if (verb === 'refresh') return drawerChild_click(host, paneId, 'REFRESH') ? 'refreshing' : 'dag refresh: no DAG pane';
@@ -351,7 +352,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       pane.dispatchEvent(new CustomEvent('argus:dag-physics', { detail: { term, on } }));
       return `physics ${term} ${on ? 'on' : 'off'}`;
     }
-    return `dag: unknown verb '${verb}' (layout|projection|scale|pulse|census|physics|refresh)`;
+    return `dag: unknown verb '${verb}' (layout|projection|scale|hue|pulse|census|physics|refresh)`;
   }
 
   if (subject === 'file') {

@@ -210,12 +210,13 @@ async function cache_ensure(): Promise<void> {
  */
 /** Pulls the execution metrics a CUBE list row carries, defined-only. */
 function instanceMetrics_fromRow(inst: PluginInstanceData): {
-  startedAt?: string; finishedAt?: string; outputBytes?: number;
+  startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string;
 } {
   return {
     ...(typeof inst.start_date === 'string' ? { startedAt: inst.start_date } : {}),
     ...(typeof inst.end_date === 'string' ? { finishedAt: inst.end_date } : {}),
     ...(typeof inst.size === 'number' ? { outputBytes: inst.size } : {}),
+    ...(typeof inst.compute_resource_name === 'string' && inst.compute_resource_name !== '' ? { computeResource: inst.compute_resource_name } : {}),
   };
 }
 

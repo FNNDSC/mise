@@ -491,6 +491,12 @@ export class DagScene {
     this.ambient = options.ambient === true;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
+    // The renderer sizes its canvas in DEVICE pixels and never writes the
+    // CSS size (`setSize(w, h, false)` below); the class pins the canvas to
+    // its mount so a HiDPI display cannot spill it sideways — one rule for
+    // every mount (a pane, a /bin diagram, the header's cycler), not a
+    // per-host stylesheet that a new host forgets.
+    this.renderer.domElement.classList.add('dag-scene-canvas');
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
     this.camera.position.set(0, 0, 14);

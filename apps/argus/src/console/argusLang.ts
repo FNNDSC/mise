@@ -172,7 +172,7 @@ const VERBS_HELP: string = [
   'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
   'node enter · immerse · back · clear (the indicated node)',
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
-  'file [@id] home|back|download|delete · follow · root · sort <col> [asc|desc] · filter <text>|off',
+  'file [@id] home|back|download|delete · follow · root · list|cards · sort <col> [asc|desc] · filter <text>|off',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
@@ -355,6 +355,9 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'file') {
+    if (verb === 'list' || verb === 'cards') {
+      return railPill_setTo(host, paneId, '.files-view', verb.toUpperCase()) ? `file ${verb}` : `file ${verb}: no files rail`;
+    }
     const label: string = verb === 'follow' ? 'FOLLOW CWD' : verb === 'root' ? 'ROOT HERE' : verb.toUpperCase();
     if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE', 'FOLLOW CWD', 'ROOT HERE'].includes(label)) return 'file home|back|download|delete|sort|filter|follow|root';
     return drawerChild_click(host, paneId, label) ? `file ${verb}` : `file ${verb}: not offered by '${paneId}'`;

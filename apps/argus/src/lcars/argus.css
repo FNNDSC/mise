@@ -1344,6 +1344,103 @@ body[data-header='dag'] #header-dag {
   border: 1px solid var(--pumpkin-pie);
 }
 
+.files-body {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The files projection rail floats over the listing's lower right, clear
+ * of the caps and off the bar (the bar law); one pill today. */
+.files-rail {
+  top: auto;
+  bottom: 0.6rem;
+  right: 1.2rem;
+}
+
+/* Cards: the same listing drawn as a grid of LCARS cards. */
+.files-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.6rem;
+  padding: 0.3rem 0.5rem 0.6rem 0;
+}
+
+.files-card {
+  background: linear-gradient(135deg, #161616 0%, #070707 100%);
+  border: 2px solid var(--october-sunset);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  min-width: 0;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.files-card.files-activatable { cursor: pointer; }
+
+.files-card.files-activatable:hover {
+  border-color: var(--honey);
+  transform: translateY(-2px);
+}
+
+.files-card-up {
+  display: flex;
+  align-items: center;
+  color: var(--pumpkin-pie);
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.files-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.files-card-badge {
+  background: var(--harvestgold);
+  color: #000;
+  border-radius: 9px;
+  padding: 0 0.6rem;
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  line-height: 1.6;
+}
+
+.files-card.files-type-plugin .files-card-badge { background: var(--daybreak); }
+.files-card.files-type-pipeline .files-card-badge { background: var(--orange); }
+.files-card.files-type-dir .files-card-badge,
+.files-card.files-type-vfs .files-card-badge,
+.files-card.files-type-job .files-card-badge { background: var(--butter); }
+
+.files-card-size {
+  color: var(--pumpkin-pie);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.68rem;
+}
+
+.files-card-title {
+  color: var(--honey);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-card-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.3rem;
+  color: var(--pumpkin-pie);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.66rem;
+}
+
 .files-content-view {
   display: flex;
   flex-direction: column;

@@ -84,6 +84,10 @@ export class FilesPanel {
   private contentShown: boolean = false;
   /** True when this browser follows the session cwd (the console's browser). */
   private following: boolean = false;
+  /** How the listing is projected: rows on the grid, or cards. */
+  private viewMode: 'list' | 'cards' = 'list';
+  /** The rail pill that reads (and flips) the projection. */
+  private readonly viewPill: HTMLElement | null;
   /** Whether the listing on stage was served stale. */
   private stale: boolean = false;
 
@@ -113,6 +117,10 @@ export class FilesPanel {
       1,
     );
     this.stateSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-state') ?? null;
+    this.viewPill = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.files-view') ?? null;
+    this.viewPill?.addEventListener('click', (): void => {
+      this.view_set(this.viewMode === 'list' ? 'cards' : 'list');
+    });
     // The language reaches ordering through a DOM event on the pane.
     container.closest<HTMLElement>('.pane-files')?.addEventListener('argus:roster', (event: Event): void => {
       const detail = (event as CustomEvent<{ op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }>).detail;
@@ -318,6 +326,23 @@ export class FilesPanel {
       header.textContent = listing.path;
       block.appendChild(header);
 
+      if (this.viewMode === 'cards') {
+        const cards: HTMLElement = document.createElement('div');
+        cards.className = 'files-cards';
+        if (listing.path !== '/') {
+          const up: HTMLElement = document.createElement('article');
+          up.className = 'files-card files-card-up files-activatable';
+          up.textContent = '▴ ..';
+          up.addEventListener('click', (): void => {
+            this.activate({ kind: 'dir', path: parentPath_of(listing.path) });
+          });
+          cards.appendChild(up);
+        }
+        for (const item of this.order.apply(listing.items)) cards.appendChild(this.card_build(listing.path, item));
+        block.appendChild(cards);
+        this.container.appendChild(block);
+        continue;
+      }
       const table: HTMLElement = document.createElement('div');
       table.className = 'files-grid';
       // Navigation goes both ways: every listing below the root leads with
@@ -364,6 +389,69 @@ export class FilesPanel {
   /** Whether this browser follows the session cwd. */
   public follow_get(): boolean {
     return this.following;
+  }
+
+  /**
+   * Sets the projection: rows on the grid, or cards. The same listing,
+   * the same sort and filter, the same activation — drawn another way.
+   * The rail pill reads the current mode.
+   *
+   * @param mode - The projection.
+   */
+  public view_set(mode: 'list' | 'cards'): void {
+    this.viewMode = mode;
+    if (this.viewPill !== null) this.viewPill.textContent = mode === 'cards' ? 'CARDS' : 'LIST';
+    if (this.lastListings.length > 0 && !this.contentShown) this.listings_render(this.lastListings);
+  }
+
+  /** The current projection. */
+  public view_get(): 'list' | 'cards' {
+    return this.viewMode;
+  }
+
+  /**
+   * One entry as a card: the kind as its badge, the name as its title, the
+   * owner and date beneath, the size at the right. Activates like a row.
+   *
+   * @param parentPath - The listed directory.
+   * @param item - The entry.
+   * @returns The card element.
+   */
+  private card_build(parentPath: string, item: FsListingEntry): HTMLElement {
+    const card: HTMLElement = document.createElement('article');
+    card.className = `files-card files-type-${item.type}`;
+    const head: HTMLElement = document.createElement('div');
+    head.className = 'files-card-head';
+    const badge: HTMLSpanElement = document.createElement('span');
+    badge.className = 'files-card-badge';
+    badge.textContent = item.type.toUpperCase();
+    const size: HTMLSpanElement = document.createElement('span');
+    size.className = 'files-card-size';
+    size.textContent = item.type === 'dir' || item.size === 0 ? '' : size_format(item.size);
+    head.append(badge, size);
+    const title: HTMLElement = document.createElement('div');
+    title.className = 'files-card-title';
+    title.textContent = item.name;
+    const meta: HTMLElement = document.createElement('div');
+    meta.className = 'files-card-meta';
+    const owner: HTMLSpanElement = document.createElement('span');
+    owner.textContent = item.owner;
+    const date: HTMLSpanElement = document.createElement('span');
+    date.textContent = item.date.slice(0, 10);
+    meta.append(owner, date);
+    card.append(head, title, meta);
+    const path: string = path_join(parentPath, item.name);
+    if (item.type === 'dir' || item.type === 'vfs' || item.type === 'link' || item.type === 'job') {
+      card.classList.add('files-activatable');
+      card.addEventListener('click', (): void => this.activate({ kind: 'dir', path }));
+    } else if (item.type === 'file') {
+      card.classList.add('files-activatable');
+      card.addEventListener('click', (): void => this.activate({ kind: 'file', path }));
+    } else if (item.type === 'plugin' || item.type === 'pipeline') {
+      card.classList.add('files-activatable');
+      card.addEventListener('click', (): void => this.activate({ kind: item.type as 'plugin' | 'pipeline', path }));
+    }
+    return card;
   }
 
   /** The bar's state: what the browser is bound to, then what it shows. */

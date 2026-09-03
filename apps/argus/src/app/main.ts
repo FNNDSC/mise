@@ -1605,7 +1605,7 @@ async function surface_start(token: string): Promise<void> {
     node: ['enter', 'immerse', 'back', 'clear'],
     dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics', 'refresh'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
-    file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root'],
+    file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root', 'list', 'cards'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],
     desktop: ['save', 'load', 'show', 'list', 'delete'],

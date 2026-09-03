@@ -1106,7 +1106,7 @@ body[data-zoom]:not([data-zoom='console'])
  * never an opening: every affordance is by touch. */
 .mode-strip {
   position: absolute;
-  top: 0;
+  top: var(--mode-frame-top, 0);
   right: 0;
   bottom: 0;
   width: 7px;
@@ -1130,7 +1130,7 @@ body[data-zoom]:not([data-zoom='console'])
 
 .mode-frame {
   position: absolute;
-  top: 0;
+  top: var(--mode-frame-top, 0);
   right: 0;
   bottom: 0;
   display: flex;

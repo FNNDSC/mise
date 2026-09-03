@@ -150,6 +150,8 @@ export class FilesPanel {
   private readonly headCache: Map<string, string> = new Map();
   /** Watches preview cards scroll into view; only then do they fetch. */
   private thumbObserver: IntersectionObserver | null = null;
+  /** Tracks the roster frame's height so the mode frame starts beneath it. */
+  private frameTopObserver: ResizeObserver | null = null;
   /** Whether the listing on stage was served stale. */
   private stale: boolean = false;
 
@@ -439,6 +441,31 @@ export class FilesPanel {
     // session's refresh replaces it.
     this.stale = listings.some((listing: FsListing): boolean => listing.fresh === false);
     this.state_render();
+    this.frameTop_track();
+  }
+
+  /**
+   * The caps and filter strip are the table's own frame, sticky at the top
+   * of the field; the mode frame (and its strip) start beneath them, never
+   * over them. The offset is a CSS variable on the body, kept true by a
+   * ResizeObserver as the filter strip comes and goes.
+   */
+  private frameTop_track(): void {
+    const body: HTMLElement | null = this.container.parentElement;
+    const roster: HTMLElement | null = this.container.querySelector<HTMLElement>('.roster-order');
+    this.frameTopObserver?.disconnect();
+    this.frameTopObserver = null;
+    if (body === null) return;
+    if (roster === null) {
+      body.style.removeProperty('--mode-frame-top');
+      return;
+    }
+    const sync = (): void => {
+      body.style.setProperty('--mode-frame-top', `${Math.ceil(roster.getBoundingClientRect().bottom - body.getBoundingClientRect().top)}px`);
+    };
+    sync();
+    this.frameTopObserver = new ResizeObserver(sync);
+    this.frameTopObserver.observe(roster);
   }
 
   /**

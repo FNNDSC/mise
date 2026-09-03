@@ -270,14 +270,17 @@ export class ChrisContext {
   }
 
   async ChRISfolder_set(path: string): Promise<boolean> {
+    this._singleContext.folder = path;
     return sessionConfig.pathContext_set(path);
   }
 
   async ChRISfeed_set(feedID: string): Promise<boolean> {
+    this._singleContext.feed = feedID;
     return sessionConfig.feedContext_set(feedID);
   }
 
   async ChRISplugin_set(pluginID: string): Promise<boolean> {
+    this._singleContext.plugin = pluginID;
     return sessionConfig.pluginContext_set(pluginID);
   }
 
@@ -286,6 +289,7 @@ export class ChrisContext {
   }
 
   async PACSserver_set(server: string): Promise<boolean> {
+    this._singleContext.pacsserver = server;
     return sessionConfig.pacsserverContext_set(server);
   }
 
@@ -297,6 +301,17 @@ export class ChrisContext {
     return sessionConfig.pathContext_get();
   }
 
+  /**
+   * Reloads every context from storage: the explicit re-read, for a fresh
+   * identity (after a connect) or a deliberate resync. The session-state
+   * contexts (folder, feed, plugin, PACS server) are otherwise OWNED BY THIS
+   * PROCESS once loaded: their files are written for the next process to
+   * restore from, never re-read mid-session — two daemons of one identity
+   * once shared a working directory through that file, and a `cd` in one
+   * moved the other.
+   *
+   * @returns The refreshed context snapshot.
+   */
   async currentContext_update(): Promise<SingleContext> {
     this._singleContext.URL = await this.ChRISURL_get();
     this._singleContext.user = await this.ChRISuser_get();
@@ -304,28 +319,50 @@ export class ChrisContext {
     this._singleContext.feed = await this.ChRISfeed_get();
     this._singleContext.plugin = await this.ChRISplugin_get();
     this._singleContext.pacsserver = await this.PACSserver_get();
+    this.sessionLoaded = true;
+    return this._singleContext;
+  }
+
+  /** Whether this process has loaded its session-state contexts. */
+  private sessionLoaded: boolean = false;
+
+  /**
+   * Loads the context from storage once; afterwards the process's own
+   * values stand.
+   *
+   * @returns The context snapshot.
+   */
+  async context_ensure(): Promise<SingleContext> {
+    if (!this.sessionLoaded) await this.currentContext_update();
     return this._singleContext;
   }
 
   /**
-   * Get the current value for a specific context type.
+   * Get the current value for a specific context type. Identity (user,
+   * URL) is read from storage each time; session state is this process's
+   * own once loaded.
    * @param context - The context type to retrieve.
    * @returns The current context value or null.
    */
   async current_get(context: Context): Promise<string | null> {
-    await this.currentContext_update();
     switch (context) {
       case Context.ChRISURL:
+        this._singleContext.URL = await this.ChRISURL_get();
         return this._singleContext.URL;
       case Context.ChRISuser:
+        this._singleContext.user = await this.ChRISuser_get();
         return this._singleContext.user;
       case Context.ChRISfolder:
+        await this.context_ensure();
         return this._singleContext.folder;
       case Context.ChRISfeed:
+        await this.context_ensure();
         return this._singleContext.feed;
       case Context.ChRISplugin:
+        await this.context_ensure();
         return this._singleContext.plugin;
       case Context.PACSserver:
+        await this.context_ensure();
         return this._singleContext.pacsserver;
     }
     return null;
@@ -350,10 +387,13 @@ export class ChrisContext {
       case Context.ChRISuser:
         this._singleContext.user = value;
         status = await sessionConfig.connection.lastUser_save(value);
+        // A new identity has its own session files: load them.
+        this.sessionLoaded = false;
         break;
       case Context.ChRISURL:
         this._singleContext.URL = value;
         status = await sessionConfig.connection.chrisURL_save(value);
+        this.sessionLoaded = false;
         break;
       case Context.ChRISfolder:
         this._singleContext.folder = value;

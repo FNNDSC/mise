@@ -11,6 +11,7 @@ const mockConn = {
 const mockCtx = {
   fullContext_get: jest.fn(),
   currentContext_update: jest.fn(),
+  context_ensure: jest.fn(),
   singleContext: { user: 'chris' },
   current_set: jest.fn(),
 };
@@ -105,10 +106,11 @@ describe('context intents', () => {
     expect(context_getFull()).toEqual({ users: {}, currentUser: null, currentURL: null });
   });
 
-  it('context_getSingle updates then returns the single context', async () => {
-    mockCtx.currentContext_update.mockResolvedValue(undefined);
+  it('context_getSingle loads the context once, then returns the process\'s own', async () => {
+    mockCtx.context_ensure.mockResolvedValue(undefined);
     const snap = await context_getSingle();
-    expect(mockCtx.currentContext_update).toHaveBeenCalled();
+    expect(mockCtx.context_ensure).toHaveBeenCalled();
+    expect(mockCtx.currentContext_update).not.toHaveBeenCalled();
     expect(snap).toBe(mockCtx.singleContext);
   });
 

@@ -372,15 +372,23 @@ try {
     pipeline.click();
     let summary = false, canvas = false;
     for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
+    // The diagram canvas fills its mount in CSS pixels at any device pixel
+    // ratio (SMOKE_DPR=1.5 shows the runaway this guards): measured while
+    // the view is up, before CLOSE.
+    const panelx = fp.querySelector('.files-panel');
+    const spills = panelx.scrollWidth > panelx.clientWidth + 1;
     fp.querySelector('.files-close-pill')?.click(); await sleep(300);
-    return { skipped: null, desc, colored, escBack, summary, canvas, pipelineSkipped: false };`);
+    return { skipped: null, desc, colored, escBack, summary, canvas, pipelineSkipped: false, spills, dpr: window.devicePixelRatio };`);
   if (binCtx.skipped) {
     console.log(`  skipped: ${binCtx.skipped}`);
   } else {
     check('a plugin opens as its description', binCtx.desc && binCtx.colored);
     check('Esc returns a content view to its listing', binCtx.escBack === true);
     if (binCtx.pipelineSkipped) console.log('  skipped: no pipeline rows');
-    else check('a pipeline opens as its summary with its DAG rendered', binCtx.summary && binCtx.canvas);
+    else {
+      check('a pipeline opens as its summary with its DAG rendered', binCtx.summary && binCtx.canvas);
+      check('the content view never spills sideways (a scene canvas fills its mount at any pixel ratio)', binCtx.spills === false, JSON.stringify({ spills: binCtx.spills, dpr: binCtx.dpr }));
+    }
   }
 
   console.log('follow-declared');

@@ -48,6 +48,12 @@ export async function page_open(url) {
   });
   await new Promise((r) => ws.on('open', r));
   await send('Page.enable');
+  // SMOKE_DPR emulates a HiDPI display (a real desktop at 1.25–2×): canvas
+  // sizing bugs hide at the headless default of 1.
+  const dpr = Number(process.env.SMOKE_DPR ?? '1');
+  if (dpr !== 1) {
+    await send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1440, deviceScaleFactor: dpr, mobile: false });
+  }
   await send('Page.navigate', { url });
   await new Promise((r) => setTimeout(r, 4000));
   return {
@@ -64,6 +70,8 @@ export async function page_open(url) {
       const { writeFileSync } = await import('node:fs');
       writeFileSync(path, Buffer.from(shot.data, 'base64'));
     },
+    /** Raw CDP access for probes. */
+    cdp: send,
     close: () => { try { chrome.kill(); } catch { /* gone */ } },
   };
 }

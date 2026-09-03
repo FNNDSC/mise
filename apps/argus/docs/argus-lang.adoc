@@ -81,6 +81,7 @@ A given always renders its target and never toggles (the gutter law).
 | Sentence | Lowers to | Notes
 | `dag layout ranked\|molecule` | mode frame RANKED / MOLECULE | RANKED is the anchor tree (children beneath their first parent, a flat sheet); MOLECULE is the force layout.
 | `dag projection 2d\|3d` | mode frame 2D / 3D | In 3D an empty-space drag orbits; in 2D it pans.
+| `dag hue status\|compute` | mode frame STATUS / COMPUTE | What colors a node: its status, or the compute resource it ran on (legend on the bar). Errors are visible under every hue.
 | `dag scale time\|size` | mode frame TIME / SIZE | What sizes a molecule node: wall time or output bytes. Dims when the feed carries no such data.
 | `dag pulse` | mode frame PULSE | Toggles the looping dependency-order wave.
 | `dag census` | mode frame SHAPE / CENSUS | Expands every ×N group into its members (the spectacle) and back.
@@ -173,7 +174,7 @@ Tab completes from this table (first word, then the follower of the previous wor
 | view | files runs pacs
 | runs | enter sort filter
 | node | enter immerse back clear
-| dag | layout projection scale pulse census physics refresh
+| dag | layout projection scale hue pulse census physics refresh
 | physics | charge link collide gravity reset
 | file | home back download delete sort filter follow root list cards preview
 | header | stats dag away restore
@@ -185,6 +186,7 @@ Tab completes from this table (first word, then the follower of the previous wor
 | layout | ranked molecule
 | projection | 2d 3d
 | scale | time size
+| hue | status compute
 | argus | verbs
 |===
 

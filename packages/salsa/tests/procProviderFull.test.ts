@@ -583,7 +583,7 @@ describe('cache build / warmup / refresh', () => {
     mockClientGet.mockResolvedValue(
       pagingClient([], [{
         id: 10, feed_id: 5, previous_id: null, plugin_name: 'pl-x', status: 's',
-        start_date: '2026-08-31T10:00:00Z', end_date: '2026-08-31T10:01:00Z', size: 2048,
+        start_date: '2026-08-31T10:00:00Z', end_date: '2026-08-31T10:01:00Z', size: 2048, compute_resource_name: 'galena',
       }])
     );
     await procTopology_warmup();
@@ -595,6 +595,7 @@ describe('cache build / warmup / refresh', () => {
       startedAt: '2026-08-31T10:00:00Z',
       finishedAt: '2026-08-31T10:01:00Z',
       outputBytes: 2048,
+      computeResource: 'galena',
     });
     expect(cache.feed_get(5)).toBeDefined();
   });

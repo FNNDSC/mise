@@ -215,6 +215,8 @@ export interface PluginInstanceData {
   end_date?: string;
   /** Output size in bytes, as CUBE reports it on the list row. */
   size?: number;
+  /** The compute resource the instance ran on, as CUBE reports it. */
+  compute_resource_name?: string;
   raw?: string;
   [key: string]: unknown;
 }

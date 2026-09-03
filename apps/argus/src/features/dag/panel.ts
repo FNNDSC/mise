@@ -240,6 +240,25 @@ export class DagPanel {
       gravityPill.classList.toggle('rail-off', !on);
       this.modes_render();
     });
+    // HUE is a mode: what colors a node. STATUS is the default; COMPUTE
+    // colors by the resource the work ran on, the legend riding the bar.
+    const huePill: HTMLElement | null =
+      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-hue') ?? null;
+    huePill?.addEventListener('click', (): void => {
+      this.hueMode = this.hueMode === 'status' ? 'compute' : 'status';
+      huePill.textContent = this.hueMode.toUpperCase();
+      if (this.lastModel !== null) this.graph_show(this.lastModel, false);
+      // A feed restored from an older checkpoint may predate the cache's
+      // knowledge of compute: asking for the hue is the operator's consent
+      // to re-read the feed's nodes once, and the legend says so meanwhile.
+      if (this.hueMode === 'compute' && !this.computeKnown && this.shownFeedId !== null && this.canvas.style.display !== 'none') {
+        this.computeRereading = true;
+        this.handlers.command_run(`proc refresh ${this.shownFeedId}`);
+        this.refresh();
+      }
+      this.modes_render();
+    });
+    this.huePill = huePill;
     // The language reaches the expert knobs through DOM events on the pane
     // (verbs run over the DOM, never a private API).
     const paneRoot: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
@@ -363,6 +382,37 @@ export class DagPanel {
    * @param state - The reported state, or null.
    */
   private modeSpan: HTMLElement | null = null;
+  /** What colors a node: its status, or the compute resource it ran on. */
+  private hueMode: 'status' | 'compute' = 'status';
+  private huePill: HTMLElement | null = null;
+  /** The compute legend of the graph on stage: resource → hue. */
+  private hueLegend: Map<string, string> = new Map();
+  /** Whether any node on stage reports where it ran. */
+  private computeKnown: boolean = false;
+  /** True while a re-read for compute is in flight. */
+  private computeRereading: boolean = false;
+
+  /**
+   * Assigns a hue per distinct compute resource in the model, from the
+   * frame's own cycle, in order of first appearance; `mixed` groups wear
+   * the unknown grey.
+   *
+   * @param model - The model on stage.
+   * @returns Resource → CSS color.
+   */
+  private hueLegend_build(model: FeedDagModel): Map<string, string> {
+    const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
+    const cycle: string[] = ['--harvestgold', '--daybreak', '--orange', '--honey', '--butter', '--october-sunset']
+      .map((name: string): string => style.getPropertyValue(name).trim())
+      .filter((value: string): boolean => value !== '');
+    const legend: Map<string, string> = new Map();
+    for (const node of model.nodes) {
+      const resource: string | undefined = node.computeResource;
+      if (resource === undefined || resource === 'mixed' || legend.has(resource)) continue;
+      legend.set(resource, cycle[legend.size % Math.max(1, cycle.length)] ?? '#888');
+    }
+    return legend;
+  }
   /** The roster frame's FILTER block. */
   private filterBlock: HTMLElement | null = null;
 
@@ -380,7 +430,23 @@ export class DagPanel {
     if (this.scene.census_get()) parts.push('CENSUS');
     if (this.scene.waveLoop_get()) parts.push('PULSE');
     if (this.scene.physics_get().gravity) parts.push('GRAVITY');
-    this.modeSpan.textContent = parts.join(' · ');
+    this.modeSpan.replaceChildren(document.createTextNode(parts.join(' · ')));
+    if (this.hueMode === 'compute') {
+      // The legend travels with the mode: a swatch per resource on the bar.
+      const legend: HTMLSpanElement = document.createElement('span');
+      legend.className = 'pane-legend';
+      legend.append(document.createTextNode(parts.length > 0 ? ' · COMPUTE' : 'COMPUTE'));
+      for (const [resource, hue] of this.hueLegend) {
+        const swatch: HTMLSpanElement = document.createElement('span');
+        swatch.className = 'legend-swatch';
+        swatch.style.backgroundColor = hue;
+        const name: HTMLSpanElement = document.createElement('span');
+        name.textContent = resource;
+        legend.append(document.createTextNode(' '), swatch, name);
+      }
+      if (this.hueLegend.size === 0) legend.append(document.createTextNode(this.computeRereading ? ' (re-reading the feed\u2026)' : ' (none reported)'));
+      this.modeSpan.appendChild(legend);
+    }
   }
 
   private liveState_show(state: WatchState | null): void {
@@ -480,18 +546,39 @@ export class DagPanel {
         ? 'molecule node size: wall time or output bytes'
         : `no ${this.metricMode === 'time' ? 'wall-time' : 'output-size'} data in this feed's cache yet`;
     }
+    // Honesty on the HUE block: a feed whose nodes report no compute dims it.
+    this.hueLegend = this.hueLegend_build(model);
+    const anyCompute: boolean = model.nodes.some((node: FeedDagNode): boolean => node.computeResource !== undefined);
+    this.computeKnown = anyCompute;
+    if (anyCompute) this.computeRereading = false;
+    this.huePill?.classList.toggle('rail-na', !anyCompute);
+    if (this.huePill !== null) {
+      this.huePill.title = anyCompute
+        ? 'what colors a node: its status, or the compute resource it ran on'
+        : "no compute resource reported for this feed's nodes yet";
+    }
+    const hue_of = (node: FeedDagNode): string | undefined => {
+      if (this.hueMode !== 'compute') return undefined;
+      if (node.computeResource === undefined) return '#555';
+      return this.hueLegend.get(node.computeResource) ?? '#555';
+    };
     this.scene.graph_set({
-      nodes: model.nodes.map((node: FeedDagNode): SceneNode => ({
-        id: node.id,
-        label: node.label,
-        parentIds: node.parentIds,
-        joinParentIds: node.joinParentIds,
-        status: node.status,
-        metric: metric_of(node),
-        count: node.tally?.count,
-      })),
+      nodes: model.nodes.map((node: FeedDagNode): SceneNode => {
+        const hue: string | undefined = hue_of(node);
+        return {
+          id: node.id,
+          label: node.label,
+          parentIds: node.parentIds,
+          joinParentIds: node.joinParentIds,
+          status: node.status,
+          metric: metric_of(node),
+          count: node.tally?.count,
+          ...(hue !== undefined ? { hue } : {}),
+        };
+      }),
     }, { wave });
     this.scene.size_fit();
+    if (this.hueMode === 'compute') this.modes_render();
     this.factsPayloads.clear();
     for (const node of model.nodes) {
       this.factsPayloads.set(node.id, node);

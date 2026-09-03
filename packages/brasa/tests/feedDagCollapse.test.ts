@@ -15,7 +15,7 @@ const { feedDagModel_build } = await import('../src/builtins/res/feed.diagram.js
 type FeedNode = {
   id: number; pluginName: string; parentID: number | null; signature: string;
   joinParentIDs: number[]; status: string | null;
-  startedAt?: string; finishedAt?: string; outputBytes?: number;
+  startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string;
 };
 type FeedGraph = { feedID: number; title: string; rootIDs: number[]; nodes: FeedNode[] };
 
@@ -39,11 +39,11 @@ describe('feedDagModel_build (collapsed projection)', () => {
       node_make({ id: 1, pluginName: 'pl-dircopy', signature: 'root' }),
       node_make({
         id: 2, parentID: 1, signature: 'leafA',
-        startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:00:10Z', outputBytes: 100,
+        startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:00:10Z', outputBytes: 100, computeResource: 'host',
       }),
       node_make({
         id: 3, parentID: 1, signature: 'leafA',
-        startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:00:20Z', outputBytes: 50,
+        startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:00:20Z', outputBytes: 50, computeResource: 'galena',
       }),
       node_make({ id: 4, parentID: 1, signature: 'leafA', status: 'finishedWithError' }),
       node_make({ id: 5, parentID: 1, pluginName: 'pl-other', signature: 'leafB' }),
@@ -71,6 +71,8 @@ describe('feedDagModel_build (collapsed projection)', () => {
     const group = model.nodes.find((n) => n.tally !== undefined);
     expect(group?.metrics?.computeSeconds).toBe(30);
     expect(group?.metrics?.dataBytes).toBe(150);
+    // Members on different resources: the group says so rather than picking one.
+    expect(group?.computeResource).toBe('mixed');
   });
 
   it('singletons pass through untouched (no tally, own status)', () => {

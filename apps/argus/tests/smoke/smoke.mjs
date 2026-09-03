@@ -241,9 +241,19 @@ try {
     if (g) { g.click(); await sleep(300); }
     const gAfter = g ? g.textContent : null;
     if (g) { g.click(); await sleep(300); }
-    return { present: true, before, after, restored: pill.textContent === before, gBefore, gAfter, gRestored: g ? g.textContent === gBefore : false };`);
+    // HUE is a mode: STATUS by default, COMPUTE colors by resource with a
+    // legend on the bar, and the block reads its state either way.
+    const h = document.querySelector('.dag-hue');
+    const hBefore = h ? h.textContent : null;
+    if (h) { h.click(); await sleep(400); }
+    const hAfter = h ? h.textContent : null;
+    const dp = h ? h.closest('.pane-dag') : null;
+    const legend = dp ? dp.querySelector('.pane-mode .pane-legend') !== null : false;
+    if (h) { h.click(); await sleep(300); }
+    return { present: true, before, after, restored: pill.textContent === before, gBefore, gAfter, gRestored: g ? g.textContent === gBefore : false, hBefore, hAfter, legend, hRestored: h ? h.textContent === hBefore : false };`);
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
+  check('the HUE block reads STATUS, COMPUTE puts the legend on the bar, and it restores', censusPill.hBefore === 'STATUS' && censusPill.hAfter === 'COMPUTE' && censusPill.legend && censusPill.hRestored, JSON.stringify({ b: censusPill.hBefore, a: censusPill.hAfter, l: censusPill.legend }));
 
   console.log('mode-frame');
   // The field carries content only: at rest the mode frame is a strip at

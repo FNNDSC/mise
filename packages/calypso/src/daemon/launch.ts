@@ -27,6 +27,7 @@ import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fo
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
+import { HOST_CONTROL_OFF, hostControl_describe, hostControl_guard, hostControl_tiers, hostPipe_run, hostShell_run, type HostControlPolicy } from './hostControl.js';
 
 /** What a launched daemon hands back to its host (the console face's feed). */
 export interface DaemonLaunchInfo {
@@ -42,6 +43,10 @@ export interface DaemonLaunchInfo {
   argusUrl: string | null;
   /** The running daemon, for live telemetry. */
   daemon: CalypsoDaemon;
+  /** The declared host-control policy. */
+  hostControl: HostControlPolicy;
+  /** The bind address, for the face's exposure line. */
+  bindHost: string;
 }
 
 /** The daemon sink forwards live command output to the executing surface. */
@@ -74,7 +79,7 @@ export class DaemonSink implements OutputSink {
  * @param daemon - The daemon whose brokers deliver the capability requests.
  * @returns The surface to install with `surface_set` on the daemon host.
  */
-export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
+export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlPolicy = HOST_CONTROL_OFF): Surface {
   return {
     // A daemon has no capabilities of its own to offer. Those that vary by
     // surface are read from whichever one is executing, as it declared them on
@@ -90,18 +95,24 @@ export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
         pipeSegments: true,
         shellCommands: true,
         fileDelivery: attached?.fileDelivery ?? false,
-        // The daemon's disk belongs to nobody attending this session, so a
-        // builtin that would write must deliver through the surface instead.
-        engineFilesystem: false,
+        // The daemon's disk belongs to nobody attending this session — unless
+        // the operator who started it declared otherwise with the `files`
+        // tier of --host-control, in which case it is theirs by declaration.
+        engineFilesystem: policy.tiers.has('files'),
         localFilesystem: attached?.localFilesystem ?? false,
       };
     },
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current(request.message, request.hidden ?? false),
+    // Under host control the host wins: the segment or the shell runs here,
+    // output on the session bus like any command's. Otherwise both relay to
+    // the surface that typed them.
     pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
-      daemon.pipe_current(command, input),
+      policy.tiers.has('pipes') ? hostPipe_run(command, input) : daemon.pipe_current(command, input),
     shellCommand: (command: string): Promise<number> =>
-      daemon.shell_current(command),
+      policy.tiers.has('shell')
+        ? hostShell_run(command, (channel: 'data' | 'err', chunk: string): void => { daemon.output_current(channel, chunk); })
+        : daemon.shell_current(command),
     localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
       daemon.edit_current(request.content, request.extension),
     fileDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>
@@ -118,9 +129,19 @@ export function daemonSurface_create(daemon: CalypsoDaemon): Surface {
  * @returns The launched daemon's addresses and handle, once it is listening;
  *   the process then stays alive on the WebSocket server.
  */
+/**
+ * What a launcher decided beyond the engine.
+ *
+ * @property hostControl - The declared host-control policy (off by default).
+ */
+export interface DaemonLaunchOptions {
+  hostControl?: HostControlPolicy;
+}
+
 export async function daemon_launch(
   engine: BrasaEngine,
   beforeListen?: () => Promise<void>,
+  options: DaemonLaunchOptions = {},
 ): Promise<DaemonLaunchInfo> {
   // Force color into the engine's rendered text: no TTY here to auto-detect.
   if (chalk.level < 1) {
@@ -167,6 +188,12 @@ export async function daemon_launch(
   // every session, but the web bundle and the wire become reachable from
   // any host that can route here.
   const bindHost: string = process.env['CALYPSO_BIND'] ?? '127.0.0.1';
+  const hostControl: HostControlPolicy = options.hostControl ?? HOST_CONTROL_OFF;
+  const refusal: string | null = hostControl_guard(hostControl, bindHost);
+  if (refusal !== null) {
+    console.error(chalk.red(`[!] ${refusal}`));
+    process.exit(1);
+  }
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
     token,
@@ -176,18 +203,21 @@ export async function daemon_launch(
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces.
     telemetryProvider: procIndex_snapshot,
-    promptProvider: (last): Promise<SessionPromptContext> =>
-      sessionPromptContext_build(
+    promptProvider: async (last): Promise<SessionPromptContext> => ({
+      ...(await sessionPromptContext_build(
         last !== undefined
           ? { lastCommandDurationMs: last.durationMs, lastExitCode: last.exitCode }
           : {},
-      ),
+      )),
+      ...(hostControl.tiers.size > 0 ? { hostControl: hostControl_tiers(hostControl) } : {}),
+    }),
     // Report this process's own versions and build hash so attaching surfaces
     // greet with the daemon's truth rather than their local install's.
     stack: { ...versions_get(), build: buildHash_get() },
+    hostControl: hostControl_tiers(hostControl),
   });
   sink_set(new DaemonSink(daemon));
-  surface_set(daemonSurface_create(daemon));
+  surface_set(daemonSurface_create(daemon, hostControl));
 
   const port: number = await daemon.start();
   // The berth records where this daemon can actually be reached. Loopback is
@@ -212,6 +242,9 @@ export async function daemon_launch(
       ? [`ARGUS:     http://${bindHost === '0.0.0.0' ? hostname() : bindHost}:${port}/?token=${token}`]
       : []),
     `attach:    chell --remote --attach ${url} --token ${token}`,
+    ...(hostControl.tiers.size > 0
+      ? [`host control: ${hostControl_describe(hostControl)}${hostControl.exposed && bindHost !== '127.0.0.1' ? ` (EXPOSED on ${bindHost})` : ''}`]
+      : []),
   ];
   const notePath: string | null = attachFile_write(noteLines);
   if (notePath !== null) {
@@ -227,6 +260,13 @@ export async function daemon_launch(
   }
   console.log(chalk.gray(fortune_random(4)));
   console.log(chalk.green(`[+] CALYPSO daemon listening on ${url}`));
+  if (hostControl.tiers.size > 0) {
+    // Annunciated every launch: this daemon acts on its own host.
+    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl_describe(hostControl)} — \`!\`, pipes, and the disk are this host's`));
+    if (hostControl.exposed && bindHost !== '127.0.0.1') {
+      console.log(chalk.red(`[!] HOST CONTROL EXPOSED ON ${bindHost}: the attach URL is a shell on this host`));
+    }
+  }
   console.log(chalk.gray(`    identity:  ${identity}`));
   console.log(chalk.gray(`    token:     ${token}`));
   console.log(chalk.gray(`    berth:     ${berth_path(identity)}`));
@@ -257,5 +297,7 @@ export async function daemon_launch(
     berthPath: berth_path(identity),
     argusUrl: webRoot !== null ? `http://${displayHost}:${port}/?token=${token}` : null,
     daemon,
+    hostControl,
+    bindHost,
   };
 }

@@ -280,6 +280,16 @@ a defence against your own account. Walling two *humans* apart is precisely tier
 porter's job (auth at the door). Two humans who must not see each other today use
 two OS logins; filesystem permissions isolate them.
 
+=== Host control (`--host-control`)
+
+Capabilities are declared, never detected. A surface declares on attach what it can do on its own machine — run a `!` shell command, run a pipe segment, receive a file, open an editor — and the daemon relays each of those to the surface that typed the command, never running anything on its own host. That is the default, and it is right for a daemon on a server nobody is sitting at.
+
+`chell --daemon --host-control` lets the HOST declare too: the AI-harness permission model applied to the session daemon. The operator who starts the daemon decides what it may do on the machine it runs on. Tiers: `shell` (`!cmd` runs on the daemon host: `sh -c`, stdin closed, output on the session bus like any command, the daemon's own working directory), `files` (`upload` reads and `download` writes the daemon host's disk), `pipes` (`ls | grep x` runs the segment on the daemon host). Bare means all three; `CALYPSO_HOST_CONTROL` is the env twin. Under the policy the host always wins — one `!` means one machine, even from a remote shell that could run it itself.
+
+Without the `files` tier, `upload` refuses under a daemon (the daemon host's disk is nobody's), as `download` has always refused to write there. Every surface is told: the attach ack carries `hostControl`, the daemon's face shows `HOST CONTROL: SHELL FILES PIPES`, the prompt wears an amber `HOST` segment, argus lights an amber HOST lamp, and a remote shell prints a banner on attach.
+
+The guard: on loopback the policy adds nothing an attacker did not have (the port is reachable only from the host, the attach file is mode 0600). On a non-loopback `CALYPSO_BIND` the attach token — a bearer secret in a URL — becomes a shell on the host for anyone holding it, so that combination refuses at launch unless `--expose-host-control` is typed as well, and then the boot log and the face say `HOST CONTROL EXPOSED ON <bind>` in the alert color, every launch.
+
 == Tier 2: the porter (future, gated on the web surface)
 
 When a browser surface must attach — it cannot spawn a local engine — a reachable

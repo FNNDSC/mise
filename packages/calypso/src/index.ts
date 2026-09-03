@@ -60,6 +60,18 @@ export {
 export { type HostedEngine, type CompletionResult } from './daemon/engine.js';
 export { token_generate, token_writeFile, token_matches } from './daemon/token.js';
 export { CalypsoDaemon, type DaemonOptions, type EditOutcome } from './daemon/server.js';
+export {
+  HOST_CONTROL_OFF,
+  HOST_CONTROL_TIERS,
+  hostControl_fromInputs,
+  hostControl_parseArgv,
+  hostControl_guard,
+  hostControl_describe,
+  hostControl_tiers,
+  type HostControlPolicy,
+  type HostControlTier,
+  type HostControlInputs,
+} from './daemon/hostControl.js';
 export { RequestBroker } from './daemon/broker.js';
 export { daemon_launch, daemonSurface_create, DaemonSink, type DaemonLaunchInfo } from './daemon/launch.js';
 export {

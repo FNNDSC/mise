@@ -184,6 +184,11 @@ export class ThemeP10k implements PromptTheme {
       trailing.push({ text: `${ICON_MICROSCOPE} PHYSICAL`, color: PROMPT_PALETTE.PHYSICAL });
     }
 
+    if (ctx.hostControl !== undefined && ctx.hostControl.length > 0) {
+      // Every `!` line says where it lands: on the daemon host.
+      trailing.push({ text: `⚠ HOST ${ctx.hostControl.join(',')}`, color: PROMPT_PALETTE.HOSTCTL });
+    }
+
     if (ctx.p10kSegments.time) {
       trailing.push({ text: `${ICON_CLOCK} ${time_now()}`, color: PROMPT_PALETTE.TIME });
     }

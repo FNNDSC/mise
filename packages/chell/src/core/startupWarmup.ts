@@ -18,15 +18,7 @@ import {
   type BrasaEngine,
   type PrefetchResult,
 } from '@fnndsc/brasa';
-import {
-  daemon_launch,
-  face_ready,
-  face_stop,
-  identity_forSession,
-  type DaemonLaunchInfo,
-  type FaceInfo,
-  type FaceTelemetry,
-} from '@fnndsc/calypso';
+import { daemon_launch, face_ready, face_stop, identity_forSession, type DaemonLaunchInfo, type FaceInfo, type FaceTelemetry, hostControl_fromInputs, hostControl_describe, type HostControlInputs } from '@fnndsc/calypso';
 import { procIndex_snapshot } from '@fnndsc/brasa';
 import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
@@ -403,6 +395,7 @@ export async function daemonSession_run(
   interactive: boolean,
   reporter: StartupWarmupReporter,
   recovery: DaemonWarmupRecovery = daemonWarmupFailure_decide,
+  hostControlInputs: HostControlInputs = {},
 ): Promise<void> {
   try {
     // Warm-up runs before the daemon installs its own sink, so the engine is
@@ -411,6 +404,11 @@ export async function daemonSession_run(
     // events into StdoutSink's null renderer and the boot looks frozen.
     if (interactive) {
       sink_set(new StdoutSink(new TerminalProgressRenderer()));
+    }
+    const parsedPolicy = hostControl_fromInputs(hostControlInputs);
+    if ('error' in parsedPolicy) {
+      reporter.log('fail', 'Daemon', parsedPolicy.error);
+      throw new DaemonWarmupAbortedError();
     }
     const info: DaemonLaunchInfo = await daemon_launch(engine, async (): Promise<void> => {
       const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
@@ -424,7 +422,7 @@ export async function daemonSession_run(
         throw new DaemonWarmupAbortedError();
       }
       reporter.log('fail', 'Engine', `Starting with incomplete warm-up: ${cache.failures.join(', ')}`);
-    });
+    }, { hostControl: parsedPolicy.policy });
 
     if (interactive) {
       // Boot is over. The in-scroll pulse halts without a final repaint —
@@ -442,6 +440,9 @@ export async function daemonSession_run(
       ];
       face_ready({
         info: faceInfo,
+        ...(info.hostControl.tiers.size > 0
+          ? { hostControl: { tiers: hostControl_describe(info.hostControl), ...(info.hostControl.exposed && info.bindHost !== '127.0.0.1' ? { exposedOn: info.bindHost } : {}) } }
+          : {}),
         telemetry_get: (): FaceTelemetry => {
           const index: { jobs: number; feeds: number } = procIndex_snapshot();
           return {

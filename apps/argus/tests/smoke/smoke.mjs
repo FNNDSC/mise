@@ -548,6 +548,28 @@ try {
   check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
   check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);
 
+  console.log('host-control');
+  // The HOST lamp reads the attach ack's declared tiers and nothing else:
+  // present exactly when the daemon declared host control, absent at rest.
+  // And `!` on a daemon without the policy refuses by name.
+  const hostControl = await evalIn(`
+    const lamp = document.getElementById('status-host');
+    const lit = lamp.textContent.trim();
+    const input = document.querySelector('#terminal input');
+    // Output lands above the prompt line, so read the whole transcript for
+    // a token no other scenario prints.
+    const token = 'argus-host-probe-' + Date.now();
+    input.value = '!echo ' + token; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(3000);
+    const streams = [...document.querySelectorAll('#terminal .argus-stream')].map(s => s.textContent).join(' ');
+    const errors = [...document.querySelectorAll('#terminal .argus-result.error')].map(s => s.textContent).join(' ');
+    return { lit, ran: streams.includes(token), refusedByName: errors.includes('--host-control') };`);
+  if (hostControl.lit !== '') {
+    check('the HOST lamp reads the daemon\'s declared tiers, and ! runs on the host', /^HOST /.test(hostControl.lit) && hostControl.ran, JSON.stringify(hostControl));
+  } else {
+    check('the HOST lamp reads the daemon\'s declared tiers: absent at rest, and ! refuses by name', hostControl.lit === '' && hostControl.refusedByName && !hostControl.ran, JSON.stringify(hostControl));
+  }
+
   console.log('roster-totals');
   // The roster's totals ride the same grid as its other columns: caps for
   // SIZE and TIME, seven cells per row, a dash (never a zero) where a feed's

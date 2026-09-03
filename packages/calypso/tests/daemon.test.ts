@@ -101,6 +101,9 @@ describe('CalypsoDaemon', () => {
     send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
     const msg = await acked;
     expect(msg.type).toBe('attached');
+    // A daemon without host control declares none — a surface's lamp reads
+    // the ack, never infers.
+    expect(msg.hostControl).toEqual([]);
     expect(msg.protocolVersion).toBe(CONTRACT_VERSION);
     expect(typeof msg.session).toBe('string');
   });
@@ -674,7 +677,7 @@ describe('CalypsoDaemon shell commands over the wire', () => {
         type: 'result',
         envelopes: [expect.objectContaining({
           status: 'error',
-          renderedErr: expect.stringContaining('cannot run shell commands'),
+          renderedErr: expect.stringContaining("--host-control"),
         })],
       }));
       ws.terminate();
@@ -967,4 +970,23 @@ describe('CalypsoDaemon scrollback bound', () => {
       await daemon.stop();
     }
   });
+
+
+describe('CalypsoDaemon host control', () => {
+  it('declares its tiers in the attach ack', async () => {
+    const own: CalypsoDaemon = new CalypsoDaemon({ engine: stubEngine_create(), token: TOKEN, hostControl: ['shell', 'files'] });
+    const ownPort: number = await own.start();
+    try {
+      const ws = await client_open(ownPort);
+      const acked = message_next(ws);
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN, capabilities: { hiddenInput: true, shellCommands: false } });
+      const ack = await acked;
+      expect(ack.type).toBe('attached');
+      expect(ack.hostControl).toEqual(['shell', 'files']);
+      ws.terminate();
+    } finally {
+      await own.stop();
+    }
+  });
+});
 });

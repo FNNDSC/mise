@@ -34,6 +34,8 @@ const mockLaunchInfo = {
   berthPath: '/run/user/1/calypso/berth.json',
   argusUrl: 'http://pangea:42479/?token=tok',
   daemon: { surfaces_count: (): number => 0, busy_get: (): boolean => false },
+  hostControl: { tiers: new Set<string>(), exposed: false },
+  bindHost: '127.0.0.1',
 };
 const mockDaemonLaunch = jest.fn(
   async (_engine: BrasaEngine, beforeListen?: () => Promise<void>): Promise<typeof mockLaunchInfo> => {
@@ -105,6 +107,8 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   face_resume: mockFaceResume,
   face_stop: mockFaceStop,
   identity_forSession: (user: string, url: string): string => `${user}@${url}`,
+  hostControl_fromInputs: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
+  hostControl_describe: (): string => '',
 }));
 
 const { daemonSession_run, startupWarmup_run } = await import('../src/core/startupWarmup.js');
@@ -186,7 +190,7 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
     expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 job(s) indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
-    expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function));
+    expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function), { hostControl: { tiers: new Set<string>(), exposed: false } });
 
     const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
     expect(readyOrder).toBeLessThan(mockDaemonListen.mock.invocationCallOrder[0]);

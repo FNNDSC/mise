@@ -711,6 +711,27 @@ describe('Builtins - Core Functions', () => {
   });
 
   describe('builtin_upload()', () => {
+    // `upload` reads the local path in the ENGINE's process, so it runs only
+    // where the engine's disk is the operator's — a local shell, or a daemon
+    // started with --host-control=files. These cases install such a surface.
+    beforeEach(async () => {
+      const { surface_set, HeadlessSurface } = await import('../src/core/surface.js');
+      const surface = new HeadlessSurface() as unknown as { capabilities: { engineFilesystem: boolean } };
+      surface.capabilities = { ...surface.capabilities, engineFilesystem: true };
+      surface_set(surface as never);
+    });
+
+    it('refuses under a daemon whose disk is nobody\'s, naming the flag', async () => {
+      const { surface_set, HeadlessSurface } = await import('../src/core/surface.js');
+      const surface = new HeadlessSurface() as unknown as { capabilities: { engineFilesystem: boolean } };
+      surface.capabilities = { ...surface.capabilities, engineFilesystem: false };
+      surface_set(surface as never);
+      const envelope = await builtin_upload(['./local.txt', 'remote.txt']);
+      expect(envelope.status).toBe('error');
+      expect(envelope.renderedErr).toContain('--host-control=files');
+      expect(mockChefsUpload).not.toHaveBeenCalled();
+    });
+
     it('should upload file to remote path', async () => {
       mockGetCWD.mockResolvedValue('/home/user');
       mockChefsUpload.mockResolvedValue({

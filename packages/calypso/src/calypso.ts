@@ -16,6 +16,7 @@ import { realpathSync } from 'node:fs';
 import { engine_create, procIndex_snapshot, sessionConnect_fromSaved, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
 import chalk from 'chalk';
 import { daemon_launch, type DaemonLaunchInfo } from './daemon/launch.js';
+import { hostControl_describe, hostControl_parseArgv, type HostControlPolicy } from './daemon/hostControl.js';
 import { face_start, type FaceTelemetry } from './daemon/face.js';
 import { LocalBerthResolver, berthUrl_isAlive, type Berth } from './daemon/berth.js';
 
@@ -35,10 +36,19 @@ async function calypso_start(): Promise<void> {
     console.error(`[!] No active session (${result.status}). Log in with 'chell' first; hosting offline.`);
   }
 
-  const info: DaemonLaunchInfo = await daemon_launch(engine);
+  const parsedPolicy = hostControl_parseArgv(process.argv, process.env);
+  if ('error' in parsedPolicy) {
+    console.error(`[!] ${parsedPolicy.error}`);
+    process.exit(1);
+  }
+  const policy: HostControlPolicy = parsedPolicy.policy;
+  const info: DaemonLaunchInfo = await daemon_launch(engine, undefined, { hostControl: policy });
   // On a TTY, the terminal's resting state is the console face; off one
   // (systemd, nohup) face_start declines and logging stays sequential.
   face_start({
+    ...(policy.tiers.size > 0
+      ? { hostControl: { tiers: hostControl_describe(policy), ...(policy.exposed && info.bindHost !== '127.0.0.1' ? { exposedOn: info.bindHost } : {}) } }
+      : {}),
     info: [
       { label: 'identity', value: info.identity },
       { label: 'wire', value: info.url },

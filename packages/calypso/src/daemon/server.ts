@@ -141,6 +141,8 @@ export interface DaemonOptions {
   /** The hosting process's versions and build hash, reported on attach. */
   stack?: DaemonStackInfo;
   webRoot?: string;
+  /** The host-control tiers this daemon declares (empty or absent when off). */
+  hostControl?: string[];
 }
 
 /**
@@ -165,6 +167,7 @@ export class CalypsoDaemon {
   /** Whether the last pushed prompt context carried active warm-up. */
   private promptWarmupActive: boolean = false;
   private readonly stack: DaemonStackInfo | undefined;
+  private readonly hostControl: string[];
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
   private readonly surfaces: Set<Surface> = new Set<Surface>();
@@ -218,6 +221,7 @@ export class CalypsoDaemon {
     this.telemetryProvider = options.telemetryProvider;
     this.stack = options.stack;
     this.webRoot = options.webRoot;
+    this.hostControl = options.hostControl ?? [];
   }
 
   /**
@@ -503,6 +507,9 @@ export class CalypsoDaemon {
       session: this.sessionId,
       protocolVersion: CONTRACT_VERSION,
       ...(this.stack !== undefined ? { stack: this.stack } : {}),
+      // Declared state, present from the first frame: a surface's lamp and a
+      // remote shell's banner read it, never infer it.
+      hostControl: this.hostControl,
     });
     this.scrollback_replay(socket);
     // The newcomer shows the right prompt immediately, before any command.
@@ -779,7 +786,7 @@ export class CalypsoDaemon {
       return Promise.reject(new Error('no active command to run a shell command for'));
     }
     if (!origin.capabilities.shellCommands) {
-      return Promise.reject(new Error('the originating surface cannot run shell commands'));
+      return Promise.reject(new Error('this surface has no shell, and the daemon was not started with --host-control'));
     }
     return this.shells.open(origin.socket, (shellId: string): void => {
       this.send(origin.socket, { type: 'shell', shellId, command });

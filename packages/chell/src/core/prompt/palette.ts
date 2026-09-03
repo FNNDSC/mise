@@ -26,6 +26,8 @@ export interface PromptPalette {
   USER: PromptColorPair;
   DIR: PromptColorPair;
   PHYSICAL: PromptColorPair;
+  /** The daemon acts on its own host (`--host-control`): amber, an annunciation. */
+  HOSTCTL: PromptColorPair;
   TIME: PromptColorPair;
   DURATION: PromptColorPair;
   STATUS: PromptColorPair;
@@ -41,6 +43,7 @@ export const PROMPT_PALETTE: PromptPalette = {
   USER:     { bg: '#00D787', fg: '#00140C' },
   DIR:      { bg: '#FFD75F', fg: '#201800' },
   PHYSICAL: { bg: '#FF5F5F', fg: '#1B0000' },
+  HOSTCTL:  { bg: '#FFAF00', fg: '#1A1000' },
   TIME:     { bg: '#5F5F87', fg: '#FFFFFF' },
   DURATION: { bg: '#FF8700', fg: '#201000' },
   STATUS:   { bg: '#FF005F', fg: '#FFFFFF' },

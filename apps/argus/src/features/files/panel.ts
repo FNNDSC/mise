@@ -184,12 +184,13 @@ export class FilesPanel {
       1,
     );
     this.stateSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-state') ?? null;
-    this.viewPill = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.files-view') ?? null;
+    // The blocks live on this body's own frame (a files pane's, or a node browser's).
+    this.viewPill = container.parentElement?.querySelector<HTMLElement>('.files-view') ?? null;
     this.modeSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-mode') ?? null;
     this.viewPill?.addEventListener('click', (): void => {
       this.view_set(VIEW_CYCLE[(VIEW_CYCLE.indexOf(this.viewMode) + 1) % VIEW_CYCLE.length] ?? 'list');
     });
-    this.filterBlock = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.files-filter') ?? null;
+    this.filterBlock = container.parentElement?.querySelector<HTMLElement>('.files-filter') ?? null;
     this.filterBlock?.classList.add('rail-off');
     this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
     this.order.stripChange_observe((): void => this.filterBlock_sync());

@@ -736,6 +736,13 @@ async function surface_start(token: string): Promise<void> {
     });
   };
 
+  /** Stamps a files body (frame members + panel) from the files template. */
+  const filesBody_stamp = (): HTMLElement => {
+    const body: HTMLElement | null = template_stamp('tpl-pane-files').querySelector<HTMLElement>('.files-body');
+    if (body === null) throw new Error('tpl-pane-files has no files-body');
+    return body;
+  };
+
   // Builds one files pane instance from the template.
   const filesInstance_build = (id: string, primary: boolean): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-files');
@@ -812,11 +819,13 @@ async function surface_start(token: string): Promise<void> {
     hint.className = 'node-overlay-hint';
     hint.textContent = 'ESC EXITS NODE';
     header.append(title, hint);
-    const body: HTMLElement = document.createElement('div');
-    body.className = 'node-overlay-body';
+    // The node's browser is a files body like any other: the same frame
+    // (rule, elbow, spine, mode bar) and the same caps grid.
+    const body: HTMLElement = filesBody_stamp();
+    body.classList.add('node-overlay-body');
     element.append(header, body);
     const history: string[] = [];
-    const panel: FilesPanel = new FilesPanel(body, (action: FileAction): void => {
+    const panel: FilesPanel = new FilesPanel(pane_find(body, '.files-panel'), (action: FileAction): void => {
       if (action.kind === 'dir') {
         // A descendant plugin instance is a node of the same graph: the
         // experience is a hop — fly out of this node, fly into that one —
@@ -853,7 +862,7 @@ async function surface_start(token: string): Promise<void> {
       void fileText_fetch(action.path).then((content: string): void => {
         panel.content_show(action.path, content);
       });
-    });
+    }, previewProvider);
     nodeOverlays.set(id, { element, panel, history });
     canvas.appendChild(element);
     window.requestAnimationFrame((): void => element.classList.add('node-overlay-open'));
@@ -1284,11 +1293,14 @@ async function surface_start(token: string): Promise<void> {
   };
   document.addEventListener('click', (event: Event): void => {
     if (!(event.target instanceof Element)) return;
-    if (event.target.closest('.mode-frame') !== null) return;
+    // A block inside the bar acts; the bar's plain fill (or the spine
+    // itself, open) retracts it.
+    if (event.target.closest('.mode-frame') !== null && event.target.closest('.mode-fill') === null) return;
     const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
     const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane') ?? null;
+    const wasOpen: boolean = pane?.dataset['modes'] === 'open';
     const closedAny: boolean = modeFrames_close();
-    if (strip !== null && pane !== null) {
+    if (strip !== null && pane !== null && !wasOpen) {
       pane.dataset['modes'] = 'open';
       sound_play('audio3');
       return;

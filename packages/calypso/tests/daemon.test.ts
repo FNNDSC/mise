@@ -989,3 +989,4 @@ describe('CalypsoDaemon host control', () => {
     }
   });
 });
+});

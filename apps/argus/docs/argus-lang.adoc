@@ -13,7 +13,7 @@ The language is *subject-first*: a sentence names the thing acted on, then the a
 
 Three laws govern it, all recorded in `aegis.adoc`:
 
-* *Fidelity by construction.* A verb drives the same control the mouse does: the drawer's capsule, the rail's pill, the gutter's given, the caps' sort. A sentence and a gesture cannot drift apart because they are one path.
+* *Fidelity by construction.* A verb drives the same control the mouse does: the drawer's capsule, the mode frame's pill, the gutter's given, the caps' sort. A sentence and a gesture cannot drift apart because they are one path.
 * *Client-side, wire-silent.* Language lines never cross the wire. What they lower to may (a `cd`, a silent `ls`), but the sentence itself is view machinery.
 * *Every affordance by touch, every affordance by word.* The language is the keyboard's door to what a finger can do, and the replayable record of it (desktops).
 
@@ -35,7 +35,7 @@ Some verbs act at workspace scope and take no target: `view`, `header`, `console
 
 == Subjects and verbs
 
-Each row says what the sentence lowers to. "Drawer" means the pane's drawer capsule of that label; "rail" means the pane's rail pill; "given" means a gutter button; "event" means a DOM event the pane listens for.
+Each row says what the sentence lowers to. "Drawer" means the pane's drawer capsule of that label; "mode frame" means a pill on the pane's mode frame (the strip at the field's right edge; a verb reaches the pill whether the frame is in or retracted); "given" means a gutter button; "event" means a DOM event the pane listens for.
 
 === pane — the tile itself
 
@@ -79,11 +79,11 @@ A given always renders its target and never toggles (the gutter law).
 [cols="2,3,3",options="header"]
 |===
 | Sentence | Lowers to | Notes
-| `dag layout ranked\|molecule` | rail RANKED / MOLECULE | RANKED is the anchor tree (children beneath their first parent, a flat sheet); MOLECULE is the force layout.
-| `dag projection 2d\|3d` | rail 2D / 3D | In 3D an empty-space drag orbits; in 2D it pans.
-| `dag scale time\|size` | rail TIME / SIZE | What sizes a molecule node: wall time or output bytes. Dims when the feed carries no such data.
-| `dag pulse` | rail PULSE | Toggles the looping dependency-order wave.
-| `dag census` | rail SHAPE / CENSUS | Expands every ×N group into its members (the spectacle) and back.
+| `dag layout ranked\|molecule` | mode frame RANKED / MOLECULE | RANKED is the anchor tree (children beneath their first parent, a flat sheet); MOLECULE is the force layout.
+| `dag projection 2d\|3d` | mode frame 2D / 3D | In 3D an empty-space drag orbits; in 2D it pans.
+| `dag scale time\|size` | mode frame TIME / SIZE | What sizes a molecule node: wall time or output bytes. Dims when the feed carries no such data.
+| `dag pulse` | mode frame PULSE | Toggles the looping dependency-order wave.
+| `dag census` | mode frame SHAPE / CENSUS | Expands every ×N group into its members (the spectacle) and back.
 | `dag physics charge\|link\|collide\|gravity [on\|off]` | event `argus:dag-physics` | The molecule's force terms, individually; `on` is the default word.
 | `dag physics reset` | event `argus:dag-physics` | All terms back to default.
 | `dag refresh` | drawer REFRESH | Revisit the feed now. A watched feed keeps sampling on its own beat regardless.
@@ -113,7 +113,7 @@ These act on the DAG pane's *regard*: the node last selected (or the feed picked
 | `file delete` | drawer DELETE | The regarded file (destructive flavor).
 | `file follow` | drawer FOLLOW CWD | Binds this browser to the session cwd; the bar reads `CWD`; it lists the cwd at once.
 | `file root` | drawer ROOT HERE | Unbinds: the browser keeps its own place and navigates by silent listings.
-| `file list` / `file cards` | rail LIST / CARDS | The projection: rows on the grid, or cards (kind as badge, name, owner and date, size). Same listing, same sort and filter, same activation.
+| `file list` / `file cards` / `file preview` | mode frame LIST / CARDS / PREVIEW | The projection: rows on the grid; cards (kind as badge, name, owner and date, size); or cards led by a glimpse of the content (an image, the head of a text file, else the kind's glyph), fetched only as cards scroll into view. Same listing, same sort and filter, same activation.
 | `file sort <column> [asc\|desc]` | event `argus:roster` | Columns: `name`, `type`, `size`, `date`, `owner`.
 | `file filter <text>` / `file filter off` | event `argus:roster` | As for `runs filter`.
 |===
@@ -141,7 +141,7 @@ These act on the DAG pane's *regard*: the node last selected (or the feed picked
 
 === back — contextual back
 
-`back` is exactly Esc: the topmost transient first (the command line, an open drawer, a zoom), then one navigation level (a file or /bin view back to its listing, a node's file view back to its listing, the node back to the graph, the graph back to the roster, a selection in flight back to the roster). Directory depth inside a node is not walked by Esc; that is `node back`.
+`back` is exactly Esc: the topmost transient first (the command line, an open drawer or mode frame, a zoom), then one navigation level (a file or /bin view back to its listing, a node's file view back to its listing, the node back to the graph, the graph back to the roster, a selection in flight back to the roster). Directory depth inside a node is not walked by Esc; that is `node back`.
 
 === desktop — saved compositions
 
@@ -175,7 +175,7 @@ Tab completes from this table (first word, then the follower of the previous wor
 | node | enter immerse back clear
 | dag | layout projection scale pulse census physics refresh
 | physics | charge link collide gravity reset
-| file | home back download delete sort filter follow root list cards
+| file | home back download delete sort filter follow root list cards preview
 | header | stats dag away restore
 | console | open close toggle zoom height
 | desktop | save load show list delete

@@ -60,6 +60,60 @@ const TYPE_GLYPHS: Record<FsListingEntry['type'], string> = {
   job: '▷',
 };
 
+/** How a listing is projected: rows on the grid, cards, or cards with previews. */
+export type FilesView = 'list' | 'cards' | 'preview';
+
+/** The projection cycle the mode-frame pill walks. */
+const VIEW_CYCLE: ReadonlyArray<FilesView> = ['list', 'cards', 'preview'];
+
+/** Extensions the surface renders as images through the daemon's `/vfs` route. */
+export const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']);
+
+/** Extensions whose head reads as a text glimpse. */
+const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
+  'txt', 'md', 'adoc', 'rst', 'json', 'csv', 'tsv', 'log', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'xml', 'html',
+  'py', 'sh', 'ts', 'js', 'mjs', 'r', 'c', 'h', 'cpp', 'java', 'go', 'rs', 'sql', 'tex', 'bib',
+]);
+
+/** The largest text file a preview will read the head of. */
+const PREVIEW_TEXT_MAX_BYTES: number = 256 * 1024;
+/** How much of a text file's head a preview reads. */
+const PREVIEW_HEAD_BYTES: number = 600;
+/** The largest image a preview will ask the browser to decode. */
+const PREVIEW_IMAGE_MAX_BYTES: number = 12 * 1024 * 1024;
+/** Text heads remembered per panel before the cache is emptied. */
+const PREVIEW_CACHE_MAX: number = 400;
+
+/**
+ * Reports whether a path's extension names a browser-renderable image.
+ *
+ * @param filePath - The file path.
+ * @returns True for image extensions.
+ */
+export function extension_isImage(filePath: string): boolean {
+  return IMAGE_EXTENSIONS.has(extension_of(filePath));
+}
+
+/** The lower-cased extension of a path, or '' when it has none. */
+function extension_of(filePath: string): string {
+  const name: string = filePath.split('/').pop() ?? '';
+  const dot: number = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+/**
+ * What a preview needs from the surface: a URL that serves a file's bytes
+ * natively, and a bounded read of a file's head. Both go through the
+ * daemon's token-gated `/vfs` route, never the terminal stream.
+ *
+ * @property imageUrl - Builds the URL serving a path's bytes.
+ * @property textHead - Reads at most `maxBytes` of a path, as text.
+ */
+export interface PreviewProvider {
+  imageUrl: (path: string) => string;
+  textHead: (path: string, maxBytes: number) => Promise<string>;
+}
+
 /**
  * An operator gesture on a panel row, for the composer to lower into
  * session commands.
@@ -84,10 +138,18 @@ export class FilesPanel {
   private contentShown: boolean = false;
   /** True when this browser follows the session cwd (the console's browser). */
   private following: boolean = false;
-  /** How the listing is projected: rows on the grid, or cards. */
-  private viewMode: 'list' | 'cards' = 'list';
-  /** The rail pill that reads (and flips) the projection. */
+  /** How the listing is projected: rows on the grid, cards, or previews. */
+  private viewMode: FilesView = 'list';
+  /** The mode-frame pill that reads (and cycles) the projection. */
   private readonly viewPill: HTMLElement | null;
+  /** The title bar's mode readout (silent at the default projection). */
+  private readonly modeSpan: HTMLElement | null;
+  /** What previews fetch through, when the surface offers it. */
+  private readonly preview: PreviewProvider | null;
+  /** Text heads already read, by path. */
+  private readonly headCache: Map<string, string> = new Map();
+  /** Watches preview cards scroll into view; only then do they fetch. */
+  private thumbObserver: IntersectionObserver | null = null;
   /** Whether the listing on stage was served stale. */
   private stale: boolean = false;
 
@@ -101,7 +163,8 @@ export class FilesPanel {
   /** The title bar's state span (FILTERED n/m). */
   private readonly stateSpan: HTMLElement | null;
 
-  constructor(container: HTMLElement, activate: (action: FileAction) => void) {
+  constructor(container: HTMLElement, activate: (action: FileAction) => void, preview: PreviewProvider | null = null) {
+    this.preview = preview;
     this.order = new RosterOrder<FsListingEntry>(
       [
         { key: 'name', label: 'NAME' },
@@ -118,8 +181,9 @@ export class FilesPanel {
     );
     this.stateSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.viewPill = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.files-view') ?? null;
+    this.modeSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-mode') ?? null;
     this.viewPill?.addEventListener('click', (): void => {
-      this.view_set(this.viewMode === 'list' ? 'cards' : 'list');
+      this.view_set(VIEW_CYCLE[(VIEW_CYCLE.indexOf(this.viewMode) + 1) % VIEW_CYCLE.length] ?? 'list');
     });
     // The language reaches ordering through a DOM event on the pane.
     container.closest<HTMLElement>('.pane-files')?.addEventListener('argus:roster', (event: Event): void => {
@@ -316,6 +380,8 @@ export class FilesPanel {
   private listings_render(listings: FsListing[]): void {
     this.contentShown = false;
     this.lastListings = listings;
+    this.thumbObserver?.disconnect();
+    this.thumbObserver = null;
     this.order.host_prepare(this.container);
     for (const listing of listings) {
       const block: HTMLElement = document.createElement('section');
@@ -326,9 +392,10 @@ export class FilesPanel {
       header.textContent = listing.path;
       block.appendChild(header);
 
-      if (this.viewMode === 'cards') {
+      if (this.viewMode !== 'list') {
+        const withPreview: boolean = this.viewMode === 'preview';
         const cards: HTMLElement = document.createElement('div');
-        cards.className = 'files-cards';
+        cards.className = withPreview ? 'files-cards files-previews' : 'files-cards';
         if (listing.path !== '/') {
           const up: HTMLElement = document.createElement('article');
           up.className = 'files-card files-card-up files-activatable';
@@ -338,7 +405,7 @@ export class FilesPanel {
           });
           cards.appendChild(up);
         }
-        for (const item of this.order.apply(listing.items)) cards.appendChild(this.card_build(listing.path, item));
+        for (const item of this.order.apply(listing.items)) cards.appendChild(this.card_build(listing.path, item, withPreview));
         block.appendChild(cards);
         this.container.appendChild(block);
         continue;
@@ -392,34 +459,39 @@ export class FilesPanel {
   }
 
   /**
-   * Sets the projection: rows on the grid, or cards. The same listing,
-   * the same sort and filter, the same activation — drawn another way.
-   * The rail pill reads the current mode.
+   * Sets the projection: rows on the grid, cards, or cards with previews.
+   * The same listing, the same sort and filter, the same activation —
+   * drawn another way. The mode-frame pill reads the current mode; the
+   * bar annunciates a non-default one.
    *
    * @param mode - The projection.
    */
-  public view_set(mode: 'list' | 'cards'): void {
+  public view_set(mode: FilesView): void {
     this.viewMode = mode;
-    if (this.viewPill !== null) this.viewPill.textContent = mode === 'cards' ? 'CARDS' : 'LIST';
+    if (this.viewPill !== null) this.viewPill.textContent = mode.toUpperCase();
+    if (this.modeSpan !== null) this.modeSpan.textContent = mode === 'list' ? '' : mode.toUpperCase();
     if (this.lastListings.length > 0 && !this.contentShown) this.listings_render(this.lastListings);
   }
 
   /** The current projection. */
-  public view_get(): 'list' | 'cards' {
+  public view_get(): FilesView {
     return this.viewMode;
   }
 
   /**
    * One entry as a card: the kind as its badge, the name as its title, the
    * owner and date beneath, the size at the right. Activates like a row.
+   * With previews, the card leads with a glimpse of its content.
    *
    * @param parentPath - The listed directory.
    * @param item - The entry.
+   * @param withPreview - Whether to lead with a content glimpse.
    * @returns The card element.
    */
-  private card_build(parentPath: string, item: FsListingEntry): HTMLElement {
+  private card_build(parentPath: string, item: FsListingEntry, withPreview: boolean = false): HTMLElement {
     const card: HTMLElement = document.createElement('article');
     card.className = `files-card files-type-${item.type}`;
+    if (withPreview) card.appendChild(this.thumb_build(path_join(parentPath, item.name), item));
     const head: HTMLElement = document.createElement('div');
     head.className = 'files-card-head';
     const badge: HTMLSpanElement = document.createElement('span');
@@ -452,6 +524,80 @@ export class FilesPanel {
       card.addEventListener('click', (): void => this.activate({ kind: item.type as 'plugin' | 'pipeline', path }));
     }
     return card;
+  }
+
+  /**
+   * The glimpse a preview card leads with: an image served natively, the
+   * head of a text file, or the kind's glyph when nothing renders (a
+   * directory, a plugin, a DICOM file, a text file too large to read for
+   * a thumbnail). Images and heads are fetched only once the card is on
+   * screen; heads are remembered per path.
+   *
+   * @param path - The entry's path.
+   * @param item - The entry.
+   * @returns The thumbnail element, armed to fetch when seen.
+   */
+  private thumb_build(path: string, item: FsListingEntry): HTMLElement {
+    const thumb: HTMLElement = document.createElement('div');
+    thumb.className = 'files-card-thumb';
+    const glyph = (): void => { thumb.textContent = TYPE_GLYPHS[item.type]; };
+    if (item.type !== 'file' || this.preview === null) {
+      glyph();
+      return thumb;
+    }
+    const cached: string | undefined = this.headCache.get(path);
+    if (cached !== undefined) {
+      const pre: HTMLPreElement = document.createElement('pre');
+      pre.textContent = cached;
+      thumb.appendChild(pre);
+      return thumb;
+    }
+    const isImage: boolean = extension_isImage(path) && item.size <= PREVIEW_IMAGE_MAX_BYTES;
+    const isText: boolean = TEXT_EXTENSIONS.has(extension_of(path)) && item.size <= PREVIEW_TEXT_MAX_BYTES;
+    if (!isImage && !isText) {
+      glyph();
+      return thumb;
+    }
+    thumb.classList.add('thumb-wait');
+    thumb.textContent = TYPE_GLYPHS.file;
+    const provider: PreviewProvider = this.preview;
+    const load = (): void => {
+      if (isImage) {
+        const image: HTMLImageElement = document.createElement('img');
+        image.alt = item.name;
+        image.addEventListener('load', (): void => { thumb.classList.remove('thumb-wait'); });
+        image.addEventListener('error', (): void => { thumb.classList.remove('thumb-wait'); glyph(); });
+        image.src = provider.imageUrl(path);
+        thumb.replaceChildren(image);
+        return;
+      }
+      void provider.textHead(path, PREVIEW_HEAD_BYTES).then((head: string): void => {
+        if (this.headCache.size >= PREVIEW_CACHE_MAX) this.headCache.clear();
+        this.headCache.set(path, head);
+        thumb.classList.remove('thumb-wait');
+        if (head.trim() === '') { glyph(); return; }
+        const pre: HTMLPreElement = document.createElement('pre');
+        pre.textContent = head;
+        thumb.replaceChildren(pre);
+      }).catch((): void => { thumb.classList.remove('thumb-wait'); glyph(); });
+    };
+    this.thumbObserver_get().observe(thumb);
+    thumb.addEventListener('files:thumb-seen', load, { once: true });
+    return thumb;
+  }
+
+  /** The observer that wakes a preview card when it scrolls into view. */
+  private thumbObserver_get(): IntersectionObserver {
+    if (this.thumbObserver === null) {
+      this.thumbObserver = new IntersectionObserver((entries: IntersectionObserverEntry[]): void => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          this.thumbObserver?.unobserve(entry.target);
+          entry.target.dispatchEvent(new CustomEvent('files:thumb-seen'));
+        }
+      }, { root: this.container, rootMargin: '25%' });
+    }
+    return this.thumbObserver;
   }
 
   /** The bar's state: what the browser is bound to, then what it shows. */

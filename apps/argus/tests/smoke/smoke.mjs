@@ -245,9 +245,50 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
 
+  console.log('mode-frame');
+  // The field carries content only: at rest the mode frame is a strip at
+  // the field's edge and no control stands in the field; touching the
+  // strip slides the frame in (its pills work there); touching the field
+  // retracts it; so does Esc. The header's retraction grammar, pane scale.
+  const modeFrame = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(300); if (fp.querySelectorAll('.files-row').length > 1) break; }
+    const body = fp.querySelector('.files-body');
+    const strip = fp.querySelector('.mode-strip');
+    const frame = fp.querySelector('.mode-frame');
+    const bodyRect = body.getBoundingClientRect();
+    // Column caps are the table's own frame (caps-are-the-sort), not chrome over the field.
+    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && ![...b.classList].some(k => k.startsWith('roster-')));
+    const atRest = {
+      stripShown: strip.getBoundingClientRect().width > 0 && strip.getBoundingClientRect().height > 40,
+      frameOff: frame.getBoundingClientRect().left >= bodyRect.right - 1,
+      fieldClean: inField.length === 0,
+    };
+    strip.click(); await sleep(400);
+    const opened = frame.getBoundingClientRect().right <= bodyRect.right + 1 && frame.getBoundingClientRect().left < bodyRect.right - 40 && fp.dataset.modes === 'open';
+    const pill = fp.querySelector('.files-view');
+    const pillWorks = (() => { const b = pill.textContent; pill.click(); const c = pill.textContent; return b === 'LIST' && c === 'CARDS'; })();
+    await sleep(200);
+    const modeRead = fp.querySelector('.pane-mode').textContent;
+    fp.querySelector('.files-panel').click(); await sleep(400);
+    const fieldRetracts = fp.dataset.modes === undefined && frame.getBoundingClientRect().left >= bodyRect.right - 1;
+    strip.click(); await sleep(300);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    const escRetracts = fp.dataset.modes === undefined;
+    // back to LIST for the scenarios that follow
+    for (let i = 0; i < 3 && pill.textContent !== 'LIST'; i++) pill.click();
+    await sleep(200);
+    return { atRest, opened, pillWorks, modeRead, fieldRetracts, escRetracts, restored: pill.textContent === 'LIST' };`);
+  check('the mode frame rests as a strip, and the field carries no control', modeFrame.atRest.stripShown && modeFrame.atRest.frameOff && modeFrame.atRest.fieldClean, JSON.stringify(modeFrame.atRest));
+  check('touching the strip slides the mode frame in, and its pills work there', modeFrame.opened && modeFrame.pillWorks);
+  check('the bar annunciates the non-default mode', modeFrame.modeRead === 'CARDS', modeFrame.modeRead);
+  check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored);
+
   console.log('cards');
   // CARDS projects the same listing: the pill reads the mode, cards carry
   // the kind as badge, the count equals the rows', and LIST comes back.
+  // PREVIEW is the third projection: every card leads with a glimpse.
   const cards = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
@@ -259,10 +300,16 @@ try {
     const after = pill.textContent;
     const cardEls = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
     const badgesMatch = cardEls.every(c => c.querySelector('.files-card-badge').textContent.toLowerCase() === [...c.classList].find(k => k.startsWith('files-type-')).replace('files-type-', ''));
+    pill.click(); await sleep(600);
+    const previewLabel = pill.textContent;
+    const previewCards = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
+    const thumbs = previewCards.filter(c => c.querySelector('.files-card-thumb')).length;
+    const previewRead = fp.querySelector('.pane-mode').textContent;
     pill.click(); await sleep(300);
     const restored = pill.textContent === before && fp.querySelectorAll('.files-row').length > 1;
-    return { before, after, rows, cardCount: cardEls.length, badgesMatch, restored };`);
-  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch && cards.restored);
+    return { before, after, rows, cardCount: cardEls.length, badgesMatch, previewLabel, previewCards: previewCards.length, thumbs, previewRead, restored };`);
+  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch);
+  check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ p: cards.previewLabel, n: cards.previewCards, t: cards.thumbs, r: cards.restored }));
 
   console.log('bin-context');
   // /bin entries open as context: a plugin as its highlighted description,

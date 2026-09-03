@@ -128,6 +128,31 @@ LINT_CHECKS['ordinals-mark-channels'] = () => {
   }
 };
 
+LINT_CHECKS['field-is-content'] = () => {
+  // A pane's field carries content only. Display modes live on the mode
+  // frame (a strip at rest); nothing floats over the field.
+  const frames = [...html.matchAll(/<aside class="mode-frame">[\s\S]*?<\/aside>/g)].map((m) => m[0]).join('\n');
+  const pills = [...html.matchAll(/<button class="strategy-pill[^"]*"/g)].length;
+  const framed = [...frames.matchAll(/<button class="strategy-pill[^"]*"/g)].length;
+  if (pills !== framed) fail('field-is-content', `${pills - framed} mode pill(s) live outside a mode frame`);
+  for (const pane of panes_extract()) {
+    if (pane.name !== 'tpl-pane-dag' && pane.name !== 'tpl-pane-files') continue;
+    if (!pane.body.includes('class="mode-strip"')) fail('field-is-content', `${pane.name} has modes but no mode strip`);
+    const field = pane.body
+      .replace(/<div class="pane-drawer"[\s\S]*?<\/div>/, '')
+      .replace(/<aside class="mode-frame">[\s\S]*?<\/aside>/g, '')
+      .replace(/<button class="mode-strip"[^>]*><\/button>/g, '');
+    for (const m of field.matchAll(/<button[^>]*>/g)) {
+      fail('field-is-content', `${pane.name} field carries a control: ${m[0].slice(0, 60)}`);
+    }
+  }
+  // A repealed law's enforcement must be deleted with it: the floating rail
+  // (2026-08-31) was repealed 2026-09-03, and its CSS must not survive to
+  // enforce the repeal's opposite.
+  if (/\.(dag|files)-rail\b/.test(css)) fail('field-is-content', 'a floating-rail rule survives in argus.css');
+  if (/\b(dag|files)-rail\b/.test(html)) fail('field-is-content', 'a floating-rail element survives in index.html');
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

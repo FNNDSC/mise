@@ -8,7 +8,7 @@
  * replay (ordinals are schema-safe where session ids are not).
  *
  * Fidelity by construction: verbs drive the same DOM controls the mouse
- * does — the drawer's pills, the rail's capsules, the gutter's givens — so
+ * does — the drawer's pills, the mode frame's capsules, the gutter's givens — so
  * a sentence and a gesture can never drift apart.
  *
  * A DESKTOP is a saved layout described in this language: a script of
@@ -29,7 +29,7 @@ export interface ArgusHost {
   panes_shown(): string[];
   /** A shown pane's bounding rect (for spatial focus), or null. */
   paneRect_get(id: string): DOMRect | null;
-  /** A pane's mount element (drawer, rail, chooser live inside), or null. */
+  /** A pane's mount element (drawer, mode frame, chooser live inside), or null. */
   paneMount_get(id: string): HTMLElement | null;
   /** A pane's kind ('files' | 'dag' | 'view' | 'empty' | 'pacs'), or null. */
   paneKind_get(id: string): string | null;
@@ -120,8 +120,8 @@ function drawerChild_click(host: ArgusHost, paneId: string, label: string): bool
   return false;
 }
 
-/** Cycles a rail toggle pill until its label matches the wanted mode. */
-function railPill_setTo(host: ArgusHost, paneId: string, selector: string, wanted: string): boolean {
+/** Cycles a mode-frame pill until its label matches the wanted mode. */
+function modePill_setTo(host: ArgusHost, paneId: string, selector: string, wanted: string): boolean {
   const mount: HTMLElement | null = host.paneMount_get(paneId);
   const pill: HTMLElement | null = mount?.querySelector<HTMLElement>(selector) ?? null;
   if (pill === null) return false;
@@ -172,7 +172,7 @@ const VERBS_HELP: string = [
   'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
   'node enter · immerse · back · clear (the indicated node)',
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
-  'file [@id] home|back|download|delete · follow · root · list|cards · sort <col> [asc|desc] · filter <text>|off',
+  'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
@@ -331,11 +331,11 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'dag') {
-    if (verb === 'layout') return railPill_setTo(host, paneId, '.dag-strategy', arg.toUpperCase()) ? `layout ${arg}` : 'dag layout ranked|molecule';
-    if (verb === 'projection') return railPill_setTo(host, paneId, '.dag-projection', arg.toUpperCase()) ? `projection ${arg}` : 'dag projection 2d|3d';
-    if (verb === 'scale') return railPill_setTo(host, paneId, '.dag-scale', arg.toUpperCase()) ? `scale ${arg}` : 'dag scale time|size';
-    if (verb === 'pulse') return control_click(host, paneId, '.dag-pulse') ? 'pulse' : 'dag pulse: no rail';
-    if (verb === 'census') return control_click(host, paneId, '.dag-census') ? 'census toggled' : 'dag census: no rail';
+    if (verb === 'layout') return modePill_setTo(host, paneId, '.dag-strategy', arg.toUpperCase()) ? `layout ${arg}` : 'dag layout ranked|molecule';
+    if (verb === 'projection') return modePill_setTo(host, paneId, '.dag-projection', arg.toUpperCase()) ? `projection ${arg}` : 'dag projection 2d|3d';
+    if (verb === 'scale') return modePill_setTo(host, paneId, '.dag-scale', arg.toUpperCase()) ? `scale ${arg}` : 'dag scale time|size';
+    if (verb === 'pulse') return control_click(host, paneId, '.dag-pulse') ? 'pulse' : 'dag pulse: no mode frame';
+    if (verb === 'census') return control_click(host, paneId, '.dag-census') ? 'census toggled' : 'dag census: no mode frame';
     if (verb === 'refresh') return drawerChild_click(host, paneId, 'REFRESH') ? 'refreshing' : 'dag refresh: no DAG pane';
     if (verb === 'physics') {
       const term: string = arg;
@@ -355,11 +355,11 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'file') {
-    if (verb === 'list' || verb === 'cards') {
-      return railPill_setTo(host, paneId, '.files-view', verb.toUpperCase()) ? `file ${verb}` : `file ${verb}: no files rail`;
+    if (verb === 'list' || verb === 'cards' || verb === 'preview') {
+      return modePill_setTo(host, paneId, '.files-view', verb.toUpperCase()) ? `file ${verb}` : `file ${verb}: no files mode frame`;
     }
     const label: string = verb === 'follow' ? 'FOLLOW CWD' : verb === 'root' ? 'ROOT HERE' : verb.toUpperCase();
-    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE', 'FOLLOW CWD', 'ROOT HERE'].includes(label)) return 'file home|back|download|delete|sort|filter|follow|root';
+    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE', 'FOLLOW CWD', 'ROOT HERE'].includes(label)) return 'file home|back|download|delete|sort|filter|follow|root|list|cards|preview';
     return drawerChild_click(host, paneId, label) ? `file ${verb}` : `file ${verb}: not offered by '${paneId}'`;
   }
 

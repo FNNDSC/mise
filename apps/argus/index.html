@@ -140,6 +140,7 @@
                 <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title dag-title">DAG</span>
+                    <span class="pane-mode"></span>
                     <span class="pane-state"></span>
                   </div>
                   <div class="lcars-bar-end bar-punctuation"></div>
@@ -165,16 +166,22 @@
                   <span class="drawer-group drawer-children"></span>
                 </div>
                 <div class="dag-canvas">
-                  <!-- View-state pills ride inside the instrument (the
-                       drawer holds actions; the rail holds modes). -->
-                  <div class="dag-rail">
+                  <!-- The field carries content only. Display modes live on
+                       the MODE FRAME at the field's right edge: a thin strip
+                       at rest; touch the strip and the frame slides in on its
+                       elbow; touch the field (or Esc) and it retracts — the
+                       header's own retraction grammar at pane scale
+                       (docs/aegis.adoc: field-is-content, frame-retracts-to-a-strip). -->
+                  <button class="mode-strip" title="display modes" aria-label="display modes"></button>
+                  <aside class="mode-frame">
+                    <span class="mode-elbow"></span>
                     <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
                     <button class="strategy-pill dag-projection" title="projection: sculpted 3D or flat schematic">3D</button>
                     <button class="strategy-pill dag-pulse" title="replay execution as a dependency wave">PULSE OFF</button>
                     <button class="strategy-pill dag-scale" title="molecule node size: wall time or output bytes">TIME</button>
                     <button class="strategy-pill dag-census" title="projection density: semantic shape or full census (spectacle)">SHAPE</button>
                     <button class="strategy-pill dag-gravity" title="mass-weighted centering: the heaviest stage settles at the heart">GRAVITY OFF</button>
-                  </div>
+                  </aside>
                   <!-- Selection facts overlay the scene: the graph never
                        resizes when a node is indicated. -->
                   <div class="dag-facts"></div>
@@ -188,6 +195,7 @@
                 <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                   <div class="lcars-bar-horizontal">
                     <span class="lcars-title pane-title">WORKSPACE</span>
+                    <span class="pane-mode"></span>
                     <span class="pane-state"></span>
                   </div>
                   <div class="lcars-bar-end bar-punctuation"></div>
@@ -212,11 +220,14 @@
                   </span>
                   <span class="drawer-group drawer-children"></span>
                 </div>
-                <!-- The listing body: the projection rail floats over it (never on the bar). -->
+                <!-- The listing body: content only; the projection lives on
+                     the mode frame at its right edge (a strip at rest). -->
                 <div class="files-body">
-                  <div class="dag-rail files-rail">
-                    <button class="strategy-pill files-view" title="projection: rows, or cards">LIST</button>
-                  </div>
+                  <button class="mode-strip" title="display modes" aria-label="display modes"></button>
+                  <aside class="mode-frame">
+                    <span class="mode-elbow"></span>
+                    <button class="strategy-pill files-view" title="projection: rows, cards, or previews">LIST</button>
+                  </aside>
                   <section class="files-panel" aria-label="Files"></section>
                 </div>
               </div>

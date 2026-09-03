@@ -70,7 +70,7 @@ A given always renders its target and never toggles (the gutter law).
 | Sentence | Lowers to | Notes
 | `runs enter <feedId>` | the roster pick | Enters the feed on the primary DAG pane: roster steps aside, bar reads LOADING, graph lands. View-local: the session cwd does not move (see `node enter` / ENTER FEED).
 | `runs sort <column> [asc\|desc]` | event `argus:roster` | Columns: `id`, `title`, `status`, `owner`, `createdAt`. Same as touching a cap.
-| `runs filter <text>` | event `argus:roster` | Free text, or `column:text` tokens (`owner:<user> status:error`). Summons the filter strip.
+| `runs filter <text>` | event `argus:roster` | Free text, or `column:text` tokens (`owner:<user> status:error`). Unfolds the filter strip, as the mode frame's FILTER block does.
 | `runs filter off` | event `argus:roster` | Clears and retracts the strip.
 |===
 

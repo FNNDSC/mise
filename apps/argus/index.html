@@ -166,15 +166,17 @@
                   <span class="drawer-group drawer-children"></span>
                 </div>
                 <div class="dag-canvas">
-                  <!-- The field carries content only. Display modes live on
-                       the MODE FRAME at the field's right edge: a thin strip
-                       at rest; touch the strip and the frame slides in on its
-                       elbow; touch the field (or Esc) and it retracts — the
-                       header's own retraction grammar at pane scale
-                       (docs/aegis.adoc: field-is-content, frame-retracts-to-a-strip). -->
+                  <!-- The field carries content only. Its frame is a rule
+                       along the top turning through an elbow into a spine
+                       down the right edge; the MODE FRAME's blocks slide in
+                       against the spine when the spine is touched, and
+                       retract when the field (or Esc) is — the header's own
+                       retraction grammar at pane scale (docs/aegis.adoc:
+                       field-is-content, frame-retracts-to-a-strip). -->
+                  <span class="field-rule"></span>
                   <button class="mode-strip" title="display modes" aria-label="display modes"></button>
+                  <span class="mode-elbow"></span>
                   <aside class="mode-frame">
-                    <span class="mode-elbow"></span>
                     <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
                     <button class="strategy-pill dag-projection" title="projection: sculpted 3D or flat schematic">3D</button>
                     <button class="strategy-pill dag-pulse" title="replay execution as a dependency wave">PULSE OFF</button>
@@ -186,7 +188,17 @@
                        resizes when a node is indicated. -->
                   <div class="dag-facts"></div>
                 </div>
-                <div class="dag-feedlist"></div>
+                <!-- The roster host: the feed roster is a field of its own,
+                     framed the same way, with FILTER as its one mode. -->
+                <div class="dag-roster">
+                  <span class="field-rule"></span>
+                  <button class="mode-strip" title="display modes" aria-label="display modes"></button>
+                  <span class="mode-elbow"></span>
+                  <aside class="mode-frame">
+                    <button class="strategy-pill runs-filter" title="filter the roster (the bar reads FILTERED n/m)">FILTER OFF</button>
+                  </aside>
+                  <div class="dag-feedlist"></div>
+                </div>
                 <div class="dag-empty files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
               </div>
             </template>
@@ -223,10 +235,12 @@
                 <!-- The listing body: content only; the projection lives on
                      the mode frame at its right edge (a strip at rest). -->
                 <div class="files-body">
+                  <span class="field-rule"></span>
                   <button class="mode-strip" title="display modes" aria-label="display modes"></button>
+                  <span class="mode-elbow"></span>
                   <aside class="mode-frame">
-                    <span class="mode-elbow"></span>
                     <button class="strategy-pill files-view" title="projection: rows, cards, or previews">LIST</button>
+                    <button class="strategy-pill files-filter" title="filter the listing (the bar reads FILTERED n/m)">FILTER OFF</button>
                   </aside>
                   <section class="files-panel" aria-label="Files"></section>
                 </div>

@@ -1169,9 +1169,6 @@ async function surface_start(token: string): Promise<void> {
       child_offer('ROOT HERE', 'unbind from the cwd: this browser keeps its own place', (): void => {
         if (follows()) filesFollow_set(id, false);
       });
-      child_offer('FILTER', 'show/hide the filter strip (column caps sort)', (): void => {
-        filesPanels.get(id)?.filter_toggle();
-      });
       child_offer('HOME', 'back to the home directory', (): void => {
         if (follows()) {
           terminal.line_run('cd ~');
@@ -1241,9 +1238,6 @@ async function surface_start(token: string): Promise<void> {
       });
       child_offer('REFRESH', 'revisit the feed now (a watch keeps sampling it while it runs)', (): void => {
         dagPanels.get(id)?.refresh();
-      });
-      child_offer('FILTER', 'show/hide the roster filter strip (column caps sort)', (): void => {
-        dagPanels.get(id)?.filter_toggle();
       });
     }
   };

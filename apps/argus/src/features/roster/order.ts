@@ -151,7 +151,10 @@ export class RosterOrder<T> {
   public filter_set(text: string, syncInput: boolean = true): void {
     this.state = { ...this.state, filter: text };
     if (syncInput) this.input.value = text;
-    if (text.length > 0 && this.strip.hidden) this.strip.hidden = false;
+    if (text.length > 0 && this.strip.hidden) {
+      this.strip.hidden = false;
+      this.onStrip?.();
+    }
     this.change_emit();
   }
 
@@ -165,6 +168,24 @@ export class RosterOrder<T> {
       // Closing the strip clears the filter: hidden state would be a lie.
       this.filter_set('');
     }
+    this.onStrip?.();
+  }
+
+  /** Whether the filter strip is on stage. */
+  public strip_isOpen(): boolean {
+    return !this.strip.hidden;
+  }
+
+  /** Called whenever the strip opens or closes (a FILTER block reads it). */
+  private onStrip: (() => void) | null = null;
+
+  /**
+   * Registers the listener told whenever the strip opens or closes.
+   *
+   * @param listener - The listener.
+   */
+  public stripChange_observe(listener: () => void): void {
+    this.onStrip = listener;
   }
 
   /** Applies filter then sort. Records shown/total for the summary. */

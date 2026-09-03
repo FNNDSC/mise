@@ -260,10 +260,18 @@ try {
     const bodyRect = body.getBoundingClientRect();
     // Column caps are the table's own frame (caps-are-the-sort), not chrome over the field.
     const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && ![...b.classList].some(k => k.startsWith('roster-')));
+    const rule = fp.querySelector('.field-rule').getBoundingClientRect();
+    const elbow = fp.querySelector('.mode-elbow').getBoundingClientRect();
+    const stripRect = strip.getBoundingClientRect();
     const atRest = {
-      stripShown: strip.getBoundingClientRect().width > 0 && strip.getBoundingClientRect().height > 40,
+      stripShown: stripRect.width > 0 && stripRect.height > 40,
       frameOff: frame.getBoundingClientRect().left >= bodyRect.right - 1,
       fieldClean: inField.length === 0,
+      // the frame is drawn at rest: a rule along the top meeting the spine through an elbow
+      ruleDrawn: rule.width > 100 && rule.height >= 4 && Math.abs(rule.right - stripRect.left) <= 1,
+      elbowJoins: elbow.width > 20 && Math.abs(elbow.right - stripRect.right) <= 1 && Math.abs(elbow.top - rule.top) <= 1,
+      // filtering is a mode: the strip is folded at rest
+      filterFolded: fp.querySelector('.roster-filter').getBoundingClientRect().height === 0,
     };
     strip.click(); await sleep(400);
     const opened = frame.getBoundingClientRect().right <= bodyRect.right + 1 && frame.getBoundingClientRect().left < bodyRect.right - 40 && fp.dataset.modes === 'open';
@@ -271,6 +279,16 @@ try {
     const pillWorks = (() => { const b = pill.textContent; pill.click(); const c = pill.textContent; return b === 'LIST' && c === 'CARDS'; })();
     await sleep(200);
     const modeRead = fp.querySelector('.pane-mode').textContent;
+    // blocks sit flush against the spine, under the rule
+    const frameRect = frame.getBoundingClientRect();
+    const blocksFlush = Math.abs(frameRect.right - stripRect.left) <= 1 && frameRect.top >= rule.bottom;
+    // FILTER is a block on the frame: it unfolds the strip and reads its state
+    const fb = fp.querySelector('.files-filter');
+    const filterBefore = fb.textContent;
+    fb.click(); await sleep(250);
+    const filterOpen = fp.querySelector('.roster-filter').getBoundingClientRect().height > 0 && fb.textContent === 'FILTER ON';
+    fb.click(); await sleep(250);
+    const filterClosed = fp.querySelector('.roster-filter').getBoundingClientRect().height === 0 && fb.textContent === filterBefore;
     fp.querySelector('.files-panel').click(); await sleep(400);
     const fieldRetracts = fp.dataset.modes === undefined && frame.getBoundingClientRect().left >= bodyRect.right - 1;
     strip.click(); await sleep(300);
@@ -279,9 +297,11 @@ try {
     // back to LIST for the scenarios that follow
     for (let i = 0; i < 3 && pill.textContent !== 'LIST'; i++) pill.click();
     await sleep(200);
-    return { atRest, opened, pillWorks, modeRead, fieldRetracts, escRetracts, restored: pill.textContent === 'LIST' };`);
+    return { atRest, opened, pillWorks, modeRead, blocksFlush, filterBefore, filterOpen, filterClosed, fieldRetracts, escRetracts, restored: pill.textContent === 'LIST' };`);
   check('the mode frame rests as a strip, and the field carries no control', modeFrame.atRest.stripShown && modeFrame.atRest.frameOff && modeFrame.atRest.fieldClean, JSON.stringify(modeFrame.atRest));
-  check('touching the strip slides the mode frame in, and its pills work there', modeFrame.opened && modeFrame.pillWorks);
+  check('the field is framed at rest: a rule turning through an elbow into the spine', modeFrame.atRest.ruleDrawn && modeFrame.atRest.elbowJoins, JSON.stringify(modeFrame.atRest));
+  check('touching the strip slides the mode frame in, and its pills work there', modeFrame.opened && modeFrame.pillWorks && modeFrame.blocksFlush, JSON.stringify({ o: modeFrame.opened, p: modeFrame.pillWorks, f: modeFrame.blocksFlush }));
+  check('filtering is a mode: folded at rest, the FILTER block unfolds it and reads its state', modeFrame.atRest.filterFolded && modeFrame.filterBefore === 'FILTER OFF' && modeFrame.filterOpen && modeFrame.filterClosed, JSON.stringify({ r: modeFrame.atRest.filterFolded, b: modeFrame.filterBefore, o: modeFrame.filterOpen, c: modeFrame.filterClosed }));
   check('the bar annunciates the non-default mode', modeFrame.modeRead === 'CARDS', modeFrame.modeRead);
   check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored);
 
@@ -505,15 +525,13 @@ try {
     fp.querySelector('.roster-cap[data-key="name"]').click(); await sleep(250);
     const after = names().slice(0, 3).join('|');
     const lit = fp.querySelector('.roster-cap.roster-active') !== null;
-    fp.querySelector('.pane-handle').click(); await sleep(150);
-    const filterCap = [...fp.querySelectorAll('.drawer-child')].find(c => c.textContent === 'FILTER');
-    filterCap.click(); await sleep(200);
-    const strip = !fp.querySelector('.roster-filter').hidden;
+    fp.querySelector('.files-filter').click(); await sleep(200);
+    const strip = fp.querySelector('.roster-filter').getBoundingClientRect().height > 0;
     const input = fp.querySelector('.roster-filter-input');
     input.value = 'zzzz-no-such-entry'; input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(250);
     const state = fp.querySelector('.pane-state').textContent;
     input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(200);
-    fp.querySelector('.pane-handle').click(); await sleep(100);
+    fp.querySelector('.files-filter').click(); await sleep(100);
     return { caps, sorted: before !== after && before.length > 0, lit, strip, state };`);
   check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
   check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);

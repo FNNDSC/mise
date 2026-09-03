@@ -397,6 +397,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   background-color: var(--butter);
 }
 
+.roster-filter[hidden] {
+  display: none;
+}
+
 .roster-filter {
   display: flex;
   align-items: stretch;
@@ -1011,12 +1015,30 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 /* The feed chooser: the titled roster hosted by the DAG pane. */
+.dag-roster {
+  display: none;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-right: var(--spine-w);
+}
+
+.dag-roster.roster-shown {
+  display: flex;
+  flex-direction: column;
+}
+
 .dag-feedlist {
   display: none;
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   font-size: 0.8rem;
+}
+
+/* The roster's rule runs beneath its caps; the rows start under the rule. */
+.dag-feedlist .roster-order {
+  margin-bottom: calc(var(--rule-h) + 0.3rem);
 }
 
 /* The roster's queue-wait indicator: a breathing LCARS bar. */
@@ -1097,24 +1119,44 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 /* ------------------------------------------------------- the mode frame */
-/* The field carries content only. Display modes live on a frame member at
- * the field's right edge that gets out of the way the way the header does:
- * at rest it is a thin strip; touch the strip and the frame slides in on
- * its elbow; touch the field (or Esc) and it retracts. One retraction
- * grammar at two scales (docs/aegis.adoc: field-is-content,
- * frame-retracts-to-a-strip). A hover only lights the strip — a beckon,
- * never an opening: every affordance is by touch. */
+/* The field carries content only, and its frame is LCARS frame: a RULE
+ * along the field's top turning through an ELBOW into a SPINE down the
+ * right edge — solid, in the frame's color, present at rest. Touch the
+ * spine and the MODE BLOCKS slide in under the rule, flush against the
+ * spine, stacked with the sidebar's thin black gaps; touch the field (or
+ * Esc) and they retract. The header's own retraction grammar at pane scale
+ * (docs/aegis.adoc: field-is-content, frame-retracts-to-a-strip). A hover
+ * only lights the spine — a beckon, never an opening. */
+.files-body,
+.dag-canvas,
+.dag-roster {
+  --frame-top: var(--mode-frame-top, 0px);
+  --spine-w: 8px;
+  --rule-h: 6px;
+}
+
+.field-rule {
+  position: absolute;
+  top: var(--frame-top);
+  left: 0;
+  right: var(--spine-w);
+  height: var(--rule-h);
+  background-color: var(--harvestgold);
+  z-index: 4;
+  pointer-events: none;
+}
+
 .mode-strip {
   position: absolute;
-  top: var(--mode-frame-top, 0);
+  top: var(--frame-top);
   right: 0;
   bottom: 0;
-  width: 7px;
+  width: var(--spine-w);
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 4px 0 0 4px;
-  background-color: rgb(255 170 68 / 45%);
+  border-radius: 0 0 4px 4px;
+  background-color: var(--harvestgold);
   cursor: pointer;
   z-index: 4;
 }
@@ -1124,23 +1166,41 @@ body[data-zoom]:not([data-zoom='console'])
   box-shadow: 0 0 8px var(--butter);
 }
 
-.workspace-pane[data-modes='open'] .mode-strip {
-  display: none;
+/* The elbow: the rule turning down into the spine. Fatter than either, as
+ * Okuda's elbows are, with the small inner radius cut in black. */
+.mode-elbow {
+  position: absolute;
+  top: var(--frame-top);
+  right: 0;
+  width: 44px;
+  height: 30px;
+  background-color: var(--harvestgold);
+  border-top-right-radius: 22px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.mode-elbow::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: calc(44px - var(--spine-w));
+  height: calc(30px - var(--rule-h));
+  background-color: #000;
+  border-top-right-radius: 12px;
 }
 
 .mode-frame {
   position: absolute;
-  top: var(--mode-frame-top, 0);
-  right: 0;
+  top: calc(var(--frame-top) + var(--rule-h) + 3px);
+  right: var(--spine-w);
   bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.35rem;
-  padding: 0 0.5rem 0.5rem 0.9rem;
-  background: linear-gradient(90deg, rgb(0 0 0 / 0%), rgb(0 0 0 / 90%) 22%);
-  border-right: 7px solid var(--harvestgold);
-  transform: translateX(100%);
+  gap: 3px;
+  transform: translateX(calc(100% + var(--spine-w)));
   transition: transform 0.22s ease-out;
   pointer-events: none;
   z-index: 5;
@@ -1151,25 +1211,30 @@ body[data-zoom]:not([data-zoom='console'])
   pointer-events: auto;
 }
 
-/* The elbow: where the frame turns down from the bar into its spine. */
-.mode-elbow {
-  display: block;
-  width: 100%;
-  height: 20px;
-  margin-bottom: 0.45rem;
-  background-color: var(--harvestgold);
-  border-radius: 0 0 0 18px;
-}
-
-/* Frame pills are canon capsules: filled color blocks with black text —
- * the color IS the interface. */
+/* Mode blocks: sidebar blocks in the frame's color, black type, flush to
+ * the spine — the column IS the frame. The first sits clear of the elbow's
+ * inner radius. */
 .mode-frame .strategy-pill {
   border: none;
+  border-radius: 0;
+  width: 6.8rem;
+  min-width: 0;
+  height: 1.55rem;
+  line-height: 1.55rem;
+  margin: 0;
+  padding: 0 0.55rem 0 0.4rem;
   background-color: var(--harvestgold);
   color: #000;
-  line-height: 1.7;
-  min-width: 5.2rem;
-  text-align: center;
+  text-align: right;
+}
+
+.mode-frame .strategy-pill:first-child {
+  margin-top: 12px;
+  border-top-left-radius: 8px;
+}
+
+.mode-frame .strategy-pill:last-child {
+  border-bottom-left-radius: 8px;
 }
 
 .mode-frame .strategy-pill:hover {
@@ -1188,6 +1253,14 @@ body[data-zoom]:not([data-zoom='console'])
   background-color: rgb(255 170 68 / 30%);
   color: var(--honey);
   text-decoration: line-through;
+}
+
+/* A content view (a file, a /bin entry) has no projection: no frame. */
+.files-body.content-view .field-rule,
+.files-body.content-view .mode-strip,
+.files-body.content-view .mode-elbow,
+.files-body.content-view .mode-frame {
+  display: none;
 }
 
 .strategy-pill {
@@ -1317,13 +1390,22 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-path {
+  position: sticky;
+  top: var(--roster-frame-h, 0px);
+  z-index: 2;
+  background: #000;
   color: var(--orange);
   font-weight: bold;
   letter-spacing: 0.05em;
-  border-bottom: 2px solid var(--orange);
   padding-bottom: 0.2rem;
-  margin-bottom: 0.3rem;
+  margin-bottom: calc(var(--rule-h, 6px) + 0.4rem);
   font-size: 0.9rem;
+}
+
+.files-content-header {
+  position: static;
+  border-bottom: 2px solid var(--orange);
+  margin-bottom: 0.3rem;
 }
 
 .files-grid {
@@ -1426,6 +1508,7 @@ body[data-header='dag'] #header-dag {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding-right: var(--spine-w);
 }
 
 

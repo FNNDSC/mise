@@ -27,7 +27,7 @@ import {
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
-import { FilesPanel, type FileAction, type FsListing } from '../features/files/panel.js';
+import { FilesPanel, type FileAction, type FsListing, extension_isImage, type PreviewProvider } from '../features/files/panel.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -522,20 +522,6 @@ function ansi_strip(text: string): string {
   return text.replace(/\x1b\[[0-9;:]*[A-Za-z]/g, '');
 }
 
-/** Extensions the panel renders as images through the /vfs route. */
-const IMAGE_EXTENSIONS: Set<string> = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']);
-
-/**
- * Reports whether a path's extension names a browser-renderable image.
- *
- * @param filePath - The file path.
- * @returns True for image extensions.
- */
-function extension_isImage(filePath: string): boolean {
-  const extension: string = filePath.split('.').pop()?.toLowerCase() ?? '';
-  return IMAGE_EXTENSIONS.has(extension);
-}
-
 /**
  * Wires the LCARS panel beeps: every frame button clicks with the theme's
  * voice, live or inert alike.
@@ -579,6 +565,28 @@ async function surface_start(token: string): Promise<void> {
   /** Builds the token-gated /vfs URL serving a path's bytes. */
   const vfsUrl_build = (path: string): string =>
     `/vfs?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+
+  /**
+   * Reads at most `maxBytes` of a file's head through the /vfs route,
+   * cancelling the body as soon as enough has arrived — a preview never
+   * pulls a whole log across the wire.
+   */
+  const fileHead_fetch = async (path: string, maxBytes: number): Promise<string> => {
+    const response: Response = await fetch(vfsUrl_build(path));
+    if (!response.ok || response.body === null) return '';
+    const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+    const decoder: TextDecoder = new TextDecoder();
+    let text: string = '';
+    while (text.length < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    void reader.cancel().catch((): void => { /* the body is already released */ });
+    return text.slice(0, maxBytes);
+  };
+  /** What a files pane's PREVIEW projection fetches through. */
+  const previewProvider: PreviewProvider = { imageUrl: vfsUrl_build, textHead: fileHead_fetch };
 
   /** Fetches a file's text through a silent, pane-local cat. */
   const fileText_fetch = (path: string): Promise<string> =>
@@ -734,6 +742,7 @@ async function surface_start(token: string): Promise<void> {
     const panel: FilesPanel = new FilesPanel(
       pane_find(mount, '.files-panel'),
       (action: FileAction): void => fileAction_handle(id, panel, action),
+      previewProvider,
     );
     filesPanels.set(id, panel);
     rootedHistory.set(id, []);
@@ -1268,6 +1277,30 @@ async function surface_start(token: string): Promise<void> {
     }
     return closed;
   };
+  // The mode frame is transient chrome like a drawer: a frame that got out
+  // of the way leaves a strip; the strip brings it back; the field (or
+  // Esc) sends it away again. One retraction grammar, header and pane.
+  const modeFrames_close = (): boolean => {
+    let closed: boolean = false;
+    for (const pane of document.querySelectorAll<HTMLElement>('.workspace-pane[data-modes="open"]')) {
+      delete pane.dataset['modes'];
+      closed = true;
+    }
+    return closed;
+  };
+  document.addEventListener('click', (event: Event): void => {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest('.mode-frame') !== null) return;
+    const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
+    const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane') ?? null;
+    const closedAny: boolean = modeFrames_close();
+    if (strip !== null && pane !== null) {
+      pane.dataset['modes'] = 'open';
+      sound_play('audio3');
+      return;
+    }
+    if (closedAny) sound_play('audio3');
+  });
   window.addEventListener(
     'keydown',
     (event: KeyboardEvent): void => {
@@ -1283,7 +1316,9 @@ async function surface_start(token: string): Promise<void> {
         // zoom), then one navigation pop — node immersion back to the
         // graph, the graph back to the feed list. Each press retreats
         // exactly one level; never a walk back up invisible browser depth.
-        if (drawers_close()) {
+        const drawersClosed: boolean = drawers_close();
+        const framesClosed: boolean = modeFrames_close();
+        if (drawersClosed || framesClosed) {
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;
@@ -1605,7 +1640,7 @@ async function surface_start(token: string): Promise<void> {
     node: ['enter', 'immerse', 'back', 'clear'],
     dag: ['layout', 'projection', 'scale', 'pulse', 'census', 'physics', 'refresh'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
-    file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root', 'list', 'cards'],
+    file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root', 'list', 'cards', 'preview'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],
     desktop: ['save', 'load', 'show', 'list', 'delete'],

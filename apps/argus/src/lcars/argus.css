@@ -430,6 +430,21 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 
 /* The pane bar's state readout (identity + STATE + handle). */
+/* The bar's mode readout: annunciation of a non-default display mode
+ * (MOLECULE · 2D · CENSUS; CARDS), silent at rest — the dark cockpit. */
+.pane-mode {
+  margin-left: auto;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  opacity: 0.85;
+}
+
+.pane-mode:empty {
+  display: none;
+}
+
 .pane-state {
   margin-left: 1rem;
   font-family: 'Share Tech Mono', monospace;
@@ -1081,25 +1096,74 @@ body[data-zoom]:not([data-zoom='console'])
   text-overflow: ellipsis;
 }
 
-/* The view-state rail: mode pills riding inside the instrument, top-right.
- * The pane drawer holds actions (PULSE, ENTER NODE); the rail holds modes
- * — always visible, because a mode is state the operator must read. */
-.dag-rail {
+/* ------------------------------------------------------- the mode frame */
+/* The field carries content only. Display modes live on a frame member at
+ * the field's right edge that gets out of the way the way the header does:
+ * at rest it is a thin strip; touch the strip and the frame slides in on
+ * its elbow; touch the field (or Esc) and it retracts. One retraction
+ * grammar at two scales (docs/aegis.adoc: field-is-content,
+ * frame-retracts-to-a-strip). A hover only lights the strip — a beckon,
+ * never an opening: every affordance is by touch. */
+.mode-strip {
   position: absolute;
-  top: 0.5rem;
-  right: 0.6rem;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  align-items: flex-end;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px 0 0 4px;
+  background-color: rgb(255 170 68 / 45%);
+  cursor: pointer;
+  z-index: 4;
 }
 
-/* Rail pills are canon capsules: filled color blocks with black text —
- * the color IS the interface. (The black-filled look was inherited from
- * the header-bar styling, where a cutout read correctly; on the canvas it
- * read as an empty outline.) */
-.dag-rail .strategy-pill {
+.mode-strip:hover {
+  background-color: var(--butter);
+  box-shadow: 0 0 8px var(--butter);
+}
+
+.workspace-pane[data-modes='open'] .mode-strip {
+  display: none;
+}
+
+.mode-frame {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  padding: 0 0.5rem 0.5rem 0.9rem;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0%), rgb(0 0 0 / 90%) 22%);
+  border-right: 7px solid var(--harvestgold);
+  transform: translateX(100%);
+  transition: transform 0.22s ease-out;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.workspace-pane[data-modes='open'] .mode-frame {
+  transform: none;
+  pointer-events: auto;
+}
+
+/* The elbow: where the frame turns down from the bar into its spine. */
+.mode-elbow {
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin-bottom: 0.45rem;
+  background-color: var(--harvestgold);
+  border-radius: 0 0 0 18px;
+}
+
+/* Frame pills are canon capsules: filled color blocks with black text —
+ * the color IS the interface. */
+.mode-frame .strategy-pill {
   border: none;
   background-color: var(--harvestgold);
   color: #000;
@@ -1108,10 +1172,22 @@ body[data-zoom]:not([data-zoom='console'])
   text-align: center;
 }
 
-.dag-rail .strategy-pill:hover {
+.mode-frame .strategy-pill:hover {
   background-color: var(--butter);
   color: #000;
   box-shadow: 0 0 10px var(--butter);
+}
+
+/* Mode weights: a quiet mode recedes, a missing-data mode says so. */
+.mode-frame .strategy-pill.rail-off {
+  background-color: rgb(255 170 68 / 30%);
+  color: var(--honey);
+}
+
+.mode-frame .strategy-pill.rail-na {
+  background-color: rgb(255 170 68 / 30%);
+  color: var(--honey);
+  text-decoration: line-through;
 }
 
 .strategy-pill {
@@ -1352,13 +1428,6 @@ body[data-header='dag'] #header-dag {
   flex-direction: column;
 }
 
-/* The files projection rail floats over the listing's lower right, clear
- * of the caps and off the bar (the bar law); one pill today. */
-.files-rail {
-  top: auto;
-  bottom: 0.6rem;
-  right: 1.2rem;
-}
 
 /* Cards: the same listing drawn as a grid of LCARS cards. */
 .files-cards {
@@ -1378,6 +1447,49 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-card.files-activatable { cursor: pointer; }
+
+/* PREVIEW: a card that carries a rendered glimpse of its content — an
+ * image, the head of a text file, or the kind's glyph when there is
+ * nothing to render (or too much to fetch). Fetched only on screen. */
+.files-cards.files-previews {
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+}
+
+.files-card-thumb {
+  height: 6.5rem;
+  margin: -0.55rem -0.7rem 0.45rem;
+  border-radius: 8px 8px 0 0;
+  background-color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--pumpkin-pie);
+  font-family: 'Antonio', sans-serif;
+  font-size: 2rem;
+}
+
+.files-card-thumb.thumb-wait {
+  opacity: 0.45;
+}
+
+.files-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.files-card-thumb pre {
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+  width: 100%;
+  height: 100%;
+  font: 0.55rem/1.3 'Share Tech Mono', monospace;
+  color: var(--honey);
+  white-space: pre;
+  overflow: hidden;
+  text-align: left;
+}
 
 .files-card.files-activatable:hover {
   border-color: var(--honey);
@@ -2265,14 +2377,3 @@ body[data-zoom] #header-restore {
   50% { filter: brightness(1.35); }
 }
 
-/* Rail state weights: a quiet mode recedes, a missing-data mode says so. */
-.dag-rail .strategy-pill.rail-off {
-  background-color: rgb(255 170 68 / 30%);
-  color: var(--honey);
-}
-
-.dag-rail .strategy-pill.rail-na {
-  background-color: rgb(255 170 68 / 30%);
-  color: var(--honey);
-  text-decoration: line-through;
-}

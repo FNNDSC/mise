@@ -150,6 +150,7 @@ export class DagPanel {
     );
     const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
+    this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
     // The roster is the subscription too, at a slower beat: while the list
     // stays on screen it re-asks the session, so a feed run from a console
     // shows up without a reload. Nothing is asked while the pane is off
@@ -174,18 +175,20 @@ export class DagPanel {
       const next: LayoutStrategy = this.scene.strategy_get() === 'ranked' ? 'molecule' : 'ranked';
       this.scene.strategy_set(next);
       strategyPill.textContent = next.toUpperCase();
+      this.modes_render();
     });
-    // The projection pill lives beside the strategy pill on the rail; the
-    // label always names the CURRENT mode, same as RANKED/MOLECULE.
+    // The projection pill lives beside the strategy pill on the mode frame;
+    // the label always names the CURRENT mode, same as RANKED/MOLECULE.
     const projectionPill: HTMLElement | null =
       strategyPill.parentElement?.querySelector<HTMLElement>('.dag-projection') ?? null;
     projectionPill?.addEventListener('click', (): void => {
       const next: '3d' | '2d' = this.scene.projection_get() === '3d' ? '2d' : '3d';
       this.scene.projection_set(next);
       projectionPill.textContent = next.toUpperCase();
+      this.modes_render();
     });
     // PULSE is a MODE, not a one-shot: the pill shows the current state
-    // (rail convention) and carries its weight — lit when looping, dim
+    // (mode-frame convention) and carries its weight — lit when looping, dim
     // when quiet. The one arrival-wave on graph load stays canon.
     const pulsePill: HTMLElement | null =
       strategyPill.parentElement?.querySelector<HTMLElement>('.dag-pulse') ?? null;
@@ -195,6 +198,7 @@ export class DagPanel {
       this.scene.waveLoop_set(on);
       pulsePill.textContent = on ? 'PULSE ON' : 'PULSE OFF';
       pulsePill.classList.toggle('rail-off', !on);
+      this.modes_render();
     });
     // SCALE is a display-content control: it re-projects the remembered
     // model locally — no wire traffic, the metrics are already resident.
@@ -204,6 +208,7 @@ export class DagPanel {
       this.metricMode = this.metricMode === 'time' ? 'size' : 'time';
       scalePill.textContent = this.metricMode === 'time' ? 'TIME' : 'SIZE';
       if (this.lastModel !== null) this.graph_show(this.lastModel, false);
+      this.modes_render();
     });
     this.scalePill = scalePill;
     // CENSUS is spectacle: the full multiplicity, instanced. SHAPE is the
@@ -214,6 +219,7 @@ export class DagPanel {
       const on: boolean = !this.scene.census_get();
       this.scene.census_set(on);
       censusPill.textContent = on ? 'CENSUS' : 'SHAPE';
+      this.modes_render();
     });
     // GRAVITY is a meaning (heaviest stage at the heart), so it earns a
     // pill; the other physics terms are expert knobs and live in LANG.
@@ -225,6 +231,7 @@ export class DagPanel {
       this.scene.physics_set({ gravity: on });
       gravityPill.textContent = on ? 'GRAVITY ON' : 'GRAVITY OFF';
       gravityPill.classList.toggle('rail-off', !on);
+      this.modes_render();
     });
     // The language reaches the expert knobs through DOM events on the pane
     // (verbs run over the DOM, never a private API).
@@ -348,6 +355,25 @@ export class DagPanel {
    *
    * @param state - The reported state, or null.
    */
+  private modeSpan: HTMLElement | null = null;
+
+  /**
+   * The bar's mode readout: every display mode that is not the default,
+   * so state stays legible with the mode frame retracted — and nothing
+   * at rest (the dark cockpit annunciates nothing at rest).
+   */
+  private modes_render(): void {
+    if (this.modeSpan === null) return;
+    const parts: string[] = [];
+    if (this.scene.strategy_get() !== 'ranked') parts.push('MOLECULE');
+    if (this.scene.projection_get() !== '3d') parts.push('2D');
+    if (this.metricMode !== 'time') parts.push('SIZE');
+    if (this.scene.census_get()) parts.push('CENSUS');
+    if (this.scene.waveLoop_get()) parts.push('PULSE');
+    if (this.scene.physics_get().gravity) parts.push('GRAVITY');
+    this.modeSpan.textContent = parts.join(' · ');
+  }
+
   private liveState_show(state: WatchState | null): void {
     this.liveState = state;
     if (this.stateSpan === null) return;

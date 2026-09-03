@@ -139,6 +139,10 @@ export const feedListEntrySchema = z.object({
   owner: z.string(),
   status: z.string(),
   createdAt: z.string(),
+  /** Total output bytes across the feed's nodes; absent until its topology is resident. */
+  sizeBytes: z.number().optional(),
+  /** Wall span in seconds, first node start to last node end (or now, while running); absent until resident. */
+  wallSeconds: z.number().optional(),
 });
 
 /**

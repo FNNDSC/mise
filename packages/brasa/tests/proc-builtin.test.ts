@@ -60,6 +60,7 @@ const mockCache = {
   instance_get: jest.fn(() => undefined),
   outputPath_match: jest.fn(() => undefined),
   topologyLoaded_has: jest.fn((): boolean => true),
+  feedInstanceIDs_get: jest.fn((): number[] => []),
   warmupProgress_get: jest.fn(() => ({ ...mockWarmup })),
   lifecycle_get: jest.fn(() => ({ ...mockLifecycle })),
   get warmupComplete(): boolean { return mockWarmupComplete; },

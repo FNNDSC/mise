@@ -29,6 +29,7 @@ import {
   procCache_get,
   procCheckpoint_restore,
   procCheckpoint_watch,
+  listCache_get,
   listCheckpoint_restore,
   listCheckpoint_watch,
   type ListCheckpointRestoreResult,
@@ -150,6 +151,27 @@ async function daemonWarmupFailure_decide(failures: string[]): Promise<DaemonWar
 }
 
 /**
+ * Renders the age of the oldest restored folder listing.
+ *
+ * A restore's count says how much came back; its age says whether any of
+ * it is worth having. Read after the restore, so the reported age is the
+ * checkpoint's own, not this session's.
+ *
+ * @returns A leading-comma phrase such as `, oldest 3 days`, or an empty
+ *   string when the cache holds nothing to age.
+ */
+function restoreAge_describe(): string {
+  const oldest: number | null = listCache_get().stats_get().oldestAge;
+  if (oldest === null) return '';
+  const minutes: number = Math.floor(oldest / 60_000);
+  if (minutes < 1) return ', all fresh';
+  if (minutes < 60) return `, oldest ${minutes} min`;
+  const hours: number = Math.floor(minutes / 60);
+  if (hours < 48) return `, oldest ${hours} hour(s)`;
+  return `, oldest ${Math.floor(hours / 24)} day(s)`;
+}
+
+/**
  * Warms startup caches and begins non-blocking job-topology warming.
  *
  * @param flags - Resource caches selected by the host's boot flags.
@@ -169,8 +191,10 @@ export async function startupWarmup_run(
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [] };
 
-  // Listings survive a restart as a stale-marked checkpoint: the first `ls`
-  // anywhere already listed renders at once and revalidates behind itself.
+  // Folder listings survive a restart as a stale-marked checkpoint: the
+  // first `ls` anywhere already listed renders at once and revalidates
+  // behind itself. The row reports age as well as count, because a count
+  // alone says nothing about whether the restore is worth having.
   if (!session.offline && user) {
     const cubeUrl: string | null = await chrisContext.ChRISURL_get();
     if (cubeUrl) {
@@ -179,8 +203,10 @@ export async function startupWarmup_run(
       listCheckpoint_watch(identity);
       reporter?.log(
         listings.restored ? 'ok' : 'skip',
-        'Listings',
-        listings.restored ? `Restored ${listings.count} cached listing(s), stale until revisited` : (listings.reason ?? 'No listing checkpoint'),
+        'Folders',
+        listings.restored
+          ? `Restored ${listings.count} folder listing(s)${restoreAge_describe()}, stale until revisited`
+          : (listings.reason ?? 'No folder-listing checkpoint'),
       );
     }
   }

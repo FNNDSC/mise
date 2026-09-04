@@ -12,6 +12,30 @@
  *
  * @module
  */
+import { errorStack } from '../error/errorStack';
+
+/**
+ * Lifetime for a path `/proc` reports movement on.
+ *
+ * Long by design: arrivals, departures and job completions mark these
+ * dirty as they happen, so the clock is a backstop against a missed
+ * notification rather than the mechanism.
+ */
+export const LIST_CACHE_SIGNAL_BACKED_TTL_MS: number = 60 * 60 * 1000;
+
+/** Lifetime for a path nothing reports movement on. */
+export const LIST_CACHE_SIGNAL_FREE_TTL_MS: number = 3 * 60 * 1000;
+
+/**
+ * Lifetime for the plugin and pipeline indexes.
+ *
+ * Registration is an administrative act on a CUBE, not something a
+ * session causes, and it happens on a scale of months.
+ */
+export const LIST_CACHE_PLUGIN_INDEX_TTL_MS: number = 24 * 60 * 60 * 1000;
+
+/** How many path listings the cache retains before evicting the oldest. */
+export const LIST_CACHE_MAX_ENTRIES: number = 500;
 
 /**
  * Cache entry with metadata.
@@ -99,6 +123,9 @@ export interface CacheStats {
 
   /** Estimated total memory usage in bytes. */
   totalSize: number;
+
+  /** Age of the oldest retained entry in milliseconds, or null when empty. */
+  oldestAge: number | null;
 }
 
 /**
@@ -144,18 +171,36 @@ export class ListCache {
   private cache: Map<string, CacheEntry<unknown>> = new Map();
 
   /** Maximum cache entries (LRU eviction). */
-  private maxEntries: number = 100;
+  private maxEntries: number = LIST_CACHE_MAX_ENTRIES;
 
-  /** Default TTL for unconfigured paths (3 minutes). */
-  private defaultTTL: number = 3 * 60 * 1000;
+  /** Lifetime for a path no configured prefix covers. */
+  private defaultTTL: number = LIST_CACHE_SIGNAL_FREE_TTL_MS;
 
-  /** Path-specific TTL configuration. */
+  /**
+   * Prefix-keyed lifetimes, longest prefix winning.
+   *
+   * A path is governed by a signal or by a clock, never argued over by
+   * both. Where `/proc` reports movement, the clock is only a backstop
+   * against a missed notification and can be long. Where nothing reports,
+   * a guess is all that is available and it stays short.
+   */
   private ttlConfig: Map<string, number> = new Map([
-    ['/PUBLIC', 10 * 60 * 1000],     // 10 min (stable, public directory)
-    ['/home', 5 * 60 * 1000],         // 5 min (user home directories)
-    ['/bin', 60 * 60 * 1000],         // 1 hour (plugins rarely change)
-    ['/feeds/*', 5 * 60 * 1000],      // 5 min (feed outputs)
+    // Signal-covered: the roster and job-completion notifications decide
+    // when these go stale (see listing_dirtyByFeed).
+    ['/home', LIST_CACHE_SIGNAL_BACKED_TTL_MS],
+    ['/SHARED', LIST_CACHE_SIGNAL_BACKED_TTL_MS],
+    ['/PUBLIC', LIST_CACHE_SIGNAL_BACKED_TTL_MS],
+    // Signal-free: nothing reports movement, so a clock is the only option.
+    // Plugin registration is an administrative act on a scale of months,
+    // so a day is closer to true than an hour; `refresh` is the escape
+    // hatch when an operator knows a plugin was just registered.
+    ['/bin', LIST_CACHE_PLUGIN_INDEX_TTL_MS],
+    ['/usr/share', LIST_CACHE_PLUGIN_INDEX_TTL_MS],
+    ['/PIPELINES', LIST_CACHE_PLUGIN_INDEX_TTL_MS],
   ]);
+
+  /** Whether this session has already reported that the cache filled. */
+  private evictionReported: boolean = false;
 
   /** Cache statistics. */
   private stats = {
@@ -377,20 +422,22 @@ export class ListCache {
    * @returns TTL in milliseconds.
    */
   private ttl_get(path: string): number {
-    if (this.ttlConfig.has(path)) {
-      return this.ttlConfig.get(path)!;
-    }
+    const exact: number | undefined = this.ttlConfig.get(path);
+    if (exact !== undefined) return exact;
 
-    for (const [pattern, ttl] of this.ttlConfig) {
-      if (pattern.includes('*')) {
-        const regex: RegExp = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-        if (regex.test(path)) {
-          return ttl;
-        }
+    // Longest matching prefix wins, so a deeper entry can override a
+    // shallower one. Matching is on whole segments: `/bindings` must not
+    // inherit `/bin`'s lifetime.
+    let bestLength: number = -1;
+    let bestTTL: number = this.defaultTTL;
+    for (const [prefix, ttl] of this.ttlConfig) {
+      if (!path.startsWith(prefix + '/')) continue;
+      if (prefix.length > bestLength) {
+        bestLength = prefix.length;
+        bestTTL = ttl;
       }
     }
-
-    return this.defaultTTL;
+    return bestTTL;
   }
 
   /**
@@ -402,6 +449,17 @@ export class ListCache {
       if (oldestKey !== undefined) {
         this.cache.delete(oldestKey);
         this.stats.evictions++;
+        // An eviction is not an error, but it is worth knowing about: the
+        // dropped listing also leaves the checkpoint, so a restart comes
+        // back thinner than the session that wrote it. Said once, because
+        // a session that crosses the cap will cross it repeatedly.
+        if (!this.evictionReported) {
+          this.evictionReported = true;
+          errorStack.stack_push(
+            'warning',
+            `listing cache is full at ${this.maxEntries} paths; the least recently used listings are being dropped and will not survive to the next session`,
+          );
+        }
       } else {
         break;  // Should never happen, but safety check
       }
@@ -415,9 +473,13 @@ export class ListCache {
    */
   stats_get(): CacheStats {
     let totalSize: number = 0;
+    let oldestTimestamp: number | null = null;
     for (const entry of this.cache.values()) {
       // Rough estimate: JSON string length
       totalSize += JSON.stringify(entry.data).length;
+      if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
+        oldestTimestamp = entry.timestamp;
+      }
     }
 
     return {
@@ -427,6 +489,7 @@ export class ListCache {
       evictions: this.stats.evictions,
       entries: this.cache.size,
       totalSize,
+      oldestAge: oldestTimestamp === null ? null : Date.now() - oldestTimestamp,
     };
   }
 
@@ -439,6 +502,7 @@ export class ListCache {
     this.stats.misses = 0;
     this.stats.staleHits = 0;
     this.stats.evictions = 0;
+    this.evictionReported = false;
   }
 }
 

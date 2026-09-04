@@ -5,7 +5,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { listCache_get, ListCache } from '../src/cache/listCache.js';
+import {
+  listCache_get,
+  ListCache,
+  LIST_CACHE_SIGNAL_BACKED_TTL_MS,
+  LIST_CACHE_SIGNAL_FREE_TTL_MS,
+  LIST_CACHE_PLUGIN_INDEX_TTL_MS,
+} from '../src/cache/listCache.js';
+import { errorStack } from '../src/error/errorStack.js';
 import type { CacheResult, CacheStats } from '../src/cache/listCache.js';
 
 /**
@@ -464,4 +471,73 @@ describe('ListCache Enhanced', () => {
       expect(result?.fresh).toBe(false);  // Already expired
     });
   });
+
+  describe('Lifetime configuration', () => {
+    /** Reads the lifetime the cache assigned to a stored path. */
+    function ttlFor(path: string): number {
+      cache.cache_set(path, ['x']);
+      return (cache as any).cache.get(path).ttl as number;
+    }
+
+    it('covers a configured prefix\'s subtree, not just the exact path', () => {
+      // The former matcher compared exact paths or a doubly anchored
+      // wildcard, so `/home` never governed a user's feeds folder and the
+      // entry silently did nothing.
+      expect(ttlFor('/home/someone/feeds')).toBe(LIST_CACHE_SIGNAL_BACKED_TTL_MS);
+      expect(ttlFor('/home/someone/feeds/feed_12/pl-dircopy_3/data')).toBe(LIST_CACHE_SIGNAL_BACKED_TTL_MS);
+    });
+
+    it('gives a signal-covered path a long backstop lifetime', () => {
+      for (const path of ['/home', '/SHARED', '/PUBLIC', '/SHARED/someone/feeds/feed_9']) {
+        expect(ttlFor(path)).toBe(LIST_CACHE_SIGNAL_BACKED_TTL_MS);
+      }
+    });
+
+    it('gives the plugin and pipeline indexes a day', () => {
+      for (const path of ['/bin', '/usr/share', '/PIPELINES', '/bin/pl-dircopy']) {
+        expect(ttlFor(path)).toBe(LIST_CACHE_PLUGIN_INDEX_TTL_MS);
+      }
+    });
+
+    it('falls back to the short clock where nothing reports movement', () => {
+      expect(ttlFor('/SERVICES/PACS/orthanc')).toBe(LIST_CACHE_SIGNAL_FREE_TTL_MS);
+      expect(ttlFor('/etc')).toBe(LIST_CACHE_SIGNAL_FREE_TTL_MS);
+    });
+
+    it('matches whole segments, so a longer sibling name does not inherit', () => {
+      // `/bindings` must not pick up `/bin`'s day-long lifetime.
+      expect(ttlFor('/bindings')).toBe(LIST_CACHE_SIGNAL_FREE_TTL_MS);
+      expect(ttlFor('/PUBLICITY')).toBe(LIST_CACHE_SIGNAL_FREE_TTL_MS);
+    });
+
+    it('lets the longest matching prefix win', () => {
+      expect(ttlFor('/usr/share/pl-dircopy')).toBe(LIST_CACHE_PLUGIN_INDEX_TTL_MS);
+    });
+  });
+
+  describe('Eviction reporting', () => {
+    it('reports once when the cache fills, and not again', () => {
+      errorStack.stack_clear?.();
+      (cache as any).maxEntries = 2;
+      (cache as any).evictionReported = false;
+      cache.cache_set('/a', 'a');
+      cache.cache_set('/b', 'b');
+      cache.cache_set('/c', 'c');   // evicts /a, reports
+      cache.cache_set('/d', 'd');   // evicts /b, silent
+
+      expect(cache.stats_get().evictions).toBe(2);
+      expect((cache as any).evictionReported).toBe(true);
+    });
+  });
+
+  describe('Oldest-entry age', () => {
+    it('is null for an empty cache and a number once populated', () => {
+      expect(cache.stats_get().oldestAge).toBeNull();
+      cache.cache_set('/a', 'a');
+      const age: number | null = cache.stats_get().oldestAge;
+      expect(age).not.toBeNull();
+      expect(age as number).toBeGreaterThanOrEqual(0);
+    });
+  });
+
 });

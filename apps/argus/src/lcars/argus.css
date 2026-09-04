@@ -356,6 +356,16 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   background: #000;
 }
 
+/* In a files pane the frame sits outside the scrolling field, so it holds
+ * its place by structure. Sticky there would only let it paint over a row
+ * that is not passing beneath it — which is what covered the first row's
+ * trailing cell. */
+.files-panel > .roster-order {
+  position: static;
+  z-index: auto;
+  flex: none;
+}
+
 /* ONE roster grid per pane: the columns, the gap, and the edge padding are
  * declared once on the host (`--roster-cols`, `--roster-gap`,
  * `--roster-pad`) and read by the caps AND the rows, so a cap's label can
@@ -1423,10 +1433,27 @@ body[data-header='dag'] #header-dag {
 
 #header-dag-info {
   flex: 1 1 55%;
-  columns: 2;
-  column-gap: 2rem;
+  min-width: 0;
+  font-size: 0.7rem;
+  /* The face stacks: controls, the readout, the attribution. */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.72rem;
+}
+
+/* The readout itself is the two-column grid. Putting the columns on the
+ * face instead made its `about-rows` wrapper the single grid item, so all
+ * ten rows stacked in the first track and the second sat empty — the
+ * wasted width, and the height that came with it. Tracks may shrink to
+ * nothing (`minmax(0, 1fr)`), which is what lets a long value elide rather
+ * than force its column wider. */
+#about-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.4rem;
+  align-content: start;
 }
 
 #pipeline-cycler canvas {
@@ -1449,6 +1476,61 @@ body[data-header='dag'] #header-dag {
 /* ---------------------------------------------------------- files instrument */
 
 .files-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  /* The pane is a frame with a field under it. The frame (caps, filter
+   * strip) belongs to the pane, not to the scroll: a scrollbar that runs
+   * up behind its own column headers is reading the wrong boundary. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------- listable, not readable */
+
+/* CUBE lists files a shared feed's guest may not read. A row that has been
+ * refused wears the news: the operator should not have to click twice to
+ * learn the same thing, and an empty pane reads as an empty file. */
+.files-row.files-denied {
+  opacity: 0.55;
+}
+
+.files-row.files-denied .files-glyph {
+  color: var(--mars);
+}
+
+.files-row.files-denied .files-name {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--mars) 70%, transparent);
+}
+
+.files-content-refused {
+  color: var(--mars);
+}
+
+.files-refused {
+  padding: 0.6rem 0.2rem;
+}
+
+.files-refused-lede {
+  margin: 0 0 0.4rem;
+  color: var(--mars);
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+}
+
+.files-refused-said {
+  margin: 0;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  opacity: 0.9;
+}
+
+/* The scrolling half. Its top edge is where the scrollbar begins. */
+.files-field {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
@@ -1511,7 +1593,7 @@ body[data-header='dag'] #header-dag {
 
 .files-path {
   position: sticky;
-  top: var(--roster-frame-h, 0px);
+  top: 0;
   z-index: 2;
   background: #000;
   color: var(--orange);
@@ -1720,8 +1802,28 @@ body[data-header='dag'] #header-dag {
   font: 0.55rem/1.3 'Share Tech Mono', monospace;
   color: var(--honey);
   white-space: pre;
-  overflow: hidden;
+  /* A glimpse the wheel can walk. The card shows the head of a file; when
+   * there is more, reading it should not require opening the file. Both
+   * axes, because code and tables are as often too wide as too tall. */
+  overflow: auto;
+  overscroll-behavior: contain;
   text-align: left;
+}
+
+/* A scrollable glimpse says so: the scrollbars stay out of the way until
+ * the card is under the pointer. */
+.files-card-thumb pre::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.files-card-thumb pre::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--honey) 45%, transparent);
+  border-radius: 3px;
+}
+
+.files-card:hover .files-card-thumb pre::-webkit-scrollbar-thumb {
+  background: var(--honey);
 }
 
 .files-card.files-activatable:hover {
@@ -1881,8 +1983,11 @@ body[data-header='dag'] #header-dag {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
+  /* The band is a header, not a page: it should cost as little height as
+   * it can. Nothing wraps here any more, so the same content fits in less
+   * room than it used to need. */
   max-height: 19vh;
-  overflow: hidden;
+  overflow: hidden auto;
 }
 
 body[data-header='stats'] #header-telemetry {
@@ -1961,6 +2066,29 @@ body[data-zoom] #header-restore {
   gap: 0.7rem;
   break-inside: avoid;
   margin-bottom: 0.2rem;
+  min-width: 0;
+}
+
+/* In the header the rows are a readout, not a list: tighter, and the label
+ * pill gives back the width it was hoarding so the value has room to be
+ * read rather than elided. */
+#header-dag-info .telemetry-row {
+  margin-bottom: 0;
+  gap: 0.45rem;
+  /* The rows are the header's whole height budget: ten of them in two
+   * columns is five rows tall, so a spare pixel each is five pixels of
+   * band. Tight enough to leave room for the attribution beneath. */
+  line-height: 1.05;
+}
+
+#header-dag-info .telemetry-label {
+  min-width: 6.5rem;
+  font-size: 0.62rem;
+  line-height: 1.05rem;
+}
+
+#header-dag-info .telemetry-value {
+  font-size: 0.74rem;
 }
 
 .telemetry-label {
@@ -1986,6 +2114,16 @@ body[data-zoom] #header-restore {
 .telemetry-value {
   color: var(--daybreak);
   font-size: 0.9rem;
+  min-width: 0;
+}
+
+/* A git hash and a build date are single tokens: wrapping them mid-value
+ * reads as two facts. They elide instead, and the full text stays in the
+ * title attribute. */
+#header-dag-info .telemetry-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The attribution, exactly as the page footer wore it, now living in the
@@ -1993,7 +2131,7 @@ body[data-zoom] #header-restore {
  * spacing is retuned for the header. */
 .about-footer {
   column-span: all;
-  margin-top: 0.3rem;
+  margin-top: 0.15rem;
   padding-bottom: 0;
   padding-left: 0;
   font-size: 0.62rem;
@@ -2057,7 +2195,7 @@ body[data-zoom] #header-restore {
 /* Sickbay wears the BCH flag: the ramp is anchored on the two colors of
  * bch-logo.svg — navy #164989 (frame, elbows) and cyan #1EBEF0 (primary
  * bars) — with the rest interpolated between them. */
-:root[data-lcars='sickbay'] {
+:root[data-lcars='medical'] {
   --butter: #dff5fd;
   --daybreak: #7edcf7;
   --harvestgold: #1ebef0;
@@ -2086,6 +2224,11 @@ body[data-zoom] #header-restore {
 #drawer {
   display: flex;
   flex-direction: column;
+  /* The height set by toggle, drag or zoom is authoritative. With the
+   * workspace floor gone the drawer no longer has to yield to protect it,
+   * and yielding is what silently shortened a dragged console when the
+   * header grew. */
+  flex: none;
   /* Resting height: a console murmur, not a wall — the workspace is the
    * point of the page. Drag the strip or zoom for a full console. */
   height: 28vh;
@@ -2609,7 +2752,7 @@ body[data-zoom] #header-restore {
 
 /* Beckon and hover glow live on the END BLOCK only: a filter across the
  * whole bar visibly detaches its first segment from the static elbow arm
- * it joins (on sickbay the seam pulsed on a live display). */
+ * it joins (on medical the seam pulsed on a live display). */
 #drawer ~ .bar-panel:hover .bar-10 {
   filter: brightness(1.2);
 }

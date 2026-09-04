@@ -430,12 +430,18 @@ function headerFaces_wire(): void {
 const LCARS_SCHEMES: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'lower-decks', label: 'LOWER DECKS' },
   { key: 'gold', label: 'CERRITOS GOLD' },
-  { key: 'sickbay', label: 'SICKBAY' },
+  { key: 'medical', label: 'MEDICAL' },
   { key: 'nemesis', label: 'NEMESIS' },
 ];
 
 /** The localStorage key remembering the color scheme. */
 const LCARS_STORAGE_KEY: string = 'argus-lcars';
+
+/** The scheme a browser that has never chosen one starts in. */
+const LCARS_DEFAULT_KEY: string = 'medical';
+
+/** Scheme keys that were renamed, so a remembered choice survives. */
+const LCARS_RENAMED: Readonly<Record<string, string>> = { sickbay: 'medical' };
 
 /**
  * Wires the theme pill: each press advances to the next LCARS color scheme.
@@ -444,13 +450,20 @@ const LCARS_STORAGE_KEY: string = 'argus-lcars';
  */
 function themePill_wire(): void {
   const pill: HTMLElement = element_require('theme-pill');
-  let index: number = 0;
+  const fallback: number = Math.max(
+    LCARS_SCHEMES.findIndex((scheme): boolean => scheme.key === LCARS_DEFAULT_KEY),
+    0,
+  );
+  let index: number = fallback;
   try {
     const saved: string | null = window.localStorage.getItem(LCARS_STORAGE_KEY);
-    const found: number = LCARS_SCHEMES.findIndex((scheme): boolean => scheme.key === saved);
-    index = found >= 0 ? found : 0;
+    // A remembered scheme survives its own renaming; a browser that never
+    // chose gets the default rather than whichever scheme is listed first.
+    const wanted: string | null = saved === null ? null : (LCARS_RENAMED[saved] ?? saved);
+    const found: number = LCARS_SCHEMES.findIndex((scheme): boolean => scheme.key === wanted);
+    index = found >= 0 ? found : fallback;
   } catch {
-    index = 0;
+    index = fallback;
   }
   // The scheme lives on the root element: the theme's derived variables
   // (--panel-4-color and kin) are resolved where they are defined — :root —
@@ -523,6 +536,9 @@ function aboutFace_fill(attach: AttachInfo): void {
     const figure: HTMLSpanElement = document.createElement('span');
     figure.className = 'telemetry-value';
     figure.textContent = value;
+    // A narrow header elides a long value rather than wrapping it; the
+    // whole fact stays reachable on hover.
+    figure.title = value;
     row.append(name, figure);
     face.appendChild(row);
   }
@@ -608,7 +624,11 @@ async function surface_start(token: string): Promise<void> {
   const binHead_fetch = async (path: string, maxChars: number): Promise<string> => {
     // The glimpse is what the plugin does: skip the name banner (its title
     // line and the rule beneath) that the card already says.
-    const lines: string[] = (await fileText_fetch(path)).replace(/^\s+/, '').split('\n');
+    const read: FileText = await fileText_fetch(path);
+    // A glimpse of a file the operator may not read shows the refusal, not
+    // a blank card that reads as an empty file.
+    if (!read.ok) return read.text.slice(0, maxChars);
+    const lines: string[] = read.text.replace(/^\s+/, '').split('\n');
     if (lines.length > 2 && /^[─━=\-]{4,}\s*$/.test(lines[1] ?? '')) lines.splice(0, 2);
     while (lines.length > 0 && (lines[0] ?? '').trim() === '') lines.shift();
     return lines.join('\n').slice(0, maxChars);
@@ -635,13 +655,46 @@ async function surface_start(token: string): Promise<void> {
     pipelineGlimpse: pipelineGlimpse_fetch,
   };
 
-  /** Fetches a file's text through a silent, pane-local cat. */
-  const fileText_fetch = (path: string): Promise<string> =>
+  /**
+   * A file read's outcome: its text, or why it could not be read.
+   *
+   * @property ok - Whether the session returned contents.
+   * @property text - The contents, or the refusal in the session's words.
+   */
+  interface FileText {
+    ok: boolean;
+    text: string;
+  }
+
+  /**
+   * Fetches a file's text through a silent, pane-local cat.
+   *
+   * A refusal is an answer. CUBE lists files a shared feed's guest may not
+   * read, so a failed read is ordinary and must be reported: joining the
+   * rendered text alone turned a 403 into an empty pane, which reads as an
+   * empty file.
+   */
+  const fileText_fetch = (path: string): Promise<FileText> =>
     client
       .line_execute(`cat "${path}"`, { silent: true, observe: false })
-      .then((outcome: ExecuteOutcome): string =>
-        ansi_strip(outcome.envelopes.map((envelope): string => envelope.rendered).join('\n')),
-      );
+      .then((outcome: ExecuteOutcome): FileText => {
+        const refused: boolean = outcome.envelopes.some(
+          (envelope): boolean => envelope.status === 'error',
+        );
+        if (!refused) {
+          return {
+            ok: true,
+            text: ansi_strip(outcome.envelopes.map((envelope): string => envelope.rendered).join('\n')),
+          };
+        }
+        const said: string = outcome.envelopes
+          .flatMap((envelope): string[] => (envelope.errors ?? []).map((entry): string => entry.message))
+          .concat(outcome.envelopes.map((envelope): string => envelope.renderedErr ?? ''))
+          .map((line): string => ansi_strip(line).trim())
+          .filter((line): boolean => line !== '')
+          .join('\n');
+        return { ok: false, text: said === '' ? 'the session refused this read and said nothing further' : said };
+      });
 
   // Lowers a file activation. The primary browser is slaved to the session
   // cwd and navigates by real `cd`; a rooted browser (a split's instance)
@@ -778,8 +831,12 @@ async function surface_start(token: string): Promise<void> {
     }
     // Text renders from a silent cat, so a large file does not flood the
     // transcript.
-    void fileText_fetch(action.path).then((content: string): void => {
-      panel.content_show(action.path, content);
+    void fileText_fetch(action.path).then((read: FileText): void => {
+      if (!read.ok) {
+        panel.contentRefused_show(action.path, read.text);
+        return;
+      }
+      panel.content_show(action.path, read.text);
     });
   };
 
@@ -824,7 +881,7 @@ async function surface_start(token: string): Promise<void> {
       pane_find(mount, '.view-body'),
       pane_find(mount, '.view-title'),
       {
-        content_fetch: fileText_fetch,
+        content_fetch: async (path: string): Promise<string> => (await fileText_fetch(path)).text,
         imageUrl_build: vfsUrl_build,
         path_isImage: extension_isImage,
       },
@@ -906,8 +963,12 @@ async function surface_start(token: string): Promise<void> {
         panel.contentImage_show(action.path, vfsUrl_build(action.path));
         return;
       }
-      void fileText_fetch(action.path).then((content: string): void => {
-        panel.content_show(action.path, content);
+      void fileText_fetch(action.path).then((read: FileText): void => {
+        if (!read.ok) {
+          panel.contentRefused_show(action.path, read.text);
+          return;
+        }
+        panel.content_show(action.path, read.text);
       });
     }, previewProvider);
     nodeOverlays.set(id, { element, panel, history });

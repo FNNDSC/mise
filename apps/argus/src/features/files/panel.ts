@@ -80,7 +80,14 @@ const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
 /** The largest text file a preview will read the head of. */
 const PREVIEW_TEXT_MAX_BYTES: number = 256 * 1024;
 /** How much of a text file's head a preview reads. */
-const PREVIEW_HEAD_BYTES: number = 600;
+/**
+ * How much of a file a preview card holds.
+ *
+ * The card shows roughly the first eight lines; the rest is what the wheel
+ * reaches. Enough to make scrolling worth the gesture, small enough that a
+ * screen of cards is still one cheap read each.
+ */
+const PREVIEW_HEAD_BYTES: number = 4000;
 /** The largest image a preview will ask the browser to decode. */
 const PREVIEW_IMAGE_MAX_BYTES: number = 12 * 1024 * 1024;
 /** Text heads remembered per panel before the cache is emptied. */
@@ -230,6 +237,14 @@ export class FilesPanel {
   private lastListings: FsListing[] = [];
   /** True while one file's content stands in place of the listing. */
   private contentShown: boolean = false;
+
+  /**
+   * Paths this session was refused. CUBE's listing does not say what may
+   * be read, so the browser only learns by being told no — and having been
+   * told, says so on the row rather than making the operator find out
+   * again.
+   */
+  private readonly denied: Set<string> = new Set();
   /** True when this browser follows the session cwd (the console's browser). */
   private following: boolean = false;
   /** How the listing is projected: rows on the grid, cards, or previews. */
@@ -369,6 +384,47 @@ export class FilesPanel {
   }
 
   /**
+   * Presents a refused read in place of the file's contents.
+   *
+   * A file the operator may list but not read is ordinary: a feed shared
+   * with them grants the listing, not the bytes. Rendering nothing made
+   * that indistinguishable from an empty file, so the refusal is shown in
+   * the session's own words, and the row is remembered as unreadable so
+   * the listing carries the same news when it returns.
+   *
+   * @param path - The file's path, shown as the view's header.
+   * @param reason - What the session said when it refused.
+   */
+  public contentRefused_show(path: string, reason: string): void {
+    this.denied.add(path);
+    this.contentShown = true;
+    this.container.parentElement?.classList.add('content-view');
+    this.container.replaceChildren();
+
+    const header: HTMLElement = document.createElement('header');
+    header.className = 'files-path files-content-header files-content-refused';
+    const title: HTMLSpanElement = document.createElement('span');
+    title.textContent = path;
+    const closePill: HTMLButtonElement = document.createElement('button');
+    closePill.className = 'files-close-pill';
+    closePill.textContent = 'CLOSE';
+    closePill.addEventListener('click', (): void => this.listing_restore());
+    header.append(title, closePill);
+
+    const body: HTMLElement = document.createElement('div');
+    body.className = 'files-refused';
+    const lede: HTMLElement = document.createElement('p');
+    lede.className = 'files-refused-lede';
+    lede.textContent = 'READ REFUSED';
+    const said: HTMLElement = document.createElement('pre');
+    said.className = 'files-refused-said';
+    said.textContent = reason;
+    body.append(lede, said);
+
+    this.container.append(header, body);
+  }
+
+  /**
    * Presents one image in place of the grid, streamed from the daemon's
    * `/vfs` route, with a CLOSE pill returning to the last listing.
    *
@@ -483,6 +539,22 @@ export class FilesPanel {
    *
    * @param listings - The listings to paint.
    */
+  /**
+   * Opens the scrolling field beneath the frame.
+   *
+   * The frame (caps, filter strip) is the pane's own chrome and stays put;
+   * only this field scrolls, so the scrollbar begins at the frame's lower
+   * border instead of running up behind it.
+   *
+   * @returns The element listings are appended to.
+   */
+  private field_open(): HTMLElement {
+    const field: HTMLElement = document.createElement('div');
+    field.className = 'files-field';
+    this.container.appendChild(field);
+    return field;
+  }
+
   private listings_render(listings: FsListing[]): void {
     this.contentShown = false;
     this.container.parentElement?.classList.remove('content-view');
@@ -490,6 +562,10 @@ export class FilesPanel {
     this.thumbObserver?.disconnect();
     this.thumbObserver = null;
     this.order.host_prepare(this.container);
+    // Rows scroll; the frame does not. Keeping both in one scrolling box
+    // ran the scrollbar the full height of the pane, up behind a sticky
+    // frame that then had to paint over whatever passed beneath it.
+    const field: HTMLElement = this.field_open();
     for (const listing of listings) {
       const block: HTMLElement = document.createElement('section');
       block.className = 'files-listing';
@@ -514,7 +590,7 @@ export class FilesPanel {
         }
         for (const item of this.order.apply(listing.items)) cards.appendChild(this.card_build(listing.path, item, withPreview));
         block.appendChild(cards);
-        this.container.appendChild(block);
+        field.appendChild(block);
         continue;
       }
       const table: HTMLElement = document.createElement('div');
@@ -540,7 +616,7 @@ export class FilesPanel {
         table.appendChild(this.row_build(listing.path, item));
       }
       block.appendChild(table);
-      this.container.appendChild(block);
+      field.appendChild(block);
     }
     // Honest-wait: a listing served stale says so on the bar until the
     // session's refresh replaces it.
@@ -820,9 +896,17 @@ export class FilesPanel {
     const row: HTMLElement = document.createElement('div');
     row.className = `files-row files-type-${item.type}`;
 
+    // Listable is not readable. Once refused, the row says so rather than
+    // inviting the same click again.
+    const refused: boolean = this.denied.has(path_join(parentPath, item.name));
+    if (refused) {
+      row.classList.add('files-denied');
+      row.title = 'listed but not readable — CUBE refused this identity access to the contents';
+    }
+
     const glyph: HTMLSpanElement = document.createElement('span');
     glyph.className = 'files-glyph';
-    glyph.textContent = TYPE_GLYPHS[item.type];
+    glyph.textContent = refused ? '⃠' : TYPE_GLYPHS[item.type];
 
     const name: HTMLSpanElement = document.createElement('span');
     name.className = 'files-name';

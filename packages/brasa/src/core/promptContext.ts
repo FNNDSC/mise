@@ -17,6 +17,7 @@ import {
   SingleContext,
   procCache_get,
   type ProcCacheLifecycle,
+  type ProcFeedLoadProgress,
   type ProcPromptProgress,
   type ProcPromptState,
   type ProcWarmupProgress,
@@ -89,9 +90,24 @@ export async function sessionPromptContext_build(
   const procState: ProcPromptState = lifecycle.state === 'failed'
     ? 'failed'
     : restored ? 'cached' : 'cold';
+  // A feed's first-visit load and roster arrivals ride the same segment:
+  // both are index movement no command announces, and the daemon keeps
+  // pushing the promptline while the segment is present.
+  const feedLoad: ProcFeedLoadProgress | null = procCache_get().feedLoad_get();
+  const arrived: number[] = procCache_get().arrivals_recent();
+  const sweeping: boolean =
+    warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed';
   const procWarmup: ProcPromptProgress | undefined =
-    warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed'
-      ? { loaded: warmupRaw.loaded, total: warmupRaw.total, restored, state: procState }
+    sweeping || feedLoad !== null || arrived.length > 0
+      ? {
+          loaded: warmupRaw.loaded,
+          total: warmupRaw.total,
+          restored,
+          state: procState,
+          sweeping,
+          ...(feedLoad !== null ? { feed: { id: feedLoad.feedID, loaded: feedLoad.loaded, total: feedLoad.total } } : {}),
+          ...(arrived.length > 0 ? { arrived } : {}),
+        }
       : undefined;
   // Steady-state counts stay visible after warm-up settles: warmup progress
   // retains its final figures, and the feed map is the live index.

@@ -169,6 +169,23 @@ export interface ProcWarmupProgress {
   active: boolean;
 }
 
+/**
+ * One feed's first-visit topology load in flight: the prompt shows it so a
+ * 20k-node feed's walk is never a silent hang.
+ *
+ * @property feedID - The feed being loaded.
+ * @property loaded - Instances fetched so far.
+ * @property total - The server's count for the feed, zero until reported.
+ */
+export interface ProcFeedLoadProgress {
+  feedID: number;
+  loaded: number;
+  total: number;
+}
+
+/** How long a roster arrival stays annunciated after it lands. */
+export const PROC_ARRIVAL_TTL_MS: number = 30 * 1000;
+
 /** Availability and freshness states for the persistent process cache. */
 export type ProcCacheState = 'empty' | 'restored' | 'reconciling' | 'current' | 'failed';
 
@@ -264,6 +281,12 @@ export class ProcCache {
   private _warmupComplete: boolean = false;
 
   private _warmupProgress: ProcWarmupProgress = { loaded: 0, total: 0, active: false };
+
+  /** Per-feed topology loads in flight, keyed by feed id. */
+  private feedLoads: Map<number, ProcFeedLoadProgress> = new Map();
+
+  /** Feeds the roster gained (created or shared) with the moment they landed. */
+  private arrivals: Map<number, number> = new Map();
 
   /** Whether initial feed index has been built. */
   private _built: boolean = false;
@@ -648,6 +671,64 @@ export class ProcCache {
     return { ...this._warmupProgress };
   }
 
+  // ── Per-feed load and roster arrivals ─────────────────────────────────────
+
+  /**
+   * Records progress of one feed's topology load.
+   *
+   * @param feedID - The feed being loaded.
+   * @param loaded - Instances fetched so far.
+   * @param total - The server's count, or zero while unknown.
+   */
+  feedLoad_progress(feedID: number, loaded: number, total: number): void {
+    this.feedLoads.set(feedID, { feedID, loaded, total });
+  }
+
+  /**
+   * Ends one feed's load annunciation.
+   *
+   * @param feedID - The feed whose load finished or failed.
+   */
+  feedLoad_clear(feedID: number): void {
+    this.feedLoads.delete(feedID);
+  }
+
+  /**
+   * The feed load currently worth showing: the earliest still in flight.
+   *
+   * @returns The load in progress, or null when none is.
+   */
+  feedLoad_get(): ProcFeedLoadProgress | null {
+    const first: ProcFeedLoadProgress | undefined = this.feedLoads.values().next().value;
+    return first === undefined ? null : { ...first };
+  }
+
+  /**
+   * Notes feeds the roster just gained, so surfaces can annunciate them.
+   *
+   * @param feedIDs - The arriving feed ids.
+   * @param at - When they landed (default now).
+   */
+  arrivals_note(feedIDs: number[], at: number = Date.now()): void {
+    for (const feedID of feedIDs) this.arrivals.set(feedID, at);
+  }
+
+  /**
+   * Arrivals still within their annunciation window, oldest first; expired
+   * ones are forgotten on the way.
+   *
+   * @param now - The current time (default now).
+   * @returns Feed ids that arrived within {@link PROC_ARRIVAL_TTL_MS}.
+   */
+  arrivals_recent(now: number = Date.now()): number[] {
+    const recent: number[] = [];
+    for (const [feedID, at] of this.arrivals) {
+      if (now - at > PROC_ARRIVAL_TTL_MS) this.arrivals.delete(feedID);
+      else recent.push(feedID);
+    }
+    return recent;
+  }
+
   /**
    * Resets reconciliation progress while retaining restored topology.
    *
@@ -804,6 +885,8 @@ export class ProcCache {
     this.children.clear();
     this.topologyLoaded.clear();
     this.loading.clear();
+    this.feedLoads.clear();
+    this.arrivals.clear();
     this._warmupComplete = false;
     this._warmupProgress = { loaded: 0, total: 0, active: false };
     this._built = false;

@@ -27,6 +27,25 @@ export interface ProcPromptProgress {
   total?: number;
   restored?: boolean;
   state?: ProcPromptState;
+  /** Whether the global index sweep is what `loaded`/`total` describe; absent means yes (older daemons). */
+  sweeping?: boolean;
+  /** One feed's first-visit topology load in flight, when there is one. */
+  feed?: ProcFeedPromptProgress;
+  /** Feeds the roster gained (created or shared) in the last half minute. */
+  arrived?: number[];
+}
+
+/**
+ * Prompt-facing progress of one feed's topology load.
+ *
+ * @property id - The feed being loaded.
+ * @property loaded - Plugin instances fetched so far.
+ * @property total - The server's count for the feed, zero while unknown.
+ */
+export interface ProcFeedPromptProgress {
+  id: number;
+  loaded: number;
+  total: number;
 }
 
 /**

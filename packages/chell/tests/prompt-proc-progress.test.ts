@@ -37,6 +37,26 @@ describe('prompt /proc progress', () => {
     expect(rendered).toContain('proc cold: 100/100 99%');
   });
 
+  it('says which feed is indexing on a first visit, in both themes', () => {
+    const ctx: PromptContext = promptContext_createWithProgress(0, 0);
+    ctx.procWarmup = { loaded: 0, sweeping: false, feed: { id: 812, loaded: 3400, total: 20000 } };
+    const plain: string = prompt_render('default', ctx);
+    expect(plain).toContain('feed 812 indexing: 3400/20000 17%');
+    expect(plain).not.toContain('proc cold');
+    const p10k: string = prompt_render('p10k', ctx);
+    expect(p10k).toContain('feed 812: 3400/20000 17%');
+    expect(p10k).not.toContain('proc cold');
+  });
+
+  it('annunciates roster arrivals by id when few and by count when many', () => {
+    const ctx: PromptContext = promptContext_createWithProgress(0, 0);
+    ctx.procWarmup = { loaded: 0, sweeping: false, arrived: [812] };
+    expect(prompt_render('default', ctx)).toContain('[+feed 812]');
+    ctx.procWarmup = { loaded: 0, sweeping: false, arrived: [1, 2, 3] };
+    expect(prompt_render('default', ctx)).toContain('[+3 feeds]');
+    expect(prompt_render('p10k', ctx)).toContain('+3 feeds');
+  });
+
   it('marks restored data as usable while reconciliation continues', () => {
     const context: PromptContext = promptContext_createWithProgress(25, 100);
     context.procWarmup = { loaded: 25, total: 100, restored: true };

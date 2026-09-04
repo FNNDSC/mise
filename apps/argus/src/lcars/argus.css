@@ -1143,6 +1143,14 @@ body[data-zoom]:not([data-zoom='console'])
   background: rgb(255 119 0 / 18%);
 }
 
+/* A roster arrival (a feed created or shared since the last look) breathes
+   while the daemon annunciates it, then settles: an annunciation, never at
+   rest (index-movement-is-annunciated). */
+.feedlist-row.feedlist-arrived .feedlist-id,
+.feedlist-row.feedlist-arrived .feedlist-title {
+  animation: roster-breathe 1.6s ease-in-out infinite;
+}
+
 .feedlist-id {
   color: var(--pumpkin-pie);
   text-align: right;

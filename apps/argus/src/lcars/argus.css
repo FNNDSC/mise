@@ -785,9 +785,28 @@ main {
   font-size: 0.85rem;
 }
 
+/* The caps sit over the series columns, in the roster's own idiom: the
+ * same bar segments the file browser and the runs listing wear. They share
+ * the row's track definition so a cap always sits over its column. */
+.pacs-series-caps {
+  --roster-cols: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
+  --roster-gap: 0.8rem;
+  --roster-pad: 6px;
+  margin: 0.35rem 0 0.3rem;
+}
+
+/* A picture and a verb need no naming. */
+.pacs-series-caps .roster-cap[data-key='action'] {
+  background-color: transparent;
+}
+
 .pacs-series {
   display: grid;
-  grid-template-columns: 1fr 4em 6em 10em 5em;
+  /* The description takes what it needs up to a limit, then the progress
+   * track takes the rest. The bar used to sit in a fixed 10em cell wedged
+   * between the file count and the capsule, while the description's `1fr`
+   * hoarded the empty width beside it. */
+  grid-template-columns: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
   align-items: center;
   gap: 0 0.8rem;
   padding: 2px 6px;
@@ -803,8 +822,18 @@ main {
 .pacs-series-files { color: var(--pumpkin-pie); }
 
 .pacs-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
   font-size: 0.7rem;
   color: var(--honey);
+}
+
+/* The bar stretches across the track; its note keeps to its own width. */
+.pacs-badge-note {
+  flex: none;
+  white-space: nowrap;
 }
 
 .pacs-badge[data-state='running'] { color: var(--orange); }
@@ -2611,13 +2640,63 @@ body[data-zoom] #header-restore {
 
 /* A series already home: a filled bar, quietly green. */
 .pacs-bar-full {
-  display: inline-block;
-  width: 3.4rem;
+  flex: 1 1 auto;
+  min-width: 2rem;
   height: 0.45rem;
-  margin-right: 0.4rem;
   border-radius: 0.25rem;
   background: linear-gradient(90deg, #2a5, #3c6);
-  vertical-align: middle;
+}
+
+/* A query in flight. A PACS can take many seconds to answer, and one line
+ * of static text is easily read as a finished, empty result. */
+.pacs-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.2rem;
+}
+
+.pacs-waiting .pacs-bar {
+  flex: 0 0 12rem;
+}
+
+.pacs-waiting-note {
+  color: var(--harvestgold);
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+}
+
+/* A pull in flight: the same track, filled as far as it has got. */
+.pacs-bar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 2rem;
+  height: 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(255 119 0 / 18%);
+  overflow: hidden;
+}
+
+.pacs-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 0.25rem;
+  background: linear-gradient(90deg, var(--orange), var(--harvestgold));
+  transition: width 0.25s linear;
+}
+
+/* No total to divide by: the bar paces rather than pretending to a
+ * fraction it does not know. */
+.pacs-bar-pacing .pacs-bar-fill {
+  width: 35%;
+  animation: pacs-pace 1.4s ease-in-out infinite;
+}
+
+@keyframes pacs-pace {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 /* ------------------------------------------------------ the command line */

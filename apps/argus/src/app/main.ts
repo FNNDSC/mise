@@ -182,6 +182,39 @@ function wsUrl_resolve(): string {
   return `ws://${window.location.host}`;
 }
 
+/** Watches the header so its slide distance is never a stale measurement. */
+let headerHeightObserver: ResizeObserver | null = null;
+
+/**
+ * Keeps `--zoom-header-height` equal to the header's current extent.
+ *
+ * The header slides off by a measured distance, and its height is not
+ * fixed: version rows arrive from the daemon after attach, and a face can
+ * be swapped. Measuring once, at the moment of the gesture, left whatever
+ * grew afterwards on stage. A ceiling or a pixel of slack does not fix
+ * that; keeping the measurement current does.
+ *
+ * @param header - The header wrap that slides.
+ * @param body - The element carrying the custom property.
+ */
+function headerHeight_track(header: HTMLElement, body: HTMLElement): void {
+  const sync = (): void => {
+    // Only while the header is at rest. Zooming hides the lid and the
+    // status readouts, so a header measured mid-slide is shorter than the
+    // distance it has to travel, and tracking it there would shorten the
+    // slide until the header reappeared.
+    if (body.dataset['zoom'] !== undefined || body.dataset['header'] === 'away') return;
+    body.style.setProperty(
+      '--zoom-header-height',
+      `${Math.ceil(header.getBoundingClientRect().bottom)}px`,
+    );
+  };
+  sync();
+  if (headerHeightObserver !== null) return;
+  headerHeightObserver = new ResizeObserver(sync);
+  headerHeightObserver.observe(header);
+}
+
 /** Shortest the console may be dragged, so its strip stays grabbable. */
 const DRAWER_MIN_HEIGHT_PX: number = 120;
 
@@ -296,7 +329,7 @@ function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
       // wrap, and an offsetHeight slide left that margin's worth of header
       // crushed on stage).
       if (header !== null) {
-        body.style.setProperty('--zoom-header-height', `${header.getBoundingClientRect().bottom}px`);
+        headerHeight_track(header, body);
       }
       body.dataset['zoom'] = pane;
       // A tree pane's zoom marks its leaf AND the split path above it:
@@ -395,7 +428,7 @@ function headerFaces_wire(): void {
       // Second press on the selected face: the header itself departs. The
       // slide distance is its measured height, same as the zoom glide.
       if (header !== null) {
-        body.style.setProperty('--zoom-header-height', `${header.offsetHeight}px`);
+        headerHeight_track(header, body);
       }
       body.dataset['header'] = 'away';
     } else {

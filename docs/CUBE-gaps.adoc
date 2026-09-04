@@ -294,6 +294,48 @@ mise carries dialect fallbacks where drift is known (currently the `userfiles` r
 
 
 [[criteria]]
+[[confirmed-gap-shared-feed-files]]
+== Confirmed gap: a shared feed grants its listing but not its contents
+
+Upstream: not yet filed. The evidence below was captured 2026-09-04 against a production CUBE.
+
+=== Operator requirement
+
+A feed shared with an identity is shared so that identity can look at what it holds. An operator who can see a result file, its name and its size, expects to be able to read it. That is what sharing means to the person doing it.
+
+=== Observed behaviour
+
+A feed owned by another user and shared with the operator lists normally. The operator's client walks `/proc/jobs/feed_<id>/<node>/data`, receives one entry, and is told its size is 49,346 bytes. Reading it fails.
+
+Asked directly, CUBE is unambiguous. `GET /api/v1/userfiles/<id>/` for that file returns *403 Forbidden* for the same authenticated identity that just listed it. It is not a 404: the file exists and CUBE knows the operator is asking about it. The same request shape against a file in the operator's own space returns the content.
+
+So visibility and readability disagree. The share propagates to the folder tree and to file metadata, and stops before the bytes.
+
+=== Why this is a gap and not a client defect
+
+The client cannot compensate. There is no interface that reports, per file or per feed, which entries the identity may actually read, so a browser cannot mark them ahead of a click; it can only be refused and remember. Nor can it fetch the file another way: the refusal is CUBE's, on the canonical resource.
+
+It also cannot be inferred from the feed. The operator is a legitimate viewer of the feed — the roster returns it, the topology loads, the job statuses read. Only the file payloads are withheld.
+
+=== What CUBE could offer
+
+Either behaviour would remove the gap; they are alternatives, not a sequence.
+
+* *Make the share cover the contents.* If a shared feed's files are meant to be readable, the file resources should honour the same permission the listing already does. This is the interpretation an operator expects, and it needs no new interface.
+* *Make the boundary legible.* If withholding contents is deliberate — a plausible policy, since a feed's outputs may carry data the sharer did not intend to hand over — then a listing must say so. A per-entry readability fact in the filebrowser response, or a documented rule stating which classes of file a share does and does not convey, lets a client render the truth instead of discovering it one refusal at a time.
+
+The present behaviour is the worst of the two: it offers the file, then refuses it, and says nothing about which files will behave that way.
+
+=== Client policy until then
+
+`mise` treats a refusal as an answer rather than an absence.
+
+* The failure path asks CUBE for the real status and reports it, rather than the previous "not found (404) or access denied (403)" — two opposite answers in one sentence, and neither of them measured.
+* A refused read renders as a refusal, with CUBE's reason, never as empty content. An empty pane where a file should be is indistinguishable from an empty file.
+* The path is remembered for the session and the row is marked unreadable, so an operator learns each boundary once rather than every time the listing is redrawn.
+
+None of that narrows the gap. It only stops the client from lying about it.
+
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery
 

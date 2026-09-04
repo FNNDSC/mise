@@ -21,7 +21,24 @@ function check(name, condition, detail = '') {
 }
 
 const page = await page_open(argusUrl_discover());
-const evalIn = (body) => page.eval(`(async () => { const sleep=(ms)=>new Promise(r=>setTimeout(r,ms)); ${body} })()`);
+// `settled` waits for a measured value to stop changing, so a scenario can
+// follow a CSS glide without guessing at its duration: a fixed sleep either
+// samples mid-flight or, when a click has yet to register, before it starts.
+const evalIn = (body) => page.eval(`(async () => {
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+  const settled = async (read, { quiet = 3, step = 60, limit = 3000 } = {}) => {
+    let last = NaN; let still = 0;
+    for (let waited = 0; waited < limit; waited += step) {
+      await sleep(step);
+      const now = read();
+      still = now === last ? still + 1 : 0;
+      last = now;
+      if (still >= quiet) return now;
+    }
+    return last;
+  };
+  ${body}
+})()`);
 
 try {
   console.log('boot');
@@ -76,8 +93,12 @@ try {
     document.getElementById('gutter-files').click(); await sleep(700);
     const pane = document.querySelector('.pane-files');
     pane.querySelector('.pane-handle').click(); await sleep(150);
-    pane.querySelector('.drawer-zoom').click(); await sleep(700);
+    pane.querySelector('.drawer-zoom').click();
     const header = document.querySelector('.wrap:not(#gap)');
+    // The header glides; a fixed wait either catches it mid-flight or, if
+    // the click has not registered yet, before it starts. Wait for the
+    // motion to stop instead of guessing how long it takes.
+    await settled(() => header.getBoundingClientRect().bottom);
     const gutter = document.querySelector('.left-frame');
     const lid = document.getElementById('drawer-toggle');
     const status = document.getElementById('status-strip');
@@ -91,15 +112,18 @@ try {
       capsule: (() => { const c = pane.querySelector('.drawer-zoom');
         return c.getBoundingClientRect().height > 0 ? c.textContent : 'HIDDEN'; })(),
     };
-    strip.click(); await sleep(700);
+    // Every step here is a glide; each waits for its own motion to stop.
+    strip.click();
+    await settled(() => header.getBoundingClientRect().bottom);
     zoomed.stripRestored = header.getBoundingClientRect().bottom > 50;
     zoomed.capsuleAfter = pane.querySelector('.drawer-zoom').textContent;
-    pane.querySelector('.drawer-zoom').click(); await sleep(700);
+    pane.querySelector('.drawer-zoom').click();
+    await settled(() => header.getBoundingClientRect().bottom);
     // Contextual back is a stack: the open pane drawer takes the first
     // Esc, the zoom the next.
     for (let i = 0; i < 3 && header.getBoundingClientRect().bottom <= 1; i++) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await sleep(700);
+      await settled(() => header.getBoundingClientRect().bottom);
     }
     zoomed.restoredHeaderBottom = header.getBoundingClientRect().bottom;
     return zoomed;`);
@@ -118,11 +142,16 @@ try {
     pane.querySelector('[data-split="col"][data-place="after"]').click(); await sleep(600);
     const leaves = document.querySelectorAll('#layout-root .layout-leaf').length;
     pane.querySelector('.pane-handle').click(); await sleep(150);
-    pane.querySelector('.drawer-zoom').click(); await sleep(900);
-    const r = pane.closest('.layout-leaf').getBoundingClientRect();
+    // The leaf grows into the region; wait for that growth to stop rather
+    // than sampling it mid-glide.
+    pane.querySelector('.drawer-zoom').click();
+    const leaf = pane.closest('.layout-leaf');
+    await settled(() => Math.round(leaf.getBoundingClientRect().width));
+    const r = leaf.getBoundingClientRect();
     const full = r.width > window.innerWidth * 0.85;
     for (let i = 0; i < 3 && document.body.dataset.zoom !== undefined; i++) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settled(() => Math.round(leaf.getBoundingClientRect().width));
     }
     document.getElementById('gutter-files').click(); await sleep(400);
     return { leaves, full, w: Math.round(r.width) };`);
@@ -197,6 +226,49 @@ try {
   check('console drawer zooms the console and reads RESTORE', consoleGrammar.zoomed && consoleGrammar.reads === 'RESTORE');
   check('console zoom restores and reads ZOOM', consoleGrammar.restored && consoleGrammar.readsAfter === 'ZOOM');
   check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
+
+  console.log('console-height');
+  // The operator divides the stage, not a constant. A workspace floor is a
+  // console ceiling: the drawer can only grow into space the workspace will
+  // give up, so a `min-height` on main silently capped the console at
+  // roughly half the frame however far the strip was dragged.
+  const consoleHeight = await evalIn(`
+    const out = {};
+    const drawerEl = document.getElementById('drawer');
+    if (drawerEl.classList.contains('drawer-closed')) {
+      document.getElementById('drawer-toggle').click(); await sleep(400);
+    }
+    out.workspaceFloor = getComputedStyle(document.querySelector('main')).minHeight;
+
+    // Drive the strip the way a hand does: press, travel, release.
+    const strip = document.getElementById('drawer-strip');
+    out.stripFound = !!strip;
+    if (strip) {
+      const start = drawerEl.getBoundingClientRect().height;
+      strip.dispatchEvent(new MouseEvent('mousedown', { clientY: 0, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: window.innerHeight, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      await sleep(200);
+      out.start = start;
+      out.grown = drawerEl.getBoundingClientRect().height;
+      out.viewport = window.innerHeight;
+      // Put the stage back: a console left at full height leaves no
+      // workspace for the checks that follow.
+      drawerEl.style.height = '';
+      await sleep(200);
+      out.restoredHeight = drawerEl.getBoundingClientRect().height;
+    }
+    return out;`);
+  if (consoleHeight.stripFound) {
+    // The old ceiling was the viewport less the 20rem floor and the chrome
+    // above it; comfortably over half the viewport proves the floor is gone.
+    const past = consoleHeight.grown > consoleHeight.viewport * 0.6;
+    check('the console drags past the old workspace floor', past,
+      JSON.stringify({ start: consoleHeight.start, grown: consoleHeight.grown, viewport: consoleHeight.viewport }));
+    check('and the workspace keeps no floor of its own', consoleHeight.workspaceFloor === '0px', consoleHeight.workspaceFloor);
+    check('and the console returns to its resting height', consoleHeight.restoredHeight < consoleHeight.grown,
+      JSON.stringify({ grown: consoleHeight.grown, restored: consoleHeight.restoredHeight }));
+  }
 
   console.log('focus-citizenship');
   const focusCit = await evalIn(`
@@ -283,7 +355,9 @@ try {
       // filtering is a mode: the strip is folded at rest
       filterFolded: fp.querySelector('.roster-filter').getBoundingClientRect().height === 0,
     };
-    strip.click(); await sleep(400);
+    // The frame slides in; wait for the strip to stop widening.
+    strip.click();
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
     const barRect = strip.getBoundingClientRect();
     const opened = barRect.width > 80 && frame.getBoundingClientRect().left < bodyRect.right - 40 && getComputedStyle(frame).visibility === 'visible' && fp.dataset.modes === 'open';
     const pill = fp.querySelector('.files-view');
@@ -301,10 +375,14 @@ try {
     const filterOpen = fp.querySelector('.roster-filter').getBoundingClientRect().height > 0 && fb.textContent === 'FILTER ON';
     fb.click(); await sleep(250);
     const filterClosed = fp.querySelector('.roster-filter').getBoundingClientRect().height === 0 && fb.textContent === filterBefore;
-    fp.querySelector('.files-panel').click(); await sleep(400);
+    // Retraction is a glide too: the strip narrows back to a sliver.
+    fp.querySelector('.files-panel').click();
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
     const fieldRetracts = fp.dataset.modes === undefined && getComputedStyle(frame).visibility === 'hidden' && strip.getBoundingClientRect().width < 12;
-    strip.click(); await sleep(300);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    strip.click();
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
     const escRetracts = fp.dataset.modes === undefined;
     // back to LIST for the scenarios that follow
     for (let i = 0; i < 3 && pill.textContent !== 'LIST'; i++) pill.click();
@@ -315,7 +393,7 @@ try {
   check('touching the strip slides the mode frame in, and its pills work there', modeFrame.opened && modeFrame.pillWorks && modeFrame.blocksFlush, JSON.stringify({ o: modeFrame.opened, p: modeFrame.pillWorks, f: modeFrame.blocksFlush }));
   check('filtering is a mode: folded at rest, the FILTER block unfolds it and reads its state', modeFrame.atRest.filterFolded && modeFrame.filterBefore === 'FILTER OFF' && modeFrame.filterOpen && modeFrame.filterClosed, JSON.stringify({ r: modeFrame.atRest.filterFolded, b: modeFrame.filterBefore, o: modeFrame.filterOpen, c: modeFrame.filterClosed }));
   check('the bar annunciates the non-default mode', modeFrame.modeRead === 'CARDS', modeFrame.modeRead);
-  check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored);
+  check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored, JSON.stringify({ field: modeFrame.fieldRetracts, esc: modeFrame.escRetracts, restored: modeFrame.restored }));
 
   console.log('cards');
   // CARDS projects the same listing: the pill reads the mode, cards carry
@@ -518,7 +596,9 @@ try {
     // sure it is closed before asking for the list.
     if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(150); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
-    const listBack = dp.querySelector('.dag-feedlist').style.display === 'block';
+    // Shown, however it lays itself out: the roster is a frame above a
+    // scrolling field now, so it shows as flex rather than block.
+    const listBack = dp.querySelector('.dag-feedlist').style.display !== 'none';
     const stateCleared = !/^(LIVE|SETTLED|STALE)$/.test(state.textContent.trim());
     return { skipped: text ? null : 'no watched report (daemon predates the watch wire?)', text, offered, after, listBack, stateCleared };`);
   if (live.skipped) {

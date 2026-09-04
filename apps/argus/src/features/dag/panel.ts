@@ -873,6 +873,12 @@ export class DagPanel {
     this.empty.style.display = 'none';
     this.order.host_prepare(this.feedList);
     this.rosterFrame_track();
+    // Rows scroll; the frame does not. Sharing one scrolling box ran the
+    // scrollbar up behind the caps, and made the frame paint over whatever
+    // passed beneath it — the same defect the files browser had.
+    const field: HTMLElement = document.createElement('div');
+    field.className = 'feedlist-field';
+    this.feedList.appendChild(field);
     for (const feed of this.order.apply(feeds)) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = `feedlist-row feedlist-${feed.status}`;
@@ -912,7 +918,7 @@ export class DagPanel {
         this.feedRequest_show(feed.id);
         this.handlers.command_run(`feed diagram feed_${feed.id}`);
       });
-      this.feedList.appendChild(row);
+      field.appendChild(row);
     }
     this.roster_show(true);
     if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
@@ -960,7 +966,8 @@ export class DagPanel {
 
   /** Shows or hides the roster and its frame host together. */
   private roster_show(on: boolean): void {
-    this.feedList.style.display = on ? 'block' : 'none';
+    // Flex, not block: the frame sits above a scrolling field.
+    this.feedList.style.display = on ? 'flex' : 'none';
     this.feedList.parentElement?.classList.toggle('roster-shown', on);
   }
 

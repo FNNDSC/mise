@@ -90,7 +90,17 @@ export class PacsPanel {
     this.gatherName = element_input(root, '#pacs-gather-name');
 
     for (const { id } of FORM_TERMS) {
-      element_input(root, `#${id}`).addEventListener('input', (): void => this.command_regenerate());
+      const field: HTMLInputElement = element_input(root, `#${id}`);
+      field.addEventListener('input', (): void => this.command_regenerate());
+      // Enter in any term runs the query. Filling a field and pressing
+      // return is what a form means; making the operator reach for the
+      // button afterwards is a step the gesture already stated.
+      field.addEventListener('keydown', (event: KeyboardEvent): void => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          this.query_run();
+        }
+      });
     }
     element_query(root, '#pacs-run').addEventListener('click', (): void => this.query_run());
     this.command.addEventListener('keydown', (event: KeyboardEvent): void => {
@@ -115,8 +125,32 @@ export class PacsPanel {
   private query_run(): void {
     const line: string = this.command.value.trim();
     if (line.length === 0) return;
-    this.results.replaceChildren(element_note('QUERYING…'));
+    this.results.replaceChildren(this.waiting_build());
     this.handlers.command_run(line);
+  }
+
+  /**
+   * The waiting state for a query in flight.
+   *
+   * A PACS query can take many seconds, and a single line of text is easy
+   * to mistake for a finished answer that happens to be empty. This says
+   * the pane is working, and keeps saying it.
+   *
+   * @returns The element to stand in for results.
+   */
+  private waiting_build(): HTMLElement {
+    const wait: HTMLElement = document.createElement('div');
+    wait.className = 'pacs-waiting';
+    const track: HTMLSpanElement = document.createElement('span');
+    track.className = 'pacs-bar pacs-bar-pacing';
+    const fill: HTMLSpanElement = document.createElement('span');
+    fill.className = 'pacs-bar-fill';
+    track.appendChild(fill);
+    const said: HTMLSpanElement = document.createElement('span');
+    said.className = 'pacs-waiting-note';
+    said.textContent = 'QUERYING THE PACS…';
+    wait.append(track, said);
+    return wait;
   }
 
   /**
@@ -149,9 +183,26 @@ export class PacsPanel {
       badge.dataset['state'] = status;
       return;
     }
+    // A running pull shows how far it has got, not just that it is going.
+    // Without a total there is no fraction to draw, so the bar paces
+    // instead — still motion, still honest about knowing no better.
     const counted: string =
       message.total !== undefined ? ` ${message.current ?? 0}/${message.total}` : '';
-    badge.textContent = `${BADGE_TEXT['running']}${counted}`;
+    const fraction: number | null =
+      message.total !== undefined && message.total > 0
+        ? Math.min(1, (message.current ?? 0) / message.total)
+        : null;
+    badge.replaceChildren();
+    const track: HTMLSpanElement = document.createElement('span');
+    track.className = fraction === null ? 'pacs-bar pacs-bar-pacing' : 'pacs-bar';
+    const fill: HTMLSpanElement = document.createElement('span');
+    fill.className = 'pacs-bar-fill';
+    if (fraction !== null) fill.style.width = `${Math.round(fraction * 100)}%`;
+    track.appendChild(fill);
+    const note: HTMLSpanElement = document.createElement('span');
+    note.className = 'pacs-badge-note';
+    note.textContent = `${BADGE_TEXT['running']}${counted}`;
+    badge.append(track, note);
     badge.dataset['state'] = 'running';
   }
 
@@ -210,6 +261,7 @@ export class PacsPanel {
       fold.textContent = nowCollapsed ? '▸' : '▾';
     });
     block.appendChild(head);
+    block.appendChild(this.caps_build());
     for (const series of study.series) {
       block.appendChild(this.series_render(study, series));
     }
@@ -227,6 +279,37 @@ export class PacsPanel {
       vfsPath: series.vfsPath,
       selected: true,
     });
+  }
+
+  /**
+   * The column caps over a study's series.
+   *
+   * A study is a listing like any other, so it wears the same frame the
+   * file browser and the runs roster wear: a bar of caps naming the
+   * columns, in the same idiom and the same hues.
+   *
+   * @returns The caps row.
+   */
+  private caps_build(): HTMLElement {
+    const caps: HTMLElement = document.createElement('div');
+    caps.className = 'roster-caps pacs-series-caps';
+    // The progress track and the action carry no cap: one is a picture,
+    // the other a verb.
+    const columns: ReadonlyArray<{ key: string; label: string }> = [
+      { key: 'series', label: 'SERIES' },
+      { key: 'state', label: 'STATE' },
+      { key: 'modality', label: 'MODALITY' },
+      { key: 'files', label: 'FILES' },
+      { key: 'action', label: '' },
+    ];
+    for (const column of columns) {
+      const cap: HTMLSpanElement = document.createElement('span');
+      cap.className = 'roster-cap';
+      cap.dataset['key'] = column.key;
+      cap.textContent = column.label;
+      caps.appendChild(cap);
+    }
+    return caps;
   }
 
   /** Renders one series row: facts, badge, and the PULL capsule. */
@@ -250,6 +333,7 @@ export class PacsPanel {
       bar.className = 'pacs-bar-full';
       badge.appendChild(bar);
       const note: HTMLSpanElement = document.createElement('span');
+      note.className = 'pacs-badge-note';
       note.textContent = series.pulledFiles !== undefined
         ? `✓ ${series.pulledFiles} IN CUBE`
         : '✓ IN CUBE';
@@ -259,7 +343,7 @@ export class PacsPanel {
       gatherButton.className = 'pacs-capsule';
       gatherButton.textContent = 'GATHER';
       gatherButton.addEventListener('click', (): void => this.gather_note(study, series));
-      row.append(desc, modality, files, badge, gatherButton);
+      row.append(desc, badge, modality, files, gatherButton);
       return row;
     }
     this.badges.set(series.seriesUID, badge);
@@ -278,7 +362,7 @@ export class PacsPanel {
         this.gather_note(study, series);
       });
     }
-    row.append(desc, modality, files, badge, pull);
+    row.append(desc, badge, modality, files, pull);
     return row;
   }
 

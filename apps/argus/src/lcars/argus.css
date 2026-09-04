@@ -137,8 +137,8 @@ body[data-zoom='console'] #drawer {
   height: calc(100dvh - 3.6rem) !important;
 }
 
-/* A zoomed console owns the stage: the workspace floor steps aside so the
- * shrinkable drawer can actually reach its zoomed height. */
+/* Retained for clarity: the console's zoom owns the stage. The workspace
+ * no longer keeps a floor to step aside from. */
 body[data-zoom='console'] main {
   min-height: 0;
 }
@@ -354,6 +354,16 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   top: 0;
   z-index: 2;
   background: #000;
+}
+
+/* In a files pane the frame sits outside the scrolling field, so it holds
+ * its place by structure. Sticky there would only let it paint over a row
+ * that is not passing beneath it — which is what covered the first row's
+ * trailing cell. */
+.files-panel > .roster-order {
+  position: static;
+  z-index: auto;
+  flex: none;
 }
 
 /* ONE roster grid per pane: the columns, the gap, and the edge padding are
@@ -646,9 +656,12 @@ body {
 
 main {
   flex: 1;
-  /* The workspace floor: panes are the point of the page; whatever else is
-   * on stage, they keep a working height. */
-  min-height: 20rem;
+  /* No workspace floor. A floor here is a ceiling on the console: the
+   * drawer can only grow into space the workspace will give up, so a
+   * 20rem minimum silently capped the console at roughly half the frame
+   * however far the strip was dragged. How the stage is divided is the
+   * operator's call, not a constant's. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -772,9 +785,28 @@ main {
   font-size: 0.85rem;
 }
 
+/* The caps sit over the series columns, in the roster's own idiom: the
+ * same bar segments the file browser and the runs listing wear. They share
+ * the row's track definition so a cap always sits over its column. */
+.pacs-series-caps {
+  --roster-cols: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
+  --roster-gap: 0.8rem;
+  --roster-pad: 6px;
+  margin: 0.35rem 0 0.3rem;
+}
+
+/* A picture and a verb need no naming. */
+.pacs-series-caps .roster-cap[data-key='action'] {
+  background-color: transparent;
+}
+
 .pacs-series {
   display: grid;
-  grid-template-columns: 1fr 4em 6em 10em 5em;
+  /* The description takes what it needs up to a limit, then the progress
+   * track takes the rest. The bar used to sit in a fixed 10em cell wedged
+   * between the file count and the capsule, while the description's `1fr`
+   * hoarded the empty width beside it. */
+  grid-template-columns: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
   align-items: center;
   gap: 0 0.8rem;
   padding: 2px 6px;
@@ -790,8 +822,18 @@ main {
 .pacs-series-files { color: var(--pumpkin-pie); }
 
 .pacs-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
   font-size: 0.7rem;
   color: var(--honey);
+}
+
+/* The bar stretches across the track; its note keeps to its own width. */
+.pacs-badge-note {
+  flex: none;
+  white-space: nowrap;
 }
 
 .pacs-badge[data-state='running'] { color: var(--orange); }
@@ -1092,8 +1134,25 @@ body[data-zoom]:not([data-zoom='console'])
   display: none;
   flex: 1 1 0;
   min-height: 0;
-  overflow-y: auto;
+  /* The caps are the roster's frame, not part of its scroll: a scrollbar
+   * running up behind its own column headers reads the wrong boundary. */
+  flex-direction: column;
+  overflow: hidden;
   font-size: 0.8rem;
+}
+
+/* The scrolling half. Its top edge is where the scrollbar begins. */
+.feedlist-field {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Held in place by structure now, so it needs no sticky overlay. */
+.dag-feedlist > .roster-order {
+  position: static;
+  z-index: auto;
+  flex: none;
 }
 
 /* The roster's rule runs beneath its caps; the rows start under the rule. */
@@ -1413,17 +1472,29 @@ body[data-header='dag'] #header-dag {
 
 #pipeline-cycler {
   position: relative;
-  flex: 1 1 40%;
-  min-width: 12rem;
+  /* The readout beside it wants three columns; the cycler is a glimpse and
+   * does not need two fifths of the band to be one. */
+  flex: 0 1 30%;
+  min-width: 10rem;
   height: 7.5rem;
 }
 
 #header-dag-info {
-  flex: 1 1 55%;
-  columns: 2;
-  column-gap: 2rem;
+  /* The ARGUS WEB face is the reference: same idiom, same type, same
+   * column feel. This one only has to be given the width to use it. */
+  flex: 1 1 68%;
+  min-width: 0;
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.72rem;
+}
+
+/* Three columns, as the ARGUS WEB face has. The columns belong on the
+ * readout, not on the face: `about-rows` is a wrapper, so columns set a
+ * level up fragment the wrapper rather than its rows, which left every
+ * row in the first column and the rest of the band empty. */
+#about-rows {
+  columns: 3;
+  column-gap: 2rem;
 }
 
 #pipeline-cycler canvas {
@@ -1446,6 +1517,61 @@ body[data-header='dag'] #header-dag {
 /* ---------------------------------------------------------- files instrument */
 
 .files-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  /* The pane is a frame with a field under it. The frame (caps, filter
+   * strip) belongs to the pane, not to the scroll: a scrollbar that runs
+   * up behind its own column headers is reading the wrong boundary. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------- listable, not readable */
+
+/* CUBE lists files a shared feed's guest may not read. A row that has been
+ * refused wears the news: the operator should not have to click twice to
+ * learn the same thing, and an empty pane reads as an empty file. */
+.files-row.files-denied {
+  opacity: 0.55;
+}
+
+.files-row.files-denied .files-glyph {
+  color: var(--mars);
+}
+
+.files-row.files-denied .files-name {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--mars) 70%, transparent);
+}
+
+.files-content-refused {
+  color: var(--mars);
+}
+
+.files-refused {
+  padding: 0.6rem 0.2rem;
+}
+
+.files-refused-lede {
+  margin: 0 0 0.4rem;
+  color: var(--mars);
+  font-family: 'Antonio', sans-serif;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+}
+
+.files-refused-said {
+  margin: 0;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  opacity: 0.9;
+}
+
+/* The scrolling half. Its top edge is where the scrollbar begins. */
+.files-field {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
@@ -1508,7 +1634,7 @@ body[data-header='dag'] #header-dag {
 
 .files-path {
   position: sticky;
-  top: var(--roster-frame-h, 0px);
+  top: 0;
   z-index: 2;
   background: #000;
   color: var(--orange);
@@ -1717,8 +1843,28 @@ body[data-header='dag'] #header-dag {
   font: 0.55rem/1.3 'Share Tech Mono', monospace;
   color: var(--honey);
   white-space: pre;
-  overflow: hidden;
+  /* A glimpse the wheel can walk. The card shows the head of a file; when
+   * there is more, reading it should not require opening the file. Both
+   * axes, because code and tables are as often too wide as too tall. */
+  overflow: auto;
+  overscroll-behavior: contain;
   text-align: left;
+}
+
+/* A scrollable glimpse says so: the scrollbars stay out of the way until
+ * the card is under the pointer. */
+.files-card-thumb pre::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.files-card-thumb pre::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--honey) 45%, transparent);
+  border-radius: 3px;
+}
+
+.files-card:hover .files-card-thumb pre::-webkit-scrollbar-thumb {
+  background: var(--honey);
 }
 
 .files-card.files-activatable:hover {
@@ -1878,8 +2024,11 @@ body[data-header='dag'] #header-dag {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
+  /* The band is a header, not a page: it should cost as little height as
+   * it can. Nothing wraps here any more, so the same content fits in less
+   * room than it used to need. */
   max-height: 19vh;
-  overflow: hidden;
+  overflow: hidden auto;
 }
 
 body[data-header='stats'] #header-telemetry {
@@ -1958,6 +2107,7 @@ body[data-zoom] #header-restore {
   gap: 0.7rem;
   break-inside: avoid;
   margin-bottom: 0.2rem;
+  min-width: 0;
 }
 
 .telemetry-label {
@@ -1983,6 +2133,16 @@ body[data-zoom] #header-restore {
 .telemetry-value {
   color: var(--daybreak);
   font-size: 0.9rem;
+  min-width: 0;
+}
+
+/* A git hash and a build date are single tokens: wrapping them mid-value
+ * reads as two facts. They elide instead, and the full text stays in the
+ * title attribute. */
+#header-dag-info .telemetry-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The attribution, exactly as the page footer wore it, now living in the
@@ -1990,7 +2150,7 @@ body[data-zoom] #header-restore {
  * spacing is retuned for the header. */
 .about-footer {
   column-span: all;
-  margin-top: 0.3rem;
+  margin-top: 0.15rem;
   padding-bottom: 0;
   padding-left: 0;
   font-size: 0.62rem;
@@ -2054,7 +2214,7 @@ body[data-zoom] #header-restore {
 /* Sickbay wears the BCH flag: the ramp is anchored on the two colors of
  * bch-logo.svg — navy #164989 (frame, elbows) and cyan #1EBEF0 (primary
  * bars) — with the rest interpolated between them. */
-:root[data-lcars='sickbay'] {
+:root[data-lcars='medical'] {
   --butter: #dff5fd;
   --daybreak: #7edcf7;
   --harvestgold: #1ebef0;
@@ -2083,6 +2243,11 @@ body[data-zoom] #header-restore {
 #drawer {
   display: flex;
   flex-direction: column;
+  /* The height set by toggle, drag or zoom is authoritative. With the
+   * workspace floor gone the drawer no longer has to yield to protect it,
+   * and yielding is what silently shortened a dragged console when the
+   * header grew. */
+  flex: none;
   /* Resting height: a console murmur, not a wall — the workspace is the
    * point of the page. Drag the strip or zoom for a full console. */
   height: 28vh;
@@ -2475,13 +2640,63 @@ body[data-zoom] #header-restore {
 
 /* A series already home: a filled bar, quietly green. */
 .pacs-bar-full {
-  display: inline-block;
-  width: 3.4rem;
+  flex: 1 1 auto;
+  min-width: 2rem;
   height: 0.45rem;
-  margin-right: 0.4rem;
   border-radius: 0.25rem;
   background: linear-gradient(90deg, #2a5, #3c6);
-  vertical-align: middle;
+}
+
+/* A query in flight. A PACS can take many seconds to answer, and one line
+ * of static text is easily read as a finished, empty result. */
+.pacs-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.2rem;
+}
+
+.pacs-waiting .pacs-bar {
+  flex: 0 0 12rem;
+}
+
+.pacs-waiting-note {
+  color: var(--harvestgold);
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+}
+
+/* A pull in flight: the same track, filled as far as it has got. */
+.pacs-bar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 2rem;
+  height: 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(255 119 0 / 18%);
+  overflow: hidden;
+}
+
+.pacs-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 0.25rem;
+  background: linear-gradient(90deg, var(--orange), var(--harvestgold));
+  transition: width 0.25s linear;
+}
+
+/* No total to divide by: the bar paces rather than pretending to a
+ * fraction it does not know. */
+.pacs-bar-pacing .pacs-bar-fill {
+  width: 35%;
+  animation: pacs-pace 1.4s ease-in-out infinite;
+}
+
+@keyframes pacs-pace {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 /* ------------------------------------------------------ the command line */
@@ -2606,7 +2821,7 @@ body[data-zoom] #header-restore {
 
 /* Beckon and hover glow live on the END BLOCK only: a filter across the
  * whole bar visibly detaches its first segment from the static elbow arm
- * it joins (on sickbay the seam pulsed on a live display). */
+ * it joins (on medical the seam pulsed on a live display). */
 #drawer ~ .bar-panel:hover .bar-10 {
   filter: brightness(1.2);
 }

@@ -3,7 +3,14 @@
  *
  * @module
  */
-export { ListCache, listCache_get } from './listCache.js';
+export {
+  ListCache,
+  listCache_get,
+  LIST_CACHE_SIGNAL_BACKED_TTL_MS,
+  LIST_CACHE_SIGNAL_FREE_TTL_MS,
+  LIST_CACHE_PLUGIN_INDEX_TTL_MS,
+  LIST_CACHE_MAX_ENTRIES,
+} from './listCache.js';
 export type { CacheStats, CacheResult, CacheOptions, ListCacheSnapshot, ListCacheEntrySnapshot } from './listCache.js';
 export {
   listCheckpointPath_get,

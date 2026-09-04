@@ -294,6 +294,69 @@ mise carries dialect fallbacks where drift is known (currently the `userfiles` r
 
 
 [[criteria]]
+[[candidate-proposal-change-discovery]]
+== Candidate proposal: change discovery
+
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/644[ChRIS_ultron_backEnd#644].
+
+This entry is a candidate, not a confirmed proposal. It does not yet carry the captured trace and representative timing that <<adding-an-entry,Adding an entry>> requires, and it must not be implemented against until it does. It is recorded now because the compensation is already in the client and an unrecorded compensation is a gap nobody funds.
+
+=== Operator requirement
+
+A client needs to know *that* a resource it holds has changed, without asking every resource whether it changed. The operator-visible cases are ordinary: a job the operator launched finishes and writes output while the client is away; a colleague shares a feed; an administrator registers a plugin. In each, something the operator can already see in another CUBE client is invisible in this one until a timer happens to fire.
+
+This is not a requirement for CUBE to deliver events to a listener. It is a requirement to be able to *ask what changed*.
+
+=== The burden today
+
+CUBE offers no way to ask. Every client that wants to stay current re-reads collections it already holds, on a clock it invents, and compares.
+
+In `mise` that clock appears at least three times, none of them related to when anything actually changed:
+
+* the `/proc` roster full walk, at most once per `ROSTER_FULL_WALK_MS` (ten minutes), which is the only mechanism by which a feed shared to this identity after the client's highest known feed id is ever discovered — a boot delta filters on `min_id` and cannot see it;
+* a settled feed's row re-check, at most once per `FEED_RECHECK_MS` (ten minutes); and
+* the directory-listing cache's per-path expiry, three minutes by default, which re-fetches a listing whether or not the underlying folder moved.
+
+The costs compound with feed size. A full roster walk pages the feed collection at one hundred rows per request. A single large feed's plugin-instance topology is measured at roughly two and a half seconds per hundred-row page, so a feed of eighty-eight thousand nodes costs the better part of an hour to index, and any recheck that cannot be scoped to what changed pays that again.
+
+The operator-facing consequence is the one worth stating plainly: a feed shared to this identity is silent until a full walk happens to run.
+
+=== Proposed interface
+
+Two proposals, deliberately separable. The first is small and immediately useful; the second is the architecture the upstream issue is asking about. The first does not depend on the second and should not wait for it.
+
+*Near-term: a modification filter on existing collections.* A `modified_since` query parameter on the feeds collection, and on the plugin-instances collection, returning the ordinary C-J collection filtered to items whose server-side modification fact is newer than the supplied instant. This turns a client's periodic full walk into a bounded question and removes most of the polling cost with no new resource, no new transport, and no change to what is authoritative. A companion `shared_since` semantic, or the inclusion of share events in the same modification fact, is required for the shared-feed case, since sharing a feed to an identity may not alter the feed row itself.
+
+*Longer-term: a change collection with a resume cursor.* An ordinary paginated C-J collection whose items are change records, each carrying a monotonic id, the changed resource's canonical URI, and a change kind. A client asks for records after the cursor it last saw:
+
+----
+GET /api/v1/changes/?after=<cursor>&limit=100
+----
+
+Three properties matter, and they are what distinguish this from an event bus:
+
+* *Records are thin.* An item names a URI that changed and says nothing about what it changed to. The client refetches the canonical resource. A record carrying state would become a second source of truth that can disagree with the first, which this document forbids.
+* *There is no subscription.* Nothing is delivered, so nothing is missed when a client is not running. A client absent for a week resumes from its stored cursor and reads the backlog.
+* *Retention failure degrades to today.* If a cursor is older than the server's retention window, CUBE says so explicitly and the client falls back to the full walk it performs now. The degraded path is the current behavior, not a new failure mode.
+
+Real-time push, if it is ever wanted, belongs on top of this and never in place of it: a transport that says only "records exist after your cursor", after which the client reads the collection. The log stays authoritative; a client that misses every notification is slower, never wrong.
+
+=== Why an existing collection is insufficient
+
+The feeds and plugin-instances collections are authoritative for state and answer none of these questions. They expose no server-side modification fact a client may filter on, so "what changed" is only answerable by reading everything and diffing locally, which is the burden above. Neither is there any representation of a share becoming visible to an identity, which is why a shared feed cannot be discovered by an id-ordered delta at all.
+
+An HTTP validator such as `ETag` on a collection would help a client skip an unchanged page, but not find a changed item among many pages, and not at all for the shared-feed case.
+
+=== Client policy until then
+
+`mise` keeps its own polling and states its cost rather than hiding it:
+
+* the `/proc` roster and per-feed rechecks remain on their timers, and remain the sole source of truth about what changed;
+* the directory-listing cache stops keeping an independent clock for anything `/proc` reports on, and is invalidated from the roster and job-completion facts instead — one poller of record rather than several uncoordinated timers; and
+* paths no CUBE poller reports on, such as `/bin`, `/etc/group` and the PACS trees, keep a plain expiry, because guessing is all that is available for them.
+
+That policy narrows the gap's blast radius. It does not close it: the freshness of every signal-covered path is still bounded below by the roster walk's period, and no client-side arrangement can improve on that.
+
 == Appendix: what qualifies
 
 === When client work is a CUBE gap
@@ -338,7 +401,7 @@ Client caches that were measured against the criteria above and judged normal wo
 | A measured cold latency or pagination cost that exceeds the interaction budget.
 
 | CFS feed and public-path listings
-| Normal path/list cache.
+| Normal path/list cache, with one part promoted. Its *shape* is still ordinary working-set state; its *freshness* is not, because no CUBE interface lets a client ask what changed. See <<candidate-proposal-change-discovery,change discovery>>.
 | A measured path listing that itself fans out through several CUBE resource collections.
 
 | `/proc` feed index
@@ -350,6 +413,7 @@ Client caches that were measured against the criteria above and judged normal wo
 | Sweep cost, plus the minimum shared projection: node identity, feed identity, parent/previous relation, plugin identity, status counters.
 |===
 
+[[adding-an-entry]]
 == Adding an entry
 
 Before CUBE implements anything, the entry here must carry:
@@ -367,3 +431,4 @@ Before CUBE implements anything, the entry here must carry:
 * link:../packages/salsa/src/vfs/providers/etc.ts[`EtcVfsProvider`] — current `/etc/group` projection and cache.
 * link:../packages/chell/docs/proc.adoc[`proc.adoc`] — `/proc` cache, checkpoint, and topology-sweep design.
 * link:../packages/chell/docs/posix.adoc[`posix.adoc`] — POSIX projection contracts and cache semantics.
+* link:../packages/cumin/src/cache/listCache.ts[`listCache.ts`] — directory-listing cache, its per-path expiry, and the client policy described under change discovery.

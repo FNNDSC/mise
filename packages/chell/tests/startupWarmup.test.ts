@@ -77,6 +77,14 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procTopology_reconcileFeeds: mockTopologyReconcileFeeds,
   procTopology_warmup: mockTopologyWarmup,
 }));
+/** Age of the oldest restored folder listing, in milliseconds. */
+let mockOldestAge: number | null = null;
+
+/** Steerable folder-listing checkpoint restore. */
+const mockListCheckpointRestore = jest.fn<() => Promise<{ restored: boolean; count: number; reason?: string }>>(
+  async () => ({ restored: false, count: 0, reason: 'no listing checkpoint' }),
+);
+
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   chrisContext: { ChRISURL_get: jest.fn(async () => 'https://cube.example.org/api/v1/') },
   errorStack: {
@@ -95,8 +103,11 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     }),
   })),
   procCheckpoint_restore: mockCheckpointRestore,
-  listCheckpoint_restore: jest.fn(async () => ({ restored: false, count: 0, reason: 'no listing checkpoint' })),
+  listCheckpoint_restore: mockListCheckpointRestore,
   listCheckpoint_watch: jest.fn(() => (): void => undefined),
+  listCache_get: jest.fn(() => ({
+    stats_get: (): { oldestAge: number | null } => ({ oldestAge: mockOldestAge }),
+  })),
   procCheckpoint_watch: mockCheckpointWatch,
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
@@ -351,6 +362,57 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('skip', 'Feeds', 'Prefetch disabled');
     expect(report).toHaveBeenCalledWith('skip', 'Jobs', 'Prefetch disabled');
     expect(mockDataGet).not.toHaveBeenCalled();
+  });
+
+  describe('folder-listing restore row', () => {
+    /** Restores a checkpoint of the given size and returns the row's message. */
+    async function restoreRow_message(count: number, oldestAge: number | null): Promise<string> {
+      mockOldestAge = oldestAge;
+      mockListCheckpointRestore.mockResolvedValueOnce({ restored: true, count });
+      const report = jest.fn<StartupWarmupReporter['log']>();
+      await startupWarmup_run({
+        plugins: false,
+        feeds: false,
+        publicFeeds: false,
+        jobs: false,
+      }, 'rudolph', false, { log: report });
+      const row = report.mock.calls.find((call) => call[1] === 'Folders');
+      return row === undefined ? '' : row[2];
+    }
+
+    it('names the row Folders and says folder listings, not the plugin index', async () => {
+      const message: string = await restoreRow_message(47, 5 * 60_000);
+      expect(message).toContain('Restored 47 folder listing(s)');
+      expect(message).toContain('stale until revisited');
+    });
+
+    it('reports age as well as count, because a count alone says nothing', async () => {
+      expect(await restoreRow_message(47, 5 * 60_000)).toContain('oldest 5 min');
+      expect(await restoreRow_message(47, 3 * 60 * 60_000)).toContain('oldest 3 hour(s)');
+      expect(await restoreRow_message(47, 3 * 24 * 60 * 60_000)).toContain('oldest 3 day(s)');
+    });
+
+    it('says all fresh when nothing has aged a minute', async () => {
+      expect(await restoreRow_message(2, 500)).toContain('all fresh');
+    });
+
+    it('omits the age phrase when the cache holds nothing to age', async () => {
+      const message: string = await restoreRow_message(0, null);
+      expect(message).toBe('Restored 0 folder listing(s), stale until revisited');
+    });
+
+    it('reports the absent checkpoint in folder-listing words', async () => {
+      mockOldestAge = null;
+      mockListCheckpointRestore.mockResolvedValueOnce({ restored: false, count: 0 });
+      const report = jest.fn<StartupWarmupReporter['log']>();
+      await startupWarmup_run({
+        plugins: false,
+        feeds: false,
+        publicFeeds: false,
+        jobs: false,
+      }, 'rudolph', false, { log: report });
+      expect(report).toHaveBeenCalledWith('skip', 'Folders', 'No folder-listing checkpoint');
+    });
   });
 
   it('hydrates /etc/group before the host becomes ready', async () => {

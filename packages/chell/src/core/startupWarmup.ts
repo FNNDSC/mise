@@ -48,7 +48,7 @@ import {
   vfsDispatcher,
   type ProcTopologyStatus,
 } from '@fnndsc/salsa';
-import type { BootStatus } from '../lib/bootsequence.js';
+import { BOOT_TAG_WIDTH, type BootStatus } from '../lib/bootsequence.js';
 
 /** Startup cache selections shared by interactive and daemon modes. */
 export interface StartupWarmupFlags {
@@ -117,7 +117,7 @@ async function startupPrefetch_retry(
 ): Promise<PrefetchResult> {
   let last: PrefetchResult = { ok: false, message: 'Warm-up did not run.' };
   for (let attempt: number = 1; attempt <= STARTUP_WARMUP_ATTEMPTS; attempt++) {
-    last = await prefetch_withSpinner(label, message, interactive, action);
+    last = await prefetch_withSpinner(label, message, interactive, action, BOOT_TAG_WIDTH);
     if (last.ok || attempt === STARTUP_WARMUP_ATTEMPTS) return last;
     reporter?.log(
       'retry',

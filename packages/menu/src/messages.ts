@@ -428,6 +428,13 @@ export const promptContextSchema = z.object({
     total: z.number().optional(),
     restored: z.boolean().optional(),
     state: z.enum(PROC_PROMPT_STATES).optional(),
+    sweeping: z.boolean().optional(),
+    feed: z.object({
+      id: z.number(),
+      loaded: z.number(),
+      total: z.number(),
+    }).optional(),
+    arrived: z.array(z.number()).optional(),
   }).optional(),
   procIndex: z.object({
     jobs: z.number(),

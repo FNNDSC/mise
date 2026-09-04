@@ -27,6 +27,7 @@ import {
   homePath_abbreviate,
   path_truncate,
   procProgress_format,
+  feedArrivals_format,
 } from './utils.js';
 
 /** Powerline right-arrow separator (Nerd Font U+E0B0). */
@@ -204,23 +205,38 @@ export class ThemeP10k implements PromptTheme {
       trailing.push({ text: `${ICON_ERROR} ${ctx.lastExitCode}`, color: PROMPT_PALETTE.STATUS });
     }
 
-    let procSegment: SegmentSpec | undefined;
+    const procSegments: SegmentSpec[] = [];
     if (ctx.procWarmup) {
-      const progress: string = procProgress_format(
-        ctx.procWarmup.loaded,
-        ctx.procWarmup.total ?? 0,
-      );
-      const state: ProcPromptState = procPromptState_get(ctx.procWarmup);
-      const presentation = PROC_STATE_SEGMENTS[state];
-      procSegment = {
-        text: `${presentation.icon} ${presentation.label}: ${progress}`,
-        color: presentation.color,
-      };
+      if (ctx.procWarmup.sweeping !== false) {
+        const progress: string = procProgress_format(
+          ctx.procWarmup.loaded,
+          ctx.procWarmup.total ?? 0,
+        );
+        const state: ProcPromptState = procPromptState_get(ctx.procWarmup);
+        const presentation = PROC_STATE_SEGMENTS[state];
+        procSegments.push({
+          text: `${presentation.icon} ${presentation.label}: ${progress}`,
+          color: presentation.color,
+        });
+      }
+      // A feed's first-visit load and roster arrivals: index movement no
+      // command announces, so the prompt says it.
+      if (ctx.procWarmup.feed) {
+        const feed = ctx.procWarmup.feed;
+        procSegments.push({
+          text: `${ICON_REFRESH} feed ${feed.id}: ${procProgress_format(feed.loaded, feed.total)}`,
+          color: PROMPT_PALETTE.TIME,
+        });
+      }
+      if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {
+        procSegments.push({
+          text: feedArrivals_format(ctx.procWarmup.arrived).trim(),
+          color: PROMPT_PALETTE.TIME,
+        });
+      }
     }
 
-    const rightSegments: SegmentSpec[] = procSegment
-      ? [procSegment, ...trailing]
-      : trailing;
+    const rightSegments: SegmentSpec[] = [...procSegments, ...trailing];
 
     // Compute path budget: terminal limit minus fixed + trailing segment overhead + dir overhead
     const limit: number = Math.floor(ctx.terminalWidth * FILL_RATIO);

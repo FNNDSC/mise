@@ -72,3 +72,15 @@ export function procProgress_format(loaded: number, total: number): string {
   const percent: number = Math.min(99, Math.floor((loaded / total) * 100));
   return `${loaded}/${total} ${percent}%`;
 }
+
+/**
+ * Formats roster arrivals for a prompt: the ids when few, a count when many.
+ *
+ * @param arrived - Feed ids the roster gained recently.
+ * @returns A leading-space segment such as ` [+feed 812]` or ` [+3 feeds]`.
+ */
+export function feedArrivals_format(arrived: number[]): string {
+  if (arrived.length === 0) return '';
+  if (arrived.length <= 2) return ` [+feed ${arrived.join(', ')}]`;
+  return ` [+${arrived.length} feeds]`;
+}

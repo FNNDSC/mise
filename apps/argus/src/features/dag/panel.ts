@@ -94,6 +94,10 @@ export class DagPanel {
   private lastModel: FeedDagModel | null = null;
   /** The roster last shown, re-rendered on any order change. */
   private lastRoster: FeedListEntry[] = [];
+  /** Feeds the daemon currently annunciates as roster arrivals. */
+  private arrivals: Set<number> = new Set();
+  /** The last arrival set seen, so one set asks for the roster once. */
+  private arrivalsKey: string = '';
   /** Per-column sort + filter over the resident roster. */
   private readonly order: RosterOrder<FeedListEntry>;
   /** The title bar's state span (FILTERED n/m on the list; LIVE / SETTLED / STALE on a graph). */
@@ -597,17 +601,18 @@ export class DagPanel {
   public promptContext_observe(context: PromptContext): void {
     if (this.rosterProgress !== null && this.rosterProgress.isConnected) {
       const warm = context.procWarmup;
-      if (warm?.total !== undefined && warm.total > 0) {
+      if (warm?.total !== undefined && warm.total > 0 && warm.sweeping !== false) {
         const percent: number = Math.floor((warm.loaded / warm.total) * 100);
         this.rosterProgress.textContent =
           `INDEX WARMING \u2014 ${warm.loaded}/${warm.total} (${percent}%). The roster opens when the index is whole.`;
       }
-      if (warm === undefined || warm.state === 'cached') {
+      if (warm === undefined || warm.sweeping === false || warm.state === 'cached') {
         // The index came whole: ask again on the operator's behalf.
         this.rosterProgress = null;
         this.feedsChooser_request();
       }
     }
+    this.arrivals_observe(context.procWarmup?.arrived ?? []);
     // An offstage pane must not queue diagram traffic: following the cwd
     // while nobody can see the graph is pure session-queue congestion (and
     // exactly the kind of delay RUNS-02 then sits behind).
@@ -843,6 +848,26 @@ export class DagPanel {
    *
    * @param feeds - The roster, newest first.
    */
+  /**
+   * Roster arrivals (feeds created or shared since the last look): their
+   * rows pulse while the daemon annunciates them, and a roster on stage
+   * that does not yet list one asks for the list again, once per arrival set.
+   *
+   * @param arrived - The feed ids the prompt context annunciates.
+   */
+  private arrivals_observe(arrived: number[]): void {
+    const key: string = arrived.join(',');
+    if (key === this.arrivalsKey) return;
+    this.arrivalsKey = key;
+    this.arrivals = new Set(arrived);
+    for (const row of this.feedList.querySelectorAll<HTMLElement>('.feedlist-row')) {
+      row.classList.toggle('feedlist-arrived', this.arrivals.has(Number(row.dataset.feed)));
+    }
+    const listed: Set<number> = new Set(this.lastRoster.map((feed: FeedListEntry): number => feed.id));
+    const unlisted: boolean = arrived.some((id: number): boolean => !listed.has(id));
+    if (unlisted && this.feedList.style.display === 'block') this.feedsChooser_request();
+  }
+
   private chooser_show(feeds: FeedListEntry[]): void {
     this.lastRoster = feeds;
     this.empty.style.display = 'none';
@@ -851,6 +876,8 @@ export class DagPanel {
     for (const feed of this.order.apply(feeds)) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = `feedlist-row feedlist-${feed.status}`;
+      row.dataset.feed = String(feed.id);
+      if (this.arrivals.has(feed.id)) row.classList.add('feedlist-arrived');
       const idBadge: HTMLSpanElement = document.createElement('span');
       idBadge.className = 'feedlist-id';
       idBadge.textContent = String(feed.id);

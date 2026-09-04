@@ -14,6 +14,7 @@ export {
   procPromptState_get,
   type ProcPromptState,
   type ProcPromptProgress,
+  type ProcFeedPromptProgress,
 } from './proc.js';
 export {
   PROGRESS_OPERATIONS,

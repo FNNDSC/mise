@@ -20,6 +20,7 @@ import {
   homePath_abbreviate,
   path_truncate,
   procProgress_format,
+  feedArrivals_format,
 } from './utils.js';
 
 /** Fraction of terminal width allowed before path truncation kicks in. */
@@ -63,9 +64,22 @@ export class ThemeDefault implements PromptTheme {
       const color: HexColor = state === 'failed'
         ? PROMPT_PALETTE.ERROR
         : PROMPT_PALETTE.WARMUP;
-      warmup = chalk.hex(color)(
-        ` [proc ${PROC_STATE_LABELS[state]}: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`,
-      );
+      if (ctx.procWarmup.sweeping !== false) {
+        warmup += chalk.hex(color)(
+          ` [proc ${PROC_STATE_LABELS[state]}: ${procProgress_format(ctx.procWarmup.loaded, ctx.procWarmup.total ?? 0)}]`,
+        );
+      }
+      // A feed's first-visit load and roster arrivals: index movement no
+      // command announces, so the prompt says it.
+      if (ctx.procWarmup.feed) {
+        const feed = ctx.procWarmup.feed;
+        warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(
+          ` [feed ${feed.id} indexing: ${procProgress_format(feed.loaded, feed.total)}]`,
+        );
+      }
+      if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {
+        warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(feedArrivals_format(ctx.procWarmup.arrived));
+      }
     }
     return (
       modePrefix +

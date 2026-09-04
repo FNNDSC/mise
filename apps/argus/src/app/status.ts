@@ -108,14 +108,28 @@ export class StatusBar {
     const host: string = context.uri.replace(/^https?:\/\//, '');
     this.fields.identity.textContent = `${context.user}@${host}`.toUpperCase();
 
+    // Index movement no command announces: the global sweep, one feed's
+    // first-visit load, and roster arrivals share the JOBS readout.
     const warmup = context.procWarmup;
-    if (warmup === undefined) {
-      this.fields.jobs.textContent = '';
-    } else {
+    const parts: string[] = [];
+    if (warmup !== undefined && warmup.sweeping !== false) {
       const total: string = warmup.total !== undefined ? `/${warmup.total}` : '';
       const state: string = warmup.state !== undefined ? ` ${warmup.state.toUpperCase()}` : '';
-      this.fields.jobs.textContent = `JOBS ${warmup.loaded}${total}${state}`;
+      parts.push(`JOBS ${warmup.loaded}${total}${state}`);
     }
+    if (warmup?.feed !== undefined) {
+      const total: string = warmup.feed.total > 0 ? `/${warmup.feed.total}` : '';
+      parts.push(`FEED ${warmup.feed.id} ${warmup.feed.loaded}${total}`);
+    }
+    if (warmup?.arrived !== undefined && warmup.arrived.length > 0) {
+      parts.push(warmup.arrived.length <= 2
+        ? `+FEED ${warmup.arrived.join(' ')}`
+        : `+${warmup.arrived.length} FEEDS`);
+    }
+    this.fields.jobs.textContent = parts.join(' \u00b7 ');
+    this.fields.jobs.title = warmup?.feed !== undefined
+      ? 'A feed is being indexed on its first visit; it opens when the walk completes.'
+      : '';
 
     this.fields.latency.textContent = context.lastCommandDurationMs > 0
       ? `${context.lastCommandDurationMs}MS`

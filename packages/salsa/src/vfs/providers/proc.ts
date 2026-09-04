@@ -190,8 +190,14 @@ async function procCache_build(): Promise<number[]> {
     }
   }
 
+  const knownBefore: Set<number> = new Set(cache.feedIDs_get());
   const reconciliationTargets: number[] = cache.feeds_reconcile(Array.from(indexed.values()));
   for (const feedID of reconciliationTargets) feedVisits.delete(feedID);
+  // Feeds the walk brought in — created since, or shared to this identity —
+  // are annunciated; a first build has no "before", so nothing arrives.
+  if (knownBefore.size > 0) {
+    cache.arrivals_note(Array.from(indexed.keys()).filter((feedID: number): boolean => !knownBefore.has(feedID)));
+  }
   cache.built_set();
   rosterWalkedAt = Date.now();
   return reconciliationTargets;
@@ -282,17 +288,24 @@ async function feedInstances_load(feedID: number): Promise<void> {
   if (!client) throw new Error('not connected');
 
   const instances: Map<number, PluginInstanceData> = new Map();
-  for await (const step of listPages_walk(
-    (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
-      pluginInstancesPage_get(client, { feed_id: feedID, limit, offset }),
-    { pageSize: PAGE },
-  )) {
-    for (const instance of step.items) instances.set(Number(instance.id), instance);
+  // A first visit to a large feed is a page walk of a minute or more; the
+  // prompt and the status strip carry its progress so it never reads as a
+  // hang. The register is cleared on every exit, including failure.
+  cache.feedLoad_progress(feedID, 0, 0);
+  try {
+    for await (const step of listPages_walk(
+      (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
+        pluginInstancesPage_get(client, { feed_id: feedID, limit, offset }),
+      { pageSize: PAGE },
+    )) {
+      for (const instance of step.items) instances.set(Number(instance.id), instance);
+      cache.feedLoad_progress(feedID, instances.size, step.total ?? 0);
+    }
+    for (const inst of instances.values()) cache.instance_add(procInstance_fromRow(inst));
+    cache.topologyLoaded_mark(feedID);
+  } finally {
+    cache.feedLoad_clear(feedID);
   }
-
-  for (const inst of instances.values()) cache.instance_add(procInstance_fromRow(inst));
-
-  cache.topologyLoaded_mark(feedID);
 }
 
 /**
@@ -1043,6 +1056,7 @@ async function procRosterDelta_run(
     fresh,
   );
   for (const feed of fresh.values()) cache.feed_add(feed);
+  cache.arrivals_note(Array.from(fresh.keys()));
   return Array.from(fresh.keys());
 }
 

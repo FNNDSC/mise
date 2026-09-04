@@ -601,6 +601,33 @@ try {
     const r = mark.getBoundingClientRect();
     return { present: true, masked: style.maskImage.includes('url'), visible: r.width > 20 && r.height > 10 };`);
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
+
+  console.log('index-annunciation');
+  // A feed's first-visit topology load is never a silent hang: the JOBS
+  // readout names the feed and counts its instances while the daemon walks
+  // it. `proc refresh <id>` drops and re-walks one feed, which is the same
+  // path a first visit takes; only a feed large enough to outlast one
+  // telemetry tick can be observed, so the scenario needs SMOKE_BIG_FEED.
+  const bigFeed = process.env.SMOKE_BIG_FEED ?? '';
+  if (bigFeed === '') {
+    console.log('  skipped: set SMOKE_BIG_FEED=<id> to a feed of about a thousand nodes (one that outlasts a telemetry tick yet finishes within the wait)');
+  } else {
+    const indexing = await evalIn(`
+      const input = document.querySelector('#terminal input');
+      const jobs = document.getElementById('status-jobs');
+      input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      let seen = ''; let counted = false;
+      for (let i = 0; i < 240; i++) {
+        await sleep(250);
+        const text = jobs.textContent;
+        if (/FEED ${bigFeed} \\d+/.test(text)) { seen = text; if (/FEED ${bigFeed} [1-9]\\d*\\/[1-9]/.test(text)) counted = true; }
+        if (seen && !/FEED ${bigFeed} /.test(text)) break;
+      }
+      for (let i = 0; i < 480 && /FEED ${bigFeed} /.test(jobs.textContent); i++) await sleep(250);
+      return { seen, counted, cleared: !/FEED ${bigFeed} /.test(jobs.textContent) };`);
+    check('the JOBS readout names a feed being indexed and counts its instances', indexing.seen !== '' && indexing.counted, JSON.stringify(indexing));
+    check('the feed indexing readout clears when the walk completes', indexing.cleared, JSON.stringify(indexing));
+  }
 } finally {
   page.close();
 }

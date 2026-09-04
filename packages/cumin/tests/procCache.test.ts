@@ -4,6 +4,7 @@ import {
   ProcFeed,
   ProcInstance,
   status_isTerminal,
+  PROC_ARRIVAL_TTL_MS,
 } from '../src/cache/procCache';
 
 function feed(id: number, title = `feed ${id}`): ProcFeed {
@@ -237,6 +238,26 @@ describe('ProcCache', () => {
       expect(cache.built).toBe(false);
       cache.built_set();
       expect(cache.built).toBe(true);
+    });
+
+    it('annunciates one feed load at a time, earliest first, until cleared', () => {
+      expect(cache.feedLoad_get()).toBeNull();
+      cache.feedLoad_progress(7, 100, 0);
+      cache.feedLoad_progress(9, 5, 50);
+      cache.feedLoad_progress(7, 300, 20000);
+      expect(cache.feedLoad_get()).toEqual({ feedID: 7, loaded: 300, total: 20000 });
+      cache.feedLoad_clear(7);
+      expect(cache.feedLoad_get()).toEqual({ feedID: 9, loaded: 5, total: 50 });
+      cache.feedLoad_clear(9);
+      expect(cache.feedLoad_get()).toBeNull();
+    });
+
+    it('keeps roster arrivals for their window and forgets them after', () => {
+      cache.arrivals_note([21, 22], 1000);
+      expect(cache.arrivals_recent(1000 + PROC_ARRIVAL_TTL_MS)).toEqual([21, 22]);
+      cache.arrivals_note([23], 5000);
+      expect(cache.arrivals_recent(1000 + PROC_ARRIVAL_TTL_MS + 1)).toEqual([23]);
+      expect(cache.arrivals_recent(5000 + PROC_ARRIVAL_TTL_MS + 1)).toEqual([]);
     });
   });
 

@@ -21,6 +21,7 @@ export {
 export type { ListCheckpointRestoreResult } from './listCheckpoint.js';
 export {
   listingsForFeeds_note,
+  listingsForFeeds_drop,
   listingsForRoster_note,
   listingInvalidation_flush,
   listingInvalidation_reset,
@@ -28,6 +29,7 @@ export {
 } from './listingInvalidation.js';
 export { ProcCache, procCache_get, status_isTerminal, feed_isActive, feedTopology_changed, PROC_TERMINAL_STATUSES, PROC_ARRIVAL_TTL_MS } from './procCache.js';
 export type {
+  RosterFolders,
   ProcInstance,
   ProcFeed,
   ProcFeedScopeCounts,

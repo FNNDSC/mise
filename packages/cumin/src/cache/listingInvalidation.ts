@@ -57,6 +57,8 @@ function pending_flush(): string[] {
   windowTimer = null;
   if (feeds.size === 0 && parents.size === 0) return [];
 
+  // Only paths the cache still holds are considered, so a listing dropped
+  // between the note and the flush leaves nothing behind to mark.
   const cache = listCache_get();
   const marked: string[] = [];
   for (const path of cache.paths_get()) {
@@ -105,6 +107,35 @@ export function listingsForRoster_note(feedIDs: readonly number[], parentPaths: 
   for (const feedID of feedIDs) pendingFeeds.add(feedID);
   for (const path of parentPaths) pendingParents.add(path);
   window_open();
+}
+
+/**
+ * Removes every cached listing belonging to feeds that are gone.
+ *
+ * A departure is not staleness. A feed this identity can no longer see has
+ * no contents to serve, and dirty entries are still served while they
+ * refresh, so marking one would keep showing a tree that has been taken
+ * away. This deletes instead, and does so at once rather than on the
+ * window, because there is nothing to race.
+ *
+ * @param feedIDs - Feeds that vanished from the roster.
+ * @returns The cache paths removed.
+ */
+export function listingsForFeeds_drop(feedIDs: readonly number[]): string[] {
+  if (feedIDs.length === 0) return [];
+  const gone: Set<number> = new Set(feedIDs);
+  const cache = listCache_get();
+  const removed: string[] = [];
+  for (const path of cache.paths_get()) {
+    const feedID: number | null = path_extractFeedID(path);
+    if (feedID === null || !gone.has(feedID)) continue;
+    cache.cache_invalidate(path);
+    removed.push(path);
+  }
+  // A feed that left must not be resurrected by movement noted before it
+  // went; drop it from anything still pending.
+  for (const feedID of feedIDs) pendingFeeds.delete(feedID);
+  return removed;
 }
 
 /**

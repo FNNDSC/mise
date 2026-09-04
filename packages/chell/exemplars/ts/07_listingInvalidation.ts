@@ -25,7 +25,7 @@ import {
   ChRISFeed, ChRISPlugin, feed_delete, listCache_get, listingInvalidation_flush,
   procCache_get, Result, Dictionary, PluginInstance,
 } from '@fnndsc/cumin';
-import { job_statusFetch, vfsDispatcher } from '@fnndsc/salsa';
+import { feedStatus_refresh, vfsDispatcher } from '@fnndsc/salsa';
 import {
   env_load, config_isolate, cube_connect, check, step, section, summary_exit,
   poll_until, runId_make, CleanupPlan, CubeEnv,
@@ -51,7 +51,12 @@ async function main(): Promise<void> {
 
   // The roster speaks in feed ids; the host names the folders whose
   // membership an arrival or departure changes.
-  procCache_get().rosterParents_set([feedsPath, '/SHARED', '/PUBLIC']);
+  procCache_get().rosterFolders_set({
+    owner: env.user,
+    own: feedsPath,
+    shared: '/SHARED',
+    public: '/PUBLIC',
+  });
 
   try {
     section('root a feed');
@@ -74,18 +79,22 @@ async function main(): Promise<void> {
     check('and is served as fresh', beforeCached?.fresh === true);
 
     section('let the job finish');
+    // Poll through feedStatus_refresh, not a bare status read. That
+    // function is what a session actually runs while watching a feed, and
+    // it is the notifier's call site: it drives ProcCache.status_update,
+    // which is what notices a job crossing into a terminal state. Reading
+    // the status straight from CUBE would prove nothing, because nothing
+    // would have told the cache.
     const settled: Result<string> = await poll_until(
       async (): Promise<string | null> => {
-        const status: Result<string> = await job_statusFetch(Number(rootInstance.id));
-        // The status refresh is the notifier's call site: this loop is
-        // exactly what a session does while watching a feed.
-        if (!status.ok || !TERMINAL_STATES.includes(status.value)) return null;
-        return status.value;
+        await feedStatus_refresh(feedID);
+        const status: string | null = procCache_get().instance_get(Number(rootInstance.id))?.status ?? null;
+        return status !== null && TERMINAL_STATES.includes(status) ? status : null;
       },
       5 * 60_000,
       3_000,
     );
-    check('the root job reached a terminal state', settled.ok);
+    check('the root job reached a terminal state through the session path', settled.ok);
 
     section('the listing knows');
     // Apply any movement still inside its coalescing window, so the check

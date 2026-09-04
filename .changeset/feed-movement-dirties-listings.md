@@ -14,3 +14,5 @@ Nothing subscribes to the process cache's change stream. That stream fires on ev
 Feed-to-path mapping needs no new index. `path_extractFeedID` already reads a feed id out of any cached path, so a shared feed under `/SHARED` is reached by the same rule as one under a home folder, with no extra wiring.
 
 An arrival changes the folder a feed appears *in* rather than anything inside it, and the roster speaks only in feed ids, so a host declares those folders once through `rosterParents_set`.
+
+An arrival is routed by how this identity sees the feed, so a public feed landing on a busy CUBE dirties the public root and not the identity's own feeds folder. A departure is not staleness at all: a feed this identity can no longer reach has no contents to serve, and a dirty entry is still served while it refreshes, so its cached listings are removed rather than marked.

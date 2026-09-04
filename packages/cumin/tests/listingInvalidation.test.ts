@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { listCache_get, type ListCache } from '../src/cache/listCache.js';
 import {
   listingsForFeeds_note,
+  listingsForFeeds_drop,
   listingsForRoster_note,
   listingInvalidation_flush,
   listingInvalidation_reset,
@@ -95,6 +96,34 @@ describe('listing invalidation', () => {
       cache.cache_set('/home/someone/feeds', ['feed_12']);
       listingsForRoster_note([4299], []);
       expect(listingInvalidation_flush()).toEqual([]);
+    });
+  });
+
+  describe('a departed feed', () => {
+    it('has its listings removed, not marked, because there is nothing to serve', () => {
+      cache.cache_set('/home/someone/feeds/feed_6', ['a']);
+      cache.cache_set('/home/someone/feeds/feed_6/pl-a_1/data', ['b']);
+      cache.cache_set('/home/someone/feeds/feed_5', ['keep']);
+
+      const removed: string[] = listingsForFeeds_drop([6]);
+
+      expect(removed).toHaveLength(2);
+      expect(cache.cache_get('/home/someone/feeds/feed_6')).toBeNull();
+      expect(cache.cache_get('/home/someone/feeds/feed_5')).not.toBeNull();
+    });
+
+    it('is not resurrected by movement noted before it left', () => {
+      cache.cache_set('/home/someone/feeds/feed_6', ['a']);
+      listingsForFeeds_note([6]);
+      listingsForFeeds_drop([6]);
+
+      // The pending mark must not re-add a path the drop removed.
+      expect(listingInvalidation_flush()).toEqual([]);
+      expect(cache.cache_get('/home/someone/feeds/feed_6')).toBeNull();
+    });
+
+    it('ignores an empty departure', () => {
+      expect(listingsForFeeds_drop([])).toEqual([]);
     });
   });
 

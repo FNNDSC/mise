@@ -80,8 +80,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 /** Age of the oldest restored folder listing, in milliseconds. */
 let mockOldestAge: number | null = null;
 
-/** Records the folder listings a roster arrival or departure changes. */
-const mockRosterParentsSet = jest.fn<(paths: readonly string[]) => void>();
+/** Records the folders a roster arrival or departure changes. */
+const mockRosterFoldersSet = jest.fn<(folders: Record<string, string>) => void>();
 
 /** Steerable folder-listing checkpoint restore. */
 const mockListCheckpointRestore = jest.fn<() => Promise<{ restored: boolean; count: number; reason?: string }>>(
@@ -95,7 +95,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     scope_run: (callback: () => void): void => callback(),
   },
   procCache_get: jest.fn(() => ({
-    rosterParents_set: mockRosterParentsSet,
+    rosterFolders_set: mockRosterFoldersSet,
     cache_clear: mockCacheClear,
     warmup_complete: mockWarmupComplete,
     lifecycle_get: (): { state: string; checkpointAt?: string } => ({ ...mockCacheLifecycle }),
@@ -368,7 +368,7 @@ describe('daemonSession_run', () => {
     expect(mockDataGet).not.toHaveBeenCalled();
   });
 
-  it('names the folders a roster arrival changes, because the roster knows only feed ids', async () => {
+  it('says which folder each kind of feed appears in, so an arrival dirties only that one', async () => {
     await startupWarmup_run({
       plugins: false,
       feeds: false,
@@ -376,7 +376,12 @@ describe('daemonSession_run', () => {
       jobs: false,
     }, 'rudolph', false, { log: jest.fn<StartupWarmupReporter['log']>() });
 
-    expect(mockRosterParentsSet).toHaveBeenCalledWith(['/home/rudolph/feeds', '/SHARED', '/PUBLIC']);
+    expect(mockRosterFoldersSet).toHaveBeenCalledWith({
+      owner: 'rudolph',
+      own: '/home/rudolph/feeds',
+      shared: '/SHARED',
+      public: '/PUBLIC',
+    });
   });
 
   describe('folder-listing restore row', () => {

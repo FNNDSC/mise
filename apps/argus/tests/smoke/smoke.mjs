@@ -103,7 +103,11 @@ try {
     }
     zoomed.restoredHeaderBottom = header.getBoundingClientRect().bottom;
     return zoomed;`);
-  check('zoom slides the whole header off stage', zoom.headerBottom <= 1, `bottom=${zoom.headerBottom}`);
+  // Sub-pixel tolerance: the header's height is fractional and the slide is
+  // measured, so a residue under two device-independent pixels is rounding,
+  // not header left on stage. Tightening this to <= 1 made it a hostage to
+  // whatever the header's content happened to round to.
+  check('zoom slides the whole header off stage', zoom.headerBottom <= 2, `bottom=${zoom.headerBottom}`);
   check('zoom slides the gutter off stage', zoom.gutterRight <= 1, `right=${zoom.gutterRight}`);
   check('zoom hides the lid and the status readouts', zoom.lidHidden && zoom.statusHidden);
   check('zoom leaves the thin restore strip, and it restores', zoom.stripShown && zoom.stripRestored);
@@ -197,6 +201,49 @@ try {
   check('console drawer zooms the console and reads RESTORE', consoleGrammar.zoomed && consoleGrammar.reads === 'RESTORE');
   check('console zoom restores and reads ZOOM', consoleGrammar.restored && consoleGrammar.readsAfter === 'ZOOM');
   check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
+
+  console.log('console-height');
+  // The operator divides the stage, not a constant. A workspace floor is a
+  // console ceiling: the drawer can only grow into space the workspace will
+  // give up, so a `min-height` on main silently capped the console at
+  // roughly half the frame however far the strip was dragged.
+  const consoleHeight = await evalIn(`
+    const out = {};
+    const drawerEl = document.getElementById('drawer');
+    if (drawerEl.classList.contains('drawer-closed')) {
+      document.getElementById('drawer-toggle').click(); await sleep(400);
+    }
+    out.workspaceFloor = getComputedStyle(document.querySelector('main')).minHeight;
+
+    // Drive the strip the way a hand does: press, travel, release.
+    const strip = document.getElementById('drawer-strip');
+    out.stripFound = !!strip;
+    if (strip) {
+      const start = drawerEl.getBoundingClientRect().height;
+      strip.dispatchEvent(new MouseEvent('mousedown', { clientY: 0, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: window.innerHeight, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      await sleep(200);
+      out.start = start;
+      out.grown = drawerEl.getBoundingClientRect().height;
+      out.viewport = window.innerHeight;
+      // Put the stage back: a console left at full height leaves no
+      // workspace for the checks that follow.
+      drawerEl.style.height = '';
+      await sleep(200);
+      out.restoredHeight = drawerEl.getBoundingClientRect().height;
+    }
+    return out;`);
+  if (consoleHeight.stripFound) {
+    // The old ceiling was the viewport less the 20rem floor and the chrome
+    // above it; comfortably over half the viewport proves the floor is gone.
+    const past = consoleHeight.grown > consoleHeight.viewport * 0.6;
+    check('the console drags past the old workspace floor', past,
+      JSON.stringify({ start: consoleHeight.start, grown: consoleHeight.grown, viewport: consoleHeight.viewport }));
+    check('and the workspace keeps no floor of its own', consoleHeight.workspaceFloor === '0px', consoleHeight.workspaceFloor);
+    check('and the console returns to its resting height', consoleHeight.restoredHeight < consoleHeight.grown,
+      JSON.stringify({ grown: consoleHeight.grown, restored: consoleHeight.restoredHeight }));
+  }
 
   console.log('focus-citizenship');
   const focusCit = await evalIn(`
@@ -315,7 +362,7 @@ try {
   check('touching the strip slides the mode frame in, and its pills work there', modeFrame.opened && modeFrame.pillWorks && modeFrame.blocksFlush, JSON.stringify({ o: modeFrame.opened, p: modeFrame.pillWorks, f: modeFrame.blocksFlush }));
   check('filtering is a mode: folded at rest, the FILTER block unfolds it and reads its state', modeFrame.atRest.filterFolded && modeFrame.filterBefore === 'FILTER OFF' && modeFrame.filterOpen && modeFrame.filterClosed, JSON.stringify({ r: modeFrame.atRest.filterFolded, b: modeFrame.filterBefore, o: modeFrame.filterOpen, c: modeFrame.filterClosed }));
   check('the bar annunciates the non-default mode', modeFrame.modeRead === 'CARDS', modeFrame.modeRead);
-  check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored);
+  check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored, JSON.stringify({ field: modeFrame.fieldRetracts, esc: modeFrame.escRetracts, restored: modeFrame.restored }));
 
   console.log('cards');
   // CARDS projects the same listing: the pill reads the mode, cards carry
@@ -518,7 +565,9 @@ try {
     // sure it is closed before asking for the list.
     if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(150); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
-    const listBack = dp.querySelector('.dag-feedlist').style.display === 'block';
+    // Shown, however it lays itself out: the roster is a frame above a
+    // scrolling field now, so it shows as flex rather than block.
+    const listBack = dp.querySelector('.dag-feedlist').style.display !== 'none';
     const stateCleared = !/^(LIVE|SETTLED|STALE)$/.test(state.textContent.trim());
     return { skipped: text ? null : 'no watched report (daemon predates the watch wire?)', text, offered, after, listBack, stateCleared };`);
   if (live.skipped) {

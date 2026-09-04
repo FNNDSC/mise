@@ -12,6 +12,16 @@ import os from 'node:os';
 
 const DEBUG_PORT = Number(process.env.SMOKE_CDP_PORT ?? 9345);
 
+/**
+ * Extra chromium flags, space separated, from SMOKE_CHROME_FLAGS.
+ *
+ * A container or a sandboxed home needs its own profile directory, and
+ * sometimes needs the sandbox disabled, before chromium will open its
+ * debug port at all. Those are environment facts, not suite policy, so
+ * they come from the environment rather than being written down here.
+ */
+const EXTRA_FLAGS = (process.env.SMOKE_CHROME_FLAGS ?? '').split(' ').filter(Boolean);
+
 /** Reads the argus URL: $ARGUS_URL, else the user's calypso attach file. */
 export function argusUrl_discover() {
   if (process.env.ARGUS_URL) return process.env.ARGUS_URL;
@@ -27,12 +37,25 @@ export async function page_open(url) {
   const chrome = spawn('chromium', [
     '--headless=new', '--no-proxy-server', '--disable-gpu',
     `--remote-debugging-port=${DEBUG_PORT}`, '--window-size=2560,1440',
-    '--hide-scrollbars', 'about:blank',
+    '--hide-scrollbars', ...EXTRA_FLAGS, 'about:blank',
   ], { stdio: 'ignore' });
-  await new Promise((r) => setTimeout(r, 1500));
-  const list = JSON.parse(
-    execSync(`curl -s --noproxy "*" http://127.0.0.1:${DEBUG_PORT}/json`).toString(),
-  );
+  // Wait for the port to answer rather than guessing at a delay: a cold
+  // profile or a slower machine takes longer than any fixed sleep, and the
+  // failure then looks like a suite error rather than a slow start.
+  let listing = '';
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      listing = execSync(`curl -s --noproxy "*" http://127.0.0.1:${DEBUG_PORT}/json`).toString();
+      if (listing.trim().startsWith('[')) break;
+    } catch {
+      listing = '';
+    }
+  }
+  if (!listing.trim().startsWith('[')) {
+    throw new Error(`chromium never opened its debug port on ${DEBUG_PORT}; set SMOKE_CHROME_FLAGS (e.g. --no-sandbox --user-data-dir=/tmp/x) if it needs them`);
+  }
+  const list = JSON.parse(listing);
   const target = list.find((t) => t.type === 'page');
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   let id = 0;

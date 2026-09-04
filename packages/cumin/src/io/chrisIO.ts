@@ -56,6 +56,26 @@ interface FileStreamResponse {
 /**
  * Class for handling IO operations with ChRIS.
  */
+/**
+ * Reads the HTTP status out of a rejected client call.
+ *
+ * The client wraps axios, so the status hides at a couple of depths
+ * depending on how the failure arose. Absent a status, the caller says so
+ * rather than guessing at a reason.
+ *
+ * @param error - The thrown value.
+ * @returns The HTTP status, or null when the failure carried none.
+ */
+function httpStatus_of(error: unknown): number | null {
+  if (error === null || typeof error !== "object") return null;
+  const candidate: { status?: unknown; response?: { status?: unknown } } = error as {
+    status?: unknown;
+    response?: { status?: unknown };
+  };
+  const status: unknown = candidate.response?.status ?? candidate.status;
+  return typeof status === "number" ? status : null;
+}
+
 export class ChrisIO {
   private _chrisFolder: string = "";
   private _client: Client | null = null;
@@ -144,17 +164,72 @@ export class ChrisIO {
    * @returns The file resource, or null when neither collection knows the id.
    */
   private async downloadableFile_get(client: Client, fileId: number): Promise<UserFile | null> {
+    this.lastFileRefusal = null;
     try {
       const userFile: UserFile | null = await client.getUserFile(fileId);
       if (userFile) return userFile;
-    } catch {
-      // Fall through to the PACS collection.
+    } catch (error: unknown) {
+      // A refusal is not an absence. CUBE answers 403 for a file this
+      // identity may see listed but not read — the shape a shared feed
+      // takes — and reporting that as "not found" sends an operator
+      // looking for a missing file that is in fact right there.
+      this.lastFileRefusal = httpStatus_of(error);
     }
     try {
-      return await resource_call<UserFile | null>(client, 'getPACSFile', fileId);
+      const pacsFile: UserFile | null = await resource_call<UserFile | null>(client, 'getPACSFile', fileId);
+      if (pacsFile) return pacsFile;
+    } catch (error: unknown) {
+      this.lastFileRefusal ??= httpStatus_of(error);
+    }
+    // The client answers a refusal with null as readily as it does an
+    // absence, so neither branch above necessarily carries a status. Ask
+    // CUBE plainly what it thinks of this file, once, on the failure path
+    // only: an operator told "not found" about a file they can see listed
+    // will go looking for the wrong problem.
+    this.lastFileRefusal ??= await this.fileStatus_probe(fileId);
+    return null;
+  }
+
+  /**
+   * Asks CUBE directly what it answers for a file id.
+   *
+   * @param fileId - The file the lookup could not resolve.
+   * @returns The HTTP status, or null when it could not be asked.
+   */
+  private async fileStatus_probe(fileId: number): Promise<number | null> {
+    try {
+      const url: string | null = await chrisConnection.chrisURL_get();
+      const token: string | null = await chrisConnection.authToken_get();
+      if (!url || !token) return null;
+      const response: Response = await fetch(`${url.replace(/\/$/, "")}/userfiles/${fileId}/`, {
+        headers: { Authorization: `Token ${token}` },
+      });
+      return response.status;
     } catch {
       return null;
     }
+  }
+
+  /** HTTP status of the most recent failed file lookup, when CUBE gave one. */
+  private lastFileRefusal: number | null = null;
+
+  /**
+   * Explains why a file lookup came back empty, in CUBE's own terms.
+   *
+   * @param fileId - The file the operator asked for.
+   * @returns A sentence naming what CUBE actually answered.
+   */
+  private fileRefusal_describe(fileId: number): string {
+    if (this.lastFileRefusal === 403) {
+      return `File ID ${fileId}: CUBE refused access (403). It is listed but not readable by this identity — a feed shared with you grants the listing, not the contents.`;
+    }
+    if (this.lastFileRefusal === 404) {
+      return `File ID ${fileId} does not exist (404).`;
+    }
+    if (this.lastFileRefusal !== null) {
+      return `File ID ${fileId} could not be read: CUBE answered ${this.lastFileRefusal}.`;
+    }
+    return `File ID ${fileId} is not in the file collections this client can read.`;
   }
 
   async file_downloadStream(
@@ -172,7 +247,7 @@ export class ChrisIO {
       if (!userFile) {
         errorStack.stack_push(
           "error",
-          `File ID ${fileId} not found (404) or access denied (403).`
+          this.fileRefusal_describe(fileId)
         );
         return Err();
       }
@@ -222,7 +297,7 @@ export class ChrisIO {
       if (!userFile) {
         // This is a common case: the file ID was scraped from a listing, but
         // the file itself is not retrievable (e.g. 404, or permissions)
-        errorStack.stack_push("error", `File ID ${fileId} not found (404) or access denied (403).`);
+        errorStack.stack_push("error", this.fileRefusal_describe(fileId));
         return null;
       }
 

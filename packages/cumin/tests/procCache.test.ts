@@ -6,6 +6,8 @@ import {
   status_isTerminal,
   PROC_ARRIVAL_TTL_MS,
 } from '../src/cache/procCache';
+import { listCache_get } from '../src/cache/listCache';
+import { listingInvalidation_flush, listingInvalidation_reset } from '../src/cache/listingInvalidation';
 
 function feed(id: number, title = `feed ${id}`): ProcFeed {
   return {
@@ -410,5 +412,61 @@ describe('ProcCache', () => {
     expect(cache.warmupComplete).toBe(false);
     expect(cache.warmupProgress_get()).toEqual({ loaded: 0, total: 0, active: false });
     expect(cache.built).toBe(false);
+  });
+});
+
+describe('proc movement reaches the folder listings', () => {
+  beforeEach(() => {
+    listCache_get().cache_invalidate();
+    listingInvalidation_reset();
+    procCache_get().cache_clear();
+  });
+
+  it('dirties a feed\'s listings when a job crosses into a terminal state', () => {
+    const cache = procCache_get();
+    listCache_get().cache_set('/home/someone/feeds/feed_7/pl-a_1/data', ['out']);
+    cache.instance_add({
+      id: 1, feedID: 7, parentID: null, pluginName: 'pl-a', status: 'started',
+      params: null, joinParentIDs: [],
+    } as unknown as ProcInstance);
+
+    cache.status_update(1, 'finishedSuccessfully');
+    expect(listingInvalidation_flush()).toEqual(['/home/someone/feeds/feed_7/pl-a_1/data']);
+  });
+
+  it('says nothing while a job is merely running, because it has produced nothing to list', () => {
+    const cache = procCache_get();
+    listCache_get().cache_set('/home/someone/feeds/feed_7/pl-a_1/data', ['out']);
+    cache.instance_add({
+      id: 1, feedID: 7, parentID: null, pluginName: 'pl-a', status: 'scheduled',
+      params: null, joinParentIDs: [],
+    } as unknown as ProcInstance);
+
+    cache.status_update(1, 'started');
+    expect(listingInvalidation_flush()).toEqual([]);
+  });
+
+  it('dirties the declared parent folders when a feed arrives', () => {
+    const cache = procCache_get();
+    cache.rosterParents_set(['/home/someone/feeds', '/SHARED']);
+    listCache_get().cache_set('/home/someone/feeds', ['feed_1']);
+    listCache_get().cache_set('/SHARED', ['someone']);
+
+    cache.arrivals_note([4299]);
+    const marked: string[] = listingInvalidation_flush();
+    expect(marked).toContain('/home/someone/feeds');
+    expect(marked).toContain('/SHARED');
+  });
+
+  it('dirties the parent folders when a feed vanishes from the roster', () => {
+    const cache = procCache_get();
+    cache.rosterParents_set(['/home/someone/feeds']);
+    cache.feed_add(feed(5));
+    cache.feed_add(feed(6));
+    listCache_get().cache_set('/home/someone/feeds', ['feed_5', 'feed_6']);
+
+    // Feed 6 is no longer visible to this identity.
+    cache.feeds_reconcile([feed(5)]);
+    expect(listingInvalidation_flush()).toContain('/home/someone/feeds');
   });
 });

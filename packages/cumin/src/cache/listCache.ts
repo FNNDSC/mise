@@ -338,6 +338,18 @@ export class ListCache {
   }
 
   /**
+   * Every path the cache currently holds.
+   *
+   * Returned as a snapshot so a caller may mark or invalidate while
+   * iterating without mutating the map underneath itself.
+   *
+   * @returns The cached paths, least recently used first.
+   */
+  paths_get(): string[] {
+    return Array.from(this.cache.keys());
+  }
+
+  /**
    * Marks a cached path as dirty (needs refresh).
    * Used when local mutations might have changed the data.
    *

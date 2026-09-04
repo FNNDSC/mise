@@ -16,6 +16,7 @@
  *
  * @module
  */
+import { listingsForFeeds_note, listingsForRoster_note, listingInvalidation_reset } from './listingInvalidation';
 
 /**
  * Feed-level metadata including job count fields for aggregate status.
@@ -288,6 +289,13 @@ export class ProcCache {
   /** Feeds the roster gained (created or shared) with the moment they landed. */
   private arrivals: Map<number, number> = new Map();
 
+  /**
+   * Folder listings whose membership changes when a feed arrives or
+   * departs. Empty until a host declares them, so a cache used outside a
+   * session never guesses at paths.
+   */
+  private rosterParents: string[] = [];
+
   /** Whether initial feed index has been built. */
   private _built: boolean = false;
 
@@ -409,9 +417,15 @@ export class ProcCache {
   feeds_reconcile(feeds: ProcFeed[]): number[] {
     const reconciliationTargets: number[] = [];
     const visible: Set<number> = new Set(feeds.map((feed: ProcFeed): number => feed.id));
+    const departed: number[] = [];
     for (const feedID of this.feedIDs_get()) {
-      if (!visible.has(feedID)) this.feed_remove(feedID);
+      if (!visible.has(feedID)) {
+        this.feed_remove(feedID);
+        departed.push(feedID);
+      }
     }
+    // A feed that vanished leaves a row behind in every cached parent.
+    if (departed.length > 0) listingsForRoster_note(departed, this.rosterParents);
     for (const feed of feeds) {
       const previous: ProcFeed | undefined = this.feed_get(feed.id);
       if (!previous || feedTopology_changed(previous, feed) || feed_isActive(feed)) {
@@ -591,7 +605,13 @@ export class ProcCache {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
     if (status_isTerminal(inst.status)) return;
-    if (inst.status !== status) { inst.status = status; this.change_emit({ scope: 'feed', feedID: inst.feedID }); }
+    if (inst.status === status) return;
+    inst.status = status;
+    this.change_emit({ scope: 'feed', feedID: inst.feedID });
+    // Crossing into a terminal state is the moment a job's output becomes
+    // visible, and so the moment the feed's cached folder listings fell
+    // behind. A merely-running job has produced nothing to list yet.
+    if (status_isTerminal(status)) listingsForFeeds_note([inst.feedID]);
   }
 
   /**
@@ -711,6 +731,21 @@ export class ProcCache {
    */
   arrivals_note(feedIDs: number[], at: number = Date.now()): void {
     for (const feedID of feedIDs) this.arrivals.set(feedID, at);
+    // An arrival changes the folder the feed appears in, not anything
+    // inside it, so the parent listings go too. Which parents those are
+    // is the caller's business; the roster knows only feed ids.
+    listingsForRoster_note(feedIDs, this.rosterParents);
+  }
+
+  /**
+   * Sets the folder listings whose membership changes when a feed arrives
+   * or departs — typically the identity's feeds folder and the shared and
+   * public roots.
+   *
+   * @param paths - Absolute VFS folder paths.
+   */
+  rosterParents_set(paths: readonly string[]): void {
+    this.rosterParents = [...paths];
   }
 
   /**
@@ -879,6 +914,7 @@ export class ProcCache {
    * Clears all cache data. Called before a full rebuild.
    */
   cache_clear(): void {
+    listingInvalidation_reset();
     this.feeds.clear();
     this.instances.clear();
     this.feedRoots.clear();

@@ -69,7 +69,7 @@ const BOOT_STATUS_TAGS: Record<BootStatus, BootStatusTag> = {
  * character wider than `[ OK ]`, so a retry row's label sat one column
  * right of every other row's.
  */
-const BOOT_TAG_WIDTH: number = Math.max(
+export const BOOT_TAG_WIDTH: number = Math.max(
   ...Object.values(BOOT_STATUS_TAGS).map((tag: BootStatusTag): number => tag.text.length),
 );
 

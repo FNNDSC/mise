@@ -21,7 +21,24 @@ function check(name, condition, detail = '') {
 }
 
 const page = await page_open(argusUrl_discover());
-const evalIn = (body) => page.eval(`(async () => { const sleep=(ms)=>new Promise(r=>setTimeout(r,ms)); ${body} })()`);
+// `settled` waits for a measured value to stop changing, so a scenario can
+// follow a CSS glide without guessing at its duration: a fixed sleep either
+// samples mid-flight or, when a click has yet to register, before it starts.
+const evalIn = (body) => page.eval(`(async () => {
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+  const settled = async (read, { quiet = 3, step = 60, limit = 3000 } = {}) => {
+    let last = NaN; let still = 0;
+    for (let waited = 0; waited < limit; waited += step) {
+      await sleep(step);
+      const now = read();
+      still = now === last ? still + 1 : 0;
+      last = now;
+      if (still >= quiet) return now;
+    }
+    return last;
+  };
+  ${body}
+})()`);
 
 try {
   console.log('boot');
@@ -76,8 +93,12 @@ try {
     document.getElementById('gutter-files').click(); await sleep(700);
     const pane = document.querySelector('.pane-files');
     pane.querySelector('.pane-handle').click(); await sleep(150);
-    pane.querySelector('.drawer-zoom').click(); await sleep(700);
+    pane.querySelector('.drawer-zoom').click();
     const header = document.querySelector('.wrap:not(#gap)');
+    // The header glides; a fixed wait either catches it mid-flight or, if
+    // the click has not registered yet, before it starts. Wait for the
+    // motion to stop instead of guessing how long it takes.
+    await settled(() => header.getBoundingClientRect().bottom);
     const gutter = document.querySelector('.left-frame');
     const lid = document.getElementById('drawer-toggle');
     const status = document.getElementById('status-strip');
@@ -91,23 +112,22 @@ try {
       capsule: (() => { const c = pane.querySelector('.drawer-zoom');
         return c.getBoundingClientRect().height > 0 ? c.textContent : 'HIDDEN'; })(),
     };
-    strip.click(); await sleep(700);
+    // Every step here is a glide; each waits for its own motion to stop.
+    strip.click();
+    await settled(() => header.getBoundingClientRect().bottom);
     zoomed.stripRestored = header.getBoundingClientRect().bottom > 50;
     zoomed.capsuleAfter = pane.querySelector('.drawer-zoom').textContent;
-    pane.querySelector('.drawer-zoom').click(); await sleep(700);
+    pane.querySelector('.drawer-zoom').click();
+    await settled(() => header.getBoundingClientRect().bottom);
     // Contextual back is a stack: the open pane drawer takes the first
     // Esc, the zoom the next.
     for (let i = 0; i < 3 && header.getBoundingClientRect().bottom <= 1; i++) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await sleep(700);
+      await settled(() => header.getBoundingClientRect().bottom);
     }
     zoomed.restoredHeaderBottom = header.getBoundingClientRect().bottom;
     return zoomed;`);
-  // Sub-pixel tolerance: the header's height is fractional and the slide is
-  // measured, so a residue under two device-independent pixels is rounding,
-  // not header left on stage. Tightening this to <= 1 made it a hostage to
-  // whatever the header's content happened to round to.
-  check('zoom slides the whole header off stage', zoom.headerBottom <= 2, `bottom=${zoom.headerBottom}`);
+  check('zoom slides the whole header off stage', zoom.headerBottom <= 1, `bottom=${zoom.headerBottom}`);
   check('zoom slides the gutter off stage', zoom.gutterRight <= 1, `right=${zoom.gutterRight}`);
   check('zoom hides the lid and the status readouts', zoom.lidHidden && zoom.statusHidden);
   check('zoom leaves the thin restore strip, and it restores', zoom.stripShown && zoom.stripRestored);
@@ -122,11 +142,16 @@ try {
     pane.querySelector('[data-split="col"][data-place="after"]').click(); await sleep(600);
     const leaves = document.querySelectorAll('#layout-root .layout-leaf').length;
     pane.querySelector('.pane-handle').click(); await sleep(150);
-    pane.querySelector('.drawer-zoom').click(); await sleep(900);
-    const r = pane.closest('.layout-leaf').getBoundingClientRect();
+    // The leaf grows into the region; wait for that growth to stop rather
+    // than sampling it mid-glide.
+    pane.querySelector('.drawer-zoom').click();
+    const leaf = pane.closest('.layout-leaf');
+    await settled(() => Math.round(leaf.getBoundingClientRect().width));
+    const r = leaf.getBoundingClientRect();
     const full = r.width > window.innerWidth * 0.85;
     for (let i = 0; i < 3 && document.body.dataset.zoom !== undefined; i++) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settled(() => Math.round(leaf.getBoundingClientRect().width));
     }
     document.getElementById('gutter-files').click(); await sleep(400);
     return { leaves, full, w: Math.round(r.width) };`);
@@ -330,7 +355,9 @@ try {
       // filtering is a mode: the strip is folded at rest
       filterFolded: fp.querySelector('.roster-filter').getBoundingClientRect().height === 0,
     };
-    strip.click(); await sleep(400);
+    // The frame slides in; wait for the strip to stop widening.
+    strip.click();
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
     const barRect = strip.getBoundingClientRect();
     const opened = barRect.width > 80 && frame.getBoundingClientRect().left < bodyRect.right - 40 && getComputedStyle(frame).visibility === 'visible' && fp.dataset.modes === 'open';
     const pill = fp.querySelector('.files-view');
@@ -348,10 +375,14 @@ try {
     const filterOpen = fp.querySelector('.roster-filter').getBoundingClientRect().height > 0 && fb.textContent === 'FILTER ON';
     fb.click(); await sleep(250);
     const filterClosed = fp.querySelector('.roster-filter').getBoundingClientRect().height === 0 && fb.textContent === filterBefore;
-    fp.querySelector('.files-panel').click(); await sleep(400);
+    // Retraction is a glide too: the strip narrows back to a sliver.
+    fp.querySelector('.files-panel').click();
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
     const fieldRetracts = fp.dataset.modes === undefined && getComputedStyle(frame).visibility === 'hidden' && strip.getBoundingClientRect().width < 12;
-    strip.click(); await sleep(300);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    strip.click();
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settled(() => Math.round(strip.getBoundingClientRect().width));
     const escRetracts = fp.dataset.modes === undefined;
     // back to LIST for the scenarios that follow
     for (let i = 0; i < 3 && pill.textContent !== 'LIST'; i++) pill.click();

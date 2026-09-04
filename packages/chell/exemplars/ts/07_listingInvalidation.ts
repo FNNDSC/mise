@@ -22,20 +22,27 @@
  */
 
 import {
-  ChRISFeed, ChRISPlugin, feed_delete, listCache_get, listingInvalidation_flush,
-  procCache_get, Result, Dictionary, PluginInstance, SimpleRecord,
+  ChRISFeed, feed_delete, listCache_get, listingInvalidation_flush,
+  procCache_get, SimpleRecord,
 } from '@fnndsc/cumin';
-import { feedStatus_refresh, vfsDispatcher } from '@fnndsc/salsa';
+import { procCache_refresh, vfsDispatcher } from '@fnndsc/salsa';
+import { vfs } from '@fnndsc/brasa';
 import {
-  env_load, config_isolate, cube_connect, check, step, section, summary_exit,
-  poll_until, CleanupPlan, CubeEnv,
+  env_load, config_isolate, cube_connect, check, section, summary_exit,
+  CleanupPlan, CubeEnv,
 } from './lib/harness.js';
 
-/** CUBE job states from which a status never moves again. */
-const TERMINAL_STATES: string[] = ['finishedSuccessfully', 'finishedWithError', 'cancelled'];
+/**
+ * Folder the feed is rooted on, under the identity's home.
+ *
+ * CUBE rejects a home or top-level folder as a feed source, so this names
+ * a subfolder. Override with LISTING_EXEMPLAR_SOURCE when the default is
+ * absent on a given CUBE.
+ */
+const SOURCE_FOLDER: string = process.env.LISTING_EXEMPLAR_SOURCE ?? 'e2e-chell-scratch';
 
 /**
- * Runs a feed to completion around a cached listing and checks the mark.
+ * Caches a folder listing, makes a feed arrive, and checks the mark.
  */
 async function main(): Promise<void> {
   const env: CubeEnv = env_load();
@@ -58,60 +65,61 @@ async function main(): Promise<void> {
   });
 
   try {
-    section('root a feed');
-    // pl-dircopy over the identity's own home: no PACS fixture needed, and
-    // the run is short enough that the race this exemplar depends on —
-    // caching the folder while the job is still going — is reachable.
+    section('build the roster first');
+    // An arrival is a feed the roster did not know about. A first build has
+    // no "before", so the roster has to exist before the feed is made.
+    const procRoot = await vfsDispatcher.list('/proc/jobs', {});
+    check('the roster is built', procRoot.ok);
+
+    section('cache the feeds folder, fresh');
+    // Through brasa's `vfs`, not salsa's dispatcher: the dispatcher reads
+    // the provider and never touches the listing cache, so a dispatcher
+    // call would leave nothing cached to go stale.
+    const listedBefore = await vfs.data_get(feedsPath);
+    check('the feeds folder lists', listedBefore.ok);
+    check('and is served as fresh', listCache_get().cache_get(feedsPath)?.fresh === true);
+
+    section('a feed arrives');
+    const sourcePath: string = `/home/${env.user}/${SOURCE_FOLDER}`;
+    const source = await vfs.data_get(sourcePath);
+    if (!check(`the source folder ${sourcePath} exists`, source.ok)) { summary_exit(); }
+
     const feed: ChRISFeed = new ChRISFeed();
-    const detail: SimpleRecord | null = await feed.createFromDirs(`/home/${env.user}`, { params: '' });
-    if (!check('feed created from the home directory', detail !== null) || !detail) { summary_exit(); }
+    const detail: SimpleRecord | null = await feed.createFromDirs(sourcePath, { params: '' });
+    if (!check('feed created from the source folder', detail !== null) || !detail) { summary_exit(); }
 
     const feedID: number = Number(detail.id);
     check('the new feed has an id', Number.isFinite(feedID) && feedID > 0);
     cleanup.register(`deleted feed ${feedID}`, async (): Promise<boolean> => (await feed_delete(feedID)).ok);
 
-    const plugin: ChRISPlugin = new ChRISPlugin();
-    const rootDict: Dictionary | null = plugin.pluginInstance_toDict(detail.pluginInstance as PluginInstance);
-    const rootID: number = Number(rootDict?.id);
-    check('the root node id resolved', Number.isFinite(rootID));
+    check('the feeds folder is still fresh — nothing has told the cache yet',
+      listCache_get().cache_get(feedsPath)?.fresh === true);
 
-    section('cache the feed folder while the job is still running');
-    const feedPath: string = `${feedsPath}/feed_${feedID}`;
-    await vfsDispatcher.list(feedPath, {});
-    const beforeCached = listCache_get().cache_get(feedPath);
-    check('the feed folder is cached', beforeCached !== null);
-    check('and is served as fresh', beforeCached?.fresh === true);
-
-    section('let the job finish');
-    // Poll through feedStatus_refresh, not a bare status read. That
-    // function is what a session actually runs while watching a feed, and
-    // it is the notifier's call site: it drives ProcCache.status_update,
-    // which is what notices a job crossing into a terminal state. Reading
-    // the status straight from CUBE would prove nothing, because nothing
-    // would have told the cache.
-    const settled: Result<string> = await poll_until(
-      async (): Promise<string | null> => {
-        await feedStatus_refresh(feedID);
-        const status: string | null = procCache_get().instance_get(rootID)?.status ?? null;
-        return status !== null && TERMINAL_STATES.includes(status) ? status : null;
-      },
-      5 * 60_000,
-      3_000,
-    );
-    check('the root job reached a terminal state through the session path', settled.ok);
+    section('the roster notices');
+    // A full walk is what a session runs on its own timer; running it here
+    // removes the wait, not the mechanism. `procRoster_sync` is the timed
+    // entry point and declines unless the cache lifecycle is already
+    // current, which a fresh process's is not, so this drives the rebuild
+    // it would eventually have reached.
+    const changed: number[] = await procCache_refresh();
+    check('the walk completed', Array.isArray(changed));
+    check('the new feed is on the roster', procCache_get().feed_get(feedID) !== undefined);
 
     section('the listing knows');
-    // Apply any movement still inside its coalescing window, so the check
-    // does not race a timer it does not own.
     const marked: string[] = listingInvalidation_flush();
-    const afterCached = listCache_get().cache_get(feedPath);
-    check('the cached feed folder is no longer fresh', afterCached?.fresh === false);
-    check('and it was kept, not deleted, so it can be served while it refreshes', afterCached !== null);
+    const after = listCache_get().cache_get(feedsPath);
+    check('the cached feeds folder is no longer fresh', after?.fresh === false);
+    check('and it was kept, not deleted, so it can be served while it refreshes', after !== null);
+    check('and it still holds the listing it was serving', after?.data !== undefined);
     console.log(`  marked in the flush: ${marked.length > 0 ? marked.join(', ') : '(already marked within the window)'}`);
 
     section('and the next visit is current');
-    const relisted = await vfsDispatcher.list(feedPath, {});
-    check('the feed folder lists again after the mark', relisted.ok);
+    const relisted = await vfs.data_get(feedsPath);
+    check('the feeds folder lists again after the mark', relisted.ok);
+    check('and is fresh once more', listCache_get().cache_get(feedsPath)?.fresh === true);
+    const names: string[] = relisted.ok ? relisted.value.map((i): string => String(i.name)) : [];
+    check('and the arrived feed is in it', names.includes(`feed_${feedID}`));
+
   } finally {
     section('cleanup');
     await cleanup.run();

@@ -23,12 +23,12 @@
 
 import {
   ChRISFeed, ChRISPlugin, feed_delete, listCache_get, listingInvalidation_flush,
-  procCache_get, Result, Dictionary, PluginInstance,
+  procCache_get, Result, Dictionary, PluginInstance, SimpleRecord,
 } from '@fnndsc/cumin';
 import { feedStatus_refresh, vfsDispatcher } from '@fnndsc/salsa';
 import {
   env_load, config_isolate, cube_connect, check, step, section, summary_exit,
-  poll_until, runId_make, CleanupPlan, CubeEnv,
+  poll_until, CleanupPlan, CubeEnv,
 } from './lib/harness.js';
 
 /** CUBE job states from which a status never moves again. */
@@ -46,7 +46,6 @@ async function main(): Promise<void> {
   check('received an auth token', token.length > 0);
 
   const cleanup: CleanupPlan = new CleanupPlan();
-  const runId: string = runId_make();
   const feedsPath: string = `/home/${env.user}/feeds`;
 
   // The roster speaks in feed ids; the host names the folders whose
@@ -60,16 +59,21 @@ async function main(): Promise<void> {
 
   try {
     section('root a feed');
+    // pl-dircopy over the identity's own home: no PACS fixture needed, and
+    // the run is short enough that the race this exemplar depends on —
+    // caching the folder while the job is still going — is reachable.
+    const feed: ChRISFeed = new ChRISFeed();
+    const detail: SimpleRecord | null = await feed.createFromDirs(`/home/${env.user}`, { params: '' });
+    if (!check('feed created from the home directory', detail !== null) || !detail) { summary_exit(); }
+
+    const feedID: number = Number(detail.id);
+    check('the new feed has an id', Number.isFinite(feedID) && feedID > 0);
+    cleanup.register(`deleted feed ${feedID}`, async (): Promise<boolean> => (await feed_delete(feedID)).ok);
+
     const plugin: ChRISPlugin = new ChRISPlugin();
-    const created: Result<PluginInstance> = await step(
-      'created a pl-dircopy root node',
-      plugin.plugin_run('pl-dircopy', { dir: `/home/${env.user}`, title: `listing-invalidation-${runId}` } as Dictionary),
-    );
-    if (!created.ok) { summary_exit(); }
-    const rootInstance: PluginInstance = created.value;
-    const feedID: number = Number(rootInstance.feed_id);
-    check('the new node belongs to a feed', Number.isFinite(feedID) && feedID > 0);
-    cleanup.add(`feed ${feedID}`, async (): Promise<boolean> => (await feed_delete(feedID)).ok);
+    const rootDict: Dictionary | null = plugin.pluginInstance_toDict(detail.pluginInstance as PluginInstance);
+    const rootID: number = Number(rootDict?.id);
+    check('the root node id resolved', Number.isFinite(rootID));
 
     section('cache the feed folder while the job is still running');
     const feedPath: string = `${feedsPath}/feed_${feedID}`;
@@ -88,7 +92,7 @@ async function main(): Promise<void> {
     const settled: Result<string> = await poll_until(
       async (): Promise<string | null> => {
         await feedStatus_refresh(feedID);
-        const status: string | null = procCache_get().instance_get(Number(rootInstance.id))?.status ?? null;
+        const status: string | null = procCache_get().instance_get(rootID)?.status ?? null;
         return status !== null && TERMINAL_STATES.includes(status) ? status : null;
       },
       5 * 60_000,

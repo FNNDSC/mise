@@ -42,6 +42,37 @@ export interface BootPanels {
  */
 export type BootStatus = 'ok' | 'retry' | 'skip' | 'fail';
 
+/** One status tag: its bare text and the colour it renders in. */
+interface BootStatusTag {
+  text: string;
+  paint: (value: string) => string;
+}
+
+/**
+ * The tag rendered in front of every boot row.
+ *
+ * Kept as a table rather than a switch so the column width below is
+ * derived from the tags themselves. A longer status added here widens
+ * every row together instead of shunting one label out of line.
+ */
+const BOOT_STATUS_TAGS: Record<BootStatus, BootStatusTag> = {
+  ok: { text: '[ OK ]', paint: chalk.green },
+  retry: { text: '[RETRY]', paint: chalk.yellow },
+  skip: { text: '[SKIP]', paint: chalk.yellow },
+  fail: { text: '[FAIL]', paint: chalk.red },
+};
+
+/**
+ * Width of the tag column, taken from the widest tag.
+ *
+ * Without this the label column moved with the status: `[RETRY]` is a
+ * character wider than `[ OK ]`, so a retry row's label sat one column
+ * right of every other row's.
+ */
+const BOOT_TAG_WIDTH: number = Math.max(
+  ...Object.values(BOOT_STATUS_TAGS).map((tag: BootStatusTag): number => tag.text.length),
+);
+
 /**
  * Creates a boot logger that renders a titled status box.
  *
@@ -62,12 +93,11 @@ export function bootLogger_create(title: string, useAscii: boolean) {
   const statusPad = (label: string): string => label.padEnd(12);
 
   const statusTag = (status: BootStatus): string => {
-    switch (status) {
-      case 'ok': return chalk.green('[ OK ]');
-      case 'retry': return chalk.yellow('[RETRY]');
-      case 'skip': return chalk.yellow('[SKIP]');
-      case 'fail': return chalk.red('[FAIL]');
-    }
+    const { text, paint }: BootStatusTag = BOOT_STATUS_TAGS[status];
+    // Pad the bare text, then colour it: padding a chalk-wrapped string
+    // counts the escape sequences and the column drifts by however many
+    // bytes the colour cost.
+    return paint(text.padEnd(BOOT_TAG_WIDTH));
   };
 
   return {

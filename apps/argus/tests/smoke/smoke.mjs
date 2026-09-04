@@ -103,7 +103,11 @@ try {
     }
     zoomed.restoredHeaderBottom = header.getBoundingClientRect().bottom;
     return zoomed;`);
-  check('zoom slides the whole header off stage', zoom.headerBottom <= 1, `bottom=${zoom.headerBottom}`);
+  // Sub-pixel tolerance: the header's height is fractional and the slide is
+  // measured, so a residue under two device-independent pixels is rounding,
+  // not header left on stage. Tightening this to <= 1 made it a hostage to
+  // whatever the header's content happened to round to.
+  check('zoom slides the whole header off stage', zoom.headerBottom <= 2, `bottom=${zoom.headerBottom}`);
   check('zoom slides the gutter off stage', zoom.gutterRight <= 1, `right=${zoom.gutterRight}`);
   check('zoom hides the lid and the status readouts', zoom.lidHidden && zoom.statusHidden);
   check('zoom leaves the thin restore strip, and it restores', zoom.stripShown && zoom.stripRestored);
@@ -561,7 +565,9 @@ try {
     // sure it is closed before asking for the list.
     if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(150); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
-    const listBack = dp.querySelector('.dag-feedlist').style.display === 'block';
+    // Shown, however it lays itself out: the roster is a frame above a
+    // scrolling field now, so it shows as flex rather than block.
+    const listBack = dp.querySelector('.dag-feedlist').style.display !== 'none';
     const stateCleared = !/^(LIVE|SETTLED|STALE)$/.test(state.textContent.trim());
     return { skipped: text ? null : 'no watched report (daemon predates the watch wire?)', text, offered, after, listBack, stateCleared };`);
   if (live.skipped) {

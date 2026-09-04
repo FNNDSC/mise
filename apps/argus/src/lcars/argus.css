@@ -1105,8 +1105,25 @@ body[data-zoom]:not([data-zoom='console'])
   display: none;
   flex: 1 1 0;
   min-height: 0;
-  overflow-y: auto;
+  /* The caps are the roster's frame, not part of its scroll: a scrollbar
+   * running up behind its own column headers reads the wrong boundary. */
+  flex-direction: column;
+  overflow: hidden;
   font-size: 0.8rem;
+}
+
+/* The scrolling half. Its top edge is where the scrollbar begins. */
+.feedlist-field {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Held in place by structure now, so it needs no sticky overlay. */
+.dag-feedlist > .roster-order {
+  position: static;
+  z-index: auto;
+  flex: none;
 }
 
 /* The roster's rule runs beneath its caps; the rows start under the rule. */
@@ -1426,34 +1443,29 @@ body[data-header='dag'] #header-dag {
 
 #pipeline-cycler {
   position: relative;
-  flex: 1 1 40%;
-  min-width: 12rem;
+  /* The readout beside it wants three columns; the cycler is a glimpse and
+   * does not need two fifths of the band to be one. */
+  flex: 0 1 30%;
+  min-width: 10rem;
   height: 7.5rem;
 }
 
 #header-dag-info {
-  flex: 1 1 55%;
+  /* The ARGUS WEB face is the reference: same idiom, same type, same
+   * column feel. This one only has to be given the width to use it. */
+  flex: 1 1 68%;
   min-width: 0;
-  font-size: 0.7rem;
-  /* The face stacks: controls, the readout, the attribution. */
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.72rem;
 }
 
-/* The readout itself is the two-column grid. Putting the columns on the
- * face instead made its `about-rows` wrapper the single grid item, so all
- * ten rows stacked in the first track and the second sat empty — the
- * wasted width, and the height that came with it. Tracks may shrink to
- * nothing (`minmax(0, 1fr)`), which is what lets a long value elide rather
- * than force its column wider. */
+/* Three columns, as the ARGUS WEB face has. The columns belong on the
+ * readout, not on the face: `about-rows` is a wrapper, so columns set a
+ * level up fragment the wrapper rather than its rows, which left every
+ * row in the first column and the rest of the band empty. */
 #about-rows {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 1.4rem;
-  align-content: start;
+  columns: 3;
+  column-gap: 2rem;
 }
 
 #pipeline-cycler canvas {
@@ -2067,28 +2079,6 @@ body[data-zoom] #header-restore {
   break-inside: avoid;
   margin-bottom: 0.2rem;
   min-width: 0;
-}
-
-/* In the header the rows are a readout, not a list: tighter, and the label
- * pill gives back the width it was hoarding so the value has room to be
- * read rather than elided. */
-#header-dag-info .telemetry-row {
-  margin-bottom: 0;
-  gap: 0.45rem;
-  /* The rows are the header's whole height budget: ten of them in two
-   * columns is five rows tall, so a spare pixel each is five pixels of
-   * band. Tight enough to leave room for the attribution beneath. */
-  line-height: 1.05;
-}
-
-#header-dag-info .telemetry-label {
-  min-width: 6.5rem;
-  font-size: 0.62rem;
-  line-height: 1.05rem;
-}
-
-#header-dag-info .telemetry-value {
-  font-size: 0.74rem;
 }
 
 .telemetry-label {

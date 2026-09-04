@@ -198,6 +198,49 @@ try {
   check('console zoom restores and reads ZOOM', consoleGrammar.restored && consoleGrammar.readsAfter === 'ZOOM');
   check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
 
+  console.log('console-height');
+  // The operator divides the stage, not a constant. A workspace floor is a
+  // console ceiling: the drawer can only grow into space the workspace will
+  // give up, so a `min-height` on main silently capped the console at
+  // roughly half the frame however far the strip was dragged.
+  const consoleHeight = await evalIn(`
+    const out = {};
+    const drawerEl = document.getElementById('drawer');
+    if (drawerEl.classList.contains('drawer-closed')) {
+      document.getElementById('drawer-toggle').click(); await sleep(400);
+    }
+    out.workspaceFloor = getComputedStyle(document.querySelector('main')).minHeight;
+
+    // Drive the strip the way a hand does: press, travel, release.
+    const strip = document.getElementById('drawer-strip');
+    out.stripFound = !!strip;
+    if (strip) {
+      const start = drawerEl.getBoundingClientRect().height;
+      strip.dispatchEvent(new MouseEvent('mousedown', { clientY: 0, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: window.innerHeight, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      await sleep(200);
+      out.start = start;
+      out.grown = drawerEl.getBoundingClientRect().height;
+      out.viewport = window.innerHeight;
+      // Put the stage back: a console left at full height leaves no
+      // workspace for the checks that follow.
+      drawerEl.style.height = '';
+      await sleep(200);
+      out.restoredHeight = drawerEl.getBoundingClientRect().height;
+    }
+    return out;`);
+  if (consoleHeight.stripFound) {
+    // The old ceiling was the viewport less the 20rem floor and the chrome
+    // above it; comfortably over half the viewport proves the floor is gone.
+    const past = consoleHeight.grown > consoleHeight.viewport * 0.6;
+    check('the console drags past the old workspace floor', past,
+      JSON.stringify({ start: consoleHeight.start, grown: consoleHeight.grown, viewport: consoleHeight.viewport }));
+    check('and the workspace keeps no floor of its own', consoleHeight.workspaceFloor === '0px', consoleHeight.workspaceFloor);
+    check('and the console returns to its resting height', consoleHeight.restoredHeight < consoleHeight.grown,
+      JSON.stringify({ grown: consoleHeight.grown, restored: consoleHeight.restoredHeight }));
+  }
+
   console.log('focus-citizenship');
   const focusCit = await evalIn(`
     const prefix = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));

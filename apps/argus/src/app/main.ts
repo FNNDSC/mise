@@ -182,6 +182,17 @@ function wsUrl_resolve(): string {
   return `ws://${window.location.host}`;
 }
 
+/** Shortest the console may be dragged, so its strip stays grabbable. */
+const DRAWER_MIN_HEIGHT_PX: number = 120;
+
+/**
+ * Space kept above a dragged console.
+ *
+ * Enough for the page header and the drawer's own bar, so a console pulled
+ * to its limit still shows the controls that shrink it again.
+ */
+const DRAWER_HEADROOM_PX: number = 96;
+
 /**
  * Wires the tactical drawer: the lid's bar-10 segment toggles the console,
  * the mars pill retracts it, and the access strip drag-resizes it. The
@@ -242,7 +253,12 @@ function drawer_wire(
       return;
     }
     // The strip floats above the lid, so pulling it down grows the console.
-    const height: number = Math.max(120, dragStartHeight + (event.clientY - dragStartY));
+    // The only bounds are the ones the screen imposes: a floor so the strip
+    // stays grabbable, and a ceiling so the console cannot push its own
+    // header off the top. Everything between is the operator's to choose.
+    const ceiling: number = Math.max(DRAWER_MIN_HEIGHT_PX, window.innerHeight - DRAWER_HEADROOM_PX);
+    const wanted: number = dragStartHeight + (event.clientY - dragStartY);
+    const height: number = Math.min(Math.max(DRAWER_MIN_HEIGHT_PX, wanted), ceiling);
     drawer.style.height = `${height}px`;
     terminal.size_fit();
   });

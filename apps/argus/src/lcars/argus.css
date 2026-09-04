@@ -137,8 +137,8 @@ body[data-zoom='console'] #drawer {
   height: calc(100dvh - 3.6rem) !important;
 }
 
-/* A zoomed console owns the stage: the workspace floor steps aside so the
- * shrinkable drawer can actually reach its zoomed height. */
+/* Retained for clarity: the console's zoom owns the stage. The workspace
+ * no longer keeps a floor to step aside from. */
 body[data-zoom='console'] main {
   min-height: 0;
 }
@@ -646,9 +646,12 @@ body {
 
 main {
   flex: 1;
-  /* The workspace floor: panes are the point of the page; whatever else is
-   * on stage, they keep a working height. */
-  min-height: 20rem;
+  /* No workspace floor. A floor here is a ceiling on the console: the
+   * drawer can only grow into space the workspace will give up, so a
+   * 20rem minimum silently capped the console at roughly half the frame
+   * however far the strip was dragged. How the stage is divided is the
+   * operator's call, not a constant's. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }

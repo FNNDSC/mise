@@ -16,6 +16,7 @@
  *
  * @module
  */
+import { listingsForFeeds_note, listingsForFeeds_drop, listingsForRoster_note, listingInvalidation_reset } from './listingInvalidation';
 
 /**
  * Feed-level metadata including job count fields for aggregate status.
@@ -183,6 +184,22 @@ export interface ProcFeedLoadProgress {
   total: number;
 }
 
+/**
+ * Where a feed appears for one identity, by how that identity sees it.
+ *
+ * @property owner - The identity's own username, used to tell an owned
+ *   feed from one shared to it.
+ * @property own - Folder holding feeds this identity owns.
+ * @property shared - Folder holding feeds shared to this identity.
+ * @property public - Folder holding public feeds.
+ */
+export interface RosterFolders {
+  owner?: string;
+  own?: string;
+  shared?: string;
+  public?: string;
+}
+
 /** How long a roster arrival stays annunciated after it lands. */
 export const PROC_ARRIVAL_TTL_MS: number = 30 * 1000;
 
@@ -287,6 +304,14 @@ export class ProcCache {
 
   /** Feeds the roster gained (created or shared) with the moment they landed. */
   private arrivals: Map<number, number> = new Map();
+
+  /**
+   * Folder listings whose membership changes when a feed arrives or
+   * departs, addressed by how the identity can see the feed. Empty until
+   * a host declares them, so a cache used outside a session never guesses
+   * at paths.
+   */
+  private rosterFolders: RosterFolders = {};
 
   /** Whether initial feed index has been built. */
   private _built: boolean = false;
@@ -409,8 +434,20 @@ export class ProcCache {
   feeds_reconcile(feeds: ProcFeed[]): number[] {
     const reconciliationTargets: number[] = [];
     const visible: Set<number> = new Set(feeds.map((feed: ProcFeed): number => feed.id));
+    const departed: number[] = [];
     for (const feedID of this.feedIDs_get()) {
-      if (!visible.has(feedID)) this.feed_remove(feedID);
+      if (!visible.has(feedID)) departed.push(feedID);
+    }
+    // Placing a feed needs its row, so resolve the folders before the rows
+    // are dropped.
+    const departedFolders: string[] = this.rosterFolders_for(departed);
+    for (const feedID of departed) this.feed_remove(feedID);
+    if (departed.length > 0) {
+      // A feed that vanished leaves a row behind in its parent listing,
+      // and its own cached listings describe a tree this identity can no
+      // longer reach. The parent is merely behind; the tree is gone.
+      listingsForRoster_note([], departedFolders);
+      listingsForFeeds_drop(departed);
     }
     for (const feed of feeds) {
       const previous: ProcFeed | undefined = this.feed_get(feed.id);
@@ -591,7 +628,13 @@ export class ProcCache {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
     if (status_isTerminal(inst.status)) return;
-    if (inst.status !== status) { inst.status = status; this.change_emit({ scope: 'feed', feedID: inst.feedID }); }
+    if (inst.status === status) return;
+    inst.status = status;
+    this.change_emit({ scope: 'feed', feedID: inst.feedID });
+    // Crossing into a terminal state is the moment a job's output becomes
+    // visible, and so the moment the feed's cached folder listings fell
+    // behind. A merely-running job has produced nothing to list yet.
+    if (status_isTerminal(status)) listingsForFeeds_note([inst.feedID]);
   }
 
   /**
@@ -711,6 +754,56 @@ export class ProcCache {
    */
   arrivals_note(feedIDs: number[], at: number = Date.now()): void {
     for (const feedID of feedIDs) this.arrivals.set(feedID, at);
+    // An arrival changes the folder the feed appears in, not anything
+    // inside it. A public feed landing on a busy CUBE must not dirty this
+    // identity's own feeds folder, which did not change.
+    listingsForRoster_note(feedIDs, this.rosterFolders_for(feedIDs));
+  }
+
+  /**
+   * Declares which folder each kind of feed appears in, so an arrival
+   * dirties the one listing whose membership actually changed.
+   *
+   * A host may declare only what it knows. An unnamed folder is simply
+   * never marked, rather than every folder being marked because the
+   * roster could not tell them apart.
+   *
+   * @param folders - Folders by how this identity sees a feed.
+   */
+  rosterFolders_set(folders: RosterFolders): void {
+    this.rosterFolders = { ...folders };
+  }
+
+  /**
+   * The folder a feed appears in for this identity.
+   *
+   * @param feedID - The feed to place.
+   * @returns Its folder, or null when the feed is unknown or its folder
+   *   was never declared.
+   */
+  private rosterFolder_for(feedID: number): string | null {
+    const feed: ProcFeed | undefined = this.feeds.get(feedID);
+    if (!feed) return null;
+    if (feed.public) return this.rosterFolders.public ?? null;
+    if (this.rosterFolders.owner !== undefined && feed.ownerUsername === this.rosterFolders.owner) {
+      return this.rosterFolders.own ?? null;
+    }
+    return this.rosterFolders.shared ?? null;
+  }
+
+  /**
+   * The distinct folders whose membership the given feeds changed.
+   *
+   * @param feedIDs - Feeds that arrived or departed.
+   * @returns Folder paths, without repeats.
+   */
+  private rosterFolders_for(feedIDs: readonly number[]): string[] {
+    const folders: Set<string> = new Set();
+    for (const feedID of feedIDs) {
+      const folder: string | null = this.rosterFolder_for(feedID);
+      if (folder !== null) folders.add(folder);
+    }
+    return Array.from(folders);
   }
 
   /**
@@ -879,6 +972,7 @@ export class ProcCache {
    * Clears all cache data. Called before a full rebuild.
    */
   cache_clear(): void {
+    listingInvalidation_reset();
     this.feeds.clear();
     this.instances.clear();
     this.feedRoots.clear();

@@ -191,6 +191,18 @@ export async function startupWarmup_run(
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [] };
 
+  // Feed movement dirties the listings inside a feed; an arrival or a
+  // departure changes the folder a feed appears *in*. The roster speaks
+  // only in feed ids, so the host names those folders once here, and says
+  // which is which: a public feed landing must not dirty this identity's
+  // own feeds folder. The shared and public roots are known without an
+  // authenticated user; only the identity's own folder needs one.
+  procCache_get().rosterFolders_set({
+    ...(user !== undefined ? { owner: user, own: `/home/${user}/feeds` } : {}),
+    shared: '/SHARED',
+    public: '/PUBLIC',
+  });
+
   // Folder listings survive a restart as a stale-marked checkpoint: the
   // first `ls` anywhere already listed renders at once and revalidates
   // behind itself. The row reports age as well as count, because a count

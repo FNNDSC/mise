@@ -56,8 +56,20 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'file', 'header', 'console', 'back', 'desktop', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus',
 ]);
+
+/**
+ * Subjects the SESSION also owns, and the verbs argus claims from them.
+ *
+ * `pacs` is a kernel command (`pacs connect|list|query|pull|status`) and the
+ * surface must not shadow it: a line whose verb is not claimed here falls
+ * through to the session, which answers for its own vocabulary. Every other
+ * subject is the surface's alone.
+ */
+const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
+  pacs: new Set(['sort', 'filter']),
+};
 
 /** Desktop replay ordinals: %n → the n-th pane created during this load. */
 let replayPanes: string[] | null = null;
@@ -77,6 +89,8 @@ export function sentence_parse(line: string): Sentence | null {
   const words: string[] = line.trim().split(/\s+/);
   const subject: string = (words[0] ?? '').toLowerCase();
   if (!SUBJECTS.has(subject)) return null;
+  const claimed: ReadonlySet<string> | undefined = SHARED_SUBJECTS[subject];
+  if (claimed !== undefined && !claimed.has((words[1] ?? '').toLowerCase())) return null;
   let target: string | null = null;
   let rest: string[] = words.slice(1);
   if (rest[0]?.startsWith('@') || rest[0]?.startsWith('%')) {
@@ -173,6 +187,7 @@ const VERBS_HELP: string = [
   'node enter · immerse · back · clear (the indicated node)',
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
   'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
+  'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
@@ -253,15 +268,19 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     return `console: unknown verb '${verb}' (open|close|toggle|zoom|height)`;
   }
 
-  if (subject === 'runs' || subject === 'file') {
+  if (subject === 'runs' || subject === 'file' || subject === 'pacs') {
     if (verb === 'sort' || verb === 'filter') {
-      const kind: string = subject === 'runs' ? '.pane-dag' : '.pane-files';
+      const kind: string =
+        subject === 'runs' ? '.pane-dag' : subject === 'file' ? '.pane-files' : '#pacs-workspace';
       const targeted: string | null = target_resolve(host, sentence.target);
       const mount: HTMLElement | null = targeted === null ? null : host.paneMount_get(targeted);
       // The subject names the kind: fall back to any such pane on stage.
       const pane: HTMLElement | null =
         mount?.querySelector<HTMLElement>(kind) ?? document.querySelector<HTMLElement>(kind);
-      if (pane === null) return `${subject} ${verb}: no ${subject === 'runs' ? 'DAG' : 'files'} pane`;
+      if (pane === null) {
+        const named: string = subject === 'runs' ? 'DAG' : subject === 'file' ? 'files' : 'PACS';
+        return `${subject} ${verb}: no ${named} pane`;
+      }
       if (verb === 'sort') {
         if (arg === '') return `${subject} sort <column> [asc|desc]`;
         const dir: 'asc' | 'desc' = (words[2] ?? 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';

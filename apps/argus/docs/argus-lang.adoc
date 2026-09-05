@@ -119,6 +119,19 @@ These act on the DAG pane's *regard*: the node last selected (or the feed picked
 | `file filter <text>` / `file filter off` | event `argus:roster` | As for `runs filter`.
 |===
 
+=== pacs — the query results listing
+
+A PACS answer is a listing like the other two, grouped by study: one sort and one filter govern every study on stage, and each study heads its own series with caps minted from the same column declaration.
+
+`pacs` is the one SHARED subject. It is also a kernel command (`pacs connect|disconnect|list|query|pull|status`), so the surface claims only `sort` and `filter` and every other `pacs` line falls through to the session untouched. Law `surface-never-shadows-the-session`.
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `pacs sort <column> [asc\|desc]` | event `argus:roster` | Study columns: `patient`, `mrn`, `study`, `date`, `accession`, `modality`, `series`, `progress`. Series columns: `series`, `state`, `modality`, `files`. A column names its level; `state` orders by what a series is doing — `idle`, `queued`, `running`, `pulled`, `error`.
+| `pacs filter <text>` / `pacs filter off` | event `argus:roster` | As for `runs filter`, read down the levels: a study matching on its own columns keeps all its series, one that does not keeps the series that match, and a study with neither leaves the stage.
+|===
+
 === header — the header face
 
 [cols="2,3,3",options="header"]
@@ -169,7 +182,7 @@ Tab completes from this table (first word, then the follower of the previous wor
 [cols="1,4",options="header"]
 |===
 | After | Candidates
-| (start) | pane view runs node dag file header console back desktop argus
+| (start) | pane view runs node dag file pacs header console back desktop argus
 | pane | split zoom close bind claim focus
 | view | files runs pacs
 | runs | enter sort filter
@@ -177,6 +190,7 @@ Tab completes from this table (first word, then the follower of the previous wor
 | dag | layout projection scale hue pulse census physics refresh
 | physics | charge link collide gravity reset
 | file | home back download delete sort filter follow root list cards preview
+| pacs | sort filter connect disconnect list query pull status
 | header | stats dag away restore
 | console | open close toggle zoom height
 | desktop | save load show list delete

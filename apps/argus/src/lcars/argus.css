@@ -790,50 +790,114 @@ main {
   cursor: default;
 }
 
-#pacs-results {
+/* The results are a framed field like the other two listings: a rule
+ * turning through an elbow into the spine, whose mode frame carries the
+ * one mode a query's answer has. */
+.pacs-listing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   max-height: 34vh;
-  overflow-y: auto;
+  padding-right: var(--spine-w);
   margin-bottom: 0.6rem;
+}
+
+/* The frame (the filter strip) is the pane's chrome and stays put; the
+ * field scrolls beneath it, starting under the rule.
+ * ONE roster grid per pane — the tracks, the gap and the edge padding are
+ * declared here and read by every study's caps AND its series rows. */
+#pacs-results {
+  /* The STUDY grid: fold, patient, mrn, study, date, accession, modality,
+   * series, progress, verbs. The track list is positional, so it must gain
+   * a column wherever the study traits do. */
+  --roster-cols:
+    1.4em minmax(0, 13em) 7em minmax(0, 15em) 6em 8em 6em 4em minmax(5em, 1fr) 7em;
+  --roster-gap: 0.8rem;
+  --roster-pad: 6px;
+  display: flex;
+  flex-direction: column;
+  /* Sized by its rows up to the region's own ceiling — a zero basis would
+   * collapse it, because the frame around it is capped, not fixed. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: calc(var(--rule-h) + 0.3rem);
+}
+
+/* The frame sits outside the scrolling field, so it holds its place by
+ * structure rather than by painting over rows passing beneath it. */
+#pacs-results > .roster-order {
+  position: static;
+  z-index: auto;
+  flex: none;
+}
+
+#pacs-results > .listing-field {
+  flex: 1 1 auto;
+  padding-right: 0.5rem;
 }
 
 .pacs-study {
   margin-bottom: 0.7rem;
 }
 
-.pacs-study-head {
+/* One study, on the study grid: the fold glyph, its facts, its summed
+ * progress, and its verb. Activating it unfolds its series in place. */
+.pacs-study-row {
+  display: grid;
+  grid-template-columns: var(--roster-cols);
+  align-items: center;
+  gap: 0 var(--roster-gap);
+  padding: 3px var(--roster-pad);
+  font-size: 0.8rem;
   color: var(--orange);
-  font-weight: bold;
   border-bottom: 2px solid var(--orange);
-  padding-bottom: 0.15rem;
-  margin-bottom: 0.25rem;
-  font-size: 0.85rem;
+  cursor: pointer;
 }
 
-/* The caps sit over the series columns, in the roster's own idiom: the
- * same bar segments the file browser and the runs listing wear. They share
- * the row's track definition so a cap always sits over its column. */
-.pacs-series-caps {
+.pacs-study-row:hover {
+  background: rgb(255 119 0 / 12%);
+}
+
+.pacs-study-row > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pacs-study-patient,
+.pacs-study-desc { color: var(--butter); }
+.pacs-study-mrn,
+.pacs-study-accession { color: var(--harvestgold); }
+.pacs-study-date,
+.pacs-study-modalities,
+.pacs-study-count { color: var(--pumpkin-pie); }
+
+/* The series are a listing of their own, on their own grid, inside the
+ * study that stands over them. */
+.pacs-series-level {
+  /* series, state, modality, files, verbs */
   --roster-cols: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
-  --roster-gap: 0.8rem;
-  --roster-pad: 6px;
+  padding-left: 1.4em;
+}
+
+/* Every study heads its series with caps, minted from the one column
+ * declaration the pane makes: the same bar segments the file browser and
+ * the runs listing wear, over the same grid as the rows beneath them. */
+.pacs-series-level .roster-caps {
   margin: 0.35rem 0 0.3rem;
 }
 
-/* A picture and a verb need no naming. */
-.pacs-series-caps .roster-cap[data-key='action'] {
-  background-color: transparent;
-}
-
+/* The description takes what it needs up to a limit, then the progress
+ * track takes the rest; the last track is the row's verbs, which answer to
+ * no cap. */
 .pacs-series {
   display: grid;
-  /* The description takes what it needs up to a limit, then the progress
-   * track takes the rest. The bar used to sit in a fixed 10em cell wedged
-   * between the file count and the capsule, while the description's `1fr`
-   * hoarded the empty width beside it. */
-  grid-template-columns: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
+  grid-template-columns: var(--roster-cols);
   align-items: center;
-  gap: 0 0.8rem;
-  padding: 2px 6px;
+  gap: 0 var(--roster-gap);
+  padding: 2px var(--roster-pad);
   font-size: 0.8rem;
 }
 
@@ -855,6 +919,10 @@ main {
 }
 
 /* The bar stretches across the track; its note keeps to its own width. */
+.pacs-badge .listing-progress {
+  flex: 1 1 auto;
+}
+
 .pacs-badge-note {
   flex: none;
   white-space: nowrap;
@@ -1301,7 +1369,8 @@ body[data-zoom]:not([data-zoom='console'])
  * A hover only lights the spine — a beckon, never an opening. */
 .files-body,
 .dag-canvas,
-.dag-roster {
+.dag-roster,
+.pacs-listing {
   --frame-top: var(--mode-frame-top, 0px);
   --spine-w: 8px;
   --rule-h: 6px;
@@ -1311,7 +1380,8 @@ body[data-zoom]:not([data-zoom='console'])
 
 .workspace-pane[data-modes='open'] .files-body,
 .workspace-pane[data-modes='open'] .dag-canvas,
-.workspace-pane[data-modes='open'] .dag-roster {
+.workspace-pane[data-modes='open'] .dag-roster,
+.workspace-pane[data-modes='open'] .pacs-listing {
   --spine-w: var(--bar-w);
 }
 
@@ -1587,20 +1657,24 @@ body[data-header='dag'] #header-dag {
   align-items: center;
 }
 
+/* One capsule idiom across the surface: a row's verb wears what the
+ * workspace's own capsules wear. */
 .listing-action {
   border: none;
-  border-radius: 0.7rem;
-  padding: 0.05rem 0.7rem;
+  border-radius: 0.8rem;
+  padding: 0.1rem 0.9rem;
   background: var(--harvestgold);
   color: #000;
   font-family: 'Antonio', sans-serif;
-  font-size: 0.62rem;
+  font-weight: bold;
+  font-size: 0.7rem;
   letter-spacing: 0.1em;
   cursor: pointer;
 }
 
 .listing-action:hover:not(:disabled) {
-  filter: brightness(1.25);
+  filter: brightness(1.3);
+  box-shadow: 0 0 8px var(--harvestgold);
 }
 
 .listing-action:disabled {
@@ -2692,23 +2766,16 @@ body[data-zoom] #header-restore {
 
 /* --------------------------------------------------- PACS nits (round two) */
 
-/* Folded studies hide their series; the head stays as the handle. */
-.pacs-study-head {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  cursor: pointer;
-}
-
-.pacs-study-label {
-  flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.pacs-collapsed .pacs-series {
+/* A folded study shows its own row alone: caps over hidden rows would name
+ * columns nothing is standing in. */
+.pacs-collapsed .pacs-series-level {
   display: none;
+}
+
+/* A study's progress: its series' summed, in its own column. */
+.pacs-study-progress {
+  display: block;
+  min-width: 0;
 }
 
 .pacs-fold {

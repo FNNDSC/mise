@@ -1780,7 +1780,7 @@ async function surface_start(token: string): Promise<void> {
     else palette_close();
   });
   const LANG_SUBJECT_WORDS: string[] = [
-    'pane', 'view', 'runs', 'node', 'dag', 'file', 'header', 'console', 'back', 'desktop', 'argus',
+    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus',
   ];
   const LANG_FOLLOWERS: Record<string, string[]> = {
     pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus'],
@@ -1790,6 +1790,8 @@ async function surface_start(token: string): Promise<void> {
     dag: ['layout', 'projection', 'scale', 'hue', 'pulse', 'census', 'physics', 'refresh'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
     file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root', 'list', 'cards', 'preview'],
+    // The session owns most of `pacs`; the surface claims sort and filter.
+    pacs: ['sort', 'filter', 'connect', 'disconnect', 'list', 'query', 'pull', 'status'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],
     desktop: ['save', 'load', 'show', 'list', 'delete'],

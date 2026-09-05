@@ -233,3 +233,36 @@ export function actionCell_build<T>(row: T, actions: ReadonlyArray<ListingAction
  * which is what a study does with its series. Same model, different mode.
  */
 export type ExpansionMode = 'replace' | 'fold';
+
+/** Which rows of a folding listing are currently open. */
+export interface Expansion {
+  mode: ExpansionMode;
+  /** The open rows' keys. Always empty under `replace`, which keeps none. */
+  open: Set<string>;
+}
+
+/**
+ * Whether a row is showing its children.
+ *
+ * @param expansion - The listing's expansion state.
+ * @param key - The row's key.
+ * @returns True when the row's children are on stage beneath it.
+ */
+export function expansion_isOpen(expansion: Expansion, key: string): boolean {
+  return expansion.mode === 'fold' && expansion.open.has(key);
+}
+
+/**
+ * Activates a row: under `fold` its children toggle in place, under
+ * `replace` nothing folds because the parent is left behind entirely.
+ *
+ * @param expansion - The listing's expansion state, mutated in place.
+ * @param key - The row's key.
+ * @returns Whether the row is open afterwards.
+ */
+export function expansion_toggle(expansion: Expansion, key: string): boolean {
+  if (expansion.mode !== 'fold') return false;
+  if (expansion.open.delete(key)) return false;
+  expansion.open.add(key);
+  return true;
+}

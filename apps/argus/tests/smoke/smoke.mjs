@@ -674,6 +674,84 @@ try {
   check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
   check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);
 
+  console.log('pacs-listing');
+  // A query's answer is the same listing the other two panes are: a frame
+  // that sorts and filters, caps minted per study over one column
+  // declaration, verbs outside the grid, progress at every level.
+  const pacsFrame = await evalIn(`
+    document.getElementById('gutter-tools').click(); await sleep(700);
+    const ws = document.getElementById('pacs-workspace');
+    const frame = ws.querySelector('#pacs-results > .roster-order') !== null;
+    const field = ws.querySelector('#pacs-results > .listing-field') !== null;
+    const studyCaps = [...ws.querySelectorAll('#pacs-results > .roster-order .roster-cap')].map(c => c.textContent.trim());
+    const strip = () => ws.querySelector('#pacs-results .roster-filter').getBoundingClientRect().height;
+    const rest = strip();
+    ws.querySelector('.pacs-listing .mode-strip').click(); await sleep(350);
+    const framed = ws.dataset.modes === 'open';
+    const pill = ws.querySelector('.pacs-filter');
+    pill.click(); await sleep(250);
+    const open = strip() > 0; const onLabel = pill.textContent.trim();
+    pill.click(); await sleep(250);
+    const shut = strip(); const offLabel = pill.textContent.trim();
+    document.getElementById('pacs-results').click(); await sleep(300);
+    const retracted = ws.dataset.modes !== 'open';
+    return { frame, field, studyCaps, rest, framed, open, onLabel, shut, offLabel, retracted };`);
+  check('the PACS results are a framed field: frame outside the scroll, mode frame on the spine',
+    pacsFrame.frame === true && pacsFrame.field === true
+    && pacsFrame.framed === true && pacsFrame.retracted === true, JSON.stringify(pacsFrame));
+  check('the study caps head the region before any answer, ACCESSION among them',
+    Array.isArray(pacsFrame.studyCaps) && pacsFrame.studyCaps.includes('ACCESSION')
+    && pacsFrame.studyCaps.includes('PATIENT') && pacsFrame.studyCaps.includes('MRN'),
+    JSON.stringify(pacsFrame.studyCaps));
+  check('FILTER summons the results strip and reads its state',
+    pacsFrame.rest === 0 && pacsFrame.open === true && pacsFrame.onLabel === 'FILTER ON'
+    && pacsFrame.shut === 0 && pacsFrame.offLabel === 'FILTER OFF', JSON.stringify(pacsFrame));
+
+  // Sorting needs an actual answer, so it needs a PACS to answer. Set
+  // SMOKE_PACS_QUERY to a query that finds at least one study with two
+  // series (e.g. 'pacs query PatientID:12345').
+  const pacsQuery = process.env.SMOKE_PACS_QUERY;
+  if (!pacsQuery) {
+    console.log('  skipped: set SMOKE_PACS_QUERY=<a `pacs query ...` line that finds a study of two or more series>');
+  } else {
+    const pacsSort = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(500);
+      const cmd = document.getElementById('pacs-command');
+      cmd.value = ${JSON.stringify(pacsQuery)};
+      cmd.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 180; i++) { await sleep(1000);
+        if (document.querySelectorAll('#pacs-results .pacs-study').length > 0) break; }
+      // A repeat of the same answer can land a moment later; let it, so the
+      // fold under test is the operator's and not a race with the wire.
+      await sleep(2500);
+      const study = () => document.querySelector('#pacs-results .pacs-study');
+      if (!study()) return { studies: 0 };
+      if (study().classList.contains('pacs-collapsed')) {
+        study().querySelector('.pacs-study-row').click(); await sleep(300);
+      }
+      const names = () => [...study().querySelectorAll('.pacs-series .pacs-series-desc')].map(e => e.textContent);
+      const before = names().join('|');
+      const caps = study().querySelectorAll('.roster-cap').length;
+      const track = study().querySelector('.pacs-study-progress .listing-progress') !== null;
+      const accession = study().querySelector('.pacs-study-accession')?.textContent ?? '';
+      const verbs = study().querySelector('.pacs-series .listing-action') !== null;
+      study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
+      const ascending = names().join('|');
+      const lit = study().querySelector('.roster-cap.roster-active') !== null;
+      study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
+      const descending = names().join('|');
+      return { studies: 1, rows: names().length, before, ascending, descending, caps, track, verbs, lit, accession };`);
+    check('a study heads its series with caps, a summed track, and verbs',
+      pacsSort.studies === 1 && pacsSort.caps >= 4 && pacsSort.track === true && pacsSort.verbs === true
+      && pacsSort.accession.length > 0,
+      JSON.stringify(pacsSort));
+    check('sorting a study reorders its series, and reverses',
+      pacsSort.rows > 1 && pacsSort.lit === true
+      && pacsSort.ascending !== pacsSort.descending
+      && pacsSort.ascending === pacsSort.ascending.split('|').sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).join('|'),
+      JSON.stringify(pacsSort));
+  }
+
   console.log('host-control');
   // The HOST lamp reads the attach ack's declared tiers and nothing else:
   // present exactly when the daemon declared host control, absent at rest.

@@ -7,7 +7,7 @@
  * scenario string present in the smoke suite). Doctrine cannot be written
  * without teeth.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const html = readFileSync('apps/argus/index.html', 'utf8');
 const css = readFileSync('apps/argus/src/lcars/argus.css', 'utf8');
@@ -15,6 +15,12 @@ const aegis = readFileSync('apps/argus/docs/aegis.adoc', 'utf8');
 const smoke = readFileSync('apps/argus/tests/smoke/smoke.mjs', 'utf8');
 const sources = ['apps/argus/src/app/main.ts', 'apps/argus/src/console/argusLang.ts']
   .map((p) => ({ path: p, text: readFileSync(p, 'utf8') }));
+
+/** Every feature panel's source, by path. */
+const features = readdirSync('apps/argus/src/features', { recursive: true })
+  .filter((name) => String(name).endsWith('.ts'))
+  .map((name) => `apps/argus/src/features/${String(name).replaceAll('\\', '/')}`)
+  .map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 
 const failures = [];
 const fail = (law, detail) => failures.push(`${law}: ${detail}`);
@@ -164,7 +170,7 @@ LINT_CHECKS['hover-never-glares'] = () => {
 LINT_CHECKS['roster-grid-single-source'] = () => {
   // Caps and rows read one declaration: any roster grid that spells its own
   // template has drifted from the caps (or will).
-  for (const selector of ['.roster-caps', '.files-grid', '.feedlist-row']) {
+  for (const selector of ['.roster-caps', '.files-grid', '.feedlist-row', '.pacs-series', '.pacs-study-row']) {
     const m = css.match(new RegExp(`\n${selector.replace('.', '\\.')} \\{([^}]*)\\}`));
     if (!m) { fail('roster-grid-single-source', `${selector} rule not found`); continue; }
     if (!/grid-template-columns:\s*var\(--roster-cols\)/.test(m[1])) fail('roster-grid-single-source', `${selector} does not read --roster-cols`);
@@ -177,6 +183,48 @@ LINT_CHECKS['roster-grid-single-source'] = () => {
       if (/--roster-cols:/.test(m[0])) continue;
       if (/roster-cols/.test(before.slice(-200))) continue;
       if (/(files-grid|feedlist-row|roster-caps)/.test(host)) fail('roster-grid-single-source', `${host} spells its own roster template`);
+    }
+  }
+};
+
+LINT_CHECKS['surface-never-shadows-the-session'] = () => {
+  // The language runs client-side BEFORE a line reaches the session, so a
+  // subject that is also a kernel command silently swallows it. A shared
+  // subject must claim only the verbs the session does not have, and say so
+  // in SHARED_SUBJECTS; every other subject must collide with nothing.
+  const lang = sources.find((s) => s.path.endsWith('argusLang.ts'));
+  if (lang === undefined) { fail('surface-never-shadows-the-session', 'argusLang.ts not read'); return; }
+  const subjects = lang.text.match(/const SUBJECTS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/);
+  if (subjects === null) { fail('surface-never-shadows-the-session', 'SUBJECTS set not found'); return; }
+  const names = [...subjects[1].matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
+  const shared = lang.text.match(/const SHARED_SUBJECTS[\s\S]*?\n\};/);
+  const sharedNames = shared === null ? [] : [...shared[0].matchAll(/^  ([a-z]+):/gm)].map((m) => m[1]);
+  // The session's own vocabulary, from the one place it is declared.
+  const dispatch = readFileSync('packages/brasa/src/core/dispatch.ts', 'utf8');
+  const block = dispatch.slice(dispatch.indexOf('ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {'));
+  const commands = new Set([...block.slice(0, block.indexOf('\n};')).matchAll(/^\s{2}'?([a-z][\w-]*)'?:/gm)].map((m) => m[1]));
+  for (const name of names) {
+    if (!commands.has(name)) continue;
+    if (!sharedNames.includes(name)) {
+      fail('surface-never-shadows-the-session', `subject '${name}' shadows the session command of the same name and is not declared shared`);
+    }
+  }
+};
+
+LINT_CHECKS['listing-is-one-abstraction'] = () => {
+  // The listing lives in features/roster: the frame that sorts and filters,
+  // the trait a column is declared as, the capsule a verb is drawn as. A
+  // pane that builds any of that itself has forked the abstraction, which
+  // is how three panes came to spell the same table three ways.
+  for (const { path, text } of features) {
+    if (path.startsWith('apps/argus/src/features/roster/')) continue;
+    if (/'roster-caps?'/.test(text)) fail('listing-is-one-abstraction', `${path} builds its own column caps`);
+    if (/'roster-filter/.test(text)) fail('listing-is-one-abstraction', `${path} builds its own filter strip`);
+    // A pane that mounts the frame must declare its columns as traits: a
+    // hand-written column list beside a trait list is the drift the traits
+    // exist to prevent.
+    if (/new RosterOrder</.test(text) && !/traitColumns_of\(/.test(text)) {
+      fail('listing-is-one-abstraction', `${path} mounts a roster without declaring traits`);
     }
   }
 };

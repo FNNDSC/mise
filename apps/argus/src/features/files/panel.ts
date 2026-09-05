@@ -19,6 +19,7 @@
 import type { WireEnvelope } from '@fnndsc/menu';
 import { RosterOrder } from '../roster/order.js';
 import { ListingHost } from '../roster/host.js';
+import { listingRow_build, traitColumns_of, traitValue_of, type ListingTrait } from '../roster/row.js';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.
@@ -232,6 +233,61 @@ export interface FileAction {
  * The Files panel: renders the latest `fs.listing` the session produced,
  * and can present one file's content with a way back to the listing.
  */
+/**
+ * The files listing's columns, declared once.
+ *
+ * A directory shows no size: a folder's byte count is not a fact CUBE
+ * reports, and a zero would read as an empty directory.
+ */
+const FILE_TRAITS: ReadonlyArray<ListingTrait<FsListingEntry>> = [
+  {
+    key: 'name',
+    label: 'NAME',
+    className: 'files-name',
+    cell: (item: FsListingEntry): string | HTMLElement => {
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'files-name';
+      name.textContent = item.name;
+      if (item.type === 'link' && item.target !== undefined) {
+        // A link says where it points, the way `ls -l` does.
+        const target: HTMLSpanElement = document.createElement('span');
+        target.className = 'files-target';
+        target.textContent = `→ ${item.target}`;
+        name.appendChild(target);
+        name.title = item.target;
+      }
+      return name;
+    },
+    compare: (item: FsListingEntry): string => item.name,
+  },
+  {
+    key: 'type',
+    label: 'TYPE',
+    className: 'files-type',
+    cell: (item: FsListingEntry): string => item.type,
+  },
+  {
+    key: 'size',
+    label: 'SIZE',
+    className: 'files-size',
+    cell: (item: FsListingEntry): string => (item.type === 'dir' ? '' : size_format(item.size)),
+    compare: (item: FsListingEntry): number => item.size,
+  },
+  {
+    key: 'date',
+    label: 'DATE',
+    className: 'files-date',
+    cell: (item: FsListingEntry): string => item.date.slice(0, 10),
+    compare: (item: FsListingEntry): string => item.date,
+  },
+  {
+    key: 'owner',
+    label: 'OWNER',
+    className: 'files-owner',
+    cell: (item: FsListingEntry): string => item.owner,
+  },
+];
+
 export class FilesPanel {
   private readonly container: HTMLElement;
   private readonly activate: (action: FileAction) => void;
@@ -282,15 +338,8 @@ export class FilesPanel {
   constructor(container: HTMLElement, activate: (action: FileAction) => void, preview: PreviewProvider | null = null) {
     this.preview = preview;
     this.order = new RosterOrder<FsListingEntry>(
-      [
-        { key: 'name', label: 'NAME' },
-        { key: 'type', label: 'TYPE' },
-        { key: 'size', label: 'SIZE' },
-        { key: 'date', label: 'DATE' },
-        { key: 'owner', label: 'OWNER' },
-      ],
-      (row: FsListingEntry, key: string): string | number =>
-        key === 'size' ? row.size : key === 'date' ? row.date : key === 'owner' ? row.owner : key === 'type' ? row.type : row.name,
+      traitColumns_of(FILE_TRAITS),
+      traitValue_of(FILE_TRAITS),
       (): void => this.listings_render(this.lastListings),
       { key: 'name', dir: 'asc' },
       1,
@@ -879,75 +928,44 @@ export class FilesPanel {
    * @returns The row element.
    */
   private row_build(parentPath: string, item: FsListingEntry): HTMLElement {
-    const row: HTMLElement = document.createElement('div');
-    row.className = `files-row files-type-${item.type}`;
-
+    const path: string = path_join(parentPath, item.name);
     // Listable is not readable. Once refused, the row says so rather than
     // inviting the same click again.
-    const refused: boolean = this.denied.has(path_join(parentPath, item.name));
-    if (refused) {
-      row.classList.add('files-denied');
-      row.title = 'listed but not readable — CUBE refused this identity access to the contents';
-    }
+    const refused: boolean = this.denied.has(path);
 
-    const glyph: HTMLSpanElement = document.createElement('span');
-    glyph.className = 'files-glyph';
-    glyph.textContent = refused ? '⃠' : TYPE_GLYPHS[item.type];
-
-    const name: HTMLSpanElement = document.createElement('span');
-    name.className = 'files-name';
-    name.textContent = item.name;
-    if (item.type === 'link' && item.target !== undefined) {
-      // A link says where it points, the way `ls -l` does.
-      const target: HTMLSpanElement = document.createElement('span');
-      target.className = 'files-target';
-      target.textContent = `→ ${item.target}`;
-      name.appendChild(target);
-      name.title = item.target;
-    }
-
-    const size: HTMLSpanElement = document.createElement('span');
-    size.className = 'files-size';
-    size.textContent = item.type === 'dir' ? '' : size_format(item.size);
-
-    const date: HTMLSpanElement = document.createElement('span');
-    date.className = 'files-date';
-    date.textContent = item.date.slice(0, 10);
-
-    const owner: HTMLSpanElement = document.createElement('span');
-    owner.className = 'files-owner';
-    owner.textContent = item.owner;
-
-    // The entry's kind is a column of its own: a name alone does not say
-    // whether it is a plugin, a pipeline, a link, or a directory.
-    const type: HTMLSpanElement = document.createElement('span');
-    type.className = 'files-type';
-    type.textContent = item.type;
-    row.append(glyph, name, type, size, date, owner);
-
-    // Links navigate: in this VFS a link names a place (a node's `data`
-    // pointing into the feed tree), so following it is a directory move —
-    // the engine resolves the target. Only plain files are viewable content.
-    // 'job' is /proc's directory kind for a plugin instance — navigable,
-    // and inside a node's overlay it is the hop target.
-    if (item.type === 'dir' || item.type === 'vfs' || item.type === 'link' || item.type === 'job') {
-      row.classList.add('files-activatable');
-      row.addEventListener('click', (): void => {
-        this.activate({ kind: 'dir', path: path_join(parentPath, item.name) });
-      });
-    } else if (item.type === 'file') {
-      row.classList.add('files-activatable');
-      row.addEventListener('click', (): void => {
-        this.activate({ kind: 'file', path: path_join(parentPath, item.name) });
-      });
-    } else if (item.type === 'plugin' || item.type === 'pipeline') {
-      // A /bin entry opens as context: what this executable is.
-      row.classList.add('files-activatable');
-      row.addEventListener('click', (): void => {
-        this.activate({ kind: item.type as 'plugin' | 'pipeline', path: path_join(parentPath, item.name) });
-      });
-    }
-    return row;
+    return listingRow_build(item, FILE_TRAITS, {
+      className: (entry: FsListingEntry): string =>
+        `files-row files-type-${entry.type}${refused ? ' files-denied' : ''}`,
+      leading: (entry: FsListingEntry): HTMLElement[] => {
+        const glyph: HTMLSpanElement = document.createElement('span');
+        glyph.className = 'files-glyph';
+        glyph.textContent = refused ? '⃠' : TYPE_GLYPHS[entry.type];
+        return [glyph];
+      },
+      decorate: (row: HTMLElement, entry: FsListingEntry): void => {
+        if (refused) {
+          row.title = 'listed but not readable — CUBE refused this identity access to the contents';
+        }
+        // Links navigate: in this VFS a link names a place (a node's `data`
+        // pointing into the feed tree), so following it is a directory move —
+        // the engine resolves the target. Only plain files are viewable
+        // content. 'job' is /proc's directory kind for a plugin instance —
+        // navigable, and inside a node's overlay it is the hop target.
+        if (entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'link' || entry.type === 'job') {
+          row.classList.add('files-activatable');
+          row.addEventListener('click', (): void => this.activate({ kind: 'dir', path }));
+        } else if (entry.type === 'file') {
+          row.classList.add('files-activatable');
+          row.addEventListener('click', (): void => this.activate({ kind: 'file', path }));
+        } else if (entry.type === 'plugin' || entry.type === 'pipeline') {
+          // A /bin entry opens as context: what this executable is.
+          row.classList.add('files-activatable');
+          row.addEventListener('click', (): void => {
+            this.activate({ kind: entry.type as 'plugin' | 'pipeline', path });
+          });
+        }
+      },
+    });
   }
 }
 

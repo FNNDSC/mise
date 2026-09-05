@@ -132,8 +132,13 @@ export async function pacsQuery_createAndWait(
   listCache_get().cache_invalidate('/net/pacs/queries');
 
   const queryId: number = createResult.value.id;
+  // CUBE does not always name the owner on the create response, and the
+  // index is keyed by it — a query filed under nobody is a query the next
+  // identical ask cannot find. The session's own identity is the fallback,
+  // since it is who just asked.
   const ownerUsername: string | undefined =
-    typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined;
+    (typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined)
+    ?? (await chrisContext.current_get(Context.ChRISuser)) ?? undefined;
   const vfsPath: string = queryVfsPath_build(queryId, queryObj, ownerUsername);
   const deadline: number = Date.now() + QUERY_TIMEOUT_MS;
 
@@ -148,7 +153,7 @@ export async function pacsQuery_createAndWait(
 
     const decodeResult = await pacsQuery_resultDecode(queryId);
     if (decodeResult.ok && decodeResult.value.json !== undefined) {
-      queryIndex_file(queryId, queryObj, pacsserver, ownerUsername, true);
+      queryIndex_file(queryId, queryObj, await pacsIdentifier_resolve(pacsserver), ownerUsername, true);
       return { queryId, vfsPath, decoded: decodeResult.value };
     }
     if (!decodeResult.ok) {
@@ -163,7 +168,7 @@ export async function pacsQuery_createAndWait(
     if (status === 'succeeded' && ++succeededWithoutPayload >= 2) {
       // Filed as a no-hit. A replay must know this question was asked and
       // found nothing, so it can decline to serve the emptiness back.
-      queryIndex_file(queryId, queryObj, pacsserver, ownerUsername, false);
+      queryIndex_file(queryId, queryObj, await pacsIdentifier_resolve(pacsserver), ownerUsername, false);
       return { queryId, vfsPath, decoded: { raw: '' } };
     }
 
@@ -423,6 +428,113 @@ async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
   }
 }
 
+
+/**
+ * What each way of naming a server resolves to. Server identifiers do not
+ * change under a session, and this is on the path of every query.
+ */
+const pacsIdentifiers: Map<string, string> = new Map();
+
+/**
+ * Resolves whatever names a PACS server into its canonical identifier.
+ *
+ * The context may hold a numeric id, a `--pacsserver` may be either, and
+ * CUBE files a query under the identifier. The index is keyed on what CUBE
+ * stores, so both the write and the lookup have to speak that.
+ *
+ * @param pacsserver - An id or an identifier.
+ * @returns The identifier, or the input unchanged when it cannot be resolved.
+ */
+export async function pacsIdentifier_resolve(pacsserver: string): Promise<string> {
+  const remembered: string | undefined = pacsIdentifiers.get(pacsserver);
+  if (remembered !== undefined) return remembered;
+  const servers = await pacsServers_list();
+  // Best effort by design: this only decides what a lookup is filed under,
+  // so an unreachable or unhelpful CUBE must never fail the query itself.
+  if (!servers?.ok) return pacsserver;
+  let resolved: string = pacsserver;
+  for (const server of servers.value) {
+    if (server.identifier === pacsserver) { resolved = pacsserver; break; }
+    if (String(server.id) === pacsserver && server.identifier) { resolved = server.identifier; break; }
+  }
+  pacsIdentifiers.set(pacsserver, resolved);
+  return resolved;
+}
+
+/**
+ * Says how long ago something was answered, in the coarsest true unit.
+ *
+ * A replay states its age because mise refuses to decide staleness on the
+ * operator's behalf: an accession names a study that will not change, an
+ * MRN can gain one tomorrow, and no heuristic tells those apart reliably.
+ *
+ * @param at - An ISO timestamp.
+ * @returns A phrase like `3 months ago`, or null when the stamp is unusable.
+ */
+export function age_describe(at: string): string | null {
+  const then: number = Date.parse(at);
+  if (Number.isNaN(then)) return null;
+  const seconds: number = Math.max(0, Math.round((Date.now() - then) / 1000));
+  const units: ReadonlyArray<{ limit: number; size: number; name: string }> = [
+    { limit: 60, size: 1, name: 'second' },
+    { limit: 3600, size: 60, name: 'minute' },
+    { limit: 86400, size: 3600, name: 'hour' },
+    { limit: 2592000, size: 86400, name: 'day' },
+    { limit: 31536000, size: 2592000, name: 'month' },
+    { limit: Infinity, size: 31536000, name: 'year' },
+  ];
+  for (const unit of units) {
+    if (seconds >= unit.limit) continue;
+    const count: number = Math.max(1, Math.floor(seconds / unit.size));
+    return `${count} ${unit.name}${count === 1 ? '' : 's'} ago`;
+  }
+  return null;
+}
+
+/**
+ * Serves a stored answer when this exact question already has one.
+ *
+ * The rules were settled in #379 and each earns its place:
+ *
+ * - the criteria, the server AND the asking identity must match, because
+ *   another identity's answer is not an answer to this question;
+ * - a query that found NOTHING is never replayed. A hit is evidence that
+ *   persists — the study existed and still does — while an absence decays,
+ *   and "no imaging found" is the answer a clinician acts on;
+ * - the index is advisory, so a hit is confirmed by actually decoding the
+ *   stored result. Anything that fails — the query deleted, the payload
+ *   unreadable — drops the entry and falls through to a fresh query.
+ *
+ * @param criteria - The criteria as asked.
+ * @param identifier - The PACS being asked.
+ * @param owner - The identity asking.
+ * @returns The stored answer and its age, or null to ask the PACS.
+ */
+async function replay_attempt(
+  criteria: Record<string, string>,
+  identifier: string,
+  owner: string,
+): Promise<{ result: QueryCreateResult; answeredAt: string } | null> {
+  const entry = queryIndex_get().entry_find(criteria, identifier, owner);
+  if (entry === null || !entry.hasResult) return null;
+
+  const decoded = await pacsQuery_resultDecode(entry.queryId);
+  if (!decoded.ok || decoded.value.json === undefined) {
+    // The index promised something CUBE no longer has. Forget it and ask.
+    errorStack.stack_pop();
+    queryIndex_get().entry_drop(criteria, identifier, owner);
+    return null;
+  }
+  return {
+    result: {
+      queryId: entry.queryId,
+      vfsPath: queryVfsPath_build(entry.queryId, entry.criteria, entry.owner || undefined),
+      decoded: decoded.value,
+    },
+    answeredAt: entry.answeredAt,
+  };
+}
+
 /**
  * Creates a PACS query, waits for results, displays findings, and prints the VFS path.
  *
@@ -440,6 +552,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   let title: string = `Query ${Date.now()}`;
   let pacsserverOverride: string | null = null;
   let tableMode: boolean = false;
+  let fresh: boolean = false;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -449,6 +562,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       pacsserverOverride = args[++i];
     } else if (args[i] === '--table') {
       tableMode = true;
+    } else if (args[i] === '--fresh') {
+      fresh = true;
     } else if (!args[i].startsWith('--')) {
       positional.push(args[i]);
     }
@@ -479,16 +594,32 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
-  spinner.start(`Querying PACS for ${queryExpr}...`, true);
+  // The index is keyed on what CUBE stores, which is the identifier.
+  const identifier: string = await pacsIdentifier_resolve(pacsserver);
+  const criteria: Record<string, string> = queryExpr_parse(queryExpr) ?? {};
+  const owner: string = (await chrisContext.current_get(Context.ChRISuser)) ?? '';
 
-  const result: QueryCreateResult | null = await pacsQuery_createAndWait(
-    queryExpr,
-    title,
-    pacsserver,
-    (msg: string) => spinner.updateMessage(msg),
-  );
+  let result: QueryCreateResult | null = null;
+  let answeredAt: string | null = null;
 
-  spinner.stop();
+  if (!fresh) {
+    const replayed = await replay_attempt(criteria, identifier, owner);
+    if (replayed !== null) {
+      result = replayed.result;
+      answeredAt = replayed.answeredAt;
+    }
+  }
+
+  if (result === null) {
+    spinner.start(`Querying PACS for ${queryExpr}...`, true);
+    result = await pacsQuery_createAndWait(
+      queryExpr,
+      title,
+      pacsserver,
+      (msg: string) => spinner.updateMessage(msg),
+    );
+    spinner.stop();
+  }
 
   if (!result) {
     let errOut: string = '';
@@ -530,10 +661,19 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     );
   }
 
-  let rendered: string = `${chalk.green(`✓ Query ${result.queryId} complete`)}\n`;
+  const age: string | null = answeredAt === null ? null : age_describe(answeredAt);
+  let rendered: string = answeredAt === null
+    ? `${chalk.green(`✓ Query ${result.queryId} complete`)}\n`
+    : `${chalk.green(`✓ Query ${result.queryId} — answered ${age ?? 'earlier'}`)}\n`;
   rendered += `${renderedResult}\n`;
   rendered += `${chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`)}\n`;
   rendered += `${chalk.gray(`  cd ${result.vfsPath}`)}\n`;
   rendered += `${chalk.gray(`  pull ${result.vfsPath}`)}\n`;
+  if (answeredAt !== null) {
+    // Said, never decided: mise states the age and leaves the judgement
+    // with the operator, who knows whether this question can gain an
+    // answer between then and now.
+    rendered += `${chalk.gray(`  query ${queryExpr} --fresh   # ask the PACS again`)}\n`;
+  }
   return envelope_ok(rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
 }

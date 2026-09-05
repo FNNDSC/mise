@@ -595,16 +595,18 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   'pacs query': {
-    usage: 'pacs query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>]',
+    usage: 'pacs query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>] [--fresh]',
     description: 'Create a PACS query, wait for results, and print the VFS path',
     options: [
       '--title <title>      Title for the query record (default: Query <timestamp>)',
       '--pacsserver <id>    Override PACS server (default: context PACSserver)',
       '--table              Render results as a table instead of the default list',
+      '--fresh              Ask the PACS even if this question was answered before',
       '--help               Show this help',
     ],
     examples: [
       'pacs query PatientID:1234',
+      'pacs query PatientID:1234 --fresh      # ignore the stored answer',
       'pacs query AccessionNumber:12345678 --title "Hip DDH workup"',
       'pacs query PatientID:1234,StudyDate:20240101',
       '',
@@ -1115,16 +1117,18 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   query: {
-    usage: 'query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>]',
+    usage: 'query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>] [--fresh]',
     description: 'Create a PACS query, wait for results, and print the VFS path',
     options: [
       '--title <title>      Title for the query record (default: Query <timestamp>)',
       '--pacsserver <id>    Override PACS server (default: context PACSserver)',
       '--table              Render results as a table instead of the default list',
+      '--fresh              Ask the PACS even if this question was answered before',
       '--help               Show this help',
     ],
     examples: [
       'query PatientID:1234',
+      'query PatientID:1234 --fresh           # ignore the stored answer',
       'query AccessionNumber:12345678 --title "Hip DDH workup"',
       'query PatientID:1234,StudyDate:20240101',
       '',

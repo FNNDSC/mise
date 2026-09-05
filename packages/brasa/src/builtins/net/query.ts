@@ -28,7 +28,7 @@ import {
   queryIndex_get,
 } from '@fnndsc/cumin';
 import { queryFolderName_build } from '@fnndsc/salsa';
-import { PACS_QUERY_MODEL_KIND, type PacsQueryModel, type PacsStudy } from '@fnndsc/menu';
+import { PACS_QUERY_MODEL_KIND, type PacsProvenance, type PacsQueryModel, type PacsStudy } from '@fnndsc/menu';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -346,7 +346,17 @@ function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string
  */
 export function pacsQueryModel_build(
   decoded: PACSQueryDecodedResult,
-  facts: { queryId: number; vfsPath: string; pacsName: string; expression: string },
+  facts: {
+    queryId: number;
+    vfsPath: string;
+    pacsName: string;
+    expression: string;
+    /**
+     * Where this answer came from. Said once here so chell's sentence and
+     * argus's pill are the same fact rather than two guesses at it.
+     */
+    provenance?: PacsProvenance;
+  },
 ): PacsQueryModel {
   const tagVal = (v: unknown): string => {
     if (v && typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
@@ -646,6 +656,10 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     vfsPath: result.vfsPath,
     pacsName: pacsserver,
     expression: queryExpr,
+    provenance: {
+      replayed: answeredAt !== null,
+      answeredAt: answeredAt ?? new Date().toISOString(),
+    },
   });
   // Mark what CUBE already holds: a surface then offers gather instead of
   // pull for series that are already home. One bounded sweep, no retries.
@@ -661,15 +675,19 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     );
   }
 
-  const age: string | null = answeredAt === null ? null : age_describe(answeredAt);
-  let rendered: string = answeredAt === null
+  // Rendered FROM the model's provenance, not from a second copy of the
+  // same fact: one timestamp, one claim, however many surfaces say it.
+  const replayed: PacsProvenance | undefined =
+    model.provenance?.replayed === true ? model.provenance : undefined;
+  const age: string | null = replayed === undefined ? null : age_describe(replayed.answeredAt);
+  let rendered: string = replayed === undefined
     ? `${chalk.green(`✓ Query ${result.queryId} complete`)}\n`
     : `${chalk.green(`✓ Query ${result.queryId} — answered ${age ?? 'earlier'}`)}\n`;
   rendered += `${renderedResult}\n`;
   rendered += `${chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`)}\n`;
   rendered += `${chalk.gray(`  cd ${result.vfsPath}`)}\n`;
   rendered += `${chalk.gray(`  pull ${result.vfsPath}`)}\n`;
-  if (answeredAt !== null) {
+  if (replayed !== undefined) {
     // Said, never decided: mise states the age and leaves the judgement
     // with the operator, who knows whether this question can gain an
     // answer between then and now.

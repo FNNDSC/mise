@@ -40,6 +40,30 @@ export const pacsStudySchema = z.object({
 });
 
 /**
+ * Where an answer came from: the PACS just now, or a query already stored.
+ *
+ * CUBE keeps every query it has run, so a question asked before can be
+ * answered without troubling the PACS. Which of the two happened is a fact
+ * about the answer, and it belongs on the model rather than in each
+ * surface's rendering: chell says it in a sentence, argus in a pill, and
+ * anything later in whatever voice it has — but all of them from one
+ * timestamp, said once by the kernel that knows it.
+ */
+export const pacsProvenanceSchema = z.object({
+  /** True when this answer came from a stored query rather than the PACS. */
+  replayed: z.boolean(),
+  /**
+   * When the PACS actually answered, as an ISO timestamp.
+   *
+   * The age is stated and never acted on. A query naming an accession is a
+   * fact about a study that exists; one naming an MRN can gain a match
+   * tomorrow. No heuristic separates those reliably, so the surface says
+   * how old an answer is and leaves the judgement with the operator.
+   */
+  answeredAt: z.string(),
+});
+
+/**
  * The `pacs.query` model: one query's decoded result. `vfsPath` is where the
  * query lives under `/net/pacs/queries` — a query is a persistent CUBE
  * object, re-checkable later.
@@ -50,8 +74,15 @@ export const pacsQueryModelSchema = z.object({
   pacsName: z.string(),
   expression: z.string(),
   studies: z.array(pacsStudySchema),
+  /**
+   * Optional so an envelope from a daemon that predates replay still
+   * parses: a surface reads its absence as "freshly queried, age unknown",
+   * which is what such a daemon could only ever have meant.
+   */
+  provenance: pacsProvenanceSchema.optional(),
 });
 
+export type PacsProvenance = z.infer<typeof pacsProvenanceSchema>;
 export type PacsSeries = z.infer<typeof pacsSeriesSchema>;
 export type PacsStudy = z.infer<typeof pacsStudySchema>;
 export type PacsQueryModel = z.infer<typeof pacsQueryModelSchema>;

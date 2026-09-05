@@ -16,7 +16,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   tag_extractValue: (v) => (v && typeof v === 'object' && 'value' in v ? String(v.value ?? '') : String(v ?? '')),
   studies_extractFromDecoded: jest.fn(() => []),
   series_extractFromStudy: jest.fn(() => []),
-  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },
   chrisContext: { current_get: mockCurrentGet },
@@ -273,6 +273,27 @@ describe('replay', () => {
     expect(output).toContain('answered');
     expect(output).toContain('days ago');
     expect(output).toContain('--fresh');
+  });
+
+  it('puts provenance on the model so every surface says the same thing', async () => {
+    // One entry, held: the helper stamps a fresh `now` on every call.
+    const entry = held();
+    mockIndexFind.mockReturnValue(entry);
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 's1' }] }));
+    const envelope = await builtin_query(['PatientID:X']);
+    const model = (envelope as { model?: { data?: { provenance?: { replayed?: boolean; answeredAt?: string } } } }).model;
+    expect(model?.data?.provenance?.replayed).toBe(true);
+    expect(model?.data?.provenance?.answeredAt).toBe(entry.answeredAt);
+  });
+
+  it('marks a freshly queried answer as not replayed', async () => {
+    mockIndexFind.mockReturnValue(null);
+    mockCreate.mockResolvedValue(ok({ id: 9, owner_username: 'someone' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
+    const envelope = await builtin_query(['PatientID:X']);
+    const model = (envelope as { model?: { data?: { provenance?: { replayed?: boolean } } } }).model;
+    expect(model?.data?.provenance?.replayed).toBe(false);
   });
 
   it('never replays a query that found nothing: an absence decays', async () => {

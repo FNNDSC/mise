@@ -453,6 +453,10 @@ Client caches that were measured against the criteria above and judged normal wo
 | `/proc` topology index
 | Strong candidate, not a conclusion. The client may legitimately own its navigation index; CUBE may need only a more selective collection query rather than a new topology object.
 | Sweep cost, plus the minimum shared projection: node identity, feed identity, parent/previous relation, plugin identity, status counters.
+
+| `StudyDescription` as a PACS query key
+| Not a CUBE gap. `pacs query` whitelists nothing, so the key reaches pfdcm and the PACS; measured against a live PACS (PACSDCM, 2026-09-05), `PatientID:<id>,StudyDescription:CT-Outside Images on PACS` returned the same two studies as `PatientID:<id>` alone, including the XR study that does not match. The key is an *optional* C-FIND matching key in the DICOM standard, so a PACS is within its rights to ignore it. Recorded so a surface does not offer a query field that silently does nothing: argus shows STUDY as a listing column but not as a query term.
+| A PACS that honours it, or a pfdcm interface that reports which keys a server actually matched on — the second would be worth asking for, since a client cannot otherwise tell a narrowed result from an ignored key.
 |===
 
 [[adding-an-entry]]

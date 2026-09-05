@@ -30,17 +30,23 @@ export interface RosterOrderState {
 export type RosterValue_of<T> = (row: T, key: string) => string | number;
 
 /**
- * Sort + filter state with its two DOM pieces: the caps row and the filter
- * strip. Mount `root` at the head of the pane's listing region.
+ * Sort + filter state with its DOM pieces: caps rows and the filter strip.
+ * Mount `root` at the head of the pane's listing region. A flat listing
+ * keeps its caps in `root`; a grouped one mints a row per group instead.
  */
 export class RosterOrder<T> {
   public readonly root: HTMLElement;
-  private readonly caps: HTMLElement;
+  /**
+   * Every caps row bound to this state. A flat listing has one; a grouped
+   * listing heads each group with its own, all reading the same sort.
+   */
+  private readonly capsRows: HTMLElement[] = [];
   private readonly strip: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly columns: RosterColumn[];
   private readonly value_of: RosterValue_of<T>;
   private readonly onChange: () => void;
+  private readonly leadingCells: number;
   private state: RosterOrderState = { sortKey: null, sortDir: 'asc', filter: '' };
   private changeQueued: boolean = false;
 
@@ -75,6 +81,10 @@ export class RosterOrder<T> {
    * @param value_of - Comparable value of a row under a column key.
    * @param onChange - Called after any state change; the pane re-renders.
    * @param defaultSort - The initial sort, when the roster has a natural one.
+   * @param leadingCells - Cells the rows spend before the first column.
+   * @param capsInRoot - Whether the frame carries a caps row of its own.
+   *   False for a grouped listing, whose caps are minted per group; the
+   *   frame then carries the filter strip alone.
    */
   constructor(
     columns: RosterColumn[],
@@ -82,6 +92,7 @@ export class RosterOrder<T> {
     onChange: () => void,
     defaultSort?: { key: string; dir: 'asc' | 'desc' },
     leadingCells: number = 0,
+    capsInRoot: boolean = true,
   ) {
     this.columns = columns;
     this.value_of = value_of;
@@ -89,21 +100,9 @@ export class RosterOrder<T> {
     if (defaultSort !== undefined) {
       this.state = { ...this.state, sortKey: defaultSort.key, sortDir: defaultSort.dir };
     }
+    this.leadingCells = leadingCells;
     this.root = document.createElement('div');
     this.root.className = 'roster-order';
-    this.caps = document.createElement('div');
-    this.caps.className = 'roster-caps';
-    // The caps row is the SAME grid as the rows it heads; columns the rows
-    // spend on glyphs get empty cells so every cap sits over its column.
-    for (let i = 0; i < leadingCells; i++) this.caps.appendChild(document.createElement('span'));
-    for (const column of columns) {
-      const cap: HTMLButtonElement = document.createElement('button');
-      cap.className = 'roster-cap';
-      cap.dataset['key'] = column.key;
-      cap.title = `sort by ${column.label.toLowerCase()} (again to reverse)`;
-      cap.addEventListener('click', (): void => this.sort_toggle(column.key));
-      this.caps.appendChild(cap);
-    }
     this.strip = document.createElement('div');
     this.strip.className = 'roster-filter';
     this.strip.hidden = true;
@@ -122,8 +121,39 @@ export class RosterOrder<T> {
       }
     });
     this.strip.append(glyph, this.input);
-    this.root.append(this.caps, this.strip);
+    if (capsInRoot) this.root.appendChild(this.caps_mint());
+    this.root.appendChild(this.strip);
     this.caps_paint();
+  }
+
+  /**
+   * Mints a caps row over this state.
+   *
+   * A grouped listing — a PACS query's studies, each heading its own series
+   * — calls this once per group, so every group's caps come from the same
+   * column declaration and light together under the same sort. The caller
+   * mounts what it gets; rows that leave the document are dropped at the
+   * next paint.
+   *
+   * @returns The caps row, already painted.
+   */
+  public caps_mint(): HTMLElement {
+    const caps: HTMLElement = document.createElement('div');
+    caps.className = 'roster-caps';
+    // The caps row is the SAME grid as the rows it heads; columns the rows
+    // spend on glyphs get empty cells so every cap sits over its column.
+    for (let i = 0; i < this.leadingCells; i++) caps.appendChild(document.createElement('span'));
+    for (const column of this.columns) {
+      const cap: HTMLButtonElement = document.createElement('button');
+      cap.className = 'roster-cap';
+      cap.dataset['key'] = column.key;
+      cap.title = `sort by ${column.label.toLowerCase()} (again to reverse)`;
+      cap.addEventListener('click', (): void => this.sort_toggle(column.key));
+      caps.appendChild(cap);
+    }
+    this.capsRows.push(caps);
+    this.caps_paint();
+    return caps;
   }
 
   /** @returns The current state, for serialization. */
@@ -147,9 +177,25 @@ export class RosterOrder<T> {
     this.change_emit();
   }
 
+  /** Called whenever the filter text changes (a second level reads it). */
+  private onFilter: ((text: string) => void) | null = null;
+
+  /**
+   * Registers the listener told whenever the filter text changes.
+   *
+   * A listing of LEVELS keeps one order per level and one strip; the levels
+   * below the strip's owner learn the text this way.
+   *
+   * @param listener - The listener.
+   */
+  public filterChange_observe(listener: (text: string) => void): void {
+    this.onFilter = listener;
+  }
+
   /** Sets the filter text; `syncInput` also writes it into the strip. */
   public filter_set(text: string, syncInput: boolean = true): void {
     this.state = { ...this.state, filter: text };
+    this.onFilter?.(text);
     if (syncInput) this.input.value = text;
     if (text.length > 0 && this.strip.hidden) {
       this.strip.hidden = false;
@@ -188,9 +234,63 @@ export class RosterOrder<T> {
     this.onStrip = listener;
   }
 
-  /** Applies filter then sort. Records shown/total for the summary. */
-  public apply(rows: T[]): T[] {
-    const terms: Array<{ key: string | null; text: string }> = this.state.filter
+  /**
+   * Whether a row passes the current filter.
+   *
+   * Exposed for a listing of LEVELS, where a parent survives because one of
+   * its children matched — a rule `apply` cannot express, since it knows
+   * only its own rows.
+   *
+   * @param row - The row.
+   * @returns True when the filter keeps it.
+   */
+  public matches(row: T): boolean {
+    return this.terms_parse().every((term: { key: string | null; text: string }): boolean => {
+      const haystack: string =
+        term.key !== null
+          ? String(this.value_of(row, term.key)).toLowerCase()
+          : this.columns.map((column: RosterColumn): string => String(this.value_of(row, column.key))).join(' ').toLowerCase();
+      return haystack.includes(term.text);
+    });
+  }
+
+  /**
+   * Sorts without filtering.
+   *
+   * @param rows - The rows.
+   * @returns A sorted copy.
+   */
+  public sorted(rows: T[]): T[] {
+    const kept: T[] = [...rows];
+    const key: string | null = this.state.sortKey;
+    if (key === null) return kept;
+    const sign: number = this.state.sortDir === 'asc' ? 1 : -1;
+    kept.sort((a: T, b: T): number => {
+      const va: string | number = this.value_of(a, key);
+      const vb: string | number = this.value_of(b, key);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sign;
+      return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * sign;
+    });
+    return kept;
+  }
+
+  /**
+   * Records what the pane actually showed, when it decided that itself.
+   *
+   * A grouped listing counts across its groups, so `apply`'s own tally would
+   * describe one group rather than the answer.
+   *
+   * @param shown - Rows on stage.
+   * @param total - Rows there are.
+   */
+  public counts_set(shown: number, total: number): void {
+    this.shown = shown;
+    this.total = total;
+  }
+
+  /** The filter's terms: a bare word, or `column:text` naming a column. */
+  private terms_parse(): Array<{ key: string | null; text: string }> {
+    return this.state.filter
       .toLowerCase()
       .split(/\s+/)
       .filter((term: string): boolean => term.length > 0)
@@ -204,25 +304,11 @@ export class RosterOrder<T> {
         }
         return { key: null, text: term };
       });
-    const kept: T[] = rows.filter((row: T): boolean =>
-      terms.every((term: { key: string | null; text: string }): boolean => {
-        const haystack: string =
-          term.key !== null
-            ? String(this.value_of(row, term.key)).toLowerCase()
-            : this.columns.map((column: RosterColumn): string => String(this.value_of(row, column.key))).join(' ').toLowerCase();
-        return haystack.includes(term.text);
-      }),
-    );
-    const key: string | null = this.state.sortKey;
-    if (key !== null) {
-      const sign: number = this.state.sortDir === 'asc' ? 1 : -1;
-      kept.sort((a: T, b: T): number => {
-        const va: string | number = this.value_of(a, key);
-        const vb: string | number = this.value_of(b, key);
-        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sign;
-        return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * sign;
-      });
-    }
+  }
+
+  /** Applies filter then sort. Records shown/total for the summary. */
+  public apply(rows: T[]): T[] {
+    const kept: T[] = this.sorted(rows.filter((row: T): boolean => this.matches(row)));
     this.shown = kept.length;
     this.total = rows.length;
     return kept;
@@ -235,14 +321,26 @@ export class RosterOrder<T> {
     return parts.join(' · ');
   }
 
-  /** Paints the caps: the active column lit, with its direction glyph. */
+  /**
+   * Paints every caps row: the active column lit, with its direction glyph.
+   *
+   * A repaint first drops rows that have left the document, so a pane that
+   * mints fresh caps on each render does not accumulate them.
+   */
   private caps_paint(): void {
-    for (const cap of this.caps.querySelectorAll<HTMLElement>('.roster-cap')) {
-      const key: string = cap.dataset['key'] ?? '';
-      const column: RosterColumn | undefined = this.columns.find((c: RosterColumn): boolean => c.key === key);
-      const active: boolean = key === this.state.sortKey;
-      cap.classList.toggle('roster-active', active);
-      cap.textContent = `${column?.label ?? key}${active ? (this.state.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}`;
+    const live: HTMLElement[] = this.capsRows.filter(
+      (caps: HTMLElement): boolean => caps.parentElement === null || caps.isConnected,
+    );
+    this.capsRows.length = 0;
+    this.capsRows.push(...live);
+    for (const caps of this.capsRows) {
+      for (const cap of caps.querySelectorAll<HTMLElement>('.roster-cap')) {
+        const key: string = cap.dataset['key'] ?? '';
+        const column: RosterColumn | undefined = this.columns.find((c: RosterColumn): boolean => c.key === key);
+        const active: boolean = key === this.state.sortKey;
+        cap.classList.toggle('roster-active', active);
+        cap.textContent = `${column?.label ?? key}${active ? (this.state.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}`;
+      }
     }
   }
 }

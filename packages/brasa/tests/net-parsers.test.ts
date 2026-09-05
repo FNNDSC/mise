@@ -20,6 +20,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   pacsQueries_create: jest.fn(),
   pacsServers_list: jest.fn(),
   listCache_get: () => ({ cache_invalidate: jest.fn(), cache_invalidateTree: jest.fn() }),
+  queryIndex_get: () => ({ entry_note: jest.fn(), entry_find: jest.fn(() => null) }),
 }));
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ screen: {} }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: {} }));

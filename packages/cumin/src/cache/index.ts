@@ -20,6 +20,26 @@ export {
 } from './listCheckpoint.js';
 export type { ListCheckpointRestoreResult } from './listCheckpoint.js';
 export {
+  QueryIndex,
+  queryIndex_get,
+  queryKey_build,
+  queryCriteria_parse,
+} from './queryIndex.js';
+export type {
+  QueryIndexEntry,
+  QueryIndexEntrySnapshot,
+  QueryIndexSnapshot,
+  QueryIndexListener,
+} from './queryIndex.js';
+export {
+  queryIndexCheckpointPath_get,
+  queryIndexCheckpoint_restore,
+  queryIndexCheckpoint_save,
+  queryIndexCheckpoint_watch,
+  QUERY_INDEX_CHECKPOINT_FLOOR_MS,
+} from './queryIndexCheckpoint.js';
+export type { QueryIndexRestoreResult } from './queryIndexCheckpoint.js';
+export {
   listingsForFeeds_note,
   listingsForFeeds_drop,
   listingsForRoster_note,

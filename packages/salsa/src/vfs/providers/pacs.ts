@@ -6,7 +6,7 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryDecodedResult, FilteredResourceData, PACSServer, seriesStorage_resolve, runtimeOutput_data, runtimeOutput_err, type SeriesStorageState, type Client } from "@fnndsc/cumin";
+import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryDecodedResult, PACSServer, seriesStorage_resolve, runtimeOutput_data, runtimeOutput_err, queryIndex_get, queryIndex_sweep, type QueryIndex, type QueryIndexEntry, type SeriesStorageState, type Client } from "@fnndsc/cumin";
 import { retrieveTask_make, retrieve_fireAndWatch, retrieveTasks_skipComplete, type RetrieveTask, type RetrieveWatchEvents } from "../../retrieve/watch.js";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
@@ -25,7 +25,6 @@ import {
 
 import {
   pacsServers_list,
-  pacsQueries_list,
   pacsQuery_resultDecode,
 } from "../../pacs/index.js";
 import { files_copyRecursively } from "../../files/index.js";
@@ -53,28 +52,41 @@ function pacsRoot_list(): Result<VFSItem[]> {
   return Ok([{ name: "queries", type: "vfs", size: 0, owner: "root", date: new Date().toISOString() }]);
 }
 
+/**
+ * Lists the query log: every query this identity has asked, not a page of them.
+ *
+ * The log used to be the first hundred records CUBE returned, which on a
+ * working CUBE is a small fraction of them — an operator looking for a query
+ * they knew they had run simply could not see it. A listing shows what is
+ * there (#401).
+ *
+ * Served from the query index, which holds the whole log and is filled by a
+ * background sweep. A cold index falls back to sweeping now: slower, but
+ * complete, and it warms the index for everything after.
+ *
+ * @param options - Sort and order.
+ * @returns Every stored query as a folder.
+ */
 async function queries_list(options?: SortOptions): Promise<Result<VFSItem[]>> {
-  const queriesResult: Result<FilteredResourceData | null> = await pacsQueries_list({ limit: 100 });
-  if (!queriesResult || !queriesResult.ok || !queriesResult.value) return Ok([]);
-  const items: VFSItem[] = queriesResult.value.tableData.map((row: Record<string, unknown>): VFSItem => {
-    const queryId: string = String(row.id);
-    const title: string = typeof row.title === "string" ? row.title : "query";
-    const queryStr: string = typeof row.query === "string" ? row.query : "";
-    let queryObj: Record<string, unknown> = {};
-    try { if (queryStr) queryObj = JSON.parse(queryStr); } catch { /* ignore */ }
-    const hasResult: boolean = typeof row.result === "string" && row.result.trim().length > 0;
-    const ownerUsername: string = typeof row.owner_username === "string" ? row.owner_username : "";
-    const creationDate: string = typeof row.creation_date === "string" ? row.creation_date : new Date().toISOString();
-    return {
-      name: queryFolderName_build({
-        queryId, queryObj, title, username: ownerUsername || undefined, hasResult,
-      }),
-      type: "dir",
-      size: 0,
-      owner: ownerUsername || "system",
-      date: creationDate,
-    };
-  });
+  const index: QueryIndex = queryIndex_get();
+  if (index.size_get() === 0) {
+    // Nothing held yet: fill it rather than show a page of the log and
+    // call it the log.
+    await queryIndex_sweep();
+  }
+  const items: VFSItem[] = index.entries_all().map((entry: QueryIndexEntry): VFSItem => ({
+    name: queryFolderName_build({
+      queryId: String(entry.queryId),
+      queryObj: entry.criteria,
+      title: "query",
+      username: entry.owner || undefined,
+      hasResult: entry.hasResult,
+    }),
+    type: "dir",
+    size: 0,
+    owner: entry.owner || "system",
+    date: entry.answeredAt,
+  }));
   return Ok(vfsItems_sort(items, options?.sort, options?.reverse));
 }
 

@@ -34,7 +34,13 @@ import {
   listCache_get,
   listCheckpoint_restore,
   listCheckpoint_watch,
+  queryIndexCheckpoint_restore,
+  queryIndexCheckpoint_save,
+  queryIndexCheckpoint_watch,
+  queryIndex_sweep,
   type ListCheckpointRestoreResult,
+  type QueryIndexRestoreResult,
+  type QuerySweepResult,
   type ProcCheckpointRestoreResult,
   type ProcWarmupProgress,
   type Result,
@@ -251,6 +257,8 @@ export async function startupWarmup_run(
   reportTopologySettlement: boolean = false,
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [], deferred: [] };
+  /** The identity whose checkpoints this boot restored, once known. */
+  let checkpointIdentity: string | null = null;
 
   // Feed movement dirties the listings inside a feed; an arrival or a
   // departure changes the folder a feed appears *in*. The roster speaks
@@ -272,6 +280,7 @@ export async function startupWarmup_run(
     const cubeUrl: string | null = await chrisContext.ChRISURL_get();
     if (cubeUrl) {
       const identity: string = identity_forSession(user, cubeUrl);
+      checkpointIdentity = identity;
       const listings: ListCheckpointRestoreResult = await listCheckpoint_restore(identity);
       listCheckpoint_watch(identity);
       reporter?.log(
@@ -280,6 +289,18 @@ export async function startupWarmup_run(
         listings.restored
           ? `Restored ${listings.count} folder listing(s)${restoreAge_describe()}, stale until revisited`
           : (listings.reason ?? 'No folder-listing checkpoint'),
+      );
+      // What has already been asked of a PACS. Expensive to build — every
+      // row of the collection drags its compressed result — and cheap to
+      // keep, so it is restored rather than swept again.
+      const queries: QueryIndexRestoreResult = await queryIndexCheckpoint_restore(identity);
+      queryIndexCheckpoint_watch(identity);
+      reporter?.log(
+        queries.restored ? 'ok' : 'skip',
+        'Queries',
+        queries.restored
+          ? `Restored ${queries.count} PACS quer(y/ies) already asked`
+          : (queries.reason ?? 'No PACS query index'),
       );
     }
   }
@@ -369,6 +390,46 @@ export async function startupWarmup_run(
       'Warming /SHARED behind the prompt',
       reporter,
       (): Promise<PrefetchResult> => prefetch_path('/SHARED'),
+    ));
+
+    // The PACS query back catalogue. It resumes from the index's floor, so
+    // a restored index walks only what arrived since — and a cold one pays
+    // the whole walk once, behind the prompt, never in front of a query.
+    result.deferred.push(warmup_defer(
+      'Queries',
+      'Indexing prior PACS queries behind the prompt',
+      reporter,
+      async (): Promise<PrefetchResult> => {
+        // Every identity's queries, not just this one's: the index is also
+        // the log that `/net/pacs/queries` lists, and that log has always
+        // shown whatever CUBE holds. A replay stays scoped to the asking
+        // identity by the index key, not by what was swept.
+        const swept: Result<QuerySweepResult> = await queryIndex_sweep();
+        if (!swept.ok) {
+          const error: StackMessage | undefined = errorStack.stack_pop();
+          return { ok: false, message: error?.message ?? 'Failed to index prior PACS queries' };
+        }
+        if (swept.value.bounded) {
+          return {
+            ok: false,
+            message: `Indexed ${swept.value.indexed} PACS quer(y/ies) and stopped at the page bound — the index is incomplete`,
+          };
+        }
+        // Made durable here rather than left to the debounced writer: that
+        // timer is unref'd, so a one-shot `chell -c` would exit before it
+        // fired and throw away a walk of the whole collection. The sweep is
+        // the expensive thing; it is saved the moment it is worth saving.
+        if (checkpointIdentity !== null) {
+          await queryIndexCheckpoint_save(checkpointIdentity).catch((): void => {
+            /* the debounced writer retries on the next mutation */
+          });
+        }
+        return {
+          ok: true,
+          count: swept.value.indexed,
+          ...(swept.value.resumed ? { message: 'resumed from the restored index' } : {}),
+        };
+      },
     ));
   } else if (!session.offline) {
     reporter?.log('skip', 'Feeds', 'Prefetch disabled');

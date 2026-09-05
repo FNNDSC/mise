@@ -25,6 +25,7 @@ import {
   envelope_ok,
   envelope_error,
   listCache_get,
+  queryIndex_get,
 } from '@fnndsc/cumin';
 import { queryFolderName_build } from '@fnndsc/salsa';
 import { PACS_QUERY_MODEL_KIND, type PacsQueryModel, type PacsStudy } from '@fnndsc/menu';
@@ -147,6 +148,7 @@ export async function pacsQuery_createAndWait(
 
     const decodeResult = await pacsQuery_resultDecode(queryId);
     if (decodeResult.ok && decodeResult.value.json !== undefined) {
+      queryIndex_file(queryId, queryObj, pacsserver, ownerUsername, true);
       return { queryId, vfsPath, decoded: decodeResult.value };
     }
     if (!decodeResult.ok) {
@@ -159,6 +161,9 @@ export async function pacsQuery_createAndWait(
     // A succeeded query with no stored payload means the PACS matched
     // nothing; a couple of grace polls cover result-write lag.
     if (status === 'succeeded' && ++succeededWithoutPayload >= 2) {
+      // Filed as a no-hit. A replay must know this question was asked and
+      // found nothing, so it can decline to serve the emptiness back.
+      queryIndex_file(queryId, queryObj, pacsserver, ownerUsername, false);
       return { queryId, vfsPath, decoded: { raw: '' } };
     }
 
@@ -167,6 +172,37 @@ export async function pacsQuery_createAndWait(
 
   errorStack.stack_push('error', `query: Timed out waiting for query ${queryId} result.`);
   return null;
+}
+
+/**
+ * Files a finished query in the replay index.
+ *
+ * Every query mise runs indexes itself, so the next identical question is
+ * answered without waiting for the background sweep to have walked this far
+ * back. The server is recorded because the same criteria asked of a
+ * different PACS is a different question.
+ *
+ * @param queryId - The stored query's id.
+ * @param criteria - The criteria as asked.
+ * @param server - The PACS identifier it was asked of.
+ * @param owner - Who asked, when CUBE said.
+ * @param hasResult - Whether it found anything.
+ */
+function queryIndex_file(
+  queryId: number,
+  criteria: Record<string, string>,
+  server: string,
+  owner: string | undefined,
+  hasResult: boolean,
+): void {
+  queryIndex_get().entry_note({
+    queryId,
+    server,
+    criteria,
+    owner: owner ?? '',
+    answeredAt: new Date().toISOString(),
+    hasResult,
+  });
 }
 
 /**

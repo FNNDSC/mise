@@ -114,6 +114,10 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     cache_invalidateTree: jest.fn(),
     cache_markDirty: jest.fn(),
   }),
+  queryIndex_get: () => ({
+    entry_note: jest.fn(),
+    entry_find: jest.fn(() => null),
+  }),
   procCache_get: () => ({
     instance_get: jest.fn(),
     lifecycle_get: jest.fn(() => ({ state: 'empty' })),

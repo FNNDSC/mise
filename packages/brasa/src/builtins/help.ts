@@ -148,6 +148,33 @@ export const helpText: Record<string, CommandHelp> = {
       'EDITOR=nano edit report.json',
     ],
   },
+  setfacl: {
+    usage: 'setfacl -m u:<user>:<perms> <path>...',
+    summary: 'Grant another identity access to a feed',
+    description:
+      'Grant another identity access to a feed. A feed is named by id, by the feed_N a '
+      + 'listing shows, or by any path holding one, so a path under /SHARED resolves by the '
+      + 'same rule as one under a home folder. Only user entries exist: CUBE grants to an '
+      + 'identity, not to a group.',
+    options: [
+      '-m u:<user>:<perms>   Add or modify a user entry; the perms must include r',
+      '-x u:<user>           Remove an entry (not supported: mise cannot revoke a grant)',
+    ],
+    examples: [
+      'setfacl -m u:someone:r /home/me/feeds/feed_12',
+      'setfacl -m u:someone:r feed_12 feed_13',
+    ],
+  },
+  getfacl: {
+    usage: 'getfacl <path>...',
+    summary: 'Show which identities a feed is shared with',
+    description:
+      'Show which identities a feed is shared with, in the familiar block: a # file: line, '
+      + 'then one user: line per identity holding access.',
+    examples: [
+      'getfacl /home/me/feeds/feed_12',
+    ],
+  },
   rm: {
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',

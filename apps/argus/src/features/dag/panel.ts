@@ -29,6 +29,7 @@ import {
 } from '@fnndsc/menu';
 import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
 import { RosterOrder } from '../roster/order.js';
+import { ListingHost } from '../roster/host.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
 /** What the pane asks of its host. */
@@ -100,6 +101,8 @@ export class DagPanel {
   private arrivalsKey: string = '';
   /** Per-column sort + filter over the resident roster. */
   private readonly order: RosterOrder<FeedListEntry>;
+  /** The frame-and-field host both tabular panes share. */
+  private readonly host: ListingHost<FeedListEntry>;
   /** The title bar's state span (FILTERED n/m on the list; LIVE / SETTLED / STALE on a graph). */
   private readonly stateSpan: HTMLElement | null;
   /** The feed this pane currently holds a watch on. */
@@ -155,6 +158,7 @@ export class DagPanel {
       (): void => { if (this.lastRoster.length > 0) this.chooser_show(this.lastRoster); },
       { key: 'createdAt', dir: 'desc' },
     );
+    this.host = new ListingHost<FeedListEntry>(this.feedList, this.order);
     const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
@@ -871,14 +875,10 @@ export class DagPanel {
   private chooser_show(feeds: FeedListEntry[]): void {
     this.lastRoster = feeds;
     this.empty.style.display = 'none';
-    this.order.host_prepare(this.feedList);
+    // Rows scroll; the frame does not. The host seats the frame and opens
+    // the field beneath it.
+    const field: HTMLElement = this.host.field_open();
     this.rosterFrame_track();
-    // Rows scroll; the frame does not. Sharing one scrolling box ran the
-    // scrollbar up behind the caps, and made the frame paint over whatever
-    // passed beneath it — the same defect the files browser had.
-    const field: HTMLElement = document.createElement('div');
-    field.className = 'feedlist-field';
-    this.feedList.appendChild(field);
     for (const feed of this.order.apply(feeds)) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = `feedlist-row feedlist-${feed.status}`;

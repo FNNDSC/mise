@@ -1,5 +1,28 @@
 # @fnndsc/calypso
 
+## 0.9.0
+
+### Minor Changes
+
+- 4f034b9: Host control: `chell --daemon --host-control[=shell,files,pipes]` lets the daemon declare capabilities of its own — `!` runs on the daemon host, pipe segments run there, `upload`/`download` reach its disk — off by default, refused on a non-loopback bind without `--expose-host-control`, and annunciated everywhere (attach ack `hostControl`, the daemon face, the prompt's HOST segment, a remote shell's banner). Without the `files` tier, `upload` under a daemon now refuses instead of reading the daemon host's disk.
+
+### Patch Changes
+
+- Updated dependencies [f73e6c2]
+- Updated dependencies [5dc064e]
+- Updated dependencies [75f1e5f]
+- Updated dependencies [3afaa65]
+- Updated dependencies [5b4b7db]
+- Updated dependencies [eaf6c67]
+- Updated dependencies [73aa61a]
+- Updated dependencies [4f034b9]
+- Updated dependencies [aa25502]
+- Updated dependencies [f8d1b1c]
+- Updated dependencies [85c6813]
+  - @fnndsc/cumin@3.17.0
+  - @fnndsc/menu@0.3.0
+  - @fnndsc/brasa@0.16.0
+
 ## 0.8.0
 
 ### Minor Changes

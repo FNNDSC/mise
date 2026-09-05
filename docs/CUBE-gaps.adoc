@@ -336,6 +336,46 @@ The present behaviour is the worst of the two: it offers the file, then refuses 
 
 None of that narrows the gap. It only stops the client from lying about it.
 
+[[confirmed-gap-pacs-query-collection]]
+== Confirmed gap: the PACS query collection cannot be searched by its query, and every row carries its result
+
+=== Operator requirement
+
+A client that has just been asked a PACS question wants to know whether that exact question has already been answered, because the stored answer is instant where the PACS is not. CUBE keeps every answer — 1,817 of them on the CUBE measured — so the data is there. The collection simply cannot be asked the one question a client needs to ask of it.
+
+=== Measured
+
+Against a live CUBE on 2026-09-05, `GET /api/v1/pacs/queries/`:
+
+[source]
+----
+total: 1817
+row fields: id, creation_date, title, query, description, status,
+            pacs_identifier, owner_username, execute, result
+searchable: id, min_creation_date, max_creation_date, title_exact, title,
+            status, execute, description, pacs_id, pacs_identifier,
+            owner_username
+----
+
+Two things follow. `query` — the criteria, the field that identifies what a stored query asked — is a row field and not a search parameter, so a client cannot ask CUBE which query had given criteria. And `result` — the zlib+base64 pfdcm payload, 2 KB and 21 KB in the two rows sampled — rides every row of every list response, whether or not the client wants it.
+
+Together these make the only available strategy the worst one: to find whether a question was asked, a client must page the whole collection, and each page carries payloads it will discard. On the measured CUBE that is roughly 15 MB across 19 requests to answer one lookup. Worse, a *miss* — the common case for a genuinely new query — always costs the full sweep, so a client that searched naively would make every new query slower than not searching at all.
+
+mise works around this with a local index built from a deferred background sweep (see epic #379), which pays the cost once instead of per query. The workaround is sound but it exists only because the collection cannot answer directly, and every other client faces the same wall.
+
+=== Required interface semantics
+
+Either of these resolves it; both together would be better.
+
+* *A search parameter over the stored criteria.* Exact match on the serialized `query` would be enough for the identity case; a contains-style match would additionally serve "what have I asked about this patient".
+* *Field projection on list responses.* A `fields=` parameter, or simply omitting `result` from list responses and serving it only on the detail route. `result` is the largest field in the collection by a wide margin and is almost never wanted when listing. This alone would turn a sweep from megabytes into kilobytes and would help every client that lists queries, not only one that searches them.
+
+The second is the more valuable of the two and the cheaper to provide. A client listing 1,817 queries to show the operator their history — which mise's `/net/pacs/queries` does — is today paying for 1,817 decoded-on-demand payloads it will never open.
+
+=== ChELL policy after CUBE support
+
+The index in #379 becomes an optimisation rather than a necessity, and the deferred sweep that fills it can be dropped or reduced to a cheap projection query. The advisory contract stays either way: a hit is confirmed by decoding before it is served.
+
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery
 

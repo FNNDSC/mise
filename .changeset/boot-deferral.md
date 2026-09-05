@@ -2,7 +2,6 @@
 "@fnndsc/menu": minor
 "@fnndsc/brasa": minor
 "@fnndsc/chell": minor
-"argus": patch
 ---
 
 feat(boot): warm-up leaves the gate, and a failure that leaves it is still heard

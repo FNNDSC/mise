@@ -1909,6 +1909,14 @@ async function surface_start(token: string): Promise<void> {
         pacsPanel.progress_observe(message);
       },
       promptline_receive: (context: PromptContext): void => {
+        // The smoke suite is argus's only executable verification — there
+        // is no unit level here — so the surface exposes the last context
+        // it was handed, and a way to re-show one. Read-only to the page.
+        Object.assign(globalThis as Record<string, unknown>, {
+          __argusPromptContext: context,
+          __argusPromptContext_show: (replacement: PromptContext): void =>
+            statusBar.promptContext_show(replacement),
+        });
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);
         cascade?.promptContext_observe(context);

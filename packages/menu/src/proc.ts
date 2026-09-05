@@ -36,6 +36,17 @@ export interface ProcPromptProgress {
 }
 
 /**
+ * A warm-up step that failed behind the prompt and has not since succeeded.
+ *
+ * @property label - The boot-step label, as the readout named it.
+ * @property message - What the failure said.
+ */
+export interface WarmupFailureReport {
+  label: string;
+  message: string;
+}
+
+/**
  * Prompt-facing progress of one feed's topology load.
  *
  * @property id - The feed being loaded.

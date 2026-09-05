@@ -51,6 +51,8 @@ const mockFaceResume = jest.fn();
 const mockFaceStop = jest.fn();
 
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
+  warmupFailure_note: mockWarmupFailureNote,
+  warmupFailure_clear: mockWarmupFailureClear,
   session: mockSession,
   vfs: { data_get: mockDataGet },
   prefetch_path: mockPrefetchPath,
@@ -79,6 +81,12 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 /** Age of the oldest restored folder listing, in milliseconds. */
 let mockOldestAge: number | null = null;
+
+/** Records a deferred warm-up failure so a surface can announce it. */
+const mockWarmupFailureNote = jest.fn<(label: string, message: string) => void>();
+
+/** Clears a held failure when a later attempt succeeds. */
+const mockWarmupFailureClear = jest.fn<(label: string) => void>();
 
 /** Records the folders a roster arrival or departure changes. */
 const mockRosterFoldersSet = jest.fn<(folders: Record<string, string>) => void>();
@@ -199,8 +207,11 @@ describe('daemonSession_run', () => {
 
     expect(report).toHaveBeenCalledWith('ok', 'Plugins', 'Cached 2 plugin(s)');
     expect(report).toHaveBeenCalledWith('ok', 'Pipelines', 'Cached 1 pipeline(s)');
-    expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 item(s) from /home/rudolph/feeds');
-    expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 item(s) from /PUBLIC');
+    // Feeds, Public and Shared warm behind the prompt now: boot blocks
+    // only on what the shell cannot work without, which is /bin.
+    expect(report).toHaveBeenCalledWith('pending', 'Feeds', 'Warming /home/rudolph/feeds behind the prompt');
+    expect(report).toHaveBeenCalledWith('pending', 'Public', 'Warming /PUBLIC behind the prompt');
+    expect(report).toHaveBeenCalledWith('pending', 'Shared', 'Warming /SHARED behind the prompt');
     expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feed(s) — topology reconciling in background');
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
     expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 job(s) indexed');
@@ -274,13 +285,14 @@ describe('daemonSession_run', () => {
     }, false, { log: report });
 
     expect(report).toHaveBeenCalledWith('fail', 'Plugins', 'bin failed');
-    expect(report).toHaveBeenCalledWith('fail', 'Feeds', 'path failed');
-    expect(report).toHaveBeenCalledWith('fail', 'Public', 'path failed');
+    // A deferred step's failure is not a boot row: it left the gate, and is
+    // annunciated afterwards instead.
+    expect(report).toHaveBeenCalledWith('pending', 'Feeds', expect.stringContaining('behind the prompt'));
     expect(report).toHaveBeenCalledWith('fail', 'Jobs', 'jobs failed');
     expect(report).toHaveBeenCalledWith(
       'fail',
       'Engine',
-      'Starting with incomplete warm-up: Plugins, Feeds, Public, Jobs',
+      'Starting with incomplete warm-up: Plugins, Jobs',
     );
     expect(mockTopologyWarmup).not.toHaveBeenCalled();
     expect(mockDaemonListen).toHaveBeenCalledTimes(1);
@@ -305,14 +317,18 @@ describe('daemonSession_run', () => {
       recovery,
     );
 
-    expect(recovery).toHaveBeenCalledWith(['Groups']);
-    expect(report).toHaveBeenCalledWith('fail', 'Engine', 'Starting with incomplete warm-up: Groups');
+    // Groups warms behind the prompt, so it no longer gates: the daemon
+    // publishes its berth and the failure is annunciated afterwards.
+    expect(recovery).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledWith('pending', 'Groups', 'Resolving /etc/group behind the prompt');
     expect(mockDaemonListen).toHaveBeenCalledTimes(1);
   });
 
   it('does not bind a daemon when the operator exits after exhausted warm-up', async () => {
-    mockVfsRead.mockResolvedValue({ ok: false });
-    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    // Only a blocking step can gate a boot. `/bin` is the one thing the
+    // shell cannot work without, so it is the one that still can.
+    mockDataGet.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'bin failed' });
     const recovery = jest.fn(async () => 'exit' as const);
     const report = jest.fn<StartupWarmupReporter['log']>();
     const engine: BrasaEngine = {
@@ -323,14 +339,14 @@ describe('daemonSession_run', () => {
     await daemonSession_run(
       engine,
       'rudolph',
-      { plugins: false, feeds: false, publicFeeds: false, jobs: false },
+      { plugins: true, feeds: false, publicFeeds: false, jobs: false },
       false,
       { log: report },
       recovery,
     );
 
-    expect(recovery).toHaveBeenCalledWith(['Groups']);
-    expect(report).toHaveBeenCalledWith('fail', 'Engine', 'Startup aborted after incomplete warm-up: Groups');
+    expect(recovery).toHaveBeenCalledWith(['Plugins']);
+    expect(report).toHaveBeenCalledWith('fail', 'Engine', 'Startup aborted after incomplete warm-up: Plugins');
     expect(mockDaemonListen).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -446,7 +462,8 @@ describe('daemonSession_run', () => {
     }, 'rudolph', false, { log: report });
 
     expect(mockVfsRead).toHaveBeenCalledWith('/etc/group');
-    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 group(s)');
+    // Deferred: the row says pending, and the outcome is awaited.
+    expect(report).toHaveBeenCalledWith('pending', 'Groups', 'Resolving /etc/group behind the prompt');
   });
 
   it('retries a transient group projection failure before declaring Groups failed', async () => {
@@ -463,9 +480,14 @@ describe('daemonSession_run', () => {
       jobs: false,
     }, 'rudolph', false, { log: report });
 
+    // A deferred step keeps its retry policy; the outcome is awaited
+    // rather than read off the boot readout it no longer prints to.
+    const groups = cache.deferred.find((step) => step.label === 'Groups');
+    const outcome = await groups!.settled;
     expect(cache.failures).toEqual([]);
     expect(mockVfsRead).toHaveBeenCalledTimes(2);
-    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 group(s)');
+    expect(outcome.ok).toBe(true);
+    expect(outcome.count).toBe(2);
   });
 
   it('reports a failed group warm-up without preventing later startup work', async () => {
@@ -480,8 +502,49 @@ describe('daemonSession_run', () => {
       jobs: false,
     }, 'rudolph', false, { log: report });
 
-    expect(cache.failures).toEqual(['Groups']);
-    expect(report).toHaveBeenCalledWith('fail', 'Groups', 'membership service unavailable');
+    // Deferred steps do not gate; they are reported and awaited by the host.
+    expect(cache.failures).toEqual([]);
+    expect(cache.deferred.map((step) => step.label)).toContain('Groups');
+    expect(report).toHaveBeenCalledWith('pending', 'Groups', 'Resolving /etc/group behind the prompt');
+    const groups = cache.deferred.find((step) => step.label === 'Groups');
+    expect((await groups!.settled).ok).toBe(false);
+  });
+
+  it('records a deferred failure so a surface can announce it, and clears it on success', async () => {
+    mockVfsRead.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+
+    const groups = cache.deferred.find((step) => step.label === 'Groups');
+    await groups!.settled;
+
+    // A step that left the boot gate has no readout left to print to, so
+    // the failure is held until a later attempt clears it.
+    expect(mockWarmupFailureNote).toHaveBeenCalledWith('Groups', 'membership service unavailable');
+    expect(mockWarmupFailureClear).not.toHaveBeenCalledWith('Groups');
+  });
+
+  it('warms /SHARED, where another identity\'s work becomes visible', async () => {
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: true,
+      publicFeeds: true,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+
+    // It had no step at all before: nothing to fail, so a CUBE that
+    // stopped serving shared paths stayed silent.
+    expect(cache.deferred.map((step) => step.label)).toContain('Shared');
+    expect(report).toHaveBeenCalledWith('pending', 'Shared', 'Warming /SHARED behind the prompt');
   });
 
   it('reports offline caches and skips network work', async () => {

@@ -84,3 +84,18 @@ export function feedArrivals_format(arrived: number[]): string {
   if (arrived.length <= 2) return ` [+feed ${arrived.join(', ')}]`;
   return ` [+${arrived.length} feeds]`;
 }
+
+/**
+ * Names the warm-up steps that failed behind the prompt.
+ *
+ * Named rather than counted: "Groups" tells an operator which capability
+ * is degraded, where "1 warm-up failed" only tells them to go looking.
+ *
+ * @param failures - Steps that failed and have not since succeeded.
+ * @returns A leading-space segment, or an empty string when none.
+ */
+export function warmupFailures_format(failures: ReadonlyArray<{ label: string }>): string {
+  if (failures.length === 0) return '';
+  const named: string = failures.map((failure): string => failure.label.toLowerCase()).join(' ');
+  return ` [warm-up failed: ${named}]`;
+}

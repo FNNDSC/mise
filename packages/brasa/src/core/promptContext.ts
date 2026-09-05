@@ -12,6 +12,7 @@
  */
 
 import { session } from '../session/index.js';
+import { warmupFailures_list, type WarmupFailure } from './warmupFailures.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import {
   SingleContext,
@@ -44,6 +45,12 @@ export interface SessionPromptContext {
   procIndex?: { jobs: number; feeds: number };
   /** The daemon's declared host-control tiers, when it acts on its own host. */
   hostControl?: string[];
+  /**
+   * Warm-up steps that failed behind the prompt and have not since
+   * succeeded. They persist until a later attempt clears them: a step
+   * that left the boot gate has no other way to be heard.
+   */
+  warmupFailures?: WarmupFailure[];
 }
 
 /**
@@ -97,6 +104,7 @@ export async function sessionPromptContext_build(
   const arrived: number[] = procCache_get().arrivals_recent();
   const sweeping: boolean =
     warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed';
+  const warmupFailures: WarmupFailure[] = warmupFailures_list();
   const procWarmup: ProcPromptProgress | undefined =
     sweeping || feedLoad !== null || arrived.length > 0
       ? {
@@ -128,6 +136,7 @@ export async function sessionPromptContext_build(
     lastExitCode:          options.lastExitCode ?? 0,
     lastCommandDurationMs: options.lastCommandDurationMs ?? 0,
     procWarmup,
+    ...(warmupFailures.length > 0 ? { warmupFailures } : {}),
     procIndex,
   };
 }

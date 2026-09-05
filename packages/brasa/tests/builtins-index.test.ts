@@ -90,6 +90,9 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 const pacsGrammar = await import('@fnndsc/salsa/pacs-grammar');
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  feed_share: jest.fn(async () => ({ ok: true, value: true })),
+  feedShares_list: jest.fn(async () => ({ ok: true, value: [] })),
+  path_extractFeedID: (p: string) => { const m = /\/feeds\/feed_(\d+)(?:\/|$)/.exec(p); return m ? Number(m[1]) : null; },
   // The payload helpers are pure and side-effect free: forward the real ones.
   tag_extractValue: dicomPayload.tag_extractValue,
   studies_extractFromDecoded: dicomPayload.studies_extractFromDecoded,

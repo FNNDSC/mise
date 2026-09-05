@@ -21,6 +21,7 @@ import {
   path_truncate,
   procProgress_format,
   feedArrivals_format,
+  warmupFailures_format,
 } from './utils.js';
 
 /** Fraction of terminal width allowed before path truncation kicks in. */
@@ -80,6 +81,11 @@ export class ThemeDefault implements PromptTheme {
       if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {
         warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(feedArrivals_format(ctx.procWarmup.arrived));
       }
+    }
+    // A warm-up that failed behind the prompt has no readout left to be
+    // printed to, so it is said here until a later attempt clears it.
+    if (ctx.warmupFailures && ctx.warmupFailures.length > 0) {
+      warmup += chalk.hex(PROMPT_PALETTE.ERROR)(warmupFailures_format(ctx.warmupFailures));
     }
     return (
       modePrefix +

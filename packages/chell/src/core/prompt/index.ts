@@ -53,6 +53,12 @@ export interface PromptContext {
   procWarmup?: ProcPromptProgress;
   /** The daemon's declared host-control tiers; a `HOST` segment says `!` lands on the daemon host. */
   hostControl?: string[];
+  /**
+   * Warm-up steps that failed behind the prompt and have not since
+   * succeeded. A step moved off the boot gate has no readout left to be
+   * printed to, so the prompt carries it until it clears.
+   */
+  warmupFailures?: Array<{ label: string; message: string }>;
 }
 
 /**

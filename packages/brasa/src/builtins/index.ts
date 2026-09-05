@@ -9,6 +9,8 @@ export * from './fs/ls.js';
 export * from './fs/cp.js';
 export * from './fs/mv.js';
 export * from './fs/rm.js';
+export * from './fs/acl.args.js';
+export * from './fs/acl.js';
 export * from './fs/cat.js';
 export * from './fs/mkdir.js';
 export * from './fs/touch.js';

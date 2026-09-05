@@ -43,7 +43,7 @@ export interface SessionPromptContext {
   procWarmup?: ProcPromptProgress;
   /** Steady-state index counts, present whenever the cache holds anything. */
   procIndex?: { jobs: number; feeds: number };
-  /** The daemon's declared host-control tiers, when it acts on its own host. */
+  /** Calypso's declared host-control tiers, when it acts on its own host. */
   hostControl?: string[];
   /**
    * Warm-up steps that failed behind the prompt and have not since

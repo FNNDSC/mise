@@ -84,8 +84,8 @@ async function berths_print(): Promise<void> {
   );
   const berths: Berth[] = await resolver.list();
   if (berths.length === 0) {
-    console.error(chalk.yellow('No CALYPSO daemon is running.'));
-    console.error(chalk.gray("Start one with:  chell --daemon <user>@<url>"));
+    console.error(chalk.yellow('No calypso is running.'));
+    console.error(chalk.gray("Start one with:  calypso <user>@<url>"));
     return;
   }
   for (const berth of berths) {

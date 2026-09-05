@@ -163,7 +163,7 @@ export async function daemon_launch(
   const existing: Berth | null = berth_read(identity);
   if (existing && (await berthUrl_isAlive(existing.url))) {
     const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
-    console.error(chalk.red(`[!] A CALYPSO daemon for ${identity} is already running at ${existing.url}`));
+    console.error(chalk.red(`[!] Calypso is already running for ${identity} at ${existing.url}`));
     console.error(chalk.gray(`    attach with:  chell --remote${attachHint}`));
     process.exit(1);
   }
@@ -259,7 +259,7 @@ export async function daemon_launch(
     console.log(chalk.gray(`    ${line}`));
   }
   console.log(chalk.gray(fortune_random(4)));
-  console.log(chalk.green(`[+] CALYPSO daemon listening on ${url}`));
+  console.log(chalk.green(`[+] CALYPSO listening on ${url}`));
   if (hostControl.tiers.size > 0) {
     // Annunciated every launch: this daemon acts on its own host.
     console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl_describe(hostControl)} — \`!\`, pipes, and the disk are this host's`));

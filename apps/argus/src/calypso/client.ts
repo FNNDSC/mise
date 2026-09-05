@@ -454,7 +454,7 @@ export class ArgusClient {
         `/vfs?path=${encodeURIComponent(message.path)}&token=${encodeURIComponent(this.token)}`;
       const response: Response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`the daemon refused to serve this file (HTTP ${response.status})`);
+        throw new Error(`calypso refused to serve this file (HTTP ${response.status})`);
       }
       const blob: Blob = await response.blob();
       const objectUrl: string = URL.createObjectURL(blob);

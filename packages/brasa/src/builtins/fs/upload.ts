@@ -44,7 +44,7 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
   if (!surface_get().capabilities.engineFilesystem) {
     process.exitCode = 1;
     return envelope_error('', undefined,
-      `${chalk.red("upload: the daemon host's disk is nobody's; start the daemon with --host-control=files, or upload from a surface that can supply the bytes.")}\n`);
+      `${chalk.red("upload: calypso's host disk is nobody's; start calypso with --host-control=files, or upload from a surface that can supply the bytes.")}\n`);
   }
   const localGlob: boolean = shellArguments_pathnameExpansion(args, 0);
 

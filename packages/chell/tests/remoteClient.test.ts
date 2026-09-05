@@ -179,7 +179,7 @@ describe('remote_run', () => {
     resolverList_mock.mockResolvedValue([]);
 
     await expect(remote_run(undefined, 'pwd')).rejects.toThrow('exit 1');
-    expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('No CALYPSO daemon found'));
+    expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('No calypso found'));
     expect(exit_spy).toHaveBeenCalledWith(1);
   });
 

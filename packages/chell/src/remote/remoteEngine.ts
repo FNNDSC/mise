@@ -78,7 +78,7 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onDeliver: ((request: FileDeliverRequest) => Promise<FileDeliverResult>) | undefined;
   private latestPrompt: string = '';
   private stackReport: DaemonStack | undefined;
-  /** The daemon's declared host-control tiers (empty when off). */
+  /** Calypso's declared host-control tiers (empty when off). */
   public hostControl: string[] = [];
   private nextId: number = 0;
   private activeExecuteId: string | undefined;
@@ -237,7 +237,7 @@ export class RemoteEngine implements BrasaEngine {
       }
       // A malformed message is real protocol drift; dropping it silently
       // would leave any correlated pending request hanging unexplained.
-      console.error(chalk.yellow(`[!] Ignoring invalid daemon message: ${parsed.ok ? 'empty payload' : (parsed.error ?? 'unparseable')}`));
+      console.error(chalk.yellow(`[!] Ignoring invalid message from calypso: ${parsed.ok ? 'empty payload' : (parsed.error ?? 'unparseable')}`));
       return;
     }
     const message: ServerMessage = parsed.value;

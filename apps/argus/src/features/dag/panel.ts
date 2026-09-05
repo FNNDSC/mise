@@ -30,7 +30,10 @@ import {
 import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
 import { RosterOrder } from '../roster/order.js';
 import { ListingHost } from '../roster/host.js';
-import { listingRow_build, traitColumns_of, traitValue_of, type ListingTrait } from '../roster/row.js';
+import {
+  listingRow_build, progressCell_build, traitColumns_of, traitValue_of,
+  type ListingProgress, type ListingTrait,
+} from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
 /** What the pane asks of its host. */
@@ -77,6 +80,18 @@ const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
  * The DAG pane controller.
  */
 /**
+ * A feed's progress, from the job counters that come with its row.
+ *
+ * @param feed - The roster row.
+ * @returns Its progress, or null when the daemon reported no counts.
+ */
+function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
+  if (feed.jobsTotal === undefined || feed.jobsDone === undefined) return null;
+  const failed: boolean = feed.status === 'finishedWithError' || feed.status === 'cancelled';
+  return { done: feed.jobsDone, total: feed.jobsTotal, ...(failed ? { failed: true } : {}) };
+}
+
+/**
  * The runs roster's columns, declared once.
  *
  * Totals are derived from resident nodes, so a feed not yet resident reads
@@ -103,6 +118,27 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     className: 'feedlist-status',
     cell: (feed: FeedListEntry): string => feed.status.toUpperCase(),
     compare: (feed: FeedListEntry): string => feed.status,
+  },
+  {
+    key: 'nodes',
+    label: 'NODES',
+    className: 'feedlist-nodes',
+    cell: (feed: FeedListEntry): string => (feed.jobsTotal === undefined ? '—' : String(feed.jobsTotal)),
+    compare: (feed: FeedListEntry): number => feed.jobsTotal ?? -1,
+  },
+  {
+    key: 'progress',
+    label: 'PROGRESS',
+    className: 'feedlist-progress',
+    // A running feed says how far it has got without anyone opening it.
+    // A feed with nothing scheduled still gets a track: nothing has
+    // happened yet reads differently from there is nothing here.
+    cell: (feed: FeedListEntry): HTMLElement => progressCell_build(feedProgress_of(feed)),
+    compare: (feed: FeedListEntry): number => {
+      const progress: ListingProgress | null = feedProgress_of(feed);
+      if (progress === null || progress.total === 0) return -1;
+      return progress.done / progress.total;
+    },
   },
   {
     key: 'sizeBytes',

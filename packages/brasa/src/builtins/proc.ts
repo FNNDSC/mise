@@ -435,10 +435,29 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
       owner: feed.ownerUsername,
       status: feedStatus_derive(feed),
       createdAt: feed.creationDate,
+      ...feedJobs_count(feed),
       ...feedTotals_derive(cache, feed.id),
     })),
   };
   return envelope_ok(rendered, { kind: FEED_LIST_MODEL_KIND, data: model });
+}
+
+/**
+ * A feed's settled and total job counts, from CUBE's own counters.
+ *
+ * These come with the feed row rather than needing resident topology, so a
+ * roster can report progress for a feed nobody has opened. A feed with no
+ * jobs reports zero of zero — a surface draws that as an empty track, which
+ * says nothing has happened yet rather than there is nothing here.
+ *
+ * @param feed - The cached feed row.
+ * @returns Its job counts.
+ */
+function feedJobs_count(feed: ProcFeed): { jobsDone: number; jobsTotal: number } {
+  // Settled means it will not change again: finished, errored or cancelled.
+  const done: number = feed.finishedJobs + feed.erroredJobs + feed.cancelledJobs;
+  const total: number = done + feed.startedJobs + feed.scheduledJobs + feed.createdJobs;
+  return { jobsDone: done, jobsTotal: total };
 }
 
 /**

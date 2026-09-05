@@ -398,7 +398,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 
 .dag-roster {
-  --roster-cols: 4em 1fr 8em 5.5em 6em 7em 7em;
+  /* id, title, status, nodes, progress, size, time, owner, created — the
+   * track list is positional, so it must gain a column wherever the traits
+   * do or every cell after the new one lands under the wrong cap. */
+  --roster-cols: 4em 1fr 8em 4em 7em 5.5em 6em 7em 7em;
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
 }
@@ -1545,6 +1548,64 @@ body[data-header='dag'] #header-dag {
  * here until a later attempt clears it. */
 .status-degraded {
   color: var(--state-error);
+}
+
+/* ----------------------------------------------------- listing progress */
+
+/* A row says how far its work has got. An untouched row still gets a
+ * track, dimmed: the absence of a bar would read as "no such thing",
+ * where a dim track reads as "nothing has happened yet". */
+.listing-progress {
+  display: block;
+  position: relative;
+  height: 0.45rem;
+  min-width: 2rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--pumpkin-pie) 22%, transparent);
+  overflow: hidden;
+}
+
+.listing-progress-idle {
+  background: var(--state-idle);
+}
+
+.listing-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0.25rem;
+  transition: width 0.25s linear;
+}
+
+.listing-progress-running .listing-progress-fill { background: var(--state-running); }
+.listing-progress-done .listing-progress-fill { background: var(--state-done); }
+.listing-progress-failed .listing-progress-fill { background: var(--state-error); }
+
+/* A row's verbs, outside the column grid: they answer to no cap. */
+.listing-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.listing-action {
+  border: none;
+  border-radius: 0.7rem;
+  padding: 0.05rem 0.7rem;
+  background: var(--harvestgold);
+  color: #000;
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.listing-action:hover:not(:disabled) {
+  filter: brightness(1.25);
+}
+
+.listing-action:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* ------------------------------------------------- listable, not readable */

@@ -299,6 +299,73 @@ export async function feed_makePrivate(feedId: number): Promise<Result<boolean>>
  * }
  * ```
  */
+/**
+ * Grants another identity access to a feed.
+ *
+ * Sharing is a kernel capability, not a surface's private errand: a
+ * capability that lives only in one caller's REST call is invisible to
+ * every other surface and untested by this package's suite.
+ *
+ * @param feedId - The feed to share.
+ * @param username - The identity to share it with.
+ * @returns True when CUBE recorded the grant.
+ */
+export async function feed_share(feedId: number, username: string): Promise<Result<boolean>> {
+  const client: Client | null = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push("error", "Not connected to ChRIS. Cannot share feed.");
+    return Err();
+  }
+
+  try {
+    const feed: Feed | null = await client.getFeed(feedId);
+    if (!feed) {
+      errorStack.stack_push("error", `Feed with ID ${feedId} not found.`);
+      return Err();
+    }
+    await (feed as unknown as { addUserPermission: (name: string) => Promise<unknown> })
+      .addUserPermission(username);
+    return Ok(true);
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Failed to share feed ${feedId} with ${username}: ${message}`);
+    return Err();
+  }
+}
+
+/**
+ * Lists the identities a feed is shared with.
+ *
+ * @param feedId - The feed to inspect.
+ * @returns The usernames granted access, owner excluded by CUBE.
+ */
+export async function feedShares_list(feedId: number): Promise<Result<string[]>> {
+  const client: Client | null = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push("error", "Not connected to ChRIS. Cannot list feed shares.");
+    return Err();
+  }
+
+  try {
+    const feed: Feed | null = await client.getFeed(feedId);
+    if (!feed) {
+      errorStack.stack_push("error", `Feed with ID ${feedId} not found.`);
+      return Err();
+    }
+    const permissions = await (feed as unknown as {
+      getUserPermissions: (params: Record<string, unknown> | null) => Promise<{ data?: unknown }>;
+    }).getUserPermissions({ limit: 100 });
+    const rows: Array<{ username?: string }> = listData_get<{ username?: string }>(permissions);
+    return Ok(rows
+      .map((row): string => String(row.username ?? ''))
+      .filter((name): boolean => name !== ''));
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("error", `Failed to list shares for feed ${feedId}: ${message}`);
+    return Err();
+  }
+}
+
 export async function feed_delete(feedId: number): Promise<Result<boolean>> {
   const client: Client | null = await chrisConnection.client_get();
   if (!client) {

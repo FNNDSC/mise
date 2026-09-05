@@ -8,6 +8,9 @@ const mockQueryGet = jest.fn();
 const mockDecode = jest.fn();
 const mockCreate = jest.fn();
 const mockServersList = jest.fn();
+const mockIndexFind = jest.fn(() => null as unknown);
+const mockIndexNote = jest.fn();
+const mockIndexDrop = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
   tag_extractValue: (v) => (v && typeof v === 'object' && 'value' in v ? String(v.value ?? '') : String(v ?? '')),
@@ -17,12 +20,12 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },
   chrisContext: { current_get: mockCurrentGet },
-  Context: { PACSserver: 'PACSserver' },
+  Context: { PACSserver: 'PACSserver', ChRISuser: 'ChRISuser' },
   pacsQuery_get: mockQueryGet,
   pacsQuery_resultDecode: mockDecode,
   pacsQueries_create: mockCreate,
   listCache_get: () => ({ cache_invalidate: jest.fn(), cache_invalidateTree: jest.fn() }),
-  queryIndex_get: () => ({ entry_note: jest.fn(), entry_find: jest.fn(() => null) }),
+  queryIndex_get: () => ({ entry_note: mockIndexNote, entry_find: mockIndexFind, entry_drop: mockIndexDrop }),
   pacsServers_list: mockServersList,
 }));
 
@@ -43,6 +46,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
   mockCurrentGet.mockResolvedValue(null);
+  mockIndexFind.mockReturnValue(null);
+  mockServersList.mockResolvedValue(ok([{ id: 1, identifier: 'PACSDCM' }]));
   mockGetAll.mockReturnValue([]);
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -206,7 +211,9 @@ describe('builtin_query', () => {
     mockDecode.mockResolvedValue(ok({ json: studyPayload }));
     await builtin_query(['PatientID:X', '--pacsserver', '5']);
     expect(mockCreate).toHaveBeenCalledWith('5', expect.anything());
-    expect(mockCurrentGet).not.toHaveBeenCalled();
+    // The override settles the server, so the context is never asked for
+    // one. It IS asked who is asking, which the replay lookup is keyed on.
+    expect(mockCurrentGet).not.toHaveBeenCalledWith('PACSserver');
   });
 
   it('warns without browse hints when the query completes with no studies', async () => {
@@ -235,5 +242,90 @@ describe('builtin_query', () => {
     const envelope = await builtin_query(['PatientID:X']);
     expect(envelope.renderedErr).toContain('PACS server refused the query');
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('replay', () => {
+  /** An index entry for a question already answered. */
+  const held = (overrides: Record<string, unknown> = {}) => ({
+    queryId: 2661,
+    server: 'PACSDCM',
+    criteria: { PatientID: 'X' },
+    owner: 'someone',
+    answeredAt: new Date(Date.now() - 3 * 86400 * 1000).toISOString(),
+    hasResult: true,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    // The context answers by key, so a test can tell the server it asked
+    // apart from the identity that asked.
+    mockCurrentGet.mockImplementation(async (key: unknown): Promise<string | null> =>
+      key === 'ChRISuser' ? 'someone' : 'PACSDCM');
+    mockServersList.mockResolvedValue(ok([{ id: 1, identifier: 'PACSDCM' }]));
+  });
+
+  it('serves a stored answer without troubling the PACS, and says how old it is', async () => {
+    mockIndexFind.mockReturnValue(held());
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 's1' }] }));
+    const { rendered: output } = await builtin_query(['PatientID:X']);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(output).toContain('answered');
+    expect(output).toContain('days ago');
+    expect(output).toContain('--fresh');
+  });
+
+  it('never replays a query that found nothing: an absence decays', async () => {
+    mockIndexFind.mockReturnValue(held({ hasResult: false }));
+    mockCreate.mockResolvedValue(ok({ id: 9, owner_username: 'someone' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
+    await builtin_query(['PatientID:X']);
+    expect(mockCreate).toHaveBeenCalled();
+  });
+
+  it('--fresh asks the PACS even when a stored answer exists', async () => {
+    mockIndexFind.mockReturnValue(held());
+    mockCreate.mockResolvedValue(ok({ id: 9, owner_username: 'someone' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
+    const { rendered: output } = await builtin_query(['PatientID:X', '--fresh']);
+    expect(mockCreate).toHaveBeenCalled();
+    expect(output).not.toContain('answered');
+  });
+
+  it('falls through and forgets the entry when the stored answer is gone', async () => {
+    mockIndexFind.mockReturnValue(held());
+    // The index promised a payload CUBE no longer has.
+    mockDecode
+      .mockResolvedValueOnce(err())
+      .mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
+    mockCreate.mockResolvedValue(ok({ id: 9, owner_username: 'someone' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    await builtin_query(['PatientID:X']);
+    expect(mockIndexDrop).toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalled();
+  });
+
+  it('files a fresh query under the asking identity when CUBE names no owner', async () => {
+    mockIndexFind.mockReturnValue(null);
+    mockCreate.mockResolvedValue(ok({ id: 9 }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
+    await builtin_query(['PatientID:X']);
+    expect(mockIndexNote).toHaveBeenCalledWith(expect.objectContaining({
+      queryId: 9,
+      owner: 'someone',
+      server: 'PACSDCM',
+    }));
+  });
+
+  it('asks the PACS when the question is new to the index', async () => {
+    mockIndexFind.mockReturnValue(null);
+    mockCreate.mockResolvedValue(ok({ id: 9, owner_username: 'someone' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
+    await builtin_query(['PatientID:X']);
+    expect(mockCreate).toHaveBeenCalled();
   });
 });

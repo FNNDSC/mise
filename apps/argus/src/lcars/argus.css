@@ -13,6 +13,27 @@
  * 240px; every frame element derives from this one variable. */
 :root {
   --lfw: 168px;
+
+  /* ------------------------------------------------------ state hues
+   *
+   * What a row's work is doing, expressed once. Every scheme re-seats the
+   * theme's seven base colours, so deriving from those makes state follow
+   * the scheme instead of fighting it: the greens and reds that were
+   * written literally read as foreign on every palette but the one the
+   * author happened to be looking at.
+   *
+   * `--state-error` is the exception and is deliberately literal. Danger
+   * must not become indistinguishable from the frame when a scheme happens
+   * to be warm; it is mixed toward the palette rather than taken from it. */
+  --state-done: var(--daybreak);
+  --state-running: var(--orange);
+  --state-idle: color-mix(in srgb, var(--pumpkin-pie) 45%, transparent);
+  --state-error: color-mix(in srgb, #f2402a 80%, var(--october-sunset));
+
+  /* LCARS mars: chrome that is red by design rather than by state — the
+   * close pill wears it in the original template. Distinct from
+   * `--state-error`, which says something has gone wrong. */
+  --mars: #f2402a;
 }
 
 /* The bundled Nerd Font: powerline separators, icons, and box-drawing
@@ -83,7 +104,7 @@
 }
 
 .lamp-offline {
-  background: #f22;
+  background: var(--state-error);
   color: var(--butter);
   padding: 0 0.5rem;
   border-radius: 0.6rem;
@@ -836,9 +857,9 @@ main {
   white-space: nowrap;
 }
 
-.pacs-badge[data-state='running'] { color: var(--orange); }
-.pacs-badge[data-state='done'] { color: #3c6; }
-.pacs-badge[data-state='error'] { color: #f22; }
+.pacs-badge[data-state='running'] { color: var(--state-running); }
+.pacs-badge[data-state='done'] { color: var(--state-done); }
+.pacs-badge[data-state='error'] { color: var(--state-error); }
 .pacs-badge[data-state='unconfirmed'] { color: var(--honey); }
 
 #pacs-gather {
@@ -1100,9 +1121,9 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .subway-stop.subway-terminal.subway-failed {
-  background: #f22;
-  border-color: #f22;
-  box-shadow: 0 0 7px #f22;
+  background: var(--state-error);
+  border-color: var(--state-error);
+  box-shadow: 0 0 7px var(--state-error);
 }
 
 .subway-link {
@@ -1222,7 +1243,7 @@ body[data-zoom]:not([data-zoom='console'])
 
 .feedlist-finishedWithError .feedlist-status,
 .feedlist-cancelled .feedlist-status {
-  color: #f22;
+  color: var(--state-error);
 }
 
 .feedlist-started .feedlist-status,
@@ -1523,7 +1544,7 @@ body[data-header='dag'] #header-dag {
 /* A degraded readout: a warm-up that failed behind the prompt is named
  * here until a later attempt clears it. */
 .status-degraded {
-  color: var(--mars);
+  color: var(--state-error);
 }
 
 /* ------------------------------------------------- listable, not readable */
@@ -1536,16 +1557,16 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-row.files-denied .files-glyph {
-  color: var(--mars);
+  color: var(--state-error);
 }
 
 .files-row.files-denied .files-name {
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--mars) 70%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--state-error) 70%, transparent);
 }
 
 .files-content-refused {
-  color: var(--mars);
+  color: var(--state-error);
 }
 
 .files-refused {
@@ -1554,7 +1575,7 @@ body[data-header='dag'] #header-dag {
 
 .files-refused-lede {
   margin: 0 0 0.4rem;
-  color: var(--mars);
+  color: var(--state-error);
   font-family: 'Antonio', sans-serif;
   font-weight: bold;
   letter-spacing: 0.12em;
@@ -1729,7 +1750,7 @@ body[data-header='dag'] #header-dag {
 
 .files-close-pill {
   border: none;
-  background: #f22;
+  background: var(--mars);
   color: black;
   font-family: inherit;
   font-size: 0.6rem;
@@ -2181,7 +2202,7 @@ body[data-zoom] #header-restore {
 }
 
 .audio-pill {
-  background-color: #3c6;
+  background-color: var(--state-done);
 }
 
 .theme-pill {
@@ -2195,7 +2216,7 @@ body[data-zoom] #header-restore {
 }
 
 .audio-pill.audio-off {
-  background-color: #f22;
+  background-color: var(--state-error);
 }
 
 .audio-pill.audio-off::after {
@@ -2596,7 +2617,7 @@ body[data-zoom] #header-restore {
 }
 
 .attach-error {
-  color: #f22;
+  color: var(--state-error);
   min-height: 1.2em;
   margin-top: 0.5rem;
 }
@@ -2649,7 +2670,7 @@ body[data-zoom] #header-restore {
   min-width: 2rem;
   height: 0.45rem;
   border-radius: 0.25rem;
-  background: linear-gradient(90deg, #2a5, #3c6);
+  background: var(--state-done);
 }
 
 /* A query in flight. A PACS can take many seconds to answer, and one line
@@ -2688,7 +2709,7 @@ body[data-zoom] #header-restore {
   width: 0;
   height: 100%;
   border-radius: 0.25rem;
-  background: linear-gradient(90deg, var(--orange), var(--harvestgold));
+  background: var(--state-running);
   transition: width 0.25s linear;
 }
 

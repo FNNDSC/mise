@@ -30,6 +30,7 @@ import {
 import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
 import { RosterOrder } from '../roster/order.js';
 import { ListingHost } from '../roster/host.js';
+import { listingRow_build, traitColumns_of, traitValue_of, type ListingTrait } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
 /** What the pane asks of its host. */
@@ -75,6 +76,63 @@ const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
 /**
  * The DAG pane controller.
  */
+/**
+ * The runs roster's columns, declared once.
+ *
+ * Totals are derived from resident nodes, so a feed not yet resident reads
+ * a dash and sorts below every known value rather than as a zero.
+ */
+const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
+  {
+    key: 'id',
+    label: 'ID',
+    className: 'feedlist-id',
+    cell: (feed: FeedListEntry): string => String(feed.id),
+    compare: (feed: FeedListEntry): number => feed.id,
+  },
+  {
+    key: 'title',
+    label: 'TITLE',
+    className: 'feedlist-title',
+    cell: (feed: FeedListEntry): string => feed.title || '(untitled)',
+    compare: (feed: FeedListEntry): string => feed.title,
+  },
+  {
+    key: 'status',
+    label: 'STATUS',
+    className: 'feedlist-status',
+    cell: (feed: FeedListEntry): string => feed.status.toUpperCase(),
+    compare: (feed: FeedListEntry): string => feed.status,
+  },
+  {
+    key: 'sizeBytes',
+    label: 'SIZE',
+    className: 'feedlist-size',
+    cell: (feed: FeedListEntry): string => (feed.sizeBytes === undefined ? '—' : size_format(feed.sizeBytes)),
+    compare: (feed: FeedListEntry): number => feed.sizeBytes ?? -1,
+  },
+  {
+    key: 'wallSeconds',
+    label: 'TIME',
+    className: 'feedlist-time',
+    cell: (feed: FeedListEntry): string => (feed.wallSeconds === undefined ? '—' : duration_format(feed.wallSeconds)),
+    compare: (feed: FeedListEntry): number => feed.wallSeconds ?? -1,
+  },
+  {
+    key: 'owner',
+    label: 'OWNER',
+    className: 'feedlist-owner',
+    cell: (feed: FeedListEntry): string => feed.owner,
+  },
+  {
+    key: 'createdAt',
+    label: 'CREATED',
+    className: 'feedlist-created',
+    cell: (feed: FeedListEntry): string => feed.createdAt.slice(0, 10),
+    compare: (feed: FeedListEntry): string => feed.createdAt,
+  },
+];
+
 export class DagPanel {
   private readonly scene: DagScene;
   private readonly canvas: HTMLElement;
@@ -143,18 +201,8 @@ export class DagPanel {
     this.strategyPill = strategyPill;
     this.handlers = handlers;
     this.order = new RosterOrder<FeedListEntry>(
-      [
-        { key: 'id', label: 'ID' },
-        { key: 'title', label: 'TITLE' },
-        { key: 'status', label: 'STATUS' },
-        { key: 'sizeBytes', label: 'SIZE' },
-        { key: 'wallSeconds', label: 'TIME' },
-        { key: 'owner', label: 'OWNER' },
-        { key: 'createdAt', label: 'CREATED' },
-      ],
-      (row: FeedListEntry, key: string): string | number =>
-        key === 'id' ? row.id : key === 'title' ? row.title : key === 'status' ? row.status : key === 'owner' ? row.owner
-          : key === 'sizeBytes' ? (row.sizeBytes ?? -1) : key === 'wallSeconds' ? (row.wallSeconds ?? -1) : row.createdAt,
+      traitColumns_of(FEED_TRAITS),
+      traitValue_of(FEED_TRAITS),
       (): void => { if (this.lastRoster.length > 0) this.chooser_show(this.lastRoster); },
       { key: 'createdAt', dir: 'desc' },
     );
@@ -880,43 +928,27 @@ export class DagPanel {
     const field: HTMLElement = this.host.field_open();
     this.rosterFrame_track();
     for (const feed of this.order.apply(feeds)) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = `feedlist-row feedlist-${feed.status}`;
-      row.dataset.feed = String(feed.id);
-      if (this.arrivals.has(feed.id)) row.classList.add('feedlist-arrived');
-      const idBadge: HTMLSpanElement = document.createElement('span');
-      idBadge.className = 'feedlist-id';
-      idBadge.textContent = String(feed.id);
-      const name: HTMLSpanElement = document.createElement('span');
-      name.className = 'feedlist-title';
-      name.textContent = feed.title || '(untitled)';
-      const status: HTMLSpanElement = document.createElement('span');
-      status.className = 'feedlist-status';
-      status.textContent = feed.status.toUpperCase();
-      // Totals are derived from resident nodes: a feed not yet resident
-      // reads a dash, never a zero.
-      const size: HTMLSpanElement = document.createElement('span');
-      size.className = 'feedlist-size';
-      size.textContent = feed.sizeBytes === undefined ? '—' : size_format(feed.sizeBytes);
-      const time: HTMLSpanElement = document.createElement('span');
-      time.className = 'feedlist-time';
-      time.textContent = feed.wallSeconds === undefined ? '—' : duration_format(feed.wallSeconds);
-      const owner: HTMLSpanElement = document.createElement('span');
-      owner.className = 'feedlist-owner';
-      owner.textContent = feed.owner;
-      const created: HTMLSpanElement = document.createElement('span');
-      created.className = 'feedlist-created';
-      created.textContent = feed.createdAt.slice(0, 10);
-      row.append(idBadge, name, status, size, time, owner, created);
-      row.title = 'enter the feed (Esc returns to this list)';
-      // Selecting a feed enters it: the full graph takes the pane and the
-      // list steps aside. Esc (contextual back) returns here.
-      row.addEventListener('click', (): void => {
-        this.pinnedFeedId = feed.id;
-        this.requestedFeedId = null;
-        this.handlers.feed_regard?.(`/proc/jobs/feed_${feed.id}`);
-        this.feedRequest_show(feed.id);
-        this.handlers.command_run(`feed diagram feed_${feed.id}`);
+      const row: HTMLElement = listingRow_build(feed, FEED_TRAITS, {
+        className: (entry: FeedListEntry): string => {
+          // Row state is not a column: a feed's status and its arrival mark
+          // the row, they do not sit under a cap.
+          const marks: string[] = ['feedlist-row', `feedlist-${entry.status}`];
+          if (this.arrivals.has(entry.id)) marks.push('feedlist-arrived');
+          return marks.join(' ');
+        },
+        decorate: (element: HTMLElement, entry: FeedListEntry): void => {
+          element.dataset.feed = String(entry.id);
+          element.title = 'enter the feed (Esc returns to this list)';
+          // Selecting a feed enters it: the full graph takes the pane and
+          // the list steps aside. Esc (contextual back) returns here.
+          element.addEventListener('click', (): void => {
+            this.pinnedFeedId = entry.id;
+            this.requestedFeedId = null;
+            this.handlers.feed_regard?.(`/proc/jobs/feed_${entry.id}`);
+            this.feedRequest_show(entry.id);
+            this.handlers.command_run(`feed diagram feed_${entry.id}`);
+          });
+        },
       });
       field.appendChild(row);
     }

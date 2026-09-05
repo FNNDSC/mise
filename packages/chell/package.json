@@ -52,7 +52,7 @@
     "marked-terminal": "^7.3.0",
     "minimatch": "^10.1.1",
     "ws": "^8.21.0",
-    "@fnndsc/menu": "*"
+    "@fnndsc/menu": "^0.3.0"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",

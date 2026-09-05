@@ -56,7 +56,7 @@ const BUILTIN_NAMES = [
   'builtin_files', 'builtin_links', 'builtin_dirs', 'builtin_context',
   'builtin_parametersofplugin', 'builtin_physicalmode', 'builtin_prompt',
   'builtin_timing', 'builtin_id', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_date', 'builtin_cal',
-  'builtin_debug', 'builtin_help', 'builtin_tree', 'builtin_du', 'builtin_store', 'builtin_share',
+  'builtin_debug', 'builtin_help', 'builtin_tree', 'builtin_du', 'builtin_store', 'builtin_setfacl', 'builtin_getfacl',
 ];
 jest.unstable_mockModule('../src/builtins/index.js', () => {
   const exports: Record<string, unknown> = {};

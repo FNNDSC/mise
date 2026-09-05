@@ -1,6 +1,5 @@
 ---
 "@fnndsc/cumin": patch
-"argus": patch
 ---
 
 fix: a refused read says so, and the header stops wasting the space it takes

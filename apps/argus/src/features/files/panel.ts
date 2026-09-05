@@ -18,6 +18,7 @@
  */
 import type { WireEnvelope } from '@fnndsc/menu';
 import { RosterOrder } from '../roster/order.js';
+import { ListingHost } from '../roster/host.js';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.
@@ -273,6 +274,8 @@ export class FilesPanel {
    */
   /** Per-column sort + filter over the resident entries. */
   private readonly order: RosterOrder<FsListingEntry>;
+  /** The frame-and-field host both tabular panes share. */
+  private readonly host: ListingHost<FsListingEntry>;
   /** The title bar's state span (FILTERED n/m). */
   private readonly stateSpan: HTMLElement | null;
 
@@ -292,6 +295,7 @@ export class FilesPanel {
       { key: 'name', dir: 'asc' },
       1,
     );
+    this.host = new ListingHost<FsListingEntry>(container, this.order);
     this.stateSpan = container.closest<HTMLElement>('.pane-files')?.querySelector<HTMLElement>('.pane-state') ?? null;
     // The blocks live on this body's own frame (a files pane's, or a node browser's).
     this.viewPill = container.parentElement?.querySelector<HTMLElement>('.files-view') ?? null;
@@ -539,33 +543,15 @@ export class FilesPanel {
    *
    * @param listings - The listings to paint.
    */
-  /**
-   * Opens the scrolling field beneath the frame.
-   *
-   * The frame (caps, filter strip) is the pane's own chrome and stays put;
-   * only this field scrolls, so the scrollbar begins at the frame's lower
-   * border instead of running up behind it.
-   *
-   * @returns The element listings are appended to.
-   */
-  private field_open(): HTMLElement {
-    const field: HTMLElement = document.createElement('div');
-    field.className = 'files-field';
-    this.container.appendChild(field);
-    return field;
-  }
-
   private listings_render(listings: FsListing[]): void {
     this.contentShown = false;
     this.container.parentElement?.classList.remove('content-view');
     this.lastListings = listings;
     this.thumbObserver?.disconnect();
     this.thumbObserver = null;
-    this.order.host_prepare(this.container);
-    // Rows scroll; the frame does not. Keeping both in one scrolling box
-    // ran the scrollbar the full height of the pane, up behind a sticky
-    // frame that then had to paint over whatever passed beneath it.
-    const field: HTMLElement = this.field_open();
+    // Rows scroll; the frame does not. The host seats the frame and opens
+    // the field beneath it.
+    const field: HTMLElement = this.host.field_open();
     for (const listing of listings) {
       const block: HTMLElement = document.createElement('section');
       block.className = 'files-listing';

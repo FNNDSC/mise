@@ -1141,13 +1141,6 @@ body[data-zoom]:not([data-zoom='console'])
   font-size: 0.8rem;
 }
 
-/* The scrolling half. Its top edge is where the scrollbar begins. */
-.feedlist-field {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-}
-
 /* Held in place by structure now, so it needs no sticky overlay. */
 .dag-feedlist > .roster-order {
   position: static;
@@ -1576,11 +1569,17 @@ body[data-header='dag'] #header-dag {
   opacity: 0.9;
 }
 
-/* The scrolling half. Its top edge is where the scrollbar begins. */
-.files-field {
+/* The scrolling half, shared by every tabular pane. Its top edge is where
+ * the scrollbar begins — the frame above it is the pane's own chrome, not
+ * part of its scroll. */
+.listing-field {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* The files listing keeps room for its scrollbar beside the rows. */
+.files-panel > .listing-field {
   padding-right: 0.5rem;
 }
 

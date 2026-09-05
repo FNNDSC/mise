@@ -15,6 +15,8 @@ import {
   repl_question,
   session,
   vfs,
+  warmupFailure_clear,
+  warmupFailure_note,
   type BrasaEngine,
   type PrefetchResult,
 } from '@fnndsc/brasa';
@@ -64,7 +66,11 @@ export interface StartupWarmupCache {
   pipelines?: number;
   feeds?: number;
   public?: number;
+  /** Steps that blocked boot and exhausted their retries; these gate. */
   failures: string[];
+  /** Steps warming behind the prompt. These do not gate: their outcome
+   * arrives after the berth is published, so a failure is announced. */
+  deferred: DeferredWarmup[];
 }
 
 /** Minimal status reporter accepted by startup warming. */
@@ -150,6 +156,61 @@ async function daemonWarmupFailure_decide(failures: string[]): Promise<DaemonWar
   }
 }
 
+/** A warm-up running behind the prompt, with the label it reports under. */
+export interface DeferredWarmup {
+  label: string;
+  settled: Promise<PrefetchResult>;
+}
+
+/**
+ * Starts a warm-up behind the prompt instead of in front of it.
+ *
+ * The checkpoint restore has already put these listings in the cache, and
+ * a stale one is served at once and refreshed behind, so blocking on the
+ * fetch buys freshness that arrives anyway a moment later with nobody
+ * waiting. Measured against a live CUBE: `/PUBLIC` costs 8.4s and
+ * `/SHARED` 9.3s — eighteen seconds an operator spent watching a prompt
+ * that could already have been theirs.
+ *
+ * A deferred step leaves the boot failure gate with this call, so its
+ * failure is announced afterwards rather than holding the daemon.
+ *
+ * @param label - Stable boot-step label.
+ * @param message - What the row says while it runs.
+ * @param reporter - Host status logger, or null.
+ * @param action - The warm-up itself.
+ * @returns The step's label and the promise of its outcome.
+ */
+function warmup_defer(
+  label: string,
+  message: string,
+  reporter: StartupWarmupReporter | null,
+  action: () => Promise<PrefetchResult>,
+): DeferredWarmup {
+  reporter?.log('pending', label, message);
+  // Nothing reports a deferred completion: a warm that finishes and
+  // changes nothing is not news. Only a failure is, and that is
+  // annunciated rather than printed to a readout already scrolled past.
+  // A deferred step keeps the bounded retry policy a blocking one had: a
+  // transient failure should be retried before it is announced. The retry
+  // rows go nowhere, though — the readout they would print to is already
+  // scrolled past.
+  const settled: Promise<PrefetchResult> = startupPrefetch_retry(label, message, false, null, action)
+    .catch((error: unknown): PrefetchResult => ({
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    }))
+    .then((outcome: PrefetchResult): PrefetchResult => {
+      // Held until a later attempt succeeds. The readout it would have
+      // been printed to has scrolled away by now, so the prompt and the
+      // status strip carry it instead.
+      if (outcome.ok) warmupFailure_clear(label);
+      else warmupFailure_note(label, outcome.message ?? `${label} warm-up failed`);
+      return outcome;
+    });
+  return { label, settled };
+}
+
 /**
  * Renders the age of the oldest restored folder listing.
  *
@@ -189,7 +250,7 @@ export async function startupWarmup_run(
   reporter: StartupWarmupReporter | null,
   reportTopologySettlement: boolean = false,
 ): Promise<StartupWarmupCache> {
-  const result: StartupWarmupCache = { failures: [] };
+  const result: StartupWarmupCache = { failures: [], deferred: [] };
 
   // Feed movement dirties the listings inside a feed; an arrival or a
   // departure changes the folder a feed appears *in*. The roster speaks
@@ -260,10 +321,9 @@ export async function startupWarmup_run(
   }
 
   if (!session.offline) {
-    const groupsResult: PrefetchResult = await startupPrefetch_retry(
+    result.deferred.push(warmup_defer(
       'Groups',
-      'Resolving /etc/group memberships',
-      interactive,
+      'Resolving /etc/group behind the prompt',
       reporter,
       async (): Promise<PrefetchResult> => {
         const projection: Result<string> = await vfsDispatcher.read('/etc/group');
@@ -274,13 +334,7 @@ export async function startupWarmup_run(
         const error: StackMessage | undefined = errorStack.stack_pop();
         return { ok: false, message: error?.message ?? 'Failed to resolve /etc/group' };
       },
-    );
-    if (groupsResult.ok) {
-      reporter?.log('ok', 'Groups', `Cached ${groupsResult.count ?? 0} group(s)`);
-    } else {
-      result.failures.push('Groups');
-      reporter?.log('fail', 'Groups', groupsResult.message || 'Failed to resolve /etc/group');
-    }
+    ));
   } else {
     reporter?.log('skip', 'Groups', 'Offline mode');
   }
@@ -288,40 +342,34 @@ export async function startupWarmup_run(
   if (!session.offline && flags.feeds) {
     const feedPath: string | undefined = user ? `/home/${user}/feeds` : undefined;
     if (feedPath) {
-      const feedsResult: PrefetchResult = await startupPrefetch_retry(
+      result.deferred.push(warmup_defer(
         'Feeds',
-        'Prefetching user feeds',
-        interactive,
+        `Warming ${feedPath} behind the prompt`,
         reporter,
         (): Promise<PrefetchResult> => prefetch_path(feedPath),
-      );
-      if (feedsResult.ok) {
-        result.feeds = feedsResult.count;
-        reporter?.log('ok', 'Feeds', `Cached ${feedsResult.count ?? 0} item(s) from ${feedPath}`);
-      } else {
-        result.failures.push('Feeds');
-        reporter?.log('fail', 'Feeds', feedsResult.message || `Prefetch failed for ${feedPath}`);
-      }
+      ));
     } else {
       reporter?.log('skip', 'Feeds', 'No user context');
     }
 
     if (flags.publicFeeds) {
-      const publicResult: PrefetchResult = await startupPrefetch_retry(
+      result.deferred.push(warmup_defer(
         'Public',
-        'Prefetching public feeds',
-        interactive,
+        'Warming /PUBLIC behind the prompt',
         reporter,
         (): Promise<PrefetchResult> => prefetch_path('/PUBLIC'),
-      );
-      if (publicResult.ok) {
-        result.public = publicResult.count;
-        reporter?.log('ok', 'Public', `Cached ${publicResult.count ?? 0} item(s) from /PUBLIC`);
-      } else {
-        result.failures.push('Public');
-        reporter?.log('fail', 'Public', publicResult.message || 'Prefetch failed for /PUBLIC');
-      }
+      ));
     }
+
+    // `/SHARED` is where another identity's work becomes visible, and it
+    // had no step at all: nothing to fail, so a CUBE that stopped serving
+    // shared paths stayed silent until somebody went looking.
+    result.deferred.push(warmup_defer(
+      'Shared',
+      'Warming /SHARED behind the prompt',
+      reporter,
+      (): Promise<PrefetchResult> => prefetch_path('/SHARED'),
+    ));
   } else if (!session.offline) {
     reporter?.log('skip', 'Feeds', 'Prefetch disabled');
   } else {

@@ -1527,6 +1527,12 @@ body[data-header='dag'] #header-dag {
   overflow: hidden;
 }
 
+/* A degraded readout: a warm-up that failed behind the prompt is named
+ * here until a later attempt clears it. */
+.status-degraded {
+  color: var(--mars);
+}
+
 /* ------------------------------------------------- listable, not readable */
 
 /* CUBE lists files a shared feed's guest may not read. A row that has been

@@ -270,6 +270,44 @@ try {
       JSON.stringify({ grown: consoleHeight.grown, restored: consoleHeight.restoredHeight }));
   }
 
+  console.log('warmup-failure');
+  // A warm-up moved off the boot gate has no readout left to be printed
+  // to, so it is named on the JOBS readout and stays there until a later
+  // attempt clears it. Driven through the surface's own prompt-context
+  // path, so this exercises the rendering an operator actually sees.
+  const warmFail = await evalIn(`
+    const jobs = document.getElementById('status-jobs');
+    const base = globalThis.__argusPromptContext;
+    const show = globalThis.__argusPromptContext_show;
+    if (!jobs || !base || !show) return { ready: false };
+
+    show({ ...base, warmupFailures: [{ label: 'Groups', message: 'membership service unavailable' }] });
+    await sleep(120);
+    const named = jobs.textContent.includes('WARM-UP FAILED') && jobs.textContent.includes('GROUPS');
+    const degraded = jobs.classList.contains('status-degraded');
+    const explained = jobs.title.includes('membership service unavailable');
+
+    // It persists: another context carrying the same failure must not clear it.
+    show({ ...base, warmupFailures: [{ label: 'Groups', message: 'membership service unavailable' }] });
+    await sleep(120);
+    const persists = jobs.textContent.includes('WARM-UP FAILED');
+
+    // And a later success clears it.
+    show({ ...base });
+    await sleep(120);
+    const cleared = !jobs.textContent.includes('WARM-UP FAILED') && !jobs.classList.contains('status-degraded');
+
+    return { ready: true, named, degraded, explained, persists, cleared };`);
+  if (warmFail.ready) {
+    check('a failed deferred warm-up is named on the status readout and persists',
+      warmFail.named && warmFail.degraded && warmFail.persists && warmFail.cleared,
+      JSON.stringify(warmFail));
+    check('and the readout explains it', warmFail.explained, JSON.stringify(warmFail));
+  } else {
+    check('a failed deferred warm-up is named on the status readout and persists', false,
+      'the surface exposed no prompt-context seam');
+  }
+
   console.log('focus-citizenship');
   const focusCit = await evalIn(`
     const prefix = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));

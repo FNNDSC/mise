@@ -126,10 +126,20 @@ export class StatusBar {
         ? `+FEED ${warmup.arrived.join(' ')}`
         : `+${warmup.arrived.length} FEEDS`);
     }
+    // A warm-up that failed behind the prompt has no boot readout left to
+    // be printed to. It stays here, named, until a later attempt clears
+    // it: a message that vanishes is one nobody acts on.
+    const failed = context.warmupFailures ?? [];
+    if (failed.length > 0) {
+      parts.push(`WARM-UP FAILED: ${failed.map((f) => f.label.toUpperCase()).join(' ')}`);
+    }
     this.fields.jobs.textContent = parts.join(' \u00b7 ');
-    this.fields.jobs.title = warmup?.feed !== undefined
-      ? 'A feed is being indexed on its first visit; it opens when the walk completes.'
-      : '';
+    this.fields.jobs.classList.toggle('status-degraded', failed.length > 0);
+    this.fields.jobs.title = failed.length > 0
+      ? failed.map((f) => `${f.label}: ${f.message}`).join('\n')
+      : warmup?.feed !== undefined
+        ? 'A feed is being indexed on its first visit; it opens when the walk completes.'
+        : '';
 
     this.fields.latency.textContent = context.lastCommandDurationMs > 0
       ? `${context.lastCommandDurationMs}MS`

@@ -440,6 +440,14 @@ export const promptContextSchema = z.object({
     jobs: z.number(),
     feeds: z.number(),
   }).optional(),
+  /**
+   * Warm-up steps that failed behind the prompt and have not since
+   * succeeded. Optional, so an older daemon still parses here.
+   */
+  warmupFailures: z.array(z.object({
+    label: z.string(),
+    message: z.string(),
+  })).optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;

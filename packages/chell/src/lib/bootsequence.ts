@@ -38,9 +38,12 @@ export interface BootPanels {
 }
 
 /**
- * Status of a boot step: ok, retry, skip, or fail.
+ * Status of a boot step: ok, retry, skip, fail, or pending.
+ *
+ * `pending` is a step that has started and not finished — warming behind
+ * the prompt rather than in front of it.
  */
-export type BootStatus = 'ok' | 'retry' | 'skip' | 'fail';
+export type BootStatus = 'ok' | 'retry' | 'skip' | 'fail' | 'pending';
 
 /** One status tag: its bare text and the colour it renders in. */
 interface BootStatusTag {
@@ -60,6 +63,7 @@ const BOOT_STATUS_TAGS: Record<BootStatus, BootStatusTag> = {
   retry: { text: '[RETRY]', paint: chalk.yellow },
   skip: { text: '[SKIP]', paint: chalk.yellow },
   fail: { text: '[FAIL]', paint: chalk.red },
+  pending: { text: '[PENDING]', paint: chalk.cyan },
 };
 
 /**

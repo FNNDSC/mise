@@ -114,3 +114,122 @@ export function listingRow_build<T>(
   build.decorate?.(element, row);
   return element;
 }
+
+/** What a row's work is doing, and how far along it is. */
+export interface ListingProgress {
+  /** Units settled — finished, errored or cancelled; they will not change again. */
+  done: number;
+  /** Units known. Zero means nothing has been scheduled, not that nothing exists. */
+  total: number;
+  /** Whether the work errored, which a count alone cannot say. */
+  failed?: boolean;
+}
+
+/**
+ * Sums progress across a level's children.
+ *
+ * A study's progress is its series', a patient's is its studies'. The rule
+ * is deliberately plain addition: an average would let one finished series
+ * of a hundred files outweigh a stalled one of ten thousand.
+ *
+ * @param parts - The children's progress.
+ * @returns Their total, failed when any child failed.
+ */
+export function progress_aggregate(parts: ReadonlyArray<ListingProgress>): ListingProgress {
+  let done: number = 0;
+  let total: number = 0;
+  let failed: boolean = false;
+  for (const part of parts) {
+    done += part.done;
+    total += part.total;
+    failed = failed || part.failed === true;
+  }
+  return { done, total, ...(failed ? { failed: true } : {}) };
+}
+
+/**
+ * Builds a progress track.
+ *
+ * A row whose work has not started still gets a track, dimmed. Absence of
+ * a bar reads as "no such thing"; a dim track reads as "nothing has
+ * happened yet", which is the truth and the more useful of the two.
+ *
+ * @param progress - The row's progress, or null when it has no work at all.
+ * @returns The track element.
+ */
+export function progressCell_build(progress: ListingProgress | null): HTMLElement {
+  const track: HTMLSpanElement = document.createElement('span');
+  track.className = 'listing-progress';
+  if (progress === null || progress.total === 0) {
+    track.classList.add('listing-progress-idle');
+    track.title = progress === null ? 'no work' : 'nothing scheduled yet';
+    return track;
+  }
+
+  const fraction: number = Math.min(1, progress.done / progress.total);
+  const settled: boolean = progress.done >= progress.total;
+  track.classList.add(
+    progress.failed === true ? 'listing-progress-failed'
+      : settled ? 'listing-progress-done' : 'listing-progress-running',
+  );
+  track.title = `${progress.done}/${progress.total}`;
+
+  const fill: HTMLSpanElement = document.createElement('span');
+  fill.className = 'listing-progress-fill';
+  fill.style.width = `${Math.round(fraction * 100)}%`;
+  track.appendChild(fill);
+  return track;
+}
+
+/**
+ * One thing a row can be told to do.
+ *
+ * Actions are not traits. A trait says what a row *is* under some column;
+ * an action is a verb the operator may apply to it, and it sits outside
+ * the column grid because it answers to no cap.
+ */
+export interface ListingAction<T> {
+  /** What the capsule says. */
+  label: string;
+  /** What pressing it does. */
+  run: (row: T) => void;
+  /** Whether this row is offered it at all; absent means always. */
+  offered?: (row: T) => boolean;
+  /** Whether it is offered but refused, with the capsule shown disabled. */
+  disabled?: (row: T) => boolean;
+}
+
+/**
+ * Builds a row's action capsules.
+ *
+ * @param row - The row's data.
+ * @param actions - The verbs it may be given.
+ * @returns A cell holding the capsules, empty when none are offered.
+ */
+export function actionCell_build<T>(row: T, actions: ReadonlyArray<ListingAction<T>>): HTMLElement {
+  const cell: HTMLSpanElement = document.createElement('span');
+  cell.className = 'listing-actions';
+  for (const action of actions) {
+    if (action.offered !== undefined && !action.offered(row)) continue;
+    const capsule: HTMLButtonElement = document.createElement('button');
+    capsule.className = 'listing-action';
+    capsule.textContent = action.label;
+    if (action.disabled?.(row) === true) capsule.disabled = true;
+    capsule.addEventListener('click', (event: Event): void => {
+      // A row's own activation is a different gesture from its actions.
+      event.stopPropagation();
+      action.run(row);
+    });
+    cell.appendChild(capsule);
+  }
+  return cell;
+}
+
+/**
+ * How activating a row behaves.
+ *
+ * `replace` leaves the parent behind — entering a directory, opening a
+ * feed. `fold` keeps the parent on stage with the child listing inside it,
+ * which is what a study does with its series. Same model, different mode.
+ */
+export type ExpansionMode = 'replace' | 'fold';

@@ -510,7 +510,7 @@ describe('RemoteEngine live output', () => {
     // A malformed message of a KNOWN type is real drift: still loud.
     ws.emit('message', Buffer.from(JSON.stringify({ type: 'result', __malformed: true })));
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(String(spy.mock.calls[1]?.[0])).toContain('Ignoring invalid daemon message');
+    expect(String(spy.mock.calls[1]?.[0])).toContain('Ignoring invalid message from calypso');
 
     spy.mockRestore();
   });

@@ -46,14 +46,14 @@ export function berth_fromAddress(address: string, token?: string): Berth | null
   try {
     parsed = new URL(address);
   } catch {
-    console.error(chalk.red(`[!] '${address}' is not a URL. Paste the address the daemon printed.`));
+    console.error(chalk.red(`[!] '${address}' is not a URL. Paste the address calypso printed.`));
     return null;
   }
 
   const carried: string | null = parsed.searchParams.get('token');
   const attachToken: string | undefined = token ?? carried ?? undefined;
   if (attachToken === undefined) {
-    console.error(chalk.red('[!] No attach token. Pass --token, or paste the URL the daemon printed, which carries one.'));
+    console.error(chalk.red('[!] No attach token. Pass --token, or paste the URL calypso printed, which carries one.'));
     return null;
   }
 
@@ -86,7 +86,7 @@ function berthBytes_fetch(berth: Berth): (filePath: string) => Promise<Buffer> {
       `${base}/vfs?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(berth.token)}`;
     const response: Response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`the daemon refused to serve ${filePath} (HTTP ${response.status})`);
+      throw new Error(`calypso refused to serve ${filePath} (HTTP ${response.status})`);
     }
     return Buffer.from(await response.arrayBuffer());
   };
@@ -117,7 +117,7 @@ export async function berth_probeLive(berth: Berth): Promise<boolean> {
  * @returns The chosen berth, or null when the choice was invalid or aborted.
  */
 async function berth_pick(berths: Berth[]): Promise<Berth | null> {
-  console.log(chalk.cyan('Several CALYPSO daemons are running:'));
+  console.log(chalk.cyan('Several calypso sessions are running:'));
   berths.forEach((berth: Berth, index: number): void => {
     console.log(`  ${chalk.bold(String(index + 1))}. ${berth.identity}  ${chalk.gray(berth.url)}`);
   });
@@ -150,21 +150,21 @@ async function berth_select(identity: string | undefined): Promise<Berth | null>
   if (identity) {
     const berth: Berth | null = await resolver.resolve(identity);
     if (!berth) {
-      console.error(chalk.red(`[!] No live CALYPSO daemon for ${identity}. Start one with:  chell --daemon ${identity}`));
+      console.error(chalk.red(`[!] No live calypso for ${identity}. Start one with:  calypso ${identity}`));
     }
     return berth;
   }
 
   const berths: Berth[] = await resolver.list();
   if (berths.length === 0) {
-    console.error(chalk.red('[!] No CALYPSO daemon found. Start one with:  chell --daemon <user>@<url>'));
+    console.error(chalk.red('[!] No calypso found. Start one with:  calypso <user>@<url>'));
     return null;
   }
   if (berths.length === 1) {
     return berths[0];
   }
   if (!process.stdin.isTTY) {
-    console.error(chalk.red('[!] Several daemons are running; specify one:  chell --remote <user>@<url>'));
+    console.error(chalk.red('[!] Several calypso sessions are running; specify one:  chell --remote <user>@<url>'));
     for (const berth of berths) {
       console.error(`      ${berth.identity}  ${chalk.gray(berth.url)}`);
     }
@@ -289,7 +289,7 @@ export async function remote_run(
   if (hostControl.length > 0) {
     // The daemon acts on its own host: `!`, pipes, and the disk are the
     // daemon's, not this machine's. Said once here, and on every prompt.
-    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl.join(' ')} — \`!\` and pipes run on the daemon host, upload/download reach ITS disk`));
+    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl.join(' ')} — \`!\` and pipes run on calypso's host, upload/download reach ITS disk`));
   }
   console.log(chalk.gray("    Type 'exit' to detach.\n"));
   console.log(chalk.gray(fortune_random(4)));

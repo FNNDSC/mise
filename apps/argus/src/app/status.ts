@@ -87,15 +87,15 @@ export class StatusBar {
   }
 
   /**
-   * The HOST lamp: amber while the daemon acts on its own host, absent
+   * The HOST lamp: amber while calypso acts on its own host, absent
    * otherwise — an annunciation, not an alert, and never at rest.
    *
-   * @param tiers - The daemon's declared host-control tiers.
+   * @param tiers - Calypso's declared host-control tiers.
    */
   public hostControl_show(tiers: string[]): void {
     this.fields.host.textContent = tiers.length > 0 ? `HOST ${tiers.join(' ')}` : '';
     this.fields.host.title = tiers.length > 0
-      ? 'This daemon was started with --host-control: `!` and pipes run on the daemon host, upload/download reach its disk.'
+      ? 'Calypso was started with --host-control: `!` and pipes run on its host, upload/download reach its disk.'
       : '';
   }
 

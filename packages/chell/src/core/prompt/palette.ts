@@ -26,7 +26,7 @@ export interface PromptPalette {
   USER: PromptColorPair;
   DIR: PromptColorPair;
   PHYSICAL: PromptColorPair;
-  /** The daemon acts on its own host (`--host-control`): amber, an annunciation. */
+  /** Calypso acts on its own host (`--host-control`): amber, an annunciation. */
   HOSTCTL: PromptColorPair;
   TIME: PromptColorPair;
   DURATION: PromptColorPair;

@@ -13,7 +13,7 @@ This guide walks through installing and running **chell**, the shell surface of
 mise, three ways: a standalone release binary, an npm install, or a build from
 source. It then covers connecting to a ChRIS CUBE, and the two ways chell runs
 the engine — *local* (the engine in-process) and *daemon* (the engine hosted
-over a WebSocket for one or more attached surfaces), including how the daemon
+over a WebSocket for one or more attached surfaces), including how calypso
 authenticates to CUBE. For what mise is and why it is shaped this way, see
 link:../README.md[the README] and link:history.adoc[history.adoc].
 
@@ -57,8 +57,8 @@ npm install -g @fnndsc/chell
 chell
 ----
 
-This installs the `chell` binary. The daemon binary, `calypso`, ships in a
-separate package if you want to run the daemon standalone (see
+This installs the `chell` binary. Calypso binary, `calypso`, ships in a
+separate package if you want to run calypso standalone (see
 <<daemon-mode>>): `npm install -g @fnndsc/calypso`.
 
 === From source (the `make` kitchen)
@@ -89,8 +89,8 @@ and links `chell` globally so you can run it from anywhere. The individual steps
 |`serve`  |link `chell` globally                    |`npm link`
 |`scrub`  |clean the kitchen                        |remove `dist/` + `node_modules`
 |`run`    |build + launch the shell                 |`node packages/chell/dist/index.js`
-|`daemon` |build + run the CALYPSO daemon           |`node packages/calypso/dist/calypso.js`
-|`remote` |build + attach to a running daemon       |`node packages/chell/dist/index.js --remote`
+|`daemon` |build + run calypso           |`node packages/calypso/dist/calypso.js`
+|`remote` |build + attach to a running calypso      |`node packages/chell/dist/index.js --remote`
 |===
 
 Standard aliases work too: `make install` / `build` / `test` / `clean` / `link`.
@@ -157,7 +157,7 @@ A successful connect writes a session (URL, user, token) to disk. On the next
 launch, `chell` with no target validates and restores it, so you do not re-enter
 credentials each time. If the token has expired you drop into disconnected mode
 with a hint to reconnect. `logout` clears the saved session. This saved session
-is also what lets the daemon authenticate headlessly — see <<daemon-mode>>.
+is also what lets calypso authenticate headlessly — see <<daemon-mode>>.
 
 == Running modes
 
@@ -184,29 +184,26 @@ NOTE: To embed the engine in *your own* program rather than run chell, import
 [[daemon-mode]]
 === Daemon mode: the engine hosted over a socket
 
-In daemon mode the engine runs in a long-lived **CALYPSO** daemon and is served
+In daemon mode the engine runs in a long-lived **CALYPSO** session and is served
 over a local WebSocket. Thin surfaces attach to it and drive the same session;
 the session (current directory, context, connection) outlives any single client,
-and several surfaces can share it at once. CUBE credentials live in the daemon
+and several surfaces can share it at once. CUBE credentials live in calypso
 and never cross the wire.
 
-==== Starting the daemon
+==== Starting calypso
 
-There are two ways to start it, differing only in how the daemon logs into CUBE.
+Calypso is the session supervisor: the thing that holds a CUBE session and hosts it for every surface that attaches. There are two ways to start it, differing only in how it logs into CUBE.
 
-*With chell, logging in fresh.* `chell --daemon` boots the engine, establishes a
-CUBE session from the credentials you pass (exactly like a local connect), then
-hosts it:
+*Standalone, from a saved session.* The `calypso` command is non-interactive: it creates an engine, restores the session you already saved with chell, and hosts it. Connect once with chell, then run calypso. This is the form to reach for when the session already exists.
+
+*With chell, logging in fresh.* `chell --daemon` is the same supervisor, started by chell rather than on its own: it boots the engine, establishes a CUBE session from the credentials you pass (exactly like a local connect), then hosts it. Reach for this when there is no saved session to restore:
 
 [source,bash]
 ----
 chell --daemon chris@https://cube.chrisproject.org/api/v1/ -p <pwd>
 ----
 
-*Standalone, from a saved session.* The `calypso` binary (and `make daemon`) is
-non-interactive: it creates an engine, **restores the session you already saved**
-with chell, and hosts it. If there is no saved session it starts disconnected and
-tells you to log in with chell first. So connect once, then run the daemon:
+*The standalone form in full.* `calypso` (and `make daemon`) restores the saved session. If there is none it starts disconnected and tells you to log in with chell first:
 
 [source,bash]
 ----
@@ -221,12 +218,12 @@ Before publishing its socket, daemon mode warms the same Plugins, Pipelines,
 Feeds, Public, and Jobs caches as interactive startup and reports each result.
 `Engine Ready` appears before the listening address: once the address is printed,
 the blocking warm-up is complete (job topology may continue warming in the
-background). The daemon later reports `Topology Ready — N/N job(s) indexed`, or
+background). Calypso later reports `Topology Ready — N/N job(s) indexed`, or
 an explicit `Topology Warm-up failed` status, when that background sweep settles.
-If part of the blocking warm-up fails, the daemon reports the incomplete labels
+If part of the blocking warm-up fails, calypso reports the incomplete labels
 explicitly and still starts; those resources remain lazily loadable.
 
-For `/proc/jobs`, the daemon first restores a versioned, identity-scoped local
+For `/proc/jobs`, calypso first restores a versioned, identity-scoped local
 checkpoint and validates its feed visibility before publishing the socket. The
 restored graph remains usable while a paginated CUBE sweep reconciles it in the
 background. Terminal job status may come from the checkpoint; active status and
@@ -236,12 +233,12 @@ analyses created by another client or when a clean rebuild is required. See
 link:../packages/chell/docs/proc.adoc[the `/proc` guide] for the full freshness
 model.
 
-Either way, the daemon writes an identity-keyed berth containing its URL and a
+Either way, calypso writes an identity-keyed berth containing its URL and a
 fresh attach token, readable only by the current OS user, under
 `$XDG_RUNTIME_DIR/calypso/` (or the platform temporary directory as fallback).
 This lets several daemons for different CUBE identities coexist on one machine.
 
-==== Attaching to the daemon
+==== Attaching to calypso
 
 From another terminal, attach a chell surface as a remote client. It needs no
 local engine and no CUBE credentials — it drives the hosted session:
@@ -298,4 +295,4 @@ maps API resources onto paths.
 * link:../README.md[README] — what mise is, and why.
 * link:history.adoc[history.adoc] — the narrative history of the stack.
 * link:intent-kernel.adoc[intent-kernel.adoc] — building a client on the engine.
-* link:calypso.adoc[calypso.adoc] — the daemon and wire contract.
+* link:calypso.adoc[calypso.adoc] — calypso and wire contract.

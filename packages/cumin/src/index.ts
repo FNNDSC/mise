@@ -20,6 +20,7 @@ export * from "./plugins/chrisPlugins";
 export * from "./plugins/chrisPluginMetaPlugins";
 export * from "./compute/computeResources";
 export * from "./pacs/chrisPACS";
+export * from "./pacs/queryIndexSweep";
 export * from "./pacs/dicomPayload";
 export * from "./resources/chrisResources";
 export * from "./resources/chrisResourceGroup";

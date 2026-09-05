@@ -15,6 +15,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _e?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: jest.fn(() => ({ cache_set: jest.fn() })),
+  queryIndex_get: jest.fn(() => ({ entry_note: jest.fn(), entry_find: jest.fn(() => null) })),
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ queryId_extractFromFolder: jest.fn(), queryLabel_extractFromFolder: jest.fn(), folderUID_get: jest.fn(), queryFolderName_build: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ screen: { table_output: jest.fn(() => '') } }));

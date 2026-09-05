@@ -106,6 +106,14 @@ export interface PACSQueryRecord {
 export interface PACSQueryListOptions extends ListOptions {
   pacs_id?: number;
   pacs_identifier?: string;
+  /** Records created at or after this ISO timestamp. */
+  min_creation_date?: string;
+  /** Records created at or before this ISO timestamp. */
+  max_creation_date?: string;
+  /** Records owned by this username. */
+  owner_username?: string;
+  /** Records in this state, e.g. `succeeded`. */
+  status?: string;
 }
 
 /**

@@ -1,5 +1,82 @@
 # @fnndsc/cumin
 
+## 3.17.0
+
+### Minor Changes
+
+- 3afaa65: fix(cache): the listing cache's lifetimes stop lying, and the boot row says what it holds
+
+  `ttl_get` compared exact paths or a doubly anchored wildcard, so `/home` never covered `/home/<user>/feeds` and `/feeds/*` matched a top-level path this VFS does not have. Two of the four tuned entries did nothing, and everything but `/bin` and `/PUBLIC` silently took the three-minute default. Matching is now longest-prefix on whole segments, so `/bindings` does not inherit `/bin`.
+
+  Lifetimes are now split by whether a signal exists rather than guessed per path. Where `/proc` reports movement — `/home`, `/SHARED`, `/PUBLIC` — the clock is a backstop against a missed notification and runs long. Where nothing reports, it stays short. The plugin and pipeline indexes go to a day, because registration is an administrative act on a scale of months and an hourly re-walk was the most aggressive refresh in the table for the least mutable data in the system.
+
+  The cache holds 500 path listings rather than 100, and says so the first time it fills: an evicted listing also leaves the checkpoint, so a session that quietly crossed the old cap came back thinner than the one that wrote it.
+
+  The boot row `Listings` becomes `Folders` and reports age alongside count. It is the restored folder-listing checkpoint, not the plugin index, which has its own `Plugins` and `Pipelines` rows; and a count with no age says nothing about whether the restore was worth having.
+
+  Also records the change-discovery entry in `docs/CUBE-gaps.adoc`: CUBE offers no way to ask what changed, which is why clients invent clocks at all.
+
+- 5b4b7db: feat(cache): feed movement dirties the folder listings it touched
+
+  `/proc` already learns when a feed arrives, vanishes, or finishes work. The folder-listing cache, in the same process, heard none of it and re-fetched on a clock instead. This is the wire between them.
+
+  Two rules govern it. Your own act deletes and someone else's act dirties: a mutation removes the entry, because showing a file you just deleted is incoherent, while a job's output or a colleague's share is not wrong but merely behind, so the entry is marked and served at once while it refreshes behind. And movement coalesces, because a feed completing a fan-out stage lands many terminal transitions in the same second.
+
+  Nothing subscribes to the process cache's change stream. That stream fires on every instance add and status observation, so indexing one large feed emits tens of thousands of events, none of which mean a file appeared. Movement is pushed from the three places that actually know: a job crossing into a terminal state, a feed arriving on the roster, and a feed vanishing from it. A merely-running job says nothing, having produced nothing to list.
+
+  Feed-to-path mapping needs no new index. `path_extractFeedID` already reads a feed id out of any cached path, so a shared feed under `/SHARED` is reached by the same rule as one under a home folder, with no extra wiring.
+
+  An arrival changes the folder a feed appears _in_ rather than anything inside it, and the roster speaks only in feed ids, so a host declares those folders once through `rosterParents_set`.
+
+  An arrival is routed by how this identity sees the feed, so a public feed landing on a busy CUBE dirties the public root and not the identity's own feeds folder. A departure is not staleness at all: a feed this identity can no longer reach has no contents to serve, and a dirty entry is still served while it refreshes, so its cached listings are removed rather than marked.
+
+- eaf6c67: feat(acl): a feed's access list, in the shell's own verbs
+
+  An exemplar needed to share a feed and mise had no wrapper, so it reached past the stack to CUBE's REST. That is backwards: a missing wrapper is the work. A capability living in one caller's private REST call is invisible to every other surface and untested by the kernel's suite.
+
+  The kernel gains `feed_share` and `feedShares_list`, over the client's own `addUserPermission` and `getUserPermissions` — which existed all along, so no raw REST was ever needed.
+
+  Its shell face is `setfacl` and `getfacl`, not a `share` verb. Granting an identity access to a thing is an access control entry, and that is a verb a terminal already knows; "share X with Y" is a sentence, and reads as a natural-language assist rather than a shell:
+
+  ```
+  setfacl -m u:someone:r /home/me/feeds/feed_12
+  getfacl /home/me/feeds/feed_12
+    # file: home/me/feeds/feed_12
+    user::rw-
+    user:someone:r--
+  ```
+
+  A feed is named by id, by the `feed_N` a listing shows, or by any path holding one, so a path under `/SHARED` resolves by the same rule as one under a home folder. Group and other entries are refused rather than quietly read as users, an entry granting no read is refused because reading is what a CUBE share conveys, and `-x` is refused **by name** — CUBE models the grant but mise has no revocation to offer, and a shell that appears to strip an entry it cannot strip is worse than one that says so.
+
+  The grammar sits in its own dependency-free module, as `cat`'s does: the engine graph cannot be loaded under jest, so a grammar inside the builtin is a grammar nothing tests.
+
+- f8d1b1c: Index movement is annunciated: a feed's first-visit topology load (`feed 812 indexing: 3400/20000 17%`) and roster arrivals (`+feed 812`, feeds created since or newly shared) reach the prompt context's `procWarmup` segment — `feed`, `arrived`, and `sweeping` so a renderer can tell a sweep from a load — and the chell prompt renders both. The process cache keeps the two registers (`feedLoad_progress/clear/get`, `arrivals_note/recent`); the salsa feed walk and roster syncs feed them.
+
+### Patch Changes
+
+- f73e6c2: fix: a refused read says so, and the header stops wasting the space it takes
+
+  **A file you may list is not always a file you may read.** CUBE lists the contents of a shared feed but refuses the bytes, answering 403 for a file whose size the same identity can see. mise reported that as "not found (404) or access denied (403)" — two opposite answers in one sentence — and the client returns null for a refusal as readily as for an absence, so no status reached the message at all. On the failure path only, the real status is now asked for and reported: a refusal names itself and says what it means.
+
+  **argus swallowed it.** The viewer joined the rendered text of a failed read, which is empty, and drew a blank pane — indistinguishable from an empty file. A refused read now opens as `READ REFUSED` with the session's own words, and the row is remembered: it dims, strikes through, and carries a slashed-circle glyph explaining that it is listed but not readable. This is reactive by necessity, since a listing does not say what may be read.
+
+  **The file browser's frame is not part of its scroll.** The caps and filter strip shared the scrolling box with the rows, so the scrollbar ran the full height of the pane, up behind the frame, and the sticky frame had to paint over whatever passed beneath it — which is what covered the first row's trailing cell. The frame now sits above a scrolling field, so the scrollbar begins at the frame's lower border.
+
+  **The header used one column of two.** The version rows live inside a wrapper, so a two-column grid on the face made that wrapper the single grid item: ten rows stacked in the first track while the second sat empty. The grid moved onto the readout itself. Measured against a live daemon, the band falls from 246px to 199px (19% to 15.3% of viewport), both columns are used, no value wraps or elides, and the attribution is inside the fold instead of clipped.
+
+  **Preview cards take the wheel**, on both axes, with scroll chaining contained, and hold 4000 bytes rather than 600 so there is something behind the gesture.
+
+  **MEDICAL** replaces SICKBAY as the scheme's name and is the scheme a browser that has never chosen one starts in. A remembered `sickbay` choice maps forward rather than being lost.
+
+- aa25502: The process cache records the compute resource each plugin instance ran on (from the CUBE list row), and the `feed.dag` model carries it per node (`mixed` for a group whose members ran on different resources), so a surface can hue a graph by where its work ran.
+- 85c6813: The session-state context (working directory, feed, plugin, PACS server) is owned by the process once loaded: its files are written for the next process to restore from, never re-read mid-session. Two daemons of one identity shared a working directory through `cwd.txt`, and a `cd` in one moved the other. Identity (user, URL) still reads from storage; a connect reloads everything.
+- Updated dependencies [5dc064e]
+- Updated dependencies [73aa61a]
+- Updated dependencies [4f034b9]
+- Updated dependencies [aa25502]
+- Updated dependencies [f8d1b1c]
+  - @fnndsc/menu@0.3.0
+
 ## 3.16.1
 
 ### Patch Changes

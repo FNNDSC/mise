@@ -1,5 +1,22 @@
 # @fnndsc/salsa
 
+## 3.12.1
+
+### Patch Changes
+
+- aa25502: The process cache records the compute resource each plugin instance ran on (from the CUBE list row), and the `feed.dag` model carries it per node (`mixed` for a group whose members ran on different resources), so a surface can hue a graph by where its work ran.
+- f8d1b1c: Index movement is annunciated: a feed's first-visit topology load (`feed 812 indexing: 3400/20000 17%`) and roster arrivals (`+feed 812`, feeds created since or newly shared) reach the prompt context's `procWarmup` segment — `feed`, `arrived`, and `sweeping` so a renderer can tell a sweep from a load — and the chell prompt renders both. The process cache keeps the two registers (`feedLoad_progress/clear/get`, `arrivals_note/recent`); the salsa feed walk and roster syncs feed them.
+- aaf0159: `/proc` synthesized files (a node's `log`, `params`, `status`) now serve their UTF-8 bytes through the binary read path, so byte readers such as the daemon's `/vfs` route see the same content `cat` does.
+- 85c6813: The session-state context (working directory, feed, plugin, PACS server) is owned by the process once loaded: its files are written for the next process to restore from, never re-read mid-session. Two daemons of one identity shared a working directory through `cwd.txt`, and a `cd` in one moved the other. Identity (user, URL) still reads from storage; a connect reloads everything.
+- Updated dependencies [f73e6c2]
+- Updated dependencies [3afaa65]
+- Updated dependencies [5b4b7db]
+- Updated dependencies [eaf6c67]
+- Updated dependencies [aa25502]
+- Updated dependencies [f8d1b1c]
+- Updated dependencies [85c6813]
+  - @fnndsc/cumin@3.17.0
+
 ## 3.12.0
 
 ### Minor Changes

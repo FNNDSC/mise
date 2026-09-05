@@ -11,6 +11,7 @@
 import {
   listData_get,
   itemData_get,
+  resource_call,
   type Client,
   type ListResource,
   type PluginInstance,
@@ -323,8 +324,9 @@ export async function feed_share(feedId: number, username: string): Promise<Resu
       errorStack.stack_push("error", `Feed with ID ${feedId} not found.`);
       return Err();
     }
-    await (feed as unknown as { addUserPermission: (name: string) => Promise<unknown> })
-      .addUserPermission(username);
+    // Through the licensed seam, not a cast at the call site: a boundary
+    // the adapter owns is a boundary one file cannot quietly widen.
+    await resource_call<unknown>(feed, 'addUserPermission', username);
     return Ok(true);
   } catch (error: unknown) {
     const message: string = error instanceof Error ? error.message : String(error);
@@ -352,9 +354,7 @@ export async function feedShares_list(feedId: number): Promise<Result<string[]>>
       errorStack.stack_push("error", `Feed with ID ${feedId} not found.`);
       return Err();
     }
-    const permissions = await (feed as unknown as {
-      getUserPermissions: (params: Record<string, unknown> | null) => Promise<{ data?: unknown }>;
-    }).getUserPermissions({ limit: 100 });
+    const permissions = await resource_call<{ data?: unknown }>(feed, 'getUserPermissions', { limit: 100 });
     const rows: Array<{ username?: string }> = listData_get<{ username?: string }>(permissions);
     return Ok(rows
       .map((row): string => String(row.username ?? ''))

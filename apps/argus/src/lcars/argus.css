@@ -339,7 +339,16 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 
 /* The PACS workspace keeps its internal sections; the pane itself scrolls
  * if they outgrow the leaf. */
+/* ONE grid for the whole workspace: the query form and the study rows it
+ * produces read the same track list, so a term stands in the column it
+ * fills. The list is positional — it must gain a column wherever the study
+ * traits do. Order: fold, patient, mrn, study, date, accession, modality,
+ * series, progress, verbs. */
 #pacs-workspace {
+  --roster-cols:
+    1.4em minmax(0, 13em) 7.5em minmax(0, 14em) 7.5em 9em 6.5em 4em minmax(5em, 1fr) 7em;
+  --roster-gap: 0.8rem;
+  --roster-pad: 6px;
   overflow-y: auto;
   min-height: 0;
 }
@@ -713,21 +722,45 @@ main {
   min-height: 0;
 }
 
+/* The form IS the header of what it produces: same tracks, same order, so
+ * PATIENT is typed where PATIENT will be read. */
 #pacs-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.2rem;
+  display: grid;
+  grid-template-columns: var(--roster-cols);
+  align-items: end;
+  column-gap: var(--roster-gap);
+  padding: 0 var(--roster-pad);
   margin: 0.3rem 0 0.5rem;
+  font-size: 0.8rem;
 }
 
+/* A label sits above its field, where a cap sits above its cell. */
 #pacs-form label {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
   color: var(--honey);
   font-family: 'Antonio', sans-serif;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+}
+
+/* The columns the form does not fill: the fold gutter, and the ones a PACS
+ * cannot narrow on or a query cannot know. */
+#pacs-form .pacs-form-gutter,
+#pacs-form .pacs-form-blank {
+  min-width: 0;
+}
+
+#pacs-form #pacs-run {
+  min-width: 0;
+  justify-self: stretch;
+}
+
+#pacs-form input {
+  min-width: 0;
+  width: 100%;
 }
 
 #pacs-form input,
@@ -807,13 +840,6 @@ main {
  * ONE roster grid per pane — the tracks, the gap and the edge padding are
  * declared here and read by every study's caps AND its series rows. */
 #pacs-results {
-  /* The STUDY grid: fold, patient, mrn, study, date, accession, modality,
-   * series, progress, verbs. The track list is positional, so it must gain
-   * a column wherever the study traits do. */
-  --roster-cols:
-    1.4em minmax(0, 13em) 7em minmax(0, 15em) 6em 8em 6em 4em minmax(5em, 1fr) 7em;
-  --roster-gap: 0.8rem;
-  --roster-pad: 6px;
   display: flex;
   flex-direction: column;
   /* Sized by its rows up to the region's own ceiling — a zero basis would

@@ -170,7 +170,7 @@ LINT_CHECKS['hover-never-glares'] = () => {
 LINT_CHECKS['roster-grid-single-source'] = () => {
   // Caps and rows read one declaration: any roster grid that spells its own
   // template has drifted from the caps (or will).
-  for (const selector of ['.roster-caps', '.files-grid', '.feedlist-row', '.pacs-series', '.pacs-study-row']) {
+  for (const selector of ['.roster-caps', '.files-grid', '.feedlist-row', '.pacs-series', '.pacs-study-row', '#pacs-form']) {
     const m = css.match(new RegExp(`\n${selector.replace('.', '\\.')} \\{([^}]*)\\}`));
     if (!m) { fail('roster-grid-single-source', `${selector} rule not found`); continue; }
     if (!/grid-template-columns:\s*var\(--roster-cols\)/.test(m[1])) fail('roster-grid-single-source', `${selector} does not read --roster-cols`);

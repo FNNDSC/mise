@@ -354,16 +354,25 @@
                 </span>
                 <span class="drawer-group drawer-children"></span>
               </div>
+              <!-- The form stands on the STUDY grid, in the STUDY caps'
+                   own order, so a term sits in the column it will fill.
+                   STUDY has no field: the key reaches the PACS and the PACS
+                   ignores it (docs/CUBE-gaps.adoc), and a control that does
+                   nothing is worse than none. -->
               <div id="pacs-form">
-                <label>MRN <input id="pacs-f-mrn" autocomplete="off" /></label>
-                <label>PATIENT NAME <input id="pacs-f-name" autocomplete="off" /></label>
-                <label>STUDY DATE <input id="pacs-f-date" placeholder="YYYYMMDD" autocomplete="off" /></label>
-                <label>MODALITY <input id="pacs-f-modality" autocomplete="off" /></label>
-                <label>ACCESSION <input id="pacs-f-accession" autocomplete="off" /></label>
+                <span class="pacs-form-gutter"></span>
+                <label data-key="patient">PATIENT <input id="pacs-f-name" autocomplete="off" /></label>
+                <label data-key="mrn">MRN <input id="pacs-f-mrn" autocomplete="off" /></label>
+                <span class="pacs-form-blank" data-key="study" title="a PACS does not narrow on study description"></span>
+                <label data-key="date">DATE <input id="pacs-f-date" placeholder="YYYYMMDD" autocomplete="off" /></label>
+                <label data-key="accession">ACCESSION <input id="pacs-f-accession" autocomplete="off" /></label>
+                <label data-key="modality">MODALITY <input id="pacs-f-modality" autocomplete="off" /></label>
+                <span class="pacs-form-blank" data-key="series"></span>
+                <span class="pacs-form-blank" data-key="progress"></span>
+                <button id="pacs-run" class="pacs-capsule">QUERY</button>
               </div>
               <div id="pacs-commandline">
                 <input id="pacs-command" spellcheck="false" autocomplete="off" placeholder="pacs query ..." />
-                <button id="pacs-run" class="pacs-capsule">QUERY</button>
               </div>
               <!-- The results are a framed field like the other listings:
                    a rule turning through an elbow into the spine, whose

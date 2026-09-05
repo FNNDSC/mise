@@ -707,6 +707,30 @@ try {
     pacsFrame.rest === 0 && pacsFrame.open === true && pacsFrame.onLabel === 'FILTER ON'
     && pacsFrame.shut === 0 && pacsFrame.offLabel === 'FILTER OFF', JSON.stringify(pacsFrame));
 
+  // The query form stands on the listing's own grid, in the caps' order: a
+  // term is typed in the column it will fill.
+  const pacsForm = await evalIn(`
+    document.getElementById('gutter-tools').click(); await sleep(600);
+    const l = (el) => Math.round(el.getBoundingClientRect().left);
+    const caps = new Map([...document.querySelectorAll('#pacs-results > .roster-order .roster-cap')]
+      .map(c => [c.dataset.key, l(c)]));
+    const cells = [...document.querySelectorAll('#pacs-form [data-key]')];
+    const off = cells.map(c => [c.dataset.key, caps.has(c.dataset.key) ? l(c) - caps.get(c.dataset.key) : 'no-cap']);
+    // The order the form lowers to is the order the columns read in.
+    const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    set('pacs-f-name', 'AAA'); set('pacs-f-mrn', '111'); set('pacs-f-date', '20100101');
+    set('pacs-f-accession', '222'); set('pacs-f-modality', 'CT');
+    await sleep(200);
+    const line = document.getElementById('pacs-command').value;
+    for (const id of ['pacs-f-name','pacs-f-mrn','pacs-f-date','pacs-f-accession','pacs-f-modality']) set(id, '');
+    await sleep(150);
+    return { off, line, run: l(document.getElementById('pacs-run')) };`);
+  check('the query form stands on the listing grid, in the caps\' order',
+    Array.isArray(pacsForm.off) && pacsForm.off.length >= 5
+    && pacsForm.off.every(([, delta]) => delta === 0)
+    && pacsForm.line === 'pacs query PatientName:AAA,PatientID:111,StudyDate:20100101,AccessionNumber:222,Modality:CT',
+    JSON.stringify(pacsForm));
+
   // Sorting needs an actual answer, so it needs a PACS to answer. Set
   // SMOKE_PACS_QUERY to a query that finds at least one study with two
   // series (e.g. 'pacs query PatientID:12345').

@@ -85,13 +85,18 @@ interface BadgeState {
   total?: number;
 }
 
-/** The form fields and the query terms they lower to. */
+/**
+ * The form fields and the query terms they lower to, in the STUDY caps'
+ * order — the form stands where the answer will, so a term sits in the
+ * column it fills and the generated line reads left to right as the
+ * listing does.
+ */
 const FORM_TERMS: ReadonlyArray<{ id: string; term: string }> = [
-  { id: 'pacs-f-mrn', term: 'PatientID' },
   { id: 'pacs-f-name', term: 'PatientName' },
+  { id: 'pacs-f-mrn', term: 'PatientID' },
   { id: 'pacs-f-date', term: 'StudyDate' },
-  { id: 'pacs-f-modality', term: 'Modality' },
   { id: 'pacs-f-accession', term: 'AccessionNumber' },
+  { id: 'pacs-f-modality', term: 'Modality' },
 ];
 
 /** Progress statuses worth a badge, mapped to badge text. */

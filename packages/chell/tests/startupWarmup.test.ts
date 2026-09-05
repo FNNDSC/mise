@@ -117,6 +117,10 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   procCheckpoint_restore: mockCheckpointRestore,
   listCheckpoint_restore: mockListCheckpointRestore,
   listCheckpoint_watch: jest.fn(() => (): void => undefined),
+  queryIndexCheckpoint_restore: jest.fn(async () => ({ restored: false, count: 0, reason: 'no query index' })),
+  queryIndexCheckpoint_save: jest.fn(async () => undefined),
+  queryIndexCheckpoint_watch: jest.fn(() => (): void => undefined),
+  queryIndex_sweep: jest.fn(async () => ({ ok: true, value: { indexed: 0, pages: 1, bounded: false } })),
   listCache_get: jest.fn(() => ({
     stats_get: (): { oldestAge: number | null } => ({ oldestAge: mockOldestAge }),
   })),

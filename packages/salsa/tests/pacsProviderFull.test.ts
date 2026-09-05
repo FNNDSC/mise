@@ -35,7 +35,7 @@ jest.mock('../src/retrieve/watch', () => mockEngine);
 jest.mock('../src/files/index', () => ({ files_copyRecursively: mockCopyRecursively }));
 jest.mock('../src/vfs/providers/pacs_content', () => mockContent);
 
-import { Ok, Err, errorStack } from '@fnndsc/cumin';
+import { Ok, Err, errorStack, queryIndex_get } from '@fnndsc/cumin';
 import { PacsVfsProvider } from '../src/vfs/providers/pacs';
 
 let provider: PacsVfsProvider;
@@ -61,6 +61,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   errorStack.stack_clear();
   provider = new PacsVfsProvider(); // fresh per test -> clean query cache
+  // The query log is served from the replay index now, not from a page of
+  // the CUBE collection, so each test seeds what it wants listed.
+  queryIndex_get().reset();
 });
 
 describe('list', () => {
@@ -70,13 +73,14 @@ describe('list', () => {
   });
 
   it('lists queries with a descriptive name', async () => {
-    mockPacs.pacsQueries_list.mockResolvedValue(
-      Ok({
-        tableData: [
-          { id: 5, title: 't', query: '{"PatientID":"123"}', result: 'hit', owner_username: 'chris', creation_date: 'd' },
-        ],
-      })
-    );
+    queryIndex_get().entry_note({
+      queryId: 5,
+      server: 'PACSDCM',
+      criteria: { PatientID: '123' },
+      owner: 'chris',
+      answeredAt: '2026-02-01',
+      hasResult: true,
+    });
     const r = await provider.list('/net/pacs/queries');
     const name = r.ok ? r.value[0].name : '';
     expect(name).toContain('PatientID:123');
@@ -157,14 +161,14 @@ describe('list', () => {
   });
 
   it('honours sort + reverse options', async () => {
-    mockPacs.pacsQueries_list.mockResolvedValue(
-      Ok({
-        tableData: [
-          { id: 1, title: 'b', query: '{}', creation_date: '2026-02-01' },
-          { id: 2, title: 'a', query: '{}', creation_date: '2026-01-01' },
-        ],
-      })
-    );
+    queryIndex_get().entry_note({
+      queryId: 1, server: 'PACSDCM', criteria: { PatientID: 'b' },
+      owner: 'chris', answeredAt: '2026-02-01', hasResult: true,
+    });
+    queryIndex_get().entry_note({
+      queryId: 2, server: 'PACSDCM', criteria: { PatientID: 'a' },
+      owner: 'chris', answeredAt: '2026-01-01', hasResult: true,
+    });
     const r = await provider.list('/net/pacs/queries', { sort: 'date', reverse: true });
     const dates = r.ok ? r.value.map((i) => i.date) : [];
     expect(dates).toEqual(['2026-02-01', '2026-01-01']); // date desc

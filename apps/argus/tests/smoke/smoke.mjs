@@ -698,8 +698,12 @@ try {
 
   console.log('roster-totals');
   // The roster's totals ride the same grid as its other columns: caps for
-  // SIZE and TIME, seven cells per row, a dash (never a zero) where a feed's
-  // nodes are not resident, a number where they are.
+  // SIZE and TIME, one cell per cap on every row, a dash (never a zero)
+  // where a feed's nodes are not resident, a number where they are.
+  //
+  // Counted against the caps rather than a literal: the track list is
+  // positional, so "as many cells as caps" is the invariant that protects
+  // the grid, and it needs no edit when a column is added.
   const totals = await evalIn(`
     document.getElementById('gutter-runs').click(); await sleep(800);
     for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
@@ -708,7 +712,7 @@ try {
     const rows = [...dp.querySelectorAll('.feedlist-row')];
     const cells = rows.map(r => r.children.length);
     const sizes = rows.map(r => r.querySelector('.feedlist-size')?.textContent ?? '');
-    return { caps, cellsUniform: cells.every(n => n === 7), rows: rows.length, honest: sizes.every(s => s === '—' || /\\d/.test(s)) };`);
+    return { caps, cellsUniform: cells.every(n => n === caps.length), rows: rows.length, honest: sizes.every(s => s === '—' || /\\d/.test(s)) };`);
   check('the roster carries SIZE and TIME on its grid, dashes where nodes are not resident', totals.caps.includes('SIZE') && totals.caps.includes('TIME') && totals.cellsUniform && totals.rows > 0 && totals.honest, JSON.stringify(totals));
 
   console.log('nameplate');

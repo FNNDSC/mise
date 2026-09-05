@@ -145,6 +145,17 @@ export const feedListEntrySchema = z.object({
   sizeBytes: z.number().optional(),
   /** Wall span in seconds, first node start to last node end (or now, while running); absent until resident. */
   wallSeconds: z.number().optional(),
+  /**
+   * How much of the feed's work has settled, from CUBE's own job counters.
+   *
+   * Present whenever the feed row is, since the counters come with it —
+   * unlike the totals above, which need resident topology. A feed with no
+   * jobs at all reports zero of zero, which a surface shows as a track
+   * with nothing in it rather than as no track: nothing has happened yet
+   * is a different statement from there is no such thing.
+   */
+  jobsDone: z.number().optional(),
+  jobsTotal: z.number().optional(),
 });
 
 /**

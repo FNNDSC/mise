@@ -3096,3 +3096,12 @@ body[data-zoom] #header-restore {
   background-color: var(--october-sunset);
   color: #000;
 }
+
+/* Immersed in a node, the readout is the whole point rather than a glance
+ * over a graph, so it takes the room it needs and wears the heavier edge. */
+.dag-facts-immersed {
+  max-width: 72%;
+  max-height: 70%;
+  overflow-y: auto;
+  border-left-color: var(--october-sunset);
+}

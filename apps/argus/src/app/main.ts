@@ -812,6 +812,7 @@ async function surface_start(token: string): Promise<void> {
         const mount: HTMLElement | null = panel.contentHtml_show(path, binText_highlight(text), {
           diagram: true,
           release: (): void => {
+            binDive = null;
             modeRelease?.();
             modeRelease = null;
             panel.mode_annunciate('');
@@ -829,8 +830,27 @@ async function surface_start(token: string): Promise<void> {
               if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
               const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
               if (!parsed.success) continue;
-              scene = new DagScene(mount, {}, {});
-              scene.graph_set({
+              const authored: Map<string, PipelineDiagramNode> = new Map(
+                parsed.data.nodes.map((node: PipelineDiagramNode): [string, PipelineDiagramNode] => [node.id, node]),
+              );
+              const facts: HTMLElement = document.createElement('div');
+              facts.className = 'dag-facts';
+              mount.appendChild(facts);
+              const built: DagScene = new DagScene(mount, {
+                // A pipeline node's substance is what it will run with, and
+                // the model already carries it — so a touch reads it out
+                // and a dive goes in. Nothing is fetched for either.
+                select: (node: SceneNode): void => nodeFacts_show(facts, authored.get(node.id), false),
+                activate: (node: SceneNode): void => {
+                  built.flight_into(node.id, (): void => {
+                    binDive = { scene: built, facts };
+                    nodeFacts_show(facts, authored.get(node.id), true);
+                  });
+                },
+                deselect: (): void => facts.replaceChildren(),
+              }, {});
+              scene = built;
+              built.graph_set({
                 nodes: parsed.data.nodes.map((node: PipelineDiagramNode): SceneNode => ({
                   id: node.id,
                   label: node.label,
@@ -838,8 +858,8 @@ async function surface_start(token: string): Promise<void> {
                   joinParentIds: node.joinParentIds,
                 })),
               }, { wave: false });
-              scene.size_fit();
-              modeRelease = diagramModes_wire(mount, scene, panel);
+              built.size_fit();
+              modeRelease = diagramModes_wire(mount, built, panel);
               return;
             }
             mount.textContent = 'NO DIAGRAM FOR THIS PIPELINE';
@@ -866,6 +886,86 @@ async function surface_start(token: string): Promise<void> {
  * @param panel - The panel whose bar annunciates the modes in force.
  * @returns A function releasing the listeners when the view closes.
  */
+
+  /**
+   * The /bin diagram currently flown into, if any: the scene holding the
+   * camera and the overlay to clear when it comes home.
+   */
+  let binDive: { scene: DagScene; facts: HTMLElement } | null = null;
+
+  /**
+   * Leaves a /bin node, flying the camera back to where it was.
+   *
+   * @returns True when a dive was in progress and this ended it.
+   */
+  function binDive_leave(): boolean {
+    const dive: { scene: DagScene; facts: HTMLElement } | null = binDive;
+    if (dive === null) return false;
+    binDive = null;
+    dive.scene.flight_back((): void => {
+      dive.facts.classList.remove('dag-facts-immersed');
+      dive.facts.replaceChildren();
+    });
+    return true;
+  }
+
+  /**
+   * Reads a pipeline node out as `text : detail` pairs.
+   *
+   * A registered pipeline's node is what it WILL run with: a plugin, a
+   * version, and the arguments the author fixed. All of it rides the
+   * `pipeline.diagram` model already, so neither a touch nor a dive fetches
+   * anything.
+   *
+   * Immersed, the pairs are the whole point and every argument is listed.
+   * Selected, the node is one of many on stage and the readout says what it
+   * is plus how much there is to see, so a glance is not a wall of text —
+   * the complaint that started this epic.
+   *
+   * @param facts - The overlay to fill.
+   * @param node - The authored node, when the model carried one.
+   * @param immersed - Whether the camera has flown into it.
+   */
+  function nodeFacts_show(
+    facts: HTMLElement,
+    node: PipelineDiagramNode | undefined,
+    immersed: boolean,
+  ): void {
+    facts.replaceChildren();
+    facts.classList.toggle('dag-facts-immersed', immersed);
+    if (node === undefined) return;
+
+    const args: ReadonlyArray<{ name: string; value?: unknown }> = node.arguments ?? [];
+    const rows: Array<[string, string]> = [
+      ['PLUGIN', node.pluginName],
+      ...(node.pluginVersion !== undefined
+        ? ([['VERSION', node.pluginVersion]] as Array<[string, string]>)
+        : []),
+    ];
+    if (immersed) {
+      // An authored node with nothing fixed says so: an empty panel would
+      // read as a failure to load rather than as a plugin run on defaults.
+      rows.push(...(args.length === 0
+        ? ([['ARGUMENTS', 'none — this node runs on the plugin\'s defaults']] as Array<[string, string]>)
+        : args.map((argument): [string, string] => [argument.name, String(argument.value ?? '')])));
+    } else {
+      rows.push(['ARGUMENTS', args.length === 0 ? 'none' : `${args.length} — open the node to read them`]);
+    }
+
+    for (const [label, value] of rows) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = 'telemetry-row';
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'telemetry-label';
+      name.textContent = label;
+      const figure: HTMLSpanElement = document.createElement('span');
+      figure.className = 'telemetry-value';
+      figure.textContent = value;
+      row.append(name, figure);
+      facts.appendChild(row);
+    }
+  }
+
   function diagramModes_wire(mount: HTMLElement, scene: DagScene, panel: FilesPanel): () => void {
   const body: HTMLElement | null = mount.closest<HTMLElement>('.files-body');
   const strategyPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-strategy') ?? null;
@@ -1553,6 +1653,14 @@ async function surface_start(token: string): Promise<void> {
         }
         if (document.body.dataset['zoom'] !== undefined) {
           // The zoom listener (bubble phase) takes this press.
+          return;
+        }
+        // Inside a /bin node, the first Esc flies back out to the graph.
+        // Immersion is a level of its own, ahead of closing the view that
+        // holds it: Esc retreats exactly one level, never two.
+        if (binDive_leave()) {
+          event.stopImmediatePropagation();
+          sound_play('audio3');
           return;
         }
         const overlayId: string | undefined = [...nodeOverlays.keys()].pop();

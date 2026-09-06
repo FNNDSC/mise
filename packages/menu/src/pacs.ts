@@ -28,6 +28,14 @@ export const pacsSeriesSchema = z.object({
 /** One found study and its series. */
 export const pacsStudySchema = z.object({
   studyUID: z.string().optional(),
+  /**
+   * The PACS that answered for this study, as its canonical identifier.
+   *
+   * Present when the answer could have come from more than one server —
+   * which is when it matters, because two servers may hold the same study
+   * and a row that cannot say which one it came from cannot be acted on.
+   */
+  server: z.string().optional(),
   /** The study's VFS path under the query — a study-level pull's argument. */
   vfsPath: z.string().optional(),
   description: z.string(),
@@ -96,6 +104,11 @@ export const pacsPatientStatusSchema = z.enum(PACS_PATIENT_STATUSES).catch('unas
 export const pacsPatientSchema = z.object({
   /** The identifier as the operator asked it, never normalized. */
   patientId: z.string(),
+  /**
+   * The PACS this row asked. One patient asked of two servers is two rows,
+   * because the answers are two facts and one of them may be a miss.
+   */
+  server: z.string().optional(),
   /** The name the PACS answered with, when it answered at all. */
   patientName: z.string().optional(),
   status: pacsPatientStatusSchema,

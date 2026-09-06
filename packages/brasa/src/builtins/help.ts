@@ -604,7 +604,8 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Create a PACS query, wait for results, and print the VFS path',
     options: [
       '--title <title>      Title for the query record (default: Query <timestamp>)',
-      '--pacsserver <id>    Override PACS server (default: context PACSserver)',
+      '--pacsserver <id>    Override PACS server (default: context PACSserver);',
+      '                     a comma-separated list asks each and names the server on every row',
       '--patients <list>    Ask after several patients: MRNs comma-separated, or @<cfs-file>',
       '                     (one MRN per line; blanks and # comments ignored)',
       '--table              Render results as a table instead of the default list',
@@ -1143,6 +1144,7 @@ export const helpText: Record<string, CommandHelp> = {
       'query PatientID:1234,4532,6654         # three questions, one table',
       'query --patients @~/cohorts/ddh.txt    # a cohort from a file in ChRIS',
       'query StudyDate:20240101 --patients 1234,4532   # narrowed, per patient',
+      'query PatientID:1234 --pacsserver PACSDCM,ORTHANC   # ask both, one listing',
       '',
       '# Use output path directly with pull',
       'pull $(query PatientID:1234 | grep "VFS path" | awk \'{print $3}\')',

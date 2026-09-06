@@ -608,6 +608,14 @@ const QUERY_FANOUT_CONCURRENCY: number = 4;
 interface QueryAsk {
   criteria: Record<string, string>;
   patientId?: string;
+  /** The server to ask, as CUBE names it in a create. */
+  server: string;
+  /**
+   * That server's canonical identifier — what CUBE files the query under,
+   * and therefore what the replay index is keyed by and what a row says it
+   * came from.
+   */
+  identifier: string;
 }
 
 /** What one question came back with. */
@@ -649,13 +657,11 @@ function criteria_toExpression(criteria: Record<string, string>): string {
 async function ask_run(
   ask: QueryAsk,
   title: string,
-  pacsserver: string,
-  identifier: string,
   owner: string,
   fresh: boolean,
 ): Promise<QueryAnswer> {
   if (!fresh) {
-    const replayed = await replay_attempt(ask.criteria, identifier, owner);
+    const replayed = await replay_attempt(ask.criteria, ask.identifier, owner);
     if (replayed !== null) {
       return { ask, result: replayed.result, answeredAt: replayed.answeredAt };
     }
@@ -670,7 +676,7 @@ async function ask_run(
   const result: QueryCreateResult | null = await pacsQuery_createAndWait(
     expression,
     `${title} · ${expression}`,
-    pacsserver,
+    ask.server,
   );
   if (result !== null) return { ask, result, answeredAt: null };
   // A question that could not be asked has told us nothing. Its reason is
@@ -678,7 +684,17 @@ async function ask_run(
   // question's success would bury it.
   const reasons: StackMessage[] = errorStack.checkpoint_drain(checkpoint);
   const reason: string | undefined = reasons[reasons.length - 1]?.message;
-  return { ask, result: null, answeredAt: null, error: reason ?? 'the query could not be completed' };
+  // Stripped where the reason becomes data: this message is read in a
+  // table and on a graphical surface, and `[pacsServer_resolve ] |` is a
+  // debugging artefact in both. Imported here rather than at the top so
+  // this module keeps its narrow graph.
+  const { error_stripDebugPrefix } = await import('../utils.js');
+  return {
+    ask,
+    result: null,
+    answeredAt: null,
+    error: reason === undefined ? 'the query could not be completed' : error_stripDebugPrefix(reason),
+  };
 }
 
 /**
@@ -688,10 +704,8 @@ async function ask_run(
  * given hospital, and a flag that can hurt a shared clinical system will
  * eventually be set to fifty.
  *
- * @param asks - Every question to ask.
+ * @param asks - Every question to ask, each naming its own server.
  * @param title - Title for the PACSQuery records created.
- * @param pacsserver - The server to ask.
- * @param identifier - That server as the replay index keys it.
  * @param owner - The identity asking.
  * @param fresh - True to skip stored answers.
  * @returns The answers, in the order the questions were given.
@@ -699,19 +713,22 @@ async function ask_run(
 async function fanout_run(
   asks: QueryAsk[],
   title: string,
-  pacsserver: string,
-  identifier: string,
   owner: string,
   fresh: boolean,
 ): Promise<QueryAnswer[]> {
   const answers: QueryAnswer[] = new Array<QueryAnswer>(asks.length);
   let done: number = 0;
+  // What is being counted: patients when every question names one, plain
+  // questions otherwise — a fan-out over servers or dates is not MRNs.
+  const label: string = asks.every((ask: QueryAsk): boolean => ask.patientId !== undefined)
+    ? 'MRNS QUERIED'
+    : 'QUERIES';
   const progress_say = (phase: 'working' | 'complete'): void => {
     sink_get().progress_write({
       operation: 'task',
       kind: 'inspection',
       phase,
-      label: 'MRNS QUERIED',
+      label,
       current: done,
       total: asks.length,
       percent: asks.length > 0 ? Math.min(100, (done / asks.length) * 100) : undefined,
@@ -724,7 +741,7 @@ async function fanout_run(
   const worker = async (): Promise<void> => {
     while (next < asks.length) {
       const index: number = next++;
-      answers[index] = await ask_run(asks[index], title, pacsserver, identifier, owner, fresh);
+      answers[index] = await ask_run(asks[index], title, owner, fresh);
       done++;
       progress_say('working');
     }
@@ -753,6 +770,12 @@ function fanoutModel_build(
   answers: QueryAnswer[],
   facts: { pacsName: string; expression: string },
 ): PacsQueryModel {
+  // A row says which PACS answered only when more than one could have. On
+  // a single-server query the column would repeat one value down the page
+  // and tell an operator nothing.
+  const manyServers: boolean = new Set(
+    answers.map((answer: QueryAnswer): string => answer.ask.identifier),
+  ).size > 1;
   const studies: PacsStudy[] = [];
   const patients: PacsPatient[] = [];
   let anchor: QueryCreateResult | null = null;
@@ -763,9 +786,11 @@ function fanoutModel_build(
     const found: PacsStudy[] = answer.result === null ? [] : pacsQueryModel_build(answer.result.decoded, {
       queryId: answer.result.queryId,
       vfsPath: answer.result.vfsPath,
-      pacsName: facts.pacsName,
+      pacsName: answer.ask.server,
       expression: criteria_toExpression(answer.ask.criteria),
-    }).studies;
+    }).studies.map((study: PacsStudy): PacsStudy => (
+      manyServers ? { ...study, server: answer.ask.identifier } : study
+    ));
     studies.push(...found);
     if (answer.result !== null && (anchor === null || found.length > 0)) {
       if (anchor === null || anchor.decoded.json === undefined) anchor = answer.result;
@@ -781,6 +806,7 @@ function fanoutModel_build(
     );
     patients.push({
       patientId: answer.ask.patientId,
+      ...(manyServers ? { server: answer.ask.identifier } : {}),
       ...(found[0]?.patientName ? { patientName: found[0].patientName } : {}),
       status: answer.result === null ? 'unasked' : (found.length > 0 ? 'found' : 'none'),
       studyCount: found.length,
@@ -819,9 +845,13 @@ function fanoutModel_build(
  * @returns The rendered table.
  */
 function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
+  const server_of = (patient: PacsPatient): string => patient.server ?? '';
+  const manyServers: boolean = new Set(patients.map(server_of)).size > 1;
+  const serverWidth: number = 14;
   const lines: string[] = [''];
-  lines.push(`  ${chalk.bold.white('MRN'.padEnd(18))}${chalk.bold.white('STUDIES'.padEnd(10))}${chalk.bold.white('SERIES'.padEnd(9))}${chalk.bold.white('ANSWERED')}`);
-  lines.push(`  ${chalk.gray('─'.repeat(60))}`);
+  const serverCap: string = manyServers ? chalk.bold.white('SERVER'.padEnd(serverWidth)) : '';
+  lines.push(`  ${chalk.bold.white('MRN'.padEnd(18))}${serverCap}${chalk.bold.white('STUDIES'.padEnd(10))}${chalk.bold.white('SERIES'.padEnd(9))}${chalk.bold.white('ANSWERED')}`);
+  lines.push(`  ${chalk.gray('─'.repeat(manyServers ? 74 : 60))}`);
   for (const patient of patients) {
     const answered: string | null = patient.provenance === undefined
       ? null
@@ -835,7 +865,8 @@ function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
     const note: string = patient.status === 'unasked'
       ? chalk.red(patient.error ?? 'unasked')
       : chalk.gray(answered ?? 'just now');
-    lines.push(`  ${hue(patient.patientId.padEnd(18))}${counts[0].padEnd(10)}${counts[1].padEnd(9)}${note}`);
+    const server: string = manyServers ? server_of(patient).padEnd(serverWidth) : '';
+    lines.push(`  ${hue(patient.patientId.padEnd(18))}${server}${counts[0].padEnd(10)}${counts[1].padEnd(9)}${note}`);
   }
   const tally = (state: PacsPatient['status']): number =>
     patients.filter((patient: PacsPatient): boolean => patient.status === state).length;
@@ -857,17 +888,15 @@ async function cohort_answer(
   asks: QueryAsk[],
   facts: {
     title: string;
+    /** The server named on the model when one answered; the first otherwise. */
     pacsserver: string;
-    identifier: string;
     owner: string;
     fresh: boolean;
     expression: string;
   },
 ): Promise<CommandEnvelope> {
   spinner.start(`Querying PACS for ${asks.length} questions...`, true);
-  const answers: QueryAnswer[] = await fanout_run(
-    asks, facts.title, facts.pacsserver, facts.identifier, facts.owner, facts.fresh,
-  );
+  const answers: QueryAnswer[] = await fanout_run(asks, facts.title, facts.owner, facts.fresh);
   spinner.stop();
 
   const model: PacsQueryModel = fanoutModel_build(answers, {
@@ -955,20 +984,36 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     return envelope_error('', undefined, `${chalk.red(`query: Invalid expression: "${queryExpr}". Use Key:Value pairs (e.g. PatientID:1234) or JSON.`)}\n`);
   }
 
-  // Resolve PACS server
-  let pacsserver: string | null = pacsserverOverride ?? await chrisContext.current_get(Context.PACSserver);
-  if (!pacsserver) {
-    const serversResult = await pacsServers_list();
-    if (serversResult.ok && serversResult.value.length > 0) {
-      pacsserver = String(serversResult.value[0].id);
+  // Resolve the PACS servers. Several is a QUERY across them; one is the
+  // ordinary case. There is no sweep-everything: a fan-out is always
+  // something the operator named, because thirteen registrations of
+  // unknown liveness is thousands of C-FINDs mostly into the void.
+  const named: string[] = (pacsserverOverride ?? '')
+    .split(',')
+    .map((entry: string): string => entry.trim())
+    .filter((entry: string): boolean => entry !== '');
+  let servers: string[] = named;
+  if (servers.length === 0) {
+    const inContext: string | null = await chrisContext.current_get(Context.PACSserver);
+    if (inContext) {
+      servers = [inContext];
     } else {
-      process.exitCode = 1;
-      return envelope_error('', undefined, `${chalk.red('query: No PACS server available. Set one with: pacs connect <id>')}\n`);
+      const serversResult = await pacsServers_list();
+      if (serversResult.ok && serversResult.value.length > 0) {
+        servers = [String(serversResult.value[0].id)];
+      } else {
+        process.exitCode = 1;
+        return envelope_error('', undefined, `${chalk.red('query: No PACS server available. Set one with: pacs connect <id>')}\n`);
+      }
     }
   }
+  const pacsserver: string = servers[0];
 
   // The index is keyed on what CUBE stores, which is the identifier.
-  const identifier: string = await pacsIdentifier_resolve(pacsserver);
+  const identifiers: string[] = await Promise.all(
+    servers.map((server: string): Promise<string> => pacsIdentifier_resolve(server)),
+  );
+  const identifier: string = identifiers[0];
   const owner: string = await askingIdentity_get();
 
   // What the operator asked for, as the questions it stands for. A PACS
@@ -989,29 +1034,49 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     const base: Record<string, string> = Object.fromEntries(
       Object.entries(terms).map(([key, values]: [string, string[]]): [string, string] => [key, values[0]]),
     );
+    if (!fanout_permit(cohort.value.length * servers.length, QUERY_COHORT_MAX)) {
+      const problem: StackMessage | undefined = errorStack.stack_pop();
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many questions.')}\n`);
+    }
     for (const mrn of cohort.value) {
-      asks.push({ criteria: { ...base, [PATIENT_KEY]: mrn }, patientId: mrn });
+      for (let index: number = 0; index < servers.length; index++) {
+        asks.push({
+          criteria: { ...base, [PATIENT_KEY]: mrn },
+          patientId: mrn,
+          server: servers[index],
+          identifier: identifiers[index],
+        });
+      }
     }
   } else {
     const expanded: Array<Record<string, string>> = queryTerms_expand(terms);
-    if (!fanout_permit(expanded.length, QUERY_INLINE_FANOUT_MAX)) {
+    if (!fanout_permit(expanded.length * servers.length, QUERY_INLINE_FANOUT_MAX)) {
       const problem: StackMessage | undefined = errorStack.stack_pop();
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many queries.')}\n`);
     }
+    const asksPerServer: number = expanded.length * servers.length;
     for (const one of expanded) {
-      asks.push({
-        criteria: one,
-        ...(one[PATIENT_KEY] === undefined || expanded.length === 1
-          ? {}
-          : { patientId: one[PATIENT_KEY] }),
-      });
+      for (let index: number = 0; index < servers.length; index++) {
+        asks.push({
+          criteria: one,
+          // A single question put to a single server is not a cohort: it
+          // needs no patient level, and inventing one would put an audit
+          // table where a study list belongs.
+          ...(one[PATIENT_KEY] === undefined || asksPerServer === 1
+            ? {}
+            : { patientId: one[PATIENT_KEY] }),
+          server: servers[index],
+          identifier: identifiers[index],
+        });
+      }
     }
   }
 
   if (asks.length > 1) {
     return await cohort_answer(asks, {
-      title, pacsserver, identifier, owner, fresh,
+      title, pacsserver, owner, fresh,
       expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
     });
   }

@@ -172,3 +172,35 @@ describe('pacsQueryModelSchema with a cohort', () => {
     })).success).toBe(false);
   });
 });
+
+describe('a query across several servers', () => {
+  it('names the PACS that answered for a study', () => {
+    const model: PacsQueryModel = pacsQueryModelSchema.parse(model_make({
+      studies: [{
+        server: 'PACSDCM', description: 'Brain', patientName: 'DOE^JANE', patientId: '1',
+        date: '20240101', modalities: 'MR', accession: 'A1', series: [],
+      }],
+    }));
+    expect(model.studies[0].server).toBe('PACSDCM');
+  });
+
+  // One patient asked of two servers is two rows: the answers are two
+  // facts, and one of them may be a miss while the other is not.
+  it('carries one patient row per server asked', () => {
+    const model: PacsQueryModel = pacsQueryModelSchema.parse(model_make({
+      patients: [
+        { patientId: '1', server: 'PACSDCM', status: 'found', studyCount: 2, seriesCount: 8 },
+        { patientId: '1', server: 'ORTHANC', status: 'none', studyCount: 0, seriesCount: 0 },
+      ],
+    }));
+    expect(model.patients?.map((patient) => `${patient.server}:${patient.status}`))
+      .toEqual(['PACSDCM:found', 'ORTHANC:none']);
+  });
+
+  it('still parses a single-server answer, which names no server at all', () => {
+    const model: PacsQueryModel = pacsQueryModelSchema.parse(model_make({
+      patients: [{ patientId: '1', status: 'found', studyCount: 1, seriesCount: 1 }],
+    }));
+    expect(model.patients?.[0].server).toBeUndefined();
+  });
+});

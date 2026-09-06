@@ -183,7 +183,12 @@ export class PacsPanel {
   private readonly expansion: Expansion = { mode: STUDY_EXPANSION, open: new Set<string>() };
   private readonly filterPill: HTMLElement | null;
   private readonly stateSpan: HTMLElement | null;
-  /** Says when an answer was answered, when it was not answered just now. */
+  /**
+   * Says when an answer was answered, when it was not answered just now.
+   *
+   * A readout rather than a capsule: it sits beside a real control, and a
+   * capsule shape here would promise a press it cannot answer.
+   */
   private readonly provenance: HTMLElement;
   /** QUERY, or RE-QUERY while a replayed answer is on stage. */
   private readonly run: HTMLElement;
@@ -506,7 +511,7 @@ export class PacsPanel {
   /**
    * Says where the answer on stage came from, and what the control does next.
    *
-   * A fresh answer has no pill: the absence is the statement. A replayed
+   * A fresh answer says nothing: the absence is the statement. A replayed
    * one names the date — the fact worth quoting — and the elapsed time,
    * which is the judgement worth acting on, and the control becomes the
    * thing that would replace it.

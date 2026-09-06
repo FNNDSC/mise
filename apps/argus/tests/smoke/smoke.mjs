@@ -770,7 +770,7 @@ try {
     const pacsProvenance = await evalIn(`
       document.getElementById('gutter-tools').click(); await sleep(500);
       const ws = document.getElementById('pacs-workspace');
-      const pill = () => ws.querySelector('#pacs-provenance');
+      const said = () => ws.querySelector('#pacs-provenance');
       const run = () => ws.querySelector('#pacs-run');
       const cmd = () => ws.querySelector('#pacs-command');
       const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
@@ -786,8 +786,8 @@ try {
       cmd().value = ${JSON.stringify(pacsQuery)};
       cmd().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await answer_await();
-      const shown = !pill().hidden;
-      const text = pill().textContent.trim();
+      const shown = !said().hidden;
+      const text = said().textContent.trim();
       const label = run().textContent.trim();
       const deeper = run().classList.contains('pacs-capsule-requery');
       // Re-asking must put the flag in the line the operator can read.
@@ -795,15 +795,15 @@ try {
       const line = cmd().value;
       await answer_await();
       return { shown, text, label, deeper, line, studies: studies(),
-        clearedPill: pill().hidden, clearedLabel: run().textContent.trim(),
+        clearedReadout: said().hidden, clearedLabel: run().textContent.trim(),
         clearedLine: cmd().value };`);
     check('a replayed answer says when it was answered, and the control reads RE-QUERY',
       pacsProvenance.shown === true && /^RESULTS \d{4}-\d{2}-\d{2}/.test(pacsProvenance.text)
       && / AGO$/.test(pacsProvenance.text)
       && pacsProvenance.label === 'RE-QUERY' && pacsProvenance.deeper === true,
       JSON.stringify(pacsProvenance));
-    check('RE-QUERY lowers to --fresh in the visible line, and a fresh answer clears the pill',
-      / --fresh$/.test(pacsProvenance.line) && pacsProvenance.clearedPill === true
+    check('RE-QUERY lowers to --fresh in the visible line, and a fresh answer clears the readout',
+      / --fresh$/.test(pacsProvenance.line) && pacsProvenance.clearedReadout === true
       && pacsProvenance.clearedLabel === 'QUERY'
       && !/--fresh/.test(pacsProvenance.clearedLine),
       JSON.stringify(pacsProvenance));

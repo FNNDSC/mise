@@ -69,6 +69,7 @@ jobs:
           node exemplars/ts/dist/05_calypsoDaemon.js
           node exemplars/ts/dist/06_wireRoundtrip.js
           node exemplars/ts/dist/09_pacsReplay.js || [ $? -eq 2 ]
+          node exemplars/ts/dist/10_pluginModel.js
       # Residue-free chell scripts only: 20 pulls PACS files that need
       # admin cleanup outside chell, so it stays a manual exemplar.
       - name: chell scripts

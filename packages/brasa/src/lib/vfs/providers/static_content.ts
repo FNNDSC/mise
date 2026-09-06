@@ -7,115 +7,20 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack, items_get } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { commandHelp_get } from '../../../builtins/help.js';
-import chalk from 'chalk';
-import { session } from '../../../session/index.js';
+import type { PluginInfoModel } from '@fnndsc/menu';
+import {
+  pluginInfo_build,
+  pluginInfoText_render,
+  pluginSpecifier_parse,
+  type PluginSpecifier,
+} from '../../../builtins/res/plugin.info.js';
 import {
   binPipelineSummary_render,
   binPipelineSummary_try,
   type BinPipelineSummary,
 } from './binEntry.js';
-
-/**
- * Interface representing a ChRIS API Plugin parameter resource.
- */
-interface ChRISApiPluginParameter {
-  data: {
-    name: string;
-    type: string;
-    optional: boolean;
-    default?: string | number | boolean | null;
-    help?: string;
-  };
-}
-
-/**
- * Interface representing a ChRIS API Plugin resource.
- */
-interface ChRISApiPlugin {
-  data: {
-    id: number;
-    name: string;
-    version: string;
-    type: string;
-    authors?: string;
-    description?: string;
-    documentation?: string;
-    creation_date?: string;
-  };
-  getPluginParameters(options?: { limit?: number }): Promise<{ getItems(): ChRISApiPluginParameter[] }>;
-}
-
-/**
- * Formats a plugin parameter list into a beautifully aligned text manual.
- *
- * @param plugin - The resolved ChRIS plugin object.
- * @param parameters - Array of plugin parameters.
- * @param command - The exact plugin command/filename.
- * @returns Formatted details string.
- */
-function pluginParameters_render(
-  plugin: ChRISApiPlugin,
-  parameters: ChRISApiPluginParameter[],
-  command: string
-): string {
-  const lines: string[] = [];
-  lines.push('');
-  lines.push(chalk.bold.magenta(`${plugin.data.name.toUpperCase()} (Version ${plugin.data.version})`));
-  lines.push(chalk.gray('─'.repeat(74)));
-  lines.push(`${chalk.bold.blue('Type:')}         ${plugin.data.type || 'ds'}`);
-  lines.push(`${chalk.bold.blue('Author:')}       ${plugin.data.authors || 'FNNDSC <dev@babymri.org>'}`);
-  if (plugin.data.documentation) {
-    lines.push(`${chalk.bold.blue('Repository:')}   ${plugin.data.documentation}`);
-  }
-  lines.push('');
-
-  lines.push(chalk.bold.blue('DESCRIPTION'));
-  lines.push(`  ${plugin.data.description || 'No description provided.'}`);
-  lines.push('');
-
-  lines.push(chalk.bold.blue('PARAMETERS'));
-  lines.push(`  ${chalk.bold.white('Flag'.padEnd(22))}${chalk.bold.white('Type'.padEnd(11))}${chalk.bold.white('Required'.padEnd(11))}${chalk.bold.white('Default'.padEnd(13))}${chalk.bold.white('Description')}`);
-  lines.push(`  ${chalk.gray('─'.repeat(74))}`);
-
-  parameters.forEach((param: ChRISApiPluginParameter) => {
-    const flag: string = `--${param.data.name}`;
-    const type: string = param.data.type || 'string';
-    const required: string = param.data.optional ? 'No' : 'Yes';
-    
-    let defaultValue: string = '';
-    if (param.data.default !== undefined && param.data.default !== null) {
-      defaultValue = String(param.data.default);
-      if (defaultValue === '') {
-        defaultValue = '""';
-      }
-    } else {
-      defaultValue = 'None';
-    }
-
-    const help: string = param.data.help || '';
-    lines.push(`  ${chalk.yellow(flag.padEnd(22))}${type.padEnd(11)}${required.padEnd(11)}${defaultValue.padEnd(13)}${help}`);
-  });
-  lines.push('');
-
-  lines.push(chalk.bold.blue('USAGE EXAMPLES'));
-  const requiredParams: ChRISApiPluginParameter[] = parameters.filter((p: ChRISApiPluginParameter) => !p.data.optional);
-  const optionalParams: ChRISApiPluginParameter[] = parameters.filter((p: ChRISApiPluginParameter) => p.data.optional);
-  const requiredFlags: string = requiredParams.map((p: ChRISApiPluginParameter) => `--${p.data.name} "value"`).join(' ');
-  const basicExample: string = requiredFlags ? `${command} ${requiredFlags}` : command;
-  lines.push(`  ${chalk.white(basicExample)}                     ${chalk.gray('# Basic execution')}`);
-  if (optionalParams.length > 0) {
-    const exampleParam: string = optionalParams[0].data.name;
-    const withOptional: string = requiredFlags
-      ? `${command} ${requiredFlags} --${exampleParam} "value"`
-      : `${command} --${exampleParam} "value"`;
-    lines.push(`  ${chalk.white(withOptional)}     ${chalk.gray('# With optional parameter')}`);
-  }
-  lines.push('');
-
-  return lines.join('\n');
-}
 
 /**
  * Reads virtual file content under command and builtin static paths.
@@ -148,35 +53,18 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       const pipelineSummary: BinPipelineSummary | null = binPipelineSummary_try(commandName);
       if (pipelineSummary !== null) return Ok(binPipelineSummary_render(pipelineSummary));
 
-      const versionSeparatorIndex: number = commandName.lastIndexOf('-v');
-
-      if (versionSeparatorIndex === -1) {
+      const specifier: PluginSpecifier | null = pluginSpecifier_parse(commandName);
+      if (specifier === null) {
         errorStack.stack_push("error", `Unknown /bin entry: ${commandName}`);
         return Err();
       }
 
-      const name: string = commandName.substring(0, versionSeparatorIndex);
-      const version: string = commandName.substring(versionSeparatorIndex + 2);
-
-      const client = await session.connection.client_get();
-      if (!client) {
-        errorStack.stack_push("error", "No active ChRIS connection to fetch plugin parameter specs");
-        return Err();
-      }
-
-      const pluginsList = await client.getPlugins({ name_exact: name, version: version, limit: 1 });
-      const plugins: ChRISApiPlugin[] = items_get<ChRISApiPlugin>(pluginsList);
-      if (plugins.length === 0) {
-        errorStack.stack_push("error", `Plugin not found on server: ${name} v${version}`);
-        return Err();
-      }
-
-      const plugin: ChRISApiPlugin = plugins[0];
-      const parametersList = await plugin.getPluginParameters({ limit: 100 });
-      const parameters: ChRISApiPluginParameter[] = parametersList.getItems();
-
-      const output: string = pluginParameters_render(plugin, parameters, commandName);
-      return Ok(output);
+      // The manual is a projection of the plugin model — the same facts
+      // `plugin info` puts on the wire, so a terminal and a graphical
+      // surface cannot end up describing different plugins.
+      const built: Result<PluginInfoModel> = await pluginInfo_build(specifier);
+      if (!built.ok) return Err();
+      return Ok(pluginInfoText_render(built.value));
     }
 
     errorStack.stack_push("error", `File not found: ${pathStr}`);

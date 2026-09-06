@@ -317,6 +317,7 @@ export const helpText: Record<string, CommandHelp> = {
       '',
       'SUBCOMMANDS:',
       '  run <searchable> [params]    Execute a plugin instance with parameters',
+      '  info <name>-v<version>       Show one plugin whole: facts and every parameter',
       '  search <searchable>          Resolve a searchable to plugin IDs',
       '  readme <pluginId>            Display plugin README documentation',
       '',
@@ -335,6 +336,10 @@ export const helpText: Record<string, CommandHelp> = {
       '  Run "parametersofplugin <name>" to see available parameters for a plugin.',
     ],
     examples: [
+      '# Read one plugin: the same manual "cat /bin/<entry>" prints',
+      'plugin info pl-dircopy-v1.0.0',
+      'plugin info pl-dircopy 1.0.0',
+      '',
       '# Search for plugins',
       'plugin search pl-dircopy',
       'plugin search name:dcm2niix',

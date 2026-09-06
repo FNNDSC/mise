@@ -91,6 +91,8 @@ const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 const pacsGrammar = await import('@fnndsc/salsa/pacs-grammar');
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   feed_share: jest.fn(async () => ({ ok: true, value: true })),
+  plugin_find: jest.fn(async () => null),
+  pluginParameters_drain: jest.fn(async () => []),
   feedShares_list: jest.fn(async () => ({ ok: true, value: [] })),
   path_extractFeedID: (p: string) => { const m = /\/feeds\/feed_(\d+)(?:\/|$)/.exec(p); return m ? Number(m[1]) : null; },
   // The payload helpers are pure and side-effect free: forward the real ones.

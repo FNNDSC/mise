@@ -11,6 +11,8 @@ import {
   publicFeedsPage_get,
   pluginInstancesPage_get,
   pluginInstance_get,
+  plugin_find,
+  pluginParameters_drain,
   pipeline_get,
   pipelineSourceFilesPage_get,
   downloadToken_create,
@@ -476,5 +478,80 @@ describe('collectionPage_wrap', () => {
   test('translates a negative totalCount to unknown', () => {
     const page = collectionPage_wrap({ totalCount: -1, hasNextPage: false }, []);
     expect(page).toEqual({ data: [], totalCount: null, hasMore: false });
+  });
+});
+
+describe('plugin_find', () => {
+  test('resolves a plugin by exact name and version, with a handle onto it', async () => {
+    const getPlugins = jest.fn(async () => ({
+      getItems: () => [{
+        data: { id: 7, name: 'pl-example', version: '1.0.0', type: 'fs' },
+        getPluginParameters: async () => ({ getItems: () => [{ data: { name: 'input', type: 'path' } }] }),
+      }],
+    }));
+    const client: Client = client_fake({ getPlugins });
+
+    const found = await plugin_find(client, 'pl-example', '1.0.0');
+    expect(getPlugins).toHaveBeenCalledWith({ name_exact: 'pl-example', version: '1.0.0', limit: 1 });
+    expect(found?.data.id).toBe(7);
+    const page = await found?.handle.parametersPage_get({ limit: 10, offset: 0 });
+    expect(page?.data).toEqual([{ name: 'input', type: 'path' }]);
+  });
+
+  test('answers null when CUBE registers no such plugin at that version', async () => {
+    const client: Client = client_fake({ getPlugins: async () => ({ getItems: () => [] }) });
+    expect(await plugin_find(client, 'pl-example', '9.9.9')).toBeNull();
+  });
+
+  test('answers null for a served row carrying no data', async () => {
+    const client: Client = client_fake({ getPlugins: async () => ({ getItems: () => [{}] }) });
+    expect(await plugin_find(client, 'pl-example', '1.0.0')).toBeNull();
+  });
+});
+
+describe('pluginParameters_drain', () => {
+  /** A parameter list of the given size, served in pages of 100. */
+  function parameters_serve(total: number): {
+    handle: { parametersPage_get: (params: Record<string, unknown>) => Promise<ListPage<{ name: string }>> };
+    windows: Array<Record<string, unknown>>;
+  } {
+    const windows: Array<Record<string, unknown>> = [];
+    return {
+      windows,
+      handle: {
+        parametersPage_get: async (params: Record<string, unknown>): Promise<ListPage<{ name: string }>> => {
+          windows.push(params);
+          const offset: number = Number(params.offset ?? 0);
+          const limit: number = Number(params.limit ?? 100);
+          const rows = Array.from(
+            { length: Math.max(Math.min(total - offset, limit), 0) },
+            (_unused: unknown, index: number) => ({ name: `p${offset + index}` }),
+          );
+          return { data: rows, totalCount: total, fetchedCount: rows.length };
+        },
+      },
+    };
+  }
+
+  test('reads a parameter list that fits one page', async () => {
+    const served = parameters_serve(3);
+    const rows = await pluginParameters_drain(served.handle as never);
+    expect(rows).toHaveLength(3);
+    expect(served.windows).toHaveLength(1);
+  });
+
+  // The single-page `{ limit: 100 }` idiom this replaces lost every
+  // parameter past the hundredth and reported nothing missing.
+  test('reads past the hundredth parameter rather than stopping at a page', async () => {
+    const served = parameters_serve(237);
+    const rows = await pluginParameters_drain(served.handle as never);
+    expect(rows).toHaveLength(237);
+    expect(rows[236]).toEqual({ name: 'p236' });
+    expect(served.windows.length).toBeGreaterThan(1);
+  });
+
+  test('reads an empty parameter list as an empty list', async () => {
+    const served = parameters_serve(0);
+    expect(await pluginParameters_drain(served.handle as never)).toEqual([]);
   });
 });

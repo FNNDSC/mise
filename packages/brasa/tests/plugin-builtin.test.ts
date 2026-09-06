@@ -12,7 +12,13 @@ const mockAllOfType = jest.fn(() => [] as string[]);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
-  errorStack: { stack_clear: mockStackClear, allOfType_get: mockAllOfType },
+  errorStack: { stack_clear: mockStackClear, allOfType_get: mockAllOfType, stack_push: jest.fn(), stack_pop: jest.fn() },
+  // `plugin info` reads a plugin through the contract; this suite covers the
+  // subject's other verbs, so the reader is stubbed rather than exercised.
+  Ok: (value: unknown) => ({ ok: true, value }),
+  Err: () => ({ ok: false }),
+  plugin_find: jest.fn(async () => null),
+  pluginParameters_drain: jest.fn(async () => []),
 }));
 
 const mockFetchList = jest.fn();

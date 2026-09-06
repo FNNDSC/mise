@@ -19,6 +19,7 @@
 import type { WireEnvelope } from '@fnndsc/menu';
 import { RosterOrder } from '../roster/order.js';
 import { ListingHost } from '../roster/host.js';
+import { rankedLayout_compute, type RankedLayout } from '../../scene/rankedLayout.js';
 import { listingRow_build, traitColumns_of, traitValue_of, type ListingTrait } from '../roster/row.js';
 
 /**
@@ -78,6 +79,16 @@ const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
   'txt', 'md', 'adoc', 'rst', 'json', 'csv', 'tsv', 'log', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'xml', 'html',
   'py', 'sh', 'ts', 'js', 'mjs', 'r', 'c', 'h', 'cpp', 'java', 'go', 'rs', 'sql', 'tex', 'bib',
 ]);
+
+/** The card's drawing area, in viewBox units. */
+const GLIMPSE_VIEW_W: number = 160;
+const GLIMPSE_VIEW_H: number = 100;
+
+/** Margin inside the viewBox, so a node's disc is never clipped at an edge. */
+const GLIMPSE_PAD: number = 10;
+
+/** Above this many nodes the discs shrink, or the drawing becomes a smudge. */
+const GLIMPSE_DENSE_NODES: number = 30;
 
 /** The largest text file a preview will read the head of. */
 const PREVIEW_TEXT_MAX_BYTES: number = 256 * 1024;
@@ -166,35 +177,23 @@ const GLIMPSE_NODE_MAX: number = 80;
 function pipelineSvg_build(nodes: PipelineGlimpseNode[]): SVGSVGElement {
   const svgNs: string = 'http://www.w3.org/2000/svg';
   const svg: SVGSVGElement = document.createElementNS(svgNs, 'svg') as SVGSVGElement;
-  svg.setAttribute('viewBox', '0 0 160 100');
+  svg.setAttribute('viewBox', `0 0 ${GLIMPSE_VIEW_W} ${GLIMPSE_VIEW_H}`);
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  const depth: Map<string, number> = new Map();
-  const byId: Map<string, PipelineGlimpseNode> = new Map(nodes.map((node: PipelineGlimpseNode): [string, PipelineGlimpseNode] => [node.id, node]));
-  const depth_of = (id: string, seen: Set<string> = new Set()): number => {
-    const known: number | undefined = depth.get(id);
-    if (known !== undefined) return known;
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const parents: string[] = (byId.get(id)?.parentIds ?? []).filter((parent: string): boolean => byId.has(parent));
-    const value: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((parent: string): number => depth_of(parent, seen)));
-    depth.set(id, value);
-    return value;
-  };
-  for (const node of nodes) depth_of(node.id);
-  const tiers: Map<number, string[]> = new Map();
-  for (const node of nodes) {
-    const tier: string[] = tiers.get(depth.get(node.id) ?? 0) ?? [];
-    tier.push(node.id);
-    tiers.set(depth.get(node.id) ?? 0, tier);
-  }
-  const tierCount: number = tiers.size;
+
+  // The same placement the stage uses, drawn small. This card cannot hold a
+  // WebGL context — a grid wants ninety of them and a browser grants about
+  // a dozen — so it paints SVG, but it must not paint a DIFFERENT graph.
+  const layout: RankedLayout = rankedLayout_compute(nodes);
+  const spanX: number = Math.max(layout.width, 1);
+  const spanY: number = Math.max(layout.tierCount - 1, 1);
   const position: Map<string, { x: number; y: number }> = new Map();
-  for (const [level, ids] of tiers) {
-    const y: number = tierCount === 1 ? 50 : 12 + (76 * level) / (tierCount - 1);
-    ids.forEach((id: string, index: number): void => {
-      position.set(id, { x: (160 * (index + 1)) / (ids.length + 1), y });
+  for (const placement of layout.placements) {
+    position.set(placement.id, {
+      x: GLIMPSE_PAD + ((placement.x / spanX) * (GLIMPSE_VIEW_W - 2 * GLIMPSE_PAD)),
+      y: GLIMPSE_PAD + ((placement.tier / spanY) * (GLIMPSE_VIEW_H - 2 * GLIMPSE_PAD)),
     });
   }
+
   for (const node of nodes) {
     const to = position.get(node.id);
     if (!to) continue;
@@ -210,7 +209,8 @@ function pipelineSvg_build(nodes: PipelineGlimpseNode[]): SVGSVGElement {
   }
   for (const [, at] of position) {
     const dot: SVGCircleElement = document.createElementNS(svgNs, 'circle') as SVGCircleElement;
-    dot.setAttribute('cx', String(at.x)); dot.setAttribute('cy', String(at.y)); dot.setAttribute('r', nodes.length > 30 ? '2.2' : '4');
+    dot.setAttribute('cx', String(at.x)); dot.setAttribute('cy', String(at.y));
+    dot.setAttribute('r', nodes.length > GLIMPSE_DENSE_NODES ? '2.2' : '4');
     dot.setAttribute('fill', 'currentColor');
     svg.appendChild(dot);
   }

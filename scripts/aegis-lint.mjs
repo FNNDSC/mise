@@ -7,7 +7,7 @@
  * scenario string present in the smoke suite). Doctrine cannot be written
  * without teeth.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const html = readFileSync('apps/argus/index.html', 'utf8');
 const css = readFileSync('apps/argus/src/lcars/argus.css', 'utf8');
@@ -207,6 +207,32 @@ LINT_CHECKS['surface-never-shadows-the-session'] = () => {
     if (!commands.has(name)) continue;
     if (!sharedNames.includes(name)) {
       fail('surface-never-shadows-the-session', `subject '${name}' shadows the session command of the same name and is not declared shared`);
+    }
+  }
+};
+
+LINT_CHECKS['a-preview-is-the-same-drawing'] = () => {
+  // A card and the stage draw the same graph, so they read one placement.
+  // They did not always: the card spread each tier evenly while the scene
+  // hung a tree of leaf slots, and nobody chose that — the two were written
+  // separately and could not help but differ.
+  const layout = 'apps/argus/src/scene/rankedLayout.ts';
+  if (!existsSync(layout)) {
+    fail('a-preview-is-the-same-drawing', 'the shared ranked layout is gone');
+    return;
+  }
+  const drawers = [
+    'apps/argus/src/scene/dagScene.ts',
+    'apps/argus/src/features/files/panel.ts',
+  ];
+  for (const path of drawers) {
+    const text = readFileSync(path, 'utf8');
+    if (!/rankedLayout_compute\(/.test(text)) {
+      fail('a-preview-is-the-same-drawing', `${path} draws a ranked graph without reading the shared layout`);
+    }
+    // The tell of a second layout: computing depth or tiers locally.
+    if (/const\s+(depths|tiers)\s*:\s*Map</.test(text)) {
+      fail('a-preview-is-the-same-drawing', `${path} computes its own tiers`);
     }
   }
 };

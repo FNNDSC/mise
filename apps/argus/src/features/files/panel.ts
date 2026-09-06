@@ -147,19 +147,17 @@ function text_isBinary(head: string): boolean {
 export interface PreviewProvider {
   imageUrl: (path: string) => string;
   textHead: (path: string, maxBytes: number) => Promise<string>;
-  /** The head of a /bin entry's description (a plugin's), through the session. */
-  binHead: (path: string, maxChars: number) => Promise<string>;
   /** A pipeline's authored graph, for a glimpse; null when it has none. */
-  pipelineGlimpse: (path: string) => Promise<PipelineGlimpseNode[] | null>;
+  pipelineGlimpse: (path: string) => Promise<GlimpseNode[] | null>;
 }
 
 /**
- * One node of a pipeline as a glimpse needs it: identity and parents.
+ * One node of a graph as a glimpse needs it: identity and parents.
  *
  * @property id - The node id.
- * @property parentIds - Its parents in the authored graph.
+ * @property parentIds - Its parents in the graph.
  */
-export interface PipelineGlimpseNode {
+export interface GlimpseNode {
   id: string;
   parentIds: string[];
 }
@@ -168,13 +166,17 @@ export interface PipelineGlimpseNode {
 const GLIMPSE_NODE_MAX: number = 80;
 
 /**
- * Draws a pipeline's graph small: tiers by depth, parents above children,
- * as an SVG that scales to its card. Pure layout, no physics.
+ * Draws a graph small: tiers by depth, parents above children, as an SVG
+ * that scales to its card. Pure layout, no physics.
  *
- * @param nodes - The pipeline's nodes.
+ * Every /bin entry is a graph at this size, a plugin included — it is the
+ * one-node case, and drawing it here is what stopped a plugin card being a
+ * paragraph while a pipeline card was a picture.
+ *
+ * @param nodes - The graph's nodes.
  * @returns The SVG element.
  */
-function pipelineSvg_build(nodes: PipelineGlimpseNode[]): SVGSVGElement {
+function graphSvg_build(nodes: GlimpseNode[]): SVGSVGElement {
   const svgNs: string = 'http://www.w3.org/2000/svg';
   const svg: SVGSVGElement = document.createElementNS(svgNs, 'svg') as SVGSVGElement;
   svg.setAttribute('viewBox', `0 0 ${GLIMPSE_VIEW_W} ${GLIMPSE_VIEW_H}`);
@@ -382,6 +384,12 @@ export class FilesPanel {
       return;
     }
     this.lastListings = listings;
+    // A view is closed by the operator, never by an arrival. A listing
+    // reaching a pane whose operator is reading something lands UNDER it —
+    // CLOSE and Esc then show the newer listing. Rendering it instead took
+    // the view away mid-read, and a /bin scene fetched for a mount that no
+    // longer exists cannot come back (#425).
+    if (this.contentShown) return;
     this.listings_render(listings);
   }
 
@@ -404,7 +412,15 @@ export class FilesPanel {
       touched = true;
       return fresh;
     });
-    if (touched) this.listings_render(merged);
+    if (!touched) return;
+    // A background revalidation must never take a view away from the
+    // operator: it lands under whatever they are reading, so CLOSE
+    // returns to the fresh listing rather than the one that went stale.
+    if (this.contentShown) {
+      this.lastListings = merged;
+      return;
+    }
+    this.listings_render(merged);
   }
 
   /**
@@ -556,10 +572,15 @@ export class FilesPanel {
     closePill.textContent = 'CLOSE';
     closePill.addEventListener('click', (): void => this.listing_restore());
     header.append(title, closePill);
-    const body: HTMLPreElement = document.createElement('pre');
-    body.className = 'files-content';
-    body.innerHTML = html;
-    view.append(header, body);
+    view.appendChild(header);
+    // A plugin's view is its graph and nothing else: an empty <pre> would
+    // hold open the space the wall of text used to fill.
+    if (html !== '') {
+      const body: HTMLPreElement = document.createElement('pre');
+      body.className = 'files-content';
+      body.innerHTML = html;
+      view.appendChild(body);
+    }
     let mount: HTMLElement | null = null;
     if (options.diagram === true) {
       mount = document.createElement('div');
@@ -569,6 +590,28 @@ export class FilesPanel {
     this.diagram_declare(options.diagram === true);
     this.container.appendChild(view);
     return mount;
+  }
+
+  /**
+   * Fills in a content view's summary text after the view is already up.
+   *
+   * A /bin entry's graph is fetched with the view on screen, and some
+   * entries carry a summary above it. Rendering that when it arrives keeps
+   * the view immediate rather than holding it back for the slower half.
+   *
+   * @param html - The summary, already escaped and marked up.
+   */
+  public contentText_set(html: string): void {
+    const view: HTMLElement | null = this.container.querySelector<HTMLElement>('.files-content-view');
+    if (view === null) return;
+    const existing: HTMLElement | null = view.querySelector<HTMLElement>('.files-content');
+    const body: HTMLElement = existing ?? document.createElement('pre');
+    body.className = 'files-content';
+    body.innerHTML = html;
+    if (existing === null) {
+      const header: HTMLElement | null = view.querySelector<HTMLElement>('.files-content-header');
+      header?.after(body);
+    }
   }
 
   public listing_restore(): void {
@@ -843,37 +886,24 @@ export class FilesPanel {
       glyph();
       return thumb;
     }
-    if (item.type === 'plugin' || item.type === 'pipeline') {
-      // A plugin's glimpse is what it does: the head of its description. A
-      // pipeline's is its authored graph, drawn small.
+    if (item.type === 'plugin') {
+      // A plugin IS a graph — the one-node case — so its card carries that
+      // node, drawn by the same layout a pipeline's card uses. It costs no
+      // fetch: a plugin has one node whatever it turns out to declare, and
+      // the card used to spend a `cat` per entry to print a paragraph.
+      thumb.replaceChildren(graphSvg_build([{ id: path, parentIds: [] }]));
+      return thumb;
+    }
+    if (item.type === 'pipeline') {
       const binProvider: PreviewProvider = this.preview;
-      const cachedHead: string | undefined = this.headCache.get(path);
-      if (cachedHead !== undefined && item.type === 'plugin') {
-        const pre: HTMLPreElement = document.createElement('pre');
-        pre.textContent = cachedHead;
-        thumb.appendChild(pre);
-        return thumb;
-      }
       thumb.classList.add('thumb-wait');
       thumb.textContent = TYPE_GLYPHS[item.type];
       const loadBin = (): void => {
-        if (item.type === 'plugin') {
-          void binProvider.binHead(path, PREVIEW_HEAD_BYTES).then((head: string): void => {
-            thumb.classList.remove('thumb-wait');
-            if (head.trim() === '') { glyph(); return; }
-            if (this.headCache.size >= PREVIEW_CACHE_MAX) this.headCache.clear();
-            this.headCache.set(path, head);
-            const pre: HTMLPreElement = document.createElement('pre');
-            pre.textContent = head;
-            thumb.replaceChildren(pre);
-          }).catch((): void => { thumb.classList.remove('thumb-wait'); glyph(); });
-          return;
-        }
-        void binProvider.pipelineGlimpse(path).then((nodes: PipelineGlimpseNode[] | null): void => {
+        void binProvider.pipelineGlimpse(path).then((nodes: GlimpseNode[] | null): void => {
           thumb.classList.remove('thumb-wait');
           if (nodes === null || nodes.length === 0) { glyph(); return; }
           if (nodes.length > GLIMPSE_NODE_MAX) { thumb.textContent = `${nodes.length} NODES`; thumb.classList.add('thumb-count'); return; }
-          thumb.replaceChildren(pipelineSvg_build(nodes));
+          thumb.replaceChildren(graphSvg_build(nodes));
         }).catch((): void => { thumb.classList.remove('thumb-wait'); glyph(); });
       };
       this.thumbObserver_get().observe(thumb);

@@ -460,8 +460,9 @@ try {
   check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ p: cards.previewLabel, n: cards.previewCards, t: cards.thumbs, r: cards.restored }));
 
   console.log('bin-context');
-  // /bin entries open as context: a plugin as its highlighted description,
-  // a pipeline as its summary with its DAG rendered beneath.
+  // Everything in /bin is a graph: a plugin is the one-node case, drawn on
+  // the same stage a pipeline gets, and its node opens as its parameters.
+  // The wall of scraped text it used to be is gone.
   const binCtx = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const pill = document.getElementById('lang-pill');
@@ -474,17 +475,61 @@ try {
     const plugin = fp.querySelector('.files-row.files-type-plugin');
     if (!plugin) return { skipped: 'no plugin rows' };
     plugin.click();
-    let desc = false;
-    for (let i = 0; i < 40; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /DESCRIPTION/.test(c.textContent)) { desc = true; break; } }
-    const colored = fp.querySelectorAll('.files-content .man-head, .files-content span[style]').length > 0;
+    // Esc is about to be a level test, so the command line — the topmost
+    // transient, which takes any Esc while open — closes first. Running a
+    // line closes the palette; the pill press above reopened it.
+    if (!document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+    let pluginScene = false;
+    for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-diagram canvas')) { pluginScene = true; break; } }
+    // No prose: the graph is the whole view.
+    const pluginWall = fp.querySelector('.files-content') !== null;
+    let pluginSelected = '', pluginImmersed = '', pluginEscLeftNode = false;
+    if (pluginScene) {
+      await sleep(1200);
+      const canvas = fp.querySelector('.files-diagram canvas');
+      const facts = () => fp.querySelector('.files-diagram .dag-facts');
+      const box = canvas.getBoundingClientRect();
+      const at = { clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + box.height / 2) };
+      const hit = (type) => canvas.dispatchEvent(new MouseEvent(type, { ...at, bubbles: true, cancelable: true }));
+      hit('click'); await sleep(500);
+      pluginSelected = (facts()?.textContent ?? '');
+      hit('dblclick'); await sleep(1800);
+      pluginImmersed = (facts()?.textContent ?? '');
+      // ONE press leaves the node and not the view — the same
+      // retreat-exactly-one-level rule the pipeline dive follows.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(1500);
+      pluginEscLeftNode = facts()?.classList.contains('dag-facts-immersed') === false
+        && fp.querySelector('.files-diagram') !== null;
+    }
+    // A view is closed by the operator, never by an arrival: a listing
+    // asked for while the view is up lands under it, and CLOSE shows it.
+    let survivesListing = false, listingUnderneath = false;
+    if (pluginScene) {
+      const term = document.querySelector('#terminal input');
+      term.value = 'ls /usr/bin';
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await sleep(2500);
+      survivesListing = fp.querySelector('.files-diagram') !== null;
+      fp.querySelector('.files-close-pill')?.click(); await sleep(600);
+      // A plain includes, not a regex: a slash inside this template
+      // literal would be eaten before the page ever parsed it.
+      listingUnderneath = [...fp.querySelectorAll('.files-path')]
+        .some(el => (el.textContent ?? '').includes('/usr/bin'));
+      // Back to /bin for the pipeline half of this scenario.
+      term.value = 'ls /bin';
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-row.files-type-pipeline')) break; }
+    }
     // Esc is contextual back: the content view is a level above the listing
     // (the command line, if still open, is the topmost transient and would
     // take the press — close it first).
     if (!document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
-    const escBack = !fp.querySelector('.files-content') && fp.querySelectorAll('.files-row').length > 0;
+    const beforeEsc = fp.querySelector('.files-row.files-type-plugin');
+    if (beforeEsc) { beforeEsc.click(); await sleep(1500); }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
+    const escBack = !fp.querySelector('.files-diagram') && fp.querySelectorAll('.files-row').length > 0;
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
-    if (!pipeline) return { skipped: null, desc, colored, pipelineSkipped: true };
+    if (!pipeline) return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
     pipeline.click();
     let summary = false, canvas = false;
     for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
@@ -494,11 +539,25 @@ try {
     const panelx = fp.querySelector('.files-panel');
     const spills = panelx.scrollWidth > panelx.clientWidth + 1;
     fp.querySelector('.files-close-pill')?.click(); await sleep(300);
-    return { skipped: null, desc, colored, escBack, summary, canvas, pipelineSkipped: false, spills, dpr: window.devicePixelRatio };`);
+    return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, summary, canvas, pipelineSkipped: false, spills, dpr: window.devicePixelRatio };`);
   if (binCtx.skipped) {
     console.log(`  skipped: ${binCtx.skipped}`);
   } else {
-    check('a plugin opens as its description', binCtx.desc && binCtx.colored);
+    check('a plugin opens as a graph of one node, with no wall of text',
+      binCtx.pluginScene === true && binCtx.pluginWall === false,
+      JSON.stringify({ scene: binCtx.pluginScene, wall: binCtx.pluginWall }));
+    check('touching the plugin node reads out what it is',
+      /PLUGIN/.test(binCtx.pluginSelected ?? '') && /PARAMETERS/.test(binCtx.pluginSelected ?? ''),
+      JSON.stringify(binCtx.pluginSelected ?? '').slice(0, 160));
+    check('Esc leaves the plugin node, not the view holding it',
+      binCtx.pluginEscLeftNode === true, JSON.stringify(binCtx.pluginEscLeftNode));
+    check('diving into it opens the node as its parameters',
+      /VERSION/.test(binCtx.pluginImmersed ?? '')
+      && (/--/.test(binCtx.pluginImmersed ?? '') || /no arguments/.test(binCtx.pluginImmersed ?? '')),
+      JSON.stringify(binCtx.pluginImmersed ?? '').slice(0, 200));
+    check('a view is closed by the operator, never by an arriving listing',
+      binCtx.survivesListing === true && binCtx.listingUnderneath === true,
+      JSON.stringify({ survived: binCtx.survivesListing, under: binCtx.listingUnderneath }));
     check('Esc returns a content view to its listing', binCtx.escBack === true);
     if (binCtx.pipelineSkipped) console.log('  skipped: no pipeline rows');
     else {
@@ -524,10 +583,6 @@ try {
     const input = document.querySelector('#terminal input');
     input.value = 'cd /bin'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     for (let i=0;i<60;i++){ await sleep(500); if (fp.querySelectorAll('.files-row').length > 5) break; }
-    // Let the cwd-follow re-listing land before opening anything: a listing
-    // arriving replaces a content view (#425), so clicking into the race
-    // would test that defect rather than this one.
-    await sleep(3000);
     const listing = { view: shown('.files-view'), pulse: shown('.diagram-pulse') };
 
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');

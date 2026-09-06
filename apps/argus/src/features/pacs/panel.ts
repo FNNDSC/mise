@@ -26,6 +26,7 @@
 import {
   pacsQueryModelSchema,
   PACS_QUERY_MODEL_KIND,
+  type PacsPatient,
   type PacsProvenance,
   type PacsQueryModel,
   type PacsSeries,
@@ -77,6 +78,20 @@ interface SeriesRow {
 interface StudyRow {
   study: PacsStudy;
   key: string;
+}
+
+/**
+ * One row of the patient listing: the outermost level.
+ *
+ * The row exists whether or not the patient has studies, which is the whole
+ * point of the level — the MRNs that come back are by definition the ones
+ * WITH imaging, so an answer built only from studies cannot say which of
+ * the asked patients had none.
+ */
+interface PatientRow {
+  patient: PacsPatient;
+  key: string;
+  studies: PacsStudy[];
 }
 
 /** What a series' badge is currently saying. */
@@ -177,10 +192,16 @@ export class PacsPanel {
   private readonly actions: ReadonlyArray<ListingAction<SeriesRow>>;
   private readonly studyTraits: ReadonlyArray<ListingTrait<StudyRow>>;
   private readonly studyActions: ReadonlyArray<ListingAction<StudyRow>>;
+  private readonly patientTraits: ReadonlyArray<ListingTrait<PatientRow>>;
   private readonly order: RosterOrder<SeriesRow>;
   private readonly studyOrder: RosterOrder<StudyRow>;
-  private readonly host: ListingHost<StudyRow>;
+  private readonly patientOrder: RosterOrder<PatientRow>;
+  private readonly host: ListingHost<PatientRow>;
   private readonly expansion: Expansion = { mode: STUDY_EXPANSION, open: new Set<string>() };
+  /** Which patients are unfolded. A patient keeps its place, like a study. */
+  private readonly patientExpansion: Expansion = { mode: STUDY_EXPANSION, open: new Set<string>() };
+  /** Each patient's progress mount and the series it sums over. */
+  private readonly patientTracks: Map<string, { mount: HTMLElement; uids: string[] }> = new Map();
   private readonly filterPill: HTMLElement | null;
   private readonly stateSpan: HTMLElement | null;
   /**
@@ -211,17 +232,27 @@ export class PacsPanel {
     this.actions = this.actions_declare();
     this.studyTraits = this.studyTraits_declare();
     this.studyActions = this.studyActions_declare();
-    // Two levels, two column declarations, one frame. The STUDY caps head
-    // the region and are always on stage; a study's SERIES caps are minted
-    // inside it and appear when it unfolds.
-    this.studyOrder = new RosterOrder<StudyRow>(
-      traitColumns_of(this.studyTraits),
-      traitValue_of(this.studyTraits),
+    this.patientTraits = this.patientTraits_declare();
+    // Three levels, three column declarations, one frame. The PATIENT caps
+    // head the region and are always on stage; a patient's STUDY caps are
+    // minted inside it, and a study's SERIES caps inside that.
+    this.patientOrder = new RosterOrder<PatientRow>(
+      traitColumns_of(this.patientTraits),
+      traitValue_of(this.patientTraits),
       (): void => this.results_repaint(),
       undefined,
       // The fold glyph is a cell of the grid, so the caps carry a blank
       // over it and every cap still sits above its column.
       1,
+    );
+    this.studyOrder = new RosterOrder<StudyRow>(
+      traitColumns_of(this.studyTraits),
+      traitValue_of(this.studyTraits),
+      (): void => this.results_repaint(),
+      undefined,
+      1,
+      // Minted inside each patient; this order's own frame is never mounted.
+      false,
     );
     this.order = new RosterOrder<SeriesRow>(
       traitColumns_of(this.traits),
@@ -233,15 +264,17 @@ export class PacsPanel {
       // never mounted, so it carries no caps and no strip of its own.
       false,
     );
-    this.host = new ListingHost<StudyRow>(this.results, this.studyOrder);
+    this.host = new ListingHost<PatientRow>(this.results, this.patientOrder);
     this.filterPill = root.querySelector<HTMLElement>('.pacs-filter');
     this.stateSpan = root.querySelector<HTMLElement>('.pane-state');
-    this.filterPill?.addEventListener('click', (): void => this.studyOrder.strip_toggle());
-    this.studyOrder.stripChange_observe((): void => this.filterPill_sync());
-    // One filter, read at both levels: the strip belongs to the study
-    // order, and the series order is told the same text so a study that
-    // does not match itself can still keep the series that do.
-    this.studyOrder.filterChange_observe((text: string): void => {
+    this.filterPill?.addEventListener('click', (): void => this.patientOrder.strip_toggle());
+    this.patientOrder.stripChange_observe((): void => this.filterPill_sync());
+    // One filter, read down the levels: the strip belongs to the outermost
+    // order, and the two beneath it are told the same text — so a patient
+    // that does not match itself can still keep the studies that do, and a
+    // study that does not can still keep its matching series.
+    this.patientOrder.filterChange_observe((text: string): void => {
+      this.studyOrder.filter_set(text, false);
       this.order.filter_set(text, false);
     });
     this.filterPill_sync();
@@ -256,12 +289,13 @@ export class PacsPanel {
       // A column names its level: `pacs sort accession` orders studies,
       // `pacs sort modality` orders every study's series.
       if (detail.op === 'sort') {
+        this.patientOrder.sort_set(detail.key, detail.dir ?? 'asc');
         this.studyOrder.sort_set(detail.key, detail.dir ?? 'asc');
         this.order.sort_set(detail.key, detail.dir ?? 'asc');
       } else if (detail.text === '') {
-        this.studyOrder.strip_toggle(false);
+        this.patientOrder.strip_toggle(false);
       } else {
-        this.studyOrder.filter_set(detail.text);
+        this.patientOrder.filter_set(detail.text);
       }
     });
 
@@ -287,6 +321,184 @@ export class PacsPanel {
     });
     element_query(root, '#pacs-gather-save').addEventListener('click', (): void => this.manifest_save());
     element_query(root, '#pacs-gather-feed').addEventListener('click', (): void => this.feed_create());
+  }
+
+  /**
+   * The patient listing's columns: the outermost level.
+   *
+   * The level exists for the rows that carry no studies. A cohort's useful
+   * answer is usually the MRNs WITHOUT imaging, and those rows can only
+   * come from the record of what was asked — nothing derived from studies
+   * can mention a patient who has none.
+   *
+   * ANSWERED carries the row's own age, since a fan-out replays some rows
+   * and troubles the PACS for others; sorting by it lifts the stale rows to
+   * the top. A row that could not be asked reads UNASKED there, in the
+   * error hue, because a dash alone would read as "no answer yet" and a
+   * zero would read as "no imaging" — which is the one thing it must never
+   * be mistaken for.
+   *
+   * @returns The traits, in cap order.
+   */
+  private patientTraits_declare(): ReadonlyArray<ListingTrait<PatientRow>> {
+    return [
+      {
+        key: 'patient',
+        label: 'PATIENT',
+        className: 'pacs-patient-name',
+        cell: (row: PatientRow): string => row.patient.patientName || '(unknown)',
+      },
+      {
+        key: 'mrn',
+        label: 'MRN',
+        className: 'pacs-patient-mrn',
+        cell: (row: PatientRow): string => row.patient.patientId || '—',
+      },
+      {
+        key: 'studies',
+        label: 'STUDIES',
+        className: 'pacs-patient-count',
+        cell: (row: PatientRow): string =>
+          row.patient.status === 'unasked' ? '—' : String(row.patient.studyCount),
+        compare: (row: PatientRow): number =>
+          row.patient.status === 'unasked' ? -1 : row.patient.studyCount,
+      },
+      {
+        key: 'series',
+        label: 'SERIES',
+        className: 'pacs-patient-count',
+        cell: (row: PatientRow): string =>
+          row.patient.status === 'unasked' ? '—' : String(row.patient.seriesCount),
+        compare: (row: PatientRow): number =>
+          row.patient.status === 'unasked' ? -1 : row.patient.seriesCount,
+      },
+      {
+        key: 'server',
+        label: 'SERVER',
+        className: 'pacs-patient-server',
+        cell: (row: PatientRow): string => row.patient.server ?? this.model?.pacsName ?? '—',
+      },
+      {
+        key: 'answered',
+        label: 'ANSWERED',
+        className: 'pacs-patient-answered',
+        cell: (row: PatientRow): HTMLElement => {
+          const said: HTMLSpanElement = document.createElement('span');
+          said.className = row.patient.status === 'unasked'
+            ? 'pacs-patient-answered pacs-unasked'
+            : 'pacs-patient-answered';
+          if (row.patient.status === 'unasked') {
+            said.textContent = 'UNASKED';
+            // The reason is the operator's next move; the row states the
+            // fact and the title carries what went wrong.
+            if (row.patient.error !== undefined) said.title = row.patient.error;
+            return said;
+          }
+          const at: string | undefined = row.patient.provenance?.answeredAt;
+          said.textContent = at === undefined ? '—' : (elapsed_describe(at) ?? '—');
+          if (at !== undefined) said.title = at;
+          return said;
+        },
+        // Ascending puts the oldest first, which is what sorting on this
+        // column is for. A row with no answer is not old — it is absent —
+        // so it sorts to the far end rather than pretending to be stale.
+        compare: (row: PatientRow): number => {
+          const at: string | undefined = row.patient.provenance?.answeredAt;
+          if (at === undefined) return Number.MAX_SAFE_INTEGER;
+          const when: number = Date.parse(at);
+          return Number.isNaN(when) ? Number.MAX_SAFE_INTEGER : when;
+        },
+      },
+      {
+        key: 'progress',
+        label: 'PROGRESS',
+        className: 'pacs-patient-progress',
+        cell: (row: PatientRow): HTMLElement => {
+          const holder: HTMLSpanElement = document.createElement('span');
+          holder.className = 'pacs-patient-progress';
+          this.patientTracks.set(row.key, {
+            mount: holder,
+            uids: row.studies.flatMap((study: PacsStudy): string[] =>
+              study.series.map((series: PacsSeries): string => series.seriesUID)),
+          });
+          this.patientTrack_paint(row.key);
+          return holder;
+        },
+        compare: (row: PatientRow): number => {
+          const progress: ListingProgress = this.patientProgress_of(row);
+          return progress.total === 0 ? -1 : progress.done / progress.total;
+        },
+      },
+    ];
+  }
+
+  /** A patient's progress: every series under it, summed and never averaged. */
+  private patientProgress_of(row: PatientRow): ListingProgress {
+    return progress_aggregate(
+      row.studies.flatMap((study: PacsStudy): ListingProgress[] =>
+        study.series.map((series: PacsSeries): ListingProgress =>
+          this.seriesProgress.get(series.seriesUID) ?? { done: 0, total: 0 })),
+    );
+  }
+
+  /** Re-sums a patient's progress from its series and repaints its track. */
+  private patientTrack_paint(patientKey: string): void {
+    const track: { mount: HTMLElement; uids: string[] } | undefined = this.patientTracks.get(patientKey);
+    if (track === undefined) return;
+    const parts: ListingProgress[] = track.uids.map(
+      (uid: string): ListingProgress => this.seriesProgress.get(uid) ?? { done: 0, total: 0 },
+    );
+    track.mount.replaceChildren(progressCell_build(progress_aggregate(parts)));
+  }
+
+  /**
+   * The patients this answer is about, and the studies each owns.
+   *
+   * An answer that names its patients is taken at its word — it knows what
+   * was asked, including of whom nothing came back. An older answer, or a
+   * single question, carries no patient level, so one is derived from the
+   * studies: every patient there is a patient with imaging, which is all
+   * such an answer can honestly claim.
+   *
+   * @param model - The answer on stage.
+   * @returns One row per patient, in the answer's own order.
+   */
+  private patientRows_build(model: PacsQueryModel): PatientRow[] {
+    const owned = (patientId: string, server?: string): PacsStudy[] =>
+      model.studies.filter((study: PacsStudy): boolean =>
+        study.patientId === patientId && (server === undefined || study.server === undefined || study.server === server));
+
+    if (model.patients !== undefined && model.patients.length > 0) {
+      return model.patients.map((patient: PacsPatient, index: number): PatientRow => ({
+        patient,
+        key: `${patient.patientId}::${patient.server ?? ''}::${index}`,
+        studies: owned(patient.patientId, patient.server),
+      }));
+    }
+
+    const order: string[] = [];
+    const grouped: Map<string, PacsStudy[]> = new Map();
+    for (const study of model.studies) {
+      const id: string = study.patientId;
+      if (!grouped.has(id)) { grouped.set(id, []); order.push(id); }
+      (grouped.get(id) as PacsStudy[]).push(study);
+    }
+    return order.map((id: string, index: number): PatientRow => {
+      const studies: PacsStudy[] = grouped.get(id) ?? [];
+      return {
+        key: `${id}::${index}`,
+        studies,
+        patient: {
+          patientId: id,
+          ...(studies[0]?.patientName ? { patientName: studies[0].patientName } : {}),
+          status: 'found',
+          studyCount: studies.length,
+          seriesCount: studies.reduce(
+            (total: number, study: PacsStudy): number => total + study.series.length, 0),
+          ...(model.provenance === undefined ? {} : { provenance: model.provenance }),
+        },
+      };
+    });
   }
 
   /**
@@ -612,6 +824,9 @@ export class PacsPanel {
     for (const [key, track] of this.studyTracks) {
       if (track.uids.includes(seriesUID)) this.studyTrack_paint(key);
     }
+    for (const [key, track] of this.patientTracks) {
+      if (track.uids.includes(seriesUID)) this.patientTrack_paint(key);
+    }
   }
 
   /**
@@ -701,8 +916,15 @@ export class PacsPanel {
     this.provenance_show(model.provenance);
     if (!sameQuery) {
       this.expansion.open.clear();
+      this.patientExpansion.open.clear();
       this.badgeStates.clear();
-      // One study opens itself; a crowd arrives folded.
+      // A level holding one row opens itself, at every level: an accession
+      // query costs no extra gesture while a cohort still arrives folded.
+      const patients: PatientRow[] = this.patientRows_build(model);
+      const lone: PatientRow | undefined = patients.length === 1 ? patients[0] : undefined;
+      if (lone !== undefined && lone.studies.length > 0) {
+        this.patientExpansion.open.add(lone.key);
+      }
       if (model.studies.length === 1) {
         this.expansion.open.add(study_key(model.studies[0] as PacsStudy, 0));
       }
@@ -735,34 +957,97 @@ export class PacsPanel {
     const field: HTMLElement = this.host.field_open();
     this.badges.clear();
     this.studyTracks.clear();
+    this.patientTracks.clear();
     if (model === null) return;
-    if (model.studies.length === 0) {
+    const patientRows: PatientRow[] = this.patientRows_build(model);
+    if (patientRows.length === 0) {
       field.appendChild(element_note('NO STUDIES FOUND'));
       this.state_sync();
       return;
     }
 
-    const filtering: boolean = this.studyOrder.state_get().filter.length > 0;
-    const studyRows: StudyRow[] = model.studies.map(
-      (study: PacsStudy, index: number): StudyRow => ({ study, key: study_key(study, index) }),
-    );
+    const filtering: boolean = this.patientOrder.state_get().filter.length > 0;
     let shown: number = 0;
     let total: number = 0;
-    for (const row of this.studyOrder.sorted(studyRows)) {
-      const seriesRows: SeriesRow[] = row.study.series.map(
-        (series: PacsSeries): SeriesRow => ({ study: row.study, studyKey: row.key, series }),
+    for (const patientRow of this.patientOrder.sorted(patientRows)) {
+      const wholePatient: boolean = !filtering || this.patientOrder.matches(patientRow);
+      const studyRows: StudyRow[] = patientRow.studies.map(
+        (study: PacsStudy, index: number): StudyRow => ({ study, key: study_key(study, index) }),
       );
-      total += seriesRows.length;
-      const wholeStudy: boolean = !filtering || this.studyOrder.matches(row);
-      const kept: SeriesRow[] = wholeStudy
-        ? seriesRows
-        : seriesRows.filter((entry: SeriesRow): boolean => this.order.matches(entry));
-      if (kept.length === 0 && filtering) continue;
-      shown += kept.length;
-      field.appendChild(this.study_render(row, this.order.sorted(kept)));
+      const kept: Array<{ row: StudyRow; series: SeriesRow[] }> = [];
+      for (const row of this.studyOrder.sorted(studyRows)) {
+        const seriesRows: SeriesRow[] = row.study.series.map(
+          (series: PacsSeries): SeriesRow => ({ study: row.study, studyKey: row.key, series }),
+        );
+        total += seriesRows.length;
+        const wholeStudy: boolean = wholePatient || this.studyOrder.matches(row);
+        const keptSeries: SeriesRow[] = wholeStudy
+          ? seriesRows
+          : seriesRows.filter((entry: SeriesRow): boolean => this.order.matches(entry));
+        if (keptSeries.length === 0 && filtering && !wholeStudy) continue;
+        shown += keptSeries.length;
+        kept.push({ row, series: this.order.sorted(keptSeries) });
+      }
+      // A patient with nothing left after filtering leaves the stage —
+      // unless the patient row itself matched, in which case the whole
+      // patient stays, misses included.
+      if (filtering && !wholePatient && kept.length === 0) continue;
+      field.appendChild(this.patient_render(patientRow, kept));
     }
-    this.studyOrder.counts_set(shown, total);
+    this.patientOrder.counts_set(shown, total);
     this.state_sync();
+  }
+
+  /**
+   * Renders one patient: its row on the patient grid, then its studies.
+   *
+   * A patient holding one study opens itself, and that study opens itself
+   * in turn — the rule the study level already follows, which is what makes
+   * an accession query cost no extra gesture while a cohort still arrives
+   * folded.
+   *
+   * @param row - The patient.
+   * @param studies - Its studies, each with the series that survived the filter.
+   * @returns The patient's block.
+   */
+  private patient_render(row: PatientRow, studies: Array<{ row: StudyRow; series: SeriesRow[] }>): HTMLElement {
+    const open: boolean = expansion_isOpen(this.patientExpansion, row.key);
+    const block: HTMLElement = document.createElement('section');
+    block.className = open ? 'pacs-patient' : 'pacs-patient pacs-patient-collapsed';
+    if (row.patient.status === 'unasked') block.classList.add('pacs-patient-unasked');
+    const head: HTMLElement = listingRow_build(row, this.patientTraits, {
+      className: (): string => 'pacs-patient-row',
+      leading: (entry: PatientRow): HTMLElement[] => {
+        const fold: HTMLSpanElement = document.createElement('span');
+        fold.className = 'pacs-fold';
+        // A patient with no studies has nothing to unfold, and a glyph
+        // promising otherwise is a control that cannot act.
+        fold.textContent = entry.studies.length === 0
+          ? ''
+          : (expansion_isOpen(this.patientExpansion, entry.key) ? '▾' : '▸');
+        return [fold];
+      },
+      decorate: (element: HTMLElement, entry: PatientRow): void => {
+        if (entry.studies.length === 0) return;
+        element.title = 'unfold this patient\'s studies (the patient keeps its place)';
+        element.addEventListener('click', (): void => {
+          const nowOpen: boolean = expansion_toggle(this.patientExpansion, entry.key);
+          block.classList.toggle('pacs-patient-collapsed', !nowOpen);
+          const glyph: HTMLElement | null = element.querySelector('.pacs-fold');
+          if (glyph !== null) glyph.textContent = nowOpen ? '▾' : '▸';
+        });
+      },
+    });
+    block.appendChild(head);
+    if (studies.length === 0) return block;
+    const level: HTMLElement = document.createElement('div');
+    level.className = 'pacs-study-level';
+    level.appendChild(this.studyOrder.caps_mint());
+    for (const entry of studies) {
+      level.appendChild(this.study_render(entry.row, entry.series));
+    }
+    block.appendChild(level);
+    return block;
   }
 
   /** Renders one study: its row on the study grid, then its series. */
@@ -820,15 +1105,34 @@ export class PacsPanel {
     track.mount.replaceChildren(progressCell_build(progress_aggregate(parts)));
   }
 
-  /** Writes the listing's state onto the pane's bar, and lights the pill. */
+  /**
+   * Writes the listing's state onto the pane's bar, and lights the pill.
+   *
+   * A listing that reports on a set says what happened to every member of
+   * it: found, none, and could-not-ask are three answers, not two. The
+   * counts ride ahead of the filter summary, because they describe the
+   * answer while the summary describes the view.
+   */
   private state_sync(): void {
-    if (this.stateSpan !== null) this.stateSpan.textContent = this.studyOrder.summary();
+    if (this.stateSpan === null) return;
+    const parts: string[] = [];
+    const patients: ReadonlyArray<PacsPatient> = this.model?.patients ?? [];
+    if (patients.length > 0) {
+      const tally = (state: PacsPatient['status']): number =>
+        patients.filter((patient: PacsPatient): boolean => patient.status === state).length;
+      parts.push(`FOUND ${tally('found')} · NONE ${tally('none')} · UNASKED ${tally('unasked')}`);
+    }
+    const summary: string = this.patientOrder.summary();
+    if (summary !== '') parts.push(summary);
+    this.stateSpan.textContent = parts.join('  ·  ');
   }
 
   /** The FILTER pill reads the strip's state, like every mode block. */
   private filterPill_sync(): void {
     if (this.filterPill === null) return;
-    const open: boolean = this.studyOrder.strip_isOpen();
+    // The strip belongs to the outermost order, so its state is the one
+    // the pill reads.
+    const open: boolean = this.patientOrder.strip_isOpen();
     this.filterPill.textContent = open ? 'FILTER ON' : 'FILTER OFF';
     this.filterPill.classList.toggle('rail-off', !open);
     this.state_sync();
@@ -836,7 +1140,7 @@ export class PacsPanel {
 
   /** Shows or hides the results filter strip (the drawer's FILTER). */
   public filter_toggle(open?: boolean): void {
-    this.studyOrder.strip_toggle(open);
+    this.patientOrder.strip_toggle(open);
   }
 
   /** Records one series into the gather without touching badges. */

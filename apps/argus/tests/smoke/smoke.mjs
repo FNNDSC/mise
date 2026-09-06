@@ -849,7 +849,7 @@ try {
     const ws = document.getElementById('pacs-workspace');
     const frame = ws.querySelector('#pacs-results > .roster-order') !== null;
     const field = ws.querySelector('#pacs-results > .listing-field') !== null;
-    const studyCaps = [...ws.querySelectorAll('#pacs-results > .roster-order .roster-cap')].map(c => c.textContent.trim());
+    const patientCaps = [...ws.querySelectorAll('#pacs-results > .roster-order .roster-cap')].map(c => c.textContent.trim());
     const strip = () => ws.querySelector('#pacs-results .roster-filter').getBoundingClientRect().height;
     const rest = strip();
     ws.querySelector('.pacs-listing .mode-strip').click(); await sleep(350);
@@ -861,14 +861,18 @@ try {
     const shut = strip(); const offLabel = pill.textContent.trim();
     document.getElementById('pacs-results').click(); await sleep(300);
     const retracted = ws.dataset.modes !== 'open';
-    return { frame, field, studyCaps, rest, framed, open, onLabel, shut, offLabel, retracted };`);
+    return { frame, field, patientCaps, rest, framed, open, onLabel, shut, offLabel, retracted };`);
   check('the PACS results are a framed field: frame outside the scroll, mode frame on the spine',
     pacsFrame.frame === true && pacsFrame.field === true
     && pacsFrame.framed === true && pacsFrame.retracted === true, JSON.stringify(pacsFrame));
-  check('the study caps head the region before any answer, ACCESSION among them',
-    Array.isArray(pacsFrame.studyCaps) && pacsFrame.studyCaps.includes('ACCESSION')
-    && pacsFrame.studyCaps.includes('PATIENT') && pacsFrame.studyCaps.includes('MRN'),
-    JSON.stringify(pacsFrame.studyCaps));
+  // The MRN level is the outermost one, always: a listing that reports on
+  // a set says what happened to every member of it, and only the record of
+  // what was ASKED can mention a patient who has no studies.
+  check('the patient caps head the region before any answer, ANSWERED among them',
+    Array.isArray(pacsFrame.patientCaps) && pacsFrame.patientCaps.includes('PATIENT')
+    && pacsFrame.patientCaps.includes('MRN') && pacsFrame.patientCaps.includes('ANSWERED')
+    && pacsFrame.patientCaps.includes('STUDIES') && pacsFrame.patientCaps.includes('SERVER'),
+    JSON.stringify(pacsFrame.patientCaps));
   check('FILTER summons the results strip and reads its state',
     pacsFrame.rest === 0 && pacsFrame.open === true && pacsFrame.onLabel === 'FILTER ON'
     && pacsFrame.shut === 0 && pacsFrame.offLabel === 'FILTER OFF', JSON.stringify(pacsFrame));
@@ -881,7 +885,15 @@ try {
     const caps = new Map([...document.querySelectorAll('#pacs-results > .roster-order .roster-cap')]
       .map(c => [c.dataset.key, l(c)]));
     const cells = [...document.querySelectorAll('#pacs-form [data-key]')];
-    const off = cells.map(c => [c.dataset.key, caps.has(c.dataset.key) ? l(c) - caps.get(c.dataset.key) : 'no-cap']);
+    // The form stands on the STUDY grid, which is where its date, accession
+    // and modality terms are answered; its patient terms are answered a
+    // level up, and those two columns share the same tracks — so the caps
+    // heading the region name them in the same places.
+    const off = cells.filter(c => caps.has(c.dataset.key))
+      .map(c => [c.dataset.key, l(c) - caps.get(c.dataset.key)]);
+    // The two patient terms are answered by the caps heading the region;
+    // the rest are answered a level down, where the study caps are minted.
+    const patientTerms = off.filter(([key]) => key === 'patient' || key === 'mrn').length;
     // The order the form lowers to is the order the columns read in.
     const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
     set('pacs-f-name', 'AAA'); set('pacs-f-mrn', '111'); set('pacs-f-date', '20100101');
@@ -890,10 +902,11 @@ try {
     const line = document.getElementById('pacs-command').value;
     for (const id of ['pacs-f-name','pacs-f-mrn','pacs-f-date','pacs-f-accession','pacs-f-modality']) set(id, '');
     await sleep(150);
-    return { off, line, run: l(document.getElementById('pacs-run')) };`);
+    return { off, line, patientTerms, run: l(document.getElementById('pacs-run')) };`);
   check('the query form stands on the listing grid, in the caps\' order',
-    Array.isArray(pacsForm.off) && pacsForm.off.length >= 5
-    && pacsForm.off.every(([, delta]) => delta === 0)
+    pacsForm.patientTerms === 2
+    && pacsForm.off.filter(([key]) => key === 'patient' || key === 'mrn')
+      .every(([, delta]) => delta === 0)
     && pacsForm.line === 'pacs query PatientName:AAA,PatientID:111,StudyDate:20100101,AccessionNumber:222,Modality:CT',
     JSON.stringify(pacsForm));
 
@@ -983,6 +996,64 @@ try {
       && pacsSort.ascending !== pacsSort.descending
       && pacsSort.ascending === pacsSort.ascending.split('|').sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).join('|'),
       JSON.stringify(pacsSort));
+  }
+
+  // The MRN level answers for a SET: every patient asked gets a row, and
+  // what became of each is readable at a glance. Set SMOKE_PACS_COHORT to
+  // a `pacs query --patients a,b` line whose MRNs include at least one the
+  // PACS will not match.
+  const pacsCohort = process.env.SMOKE_PACS_COHORT;
+  if (!pacsCohort) {
+    console.log('  skipped: set SMOKE_PACS_COHORT=<a `pacs query --patients a,b` line, one MRN a miss>');
+  } else {
+    const cohort = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(600);
+      const ws = document.getElementById('pacs-workspace');
+      const cmd = ws.querySelector('#pacs-command');
+      const rows = () => [...ws.querySelectorAll('#pacs-results .pacs-patient-row')];
+      cmd.value = ${JSON.stringify(pacsCohort)};
+      cmd.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 300; i++) { await sleep(1000); if (rows().length > 1) break; }
+      await sleep(2000);
+      const mrns = rows().map(r => r.querySelector('.pacs-patient-mrn')?.textContent ?? '');
+      const studies = rows().map(r => r.querySelector('.pacs-patient-count')?.textContent ?? '');
+      const answered = rows().map(r => r.querySelector('.pacs-patient-answered')?.textContent ?? '');
+      const bar = ws.querySelector('.pane-state')?.textContent ?? '';
+      const tracks = rows().filter(r => r.querySelector('.pacs-patient-progress .listing-progress')).length;
+      // A crowd arrives folded; unfolding one patient shows its studies.
+      const first = rows()[0];
+      const foldedBefore = first.parentElement.classList.contains('pacs-patient-collapsed');
+      first.click(); await sleep(400);
+      const openAfter = !first.parentElement.classList.contains('pacs-patient-collapsed');
+      const studyCaps = [...first.parentElement.querySelectorAll('.pacs-study-level .roster-cap')]
+        .map(c => c.textContent.trim());
+      // A term is typed in the column it fills: the study-level terms of
+      // the form stand over the study caps, which are minted a level down.
+      const l = (el) => Math.round(el.getBoundingClientRect().left);
+      const caps = new Map([...first.parentElement.querySelectorAll('.pacs-study-level > .roster-caps .roster-cap')]
+        .map(c => [c.dataset.key, l(c)]));
+      const studyTerms = [...document.querySelectorAll('#pacs-form [data-key]')]
+        .filter(c => ['date', 'accession', 'modality'].includes(c.dataset.key))
+        .map(c => [c.dataset.key, caps.has(c.dataset.key) ? l(c) - caps.get(c.dataset.key) : 'no-cap']);
+      return { count: rows().length, mrns, studies, answered, bar, tracks, foldedBefore, openAfter, studyCaps, studyTerms };`);
+    check('every patient asked gets a row, misses included',
+      cohort.count >= 2 && cohort.studies.includes('0'),
+      JSON.stringify({ n: cohort.count, mrns: cohort.mrns, studies: cohort.studies }));
+    check('the bar counts what was found, what was not, and what could not be asked',
+      /FOUND \d+ · NONE \d+ · UNASKED \d+/.test(cohort.bar), JSON.stringify(cohort.bar));
+    check('each patient row says how old its own answer is',
+      Array.isArray(cohort.answered) && cohort.answered.every((text) => text.trim() !== ''),
+      JSON.stringify(cohort.answered));
+    check('a patient sums the progress of everything beneath it',
+      cohort.tracks === cohort.count, JSON.stringify({ tracks: cohort.tracks, rows: cohort.count }));
+    check('the form\'s study terms stand over the study caps, a level down',
+      Array.isArray(cohort.studyTerms) && cohort.studyTerms.length === 3
+      && cohort.studyTerms.every(([, delta]) => delta === 0),
+      JSON.stringify(cohort.studyTerms));
+    check('a cohort arrives folded, and a patient unfolds into its studies',
+      cohort.foldedBefore === true && cohort.openAfter === true
+      && cohort.studyCaps.includes('ACCESSION'),
+      JSON.stringify({ folded: cohort.foldedBefore, open: cohort.openAfter, caps: cohort.studyCaps }));
   }
 
   console.log('host-control');

@@ -345,6 +345,8 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * traits do. Order: fold, patient, mrn, study, date, accession, modality,
  * series, progress, verbs. */
 #pacs-workspace {
+  /* The STUDY tracks, which the form also stands on: fold, patient, MRN,
+     study, date, accession, modality, series, progress, verbs. */
   --roster-cols:
     1.4em minmax(0, 13em) 7.5em minmax(0, 14em) 7.5em 9em 6.5em 4em minmax(5em, 1fr) 7em;
   --roster-gap: 0.8rem;
@@ -3104,4 +3106,77 @@ body[data-zoom] #header-restore {
   max-height: 70%;
   overflow-y: auto;
   border-left-color: var(--october-sunset);
+}
+
+/* ------------------------------------------------- the PACS patient level */
+
+/* The outermost level: one row per MRN asked, hits and misses alike. Its
+   first two tracks match the study grid's patient and MRN, so the form's
+   own PATIENT and MRN fields still stand over the columns they fill. */
+.pacs-patient {
+  margin-bottom: 0.9rem;
+}
+
+.pacs-patient-row {
+  --roster-cols: 1.4em minmax(0, 13em) 7.5em 6em 5em 9em 11em minmax(5em, 1fr);
+  display: grid;
+  grid-template-columns: var(--roster-cols);
+  align-items: center;
+  gap: 0 var(--roster-gap);
+  padding: 4px var(--roster-pad);
+  font-size: 0.85rem;
+  color: var(--harvestgold);
+  border-bottom: 2px solid var(--harvestgold);
+  cursor: pointer;
+}
+
+/* The caps that head the region stand on the patient grid, not the study's. */
+#pacs-results > .roster-order .roster-caps {
+  --roster-cols: 1.4em minmax(0, 13em) 7.5em 6em 5em 9em 11em minmax(5em, 1fr);
+}
+
+.pacs-patient-row:hover {
+  background: rgb(255 204 102 / 12%);
+}
+
+.pacs-patient-row > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pacs-patient-name { color: var(--butter); }
+.pacs-patient-mrn { color: var(--harvestgold); }
+.pacs-patient-count,
+.pacs-patient-server { color: var(--pumpkin-pie); }
+.pacs-patient-answered { color: var(--pumpkin-pie); }
+
+/* A row nothing could be asked of. Never a zero: a zero says the PACS
+   answered and found nothing, which is the opposite of what happened. */
+.pacs-unasked { color: var(--mars); }
+
+.pacs-patient-unasked .pacs-patient-count { color: var(--mars); }
+
+.pacs-patient-progress {
+  display: block;
+  min-width: 0;
+}
+
+/* The studies are a listing of their own, inside the patient standing over
+   them. NOT indented: the form's study terms stand over the study caps, so
+   an indent here would push the columns out from under the fields that fill
+   them — the nesting is said by the patient's row and this edge rule
+   instead: an inset shadow rather than a border, since a border of its own
+   width would shift the grid inside it by exactly that much. */
+.pacs-study-level {
+  box-shadow: inset 2px 0 0 rgb(255 204 102 / 35%);
+}
+
+.pacs-study-level .roster-caps {
+  margin: 0.35rem 0 0.3rem;
+}
+
+.pacs-patient-collapsed .pacs-study-level {
+  display: none;
 }

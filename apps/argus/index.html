@@ -245,6 +245,14 @@
                   <aside class="mode-frame">
                     <button class="strategy-pill files-view" title="projection: rows, cards, or previews">LIST</button>
                     <button class="strategy-pill files-filter" title="filter the listing (the bar reads FILTERED n/m)">FILTER OFF</button>
+                    <!-- A pane has ONE frame, and its blocks answer to what
+                         the field currently holds: a listing offers a
+                         projection and a filter, a diagram offers the modes
+                         a graph has. Offering LIST over a pipeline's DAG
+                         was a control that could not act. -->
+                    <button class="strategy-pill diagram-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
+                    <button class="strategy-pill diagram-projection" title="projection: sculpted 3D or flat schematic">3D</button>
+                    <button class="strategy-pill diagram-pulse" title="replay the graph as a dependency wave (one pass)">PULSE</button>
                     <span class="mode-fill"></span>
                   </aside>
                   <section class="files-panel" aria-label="Files"></section>

@@ -3064,3 +3064,35 @@ body[data-zoom] #header-restore {
 .dag-roster .roster-cap[data-key="wallSeconds"] {
   text-align: right;
 }
+
+/* ------------------------------------------------ one frame, two fields */
+
+/* A pane has one mode frame, and its blocks answer to what the field
+ * currently holds. A listing offers a projection and a filter; a diagram
+ * offers what a graph has. Offering LIST over a pipeline's DAG was a
+ * control that could not act, which is a promise the frame does not get to
+ * make (see `field-is-content`). */
+.files-body .diagram-strategy,
+.files-body .diagram-projection,
+.files-body .diagram-pulse {
+  display: none;
+}
+
+.files-body.diagram-shown .files-view,
+.files-body.diagram-shown .files-filter {
+  display: none;
+}
+
+.files-body.diagram-shown .diagram-strategy,
+.files-body.diagram-shown .diagram-projection,
+.files-body.diagram-shown .diagram-pulse {
+  display: block;
+}
+
+/* A wave is a thing you fire, not a state you are in: it reads as the verb
+ * for the whole time it is not running, because the cockpit animates
+ * nothing at rest and this is the hand on it. */
+.mode-frame .strategy-pill.diagram-pulse.pulse-running {
+  background-color: var(--october-sunset);
+  color: #000;
+}

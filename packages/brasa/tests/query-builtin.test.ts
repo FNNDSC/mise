@@ -37,6 +37,12 @@ jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ screen: { ta
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({
   spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() },
 }));
+// A failed question strips the stack's debug prefix before the reason
+// becomes data; the builtins' utils module pulls the session and storage
+// stacks, which this suite has no business loading.
+jest.unstable_mockModule('../src/builtins/utils.js', () => ({
+  error_stripDebugPrefix: (message: string): string => message.replace(/^\[[^\]]+\]\s*\|\s*/, ''),
+}));
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
@@ -446,6 +452,9 @@ describe('a cohort', () => {
     // A failure never reads as a zero, and it says what happened.
     expect(byId.get('6654')?.queryId).toBeUndefined();
     expect(typeof byId.get('6654')?.error).toBe('string');
+    // The reason is read in a table and on a graphical surface, so the
+    // stack's debugging prefix never reaches either.
+    expect(byId.get('6654')?.error).not.toMatch(/^\[/);
   });
 
   it('counts what it found, what it did not, and what it could not ask', async () => {
@@ -495,5 +504,78 @@ describe('a cohort', () => {
       { StudyDate: '20240101', PatientID: '1234' },
       { StudyDate: '20240101', PatientID: '4532' },
     ]);
+  });
+});
+
+describe('several servers', () => {
+  /** Serves every create, recording which server it was put to. */
+  function servers_stub(options: { unreachable?: Set<string> } = {}): {
+    puts: () => Array<{ server: string; mrn: string }>;
+  } {
+    let nextId: number = 200;
+    const puts: Array<{ server: string; mrn: string }> = [];
+    mockCreate.mockImplementation(async (server: unknown, payload: unknown) => {
+      const criteria = JSON.parse((payload as { query: string }).query) as Record<string, string>;
+      puts.push({ server: String(server), mrn: criteria.PatientID ?? '' });
+      if (options.unreachable?.has(String(server))) return err();
+      return ok({ id: nextId++, owner_username: 'chris' });
+    });
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    return { puts: (): Array<{ server: string; mrn: string }> => puts };
+  }
+
+  it('puts one question to each server named', async () => {
+    const load = servers_stub();
+    await builtin_query(['PatientID:1234', '--pacsserver', 'PACSDCM,ORTHANC']);
+    expect(load.puts()).toEqual([
+      { server: 'PACSDCM', mrn: '1234' },
+      { server: 'ORTHANC', mrn: '1234' },
+    ]);
+  });
+
+  // Two servers may hold the same study; a row that cannot say which one
+  // answered cannot be acted on.
+  it('names the server on every row when more than one could have answered', async () => {
+    servers_stub();
+    const envelope = await builtin_query(['PatientID:1234', '--pacsserver', 'PACSDCM,ORTHANC']);
+    const model = (envelope as { model?: { data?: { studies?: Array<Record<string, unknown>>; patients?: Array<Record<string, unknown>> } } }).model;
+    expect(model?.data?.studies?.map((study) => study.server)).toEqual(['PACSDCM', 'ORTHANC']);
+    expect(model?.data?.patients?.map((patient) => patient.server)).toEqual(['PACSDCM', 'ORTHANC']);
+  });
+
+  it('says nothing about servers when only one could have answered', async () => {
+    servers_stub();
+    const envelope = await builtin_query(['--patients', '1234,4532', '--pacsserver', 'PACSDCM']);
+    const model = (envelope as { model?: { data?: { studies?: Array<Record<string, unknown>>; patients?: Array<Record<string, unknown>> } } }).model;
+    expect(model?.data?.studies?.every((study) => study.server === undefined)).toBe(true);
+    expect(model?.data?.patients?.every((patient) => patient.server === undefined)).toBe(true);
+  });
+
+  // An unreachable server tells us nothing about the patient; the server
+  // that answered still tells us what it found.
+  it('records an unreachable server as unasked, not as a patient with nothing', async () => {
+    servers_stub({ unreachable: new Set(['ORTHANC']) });
+    const envelope = await builtin_query(['PatientID:1234', '--pacsserver', 'PACSDCM,ORTHANC']);
+    const patients = ((envelope as { model?: { data?: { patients?: Array<Record<string, unknown>> } } })
+      .model?.data?.patients ?? []);
+    expect(patients.map((patient) => [patient.server, patient.status])).toEqual([
+      ['PACSDCM', 'found'],
+      ['ORTHANC', 'unasked'],
+    ]);
+  });
+
+  it('counts the servers into the fan-out guard', async () => {
+    servers_stub();
+    const many: string = Array.from({ length: 20 }, (_unused, index) => String(index)).join(',');
+    const envelope = await builtin_query([`PatientID:${many}`, '--pacsserver', 'A,B']);
+    expect((envelope as { status: string }).status).toBe('error');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('asks one server exactly as it always did', async () => {
+    const load = servers_stub();
+    await builtin_query(['PatientID:1234', '--pacsserver', 'PACSDCM']);
+    expect(load.puts()).toEqual([{ server: 'PACSDCM', mrn: '1234' }]);
   });
 });

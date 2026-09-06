@@ -19,6 +19,11 @@
  */
 import * as THREE from 'three';
 import {
+  rankedLayout_compute,
+  type RankedLayout,
+  type RankedPlacement,
+} from './rankedLayout.js';
+import {
   forceSimulation,
   forceLink,
   forceManyBody,
@@ -187,14 +192,12 @@ function nodeColor_pick(
 }
 
 /**
- * Deterministic ranked layout, drawn as the tree it is: every node hangs
- * beneath its anchor parent (a join's extra parents are edges, not
- * placement), a subtree occupies a contiguous span of leaf slots and its
- * root sits over the middle of that span, tiers by depth from the roots.
- * The tree is a sheet: every node at z = 0, so an orbit reads as turning
- * the sheet and never scrambles the hierarchy (the earlier per-node depth
- * jitter made a turned tree look like a different feed). Relationships
- * read straight down; the same graph always lands the same way.
+ * Ranked placement is declared once in `./rankedLayout.js` and drawn twice
+ * — here, and as SVG in a preview card, which cannot hold a WebGL context.
+ * What this file adds is the third dimension: the tree is a sheet, every
+ * node at z = 0, so an orbit reads as turning the sheet and never scrambles
+ * the hierarchy (the earlier per-node depth jitter made a turned tree look
+ * like a different feed).
  */
 /** The k-th of n points on a fibonacci sphere of the given radius. */
 function fibonacciPoint_make(k: number, n: number, radius: number): THREE.Vector3 {
@@ -208,75 +211,19 @@ function fibonacciPoint_make(k: number, n: number, radius: number): THREE.Vector
 function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
   const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? 0);
   const metricPeak: number = Math.max(...metrics, 0);
-  const depths: Map<string, number> = new Map();
-  const byId: Map<string, SceneNode> = new Map(nodes.map((n: SceneNode) => [n.id, n]));
-  const depth_find = (node: SceneNode, trail: Set<string>): number => {
-    const known: number | undefined = depths.get(node.id);
-    if (known !== undefined) return known;
-    if (trail.has(node.id) || node.parentIds.length === 0) {
-      depths.set(node.id, 0);
-      return 0;
-    }
-    trail.add(node.id);
-    let deepest: number = 0;
-    for (const parentId of node.parentIds) {
-      const parent: SceneNode | undefined = byId.get(parentId);
-      if (parent) deepest = Math.max(deepest, depth_find(parent, trail) + 1);
-    }
-    depths.set(node.id, deepest);
-    return deepest;
-  };
-  for (const node of nodes) depth_find(node, new Set());
+  // The placement itself is declared once, in `rankedLayout`, and drawn
+  // twice: here in three.js and as SVG in a preview card. What remains here
+  // is turning layout units into scene units and scaling by the metric.
+  const layout: RankedLayout = rankedLayout_compute(nodes);
+  const slots: Map<string, RankedPlacement> = new Map(
+    layout.placements.map((placement: RankedPlacement): [string, RankedPlacement] => [placement.id, placement]),
+  );
 
-  // The anchor tree: each node under its first parent present in the
-  // graph; anything without one is a root. Children keep a stable order.
-  const children: Map<string, SceneNode[]> = new Map();
-  const roots: SceneNode[] = [];
-  const byIdSort = (a: SceneNode, b: SceneNode): number => a.id.localeCompare(b.id, undefined, { numeric: true });
-  for (const node of nodes) {
-    const anchor: string | undefined = node.parentIds.find((id: string): boolean => byId.has(id));
-    if (anchor === undefined) { roots.push(node); continue; }
-    const siblings: SceneNode[] = children.get(anchor) ?? [];
-    siblings.push(node);
-    children.set(anchor, siblings);
-  }
-  roots.sort(byIdSort);
-  for (const siblings of children.values()) siblings.sort(byIdSort);
-
-  // Leaf slots: a subtree spans as many slots as it has leaves; its root
-  // sits over the middle of its span. One DFS assigns every x.
-  const xs: Map<string, number> = new Map();
-  let slot: number = 0;
-  const seen: Set<string> = new Set();
-  const place = (node: SceneNode): [number, number] => {
-    seen.add(node.id);
-    const kids: SceneNode[] = (children.get(node.id) ?? []).filter((kid: SceneNode): boolean => !seen.has(kid.id));
-    if (kids.length === 0) {
-      const x: number = slot++;
-      xs.set(node.id, x);
-      return [x, x];
-    }
-    let first: number = Number.POSITIVE_INFINITY;
-    let last: number = Number.NEGATIVE_INFINITY;
-    for (const kid of kids) {
-      const [lo, hi]: [number, number] = place(kid);
-      first = Math.min(first, lo);
-      last = Math.max(last, hi);
-    }
-    const x: number = (first + last) / 2;
-    xs.set(node.id, x);
-    return [first, last];
-  };
-  for (const root of roots) place(root);
-  for (const node of nodes) if (!xs.has(node.id)) place(node); // cycles, if any, still land
-
-  const tierCount: number = Math.max(...Array.from(depths.values()), 0) + 1;
-  const width: number = Math.max(slot - 1, 0);
   const placed: PlacedNode[] = [];
   for (const node of nodes) {
-    const tier: number = depths.get(node.id) ?? 0;
-    const x: number = ((xs.get(node.id) ?? 0) - width / 2) * SIBLING_SPACING;
-    const y: number = ((tierCount - 1) / 2 - tier) * TIER_SPACING;
+    const at: RankedPlacement | undefined = slots.get(node.id);
+    const x: number = ((at?.x ?? 0) - layout.width / 2) * SIBLING_SPACING;
+    const y: number = ((layout.tierCount - 1) / 2 - (at?.tier ?? 0)) * TIER_SPACING;
     // Metric scaling applies in every layout: a mode pill that changes
     // nothing on screen reads as broken. No metric = uniform.
     const metric: number = node.metric ?? 0;

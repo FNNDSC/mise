@@ -1404,7 +1404,13 @@ async function surface_start(token: string): Promise<void> {
   );
   const pacsPanel: PacsPanel = new PacsPanel(element_require('pacs-workspace'), {
     command_run: (line: string): void => {
-      void client.line_execute(line, { silent: true });
+      // The claim rule: a pane's own request resolves to it alone. The
+      // DAG pane's own commands already come back this way, and the PACS
+      // pane needs the same — asking the session for the registered
+      // servers is worth nothing if the answer goes nowhere.
+      void client.line_execute(line, { silent: true }).then((outcome: ExecuteOutcome): void => {
+        for (const envelope of outcome.envelopes) pacsPanel.envelope_observe(envelope);
+      });
     },
     command_show: (line: string): void => {
       terminal.line_run(line);
@@ -1731,6 +1737,13 @@ async function surface_start(token: string): Promise<void> {
       delete pane.dataset['modes'];
       closed = true;
     }
+    // The PACS server strip is the same gesture wearing the form's clothes:
+    // a band that unfolds from a cell and retracts to the field or to Esc.
+    // It retracts with the frames so there is one grammar, not two.
+    if (pacsPanel.serverStrip_isOpen()) {
+      pacsPanel.serverStrip_close();
+      closed = true;
+    }
     return closed;
   };
   document.addEventListener('click', (event: Event): void => {
@@ -1738,6 +1751,11 @@ async function surface_start(token: string): Promise<void> {
     // A block inside the bar acts; the bar's plain fill (or the spine
     // itself, open) retracts it.
     if (event.target.closest('.mode-frame') !== null && event.target.closest('.mode-fill') === null) return;
+    // The server cell and its strip act on their own clicks; letting the
+    // document's retraction see them would close the strip with the very
+    // press that opened it.
+    if (event.target.closest('#pacs-server-strip') !== null
+      || event.target.closest('#pacs-f-server') !== null) return;
     const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
     const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane') ?? null;
     const wasOpen: boolean = pane?.dataset['modes'] === 'open';

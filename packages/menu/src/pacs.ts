@@ -171,5 +171,40 @@ export type PacsSeries = z.infer<typeof pacsSeriesSchema>;
 export type PacsStudy = z.infer<typeof pacsStudySchema>;
 export type PacsQueryModel = z.infer<typeof pacsQueryModelSchema>;
 
+
+/**
+ * One registered PACS server, as a surface needs it.
+ *
+ * The identifier is what CUBE files a query under and what `--pacsserver`
+ * names, so it is the value a control lowers to; the numeric id is what
+ * `pacs connect` has always accepted and is kept for that. Liveness is NOT
+ * carried: CUBE registers servers, it does not test them, and a field that
+ * looked like health would be a claim nobody checked.
+ */
+export const pacsServerSchema = z.object({
+  id: z.number(),
+  identifier: z.string(),
+  /** True for the server this session is currently connected to. */
+  active: z.boolean(),
+});
+
+/**
+ * The `pacs.servers` model: every PACS registered on this CUBE.
+ *
+ * A surface offering a choice of servers has to know what there is to
+ * choose from, and asking CUBE directly would reach around the session
+ * that owns the connection. `pacs list` already asks; it now says so in
+ * data as well as in text.
+ */
+export const pacsServersModelSchema = z.object({
+  servers: z.array(pacsServerSchema),
+});
+
+export type PacsServer = z.infer<typeof pacsServerSchema>;
+export type PacsServersModel = z.infer<typeof pacsServersModelSchema>;
+
+/** The servers model's envelope kind. */
+export const PACS_SERVERS_MODEL_KIND = 'pacs.servers' as const;
+
 /** The model's envelope kind. */
 export const PACS_QUERY_MODEL_KIND = 'pacs.query' as const;

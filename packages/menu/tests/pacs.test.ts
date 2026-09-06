@@ -12,6 +12,8 @@ import {
   pacsQueryModelSchema,
   pacsProvenanceSchema,
   pacsPatientSchema,
+  pacsServersModelSchema,
+  PACS_SERVERS_MODEL_KIND,
   type PacsQueryModel,
 } from '../src/pacs.js';
 
@@ -202,5 +204,44 @@ describe('a query across several servers', () => {
       patients: [{ patientId: '1', status: 'found', studyCount: 1, seriesCount: 1 }],
     }));
     expect(model.patients?.[0].server).toBeUndefined();
+  });
+});
+
+describe('pacsServersModelSchema', () => {
+  it('carries every registered server, saying which one the session is on', () => {
+    const parsed = pacsServersModelSchema.safeParse({
+      servers: [
+        { id: 1, identifier: 'PACSDCM', active: true },
+        { id: 3, identifier: 'ORTHANC', active: false },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.servers.filter((server) => server.active)).toHaveLength(1);
+    }
+  });
+
+  // The identifier is what `--pacsserver` names and what CUBE files a query
+  // under, so a row without one names nothing a control could choose.
+  it('refuses a server that cannot be named or addressed', () => {
+    expect(pacsServersModelSchema.safeParse({ servers: [{ id: 1, active: false }] }).success).toBe(false);
+    expect(pacsServersModelSchema.safeParse({ servers: [{ identifier: 'X', active: false }] }).success).toBe(false);
+  });
+
+  // CUBE registers servers; it does not test them. A liveness field would
+  // be a claim nobody checked, so the model does not offer one.
+  it('says nothing about whether a server is reachable', () => {
+    const parsed = pacsServersModelSchema.parse({
+      servers: [{ id: 1, identifier: 'PACSDCM', active: false }],
+    });
+    expect(Object.keys(parsed.servers[0]).sort()).toEqual(['active', 'id', 'identifier']);
+  });
+
+  it('accepts a CUBE with nothing registered', () => {
+    expect(pacsServersModelSchema.parse({ servers: [] }).servers).toEqual([]);
+  });
+
+  it('names its envelope kind', () => {
+    expect(PACS_SERVERS_MODEL_KIND).toBe('pacs.servers');
   });
 });

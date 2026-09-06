@@ -540,9 +540,31 @@ try {
     // The blocks act on a scene, so wait for one before pressing them.
     let scene = false;
     for (let i=0;i<160;i++){ await sleep(500); if (fp.querySelector('.files-diagram canvas')) { scene = true; break; } }
+    let node = null;
     let blocks = null;
     if (scene) {
       await sleep(1200);
+      // A node's substance is what it will run with, and the model already
+      // carries it: a touch reads it out, a dive goes in, Esc comes back.
+      const canvas = fp.querySelector('.files-diagram canvas');
+      const facts = () => fp.querySelector('.files-diagram .dag-facts');
+      const restingEmpty = (facts()?.textContent ?? '') === '';
+      const box = canvas.getBoundingClientRect();
+      const at = { clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + box.height / 2) };
+      const hit = (type) => canvas.dispatchEvent(new MouseEvent(type, { ...at, bubbles: true, cancelable: true }));
+      hit('click'); await sleep(500);
+      const selected = (facts()?.textContent ?? '');
+      hit('dblclick'); await sleep(1800);
+      const immersedText = (facts()?.textContent ?? '');
+      const immersedClass = facts()?.classList.contains('dag-facts-immersed') === true;
+      // ONE press. Esc retreats exactly one level, so a second would leave
+      // the view as well and this asserts it does not have to.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(1500);
+      node = { restingEmpty, selected, immersedText, immersedClass,
+        afterEsc: facts()?.classList.contains('dag-facts-immersed') === true,
+        keptDiagram: fp.querySelector('.files-diagram') !== null };
+
       const pulseEl = body.querySelector('.diagram-pulse');
       const restingBefore = pulseEl.classList.contains('pulse-running');
       pulseEl.click(); await sleep(300);
@@ -558,7 +580,7 @@ try {
     fp.querySelector('.files-close-pill')?.click(); await sleep(700);
     const restored = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
       bar: fp.querySelector('.pane-mode').textContent.trim() };
-    return { listing, diagram, scene, blocks, restored };`);
+    return { listing, diagram, scene, node, blocks, restored };`);
   if (diagramModes.skipped) {
     console.log(`  skipped: ${diagramModes.skipped}`);
   } else {
@@ -583,6 +605,16 @@ try {
         diagramModes.blocks?.projBefore === '3D' && diagramModes.blocks?.projAfter === '2D'
         && /2D/.test(diagramModes.blocks?.bar ?? ''),
         JSON.stringify(diagramModes.blocks));
+      check('a graph at rest says nothing until a node is touched',
+        diagramModes.node?.restingEmpty === true, JSON.stringify(diagramModes.node?.restingEmpty));
+      check('touching a node reads out what it will run',
+        /PLUGIN/.test(diagramModes.node?.selected ?? '') && /ARGUMENTS/.test(diagramModes.node?.selected ?? ''),
+        JSON.stringify(diagramModes.node?.selected ?? '').slice(0, 160));
+      check('diving in opens the node as its parameters, and Esc leaves the node not the view',
+        diagramModes.node?.immersedClass === true && /PLUGIN/.test(diagramModes.node?.immersedText ?? '')
+        && diagramModes.node?.afterEsc === false && diagramModes.node?.keptDiagram === true,
+        JSON.stringify({ immersed: diagramModes.node?.immersedClass, afterEsc: diagramModes.node?.afterEsc,
+          kept: diagramModes.node?.keptDiagram }));
     }
   }
 

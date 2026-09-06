@@ -507,6 +507,85 @@ try {
     }
   }
 
+  console.log('diagram-modes');
+  // A pane has one mode frame, and its blocks answer to what the field
+  // holds. A wave is a verb you press, never something breathing at rest.
+  //
+  // The frame swap needs only a diagram on stage; the blocks need a scene
+  // behind it, and `pipeline diagram` is slow the first time a pipeline is
+  // opened. So the two are checked separately rather than making the
+  // cheap assertions hostage to a cold command.
+  const diagramModes = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = document.querySelector('.pane-files');
+    const body = fp.querySelector('.files-body');
+    const shown = (sel) => { const el = body.querySelector(sel);
+      return el !== null && getComputedStyle(el).display !== 'none'; };
+    const input = document.querySelector('#terminal input');
+    input.value = 'cd /bin'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    for (let i=0;i<60;i++){ await sleep(500); if (fp.querySelectorAll('.files-row').length > 5) break; }
+    // Let the cwd-follow re-listing land before opening anything: a listing
+    // arriving replaces a content view (#425), so clicking into the race
+    // would test that defect rather than this one.
+    await sleep(3000);
+    const listing = { view: shown('.files-view'), pulse: shown('.diagram-pulse') };
+
+    const pipeline = fp.querySelector('.files-row.files-type-pipeline');
+    if (!pipeline) return { skipped: 'no pipeline in /bin' };
+    pipeline.click();
+    for (let i=0;i<40;i++){ await sleep(250); if (fp.querySelector('.files-diagram')) break; }
+    const diagram = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
+      strategy: shown('.diagram-strategy'), projection: shown('.diagram-projection') };
+
+    // The blocks act on a scene, so wait for one before pressing them.
+    let scene = false;
+    for (let i=0;i<160;i++){ await sleep(500); if (fp.querySelector('.files-diagram canvas')) { scene = true; break; } }
+    let blocks = null;
+    if (scene) {
+      await sleep(1200);
+      const pulseEl = body.querySelector('.diagram-pulse');
+      const restingBefore = pulseEl.classList.contains('pulse-running');
+      pulseEl.click(); await sleep(300);
+      const litOnPress = pulseEl.classList.contains('pulse-running');
+      const projEl = body.querySelector('.diagram-projection');
+      const projBefore = projEl.textContent.trim();
+      projEl.click(); await sleep(400);
+      blocks = { restingBefore, litOnPress, projBefore,
+        projAfter: projEl.textContent.trim(),
+        bar: fp.querySelector('.pane-mode').textContent.trim() };
+    }
+
+    fp.querySelector('.files-close-pill')?.click(); await sleep(700);
+    const restored = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
+      bar: fp.querySelector('.pane-mode').textContent.trim() };
+    return { listing, diagram, scene, blocks, restored };`);
+  if (diagramModes.skipped) {
+    console.log(`  skipped: ${diagramModes.skipped}`);
+  } else {
+    check('a listing offers its own modes and none of the diagram\'s',
+      diagramModes.listing?.view === true && diagramModes.listing?.pulse === false,
+      JSON.stringify(diagramModes.listing));
+    check('a diagram on stage swaps the frame to the modes a graph has',
+      diagramModes.diagram?.pulse === true && diagramModes.diagram?.strategy === true
+      && diagramModes.diagram?.projection === true && diagramModes.diagram?.view === false,
+      JSON.stringify(diagramModes.diagram));
+    check('closing the diagram gives the frame back to the listing, and clears the bar',
+      diagramModes.restored?.view === true && diagramModes.restored?.pulse === false
+      && diagramModes.restored?.bar === '',
+      JSON.stringify(diagramModes.restored));
+    if (!diagramModes.scene) {
+      console.log('  skipped: the diagram did not render in time, so its blocks were not pressed');
+    } else {
+      check('PULSE is a verb: at rest until pressed, never breathing on its own',
+        diagramModes.blocks?.restingBefore === false && diagramModes.blocks?.litOnPress === true,
+        JSON.stringify(diagramModes.blocks));
+      check('a diagram mode reads its state and the bar annunciates the non-default',
+        diagramModes.blocks?.projBefore === '3D' && diagramModes.blocks?.projAfter === '2D'
+        && /2D/.test(diagramModes.blocks?.bar ?? ''),
+        JSON.stringify(diagramModes.blocks));
+    }
+  }
+
   console.log('follow-declared');
   // The following browser says so on its bar, and the binding is a verb
   // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.

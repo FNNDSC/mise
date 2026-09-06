@@ -216,6 +216,15 @@ function headerHeight_track(header: HTMLElement, body: HTMLElement): void {
 }
 
 /** Shortest the console may be dragged, so its strip stays grabbable. */
+/**
+ * How long PULSE stays lit after it is pressed.
+ *
+ * The wave itself is the scene's business; this only says the press landed,
+ * long enough to read and short enough that the frame is at rest again
+ * before anyone looks away.
+ */
+const DIAGRAM_PULSE_LIT_MS: number = 2200;
+
 const DRAWER_MIN_HEIGHT_PX: number = 120;
 
 /**
@@ -799,9 +808,16 @@ async function surface_start(token: string): Promise<void> {
           return;
         }
         let scene: DagScene | null = null;
+        let modeRelease: (() => void) | null = null;
         const mount: HTMLElement | null = panel.contentHtml_show(path, binText_highlight(text), {
           diagram: true,
-          release: (): void => { scene?.dispose(); scene = null; },
+          release: (): void => {
+            modeRelease?.();
+            modeRelease = null;
+            panel.mode_annunciate('');
+            scene?.dispose();
+            scene = null;
+          },
         });
         if (mount === null) return;
         const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
@@ -823,6 +839,7 @@ async function surface_start(token: string): Promise<void> {
                 })),
               }, { wave: false });
               scene.size_fit();
+              modeRelease = diagramModes_wire(mount, scene, panel);
               return;
             }
             mount.textContent = 'NO DIAGRAM FOR THIS PIPELINE';
@@ -830,6 +847,70 @@ async function surface_start(token: string): Promise<void> {
           });
       });
   };
+
+
+/**
+ * Wires the pane's mode frame to a diagram on stage.
+ *
+ * A pane has ONE frame, and its blocks answer to what the field holds: the
+ * listing's projection and filter step aside for the modes a graph has.
+ * Offering LIST over a pipeline's DAG was a control that could not act.
+ *
+ * PULSE is a verb here, not a state. The cockpit animates nothing at rest —
+ * a law written after rotating thumbnails were proposed and rejected — so
+ * the wave runs once, when a hand asks for it. And a registered pipeline has
+ * never run, so what the wave replays is dependency order, not history.
+ *
+ * @param mount - The diagram's mount, used to find the pane's frame.
+ * @param scene - The scene the blocks act on.
+ * @param panel - The panel whose bar annunciates the modes in force.
+ * @returns A function releasing the listeners when the view closes.
+ */
+  function diagramModes_wire(mount: HTMLElement, scene: DagScene, panel: FilesPanel): () => void {
+  const body: HTMLElement | null = mount.closest<HTMLElement>('.files-body');
+  const strategyPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-strategy') ?? null;
+  const projectionPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-projection') ?? null;
+  const pulsePill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-pulse') ?? null;
+
+  const modes_annunciate = (): void => {
+    // Only what is NOT the default is worth saying; a bar that repeats the
+    // resting state says nothing and costs a glance.
+    const parts: string[] = [];
+    if (scene.strategy_get() !== 'ranked') parts.push('MOLECULE');
+    if (scene.projection_get() !== '3d') parts.push('2D');
+    panel.mode_annunciate(parts.join(' · '));
+  };
+
+  const strategy_flip = (): void => {
+    scene.strategy_set(scene.strategy_get() === 'ranked' ? 'molecule' : 'ranked');
+    if (strategyPill !== null) strategyPill.textContent = scene.strategy_get().toUpperCase();
+    modes_annunciate();
+  };
+  const projection_flip = (): void => {
+    scene.projection_set(scene.projection_get() === '3d' ? '2d' : '3d');
+    if (projectionPill !== null) projectionPill.textContent = scene.projection_get().toUpperCase();
+    modes_annunciate();
+  };
+  const pulse_fire = (): void => {
+    scene.wave_start();
+    pulsePill?.classList.add('pulse-running');
+    window.setTimeout((): void => pulsePill?.classList.remove('pulse-running'), DIAGRAM_PULSE_LIT_MS);
+  };
+
+  if (strategyPill !== null) strategyPill.textContent = scene.strategy_get().toUpperCase();
+  if (projectionPill !== null) projectionPill.textContent = scene.projection_get().toUpperCase();
+  strategyPill?.addEventListener('click', strategy_flip);
+  projectionPill?.addEventListener('click', projection_flip);
+  pulsePill?.addEventListener('click', pulse_fire);
+  modes_annunciate();
+
+  return (): void => {
+    strategyPill?.removeEventListener('click', strategy_flip);
+    projectionPill?.removeEventListener('click', projection_flip);
+    pulsePill?.removeEventListener('click', pulse_fire);
+    pulsePill?.classList.remove('pulse-running');
+  };
+  }
 
   const fileAction_handle = (
     id: string,

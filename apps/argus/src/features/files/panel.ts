@@ -415,6 +415,7 @@ export class FilesPanel {
    * @param content - The file content, already stripped of ANSI codes.
    */
   public content_show(path: string, content: string): void {
+    this.diagram_declare(false);
     this.contentShown = true;
     this.container.parentElement?.classList.add('content-view');
     this.container.replaceChildren();
@@ -449,6 +450,7 @@ export class FilesPanel {
    * @param reason - What the session said when it refused.
    */
   public contentRefused_show(path: string, reason: string): void {
+    this.diagram_declare(false);
     this.denied.add(path);
     this.contentShown = true;
     this.container.parentElement?.classList.add('content-view');
@@ -564,6 +566,7 @@ export class FilesPanel {
       mount.className = 'files-diagram';
       view.appendChild(mount);
     }
+    this.diagram_declare(options.diagram === true);
     this.container.appendChild(view);
     return mount;
   }
@@ -580,6 +583,7 @@ export class FilesPanel {
 
   /** Paints the waiting state shown before any listing arrives. */
   private empty_render(): void {
+    this.diagram_declare(false);
     this.container.replaceChildren();
     const hint: HTMLParagraphElement = document.createElement('p');
     hint.className = 'files-empty';
@@ -593,6 +597,8 @@ export class FilesPanel {
    * @param listings - The listings to paint.
    */
   private listings_render(listings: FsListing[]): void {
+    // A listing on stage means the diagram is gone, however it arrived.
+    this.diagram_declare(false);
     this.contentShown = false;
     this.container.parentElement?.classList.remove('content-view');
     this.lastListings = listings;
@@ -726,6 +732,41 @@ export class FilesPanel {
   /** The current projection. */
   public view_get(): FilesView {
     return this.viewMode;
+  }
+
+  /**
+   * The body this panel draws into — the host of the pane's one mode frame.
+   *
+   * @returns The body element, or null for a panel mounted outside one.
+   */
+  private body_get(): HTMLElement | null {
+    return this.container.closest<HTMLElement>('.files-body');
+  }
+
+  /**
+   * Declares whether a diagram holds the field.
+   *
+   * The pane has ONE mode frame and its blocks answer to what is on stage,
+   * so this has exactly one owner. It was briefly toggled at the two places
+   * that open and close a content view, and leaked: a listing arriving on
+   * its own — the cwd-follow re-listing, a refresh — replaces the content
+   * without either of them running, and the frame was left offering a
+   * graph's modes over a list of files.
+   *
+   * @param on - True when a diagram is what the field holds.
+   */
+  private diagram_declare(on: boolean): void {
+    this.body_get()?.classList.toggle('diagram-shown', on);
+    if (!on) this.mode_annunciate(this.viewMode === 'list' ? '' : this.viewMode.toUpperCase());
+  }
+
+  /**
+   * Writes what the bar says about the modes in force.
+   *
+   * @param text - The annunciation, or an empty string for the default.
+   */
+  public mode_annunciate(text: string): void {
+    if (this.modeSpan !== null) this.modeSpan.textContent = text;
   }
 
   /**

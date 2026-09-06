@@ -41,6 +41,8 @@ import { surfaceLine_execute } from './surfaceDispatch.js';
 import { versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, fortune_random, type PackageInfo } from '@fnndsc/brasa';
 import {
   daemonSession_run,
+  queryCheckpoint_flush,
+  queryCheckpoint_prime,
   startupWarmup_run,
   type StartupWarmupCache,
   type StartupWarmupFlags,
@@ -554,17 +556,26 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     if (config.stopOnError) {
       stopOnError_set(true);
     }
+    // A one-shot skips the warm-up, correctly — but not the replay index,
+    // which a previous run already paid to build and which decides whether
+    // a scripted PACS question troubles the PACS at all.
+    await queryCheckpoint_prime(currentContext.user ?? undefined);
     const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, config.commandToExecute);
     // An error envelope means the command failed, whether or not the builtin
     // set an exit code itself; scripts must never see failure exit 0.
     const anyError: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error');
+    // What this run learned about prior PACS queries outlives it: the
+    // checkpoint's debounced writer never fires in a process this short.
+    await queryCheckpoint_flush();
     process.exit(process.exitCode || (anyError ? 1 : 0));
   }
 
   // --- Script Mode ---
 
   if (config.mode === 'script' && config.scriptFile) {
+    await queryCheckpoint_prime(currentContext.user ?? undefined);
     await script_execute(engine, config.scriptFile, config.stopOnError || false);
+    await queryCheckpoint_flush();
     process.exit(0);
   }
 

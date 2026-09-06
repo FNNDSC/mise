@@ -22,13 +22,30 @@ import {
   PACSQueryDecodedResult,
   PACSQueryRecord,
   type CommandEnvelope,
+  type StackMessage,
   envelope_ok,
   envelope_error,
   listCache_get,
   queryIndex_get,
 } from '@fnndsc/cumin';
 import { queryFolderName_build } from '@fnndsc/salsa';
-import { PACS_QUERY_MODEL_KIND, type PacsProvenance, type PacsQueryModel, type PacsStudy } from '@fnndsc/menu';
+import {
+  PACS_QUERY_MODEL_KIND,
+  type PacsPatient,
+  type PacsProvenance,
+  type PacsQueryModel,
+  type PacsStudy,
+} from '@fnndsc/menu';
+import {
+  PATIENT_KEY,
+  QUERY_COHORT_MAX,
+  QUERY_INLINE_FANOUT_MAX,
+  fanout_permit,
+  patients_read,
+  queryTerms_expand,
+  queryTerms_parse,
+} from './query.fanout.js';
+import { sink_get } from '../../core/sink.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -562,6 +579,328 @@ async function replay_attempt(
 }
 
 /**
+ * Reads a JSON expression as single-valued terms.
+ *
+ * The JSON form predates multi-value and stays what it was: one question,
+ * spelled as an object.
+ *
+ * @param expr - The expression, starting with `{`.
+ * @returns Terms with one value each, or null when the JSON is not an object.
+ */
+function termsFromJson_read(expr: string): Record<string, string[]> | null {
+  const parsed: Record<string, string> | null = queryExpr_parse(expr);
+  if (parsed === null) return null;
+  return Object.fromEntries(
+    Object.entries(parsed).map(([key, value]: [string, string]): [string, string[]] => [key, [value]]),
+  );
+}
+
+/** How many patient queries are in flight at once. */
+const QUERY_FANOUT_CONCURRENCY: number = 4;
+
+/**
+ * One question in a fan-out: the criteria to ask, and the patient it is
+ * about when it is about one.
+ *
+ * @property criteria - The criteria for this single C-FIND.
+ * @property patientId - The MRN this question asks after, when it names one.
+ */
+interface QueryAsk {
+  criteria: Record<string, string>;
+  patientId?: string;
+}
+
+/** What one question came back with. */
+interface QueryAnswer {
+  ask: QueryAsk;
+  result: QueryCreateResult | null;
+  /** When the PACS answered, for a replayed row. */
+  answeredAt: string | null;
+  /** Why the question could not be asked, when it could not. */
+  error?: string;
+}
+
+/**
+ * Renders criteria back into the expression syntax they were parsed from,
+ * so a single question inside a fan-out is asked exactly as one typed by
+ * hand — the create path takes an expression, not a record.
+ *
+ * @param criteria - One question's criteria.
+ * @returns The `Key:Value,Key:Value` form.
+ */
+function criteria_toExpression(criteria: Record<string, string>): string {
+  return Object.entries(criteria)
+    .map(([key, value]: [string, string]): string => `${key}:${value}`)
+    .join(',');
+}
+
+/**
+ * Asks one question, replaying it when the same question has been asked
+ * before.
+ *
+ * @param ask - The question.
+ * @param title - Title for the PACSQuery record this may create.
+ * @param pacsserver - The server to ask.
+ * @param identifier - That server as the replay index keys it.
+ * @param owner - The identity asking.
+ * @param fresh - True to skip the stored answer and trouble the PACS.
+ * @returns What came back, including the reason when nothing did.
+ */
+async function ask_run(
+  ask: QueryAsk,
+  title: string,
+  pacsserver: string,
+  identifier: string,
+  owner: string,
+  fresh: boolean,
+): Promise<QueryAnswer> {
+  if (!fresh) {
+    const replayed = await replay_attempt(ask.criteria, identifier, owner);
+    if (replayed !== null) {
+      return { ask, result: replayed.result, answeredAt: replayed.answeredAt };
+    }
+  }
+  const checkpoint: number = errorStack.checkpoint_mark();
+  const expression: string = criteria_toExpression(ask.criteria);
+  // Each question gets its own title. CUBE refuses a second PACSQuery with
+  // a title it already holds for that server — measured live, where a
+  // fan-out under one title had every question after the first come back
+  // "You have already registered a PACS query with title=..." — so a
+  // cohort sharing one title would report a room full of unasked patients.
+  const result: QueryCreateResult | null = await pacsQuery_createAndWait(
+    expression,
+    `${title} · ${expression}`,
+    pacsserver,
+  );
+  if (result !== null) return { ask, result, answeredAt: null };
+  // A question that could not be asked has told us nothing. Its reason is
+  // carried onto the row rather than left on the stack, where a later
+  // question's success would bury it.
+  const reasons: StackMessage[] = errorStack.checkpoint_drain(checkpoint);
+  const reason: string | undefined = reasons[reasons.length - 1]?.message;
+  return { ask, result: null, answeredAt: null, error: reason ?? 'the query could not be completed' };
+}
+
+/**
+ * Runs a fan-out, at most four questions in flight.
+ *
+ * Not operator-settable: nobody inside mise knows the right number for a
+ * given hospital, and a flag that can hurt a shared clinical system will
+ * eventually be set to fifty.
+ *
+ * @param asks - Every question to ask.
+ * @param title - Title for the PACSQuery records created.
+ * @param pacsserver - The server to ask.
+ * @param identifier - That server as the replay index keys it.
+ * @param owner - The identity asking.
+ * @param fresh - True to skip stored answers.
+ * @returns The answers, in the order the questions were given.
+ */
+async function fanout_run(
+  asks: QueryAsk[],
+  title: string,
+  pacsserver: string,
+  identifier: string,
+  owner: string,
+  fresh: boolean,
+): Promise<QueryAnswer[]> {
+  const answers: QueryAnswer[] = new Array<QueryAnswer>(asks.length);
+  let done: number = 0;
+  const progress_say = (phase: 'working' | 'complete'): void => {
+    sink_get().progress_write({
+      operation: 'task',
+      kind: 'inspection',
+      phase,
+      label: 'MRNS QUERIED',
+      current: done,
+      total: asks.length,
+      percent: asks.length > 0 ? Math.min(100, (done / asks.length) * 100) : undefined,
+      status: phase === 'complete' ? 'done' : 'running',
+    });
+  };
+
+  progress_say('working');
+  let next: number = 0;
+  const worker = async (): Promise<void> => {
+    while (next < asks.length) {
+      const index: number = next++;
+      answers[index] = await ask_run(asks[index], title, pacsserver, identifier, owner, fresh);
+      done++;
+      progress_say('working');
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(QUERY_FANOUT_CONCURRENCY, asks.length) }, worker),
+  );
+  progress_say('complete');
+  return answers;
+}
+
+/**
+ * Unions a fan-out's answers into one model.
+ *
+ * The studies keep their own identities and paths, each already built
+ * against the query that found it. The patient level records what was
+ * ASKED — including the questions that found nothing and the ones that
+ * could not be asked at all, which is the half of a cohort answer that
+ * cannot be derived from studies nobody has.
+ *
+ * @param answers - What every question came back with.
+ * @param facts - The command's identity facts.
+ * @returns The union model.
+ */
+function fanoutModel_build(
+  answers: QueryAnswer[],
+  facts: { pacsName: string; expression: string },
+): PacsQueryModel {
+  const studies: PacsStudy[] = [];
+  const patients: PacsPatient[] = [];
+  let anchor: QueryCreateResult | null = null;
+  let oldest: string | null = null;
+  let allReplayed: boolean = true;
+
+  for (const answer of answers) {
+    const found: PacsStudy[] = answer.result === null ? [] : pacsQueryModel_build(answer.result.decoded, {
+      queryId: answer.result.queryId,
+      vfsPath: answer.result.vfsPath,
+      pacsName: facts.pacsName,
+      expression: criteria_toExpression(answer.ask.criteria),
+    }).studies;
+    studies.push(...found);
+    if (answer.result !== null && (anchor === null || found.length > 0)) {
+      if (anchor === null || anchor.decoded.json === undefined) anchor = answer.result;
+    }
+
+    const answeredAt: string = answer.answeredAt ?? new Date().toISOString();
+    if (answer.answeredAt === null) allReplayed = false;
+    if (answer.result !== null && (oldest === null || answeredAt < oldest)) oldest = answeredAt;
+
+    if (answer.ask.patientId === undefined) continue;
+    const seriesCount: number = found.reduce(
+      (total: number, study: PacsStudy): number => total + study.series.length, 0,
+    );
+    patients.push({
+      patientId: answer.ask.patientId,
+      ...(found[0]?.patientName ? { patientName: found[0].patientName } : {}),
+      status: answer.result === null ? 'unasked' : (found.length > 0 ? 'found' : 'none'),
+      studyCount: found.length,
+      seriesCount,
+      ...(answer.result === null ? {} : { queryId: answer.result.queryId }),
+      ...(answer.result === null ? {} : {
+        provenance: { replayed: answer.answeredAt !== null, answeredAt },
+      }),
+      ...(answer.error === undefined ? {} : { error: answer.error }),
+    });
+  }
+
+  return {
+    queryId: anchor?.queryId ?? 0,
+    vfsPath: anchor?.vfsPath ?? '',
+    pacsName: facts.pacsName,
+    expression: facts.expression,
+    studies,
+    // The set's provenance is its OLDEST row: the worst row is what decides
+    // whether an audit table can be trusted, and a set is only "replayed"
+    // when nothing in it troubled the PACS.
+    ...(oldest === null ? {} : { provenance: { replayed: allReplayed, answeredAt: oldest } }),
+    ...(patients.length > 0 ? { patients } : {}),
+  };
+}
+
+/**
+ * Renders a cohort as the audit table it is: one row per patient asked.
+ *
+ * A miss reads as a zero and a failure reads as a dash in an error hue,
+ * because a server that timed out has told us nothing while a PACS that
+ * answered with nothing has told us something, and a clinician acts on the
+ * difference.
+ *
+ * @param patients - Every patient asked.
+ * @returns The rendered table.
+ */
+function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
+  const lines: string[] = [''];
+  lines.push(`  ${chalk.bold.white('MRN'.padEnd(18))}${chalk.bold.white('STUDIES'.padEnd(10))}${chalk.bold.white('SERIES'.padEnd(9))}${chalk.bold.white('ANSWERED')}`);
+  lines.push(`  ${chalk.gray('─'.repeat(60))}`);
+  for (const patient of patients) {
+    const answered: string | null = patient.provenance === undefined
+      ? null
+      : age_describe(patient.provenance.answeredAt);
+    const counts: [string, string] = patient.status === 'unasked'
+      ? ['—', '—']
+      : [String(patient.studyCount), String(patient.seriesCount)];
+    const hue = patient.status === 'unasked'
+      ? chalk.red
+      : (patient.status === 'none' ? chalk.gray : chalk.white);
+    const note: string = patient.status === 'unasked'
+      ? chalk.red(patient.error ?? 'unasked')
+      : chalk.gray(answered ?? 'just now');
+    lines.push(`  ${hue(patient.patientId.padEnd(18))}${counts[0].padEnd(10)}${counts[1].padEnd(9)}${note}`);
+  }
+  const tally = (state: PacsPatient['status']): number =>
+    patients.filter((patient: PacsPatient): boolean => patient.status === state).length;
+  lines.push('');
+  lines.push(`  ${chalk.green(`FOUND ${tally('found')}`)} ${chalk.gray('·')} ${chalk.gray(`NONE ${tally('none')}`)} ${chalk.gray('·')} ${chalk.red(`UNASKED ${tally('unasked')}`)}`);
+  lines.push('');
+  return lines.join('\n');
+}
+
+
+/**
+ * Answers a cohort: many questions, one model, one table.
+ *
+ * @param asks - The questions.
+ * @param facts - Title, server, identity and how the answer should read.
+ * @returns One envelope carrying every answer.
+ */
+async function cohort_answer(
+  asks: QueryAsk[],
+  facts: {
+    title: string;
+    pacsserver: string;
+    identifier: string;
+    owner: string;
+    fresh: boolean;
+    expression: string;
+  },
+): Promise<CommandEnvelope> {
+  spinner.start(`Querying PACS for ${asks.length} questions...`, true);
+  const answers: QueryAnswer[] = await fanout_run(
+    asks, facts.title, facts.pacsserver, facts.identifier, facts.owner, facts.fresh,
+  );
+  spinner.stop();
+
+  const model: PacsQueryModel = fanoutModel_build(answers, {
+    pacsName: facts.pacsserver,
+    expression: facts.expression,
+  });
+  await modelPulledState_fill(model);
+
+  const patients: ReadonlyArray<PacsPatient> = model.patients ?? [];
+  const unasked: number = patients.filter(
+    (patient: PacsPatient): boolean => patient.status === 'unasked',
+  ).length;
+  // A fan-out over something other than patients has no audit table to
+  // show; its studies are the answer, and they are already in the model.
+  const rendered: string = patients.length > 0
+    ? cohort_render(patients)
+    : `${chalk.green(`✓ ${asks.length} queries complete — ${model.studies.length} studies`)}\n`;
+
+  // Every question failing is a failure of the command; some failing is an
+  // answer with holes in it, which the table states and the operator reads.
+  if (unasked > 0 && unasked === patients.length) {
+    process.exitCode = 1;
+    // The model still crosses. A surface showing which MRNs went unasked,
+    // and why, is more use than an empty pane beside a red line.
+    return {
+      ...envelope_error(rendered, undefined, `${chalk.red(`query: none of the ${unasked} questions could be asked.`)}\n`),
+      model: { kind: PACS_QUERY_MODEL_KIND, data: model },
+    };
+  }
+  return envelope_ok(rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
+}
+
+/**
  * Creates a PACS query, waits for results, displays findings, and prints the VFS path.
  *
  * @param args - `<queryExpression> [--title <title>] [--pacsserver <id>] [--table] [--help]`
@@ -579,6 +918,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   let pacsserverOverride: string | null = null;
   let tableMode: boolean = false;
   let fresh: boolean = false;
+  let patientsArg: string | null = null;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -588,6 +928,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       pacsserverOverride = args[++i];
     } else if (args[i] === '--table') {
       tableMode = true;
+    } else if (args[i] === '--patients' && i + 1 < args.length) {
+      patientsArg = args[++i];
     } else if (args[i] === '--fresh') {
       fresh = true;
     } else if (!args[i].startsWith('--')) {
@@ -595,15 +937,20 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
-  if (positional.length === 0) {
+  if (positional.length === 0 && patientsArg === null) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red('query: Missing query expression. Usage: query <Key:Value[,...]> [--title <title>]')}\n`);
+    return envelope_error('', undefined, `${chalk.red('query: Missing query expression. Usage: query <Key:Value[,...]> [--patients <list|@file>] [--title <title>]')}\n`);
   }
 
   const queryExpr: string = positional.join(' ');
 
-  // Validate expression early
-  if (!queryExpr_parse(queryExpr)) {
+  // Validate expression early. A cohort may narrow with terms or with none
+  // at all — `--patients @mrns.txt` is a complete question.
+  const terms: Record<string, string[]> | null =
+    queryExpr === '' ? {} : (queryExpr.trimStart().startsWith('{')
+      ? termsFromJson_read(queryExpr)
+      : queryTerms_parse(queryExpr));
+  if (terms === null) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`query: Invalid expression: "${queryExpr}". Use Key:Value pairs (e.g. PatientID:1234) or JSON.`)}\n`);
   }
@@ -622,8 +969,58 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
 
   // The index is keyed on what CUBE stores, which is the identifier.
   const identifier: string = await pacsIdentifier_resolve(pacsserver);
-  const criteria: Record<string, string> = queryExpr_parse(queryExpr) ?? {};
   const owner: string = await askingIdentity_get();
+
+  // What the operator asked for, as the questions it stands for. A PACS
+  // will not match a list, so several patients is several C-FINDs.
+  const asks: QueryAsk[] = [];
+  if (patientsArg !== null) {
+    const cohort = await patients_read(patientsArg);
+    if (!cohort.ok) {
+      const problem: StackMessage | undefined = errorStack.stack_pop();
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: --patients could not be read.')}\n`);
+    }
+    if (!fanout_permit(cohort.value.length, QUERY_COHORT_MAX)) {
+      const problem: StackMessage | undefined = errorStack.stack_pop();
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many patients.')}\n`);
+    }
+    const base: Record<string, string> = Object.fromEntries(
+      Object.entries(terms).map(([key, values]: [string, string[]]): [string, string] => [key, values[0]]),
+    );
+    for (const mrn of cohort.value) {
+      asks.push({ criteria: { ...base, [PATIENT_KEY]: mrn }, patientId: mrn });
+    }
+  } else {
+    const expanded: Array<Record<string, string>> = queryTerms_expand(terms);
+    if (!fanout_permit(expanded.length, QUERY_INLINE_FANOUT_MAX)) {
+      const problem: StackMessage | undefined = errorStack.stack_pop();
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many queries.')}\n`);
+    }
+    for (const one of expanded) {
+      asks.push({
+        criteria: one,
+        ...(one[PATIENT_KEY] === undefined || expanded.length === 1
+          ? {}
+          : { patientId: one[PATIENT_KEY] }),
+      });
+    }
+  }
+
+  if (asks.length > 1) {
+    return await cohort_answer(asks, {
+      title, pacsserver, identifier, owner, fresh,
+      expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
+    });
+  }
+
+  const criteria: Record<string, string> = asks[0]?.criteria ?? {};
+  // One question, spelled as the create path wants it — which is not
+  // necessarily what was typed: `--patients 1234` names a patient without
+  // an expression to carry it.
+  const askExpr: string = criteria_toExpression(criteria);
 
   let result: QueryCreateResult | null = null;
   let answeredAt: string | null = null;
@@ -637,9 +1034,9 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   }
 
   if (result === null) {
-    spinner.start(`Querying PACS for ${queryExpr}...`, true);
+    spinner.start(`Querying PACS for ${askExpr}...`, true);
     result = await pacsQuery_createAndWait(
-      queryExpr,
+      askExpr,
       title,
       pacsserver,
       (msg: string) => spinner.updateMessage(msg),
@@ -671,7 +1068,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     queryId: result.queryId,
     vfsPath: result.vfsPath,
     pacsName: pacsserver,
-    expression: queryExpr,
+    expression: askExpr,
     provenance: {
       replayed: answeredAt !== null,
       answeredAt: answeredAt ?? new Date().toISOString(),
@@ -707,7 +1104,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     // Said, never decided: mise states the age and leaves the judgement
     // with the operator, who knows whether this question can gain an
     // answer between then and now.
-    rendered += `${chalk.gray(`  query ${queryExpr} --fresh   # ask the PACS again`)}\n`;
+    rendered += `${chalk.gray(`  query ${askExpr} --fresh   # ask the PACS again`)}\n`;
   }
   return envelope_ok(rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
 }

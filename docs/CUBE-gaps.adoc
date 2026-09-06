@@ -376,6 +376,37 @@ The second is the more valuable of the two and the cheaper to provide. A client 
 
 The index in #379 becomes an optimisation rather than a necessity, and the deferred sweep that fills it can be dropped or reduced to a cheap projection query. The advisory contract stays either way: a hit is confirmed by decoding before it is served.
 
+== Confirmed gap: a PACS query title must be unique, so a cohort cannot share one
+
+=== Operator requirement
+
+A PACS matches one patient at a time — DICOM defines *List of UID Matching* only for attributes whose VR is `UI`, and `PatientID` is `LO` — so asking after two hundred MRNs is two hundred C-FINDs. An operator asking them means one question ("which of this cohort have imaging"), and would naturally title the work once: `--title 'DDH audit 2026-09'`.
+
+=== Measured
+
+Against a live CUBE on 2026-09-06, creating a second PACSQuery under a title already used for the same PACS:
+
+[source]
+----
+POST /api/v1/pacs/PACSDCM/queries/  {"title": "cohort smoke", "query": "..."}
+→ ["You have already registered a PACS query with title=cohort smoke for pacs PACSDCM"]
+----
+
+The first question of the fan-out succeeded; every one after it was refused. Nothing about the second question was wrong — a different patient, a different result — and the collision was in a field that names the work rather than describing it.
+
+The failure mode is quiet in the worst way: a client that reports a failed create as "no imaging found" would tell a clinician that a room full of patients had no studies, when in truth the questions were never asked. mise refuses to do that (a failure is `unasked`, never a zero), so what an operator sees instead is a table of unasked rows and one useful one.
+
+=== Required interface semantics
+
+Either resolves it:
+
+* *Drop the uniqueness constraint on `title`.* A title is a human label, not an identifier; the collection already has `id` for identity. Two queries titled the same are no more ambiguous than two files with the same name in different folders.
+* *Scope uniqueness to `(title, query)`.* If the constraint exists to stop an operator re-registering the same question twice, then the criteria are what make it the same question, and the title alone is the wrong key.
+
+=== ChELL policy today
+
+A fan-out gives each question its own title, appending the criteria it asks: `DDH audit 2026-09 · PatientID:1234`. That works and is readable, but it means the collection carries the client's disambiguation rather than the operator's label, and a second identical audit under the same title still collides where the replay index does not answer.
+
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery
 

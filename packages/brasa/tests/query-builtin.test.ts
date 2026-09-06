@@ -4,6 +4,7 @@ const mockPush = jest.fn();
 const mockPop = jest.fn();
 const mockGetAll = jest.fn(() => [] as unknown[]);
 const mockCurrentGet = jest.fn(async () => null as string | null);
+const mockUserGet = jest.fn(async () => null as string | null);
 const mockQueryGet = jest.fn();
 const mockDecode = jest.fn();
 const mockCreate = jest.fn();
@@ -19,7 +20,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },
-  chrisContext: { current_get: mockCurrentGet },
+  chrisContext: { current_get: mockCurrentGet, ChRISuser_get: mockUserGet },
   Context: { PACSserver: 'PACSserver', ChRISuser: 'ChRISuser' },
   pacsQuery_get: mockQueryGet,
   pacsQuery_resultDecode: mockDecode,
@@ -47,6 +48,7 @@ beforeEach(() => {
   process.exitCode = 0;
   mockCurrentGet.mockResolvedValue(null);
   mockIndexFind.mockReturnValue(null);
+  mockUserGet.mockResolvedValue(null);
   mockServersList.mockResolvedValue(ok([{ id: 1, identifier: 'PACSDCM' }]));
   mockGetAll.mockReturnValue([]);
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -258,10 +260,10 @@ describe('replay', () => {
   });
 
   beforeEach(() => {
-    // The context answers by key, so a test can tell the server it asked
-    // apart from the identity that asked.
-    mockCurrentGet.mockImplementation(async (key: unknown): Promise<string | null> =>
-      key === 'ChRISuser' ? 'someone' : 'PACSDCM');
+    mockCurrentGet.mockResolvedValue('PACSDCM');
+    // The asking identity comes from the authenticated login, not from a
+    // per-session context snapshot a surface may not have.
+    mockUserGet.mockResolvedValue('someone');
     mockServersList.mockResolvedValue(ok([{ id: 1, identifier: 'PACSDCM' }]));
   });
 
@@ -326,6 +328,18 @@ describe('replay', () => {
     await builtin_query(['PatientID:X']);
     expect(mockIndexDrop).toHaveBeenCalled();
     expect(mockCreate).toHaveBeenCalled();
+  });
+
+  it('keys the lookup on the authenticated login, not a session context snapshot', async () => {
+    // A surface attached to a running calypso has no ChRISuser context;
+    // keying on it made every stored answer unreachable from argus while
+    // chell found them all.
+    mockCurrentGet.mockResolvedValue(null);
+    mockUserGet.mockResolvedValue('someone');
+    mockIndexFind.mockReturnValue(held());
+    mockDecode.mockResolvedValue(ok({ json: [{ uid: 's1' }] }));
+    await builtin_query(['PatientID:X']);
+    expect(mockIndexFind).toHaveBeenCalledWith({ PatientID: 'X' }, 'PACSDCM', 'someone');
   });
 
   it('files a fresh query under the asking identity when CUBE names no owner', async () => {

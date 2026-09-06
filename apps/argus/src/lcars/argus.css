@@ -823,6 +823,36 @@ main {
   cursor: default;
 }
 
+/* An answer that was not fetched now says when it was: the date is the
+ * fact worth quoting, the elapsed time the judgement worth acting on. It
+ * sits in the PROGRESS track, immediately left of the control that would
+ * replace it — annunciation beside the thing it is about. */
+.pacs-provenance {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0.05rem 0.7rem;
+  border-radius: 0.8rem;
+  background-color: color-mix(in srgb, var(--october-sunset) 30%, transparent);
+  color: var(--honey);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+}
+
+/* Re-asking is the heavier action, so it wears the deeper shade PULL STUDY
+ * already wears. Never --mars, which is refusal and dismissal. */
+.pacs-capsule.pacs-capsule-requery {
+  background-color: var(--october-sunset);
+  color: #000;
+}
+
+.pacs-capsule.pacs-capsule-requery:hover {
+  box-shadow: 0 0 8px var(--october-sunset);
+}
+
 /* The results are a framed field like the other two listings: a rule
  * turning through an elbow into the spine, whose mode frame carries the
  * one mode a query's answer has. */

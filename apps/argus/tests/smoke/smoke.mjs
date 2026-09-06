@@ -9,6 +9,12 @@
  *   - runs-honesty: a refused roster stood as RETRIEVING… forever.
  *
  * Run: npm run smoke   (needs a live daemon; ARGUS_URL overrides discovery)
+ *
+ * The whole suite drives a real browser against a live daemon — about three
+ * minutes for twenty-seven scenarios — so while building one thing,
+ * `SMOKE_ONLY=pacs-listing npm run smoke` runs just that one (about thirty
+ * seconds) and `SMOKE_SKIP=` leaves scenarios out. Neither is set in CI or
+ * before a merge, where the whole suite is the point.
  */
 import { argusUrl_discover, page_open } from './driver.mjs';
 
@@ -18,6 +24,48 @@ let passes = 0;
 function check(name, condition, detail = '') {
   if (condition) { passes += 1; console.log(`  ok    ${name}`); }
   else { failures.push(name); console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ''}`); }
+}
+
+/**
+ * Scenario gating and timing.
+ *
+ * The whole suite drives a real browser against a live daemon, which is
+ * minutes, not seconds — so a scenario nobody is working on is time spent
+ * proving something already proven. `SMOKE_ONLY` runs just the named
+ * scenarios (comma-separated, matched as substrings) and `SMOKE_SKIP`
+ * leaves them out; neither is set in CI or in a release check, where the
+ * whole suite is the point.
+ *
+ * Each scenario reports its own wall time, so the expensive ones are
+ * visible rather than merely felt.
+ */
+const only = (process.env.SMOKE_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const skip = (process.env.SMOKE_SKIP ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const timings = [];
+let stageName = null;
+let stageAt = 0;
+
+function stage_close() {
+  if (stageName === null) return;
+  timings.push([stageName, Date.now() - stageAt]);
+  stageName = null;
+}
+
+/**
+ * Announces a scenario and says whether to run it.
+ *
+ * @param {string} name - The scenario's name.
+ * @returns {boolean} True when this run includes it.
+ */
+function stage(name) {
+  stage_close();
+  const wanted = (only.length === 0 || only.some((s) => name.includes(s)))
+    && !skip.some((s) => name.includes(s));
+  if (!wanted) return false;
+  console.log(name);
+  stageName = name;
+  stageAt = Date.now();
+  return true;
 }
 
 const page = await page_open(argusUrl_discover());
@@ -50,7 +98,7 @@ try {
   check('session reaches READY', ready === true);
   if (!ready) throw new Error('no session');
 
-  console.log('drawer-everywhere (files, runs, pacs)');
+  if (stage('drawer-everywhere (files, runs, pacs)')) {
   for (const preset of ['gutter-files', 'gutter-runs', 'gutter-tools']) {
     const result = await evalIn(`
       document.getElementById('${preset}').click(); await sleep(700);
@@ -68,8 +116,9 @@ try {
     check(`${preset}: every shown pane carries handle+drawer`, result.bad.length === 0 && result.leaves > 0, JSON.stringify(result.bad));
     check(`${preset}: drawer opens from the handle`, result.opened === true);
   }
+  }
 
-  console.log('gutter-idempotency');
+  if (stage('gutter-idempotency')) {
   const pacsTwice = await evalIn(`
     document.getElementById('gutter-tools').click(); await sleep(500);
     document.getElementById('gutter-tools').click(); await sleep(500);
@@ -87,8 +136,9 @@ try {
     const second = !drawerEl.classList.contains('drawer-closed');
     return { first, second };`);
   check('CONSOLE-05 always renders the console open (never toggles)', consoleGiven.first && consoleGiven.second);
+  }
 
-  console.log('zoom-completeness');
+  if (stage('zoom-completeness')) {
   const zoom = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(700);
     const pane = document.querySelector('.pane-files');
@@ -133,8 +183,9 @@ try {
   check('zoom leaves the thin restore strip, and it restores', zoom.stripShown && zoom.stripRestored);
   check('the capsule reads RESTORE while zoomed, ZOOM after', zoom.capsule === 'RESTORE' && zoom.capsuleAfter === 'ZOOM', `${zoom.capsule}/${zoom.capsuleAfter}`);
   check('Esc restores the header', zoom.restoredHeaderBottom > 50, `bottom=${zoom.restoredHeaderBottom}`);
+  }
 
-  console.log('split-zoom');
+  if (stage('split-zoom')) {
   const splitZoom = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(600);
     const pane = document.querySelector('.pane-files');
@@ -156,8 +207,9 @@ try {
     document.getElementById('gutter-files').click(); await sleep(400);
     return { leaves, full, w: Math.round(r.width) };`);
   check('a zoomed leaf inside a split conquers the whole region', splitZoom.leaves >= 2 && splitZoom.full, `leaves=${splitZoom.leaves} w=${splitZoom.w}`);
+  }
 
-  console.log('lid-parity + single-beckon-author');
+  if (stage('lid-parity + single-beckon-author')) {
   const lid = await evalIn(`
     const bar = document.getElementById('drawer-toggle');
     const segs = () => [...bar.querySelectorAll('div')].map((d) => { const r = d.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.width)]; });
@@ -177,8 +229,9 @@ try {
   check('lid segments identical open and closed', JSON.stringify(lid.open) === JSON.stringify(lid.closed));
   check('closed lid: bar and segments carry no animation', lid.closedAnims.every((a) => a === 'none'), JSON.stringify(lid.closedAnims));
   check('closed lid: the end block beckons', lid.capAnim !== 'none', lid.capAnim);
+  }
 
-  console.log('lang-toggle');
+  if (stage('lang-toggle')) {
   const lang = await evalIn(`
     const pill = document.getElementById('lang-pill');
     const palette = document.getElementById('lang-palette');
@@ -189,8 +242,9 @@ try {
     return { a, b };`);
   check('LANG opens the line and lights the given', lang.a.open && lang.a.lit);
   check('LANG again removes the line and dims the given', !lang.b.open && !lang.b.lit);
+  }
 
-  console.log('runs-honesty');
+  if (stage('runs-honesty')) {
   const runs = await evalIn(`
     document.getElementById('gutter-runs').click();
     for (let i=0;i<60;i++){ await sleep(500);
@@ -199,8 +253,9 @@ try {
       }
     return document.querySelector('.feedlist-loading') ? 'loading' : 'silent-empty';`);
   check('RUNS-02 answers with roster, refusal, or visible wait', runs !== 'silent-empty', runs);
+  }
 
-  console.log('console-grammar');
+  if (stage('console-grammar')) {
   const consoleGrammar = await evalIn(`
     const drawerEl = document.getElementById('drawer');
     if (drawerEl.classList.contains('drawer-closed')) {
@@ -226,8 +281,9 @@ try {
   check('console drawer zooms the console and reads RESTORE', consoleGrammar.zoomed && consoleGrammar.reads === 'RESTORE');
   check('console zoom restores and reads ZOOM', consoleGrammar.restored && consoleGrammar.readsAfter === 'ZOOM');
   check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
+  }
 
-  console.log('console-height');
+  if (stage('console-height')) {
   // The operator divides the stage, not a constant. A workspace floor is a
   // console ceiling: the drawer can only grow into space the workspace will
   // give up, so a `min-height` on main silently capped the console at
@@ -269,8 +325,9 @@ try {
     check('and the console returns to its resting height', consoleHeight.restoredHeight < consoleHeight.grown,
       JSON.stringify({ grown: consoleHeight.grown, restored: consoleHeight.restoredHeight }));
   }
+  }
 
-  console.log('warmup-failure');
+  if (stage('warmup-failure')) {
   // A warm-up moved off the boot gate has no readout left to be printed
   // to, so it is named on the JOBS readout and stays there until a later
   // attempt clears it. Driven through the surface's own prompt-context
@@ -307,8 +364,9 @@ try {
     check('a failed deferred warm-up is named on the status readout and persists', false,
       'the surface exposed no prompt-context seam');
   }
+  }
 
-  console.log('focus-citizenship');
+  if (stage('focus-citizenship')) {
   const focusCit = await evalIn(`
     const prefix = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));
     const cdrawer = document.getElementById('console-drawer');
@@ -336,8 +394,9 @@ try {
   check('focus citizenship: a touched pane owns the prefix', focusCit.paneGot === true);
   check('focus citizenship: the touched console owns the prefix', focusCit.consoleGot === true);
   check('focus citizenship: CONSOLE-05 hands the prefix to the console', focusCit.givenGot === true);
+  }
 
-  console.log('census-pill');
+  if (stage('census-pill')) {
   const censusPill = await evalIn(`
     document.getElementById('gutter-runs').click(); await sleep(500);
     const pill = document.querySelector('.dag-census');
@@ -364,8 +423,9 @@ try {
   check('CENSUS pill present, toggles SHAPE/CENSUS, restores', censusPill.present && censusPill.before === 'SHAPE' && censusPill.after === 'CENSUS' && censusPill.restored);
   check('GRAVITY pill reads its state and toggles', censusPill.gBefore === 'GRAVITY OFF' && censusPill.gAfter === 'GRAVITY ON' && censusPill.gRestored);
   check('the HUE block reads STATUS, COMPUTE puts the legend on the bar, and it restores', censusPill.hBefore === 'STATUS' && censusPill.hAfter === 'COMPUTE' && censusPill.legend && censusPill.hRestored, JSON.stringify({ b: censusPill.hBefore, a: censusPill.hAfter, l: censusPill.legend }));
+  }
 
-  console.log('mode-frame');
+  if (stage('mode-frame')) {
   // The field carries content only: at rest the mode frame is a strip at
   // the field's edge and no control stands in the field; touching the
   // strip slides the frame in (its pills work there); touching the field
@@ -432,8 +492,9 @@ try {
   check('filtering is a mode: folded at rest, the FILTER block unfolds it and reads its state', modeFrame.atRest.filterFolded && modeFrame.filterBefore === 'FILTER OFF' && modeFrame.filterOpen && modeFrame.filterClosed, JSON.stringify({ r: modeFrame.atRest.filterFolded, b: modeFrame.filterBefore, o: modeFrame.filterOpen, c: modeFrame.filterClosed }));
   check('the bar annunciates the non-default mode', modeFrame.modeRead === 'CARDS', modeFrame.modeRead);
   check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored, JSON.stringify({ field: modeFrame.fieldRetracts, esc: modeFrame.escRetracts, restored: modeFrame.restored }));
+  }
 
-  console.log('cards');
+  if (stage('cards')) {
   // CARDS projects the same listing: the pill reads the mode, cards carry
   // the kind as badge, the count equals the rows', and LIST comes back.
   // PREVIEW is the third projection: every card leads with a glimpse.
@@ -458,8 +519,9 @@ try {
     return { before, after, rows, cardCount: cardEls.length, badgesMatch, previewLabel, previewCards: previewCards.length, thumbs, previewRead, restored };`);
   check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch);
   check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ p: cards.previewLabel, n: cards.previewCards, t: cards.thumbs, r: cards.restored }));
+  }
 
-  console.log('bin-context');
+  if (stage('bin-context')) {
   // Everything in /bin is a graph: a plugin is the one-node case, drawn on
   // the same stage a pipeline gets, and its node opens as its parameters.
   // The wall of scraped text it used to be is gone.
@@ -565,8 +627,9 @@ try {
       check('the content view never spills sideways (a scene canvas fills its mount at any pixel ratio)', binCtx.spills === false, JSON.stringify({ spills: binCtx.spills, dpr: binCtx.dpr }));
     }
   }
+  }
 
-  console.log('diagram-modes');
+  if (stage('diagram-modes')) {
   // A pane has one mode frame, and its blocks answer to what the field
   // holds. A wave is a verb you press, never something breathing at rest.
   //
@@ -672,8 +735,9 @@ try {
           kept: diagramModes.node?.keptDiagram }));
     }
   }
+  }
 
-  console.log('follow-declared');
+  if (stage('follow-declared')) {
   // The following browser says so on its bar, and the binding is a verb
   // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.
   const follow = await evalIn(`
@@ -687,8 +751,9 @@ try {
     return { atLogin, rooted, afterRoot, followed, afterFollow };`);
   check('the following browser says CWD on its bar', /^CWD\b/.test(follow.atLogin));
   check('ROOT HERE and FOLLOW CWD re-bind the browser, and the bar follows', follow.rooted && !/^CWD\b/.test(follow.afterRoot) && follow.followed && /^CWD\b/.test(follow.afterFollow));
+  }
 
-  console.log('select-wait');
+  if (stage('select-wait')) {
   // Selecting a feed answers at once: the roster steps aside, the pane says
   // what it is retrieving, and the bar reads LOADING until the graph lands.
   const selectWait = await evalIn(`
@@ -715,8 +780,9 @@ try {
     check('selecting a feed answers at once', selectWait.atOnce.listHidden && selectWait.atOnce.retrieving && selectWait.atOnce.state === 'LOADING');
     check('the graph lands and LOADING clears', selectWait.landed && selectWait.stateAfter !== 'LOADING');
   }
+  }
 
-  console.log('pin-survives');
+  if (stage('pin-survives')) {
   // A pick survives promptlines: with the session cwd parked inside another
   // feed, picking a feed must hold — the follow answers a move, not a
   // promptline. (The regression this guards replaced every pick with the
@@ -741,8 +807,9 @@ try {
     return { skipped: null, picked, later };`);
   if (pin.skipped) console.log(`  skipped: ${pin.skipped}`);
   else check('a pick survives promptlines while the cwd sits elsewhere', pin.picked === pin.later && !/FEED 21\b/.test(pin.later), `${pin.picked} -> ${pin.later}`);
+  }
 
-  console.log('enter-place');
+  if (stage('enter-place')) {
   // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
   // session (and so the cwd-following browser) into /proc/jobs/feed_N.
   const enterPlace = await evalIn(`
@@ -774,8 +841,9 @@ try {
   } else {
     check('ENTER FEED moves the session into the feed', enterPlace.offered && typeof enterPlace.path === 'string' && enterPlace.path.startsWith('/proc/jobs/feed_'));
   }
+  }
 
-  console.log('live-watch');
+  if (stage('live-watch')) {
   // The pane is the subscription: entering a feed opens a watch, the bar
   // reports its liveness, the drawer offers REFRESH, leaving releases it.
   // A daemon older than the watch wire answers `error`; that is reported
@@ -812,8 +880,9 @@ try {
     check('the drawer offers REFRESH and the state survives a refresh', live.offered && /^(LIVE|SETTLED|STALE)$/.test(live.after));
     check('leaving the feed releases the watch: list back, state cleared', live.listBack && live.stateCleared);
   }
+  }
 
-  console.log('roster-order');
+  if (stage('roster-order')) {
   const roster = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const pill = document.getElementById('lang-pill');
@@ -839,8 +908,9 @@ try {
     return { caps, sorted: before !== after && before.length > 0, lit, strip, state };`);
   check('column caps sort the files listing (touch to sort, lit when active)', roster.caps >= 4 && roster.sorted && roster.lit, JSON.stringify(roster));
   check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);
+  }
 
-  console.log('pacs-listing');
+  if (stage('pacs-listing')) {
   // A query's answer is the same listing the other two panes are: a frame
   // that sorts and filters, caps minted per study over one column
   // declaration, verbs outside the grid, progress at every level.
@@ -1055,8 +1125,9 @@ try {
       && cohort.studyCaps.includes('ACCESSION'),
       JSON.stringify({ folded: cohort.foldedBefore, open: cohort.openAfter, caps: cohort.studyCaps }));
   }
+  }
 
-  console.log('host-control');
+  if (stage('host-control')) {
   // The HOST lamp reads the attach ack's declared tiers and nothing else:
   // present exactly when the daemon declared host control, absent at rest.
   // And `!` on a daemon without the policy refuses by name.
@@ -1077,8 +1148,9 @@ try {
   } else {
     check('the HOST lamp reads the daemon\'s declared tiers: absent at rest, and ! refuses by name', hostControl.lit === '' && hostControl.refusedByName && !hostControl.ran, JSON.stringify(hostControl));
   }
+  }
 
-  console.log('roster-totals');
+  if (stage('roster-totals')) {
   // The roster's totals ride the same grid as its other columns: caps for
   // SIZE and TIME, one cell per cap on every row, a dash (never a zero)
   // where a feed's nodes are not resident, a number where they are.
@@ -1096,8 +1168,9 @@ try {
     const sizes = rows.map(r => r.querySelector('.feedlist-size')?.textContent ?? '');
     return { caps, cellsUniform: cells.every(n => n === caps.length), rows: rows.length, honest: sizes.every(s => s === '—' || /\\d/.test(s)) };`);
   check('the roster carries SIZE and TIME on its grid, dashes where nodes are not resident', totals.caps.includes('SIZE') && totals.caps.includes('TIME') && totals.cellsUniform && totals.rows > 0 && totals.honest, JSON.stringify(totals));
+  }
 
-  console.log('nameplate');
+  if (stage('nameplate')) {
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');
     if (!mark) return { present: false };
@@ -1105,8 +1178,9 @@ try {
     const r = mark.getBoundingClientRect();
     return { present: true, masked: style.maskImage.includes('url'), visible: r.width > 20 && r.height > 10 };`);
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
+  }
 
-  console.log('index-annunciation');
+  if (stage('index-annunciation')) {
   // A feed's first-visit topology load is never a silent hang: the JOBS
   // readout names the feed and counts its instances while the daemon walks
   // it. `proc refresh <id>` drops and re-walks one feed, which is the same
@@ -1132,9 +1206,17 @@ try {
     check('the JOBS readout names a feed being indexed and counts its instances', indexing.seen !== '' && indexing.counted, JSON.stringify(indexing));
     check('the feed indexing readout clears when the walk completes', indexing.cleared, JSON.stringify(indexing));
   }
+  }
 } finally {
+  stage_close();
   page.close();
 }
 
+// The three slowest scenarios, named. A suite this expensive should say
+// where its minutes went rather than leaving it to be guessed at.
+const slowest = [...timings].sort((a, b) => b[1] - a[1]).slice(0, 3);
+const spent = timings.reduce((total, [, ms]) => total + ms, 0);
+console.log(`\n${Math.round(spent / 1000)}s in ${timings.length} scenario(s)`
+  + ` — slowest: ${slowest.map(([name, ms]) => `${name} ${Math.round(ms / 1000)}s`).join(', ')}`);
 console.log(`\n${passes} ok, ${failures.length} failed${failures.length ? `: ${failures.join('; ')}` : ''}`);
 process.exit(failures.length === 0 ? 0 : 1);

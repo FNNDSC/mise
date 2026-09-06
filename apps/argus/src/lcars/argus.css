@@ -826,20 +826,27 @@ main {
 /* An answer that was not fetched now says when it was: the date is the
  * fact worth quoting, the elapsed time the judgement worth acting on. It
  * sits in the PROGRESS track, immediately left of the control that would
- * replace it — annunciation beside the thing it is about. */
+ * replace it — annunciation beside the thing it is about.
+ *
+ * A READOUT, not a capsule. It first wore the capsule's costume — same
+ * radius, same type, a filled ground — with a real capsule twenty pixels
+ * away, so it read as RE-QUERY's disabled sibling and invited a press it
+ * could not answer. In this grammar the shape IS the role: a capsule is a
+ * thing you press, and an annunciation that borrows the shape makes a
+ * promise it will not keep. The status strip's lamps get away with a fill
+ * because nothing near them is pressable; this does not. */
 .pacs-provenance {
-  display: inline-block;
+  display: block;
   max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  padding: 0.05rem 0.7rem;
-  border-radius: 0.8rem;
-  background-color: color-mix(in srgb, var(--october-sunset) 30%, transparent);
+  text-align: right;
+  padding-right: 0.6rem;
   color: var(--honey);
   font-family: 'Antonio', sans-serif;
   font-size: 0.66rem;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
 }
 
 /* Re-asking is the heavier action, so it wears the deeper shade PULL STUDY

@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, DAG_MODEL_KINDS, type PipelineDiagramNode, type PromptContext, type WireEnvelope, type WatchState } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -27,7 +27,7 @@ import {
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
-import { FilesPanel, type FileAction, type FsListing, extension_isImage, type PreviewProvider, type PipelineGlimpseNode } from '../features/files/panel.js';
+import { FilesPanel, type FileAction, type FsListing, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -660,29 +660,18 @@ async function surface_start(token: string): Promise<void> {
     return text.slice(0, maxBytes);
   };
   /**
-   * A /bin entry has no bytes to serve: its description comes from the
-   * session's own `cat`, and a pipeline's graph from `pipeline diagram`.
+   * A pipeline's authored graph, for a card-sized glimpse. A plugin needs
+   * no such fetch: it is one node whatever it declares, and the card draws
+   * that node itself.
    */
-  const binHead_fetch = async (path: string, maxChars: number): Promise<string> => {
-    // The glimpse is what the plugin does: skip the name banner (its title
-    // line and the rule beneath) that the card already says.
-    const read: FileText = await fileText_fetch(path);
-    // A glimpse of a file the operator may not read shows the refusal, not
-    // a blank card that reads as an empty file.
-    if (!read.ok) return read.text.slice(0, maxChars);
-    const lines: string[] = read.text.replace(/^\s+/, '').split('\n');
-    if (lines.length > 2 && /^[─━=\-]{4,}\s*$/.test(lines[1] ?? '')) lines.splice(0, 2);
-    while (lines.length > 0 && (lines[0] ?? '').trim() === '') lines.shift();
-    return lines.join('\n').slice(0, maxChars);
-  };
-  const pipelineGlimpse_fetch = async (path: string): Promise<PipelineGlimpseNode[] | null> => {
+  const pipelineGlimpse_fetch = async (path: string): Promise<GlimpseNode[] | null> => {
     const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
     const outcome: ExecuteOutcome = await client.line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false });
     for (const envelope of outcome.envelopes) {
       if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
       const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
       if (!parsed.success) continue;
-      return parsed.data.nodes.map((node: PipelineDiagramNode): PipelineGlimpseNode => ({
+      return parsed.data.nodes.map((node: PipelineDiagramNode): GlimpseNode => ({
         id: node.id,
         parentIds: [...node.parentIds, ...(node.joinParentIds ?? [])],
       }));
@@ -693,7 +682,6 @@ async function surface_start(token: string): Promise<void> {
   const previewProvider: PreviewProvider = {
     imageUrl: vfsUrl_build,
     textHead: fileHead_fetch,
-    binHead: binHead_fetch,
     pipelineGlimpse: pipelineGlimpse_fetch,
   };
 
@@ -795,77 +783,155 @@ async function surface_start(token: string): Promise<void> {
   };
 
   /**
-   * Opens a /bin entry as context: a plugin's description, highlighted; a
-   * pipeline's summary with its authored DAG rendered beneath it.
+   * What a /bin entry contributes to the one graph view: a summary above the
+   * stage (empty when the graph says it all), the graph itself, and how one
+   * of its nodes reads out.
+   *
+   * @property text - Summary HTML shown above the stage; '' for none.
+   * @property nodes - The graph, as the scene wants it.
+   * @property facts_show - Fills the overlay for one node, selected or immersed.
+   */
+  interface BinGraph {
+    text: string;
+    nodes: SceneNode[];
+    facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean) => void;
+  }
+
+  /**
+   * Opens a /bin entry as the graph it is.
+   *
+   * Both kinds take this path: a pipeline is many nodes, a plugin is one,
+   * and there is no third rendering. What used to be a plugin's wall of
+   * scraped text is now the same stage, the same mode frame and the same
+   * dive-in gesture every other entry answers to.
+   *
+   * @param panel - The pane to open the view in.
+   * @param path - The /bin entry.
+   * @param graph_fetch - Reads the entry, once the view is up.
+   */
+  const binGraph_show = (
+    panel: FilesPanel,
+    path: string,
+    graph_fetch: () => Promise<BinGraph | null>,
+  ): void => {
+    let scene: DagScene | null = null;
+    let modeRelease: (() => void) | null = null;
+    const mount: HTMLElement | null = panel.contentHtml_show(path, '', {
+      diagram: true,
+      release: (): void => {
+        binDive = null;
+        modeRelease?.();
+        modeRelease = null;
+        panel.mode_annunciate('');
+        scene?.dispose();
+        scene = null;
+      },
+    });
+    if (mount === null) return;
+
+    void graph_fetch().then((graph: BinGraph | null): void => {
+      if (!mount.isConnected) return;
+      if (graph === null || graph.nodes.length === 0) {
+        mount.textContent = 'NOTHING TO DRAW FOR THIS ENTRY';
+        mount.classList.add('files-diagram-empty');
+        return;
+      }
+      if (graph.text !== '') panel.contentText_set(graph.text);
+      const facts: HTMLElement = document.createElement('div');
+      facts.className = 'dag-facts';
+      mount.appendChild(facts);
+      const built: DagScene = new DagScene(mount, {
+        // A node's substance already arrived with the graph, so a touch
+        // reads it out and a dive goes in. Nothing is fetched for either.
+        select: (node: SceneNode): void => graph.facts_show(facts, node.id, false),
+        activate: (node: SceneNode): void => {
+          built.flight_into(node.id, (): void => {
+            binDive = { scene: built, facts };
+            graph.facts_show(facts, node.id, true);
+          });
+        },
+        deselect: (): void => facts.replaceChildren(),
+      }, {});
+      scene = built;
+      built.graph_set({ nodes: graph.nodes }, { wave: false });
+      built.size_fit();
+      modeRelease = diagramModes_wire(mount, built, panel);
+    });
+  };
+
+  /**
+   * Reads a registered pipeline as its authored graph.
+   *
+   * @param path - The /bin entry.
+   * @returns The graph, or null when the pipeline has no diagram.
+   */
+  const pipelineGraph_fetch = async (path: string): Promise<BinGraph | null> => {
+    const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
+    // Asked together: the summary is a cache-only read and the diagram a
+    // slow one, and making the stage wait on the text buys nothing.
+    const [summary, diagram]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
+      client.line_execute(`cat "${path}"`, { silent: true, observe: false }),
+      client.line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false }),
+    ]);
+    const text: string = summary.envelopes.map((envelope): string => envelope.rendered).join('\n');
+    for (const envelope of diagram.envelopes) {
+      if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
+      const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
+      if (!parsed.success) continue;
+      const authored: Map<string, PipelineDiagramNode> = new Map(
+        parsed.data.nodes.map((node: PipelineDiagramNode): [string, PipelineDiagramNode] => [node.id, node]),
+      );
+      return {
+        text: binText_highlight(text),
+        nodes: parsed.data.nodes.map((node: PipelineDiagramNode): SceneNode => ({
+          id: node.id,
+          label: node.label,
+          parentIds: node.parentIds,
+          joinParentIds: node.joinParentIds,
+        })),
+        facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean): void => {
+          facts_paint(facts, pipelineNodeRows_build(authored.get(nodeId), immersed), immersed);
+        },
+      };
+    }
+    return null;
+  };
+
+  /**
+   * Reads a registered plugin as the one-node graph it is.
+   *
+   * @param path - The /bin entry.
+   * @returns The graph, or null when the kernel could not read the plugin.
+   */
+  const pluginGraph_fetch = async (path: string): Promise<BinGraph | null> => {
+    const entry: string = path.replace(/^.*\//, '');
+    const outcome: ExecuteOutcome = await client.line_execute(`plugin info "${entry}"`, { silent: true, observe: false });
+    for (const envelope of outcome.envelopes) {
+      if (envelope.model?.kind !== PLUGIN_INFO_MODEL_KIND) continue;
+      const parsed = pluginInfoModelSchema.safeParse(envelope.model.data);
+      if (!parsed.success) continue;
+      const model: PluginInfoModel = parsed.data;
+      return {
+        text: '',
+        nodes: [{ id: entry, label: model.name, parentIds: [], joinParentIds: [] }],
+        facts_show: (facts: HTMLElement, _nodeId: string, immersed: boolean): void => {
+          facts_paint(facts, pluginRows_build(model, immersed), immersed);
+        },
+      };
+    }
+    return null;
+  };
+
+  /**
+   * Opens a /bin entry as context.
+   *
+   * @param panel - The pane to open it in.
+   * @param path - The entry's path.
+   * @param kind - Whether the entry is a plugin or a pipeline.
    */
   const binEntry_show = (panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => {
-    void client
-      .line_execute(`cat "${path}"`, { silent: true, observe: false })
-      .then((outcome: ExecuteOutcome): void => {
-        const text: string = outcome.envelopes.map((envelope): string => envelope.rendered).join('\n');
-        if (kind === 'plugin') {
-          panel.contentHtml_show(path, binText_highlight(text));
-          return;
-        }
-        let scene: DagScene | null = null;
-        let modeRelease: (() => void) | null = null;
-        const mount: HTMLElement | null = panel.contentHtml_show(path, binText_highlight(text), {
-          diagram: true,
-          release: (): void => {
-            binDive = null;
-            modeRelease?.();
-            modeRelease = null;
-            panel.mode_annunciate('');
-            scene?.dispose();
-            scene = null;
-          },
-        });
-        if (mount === null) return;
-        const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
-        void client
-          .line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false })
-          .then((diagram: ExecuteOutcome): void => {
-            if (!mount.isConnected) return;
-            for (const envelope of diagram.envelopes) {
-              if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
-              const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
-              if (!parsed.success) continue;
-              const authored: Map<string, PipelineDiagramNode> = new Map(
-                parsed.data.nodes.map((node: PipelineDiagramNode): [string, PipelineDiagramNode] => [node.id, node]),
-              );
-              const facts: HTMLElement = document.createElement('div');
-              facts.className = 'dag-facts';
-              mount.appendChild(facts);
-              const built: DagScene = new DagScene(mount, {
-                // A pipeline node's substance is what it will run with, and
-                // the model already carries it — so a touch reads it out
-                // and a dive goes in. Nothing is fetched for either.
-                select: (node: SceneNode): void => nodeFacts_show(facts, authored.get(node.id), false),
-                activate: (node: SceneNode): void => {
-                  built.flight_into(node.id, (): void => {
-                    binDive = { scene: built, facts };
-                    nodeFacts_show(facts, authored.get(node.id), true);
-                  });
-                },
-                deselect: (): void => facts.replaceChildren(),
-              }, {});
-              scene = built;
-              built.graph_set({
-                nodes: parsed.data.nodes.map((node: PipelineDiagramNode): SceneNode => ({
-                  id: node.id,
-                  label: node.label,
-                  parentIds: node.parentIds,
-                  joinParentIds: node.joinParentIds,
-                })),
-              }, { wave: false });
-              built.size_fit();
-              modeRelease = diagramModes_wire(mount, built, panel);
-              return;
-            }
-            mount.textContent = 'NO DIAGRAM FOR THIS PIPELINE';
-            mount.classList.add('files-diagram-empty');
-          });
-      });
+    binGraph_show(panel, path, (): Promise<BinGraph | null> =>
+      kind === 'plugin' ? pluginGraph_fetch(path) : pipelineGraph_fetch(path));
   };
 
 
@@ -910,31 +976,56 @@ async function surface_start(token: string): Promise<void> {
   }
 
   /**
-   * Reads a pipeline node out as `text : detail` pairs.
+   * Paints a node's readout as `text : detail` pairs.
    *
-   * A registered pipeline's node is what it WILL run with: a plugin, a
-   * version, and the arguments the author fixed. All of it rides the
-   * `pipeline.diagram` model already, so neither a touch nor a dive fetches
-   * anything.
-   *
-   * Immersed, the pairs are the whole point and every argument is listed.
-   * Selected, the node is one of many on stage and the readout says what it
-   * is plus how much there is to see, so a glance is not a wall of text —
-   * the complaint that started this epic.
+   * One painter for every /bin entry: a pipeline's node and a plugin differ
+   * in what they have to say, never in how it is said.
    *
    * @param facts - The overlay to fill.
-   * @param node - The authored node, when the model carried one.
-   * @param immersed - Whether the camera has flown into it.
+   * @param rows - Label/value pairs, in reading order.
+   * @param immersed - Whether the camera has flown into the node.
    */
-  function nodeFacts_show(
+  function facts_paint(
     facts: HTMLElement,
-    node: PipelineDiagramNode | undefined,
+    rows: ReadonlyArray<[string, string]>,
     immersed: boolean,
   ): void {
     facts.replaceChildren();
     facts.classList.toggle('dag-facts-immersed', immersed);
-    if (node === undefined) return;
+    for (const [label, value] of rows) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = 'telemetry-row';
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'telemetry-label';
+      name.textContent = label;
+      const figure: HTMLSpanElement = document.createElement('span');
+      figure.className = 'telemetry-value';
+      figure.textContent = value;
+      row.append(name, figure);
+      facts.appendChild(row);
+    }
+  }
 
+  /**
+   * What a pipeline node has to say: what it WILL run with — a plugin, a
+   * version, and the arguments the author fixed. All of it rides the
+   * `pipeline.diagram` model already, so neither a touch nor a dive fetches
+   * anything.
+   *
+   * Immersed, every argument is listed. Selected, the node is one of many
+   * on stage, so the readout says what it is plus how much there is to
+   * see — a glance is not a wall of text, the complaint that started this
+   * epic.
+   *
+   * @param node - The authored node, when the model carried one.
+   * @param immersed - Whether the camera has flown into it.
+   * @returns The rows to paint.
+   */
+  function pipelineNodeRows_build(
+    node: PipelineDiagramNode | undefined,
+    immersed: boolean,
+  ): Array<[string, string]> {
+    if (node === undefined) return [];
     const args: ReadonlyArray<{ name: string; value?: unknown }> = node.arguments ?? [];
     const rows: Array<[string, string]> = [
       ['PLUGIN', node.pluginName],
@@ -951,19 +1042,48 @@ async function surface_start(token: string): Promise<void> {
     } else {
       rows.push(['ARGUMENTS', args.length === 0 ? 'none' : `${args.length} — open the node to read them`]);
     }
+    return rows;
+  }
 
-    for (const [label, value] of rows) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = 'telemetry-row';
-      const name: HTMLSpanElement = document.createElement('span');
-      name.className = 'telemetry-label';
-      name.textContent = label;
-      const figure: HTMLSpanElement = document.createElement('span');
-      figure.className = 'telemetry-value';
-      figure.textContent = value;
-      row.append(name, figure);
-      facts.appendChild(row);
+  /**
+   * What a plugin has to say: what it CAN run with — every parameter it
+   * declares, with the flag as an operator types it.
+   *
+   * The pipeline node's readout says the arguments an author already fixed;
+   * a plugin's says the ones nobody has fixed yet. Same gesture, same
+   * shape, and the difference is honest.
+   *
+   * @param model - The plugin model.
+   * @param immersed - Whether the camera has flown into the node.
+   * @returns The rows to paint.
+   */
+  function pluginRows_build(model: PluginInfoModel, immersed: boolean): Array<[string, string]> {
+    const rows: Array<[string, string]> = [
+      ['PLUGIN', model.name],
+      ['VERSION', model.version],
+      ['TYPE', model.type.toUpperCase()],
+    ];
+    const parameters: ReadonlyArray<PluginParameter> = model.parameters;
+    if (!immersed) {
+      rows.push(['PARAMETERS', parameters.length === 0
+        ? 'none'
+        : `${parameters.length} — open the node to read them`]);
+      return rows;
     }
+    if (parameters.length === 0) {
+      rows.push(['PARAMETERS', 'none — this plugin takes no arguments']);
+      return rows;
+    }
+    for (const parameter of parameters) {
+      const parts: string[] = [parameter.type];
+      if (!parameter.optional) parts.push('required');
+      if (parameter.default !== undefined && parameter.default !== null && String(parameter.default) !== '') {
+        parts.push(`default ${String(parameter.default)}`);
+      }
+      const meta: string = parts.join(' · ');
+      rows.push([parameter.flag, parameter.help === undefined ? meta : `${meta} — ${parameter.help}`]);
+    }
+    return rows;
   }
 
   function diagramModes_wire(mount: HTMLElement, scene: DagScene, panel: FilesPanel): () => void {

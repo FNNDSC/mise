@@ -42,6 +42,7 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 // stacks, which this suite has no business loading.
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   error_stripDebugPrefix: (message: string): string => message.replace(/^\[[^\]]+\]\s*\|\s*/, ''),
+  path_resolve: async (p: string): Promise<string> => p.replace('~', '/home/chris'),
 }));
 
 const ok = <T>(value: T) => ({ ok: true as const, value });

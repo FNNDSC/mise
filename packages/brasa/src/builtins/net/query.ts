@@ -46,6 +46,7 @@ import {
   queryTerms_parse,
 } from './query.fanout.js';
 import { sink_get } from '../../core/sink.js';
+import { pacsAnswer_toCsv } from './query.csv.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -877,6 +878,46 @@ function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
 }
 
 
+
+/**
+ * Renders an answer as CSV, and writes it into ChRIS storage when asked.
+ *
+ * Two flags rather than one with an optional value: `--csv PatientID:1234`
+ * could not tell a destination from a query expression, and guessing wrong
+ * writes a file named after a patient.
+ *
+ * A local terminal needs no destination — `--csv > audit.csv` writes the
+ * operator's own disk, because engine and operator share a filesystem. A
+ * detached surface does not: the engine runs on the daemon's host, so a
+ * redirect lands on somebody else's machine. `--csv-to` puts the table in
+ * CFS instead, where a cohort's MRNs and study descriptions stay inside
+ * ChRIS rather than on whatever laptop the operator is sitting at.
+ *
+ * @param model - The answer.
+ * @param destination - A CFS path to write to, or null to render only.
+ * @returns The CSV text and where it went, or a failure already explained.
+ */
+async function csv_deliver(
+  model: PacsQueryModel,
+  destination: string | null,
+): Promise<{ ok: true; rendered: string } | { ok: false; message: string }> {
+  const csv: string = pacsAnswer_toCsv(model);
+  if (destination === null) return { ok: true, rendered: csv };
+
+  const { path_resolve, error_stripDebugPrefix } = await import('../utils.js');
+  const { files_create } = await import('@fnndsc/salsa');
+  const target: string = await path_resolve(destination);
+  const written: boolean = await files_create(csv, target);
+  if (!written) {
+    const problem: StackMessage | undefined = errorStack.stack_pop();
+    // Stripped where it is read: a refusal an operator acts on should not
+    // arrive wearing the stack's debugging prefix.
+    const why: string = problem === undefined ? 'refused' : error_stripDebugPrefix(problem.message);
+    return { ok: false, message: `query: could not write ${target}: ${why}` };
+  }
+  return { ok: true, rendered: `${chalk.green(`✓ wrote ${target}`)}\n` };
+}
+
 /**
  * Answers a cohort: many questions, one model, one table.
  *
@@ -893,6 +934,10 @@ async function cohort_answer(
     owner: string;
     fresh: boolean;
     expression: string;
+    /** Render the answer as CSV instead of as a table. */
+    csv: boolean;
+    /** A CFS path to write that CSV to, when one was named. */
+    csvTo: string | null;
   },
 ): Promise<CommandEnvelope> {
   spinner.start(`Querying PACS for ${asks.length} questions...`, true);
@@ -909,6 +954,15 @@ async function cohort_answer(
   const unasked: number = patients.filter(
     (patient: PacsPatient): boolean => patient.status === 'unasked',
   ).length;
+
+  if (facts.csv || facts.csvTo !== null) {
+    const delivered = await csv_deliver(model, facts.csvTo);
+    if (!delivered.ok) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);
+    }
+    return envelope_ok(delivered.rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
+  }
   // A fan-out over something other than patients has no audit table to
   // show; its studies are the answer, and they are already in the model.
   const rendered: string = patients.length > 0
@@ -948,6 +1002,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   let tableMode: boolean = false;
   let fresh: boolean = false;
   let patientsArg: string | null = null;
+  let csv: boolean = false;
+  let csvTo: string | null = null;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -959,6 +1015,10 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       tableMode = true;
     } else if (args[i] === '--patients' && i + 1 < args.length) {
       patientsArg = args[++i];
+    } else if (args[i] === '--csv') {
+      csv = true;
+    } else if (args[i] === '--csv-to' && i + 1 < args.length) {
+      csvTo = args[++i];
     } else if (args[i] === '--fresh') {
       fresh = true;
     } else if (!args[i].startsWith('--')) {
@@ -1076,7 +1136,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
 
   if (asks.length > 1) {
     return await cohort_answer(asks, {
-      title, pacsserver, owner, fresh,
+      title, pacsserver, owner, fresh, csv, csvTo,
       expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
     });
   }
@@ -1129,6 +1189,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
     : queryResult_render(result.decoded);
 
+
   const model: PacsQueryModel = pacsQueryModel_build(result.decoded, {
     queryId: result.queryId,
     vfsPath: result.vfsPath,
@@ -1142,6 +1203,15 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // Mark what CUBE already holds: a surface then offers gather instead of
   // pull for series that are already home. One bounded sweep, no retries.
   await modelPulledState_fill(model);
+
+  if (csv || csvTo !== null) {
+    const delivered = await csv_deliver(model, csvTo);
+    if (!delivered.ok) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);
+    }
+    return envelope_ok(delivered.rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
+  }
 
   if (!renderedResult) {
     // Nothing matched: browsing or pulling the empty query would be

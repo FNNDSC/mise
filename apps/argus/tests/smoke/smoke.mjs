@@ -1103,7 +1103,7 @@ try {
       const caps = new Map([...first.parentElement.querySelectorAll('.pacs-study-level > .roster-caps .roster-cap')]
         .map(c => [c.dataset.key, l(c)]));
       const studyTerms = [...document.querySelectorAll('#pacs-form [data-key]')]
-        .filter(c => ['date', 'accession', 'modality'].includes(c.dataset.key))
+        .filter(c => ['date', 'accession', 'modality', 'server'].includes(c.dataset.key))
         .map(c => [c.dataset.key, caps.has(c.dataset.key) ? l(c) - caps.get(c.dataset.key) : 'no-cap']);
       return { count: rows().length, mrns, studies, answered, bar, tracks, foldedBefore, openAfter, studyCaps, studyTerms };`);
     check('every patient asked gets a row, misses included',
@@ -1117,7 +1117,7 @@ try {
     check('a patient sums the progress of everything beneath it',
       cohort.tracks === cohort.count, JSON.stringify({ tracks: cohort.tracks, rows: cohort.count }));
     check('the form\'s study terms stand over the study caps, a level down',
-      Array.isArray(cohort.studyTerms) && cohort.studyTerms.length === 3
+      Array.isArray(cohort.studyTerms) && cohort.studyTerms.length === 4
       && cohort.studyTerms.every(([, delta]) => delta === 0),
       JSON.stringify(cohort.studyTerms));
     check('a cohort arrives folded, and a patient unfolds into its studies',
@@ -1125,6 +1125,56 @@ try {
       && cohort.studyCaps.includes('ACCESSION'),
       JSON.stringify({ folded: cohort.foldedBefore, open: cohort.openAfter, caps: cohort.studyCaps }));
   }
+  }
+
+  if (stage('pacs-server-control')) {
+    // SERVER is a choice, not a phrase: the cell reads its own state and
+    // unfolds a strip of segments — the FILTER gesture, in the caps'
+    // vocabulary. No dropdown, because LCARS has no popup layer, and no
+    // ALL, because a fan-out is always something the operator named.
+    const servers = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(700);
+      const ws = document.getElementById('pacs-workspace');
+      const cell = ws.querySelector('#pacs-f-server');
+      const strip = ws.querySelector('#pacs-server-strip');
+      const restingHidden = strip.hidden;
+      cell.click();
+      for (let i = 0; i < 120; i++) { await sleep(250);
+        if (strip.querySelectorAll('.pacs-server-segment').length > 0) break; }
+      const segments = [...strip.querySelectorAll('.pacs-server-segment')].map(s => s.textContent.trim());
+      const noAll = !segments.some(s => /^ALL$/i.test(s));
+      // One chosen is a context; several is a query, and only the fan-out
+      // reaches the line.
+      const first = strip.querySelector('.pacs-server-segment');
+      first.click(); await sleep(300);
+      const oneCell = cell.textContent.trim();
+      const oneLine = ws.querySelector('#pacs-command').value;
+      const second = [...strip.querySelectorAll('.pacs-server-segment')][1];
+      let manyCell = '', manyLine = '', lit = 0;
+      if (second) {
+        second.click(); await sleep(300);
+        manyCell = cell.textContent.trim();
+        manyLine = ws.querySelector('#pacs-command').value;
+        lit = strip.querySelectorAll('.pacs-server-chosen').length;
+      }
+      // Esc retracts it, exactly as it retracts a mode frame.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(300);
+      const closedByEsc = strip.hidden;
+      return { restingHidden, segments: segments.length, noAll,
+        oneCell, oneLine, manyCell, manyLine, lit, closedByEsc };`);
+    check('the SERVER cell unfolds a strip carrying every registered server',
+      servers.restingHidden === true && servers.segments > 0,
+      JSON.stringify(servers));
+    check('the strip offers no ALL: a fan-out is always something the operator named',
+      servers.noAll === true, JSON.stringify(servers.segments));
+    check('one server reads as itself and adds no flag; several reads +n and lowers to a fan-out',
+      servers.oneCell !== '' && !servers.oneLine.includes('--pacsserver')
+      && /\+1$/.test(servers.manyCell) && servers.manyLine.includes('--pacsserver')
+      && servers.lit === 2,
+      JSON.stringify(servers));
+    check('Esc retracts the server strip, as it retracts a mode frame',
+      servers.closedByEsc === true, JSON.stringify(servers.closedByEsc));
   }
 
   if (stage('host-control')) {

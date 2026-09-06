@@ -375,6 +375,14 @@
                 <label data-key="date">DATE <input id="pacs-f-date" placeholder="YYYYMMDD" autocomplete="off" /></label>
                 <label data-key="accession">ACCESSION <input id="pacs-f-accession" autocomplete="off" /></label>
                 <label data-key="modality">MODALITY <input id="pacs-f-modality" autocomplete="off" /></label>
+                <!-- SERVER is a choice, not a phrase, and LCARS has no
+                     dropdown: the cell reads its own state and touching it
+                     unfolds a strip of segments beneath the form — the
+                     FILTER gesture, in the vocabulary the caps already
+                     speak. -->
+                <span class="pacs-form-field" data-key="server">SERVER
+                  <button id="pacs-f-server" class="pacs-server-cell" title="choose which PACS to ask (one moves the session, several fan out)">—</button>
+                </span>
                 <span class="pacs-form-blank" data-key="series"></span>
                 <!-- An answer that was not fetched now says when it was.
                      PROGRESS is where how-this-came-about belongs, and it
@@ -384,6 +392,9 @@
                 </span>
                 <button id="pacs-run" class="pacs-capsule">QUERY</button>
               </div>
+              <!-- The strip has the pane's full width, so it carries far
+                   more servers than capsules crammed into one grid track. -->
+              <div id="pacs-server-strip" class="pacs-server-strip" hidden></div>
               <div id="pacs-commandline">
                 <input id="pacs-command" spellcheck="false" autocomplete="off" placeholder="pacs query ..." />
               </div>

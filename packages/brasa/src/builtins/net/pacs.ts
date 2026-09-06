@@ -10,6 +10,7 @@
 
 import chalk from 'chalk';
 import { chrisContext, pacsServers_list, PACSServer, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { PACS_SERVERS_MODEL_KIND, type PacsServer, type PacsServersModel } from '@fnndsc/menu';
 import { builtin_query } from './query.js';
 import { builtin_pacsStatus } from './status.js';
 import { builtin_pull } from '../fs/pull.js';
@@ -42,6 +43,33 @@ async function servers_print(active: string | null): Promise<void> {
   sink_dataLine('');
   sink_dataLine(chalk.gray('  Use: pacs connect <name|id>'));
   sink_dataLine('');
+}
+
+
+/**
+ * Projects the registered PACS servers onto the wire's `pacs.servers` model.
+ *
+ * A server with no identifier is left out rather than given a made-up one:
+ * the identifier is what `--pacsserver` names and what CUBE files a query
+ * under, so a row that cannot be named cannot be chosen either.
+ *
+ * @param active - The identifier or id of the connected server, when there is one.
+ * @returns The model, or null when CUBE registers nothing.
+ */
+async function serversModel_build(active: string | null): Promise<PacsServersModel | null> {
+  const result = await pacsServers_list();
+  if (!result.ok || result.value.length === 0) return null;
+  const servers: PacsServer[] = [];
+  for (const server of result.value) {
+    const identifier: string | undefined = server.identifier ?? server.name;
+    if (identifier === undefined || identifier === '') continue;
+    servers.push({
+      id: server.id,
+      identifier,
+      active: active !== null && (identifier === active || String(server.id) === active),
+    });
+  }
+  return servers.length > 0 ? { servers } : null;
 }
 
 /**
@@ -115,7 +143,14 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
     case 'list': {
       const active: string | null = await chrisContext.PACSserver_get();
       await servers_print(active);
-      return envelope_ok('');
+      // The same question, answered twice in one breath: a terminal reads
+      // the printed list, a graphical surface reads the model. A surface
+      // offering a choice of servers must know what there is to choose
+      // from, and asking CUBE itself would reach around the session that
+      // owns the connection.
+      const model: PacsServersModel | null = await serversModel_build(active);
+      if (model === null) return envelope_ok('');
+      return envelope_ok('', { kind: PACS_SERVERS_MODEL_KIND, data: model });
     }
 
     case 'query':

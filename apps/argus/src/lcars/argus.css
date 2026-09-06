@@ -346,9 +346,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * series, progress, verbs. */
 #pacs-workspace {
   /* The STUDY tracks, which the form also stands on: fold, patient, MRN,
-     study, date, accession, modality, series, progress, verbs. */
+     study, date, accession, modality, SERVER, series, progress, verbs.
+     The list is positional — it gains a track wherever the traits gain a
+     column, or every cell after the new one lands under the wrong cap. */
   --roster-cols:
-    1.4em minmax(0, 13em) 7.5em minmax(0, 14em) 7.5em 9em 6.5em 4em minmax(5em, 1fr) 7em;
+    1.4em minmax(0, 13em) 7.5em minmax(0, 12em) 7.5em 9em 6.5em 9em 4em minmax(5em, 1fr) 7em;
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
   overflow-y: auto;
@@ -937,6 +939,7 @@ main {
 .pacs-study-accession { color: var(--harvestgold); }
 .pacs-study-date,
 .pacs-study-modalities,
+.pacs-study-server,
 .pacs-study-count { color: var(--pumpkin-pie); }
 
 /* The series are a listing of their own, on their own grid, inside the
@@ -3179,4 +3182,87 @@ body[data-zoom] #header-restore {
 
 .pacs-patient-collapsed .pacs-study-level {
   display: none;
+}
+
+/* --------------------------------------------- the PACS server control */
+
+/* The SERVER cell stands in SERVER's column, wearing the form's own label
+   above it like every other field. It is a state readout you press, not a
+   dropdown: LCARS has no popup layer and does not grow one here. */
+#pacs-form .pacs-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  color: var(--honey);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+}
+
+.pacs-server-cell {
+  min-width: 0;
+  width: 100%;
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--butter);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pacs-server-cell:hover,
+.pacs-server-open {
+  border-color: var(--harvestgold);
+  color: var(--harvestgold);
+}
+
+/* Several servers is a fan-out, which is a different act from moving the
+   session; the cell says which one it is about to do. */
+.pacs-server-many {
+  color: var(--october-sunset);
+  border-color: var(--october-sunset);
+}
+
+/* The strip is a band of the pane's own width — the FILTER strip's shape,
+   in the caps' vocabulary — so it carries thirteen servers where a grid
+   track could not carry three. */
+.pacs-server-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.35rem var(--roster-pad) 0.5rem;
+  margin-bottom: 0.4rem;
+  border-bottom: 2px solid var(--pumpkin-pie);
+}
+
+.pacs-server-segment {
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.9rem;
+  color: var(--pumpkin-pie);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  padding: 0.1rem 0.7rem;
+  cursor: pointer;
+}
+
+.pacs-server-segment:hover {
+  color: var(--harvestgold);
+  border-color: var(--harvestgold);
+}
+
+/* Lit when included. There is no ALL segment, and there will not be one:
+   a fan-out is always something the operator named. */
+.pacs-server-chosen {
+  background: var(--harvestgold);
+  border-color: var(--harvestgold);
+  color: black;
 }

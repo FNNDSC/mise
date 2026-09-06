@@ -25,11 +25,14 @@
  */
 import {
   pacsQueryModelSchema,
+  pacsServersModelSchema,
   PACS_QUERY_MODEL_KIND,
+  PACS_SERVERS_MODEL_KIND,
   type PacsPatient,
   type PacsProvenance,
   type PacsQueryModel,
   type PacsSeries,
+  type PacsServer,
   type PacsStudy,
   type WireEnvelope,
 } from '@fnndsc/menu';
@@ -216,6 +219,14 @@ export class PacsPanel {
   private model: PacsQueryModel | null = null;
   /** Whether the answer on stage came from a stored query. */
   private replayed: boolean = false;
+  /** The cell that reads which servers are chosen, and unfolds the strip. */
+  private readonly serverCell: HTMLElement;
+  /** The strip of server segments, one per registered PACS. */
+  private readonly serverStrip: HTMLElement;
+  /** Every registered server, once the session has been asked. */
+  private servers: ReadonlyArray<PacsServer> = [];
+  /** The identifiers currently chosen. Empty means the session's own. */
+  private readonly chosen: Set<string> = new Set<string>();
 
   /**
    * @param root - The `#pacs-workspace` element.
@@ -312,6 +323,10 @@ export class PacsPanel {
         }
       });
     }
+    this.serverCell = element_query(root, '#pacs-f-server');
+    this.serverStrip = element_query(root, '#pacs-server-strip');
+    this.serverCell.addEventListener('click', (): void => this.serverStrip_toggle());
+    this.serverCell_sync();
     this.provenance = element_query(root, '#pacs-provenance');
     this.run = element_query(root, '#pacs-run');
     // The control carries the intent; the line carries the command.
@@ -550,6 +565,15 @@ export class PacsPanel {
         cell: (row: StudyRow): string => row.study.modalities,
       },
       {
+        key: 'server',
+        label: 'SERVER',
+        className: 'pacs-study-server',
+        // A study says which PACS holds it. On a single-server answer that
+        // is the server the question was put to, which is still the fact —
+        // the column exists so the FORM has one to stand its field in.
+        cell: (row: StudyRow): string => row.study.server ?? this.model?.pacsName ?? '—',
+      },
+      {
         key: 'series',
         label: 'SERIES',
         className: 'pacs-study-count',
@@ -695,7 +719,139 @@ export class PacsPanel {
       const value: string = element_input(this.root, `#${id}`).value.trim();
       if (value.length > 0) terms.push(`${term}:${value}`);
     }
-    this.command.value = terms.length > 0 ? `pacs query ${terms.join(',')}` : '';
+    // One server is the session's context and needs no flag; several is a
+    // fan-out, which the line must say so the operator can read what will
+    // run before it runs.
+    const fanout: string = this.chosen.size > 1
+      ? ` --pacsserver ${[...this.chosen].join(',')}`
+      : '';
+    this.command.value = terms.length > 0 || fanout !== ''
+      ? `pacs query ${terms.join(',')}${fanout}`
+      : '';
+  }
+
+
+  /**
+   * Unfolds or retracts the strip of servers.
+   *
+   * The FILTER gesture, not a dropdown: LCARS has no popup layer and should
+   * not grow one, since a floating menu is exactly the window chrome the
+   * grammar rejects. The strip is a band of the pane's own width, which
+   * also means it carries thirteen servers where a grid track could not
+   * carry three.
+   *
+   * @param open - Force a state; omitted, it toggles.
+   */
+  private serverStrip_toggle(open?: boolean): void {
+    const nowOpen: boolean = open ?? this.serverStrip.hidden;
+    this.serverStrip.hidden = !nowOpen;
+    this.serverCell.classList.toggle('pacs-server-open', nowOpen);
+    if (nowOpen && this.servers.length === 0) this.servers_ask();
+    if (nowOpen) this.serverStrip_paint();
+  }
+
+  /** Whether the strip of servers is unfolded. */
+  public serverStrip_isOpen(): boolean {
+    return !this.serverStrip.hidden;
+  }
+
+  /** Retracts the strip — the field's touch, and Esc, both land here. */
+  public serverStrip_close(): void {
+    this.serverStrip_toggle(false);
+  }
+
+  /**
+   * Asks the session what PACS servers exist.
+   *
+   * Through the session's own `pacs list`, never CUBE directly: the session
+   * owns the connection, and a surface that reached around it would be
+   * reading a different CUBE from the one its commands run against.
+   */
+  private servers_ask(): void {
+    this.handlers.command_run('pacs list');
+  }
+
+  /** Takes the registered servers from an envelope and repaints. */
+  private servers_take(servers: ReadonlyArray<PacsServer>): void {
+    this.servers = servers;
+    // Painted whether or not the strip is showing: the answer can arrive
+    // after a retraction, and an unfolded-again strip must not have to ask
+    // twice for what it already has.
+    this.serverStrip_paint();
+    this.serverCell_sync();
+  }
+
+  /**
+   * Paints one segment per registered server, lit when chosen.
+   *
+   * There is no ALL. Thirteen registrations of unknown liveness would mean
+   * thousands of queries mostly into the void, and no control should imply
+   * that a sweep is a thing to press: a fan-out is always something the
+   * operator named.
+   */
+  private serverStrip_paint(): void {
+    this.serverStrip.replaceChildren();
+    if (this.servers.length === 0) {
+      this.serverStrip.appendChild(element_note('ASKING THE SESSION FOR REGISTERED SERVERS'));
+      return;
+    }
+    for (const server of this.servers) {
+      const segment: HTMLButtonElement = document.createElement('button');
+      segment.className = this.chosen.has(server.identifier)
+        ? 'pacs-server-segment pacs-server-chosen'
+        : 'pacs-server-segment';
+      segment.dataset['server'] = server.identifier;
+      segment.textContent = server.identifier;
+      if (server.active) segment.title = 'the session is connected to this server';
+      segment.addEventListener('click', (): void => this.server_choose(server.identifier));
+      this.serverStrip.appendChild(segment);
+    }
+  }
+
+  /**
+   * Includes or excludes one server.
+   *
+   * One chosen is a CONTEXT: it lowers to `pacs connect`, the session moves,
+   * and the linked terminal's prompt follows. Several is a QUERY: nothing
+   * moves and the line carries the fan-out. The prompt changing, or not, is
+   * the honest tell for which of the two just happened.
+   *
+   * @param identifier - The server's canonical identifier.
+   */
+  private server_choose(identifier: string): void {
+    if (this.chosen.has(identifier)) this.chosen.delete(identifier);
+    else this.chosen.add(identifier);
+    if (this.chosen.size === 1) {
+      const only: string = [...this.chosen][0] as string;
+      // Visible, not silent: moving the session is the operator's own act
+      // and belongs in the console where they can read it.
+      this.handlers.command_show(`pacs connect ${only}`);
+    }
+    this.serverStrip_paint();
+    this.serverCell_sync();
+    this.command_regenerate();
+  }
+
+  /**
+   * The cell reads its own state, as every mode block does.
+   *
+   * `PACSDCM` for one, `PACSDCM +2` for several, and the session's own
+   * server when nothing has been chosen — a control that says nothing about
+   * what it will do is a control an operator has to guess at.
+   */
+  private serverCell_sync(): void {
+    const chosen: string[] = [...this.chosen];
+    if (chosen.length === 0) {
+      const active: PacsServer | undefined = this.servers.find(
+        (server: PacsServer): boolean => server.active);
+      this.serverCell.textContent = active?.identifier ?? '—';
+      this.serverCell.classList.remove('pacs-server-many');
+      return;
+    }
+    this.serverCell.textContent = chosen.length === 1
+      ? (chosen[0] as string)
+      : `${chosen[0] as string} +${chosen.length - 1}`;
+    this.serverCell.classList.toggle('pacs-server-many', chosen.length > 1);
   }
 
   /**
@@ -781,6 +937,13 @@ export class PacsPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    if (envelope.model?.kind === PACS_SERVERS_MODEL_KIND) {
+      // What `pacs list` says, whoever asked it: the operator typing it in
+      // the console fills the strip exactly as the strip's own ask does.
+      const listed = pacsServersModelSchema.safeParse(envelope.model.data);
+      if (listed.success) this.servers_take(listed.data.servers);
+      return;
+    }
     if (envelope.model?.kind !== PACS_QUERY_MODEL_KIND) return;
     const parsed = pacsQueryModelSchema.safeParse(envelope.model.data);
     if (!parsed.success) return;

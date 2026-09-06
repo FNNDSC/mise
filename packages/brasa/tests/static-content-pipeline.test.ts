@@ -8,12 +8,34 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 const cacheGet = jest.fn();
 const clientGet = jest.fn();
 const stackPush = jest.fn();
+/**
+ * The contract accessors are stubbed over the same fake client shapes the
+ * real ones read: their own behaviour — exact-match lookup, and draining a
+ * parameter list past a page — is pinned in cumin's contract tests, where
+ * it belongs. What this file tests is the /bin path around them.
+ */
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok: (value: unknown) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
   items_get: (list: { getItems?: () => unknown[] } | null | undefined) => {
     const items = list?.getItems?.();
     return Array.isArray(items) ? items : [];
+  },
+  plugin_find: async (
+    client: { getPlugins: (params: unknown) => Promise<{ getItems: () => Array<Record<string, unknown>> }> },
+    name: string,
+    version: string,
+  ) => {
+    const page = await client.getPlugins({ name_exact: name, version, limit: 1 });
+    const resource = page.getItems()[0];
+    if (resource === undefined) return null;
+    return { data: resource.data, handle: resource };
+  },
+  pluginParameters_drain: async (
+    handle: { getPluginParameters: (params: unknown) => Promise<{ getItems: () => Array<{ data: unknown }> }> },
+  ) => {
+    const page = await handle.getPluginParameters({ limit: 100, offset: 0 });
+    return page.getItems().map((item: { data: unknown }) => item.data);
   },
   errorStack: {
     stack_push: stackPush,
@@ -100,7 +122,7 @@ describe('staticVfs_read other entries', () => {
     await expect(staticVfs_read('/bin/example-v1.0.0', '/bin')).resolves.toEqual({ ok: false });
     expect(stackPush).toHaveBeenCalledWith(
       'error',
-      'No active ChRIS connection to fetch plugin parameter specs',
+      'No active ChRIS connection to read a plugin.',
     );
   });
 
@@ -144,7 +166,7 @@ describe('staticVfs_read other entries', () => {
     expect(result.value).toContain('--input');
     expect(result.value).toContain('--count');
     expect(result.value).toContain('https://example.invalid/plugin');
-    expect(getPluginParameters).toHaveBeenCalledWith({ limit: 100 });
+    expect(getPluginParameters).toHaveBeenCalledWith({ limit: 100, offset: 0 });
   });
 
   it('reports unsupported prefixes and converts thrown errors', async () => {

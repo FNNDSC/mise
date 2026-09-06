@@ -136,6 +136,13 @@ export {
   type FeedListModel,
 } from './dag.js';
 export {
+  pluginParameterSchema,
+  pluginInfoModelSchema,
+  PLUGIN_INFO_MODEL_KIND,
+  type PluginParameter,
+  type PluginInfoModel,
+} from './plugin.js';
+export {
   pacsProvenanceSchema,
   pacsSeriesSchema,
   pacsStudySchema,

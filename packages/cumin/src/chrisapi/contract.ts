@@ -474,6 +474,34 @@ export interface ComputeResourceData {
 }
 
 /**
+ * Wire shape of one registered plugin row, as served by `getPlugins`.
+ *
+ * @property id - Plugin id.
+ * @property name - The plugin's registered name (`pl-dcm2niix`).
+ * @property version - Its registered version.
+ * @property type - `ds`, `fs` or `ts`: what the node consumes and produces.
+ * @property title - The human title, when the plugin declared one.
+ * @property authors - Declared authorship.
+ * @property description - What the plugin does.
+ * @property documentation - Where its source or docs live.
+ * @property category - The plugin's declared category.
+ * @property creation_date - ISO registration timestamp.
+ */
+export interface PluginData {
+  id?: number;
+  name?: string;
+  version?: string;
+  type?: string;
+  title?: string;
+  authors?: string;
+  description?: string;
+  documentation?: string;
+  category?: string;
+  creation_date?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Typed handle over one plugin detail resource (metadata surfaces only).
  */
 export interface PluginHandle {
@@ -604,6 +632,70 @@ function pluginHandle_wrap(resource: object): PluginHandle {
       );
     },
   };
+}
+
+/**
+ * One registered plugin resolved from CUBE: its row, and a handle onto the
+ * sub-collections that hang off it.
+ *
+ * @property data - The plugin's wire payload.
+ * @property handle - Typed access to its parameters and compute resources.
+ */
+export interface PluginFound {
+  data: PluginData;
+  handle: PluginHandle;
+}
+
+/**
+ * Fetches one registered plugin by exact name and version.
+ *
+ * @param client - Connected chrisapi client.
+ * @param name - Exact plugin name.
+ * @param version - Exact plugin version.
+ * @returns The plugin and a handle onto it, or null when CUBE has no such
+ *   plugin at that version.
+ * @throws {Error} Propagates chrisapi/network errors.
+ */
+export async function plugin_find(
+  client: Client,
+  name: string,
+  version: string,
+): Promise<PluginFound | null> {
+  const page: WirePage = await resource_call<WirePage>(client, 'getPlugins', {
+    name_exact: name,
+    version,
+    limit: 1,
+  });
+  const resources: Array<{ data?: unknown }> =
+    typeof page?.getItems === 'function'
+      ? items_get<{ data?: unknown }>(page as { getItems(): unknown })
+      : [];
+  const resource: { data?: unknown } | undefined = resources[0];
+  if (resource === undefined) return null;
+  const data: PluginData | null = itemData_get<PluginData>(resource);
+  if (data === null) return null;
+  return { data, handle: pluginHandle_wrap(resource) };
+}
+
+/**
+ * Reads every parameter a plugin declares, to exhaustion.
+ *
+ * A plugin's parameter list is the one collection a surface cannot ask
+ * twice about: a form built from a truncated list silently omits flags the
+ * plugin requires. The single-page `{ limit: 100 }` idiom this replaces lost
+ * the tail of any plugin with more, and said nothing.
+ *
+ * @param handle - A plugin handle.
+ * @returns Every declared parameter, in server order.
+ * @throws {Error} Propagates chrisapi/network errors.
+ */
+export async function pluginParameters_drain(
+  handle: PluginHandle,
+): Promise<PluginParameterData[]> {
+  return listPages_drain<PluginParameterData>(
+    (offset: number, limit: number): Promise<ListPage<PluginParameterData>> =>
+      handle.parametersPage_get({ limit, offset }),
+  );
 }
 
 /**

@@ -24,6 +24,14 @@ import { spinner } from '../../lib/spinner.js';
 import { errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { chili_capture, type ChiliCaptured } from '@fnndsc/chili/screen/output.js';
+import { PLUGIN_INFO_MODEL_KIND, type PluginInfoModel } from '@fnndsc/menu';
+import type { Result } from '@fnndsc/cumin';
+import {
+  pluginInfo_build,
+  pluginInfoText_render,
+  pluginSpecifier_parse,
+  type PluginSpecifier,
+} from './plugin.info.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
 
 /**
@@ -77,17 +85,57 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
          return envelope_ok(table_render(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Plugin fields', justification: 'center' } }));
        }
        return envelope_ok(`${chalk.gray('No fields found.')}\n`);
+    } else if (subcommand === 'info') {
+       return await pluginInfo_show(parsed._.slice(1));
     } else if (subcommand === 'search') {
        const query: string = parsed._[1] ?? '';
        return await builtin_plugin(['list', `--search`, query]);
     }
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: plugin <list|run|add|inspect|search>`)}\n`);
+    return envelope_error('', undefined, `${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: plugin <list|run|add|info|inspect|search>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`Plugin error: ${msg}`)}\n`);
   }
+}
+
+
+/**
+ * Shows one registered plugin: the manual on the terminal, the whole plugin
+ * on the wire.
+ *
+ * Spelled the way `/bin` spells it — `plugin info pl-dcm2niix-v1.0.0`, or the
+ * path itself — with `<name> <version>` accepted for an operator who has the
+ * two halves and not the entry name.
+ *
+ * @param words - The specifier: one `/bin` entry, or a name and a version.
+ * @returns An envelope carrying the manual and the `plugin.info` model.
+ */
+async function pluginInfo_show(words: string[]): Promise<CommandEnvelope> {
+  const entry: string | undefined = words[0];
+  if (entry === undefined) {
+    return envelope_ok(`${chalk.red('Usage: plugin info <name>-v<version> | <name> <version>')}\n`);
+  }
+  const version: string | undefined = words[1];
+  const specifier: PluginSpecifier | null = version === undefined
+    ? pluginSpecifier_parse(entry)
+    : { name: entry.replace(/^.*\//, ''), version, command: `${entry.replace(/^.*\//, '')}-v${version}` };
+  if (specifier === null) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`Not a versioned plugin entry: ${entry}. Spell it '<name>-v<version>'.`)}\n`);
+  }
+
+  const built: Result<PluginInfoModel> = await pluginInfo_build(specifier);
+  if (!built.ok) {
+    const problem: { message: string } | undefined = errorStack.stack_pop();
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'Plugin not found.')}\n`);
+  }
+  return envelope_ok(pluginInfoText_render(built.value), {
+    kind: PLUGIN_INFO_MODEL_KIND,
+    data: built.value,
+  });
 }
 
 /**

@@ -335,6 +335,7 @@ export class PacsPanel {
       if (event.key === 'Enter') this.query_run();
     });
     element_query(root, '#pacs-gather-save').addEventListener('click', (): void => this.manifest_save());
+    element_query(root, '#pacs-export').addEventListener('click', (): void => this.answer_export());
     element_query(root, '#pacs-gather-feed').addEventListener('click', (): void => this.feed_create());
   }
 
@@ -852,6 +853,29 @@ export class PacsPanel {
       ? (chosen[0] as string)
       : `${chosen[0] as string} +${chosen.length - 1}`;
     this.serverCell.classList.toggle('pacs-server-many', chosen.length > 1);
+  }
+
+
+  /**
+   * Writes the answer on stage into ChRIS storage as CSV.
+   *
+   * Visibly, in the console, as GATHER's SAVE already is: it lowers to the
+   * same `--csv-to` an operator could have typed, and the line says where
+   * the table went. A browser cannot be handed a file the engine wrote —
+   * the engine is on the daemon's host — so the answer lands in CFS, where
+   * the file browser and `download` can both reach it, and a cohort's MRNs
+   * stay inside ChRIS.
+   */
+  private answer_export(): void {
+    if (this.model === null) return;
+    const line: string = this.command.value.trim();
+    const stamp: string = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const destination: string = `~/audits/pacs-${stamp}.csv`;
+    // The query is re-asked, which costs nothing an operator can feel: the
+    // answer on stage was itself replayed, and every row of it is filed.
+    const base: string = line === '' ? `pacs query ${this.model.expression}` : line;
+    this.handlers.command_run('mkdir ~/audits');
+    this.handlers.command_show(`${base} --csv-to ${destination}`);
   }
 
   /**

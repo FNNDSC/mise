@@ -416,6 +416,11 @@
                   <span class="pacs-gather-title">GATHER</span>
                   <input id="pacs-gather-name" placeholder="cohort name" autocomplete="off" />
                   <button id="pacs-gather-save" class="pacs-capsule" title="write ~/gather/&lt;name&gt; manifest">SAVE</button>
+                  <!-- The answer as a table a spreadsheet reads. It lands
+                       in CFS, not on the machine the browser happens to be
+                       running on: the engine is elsewhere, and a redirect
+                       would write somebody else's disk. -->
+                  <button id="pacs-export" class="pacs-capsule" title="write the answer as CSV into ChRIS storage">EXPORT CSV</button>
                   <button id="pacs-gather-feed" class="pacs-capsule" title="create a feed rooted on the cohort">CREATE FEED</button>
                 </div>
                 <div id="pacs-gather-rows"></div>

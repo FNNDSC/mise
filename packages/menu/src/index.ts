@@ -136,11 +136,13 @@ export {
   type FeedListModel,
 } from './dag.js';
 export {
+  pacsProvenanceSchema,
   pacsSeriesSchema,
   pacsStudySchema,
   pacsQueryModelSchema,
   PACS_QUERY_MODEL_KIND,
   type PacsSeries,
   type PacsStudy,
+  type PacsProvenance,
   type PacsQueryModel,
 } from './pacs.js';

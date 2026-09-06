@@ -26,6 +26,7 @@
 import {
   pacsQueryModelSchema,
   PACS_QUERY_MODEL_KIND,
+  type PacsProvenance,
   type PacsQueryModel,
   type PacsSeries,
   type PacsStudy,
@@ -110,6 +111,42 @@ const BADGE_TEXT: Readonly<Record<string, string>> = {
   idle: 'NOT RETRIEVED',
 };
 
+/** What re-asking lowers to. */
+const FRESH_FLAG: string = '--fresh';
+
+/** Matches the flag anywhere on the line, so it is never doubled. */
+const FRESH_FLAG_PATTERN: RegExp = /\s*--fresh\b/;
+
+/**
+ * How long ago something was, in the coarsest true unit.
+ *
+ * The elapsed time is the half an operator acts on — three months reaches
+ * for RE-QUERY where four hours does not — while the date beside it is the
+ * half worth quoting into a note. Neither is a judgement the surface makes.
+ *
+ * @param at - An ISO timestamp.
+ * @returns A phrase like `3 MONTHS AGO`, or null when the stamp is unusable.
+ */
+function elapsed_describe(at: string): string | null {
+  const then: number = Date.parse(at);
+  if (Number.isNaN(then)) return null;
+  const seconds: number = Math.max(0, Math.round((Date.now() - then) / 1000));
+  const units: ReadonlyArray<{ limit: number; size: number; name: string }> = [
+    { limit: 60, size: 1, name: 'SECOND' },
+    { limit: 3600, size: 60, name: 'MINUTE' },
+    { limit: 86400, size: 3600, name: 'HOUR' },
+    { limit: 2592000, size: 86400, name: 'DAY' },
+    { limit: 31536000, size: 2592000, name: 'MONTH' },
+    { limit: Infinity, size: 31536000, name: 'YEAR' },
+  ];
+  for (const unit of units) {
+    if (seconds >= unit.limit) continue;
+    const count: number = Math.max(1, Math.floor(seconds / unit.size));
+    return `${count} ${unit.name}${count === 1 ? '' : 'S'} AGO`;
+  }
+  return null;
+}
+
 /**
  * A study keeps its place and opens its series inside it.
  *
@@ -146,7 +183,13 @@ export class PacsPanel {
   private readonly expansion: Expansion = { mode: STUDY_EXPANSION, open: new Set<string>() };
   private readonly filterPill: HTMLElement | null;
   private readonly stateSpan: HTMLElement | null;
+  /** Says when an answer was answered, when it was not answered just now. */
+  private readonly provenance: HTMLElement;
+  /** QUERY, or RE-QUERY while a replayed answer is on stage. */
+  private readonly run: HTMLElement;
   private model: PacsQueryModel | null = null;
+  /** Whether the answer on stage came from a stored query. */
+  private replayed: boolean = false;
 
   /**
    * @param root - The `#pacs-workspace` element.
@@ -230,7 +273,10 @@ export class PacsPanel {
         }
       });
     }
-    element_query(root, '#pacs-run').addEventListener('click', (): void => this.query_run());
+    this.provenance = element_query(root, '#pacs-provenance');
+    this.run = element_query(root, '#pacs-run');
+    // The control carries the intent; the line carries the command.
+    this.run.addEventListener('click', (): void => this.query_run(this.replayed));
     this.command.addEventListener('keydown', (event: KeyboardEvent): void => {
       if (event.key === 'Enter') this.query_run();
     });
@@ -435,13 +481,57 @@ export class PacsPanel {
     this.command.value = terms.length > 0 ? `pacs query ${terms.join(',')}` : '';
   }
 
-  /** Runs the command line as edited. */
-  private query_run(): void {
+  /**
+   * Runs the command line as edited.
+   *
+   * Only pressing RE-QUERY adds `--fresh`, and it is written into the
+   * visible line before it runs. Enter on the command line runs the line
+   * exactly as it reads — the pane's whole claim is that the line is what
+   * runs, and silently appending a flag to it because the pane happens to
+   * be showing a replay would make that claim false.
+   *
+   * @param fresh - True when the operator asked to bypass the stored answer.
+   */
+  private query_run(fresh: boolean = false): void {
+    if (fresh && !FRESH_FLAG_PATTERN.test(this.command.value)) {
+      this.command.value = `${this.command.value.trim()} ${FRESH_FLAG}`;
+    }
     const line: string = this.command.value.trim();
     if (line.length === 0) return;
     this.model = null;
     this.host.field_open().appendChild(this.waiting_build());
     this.handlers.command_run(line);
+  }
+
+  /**
+   * Says where the answer on stage came from, and what the control does next.
+   *
+   * A fresh answer has no pill: the absence is the statement. A replayed
+   * one names the date — the fact worth quoting — and the elapsed time,
+   * which is the judgement worth acting on, and the control becomes the
+   * thing that would replace it.
+   *
+   * @param provenance - The model's provenance, when it carries one.
+   */
+  private provenance_show(provenance: PacsProvenance | undefined): void {
+    this.replayed = provenance?.replayed === true;
+    this.run.textContent = this.replayed ? 'RE-QUERY' : 'QUERY';
+    this.run.classList.toggle('pacs-capsule-requery', this.replayed);
+    this.provenance.hidden = !this.replayed;
+    if (!this.replayed) {
+      this.provenance.textContent = '';
+      // The line and the control must agree: once the answer is fresh,
+      // a further press means what QUERY means.
+      this.command.value = this.command.value.replace(FRESH_FLAG_PATTERN, '').trimEnd();
+      return;
+    }
+    const at: string = provenance?.answeredAt ?? '';
+    const elapsed: string | null = elapsed_describe(at);
+    const day: string = at.slice(0, 10);
+    this.provenance.textContent = elapsed === null
+      ? `RESULTS ${day}`
+      : `RESULTS ${day} · ${elapsed}`;
+    this.provenance.title = at;
   }
 
   /**
@@ -603,6 +693,7 @@ export class PacsPanel {
   private results_render(model: PacsQueryModel): void {
     const sameQuery: boolean = this.model !== null && this.model.queryId === model.queryId;
     this.model = model;
+    this.provenance_show(model.provenance);
     if (!sameQuery) {
       this.expansion.open.clear();
       this.badgeStates.clear();

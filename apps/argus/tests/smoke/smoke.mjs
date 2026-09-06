@@ -765,6 +765,49 @@ try {
       study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
       const descending = names().join('|');
       return { studies: 1, rows: names().length, before, ascending, descending, caps, track, verbs, lit, accession };`);
+    // An answer that was not fetched now says when it was, and the control
+    // reads as what it will do next.
+    const pacsProvenance = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(500);
+      const ws = document.getElementById('pacs-workspace');
+      const pill = () => ws.querySelector('#pacs-provenance');
+      const run = () => ws.querySelector('#pacs-run');
+      const cmd = () => ws.querySelector('#pacs-command');
+      const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
+      // A previous scenario's answer is still on stage, so waiting for
+      // studies to EXIST would sample the old one. Wait for this query to
+      // clear the field, then for its own answer to land.
+      const answer_await = async () => {
+        for (let i = 0; i < 60; i++) { await sleep(100);
+          if (document.querySelector('#pacs-results .pacs-waiting')) break; }
+        for (let i = 0; i < 240; i++) { await sleep(1000); if (studies() > 0) break; }
+        await sleep(2500);
+      };
+      cmd().value = ${JSON.stringify(pacsQuery)};
+      cmd().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await answer_await();
+      const shown = !pill().hidden;
+      const text = pill().textContent.trim();
+      const label = run().textContent.trim();
+      const deeper = run().classList.contains('pacs-capsule-requery');
+      // Re-asking must put the flag in the line the operator can read.
+      run().click(); await sleep(300);
+      const line = cmd().value;
+      await answer_await();
+      return { shown, text, label, deeper, line, studies: studies(),
+        clearedPill: pill().hidden, clearedLabel: run().textContent.trim(),
+        clearedLine: cmd().value };`);
+    check('a replayed answer says when it was answered, and the control reads RE-QUERY',
+      pacsProvenance.shown === true && /^RESULTS \d{4}-\d{2}-\d{2}/.test(pacsProvenance.text)
+      && / AGO$/.test(pacsProvenance.text)
+      && pacsProvenance.label === 'RE-QUERY' && pacsProvenance.deeper === true,
+      JSON.stringify(pacsProvenance));
+    check('RE-QUERY lowers to --fresh in the visible line, and a fresh answer clears the pill',
+      / --fresh$/.test(pacsProvenance.line) && pacsProvenance.clearedPill === true
+      && pacsProvenance.clearedLabel === 'QUERY'
+      && !/--fresh/.test(pacsProvenance.clearedLine),
+      JSON.stringify(pacsProvenance));
+
     check('a study heads its series with caps, a summed track, and verbs',
       pacsSort.studies === 1 && pacsSort.caps >= 4 && pacsSort.track === true && pacsSort.verbs === true
       && pacsSort.accession.length > 0,

@@ -138,7 +138,7 @@ export async function pacsQuery_createAndWait(
   // since it is who just asked.
   const ownerUsername: string | undefined =
     (typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined)
-    ?? (await chrisContext.current_get(Context.ChRISuser)) ?? undefined;
+    ?? (await askingIdentity_get()) ?? undefined;
   const vfsPath: string = queryVfsPath_build(queryId, queryObj, ownerUsername);
   const deadline: number = Date.now() + QUERY_TIMEOUT_MS;
 
@@ -440,6 +440,22 @@ async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
 
 
 /**
+ * Who is asking, as the index keys it.
+ *
+ * `current_get(ChRISuser)` reads a per-session context snapshot, and a
+ * surface attached to a running calypso does not necessarily have one —
+ * which silently keyed every lookup under an empty owner and made the
+ * whole stored back-catalogue unreachable from argus while chell found it
+ * perfectly. `ChRISuser_get` reads the authenticated login instead, which
+ * is the same thing the sweep files records under.
+ *
+ * @returns The CUBE username, or an empty string when nobody is logged in.
+ */
+async function askingIdentity_get(): Promise<string> {
+  return (await chrisContext.ChRISuser_get()) ?? '';
+}
+
+/**
  * What each way of naming a server resolves to. Server identifiers do not
  * change under a session, and this is on the path of every query.
  */
@@ -607,7 +623,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // The index is keyed on what CUBE stores, which is the identifier.
   const identifier: string = await pacsIdentifier_resolve(pacsserver);
   const criteria: Record<string, string> = queryExpr_parse(queryExpr) ?? {};
-  const owner: string = (await chrisContext.current_get(Context.ChRISuser)) ?? '';
+  const owner: string = await askingIdentity_get();
 
   let result: QueryCreateResult | null = null;
   let answeredAt: string | null = null;

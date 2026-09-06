@@ -368,7 +368,12 @@
                 <label data-key="accession">ACCESSION <input id="pacs-f-accession" autocomplete="off" /></label>
                 <label data-key="modality">MODALITY <input id="pacs-f-modality" autocomplete="off" /></label>
                 <span class="pacs-form-blank" data-key="series"></span>
-                <span class="pacs-form-blank" data-key="progress"></span>
+                <!-- An answer that was not fetched now says when it was.
+                     PROGRESS is where how-this-came-about belongs, and it
+                     sits immediately left of the control that re-asks. -->
+                <span class="pacs-form-blank" data-key="progress">
+                  <span id="pacs-provenance" class="pacs-provenance" hidden></span>
+                </span>
                 <button id="pacs-run" class="pacs-capsule">QUERY</button>
               </div>
               <div id="pacs-commandline">

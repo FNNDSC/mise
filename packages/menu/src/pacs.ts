@@ -63,6 +63,67 @@ export const pacsProvenanceSchema = z.object({
   answeredAt: z.string(),
 });
 
+
+/**
+ * What became of one patient in a query.
+ *
+ * Three states, not two. A query that could not be asked is not a query
+ * that found nothing: rendering a timeout as `0` is exactly the confident
+ * stale answer the replay work exists to refuse. The MRNs that come back
+ * are by definition the ones WITH imaging, which makes the answer an
+ * operator usually wants — the ones without — the invisible half unless
+ * absence is a state the model can say.
+ */
+export const PACS_PATIENT_STATUSES = ['found', 'none', 'unasked'] as const;
+
+/**
+ * Open-world, degrading to `unasked`.
+ *
+ * A status this contract does not know is one this surface cannot claim an
+ * answer for, and `unasked` is the only degrade that never reads as a
+ * confident zero.
+ */
+export const pacsPatientStatusSchema = z.enum(PACS_PATIENT_STATUSES).catch('unasked');
+
+/**
+ * One patient the query asked about — found, empty-handed, or unreachable.
+ *
+ * The studies themselves stay where they are, on the model, each carrying
+ * its own `patientId`. This level is not a container for them; it is the
+ * record of what was ASKED, which is why it exists at all: a miss owns no
+ * study, so a level derived from the studies could never mention it.
+ */
+export const pacsPatientSchema = z.object({
+  /** The identifier as the operator asked it, never normalized. */
+  patientId: z.string(),
+  /** The name the PACS answered with, when it answered at all. */
+  patientName: z.string().optional(),
+  status: pacsPatientStatusSchema,
+  /** How many studies this patient owns in the answer; 0 for a miss. */
+  studyCount: z.number(),
+  /** How many series across those studies; 0 for a miss. */
+  seriesCount: z.number(),
+  /**
+   * The CUBE query that answered for this patient. A cohort is N queries,
+   * so the id belongs per row rather than on the model.
+   */
+  queryId: z.number().optional(),
+  /**
+   * Where this row's answer came from. A fan-out replays some rows and
+   * troubles the PACS for others, so provenance is per patient as well as
+   * per answer.
+   */
+  provenance: pacsProvenanceSchema.optional(),
+  /**
+   * Why a patient went unasked, when something said why.
+   *
+   * Carried so a surface can name the failure rather than showing an
+   * unexplained dash; never set for `found` or `none`, where there is
+   * nothing to explain.
+   */
+  error: z.string().optional(),
+});
+
 /**
  * The `pacs.query` model: one query's decoded result. `vfsPath` is where the
  * query lives under `/net/pacs/queries` — a query is a persistent CUBE
@@ -80,9 +141,19 @@ export const pacsQueryModelSchema = z.object({
    * which is what such a daemon could only ever have meant.
    */
   provenance: pacsProvenanceSchema.optional(),
+  /**
+   * Every patient the query asked about, hits and misses alike.
+   *
+   * Optional, like `provenance`: an envelope from a daemon that predates
+   * the fan-out still parses, and a surface reads its absence as the
+   * single-question case it could only have been.
+   */
+  patients: z.array(pacsPatientSchema).optional(),
 });
 
 export type PacsProvenance = z.infer<typeof pacsProvenanceSchema>;
+export type PacsPatientStatus = z.infer<typeof pacsPatientStatusSchema>;
+export type PacsPatient = z.infer<typeof pacsPatientSchema>;
 export type PacsSeries = z.infer<typeof pacsSeriesSchema>;
 export type PacsStudy = z.infer<typeof pacsStudySchema>;
 export type PacsQueryModel = z.infer<typeof pacsQueryModelSchema>;

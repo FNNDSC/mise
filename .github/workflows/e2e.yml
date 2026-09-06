@@ -52,9 +52,9 @@ jobs:
           npm ci
           npm run build
           npm run exemplars:build --workspace @fnndsc/chell
-      # Exemplars 03, 04 and 09 need PACS fixtures; they self-skip with exit
-      # 2 when those are not configured, so a CUBE without a PACS (e.g. the
-      # public instance) still runs the rest.
+      # Exemplars 03, 04, 09 and 11 need PACS fixtures; they self-skip with
+      # exit 2 when those are not configured, so a CUBE without a PACS (e.g.
+      # the public instance) still runs the rest.
       - name: TS exemplars
         working-directory: packages/chell
         run: |
@@ -70,6 +70,7 @@ jobs:
           node exemplars/ts/dist/06_wireRoundtrip.js
           node exemplars/ts/dist/09_pacsReplay.js || [ $? -eq 2 ]
           node exemplars/ts/dist/10_pluginModel.js
+          node exemplars/ts/dist/11_pacsCohort.js || [ $? -eq 2 ]
       # Residue-free chell scripts only: 20 pulls PACS files that need
       # admin cleanup outside chell, so it stays a manual exemplar.
       - name: chell scripts

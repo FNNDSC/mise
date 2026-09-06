@@ -1136,7 +1136,10 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
 
   if (asks.length > 1) {
     return await cohort_answer(asks, {
-      title, pacsserver, owner, fresh, csv, csvTo,
+      // The model names the server the way CUBE does. `--pacsserver 1` and
+      // `--pacsserver PACSDCM` are the same server, and a table that says
+      // "1" tells an operator nothing about which PACS answered.
+      title, pacsserver: identifier, owner, fresh, csv, csvTo,
       expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
     });
   }
@@ -1193,7 +1196,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   const model: PacsQueryModel = pacsQueryModel_build(result.decoded, {
     queryId: result.queryId,
     vfsPath: result.vfsPath,
-    pacsName: pacsserver,
+    pacsName: identifier,
     expression: askExpr,
     provenance: {
       replayed: answeredAt !== null,

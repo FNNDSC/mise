@@ -605,6 +605,8 @@ export const helpText: Record<string, CommandHelp> = {
     options: [
       '--title <title>      Title for the query record (default: Query <timestamp>)',
       '--pacsserver <id>    Override PACS server (default: context PACSserver)',
+      '--patients <list>    Ask after several patients: MRNs comma-separated, or @<cfs-file>',
+      '                     (one MRN per line; blanks and # comments ignored)',
       '--table              Render results as a table instead of the default list',
       '--fresh              Ask the PACS even if this question was answered before',
       '--help               Show this help',
@@ -1122,7 +1124,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   query: {
-    usage: 'query <Key:Value[,Key:Value...]> [--title <title>] [--pacsserver <id>] [--fresh]',
+    usage: 'query <Key:Value[,Key:Value...]> [--patients <list|@cfs-file>] [--title <title>] [--pacsserver <id>] [--fresh]',
     description: 'Create a PACS query, wait for results, and print the VFS path',
     options: [
       '--title <title>      Title for the query record (default: Query <timestamp>)',
@@ -1136,6 +1138,11 @@ export const helpText: Record<string, CommandHelp> = {
       'query PatientID:1234 --fresh           # ignore the stored answer',
       'query AccessionNumber:12345678 --title "Hip DDH workup"',
       'query PatientID:1234,StudyDate:20240101',
+      '',
+      '# A PACS matches one patient at a time, so several MRNs is several queries',
+      'query PatientID:1234,4532,6654         # three questions, one table',
+      'query --patients @~/cohorts/ddh.txt    # a cohort from a file in ChRIS',
+      'query StudyDate:20240101 --patients 1234,4532   # narrowed, per patient',
       '',
       '# Use output path directly with pull',
       'pull $(query PatientID:1234 | grep "VFS path" | awk \'{print $3}\')',

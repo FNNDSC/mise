@@ -96,6 +96,11 @@ const mockListCheckpointRestore = jest.fn<() => Promise<{ restored: boolean; cou
   async () => ({ restored: false, count: 0, reason: 'no listing checkpoint' }),
 );
 
+const mockQueryIndexRestore = jest.fn<(identity: string) => Promise<{ restored: boolean; count: number; reason?: string }>>(
+  async () => ({ restored: false, count: 0, reason: 'no query index' }),
+);
+const mockQueryIndexSave = jest.fn<(identity: string) => Promise<void>>(async () => undefined);
+
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   chrisContext: { ChRISURL_get: jest.fn(async () => 'https://cube.example.org/api/v1/') },
   errorStack: {
@@ -117,8 +122,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   procCheckpoint_restore: mockCheckpointRestore,
   listCheckpoint_restore: mockListCheckpointRestore,
   listCheckpoint_watch: jest.fn(() => (): void => undefined),
-  queryIndexCheckpoint_restore: jest.fn(async () => ({ restored: false, count: 0, reason: 'no query index' })),
-  queryIndexCheckpoint_save: jest.fn(async () => undefined),
+  queryIndexCheckpoint_restore: mockQueryIndexRestore,
+  queryIndexCheckpoint_save: mockQueryIndexSave,
   queryIndexCheckpoint_watch: jest.fn(() => (): void => undefined),
   queryIndex_sweep: jest.fn(async () => ({ ok: true, value: { indexed: 0, pages: 1, bounded: false } })),
   listCache_get: jest.fn(() => ({
@@ -138,7 +143,12 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   hostControl_describe: (): string => '',
 }));
 
-const { daemonSession_run, startupWarmup_run } = await import('../src/core/startupWarmup.js');
+const {
+  daemonSession_run,
+  startupWarmup_run,
+  queryCheckpoint_flush,
+  queryCheckpoint_prime,
+} = await import('../src/core/startupWarmup.js');
 
 describe('daemonSession_run', () => {
   beforeEach(() => {
@@ -596,5 +606,45 @@ describe('daemonSession_run', () => {
 
     expect(report).toHaveBeenCalledWith('skip', 'Feeds', 'No user context');
     expect(mockPrefetchPath).toHaveBeenCalledWith('/PUBLIC');
+  });
+});
+
+describe('the replay index in a run with no warm-up', () => {
+  // `chell -c` skips the boot warm-up, correctly — but skipping the replay
+  // index with it meant a scripted cohort re-asked the PACS every time,
+  // which is the one workflow the fan-out exists for.
+  beforeEach((): void => {
+    jest.clearAllMocks();
+    mockSession.offline = false;
+  });
+
+  it('restores what a previous run already paid to build', async () => {
+    await queryCheckpoint_prime('chris');
+    expect(mockQueryIndexRestore).toHaveBeenCalledWith('chris@https://cube.example.org/api/v1/');
+  });
+
+  it('writes what this run learned, since the debounced writer never fires', async () => {
+    await queryCheckpoint_prime('chris');
+    await queryCheckpoint_flush();
+    expect(mockQueryIndexSave).toHaveBeenCalledWith('chris@https://cube.example.org/api/v1/');
+  });
+
+  it('does nothing without an identity to key the index by', async () => {
+    await queryCheckpoint_prime(undefined);
+    expect(mockQueryIndexRestore).not.toHaveBeenCalled();
+  });
+
+  it('does nothing offline, where there is no CUBE to have asked', async () => {
+    mockSession.offline = true;
+    await queryCheckpoint_prime('chris');
+    expect(mockQueryIndexRestore).not.toHaveBeenCalled();
+  });
+
+  // Nothing an operator asked for failed if the index could not be kept.
+  it('stays silent when the checkpoint cannot be read or written', async () => {
+    mockQueryIndexRestore.mockRejectedValueOnce(new Error('disk full'));
+    await expect(queryCheckpoint_prime('chris')).resolves.toBeUndefined();
+    mockQueryIndexSave.mockRejectedValueOnce(new Error('disk full'));
+    await expect(queryCheckpoint_flush()).resolves.toBeUndefined();
   });
 });

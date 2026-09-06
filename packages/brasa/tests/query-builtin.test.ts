@@ -19,7 +19,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   series_extractFromStudy: jest.fn(() => []),
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
-  errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll },
+  errorStack: { stack_push: mockPush, stack_pop: mockPop, stack_getAll: mockGetAll, checkpoint_mark: jest.fn(() => 1), checkpoint_drain: jest.fn(() => []) },
+  Ok: (value: unknown) => ({ ok: true, value }),
+  Err: () => ({ ok: false }),
   chrisContext: { current_get: mockCurrentGet, ChRISuser_get: mockUserGet },
   Context: { PACSserver: 'PACSserver', ChRISuser: 'ChRISuser' },
   pacsQuery_get: mockQueryGet,
@@ -362,5 +364,136 @@ describe('replay', () => {
     mockDecode.mockResolvedValue(ok({ json: [{ uid: 'fresh' }] }));
     await builtin_query(['PatientID:X']);
     expect(mockCreate).toHaveBeenCalled();
+  });
+});
+
+describe('a cohort', () => {
+  /** Serves each created query a distinct id, and records the load. */
+  function pacs_stub(options: {
+    /** MRNs whose create should fail, as a PACS that could not be reached. */
+    unreachable?: Set<string>;
+    /** MRNs the PACS answers with nothing. */
+    empty?: Set<string>;
+  } = {}): { peak: () => number; asked: () => string[] } {
+    let nextId: number = 100;
+    let active: number = 0;
+    let peak: number = 0;
+    const asked: string[] = [];
+    const idFor: Map<number, string> = new Map();
+    mockCreate.mockImplementation(async (_server: unknown, payload: unknown) => {
+      const criteria = JSON.parse((payload as { query: string }).query) as Record<string, string>;
+      const mrn: string = criteria.PatientID ?? '';
+      asked.push(mrn);
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      if (options.unreachable?.has(mrn)) return err();
+      const id: number = nextId++;
+      idFor.set(id, mrn);
+      return ok({ id, owner_username: 'chris' });
+    });
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockImplementation(async (queryId: number) => {
+      const mrn: string | undefined = idFor.get(queryId);
+      if (mrn !== undefined && options.empty?.has(mrn)) return ok({ json: [] });
+      return ok({ json: [{ ...studyPayload[0], PatientID: mrn ?? '' }] });
+    });
+    return { peak: (): number => peak, asked: (): string[] => asked };
+  }
+
+  /** The patient rows of the envelope's model. */
+  function patients_of(envelope: unknown): Array<Record<string, unknown>> {
+    const model = (envelope as { model?: { data?: { patients?: Array<Record<string, unknown>> } } }).model;
+    return model?.data?.patients ?? [];
+  }
+
+  it('asks one question per MRN and answers with a row for each', async () => {
+    const load = pacs_stub();
+    const envelope = await builtin_query(['--patients', '1234,4532,6654']);
+    expect(load.asked().sort()).toEqual(['1234', '4532', '6654']);
+    const patients = patients_of(envelope);
+    expect(patients.map((patient) => patient.patientId)).toEqual(['1234', '4532', '6654']);
+    expect(patients.every((patient) => patient.status === 'found')).toBe(true);
+  });
+
+  it('reads the operator\'s inline comma list as the same cohort', async () => {
+    const load = pacs_stub();
+    await builtin_query(['PatientID:1234,4532']);
+    expect(load.asked().sort()).toEqual(['1234', '4532']);
+  });
+
+  // Not operator-settable: a flag that can hurt a shared clinical system
+  // will eventually be set to fifty.
+  it('never has more than four questions in flight', async () => {
+    const load = pacs_stub();
+    await builtin_query(['--patients', '1,2,3,4,5,6,7,8,9,10,11,12']);
+    expect(load.asked()).toHaveLength(12);
+    expect(load.peak()).toBeLessThanOrEqual(4);
+    expect(load.peak()).toBeGreaterThan(1);
+  });
+
+  // A server that timed out has told us nothing; a PACS that answered with
+  // nothing has told us something, and a clinician acts on the difference.
+  it('distinguishes a miss from a question that could not be asked', async () => {
+    pacs_stub({ empty: new Set(['4532']), unreachable: new Set(['6654']) });
+    const envelope = await builtin_query(['--patients', '1234,4532,6654']);
+    const byId = new Map(patients_of(envelope).map((patient) => [patient.patientId, patient]));
+    expect(byId.get('1234')?.status).toBe('found');
+    expect(byId.get('4532')?.status).toBe('none');
+    expect(byId.get('4532')?.studyCount).toBe(0);
+    expect(byId.get('6654')?.status).toBe('unasked');
+    // A failure never reads as a zero, and it says what happened.
+    expect(byId.get('6654')?.queryId).toBeUndefined();
+    expect(typeof byId.get('6654')?.error).toBe('string');
+  });
+
+  it('counts what it found, what it did not, and what it could not ask', async () => {
+    pacs_stub({ empty: new Set(['4532']), unreachable: new Set(['6654']) });
+    const envelope = await builtin_query(['--patients', '1234,4532,6654']);
+    const rendered: string = (envelope as { rendered: string }).rendered;
+    expect(rendered).toContain('FOUND 1');
+    expect(rendered).toContain('NONE 1');
+    expect(rendered).toContain('UNASKED 1');
+  });
+
+  it('replays the MRNs already asked and troubles the PACS only for the rest', async () => {
+    const load = pacs_stub();
+    mockIndexFind.mockImplementation((criteria: Record<string, string>) =>
+      criteria.PatientID === '1234'
+        ? { queryId: 77, criteria, owner: 'chris', hasResult: true, answeredAt: '2026-06-14T09:22:00.000Z' }
+        : null);
+    const envelope = await builtin_query(['--patients', '1234,4532']);
+    // The replayed MRN never reached the PACS.
+    expect(load.asked()).toEqual(['4532']);
+    const byId = new Map(patients_of(envelope).map((patient) => [patient.patientId, patient]));
+    expect((byId.get('1234')?.provenance as { replayed?: boolean } | undefined)?.replayed).toBe(true);
+    expect((byId.get('4532')?.provenance as { replayed?: boolean } | undefined)?.replayed).toBe(false);
+  });
+
+  it('reports the whole command as failed only when nothing could be asked', async () => {
+    pacs_stub({ unreachable: new Set(['1234', '4532']) });
+    const envelope = await builtin_query(['--patients', '1234,4532']);
+    expect((envelope as { status: string }).status).toBe('error');
+    // The model still crosses: which MRNs went unasked is the useful part.
+    expect(patients_of(envelope)).toHaveLength(2);
+  });
+
+  it('refuses a cross-product that would launch hundreds', async () => {
+    pacs_stub();
+    const many: string = Array.from({ length: 40 }, (_unused, index) => String(index)).join(',');
+    const envelope = await builtin_query([`PatientID:${many}`]);
+    expect((envelope as { status: string }).status).toBe('error');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('narrows every question in the cohort by the terms given alongside it', async () => {
+    pacs_stub();
+    await builtin_query(['StudyDate:20240101', '--patients', '1234,4532']);
+    const sent = mockCreate.mock.calls.map((call) => JSON.parse((call[1] as { query: string }).query));
+    expect(sent).toEqual([
+      { StudyDate: '20240101', PatientID: '1234' },
+      { StudyDate: '20240101', PatientID: '4532' },
+    ]);
   });
 });

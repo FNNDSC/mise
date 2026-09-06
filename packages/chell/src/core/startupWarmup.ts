@@ -238,6 +238,57 @@ function restoreAge_describe(): string {
   return `, oldest ${Math.floor(hours / 24)} day(s)`;
 }
 
+
+/**
+ * The identity whose checkpoints this process may write, once a boot has
+ * restored them.
+ */
+let flushIdentity: string | null = null;
+
+
+/**
+ * Restores the PACS replay index for a run that has no warm-up.
+ *
+ * `chell -c` and `chell -f` skip the boot warm-up entirely — the right call
+ * for a one-shot, which should not walk a CUBE to answer one command. But
+ * it left the replay index neither restored nor written, so a scripted
+ * cohort re-asked the PACS every single time, and the audit workflow the
+ * fan-out exists for was the one workflow replay never reached.
+ *
+ * Restoring is a file read of what a previous run already paid for; no
+ * sweep, no CUBE call, no watcher — the flush at exit does the writing.
+ *
+ * @param user - The authenticated user, when there is one.
+ */
+export async function queryCheckpoint_prime(user: string | undefined): Promise<void> {
+  if (session.offline || user === undefined) return;
+  const cubeUrl: string | null = await chrisContext.ChRISURL_get();
+  if (cubeUrl === null) return;
+  const identity: string = identity_forSession(user, cubeUrl);
+  flushIdentity = identity;
+  await queryIndexCheckpoint_restore(identity).catch((): QueryIndexRestoreResult => (
+    { restored: false, count: 0 }
+  ));
+}
+
+/**
+ * Writes what this run learned about prior PACS queries, now.
+ *
+ * The checkpoint's own writer is debounced and its timer is unref'd, so a
+ * one-shot `chell -c` exits before it fires — which meant a cohort asked by
+ * a script was re-asked in full by the next script, the replay saving
+ * nothing across exactly the boundary an audit workflow runs on. A
+ * process that is about to exit flushes instead of hoping.
+ *
+ * Silent by design: nothing an operator asked for failed if this write did.
+ */
+export async function queryCheckpoint_flush(): Promise<void> {
+  if (flushIdentity === null) return;
+  await queryIndexCheckpoint_save(flushIdentity).catch((): void => {
+    /* the index rebuilds itself from CUBE on the next boot */
+  });
+}
+
 /**
  * Warms startup caches and begins non-blocking job-topology warming.
  *
@@ -281,6 +332,7 @@ export async function startupWarmup_run(
     if (cubeUrl) {
       const identity: string = identity_forSession(user, cubeUrl);
       checkpointIdentity = identity;
+      flushIdentity = identity;
       const listings: ListCheckpointRestoreResult = await listCheckpoint_restore(identity);
       listCheckpoint_watch(identity);
       reporter?.log(

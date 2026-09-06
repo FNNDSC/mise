@@ -144,6 +144,9 @@ export {
 } from './plugin.js';
 export {
   pacsProvenanceSchema,
+  pacsPatientSchema,
+  pacsPatientStatusSchema,
+  PACS_PATIENT_STATUSES,
   pacsSeriesSchema,
   pacsStudySchema,
   pacsQueryModelSchema,
@@ -151,5 +154,7 @@ export {
   type PacsSeries,
   type PacsStudy,
   type PacsProvenance,
+  type PacsPatient,
+  type PacsPatientStatus,
   type PacsQueryModel,
 } from './pacs.js';

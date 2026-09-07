@@ -4,10 +4,10 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import * as readline from 'readline';
 import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
 import { path_resolve } from '../utils.js';
+import { repl_confirm } from '../../core/question.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { rm_render } from '@fnndsc/chili/views/fs.js';
 import { sink_get } from '../../core/sink.js';
@@ -19,18 +19,11 @@ import { sink_get } from '../../core/sink.js';
  * @returns A Promise resolving to true if user confirms (y/Y), false otherwise.
  */
 async function prompt_confirm(message: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const rl: readline.Interface = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    rl.question(message, (answer: string) => {
-      rl.close();
-      const confirmed: boolean = answer.trim().toLowerCase() === 'y';
-      resolve(confirmed);
-    });
-  });
+  // Asked through the SURFACE, never through this process's stdin. Under a
+  // daemon that stdin belongs to whoever started the daemon — not to the
+  // operator running `rm -i` from a browser three rooms away, who would
+  // have waited forever for a question asked of somebody else's terminal.
+  return repl_confirm(message);
 }
 
 /**

@@ -86,6 +86,29 @@ const DURATION_THRESHOLD_MS: number = 3_000;
 /** How many submitted lines the arrow-key history retains. */
 const HISTORY_LIMIT: number = 200;
 
+
+/**
+ * What kind of value a question wants, as the console renders it.
+ *
+ * Mirrors the wire's own kinds; a surface that meets one it does not know
+ * has already had it degraded to `text` by the contract, so this is the
+ * complete set.
+ */
+export type AskKind = 'text' | 'secret' | 'confirm' | 'path';
+
+/**
+ * A question put to the operator.
+ *
+ * @property message - The question's own words.
+ * @property kind - What kind of value answers it.
+ * @property suggest - A value to offer, for a kind that has one.
+ */
+export interface AskRequest {
+  message: string;
+  kind: AskKind;
+  suggest?: string;
+}
+
 /**
  * The ARGUS console: transcript, prompt bar, and input line in one screen.
  *
@@ -107,6 +130,14 @@ export class ArgusTerminal {
   private readonly complete: (prefix: string) => Promise<CompletionAnswer>;
   private promptContext: PromptContext | null = null;
   private busy: boolean = true;
+  /**
+   * The question the session is waiting on, if any.
+   *
+   * While one is open the input answers it rather than running commands:
+   * an operator asked for a password should not have it dispatched as a
+   * line, and a queued line should not jump ahead of the answer.
+   */
+  private pendingAsk: { settle: (answer: string | null) => void; kind: AskKind } | null = null;
   private readonly queuedLines: string[] = [];
   private readonly history: string[] = [];
   private historyIndex: number = 0;
@@ -343,13 +374,102 @@ export class ArgusTerminal {
     void this.submit(line);
   }
 
+
   /**
-   * Routes input-line keys: Enter submits or queues, arrows walk history,
-   * Tab asks the wire for completion.
+   * Puts a question to the operator in the console.
+   *
+   * The console is where the session speaks, so it is where the session's
+   * questions belong — and where the scrollback keeps them, so an operator
+   * can look back at what was asked. A `secret` is masked and never enters
+   * the transcript; a `confirm` gets two capsules beside the question,
+   * because a control that reads as what it does beats a letter to type.
+   *
+   * @param request - The question and what it wants.
+   * @returns The answer, or null when the operator abandoned it.
+   */
+  public ask_open(request: AskRequest): Promise<string | null> {
+    if (this.pendingAsk !== null) {
+      // One at a time. The daemon refuses a second question already; this
+      // guard is for a surface that finds itself asked anyway.
+      return Promise.resolve(null);
+    }
+    const kind: AskKind = request.kind;
+    this.block_append('argus-ask', `<span class="ask-glyph">?</span> ${html_escape(request.message)}`);
+    const asked: HTMLElement = this.output.lastElementChild as HTMLElement;
+
+    return new Promise((resolve: (answer: string | null) => void): void => {
+      const settle = (answer: string | null): void => {
+        if (this.pendingAsk === null) return;
+        this.pendingAsk = null;
+        this.input.type = 'text';
+        this.input.value = '';
+        this.inputGlyph.textContent = '❯';
+        asked.classList.add('argus-ask-answered');
+        // A secret never enters the transcript, not even as a length.
+        const said: string = answer === null
+          ? 'abandoned'
+          : (kind === 'secret' ? '••••••' : answer);
+        asked.insertAdjacentHTML('beforeend', ` <span class="ask-answer">${html_escape(said)}</span>`);
+        this.size_fit();
+        resolve(answer);
+      };
+      this.pendingAsk = { settle, kind };
+      this.inputGlyph.textContent = '?';
+      if (kind === 'secret') this.input.type = 'password';
+      if (kind === 'path' && request.suggest !== undefined) this.input.value = request.suggest;
+      if (kind === 'confirm') {
+        // The capsules are the instrument; typing y or n still works, since
+        // a hand already on the keys should not have to reach for a mouse.
+        const yes: HTMLButtonElement = document.createElement('button');
+        yes.className = 'ask-capsule';
+        yes.textContent = 'YES';
+        yes.addEventListener('click', (): void => settle('y'));
+        const no: HTMLButtonElement = document.createElement('button');
+        no.className = 'ask-capsule ask-capsule-no';
+        no.textContent = 'NO';
+        no.addEventListener('click', (): void => settle('n'));
+        asked.append(' ', yes, ' ', no);
+      }
+      this.input.focus();
+      this.size_fit();
+    });
+  }
+
+  /**
+   * Routes a key while a question is open.
+   *
+   * @param event - The keyboard event.
+   * @returns True when the key belonged to the question.
+   */
+  private askKey_handle(event: KeyboardEvent): boolean {
+    const ask = this.pendingAsk;
+    if (ask === null) return false;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      ask.settle(this.input.value);
+      return true;
+    }
+    if (event.key === 'Escape') {
+      // Abandoning is an answer of its own: the command that asked is told,
+      // and reports what it did not do.
+      event.preventDefault();
+      event.stopPropagation();
+      ask.settle(null);
+      return true;
+    }
+    return true;
+  }
+
+  /**
+   * Routes input-line keys: a question first, then Enter submits or queues,
+   * arrows walk history, Tab asks the wire for completion.
    *
    * @param event - The keyboard event.
    */
   private key_handle(event: KeyboardEvent): void {
+    // A question outranks everything: while one is open the line answers it
+    // rather than running, so a password is never dispatched as a command.
+    if (this.askKey_handle(event)) return;
     if (event.key === 'Enter') {
       const line: string = this.input.value;
       this.input.value = '';

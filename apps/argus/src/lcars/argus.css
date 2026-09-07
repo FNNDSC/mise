@@ -3266,3 +3266,52 @@ body[data-zoom] #header-restore {
   border-color: var(--harvestgold);
   color: black;
 }
+
+/* ------------------------------------------------------ a question asked */
+
+/* The session's questions live in the transcript, where the session speaks
+   and where the scrollback keeps them. */
+.argus-ask {
+  color: var(--harvestgold);
+}
+
+.ask-glyph {
+  color: var(--butter);
+  margin-right: 0.35rem;
+}
+
+/* What was answered, kept beside the question. A secret shows dots: never
+   its text, and never its length. */
+.ask-answer {
+  color: var(--pumpkin-pie);
+}
+
+.argus-ask-answered .ask-glyph {
+  color: var(--pumpkin-pie);
+}
+
+/* A yes/no is two capsules, because a control that reads as what it does
+   beats a letter an operator has to know to type. Typing y or n still
+   works: a hand already on the keys should not reach for a mouse. */
+.ask-capsule {
+  background: var(--harvestgold);
+  border: none;
+  border-radius: 0.9rem;
+  color: black;
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  padding: 0.1rem 0.9rem;
+  cursor: pointer;
+}
+
+.ask-capsule-no {
+  background: var(--october-sunset);
+}
+
+/* Brightened in its own hue, never flipped to the palette's near-white:
+   the established capsule hover, which the frame reads as lift rather than
+   as glare. */
+.ask-capsule:hover {
+  filter: brightness(1.3);
+}

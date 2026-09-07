@@ -19,6 +19,7 @@ import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
 import { path_resolve } from '../utils.js';
 import { surface_get, type Surface } from '../../core/surface.js';
+import { repl_confirm } from '../../core/question.js';
 import { files_path_isDirectory, files_listRecursive, type FsItem } from '@fnndsc/salsa';
 import { directory_archive, type ArchiveResult } from './archive.js';
 import type { FileDeliverResult } from '@fnndsc/menu';
@@ -31,8 +32,10 @@ import type { FileDeliverResult } from '@fnndsc/menu';
  * @throws {Error} When the surface declines the operation.
  */
 async function downloadConfirmation_request(message: string): Promise<void> {
-  const answer: string = await surface_get().prompt({ message });
-  if (answer.trim().toLowerCase() !== 'y' && answer.trim().toLowerCase() !== 'yes') {
+  // A yes/no says so on the wire, so a graphical surface can offer two
+  // capsules rather than make an operator know that `y` is the word. A
+  // terminal reads the same line it always did.
+  if (!await repl_confirm(message)) {
     throw new Error('Operation cancelled by user.');
   }
 }

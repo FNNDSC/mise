@@ -396,16 +396,84 @@ export const errorMessageSchema = z.object({
 });
 
 /**
+ * What a question is asking FOR.
+ *
+ * A surface chooses its instrument from this rather than by reading the
+ * wording: a location wants a browser to walk, a secret wants a masked
+ * field, a yes/no wants two capsules. Open-world, degrading to `text` —
+ * every surface can answer text, so a kind from a newer daemon leaves the
+ * question answerable rather than refused.
+ */
+export const PROMPT_KINDS = ['text', 'secret', 'confirm', 'path'] as const;
+
+export const promptKindSchema = z.enum(PROMPT_KINDS).catch('text');
+
+/**
+ * What a location ask needs beyond its wording.
+ *
+ * @property anchor - Where browsing starts. A fact the kernel knows (the
+ *   session's own cwd), never a directory invented for the occasion.
+ * @property wantsDirectory - True when a directory is the answer; false
+ *   when a file is, in which case `suggest` names it.
+ * @property suggest - A basename to offer, so committing on a directory
+ *   composes a complete path and renaming is one gesture rather than
+ *   typing the whole thing.
+ */
+export const promptPathSchema = z.object({
+  anchor: z.string().optional(),
+  wantsDirectory: z.boolean(),
+  suggest: z.string().optional(),
+});
+
+/**
  * A prompt request the daemon raises during a command: the surface that
  * submitted the command must answer it (with `promptAnswer`) before the
  * command can proceed. `hidden` requests no-echo entry (password).
+ *
+ * `wants`, `path` and `commit` are optional so a daemon or a surface that
+ * predates typed asks still parses this message and still answers it —
+ * such a daemon could only ever have meant `text`, or `secret` when it set
+ * `hidden`.
  */
 export const promptMessageSchema = z.object({
   type: z.literal('prompt'),
   promptId: z.string(),
   message: z.string(),
   hidden: z.boolean(),
+  /** What kind of value answers this. Absent means text, or secret when hidden. */
+  wants: promptKindSchema.optional(),
+  /** Present when `wants` is `path`: where to start, and what to compose. */
+  path: promptPathSchema.optional(),
+  /**
+   * The word the committing control should read — `EXPORT HERE`, `UPLOAD
+   * HERE`. A control reads as what it will do next; a prompt that supplies
+   * none leaves the surface to say `USE THIS`.
+   */
+  commit: z.string().optional(),
 });
+
+export type PromptKind = z.infer<typeof promptKindSchema>;
+export type PromptPath = z.infer<typeof promptPathSchema>;
+export type PromptMessage = z.infer<typeof promptMessageSchema>;
+
+/**
+ * The kind a prompt is asking for, derived once for every surface.
+ *
+ * `hidden` predates `wants` and remains the older wire's only way to say
+ * "secret", so the two are reconciled here rather than in each surface —
+ * two readings of one message is how a terminal and a browser end up
+ * masking different things.
+ *
+ * @param prompt - The prompt as it arrived.
+ * @returns The kind of value that answers it.
+ */
+export function promptKind_of(prompt: {
+  hidden?: boolean;
+  wants?: PromptKind;
+}): PromptKind {
+  if (prompt.wants !== undefined) return prompt.wants;
+  return prompt.hidden === true ? 'secret' : 'text';
+}
 
 /**
  * The engine-known facts a prompt reflects, independent of any theme.

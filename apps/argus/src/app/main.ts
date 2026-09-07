@@ -766,6 +766,59 @@ async function surface_start(token: string): Promise<void> {
     }
   };
 
+  /**
+   * Delivers files the operator picked into the folder on stage.
+   *
+   * A browser cannot reach the machine the daemon runs on, so `upload` is
+   * not a verb this surface can speak: the bytes go over the daemon's own
+   * `/vfs` route, which writes them through the kernel. What the operator
+   * sees is the console, as with any other verb — what is being put where,
+   * and what became of each file.
+   *
+   * @param id - The pane whose listing is on stage.
+   * @param place - The folder the files land in.
+   * @param chosen - The files the operator picked.
+   */
+  const files_deliver = async (id: string, place: string, chosen: File[]): Promise<void> => {
+    for (const file of chosen) {
+      const target: string = `${place}/${file.name}`;
+      terminal.line_note(`putting ${file.name} in ${place}…`);
+      try {
+        const response: Response = await fetch(vfsUrl_build(target), {
+          method: 'POST',
+          body: file,
+        });
+        if (!response.ok) {
+          terminal.line_note(`upload: ${file.name}: ${(await response.text()).trim() || response.statusText}`);
+          continue;
+        }
+        terminal.line_note(`✓ ${target}`);
+      } catch (error: unknown) {
+        terminal.line_note(`upload: ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    // The listing must show what landed in it; a browser that says nothing
+    // changed is a browser the operator stops believing.
+    listing_refresh(id, place);
+  };
+
+  /**
+   * Asks a browser for its place again, after something changed it.
+   *
+   * A following browser re-lists through the session, so the transcript
+   * shows the same `ls` an operator would have typed; a rooted one asks for
+   * its own place silently, which is how it navigates already.
+   *
+   * @param id - The pane to refresh.
+   * @param place - The folder it is showing.
+   */
+  const listing_refresh = (id: string, place: string): void => {
+    const panel: FilesPanel | undefined = filesPanels.get(id);
+    if (panel === undefined) return;
+    if (filesFollow.get(id) === true) terminal.line_run('ls');
+    else rootedListing_show(id, panel, place);
+  };
+
   const rootedListing_show = (id: string, panel: FilesPanel, path: string): void => {
     // A bare `~` must reach the shell unquoted or it would not expand.
     const line: string = path === '~' ? 'ls ~' : `ls "${path}"`;
@@ -1952,6 +2005,42 @@ async function surface_start(token: string): Promise<void> {
       // DOWNLOAD and DELETE act on a ROW, so the drawer offers neither. The
       // intents themselves live on (the console language reaches them, and
       // the row's own track carries them next); only their home is gone.
+
+      // MKDIR and UPLOAD act on the PLACE the field holds, so they ride the
+      // frame beside HOME and BACK. Both need the listing on stage, which
+      // is the browser's own path and not necessarily the session's cwd.
+      const here = (): string | null => filesPanels.get(id)?.path_current() ?? null;
+      mount.querySelector<HTMLElement>('.files-mkdir')?.addEventListener('click', (): void => {
+        const place: string | null = here();
+        if (place === null) return;
+        void terminal
+          .ask_open({ message: `New directory in ${place}: `, kind: 'text' })
+          .then((name: string | null): void => {
+            const wanted: string = (name ?? '').trim();
+            // An abandoned question makes nothing, and says nothing: the
+            // operator withdrew it, which is not an error to report.
+            if (wanted === '') return;
+            terminal.line_run(`mkdir "${place}/${wanted}"`);
+            // `mkdir` renders what it made; it does not re-list the folder
+            // it made it in, so the browser asks for the place again.
+            listing_refresh(id, place);
+          });
+      });
+      const chooser: HTMLInputElement | null = mount.querySelector<HTMLInputElement>('.files-upload-input');
+      mount.querySelector<HTMLElement>('.files-upload')?.addEventListener('click', (): void => {
+        if (here() === null) return;
+        // The operator's own machine is the browser's, and only the browser
+        // may open a file there — so the picker is the surface's, and the
+        // bytes travel to the daemon, which writes them through the kernel.
+        chooser?.click();
+      });
+      chooser?.addEventListener('change', (): void => {
+        const place: string | null = here();
+        const chosen: FileList | null = chooser.files;
+        if (place === null || chosen === null || chosen.length === 0) return;
+        void files_deliver(id, place, Array.from(chosen));
+        chooser.value = '';
+      });
     }
     if (kind === 'dag') {
       // ENTER always lands in a place. A regard may point at a file (a

@@ -355,6 +355,21 @@ export class ArgusTerminal {
   }
 
   /**
+   * Writes one line of the surface's own reporting into the transcript.
+   *
+   * A gesture the surface performs itself — delivering a file the operator
+   * picked — still owes the transcript an account of what it did. It is not
+   * a command line, so it is not echoed as one; it is what the surface has
+   * to say for itself.
+   *
+   * @param text - The line to write.
+   */
+  public line_note(text: string): void {
+    this.block_append('argus-result', html_escape(text));
+    this.size_fit();
+  }
+
+  /**
    * Runs a line as if the operator had typed it: echoed into the
    * transcript, then submitted. While a command is executing the line is
    * queued and runs when the prompt returns, so lowered gestures and

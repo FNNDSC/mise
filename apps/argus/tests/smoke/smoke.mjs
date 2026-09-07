@@ -876,6 +876,55 @@ try {
   check('a grant capsule reads out the access list', /^SHARED WITH /.test(verbs.readout));
   }
 
+  if (stage('place-verbs')) {
+  // Two verbs that act on the PLACE: they ride the field's frame, they make
+  // and land things in the listing on stage, and the listing shows what
+  // they did. Every artefact is removed again at the end.
+  const place = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const names = () => [...fp().querySelectorAll('.files-row .files-name')].map(n => n.textContent.trim());
+    const settle = async (want) => { for (let i = 0; i < 60; i++) { await sleep(500); if (want()) return true; } return false; };
+
+    await say('cd ~', 2000);
+    await settle(() => names().length > 2);
+    const onFrame = [...fp().querySelectorAll('.mode-frame .strategy-pill')].map(p => p.textContent.trim());
+
+    // MKDIR asks for a name and makes it where the field points
+    fp().querySelector('.files-mkdir').click();
+    let asked = '';
+    for (let i = 0; i < 40; i++) { await sleep(300); const a = document.querySelector('#terminal .argus-ask'); if (a) { asked = a.textContent.trim(); break; } }
+    term.value = 'smoke-place';
+    term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const made = await settle(() => names().includes('smoke-place'));
+
+    // UPLOAD delivers the browser's own bytes into the folder on stage
+    await say('cd ~/smoke-place', 2500);
+    const chooser = fp().querySelector('.files-upload-input');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new TextEncoder().encode('smoke\\n')], 'smoke-place.txt', { type: 'text/plain' }));
+    chooser.files = dt.files;
+    chooser.dispatchEvent(new Event('change', { bubbles: true }));
+    const landed = await settle(() => names().includes('smoke-place.txt'));
+
+    await say('cd ~', 2000);
+    await say('rm -r ~/smoke-place', 4000);
+    // rm reports what it removed; it does not re-list the folder it removed
+    // from, so the listing is asked for again the way an operator would.
+    await say('ls', 2500);
+    const cleared = await settle(() => !names().includes('smoke-place'));
+    return { onFrame, asked, made, landed, cleared };`);
+  check('MKDIR and UPLOAD ride the frame that answers to the field',
+    place.onFrame.includes('MKDIR') && place.onFrame.includes('UPLOAD'));
+  check('MKDIR asks for a name, in the place the field holds', /New directory in \//.test(place.asked));
+  check('the directory it made is in the listing', place.made);
+  check("a file the operator picked lands in the folder on stage", place.landed);
+  check('the artefacts are removed again', place.cleared);
+  }
+
   if (stage('select-wait')) {
   // Selecting a feed answers at once: the roster steps aside, the pane says
   // what it is retrieving, and the bar reads LOADING until the graph lands.

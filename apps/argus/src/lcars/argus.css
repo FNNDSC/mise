@@ -3141,7 +3141,9 @@ body[data-zoom] #header-restore {
 .files-body.diagram-shown .files-view,
 .files-body.diagram-shown .files-filter,
 .files-body.diagram-shown .files-home,
-.files-body.diagram-shown .files-back {
+.files-body.diagram-shown .files-back,
+.files-body.diagram-shown .files-mkdir,
+.files-body.diagram-shown .files-upload {
   display: none;
 }
 

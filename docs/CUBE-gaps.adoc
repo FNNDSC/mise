@@ -407,6 +407,41 @@ Either resolves it:
 
 A fan-out gives each question its own title, appending the criteria it asks: `DDH audit 2026-09 · PatientID:1234`. That works and is readable, but it means the collection carries the client's disambiguation rather than the operator's label, and a second identical audit under the same title still collides where the replay index does not answer.
 
+== Confirmed gap: a file cannot be overwritten, and its deletion is asynchronous
+
+=== Operator requirement
+
+Writing a table to a path that already holds one is the ordinary shape of "export it again": same audit, same name, newer answer. A client should be able to say "put this here" and have the store end up holding this.
+
+=== Measured
+
+Against a live CUBE on 2026-09-07, uploading to a path the store already holds:
+
+[source]
+----
+POST /api/v1/userfiles/  (fname = /home/<user>/audits/one.csv, already present)
+→ 500 Internal server error
+----
+
+The error arrives as a thrown axios rejection, not a failed Result, so a client that does not wrap the call loses the process — under a daemon, that is every attached surface. Ours now wraps it.
+
+Deleting first does not immediately help: deletion is asynchronous. A file deleted and then written in the same breath answers 500 again, because the path still resolves when the upload lands. `salsa`'s `folderByPath_delete` already documents the same behaviour for folders and polls for disappearance; files need the same treatment, which mise now does — remove, wait for the path to stop resolving, then write.
+
+The two together turn "overwrite this file" from one call into: list the folder, find the id, delete it, poll until it is gone, upload. Five round trips for a replace, and a client that skips any of them either crashes or silently loses the file it was replacing.
+
+=== Required interface semantics
+
+Either resolves it:
+
+* *Accept an upload to an existing path as a replacement*, returning the updated file — the ordinary PUT semantics of a store.
+* *Make deletion synchronous for files*, or return a completion the client can wait on, so remove-then-write is two calls rather than a poll.
+
+The first is the more valuable: it makes "put this here" one call and removes the window in which the operator's old file is gone and the new one does not exist yet.
+
+=== ChELL policy today
+
+`--csv-to` refuses to overwrite unless the operator says `--force`. With it, the file is removed, its disappearance is waited out, and the write is confirmed by listing afterwards — a write reported without confirmation was seen to leave nothing behind. Every step is reported: `made <folder>`, `replaced the table that was there`, `✓ wrote <path>`.
+
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery
 

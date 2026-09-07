@@ -902,6 +902,7 @@ async function csv_deliver(
   model: PacsQueryModel,
   destination: string | null,
   ask: boolean = false,
+  force: boolean = false,
 ): Promise<{ ok: true; rendered: string } | { ok: false; message: string }> {
   const csv: string = pacsAnswer_toCsv(model);
   let target: string | null = destination;
@@ -915,9 +916,18 @@ async function csv_deliver(
   }
   if (target === null) return { ok: true, rendered: csv };
 
-  const written: CsvWrite = await csvFile_write(csv, target);
+  const written: CsvWrite = await csvFile_write(csv, target, force);
   if (!written.ok) return { ok: false, message: `query: ${written.message}` };
-  return { ok: true, rendered: `${chalk.green(`✓ wrote ${written.path}`)}\n` };
+  // A folder that had to be made is said, not discovered later.
+  const made: string = written.created === undefined
+    ? ''
+    : `${chalk.gray(`  made ${written.created}`)}\n`;
+  // A file that was there and is not any more is said, for the same reason
+  // the folder is: an act nobody reported is an act nobody can check.
+  const gone: string = written.replaced === true
+    ? `${chalk.gray(`  replaced the table that was there`)}\n`
+    : '';
+  return { ok: true, rendered: `${made}${gone}${chalk.green(`✓ wrote ${written.path}`)}\n` };
 }
 
 
@@ -981,6 +991,8 @@ async function cohort_answer(
     csvTo: string | null;
     /** True when `--csv-to` was given no value and the destination is asked for. */
     csvToAsk: boolean;
+    /** True when the operator said to overwrite an existing table. */
+    force: boolean;
   },
 ): Promise<CommandEnvelope> {
   spinner.start(`Querying PACS for ${asks.length} questions...`, true);
@@ -999,7 +1011,7 @@ async function cohort_answer(
   ).length;
 
   if (facts.csv || facts.csvTo !== null || facts.csvToAsk) {
-    const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk);
+    const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk, facts.force);
     if (!delivered.ok) {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);
@@ -1049,6 +1061,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   let csvTo: string | null = null;
   /** True when `--csv-to` was given no value: the destination is asked for. */
   let csvToAsk: boolean = false;
+  /** True when the operator said to overwrite a table that already exists. */
+  let force: boolean = false;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -1074,6 +1088,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       } else {
         csvToAsk = true;
       }
+    } else if (args[i] === '--force') {
+      force = true;
     } else if (args[i] === '--fresh') {
       fresh = true;
     } else if (!args[i].startsWith('--')) {
@@ -1194,7 +1210,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       // The model names the server the way CUBE does. `--pacsserver 1` and
       // `--pacsserver PACSDCM` are the same server, and a table that says
       // "1" tells an operator nothing about which PACS answered.
-      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk,
+      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk, force,
       expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
     });
   }
@@ -1263,7 +1279,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   await modelPulledState_fill(model);
 
   if (csv || csvTo !== null || csvToAsk) {
-    const delivered = await csv_deliver(model, csvTo, csvToAsk);
+    const delivered = await csv_deliver(model, csvTo, csvToAsk, force);
     if (!delivered.ok) {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);

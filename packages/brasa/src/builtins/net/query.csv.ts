@@ -110,8 +110,35 @@ export function pacsAnswer_toCsv(model: PacsQueryModel): string {
 
 /** Where a written table landed, or why it did not. */
 export type CsvWrite =
-  | { ok: true; path: string }
+  | { ok: true; path: string; created?: string; replaced?: boolean }
   | { ok: false; message: string };
+
+/**
+ * Paths a file cannot be written to.
+ *
+ * These are providers — commands, processes, PACS queries — not storage. A
+ * write into one fails inside CUBE with a message about an upload, which
+ * tells an operator nothing about why the place they chose was never a
+ * place at all.
+ */
+const VIRTUAL_PREFIXES: ReadonlyArray<string> = ['/bin', '/usr', '/etc', '/proc', '/net'];
+
+/** How long to wait for a removed file to actually stop resolving. */
+const GONE_TIMEOUT_MS: number = 10_000;
+/** How often to ask whether it has. */
+const GONE_POLL_MS: number = 400;
+
+/**
+ * Whether a resolved path names a provider rather than storage.
+ *
+ * @param resolved - An absolute CFS path.
+ * @returns True when nothing can be written there.
+ */
+function path_isVirtual(resolved: string): boolean {
+  return VIRTUAL_PREFIXES.some(
+    (prefix: string): boolean => resolved === prefix || resolved.startsWith(`${prefix}/`),
+  );
+}
 
 /**
  * Writes a rendered table into ChRIS storage.
@@ -128,17 +155,156 @@ export type CsvWrite =
  * keeps this module free of any runtime import — so the renderer beside it
  * can be tested without loading the storage stack to do it.
  *
+ * Four things are checked before anything is written, because a chooser
+ * can hand this a place that cannot be used:
+ *
+ * 1. A provider path is refused BY NAME. `/net/pacs/x.csv` fails inside
+ *    CUBE with a message about an upload, which says nothing about why.
+ * 2. A missing parent is created, and the result says so — an operator
+ *    reads what happened rather than discovering a folder later.
+ * 3. An existing file is never overwritten in silence: an audit table
+ *    quietly replacing another audit table is the workaround the
+ *    principles forbid, so it takes `--force` to say it twice.
+ * 4. The path that was actually written is returned, so a surface can
+ *    state it rather than repeat what the operator typed.
+ *
  * @param csv - The rendered table.
  * @param destination - Where the operator said to put it.
+ * @param force - True when the operator asked to overwrite.
  * @returns The resolved path it landed on, or why it did not.
  */
-export async function csvFile_write(csv: string, destination: string): Promise<CsvWrite> {
+export async function csvFile_write(
+  csv: string,
+  destination: string,
+  force: boolean = false,
+): Promise<CsvWrite> {
+  try {
+    return await csvFile_put(csv, destination, force);
+  } catch (error: unknown) {
+    // CUBE's failures arrive as thrown axios errors, and a throw out of a
+    // builtin does not stop at the command: under a daemon it takes the
+    // process, and every surface attached to it, with it. Measured — a
+    // re-upload over an existing path answers 500 and threw straight
+    // through this call. A store's bad day is a refusal, not an outage.
+    const why: string = error instanceof Error ? error.message : String(error);
+    return { ok: false, message: `${destination} could not be written: ${why}` };
+  }
+}
+
+/**
+ * The write itself, once the guard above owns the failures.
+ *
+ * @param csv - The rendered table.
+ * @param destination - Where the operator said to put it.
+ * @param force - True when the operator asked to replace what is there.
+ * @returns The resolved path it landed on, or why it did not.
+ */
+async function csvFile_put(
+  csv: string,
+  destination: string,
+  force: boolean,
+): Promise<CsvWrite> {
   const { errorStack } = await import('@fnndsc/cumin');
   const { path_resolve, error_stripDebugPrefix } = await import('../utils.js');
-  const { files_create } = await import('@fnndsc/salsa');
+  const { files_create, files_delete, files_listAll, files_mkdir, files_path_isDirectory } =
+    await import('@fnndsc/salsa');
   const resolved: string = await path_resolve(destination);
+
+  if (path_isVirtual(resolved)) {
+    return {
+      ok: false,
+      message: `${resolved} is a provider, not storage: nothing can be written there`,
+    };
+  }
+
+  const cut: number = resolved.lastIndexOf('/');
+  const parent: string = cut <= 0 ? '/' : resolved.slice(0, cut);
+  const name: string = resolved.slice(cut + 1);
+  if (name === '') return { ok: false, message: `${resolved} names a folder, not a file` };
+
+  /**
+   * Whether the folder already holds a file of that name.
+   *
+   * A null listing means the folder holds no files — `files_listAll`
+   * answers null both for an empty folder and for one that is not there,
+   * so existence is asked of `files_path_isDirectory` instead and never
+   * inferred from this.
+   */
+  const taken_find = async (): Promise<{ id?: number } | null> => {
+    const listed = await files_listAll({ limit: 1000, offset: 0 }, 'files', parent);
+    const rows: Array<{ path?: string; fname?: string; id?: number }> = listed?.tableData ?? [];
+    return rows.find((row: { path?: string; fname?: string }): boolean => {
+      const candidate: string = row.path ?? row.fname ?? '';
+      return candidate === resolved || candidate.slice(candidate.lastIndexOf('/') + 1) === name;
+    }) ?? null;
+  };
+
+  let created: string | undefined;
+  let replaced: boolean = false;
+  if (!await files_path_isDirectory(parent)) {
+    // The folder the operator named is not there. Making it is the ordinary
+    // thing to want, so it is made — and said, since a directory appearing
+    // without a word is the silent side effect this replaces.
+    if (!await files_mkdir(parent)) {
+      return { ok: false, message: `${parent} does not exist and could not be created` };
+    }
+    created = parent;
+  } else {
+    const standing: { id?: number } | null = await taken_find();
+    if (standing !== null && !force) {
+      // An audit table quietly replacing another audit table is the silent
+      // workaround the principles forbid: it takes saying so twice.
+      return { ok: false, message: `${resolved} already exists; pass --force to overwrite it` };
+    }
+    if (standing !== null) {
+      // Removed, then written. CUBE answers a re-upload of a path it
+      // already holds with a 500 — measured — so "overwrite" has to be
+      // spelled out rather than left to the store, and the removal is
+      // reported because a file disappearing unremarked is the silent act
+      // this whole check exists to prevent.
+      const id: number | undefined = standing.id;
+      if (id === undefined || !await files_delete(id, 'files', parent)) {
+        return { ok: false, message: `${resolved} exists and could not be replaced` };
+      }
+      // Deletion in CUBE is asynchronous — salsa's folder delete documents
+      // the same thing — and writing into a path the store still holds
+      // answers 500. So the removal is waited out rather than assumed,
+      // which is what turned a replacement into a lost file and an error.
+      let gone: boolean = false;
+      for (let waited: number = 0; waited < GONE_TIMEOUT_MS; waited += GONE_POLL_MS) {
+        if (await taken_find() === null) { gone = true; break; }
+        await new Promise((settle: (value: unknown) => void): void => {
+          setTimeout(settle, GONE_POLL_MS);
+        });
+      }
+      if (!gone) {
+        return {
+          ok: false,
+          message: `${resolved} was removed but the store still holds it; nothing was written`,
+        };
+      }
+      replaced = true;
+    }
+  }
+
   const written: boolean = await files_create(csv, resolved);
-  if (written) return { ok: true, path: resolved };
+  if (written) {
+    // Confirmed, not assumed. A create straight after making its folder has
+    // been seen to report success and leave nothing behind, and a table an
+    // operator believes they have is worse than one they know they lack.
+    if (await taken_find() === null) {
+      return {
+        ok: false,
+        message: `${resolved} was reported written but is not there; try again`,
+      };
+    }
+    return {
+      ok: true,
+      path: resolved,
+      ...(created === undefined ? {} : { created }),
+      ...(replaced ? { replaced: true } : {}),
+    };
+  }
   const problem: { message: string } | undefined = errorStack.stack_pop();
   // Stripped where it is read: a refusal an operator acts on should not
   // arrive wearing the stack's debugging prefix.

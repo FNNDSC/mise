@@ -856,6 +856,23 @@ export class PacsPanel {
   }
 
 
+
+  /**
+   * States the path a table was written to, on the pane that produced it.
+   *
+   * Beside the gather tray's own verbs, where EXPORT CSV was pressed: an
+   * operator who asked this pane for a file should be told by this pane
+   * where it is, rather than having to read the console for it.
+   *
+   * @param path - The CFS path the kernel reported writing.
+   */
+  private wrote_show(path: string): void {
+    const said: HTMLElement | null = this.root.querySelector<HTMLElement>('#pacs-wrote');
+    if (said === null) return;
+    said.textContent = `WROTE ${path}`;
+    said.hidden = false;
+  }
+
   /**
    * Writes the answer on stage into ChRIS storage as CSV.
    *
@@ -869,13 +886,12 @@ export class PacsPanel {
   private answer_export(): void {
     if (this.model === null) return;
     const line: string = this.command.value.trim();
-    const stamp: string = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    const destination: string = `~/audits/pacs-${stamp}.csv`;
-    // The query is re-asked, which costs nothing an operator can feel: the
-    // answer on stage was itself replayed, and every row of it is filed.
+    // The destination is ASKED for, not invented: `--csv-to` with no value
+    // raises a location question, which opens an errand beside this pane.
+    // The surface used to name a file the operator never chose and make a
+    // folder behind their back to put it in.
     const base: string = line === '' ? `pacs query ${this.model.expression}` : line;
-    this.handlers.command_run('mkdir ~/audits');
-    this.handlers.command_show(`${base} --csv-to ${destination}`);
+    this.handlers.command_show(`${base} --csv-to`);
   }
 
   /**
@@ -961,6 +977,11 @@ export class PacsPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    // Where a table went is a fact about this pane's answer, so this pane
+    // says it — the console carries the command, which is a different
+    // thing from the result of it.
+    const wrote: RegExpMatchArray | null = /✓ wrote (\S+)/.exec(envelope.rendered ?? '');
+    if (wrote !== null) this.wrote_show(wrote[1] as string);
     if (envelope.model?.kind === PACS_SERVERS_MODEL_KIND) {
       // What `pacs list` says, whoever asked it: the operator typing it in
       // the console fills the strip exactly as the strip's own ask does.

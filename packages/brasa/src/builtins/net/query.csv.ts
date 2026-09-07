@@ -107,3 +107,41 @@ export function pacsAnswer_toCsv(model: PacsQueryModel): string {
   for (const row of rows) lines.push(row.map(cell_quote).join(','));
   return `${lines.join('\n')}\n`;
 }
+
+/** Where a written table landed, or why it did not. */
+export type CsvWrite =
+  | { ok: true; path: string }
+  | { ok: false; message: string };
+
+/**
+ * Writes a rendered table into ChRIS storage.
+ *
+ * The path plumbing lives here rather than in the command: rendering a
+ * table and putting it somewhere are one job, and the command should read
+ * as the decision it makes rather than as the mechanics it performs.
+ *
+ * Imported where they are used — a CSV destination is a rare path, and
+ * pulling the session and storage stacks into this module's graph would
+ * load both for every query that never names one.
+ *
+ * The reason travels in the result rather than on the error stack, which
+ * keeps this module free of any runtime import — so the renderer beside it
+ * can be tested without loading the storage stack to do it.
+ *
+ * @param csv - The rendered table.
+ * @param destination - Where the operator said to put it.
+ * @returns The resolved path it landed on, or why it did not.
+ */
+export async function csvFile_write(csv: string, destination: string): Promise<CsvWrite> {
+  const { errorStack } = await import('@fnndsc/cumin');
+  const { path_resolve, error_stripDebugPrefix } = await import('../utils.js');
+  const { files_create } = await import('@fnndsc/salsa');
+  const resolved: string = await path_resolve(destination);
+  const written: boolean = await files_create(csv, resolved);
+  if (written) return { ok: true, path: resolved };
+  const problem: { message: string } | undefined = errorStack.stack_pop();
+  // Stripped where it is read: a refusal an operator acts on should not
+  // arrive wearing the stack's debugging prefix.
+  const why: string = problem === undefined ? 'refused' : error_stripDebugPrefix(problem.message);
+  return { ok: false, message: `could not write ${resolved}: ${why}` };
+}

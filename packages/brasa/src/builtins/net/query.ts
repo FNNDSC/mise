@@ -22,6 +22,7 @@ import {
   PACSQueryDecodedResult,
   PACSQueryRecord,
   type CommandEnvelope,
+  type Result,
   type StackMessage,
   envelope_ok,
   envelope_error,
@@ -46,7 +47,7 @@ import {
   queryTerms_parse,
 } from './query.fanout.js';
 import { sink_get } from '../../core/sink.js';
-import { pacsAnswer_toCsv } from './query.csv.js';
+import { csvFile_write, pacsAnswer_toCsv, type CsvWrite } from './query.csv.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -900,22 +901,55 @@ function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
 async function csv_deliver(
   model: PacsQueryModel,
   destination: string | null,
+  ask: boolean = false,
 ): Promise<{ ok: true; rendered: string } | { ok: false; message: string }> {
   const csv: string = pacsAnswer_toCsv(model);
-  if (destination === null) return { ok: true, rendered: csv };
-
-  const { path_resolve, error_stripDebugPrefix } = await import('../utils.js');
-  const { files_create } = await import('@fnndsc/salsa');
-  const target: string = await path_resolve(destination);
-  const written: boolean = await files_create(csv, target);
-  if (!written) {
-    const problem: StackMessage | undefined = errorStack.stack_pop();
-    // Stripped where it is read: a refusal an operator acts on should not
-    // arrive wearing the stack's debugging prefix.
-    const why: string = problem === undefined ? 'refused' : error_stripDebugPrefix(problem.message);
-    return { ok: false, message: `query: could not write ${target}: ${why}` };
+  let target: string | null = destination;
+  if (target === null && ask) {
+    // Asked only once there is something to write: a question raised before
+    // the PACS answered would be a question about a file that may never
+    // exist.
+    const chosen: string = await csvDestination_ask();
+    if (chosen === '') return { ok: false, message: 'query: no destination given; nothing written.' };
+    target = chosen;
   }
-  return { ok: true, rendered: `${chalk.green(`✓ wrote ${target}`)}\n` };
+  if (target === null) return { ok: true, rendered: csv };
+
+  const written: CsvWrite = await csvFile_write(csv, target);
+  if (!written.ok) return { ok: false, message: `query: ${written.message}` };
+  return { ok: true, rendered: `${chalk.green(`✓ wrote ${written.path}`)}\n` };
+}
+
+
+/**
+ * Asks where the table should go.
+ *
+ * The anchor is the session's own cwd — a fact, not a guess. Inventing a
+ * directory here would mean creating one behind the operator's back, which
+ * is what the surface used to do.
+ *
+ * @returns The location given, or '' when the operator abandoned the ask.
+ */
+async function csvDestination_ask(): Promise<string> {
+  const { session } = await import('../../session/index.js');
+  const { repl_questionPath } = await import('../../core/question.js');
+  const stamp: string = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  try {
+    const answer: string = await repl_questionPath(
+      'Where should the table go? ',
+      {
+        anchor: await session.getCWD(),
+        wantsDirectory: false,
+        suggest: `pacs-${stamp}.csv`,
+      },
+      'EXPORT HERE',
+    );
+    return answer.trim();
+  } catch {
+    // A refused or abandoned ask is not a failure of the query: the answer
+    // stands, and only the writing of it does not happen.
+    return '';
+  }
 }
 
 /**
@@ -938,6 +972,8 @@ async function cohort_answer(
     csv: boolean;
     /** A CFS path to write that CSV to, when one was named. */
     csvTo: string | null;
+    /** True when `--csv-to` was given no value and the destination is asked for. */
+    csvToAsk: boolean;
   },
 ): Promise<CommandEnvelope> {
   spinner.start(`Querying PACS for ${asks.length} questions...`, true);
@@ -955,8 +991,8 @@ async function cohort_answer(
     (patient: PacsPatient): boolean => patient.status === 'unasked',
   ).length;
 
-  if (facts.csv || facts.csvTo !== null) {
-    const delivered = await csv_deliver(model, facts.csvTo);
+  if (facts.csv || facts.csvTo !== null || facts.csvToAsk) {
+    const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk);
     if (!delivered.ok) {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);
@@ -1004,6 +1040,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   let patientsArg: string | null = null;
   let csv: boolean = false;
   let csvTo: string | null = null;
+  /** True when `--csv-to` was given no value: the destination is asked for. */
+  let csvToAsk: boolean = false;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -1017,8 +1055,18 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       patientsArg = args[++i];
     } else if (args[i] === '--csv') {
       csv = true;
-    } else if (args[i] === '--csv-to' && i + 1 < args.length) {
-      csvTo = args[++i];
+    } else if (args[i] === '--csv-to') {
+      // A value-taking flag given no value is an ASK. `--csv-to` with
+      // nothing after it means "ask me where", which is how a graphical
+      // surface opens its errand and how a terminal gets a prompt. Given
+      // nothing and treated as nothing — which is what happened before —
+      // the operator asked for a CSV and silently got none.
+      const value: string | undefined = args[i + 1];
+      if (value !== undefined && !value.startsWith('--')) {
+        csvTo = args[++i];
+      } else {
+        csvToAsk = true;
+      }
     } else if (args[i] === '--fresh') {
       fresh = true;
     } else if (!args[i].startsWith('--')) {
@@ -1139,7 +1187,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       // The model names the server the way CUBE does. `--pacsserver 1` and
       // `--pacsserver PACSDCM` are the same server, and a table that says
       // "1" tells an operator nothing about which PACS answered.
-      title, pacsserver: identifier, owner, fresh, csv, csvTo,
+      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk,
       expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
     });
   }
@@ -1207,8 +1255,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // pull for series that are already home. One bounded sweep, no retries.
   await modelPulledState_fill(model);
 
-  if (csv || csvTo !== null) {
-    const delivered = await csv_deliver(model, csvTo);
+  if (csv || csvTo !== null || csvToAsk) {
+    const delivered = await csv_deliver(model, csvTo, csvToAsk);
     if (!delivered.ok) {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);

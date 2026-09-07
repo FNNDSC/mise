@@ -40,6 +40,23 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 // A failed question strips the stack's debug prefix before the reason
 // becomes data; the builtins' utils module pulls the session and storage
 // stacks, which this suite has no business loading.
+const mockPrompt = jest.fn<(request: Record<string, unknown>) => Promise<string>>();
+const mockCwd = jest.fn<() => Promise<string>>(async () => '/home/chris');
+const mockFilesCreate = jest.fn<(csv: string, destination: string) => Promise<boolean>>(async () => true);
+jest.unstable_mockModule('../src/core/question.js', () => ({
+  repl_questionPath: (message: string, path: unknown, commit?: string): Promise<string> =>
+    mockPrompt({ message, wants: 'path', path, commit }),
+}));
+jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: mockCwd } }));
+// Rendering a table and putting it somewhere have one owner; this suite
+// tests the ASK around them, so the writer is stubbed and the renderer's
+// own behaviour is pinned in query-csv.test.ts.
+jest.unstable_mockModule('../src/builtins/net/query.csv.js', () => ({
+  pacsAnswer_toCsv: (): string => '"MRN"\n"1234"\n',
+  csvFile_write: (csv: string, destination: string): Promise<{ ok: boolean; path?: string; message?: string }> =>
+    mockFilesCreate(csv, destination).then((written: boolean) => (
+      written ? { ok: true, path: destination } : { ok: false, message: `could not write ${destination}` })),
+}));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   error_stripDebugPrefix: (message: string): string => message.replace(/^\[[^\]]+\]\s*\|\s*/, ''),
   path_resolve: async (p: string): Promise<string> => p.replace('~', '/home/chris'),
@@ -578,5 +595,80 @@ describe('several servers', () => {
     const load = servers_stub();
     await builtin_query(['PatientID:1234', '--pacsserver', 'PACSDCM']);
     expect(load.puts()).toEqual([{ server: 'PACSDCM', mrn: '1234' }]);
+  });
+});
+
+describe('a flag given no value asks', () => {
+  it('asks for a destination when --csv-to carries none', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 400, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockPrompt.mockResolvedValue('/home/chris/audits/mine.csv');
+
+    await builtin_query(['PatientID:1234', '--csv-to']);
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1);
+    const asked = mockPrompt.mock.calls[0][0] as {
+      wants?: string; commit?: string; path?: { anchor?: string; wantsDirectory?: boolean; suggest?: string };
+    };
+    // The ask says what it wants, so a surface can choose its instrument.
+    expect(asked.wants).toBe('path');
+    expect(asked.path?.wantsDirectory).toBe(false);
+    expect(asked.path?.suggest).toMatch(/^pacs-.*\.csv$/);
+    // A control reads as what it will do next.
+    expect(asked.commit).toBe('EXPORT HERE');
+    expect(mockFilesCreate).toHaveBeenCalledWith(expect.any(String), '/home/chris/audits/mine.csv');
+  });
+
+  // The anchor is a fact — the session's own cwd — never a directory
+  // invented for the occasion, since inventing one means creating it.
+  it('anchors the ask where the session already is', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 401, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockPrompt.mockResolvedValue('/home/chris/x.csv');
+    mockCwd.mockResolvedValue('/home/chris/feeds');
+
+    await builtin_query(['PatientID:1234', '--csv-to']);
+
+    const asked = mockPrompt.mock.calls[0][0] as { path?: { anchor?: string } };
+    expect(asked.path?.anchor).toBe('/home/chris/feeds');
+  });
+
+  it('takes a value that follows the flag, and asks nothing', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 402, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+
+    await builtin_query(['PatientID:1234', '--csv-to', '/home/chris/named.csv']);
+
+    expect(mockPrompt).not.toHaveBeenCalled();
+    expect(mockFilesCreate).toHaveBeenCalledWith(expect.any(String), '/home/chris/named.csv');
+  });
+
+  // A flag whose value is the next flag was given no value at all.
+  it('does not eat the flag that follows it', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 403, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockPrompt.mockResolvedValue('/home/chris/x.csv');
+
+    await builtin_query(['PatientID:1234', '--csv-to', '--fresh']);
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1);
+  });
+
+  // An abandoned ask is not a failed query: the answer stands, and only the
+  // writing of it does not happen.
+  it('writes nothing when the ask is abandoned, and says so', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 404, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockPrompt.mockRejectedValue(new Error('the operator abandoned the ask'));
+
+    const envelope = await builtin_query(['PatientID:1234', '--csv-to']);
+
+    expect(mockFilesCreate).not.toHaveBeenCalled();
+    expect((envelope as { renderedErr?: string }).renderedErr ?? '').toContain('nothing written');
   });
 });

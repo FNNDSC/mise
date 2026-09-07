@@ -495,7 +495,8 @@ describe('CalypsoDaemon prompt over the wire', () => {
     const engine: HostedEngine = {
       line_execute: async (line: string): Promise<CommandEnvelope[]> => {
         if (line === '__prompt__') {
-          const answer: string = await (daemonRef as CalypsoDaemon).prompt_current('Password:', true);
+          const answer: string = await (daemonRef as CalypsoDaemon)
+            .prompt_current({ message: 'Password:', hidden: true });
           return [{ status: 'ok', rendered: `got: ${answer}` }];
         }
         return [{ status: 'ok', rendered: `ran: ${line}` }];
@@ -533,7 +534,7 @@ describe('CalypsoDaemon prompt over the wire', () => {
     const daemon = new CalypsoDaemon({ engine, token: TOKEN });
     await daemon.start();
     try {
-      await expect(daemon.prompt_current('x', false)).rejects.toThrow('no active command');
+      await expect(daemon.prompt_current({ message: 'x', hidden: false })).rejects.toThrow('no active command');
     } finally {
       await daemon.stop();
     }
@@ -989,4 +990,100 @@ describe('CalypsoDaemon host control', () => {
     }
   });
 });
+});
+
+describe('CalypsoDaemon typed asks', () => {
+  /** A daemon whose engine asks one question while running a command. */
+  function asking_daemon(request: Record<string, unknown>): {
+    daemon: CalypsoDaemon;
+    asked: () => Promise<string>;
+  } {
+    let ask: ((answer: string) => void) | null = null;
+    const answered: Promise<string> = new Promise((resolve) => { ask = resolve; });
+    const engine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        const answer: string = await daemon.prompt_current(request as never)
+          .catch((error: Error): string => `refused: ${error.message}`);
+        (ask as (a: string) => void)(answer);
+        return [{ status: 'ok', rendered: '' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    return { daemon, asked: (): Promise<string> => answered };
+  }
+
+  it('relays what the question wants, so a surface can choose its instrument', async () => {
+    const { daemon, asked } = asking_daemon({
+      message: 'Where should the table go? ',
+      hidden: false,
+      wants: 'path',
+      path: { anchor: '/home/chris', wantsDirectory: false, suggest: 'pacs.csv' },
+      commit: 'EXPORT HERE',
+    });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.some((m) => m.type === 'attached'));
+
+      send(ws, { type: 'execute', id: '1', line: 'pacs query --csv-to' });
+      await until(() => got.some((m) => m.type === 'prompt'));
+      const prompt = got.find((m) => m.type === 'prompt') as Record<string, unknown>;
+      expect(prompt.wants).toBe('path');
+      expect(prompt.commit).toBe('EXPORT HERE');
+      expect(prompt.path).toEqual({ anchor: '/home/chris', wantsDirectory: false, suggest: 'pacs.csv' });
+
+      send(ws, { type: 'promptAnswer', promptId: prompt.promptId, answer: '/home/chris/x.csv' });
+      expect(await asked()).toBe('/home/chris/x.csv');
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  // A pane's silent refresh must never interrupt the operator with a
+  // question they never invited: they did not issue the command that
+  // raised it and cannot be expected to answer for it.
+  it('refuses an ask raised by an instrument command', async () => {
+    const { daemon, asked } = asking_daemon({ message: 'Administrator password: ', hidden: false });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.some((m) => m.type === 'attached'));
+
+      send(ws, { type: 'execute', id: '1', line: 'pacs list', instrument: true });
+      const answer: string = await asked();
+      expect(answer).toContain('refused');
+      expect(answer).toContain('instrument');
+      // The operator was never shown anything.
+      expect(got.some((m) => m.type === 'prompt')).toBe(false);
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('still refuses a hidden ask a surface cannot collect', async () => {
+    const { daemon, asked } = asking_daemon({ message: 'Password: ', hidden: true });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+      send(ws, {
+        type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN,
+        capabilities: { shellCommands: false, hiddenInput: false },
+      });
+      await until(() => got.some((m) => m.type === 'attached'));
+
+      send(ws, { type: 'execute', id: '1', line: 'sudo plugin add x' });
+      expect(await asked()).toContain('cannot securely collect hidden input');
+    } finally {
+      await daemon.stop();
+    }
+  });
 });

@@ -103,7 +103,13 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
       };
     },
     prompt: (request: PromptRequest): Promise<string> =>
-      daemon.prompt_current(request.message, request.hidden ?? false),
+      daemon.prompt_current({
+        message: request.message,
+        hidden: request.hidden ?? false,
+        ...(request.wants === undefined ? {} : { wants: request.wants }),
+        ...(request.path === undefined ? {} : { path: request.path }),
+        ...(request.commit === undefined ? {} : { commit: request.commit }),
+      }),
     // Under host control the host wins: the segment or the shell runs here,
     // output on the session bus like any command's. Otherwise both relay to
     // the surface that typed them.

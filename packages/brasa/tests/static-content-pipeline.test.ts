@@ -38,6 +38,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     return page.getItems().map((item: { data: unknown }) => item.data);
   },
   errorStack: {
+    stack_search: () => [],
     stack_push: stackPush,
     checkpoint_mark: jest.fn(() => 1),
     checkpoint_drain: jest.fn(),

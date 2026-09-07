@@ -20,7 +20,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Err: () => ({ ok: false }),
   plugin_find: pluginFind,
   pluginParameters_drain: parametersDrain,
-  errorStack: { stack_push: stackPush },
+  errorStack: { stack_push: stackPush, stack_search: () => [] },
 }));
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: { connection: { client_get: clientGet } },

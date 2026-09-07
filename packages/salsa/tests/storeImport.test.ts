@@ -21,6 +21,7 @@ jest.mock('@fnndsc/cumin', () => ({
     static getAuthToken(...args: unknown[]): Promise<unknown> { return mockGetAuthToken(...args); }
   },
   errorStack: {
+    stack_search: () => [],
     stack_push: (...args: unknown[]): unknown => mockStackPush(...args),
     allOfType_get: (...args: unknown[]): unknown => mockErrorsGet(...args),
   },

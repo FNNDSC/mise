@@ -18,7 +18,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,
-  errorStack: { 
+  errorStack: {
+    stack_search: () => [],
     stack_push: jest.fn(), 
     stack_pop: jest.fn().mockReturnValue({ message: 'Mocked Error Message', type: 'error' }) 
   },

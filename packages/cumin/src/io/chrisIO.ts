@@ -413,6 +413,38 @@ export class ChrisIO {
   }
 
   /**
+   * Deletes one file by its id, without listing anything.
+   *
+   * A file that cannot be LISTED must still be deletable: a folder whose
+   * listing the server refuses is exactly the folder an operator most needs
+   * to clear, and a delete that resolves its id through the parent's
+   * collection cannot help there (#462).
+   *
+   * @param fileId - The file's id.
+   * @returns Ok(true) when the file is gone, Err when the server refused.
+   */
+  async file_deleteById(fileId: number): Promise<Result<boolean>> {
+    const client: Client | null = await this.client_get();
+    if (!client) {
+      errorStack.stack_push("error", "ChRIS client is not initialized");
+      return Err<boolean>();
+    }
+    try {
+      const userFile: UserFile | null = await client.getUserFile(fileId);
+      if (!userFile) {
+        errorStack.stack_push("error", `File not found with ID ${fileId}`);
+        return Err<boolean>();
+      }
+      await resource_call<unknown>(userFile, '_delete');
+      return Ok(true);
+    } catch (error: unknown) {
+      const message: string = error instanceof Error ? error.message : String(error);
+      errorStack.stack_push("error", `Failed to delete file ID ${fileId}: ${message}`);
+      return Err<boolean>();
+    }
+  }
+
+  /**
    * Whether a path is free to be written to.
    *
    * Asked by exact name rather than by listing the folder: one request, and

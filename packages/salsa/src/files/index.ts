@@ -445,11 +445,58 @@ export async function files_list(options: ListOptions, assetName: string = "file
  * @returns A Promise resolving to FilteredResourceData containing all matching assets, or null.
  */
 export async function files_listAll(options: ListOptions, assetName: string = "files", path?: string): Promise<FilteredResourceData | null> {
+  const outcome: ListingOutcome = await files_listOutcome(options, assetName, path);
+  if (outcome.kind === "refused") throw outcome.error;
+  return outcome.kind === "listing" ? outcome.data : null;
+}
+
+/**
+ * What a listing attempt came back as.
+ *
+ * `files_listAll` answers `null` for three different things — an empty
+ * folder, a folder that is not there, and a folder the server would not
+ * describe — and nothing above it can behave correctly on one word that
+ * means all three (#462). This says which.
+ */
+export type ListingOutcome =
+  /** The folder answered, with these entries (possibly none of them). */
+  | { kind: "listing"; data: FilteredResourceData }
+  /** The folder answered and holds nothing of this kind. */
+  | { kind: "empty" }
+  /** No such folder, or no context to resolve one against. */
+  | { kind: "missing" }
+  /** The folder exists as far as anyone knows; the server would not say. */
+  | { kind: "refused"; error: Error };
+
+/**
+ * Lists files, links or directories, saying which of the three answers it got.
+ *
+ * The typed complement to {@link files_listAll}: same walk, same options, but
+ * an empty folder, a missing one and a refusal are told apart. A caller that
+ * renders a listing must use this — "nothing here" and "I could not read it"
+ * look identical to an operator otherwise, and only one of them is true.
+ *
+ * @param options - Search options (limit and offset are managed internally).
+ * @param assetName - The type of asset to list ('files', 'links', 'dirs').
+ * @param path - Optional ChRIS path. Defaults to current folder context.
+ * @returns Which answer the folder gave.
+ */
+export async function files_listOutcome(
+  options: ListOptions,
+  assetName: string = "files",
+  path?: string,
+): Promise<ListingOutcome> {
   const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName, path);
   if (!group) {
-    return null;
+    return { kind: "missing" };
   }
-  return await group.asset.resources_getAll(options);
+  try {
+    const data: FilteredResourceData | null = await group.asset.resources_getAll(options);
+    if (data === null || !data.tableData) return { kind: "empty" };
+    return { kind: "listing", data };
+  } catch (error: unknown) {
+    return { kind: "refused", error: error instanceof Error ? error : new Error(String(error)) };
+  }
 }
 
 /**
@@ -486,6 +533,14 @@ export async function files_delete(
   const group: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = await files_getGroup(assetName, parentPath);
   if (!group) {
     return false;
+  }
+  // A file is deleted by its id, not by finding it in a listing first: the
+  // folder whose listing the server refuses is exactly the one an operator
+  // needs to clear, and a delete that walks the parent cannot help there
+  // (#462). Other asset kinds still resolve through the group.
+  if (assetName === "files") {
+    const removed: Result<boolean> = await chrisIO.file_deleteById(id);
+    return removed.ok && removed.value;
   }
   // A freshly created group has no loaded collection, and deletion resolves
   // the id against the loaded list; load it explicitly so deleting works

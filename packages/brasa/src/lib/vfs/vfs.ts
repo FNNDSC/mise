@@ -268,8 +268,17 @@ export class VFS {
       return envelope_error('', undefined, renderedErr);
     }
 
+    // A listing that could not read part of what it holds says so, and
+    // still shows what it read: the provider names the sub-resource that
+    // failed, and that reason travels with the answer rather than being
+    // dropped for looking like success (#462).
+    const unread: string[] = errorStack.stack_search('Cannot fully list');
+    const partial: string = unread.length === 0
+      ? ''
+      : `${chalk.yellow(error_stripDebugPrefix(unread[unread.length - 1] ?? ''))}\n`;
+
     if (result.value.length === 0) {
-      return envelope_ok('');
+      return partial === '' ? envelope_ok('') : envelope_error('', undefined, partial);
     }
 
     // Render based on options
@@ -283,6 +292,10 @@ export class VFS {
       rendered += `${chalk.gray('(cached, refreshing...)')}\n`;
     }
 
+    if (partial !== '') {
+      const envelope: CommandEnvelope = envelope_error(rendered, undefined, partial);
+      return envelope;
+    }
     return envelope_ok(rendered);
   }
 

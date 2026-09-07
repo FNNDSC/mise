@@ -20,7 +20,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     const match: RegExpMatchArray | null = path.match(/(?:^|\/)feed_(\d+)(?:\/|$)/);
     return match ? Number(match[1]) : null;
   },
-  errorStack: { stack_pop: mockStackPop },
+  errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   feed_delete: mockFeedDelete,
 }));
 const mockCwdGet = jest.fn(async (): Promise<string> => '/');

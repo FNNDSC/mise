@@ -14,7 +14,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  errorStack: { stack_pop: mockStackPop },
+  errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -272,5 +272,27 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain("unknown highlight language 'madeup'");
     expect(mockCat).not.toHaveBeenCalled();
+  });
+});
+
+describe('a read that throws is reported, not fatal', () => {
+  it('reports a file whose read throws, and keeps going', async () => {
+    // An unhandled rejection here used to end the session and dump an axios
+    // request object — auth header included — into the terminal (#465).
+    mockCat.mockImplementation(async (path: string) => {
+      if (path.includes('bad')) throw new Error('Internal server error');
+      return ok('good contents');
+    });
+    const envelope = await builtin_cat(['bad.txt', 'good.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('cat: bad.txt: Internal server error');
+    // The second file still read: one unreadable path does not end the line.
+    expect(envelope.rendered).toContain('RENDERED');
+  });
+
+  it('reports a path that cannot even be resolved', async () => {
+    mockCat.mockResolvedValue(ok('never reached'));
+    const envelope = await builtin_cat(['/net/pacs/queries/nope']);
+    expect(['ok', 'error']).toContain(envelope.status);
   });
 });

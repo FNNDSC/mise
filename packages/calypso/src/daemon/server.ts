@@ -36,6 +36,16 @@ import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
 import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
 import type { z } from 'zod';
+
+/**
+ * The largest file `POST /vfs` will take, in bytes.
+ *
+ * A cap rather than a stream to the store: the route exists so an operator
+ * can put a document, a manifest or an image into the folder they are
+ * looking at, and a surface able to post unbounded bytes to a loopback port
+ * is a surface able to fill the machine.
+ */
+const VFS_POST_LIMIT: number = 256 * 1024 * 1024;
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 /**
@@ -376,13 +386,17 @@ export class CalypsoDaemon {
       response.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' });
       response.end(message);
     };
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      refuse(405, 'method not allowed');
-      return;
-    }
     const query: URLSearchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
     if (!token_matches(this.token, query.get('token') ?? '')) {
       refuse(404, 'not found');
+      return;
+    }
+    if (request.method === 'POST') {
+      await this.vfs_receive(request, response, query, refuse);
+      return;
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      refuse(405, 'method not allowed');
       return;
     }
     const filePath: string | null = query.get('path');
@@ -401,6 +415,66 @@ export class CalypsoDaemon {
     } catch {
       refuse(404, 'not found');
     }
+  }
+
+  /**
+   * Takes one file's bytes from a surface: `POST /vfs?path=...&token=...`.
+   *
+   * A browser cannot reach the machine the daemon runs on, so `upload` is
+   * not a verb it can speak: the bytes travel here and the ENGINE puts them
+   * in the store, which keeps the write on the kernel's own path rather
+   * than letting a surface talk to CUBE.
+   *
+   * Gated by the same attach token as the read, and capped: a surface that
+   * can post unbounded bytes to a loopback port is a surface that can fill
+   * the machine.
+   *
+   * @param request - The incoming request, whose body is the file.
+   * @param response - The response to write.
+   * @param query - The parsed query string (path and token).
+   * @param refuse - How this route says no.
+   */
+  private async vfs_receive(
+    request: IncomingMessage,
+    response: ServerResponse,
+    query: URLSearchParams,
+    refuse: (status: number, message: string) => void,
+  ): Promise<void> {
+    const filePath: string | null = query.get('path');
+    const write = this.engine.file_write?.bind(this.engine);
+    if (filePath === null || filePath.length === 0 || write === undefined) {
+      refuse(404, 'not found');
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let received: number = 0;
+    let refused: boolean = false;
+    try {
+      for await (const chunk of request) {
+        const part: Buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+        received += part.length;
+        if (received > VFS_POST_LIMIT) {
+          refused = true;
+          break;
+        }
+        chunks.push(part);
+      }
+    } catch {
+      refuse(400, 'could not read the request body');
+      return;
+    }
+    if (refused) {
+      refuse(413, `file too large: this route takes at most ${VFS_POST_LIMIT} bytes`);
+      return;
+    }
+    try {
+      await write(filePath, Buffer.concat(chunks));
+    } catch (error: unknown) {
+      refuse(502, error instanceof Error ? error.message : 'the store refused the write');
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({ path: filePath, bytes: received }));
   }
 
   /**

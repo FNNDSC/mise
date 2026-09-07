@@ -257,6 +257,14 @@
                          a-control-lives-where-it-acts). -->
                     <button class="strategy-pill files-home" title="show the home directory">HOME</button>
                     <button class="strategy-pill files-back" title="return to the previous listing">BACK</button>
+                    <!-- Two verbs that act on the PLACE rather than on a
+                         row, so they ride the field's frame with the rest of
+                         what answers to the field. They appear on a files
+                         frame and nowhere else: there is no directory to
+                         make in a list of feeds. -->
+                    <button class="strategy-pill files-mkdir" title="make a directory in the listing on stage">MKDIR</button>
+                    <button class="strategy-pill files-upload" title="put a local file into the listing on stage">UPLOAD</button>
+                    <input class="files-upload-input" type="file" multiple hidden />
                     <!-- A pane has ONE frame, and its blocks answer to what
                          the field currently holds: a listing offers a
                          projection and a filter, a diagram offers the modes

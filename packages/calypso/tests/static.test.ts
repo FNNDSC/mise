@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { get, type IncomingMessage } from 'node:http';
+import { get, request as httpRequest, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
@@ -35,6 +35,31 @@ function http_get(url: string): Promise<{ status: number; type: string; body: st
         }),
       );
     }).on('error', reject);
+  });
+}
+
+/** POSTs a body and reads the reply, for the delivery route. */
+function http_post(url: string, body: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const target: URL = new URL(url);
+    const request = httpRequest(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: 'POST',
+        headers: { 'content-length': Buffer.byteLength(body) },
+      },
+      (response: IncomingMessage) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () =>
+          resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf-8') }),
+        );
+      },
+    );
+    request.on('error', reject);
+    request.end(body);
   });
 }
 
@@ -191,6 +216,75 @@ describe('CalypsoDaemon /vfs route', () => {
   it('404s a read failure', async () => {
     const reply = await http_get(
       `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/nope')}&token=${TOKEN}`,
+    );
+    expect(reply.status).toBe(404);
+  });
+
+  it('takes a posted file and hands the bytes to the engine', async () => {
+    const written: Array<{ path: string; bytes: string }> = [];
+    const taking = new CalypsoDaemon({
+      engine: {
+        ...stubEngine_create(),
+        file_write: async (filePath: string, bytes: Buffer): Promise<void> => {
+          written.push({ path: filePath, bytes: bytes.toString() });
+        },
+      },
+      token: TOKEN,
+    });
+    const takingPort = await taking.start();
+    try {
+      const reply = await http_post(
+        `http://127.0.0.1:${takingPort}/vfs?path=${encodeURIComponent('/home/demo/notes.txt')}&token=${TOKEN}`,
+        'from a browser',
+      );
+      expect(reply.status).toBe(200);
+      expect(written).toEqual([{ path: '/home/demo/notes.txt', bytes: 'from a browser' }]);
+    } finally {
+      await taking.stop();
+    }
+  });
+
+  it('refuses a posted file with a bad token, and writes nothing', async () => {
+    const written: string[] = [];
+    const taking = new CalypsoDaemon({
+      engine: {
+        ...stubEngine_create(),
+        file_write: async (filePath: string): Promise<void> => { written.push(filePath); },
+      },
+      token: TOKEN,
+    });
+    const takingPort = await taking.start();
+    try {
+      const reply = await http_post(`http://127.0.0.1:${takingPort}/vfs?path=/x&token=wrong`, 'x');
+      expect(reply.status).toBe(404);
+      expect(written).toEqual([]);
+    } finally {
+      await taking.stop();
+    }
+  });
+
+  it('reports a refused write rather than claiming it landed', async () => {
+    const taking = new CalypsoDaemon({
+      engine: {
+        ...stubEngine_create(),
+        file_write: async (): Promise<void> => { throw new Error('the store said no'); },
+      },
+      token: TOKEN,
+    });
+    const takingPort = await taking.start();
+    try {
+      const reply = await http_post(`http://127.0.0.1:${takingPort}/vfs?path=/x&token=${TOKEN}`, 'x');
+      expect(reply.status).toBe(502);
+      expect(reply.body).toContain('the store said no');
+    } finally {
+      await taking.stop();
+    }
+  });
+
+  it('404s a post when the engine offers no file_write', async () => {
+    const reply = await http_post(
+      `http://127.0.0.1:${port}/vfs?path=/x&token=${TOKEN}`,
+      'x',
     );
     expect(reply.status).toBe(404);
   });

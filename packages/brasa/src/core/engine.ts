@@ -103,6 +103,17 @@ export interface BrasaEngine {
   file_read?(filePath: string): Promise<Buffer>;
 
   /**
+   * Writes bytes to one ChRIS path, resolved against the session's working
+   * directory. The twin of {@link Engine.file_read}: a surface that cannot
+   * reach the machine's disk (a browser) hands its bytes to the daemon,
+   * which puts them in the store through the kernel like any other write.
+   *
+   * @param filePath - The destination path (absolute or cwd-relative).
+   * @param bytes - The content to write.
+   */
+  file_write?(filePath: string, bytes: Buffer): Promise<void>;
+
+  /**
    * Notes a regard write from a surface: the addressable thing the operator
    * most recently indicated. The engine retains it as session truth (last
    * write wins) so engine-side consumers can answer "what is the operator
@@ -388,6 +399,7 @@ export async function engine_create(): Promise<BrasaEngine> {
     line_cancel,
     line_complete,
     file_read,
+    file_write,
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
     watch_set: (subject: string, owner: string, on: boolean): WatchState | null => {
@@ -400,6 +412,33 @@ export async function engine_create(): Promise<BrasaEngine> {
     watch_release: (owner: string): void => procWatch_release(owner),
     ambient_listen,
   };
+}
+
+/**
+ * Writes bytes to one ChRIS path through the kernel's own create.
+ *
+ * A browser surface holds bytes the daemon's machine has never seen; this
+ * is how they reach the store without any surface talking to CUBE.
+ *
+ * @param filePath - The destination path (absolute or cwd-relative).
+ * @param bytes - The content to write.
+ * @throws {Error} When the store refused the write.
+ */
+export async function file_write(filePath: string, bytes: Buffer): Promise<void> {
+  const { path_resolve } = await import('../builtins/utils.js');
+  const { files_create } = await import('@fnndsc/salsa');
+  const { listCache_get } = await import('@fnndsc/cumin');
+  const resolved: string = await path_resolve(filePath);
+  const written: boolean = await files_create(bytes, resolved);
+  if (!written) {
+    throw new Error(`cannot write ${filePath}`);
+  }
+  // A write invalidates the listing it changed, as every writing builtin
+  // does. Without this the browser that delivered the file asks for the
+  // folder again and is served the folder as it was before the delivery —
+  // which reads as an upload that silently did nothing.
+  const parent: string = resolved.replace(/\/[^/]*$/, '') || '/';
+  listCache_get().cache_invalidate(parent);
 }
 
 /**

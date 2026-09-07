@@ -66,6 +66,16 @@ export interface HostedEngine {
   file_read?(filePath: string): Promise<Buffer>;
 
   /**
+   * Writes bytes to one ChRIS path. The seam behind `POST /vfs`, which is
+   * how a surface with no reach into a filesystem (a browser) delivers a
+   * file the operator picked.
+   *
+   * @param filePath - The destination path.
+   * @param bytes - The content to write.
+   */
+  file_write?(filePath: string, bytes: Buffer): Promise<void>;
+
+  /**
    * Notes a regard write relayed from a surface, retaining it as session
    * truth engine-side. Optional: a daemon still retains and rebroadcasts
    * regard on the wire without it.

@@ -26,7 +26,23 @@ import {
  * @returns An envelope naming what was granted.
  */
 export async function builtin_setfacl(args: string[]): Promise<CommandEnvelope> {
-  const parsed: SetfaclArgs = setfaclArgs_parse(args);
+  let parsed: SetfaclArgs = setfaclArgs_parse(args);
+  // A path and no entry names WHAT to share and not WITH WHOM, which is a
+  // question rather than a usage error (an-absent-value-is-a-question). The
+  // grant CUBE offers is read on a feed, so the only thing missing is the
+  // identity: ask for it, and refuse as before when it is not answered.
+  if (parsed.error !== null && entryless_is(args)) {
+    const paths: string[] = args.filter((token: string): boolean => !token.startsWith('-'));
+    const feedID: number | null = aclTarget_resolve(paths[0] ?? '');
+    if (feedID === null) {
+      return envelope_error(`setfacl: '${paths[0] ?? ''}' does not name a feed`);
+    }
+    const who: string = (await who_ask(feedID)).trim();
+    if (who === '') {
+      return envelope_error(`setfacl: nobody named; feed_${feedID} is shared with no one new`);
+    }
+    parsed = setfaclArgs_parse(['-m', `u:${who}:r`, ...paths]);
+  }
   if (parsed.error !== null) return envelope_error(parsed.error);
 
   if (parsed.remove !== null) {
@@ -60,6 +76,35 @@ export async function builtin_setfacl(args: string[]): Promise<CommandEnvelope> 
     `${entry.username} granted read on ${granted.join(' ')}`,
     { kind: 'fs.acl', data: { usernames: [entry.username], targets: granted } },
   );
+}
+
+/**
+ * Whether an invocation names paths but no entry to apply to them.
+ *
+ * @param args - Raw argument tokens.
+ * @returns True when there is something to share and nobody to share with.
+ */
+function entryless_is(args: string[]): boolean {
+  const flagged: boolean = args.some(
+    (token: string): boolean => token === '-m' || token === '-x' || token.startsWith('--'),
+  );
+  const paths: string[] = args.filter((token: string): boolean => !token.startsWith('-'));
+  return !flagged && paths.length === 1;
+}
+
+/**
+ * Asks which identity a feed should be shared with.
+ *
+ * @param feedID - The feed the grant is for, named in the question.
+ * @returns The answer, empty when the operator abandoned it.
+ */
+async function who_ask(feedID: number): Promise<string> {
+  const { repl_question } = await import('../../core/question.js');
+  try {
+    return await repl_question(`Share feed ${feedID} with which user? `);
+  } catch {
+    return '';
+  }
 }
 
 /**

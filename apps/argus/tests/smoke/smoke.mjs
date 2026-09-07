@@ -829,6 +829,53 @@ try {
   check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','));
   }
 
+  if (stage('row-verbs')) {
+  // A row's verbs appear when the row is INDICATED, and indicating is not
+  // activating: a click says "this one", a double-click says "go". The
+  // track that holds the verbs is reserved on every row, so nothing moves.
+  const verbs = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const rows = () => [...fp().querySelectorAll('.files-row')];
+    const named = (n) => rows().find(r => r.querySelector('.files-name')?.textContent.trim() === n);
+    const heading = () => fp().querySelector('.files-path')?.textContent.trim() ?? '';
+    const tops = () => rows().map(r => Math.round(r.querySelector('.files-name')?.getBoundingClientRect().top ?? 0));
+
+    await say('cd ~', 1500);
+    for (let i = 0; i < 40; i++) { await sleep(300); if (named('feeds')) break; }
+    const before = tops();
+    const dir = named('feeds');
+    dir.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(700);
+    const indicated = [...dir.querySelectorAll('.listing-action')].map(b => b.textContent.trim());
+    const others = rows().filter(r => r !== dir).every(r => r.querySelectorAll('.listing-action').length === 0);
+    const after = tops();
+    const stayed = heading();
+    dir.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    for (let i = 0; i < 40; i++) { await sleep(300); if (heading() !== stayed) break; }
+    const entered = heading();
+
+    // a feed row names the feed it would share, and reads out its grants
+    for (let i = 0; i < 40; i++) { await sleep(300); if (rows().some(r => /^feed_\\d+$/.test(r.querySelector('.files-name')?.textContent.trim() ?? ''))) break; }
+    const feedRow = rows().find(r => /^feed_\\d+$/.test(r.querySelector('.files-name')?.textContent.trim() ?? ''));
+    feedRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    let readout = '';
+    for (let i = 0; i < 40; i++) { await sleep(400); readout = feedRow?.querySelector('.listing-readout')?.textContent ?? ''; if (readout) break; }
+    const share = [...(feedRow?.querySelectorAll('.listing-action') ?? [])].map(b => b.textContent.trim()).find(l => l.startsWith('SHARE')) ?? '';
+    return { before, after, indicated, others, stayed, entered, share, readout };`);
+  check('a click indicates rather than activates',
+    verbs.stayed === verbs.entered.replace(/\/feeds$/, '') && verbs.indicated.length > 0);
+  check('a double-click still enters', /\/feeds$/.test(verbs.entered));
+  check('the indicated row shows its verbs and only its row', verbs.others);
+  check('the verbs are the ones the row can be given',
+    verbs.indicated.includes('MOVE') && verbs.indicated.includes('COPY') && verbs.indicated.includes('DELETE'));
+  check('no row moves when one is indicated', verbs.before.join(',') === verbs.after.join(','));
+  check('a feed row names the feed it would share', /^SHARE FEED \d+$/.test(verbs.share));
+  check('a grant capsule reads out the access list', /^SHARED WITH /.test(verbs.readout));
+  }
+
   if (stage('select-wait')) {
   // Selecting a feed answers at once: the roster steps aside, the pane says
   // what it is retrieving, and the bar reads LOADING until the graph lands.

@@ -28,7 +28,8 @@ import {
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
-import { FilesPanel, type FileAction, type FsListing, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
+import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
+import type { ListingAction } from '../features/roster/row.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -1193,6 +1194,100 @@ async function surface_start(token: string): Promise<void> {
     return body;
   };
 
+  /**
+   * The feed a path names, by the kernel's own rule.
+   *
+   * `aclTarget_resolve` matches `/feeds/feed_<id>/` anywhere in a path, so a
+   * file deep inside a feed shares as its feed does. The rule is repeated
+   * here rather than imported because a browser surface holds no kernel
+   * code; it is one regex and the kernel owns the meaning.
+   *
+   * @param path - The row's path.
+   * @returns The feed id, or null when nothing in the path names one.
+   */
+  const feedOf_path = (path: string): number | null => {
+    const held: RegExpMatchArray | null = path.match(/\/feeds\/feed_(\d+)(?:\/|$)/);
+    return held === null ? null : Number(held[1]);
+  };
+
+  /**
+   * What a row may be told to do.
+   *
+   * Every verb lowers to a session command the operator can read in the
+   * transcript — never a silent mutation behind a capsule. DELETE lowers to
+   * `rm -i`, so the KERNEL raises the confirmation and one confirmation
+   * grammar serves every surface; MOVE and COPY lower to a one-operand `mv`
+   * and `cp`, whose missing destination is the ask that opens the errand.
+   *
+   * @param id - The pane whose row this is.
+   * @param entry - The row's entry.
+   * @param path - The row's path.
+   * @returns The verbs this row is offered.
+   */
+  const rowVerbs_of = (
+    id: string,
+    entry: FsListingEntry,
+    path: string,
+  ): ReadonlyArray<ListingAction<FsListingEntry>> => {
+    const quoted: string = `"${path}"`;
+    const directory: boolean = entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'job';
+    const feed: number | null = feedOf_path(path);
+    const verbs: Array<ListingAction<FsListingEntry>> = [];
+    // A /bin entry is an executable the catalogue lists, not a file in a
+    // store: `rm` on it would be a verb that cannot act, which is worse
+    // than no verb at all.
+    if (entry.type === 'plugin' || entry.type === 'pipeline') return verbs;
+    if (entry.type === 'file') {
+      verbs.push({
+        label: 'DOWNLOAD',
+        run: (): void => { window.open(vfsUrl_build(path), '_blank'); },
+      });
+    }
+    verbs.push(
+      { label: 'MOVE', run: (): void => terminal.line_run(`mv ${quoted}`) },
+      { label: 'COPY', run: (): void => terminal.line_run(`cp ${quoted}`) },
+      {
+        label: 'DELETE',
+        run: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
+      },
+    );
+    if (feed !== null) {
+      // The capsule NAMES the feed: CUBE grants a feed and never a file, so
+      // a bare SHARE on a file row would read as a lie about what happens.
+      verbs.push({
+        label: `SHARE FEED ${feed}`,
+        run: (): void => terminal.line_run(`setfacl ${quoted}`),
+      });
+    }
+    void id;
+    return verbs;
+  };
+
+  /**
+   * Reads an access list out of a silent `getfacl`.
+   *
+   * The envelope's own model carries the identities; the rendered text is
+   * for a terminal. A feed shared with nobody says so rather than showing
+   * an empty space that reads as a failed read.
+   *
+   * @param outcome - What the silent command returned.
+   * @returns The readout for the row.
+   */
+  const shares_read = (outcome: ExecuteOutcome): string => {
+    for (const envelope of outcome.envelopes) {
+      const model: unknown = envelope.model;
+      if (typeof model !== 'object' || model === null) continue;
+      const data: unknown = (model as { kind?: unknown; data?: unknown }).data;
+      if ((model as { kind?: unknown }).kind !== 'fs.acl' || !Array.isArray(data)) continue;
+      const names: string[] = [];
+      for (const held of data as Array<{ usernames?: unknown }>) {
+        if (Array.isArray(held.usernames)) names.push(...held.usernames.map(String));
+      }
+      return names.length === 0 ? 'SHARED WITH NOBODY' : `SHARED WITH ${names.join(', ')}`;
+    }
+    return 'ACCESS UNREAD';
+  };
+
   // Builds one files pane instance from the template.
   const filesInstance_build = (id: string, primary: boolean): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-files');
@@ -1200,6 +1295,24 @@ async function surface_start(token: string): Promise<void> {
       pane_find(mount, '.files-panel'),
       (action: FileAction): void => fileAction_handle(id, panel, action),
       previewProvider,
+    );
+    panel.rowVerbs_declare(
+      (entry, path: string) => rowVerbs_of(id, entry, path),
+      (_entry, path: string): void => {
+        // Indicating IS the regard: a viewer in the group renders what the
+        // operator pointed at, without their having to open it first.
+        subjects.regard_write(id, { address: path, modelKind: 'fs.file' });
+        // A verb that grants access says what is already granted. The read
+        // is silent (an instrument, not a command the operator issued) and
+        // lands beside the verbs when it arrives.
+        if (feedOf_path(path) === null) return;
+        void client
+          .line_execute(`getfacl "${path}"`, { silent: true, observe: false })
+          .then((outcome: ExecuteOutcome): void => {
+            panel.rowReadout_show(path, shares_read(outcome));
+          })
+          .catch((): void => { panel.rowReadout_show(path, 'ACCESS UNREAD'); });
+      },
     );
     filesPanels.set(id, panel);
     rootedHistory.set(id, []);

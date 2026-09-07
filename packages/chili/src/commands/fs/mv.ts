@@ -40,6 +40,19 @@ export async function files_mv(src: string, dest: string): Promise<boolean> {
     ? path.posix.join(destPath, path.posix.basename(srcPath))
     : destPath;
 
+  // A move onto a path the store already holds is refused HERE rather than
+  // attempted: CUBE has no overwrite (docs/CUBE-gaps.adoc), and the request
+  // it would take leaves a row its own API cannot serve afterwards, which
+  // poisons every listing of that folder. Refusing by name costs one
+  // listing call and keeps the folder readable.
+  if (await path_checkExists(finalDest)) {
+    errorStack.stack_push(
+      "error",
+      `Destination exists: ${finalDest} — mise cannot overwrite a file; remove it first`,
+    );
+    return false;
+  }
+
   return await salsa_files_move(srcPath, finalDest);
 }
 

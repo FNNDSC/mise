@@ -33,6 +33,12 @@ export interface RmArgs {
   recursive: boolean;
   force: boolean;
   interactive: boolean;
+  /**
+   * Ask ONCE for the whole list rather than once per target (`-I`), which
+   * is what a set deserves: twenty questions to remove twenty files is a
+   * confirmation an operator learns to dismiss without reading.
+   */
+  once: boolean;
   paths: string[];
 }
 
@@ -47,6 +53,7 @@ export function rmArgs_parse(args: string[]): RmArgs {
   let recursive: boolean = false;
   let force: boolean = false;
   let interactive: boolean = false;
+  let once: boolean = false;
   const paths: string[] = [];
   let endOfOptions: boolean = false;
 
@@ -64,13 +71,14 @@ export function rmArgs_parse(args: string[]): RmArgs {
         if (ch === 'r' || ch === 'R') recursive = true;
         else if (ch === 'f') force = true;
         else if (ch === 'i') interactive = true;
+        else if (ch === 'I') once = true;
       }
     } else if (!arg.startsWith('-')) {
       paths.push(arg);
     }
   }
 
-  return { recursive, force, interactive, paths };
+  return { recursive, force, interactive, once, paths };
 }
 
 /**
@@ -120,10 +128,31 @@ export async function builtin_rm(args: string[]): Promise<CommandEnvelope> {
  * @returns An envelope whose model lists per-target outcomes.
  */
 export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
-  const { recursive, force, interactive, paths }: RmArgs = runArgs;
+  const { recursive, force, interactive, once, paths }: RmArgs = runArgs;
 
   if (paths.length === 0) {
-    return envelope_error('', undefined, `${chalk.red('Usage: rm [-rf] <path> [path...]')}\n`);
+    return envelope_error('', undefined, `${chalk.red('Usage: rm [-rfiI] <path> [path...]')}\n`);
+  }
+
+  // One question for the whole list, asked before anything is removed and
+  // naming what will go. A refusal removes nothing at all — there is no
+  // half of a set.
+  if (once) {
+    const many: string = paths.length === 1
+      ? `'${paths[0]}'`
+      : `${paths.length} items`;
+    let agreed: boolean = false;
+    try {
+      agreed = await prompt_confirm(`rm: remove ${many}? (y/n): `);
+    } catch {
+      agreed = false;
+    }
+    if (!agreed) {
+      return envelope_ok(`${chalk.gray(`nothing removed (${paths.length} kept)`)}\n`, {
+        kind: 'fs.rm',
+        data: paths.map((path: string): RmOutcome => ({ path, removed: false, skipped: true })),
+      });
+    }
   }
 
   const options: RmOptions = { recursive, force };
@@ -140,7 +169,7 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
    * @param line - The line to emit (without trailing newline).
    */
   const out_emit = (line: string): void => {
-    if (interactive) {
+    if (interactive || once) {
       sink_get().data_write(`${line}\n`);
     } else {
       rendered += `${line}\n`;
@@ -154,7 +183,7 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
    * @param line - The line to emit (without trailing newline).
    */
   const err_emit = (line: string): void => {
-    if (interactive) {
+    if (interactive || once) {
       sink_get().err_write(`${line}\n`);
     } else {
       renderedErr += `${line}\n`;

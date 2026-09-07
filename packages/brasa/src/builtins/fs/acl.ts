@@ -33,13 +33,20 @@ export async function builtin_setfacl(args: string[]): Promise<CommandEnvelope> 
   // identity: ask for it, and refuse as before when it is not answered.
   if (parsed.error !== null && entryless_is(args)) {
     const paths: string[] = args.filter((token: string): boolean => !token.startsWith('-'));
-    const feedID: number | null = aclTarget_resolve(paths[0] ?? '');
-    if (feedID === null) {
-      return envelope_error(`setfacl: '${paths[0] ?? ''}' does not name a feed`);
+    const feedIDs: number[] = [];
+    for (const path of paths) {
+      const feedID: number | null = aclTarget_resolve(path);
+      if (feedID === null) {
+        return envelope_error(`setfacl: '${path}' does not name a feed`);
+      }
+      if (!feedIDs.includes(feedID)) feedIDs.push(feedID);
     }
-    const who: string = (await who_ask(feedID)).trim();
+    // One question for the whole set: a grant is per identity, and asking
+    // who once for twenty feeds is the same answer twenty times.
+    const who: string = (await who_ask(feedIDs)).trim();
     if (who === '') {
-      return envelope_error(`setfacl: nobody named; feed_${feedID} is shared with no one new`);
+      const named: string = feedIDs.map((id: number): string => `feed_${id}`).join(' ');
+      return envelope_error(`setfacl: nobody named; ${named} shared with no one new`);
     }
     parsed = setfaclArgs_parse(['-m', `u:${who}:r`, ...paths]);
   }
@@ -89,23 +96,26 @@ function entryless_is(args: string[]): boolean {
     (token: string): boolean => token === '-m' || token === '-x' || token.startsWith('--'),
   );
   const paths: string[] = args.filter((token: string): boolean => !token.startsWith('-'));
-  return !flagged && paths.length === 1;
+  return !flagged && paths.length >= 1;
 }
 
 /**
  * Asks which identity a feed should be shared with.
  *
- * @param feedID - The feed the grant is for, named in the question.
+ * @param feedIDs - The distinct feeds the grant is for, named in the question.
  * @returns The answer, empty when the operator abandoned it.
  */
-async function who_ask(feedID: number): Promise<string> {
+async function who_ask(feedIDs: number[]): Promise<string> {
   const { repl_question } = await import('../../core/question.js');
+  const named: string = feedIDs.length === 1
+    ? `feed ${feedIDs[0]}`
+    : `${feedIDs.length} feeds (${feedIDs.map((id: number): string => `feed_${id}`).join(', ')})`;
   try {
     // The irreversibility is said where the grant is made, not discovered
     // afterwards: mise cannot revoke a feed grant (`setfacl -x` is refused),
     // so the question that makes one says so before it is answered.
     return await repl_question(
-      `Share feed ${feedID} with which user? (a grant cannot be taken back) `,
+      `Share ${named} with which user? (a grant cannot be taken back) `,
     );
   } catch {
     return '';

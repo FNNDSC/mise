@@ -1010,6 +1010,75 @@ try {
   }
   }
 
+  if (stage('select-mode')) {
+  // SELECT is a mode: it changes what a click means. The selection is the
+  // field's — it survives a filter, it is cleared by navigation — and its
+  // verbs are ONE command over many operands.
+  const select = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && p.querySelector('.files-select'));
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const rows = () => [...fp().querySelectorAll('.files-row')];
+    const named = (n) => rows().find(r => r.querySelector('.files-name')?.textContent.trim() === n);
+    const bar = () => fp().querySelector('.pane-state')?.textContent.trim() ?? '';
+    const verbs = () => [...fp().querySelectorAll('.files-selection-bar .listing-action')].map(b => b.textContent.trim());
+    const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
+
+    await say('mkdir ~/smoke-select', 2500);
+    await say('cd ~/smoke-select', 2500);
+    // Two files to gather, put there by the surface's own delivery.
+    const chooser = fp().querySelector('.files-upload-input');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new TextEncoder().encode('one\\n')], 'one.txt', { type: 'text/plain' }));
+    dt.items.add(new File([new TextEncoder().encode('two\\n')], 'two.txt', { type: 'text/plain' }));
+    chooser.files = dt.files;
+    chooser.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle(() => named('one.txt') && named('two.txt'));
+
+    fp().querySelector('.files-select').click(); await sleep(300);
+    const modeOn = bar();
+    named('one.txt').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(200);
+    named('two.txt').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(400);
+    const picked = bar();
+    const offered = verbs();
+    const marked = rows().filter(r => r.classList.contains('files-row-selected')).length;
+
+    // a filter hides one: the selection stands, and the bar says how many show
+    await say('file filter one', 1800);
+    const filtered = bar();
+    await say('file filter', 1800);
+
+    // the bulk removal is ONE command that asks ONCE, naming how many
+    verbs().find((v) => v.startsWith('DELETE')) && [...fp().querySelectorAll('.files-selection-bar .listing-action')]
+      .find(b => b.textContent.startsWith('DELETE')).click();
+    let asked = '';
+    for (let i = 0; i < 60; i++) { await sleep(400); const a = [...document.querySelectorAll('#terminal .argus-ask')].pop(); if (a) { asked = a.textContent.trim(); break; } }
+    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+    // A confirm is answered with the capsule that reads as what it does.
+    [...document.querySelectorAll('#terminal .ask-capsule')].find(c => c.textContent === 'YES')?.click();
+    const removed = await settle(() => !named('one.txt') && !named('two.txt'));
+
+    // navigation clears what was gathered
+    await say('cd ~', 2500);
+    const afterNav = bar();
+    await say('rm -r ~/smoke-select', 3000);
+    return { modeOn, picked, offered, marked, filtered, asked, echoed, removed, afterNav };`);
+  check('SELECT reads as a mode on the bar', /SELECT/.test(select.modeOn));
+  check('a click gathers a row instead of indicating it',
+    /2 SELECTED/.test(select.picked) && select.marked === 2);
+  check("the selection's verbs count what they would act on",
+    select.offered.includes('DELETE 2') && select.offered.includes('MOVE 2') && select.offered.includes('COPY 2'));
+  check('a filter hides rows without losing them, and the bar says so',
+    /2 SELECTED · 1 SHOWN/.test(select.filtered));
+  check('a bulk act is one command the operator could have typed',
+    /rm -rI /.test(select.echoed));
+  check('and it asks once, naming how many', /remove 2 items/.test(select.asked));
+  check('answering yes removes them all', select.removed);
+  check('navigation clears the selection', !/SELECTED/.test(select.afterNav));
+  }
+
   if (stage('select-wait')) {
   // Selecting a feed answers at once: the roster steps aside, the pane says
   // what it is retrieving, and the bar reads LOADING until the graph lands.

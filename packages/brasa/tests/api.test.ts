@@ -77,9 +77,11 @@ describe('chellApi_create', () => {
     rmRun.mockResolvedValue(envelope_of('fs.rm', []));
     const sh = await chellApi_create();
     await sh.rm('scratch', { recursive: true, force: true });
-    expect(rmRun).toHaveBeenCalledWith({ paths: ['scratch'], recursive: true, force: true, interactive: false });
+    // The typed API never asks: a caller with a program's hands has nobody
+    // to answer, per-target (-i) or once (-I).
+    expect(rmRun).toHaveBeenCalledWith({ paths: ['scratch'], recursive: true, force: true, interactive: false, once: false });
     await sh.rm(['a', 'b']);
-    expect(rmRun).toHaveBeenCalledWith({ paths: ['a', 'b'], recursive: false, force: false, interactive: false });
+    expect(rmRun).toHaveBeenCalledWith({ paths: ['a', 'b'], recursive: false, force: false, interactive: false, once: false });
   });
 
   it('ls defaults to the cwd and forwards flags without paths leaking in', async () => {

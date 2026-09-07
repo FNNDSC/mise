@@ -60,7 +60,7 @@ describe('setfacl', () => {
     const envelope = await builtin_setfacl(['feed_12']);
     expect(mockFeedShare).not.toHaveBeenCalled();
     expect(envelope.status).toBe('error');
-    expect(envelope.rendered).toContain('feed_12 is shared with no one new');
+    expect(envelope.rendered).toContain('feed_12 shared with no one new');
   });
 
   it('does not ask about something that names no feed', async () => {

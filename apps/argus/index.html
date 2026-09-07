@@ -265,6 +265,12 @@
                     <button class="strategy-pill files-mkdir" title="make a directory in the listing on stage">MKDIR</button>
                     <button class="strategy-pill files-upload" title="put a local file into the listing on stage">UPLOAD</button>
                     <input class="files-upload-input" type="file" multiple hidden />
+                    <!-- SELECT is a MODE: it changes what a click means, so
+                         it is a block on the frame like every other mode.
+                         The selection's own verbs ride the frame beneath
+                         it, because a selection belongs to the field. -->
+                    <button class="strategy-pill files-select rail-off" title="select rows instead of indicating them">SELECT OFF</button>
+                    <span class="files-selection-bar listing-actions" hidden></span>
                     <!-- A pane has ONE frame, and its blocks answer to what
                          the field currently holds: a listing offers a
                          projection and a filter, a diagram offers the modes

@@ -36,6 +36,26 @@ export interface CpModelData {
 export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
+
+  // `-t <dir>` names the TARGET DIRECTORY, so every operand is a source —
+  // the shell's own answer to "several things, one destination". Given no
+  // value it is a question (an-absent-value-is-a-question), and the answer
+  // wants a directory: `cp a b` without it means rename a ONTO b, which
+  // is the right reading of that line and the wrong thing for a set.
+  const target: unknown = parsed.t;
+  if (target !== undefined && pathArgs.length > 0) {
+    if (typeof target === 'string' && target !== '') {
+      return cp_run({ sources: pathArgs, dest: target });
+    }
+    const chosen: string = await destination_ask({
+      verb: 'cp', commit: 'COPY HERE', sources: pathArgs, wantsDirectory: true,
+    });
+    if (chosen === '') {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(destination_missing('cp'))}\n`);
+    }
+    return cp_run({ sources: pathArgs, dest: chosen });
+  }
   const recursive: boolean = !!parsed['r'] || !!parsed['recursive'];
 
   // One operand names what to copy and not where: a question, not a usage

@@ -1178,64 +1178,129 @@ try {
   }
 
   if (stage('console-asks')) {
-    // The session can ask this surface a question now. Every kind is
-    // answered in the console — where the session speaks, and where the
-    // scrollback keeps what was asked — and a secret never enters the
-    // transcript, not even as a length.
+    // The session can ask this surface a question now. A `text` or a
+    // `secret` is answered in the console — where the session speaks, and
+    // where the scrollback keeps what was asked — and a secret never enters
+    // the transcript, not even as a length. A `path` borrows an instrument
+    // instead, which is the ask-errand scenario.
     const asks = await evalIn(`
       const term = () => document.querySelector('#terminal input');
       const lines = () => [...document.querySelectorAll('#terminal .argus-ask')];
       const run = (line) => { const t = term(); t.value = line;
         t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
-      const answer = (text) => { const t = term(); t.value = text;
-        t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
+      const key = (k) => term().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
 
-      // A path ask, raised by a flag given no value.
-      run('pacs query PatientID:__smoke__ --csv-to');
-      for (let i = 0; i < 240; i++) { await sleep(500); if (lines().length > 0) break; }
+      // sudo asks for an administrator username, then a password. Answering
+      // the first and abandoning the second establishes nothing.
+      run('sudo plugin add pl-no-such-plugin-for-smoke');
+      for (let i = 0; i < 120; i++) { await sleep(500); if (lines().length > 0) break; }
       if (lines().length === 0) return { asked: false };
-      const asked = lines()[lines().length - 1].textContent;
-      const masked = term().type;
-      // The suggestion is offered, so the answer is a rename rather than a
-      // whole path typed out.
-      const offered = term().value;
-      // Esc abandons: the command is told and says what it did not do.
-      term().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await sleep(1200);
+      const first = lines()[lines().length - 1].textContent ?? '';
+      const typeAtText = term().type;
+      term().value = 'not-a-real-admin'; key('Enter');
+      for (let i = 0; i < 120; i++) { await sleep(300); if (lines().length > 1) break; }
+      const typeAtSecret = term().type;
+      term().value = 'smoke-secret-value';
+      key('Escape'); await sleep(1200);
       const abandoned = (lines()[lines().length - 1].textContent ?? '').includes('abandoned');
+      const leaked = document.getElementById('terminal').textContent.includes('smoke-secret-value');
       const glyph = document.querySelector('.argus-input-glyph').textContent;
 
-      // A yes/no is two capsules: a control that reads as what it does
-      // beats a letter an operator has to know to type.
+      // A yes/no is two capsules, and pressing one answers it.
       run('rm -i /home/__no_such_file_for_smoke__');
       let capsules = 0;
       for (let i = 0; i < 120; i++) { await sleep(250);
         capsules = document.querySelectorAll('#terminal .ask-capsule').length;
         if (capsules > 0) break; }
-      let closed = true;
       if (capsules > 0) {
         [...document.querySelectorAll('#terminal .ask-capsule')].find(c => c.textContent === 'NO').click();
         await sleep(800);
-        closed = document.querySelectorAll('#terminal .ask-capsule:not(.ask-capsule-answered)').length === 0
-          || document.querySelector('.argus-input-glyph').textContent === '❯';
       }
-      return { asked: true, question: asked, masked, offered, abandoned, glyph, capsules, closed };`);
+      return { asked: true, first, typeAtText, typeAtSecret, abandoned, leaked, glyph, capsules,
+        settled: document.querySelector('.argus-input-glyph').textContent === '❯' };`);
     if (asks.asked === false) {
-      console.log('  skipped: no question arrived (the PACS query never reached its write)');
+      console.log('  skipped: no question arrived (sudo did not reach its prompt)');
     } else {
       check('the session can put a question to this surface, in the console',
-        /where should the table go/i.test(asks.question ?? ''), JSON.stringify(asks.question));
-      check('a path ask offers its suggestion, so answering is a rename',
-        /^pacs-.*\.csv$/.test(asks.offered ?? ''), JSON.stringify(asks.offered));
+        /administrator/i.test(asks.first ?? ''), JSON.stringify(asks.first));
+      check('a secret is masked, and never enters the transcript',
+        asks.typeAtText === 'text' && asks.typeAtSecret === 'password' && asks.leaked === false,
+        JSON.stringify({ text: asks.typeAtText, secret: asks.typeAtSecret, leaked: asks.leaked }));
       check('Esc abandons a question, and the transcript says so',
-        asks.abandoned === true && asks.glyph === '❯', JSON.stringify(asks));
+        asks.abandoned === true && asks.glyph === '❯', JSON.stringify(asks.abandoned));
       if (asks.capsules === 0) {
         console.log('  skipped: no yes/no arrived (nothing asked one)');
       } else {
         check('a yes/no is two capsules, and pressing one answers it',
-          asks.capsules === 2 && asks.closed === true,
-          JSON.stringify({ capsules: asks.capsules, closed: asks.closed }));
+          asks.capsules === 2 && asks.settled === true,
+          JSON.stringify({ capsules: asks.capsules, settled: asks.settled }));
       }
+    }
+  }
+
+  if (stage('ask-errand')) {
+    // An ask is never a box: a location borrows the instrument that already
+    // shows that space. A NEW browser opens beside the asker, anchored
+    // where the ask said, with the errand's controls on its own frame.
+    const errand = await evalIn(`
+      const term = () => document.querySelector('#terminal input');
+      const run = (line) => { const t = term(); t.value = line;
+        t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
+      const panes = () => document.querySelectorAll('#layout-root .layout-leaf').length;
+      const before = panes();
+      // A query that replays: the errand is what this scenario is about,
+      // not how long a PACS takes to answer a question it has answered
+      // before. SMOKE_PACS_MRN names an MRN with imaging.
+      run(${JSON.stringify(`pacs query PatientID:${process.env.SMOKE_PACS_MRN ?? '__smoke__'} --csv-to`)});
+      let opened = false;
+      for (let i = 0; i < 240; i++) { await sleep(500);
+        if (document.querySelector('.errand-commit')) { opened = true; break; } }
+      if (!opened) return { opened: false };
+      const caption = document.querySelector('.errand-caption')?.textContent ?? '';
+      const commit = document.querySelector('.errand-commit')?.textContent ?? '';
+      const composed = document.querySelector('.errand-path')?.value ?? '';
+      const grew = panes() > before;
+      // The errand's controls ride a bar of their own across the top of the
+      // pane it borrowed, not the mode frame — which is a narrow rail
+      // against the spine, and answers to what the field holds.
+      const barred = document.querySelector('.errand-bar')?.parentElement?.classList.contains('files-body') === true;
+      // Polled, never slept: the listing lands when the daemon answers, and
+      // a fixed wait either samples before it or wastes the difference.
+      const listing = () => document.querySelector('.errand-bar')?.closest('.files-body')
+        ?.querySelectorAll('.files-row').length ?? 0;
+      let rows = 0;
+      for (let i = 0; i < 80; i++) { await sleep(250); rows = listing(); if (rows > 0) break; }
+      // The console states the question too, so the scrollback holds it.
+      const noted = [...document.querySelectorAll('#terminal .argus-ask')]
+        .some(el => /where should the table go/i.test(el.textContent ?? ''));
+      // Esc abandons: the pane closes, the layout comes back, and the
+      // command is told rather than left waiting.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(1500);
+      const closed = document.querySelector('.errand-commit') === null && panes() === before;
+      const said = [...document.querySelectorAll('#terminal .argus-ask')]
+        .some(el => (el.textContent ?? '').includes('abandoned'));
+      return { opened: true, caption, commit, composed, grew, barred, rows, noted, closed, said };`);
+    if (errand.opened === false) {
+      console.log('  skipped: no location was asked for (the query never reached its write)');
+    } else {
+      check('a location ask opens a browser beside the asker, carrying the errand on its own bar',
+        errand.grew === true && errand.barred === true && /where should the table go/i.test(errand.caption),
+        JSON.stringify({ grew: errand.grew, barred: errand.barred, caption: errand.caption }));
+      // A question that blocks the command that asked it must not block the
+      // browsing that answers it: the errand's listings are instrument
+      // reads, and they run beside the waiting command rather than behind
+      // it. An empty errand is a deadlock wearing a pane.
+      check('the errand browses while the command that asked waits',
+        errand.rows > 0, JSON.stringify({ rows: errand.rows }));
+      check('the committing verb reads what the kernel said it does',
+        errand.commit === 'EXPORT HERE', JSON.stringify(errand.commit));
+      check('the answer is composed from where the browser stands, and is editable',
+        /\.csv$/.test(errand.composed ?? ''), JSON.stringify(errand.composed));
+      check('the console states the question the errand answers',
+        errand.noted === true, JSON.stringify(errand.noted));
+      check('Esc abandons the errand: the pane closes and the command is told',
+        errand.closed === true && errand.said === true, JSON.stringify(errand));
     }
   }
 

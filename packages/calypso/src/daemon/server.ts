@@ -435,8 +435,21 @@ export class CalypsoDaemon {
       const value = message.value;
       const attached: Surface = surface;
       if (value.type === 'execute') {
-        // One shared queue: commands from every surface run one at a time.
-        this.queue = this.queue.then(() => this.execute_run(attached, value));
+        if (value.instrument === true && this.prompts.pending_has(socket)) {
+          // An instrument command runs BESIDE a question, not behind it.
+          // The errand that answers a question browses with instrument
+          // reads, and the command that asked is waiting on that answer —
+          // so queuing them behind it would deadlock: the answer waits on
+          // the browsing, the browsing waits on the answer.
+          //
+          // Safe because of what an instrument is: a pane's own read, which
+          // never asks (refused above) and never moves the session. A
+          // command that changes state is never instrument traffic.
+          void this.execute_run(attached, value);
+        } else {
+          // One shared queue: commands from every surface run one at a time.
+          this.queue = this.queue.then(() => this.execute_run(attached, value));
+        }
       } else if (value.type === 'cancel') {
         this.cancel_run(attached, value);
       } else if (value.type === 'complete') {
@@ -672,6 +685,13 @@ export class CalypsoDaemon {
   private async execute_run(origin: Surface, message: ExecuteMessage): Promise<void> {
     // The command runs with this surface as the prompt target, so any prompt
     // the engine raises is asked of the surface that submitted the command.
+    // Saved and restored rather than set and cleared: an instrument command
+    // may run beside a command that is waiting on a question, and the outer
+    // command's output must still find its way home when the inner one
+    // finishes.
+    const outerOrigin: Surface | null = this.currentOrigin;
+    const outerId: string | null = this.currentId;
+    const outerInstrument: boolean = this.currentInstrument;
     this.currentOrigin = origin;
     this.currentId = message.id;
     this.currentInstrument = message.instrument === true;
@@ -715,9 +735,9 @@ export class CalypsoDaemon {
         });
       }
     } finally {
-      this.currentOrigin = null;
-      this.currentId = null;
-      this.currentInstrument = false;
+      this.currentOrigin = outerOrigin;
+      this.currentId = outerId;
+      this.currentInstrument = outerInstrument;
     }
   }
 

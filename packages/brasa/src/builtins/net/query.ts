@@ -934,11 +934,18 @@ async function csvDestination_ask(): Promise<string> {
   const { session } = await import('../../session/index.js');
   const { repl_questionPath } = await import('../../core/question.js');
   const stamp: string = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  // Where the operator is, unless they are somewhere nothing can be
+  // written: a session sitting in `/bin` or `/proc` is browsing a provider,
+  // not a place a file lands, and an errand that opens there offers a
+  // destination that is refused the moment it is committed.
+  const cwd: string = await session.getCWD();
+  const virtual: boolean = ['/bin', '/usr', '/etc', '/proc', '/net']
+    .some((prefix: string): boolean => cwd === prefix || cwd.startsWith(`${prefix}/`));
   try {
     const answer: string = await repl_questionPath(
       'Where should the table go? ',
       {
-        anchor: await session.getCWD(),
+        anchor: virtual ? '~' : cwd,
         wantsDirectory: false,
         suggest: `pacs-${stamp}.csv`,
       },

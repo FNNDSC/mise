@@ -1403,6 +1403,146 @@ async function surface_start(token: string): Promise<void> {
       void client.line_execute(line, { silent: true });
     },
   );
+
+
+  /**
+   * A pane on stage to open an errand beside.
+   *
+   * The focused pane when it is in the current tree, otherwise the tree's
+   * first leaf: an errand has to land somewhere the operator can see, and
+   * the alternative is a question asked of nobody.
+   *
+   * @returns A pane id in the current tree, or null when there is no tree.
+   */
+  const errandHost_find = (): string | null => {
+    const tree: LayoutNode | null = layout.tree_get();
+    if (tree === null) return null;
+    const leaves: string[] = [];
+    const walk = (node: LayoutNode): void => {
+      if ('pane' in node) { leaves.push(node.pane); return; }
+      walk(node.first);
+      walk(node.second);
+    };
+    walk(tree);
+    const focused: string | null = layout.focused_get();
+    if (focused !== null && leaves.includes(focused)) return focused;
+    return leaves[0] ?? null;
+  };
+
+  /**
+   * The question a `path` ask puts on stage, as an errand.
+   *
+   * An ask is never a box: it borrows the instrument that already shows the
+   * space being asked about. A location wants a browser, so one opens beside
+   * the pane that asked — a NEW one, since hijacking the operator's own
+   * browser would lose their place and leave the layout changed after the
+   * errand — anchored where the ask said, and it closes when the errand
+   * ends either way.
+   *
+   * The errand's own controls ride the pane's mode frame, which is where a
+   * control that acts on the whole field belongs: the question as a caption
+   * (a readout — it answers no press), the composed path as an editable
+   * field, MKDIR for a folder that does not exist yet, and one verb that
+   * commits, reading whatever the kernel said it does.
+   *
+   * @param request - The question, its anchor and its suggestion.
+   * @returns The location the operator committed, or null when abandoned.
+   */
+  const errand_open = async (request: SurfaceAsk): Promise<string | null> => {
+    // Beside a pane that is actually on stage. The focused pane can be one
+    // the current preset does not hold — focus outlives a preset change —
+    // and splitting beside a pane that is not in the tree fails silently,
+    // which is an errand that never opens and a question nobody is asked.
+    const host: string | null = errandHost_find();
+    if (host === null) return null;
+    const spawned: PaneInstance = instance_spawn('files');
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return null;
+    }
+    const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+    const anchor: string = request.path?.anchor ?? '~';
+    if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
+
+    const body: HTMLElement | null = spawned.mount.querySelector<HTMLElement>('.files-body');
+    if (body === null) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return null;
+    }
+    // The errand's controls ride a bar of their own across the top of the
+    // pane, not the mode frame: the frame is a narrow rail against the
+    // spine — right for a column of capsules, hopeless for a caption and a
+    // path — and the frame keeps answering to what the FIELD holds, which
+    // an errand does not change. The bar belongs to the errand and leaves
+    // with it.
+    const bar: HTMLElement = document.createElement('div');
+    bar.className = 'errand-bar';
+    body.insertBefore(bar, body.firstChild);
+
+    const caption: HTMLElement = document.createElement('span');
+    caption.className = 'errand-caption';
+    caption.textContent = request.message.trim();
+    const field: HTMLInputElement = document.createElement('input');
+    field.className = 'errand-path';
+    field.spellcheck = false;
+    const mkdir: HTMLButtonElement = document.createElement('button');
+    mkdir.className = 'pacs-capsule errand-mkdir';
+    mkdir.textContent = 'MKDIR';
+    mkdir.title = 'make the folder this path lives in';
+    const commit: HTMLButtonElement = document.createElement('button');
+    commit.className = 'pacs-capsule errand-commit';
+    commit.textContent = request.commit ?? 'USE THIS';
+    bar.append(caption, field, mkdir, commit);
+
+    /** Composes the answer from where the browser stands. */
+    const path_compose = (): void => {
+      const here: string = panel?.path_current() ?? anchor;
+      const suggest: string | undefined = request.path?.suggest;
+      field.value = request.path?.wantsDirectory === true || suggest === undefined
+        ? here
+        : `${here.replace(/\/$/, '')}/${suggest}`;
+    };
+    path_compose();
+    // Walking the browser re-composes, so the field always names where the
+    // operator is standing — until they edit it, which is their last word.
+    let edited: boolean = false;
+    field.addEventListener('input', (): void => { edited = true; });
+    const walked = (): void => { if (!edited) path_compose(); };
+    spawned.mount.addEventListener('click', walked);
+
+    return new Promise((resolve: (answer: string | null) => void): void => {
+      const settle = (answer: string | null): void => {
+        spawned.mount.removeEventListener('click', walked);
+        errandClose = null;
+        layout.leaf_close(spawned.id);
+        paneInstance_dispose(spawned.id);
+        layout.mount_remove(spawned.id);
+        resolve(answer);
+      };
+      errandClose = (): void => settle(null);
+      commit.addEventListener('click', (): void => settle(field.value.trim() === '' ? null : field.value.trim()));
+      field.addEventListener('keydown', (event: KeyboardEvent): void => {
+        if (event.key === 'Enter') settle(field.value.trim() === '' ? null : field.value.trim());
+      });
+      mkdir.addEventListener('click', (): void => {
+        // The field is the name: an operator types where they want the file
+        // to land, and MKDIR makes the folder that path lives in. Visible
+        // in the console, because creating a directory is an act.
+        const parent: string = field.value.replace(/\/[^/]*$/, '');
+        if (parent === '') return;
+        terminal.line_run(`mkdir ${parent}`);
+        if (panel !== undefined) {
+          window.setTimeout((): void => rootedListing_show(spawned.id, panel, parent), 1200);
+        }
+      });
+    });
+  };
+
+  /** Abandons the errand on stage, when there is one. */
+  let errandClose: (() => void) | null = null;
+
   const pacsPanel: PacsPanel = new PacsPanel(element_require('pacs-workspace'), {
     command_run: (line: string): void => {
       // The claim rule: a pane's own request resolves to it alone. The
@@ -1777,6 +1917,16 @@ async function surface_start(token: string): Promise<void> {
         if (!palette.hidden) {
           palette_close();
           event.stopImmediatePropagation();
+          return;
+        }
+        // An errand is a question standing on the stage: Esc abandons it
+        // before anything else, because leaving it open while retreating
+        // past it would leave a command waiting on an answer nobody is
+        // being asked for any more.
+        if (errandClose !== null) {
+          errandClose();
+          event.stopImmediatePropagation();
+          sound_play('audio3');
           return;
         }
         // Esc is a contextual back: transient chrome first (drawer, then
@@ -2247,12 +2397,22 @@ async function surface_start(token: string): Promise<void> {
        * slice; until then it is answerable rather than refused, which is
        * what matters.
        */
-      ask_receive: (request: SurfaceAsk): Promise<string | null> =>
-        terminal.ask_open({
-          message: request.message,
-          kind: request.kind,
-          ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
-        }),
+      ask_receive: async (request: SurfaceAsk): Promise<string | null> => {
+        if (request.kind !== 'path') {
+          return terminal.ask_open({
+            message: request.message,
+            kind: request.kind,
+            ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
+          });
+        }
+        // A location borrows an instrument. The console still says what was
+        // asked, so the scrollback holds the whole exchange rather than the
+        // half that happened at the keyboard.
+        const noted: (answer: string | null) => void = terminal.ask_note(request.message);
+        const answer: string | null = await errand_open(request);
+        noted(answer);
+        return answer;
+      },
       promptline_receive: (context: PromptContext): void => {
         // The smoke suite is argus's only executable verification — there
         // is no unit level here — so the surface exposes the last context

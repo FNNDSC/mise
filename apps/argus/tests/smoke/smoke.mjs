@@ -871,6 +871,19 @@ try {
     verbs.stayed === verbs.entered.replace(/\/feeds$/, '') && verbs.indicated.length > 0);
   check('a double-click still enters', /\/feeds$/.test(verbs.entered));
   check('the indicated row shows its verbs and only its row', verbs.others);
+  // A row one cell short does not leave a gap: it shifts every cell of every
+  // row after it into the wrong column, which is how the action track's own
+  // column first landed under a name.
+  const grid = await evalIn(`
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const cap = [...fp.querySelectorAll('.roster-cap')].find(c => c.textContent.trim().startsWith('NAME'));
+    const rows = [...fp.querySelectorAll('.files-row')];
+    const names = rows.map(r => Math.round(r.querySelector('.files-name')?.getBoundingClientRect().left ?? -1));
+    return { cap: Math.round(cap?.getBoundingClientRect().left ?? -2), names };`);
+  check("every row's name sits under the NAME cap",
+    grid.names.length > 1 && grid.names.every((left) => Math.abs(left - grid.cap) <= 8),
+    JSON.stringify(grid));
+
   check('the verbs are the ones the row can be given',
     verbs.indicated.includes('MOVE') && verbs.indicated.includes('COPY') && verbs.indicated.includes('DELETE'));
   check('no row moves when one is indicated', verbs.before.join(',') === verbs.after.join(','));

@@ -442,6 +442,48 @@ The first is the more valuable: it makes "put this here" one call and removes th
 
 `--csv-to` refuses to overwrite unless the operator says `--force`. With it, the file is removed, its disappearance is waited out, and the write is confirmed by listing afterwards — a write reported without confirmation was seen to leave nothing behind. Every step is reported: `made <folder>`, `replaced the table that was there`, `✓ wrote <path>`.
 
+== Confirmed gap: a user's home root cannot list its own files
+
+=== Operator requirement
+
+`ls ~` names what is in the home folder. Files put there by an upload, a move, or a plugin are part of what is there, and a listing that omits them without saying so is not an answer.
+
+=== Measured
+
+Against a live CUBE on 2026-09-07, asking each file-browser folder for its files:
+
+[source]
+----
+home/<user>          (id=21)      → files: 500 Internal server error | children: 12
+home/<user>/movetest (id=1775170) → files: 0                         | children: 0
+home/<user>/data     (id=688238)  → files: 0                         | children: 1
+home/<user>/upload   (id=678994)  → files: 2                         | children: 17
+home                 (id=2)       → files: 0                         | children: 1
+----
+
+Only the user's own home root fails, and it fails at every `limit` tried (1, 5, 20, 50). Its children collection answers normally, which is why a listing of it looks complete: the folders are all there and only the files are missing.
+
+The files exist. Asked for by name they are present and they download:
+
+[source]
+----
+userfiles?fname_exact=home/<user>/probe-root2.txt
+→ id 28413816, 11 B, content "hello mise"
+----
+
+So writes to the home root succeed — an upload lands, a move lands — and only the reading back of them fails. An afternoon was spent reading this as data loss, which is what an unreported failed sub-request buys.
+
+=== Required interface semantics
+
+* *The folder's files collection answers for every folder a user can see*, home root included, or
+* *it says why it cannot* — a 4xx with a reason a client can render beats a 500 with `Internal server error` as its entire body.
+
+Worth CUBE's attention beyond the listing: every user has this folder, so every client that walks a home directory meets it.
+
+=== ChELL policy today
+
+`ls` must report a sub-resource that failed rather than rendering what survived as the whole answer — the same rule mise holds everywhere else: it never defaults to a page and calls it an answer. That work is tracked as https://github.com/FNNDSC/mise/issues/462[#462], and the server side as https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/732[CUBE #732], along with separating `files_listAll`'s `null` for "empty" from its `null` for "the server refused".
+
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery
 

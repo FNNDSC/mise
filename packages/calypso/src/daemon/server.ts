@@ -34,7 +34,7 @@ import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, FileDeliverRequest, Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
@@ -146,6 +146,28 @@ export interface DaemonOptions {
 }
 
 /**
+ * A question on its way to a surface.
+ *
+ * The daemon does not interpret any of it — it relays what the engine asked
+ * and hands back what the surface answered — but it carries the kind so a
+ * graphical surface can choose an instrument rather than reading the
+ * wording and guessing.
+ *
+ * @property message - The question's own words.
+ * @property hidden - No-echo entry; requires the `hiddenInput` capability.
+ * @property wants - What kind of value answers it.
+ * @property path - Where browsing starts and what to compose, for a location.
+ * @property commit - The word the committing control should read.
+ */
+export interface PromptRelay {
+  message: string;
+  hidden: boolean;
+  wants?: PromptKind;
+  path?: PromptPath;
+  commit?: string;
+}
+
+/**
  * A WebSocket daemon hosting one engine for attached surfaces, with a session
  * bus broadcasting activity across them.
  */
@@ -198,6 +220,14 @@ export class CalypsoDaemon {
   private ambientStop: (() => void) | null = null;
   private currentOrigin: Surface | null = null;
   private currentId: string | null = null;
+  /**
+   * Whether the executing command is surface-internal.
+   *
+   * A pane's silent refresh must never interrupt the operator with a
+   * question it invented, so an ask raised under one is refused rather
+   * than shown.
+   */
+  private currentInstrument: boolean = false;
   // One RequestBroker per surface-delegated request kind. The broker owns the
   // whole correlation lifecycle uniformly: id generation, close-guard,
   // origin-validated settles, listener cleanup. See broker.ts.
@@ -644,6 +674,7 @@ export class CalypsoDaemon {
     // the engine raises is asked of the surface that submitted the command.
     this.currentOrigin = origin;
     this.currentId = message.id;
+    this.currentInstrument = message.instrument === true;
     let envelopes: CommandEnvelope[] | undefined;
     let failureReason: string | undefined;
     const startedAt: number = performance.now();
@@ -686,6 +717,7 @@ export class CalypsoDaemon {
     } finally {
       this.currentOrigin = null;
       this.currentId = null;
+      this.currentInstrument = false;
     }
   }
 
@@ -701,16 +733,35 @@ export class CalypsoDaemon {
    *   collect a requested hidden answer, or the surface disconnects before
    *   answering.
    */
-  public prompt_current(message: string, hidden: boolean): Promise<string> {
+  public prompt_current(request: PromptRelay): Promise<string> {
     const origin: Surface | null = this.currentOrigin;
     if (!origin) {
       return Promise.reject(new Error('no active command to prompt for'));
     }
-    if (hidden && !origin.capabilities.hiddenInput) {
+    if (this.currentInstrument) {
+      // A surface's own housekeeping asked the operator a question. It is
+      // refused here rather than shown, because the operator did not issue
+      // the command that raised it and cannot be expected to answer for it.
+      return Promise.reject(new Error('an instrument command cannot ask the operator a question'));
+    }
+    if (request.hidden && !origin.capabilities.hiddenInput) {
       return Promise.reject(new Error('this surface cannot securely collect hidden input'));
     }
+    if (this.prompts.pending_has(origin.socket)) {
+      // One question at a time. Queuing them invisibly hands an operator a
+      // question whose command they have forgotten issuing.
+      return Promise.reject(new Error('another question is already open on this surface'));
+    }
     return this.prompts.open(origin.socket, (promptId: string): void => {
-      this.send(origin.socket, { type: 'prompt', promptId, message, hidden });
+      this.send(origin.socket, {
+        type: 'prompt',
+        promptId,
+        message: request.message,
+        hidden: request.hidden,
+        ...(request.wants === undefined ? {} : { wants: request.wants }),
+        ...(request.path === undefined ? {} : { path: request.path }),
+        ...(request.commit === undefined ? {} : { commit: request.commit }),
+      });
     });
   }
 

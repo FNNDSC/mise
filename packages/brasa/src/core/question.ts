@@ -12,7 +12,7 @@
  * @module
  */
 
-import { surface_get } from './surface.js';
+import { surface_get, type PromptKind, type PromptPath } from './surface.js';
 
 /**
  * Asks a question through the active surface.
@@ -32,4 +32,48 @@ export function repl_question(prompt: string): Promise<string> {
  */
 export function repl_questionHidden(prompt: string): Promise<string> {
   return surface_get().prompt({ message: prompt, hidden: true });
+}
+
+/**
+ * Asks for a yes/no through the active surface.
+ *
+ * The kind travels so a surface can offer two capsules rather than make an
+ * operator type a letter; a terminal still reads `y`/`n`, and the answer is
+ * interpreted here so every caller agrees on what counts as yes.
+ *
+ * @param prompt - The question string to display.
+ * @returns True when the answer was yes.
+ */
+export async function repl_confirm(prompt: string): Promise<boolean> {
+  const answer: string = await surface_get().prompt({ message: prompt, wants: 'confirm' });
+  const said: string = answer.trim().toLowerCase();
+  return said === 'y' || said === 'yes';
+}
+
+/**
+ * Asks for a location through the active surface.
+ *
+ * The anchor is a fact the kernel knows — the session's own cwd, the
+ * directory a command is already working in — never a directory invented
+ * for the occasion, since inventing one means creating it behind the
+ * operator's back.
+ *
+ * @param prompt - The question string to display.
+ * @param details - Where to start, whether a directory is wanted, and a
+ *   basename to offer.
+ * @param commit - The word the committing control should read.
+ * @returns The location the operator gave.
+ */
+export function repl_questionPath(
+  prompt: string,
+  details: PromptPath,
+  commit?: string,
+): Promise<string> {
+  const wants: PromptKind = 'path';
+  return surface_get().prompt({
+    message: prompt,
+    wants,
+    path: details,
+    ...(commit === undefined ? {} : { commit }),
+  });
 }

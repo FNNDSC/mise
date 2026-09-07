@@ -70,13 +70,26 @@ export interface SurfaceCapabilities {
 /**
  * A request to prompt the user for a line of input.
  *
+ * `wants` is what the question is asking FOR, so a surface can choose the
+ * instrument that answers it — a browser to walk for a location, a masked
+ * field for a secret, two capsules for a yes/no — rather than reading the
+ * wording and guessing. A terminal ignores all of it and reads a line,
+ * which is why every field beyond `message` is optional.
+ *
  * @property message - The prompt text to display.
  * @property hidden - When true, the entered text is not echoed; requires the
- *   `hiddenInput` capability.
+ *   `hiddenInput` capability. Kept beside `wants` because it is what an
+ *   older surface reads.
+ * @property wants - The kind of value that answers this.
+ * @property path - Where browsing starts and what to compose, for a `path`.
+ * @property commit - The word the committing control should read.
  */
 export interface PromptRequest {
   message: string;
   hidden?: boolean;
+  wants?: PromptKind;
+  path?: PromptPath;
+  commit?: string;
 }
 
 /**
@@ -97,9 +110,9 @@ export interface LocalEditRequest {
 // in-process engine, a remote CLI and a browser both fetch the daemon's
 // token-gated byte route. Pushing bytes through the session bus instead would
 // base64 a DICOM series across a channel meant for session state.
-export type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
+export type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } from '@fnndsc/menu';
 
-import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
+import type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } from '@fnndsc/menu';
 
 /**
  * The outcome of a local edit.

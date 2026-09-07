@@ -95,6 +95,24 @@ export class RequestBroker<TReply> {
   }
 
   /**
+   * Whether this origin already has a request in flight.
+   *
+   * Some requests may be concurrent and some may not: a surface can render
+   * two pipeline segments at once, but it cannot sensibly be asked two
+   * questions at once. The broker reports the fact; what to do about it
+   * belongs to the caller.
+   *
+   * @param origin - The socket to ask about.
+   * @returns True when a request opened on that socket is still awaiting a reply.
+   */
+  public pending_has(origin: WebSocket): boolean {
+    for (const entry of this.pending.values()) {
+      if (entry.origin === origin) return true;
+    }
+    return false;
+  }
+
+  /**
    * Resolves a pending request with its reply. Ignored when the id is unknown
    * or the reply arrives from a socket other than the request's origin.
    *

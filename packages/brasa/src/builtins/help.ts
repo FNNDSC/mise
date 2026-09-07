@@ -610,6 +610,7 @@ export const helpText: Record<string, CommandHelp> = {
       '                     (one MRN per line; blanks and # comments ignored)',
       '--csv                Render the answer as CSV (a row per study, and one per patient with none)',
       '--csv-to <cfs-path>  Write that CSV into ChRIS storage, where a detached surface can reach it',
+      '                     (given no path, the destination is asked for)',
       '--table              Render results as a table instead of the default list',
       '--fresh              Ask the PACS even if this question was answered before',
       '--help               Show this help',

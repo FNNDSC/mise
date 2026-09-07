@@ -19,6 +19,7 @@
     "lint:prompt": "node scripts/prompt-parity.mjs",
     "lint:wire": "node scripts/wire-escapes.mjs",
     "lint:listings": "node scripts/listing-bounds.mjs",
+    "lint:changesets": "node scripts/changeset-names.mjs",
     "docs:site": "typedoc && asciidoctor -D site docs/site/*.adoc",
     "changeset": "changeset",
     "version-packages": "changeset version",

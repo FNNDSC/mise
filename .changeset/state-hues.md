@@ -1,5 +1,5 @@
 ---
-"argus": patch
+"@fnndsc/argus": patch
 ---
 
 fix(argus): state wears the theme's colours, not literals

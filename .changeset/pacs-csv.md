@@ -1,6 +1,6 @@
 ---
 "@fnndsc/brasa": minor
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat: a PACS answer can be written as a table a spreadsheet reads

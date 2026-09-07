@@ -1,5 +1,5 @@
 ---
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat(argus): a plugin is the one-node case, not a wall of text

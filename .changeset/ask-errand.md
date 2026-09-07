@@ -1,7 +1,7 @@
 ---
 "@fnndsc/calypso": minor
 "@fnndsc/brasa": patch
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat(argus): a location is asked for by borrowing a browser

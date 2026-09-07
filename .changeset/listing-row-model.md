@@ -1,5 +1,5 @@
 ---
-"argus": patch
+"@fnndsc/argus": patch
 ---
 
 refactor(argus): a listing column is declared once

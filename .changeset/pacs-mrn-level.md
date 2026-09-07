@@ -1,5 +1,5 @@
 ---
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat(argus): the MRN is the outermost level, and a miss is an answer

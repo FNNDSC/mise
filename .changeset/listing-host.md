@@ -1,5 +1,5 @@
 ---
-"argus": patch
+"@fnndsc/argus": patch
 ---
 
 refactor(argus): one frame-and-field host for the tabular panes

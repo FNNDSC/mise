@@ -2,7 +2,7 @@
 "@fnndsc/brasa": patch
 "@fnndsc/calypso": patch
 "@fnndsc/chell": patch
-"argus": patch
+"@fnndsc/argus": patch
 ---
 
 docs(calypso): say calypso where the component is meant, and make it typeable

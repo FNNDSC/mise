@@ -1,6 +1,6 @@
 ---
 "@fnndsc/brasa": minor
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat(argus): the surface can be asked

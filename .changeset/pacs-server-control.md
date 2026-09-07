@@ -1,7 +1,7 @@
 ---
 "@fnndsc/menu": minor
 "@fnndsc/brasa": minor
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat: choosing which PACS to ask is a strip you pick from, never a sweep

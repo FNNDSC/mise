@@ -1,6 +1,6 @@
 ---
 "@fnndsc/brasa": minor
-"argus": minor
+"@fnndsc/argus": minor
 ---
 
 feat: a write is checked before it happens, and says what it did

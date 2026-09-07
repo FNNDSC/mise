@@ -1,7 +1,7 @@
 ---
 "@fnndsc/menu": minor
 "@fnndsc/brasa": minor
-"argus": patch
+"@fnndsc/argus": patch
 ---
 
 feat(listing): progress is a trait of a row, and a row can carry verbs

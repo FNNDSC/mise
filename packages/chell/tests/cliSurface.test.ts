@@ -268,13 +268,16 @@ describe('promptLine_render', () => {
     expect(shown.fallback).toBe('/home/chris/x.csv');
   });
 
-  it('offers the anchor alone when a directory is wanted', () => {
+  // The anchor says where to LOOK, not what to offer: proposing it would
+  // answer a move with the folder the file is already in.
+  it('offers nothing when the question suggests nothing', () => {
     const shown = promptLine_render({
       message: 'which folder? ',
       wants: 'path',
       path: { anchor: '/home/chris/audits', wantsDirectory: true },
     });
-    expect(shown.fallback).toBe('/home/chris/audits');
+    expect(shown.message).toBe('which folder? ');
+    expect(shown.fallback).toBe('');
   });
 
   it('offers nothing when a location ask suggests nothing', () => {

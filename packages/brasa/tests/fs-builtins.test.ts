@@ -38,6 +38,14 @@ const mockCpCmd = jest.fn();
 const mockMvCmd = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cp.js', () => ({ files_cp: mockCpCmd }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/mv.js', () => ({ files_mv: mockMvCmd }));
+// One operand names what to move and not where: that is a question now, so
+// the surface's answer is scripted here.
+const mockDestination = jest.fn<(request: Record<string, unknown>) => Promise<string>>(
+  async () => '/home/chris/dest.txt');
+jest.unstable_mockModule('../src/core/question.js', () => ({
+  repl_questionPath: (message: string, path: unknown, commit?: string): Promise<string> =>
+    mockDestination({ message, path, commit }),
+}));
 
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   mkdir_render: mockMkdirRender,
@@ -116,8 +124,26 @@ describe('builtin_touch', () => {
 });
 
 describe('builtin_cp', () => {
-  it('reports usage with fewer than two paths', async () => {
-    const envelope: CommandEnvelope = await builtin_cp(['only']);
+  it('asks where a lone source should go, and copies it there', async () => {
+    mockCpCmd.mockResolvedValue(true);
+    mockDestination.mockResolvedValue('/home/chris/copy.txt');
+    const envelope: CommandEnvelope = await builtin_cp(['only.txt']);
+    expect(mockDestination).toHaveBeenCalledTimes(1);
+    expect(envelope.status).toBe('ok');
+    expect(mockCpCmd).toHaveBeenCalledWith(
+      expect.stringContaining('only.txt'), '/home/chris/copy.txt', { recursive: false });
+  });
+
+  it('copies nothing when the destination is abandoned', async () => {
+    mockDestination.mockResolvedValue('   ');
+    const envelope: CommandEnvelope = await builtin_cp(['only.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('nothing copied');
+    expect(mockCpCmd).not.toHaveBeenCalled();
+  });
+
+  it('still reports usage when given nothing at all', async () => {
+    const envelope: CommandEnvelope = await builtin_cp([]);
     expect(envelope.status).toBe('error');
     expect(envelope.rendered).toContain('Usage: cp');
   });
@@ -148,8 +174,25 @@ describe('builtin_cp', () => {
 });
 
 describe('builtin_mv', () => {
-  it('reports usage with fewer than two paths', async () => {
-    const envelope: CommandEnvelope = await builtin_mv(['only']);
+  it('asks where a lone source should go, and moves it there', async () => {
+    mockMvCmd.mockResolvedValue(true);
+    mockDestination.mockResolvedValue('/home/chris/moved.txt');
+    const envelope: CommandEnvelope = await builtin_mv(['only.txt']);
+    expect(mockDestination).toHaveBeenCalledTimes(1);
+    expect(envelope.status).toBe('ok');
+    expect(mockMvCmd).toHaveBeenCalledWith(expect.stringContaining('only.txt'), '/home/chris/moved.txt');
+  });
+
+  it('moves nothing when the destination is abandoned', async () => {
+    mockDestination.mockResolvedValue('   ');
+    const envelope: CommandEnvelope = await builtin_mv(['only.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('nothing moved');
+    expect(mockMvCmd).not.toHaveBeenCalled();
+  });
+
+  it('still reports usage when given nothing at all', async () => {
+    const envelope: CommandEnvelope = await builtin_mv([]);
     expect(envelope.status).toBe('error');
     expect(envelope.rendered).toContain('Usage: mv');
   });

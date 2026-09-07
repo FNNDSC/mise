@@ -201,6 +201,7 @@ export const helpText: Record<string, CommandHelp> = {
     usage: 'cp [options] <source...> <dest>',
     description: 'Copy files or directories (supports wildcards and multiple sources)',
     options: [
+      '(given only a source, the destination is asked for)',
       '-r, --recursive    Recursive copy (for directories)',
       '',
       'PACS SOURCES: a /net/pacs/queries/... source names query results, not',
@@ -222,6 +223,9 @@ export const helpText: Record<string, CommandHelp> = {
   mv: {
     usage: 'mv <source...> <dest>',
     description: 'Move or rename files or directories (supports wildcards and multiple sources)',
+    options: [
+      '(given only a source, the destination is asked for)',
+    ],
     examples: [
       'mv old.txt new.txt                # Rename file',
       'mv dir1/ dir2/                    # Move directory into dir2',

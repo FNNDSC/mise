@@ -7,6 +7,7 @@ import path from 'path';
 import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { destination_ask, destination_missing } from './destination.js';
 import { files_mv as chefs_mv_cmd } from '@fnndsc/chili/commands/fs/mv.js';
 import { mv_render } from '@fnndsc/chili/views/fs.js';
 
@@ -35,6 +36,20 @@ export interface MvModelData {
 export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
+
+  // One operand names what to move and not where: that is a question, not a
+  // usage error. The answer opens where the file already lives and offers
+  // its own name, so the ordinary case is a rename.
+  if (pathArgs.length === 1) {
+    const chosen: string = await destination_ask({
+      verb: 'mv', commit: 'MOVE HERE', sources: pathArgs,
+    });
+    if (chosen === '') {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(destination_missing('mv'))}\n`);
+    }
+    return mv_run({ sources: pathArgs, dest: chosen });
+  }
 
   // Last arg is destination, all others are sources
   return mv_run({

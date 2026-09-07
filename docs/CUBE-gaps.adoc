@@ -517,6 +517,35 @@ The deliberate replace (`--csv-to --force`) is unaffected: it removes the file, 
 
 Three further things this stack owes, tracked as https://github.com/FNNDSC/mise/issues/462[#462]. A listing whose sub-resource failed must say so rather than rendering what survived as the whole answer — the law mise holds everywhere else, that it never defaults to a page and calls it an answer. `files_listAll` must stop returning the same `null` for empty, for missing, and for refused. And `files_delete` must not resolve an id through the parent collection: a file that cannot be listed cannot be deleted, so the repair here had to go around mise entirely.
 
+== Confirmed gap: a collection query fails past an offset
+
+=== Operator requirement
+
+A client that walks a collection to its end must be able to reach the end. Paging is the only way to answer "everything", and a page that fails partway leaves the client holding a prefix.
+
+=== Measured
+
+Live 2026-09-07, walking one user's files 200 at a time:
+
+[source]
+----
+GET /api/v1/userfiles/?fname_icontains=home/<user>/&limit=200&offset=0     → 200
+GET /api/v1/userfiles/?fname_icontains=home/<user>/&limit=200&offset=200   → 200
+… 400, 600, 800                                                            → 200
+GET /api/v1/userfiles/?fname_icontains=home/<user>/&limit=200&offset=1000  → 500 Internal server error
+----
+
+Repeatable, and the body is the bare string `Internal server error`. Whether the ceiling is the offset itself or a row within that page was not established — the same account also held rows the API could not serve at all (see the previous entry), and one of those inside a page would produce exactly this.
+
+=== Required interface semantics
+
+* *A walk can finish.* Either deep offsets answer, or the collection offers a cursor that does not depend on offset arithmetic.
+* *A 500 body says something.* A client cannot distinguish "too deep", "one bad row", and "the server is unwell" from an identical bare string.
+
+=== ChELL policy today
+
+`resources_getAll` keeps what it gathered and reports where it stopped (`incomplete`), rather than returning a prefix that reads as the whole collection; a walk that fails on its FIRST page stays a failure, because a listing that never started is not a short listing. The `listing-bounds` gate (`npm run lint:listings`) keeps single-page fetches from being passed off as answers in the first place.
+
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery
 

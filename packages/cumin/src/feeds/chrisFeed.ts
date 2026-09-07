@@ -354,11 +354,23 @@ export async function feedShares_list(feedId: number): Promise<Result<string[]>>
       errorStack.stack_push("error", `Feed with ID ${feedId} not found.`);
       return Err();
     }
-    const permissions = await resource_call<{ data?: unknown }>(feed, 'getUserPermissions', { limit: 100 });
-    const rows: Array<{ username?: string }> = listData_get<{ username?: string }>(permissions);
-    return Ok(rows
-      .map((row): string => String(row.username ?? ''))
-      .filter((name): boolean => name !== ''));
+    // Every grant, not the first hundred: `getfacl` answers "who holds this
+    // feed", and a hundredth name is not a natural place for that answer to
+    // stop (#401).
+    const names: string[] = [];
+    const pageSize: number = 100;
+    for (let offset: number = 0; ; offset += pageSize) {
+      const permissions = await resource_call<{ data?: unknown }>(
+        feed, 'getUserPermissions', { limit: pageSize, offset },
+      );
+      const rows: Array<{ username?: string }> = listData_get<{ username?: string }>(permissions);
+      for (const row of rows) {
+        const name: string = String(row.username ?? '');
+        if (name !== '') names.push(name);
+      }
+      if (rows.length < pageSize) break;
+    }
+    return Ok(names);
   } catch (error: unknown) {
     const message: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `Failed to list shares for feed ${feedId}: ${message}`);

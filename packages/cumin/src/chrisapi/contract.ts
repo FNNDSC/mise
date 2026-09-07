@@ -782,6 +782,28 @@ export async function pipelineSourceFilesPage_get(
 }
 
 /**
+ * Drains every pipeline source file matching a filter.
+ *
+ * The registered pipelines' source files are a collection, not a page: a
+ * caller asking which file a pipeline came from wants the answer, and
+ * `{ limit: 1000 }` was a guess at how many that could be (#401).
+ *
+ * @param client - Connected chrisapi client.
+ * @param filter - Server-side filter (a `pipeline_id`, an `fname`), or none.
+ * @returns Every matching source file, in server order.
+ * @throws {Error} Propagates chrisapi/network errors.
+ */
+export async function pipelineSourceFiles_drain(
+  client: Client,
+  filter: Record<string, unknown> = {},
+): Promise<PipelineSourceFileData[]> {
+  return listPages_drain<PipelineSourceFileData>(
+    (offset: number, limit: number): Promise<ListPage<PipelineSourceFileData>> =>
+      pipelineSourceFilesPage_get(client, { ...filter, limit, offset }),
+  );
+}
+
+/**
  * Creates a CUBE download token for authenticated file access and LONK.
  *
  * @param client - Connected chrisapi client.

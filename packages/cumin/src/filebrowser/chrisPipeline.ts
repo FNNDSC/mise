@@ -55,7 +55,13 @@ export async function pipelineFile_getByPath(filePath: string): Promise<Result<B
   try {
     // Filter server-side by fname; fall back to client-side filter on the returned items
     // in case the backend does not support fname as a query param.
+    // listing-bound: a filter on the exact fname, so this asks for the one
+    // file at a path rather than for a collection; the window only has to be
+    // wider than a server that ignores the filter would answer with.
     const pipelineSourceFileListResult: PipelineSourceFileList | null =
+      // listing-bound: filtered to one exact fname, so this asks for the file
+      // at a path rather than for a collection; the window only has to exceed
+      // what a server ignoring the filter would answer with.
       await client.getPipelineSourceFiles({ fname: expectedFname, limit: 1000 });
 
     if (pipelineSourceFileListResult === null) {

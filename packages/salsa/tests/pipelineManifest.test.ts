@@ -513,7 +513,9 @@ describe('pipelineManifest_get', () => {
       },
     });
     expect(getPipeline).toHaveBeenCalledTimes(1);
-    expect(getPipelineSourceFiles).toHaveBeenCalledWith({ pipeline_id: 42, limit: 1000 });
+    // The source files are drained, not guessed at: one page of a hundred
+    // with an offset, walked until short (#401).
+    expect(getPipelineSourceFiles).toHaveBeenCalledWith({ pipeline_id: 42, limit: 100, offset: 0 });
   });
 
   it('serves repeated exact slug resolution from the connection-scoped cache', async () => {

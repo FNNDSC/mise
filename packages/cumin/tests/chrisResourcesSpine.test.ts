@@ -73,7 +73,9 @@ describe('resources_getList', () => {
     const fields = await resource.resourceFields_get();
     expect(fields?.items).toHaveLength(1);
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch).toHaveBeenLastCalledWith({ limit: 20, offset: 0 });
+    // A page is a page of a hundred now, not of twenty: an unbounded caller
+    // gets the collection, and a page size is what the walk asks for (#401).
+    expect(fetch).toHaveBeenLastCalledWith({ limit: 100, offset: 0 });
   });
 
   it('filters by exact id match client-side', async () => {
@@ -150,6 +152,49 @@ describe('resources_getAll', () => {
     const resource: ChRISResource = new ChRISResource();
     resource.binding_applyGet({}, fetch as never);
     expect(await resource.resources_getAll()).toBeNull();
+  });
+
+  it('says a walk stopped short rather than passing it off as the end', async () => {
+    // CUBE is known to refuse some queries beyond an offset. Returning what
+    // was gathered as though it were everything is the defect (#401): the
+    // walk keeps the rows AND says where it stopped.
+    const fetch = jest.fn(async (params: { offset?: number }) => {
+      if ((params.offset ?? 0) === 0) return listResource_make(rows_make(100), 'resources', true);
+      throw new Error('Internal server error');
+    });
+    const resource: ChRISResource = new ChRISResource();
+    resource.binding_applyGet({}, fetch as never);
+    const all: FilteredResourceData | null = await resource.resources_getAll();
+    expect(all?.tableData).toHaveLength(100);
+    expect(all?.incomplete?.gathered).toBe(100);
+    expect(all?.incomplete?.reason).toContain('Internal server error');
+  });
+});
+
+describe('a listing shows what is there', () => {
+  it('walks the collection when the caller named no limit', async () => {
+    // The old default answered with twenty and said nothing about the rest.
+    const fetch = jest.fn(async (params: { offset?: number }) =>
+      (params.offset ?? 0) === 0
+        ? listResource_make(rows_make(100), 'resources', true)
+        : listResource_make(rows_make(37, 100)),
+    );
+    const resource: ChRISResource = new ChRISResource();
+    resource.binding_applyGet({}, fetch as never);
+    const all: FilteredResourceData | null = await resource.resources_listAndFilterByOptions();
+    expect(all?.tableData).toHaveLength(137);
+    expect(all?.incomplete).toBeUndefined();
+  });
+
+  it('honours a limit the caller asked for, and says it is a window', async () => {
+    const fetch = jest.fn(async () => listResource_make(rows_make(10), 'resources', true, 1817));
+    const resource: ChRISResource = new ChRISResource();
+    resource.binding_applyGet({}, fetch as never);
+    const page: FilteredResourceData | null = await resource.resources_listAndFilterByOptions({ limit: 10 });
+    expect(page?.tableData).toHaveLength(10);
+    expect(page?.totalCount).toBe(1817);
+    expect(page?.incomplete?.reason).toContain('10 of 1817');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

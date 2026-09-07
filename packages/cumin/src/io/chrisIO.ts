@@ -427,6 +427,8 @@ export class ChrisIO {
    */
   private async path_isFree(client: Client, wanted: string, mine: string): Promise<boolean> {
     try {
+      // listing-bound: one exact path can only be held by one file; five is
+      // room for a server that answers loosely, not a page of a collection.
       const held = await client.getUserFiles({ limit: 5, fname_exact: wanted });
       const items: unknown[] = held.getItems() ?? [];
       for (const item of items) {

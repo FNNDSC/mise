@@ -25,6 +25,7 @@ import {
   pipelineFile_getTextByPath,
   pipeline_get,
   pipelineSourceFilesPage_get,
+  pipelineSourceFiles_drain,
   type PipelineHandle,
   type PipelineSourceFileData,
   type ListPage,
@@ -155,17 +156,17 @@ export async function pipelines_getAll(): Promise<Result<PipelineRecord[]>> {
     return Err();
   }
 
-  const [pipelinesResult, sourceFilesPage] = await Promise.all([
+  const [pipelinesResult, sourceFiles] = await Promise.all([
     cumin_pipelines_list(),
-    pipelineSourceFilesPage_get(client, { limit: 1000 })
-      .catch((): ListPage<PipelineSourceFileData> | null => null),
+    pipelineSourceFiles_drain(client)
+      .catch((): PipelineSourceFileData[] | null => null),
   ]);
 
   if (!pipelinesResult.ok) return Err();
 
   const idToSourceFilename: Map<number, string> = new Map<number, string>();
-  if (sourceFilesPage) {
-    for (const row of sourceFilesPage.data) {
+  if (sourceFiles) {
+    for (const row of sourceFiles) {
       const { fname, pipeline_id } = row;
       if (pipeline_id && fname) {
         idToSourceFilename.set(pipeline_id, fname);
@@ -212,15 +213,15 @@ export async function pipelineManifestBySlug_get(slug: string): Promise<Result<P
   if (cached !== undefined) cache.delete(slug);
 
   try {
-    const [pipelineHandle, sourcePage]: [PipelineHandle | null, ListPage<PipelineSourceFileData>] =
+    const [pipelineHandle, sourceRowsAll]: [PipelineHandle | null, PipelineSourceFileData[]] =
       await Promise.all([
         pipeline_get(client, pipelineID),
-        pipelineSourceFilesPage_get(client, { pipeline_id: pipelineID, limit: 1000 }),
+        pipelineSourceFiles_drain(client, { pipeline_id: pipelineID }),
       ]);
     if (pipelineHandle === null || pipelineHandle.data === null) return Err();
     const pipeline: PipelineRecord = pipelineHandle.data;
 
-    const sourceRows: PipelineSourceFileData[] = sourcePage.data;
+    const sourceRows: PipelineSourceFileData[] = sourceRowsAll;
     const source: PipelineSourceFileData | undefined = sourceRows.find(
       (row: PipelineSourceFileData): boolean => row.pipeline_id === pipelineID,
     )

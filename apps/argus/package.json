@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/argus",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "ARGUS: an LCARS web console and terminal surface for mise, attached to a CALYPSO session",
   "type": "module",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "dependencies": {
     "@fnndsc/calypso": "*",
-    "@fnndsc/menu": "^0.3.0",
+    "@fnndsc/menu": "^0.4.0",
     "@types/three": "^0.185.4",
     "d3-force-3d": "^3.0.6",
     "three": "^0.185.1"

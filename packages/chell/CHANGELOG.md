@@ -1,5 +1,96 @@
 # @fnndsc/chell
 
+## 5.6.0
+
+### Minor Changes
+
+- 349d7d2: feat: a missing destination is asked for, not refused with a usage line
+
+  `mv foo` names what to move and never says where. Until now that was a usage line — telling an operator the shape of a command they had just typed correctly enough to be understood, instead of asking them the one thing they had not said. A required operand with no value is the same sentence as a value-taking flag with no value, and now gets the same answer: `mv` and `cp` ask.
+
+  The ask is the typed `path` ask that already exists, so neither verb knows which surface it is talking to: a terminal renders it as a line, and a surface that browses borrows a files pane for it. It opens where the source already lives, wants a directory when there is more than one source, and its committing control reads `MOVE HERE` or `COPY HERE`.
+
+  It offers no default name. The only name `mv` could propose is the source's own, and the first live run took Enter as exactly that and moved a file onto itself. The rule that came out of it holds for every path ask, and the terminal now implements it directly: the **anchor** says where to look, the **suggestion** says what to offer, and a verb with nothing to offer offers nothing — Enter on such a question answers nothing rather than answering with the question.
+
+  An abandoned ask moves nothing and says so (`mv: no destination given; nothing moved.`), rather than failing with a description of `mv`.
+
+- 8312a79: feat(chell): a terminal answers the same typed question
+
+  A terminal has one instrument — a line — so a location ask cannot borrow a browser the way a graphical surface does. It renders into the line instead: the composed default in brackets, and Enter takes the offer.
+
+  ```
+  Where should the table go? [/home/rudolphpienaar/pacs-2026-09-07.csv]
+  ```
+
+  The answer a terminal commits is then the same answer an errand would have committed, without either surface knowing the other exists — which is the point of putting the _kind_ on the wire rather than a rendering. A yes/no says which letters it takes and offers no default, because there is no safe guess. A prompt from a daemon that predates typed asks reads exactly as it always did.
+
+  Exemplar 12 closes the epic by driving the whole path through the kernel with a scripted surface: a value-taking flag given no value asks and the question says what it wants; the answer is what happens next and the file lands where it said; abandoning writes nothing and the command says so; and a session sitting in a provider path is not offered as a destination.
+
+  It caught the epic's last defect: **an abandoned ask was throwing the answer away with the writing.** The model crosses either way now — the operator waited for that answer, and only the writing of it did not happen.
+
+- 404f5e3: feat: a PACS question that names several patients becomes several questions
+
+  A PACS will not match a list. `PatientID:4356325\4433255` — the DICOM multi-value form — returns nothing from a real PACS, and the standard agrees: _List of UID Matching_ is defined only for attributes whose VR is `UI`, and `PatientID` is `LO`. So asking after two hundred MRNs is two hundred C-FINDs, and the fan-out is forced rather than chosen.
+
+  **The inline comma list is the operator's own syntax, now accepted.** `query PatientID:1234,4532,6654` is three questions and one table; `query PatientID:1234,StudyDate:20240101` still means what it always meant. There is nothing to disambiguate — every genuine term carries a colon, so a bare segment can only be another value for the key before it. Several multi-valued keys fan out over their cross-product, and above 32 the command refuses by name rather than launching hundreds at a shared clinical system.
+
+  **`--patients <list|@file>` carries a real cohort.** `@file` names a file in ChRIS storage, read through the session's own path and never the engine's host disk, so the flag behaves identically from a local shell, a remote shell and a browser — and a list on somebody's laptop reaches it through `upload`, the gated door. One MRN per line; blanks and `#` comments ignored.
+
+  **Four questions in flight**, in one constant. Not operator-settable: nobody inside mise knows the right number for a given hospital, and a flag that can hurt a shared clinical system will eventually be set to 50.
+
+  **A failure is not a miss.** A question that could not be asked is recorded `unasked` with its reason, never as zero studies. A server that timed out has told us nothing; a PACS that answered with nothing has told us something, and a clinician acts on the difference. The table says `FOUND 2 · NONE 1 · UNASKED 0`, and the model carries every row.
+
+  **Replay applies per patient**, so a cohort's already-asked MRNs never leave the building — verified live against rows answered eight months ago.
+
+  Two things found live while proving it:
+
+  - **CUBE refuses a second PACSQuery with a title it already holds for that server.** A fan-out under one title had every question after the first come back `You have already registered a PACS query with title=…`, which a less careful client would have rendered as "no imaging". Each question now carries its own title. Recorded in `docs/CUBE-gaps.adoc`.
+  - **`chell -c` and `chell -f` had no replay at all.** A one-shot skips the boot warm-up — correct — but that left the replay index neither restored nor written, so a scripted cohort re-asked the PACS every single time, and the audit workflow the fan-out exists for was the one workflow replay never reached. A one-shot now primes the index from the checkpoint a previous run paid for, and flushes what it learned before exiting, since the debounced writer's timer never fires in a process that short.
+
+### Patch Changes
+
+- 3df1c41: docs(calypso): say calypso where the component is meant, and make it typeable
+
+  Every other part of the stack is a noun with a role — cumin, salsa, chili, brasa, menu, chell, argus. The session supervisor was the odd one out, described by a flag on another program, so the prose said "the daemon" for something that already has a name, a package, a binary and a doctrine document.
+
+  Host control is _calypso's_ policy; berths are calypso's; the wire is calypso's. "Grant calypso host access" says whose policy changed. "Grant the daemon" does not.
+
+  Operator-facing text now names it: the flag help, the not-running message, the already-running refusal, the listening banner, the attach errors, the several-sessions chooser, and the host-control sentences — `upload` refusing without the `files` tier, the HOST banner, and argus's HOST lamp tooltip.
+
+  The start hints used to read `chell --daemon <user>@<url>` while the prose said "run calypso". They now say `calypso <user>@<url>`, which is a real command, since calypso ships its own binary. The getting-started guide leads with what calypso _is_, then gives both ways to start it — standalone from a saved session, or through chell logging in fresh — because they genuinely differ and one does not replace the other.
+
+  **Daemon survives where it is correct**: a mode name, an anchor, a make target, a background process. Code symbols are untouched — `daemon_launch` and its kin describe something that really is a daemon, and churning them buys nothing an operator sees. Command lines inside code blocks were left alone, so nothing became a command that does not exist.
+
+- Updated dependencies [a7f057c]
+- Updated dependencies [da15f3b]
+- Updated dependencies [78d85ae]
+- Updated dependencies [349d7d2]
+- Updated dependencies [8312a79]
+- Updated dependencies [02ef648]
+- Updated dependencies [3df1c41]
+- Updated dependencies [f5c16fe]
+- Updated dependencies [116e8ba]
+- Updated dependencies [ec3ef9f]
+- Updated dependencies [6234d55]
+- Updated dependencies [ba1e5b4]
+- Updated dependencies [404f5e3]
+- Updated dependencies [7181f7e]
+- Updated dependencies [d2a4315]
+- Updated dependencies [a245b5f]
+- Updated dependencies [9e2a9dd]
+- Updated dependencies [5a339f0]
+- Updated dependencies [a8449bc]
+- Updated dependencies [8446459]
+- Updated dependencies [17964a9]
+- Updated dependencies [62761a3]
+- Updated dependencies [17964a9]
+  - @fnndsc/brasa@0.17.0
+  - @fnndsc/calypso@0.10.0
+  - @fnndsc/salsa@3.13.0
+  - @fnndsc/cumin@3.18.0
+  - @fnndsc/menu@0.4.0
+  - @fnndsc/chili@3.6.6
+
 ## 5.5.1
 
 ### Patch Changes

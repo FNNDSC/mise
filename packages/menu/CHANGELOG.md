@@ -1,5 +1,99 @@
 # @fnndsc/menu
 
+## 0.4.0
+
+### Minor Changes
+
+- 116e8ba: feat(listing): progress is a trait of a row, and a row can carry verbs
+
+  The operator's observation: progress is not a PACS quirk. A feed row should say how far its work has got without anyone opening it, and every level should report — a series its own pull, a study the sum of its series, a patient the sum of its studies.
+
+  **The wire could not say it.** The `feed.list` model carried id, title, owner, status, created and two totals that need resident topology, so a roster genuinely could not know a feed's progress. CUBE's own job counters were already on the process cache, so the kernel now derives `jobsDone` and `jobsTotal` from them — settled meaning finished, errored or cancelled — and they travel with the feed row rather than waiting for topology. Kernel, wire, surface, in that order.
+
+  **Progress aggregates by addition, not by average.** A study's progress is the sum of its series'. An average would let one finished series of a hundred files outweigh a stalled one of ten thousand.
+
+  **A row with nothing scheduled still gets a track**, dimmed. The absence of a bar reads as "no such thing"; a dim track reads as "nothing has happened yet", which is the truth and the more useful statement.
+
+  **Actions are not traits.** A trait says what a row is under some column; an action is a verb applied to it, and it sits outside the column grid because it answers to no cap. Capsules stop click propagation, so pressing one is not also activating the row.
+
+  **Expansion has two modes**, declared rather than assumed: `replace` leaves the parent behind, `fold` keeps it on stage with the child inside. PACS exercises both in the next slice.
+
+  The runs roster gains NODES and PROGRESS, which widened its positional track list from seven columns to nine.
+
+  One smoke assertion changed, and deliberately: it counted seven cells per row as a literal. It now counts cells against the number of caps, which is the invariant that actually protects a positional grid and needs no edit when a column is added.
+
+- 7181f7e: feat: a PACS question can be put to several servers at once
+
+  `--pacsserver a,b` asks each named server and unions the answers into one listing. It is the same fan-out a cohort uses, discriminated by a different column: SERVER rides every study and every patient row, so two answers can be told apart, sorted and filtered.
+
+  **A row names its server only when more than one could have answered.** On a single-server query the column would repeat one value down the page and tell an operator nothing.
+
+  **There is no sweep-everything.** The CUBE this was designed against carries thirteen registered servers, several reading as one-off or per-person registrations; an `--all` would mean thousands of C-FINDs mostly into endpoints of unknown liveness. A fan-out is always something the operator named.
+
+  **A server that could not be reached is `unasked`, not empty.** Verified live: naming a server that does not resolve leaves that row `—` with its reason while the server that did answer still reports what it found. A server that could not be reached has told us nothing about that patient; rendering it as a zero would say the opposite.
+
+  The reason on such a row is stripped of the error stack's debugging prefix where it becomes model data, since it is read in a terminal table and on a graphical surface alike.
+
+  Servers are keyed by their canonical identifier — what CUBE files a query under, and therefore what the replay index matches on, so a question already asked of one server replays while the same question to another is asked fresh.
+
+- d2a4315: feat(menu): a PACS answer can say what it did NOT find
+
+  `pacs.query` described what a query found and nothing else. That makes the answer an operator usually wants — which of these two hundred MRNs have no imaging — the invisible half of the result.
+
+  The model now carries a patient level: every MRN asked, with its status, its study and series counts, the CUBE query that answered for it, and its own provenance.
+
+  **Three states, not two.** `found`, `none` and `unasked`. A query that could not be asked is not a query that found nothing, and rendering a timeout as `0` is precisely the confident stale answer the replay work exists to refuse. An unrecognized status from a newer daemon degrades to `unasked`, the only degrade that never reads as an answer this contract never received.
+
+  The studies keep their shape and stay on the model, each carrying its own `patientId`. The patient level is not a container for them — it is the record of what was _asked_, which is why it cannot be derived: a miss owns no study.
+
+  Provenance is per patient as well as per answer, because a fan-out replays some rows and troubles the PACS for others.
+
+  Optional, as `provenance` is: an envelope from a daemon that predates the fan-out still parses, and a surface reads its absence as the single-question case it could only have been.
+
+- a245b5f: feat: choosing which PACS to ask is a strip you pick from, never a sweep
+
+  SERVER became a column of the study listing, and the law that places a form's fields put its control there with no separate decision to make: the cell stands in SERVER's column, wearing the form's own label.
+
+  It is a **state readout you press** — `PACSDCM`, `PACSDCM +2` — that unfolds a strip of segments beneath the form, one per registered server, lit when included; the field's touch or Esc retracts it, the same retraction grammar the mode frames already use. Not a dropdown: LCARS has no popup layer and should not grow one, since a floating menu is exactly the window chrome this grammar rejects — and a strip of the pane's own width carries thirteen servers where a grid track could not carry three.
+
+  **There is no ALL, and there will not be one.** Thirteen registrations of unknown liveness would mean thousands of C-FINDs mostly into the void. A fan-out is always something the operator named.
+
+  **One chosen is a context; several is a query.** One lowers to a visible `pacs connect`, so the session moves and the linked terminal's prompt follows. Several lowers to `--pacsserver a,b` in the editable line and moves nothing. The prompt changing, or not, is the honest tell.
+
+  **The list comes from the kernel, not from CUBE.** `pacs list` now carries a `pacs.servers` model beside the text it always printed — id, identifier, and which one the session is on. A surface asking CUBE itself would be reading a different CUBE from the one its commands run against. Liveness is deliberately absent: CUBE registers servers, it does not test them, and a field that looked like health would be a claim nobody checked.
+
+  Two things found live: the PACS pane's own commands had no way back to it — the DAG pane's already did — so `pacs list` answered into the void; and the document's retraction listener closed the strip with the very press that opened it.
+
+  Law `a-server-is-named-never-swept`, smoke-enforced.
+
+- 5a339f0: feat: a plugin is data — the manual becomes a projection of the model
+
+  A plugin's substance existed only as text. `cat /bin/<entry>` fetched the plugin, formatted a manual, and that manual was the whole of what any surface could have — a paragraph nothing downstream can act on: not a card, not a parameter list, not a form, not an export.
+
+  The kernel now builds the model first and renders the manual from it. `plugin info pl-dcm2niix-v2.0.0` answers with a `plugin.info` model carrying identity, the authoring facts, and every declared parameter; `cat /bin/pl-dcm2niix-v2.0.0` prints exactly the text it printed before, now as one projection of that model rather than a second independent scrape that can drift from it.
+
+  **Parameters carry the flag as it is typed.** A plugin's own `flag` when it declares one, `--name` otherwise — a form built from the name alone would spell `--inputFile` where the plugin wants `-i`.
+
+  **The parameter list is drained to exhaustion.** `getPluginParameters({ limit: 100 })` was one of the silent truncations catalogued in #401: a plugin declaring more lost the tail and said nothing about it. `pluginParameters_drain` walks to the end, and a live exemplar checks the model's count against the count CUBE itself reports — a client that both fetches and counts can agree with itself while being wrong.
+
+  cumin gains `plugin_find` and `pluginParameters_drain` on the typed contract, so the `/bin` reader no longer reaches past it to the raw client.
+
+  No surface change: this is the wire fact a plugin's one-node graph will read.
+
+- 62761a3: feat(menu): a question says what kind of value it wants
+
+  The wire has always carried a question — `prompt` / `promptAnswer` / `promptError` — and a surface has only ever been able to answer it with a line of text. That is enough for a terminal and not enough for anything else: argus refuses every prompt outright (`the argus surface cannot answer prompts`), so `sudo` dead-ends in the web surface and no control can ask for a value the operator has not already typed.
+
+  A prompt now says what it is asking FOR, so a surface can choose its instrument rather than reading the wording and guessing:
+
+  - **`wants`** — `text`, `secret`, `confirm` or `path`. Open-world: an unrecognized kind degrades to `text`, which every surface can answer, so a question from a newer daemon stays answerable rather than refused.
+  - **`path`** — where browsing starts, whether a file or a directory is wanted, and a basename to offer. An errand that opens nowhere in particular is a browser, not an answer.
+  - **`commit`** — the word the committing control should read (`EXPORT HERE`). A control reads as what it will do next.
+
+  Everything is optional, so a daemon or a surface that predates this still parses and still answers. `hidden: true` with no kind reads as `secret` — what such a daemon could only have meant — and that reconciliation is `promptKind_of` in `menu` rather than a rule each surface re-derives: two readings of one message is how a terminal and a browser end up masking different things.
+
+  No contract bump: the additions are optional, and `version_isCompatible` refuses on any mismatch, so a bump would turn a backward-compatible change into a hard break.
+
 ## 0.3.1
 
 ### Patch Changes

@@ -740,8 +740,19 @@ async function surface_start(token: string): Promise<void> {
   // split-born browser is rooted by default; either can be re-bound from
   // its drawer (FOLLOW CWD / ROOT HERE) or the language.
   const filesFollow: Map<string, boolean> = new Map();
+  // Each browser's binding pair, so a change made anywhere — drawer,
+  // language, or a split born rooted — is read back by the control that
+  // states it.
+  const cwdBindSyncs: Map<string, () => void> = new Map();
+  const cwdBind_sync_register = (id: string, sync: () => void): void => {
+    cwdBindSyncs.set(id, sync);
+  };
+  const cwdBind_sync = (id: string): void => {
+    cwdBindSyncs.get(id)?.();
+  };
   const filesFollow_set = (id: string, on: boolean): void => {
     filesFollow.set(id, on);
+    cwdBind_sync(id);
     const panel: FilesPanel | undefined = filesPanels.get(id);
     panel?.follow_set(on);
     if (on && panel !== undefined) {
@@ -1193,6 +1204,7 @@ async function surface_start(token: string): Promise<void> {
     filesPanels.set(id, panel);
     rootedHistory.set(id, []);
     filesFollow.set(id, primary);
+    cwdBind_sync(id);
     panel.follow_set(primary);
     return {
       id,
@@ -1757,31 +1769,63 @@ async function surface_start(token: string): Promise<void> {
       children.appendChild(capsule);
     };
     if (kind === 'files') {
-      // Navigation verbs: a following browser is slaved to the session, so
-      // its back/home are the session's own; a rooted browser walks its own
-      // history. The binding itself is declared here, both ways.
+      // Binding is a statement about this pane and its neighbours, so it
+      // rides the binding group beside LINKED FS rather than standing among
+      // verbs: what the next split creates, and what THIS browser follows,
+      // are the same kind of sentence. The two read as a radio because they
+      // are one — a browser either follows the session or holds its place.
+      const binding: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-binding');
+      if (binding !== null) {
+        const label: HTMLElement = document.createElement('span');
+        label.className = 'drawer-label drawer-label-cwd';
+        label.textContent = 'CWD';
+        binding.appendChild(label);
+        const cwdBind_offer = (text: string, follow: boolean, hint: string): HTMLButtonElement => {
+          const capsule: HTMLButtonElement = document.createElement('button');
+          capsule.className = 'pacs-capsule drawer-cwdbind';
+          capsule.dataset['follow'] = follow ? 'on' : 'off';
+          capsule.textContent = text;
+          capsule.title = hint;
+          capsule.addEventListener('click', (): void => {
+            if ((filesFollow.get(id) === true) !== follow) filesFollow_set(id, follow);
+            sound_play('audio3');
+          });
+          binding.appendChild(capsule);
+          return capsule;
+        };
+        cwdBind_offer('FOLLOW CWD', true, "bind this browser to the session cwd (the console's browser)");
+        cwdBind_offer('ROOT HERE', false, 'unbind from the cwd: this browser keeps its own place');
+        // The pair reads the pane's state wherever the state was changed —
+        // the drawer, the language, or a split being born rooted.
+        cwdBind_sync_register(id, (): void => {
+          const following: boolean = filesFollow.get(id) === true;
+          for (const capsule of binding.querySelectorAll<HTMLElement>('.drawer-cwdbind')) {
+            capsule.classList.toggle(
+              'drawer-bind-selected',
+              (capsule.dataset['follow'] === 'on') === following,
+            );
+          }
+        });
+        cwdBind_sync(id);
+      }
+      // HOME and BACK act on where the FIELD points, so they live on the
+      // frame that answers to the field. A following browser's back and home
+      // are the session's own; a rooted one walks its own history.
       const follows = (): boolean => filesFollow.get(id) === true;
-      child_offer('FOLLOW CWD', 'bind this browser to the session cwd (the console\'s browser)', (): void => {
-        if (!follows()) filesFollow_set(id, true);
-      });
-      child_offer('ROOT HERE', 'unbind from the cwd: this browser keeps its own place', (): void => {
-        if (follows()) filesFollow_set(id, false);
-      });
-      child_offer('HOME', 'back to the home directory', (): void => {
+      mount.querySelector<HTMLElement>('.files-home')?.addEventListener('click', (): void => {
         if (follows()) {
           terminal.line_run('cd ~');
-        } else {
-          const panel: FilesPanel | undefined = filesPanels.get(id);
-          if (panel !== undefined) {
-            const previous: string | null = panel.path_current();
-            if (previous !== null) {
-              rootedHistory.get(id)?.push(previous);
-            }
-            rootedListing_show(id, panel, '~');
-          }
+          return;
         }
+        const panel: FilesPanel | undefined = filesPanels.get(id);
+        if (panel === undefined) return;
+        const previous: string | null = panel.path_current();
+        if (previous !== null) {
+          rootedHistory.get(id)?.push(previous);
+        }
+        rootedListing_show(id, panel, '~');
       });
-      child_offer('BACK', 'return to the previous listing', (): void => {
+      mount.querySelector<HTMLElement>('.files-back')?.addEventListener('click', (): void => {
         if (follows()) {
           terminal.line_run('cd -');
           return;
@@ -1792,20 +1836,9 @@ async function surface_start(token: string): Promise<void> {
           rootedListing_show(id, panel, previous);
         }
       });
-      child_offer('DOWNLOAD', 'download the indicated file', (): void => {
-        const regard: RegardValue | null = subjects.regard_get(id);
-        if (regard !== null && regard.modelKind === 'fs.file') {
-          window.open(vfsUrl_build(regard.address), '_blank');
-        }
-      });
-      // Destructive verbs run as VISIBLE terminal commands: auditable in the
-      // transcript, never a silent mutation behind a pill.
-      child_offer('DELETE', 'rm the indicated file (runs visibly in the console)', (): void => {
-        const regard: RegardValue | null = subjects.regard_get(id);
-        if (regard !== null && regard.modelKind === 'fs.file') {
-          terminal.line_run(`rm "${regard.address}"`);
-        }
-      }, 'drawer-destructive');
+      // DOWNLOAD and DELETE act on a ROW, so the drawer offers neither. The
+      // intents themselves live on (the console language reaches them, and
+      // the row's own track carries them next); only their home is gone.
     }
     if (kind === 'dag') {
       // ENTER always lands in a place. A regard may point at a file (a
@@ -2168,6 +2201,23 @@ async function surface_start(token: string): Promise<void> {
       const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
       if (match === null) return false;
       return dagPanels.get(paneId)?.node_flyTo(parseInt(match[1] ?? '', 10)) ?? false;
+    },
+    // The two row verbs, as the surface's own capability: the console
+    // language presses them today and the row's action track presses the
+    // same pair next, so neither has to know where the other's control is.
+    file_download: (paneId: string): boolean => {
+      const regard: RegardValue | null = subjects.regard_get(paneId);
+      if (regard === null || regard.modelKind !== 'fs.file') return false;
+      window.open(vfsUrl_build(regard.address), '_blank');
+      return true;
+    },
+    file_delete: (paneId: string): boolean => {
+      const regard: RegardValue | null = subjects.regard_get(paneId);
+      if (regard === null || regard.modelKind !== 'fs.file') return false;
+      // A destructive verb runs as a VISIBLE terminal command: auditable in
+      // the transcript, never a silent mutation behind a control.
+      terminal.line_run(`rm "${regard.address}"`);
+      return true;
     },
     session_run: async (line: string): Promise<string> => {
       try {

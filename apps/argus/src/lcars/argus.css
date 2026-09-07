@@ -267,9 +267,12 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 
 /* --------------------------------------------------- the drawer grammar */
-/* Three groups, three colors, one sentence: shape the tile (structure,
- * harvestgold), bind a neighbor (binding, butter), act on the content
- * (verbs, orange). Destructive verbs are red, by color law. */
+/* Two groups, two colors, one sentence: shape the tile (structure,
+ * harvestgold) and bind a neighbour (binding, butter). A third group of
+ * verbs used to sit here; a control lives where it acts, so what answers to
+ * the field moved to the mode frame and what acts on a row moved to the row.
+ * The children group remains for panes whose intents act on the pane as a
+ * whole (orange, destructive red by color law). */
 .drawer-group {
   display: inline-flex;
   align-items: center;
@@ -299,13 +302,21 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   color: #000;
 }
 
-/* The binding radio: the selected binding is lit, the others recede. */
-.drawer-binding .drawer-bind {
+/* The binding radio: the selected binding is lit, the others recede. Two
+ * radios ride this group and read alike — what the next split creates, and
+ * whether THIS browser follows the session cwd. */
+.drawer-binding .drawer-bind,
+.drawer-binding .drawer-cwdbind {
   background-color: rgb(255 238 204 / 22%);
   color: var(--butter);
 }
 
-.drawer-binding .drawer-bind.drawer-bind-selected {
+.drawer-binding .drawer-label-cwd {
+  margin-left: 0.5rem;
+}
+
+.drawer-binding .drawer-bind.drawer-bind-selected,
+.drawer-binding .drawer-cwdbind.drawer-bind-selected {
   background-color: var(--butter);
   color: #000;
   box-shadow: 0 0 8px rgb(255 238 204 / 60%);
@@ -3083,8 +3094,13 @@ body[data-zoom] #header-restore {
   display: none;
 }
 
+/* A diagram is not a listing: its frame offers what a graph has, and the
+ * listing's own blocks — projection, filter, and the two that move where the
+ * field points — stand down while it holds the field. */
 .files-body.diagram-shown .files-view,
-.files-body.diagram-shown .files-filter {
+.files-body.diagram-shown .files-filter,
+.files-body.diagram-shown .files-home,
+.files-body.diagram-shown .files-back {
   display: none;
 }
 

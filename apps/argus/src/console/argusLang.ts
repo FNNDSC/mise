@@ -39,6 +39,10 @@ export interface ArgusHost {
   feed_enter(id: number): void;
   /** Dives into the node the pane currently regards; false when none. */
   node_immerse(paneId: string): boolean;
+  /** Downloads the file a browser regards; false when it regards none. */
+  file_download(paneId: string): boolean;
+  /** Removes the file a browser regards, visibly; false when none. */
+  file_delete(paneId: string): boolean;
   /** Runs a session command silently, returning rendered output. */
   session_run(line: string): Promise<string>;
   /** Toggles the console's full-screen zoom (the bar carries no control). */
@@ -132,6 +136,11 @@ function drawerChild_click(host: ArgusHost, paneId: string, label: string): bool
     }
   }
   return false;
+}
+
+/** Clicks a browser's cwd-binding capsule (FOLLOW CWD / ROOT HERE). */
+function cwdBind_click(host: ArgusHost, paneId: string, follow: boolean): boolean {
+  return control_click(host, paneId, `.drawer-cwdbind[data-follow="${follow ? 'on' : 'off'}"]`);
 }
 
 /** Cycles a mode-frame pill until its label matches the wanted mode. */
@@ -378,9 +387,26 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (verb === 'list' || verb === 'cards' || verb === 'preview') {
       return modePill_setTo(host, paneId, '.files-view', verb.toUpperCase()) ? `file ${verb}` : `file ${verb}: no files mode frame`;
     }
-    const label: string = verb === 'follow' ? 'FOLLOW CWD' : verb === 'root' ? 'ROOT HERE' : verb.toUpperCase();
-    if (!['HOME', 'BACK', 'DOWNLOAD', 'DELETE', 'FOLLOW CWD', 'ROOT HERE'].includes(label)) return 'file home|back|download|delete|sort|filter|follow|root|list|cards|preview';
-    return drawerChild_click(host, paneId, label) ? `file ${verb}` : `file ${verb}: not offered by '${paneId}'`;
+    // Each verb is reached where it now lives: binding on the drawer's
+    // binding group, field navigation on the frame, and the row verbs
+    // through the host, which is what the row's own track presses too.
+    if (verb === 'follow' || verb === 'root') {
+      return cwdBind_click(host, paneId, verb === 'follow')
+        ? `file ${verb}`
+        : `file ${verb}: not offered by '${paneId}'`;
+    }
+    if (verb === 'home' || verb === 'back') {
+      return control_click(host, paneId, verb === 'home' ? '.files-home' : '.files-back')
+        ? `file ${verb}`
+        : `file ${verb}: not offered by '${paneId}'`;
+    }
+    if (verb === 'download') {
+      return host.file_download(paneId) ? 'file download' : 'file download: nothing indicated';
+    }
+    if (verb === 'delete') {
+      return host.file_delete(paneId) ? 'file delete' : 'file delete: nothing indicated';
+    }
+    return 'file home|back|download|delete|sort|filter|follow|root|list|cards|preview';
   }
 
   if (subject === 'node') {

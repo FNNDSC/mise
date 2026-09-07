@@ -745,12 +745,88 @@ try {
     const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
     const state = () => fp.querySelector('.pane-state').textContent;
     const atLogin = state();
-    const verb = async (label) => { fp.querySelector('.pane-handle').click(); await sleep(150); const cap = [...fp.querySelectorAll('.drawer-child')].find(c => c.textContent === label); if (!cap) return false; cap.click(); await sleep(400); return true; };
+    const verb = async (label) => { fp.querySelector('.pane-handle').click(); await sleep(150); const cap = [...fp.querySelectorAll('.drawer-cwdbind')].find(c => c.textContent === label); if (!cap) return false; cap.click(); await sleep(400); return true; };
     const rooted = await verb('ROOT HERE'); const afterRoot = state();
     const followed = await verb('FOLLOW CWD'); await sleep(1500); const afterFollow = state();
     return { atLogin, rooted, afterRoot, followed, afterFollow };`);
   check('the following browser says CWD on its bar', /^CWD\b/.test(follow.atLogin));
   check('ROOT HERE and FOLLOW CWD re-bind the browser, and the bar follows', follow.rooted && !/^CWD\b/.test(follow.afterRoot) && follow.followed && /^CWD\b/.test(follow.afterFollow));
+  }
+
+  if (stage('control-homes')) {
+  // A control lives where it acts: the drawer acts on the pane, the frame on
+  // the field, the row on the row. Each verb is found in its new home, and
+  // the browser's drawer is down to two groups.
+  const homes = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const frame = fp.querySelector('.mode-frame');
+    const onFrame = [...frame.querySelectorAll('.strategy-pill')].map(p => p.textContent.trim());
+    fp.querySelector('.pane-handle').click(); await sleep(200);
+    const drawer = fp.querySelector('.pane-drawer');
+    const groups = [...drawer.querySelectorAll('.drawer-group')].filter(g => g.offsetParent !== null).length;
+    const inDrawer = [...drawer.querySelectorAll('button')].map(b => b.textContent.trim());
+    const bindsCwd = [...drawer.querySelectorAll('.drawer-cwdbind')].map(b => b.textContent.trim());
+    const selected = drawer.querySelector('.drawer-cwdbind.drawer-bind-selected')?.textContent.trim() ?? '';
+    fp.querySelector('.pane-handle').click(); await sleep(150);
+    return { onFrame, groups, inDrawer, bindsCwd, selected };`);
+  check('HOME and BACK live on the frame that answers to the field',
+    homes.onFrame.includes('HOME') && homes.onFrame.includes('BACK'));
+  check('FOLLOW CWD and ROOT HERE ride the binding group',
+    homes.bindsCwd.join(',') === 'FOLLOW CWD,ROOT HERE');
+  check('the binding pair reads the browser it states', homes.selected === 'FOLLOW CWD');
+  check("a browser's drawer has two groups", homes.groups === 2);
+  check('the row verbs left the drawer',
+    !homes.inDrawer.includes('DOWNLOAD') && !homes.inDrawer.includes('DELETE')
+    && !homes.inDrawer.includes('HOME') && !homes.inDrawer.includes('BACK'));
+
+  // Moving a control must not cost what it did: a rooted browser still walks
+  // its own history — HOME lands home, a folder descends, BACK returns.
+  const walk = await evalIn(`
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const names = () => [...fp.querySelectorAll('.files-row .files-name')].map(n => n.textContent.trim());
+    const settle = async (want) => { for (let i = 0; i < 40; i++) { await sleep(250); if (want()) return true; } return false; };
+    const bind = async (follow) => { fp.querySelector('.pane-handle').click(); await sleep(150);
+      fp.querySelector('.drawer-cwdbind[data-follow="' + (follow ? 'on' : 'off') + '"]').click();
+      await sleep(200); fp.querySelector('.pane-handle').click(); await sleep(150); };
+    await bind(false);
+    // Settle on a CHANGE, never on a count: the pane already holds a listing
+    // when HOME is pressed, so "more than one row" is true before the answer
+    // arrives and the walk then measures the previous place.
+    const before = names().join(',');
+    fp.querySelector('.files-home').click();
+    await settle(() => names().length > 1 && names().join(',') !== before);
+    const home = names();
+    const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => r.querySelector('.files-name')?.textContent.trim() !== '..');
+    const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
+    folder?.click();
+    await settle(() => names().join(',') !== home.join(','));
+    const inside = names();
+    fp.querySelector('.files-back').click();
+    await settle(() => names().join(',') === home.join(','));
+    const back = names();
+    await bind(true);
+    return { home, into, inside, back };`);
+  // The console language reaches each verb where it now lives, which is the
+  // point of moving them through a host capability rather than a capsule.
+  const spoken = await evalIn(`
+    const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const term = document.querySelector('#terminal input');
+    const say = async (line) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); };
+    const bound = () => fp.querySelector('.drawer-cwdbind.drawer-bind-selected')?.textContent.trim() ?? '';
+    await say('file root'); const rooted = bound();
+    await say('file follow'); const followed = bound();
+    await say('file home'); await sleep(1200);
+    const rows = fp.querySelectorAll('.files-row').length;
+    return { rooted, followed, rows };`);
+  check('the language re-binds a browser where the binding now lives',
+    spoken.rooted === 'ROOT HERE' && spoken.followed === 'FOLLOW CWD');
+  check('the language still reaches HOME on the frame', spoken.rows > 1);
+
+  check('HOME lands a rooted browser home', walk.home.length > 1 && walk.into !== '');
+  check('a folder still descends from the listing', walk.inside.join(',') !== walk.home.join(','));
+  check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','));
   }
 
   if (stage('select-wait')) {

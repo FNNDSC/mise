@@ -887,7 +887,10 @@ try {
     const say = async (line, ms) => { term.value = line;
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
     const names = () => [...fp().querySelectorAll('.files-row .files-name')].map(n => n.textContent.trim());
-    const settle = async (want) => { for (let i = 0; i < 60; i++) { await sleep(500); if (want()) return true; } return false; };
+    // A cold daemon's first calls to CUBE are slower than a warm one's, and
+    // this scenario waits on a real upload: the settle is generous because
+    // the alternative is a check that fails for being early.
+    const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
 
     await say('cd ~', 2000);
     await settle(() => names().length > 2);
@@ -923,6 +926,88 @@ try {
   check('the directory it made is in the listing', place.made);
   check("a file the operator picked lands in the folder on stage", place.landed);
   check('the artefacts are removed again', place.cleared);
+  }
+
+  if (stage('roster-shares')) {
+  // The roster's rows carry the verbs that act on a FEED: setfacl grants to
+  // an identity on a feed, so sharing belongs here. Indicating is not
+  // entering, the geometry holds, and both verbs ask before they act.
+  const shares = await evalIn(`
+    document.getElementById('gutter-runs').click(); await sleep(1000);
+    const term = document.querySelector('#terminal input');
+    const key = (k) => term.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    const rows = () => [...document.querySelectorAll('.feedlist-row')];
+    const tops = () => rows().map(r => Math.round(r.querySelector('.feedlist-title')?.getBoundingClientRect().top ?? 0));
+    const asks = () => [...document.querySelectorAll('#terminal .argus-ask')];
+    const rosterShown = () => document.querySelector('.dag-feedlist')?.offsetParent !== null;
+    for (let i = 0; i < 60; i++) { await sleep(400); if (rows().length > 1) break; }
+
+    const before = tops();
+    const target = rows()[1];
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    let readout = '';
+    for (let i = 0; i < 50; i++) { await sleep(400); readout = target.querySelector('.listing-readout')?.textContent ?? ''; if (readout) break; }
+    const verbs = [...target.querySelectorAll('.listing-action')].map(b => b.textContent.trim());
+    const others = rows().filter(r => r !== target).every(r => r.querySelectorAll('.listing-action').length === 0);
+    const after = tops();
+    const stayed = rosterShown();
+
+    // SHARE asks who, and says what cannot be undone before it is answered
+    [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'SHARE')?.click();
+    let asked = '';
+    for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a) { asked = a.textContent.trim(); break; } }
+    key('Escape'); await sleep(600);
+
+    // DELETE raises the kernel's own confirmation, and NO removes nothing
+    const feedsBefore = rows().length;
+    [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'DELETE')?.click();
+    let confirm = '';
+    for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a && a.textContent.trim() !== asked) { confirm = a.textContent.trim(); break; } }
+    key('Escape'); await sleep(1200);
+    const feedsAfter = rows().length;
+
+    // a double-click still enters the feed
+    target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    let entered = false;
+    for (let i = 0; i < 60; i++) { await sleep(400); if (!rosterShown()) { entered = true; break; } }
+    return { verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, entered };`);
+  check('a feed row carries the verbs that act on a feed',
+    shares.verbs.join(',') === 'SHARE,DELETE' && shares.others);
+  check('the row reads back who holds it', /^SHARED WITH /.test(shares.readout));
+  check('no roster row moves when one is indicated', !shares.moved);
+  check('indicating a feed does not enter it', shares.stayed);
+  check('SHARE asks who, and says the grant cannot be taken back',
+    /with which user/.test(shares.asked) && /cannot be taken back/.test(shares.asked));
+  check('DELETE raises the kernel\'s own confirmation', /Remove feed \d+ and everything in it/.test(shares.confirm));
+  check('answering no removes nothing', shares.feedsBefore === shares.feedsAfter);
+  check('a double-click still enters the feed', shares.entered);
+
+  // Granting for real needs a second identity to grant TO, which not every
+  // environment has: set SMOKE_SHARE_USER to run it, and the check says it
+  // was skipped rather than passing quietly.
+  const shareUser = process.env.SMOKE_SHARE_USER;
+  if (shareUser === undefined || shareUser === '') {
+    console.log('  skip  a grant reaches the row that made it (set SMOKE_SHARE_USER)');
+  } else {
+    const granted = await evalIn(`
+      document.getElementById('gutter-runs').click(); await sleep(1200);
+      const term = document.querySelector('#terminal input');
+      const rows = () => [...document.querySelectorAll('.feedlist-row')];
+      for (let i = 0; i < 60; i++) { await sleep(400); if (rows().length > 1) break; }
+      const target = rows()[1];
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 50; i++) { await sleep(400); if (target.querySelector('.listing-readout')) break; }
+      [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'SHARE')?.click();
+      for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('#terminal .argus-ask')) break; }
+      term.value = ${JSON.stringify(shareUser)};
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await sleep(3000);
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      let readout = '';
+      for (let i = 0; i < 50; i++) { await sleep(400); readout = target.querySelector('.listing-readout')?.textContent ?? ''; if (readout.includes(${JSON.stringify(shareUser)})) break; }
+      return { readout };`);
+    check('a grant reaches the row that made it', granted.readout.includes(shareUser), granted.readout);
+  }
   }
 
   if (stage('select-wait')) {

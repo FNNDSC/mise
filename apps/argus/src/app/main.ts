@@ -1548,6 +1548,31 @@ async function surface_start(token: string): Promise<void> {
         feed_regard: (procPath: string): void => {
           subjects.regard_write(id, { address: procPath, modelKind: 'feed' });
         },
+        // `setfacl` grants to an identity on a FEED, so the roster is where
+        // sharing belongs — a browser row offers it only because the path
+        // it holds names a feed. DELETE is the kernel's own removal, which
+        // asks before it acts.
+        feed_verbs: (feed) => [
+          {
+            label: 'SHARE',
+            run: (): void => terminal.line_run(`setfacl feed_${feed.id}`),
+          },
+          {
+            label: 'DELETE',
+            run: (): void => terminal.line_run(`feed rm feed_${feed.id}`),
+          },
+        ],
+        feed_indicated: (feed): void => {
+          subjects.regard_write(id, { address: `/proc/jobs/feed_${feed.id}`, modelKind: 'feed' });
+          // Who holds it is a readout, not a verb: it says what the grant
+          // capsule would be adding to.
+          void client
+            .line_execute(`getfacl feed_${feed.id}`, { silent: true, observe: false })
+            .then((outcome: ExecuteOutcome): void => {
+              dagPanels.get(id)?.rowReadout_show(feed.id, shares_read(outcome));
+            })
+            .catch((): void => { dagPanels.get(id)?.rowReadout_show(feed.id, 'ACCESS UNREAD'); });
+        },
         ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
     );

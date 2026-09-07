@@ -425,10 +425,12 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 
 .dag-roster {
-  /* id, title, status, nodes, progress, size, time, owner, created — the
-   * track list is positional, so it must gain a column wherever the traits
-   * do or every cell after the new one lands under the wrong cap. */
-  --roster-cols: 4em 1fr 8em 4em 7em 5.5em 6em 7em 7em;
+  /* id, title, status, nodes, progress, size, time, owner, created, and the
+   * action track — the track list is positional, so it must gain a column
+   * wherever the traits do or every cell after the new one lands under the
+   * wrong cap. The last column is fixed: a track that sized to its content
+   * would move every column left of it each time a row was indicated. */
+  --roster-cols: 4em 1fr 8em 4em 7em 5.5em 6em 7em 7em 19em;
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
 }
@@ -1798,6 +1800,18 @@ body[data-header='dag'] #header-dag {
 
 .files-row-indicated .files-name,
 .files-row-indicated .files-glyph {
+  color: var(--butter);
+  text-shadow: 0 0 8px rgb(255 238 204 / 60%);
+}
+
+/* The roster's rows carry verbs the same way a browser's do: the track is
+ * reserved on every row and the indicated row wears its own light. */
+.feedlist-row > .listing-actions {
+  padding-block: 0;
+}
+
+.feedlist-indicated .feedlist-title,
+.feedlist-indicated .feedlist-id {
   color: var(--butter);
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }

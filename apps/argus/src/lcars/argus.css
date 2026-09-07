@@ -3157,8 +3157,29 @@ body[data-zoom] #header-restore {
 .files-body.diagram-shown .files-home,
 .files-body.diagram-shown .files-back,
 .files-body.diagram-shown .files-mkdir,
-.files-body.diagram-shown .files-upload {
+.files-body.diagram-shown .files-upload,
+.files-body.diagram-shown .files-select,
+.files-body.diagram-shown .files-selection-bar {
   display: none;
+}
+
+/* A selection belongs to the field, so its verbs ride the frame under the
+ * mode that gathered them — never a row, since while SELECT is on a row is
+ * not indicated, it is selected. */
+.files-selection-bar {
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+  padding: 0 0.2rem;
+}
+
+/* A selected row wears its state; the indicated row's light says something
+ * else, so the two never appear at once (SELECT stands the indication down). */
+.files-row-selected .files-name,
+.files-row-selected .files-glyph,
+.files-row-selected .files-type,
+.files-row-selected .files-size {
+  background: color-mix(in srgb, var(--butter) 22%, transparent);
+  color: var(--butter);
 }
 
 .files-body.diagram-shown .diagram-strategy,

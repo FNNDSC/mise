@@ -402,6 +402,11 @@ export class ArgusTerminal {
    * @param request - The question and what it wants.
    * @returns The answer, or null when the operator abandoned it.
    */
+  /** @returns Whether a question is open and waiting for an answer. */
+  public ask_isOpen(): boolean {
+    return this.pendingAsk !== null;
+  }
+
   public ask_open(request: AskRequest): Promise<string | null> {
     if (this.pendingAsk !== null) {
       // One at a time. The daemon refuses a second question already; this

@@ -4,8 +4,8 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
+import { CommandEnvelope, listCache_get, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
+import type { ListCache, StackMessage } from '@fnndsc/cumin';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
 import { destination_ask, destination_missing } from './destination.js';
 import { files_mv as chefs_mv_cmd } from '@fnndsc/chili/commands/fs/mv.js';
@@ -36,6 +36,26 @@ export interface MvModelData {
 export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
+
+  // `-t <dir>` names the TARGET DIRECTORY, so every operand is a source —
+  // the shell's own answer to "several things, one destination". Given no
+  // value it is a question (an-absent-value-is-a-question), and the answer
+  // wants a directory: `mv a b` without it means rename a ONTO b, which
+  // is the right reading of that line and the wrong thing for a set.
+  const target: unknown = parsed.t;
+  if (target !== undefined && pathArgs.length > 0) {
+    if (typeof target === 'string' && target !== '') {
+      return mv_run({ sources: pathArgs, dest: target });
+    }
+    const chosen: string = await destination_ask({
+      verb: 'mv', commit: 'MOVE HERE', sources: pathArgs, wantsDirectory: true,
+    });
+    if (chosen === '') {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(destination_missing('mv'))}\n`);
+    }
+    return mv_run({ sources: pathArgs, dest: chosen });
+  }
 
   // One operand names what to move and not where: that is a question, not a
   // usage error. The answer opens where the file already lives and offers
@@ -105,6 +125,12 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
 
       if (sources.length === 1) {
         rendered += `${mv_render(srcPath, destPath, success)}\n`;
+      }
+      if (!success) {
+        // The kernel said WHY on the stack; a bare "Failed to move" makes
+        // an operator guess at a reason that was already known.
+        const reason: StackMessage | undefined = errorStack.stack_pop();
+        if (reason !== undefined) renderedErr += `${chalk.red(`mv: ${reason.message}`)}\n`;
       }
 
       outcomes.push({ source: srcPath, moved: success });

@@ -5,7 +5,7 @@
 import chalk from 'chalk';
 import { path_resolve } from '../utils.js';
 import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
-import { listCache_get, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { listCache_get, type CommandEnvelope, envelope_ok, envelope_error, errorStack, type StackMessage } from '@fnndsc/cumin';
 import path from 'path';
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpansion } from '../../lib/parser.js';
@@ -71,6 +71,15 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
       rendered += `${chalk.yellow(`⚠ Uploaded ${summary.transferredCount} file(s), ${summary.failedCount} failed`)}\n`;
     }
     rendered += `${chalk.gray(`  Total: ${bytes_format(summary.transferSize)} in ${summary.duration.toFixed(1)}s (${bytes_format(summary.speed)}/s)`)}\n`;
+
+    // A file that landed under another name because its own was taken must
+    // say so: the store has no overwrite, and an upload reported as plain
+    // success leaves the operator believing they replaced something.
+    for (;;) {
+      const note: StackMessage | undefined = errorStack.stack_pop();
+      if (note === undefined) break;
+      rendered += `${chalk.yellow(`  ${note.message}`)}\n`;
+    }
 
     // Invalidate cache for actual target directory where files were uploaded,
     // including nested listings: a directory re-upload replaces a whole tree,

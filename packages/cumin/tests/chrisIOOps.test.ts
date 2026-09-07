@@ -185,21 +185,51 @@ describe('file_upload', () => {
     expect(put).not.toHaveBeenCalled();
   });
 
-  it('renames a collision-renamed upload back to the requested path', async () => {
+  it('renames a collision-renamed upload back when the wanted path is FREE', async () => {
+    // The case the rename-back exists for: CUBE suffixed a name whose path
+    // had been deleted and not yet committed, so nothing holds it now.
     const put = jest.fn(async () => ({}));
     mockClientGet.mockResolvedValue({
       uploadFile: jest.fn(async () => ({ data: { fname: 'home/chris/up/a_XYZ.txt' }, put })),
+      getUserFiles: jest.fn(async () => ({ getItems: () => [] })),
     });
     expect(await io().file_upload(new Blob(['x']), 'home/chris/up/', 'a.txt')).toBe(true);
     expect(put).toHaveBeenCalledWith({ upload_path: 'home/chris/up/a.txt' });
   });
 
-  it('keeps the upload successful when the rename-back fails', async () => {
+  it('never renames onto a path something else holds', async () => {
+    // The write that damages a folder: a PUT onto an occupied path leaves a
+    // row CUBE cannot serve afterwards (docs/CUBE-gaps.adoc). The upload
+    // keeps the name it was given, and says so.
+    const put = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({
+      uploadFile: jest.fn(async () => ({ data: { fname: 'home/chris/up/a_XYZ.txt' }, put })),
+      getUserFiles: jest.fn(async () => ({
+        getItems: () => [{ data: { fname: 'home/chris/up/a.txt' } }],
+      })),
+    });
+    expect(await io().file_upload(new Blob(['x']), 'home/chris/up/', 'a.txt')).toBe(true);
+    expect(put).not.toHaveBeenCalled();
+    expect(pushSpy).toHaveBeenCalledWith('warning', expect.stringContaining('already exists'));
+  });
+
+  it('treats a probe that cannot answer as occupied', async () => {
+    const put = jest.fn(async () => ({}));
+    mockClientGet.mockResolvedValue({
+      uploadFile: jest.fn(async () => ({ data: { fname: 'home/chris/up/a_XYZ.txt' }, put })),
+      getUserFiles: jest.fn(async () => { throw new Error('500'); }),
+    });
+    expect(await io().file_upload(new Blob(['x']), 'home/chris/up/', 'a.txt')).toBe(true);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('keeps the upload successful when a legitimate rename-back fails', async () => {
     mockClientGet.mockResolvedValue({
       uploadFile: jest.fn(async () => ({
         data: { fname: 'home/chris/up/a_XYZ.txt' },
         put: jest.fn(async () => { throw new Error('403'); }),
       })),
+      getUserFiles: jest.fn(async () => ({ getItems: () => [] })),
     });
     expect(await io().file_upload(new Blob(['x']), 'home/chris/up', 'a.txt')).toBe(true);
     expect(pushSpy).toHaveBeenCalledWith('warning', expect.stringContaining('rename to'));

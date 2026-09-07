@@ -178,6 +178,18 @@ export class NativeVfsProvider implements VFSProvider {
         ? path.posix.join(dest, path.posix.basename(src))
         : dest;
 
+      // A write onto a path the store already holds leaves a row CUBE's own
+      // API cannot serve, and one such row makes every listing of that
+      // folder fail (docs/CUBE-gaps.adoc). The store has no overwrite, so
+      // this is refused by name rather than attempted.
+      if (!srcIsDir.value && await path_checkFileExists(finalDest)) {
+        errorStack.stack_push(
+          "error",
+          `Destination exists: ${finalDest} — mise cannot overwrite a file; remove it first`,
+        );
+        return false;
+      }
+
       if (options.recursive) {
         return await files_copyRecursively(src, finalDest);
       } else {
@@ -188,6 +200,35 @@ export class NativeVfsProvider implements VFSProvider {
       errorStack.stack_push("error", `Native VFS copy failed: ${msg}`);
       return false;
     }
+  }
+}
+
+/**
+ * Whether a ChRIS path is already held by a file.
+ *
+ * The question a write must ask first, since the store has no overwrite and
+ * a write onto an occupied path damages the folder's listing.
+ *
+ * @param targetPath - The absolute ChRIS path to check.
+ * @returns True when a file of that name is already there, or when the
+ *   probe itself could not answer.
+ */
+async function path_checkFileExists(targetPath: string): Promise<boolean> {
+  const parent: string = path.posix.dirname(targetPath);
+  const name: string = path.posix.basename(targetPath);
+  try {
+    const results = await files_listAll({ limit: 1000, offset: 0 }, "files", parent);
+    if (!results || !results.tableData) {
+      return false;
+    }
+    return results.tableData.some((entry: Record<string, unknown>) => {
+      const candidate: string = typeof entry.fname === "string" ? entry.fname : "";
+      return candidate === targetPath || path.posix.basename(candidate) === name;
+    });
+  } catch {
+    // A probe that cannot answer counts the path as taken: the cost of
+    // guessing wrong is the operator's folder.
+    return true;
   }
 }
 

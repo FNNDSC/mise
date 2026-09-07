@@ -1349,6 +1349,41 @@ async function surface_start(token: string): Promise<void> {
       (action: FileAction): void => fileAction_handle(id, panel, action),
       previewProvider,
     );
+    // A selection's verbs are the row's verbs over many rows, and the kernel
+    // already takes many operands — so each is ONE line the operator could
+    // have typed, not twenty lines they must audit.
+    panel.selectionVerbs_declare((rows) => {
+      const paths: string[] = rows.map(([path]): string => path);
+      const quoted: string = paths.map((path: string): string => `"${path}"`).join(' ');
+      const files: boolean = rows.every(([, entry]): boolean => entry.type === 'file');
+      const feeds: number[] = [];
+      for (const path of paths) {
+        const feed: number | null = feedOf_path(path);
+        if (feed !== null && !feeds.includes(feed)) feeds.push(feed);
+      }
+      const verbs: Array<ListingAction<void>> = [
+        // -I asks ONCE for the whole list: twenty questions to remove
+        // twenty files is a confirmation an operator learns to dismiss.
+        { label: `DELETE ${paths.length}`, run: (): void => terminal.line_run(`rm -rI ${quoted}`) },
+        // `-t` with no value: every operand is a SOURCE and the target is
+        // asked for. Without it `mv a b` is a rename of a onto b — the
+        // right reading of that line, and the wrong thing for a set.
+        { label: `MOVE ${paths.length}`, run: (): void => terminal.line_run(`mv -t ${quoted}`) },
+        { label: `COPY ${paths.length}`, run: (): void => terminal.line_run(`cp -t ${quoted}`) },
+      ];
+      if (feeds.length > 0) {
+        // A grant is per feed, so a selection of twenty files in one feed
+        // is ONE grant: the capsule names the feeds, not the files.
+        verbs.push({
+          label: feeds.length === 1 ? `SHARE FEED ${feeds[0]}` : `SHARE ${feeds.length} FEEDS`,
+          run: (): void => terminal.line_run(
+            `setfacl ${feeds.map((feed: number): string => `feed_${feed}`).join(' ')}`,
+          ),
+        });
+      }
+      void files;
+      return verbs;
+    });
     panel.rowVerbs_declare(
       (entry, path: string) => rowVerbs_of(id, entry, path),
       (_entry, path: string): void => {
@@ -2193,6 +2228,23 @@ async function surface_start(token: string): Promise<void> {
         // zoom), then one navigation pop — node immersion back to the
         // graph, the graph back to the feed list. Each press retreats
         // exactly one level; never a walk back up invisible browser depth.
+        // SELECT is transient chrome of its own: Esc leaves the mode before
+        // it retreats anywhere, and leaving it keeps the selection — the
+        // field still holds what was gathered.
+        let selectLeft: boolean = false;
+        // An open question owns Esc: abandoning it is an answer, and a
+        // press that also left a mode would answer two things at once.
+        for (const panel of terminal.ask_isOpen() ? [] : filesPanels.values()) {
+          if (panel.select_isOn()) {
+            panel.select_toggle(false);
+            selectLeft = true;
+          }
+        }
+        if (selectLeft) {
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
         const drawersClosed: boolean = drawers_close();
         const framesClosed: boolean = modeFrames_close();
         if (drawersClosed || framesClosed) {
@@ -2745,6 +2797,16 @@ async function surface_start(token: string): Promise<void> {
             if (filesFollow.get(paneId) === true) panel.envelope_observe(envelope);
           }
           pacsPanel.envelope_observe(envelope);
+          // A verb that changed a folder does not re-list it: `rm` reports
+          // what it removed, `mv` what it moved. A browser showing that
+          // folder asks for it again, or it shows rows that are gone —
+          // which is the listing lying about the store.
+          if (kind === 'fs.rm' || kind === 'fs.mv' || kind === 'fs.cp') {
+            for (const [paneId, panel] of filesPanels) {
+              const place: string | null = panel.path_current();
+              if (place !== null) listing_refresh(paneId, place);
+            }
+          }
         }
         cycler.envelope_observe(envelope);
       },

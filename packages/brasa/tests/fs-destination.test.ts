@@ -82,3 +82,23 @@ describe('destination_missing', () => {
     expect(destination_missing('cp')).toContain('nothing copied');
   });
 });
+
+describe('a target directory asked for by -t', () => {
+  it('wants a DIRECTORY even for one source, since -t names one', async () => {
+    await destination_ask({
+      verb: 'mv', commit: 'MOVE HERE', sources: ['report.txt'], wantsDirectory: true,
+    });
+    const asked = mockPrompt.mock.calls[0]?.[0] as { message: string; path: { wantsDirectory: boolean } };
+    expect(asked.path.wantsDirectory).toBe(true);
+    // Named, not counted: one thing is not "these 1".
+    expect(asked.message).toContain('Where should report.txt go?');
+  });
+
+  it('counts them when there are several', async () => {
+    await destination_ask({
+      verb: 'cp', commit: 'COPY HERE', sources: ['a.txt', 'b.txt', 'c.txt'], wantsDirectory: true,
+    });
+    const asked = mockPrompt.mock.calls[0]?.[0] as { message: string };
+    expect(asked.message).toContain('Where should these 3 go?');
+  });
+});

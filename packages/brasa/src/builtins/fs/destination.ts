@@ -21,6 +21,12 @@ export interface DestinationAsk {
   commit: string;
   /** The sources the destination is for. */
   sources: string[];
+  /**
+   * Whether the answer must be a DIRECTORY. Several sources always want
+   * one; a single source wants one too when the caller said `-t`, which
+   * names a target directory rather than a new name.
+   */
+  wantsDirectory?: boolean;
 }
 
 /**
@@ -42,11 +48,11 @@ export async function destination_ask(ask: DestinationAsk): Promise<string> {
   const cut: number = resolved.lastIndexOf('/');
   const folder: string = cut <= 0 ? '/' : resolved.slice(0, cut);
   const name: string = resolved.slice(cut + 1);
-  const many: boolean = ask.sources.length > 1;
+  const many: boolean = ask.sources.length > 1 || ask.wantsDirectory === true;
   try {
     const answer: string = await repl_questionPath(
       many
-        ? `Where should these ${ask.sources.length} go? `
+        ? `Where should ${ask.sources.length === 1 ? name : `these ${ask.sources.length}`} go? `
         : `Where should ${name} go? `,
       {
         // Where to look: the folder the source is already in. Nothing is

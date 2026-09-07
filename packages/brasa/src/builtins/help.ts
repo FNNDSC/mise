@@ -185,6 +185,7 @@ export const helpText: Record<string, CommandHelp> = {
       '-r, -R      Remove directories recursively',
       '-f          Force removal',
       '-i          Prompt before every removal (interactive)',
+      '-I          Prompt ONCE for the whole list, naming how many',
       '-rf, -fr    Recursive and force combined',
       '-ri, -ir    Recursive and interactive combined',
       '--          End of options (treat remaining args as filenames)',
@@ -201,10 +202,12 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cp: {
-    usage: 'cp [options] <source...> <dest>',
+    usage: 'cp [-t <dir>] [options] <source...> [dest]',
     description: 'Copy files or directories (supports wildcards and multiple sources)',
     options: [
       '(given only a source, the destination is asked for)',
+      '-t <dir>    Target DIRECTORY; every operand is a source. Given no',
+      '            value it asks where, and the answer must be a directory.',
       '-r, --recursive    Recursive copy (for directories)',
       '',
       'PACS SOURCES: a /net/pacs/queries/... source names query results, not',
@@ -224,7 +227,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mv: {
-    usage: 'mv <source...> <dest>',
+    usage: 'mv [-t <dir>] <source...> [dest]',
     description: 'Move or rename files or directories (supports wildcards and multiple sources)',
     options: [
       '(given only a source, the destination is asked for)',

@@ -217,6 +217,7 @@ export async function chellApi_create(): Promise<ChellApi> {
         recursive: options?.recursive ?? false,
         force: options?.force ?? false,
         interactive: false,
+        once: false,
       }).then(envelope_typed<'fs.rm'>),
   };
 }

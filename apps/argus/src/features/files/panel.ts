@@ -342,6 +342,26 @@ export class FilesPanel {
   private actionCells: Map<string, HTMLElement> = new Map();
   /** Called when a row is indicated, so the surface may read it out. */
   private indicate: ((entry: FsListingEntry, path: string) => void) | null = null;
+  /**
+   * SELECT: a mode, because a mode describes how the field behaves and this
+   * one changes what a click means. While it is on a click toggles a row
+   * into the selection instead of indicating it, and row verbs stand down —
+   * a row is not indicated then, it is selected.
+   */
+  private selecting: boolean = false;
+  /**
+   * The path this pane last RENDERED, which is not `lastListings` — that is
+   * written before rendering (and by a background merge), so it cannot say
+   * whether the operator has navigated.
+   */
+  private shownPath: string | null = null;
+  /** The selected paths, and the entries behind them, kept across renders. */
+  private readonly selection: Map<string, FsListingEntry> = new Map();
+  /** What a SELECTION may be told to do; the surface declares it. */
+  private selectionVerbs: ((rows: ReadonlyArray<[string, FsListingEntry]>) => ReadonlyArray<ListingAction<void>>) | null = null;
+  /** The frame's SELECT block and the bar of verbs it governs. */
+  private selectBlock: HTMLElement | null = null;
+  private selectionBar: HTMLElement | null = null;
 
   /**
    * @param container - The DOM element the panel renders into.
@@ -373,6 +393,9 @@ export class FilesPanel {
       this.view_set(VIEW_CYCLE[(VIEW_CYCLE.indexOf(this.viewMode) + 1) % VIEW_CYCLE.length] ?? 'list');
     });
     this.filterBlock = container.parentElement?.querySelector<HTMLElement>('.files-filter') ?? null;
+    this.selectBlock = container.parentElement?.querySelector<HTMLElement>('.files-select') ?? null;
+    this.selectionBar = container.parentElement?.querySelector<HTMLElement>('.files-selection-bar') ?? null;
+    this.selectBlock?.addEventListener('click', (): void => this.select_toggle());
     this.filterBlock?.classList.add('rail-off');
     this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
     this.order.stripChange_observe((): void => this.filterBlock_sync());
@@ -613,6 +636,90 @@ export class FilesPanel {
     cell.appendChild(readout);
   }
 
+  /**
+   * Declares what a SELECTION may be told to do.
+   *
+   * A selection belongs to the field, so its verbs ride the frame rather
+   * than any row — and, like a row's, they lower to session commands the
+   * surface owns.
+   *
+   * @param verbs - The verbs for the current selection.
+   */
+  public selectionVerbs_declare(
+    verbs: (rows: ReadonlyArray<[string, FsListingEntry]>) => ReadonlyArray<ListingAction<void>>,
+  ): void {
+    this.selectionVerbs = verbs;
+  }
+
+  /**
+   * Turns SELECT on or off.
+   *
+   * Turning it off clears nothing: the selection is the field's until the
+   * field changes, so an operator can leave the mode, look at something,
+   * and come back to what they had gathered.
+   *
+   * @param on - Whether to select; omitted flips the mode.
+   */
+  public select_toggle(on?: boolean): void {
+    this.selecting = on ?? !this.selecting;
+    if (this.indicated !== null) this.row_indicate(null);
+    this.container.parentElement?.classList.toggle('selecting', this.selecting);
+    this.selectBlock?.classList.toggle('rail-off', !this.selecting);
+    if (this.selectBlock !== null) {
+      this.selectBlock.textContent = this.selecting ? 'SELECT ON' : 'SELECT OFF';
+    }
+    this.selection_render();
+    this.state_render();
+  }
+
+  /** @returns Whether SELECT is on. */
+  public select_isOn(): boolean {
+    return this.selecting;
+  }
+
+  /** @returns The selected paths, in listing order. */
+  public selection_get(): string[] {
+    return [...this.selection.keys()];
+  }
+
+  /** Empties the selection and repaints what said it was selected. */
+  public selection_clear(): void {
+    this.selection.clear();
+    this.selection_render();
+    this.state_render();
+  }
+
+  /**
+   * Toggles one row's membership of the selection.
+   *
+   * @param path - The row's path.
+   * @param entry - The row's entry.
+   */
+  private selection_toggle(path: string, entry: FsListingEntry): void {
+    if (this.selection.has(path)) this.selection.delete(path);
+    else this.selection.set(path, entry);
+    this.selection_render();
+    this.state_render();
+  }
+
+  /**
+   * Paints the selection: the marked rows, and the verbs the selection is
+   * offered while SELECT is on and something is in it.
+   */
+  private selection_render(): void {
+    for (const row of this.container.querySelectorAll<HTMLElement>('.files-row')) {
+      const path: string | undefined = row.dataset['path'];
+      row.classList.toggle('files-row-selected', path !== undefined && this.selection.has(path));
+    }
+    const bar: HTMLElement | null = this.selectionBar;
+    if (bar === null) return;
+    const rows: Array<[string, FsListingEntry]> = [...this.selection.entries()];
+    const offered: ReadonlyArray<ListingAction<void>> =
+      this.selecting && rows.length > 0 ? this.selectionVerbs?.(rows) ?? [] : [];
+    bar.replaceChildren(...(offered.length === 0 ? [] : actionCell_build(undefined as void, offered).childNodes));
+    bar.hidden = offered.length === 0;
+  }
+
   /** @returns The path of the listing currently shown, or null before the first. */
   public path_current(): string | null {
     return this.lastListings[0]?.path ?? null;
@@ -732,6 +839,13 @@ export class FilesPanel {
     this.diagram_declare(false);
     this.contentShown = false;
     this.container.parentElement?.classList.remove('content-view');
+    // A selection is the FIELD's: it survives a filter and the same rows
+    // arriving again (kept by path, which is why the rows carry theirs),
+    // and it is cleared by navigation — a selection that follows the
+    // operator elsewhere is one they can act on without seeing.
+    const nowShowing: string | null = listings[0]?.path ?? null;
+    if (this.shownPath !== null && nowShowing !== this.shownPath) this.selection.clear();
+    this.shownPath = nowShowing;
     this.lastListings = listings;
     this.thumbObserver?.disconnect();
     this.thumbObserver = null;
@@ -798,6 +912,8 @@ export class FilesPanel {
     // Honest-wait: a listing served stale says so on the bar until the
     // session's refresh replaces it.
     this.stale = listings.some((listing: FsListing): boolean => listing.fresh === false);
+    // The rows are new elements; what was selected is repainted onto them.
+    this.selection_render();
     this.state_render();
     this.frameTop_track();
   }
@@ -1067,7 +1183,19 @@ export class FilesPanel {
     this.stateSpan.classList.toggle('state-stale', this.stale);
     const parts: string[] = [];
     if (this.following) parts.push('CWD');
+    if (this.selecting) parts.push('SELECT');
     parts.push(this.stale ? 'STALE' : this.order.summary());
+    if (this.selection.size > 0) {
+      // How many are selected, and — when a filter hides some of them — how
+      // many of those the operator can currently see, since a verb over a
+      // selection acts on all of it and not on what is on screen.
+      const shown: number = [...this.selection.keys()].filter((path: string): boolean =>
+        this.container.querySelector(`.files-row[data-path="${CSS.escape(path)}"]`) !== null,
+      ).length;
+      parts.push(shown === this.selection.size
+        ? `${this.selection.size} SELECTED`
+        : `${this.selection.size} SELECTED · ${shown} SHOWN`);
+    }
     this.stateSpan.textContent = parts.filter((part: string): boolean => part !== '').join(' · ');
   }
 
@@ -1117,6 +1245,9 @@ export class FilesPanel {
         actions.className = 'listing-actions files-actions';
         row.appendChild(actions);
         this.actionCells.set(path, actions);
+        // The path is on the row so a selection can be repainted without
+        // rebuilding it, and so it survives the same rows arriving again.
+        row.dataset['path'] = path;
         // Links navigate: in this VFS a link names a place (a node's `data`
         // pointing into the feed tree), so following it is a directory move —
         // the engine resolves the target. Only plain files are viewable
@@ -1134,6 +1265,10 @@ export class FilesPanel {
         // browser with no verbs to show (a node's overlay) would be asking
         // for a second click and offering nothing for the first.
         row.addEventListener('click', (): void => {
+          if (this.selecting) {
+            this.selection_toggle(path, entry);
+            return;
+          }
           if (this.actions === null) {
             this.activate({ kind, path });
             return;

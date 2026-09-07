@@ -887,7 +887,10 @@ try {
     const say = async (line, ms) => { term.value = line;
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
     const names = () => [...fp().querySelectorAll('.files-row .files-name')].map(n => n.textContent.trim());
-    const settle = async (want) => { for (let i = 0; i < 60; i++) { await sleep(500); if (want()) return true; } return false; };
+    // A cold daemon's first calls to CUBE are slower than a warm one's, and
+    // this scenario waits on a real upload: the settle is generous because
+    // the alternative is a check that fails for being early.
+    const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
 
     await say('cd ~', 2000);
     await settle(() => names().length > 2);

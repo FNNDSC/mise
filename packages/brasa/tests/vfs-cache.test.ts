@@ -14,6 +14,7 @@ const cacheStore: Map<string, CacheEntry> = new Map();
 const mockCacheSet = jest.fn((key: string, data: unknown) => { cacheStore.set(key, { data, fresh: true }); });
 const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); });
 const mockStackPush = jest.fn();
+const mockStackSearch = jest.fn<(needle: string) => string[]>(() => []);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
@@ -25,6 +26,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok: <T>(value: T) => ({ ok: true as const, value }),
   Err: () => ({ ok: false as const }),
   errorStack: {
+    stack_search: (needle: string) => mockStackSearch(needle),
     stack_push: mockStackPush,
     stack_pop: jest.fn(() => ({ message: 'listing failed' })),
     checkpoint_mark: jest.fn(() => 0),
@@ -172,6 +174,28 @@ describe('VFS.list rendering and refresh', () => {
     cacheStore.set('/home/chris', { data: [], fresh: true });
     const envelope = await new VFS().list();
     expect(envelope.rendered).toBe('');
+  });
+
+  it('says what a listing could not read, and still shows what it read', async () => {
+    // The provider names the refused sub-listing; that reason travels with
+    // the answer instead of being dropped for looking like success (#462).
+    cacheStore.set('/home/chris', { data: [item('a')], fresh: true });
+    mockStackSearch.mockReturnValue([
+      'error: Cannot fully list /home/chris: could not read files (Internal server error)',
+    ]);
+    const envelope = await new VFS().list();
+    expect(envelope.rendered).toContain('GRID');
+    expect(envelope.renderedErr).toContain('could not read files');
+    expect(envelope.status).toBe('error');
+  });
+
+  it('says so even when nothing at all could be read', async () => {
+    cacheStore.set('/home/chris', { data: [], fresh: true });
+    mockStackSearch.mockReturnValue([
+      'error: Cannot fully list /home/chris: could not read files (Internal server error)',
+    ]);
+    const envelope = await new VFS().list();
+    expect(envelope.renderedErr).toContain('could not read files');
   });
 
   it('reports errors from the stack', async () => {

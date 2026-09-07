@@ -12,6 +12,7 @@ const mockIO = {
   folder_create: jest.fn(),
   folder_moveByPath: jest.fn(),
   file_moveById: jest.fn(),
+  file_deleteById: jest.fn(),
   uploadLocalPath: jest.fn(),
 };
 const mockPipeline = { fileContent_getPipeline: jest.fn(), fileContent_getPipelineBinary: jest.fn() };
@@ -42,6 +43,7 @@ import {
   files_copyRecursively,
   files_list,
   files_listAll,
+  files_listOutcome,
   fileFields_get,
   files_delete,
   folderByPath_delete,
@@ -122,9 +124,36 @@ describe('list / fields / delete delegate to the group asset', () => {
     mockObjCreate.mockResolvedValue(null);
     expect(await files_list({} as never, 'files', '/p')).toBeNull();
   });
-  it('files_listAll', async () => {
-    mockObjCreate.mockResolvedValue(group({ resources_getAll: jest.fn().mockResolvedValue('A') }));
-    expect(await files_listAll({} as never, 'files', '/p')).toBe('A');
+  it('files_listAll returns the walk, and null for empty or missing', async () => {
+    mockObjCreate.mockResolvedValue(group({ resources_getAll: jest.fn().mockResolvedValue({ tableData: ['A'] }) }));
+    expect(await files_listAll({} as never, 'files', '/p')).toEqual({ tableData: ['A'] });
+    mockObjCreate.mockResolvedValue(group({ resources_getAll: jest.fn().mockResolvedValue(null) }));
+    expect(await files_listAll({} as never, 'files', '/p')).toBeNull();
+    mockObjCreate.mockResolvedValue(null);
+    expect(await files_listAll({} as never, 'files', '/p')).toBeNull();
+  });
+
+  it('files_listOutcome tells an empty folder from a missing one from a refusal', async () => {
+    // The three answers `files_listAll` spells the same way (#462).
+    mockObjCreate.mockResolvedValue(group({ resources_getAll: jest.fn().mockResolvedValue({ tableData: ['A'] }) }));
+    expect(await files_listOutcome({} as never, 'files', '/p')).toEqual({ kind: 'listing', data: { tableData: ['A'] } });
+    mockObjCreate.mockResolvedValue(group({ resources_getAll: jest.fn().mockResolvedValue(null) }));
+    expect(await files_listOutcome({} as never, 'files', '/p')).toEqual({ kind: 'empty' });
+    mockObjCreate.mockResolvedValue(null);
+    expect(await files_listOutcome({} as never, 'files', '/p')).toEqual({ kind: 'missing' });
+    mockObjCreate.mockResolvedValue(group({
+      resources_getAll: jest.fn().mockRejectedValue(new Error('Internal server error')),
+    }));
+    const refused = await files_listOutcome({} as never, 'files', '/p');
+    expect(refused.kind).toBe('refused');
+    expect(refused.kind === 'refused' && refused.error.message).toBe('Internal server error');
+  });
+
+  it('files_listAll rethrows a refusal rather than spelling it null', async () => {
+    mockObjCreate.mockResolvedValue(group({
+      resources_getAll: jest.fn().mockRejectedValue(new Error('Internal server error')),
+    }));
+    await expect(files_listAll({} as never, 'files', '/p')).rejects.toThrow('Internal server error');
   });
   it('fileFields_get returns fields, or null', async () => {
     mockObjCreate.mockResolvedValue(group({ resourceFields_get: jest.fn().mockResolvedValue({ fields: ['a'] }) }));
@@ -132,17 +161,31 @@ describe('list / fields / delete delegate to the group asset', () => {
     mockObjCreate.mockResolvedValue(group({ resourceFields_get: jest.fn().mockResolvedValue(null) }));
     expect(await fileFields_get('files')).toBeNull();
   });
-  it('files_delete loads the parent folder collection before deleting', async () => {
+  it('deletes a FILE by its id, without listing the folder it is in', async () => {
+    // A folder whose listing the server refuses is exactly the one an
+    // operator needs to clear, and a delete that walks the parent cannot
+    // help there (#462).
     const load = jest.fn().mockResolvedValue({});
     const del = jest.fn().mockResolvedValue(true);
     mockObjCreate.mockResolvedValue(group({ resources_getAll: load, resourceItem_delete: del }));
+    mockIO.file_deleteById.mockResolvedValue(Ok(true));
     expect(await files_delete(3, 'files', '/home/alice/scratch')).toBe(true);
+    expect(mockIO.file_deleteById).toHaveBeenCalledWith(3);
+    expect(load).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('still resolves other asset kinds through the parent group', async () => {
+    const load = jest.fn().mockResolvedValue({});
+    const del = jest.fn().mockResolvedValue(true);
+    mockObjCreate.mockResolvedValue(group({ resources_getAll: load, resourceItem_delete: del }));
+    expect(await files_delete(3, 'dirs', '/home/alice/scratch')).toBe(true);
     // The group must be anchored at the given parent, not the ambient cwd.
     expect(mockObjCreate).toHaveBeenCalledWith(expect.any(String), 'folder:/home/alice/scratch');
     // Deletion resolves the id against the loaded collection.
     expect(load.mock.invocationCallOrder[0]).toBeLessThan(del.mock.invocationCallOrder[0]);
     mockObjCreate.mockResolvedValue(null);
-    expect(await files_delete(3, 'files')).toBe(false);
+    expect(await files_delete(3, 'dirs')).toBe(false);
   });
 
   it('folderByPath_delete unwraps the chrisIO result', async () => {

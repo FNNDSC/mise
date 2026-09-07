@@ -305,12 +305,27 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
     return envelope_error('', undefined, `${chalk.red(`Usage: ${CAT_USAGE}`)}\n`);
   }
 
-  const targets: CatTarget[] = await Promise.all(parsed.filePaths.map(
-    async (pathArg: string): Promise<CatTarget> => {
+  // Resolving a path can fail — a listing the server refuses, a provider
+  // that throws — and a throw here used to leave the session: an unhandled
+  // rejection that dumped an axios request object, auth header and all
+  // (#465). A path that cannot be resolved is reported like any other
+  // unreadable file, and the rest of the line still runs.
+  const targets: CatTarget[] = [];
+  let renderedErr: string = '';
+  const outcomes: CatOutcome[] = [];
+  let anyFailed: boolean = false;
+  for (const pathArg of parsed.filePaths) {
+    try {
       const target: string = await path_resolve(pathArg);
-      return { pathArg, target, isBinaryFile: extension_isBinary(target) };
-    },
-  ));
+      targets.push({ pathArg, target, isBinaryFile: extension_isBinary(target) });
+    } catch (error: unknown) {
+      const message: string = error instanceof Error ? error.message : String(error);
+      renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
+      outcomes.push({ path: pathArg, ok: false, binary: false });
+      anyFailed = true;
+      process.exitCode = 1;
+    }
+  }
   const hasTextTarget: boolean = !parsed.binaryMode
     && targets.some((target: CatTarget): boolean => !target.isBinaryFile);
 
@@ -327,9 +342,6 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
   }
 
   let rendered: string = '';
-  let renderedErr: string = '';
-  const outcomes: CatOutcome[] = [];
-  let anyFailed: boolean = false;
 
   for (let i: number = 0; i < targets.length; i++) {
     const { pathArg, target, isBinaryFile }: CatTarget = targets[i];
@@ -345,7 +357,17 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
 
     // Use binary mode if requested OR if file is detected as binary
     if (parsed.binaryMode || isBinaryFile) {
-      const result: Result<Buffer> = await chefs_catBinary_cmd(target);
+      let result: Result<Buffer>;
+      try {
+        result = await chefs_catBinary_cmd(target);
+      } catch (error: unknown) {
+        const message: string = error instanceof Error ? error.message : String(error);
+        renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
+        outcomes.push({ path: pathArg, ok: false, binary: true });
+        anyFailed = true;
+        process.exitCode = 1;
+        continue;
+      }
 
       if (!result.ok) {
         const error: StackMessage | undefined = errorStack.stack_pop();
@@ -361,7 +383,17 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
       sink_get().data_write(result.value);
       outcomes.push({ path: pathArg, ok: true, binary: true, bytes: result.value.length });
     } else {
-      const result: Result<string> = await textFile_read(target);
+      let result: Result<string>;
+      try {
+        result = await textFile_read(target);
+      } catch (error: unknown) {
+        const message: string = error instanceof Error ? error.message : String(error);
+        renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
+        outcomes.push({ path: pathArg, ok: false, binary: false });
+        anyFailed = true;
+        process.exitCode = 1;
+        continue;
+      }
 
       if (!result.ok) {
         const error: StackMessage | undefined = errorStack.stack_pop();

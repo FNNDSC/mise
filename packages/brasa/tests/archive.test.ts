@@ -29,7 +29,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_listRecursive: listRecursive,
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  errorStack: { stack_push: stackPush },
+  errorStack: { stack_push: stackPush, stack_search: () => [] },
 }));
 
 const { directory_archive } = await import('../src/builtins/fs/archive.js');

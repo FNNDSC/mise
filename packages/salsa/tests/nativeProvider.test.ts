@@ -4,12 +4,31 @@
  * collaborator salsa/files (which bottoms out in cumin's network-coupled
  * embedded resource group) is stubbed. files/index has its own tests.
  */
+const stackPush = jest.fn();
+jest.mock('@fnndsc/cumin', () => {
+  const actual = jest.requireActual<typeof import('@fnndsc/cumin')>('@fnndsc/cumin');
+  return { ...actual, errorStack: { ...actual.errorStack, stack_push: stackPush } };
+});
+
 const mockListAll = jest.fn();
 const mockCopy = jest.fn();
 const mockCopyRecursively = jest.fn();
 
 jest.mock('../src/files/index', () => ({
   files_listAll: mockListAll,
+  // The provider asks for the typed outcome now: an empty folder, a missing
+  // one and a refusal are told apart (#462). The stub keeps answering as
+  // `files_listAll` did and the shim classifies it, so the cases these tests
+  // pin are unchanged.
+  files_listOutcome: async (options: unknown, asset: string, path?: string) => {
+    try {
+      const data = await mockListAll(options, asset, path);
+      if (data === null || data === undefined) return { kind: 'empty' };
+      return { kind: 'listing', data };
+    } catch (error: unknown) {
+      return { kind: 'refused', error: error instanceof Error ? error : new Error(String(error)) };
+    }
+  },
   files_copy: mockCopy,
   files_copyRecursively: mockCopyRecursively,
 }));
@@ -25,6 +44,32 @@ beforeEach(() => jest.clearAllMocks());
 function listByAsset(map: Record<string, unknown>): void {
   mockListAll.mockImplementation(async (_o: unknown, asset: string) => map[asset] ?? null);
 }
+
+describe('a listing says what it could not read', () => {
+  it('names the refused sub-listing and still shows what it read', async () => {
+    // The home-root shape: folders answer, files 500. Rendering the folders
+    // alone as the answer is the listing lying about the store (#462).
+    listByAsset({
+      dirs: { tableData: [{ fname: 'sub', fsize: 0, owner_username: 'chris', creation_date: 'd1' }] },
+      links: null,
+    });
+    mockListAll.mockImplementation(async (_o: unknown, asset: string) => {
+      if (asset === 'files') throw new Error('Internal server error');
+      if (asset === 'dirs') {
+        return { tableData: [{ fname: 'sub', fsize: 0, owner_username: 'chris', creation_date: 'd1' }] };
+      }
+      return null;
+    });
+    const r = await provider.list('/home/chris');
+    expect(r.ok).toBe(true);
+    const items = r.ok ? r.value : [];
+    expect(items.map((i) => i.name)).toEqual(['sub']);
+    expect(stackPush).toHaveBeenCalledWith(
+      'error',
+      expect.stringContaining('could not read files (Internal server error)'),
+    );
+  });
+});
 
 describe('NativeVfsProvider.list', () => {
   it('maps dirs/files/links into VFS items and sorts by name', async () => {

@@ -15,7 +15,7 @@ const mockInvalidate = jest.fn();
 const mockStackPop = jest.fn(() => null);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   listCache_get: () => ({ cache_invalidate: mockInvalidate, cache_invalidateTree: mockInvalidate }),
-  errorStack: { stack_pop: mockStackPop },
+  errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {

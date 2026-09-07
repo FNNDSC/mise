@@ -13,6 +13,8 @@ import {
   files_copy,
   files_copyRecursively,
   files_listAll,
+  files_listOutcome,
+  type ListingOutcome,
 } from "../../files/index.js";
 import path from "path";
 
@@ -48,23 +50,57 @@ export class NativeVfsProvider implements VFSProvider {
       const fetchOpts = { limit: 1000, offset: 0 };
       const resolvedPath: string = pathStr || "/";
 
-      // Parallelize files/dirs/links API requests
-      const results = await Promise.allSettled([
-        files_listAll(fetchOpts, "dirs", resolvedPath),
-        files_listAll(fetchOpts, "files", resolvedPath),
-        files_listAll(fetchOpts, "links", resolvedPath),
+      // Parallelize files/dirs/links API requests. The typed outcome tells a
+      // refusal from an empty folder, which is the whole point: they read
+      // the same on screen and only one of them is true (#462).
+      const outcomes: ListingOutcome[] = await Promise.all([
+        files_listOutcome(fetchOpts, "dirs", resolvedPath),
+        files_listOutcome(fetchOpts, "files", resolvedPath),
+        files_listOutcome(fetchOpts, "links", resolvedPath),
       ]);
+      const results = outcomes.map((outcome: ListingOutcome) =>
+        outcome.kind === "refused"
+          ? { status: "rejected" as const, reason: outcome.error }
+          : { status: "fulfilled" as const, value: outcome.kind === "listing" ? outcome.data : null },
+      );
 
       const [dirsResult, filesResult, linksResult] = results;
+
+      // A sub-listing that FAILED is not a sub-listing that was empty. The
+      // folders of a home root list while its files 500, and rendering the
+      // folders alone as the answer is the listing lying about the store
+      // (#462). What could not be read is named, and the caller decides
+      // what to do with a partial answer — it is never silently whole.
+      const unread: string[] = [];
+      const kinds: string[] = ['directories', 'files', 'links'];
+      results.forEach((settled, index: number): void => {
+        const kind: string = kinds[index] ?? 'entries';
+        if (settled.status === 'rejected') {
+          const reason: unknown = settled.reason;
+          const message: string = reason instanceof Error ? reason.message : String(reason);
+          unread.push(`${kind} (${message})`);
+          return;
+        }
+        const short = settled.value?.incomplete;
+        if (short !== undefined) unread.push(`${kind} (${short.reason})`);
+      });
+      if (unread.length > 0) {
+        errorStack.stack_push(
+          'error',
+          `Cannot fully list ${resolvedPath}: could not read ${unread.join(', ')}`,
+        );
+      }
 
       // files_listAll returns null both for a failed folder resolution and for
       // an existing folder whose collection is simply empty. When every
       // sub-listing comes back empty-or-failed the two cases are
       // indistinguishable here, so probe the parent listing: a missing folder
       // must surface as an error, not render as an empty directory.
-      const noneSucceeded: boolean = results.every(
-        (settled) =>
-          settled.status === "rejected" || !settled.value?.tableData
+      // Nothing came back from any of the three, and none of them refused:
+      // either the folder is empty or it is not there, and only the parent
+      // can say which.
+      const noneSucceeded: boolean = outcomes.every(
+        (outcome: ListingOutcome) => outcome.kind !== "listing",
       );
       if (noneSucceeded && resolvedPath !== "/") {
         const dirExists: Result<boolean> = await path_checkIsDir(resolvedPath);

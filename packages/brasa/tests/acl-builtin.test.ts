@@ -13,7 +13,7 @@ const mockStackPop = jest.fn<() => { type: string; message: string } | undefined
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   feed_share: mockFeedShare,
   feedShares_list: mockFeedSharesList,
-  errorStack: { stack_pop: mockStackPop },
+  errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string) => ({ status: 'error', rendered }),
   CommandEnvelope: class {},

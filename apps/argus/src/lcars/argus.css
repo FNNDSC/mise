@@ -3373,3 +3373,17 @@ body[data-zoom] #header-restore {
 .errand-commit {
   background-color: var(--october-sunset);
 }
+
+/* Where a table went, said by the pane that made it. A readout beside the
+   verb that asked for it: it answers no press, so it wears the caption's
+   type rather than a capsule's costume. */
+.pacs-wrote {
+  color: var(--pumpkin-pie);
+  font-family: 'Antonio', sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  align-self: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

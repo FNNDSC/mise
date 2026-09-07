@@ -7,7 +7,7 @@
  * MRNs that come back are the ones with imaging, so a table built from
  * studies alone drops exactly the rows an audit is asking about.
  */
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { pacsAnswer_toCsv } from '../src/builtins/net/query.csv.js';
 
 /** One study, with the fields the table reads. */
@@ -109,5 +109,160 @@ describe('pacsAnswer_toCsv', () => {
 
   it('renders an answer that found nothing as a header and no rows', () => {
     expect(rows_of(pacsAnswer_toCsv(model_make()))).toHaveLength(1);
+  });
+});
+
+describe('csvFile_write', () => {
+  /** The salsa and path seams a write reaches for. */
+  const listAll = jest.fn<(...args: unknown[]) => Promise<{ tableData: Array<{ fname: string }> } | null>>();
+  const create = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
+  const mkdir = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
+  const isDirectory = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
+  const remove = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
+
+  beforeEach((): void => {
+    jest.clearAllMocks();
+    listAll.mockResolvedValue({ tableData: [] });
+    isDirectory.mockResolvedValue(true);
+    create.mockResolvedValue(true);
+    mkdir.mockResolvedValue(true);
+    jest.unstable_mockModule('@fnndsc/cumin', () => ({ errorStack: { stack_pop: jest.fn() } }));
+    jest.unstable_mockModule('../src/builtins/utils.js', () => ({
+      path_resolve: async (p: string): Promise<string> => p.replace('~', '/home/chris'),
+      error_stripDebugPrefix: (m: string): string => m,
+    }));
+    jest.unstable_mockModule('@fnndsc/salsa', () => ({
+      files_create: create, files_listAll: listAll, files_mkdir: mkdir,
+      files_path_isDirectory: isDirectory, files_delete: remove,
+    }));
+  });
+
+  /** The module under test, freshly wired to the mocks above. */
+  async function write_load(): Promise<typeof import('../src/builtins/net/query.csv.js')['csvFile_write']> {
+    const module = await import('../src/builtins/net/query.csv.js');
+    return module.csvFile_write;
+  }
+
+  // A provider is somewhere to browse, not somewhere a file lands. CUBE's
+  // own refusal talks about an upload, which says nothing about why.
+  it('refuses a provider path by name, before writing anything', async () => {
+    const write = await write_load();
+    for (const where of ['/net/pacs/x.csv', '/bin/x.csv', '/proc/jobs/x.csv', '/usr/x.csv', '/etc/x.csv']) {
+      const result = await write('csv', where);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.message).toContain('provider');
+    }
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // An audit table quietly replacing another audit table is the silent
+  // workaround the principles forbid.
+  it('keeps an existing file unless the operator says it twice', async () => {
+    listAll.mockResolvedValue({ tableData: [{ fname: '/home/chris/audits/a.csv', id: 7 }] });
+    const write = await write_load();
+    const refused = await write('csv', '~/audits/a.csv');
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.message).toContain('--force');
+    expect(create).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  // CUBE answers a re-upload over a path it already holds with a 500, so
+  // "overwrite" is spelled out: the file that was there is removed first,
+  // and the removal is reported.
+  it('replaces by removing first, and says that it did', async () => {
+    // The store answers: it is there (the overwrite check), then it is
+    // gone (the removal, which CUBE performs asynchronously), then the new
+    // one is there (the confirmation after writing).
+    listAll
+      .mockResolvedValueOnce({ tableData: [{ fname: '/home/chris/audits/a.csv', id: 7 }] })
+      .mockResolvedValueOnce({ tableData: [] })
+      .mockResolvedValue({ tableData: [{ fname: '/home/chris/audits/a.csv', id: 9 }] });
+    const write = await write_load();
+    const forced = await write('csv', '~/audits/a.csv', true);
+    expect(remove).toHaveBeenCalledWith(7, 'files', '/home/chris/audits');
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(forced.ok).toBe(true);
+    if (forced.ok) expect(forced.replaced).toBe(true);
+  });
+
+  it('refuses when what is there cannot be removed', async () => {
+    listAll.mockResolvedValue({ tableData: [{ fname: '/home/chris/audits/a.csv', id: 7 }] });
+    remove.mockResolvedValue(false);
+    const write = await write_load();
+    const result = await write('csv', '~/audits/a.csv', true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('could not be replaced');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // A throw out of a builtin does not stop at the command: under a daemon
+  // it takes the process, and every surface attached to it.
+  it('turns a store\'s bad day into a refusal, not an outage', async () => {
+    create.mockRejectedValue(new Error('Request failed with status code 500'));
+    const write = await write_load();
+    const result = await write('csv', '~/audits/boom.csv');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('500');
+  });
+
+  it('makes a missing folder, and says which one it made', async () => {
+    isDirectory.mockResolvedValue(false);
+    listAll.mockResolvedValue({ tableData: [{ fname: '/home/chris/audits/a.csv' }] });
+    const write = await write_load();
+    const result = await write('csv', '~/audits/a.csv');
+    expect(mkdir).toHaveBeenCalledWith('/home/chris/audits');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.created).toBe('/home/chris/audits');
+  });
+
+  it('refuses by name when the folder cannot be made', async () => {
+    isDirectory.mockResolvedValue(false);
+    mkdir.mockResolvedValue(false);
+    const write = await write_load();
+    const result = await write('csv', '~/nowhere/a.csv');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('could not be created');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+
+  // `files_listAll` answers null for an empty folder AND for one that is
+  // not there, so existence is never inferred from it: doing so reported a
+  // folder "made" that already existed, and a file "already there" in a
+  // folder that did not exist at all.
+  it('reads an empty folder as empty, not as missing', async () => {
+    isDirectory.mockResolvedValue(true);
+    listAll.mockResolvedValueOnce(null).mockResolvedValue({ tableData: [{ fname: '/home/chris/audits/a.csv' }] });
+    const write = await write_load();
+    const result = await write('csv', '~/audits/a.csv');
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.created).toBeUndefined();
+  });
+
+  // A create straight after making its folder has been seen to report
+  // success and leave nothing behind. A table an operator believes they
+  // have is worse than one they know they lack.
+  it('refuses to claim a write it cannot find afterwards', async () => {
+    isDirectory.mockResolvedValue(true);
+    listAll.mockResolvedValue({ tableData: [] });
+    const write = await write_load();
+    const result = await write('csv', '~/audits/ghost.csv');
+    expect(create).toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('is not there');
+  });
+
+  it('answers with the path it actually wrote, resolved', async () => {
+    listAll.mockResolvedValueOnce({ tableData: [] })
+      .mockResolvedValue({ tableData: [{ fname: '/home/chris/audits/a.csv' }] });
+    const write = await write_load();
+    const result = await write('csv', '~/audits/a.csv');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.path).toBe('/home/chris/audits/a.csv');
+      expect(result.created).toBeUndefined();
+    }
   });
 });

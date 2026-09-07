@@ -897,7 +897,17 @@ export class FilesPanel {
         const name: HTMLSpanElement = document.createElement('span');
         name.className = 'files-name';
         name.textContent = '..';
-        updir.append(glyph, name, document.createElement('span'), document.createElement('span'), document.createElement('span'), document.createElement('span'));
+        // Every row must fill every column of the grid: a row one cell short
+        // does not simply leave a gap, it shifts every cell of every row
+        // after it into the wrong column. The blanks are counted from the
+        // traits and the action track rather than typed out, so a column
+        // added later cannot rotate the listing again.
+        const blanks: HTMLElement[] = FILE_TRAITS.slice(1).map(
+          (): HTMLElement => document.createElement('span'),
+        );
+        const track: HTMLSpanElement = document.createElement('span');
+        track.className = 'listing-actions files-actions';
+        updir.append(glyph, name, ...blanks, track);
         updir.addEventListener('click', (): void => {
           this.activate({ kind: 'dir', path: parentPath_of(listing.path) });
         });

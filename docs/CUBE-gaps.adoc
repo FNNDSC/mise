@@ -478,15 +478,44 @@ What it looked like from inside the session, for the whole time they existed: `l
 
 === Required interface semantics
 
+* *A write onto an occupied path is refused, not half-done.* The store has no overwrite; a request that cannot be honoured should be rejected before it commits anything, rather than leaving a row the API itself cannot serve.
 * *A failed write leaves nothing behind.* The partial state outlives the request and is invisible to the client that caused it.
 * *One unserveable row costs that row.* Skipping it, or reporting it per-item, keeps the collection usable — the alternative is a folder no client can list, repair, or empty.
 * *A 500 body says something.* `Internal server error` as the entire payload gives a client nothing to render.
 
 Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/732[CUBE #732].
 
+=== What makes such a row: a write onto an occupied path
+
+Found 2026-09-07, and reproducible in three commands. Every one of these damages the folder, and each is an ordinary thing to ask for:
+
+[source,console]
+----
+$ upload a.txt ~/repro/ ; upload b.txt ~/repro/
+$ ls ~/repro
+ a.txt   b.txt
+$ mv ~/repro/a.txt ~/repro/b.txt        # destination exists
+Failed to move …
+$ ls ~/repro                            # 500 Internal server error, from here on
+----
+
+`cp a.txt b.txt` onto an existing `b.txt` does the same and reports *success* while doing it. So does uploading a file whose name is already taken. The folder's `children` collection keeps answering throughout, which is why the damage is invisible to a client that lists folders and files separately: the folder looks fine and simply has no files any more.
+
+The mechanism, on the client side, was one line of well-meant compensation. CUBE renames an upload that collides (`a.txt` becomes `a_VlIxMSp.txt`) and mise then PUT the wanted path back onto the file, to defeat a rename it read as spurious. That PUT — a write onto a path the store already holds — is what leaves the unserveable row. `mv` reaches the same place by its own PUT of `upload_path`, and `cp` by uploading its copy to an occupied name.
+
+Once made, the row cannot be removed through any listing-shaped route, since every query containing it fails. `DELETE /api/v1/userfiles/<id>/` works if the id is known, and deleting the whole folder works; nothing else does.
+
 === ChELL policy today
 
-Three things this stack owes, tracked as https://github.com/FNNDSC/mise/issues/462[#462]. A listing whose sub-resource failed must say so rather than rendering what survived as the whole answer — the law mise holds everywhere else, that it never defaults to a page and calls it an answer. `files_listAll` must stop returning the same `null` for empty, for missing, and for refused. And `files_delete` must not resolve an id through the parent collection: a file that cannot be listed cannot be deleted, so the repair here had to go around mise entirely.
+*No write goes to an occupied path.* Each of the three routes now asks first, which costs one listing call and keeps the folder readable:
+
+* `mv` refuses by name — `Destination exists: <path> — mise cannot overwrite a file; remove it first` — and a failed move reports the kernel's reason rather than a bare `Failed to move`.
+* `cp` refuses the same way, with the same message and the same reporting.
+* `upload` keeps the name CUBE gave the colliding file and *says so*: `'<path>' already exists — the upload landed as '<other>' rather than overwriting it`. A probe that cannot answer counts the path as taken, since the cost of guessing wrong is the operator's folder.
+
+The deliberate replace (`--csv-to --force`) is unaffected: it removes the file, waits for the path to stop resolving, then writes — so the write it makes is to a free path.
+
+Three further things this stack owes, tracked as https://github.com/FNNDSC/mise/issues/462[#462]. A listing whose sub-resource failed must say so rather than rendering what survived as the whole answer — the law mise holds everywhere else, that it never defaults to a page and calls it an answer. `files_listAll` must stop returning the same `null` for empty, for missing, and for refused. And `files_delete` must not resolve an id through the parent collection: a file that cannot be listed cannot be deleted, so the repair here had to go around mise entirely.
 
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery

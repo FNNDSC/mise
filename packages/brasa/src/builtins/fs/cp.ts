@@ -4,8 +4,8 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
+import { CommandEnvelope, listCache_get, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
+import type { ListCache, StackMessage } from '@fnndsc/cumin';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
 import { destination_ask, destination_missing } from './destination.js';
 import { files_cp as chefs_cp_cmd } from '@fnndsc/chili/commands/fs/cp.js';
@@ -132,6 +132,12 @@ export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
         rendered += `${cp_render(srcPath, destPath, success)}\n`;
       }
 
+      if (!success) {
+        // The kernel said WHY on the stack; a bare "Failed to copy" makes an
+        // operator guess at a reason that was already known.
+        const reason: StackMessage | undefined = errorStack.stack_pop();
+        if (reason !== undefined) renderedErr += `${chalk.red(`cp: ${reason.message}`)}\n`;
+      }
       outcomes.push({ source: srcPath, copied: success });
       if (success) {
         successCount++;

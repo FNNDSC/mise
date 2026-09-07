@@ -373,16 +373,31 @@ export class ChrisIO {
       const userFile: UserFile = await Promise.race([uploadPromise, timeoutPromise]);
 
       // ChRIS may rename the file to avoid collisions (e.g. world.txt → world_XXXXXXX.txt)
-      // when the path was recently deleted and not yet committed. Detect and rename back.
+      // when the path was recently deleted and not yet committed. Renaming
+      // it back is right THEN and catastrophic when the path is genuinely
+      // occupied: a write onto a path the store already holds leaves a row
+      // CUBE's own API cannot serve, and one such row makes every listing
+      // of that folder fail (docs/CUBE-gaps.adoc). So the rename happens
+      // only when the wanted path is free, and a check that cannot answer
+      // counts as occupied — the safe reading, since the cost of guessing
+      // wrong is the operator's folder.
       const actualFname: string = itemData_get<UserFileData>(userFile)?.fname ?? '';
       const normalizedActual: string = actualFname.startsWith('/') ? actualFname.substring(1) : actualFname;
       if (normalizedActual && normalizedActual !== fullPath) {
-        try {
-          await userFile.put({ upload_path: fullPath });
-        } catch (renameErr: unknown) {
-          const renameMsg: string = renameErr instanceof Error ? renameErr.message : String(renameErr);
-          errorStack.stack_push('warning', `Uploaded as '${actualFname}' — rename to '${fullPath}' failed: ${renameMsg}`);
-          // Don't fail the upload — file was uploaded, just at wrong name
+        const free: boolean = await this.path_isFree(client, fullPath, normalizedActual);
+        if (!free) {
+          errorStack.stack_push(
+            'warning',
+            `'${fullPath}' already exists — the upload landed as '${actualFname}' rather than overwriting it`,
+          );
+        } else {
+          try {
+            await userFile.put({ upload_path: fullPath });
+          } catch (renameErr: unknown) {
+            const renameMsg: string = renameErr instanceof Error ? renameErr.message : String(renameErr);
+            errorStack.stack_push('warning', `Uploaded as '${actualFname}' — rename to '${fullPath}' failed: ${renameMsg}`);
+            // Don't fail the upload — file was uploaded, just at wrong name
+          }
         }
       }
 
@@ -393,6 +408,34 @@ export class ChrisIO {
         "error",
         `Failed to upload file ${filename} to ${uploadDir}: ${errorMsg}`
       );
+      return false;
+    }
+  }
+
+  /**
+   * Whether a path is free to be written to.
+   *
+   * Asked by exact name rather than by listing the folder: one request, and
+   * it still answers when the folder's own listing is broken. Anything the
+   * server will not answer counts as occupied.
+   *
+   * @param client - The connected client.
+   * @param wanted - The path a write wants, without a leading slash.
+   * @param mine - The path the just-uploaded file currently occupies, which
+   *   is not a collision with itself.
+   * @returns True when nothing else holds the path.
+   */
+  private async path_isFree(client: Client, wanted: string, mine: string): Promise<boolean> {
+    try {
+      const held = await client.getUserFiles({ limit: 5, fname_exact: wanted });
+      const items: unknown[] = held.getItems() ?? [];
+      for (const item of items) {
+        const fname: string = itemData_get<UserFileData>(item as never)?.fname ?? '';
+        const normalized: string = fname.startsWith('/') ? fname.substring(1) : fname;
+        if (normalized !== mine) return false;
+      }
+      return true;
+    } catch {
       return false;
     }
   }

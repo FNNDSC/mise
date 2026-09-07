@@ -799,7 +799,9 @@ try {
     const home = names();
     const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => r.querySelector('.files-name')?.textContent.trim() !== '..');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
-    folder?.click();
+    // A click indicates and a double-click activates, since this listing
+    // carries row verbs (a-row-is-indicated-before-it-is-acted-on).
+    folder?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     await settle(() => names().join(',') !== home.join(','));
     const inside = names();
     fp.querySelector('.files-back').click();
@@ -1026,6 +1028,9 @@ try {
     const verbs = () => [...fp().querySelectorAll('.files-selection-bar .listing-action')].map(b => b.textContent.trim());
     const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
 
+    // A scenario starts from nothing of its own: a folder left by a run that
+    // failed part-way would put yesterday's files under today's names.
+    await say('rm -r ~/smoke-select', 2500);
     await say('mkdir ~/smoke-select', 2500);
     await say('cd ~/smoke-select', 2500);
     // Two files to gather, put there by the surface's own delivery.
@@ -1057,7 +1062,9 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(400); const a = [...document.querySelectorAll('#terminal .argus-ask')].pop(); if (a) { asked = a.textContent.trim(); break; } }
     const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
     // A confirm is answered with the capsule that reads as what it does.
-    [...document.querySelectorAll('#terminal .ask-capsule')].find(c => c.textContent === 'YES')?.click();
+    // The LAST question's capsule: the scrollback keeps every question ever
+    // asked, and pressing the first YES presses one already answered.
+    [...document.querySelectorAll('#terminal .ask-capsule')].filter(c => c.textContent === 'YES').pop()?.click();
     const removed = await settle(() => !named('one.txt') && !named('two.txt'));
 
     // navigation clears what was gathered

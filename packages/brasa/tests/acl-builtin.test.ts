@@ -19,12 +19,18 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   CommandEnvelope: class {},
 }));
 
+const mockQuestion = jest.fn<(prompt: string) => Promise<string>>();
+jest.unstable_mockModule('../src/core/question.js', () => ({
+  repl_question: mockQuestion,
+}));
+
 const { builtin_setfacl, builtin_getfacl } = await import('../src/builtins/fs/acl.js');
 
 describe('setfacl', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockStackPop.mockReturnValue(undefined);
+    mockQuestion.mockResolvedValue('');
     mockFeedShare.mockResolvedValue({ ok: true, value: true });
     mockFeedSharesList.mockResolvedValue({ ok: true, value: [] });
   });
@@ -39,6 +45,35 @@ describe('setfacl', () => {
   it('grants on several targets in one invocation', async () => {
     await builtin_setfacl(['-m', 'u:someone:r', 'feed_1', 'feed_2']);
     expect(mockFeedShare).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks who when given a feed and no entry, and grants the answer', async () => {
+    mockQuestion.mockResolvedValue('someone');
+    const envelope = await builtin_setfacl(['/home/me/feeds/feed_12']);
+    expect(mockQuestion).toHaveBeenCalledWith('Share feed 12 with which user? ');
+    expect(mockFeedShare).toHaveBeenCalledWith(12, 'someone');
+    expect(envelope.status).toBe('ok');
+  });
+
+  it('grants nothing when the question is abandoned', async () => {
+    mockQuestion.mockResolvedValue('');
+    const envelope = await builtin_setfacl(['feed_12']);
+    expect(mockFeedShare).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('feed_12 is shared with no one new');
+  });
+
+  it('does not ask about something that names no feed', async () => {
+    const envelope = await builtin_setfacl(['/home/me/notes.txt']);
+    expect(mockQuestion).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('does not name a feed');
+  });
+
+  it('still refuses a usage it cannot read rather than asking', async () => {
+    const envelope = await builtin_setfacl(['-m', 'nonsense', 'feed_12']);
+    expect(mockQuestion).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('error');
   });
 
   it('refuses an entry that grants no read, since that is what a share is', async () => {

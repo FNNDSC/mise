@@ -155,7 +155,8 @@ export const helpText: Record<string, CommandHelp> = {
       'Grant another identity access to a feed. A feed is named by id, by the feed_N a '
       + 'listing shows, or by any path holding one, so a path under /SHARED resolves by the '
       + 'same rule as one under a home folder. Only user entries exist: CUBE grants to an '
-      + 'identity, not to a group.',
+      + 'identity, not to a group. Given a feed and no entry, it asks who to share it '
+      + 'with: the grant CUBE offers is read, so the identity is the only thing missing.',
     options: [
       '-m u:<user>:<perms>   Add or modify a user entry; the perms must include r',
       '-x u:<user>           Remove an entry (not supported: mise cannot revoke a grant)',
@@ -163,6 +164,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: [
       'setfacl -m u:someone:r /home/me/feeds/feed_12',
       'setfacl -m u:someone:r feed_12 feed_13',
+      'setfacl feed_12                          # asks who to share it with',
     ],
   },
   getfacl: {

@@ -20,7 +20,10 @@ import type { WireEnvelope } from '@fnndsc/menu';
 import { RosterOrder } from '../roster/order.js';
 import { ListingHost } from '../roster/host.js';
 import { rankedLayout_compute, type RankedLayout } from '../../scene/rankedLayout.js';
-import { listingRow_build, traitColumns_of, traitValue_of, type ListingTrait } from '../roster/row.js';
+import {
+  listingRow_build, traitColumns_of, traitValue_of, actionCell_build,
+  type ListingTrait, type ListingAction,
+} from '../roster/row.js';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.
@@ -324,6 +327,21 @@ export class FilesPanel {
   private frameTopObserver: ResizeObserver | null = null;
   /** Whether the listing on stage was served stale. */
   private stale: boolean = false;
+  /**
+   * The path of the indicated row, and the verbs a row may be given.
+   *
+   * A listing that hides its verbs until a row is indicated must
+   * distinguish indicating from activating, or there is no way to say
+   * "this one" without also saying "go" (docs/aegis.adoc). A click
+   * indicates; a double-click activates, as the DAG scene already teaches.
+   */
+  private indicated: string | null = null;
+  /** What the surface offers a row; nothing until the surface says. */
+  private actions: ((entry: FsListingEntry, path: string) => ReadonlyArray<ListingAction<FsListingEntry>>) | null = null;
+  /** Every row's action cell on stage, by path, so indicating fills one. */
+  private actionCells: Map<string, HTMLElement> = new Map();
+  /** Called when a row is indicated, so the surface may read it out. */
+  private indicate: ((entry: FsListingEntry, path: string) => void) | null = null;
 
   /**
    * @param container - The DOM element the panel renders into.
@@ -525,6 +543,76 @@ export class FilesPanel {
     this.container.append(header, image);
   }
 
+  /**
+   * Declares what a row may be told to do, and who to tell when one is
+   * indicated.
+   *
+   * The panel knows what a row IS; only the surface knows what can be done
+   * about it — a verb lowers to a session command, which is not this
+   * class's business. Both are optional: a browser given neither behaves as
+   * it did before there were row verbs.
+   *
+   * @param actions - The verbs for one row, computed per row.
+   * @param indicate - Told which row was indicated, for the regard.
+   */
+  public rowVerbs_declare(
+    actions: (entry: FsListingEntry, path: string) => ReadonlyArray<ListingAction<FsListingEntry>>,
+    indicate?: (entry: FsListingEntry, path: string) => void,
+  ): void {
+    this.actions = actions;
+    this.indicate = indicate ?? null;
+  }
+
+  /**
+   * Indicates one row: its verbs appear in its own action cell and the
+   * previously indicated row's cell empties.
+   *
+   * The track is present and reserved on EVERY row, so what changes here is
+   * what the track HOLDS and never the geometry around it.
+   *
+   * @param path - The row's path, or null to indicate nothing.
+   * @param entry - The row's entry, when one is being indicated.
+   */
+  public row_indicate(path: string | null, entry?: FsListingEntry): void {
+    if (this.indicated !== null) {
+      const previous: HTMLElement | undefined = this.actionCells.get(this.indicated);
+      if (previous !== undefined) previous.replaceChildren();
+      this.container.querySelector('.files-row-indicated')?.classList.remove('files-row-indicated');
+    }
+    this.indicated = path;
+    if (path === null || entry === undefined) return;
+    const cell: HTMLElement | undefined = this.actionCells.get(path);
+    if (cell === undefined) return;
+    cell.parentElement?.classList.add('files-row-indicated');
+    const offered: ReadonlyArray<ListingAction<FsListingEntry>> = this.actions?.(entry, path) ?? [];
+    if (offered.length > 0) {
+      cell.replaceChildren(...actionCell_build(entry, offered).childNodes);
+    }
+    this.indicate?.(entry, path);
+  }
+
+  /**
+   * Shows a readout beside an indicated row's verbs.
+   *
+   * A verb that grants something should say what is already granted, and
+   * the answer arrives after the indication (it is a fetch). It is dropped
+   * when the operator has moved on: a readout about a row nobody is looking
+   * at would be an answer to a question already withdrawn.
+   *
+   * @param path - The row the readout belongs to.
+   * @param text - What to say beside the verbs.
+   */
+  public rowReadout_show(path: string, text: string): void {
+    if (this.indicated !== path) return;
+    const cell: HTMLElement | undefined = this.actionCells.get(path);
+    if (cell === undefined) return;
+    const readout: HTMLSpanElement = document.createElement('span');
+    readout.className = 'listing-readout';
+    readout.textContent = text;
+    cell.querySelector('.listing-readout')?.remove();
+    cell.appendChild(readout);
+  }
+
   /** @returns The path of the listing currently shown, or null before the first. */
   public path_current(): string | null {
     return this.lastListings[0]?.path ?? null;
@@ -647,6 +735,11 @@ export class FilesPanel {
     this.lastListings = listings;
     this.thumbObserver?.disconnect();
     this.thumbObserver = null;
+    // A rebuilt grid holds none of the old rows: the indication and the
+    // cells that carried it go with them, or a stale path would keep verbs
+    // alive over a listing that no longer holds that row.
+    this.actionCells = new Map();
+    this.indicated = null;
     // Rows scroll; the frame does not. The host seats the frame and opens
     // the field beneath it.
     const field: HTMLElement = this.host.field_open();
@@ -1017,24 +1110,42 @@ export class FilesPanel {
         if (refused) {
           row.title = 'listed but not readable — CUBE refused this identity access to the contents';
         }
+        // The action track: present on EVERY row, empty until the row is
+        // indicated. Reserving it is what keeps a listing from jumping when
+        // one row's verbs appear.
+        const actions: HTMLSpanElement = document.createElement('span');
+        actions.className = 'listing-actions files-actions';
+        row.appendChild(actions);
+        this.actionCells.set(path, actions);
         // Links navigate: in this VFS a link names a place (a node's `data`
         // pointing into the feed tree), so following it is a directory move —
         // the engine resolves the target. Only plain files are viewable
         // content. 'job' is /proc's directory kind for a plugin instance —
         // navigable, and inside a node's overlay it is the hop target.
-        if (entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'link' || entry.type === 'job') {
-          row.classList.add('files-activatable');
-          row.addEventListener('click', (): void => this.activate({ kind: 'dir', path }));
-        } else if (entry.type === 'file') {
-          row.classList.add('files-activatable');
-          row.addEventListener('click', (): void => this.activate({ kind: 'file', path }));
-        } else if (entry.type === 'plugin' || entry.type === 'pipeline') {
-          // A /bin entry opens as context: what this executable is.
-          row.classList.add('files-activatable');
-          row.addEventListener('click', (): void => {
-            this.activate({ kind: entry.type as 'plugin' | 'pipeline', path });
-          });
-        }
+        const kind: FileAction['kind'] | null =
+          entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'link' || entry.type === 'job' ? 'dir'
+          : entry.type === 'file' ? 'file'
+          : entry.type === 'plugin' || entry.type === 'pipeline' ? entry.type
+          : null;
+        if (kind === null) return;
+        row.classList.add('files-activatable');
+        // A click says "this one"; a double-click says "go". Only a listing
+        // that HIDES verbs until a row is indicated needs the split — a
+        // browser with no verbs to show (a node's overlay) would be asking
+        // for a second click and offering nothing for the first.
+        row.addEventListener('click', (): void => {
+          if (this.actions === null) {
+            this.activate({ kind, path });
+            return;
+          }
+          this.row_indicate(path, entry);
+        });
+        row.addEventListener('dblclick', (): void => {
+          // The click that opened the double-click already indicated the
+          // row; activating leaves the listing, so the indication goes too.
+          this.row_indicate(null);
+          this.activate({ kind, path });
+        });
       },
     });
   }

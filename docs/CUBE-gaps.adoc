@@ -442,53 +442,51 @@ The first is the more valuable: it makes "put this here" one call and removes th
 
 `--csv-to` refuses to overwrite unless the operator says `--force`. With it, the file is removed, its disappearance is waited out, and the write is confirmed by listing afterwards — a write reported without confirmation was seen to leave nothing behind. Every step is reported: `made <folder>`, `replaced the table that was there`, `✓ wrote <path>`.
 
-== Confirmed gap: a user's home root cannot list its own files
+== Confirmed gap: a file row the API cannot serve poisons every listing it appears in
 
 === Operator requirement
 
-`ls ~` names what is in the home folder. Files put there by an upload, a move, or a plugin are part of what is there, and a listing that omits them without saying so is not an answer.
+A folder lists. One damaged row in it should cost that row, not the folder — and certainly not the operator's ability to delete anything in it.
 
 === Measured
 
-Against a live CUBE on 2026-09-07, asking each file-browser folder for its files:
+Live 2026-09-07. Fetching `userfiles` rows one id at a time:
 
 [source]
 ----
-home/<user>          (id=21)      → files: 500 Internal server error | children: 12
-home/<user>/movetest (id=1775170) → files: 0                         | children: 0
-home/<user>/data     (id=688238)  → files: 0                         | children: 1
-home/<user>/upload   (id=678994)  → files: 2                         | children: 17
-home                 (id=2)       → files: 0                         | children: 1
+GET /api/v1/userfiles/28413804/ → 500 Internal server error
+GET /api/v1/userfiles/28413805/ → 200  home/<user>/ask-two.txt
+GET /api/v1/userfiles/28413811/ → 500 Internal server error
+GET /api/v1/userfiles/28413812/ → 500 Internal server error
 ----
 
-Only the home root fails, and it fails at every `limit` tried (1, 5, 20, 50) and on every one of five repeats, while the same five repeats against a sibling folder all answer. Its children and links collections answer normally, which is why `ls ~` looks right and always has: the folders and the `public`/`shared` links are all there, and only the files are missing — and a home root usually holds no files, so nothing looked wrong until one was put there.
-
-The files present at the root when this was measured were not the cause: deleting all four and re-asking gives the same 500, minutes later.
-
-Scope not established: this is one account's home root on one server. Whether every user's home root does it needs a second identity to say, which is https://github.com/FNNDSC/mise/issues/372[#372].
-
-The files exist. Asked for by name they are present and they download:
+Three rows CUBE cannot serve. Every failure chased that afternoon was a query whose result set contained one of them:
 
 [source]
 ----
-userfiles?fname_exact=home/<user>/probe-root2.txt
-→ id 28413816, 11 B, content "hello mise"
+GET /api/v1/filebrowser/21/files/                                  → 500  (home/<user>; children and links fine)
+GET /api/v1/userfiles/?fname_icontains=home/<user>/&offset=0..800  → 200
+GET /api/v1/userfiles/?fname_icontains=home/<user>/&offset=1000    → 500  (the page they fall on)
+GET /api/v1/userfiles/?fname_exact=home/<user>/real.txt            → 500
 ----
 
-So writes to the home root succeed — an upload lands, a move lands — and only the reading back of them fails. An afternoon was spent reading this as data loss, which is what an unreported failed sub-request buys.
+`DELETE /api/v1/userfiles/<id>/` on each returned 204, and every one of those queries answered normally straight afterwards. The rows were deletable and unreadable at once.
+
+The rows were left behind by `mv` and `cp` at the home root that had themselves reported `Internal server error` the day before: a failed write that commits a fragment.
+
+What it looked like from inside the session, for the whole time they existed: `ls ~` drew its folders and its `public`/`shared` links and no files at all; `rm ~/anything` failed for every file at the root, intact ones included, because `rm` resolves through that listing; `rm -r` failed on every folder for the same reason; and `cat` of a root file killed the session. Four separate-looking defects, one row.
 
 === Required interface semantics
 
-* *The folder's files collection answers for every folder a user can see*, home root included, or
-* *it says why it cannot* — a 4xx with a reason a client can render beats a 500 with `Internal server error` as its entire body.
+* *A failed write leaves nothing behind.* The partial state outlives the request and is invisible to the client that caused it.
+* *One unserveable row costs that row.* Skipping it, or reporting it per-item, keeps the collection usable — the alternative is a folder no client can list, repair, or empty.
+* *A 500 body says something.* `Internal server error` as the entire payload gives a client nothing to render.
 
-Worth CUBE's attention beyond the listing: a home root is where a client walking a user's files starts, and a 500 there is invisible to a client that lists folders and files separately.
-
-A second 500 met on the way, possibly the same cause: `userfiles?fname_icontains=home/<user>/` answers for offsets 0 through 800 and returns 500 at offset 1000, every time.
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/732[CUBE #732].
 
 === ChELL policy today
 
-`ls` must report a sub-resource that failed rather than rendering what survived as the whole answer — the same rule mise holds everywhere else: it never defaults to a page and calls it an answer. That work is tracked as https://github.com/FNNDSC/mise/issues/462[#462], and the server side as https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/732[CUBE #732], along with separating `files_listAll`'s `null` for "empty" from its `null` for "the server refused".
+Three things this stack owes, tracked as https://github.com/FNNDSC/mise/issues/462[#462]. A listing whose sub-resource failed must say so rather than rendering what survived as the whole answer — the law mise holds everywhere else, that it never defaults to a page and calls it an answer. `files_listAll` must stop returning the same `null` for empty, for missing, and for refused. And `files_delete` must not resolve an id through the parent collection: a file that cannot be listed cannot be deleted, so the repair here had to go around mise entirely.
 
 [[candidate-proposal-change-discovery]]
 == Candidate proposal: change discovery

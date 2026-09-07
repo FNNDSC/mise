@@ -17,13 +17,38 @@
 import {
   CONTRACT_VERSION,
   serverMessage_parse,
+  promptKind_of,
   type ServerMessage,
   type PromptContext,
+  type PromptKind,
+  type PromptPath,
   type ProgressMessage,
   type Regard,
   type WireEnvelope,
   type WatchState,
 } from '@fnndsc/menu';
+
+
+/**
+ * A question on its way to whatever will answer it.
+ *
+ * The client does not choose the instrument — it carries what the session
+ * asked for and lets the surface decide whether that is a line in the
+ * console or a browser to walk.
+ *
+ * @property message - The question's own words.
+ * @property kind - What kind of value answers it.
+ * @property suggest - A value to offer, when the question suggested one.
+ * @property path - Where browsing starts and what to compose, for a location.
+ * @property commit - The word the committing control should read.
+ */
+export interface SurfaceAsk {
+  message: string;
+  kind: PromptKind;
+  suggest?: string;
+  path?: PromptPath;
+  commit?: string;
+}
 
 /** The surface tag the daemon puts on session-bus envelopes it originates itself. */
 const DAEMON_SURFACE: string = 'daemon';
@@ -96,6 +121,11 @@ export interface ClientHandlers {
   output_receive?: (channel: OutputChannel, chunk: string) => void;
   progress_receive?: (message: ProgressMessage) => void;
   promptline_receive?: (context: PromptContext) => void;
+  /**
+   * A question the session is waiting on. The handler answers it, or
+   * resolves null to abandon it.
+   */
+  ask_receive?: (request: SurfaceAsk) => Promise<string | null>;
   telemetry_receive?: (index: { jobs: number; feeds: number }) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
@@ -188,7 +218,11 @@ export class ArgusClient {
             token,
             capabilities: {
               shellCommands: false,
-              hiddenInput: false,
+              // A masked field in a browser is as private as a terminal's
+              // no-echo line: the console asks, nothing is echoed, and the
+              // answer never enters the transcript. Declaring false here is
+              // what made `sudo` dead-end in this surface.
+              hiddenInput: true,
               // A browser can save a file but has no directory to fill, so a
               // folder must be archived into one file before it can arrive.
               fileDelivery: true,
@@ -405,10 +439,34 @@ export class ArgusClient {
         }
         break;
       }
-      // This surface declared no local capabilities; refuse each request in
-      // its own vocabulary so the engine fails cleanly rather than hanging.
+      // A question the session put to this surface. Everything else the
+      // engine may delegate is still refused in its own vocabulary, so it
+      // fails cleanly rather than hanging.
       case 'prompt': {
-        this.reply_send({ type: 'promptError', promptId: message.promptId, reason: 'the argus surface cannot answer prompts' });
+        const ask = this.handlers.ask_receive;
+        if (ask === undefined) {
+          this.reply_send({ type: 'promptError', promptId: message.promptId, reason: 'this surface has no way to ask' });
+          break;
+        }
+        const promptId: string = message.promptId;
+        void ask({
+          message: message.message,
+          kind: promptKind_of(message),
+          ...(message.path?.suggest === undefined ? {} : { suggest: message.path.suggest }),
+          ...(message.path === undefined ? {} : { path: message.path }),
+          ...(message.commit === undefined ? {} : { commit: message.commit }),
+        }).then((answer: string | null): void => {
+          if (answer === null) {
+            // Abandoning is an answer: the command is told, and says what
+            // it did not do.
+            this.reply_send({ type: 'promptError', promptId, reason: 'the operator abandoned the question' });
+            return;
+          }
+          this.reply_send({ type: 'promptAnswer', promptId, answer });
+        }).catch((error: unknown): void => {
+          const reason: string = error instanceof Error ? error.message : 'the question could not be answered';
+          this.reply_send({ type: 'promptError', promptId, reason });
+        });
         break;
       }
       case 'pipe': {

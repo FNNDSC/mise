@@ -24,6 +24,7 @@ import {
   type ExecuteOutcome,
   type OutputChannel,
   type ProgressMessage,
+  type SurfaceAsk,
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
@@ -2237,6 +2238,21 @@ async function surface_start(token: string): Promise<void> {
         }
         pacsPanel.progress_observe(message);
       },
+      /**
+       * A question the session put to this surface.
+       *
+       * Every kind is answered in the console for now — where the session
+       * speaks, and where the scrollback keeps what was asked. A `path`
+       * additionally deserves an instrument to walk, which is the next
+       * slice; until then it is answerable rather than refused, which is
+       * what matters.
+       */
+      ask_receive: (request: SurfaceAsk): Promise<string | null> =>
+        terminal.ask_open({
+          message: request.message,
+          kind: request.kind,
+          ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
+        }),
       promptline_receive: (context: PromptContext): void => {
         // The smoke suite is argus's only executable verification — there
         // is no unit level here — so the surface exposes the last context

@@ -10,6 +10,7 @@ import path from 'path';
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpansion } from '../../lib/parser.js';
 import { surface_get } from '../../core/surface.js';
+import { repl_confirm } from '../../core/question.js';
 
 /**
  * Asks the issuing surface to confirm replacement of an existing CFS target.
@@ -19,8 +20,9 @@ import { surface_get } from '../../core/surface.js';
  * @throws {Error} When the surface declines the operation.
  */
 async function uploadConfirmation_request(message: string): Promise<void> {
-  const answer: string = await surface_get().prompt({ message });
-  if (answer.trim().toLowerCase() !== 'y' && answer.trim().toLowerCase() !== 'yes') {
+  // A yes/no says so on the wire, so a graphical surface offers two
+  // capsules rather than expecting an operator to know the word is `y`.
+  if (!await repl_confirm(message)) {
     throw new Error('Operation cancelled by user.');
   }
 }

@@ -1177,6 +1177,68 @@ try {
       servers.closedByEsc === true, JSON.stringify(servers.closedByEsc));
   }
 
+  if (stage('console-asks')) {
+    // The session can ask this surface a question now. Every kind is
+    // answered in the console — where the session speaks, and where the
+    // scrollback keeps what was asked — and a secret never enters the
+    // transcript, not even as a length.
+    const asks = await evalIn(`
+      const term = () => document.querySelector('#terminal input');
+      const lines = () => [...document.querySelectorAll('#terminal .argus-ask')];
+      const run = (line) => { const t = term(); t.value = line;
+        t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
+      const answer = (text) => { const t = term(); t.value = text;
+        t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
+
+      // A path ask, raised by a flag given no value.
+      run('pacs query PatientID:__smoke__ --csv-to');
+      for (let i = 0; i < 240; i++) { await sleep(500); if (lines().length > 0) break; }
+      if (lines().length === 0) return { asked: false };
+      const asked = lines()[lines().length - 1].textContent;
+      const masked = term().type;
+      // The suggestion is offered, so the answer is a rename rather than a
+      // whole path typed out.
+      const offered = term().value;
+      // Esc abandons: the command is told and says what it did not do.
+      term().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(1200);
+      const abandoned = (lines()[lines().length - 1].textContent ?? '').includes('abandoned');
+      const glyph = document.querySelector('.argus-input-glyph').textContent;
+
+      // A yes/no is two capsules: a control that reads as what it does
+      // beats a letter an operator has to know to type.
+      run('rm -i /home/__no_such_file_for_smoke__');
+      let capsules = 0;
+      for (let i = 0; i < 120; i++) { await sleep(250);
+        capsules = document.querySelectorAll('#terminal .ask-capsule').length;
+        if (capsules > 0) break; }
+      let closed = true;
+      if (capsules > 0) {
+        [...document.querySelectorAll('#terminal .ask-capsule')].find(c => c.textContent === 'NO').click();
+        await sleep(800);
+        closed = document.querySelectorAll('#terminal .ask-capsule:not(.ask-capsule-answered)').length === 0
+          || document.querySelector('.argus-input-glyph').textContent === '❯';
+      }
+      return { asked: true, question: asked, masked, offered, abandoned, glyph, capsules, closed };`);
+    if (asks.asked === false) {
+      console.log('  skipped: no question arrived (the PACS query never reached its write)');
+    } else {
+      check('the session can put a question to this surface, in the console',
+        /where should the table go/i.test(asks.question ?? ''), JSON.stringify(asks.question));
+      check('a path ask offers its suggestion, so answering is a rename',
+        /^pacs-.*\.csv$/.test(asks.offered ?? ''), JSON.stringify(asks.offered));
+      check('Esc abandons a question, and the transcript says so',
+        asks.abandoned === true && asks.glyph === '❯', JSON.stringify(asks));
+      if (asks.capsules === 0) {
+        console.log('  skipped: no yes/no arrived (nothing asked one)');
+      } else {
+        check('a yes/no is two capsules, and pressing one answers it',
+          asks.capsules === 2 && asks.closed === true,
+          JSON.stringify({ capsules: asks.capsules, closed: asks.closed }));
+      }
+    }
+  }
+
   if (stage('host-control')) {
   // The HOST lamp reads the attach ack's declared tiers and nothing else:
   // present exactly when the daemon declared host control, absent at rest.

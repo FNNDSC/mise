@@ -461,7 +461,11 @@ home/<user>/upload   (id=678994)  → files: 2                         | childre
 home                 (id=2)       → files: 0                         | children: 1
 ----
 
-Only the user's own home root fails, and it fails at every `limit` tried (1, 5, 20, 50). Its children collection answers normally, which is why a listing of it looks complete: the folders are all there and only the files are missing.
+Only the home root fails, and it fails at every `limit` tried (1, 5, 20, 50) and on every one of five repeats, while the same five repeats against a sibling folder all answer. Its children and links collections answer normally, which is why `ls ~` looks right and always has: the folders and the `public`/`shared` links are all there, and only the files are missing — and a home root usually holds no files, so nothing looked wrong until one was put there.
+
+The files present at the root when this was measured were not the cause: deleting all four and re-asking gives the same 500, minutes later.
+
+Scope not established: this is one account's home root on one server. Whether every user's home root does it needs a second identity to say, which is https://github.com/FNNDSC/mise/issues/372[#372].
 
 The files exist. Asked for by name they are present and they download:
 
@@ -478,7 +482,9 @@ So writes to the home root succeed — an upload lands, a move lands — and onl
 * *The folder's files collection answers for every folder a user can see*, home root included, or
 * *it says why it cannot* — a 4xx with a reason a client can render beats a 500 with `Internal server error` as its entire body.
 
-Worth CUBE's attention beyond the listing: every user has this folder, so every client that walks a home directory meets it.
+Worth CUBE's attention beyond the listing: a home root is where a client walking a user's files starts, and a 500 there is invisible to a client that lists folders and files separately.
+
+A second 500 met on the way, possibly the same cause: `userfiles?fname_icontains=home/<user>/` answers for offsets 0 through 800 and returns 500 at offset 1000, every time.
 
 === ChELL policy today
 

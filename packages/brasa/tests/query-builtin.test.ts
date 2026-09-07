@@ -701,3 +701,34 @@ describe('an ask anchors somewhere a file can land', () => {
     expect(asked.path?.anchor).toBe('/home/chris/feeds/feed_3');
   });
 });
+
+describe('an abandoned ask keeps the answer', () => {
+  // The answer is what the operator waited for; only the writing of it did
+  // not happen. Throwing the model away because a destination was refused
+  // would make a surface show nothing at all.
+  it('carries the model when the destination was abandoned', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 600, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockPrompt.mockRejectedValue(new Error('the operator abandoned the ask'));
+
+    const envelope = await builtin_query(['PatientID:1234', '--csv-to']);
+
+    expect((envelope as { status: string }).status).toBe('error');
+    const model = (envelope as { model?: { data?: { studies?: unknown[] } } }).model;
+    expect(model?.data?.studies).toHaveLength(1);
+  });
+
+  it('carries it when the write itself was refused', async () => {
+    mockCreate.mockResolvedValue(ok({ id: 601, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockFilesCreate.mockResolvedValue(false);
+
+    const envelope = await builtin_query(['PatientID:1234', '--csv-to', '/home/chris/x.csv']);
+
+    expect((envelope as { status: string }).status).toBe('error');
+    const model = (envelope as { model?: { data?: { studies?: unknown[] } } }).model;
+    expect(model?.data?.studies).toHaveLength(1);
+  });
+});

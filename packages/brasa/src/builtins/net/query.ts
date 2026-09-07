@@ -1014,7 +1014,14 @@ async function cohort_answer(
     const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk, facts.force);
     if (!delivered.ok) {
       process.exitCode = 1;
-      return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);
+      // The ANSWER stands: only the writing of it did not happen. An
+      // abandoned question, or a refused destination, is no reason to
+      // throw away a PACS answer the operator waited for — the model
+      // crosses either way, and a surface still shows what was found.
+      return {
+        ...envelope_error('', undefined, `${chalk.red(delivered.message)}\n`),
+        model: { kind: PACS_QUERY_MODEL_KIND, data: model },
+      };
     }
     return envelope_ok(delivered.rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
   }
@@ -1282,7 +1289,11 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     const delivered = await csv_deliver(model, csvTo, csvToAsk, force);
     if (!delivered.ok) {
       process.exitCode = 1;
-      return envelope_error('', undefined, `${chalk.red(delivered.message)}\n`);
+      // The answer stands; only the writing of it did not happen.
+      return {
+        ...envelope_error('', undefined, `${chalk.red(delivered.message)}\n`),
+        model: { kind: PACS_QUERY_MODEL_KIND, data: model },
+      };
     }
     return envelope_ok(delivered.rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
   }

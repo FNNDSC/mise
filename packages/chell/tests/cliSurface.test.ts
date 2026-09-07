@@ -45,7 +45,8 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   file_read: fileReadMock,
 }));
 
-const { cliSurface_create } = await import('../src/core/cliSurface.js');
+const { cliSurface_create, promptLine_render, promptAnswer_take } =
+  await import('../src/core/cliSurface.js');
 
 let writeSpy: jest.SpiedFunction<typeof process.stdout.write>;
 beforeEach(() => {
@@ -232,5 +233,76 @@ describe('local editing', () => {
       const remoteFetch = async (): Promise<Buffer> => Buffer.from('');
       expect(cliSurface_create(undefined, remoteFetch).capabilities.engineFilesystem).toBe(false);
     });
+  });
+});
+
+describe('promptLine_render', () => {
+  it('leaves a plain question alone', () => {
+    expect(promptLine_render({ message: 'Administrator username: ' }))
+      .toEqual({ message: 'Administrator username: ', fallback: '' });
+  });
+
+  it('says which letters a yes/no takes', () => {
+    const shown = promptLine_render({ message: 'Overwrite? ', wants: 'confirm' });
+    expect(shown.message).toBe('Overwrite? (y/n) ');
+    // Enter is not an answer to a yes/no: there is no safe default to guess.
+    expect(shown.fallback).toBe('');
+  });
+
+  it('offers a location composed from its anchor and suggestion', () => {
+    const shown = promptLine_render({
+      message: 'Where should the table go? ',
+      wants: 'path',
+      path: { anchor: '/home/chris', wantsDirectory: false, suggest: 'pacs.csv' },
+    });
+    expect(shown.message).toBe('Where should the table go? [/home/chris/pacs.csv] ');
+    expect(shown.fallback).toBe('/home/chris/pacs.csv');
+  });
+
+  it('does not double the separator when the anchor ends in one', () => {
+    const shown = promptLine_render({
+      message: 'where? ',
+      wants: 'path',
+      path: { anchor: '/home/chris/', wantsDirectory: false, suggest: 'x.csv' },
+    });
+    expect(shown.fallback).toBe('/home/chris/x.csv');
+  });
+
+  it('offers the anchor alone when a directory is wanted', () => {
+    const shown = promptLine_render({
+      message: 'which folder? ',
+      wants: 'path',
+      path: { anchor: '/home/chris/audits', wantsDirectory: true },
+    });
+    expect(shown.fallback).toBe('/home/chris/audits');
+  });
+
+  it('offers nothing when a location ask suggests nothing', () => {
+    const shown = promptLine_render({ message: 'where? ', wants: 'path', path: { wantsDirectory: false } });
+    expect(shown.message).toBe('where? ');
+    expect(shown.fallback).toBe('');
+  });
+
+  // A daemon that predates typed asks sends `hidden` and nothing else, and
+  // its questions must read exactly as they always did.
+  it('reads an older prompt as the plain line it always was', () => {
+    expect(promptLine_render({ message: 'Password: ', hidden: true }).message).toBe('Password: ');
+  });
+});
+
+describe('promptAnswer_take', () => {
+  it('takes the offer when the line is empty', () => {
+    expect(promptAnswer_take('', '/home/chris/x.csv')).toBe('/home/chris/x.csv');
+    expect(promptAnswer_take('   ', '/home/chris/x.csv')).toBe('/home/chris/x.csv');
+  });
+
+  it('takes what was typed over what was offered', () => {
+    expect(promptAnswer_take('  /elsewhere/y.csv ', '/home/chris/x.csv')).toBe('/elsewhere/y.csv');
+  });
+
+  // A question with nothing to offer answers with nothing, which the caller
+  // reads as an abandonment rather than as a path named ''.
+  it('answers with nothing when there was nothing to offer', () => {
+    expect(promptAnswer_take('', '')).toBe('');
   });
 });

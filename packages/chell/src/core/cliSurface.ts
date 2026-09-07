@@ -23,7 +23,52 @@ import * as path from 'path';
 import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import { segment_pipeThrough, file_read } from '@fnndsc/brasa';
-import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
+import { promptKind_of, type FileDeliverRequest, type FileDeliverResult, type PromptKind } from '@fnndsc/menu';
+
+/**
+ * What a typed line means, given what an empty one stands for.
+ *
+ * Enter takes the offer: a terminal that shows a default and then ignores
+ * it has shown a decoration rather than an answer.
+ *
+ * @param said - What the operator typed.
+ * @param fallback - The answer an empty line stands for.
+ * @returns The answer to give the kernel.
+ */
+export function promptAnswer_take(said: string, fallback: string): string {
+  const given: string = said.trim();
+  return given === '' ? fallback : given;
+}
+
+/**
+ * How a typed question reads on a terminal, and what an empty answer means.
+ *
+ * A terminal has one instrument — a line — so a location ask cannot borrow
+ * a browser the way a graphical surface does. It offers its composed
+ * default in brackets instead, and Enter takes the offer: the answer a
+ * terminal commits is then the same answer an errand would have, without
+ * either surface knowing about the other. A yes/no says which letters it
+ * takes and defaults to nothing, because there is no safe guess.
+ *
+ * @param request - The question as the kernel asked it.
+ * @returns The line to print, and the answer an empty line stands for.
+ */
+export function promptLine_render(request: PromptRequest): { message: string; fallback: string } {
+  const kind: PromptKind = promptKind_of(request);
+  if (kind === 'confirm') {
+    return { message: `${request.message}(y/n) `, fallback: '' };
+  }
+  if (kind !== 'path') {
+    return { message: request.message, fallback: '' };
+  }
+  const suggest: string | undefined = request.path?.suggest;
+  const anchor: string | undefined = request.path?.anchor;
+  const composed: string = suggest === undefined
+    ? (anchor ?? '')
+    : (anchor === undefined ? suggest : `${anchor.replace(/\/$/, '')}/${suggest}`);
+  if (composed === '') return { message: request.message, fallback: '' };
+  return { message: `${request.message}[${composed}] `, fallback: composed };
+}
 
 /**
  * Prompts on a persistent readline interface (the REPL's), suppressing echo
@@ -37,8 +82,11 @@ import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
  */
 function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): Promise<string> {
   if (!request.hidden) {
+    const shown: { message: string; fallback: string } = promptLine_render(request);
     return new Promise((resolve: (answer: string) => void) => {
-      rl.question(request.message, (answer: string) => resolve(answer.trim()));
+      rl.question(shown.message, (answer: string) => {
+        resolve(promptAnswer_take(answer, shown.fallback));
+      });
     });
   }
 
@@ -69,14 +117,15 @@ function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): P
  */
 function oneShotPrompt_ask(request: PromptRequest): Promise<string> {
   if (!request.hidden) {
+    const shown: { message: string; fallback: string } = promptLine_render(request);
     return new Promise((resolve: (answer: string) => void) => {
       const rl: readline.Interface = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
       });
-      rl.question(request.message, (answer: string) => {
+      rl.question(shown.message, (answer: string) => {
         rl.close();
-        resolve(answer.trim());
+        resolve(promptAnswer_take(answer, shown.fallback));
       });
     });
   }

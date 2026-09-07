@@ -19,6 +19,7 @@ import {
   ProcCache,
   ProcInstance,
   pluginInstance_get,
+  listPages_drain,
   type PluginInstanceHandle,
   type ListPage,
   type InstanceParameterData,
@@ -64,8 +65,15 @@ export async function nodeJoins_resolve(id: number): Promise<void> {
     return;
   }
 
-  const page: ListPage<InstanceParameterData> = await handle.parametersPage_get({ limit: 100, offset: 0 });
-  const param: InstanceParameterData | undefined = page.data.find(
+  // Every parameter, not the first hundred: `plugininstances` is where a ts
+  // node's join edges live, and a node whose parameters run past a page
+  // would silently lose its edges — a graph drawn short with nothing said
+  // (#401).
+  const parameters: InstanceParameterData[] = await listPages_drain<InstanceParameterData>(
+    (offset: number, limit: number): Promise<ListPage<InstanceParameterData>> =>
+      handle.parametersPage_get({ limit, offset }),
+  );
+  const param: InstanceParameterData | undefined = parameters.find(
     (p: InstanceParameterData): boolean => p.param_name === 'plugininstances',
   );
 

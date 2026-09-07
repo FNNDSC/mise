@@ -76,7 +76,10 @@ function seriesLine_colorize(status: SeriesRetrieveStatus['status'], text: strin
  *   matches.
  */
 async function queryId_findForExpression(exprObj: Record<string, string>): Promise<number | null> {
-  const listResult = await pacsQueries_list({ limit: 200, offset: 0 });
+  // No bound: this looks for the most recent query matching an expression,
+  // and a search over the first 200 of 1,817 answers "not found" for
+  // anything older — a page presented as the log (#401).
+  const listResult = await pacsQueries_list({});
   if (!listResult.ok || !listResult.value) return null;
   const listing: FilteredResourceData = listResult.value;
   const rows: Record<string, unknown>[] = listing.tableData ?? [];

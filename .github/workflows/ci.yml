@@ -97,5 +97,6 @@ jobs:
       - run: npm run lint:commands
       - run: npm run lint:prompt
       - run: npm run lint:wire
+      - run: npm run lint:listings
       - run: npm run lint:aegis
       - run: npm run lint --if-present

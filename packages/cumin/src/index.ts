@@ -62,6 +62,7 @@ export {
   pluginParameters_drain,
   pipeline_get,
   pipelineSourceFilesPage_get,
+  pipelineSourceFiles_drain,
   downloadToken_create,
   listPages_walk,
   listPages_drain,

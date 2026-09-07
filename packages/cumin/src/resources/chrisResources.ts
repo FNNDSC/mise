@@ -79,7 +79,31 @@ export interface FilteredResourceData {
   selectedFields: string[];
   /** Total count of items in the full collection (may exceed tableData.length when paginated). */
   totalCount?: number;
+  /**
+   * Set when the walk could not finish — a page the server refused, or a
+   * bound the caller asked for and the collection exceeded. A listing that
+   * is short must say so; a surface that renders `tableData` without
+   * reading this is showing a page and calling it the answer.
+   */
+  incomplete?: {
+    /** How many were gathered before it stopped. */
+    gathered: number;
+    /** Why it stopped, in words a surface can render. */
+    reason: string;
+  };
 }
+
+/**
+ * A dictionary with string keys and primitive values.
+ */
+/**
+ * How many records a page asks for.
+ *
+ * One number for every walk in this class: the paging loop and the bounded
+ * default read the same constant, so a page size cannot drift between the
+ * thing that walks and the thing that stops.
+ */
+const PAGE_SIZE: number = 100;
 
 /**
  * A dictionary with string keys and primitive values.
@@ -250,16 +274,32 @@ export class ChRISResource {
   async resources_getAll(
     options?: Partial<ListOptions>
   ): Promise<FilteredResourceData | null> {
-    const limit: number = 100;
+    const limit: number = PAGE_SIZE;
     let offset: number = 0;
     let allTableData: Record<string, unknown>[] = [];
     let selectedFields: string[] = [];
     // If options has a limit, we should respect it? No, getAll implies fetching everything.
     // But we should respect filters.
 
+    let stopped: string | null = null;
+
     while (true) {
       const pageOptions: Partial<ListOptions> = { ...options, limit, offset };
-      const result: FilteredResourceData | null = await this.resources_listAndFilterByOptions(pageOptions);
+      let result: FilteredResourceData | null;
+      try {
+        result = this.resources_filterByFields(
+          await this.resourceFields_get(await this.resources_getList(pageOptions)),
+        );
+      } catch (error: unknown) {
+        // A walk that never started is a FAILED listing and stays a failure:
+        // callers check for one. A walk that started and then hit a page the
+        // server refused keeps its rows and says where it stopped — CUBE is
+        // known to fail some queries beyond a certain offset, and a short
+        // answer that reads as a complete one is the defect this fixes.
+        if (allTableData.length === 0) throw error;
+        stopped = error instanceof Error ? error.message : String(error);
+        break;
+      }
 
       if (!result || !result.tableData) {
         break;
@@ -299,6 +339,12 @@ export class ChRISResource {
       tableData: allTableData,
       selectedFields,
       totalCount: allTableData.length,
+      ...(stopped === null ? {} : {
+        incomplete: {
+          gathered: allTableData.length,
+          reason: `stopped after ${allTableData.length}: ${stopped}`,
+        },
+      }),
     };
   }
 
@@ -310,12 +356,25 @@ export class ChRISResource {
   async resources_listAndFilterByOptions(
     options?: Partial<ListOptions>
   ): Promise<FilteredResourceData | null> {
+    // No limit named means the whole collection: walk it. A caller that
+    // names one has asked a bounded question and gets exactly that page,
+    // marked short when the collection is bigger than the bound — a listing
+    // shows what is there, or says what it is not showing (#401).
+    if (options?.limit === undefined) {
+      return await this.resources_getAll(options);
+    }
     const results: FilteredResourceData | null = this.resources_filterByFields(
       await this.resourceFields_get(await this.resources_getList(options))
     );
     if (results && resource_isList(this._resourceCollection)) {
       const total: number = this._resourceCollection.totalCount;
       if (total >= 0) results.totalCount = total;
+      if (total > results.tableData.length) {
+        results.incomplete = {
+          gathered: results.tableData.length,
+          reason: `showing ${results.tableData.length} of ${total} — the caller asked for ${options.limit}`,
+        };
+      }
     }
     return results;
   }
@@ -483,8 +542,13 @@ export class ChRISResource {
     options?: Partial<ListOptions>,
     resourceMethod?: (params: ListOptions) => Promise<ListResource | Resource>
   ): Promise<ListOptions | null> {
+    // A caller that named no bound is asking for the collection, not for the
+    // first twenty of it. The default that used to sit here answered a
+    // different question than the one asked (#401), and said nothing about
+    // the difference. `resources_getAll` pages explicitly and passes its own
+    // limit, so it is unaffected.
     const params: ListOptions = {
-      limit: 20,
+      limit: PAGE_SIZE,
       offset: 0,
       ...options,
     };

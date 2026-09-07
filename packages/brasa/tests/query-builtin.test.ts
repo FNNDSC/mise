@@ -672,3 +672,32 @@ describe('a flag given no value asks', () => {
     expect((envelope as { renderedErr?: string }).renderedErr ?? '').toContain('nothing written');
   });
 });
+
+describe('an ask anchors somewhere a file can land', () => {
+  beforeEach((): void => {
+    mockCreate.mockResolvedValue(ok({ id: 500, owner_username: 'chris' }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: [studyPayload[0]] }));
+    mockPrompt.mockResolvedValue('/home/chris/x.csv');
+  });
+
+  // A session sitting in a provider path is browsing, not standing
+  // somewhere a file lands; an errand opened there offers a destination
+  // that is refused the moment it is committed.
+  it('falls back to home when the session is inside a virtual provider', async () => {
+    for (const where of ['/bin', '/proc/jobs/feed_21', '/net/pacs/queries', '/usr/bin', '/etc']) {
+      mockPrompt.mockClear();
+      mockCwd.mockResolvedValue(where);
+      await builtin_query(['PatientID:1234', '--csv-to']);
+      const asked = mockPrompt.mock.calls[0][0] as { path?: { anchor?: string } };
+      expect(asked.path?.anchor).toBe('~');
+    }
+  });
+
+  it('still anchors where the operator is when that is a real place', async () => {
+    mockCwd.mockResolvedValue('/home/chris/feeds/feed_3');
+    await builtin_query(['PatientID:1234', '--csv-to']);
+    const asked = mockPrompt.mock.calls[0][0] as { path?: { anchor?: string } };
+    expect(asked.path?.anchor).toBe('/home/chris/feeds/feed_3');
+  });
+});

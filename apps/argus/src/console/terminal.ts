@@ -435,6 +435,31 @@ export class ArgusTerminal {
     });
   }
 
+
+  /**
+   * States a question in the transcript without taking the input line.
+   *
+   * Some questions are answered by an instrument elsewhere — a browser to
+   * walk for a location — but the console still says what was asked, so
+   * the scrollback holds the whole exchange rather than half of it.
+   *
+   * @param message - The question's own words.
+   * @returns A function that records how it was answered.
+   */
+  public ask_note(message: string): (answer: string | null) => void {
+    this.block_append('argus-ask', `<span class="ask-glyph">?</span> ${html_escape(message)}`);
+    const asked: HTMLElement = this.output.lastElementChild as HTMLElement;
+    this.size_fit();
+    return (answer: string | null): void => {
+      asked.classList.add('argus-ask-answered');
+      asked.insertAdjacentHTML(
+        'beforeend',
+        ` <span class="ask-answer">${html_escape(answer ?? 'abandoned')}</span>`,
+      );
+      this.size_fit();
+    };
+  }
+
   /**
    * Routes a key while a question is open.
    *

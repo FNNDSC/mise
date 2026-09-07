@@ -1087,3 +1087,90 @@ describe('CalypsoDaemon typed asks', () => {
     }
   });
 });
+
+describe('CalypsoDaemon a question does not block the errand', () => {
+  // The errand that answers a question browses with instrument reads, and
+  // the command that asked is waiting on that answer: queuing them behind
+  // it deadlocks — the answer waits on the browsing, the browsing waits on
+  // the answer.
+  it('runs an instrument command beside a command waiting on a question', async () => {
+    let asked: ((answer: string) => void) | null = null;
+    const answered: Promise<string> = new Promise((resolve) => { asked = resolve; });
+    const ran: string[] = [];
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        ran.push(line);
+        if (line === 'asking') {
+          const answer: string = await daemon.prompt_current({ message: 'where? ', hidden: false });
+          (asked as (a: string) => void)(answer);
+          return [{ status: 'ok', rendered: `got ${answer}` }];
+        }
+        return [{ status: 'ok', rendered: `listed ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.some((m) => m.type === 'attached'));
+
+      send(ws, { type: 'execute', id: '1', line: 'asking' });
+      await until(() => got.some((m) => m.type === 'prompt'));
+
+      // The errand browses while the question stands open.
+      send(ws, { type: 'execute', id: '2', line: 'ls ~', instrument: true });
+      await until(() => ran.includes('ls ~'));
+      const listed = got.find((m) => m.type === 'result' && m.id === '2') as Record<string, unknown>;
+      expect(listed).toBeDefined();
+
+      // And the answer still lands on the command that asked for it.
+      const prompt = got.find((m) => m.type === 'prompt') as Record<string, unknown>;
+      send(ws, { type: 'promptAnswer', promptId: prompt.promptId, answer: '~/x.csv' });
+      expect(await answered).toBe('~/x.csv');
+      await until(() => got.some((m) => m.type === 'result' && m.id === '1'));
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  // A command that changes state is never instrument traffic, so nothing
+  // else may overtake the queue.
+  it('still queues an ordinary command behind the one waiting on a question', async () => {
+    const ran: string[] = [];
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        ran.push(line);
+        if (line === 'asking') {
+          await daemon.prompt_current({ message: 'where? ', hidden: false }).catch(() => '');
+        }
+        return [{ status: 'ok', rendered: '' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      ws.on('message', (d) => got.push(JSON.parse(d.toString())));
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.some((m) => m.type === 'attached'));
+
+      send(ws, { type: 'execute', id: '1', line: 'asking' });
+      await until(() => got.some((m) => m.type === 'prompt'));
+      send(ws, { type: 'execute', id: '2', line: 'cd /bin' });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(ran).toEqual(['asking']);
+
+      const prompt = got.find((m) => m.type === 'prompt') as Record<string, unknown>;
+      send(ws, { type: 'promptError', promptId: prompt.promptId, reason: 'abandoned' });
+      await until(() => ran.includes('cd /bin'));
+    } finally {
+      await daemon.stop();
+    }
+  });
+});

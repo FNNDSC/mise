@@ -7,6 +7,7 @@ import path from 'path';
 import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { destination_ask, destination_missing } from './destination.js';
 import { files_cp as chefs_cp_cmd } from '@fnndsc/chili/commands/fs/cp.js';
 import { cp_render } from '@fnndsc/chili/views/fs.js';
 
@@ -35,12 +36,26 @@ export interface CpModelData {
 export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const pathArgs: string[] = parsed._ as string[];
+  const recursive: boolean = !!parsed['r'] || !!parsed['recursive'];
+
+  // One operand names what to copy and not where: a question, not a usage
+  // error. See `destination_ask`.
+  if (pathArgs.length === 1) {
+    const chosen: string = await destination_ask({
+      verb: 'cp', commit: 'COPY HERE', sources: pathArgs,
+    });
+    if (chosen === '') {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(destination_missing('cp'))}\n`);
+    }
+    return cp_run({ sources: pathArgs, dest: chosen, recursive });
+  }
 
   // Last arg is destination, all others are sources
   return cp_run({
     sources: pathArgs.slice(0, -1),
     dest: pathArgs.length > 0 ? pathArgs[pathArgs.length - 1] : '',
-    recursive: !!parsed['r'] || !!parsed['recursive'],
+    recursive,
   });
 }
 

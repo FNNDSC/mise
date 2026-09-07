@@ -61,12 +61,17 @@ export function promptLine_render(request: PromptRequest): { message: string; fa
   if (kind !== 'path') {
     return { message: request.message, fallback: '' };
   }
+  // The anchor says where to LOOK; the suggestion says what to OFFER. A
+  // question with nowhere to browse but nothing to propose gets no default,
+  // because the alternative is offering the anchor itself — which for a
+  // move is the folder the file is already in, and Enter would then move
+  // it onto itself.
   const suggest: string | undefined = request.path?.suggest;
+  if (suggest === undefined) return { message: request.message, fallback: '' };
   const anchor: string | undefined = request.path?.anchor;
-  const composed: string = suggest === undefined
-    ? (anchor ?? '')
-    : (anchor === undefined ? suggest : `${anchor.replace(/\/$/, '')}/${suggest}`);
-  if (composed === '') return { message: request.message, fallback: '' };
+  const composed: string = anchor === undefined
+    ? suggest
+    : `${anchor.replace(/\/$/, '')}/${suggest}`;
   return { message: `${request.message}[${composed}] `, fallback: composed };
 }
 

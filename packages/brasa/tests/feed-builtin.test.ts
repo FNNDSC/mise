@@ -8,6 +8,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feedGraph_build: jest.fn(),
 }));
 const mockFeedResolve: jest.Mock = jest.fn();
+const mockFeedDelete: jest.Mock = jest.fn();
 const mockStackPop: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   Ok: <T>(value: T) => ({ ok: true, value }),
@@ -20,6 +21,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     return match ? Number(match[1]) : null;
   },
   errorStack: { stack_pop: mockStackPop },
+  feed_delete: mockFeedDelete,
 }));
 const mockCwdGet = jest.fn(async (): Promise<string> => '/');
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: mockCwdGet } }));
@@ -77,6 +79,9 @@ jest.unstable_mockModule('../src/builtins/res/feed.diagram.js', () => ({
   feedDag_handle: mockFeedDagHandle,
   feedDagModel_build: jest.fn(),
 }));
+
+const mockConfirm = jest.fn(async (): Promise<boolean> => true);
+jest.unstable_mockModule('../src/core/question.js', () => ({ repl_confirm: mockConfirm }));
 
 const { writeFileSync } = await import('fs');
 const { builtin_feed } = await import('../src/builtins/res/feed.js');
@@ -281,5 +286,49 @@ describe('builtin_feed', () => {
     mockCommentsList.mockResolvedValue(err());
     await builtin_feed(['comments', '5']);
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('feed rm', () => {
+  beforeEach(() => {
+    mockFeedResolve.mockResolvedValue(ok({ id: 12 }));
+    mockFeedDelete.mockResolvedValue(ok(true));
+    mockConfirm.mockResolvedValue(true);
+  });
+
+  it('asks before removing, naming what goes and that it cannot be undone', async () => {
+    const envelope: CommandEnvelope = await builtin_feed(['rm', 'feed_12']);
+    expect(mockConfirm).toHaveBeenCalledWith(
+      'Remove feed 12 and everything in it? This cannot be undone ',
+    );
+    expect(mockFeedDelete).toHaveBeenCalledWith(12);
+    expect(envelope.rendered).toContain('removed feed 12');
+  });
+
+  it('removes nothing when the question is answered no', async () => {
+    mockConfirm.mockResolvedValue(false);
+    const envelope: CommandEnvelope = await builtin_feed(['rm', 'feed_12']);
+    expect(mockFeedDelete).not.toHaveBeenCalled();
+    expect(envelope.rendered).toContain('was not removed');
+  });
+
+  it('removes nothing when the question cannot be put at all', async () => {
+    mockConfirm.mockRejectedValue(new Error('no surface can ask'));
+    const envelope: CommandEnvelope = await builtin_feed(['rm', 'feed_12']);
+    expect(mockFeedDelete).not.toHaveBeenCalled();
+    expect(envelope.rendered).toContain('was not removed');
+  });
+
+  it('skips the question under -f, for a caller that already asked', async () => {
+    await builtin_feed(['rm', 'feed_12', '-f']);
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(mockFeedDelete).toHaveBeenCalledWith(12);
+  });
+
+  it('reports a removal the server refused', async () => {
+    mockFeedDelete.mockResolvedValue(ok(false));
+    const envelope: CommandEnvelope = await builtin_feed(['rm', 'feed_12']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('could not be removed');
   });
 });

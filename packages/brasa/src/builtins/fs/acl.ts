@@ -101,7 +101,12 @@ function entryless_is(args: string[]): boolean {
 async function who_ask(feedID: number): Promise<string> {
   const { repl_question } = await import('../../core/question.js');
   try {
-    return await repl_question(`Share feed ${feedID} with which user? `);
+    // The irreversibility is said where the grant is made, not discovered
+    // afterwards: mise cannot revoke a feed grant (`setfacl -x` is refused),
+    // so the question that makes one says so before it is answered.
+    return await repl_question(
+      `Share feed ${feedID} with which user? (a grant cannot be taken back) `,
+    );
   } catch {
     return '';
   }

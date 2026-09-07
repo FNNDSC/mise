@@ -156,7 +156,8 @@ export const helpText: Record<string, CommandHelp> = {
       + 'listing shows, or by any path holding one, so a path under /SHARED resolves by the '
       + 'same rule as one under a home folder. Only user entries exist: CUBE grants to an '
       + 'identity, not to a group. Given a feed and no entry, it asks who to share it '
-      + 'with: the grant CUBE offers is read, so the identity is the only thing missing.',
+      + 'with: the grant CUBE offers is read, so the identity is the only thing missing. '
+      + 'A grant cannot be taken back, which the question says before it is answered.',
     options: [
       '-m u:<user>:<perms>   Add or modify a user entry; the perms must include r',
       '-x u:<user>           Remove an entry (not supported: mise cannot revoke a grant)',
@@ -447,6 +448,7 @@ export const helpText: Record<string, CommandHelp> = {
       '  comment add <feedId>             Add a comment (--title, --content)',
       '  comment edit <feedId> <commentId>  Edit a comment (--title, --content)',
       '  comment delete <feedId> <commentId>  Delete a comment',
+      '  rm [<feed>] [-f]                 Remove a feed and everything in it (asks first)',
       '  tree [<feed>]                     Render the feed\'s plugin-instance DAG',
       '  tree [<feed>] --focus <id>        Scope the tree to one node\'s subtree',
       '  tree [<feed>] --max-nodes <n>     Cap rendered nodes (0 = all)',

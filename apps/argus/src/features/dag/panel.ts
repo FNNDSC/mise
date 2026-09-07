@@ -31,8 +31,8 @@ import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from
 import { RosterOrder } from '../roster/order.js';
 import { ListingHost } from '../roster/host.js';
 import {
-  listingRow_build, progressCell_build, traitColumns_of, traitValue_of,
-  type ListingProgress, type ListingTrait,
+  listingRow_build, progressCell_build, traitColumns_of, traitValue_of, actionCell_build,
+  type ListingProgress, type ListingTrait, type ListingAction,
 } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
@@ -51,6 +51,17 @@ export interface DagPanelHandlers {
   node_regard?: (vfsPath: string) => void;
   /** A feed was picked in the roster: the pane indicates the feed's address (a regard write). */
   feed_regard?: (procPath: string) => void;
+  /**
+   * What a roster row may be told to do. The panel knows what a feed IS;
+   * only the surface knows what can be done about it, since every verb
+   * lowers to a session command.
+   */
+  feed_verbs?: (feed: FeedListEntry) => ReadonlyArray<ListingAction<FeedListEntry>>;
+  /**
+   * A roster row was indicated, so the surface may read something out
+   * beside its verbs (who a feed is shared with).
+   */
+  feed_indicated?: (feed: FeedListEntry) => void;
   /** A feed came into view: the layout should summon this pane. */
   feed_shown?: () => void;
   /**
@@ -178,6 +189,9 @@ export class DagPanel {
   private readonly strategyPill: HTMLElement;
   private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
+  /** The indicated feed's id, and every row's action cell by feed id. */
+  private indicated: number | null = null;
+  private actionCells: Map<number, HTMLElement> = new Map();
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
   private shownFeedId: number | null = null;
   private pinnedFeedId: number | null = null;
@@ -958,6 +972,10 @@ export class DagPanel {
 
   private chooser_show(feeds: FeedListEntry[]): void {
     this.lastRoster = feeds;
+    // A rebuilt roster holds none of the old rows, so the indication and
+    // the cells that carried it go with them.
+    this.actionCells = new Map();
+    this.indicated = null;
     this.empty.style.display = 'none';
     // Rows scroll; the frame does not. The host seats the frame and opens
     // the field beneath it.
@@ -974,15 +992,27 @@ export class DagPanel {
         },
         decorate: (element: HTMLElement, entry: FeedListEntry): void => {
           element.dataset.feed = String(entry.id);
-          element.title = 'enter the feed (Esc returns to this list)';
-          // Selecting a feed enters it: the full graph takes the pane and
-          // the list steps aside. Esc (contextual back) returns here.
-          element.addEventListener('click', (): void => {
-            this.pinnedFeedId = entry.id;
-            this.requestedFeedId = null;
-            this.handlers.feed_regard?.(`/proc/jobs/feed_${entry.id}`);
-            this.feedRequest_show(entry.id);
-            this.handlers.command_run(`feed diagram feed_${entry.id}`);
+          // The action track: on every row, empty until the row is
+          // indicated, so a roster with verbs does not jump when one row
+          // starts speaking.
+          const actions: HTMLSpanElement = document.createElement('span');
+          actions.className = 'listing-actions feedlist-actions';
+          element.appendChild(actions);
+          this.actionCells.set(entry.id, actions);
+          const verbs = this.handlers.feed_verbs;
+          if (verbs === undefined) {
+            element.title = 'enter the feed (Esc returns to this list)';
+            element.addEventListener('click', (): void => this.feed_activate(entry));
+            return;
+          }
+          // A listing that hides its verbs until a row is indicated must
+          // distinguish indicating from activating: a click says "this
+          // one", a double-click says "go" (docs/aegis.adoc).
+          element.title = 'click to indicate, double-click to enter (Esc returns to this list)';
+          element.addEventListener('click', (): void => this.row_indicate(entry));
+          element.addEventListener('dblclick', (): void => {
+            this.row_indicate(null);
+            this.feed_activate(entry);
           });
         },
       });
@@ -990,6 +1020,63 @@ export class DagPanel {
     }
     this.roster_show(true);
     if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
+  }
+
+  /**
+   * Enters a feed: the full graph takes the pane and the list steps aside.
+   * Esc (contextual back) returns here.
+   *
+   * @param entry - The feed to enter.
+   */
+  private feed_activate(entry: FeedListEntry): void {
+    this.pinnedFeedId = entry.id;
+    this.requestedFeedId = null;
+    this.handlers.feed_regard?.(`/proc/jobs/feed_${entry.id}`);
+    this.feedRequest_show(entry.id);
+    this.handlers.command_run(`feed diagram feed_${entry.id}`);
+  }
+
+  /**
+   * Indicates one roster row: its verbs appear in its own action cell and
+   * the previously indicated row's cell empties.
+   *
+   * @param entry - The feed to indicate, or null to indicate none.
+   */
+  public row_indicate(entry: FeedListEntry | null): void {
+    if (this.indicated !== null) {
+      this.actionCells.get(this.indicated)?.replaceChildren();
+      this.feedList.querySelector('.feedlist-indicated')?.classList.remove('feedlist-indicated');
+    }
+    this.indicated = entry === null ? null : entry.id;
+    if (entry === null) return;
+    const cell: HTMLElement | undefined = this.actionCells.get(entry.id);
+    if (cell === undefined) return;
+    cell.parentElement?.classList.add('feedlist-indicated');
+    const offered: ReadonlyArray<ListingAction<FeedListEntry>> = this.handlers.feed_verbs?.(entry) ?? [];
+    if (offered.length > 0) {
+      cell.replaceChildren(...actionCell_build(entry, offered).childNodes);
+    }
+    this.handlers.feed_indicated?.(entry);
+  }
+
+  /**
+   * Shows a readout beside an indicated row's verbs.
+   *
+   * Dropped when the operator has moved on: a readout about a row nobody is
+   * looking at answers a question already withdrawn.
+   *
+   * @param feedId - The feed the readout belongs to.
+   * @param text - What to say beside the verbs.
+   */
+  public rowReadout_show(feedId: number, text: string): void {
+    if (this.indicated !== feedId) return;
+    const cell: HTMLElement | undefined = this.actionCells.get(feedId);
+    if (cell === undefined) return;
+    const readout: HTMLSpanElement = document.createElement('span');
+    readout.className = 'listing-readout';
+    readout.textContent = text;
+    cell.querySelector('.listing-readout')?.remove();
+    cell.appendChild(readout);
   }
 
   /** Shows or hides the roster filter strip (the mode frame's FILTER, or `runs filter`). */

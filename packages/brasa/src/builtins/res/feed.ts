@@ -226,6 +226,45 @@ async function feedComment_handle(parsed: ParsedArgs): Promise<CommandEnvelope> 
 }
 
 /**
+ * Removes a feed and everything hanging off it.
+ *
+ * Deletion is irreversible and takes the whole analysis with it — every
+ * plugin instance, every output — so it asks first, by default, naming what
+ * will go. `-f` skips the question for a caller that has already asked its
+ * own (a script, a surface that confirmed).
+ *
+ * @param parsed - The parsed argument tokens.
+ * @returns An envelope naming what was removed, or why it was not.
+ */
+async function feedRemove_handle(parsed: ParsedArgs): Promise<CommandEnvelope> {
+  const feedResult: Result<number> = await feedID_resolve(feedSpecifier_join(parsed._.slice(1)));
+  if (!feedResult.ok) return feedResolution_error('Usage: feed rm [<feed>] [-f]');
+  const feedID: number = feedResult.value;
+  const forced: boolean = parsed.f === true || parsed.force === true;
+  if (!forced) {
+    const { repl_confirm } = await import('../../core/question.js');
+    let agreed: boolean = false;
+    try {
+      agreed = await repl_confirm(
+        `Remove feed ${feedID} and everything in it? This cannot be undone `,
+      );
+    } catch {
+      agreed = false;
+    }
+    if (!agreed) {
+      return envelope_ok(`feed ${feedID} was not removed\n`);
+    }
+  }
+  const { feed_delete } = await import('@fnndsc/cumin');
+  const removed: Result<boolean> = await feed_delete(feedID);
+  if (!removed.ok || !removed.value) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`feed rm: feed ${feedID} could not be removed`)}\n`);
+  }
+  return envelope_ok(`removed feed ${feedID}\n`, { kind: 'feed.rm', data: { feed: feedID } });
+}
+
+/**
  * Handles feed commands.
  *
  * @param args - command arguments.
@@ -236,7 +275,7 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
   const subcommand: string | undefined = parsed._[0];
 
   if (!subcommand) {
-    return envelope_ok(`${chalk.red("Usage: feed <list|create|inspect|search|note|comments|comment|tree> ...")}\n`);
+    return envelope_ok(`${chalk.red("Usage: feed <list|create|inspect|search|note|comments|comment|rm|tree> ...")}\n`);
   }
 
   try {
@@ -259,6 +298,8 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       if (result.ok) return envelope_ok(`${feedComments_render(result.value, feedId)}\n`);
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(`Failed to list comments for feed ${feedId}.`)}\n`);
+    } else if (subcommand === 'rm') {
+      return await feedRemove_handle(parsed);
     } else if (subcommand === 'comment') {
       return await feedComment_handle(parsed);
     } else if (subcommand === 'tree') {
@@ -279,7 +320,7 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       return await feedDag_handle(feedResult.value, options.focusID, options.maxNodes, options.flat);
     }
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|tree|diagram>`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|rm|tree|diagram>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     process.exitCode = 1;

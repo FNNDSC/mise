@@ -50,7 +50,7 @@ describe('setfacl', () => {
   it('asks who when given a feed and no entry, and grants the answer', async () => {
     mockQuestion.mockResolvedValue('someone');
     const envelope = await builtin_setfacl(['/home/me/feeds/feed_12']);
-    expect(mockQuestion).toHaveBeenCalledWith('Share feed 12 with which user? ');
+    expect(mockQuestion).toHaveBeenCalledWith('Share feed 12 with which user? (a grant cannot be taken back) ');
     expect(mockFeedShare).toHaveBeenCalledWith(12, 'someone');
     expect(envelope.status).toBe('ok');
   });

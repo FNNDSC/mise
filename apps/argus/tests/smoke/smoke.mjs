@@ -85,6 +85,24 @@ const evalIn = (body) => page.eval(`(async () => {
     }
     return last;
   };
+  // A scenario that speaks to the session starts from a settled console: no
+  // question left open by an earlier scenario (Esc abandons it — the ask
+  // owns Esc, so nothing else moves), and the session not BUSY with a command
+  // an earlier scenario issued. A command typed into an open question is an
+  // answer, and one queued behind a slow command times out looking idle.
+  const console_idle = async ({ limit = 30000 } = {}) => {
+    const glyph = () => document.querySelector('.argus-input-glyph')?.textContent ?? '❯';
+    for (let i = 0; i < 3 && glyph() !== '❯'; i++) {
+      document.querySelector('#terminal input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(400);
+    }
+    const status = () => document.getElementById('drawer-status')?.textContent ?? '';
+    for (let waited = 0; waited < limit; waited += 250) {
+      if (/READY/.test(status()) && glyph() === '❯') return true;
+      await sleep(250);
+    }
+    return false;
+  };
   ${body}
 })()`);
 
@@ -338,20 +356,22 @@ try {
     const show = globalThis.__argusPromptContext_show;
     if (!jobs || !base || !show) return { ready: false };
 
+    // The readout is written synchronously, and each reading is taken in the
+    // same turn as the show that caused it: the daemon pushes a live
+    // promptline every second while the index moves, and any await between
+    // a show and its reading is a gap that push can land in, replacing the
+    // injected context with a real one that carries no failure.
     show({ ...base, warmupFailures: [{ label: 'Groups', message: 'membership service unavailable' }] });
-    await sleep(120);
     const named = jobs.textContent.includes('WARM-UP FAILED') && jobs.textContent.includes('GROUPS');
     const degraded = jobs.classList.contains('status-degraded');
     const explained = jobs.title.includes('membership service unavailable');
 
     // It persists: another context carrying the same failure must not clear it.
     show({ ...base, warmupFailures: [{ label: 'Groups', message: 'membership service unavailable' }] });
-    await sleep(120);
     const persists = jobs.textContent.includes('WARM-UP FAILED');
 
     // And a later success clears it.
     show({ ...base });
-    await sleep(120);
     const cleared = !jobs.textContent.includes('WARM-UP FAILED') && !jobs.classList.contains('status-degraded');
 
     return { ready: true, named, degraded, explained, persists, cleared };`);
@@ -1125,8 +1145,8 @@ try {
   if (selectWait.skipped) {
     console.log(`  skipped: ${selectWait.skipped}`);
   } else {
-    check('selecting a feed answers at once', selectWait.atOnce.listHidden && selectWait.atOnce.retrieving && selectWait.atOnce.state === 'LOADING');
-    check('the graph lands and LOADING clears', selectWait.landed && selectWait.stateAfter !== 'LOADING');
+    check('selecting a feed answers at once', selectWait.atOnce.listHidden && selectWait.atOnce.retrieving && selectWait.atOnce.state === 'LOADING', JSON.stringify(selectWait.atOnce));
+    check('the graph lands and LOADING clears', selectWait.landed && selectWait.stateAfter !== 'LOADING', JSON.stringify({ landed: selectWait.landed, stateAfter: selectWait.stateAfter }));
   }
   }
 
@@ -1539,30 +1559,40 @@ try {
         t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
       const key = (k) => term().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
 
+      // The scrollback keeps every question ever asked, answered ones
+      // included, so everything here is counted from where this scenario
+      // started: the asks it causes are the ones after that mark, and the
+      // capsules it presses are the newest — pressing the first NO on the
+      // page presses one an earlier scenario already answered.
+      await console_idle();
+      const askedBefore = lines().length;
+      const capsulesBefore = document.querySelectorAll('#terminal .ask-capsule').length;
+
       // sudo asks for an administrator username, then a password. Answering
       // the first and abandoning the second establishes nothing.
       run('sudo plugin add pl-no-such-plugin-for-smoke');
-      for (let i = 0; i < 120; i++) { await sleep(500); if (lines().length > 0) break; }
-      if (lines().length === 0) return { asked: false };
-      const first = lines()[lines().length - 1].textContent ?? '';
+      for (let i = 0; i < 120; i++) { await sleep(500); if (lines().length > askedBefore) break; }
+      if (lines().length <= askedBefore) return { asked: false };
+      const first = lines()[askedBefore].textContent ?? '';
       const typeAtText = term().type;
       term().value = 'not-a-real-admin'; key('Enter');
-      for (let i = 0; i < 120; i++) { await sleep(300); if (lines().length > 1) break; }
+      for (let i = 0; i < 120; i++) { await sleep(300); if (lines().length > askedBefore + 1) break; }
       const typeAtSecret = term().type;
       term().value = 'smoke-secret-value';
       key('Escape'); await sleep(1200);
-      const abandoned = (lines()[lines().length - 1].textContent ?? '').includes('abandoned');
+      const abandoned = (lines()[askedBefore + 1]?.textContent ?? '').includes('abandoned');
       const leaked = document.getElementById('terminal').textContent.includes('smoke-secret-value');
       const glyph = document.querySelector('.argus-input-glyph').textContent;
 
       // A yes/no is two capsules, and pressing one answers it.
+      await console_idle();
       run('rm -i /home/__no_such_file_for_smoke__');
       let capsules = 0;
       for (let i = 0; i < 120; i++) { await sleep(250);
-        capsules = document.querySelectorAll('#terminal .ask-capsule').length;
+        capsules = document.querySelectorAll('#terminal .ask-capsule').length - capsulesBefore;
         if (capsules > 0) break; }
       if (capsules > 0) {
-        [...document.querySelectorAll('#terminal .ask-capsule')].find(c => c.textContent === 'NO').click();
+        [...document.querySelectorAll('#terminal .ask-capsule')].filter(c => c.textContent === 'NO').pop().click();
         await sleep(800);
       }
       return { asked: true, first, typeAtText, typeAtSecret, abandoned, leaked, glyph, capsules,
@@ -1591,7 +1621,12 @@ try {
     // An ask is never a box: a location borrows the instrument that already
     // shows that space. A NEW browser opens beside the asker, anchored
     // where the ask said, with the errand's controls on its own frame.
-    const errand = await evalIn(`
+    //
+    // Without an MRN that has imaging the query never reaches its write, so
+    // there is nothing to ask and nothing to test — and a fan-out to a real
+    // PACS for a nonsense MRN sits in the session queue for minutes, where
+    // every later scenario's command waits behind it. So it is not issued.
+    const errand = !process.env.SMOKE_PACS_MRN ? { opened: false, unset: true } : await evalIn(`
       const term = () => document.querySelector('#terminal input');
       const run = (line) => { const t = term(); t.value = line;
         t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
@@ -1631,7 +1666,9 @@ try {
         .some(el => (el.textContent ?? '').includes('abandoned'));
       return { opened: true, caption, commit, composed, grew, barred, rows, noted, closed, said };`);
     if (errand.opened === false) {
-      console.log('  skipped: no location was asked for (the query never reached its write)');
+      console.log(errand.unset
+        ? '  skipped: set SMOKE_PACS_MRN=<an MRN with imaging> for the location ask'
+        : '  skipped: no location was asked for (the query never reached its write)');
     } else {
       check('a location ask opens a browser beside the asker, carrying the errand on its own bar',
         errand.grew === true && errand.barred === true && /where should the table go/i.test(errand.caption),
@@ -1664,11 +1701,17 @@ try {
     // Output lands above the prompt line, so read the whole transcript for
     // a token no other scenario prints.
     const token = 'argus-host-probe-' + Date.now();
+    await console_idle();
     input.value = '!echo ' + token; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await sleep(3000);
-    const streams = [...document.querySelectorAll('#terminal .argus-stream')].map(s => s.textContent).join(' ');
-    const errors = [...document.querySelectorAll('#terminal .argus-result.error')].map(s => s.textContent).join(' ');
-    return { lit, ran: streams.includes(token), refusedByName: errors.includes('--host-control') };`);
+    // The answer is a token no other scenario prints, or a refusal by name;
+    // polled, since a fixed wait either samples before it or wastes the rest.
+    const streams = () => [...document.querySelectorAll('#terminal .argus-stream')].map(s => s.textContent).join(' ');
+    const errors = () => [...document.querySelectorAll('#terminal .argus-result.error')].map(s => s.textContent).join(' ');
+    let ran = false, refusedByName = false;
+    for (let i = 0; i < 60; i++) { await sleep(250);
+      ran = streams().includes(token); refusedByName = errors().includes('--host-control');
+      if (ran || refusedByName) break; }
+    return { lit, ran, refusedByName };`);
   if (hostControl.lit !== '') {
     check('the HOST lamp reads the daemon\'s declared tiers, and ! runs on the host', /^HOST /.test(hostControl.lit) && hostControl.ran, JSON.stringify(hostControl));
   } else {
@@ -1723,6 +1766,7 @@ try {
     const indexing = await evalIn(`
       const input = document.querySelector('#terminal input');
       const jobs = document.getElementById('status-jobs');
+      await console_idle();
       input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let seen = ''; let counted = false;
       for (let i = 0; i < 240; i++) {

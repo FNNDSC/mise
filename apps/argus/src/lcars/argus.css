@@ -411,15 +411,12 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   flex: none;
 }
 
-/* ONE roster grid per pane: the columns, the gap, and the edge padding are
- * declared once on the host (`--roster-cols`, `--roster-gap`,
- * `--roster-pad`) and read by the caps AND the rows, so a cap's label can
- * only ever sit where its column's text sits. */
+/* The gap and edge padding of the files grid; the column tracks
+ * (`--roster-cols`) are the Listing façade's, computed from the traits and
+ * written on the mount (features/roster/listing.ts). The caps and the rows
+ * read the one declaration, so a cap's label only ever sits where its
+ * column's text sits. */
 .files-body {
-  /* glyph, name, type, size, date, owner, and the action track — a fixed
-   * column, because a track that sized to its content would move every
-   * column left of it each time a row with different verbs was indicated. */
-  --roster-cols: 1.4em 1fr 6em 6em 7em 10em 21em;
   --roster-gap: 0px;
   --roster-pad: 0px;
 }
@@ -1816,6 +1813,53 @@ body[data-header='dag'] #header-dag {
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }
 
+/* ----------------------------------------------------- the listing façade */
+
+/* A listing a pane DECLARES (features/roster/listing.ts) draws its rows on
+ * the one grid the declaration computes: `--roster-cols` is written on the
+ * grid host by the façade, trait tracks then the action track, and every
+ * row reads it the way a caps row does. Nothing here spells a template. A
+ * pane converted to the façade wears these classes beside its own. */
+.listing-row {
+  display: grid;
+  grid-template-columns: var(--roster-cols);
+  align-items: center;
+  column-gap: var(--roster-gap);
+  padding: 2px var(--roster-pad);
+  font-size: 0.8rem;
+}
+
+.listing-row > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listing-row > .listing-actions {
+  padding-block: 0;
+}
+
+.listing-activatable {
+  cursor: pointer;
+}
+
+/* A level beneath a level stands inside the row it belongs to, on a grid
+ * of its own that the façade writes on the level, indented one glyph. */
+.listing-level {
+  padding-left: 1.4em;
+}
+
+.listing-indicated > span:first-child,
+.listing-indicated > span:nth-child(2) {
+  color: var(--butter);
+  text-shadow: 0 0 8px rgb(255 238 204 / 60%);
+}
+
+.listing-selected > span {
+  color: var(--butter);
+}
+
 /* ------------------------------------------------- listable, not readable */
 
 /* CUBE lists files a shared feed's guest may not read. A row that has been
@@ -1953,10 +1997,6 @@ body[data-header='dag'] #header-dag {
   padding: 0 var(--roster-pad);
   row-gap: 2px;
   font-size: 0.8rem;
-}
-
-.files-row {
-  display: contents;
 }
 
 .files-row > span {

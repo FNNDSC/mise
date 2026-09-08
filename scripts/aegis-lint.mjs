@@ -255,6 +255,45 @@ LINT_CHECKS['listing-is-one-abstraction'] = () => {
   }
 };
 
+LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
+  // The reference beneath the doctrine: one section per component a pane
+  // declares into. Every section names a source that exists, and every
+  // source that IS a component has a section — so a component cannot land
+  // without its reference, and a reference cannot outlive its component.
+  const COMPONENT_SOURCES = [
+    'apps/argus/src/features/roster/listing.ts',
+  ];
+  if (!existsSync('apps/argus/docs/components.adoc')) {
+    fail('a-component-lands-with-its-reference', 'apps/argus/docs/components.adoc is missing');
+    return;
+  }
+  const reference = readFileSync('apps/argus/docs/components.adoc', 'utf8');
+  const sections = [...reference.matchAll(/^== (.+)$\n([\s\S]*?)(?=^== |(?![\s\S]))/gm)]
+    .map(([, title, body]) => ({ title: title.trim(), body }))
+    .filter(({ title }) => title !== 'Abstract' && title !== 'Reading a section');
+  if (sections.length === 0) fail('a-component-lands-with-its-reference', 'components.adoc has no component sections');
+  const named = new Set();
+  for (const { title, body } of sections) {
+    const source = body.match(/^Source: `([^`]+)`/m);
+    if (!source) { fail('a-component-lands-with-its-reference', `section '${title}' names no Source`); continue; }
+    if (!existsSync(source[1])) fail('a-component-lands-with-its-reference', `section '${title}' names a source that does not exist: ${source[1]}`);
+    named.add(source[1]);
+    for (const part of ['=== Purpose', '=== Anatomy', '=== Declaration', '=== States', '=== Laws', '=== Stylesheet', '=== Do not']) {
+      if (!body.includes(part)) fail('a-component-lands-with-its-reference', `section '${title}' lacks '${part}'`);
+    }
+    // The anatomy is drawn, not only described: a picture a reader can
+    // point at, checked into the tree beside the words.
+    const anatomy = body.match(/^=== Anatomy$\n([\s\S]*?)(?=^=== )/m);
+    const image = anatomy?.[1].match(/^image::([^\[]+)\[/m);
+    if (!image) fail('a-component-lands-with-its-reference', `section '${title}' has no anatomy drawing (image:: under === Anatomy)`);
+    else if (!existsSync(`apps/argus/docs/${image[1]}`)) fail('a-component-lands-with-its-reference', `section '${title}' names a drawing that does not exist: ${image[1]}`);
+  }
+  for (const source of COMPONENT_SOURCES) {
+    if (!existsSync(source)) fail('a-component-lands-with-its-reference', `component source missing: ${source}`);
+    if (!named.has(source)) fail('a-component-lands-with-its-reference', `${source} is a component with no section in components.adoc`);
+  }
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

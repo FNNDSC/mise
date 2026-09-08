@@ -1062,7 +1062,7 @@ try {
     named('two.txt').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(400);
     const picked = bar();
     const offered = verbs();
-    const marked = rows().filter(r => r.classList.contains('files-row-selected')).length;
+    const marked = rows().filter(r => r.classList.contains('listing-selected')).length;
 
     // a filter hides one: the selection stands, and the bar says how many show
     await say('file filter one', 1800);

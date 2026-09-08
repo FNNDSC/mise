@@ -38,6 +38,21 @@ export interface ListingTrait<T> {
    * sorting by bytes, a date shown short sorting by its full stamp.
    */
   compare?: (row: T) => string | number;
+  /**
+   * The column's CSS grid track (`1fr`, `6em`, `minmax(0, 13em)`).
+   *
+   * A listing that declares its traits' widths computes the whole grid
+   * template from them, so the track list, the caps row and every row's
+   * cell count come from one declaration and cannot disagree. A pane that
+   * still writes `--roster-cols` by hand leaves this unset.
+   */
+  width?: string;
+  /**
+   * Whether the column has a cap. False for a leading ornament — a type
+   * glyph, a fold caret — which spends a track and a cell but answers to
+   * no label and no sort. Uncapped traits lead the list.
+   */
+  capped?: boolean;
 }
 
 /** The caps a set of traits declares, in order. */

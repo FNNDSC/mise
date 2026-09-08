@@ -1816,6 +1816,53 @@ body[data-header='dag'] #header-dag {
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }
 
+/* ----------------------------------------------------- the listing façade */
+
+/* A listing a pane DECLARES (features/roster/listing.ts) draws its rows on
+ * the one grid the declaration computes: `--roster-cols` is written on the
+ * grid host by the façade, trait tracks then the action track, and every
+ * row reads it the way a caps row does. Nothing here spells a template. A
+ * pane converted to the façade wears these classes beside its own. */
+.listing-row {
+  display: grid;
+  grid-template-columns: var(--roster-cols);
+  align-items: center;
+  column-gap: var(--roster-gap);
+  padding: 2px var(--roster-pad);
+  font-size: 0.8rem;
+}
+
+.listing-row > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listing-row > .listing-actions {
+  padding-block: 0;
+}
+
+.listing-activatable {
+  cursor: pointer;
+}
+
+/* A level beneath a level stands inside the row it belongs to, on a grid
+ * of its own that the façade writes on the level, indented one glyph. */
+.listing-level {
+  padding-left: 1.4em;
+}
+
+.listing-indicated > span:first-child,
+.listing-indicated > span:nth-child(2) {
+  color: var(--butter);
+  text-shadow: 0 0 8px rgb(255 238 204 / 60%);
+}
+
+.listing-selected > span {
+  color: var(--butter);
+}
+
 /* ------------------------------------------------- listable, not readable */
 
 /* CUBE lists files a shared feed's guest may not read. A row that has been

@@ -320,6 +320,24 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
   }
 };
 
+LINT_CHECKS['a-component-names-no-theme'] = () => {
+  // A component and its reference speak the component's own vocabulary —
+  // caps, strip, frame, field, track, expanse, level, group — and name no
+  // theme. Colour reaches them as tokens, never as LCARS by name, so
+  // another theme can sit on the same declaration without a rename. AEGIS
+  // is where the theme is named, as the origin of the grammar; the parts
+  // beneath it describe a listing, not a look.
+  const THEME = /lcars/i;
+  const componentSources = readdirSync('apps/argus/src/features/roster', { recursive: true })
+    .filter((name) => String(name).endsWith('.ts'))
+    .map((name) => `apps/argus/src/features/roster/${String(name).replaceAll('\\', '/')}`);
+  for (const path of [...componentSources, 'apps/argus/docs/components.adoc']) {
+    const text = readFileSync(path, 'utf8');
+    const line = text.split('\n').findIndex((l) => THEME.test(l));
+    if (line >= 0) fail('a-component-names-no-theme', `${path}:${line + 1} names the theme; a component speaks its own vocabulary`);
+  }
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

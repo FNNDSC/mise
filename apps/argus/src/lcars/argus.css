@@ -353,15 +353,21 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 /* ONE grid for the whole workspace: the query form and the study rows it
  * produces read the same track list, so a term stands in the column it
  * fills. The list is positional — it must gain a column wherever the study
- * traits do. Order: fold, patient, mrn, study, date, accession, modality,
- * series, progress, verbs. */
+ * traits do. Order: fold, patient, mrn, study, PROGRESS, date, accession,
+ * modality, server, series, verbs. */
 #pacs-workspace {
   /* The STUDY tracks, which the form also stands on: fold, patient, MRN,
-     study, date, accession, modality, SERVER, series, progress, verbs.
+     study, PROGRESS, date, accession, modality, SERVER, series, verbs.
      The list is positional — it gains a track wherever the traits gain a
      column, or every cell after the new one lands under the wrong cap. */
+  /* Every track is a fixed length but the one expanse: a track sized to
+     its content (minmax(0, …), auto) would size per ROW, since each row is
+     its own grid, and shift every column after it row by row. PROGRESS is
+     the expanse, and it follows the description at every level; the four
+     leading tracks are the same widths on the patient grid, so the bars
+     line up level over level. */
   --roster-cols:
-    1.4em minmax(0, 13em) 7.5em minmax(0, 12em) 7.5em 9em 6.5em 9em 4em minmax(5em, 1fr) 7em;
+    1.4em 13em 7.5em 12em 1fr 7.5em 9em 6.5em 9em 4em 7em;
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
   overflow-y: auto;
@@ -958,8 +964,12 @@ main {
 /* The series are a listing of their own, on their own grid, inside the
  * study that stands over them. */
 .pacs-series-level {
-  /* series, state, modality, files, verbs */
-  --roster-cols: minmax(0, 22em) minmax(4em, 1fr) 4em 6em 5em;
+  /* series, STATE (the expanse: the bar rides beside the description),
+     modality, files, verbs. The description is as wide as the study grid's
+     four leading tracks and three gaps less this level's own indent, so the
+     bar begins where the study's and the patient's do. */
+  --roster-cols: 35.5em 1fr 4em 6em 5em;
+  font-size: 0.8rem;
   padding-left: 1.4em;
 }
 
@@ -3255,13 +3265,18 @@ body[data-zoom] #header-restore {
 }
 
 .pacs-patient-row {
-  --roster-cols: 1.4em minmax(0, 13em) 7.5em 6em 5em 9em 11em minmax(5em, 1fr);
+  /* fold, patient, MRN, answered, PROGRESS, studies, series, server — the
+     same four leading widths as the study grid, so the expanse begins at
+     one x on both levels. Same font size as the caps and the study rows:
+     the tracks are in em, and a larger em here put every patient cell a
+     few pixels right of the cap that names it. */
+  --roster-cols: 1.4em 13em 7.5em 12em 1fr 6em 5em 9em;
   display: grid;
   grid-template-columns: var(--roster-cols);
   align-items: center;
   gap: 0 var(--roster-gap);
   padding: 4px var(--roster-pad);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--harvestgold);
   border-bottom: 2px solid var(--harvestgold);
   cursor: pointer;
@@ -3269,7 +3284,7 @@ body[data-zoom] #header-restore {
 
 /* The caps that head the region stand on the patient grid, not the study's. */
 #pacs-results > .roster-order .roster-caps {
-  --roster-cols: 1.4em minmax(0, 13em) 7.5em 6em 5em 9em 11em minmax(5em, 1fr);
+  --roster-cols: 1.4em 13em 7.5em 12em 1fr 6em 5em 9em;
 }
 
 .pacs-patient-row:hover {

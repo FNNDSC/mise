@@ -404,6 +404,14 @@
                 <label data-key="patient">PATIENT <input id="pacs-f-name" autocomplete="off" /></label>
                 <label data-key="mrn">MRN <input id="pacs-f-mrn" autocomplete="off" /></label>
                 <span class="pacs-form-blank" data-key="study" title="a PACS does not narrow on study description"></span>
+                <!-- PROGRESS is the expanse in the middle of every level, right
+                     after the description; the form's cell over it carries
+                     how-this-came-about, since an answer that was not fetched
+                     now says when it was. The control that re-asks stands in
+                     the verbs column at the end, where a row's verbs stand. -->
+                <span class="pacs-form-blank" data-key="progress">
+                  <span id="pacs-provenance" class="pacs-provenance" hidden></span>
+                </span>
                 <label data-key="date">DATE <input id="pacs-f-date" placeholder="YYYYMMDD" autocomplete="off" /></label>
                 <label data-key="accession">ACCESSION <input id="pacs-f-accession" autocomplete="off" /></label>
                 <label data-key="modality">MODALITY <input id="pacs-f-modality" autocomplete="off" /></label>
@@ -416,12 +424,6 @@
                   <button id="pacs-f-server" class="pacs-server-cell" title="choose which PACS to ask (one moves the session, several fan out)">—</button>
                 </span>
                 <span class="pacs-form-blank" data-key="series"></span>
-                <!-- An answer that was not fetched now says when it was.
-                     PROGRESS is where how-this-came-about belongs, and it
-                     sits immediately left of the control that re-asks. -->
-                <span class="pacs-form-blank" data-key="progress">
-                  <span id="pacs-provenance" class="pacs-provenance" hidden></span>
-                </span>
                 <button id="pacs-run" class="pacs-capsule">QUERY</button>
               </div>
               <!-- The strip has the pane's full width, so it carries far

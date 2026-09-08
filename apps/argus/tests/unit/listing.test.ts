@@ -377,7 +377,23 @@ describe('a painter', () => {
     // The frame is still seated: the caps still sort what the painter draws.
     expect(mount.querySelector('.roster-caps')).not.toBeNull();
     listing.painter_set(null);
+    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
     expect(rows_onStage(mount)).toHaveLength(4);
+  });
+});
+
+describe('verbs declared after construction', () => {
+  it('mint the track, rewrite the template and repaint; withdrawn, they take the track with them', () => {
+    const { listing, mount } = listing_build();
+    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
+    expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 3)).toBe(true);
+    listing.actions_declare({ width: '21em', of: (): [] => [] });
+    expect(mount.style.getPropertyValue('--roster-cols')).toBe('1.4em 1fr 6em 21em');
+    expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 4)).toBe(true);
+    expect(mount.querySelectorAll('.listing-actions')).toHaveLength(4);
+    listing.actions_declare(null);
+    expect(mount.style.getPropertyValue('--roster-cols')).toBe('1.4em 1fr 6em');
+    expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 3)).toBe(true);
   });
 });
 

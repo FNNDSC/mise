@@ -411,15 +411,12 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   flex: none;
 }
 
-/* ONE roster grid per pane: the columns, the gap, and the edge padding are
- * declared once on the host (`--roster-cols`, `--roster-gap`,
- * `--roster-pad`) and read by the caps AND the rows, so a cap's label can
- * only ever sit where its column's text sits. */
+/* The gap and edge padding of the files grid; the column tracks
+ * (`--roster-cols`) are the Listing façade's, computed from the traits and
+ * written on the mount (features/roster/listing.ts). The caps and the rows
+ * read the one declaration, so a cap's label only ever sits where its
+ * column's text sits. */
 .files-body {
-  /* glyph, name, type, size, date, owner, and the action track — a fixed
-   * column, because a track that sized to its content would move every
-   * column left of it each time a row with different verbs was indicated. */
-  --roster-cols: 1.4em 1fr 6em 6em 7em 10em 21em;
   --roster-gap: 0px;
   --roster-pad: 0px;
 }
@@ -2000,10 +1997,6 @@ body[data-header='dag'] #header-dag {
   padding: 0 var(--roster-pad);
   row-gap: 2px;
   font-size: 0.8rem;
-}
-
-.files-row {
-  display: contents;
 }
 
 .files-row > span {

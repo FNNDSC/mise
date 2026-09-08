@@ -308,11 +308,11 @@ function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
  * and a selection around it.
  */
 class Level<T> {
-  private readonly declaration: ListingLevel<T>;
+  private declaration: ListingLevel<T>;
   private readonly host: LevelHost;
   private readonly select: LevelSelect<T>;
   public readonly order: RosterOrder<T>;
-  public readonly template: string;
+  public template: string;
   private readonly child: ChildSeat<T> | null;
   private readonly expansion: Expansion;
   /** Every row on stage, by key. */
@@ -375,6 +375,20 @@ class Level<T> {
         forget: (): void => level.forget(),
       };
     });
+  }
+
+  /**
+   * Declares, or withdraws, the row verbs after construction.
+   *
+   * A surface declares what a row may do once it knows, which is after
+   * the pane exists; a browser given no verbs keeps its single click and
+   * spends no track. The template follows the declaration.
+   *
+   * @param actions - The verbs and their track, or null for none.
+   */
+  public actions_set(actions: ListingActions<T> | null): void {
+    this.declaration = { ...this.declaration, ...(actions === null ? { actions: undefined } : { actions }) };
+    this.template = listingTemplate_of(this.declaration.traits, this.declaration.actions);
   }
 
   /** Sets this level's filter text and passes it beneath. */
@@ -743,12 +757,26 @@ export class Listing<T> {
   /**
    * Draws blocks another way, or `null` to return to the grid. A painted
    * block has no grid, so its rows carry no track, no indication and no
-   * select-click; the painter owns what a click means.
+   * select-click; the painter owns what a click means. Takes effect at the
+   * next `rows_set`: the pane decides when the field is repainted, since
+   * something else may be standing on it.
    *
    * @param paint - The painter, or null.
    */
   public painter_set(paint: ListingPainter<T> | null): void {
     this.painter = paint;
+  }
+
+  /**
+   * Declares, or withdraws, the row verbs after construction: the track
+   * is minted or dropped, the template rewritten, and the rows on stage
+   * repainted to match.
+   *
+   * @param actions - The verbs and their track, or null for none.
+   */
+  public actions_declare(actions: ListingActions<T> | null): void {
+    this.level.actions_set(actions);
+    this.gridHost.style.setProperty('--roster-cols', this.level.template);
     if (this.field !== null) this.render();
   }
 

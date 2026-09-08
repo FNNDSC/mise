@@ -1766,6 +1766,40 @@ try {
   check('the roster carries SIZE and TIME on its grid, dashes where nodes are not resident', totals.caps.includes('SIZE') && totals.caps.includes('TIME') && totals.cellsUniform && totals.rows > 0 && totals.honest, JSON.stringify(totals));
   }
 
+  if (stage('theme-cycle')) {
+  // A theme is one declaration on the root element, and the pill cycles it.
+  // PHAROS is the theme with shapes of its own: reached by the pill, it must
+  // be readable back off the caps — a chamfered cap in the language's face —
+  // and leaving it must restore what the browser had.
+  const themed = await evalIn(`
+    const pill = document.getElementById('theme-pill');
+    const root = document.documentElement;
+    const before = root.dataset.theme ?? null;
+    const capOf = () => document.querySelector('.roster-cap');
+    document.getElementById('gutter-files').click(); await sleep(600);
+    for (let i = 0; i < 30; i++) { await sleep(300); if (capOf()) break; }
+    let steps = 0;
+    while (root.dataset.theme !== 'pharos' && steps < 8) { pill.click(); await sleep(120); steps += 1; }
+    const cap = capOf();
+    const style = cap ? getComputedStyle(cap) : null;
+    const under = {
+      theme: root.dataset.theme ?? null, label: pill.textContent.trim(),
+      radius: style ? style.borderTopLeftRadius : null,
+      chamfer: style ? style.clipPath : null,
+      face: style ? style.fontFamily : null,
+      capBg: style ? style.backgroundColor : null,
+    };
+    // Cycle on until the browser's own choice is back.
+    let back = 0;
+    while ((root.dataset.theme ?? null) !== before && back < 8) { pill.click(); await sleep(120); back += 1; }
+    return { before, under, restored: (root.dataset.theme ?? null) === before };`);
+  check('the pill reaches PHAROS and the caps read as the language: a chamfered cap in its own face',
+    themed.under.theme === 'pharos' && themed.under.label === 'PHAROS'
+    && themed.under.radius === '0px' && /^polygon\(/.test(themed.under.chamfer ?? '') && /Chakra/.test(themed.under.face ?? ''),
+    JSON.stringify(themed.under));
+  check('leaving PHAROS restores the theme the browser had', themed.restored, JSON.stringify(themed));
+  }
+
   if (stage('nameplate')) {
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');

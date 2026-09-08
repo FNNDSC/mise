@@ -470,16 +470,24 @@ function headerFaces_wire(): void {
   });
 }
 
-/** The LCARS color schemes the theme pill cycles through. */
+/**
+ * The themes the pill cycles through: four schemes of the imported look,
+ * and PHAROS, the house visual language in its clinical palette (docs/pharos.adoc),
+ * which is not a scheme of that look but a theme of its own on the same
+ * tokens.
+ */
 const LCARS_SCHEMES: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'lower-decks', label: 'LOWER DECKS' },
   { key: 'gold', label: 'CERRITOS GOLD' },
   { key: 'medical', label: 'MEDICAL' },
   { key: 'nemesis', label: 'NEMESIS' },
+  { key: 'pharos', label: 'PHAROS' },
 ];
 
-/** The localStorage key remembering the color scheme. */
-const LCARS_STORAGE_KEY: string = 'argus-lcars';
+/** The localStorage key remembering the theme. */
+const LCARS_STORAGE_KEY: string = 'argus-theme';
+/** The key the choice was remembered under before the attribute was renamed. */
+const LCARS_STORAGE_KEY_FORMER: string = 'argus-lcars';
 
 /** The scheme a browser that has never chosen one starts in. */
 const LCARS_DEFAULT_KEY: string = 'medical';
@@ -488,9 +496,9 @@ const LCARS_DEFAULT_KEY: string = 'medical';
 const LCARS_RENAMED: Readonly<Record<string, string>> = { sickbay: 'medical' };
 
 /**
- * Wires the theme pill: each press advances to the next LCARS color scheme.
- * The scheme is one declaration (`data-lcars` on the body); the palettes
- * live in CSS. The choice persists per browser.
+ * Wires the theme pill: each press advances to the next theme. The theme
+ * is one declaration (`data-theme` on the root element); the palettes and
+ * the ornament live in CSS. The choice persists per browser.
  */
 function themePill_wire(): void {
   const pill: HTMLElement = element_require('theme-pill');
@@ -500,7 +508,8 @@ function themePill_wire(): void {
   );
   let index: number = fallback;
   try {
-    const saved: string | null = window.localStorage.getItem(LCARS_STORAGE_KEY);
+    const saved: string | null =
+      window.localStorage.getItem(LCARS_STORAGE_KEY) ?? window.localStorage.getItem(LCARS_STORAGE_KEY_FORMER);
     // A remembered scheme survives its own renaming; a browser that never
     // chose gets the default rather than whichever scheme is listed first.
     const wanted: string | null = saved === null ? null : (LCARS_RENAMED[saved] ?? saved);
@@ -516,9 +525,9 @@ function themePill_wire(): void {
   const paint = (): void => {
     const scheme = LCARS_SCHEMES[index] ?? LCARS_SCHEMES[0]!;
     if (scheme.key === 'lower-decks') {
-      delete root.dataset['lcars'];
+      delete root.dataset['theme'];
     } else {
-      root.dataset['lcars'] = scheme.key;
+      root.dataset['theme'] = scheme.key;
     }
     pill.textContent = scheme.label;
   };

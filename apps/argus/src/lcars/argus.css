@@ -12,6 +12,10 @@
 /* The left frame reads better ~30% slimmer than the template's default
  * 240px; every frame element derives from this one variable. */
 :root {
+  /* The two faces a theme may swap: labels (caps, capsules, bars) and data
+   * (listing cells). The console keeps its own face for the prompt's glyphs. */
+  --face-label: 'Antonio', sans-serif;
+  --face-data: inherit;
   --lfw: 168px;
 
   /* ------------------------------------------------------ state hues
@@ -51,6 +55,16 @@
   font-weight: 700;
   font-display: swap;
 }
+
+/* The faces of PHAROS, vendored under the OFL (fonts/pharos/): Chakra Petch
+ * for labels, whose letterforms are chamfered like the frame, JetBrains Mono
+ * for data. Nothing is fetched at runtime. */
+@font-face { font-family: 'Chakra Petch'; src: url('./fonts/pharos/chakra-petch-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Chakra Petch'; src: url('./fonts/pharos/chakra-petch-latin-500-normal.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Chakra Petch'; src: url('./fonts/pharos/chakra-petch-latin-600-normal.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Chakra Petch'; src: url('./fonts/pharos/chakra-petch-latin-700-normal.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('./fonts/pharos/jetbrains-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('./fonts/pharos/jetbrains-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; font-display: swap; }
 
 /* ------------------------------------------------------------ status strip */
 
@@ -291,7 +305,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 
 .drawer-label {
   color: var(--harvestgold);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.7rem;
   letter-spacing: 0.14em;
   margin-right: 0.1rem;
@@ -452,7 +466,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   border-radius: 0;
   background-color: var(--harvestgold);
   color: #000;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
   /* A cap's label sits where its column's text sits: same edge, same
@@ -514,7 +528,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   padding: 0 0.8rem 0 1rem;
   background: var(--harvestgold);
   color: #000;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   border-radius: 13px 0 0 13px;
@@ -758,7 +772,7 @@ main {
   gap: 0.15rem;
   min-width: 0;
   color: var(--honey);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
 }
@@ -823,7 +837,7 @@ main {
   padding: 0.1rem 0.9rem;
   background-color: var(--harvestgold);
   color: black;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   font-size: 0.7rem;
   letter-spacing: 0.1em;
@@ -861,7 +875,7 @@ main {
   text-align: right;
   padding-right: 0.6rem;
   color: var(--honey);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
 }
@@ -1023,7 +1037,7 @@ main {
 
 .pacs-gather-title {
   color: var(--harvestgold);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   letter-spacing: 0.12em;
 }
@@ -1333,7 +1347,7 @@ body[data-zoom]:not([data-zoom='console'])
 .feedlist-refusal {
   padding: 0.5rem 0.9rem 0.15rem;
   color: var(--honey);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1601,7 +1615,7 @@ body[data-zoom]:not([data-zoom='console'])
   padding: 0 0.7rem;
   background-color: black;
   color: var(--harvestgold);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   font-size: 0.65rem;
   letter-spacing: 0.1em;
@@ -1663,7 +1677,7 @@ body[data-header='dag'] #header-dag {
   bottom: 0.2rem;
   left: 0.6rem;
   color: var(--pumpkin-pie);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.65rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1744,7 +1758,7 @@ body[data-header='dag'] #header-dag {
   padding: 0.1rem 0.9rem;
   background: var(--harvestgold);
   color: #000;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   font-size: 0.7rem;
   letter-spacing: 0.1em;
@@ -1883,7 +1897,7 @@ body[data-header='dag'] #header-dag {
 .files-refused-lede {
   margin: 0 0 0.4rem;
   color: var(--state-error);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   letter-spacing: 0.12em;
 }
@@ -2113,7 +2127,7 @@ body[data-header='dag'] #header-dag {
   justify-content: center;
   overflow: hidden;
   color: var(--pumpkin-pie);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 2rem;
 }
 
@@ -2196,7 +2210,7 @@ body[data-header='dag'] #header-dag {
   display: flex;
   align-items: center;
   color: var(--pumpkin-pie);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   letter-spacing: 0.08em;
 }
 
@@ -2212,7 +2226,7 @@ body[data-header='dag'] #header-dag {
   color: #000;
   border-radius: 9px;
   padding: 0 0.6rem;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.62rem;
   letter-spacing: 0.12em;
   line-height: 1.6;
@@ -2232,7 +2246,7 @@ body[data-header='dag'] #header-dag {
 
 .files-card-title {
   color: var(--honey);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.95rem;
   letter-spacing: 0.03em;
   overflow: hidden;
@@ -2279,7 +2293,7 @@ body[data-header='dag'] #header-dag {
   align-items: center;
   justify-content: center;
   color: var(--pumpkin-pie);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   letter-spacing: 0.1em;
 }
 
@@ -2437,7 +2451,7 @@ body[data-zoom] #header-restore {
   border-radius: 0.6rem 0 0 0.6rem;
   background-color: var(--honey);
   color: black;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   font-size: 0.7rem;
   line-height: 1.2rem;
@@ -2488,7 +2502,7 @@ body[data-zoom] #header-restore {
   border: none;
   border-radius: 0.8rem;
   color: black;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-weight: bold;
   font-size: 0.75rem;
   letter-spacing: 0.1em;
@@ -2521,7 +2535,7 @@ body[data-zoom] #header-restore {
 
 /* Each scheme re-seats the theme's seven base colors; every other color in
  * the frame derives from these, so the whole surface follows. */
-:root[data-lcars='gold'] {
+:root[data-theme='gold'] {
   --butter: #fff3cd;
   --daybreak: #fc3;
   --harvestgold: #ffd75e;
@@ -2534,7 +2548,7 @@ body[data-zoom] #header-restore {
 /* Sickbay wears the BCH flag: the ramp is anchored on the two colors of
  * bch-logo.svg — navy #164989 (frame, elbows) and cyan #1EBEF0 (primary
  * bars) — with the rest interpolated between them. */
-:root[data-lcars='medical'] {
+:root[data-theme='medical'] {
   --butter: #dff5fd;
   --daybreak: #7edcf7;
   --harvestgold: #1ebef0;
@@ -2544,7 +2558,7 @@ body[data-zoom] #header-restore {
   --pumpkin-pie: #0f3566;
 }
 
-:root[data-lcars='nemesis'] {
+:root[data-theme='nemesis'] {
   --butter: #f0e4fc;
   --daybreak: #cfa0ff;
   --harvestgold: #d0a8f0;
@@ -2552,6 +2566,169 @@ body[data-zoom] #header-restore {
   --october-sunset: #8c5fc0;
   --orange: #b48ae0;
   --pumpkin-pie: #7a4ea8;
+}
+
+/* ---------------------------------------- PHAROS: the house visual language */
+
+/* PHAROS (docs/pharos.adoc): the lighthouse, flat. Slice 1 wears the MEDICAL
+ * scheme's seven colours; the state hues derive from them as they do for
+ * every scheme, so nothing below names a state colour. The shapes are the
+ * language's own — stone, cut, inset, lens, flank, course — drawn on the
+ * frame the imported look built, with clip-path, radius and one flat band:
+ * no gradient, no shadow, no bevel. Depth is colour against black joints. */
+:root[data-theme='pharos'] {
+  --butter: #dff5fd;
+  --daybreak: #7edcf7;
+  --harvestgold: #1ebef0;
+  --honey: #7fd9f7;
+  --october-sunset: #164989;
+  --orange: #1878b8;
+  --pumpkin-pie: #0f3566;
+  --face-label: 'Chakra Petch', 'Arial Narrow', sans-serif;
+  --face-data: 'JetBrains Mono', 'MesloLGS NF', monospace;
+  /* The imported look's swept corners are no corner at all under PHAROS. */
+  --radius-top: 0;
+  --radius-bottom: 0;
+  --radius-content-top: 0;
+  --radius-content-bottom: 0;
+  --pharos-lit: rgba(255, 255, 255, 0.55);
+  --pharos-cut: 9px;
+  --pharos-cut-small: 5px;
+  --pharos-inset: 18px;
+  --pharos-flank: 26px;
+}
+
+/* The imported look sets the body's face by name; the language takes it back. */
+[data-theme='pharos'] body {
+  font-family: var(--face-label);
+}
+[data-theme='pharos'] .listing-row,
+[data-theme='pharos'] .roster-filter-input {
+  font-family: var(--face-data);
+}
+
+/* STONE. Every block of the frame is one flat colour with a lit band along
+ * its top edge; the joint below it is the black the imported look already
+ * leaves between blocks. */
+[data-theme='pharos'] .left-frame-top .panel-1,
+[data-theme='pharos'] .left-frame-top .panel-2,
+[data-theme='pharos'] .left-frame button[class^='panel-'],
+[data-theme='pharos'] .left-frame .panel-spacer,
+[data-theme='pharos'] .lcars-bar-horizontal,
+[data-theme='pharos'] .lcars-bar-end,
+[data-theme='pharos'] .mode-strip,
+[data-theme='pharos'] .mode-fill {
+  box-shadow: inset 0 3px 0 var(--pharos-lit);
+}
+
+/* CUT. A body stone is dressed at its outer top corner, the screen edge,
+ * and the cut on every cap, capsule and pill sits at its top-right, small. */
+[data-theme='pharos'] .left-frame button[class^='panel-'] {
+  clip-path: polygon(var(--pharos-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--pharos-cut));
+  transition: margin-left 0.18s ease-out, width 0.18s ease-out;
+}
+[data-theme='pharos'] .roster-cap,
+[data-theme='pharos'] .roster-cap:first-of-type,
+[data-theme='pharos'] .roster-cap:last-of-type,
+[data-theme='pharos'] .strategy-pill,
+[data-theme='pharos'] .listing-action,
+[data-theme='pharos'] .pacs-capsule,
+[data-theme='pharos'] .ask-capsule,
+[data-theme='pharos'] .theme-pill,
+[data-theme='pharos'] .audio-pill,
+[data-theme='pharos'] .telemetry-label,
+[data-theme='pharos'] .lamp-online,
+[data-theme='pharos'] .lamp-host,
+[data-theme='pharos'] .lamp-offline {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - var(--pharos-cut-small)) 0, 100% var(--pharos-cut-small), 100% 100%, 0 100%);
+}
+[data-theme='pharos'] .pacs-capsule,
+[data-theme='pharos'] .listing-action,
+[data-theme='pharos'] .strategy-pill {
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+
+/* INSET. The gutter stone whose pane holds focus tucks in from the outer
+ * edge: a binder tab pulled, a key engaged. The gap to the room is untouched,
+ * so the column keeps its weight. Focus is the body's one declaration. */
+[data-theme='pharos'] body[data-focus='files'] #gutter-files,
+[data-theme='pharos'] body[data-focus='dag'] #gutter-runs,
+[data-theme='pharos'] body[data-focus='pacs'] #gutter-tools {
+  margin-left: var(--pharos-inset);
+  width: calc(var(--lfw) - var(--pharos-inset));
+}
+
+/* LENS. The one curve inside the frame, in one seat: the header stone's foot,
+ * where the imported look's elbow stood. The lighthouse's Fresnel lens —
+ * concentric flat rings around the lamp — and the lamp breathes. */
+[data-theme='pharos'] .left-frame-top {
+  position: relative;
+  overflow: hidden;
+}
+[data-theme='pharos'] .left-frame-top::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 78px;
+  height: 78px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0 100%, var(--butter) 0 11px, transparent 11.5px),
+    repeating-radial-gradient(circle at 0 100%, var(--butter) 0 2px, transparent 2px 9px);
+  clip-path: circle(78px at 0 100%);
+  animation: pharos-lamp 5s ease-in-out infinite;
+}
+@keyframes pharos-lamp {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* FLANK. The frame's outer silhouette is rounded at its two outer corners
+ * only, behind a course-blue wall down the outer edge so the curve reads on
+ * a black page. Every joint inside the frame stays square or cut. */
+[data-theme='pharos'] .wrap-all {
+  border-left: 3px solid var(--october-sunset);
+  border-radius: var(--pharos-flank) 0 0 var(--pharos-flank);
+}
+[data-theme='pharos'] .left-frame-top {
+  border-top-left-radius: calc(var(--pharos-flank) - 3px);
+}
+[data-theme='pharos'] .left-frame > div:last-child .panel-7 {
+  clip-path: none;
+  border-bottom-left-radius: calc(var(--pharos-flank) - 3px);
+}
+
+/* COURSE. A bar ends in a point, not a cap; the elbow's sweep is a square
+ * junction; the strip and its fill are square blocks. */
+[data-theme='pharos'] .lcars-bar-horizontal { border-radius: 0; }
+[data-theme='pharos'] .lcars-bar-end {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+}
+[data-theme='pharos'] .mode-elbow,
+[data-theme='pharos'] .mode-elbow::after { border-top-right-radius: 0; }
+[data-theme='pharos'] .mode-strip,
+[data-theme='pharos'] .mode-fill { border-radius: 0; }
+
+/* Flat: the indicated row's glow and the hover glare are depth effects the
+ * language does not have. */
+[data-theme='pharos'] .listing-indicated > span:first-child,
+[data-theme='pharos'] .listing-indicated > span:nth-child(2) {
+  text-shadow: none;
+}
+[data-theme='pharos'] .listing-action:hover:not(:disabled),
+[data-theme='pharos'] .audio-pill:hover,
+[data-theme='pharos'] .theme-pill:hover,
+[data-theme='pharos'] .pacs-capsule:hover {
+  box-shadow: none;
+  filter: brightness(1.15);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='pharos'] .left-frame-top::after { animation: none; }
+  [data-theme='pharos'] .left-frame button[class^='panel-'] { transition: none; }
 }
 
 /* ------------------------------------------------------- the tactical drawer */
@@ -2599,7 +2776,7 @@ body[data-zoom] #header-restore {
   color: black;
   font-weight: bold;
   text-transform: uppercase;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.8rem;
   letter-spacing: 1px;
 }
@@ -2988,7 +3165,7 @@ body[data-zoom] #header-restore {
 
 .pacs-waiting-note {
   color: var(--harvestgold);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   letter-spacing: 0.12em;
   font-size: 0.8rem;
 }
@@ -3054,7 +3231,7 @@ body[data-zoom] #header-restore {
   padding: 0 0.9rem 0 1.1rem;
   background: var(--harvestgold);
   color: #000;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.8rem;
   letter-spacing: 0.12em;
   border-radius: 0 0 0 14px;
@@ -3325,7 +3502,7 @@ body[data-zoom] #header-restore {
   gap: 0.15rem;
   min-width: 0;
   color: var(--honey);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
 }
@@ -3377,7 +3554,7 @@ body[data-zoom] #header-restore {
   border: 1px solid var(--pumpkin-pie);
   border-radius: 0.9rem;
   color: var(--pumpkin-pie);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.7rem;
   letter-spacing: 0.1em;
   padding: 0.1rem 0.7rem;
@@ -3428,7 +3605,7 @@ body[data-zoom] #header-restore {
   border: none;
   border-radius: 0.9rem;
   color: black;
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.7rem;
   letter-spacing: 0.1em;
   padding: 0.1rem 0.9rem;
@@ -3467,7 +3644,7 @@ body[data-zoom] #header-restore {
    readout settled. */
 .errand-caption {
   color: var(--butter);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.7rem;
   letter-spacing: 0.1em;
   white-space: nowrap;
@@ -3509,7 +3686,7 @@ body[data-zoom] #header-restore {
    type rather than a capsule's costume. */
 .pacs-wrote {
   color: var(--pumpkin-pie);
-  font-family: 'Antonio', sans-serif;
+  font-family: var(--face-label);
   font-size: 0.68rem;
   letter-spacing: 0.1em;
   align-self: center;

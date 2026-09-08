@@ -1,5 +1,33 @@
 # @fnndsc/argus
 
+## 0.3.0
+
+### Minor Changes
+
+- 22f300d: feat: the runs roster declares its listing (#428, S3)
+
+  The runs roster is the second pane converted to the `Listing` façade. The order, the host, the chrome lookups, the filter block, the `argus:roster` parse, the action track, the indication model and the readout leave the pane; what remains is a declaration and `rows_set`, with two-line forwarders under the names the surface already calls.
+
+  The roster takes the expanse rule as it converts: PROGRESS is the `1fr` expanse right after TITLE (now a fixed track), the trailing facts follow. The façade refuses a content-sized track at construction — `auto`, `minmax(0, …)`, the content keywords — since on a per-row grid such a track sizes per row and jogs every column after it. The roster's hand-typed `--roster-cols` leaves the stylesheet, with it the last place a cell count could disagree with the track list.
+
+- 57c6815: feat: PACS declares its three levels into the listing façade (#428, S4)
+
+  The last conversion. Patient over study over series is one declaration: a child declared beneath a child, each level with its own traits and tracks, its verbs on every row, one filter read down the levels, one sort naming its level. Three orders, a host, two expansion sets, two render methods and the state line leave the pane.
+
+  The façade gained what the conversion needed: a group wrapping a row with the level it heads, a depth on every level, programmatic opening, a note for an answer with nothing in it, and a level's template for the form that stands on it. The last four hand-typed track lists leave the stylesheet, and the lint's one allowance expires with them: no pane composes a listing by hand, and CI fails one that tries.
+
+### Patch Changes
+
+- 4da6ea7: chore(argus): reaching past the Listing façade is the violation (#428, S5)
+
+  `listing-is-one-abstraction` now fails the gate for a pane that builds a `RosterOrder` or `ListingHost`, calls the row or capsule builders, imports the order or the host, or spells `--roster-cols` by hand in the stylesheet. The PACS pane is the one named allowance, printed as debt on every run until S4 converts it. The dead grid rules the converted panes left behind are gone; the grid-source law reads the façade's `.listing-row` in their place.
+
+- f6f850a: fix(argus): the PACS progress bar spans the middle and lines up level over level
+
+  The series level was designed with its bar beside the description; the patient level and the reshaped study level then put PROGRESS after every fact, at the far right, each level on a grid of its own — the patient bar began 277 px left of the study's. And the study grid's content-sized tracks (`minmax(0, 13em)`) narrowed per row, so a short name jogged every column after it for that row alone.
+
+  At every level the columns now read identity, description, PROGRESS as the one `1fr` expanse, then the trailing facts, then the verbs. Every other track is a fixed length. The four leading tracks are the same widths on the patient and study grids and the series description is widened to meet them, so the bars begin at one x on all three levels; the patient row takes the same font size as its caps, since the tracks are in em. The query form follows the study grid: the provenance readout stands over PROGRESS, the QUERY control in the verbs column.
+
 ## 0.2.0
 
 ### Minor Changes

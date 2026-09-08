@@ -285,12 +285,22 @@ export class CalypsoDaemon {
       // climb while every surface sits idle. While the index moves — or the
       // last pushed context still showed active warm-up (its settling is a
       // change the counts alone cannot signal) — refresh the promptline too.
+      //
+      // And while a foreground command runs. A feed's topology walk (a first
+      // visit, `proc refresh`) reports its progress into the prompt context
+      // page by page, but adds its instances to the index only once the walk
+      // is done — so the counts stand still for the whole minute the operator
+      // most needs the JOBS readout to say what is happening. The command's
+      // own promptline comes only when it ends. Pushing on every tick while a
+      // command is executing is what lets the walk be annunciated on a quiet
+      // daemon, and not only when a background sweep happens to be moving
+      // the counts at the same time.
       const moved: boolean =
         this.telemetryLastIndex === null ||
         index.jobs !== this.telemetryLastIndex.jobs ||
         index.feeds !== this.telemetryLastIndex.feeds;
       this.telemetryLastIndex = index;
-      if (moved || this.promptWarmupActive) {
+      if (moved || this.promptWarmupActive || this.busy_get()) {
         void this.promptline_push();
       }
     }, 1000);

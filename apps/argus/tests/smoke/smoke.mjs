@@ -1131,7 +1131,10 @@ try {
     if (rows.length === 0) return { skipped: 'no roster' };
     // Double-click enters: a roster row carries verbs, so a single click indicates rather than activates.
     rows[rows.length - 1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    await sleep(30);
+    // "At once" is the double-click's own turn: the list steps aside, the
+    // pane names the feed and the bar reads LOADING before the handler
+    // returns. Read there, not after a sleep — a feed whose graph is already
+    // resident lands inside any sleep, and LOADING has rightly cleared.
     const atOnce = {
       listHidden: dp.querySelector('.dag-feedlist').style.display === 'none',
       retrieving: /^RETRIEVING FEED \\d+/.test(dp.querySelector('.dag-empty').textContent),

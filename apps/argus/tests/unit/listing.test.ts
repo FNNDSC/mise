@@ -460,13 +460,51 @@ describe('a level beneath a level', () => {
     await frame();
     root.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'filter', text: 'CT' } }));
     await frame();
-    const studies: string[] = [...mount.querySelectorAll<HTMLElement>('.listing-rows > .listing-row .study')]
+    const studies: string[] = [...mount.querySelectorAll<HTMLElement>('.listing-rows > .listing-group > .listing-row .study')]
       .map((cell: HTMLElement): string => cell.textContent ?? '');
     expect(studies).toEqual(['brain']);
     const series: string[] = [...mount.querySelectorAll<HTMLElement>('.listing-level .series')]
       .map((cell: HTMLElement): string => cell.textContent ?? '');
     expect(series).toEqual(['s1b']);
     expect(root.querySelector('.pane-state')?.textContent).toBe('FILTERED 1/2');
+  });
+
+  it('wraps a row that heads a level in a group, opens rows programmatically, and gives the form the child template', async () => {
+    const { root, mount } = chrome_build('pacs');
+    const listing: Listing<Study> = new Listing<Study>({
+      mount,
+      traits: STUDY_TRAITS,
+      key: (study: Study): string => study.uid,
+      chrome: { root, prefix: 'pacs' },
+      row: { groupClassName: (): string => 'pacs-study' },
+      empty: (): HTMLElement => { const note: HTMLElement = document.createElement('p'); note.className = 'note'; note.textContent = 'NO STUDIES FOUND'; return note; },
+      child: listingChild_declare(
+        (study: Study): ReadonlyArray<Series> => study.series,
+        { traits: SERIES_TRAITS, key: (series: Series): string => series.uid },
+      ),
+    });
+    expect(listing.template_get(1)).toBe('1fr 4em');
+    expect((): string => listing.template_get(2)).toThrow(/no listing level/);
+    // Blocks set but empty: the field says so. No blocks: it says nothing.
+    listing.rows_set([], { field: 'q' });
+    expect(mount.querySelector('.note')).toBeNull();
+    listing.rows_set([{ key: 'q', rows: [] }], { field: 'q' });
+    expect(mount.querySelector('.note')?.textContent).toBe('NO STUDIES FOUND');
+    listing.rows_set([{ key: 'q', rows: STUDIES }], { field: 'q' });
+    const groups: HTMLElement[] = [...mount.querySelectorAll<HTMLElement>('.listing-group')];
+    expect(groups).toHaveLength(2);
+    expect(groups.every((group: HTMLElement): boolean => group.classList.contains('pacs-study'))).toBe(true);
+    expect(groups[0]?.querySelector('.listing-row')).not.toBeNull();
+    expect(mount.querySelectorAll('.listing-open')).toHaveLength(0);
+    listing.open_set(0, ['s2']);
+    const opened: HTMLElement | null = mount.querySelector<HTMLElement>('.listing-group.listing-open');
+    expect(opened?.querySelector('.listing-row .study')?.textContent).toBe('knee');
+    expect(opened?.querySelector('.listing-level')?.getAttribute('data-depth')).toBe('1');
+    expect(opened?.querySelectorAll('.listing-level .listing-row')).toHaveLength(1);
+    listing.open_clear();
+    listing.rows_set([{ key: 'q', rows: STUDIES }], { field: 'q' });
+    expect(mount.querySelectorAll('.listing-open')).toHaveLength(0);
+    expect(listing.field_get()).not.toBeNull();
   });
 
   it('a sort names its level and the other levels ignore it', async () => {
@@ -481,6 +519,6 @@ describe('a level beneath a level', () => {
     expect(series).toEqual(['s1b', 's1a']);
     const lit: HTMLElement | null = mount.querySelector<HTMLElement>('.listing-level .roster-cap.roster-active');
     expect(lit?.dataset['key']).toBe('modality');
-    expect(mount.querySelector('.listing-rows > .listing-row .study')?.textContent).toBe('brain');
+    expect(mount.querySelector('.listing-rows > .listing-group > .listing-row .study')?.textContent).toBe('brain');
   });
 });

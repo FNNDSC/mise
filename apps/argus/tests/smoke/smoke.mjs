@@ -1371,8 +1371,10 @@ try {
       await sleep(2500);
       const study = () => document.querySelector('#pacs-results .pacs-study');
       if (!study()) return { studies: 0 };
-      if (study().classList.contains('pacs-collapsed')) {
-        study().querySelector('.pacs-study-row').click(); await sleep(300);
+      // A closed group holds no level; activating its row opens it (the
+      // façade repaints on the next frame).
+      if (!study().classList.contains('listing-open')) {
+        study().querySelector('.pacs-study-row').click(); await sleep(400);
       }
       const names = () => [...study().querySelectorAll('.pacs-series .pacs-series-desc')].map(e => e.textContent);
       const before = names().join('|');

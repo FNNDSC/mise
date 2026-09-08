@@ -170,7 +170,8 @@ LINT_CHECKS['hover-never-glares'] = () => {
 LINT_CHECKS['roster-grid-single-source'] = () => {
   // Caps and rows read one declaration: any roster grid that spells its own
   // template has drifted from the caps (or will).
-  for (const selector of ['.roster-caps', '.files-grid', '.feedlist-row', '.pacs-series', '.pacs-study-row', '#pacs-form']) {
+  // The façade's row grid, the caps, and the PACS grids that S4 will fold in.
+  for (const selector of ['.roster-caps', '.listing-row', '#pacs-form']) {
     const m = css.match(new RegExp(`\n${selector.replace('.', '\\.')} \\{([^}]*)\\}`));
     if (!m) { fail('roster-grid-single-source', `${selector} rule not found`); continue; }
     if (!/grid-template-columns:\s*var\(--roster-cols\)/.test(m[1])) fail('roster-grid-single-source', `${selector} does not read --roster-cols`);
@@ -182,7 +183,7 @@ LINT_CHECKS['roster-grid-single-source'] = () => {
       const host = before.slice(before.lastIndexOf('\n\n')).trim().split('\n')[0];
       if (/--roster-cols:/.test(m[0])) continue;
       if (/roster-cols/.test(before.slice(-200))) continue;
-      if (/(files-grid|feedlist-row|roster-caps)/.test(host)) fail('roster-grid-single-source', `${host} spells its own roster template`);
+      if (/(listing-row|files-grid|feedlist-row|roster-caps)/.test(host)) fail('roster-grid-single-source', `${host} spells its own roster template`);
     }
   }
 };
@@ -238,20 +239,45 @@ LINT_CHECKS['a-preview-is-the-same-drawing'] = () => {
 };
 
 LINT_CHECKS['listing-is-one-abstraction'] = () => {
-  // The listing lives in features/roster: the frame that sorts and filters,
-  // the trait a column is declared as, the capsule a verb is drawn as. A
-  // pane that builds any of that itself has forked the abstraction, which
-  // is how three panes came to spell the same table three ways.
+  // The listing is the Listing façade in features/roster: a pane DECLARES
+  // its listing and never builds one. Reaching past the façade to the parts
+  // — the order, the host, the row and capsule builders — is the violation,
+  // because that is how three panes came to spell the same table three
+  // ways, and then the same action track, indication and readout twice.
+  //
+  // No allowances: every pane declares. The PACS pane's, which expired
+  // with S4, was the last.
+  const ALLOWED_UNTIL_S4 = new Set([]);
+  const REACHING = [
+    [/new RosterOrder</, 'builds a RosterOrder itself'],
+    [/new ListingHost</, 'builds a ListingHost itself'],
+    [/\blistingRow_build\(/, 'builds rows itself (listingRow_build)'],
+    [/\bactionCell_build\(/, 'builds action capsules itself (actionCell_build)'],
+    [/\btraitColumns_of\(|\btraitValue_of\(/, 'derives caps or comparators itself (traitColumns_of / traitValue_of)'],
+    [/from '\.\.\/roster\/(order|host)\.js'/, 'imports the order or the host, which only the façade may'],
+  ];
   for (const { path, text } of features) {
     if (path.startsWith('apps/argus/src/features/roster/')) continue;
     if (/'roster-caps?'/.test(text)) fail('listing-is-one-abstraction', `${path} builds its own column caps`);
     if (/'roster-filter/.test(text)) fail('listing-is-one-abstraction', `${path} builds its own filter strip`);
-    // A pane that mounts the frame must declare its columns as traits: a
-    // hand-written column list beside a trait list is the drift the traits
-    // exist to prevent.
-    if (/new RosterOrder</.test(text) && !/traitColumns_of\(/.test(text)) {
-      fail('listing-is-one-abstraction', `${path} mounts a roster without declaring traits`);
+    const reaches = REACHING.filter(([pattern]) => pattern.test(text)).map(([, what]) => what);
+    if (reaches.length === 0) continue;
+    if (ALLOWED_UNTIL_S4.has(path)) {
+      console.log(`aegis-lint: debt — ${path} still reaches past the Listing façade (${reaches.join('; ')}); allowed until S4 converts it`);
+      continue;
     }
+    for (const what of reaches) fail('listing-is-one-abstraction', `${path} reaches past the Listing façade: ${what}`);
+  }
+  // The stylesheet reaches past it too when it spells a track list by
+  // hand: `--roster-cols` is the façade's to write, computed from the
+  // traits. No selector may declare one.
+  const ALLOWED_TRACK_HOSTS_UNTIL_S4 = [];
+  for (const m of css.matchAll(/--roster-cols:/g)) {
+    const before = css.slice(0, m.index);
+    const host = before.slice(before.lastIndexOf('\n\n')).trim().split('\n')[0].replace(/\s*\{.*$/, '').trim();
+    if (host.startsWith('*') || host.startsWith('/*')) continue; // a comment mentioning the property
+    if (ALLOWED_TRACK_HOSTS_UNTIL_S4.some((allowed) => host === allowed)) continue;
+    fail('listing-is-one-abstraction', `${host} declares --roster-cols by hand; the façade computes it from the traits`);
   }
 };
 

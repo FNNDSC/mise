@@ -1,0 +1,61 @@
+= PHAROS: the house visual language
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+PHAROS is the house visual language of ARGUS: what the surface looks like once the discipline AEGIS describes is dressed in shapes of our own. The name is the Lighthouse of Alexandria, a working building whose whole job was signalling state across a harbor; per the harbor law in AEGIS it expands through AEGIS (Presentation House for AEGIS — Roles, Ornament, Shapes). This document is the language's definition and its record. It is a work in progress: the grammar below was settled across five rounds of mocks on 2026-09-08 and is built as a theme the operator can cycle to; the imported look remains the default, in its MEDICAL scheme. A theme swaps only what the stylesheet owns, and a component never names a theme (`aegis.adoc`, `a-component-names-no-theme`).
+
+== What the rounds taught
+
+The first build re-seated colour tokens and cut corners on the imported frame, and read as the imported look in beige. The second put the imported frame's mass aside and drew cards on a dark ground, and read as a generic dashboard: buttons hanging in dead space. The finding underneath both: the imported look is beautiful because its chrome is structure, one continuous run of coloured mass enclosing the content, and a language that subtracts that mass and adds nothing of equal weight is a shallow derivative. Three studies then put the mass back three ways — the continuous run chamfered, the reading room's lightbox, the lighthouse's stone tower — and the tower was chosen, on the condition that it stay flat: no gradient, no bevel, no shadow, depth from colour against black joints exactly as the imported look makes it.
+
+== How a theme plugs in
+
+A theme is one declaration: `data-theme` on the root element, cycled by the header's theme pill and remembered per browser. The value selects a block in `src/lcars/argus.css` that re-seats the seven base tokens the imported look derives everything from — `--butter`, `--daybreak`, `--harvestgold`, `--honey`, `--october-sunset`, `--orange`, `--pumpkin-pie` — plus the two faces (`--face-label`, `--face-data`; the console keeps its own for the prompt's glyphs) and the four corner radii the imported frame is built from. Under `[data-theme='pharos']` the language then draws its own shapes on the same elements with `clip-path`, radius and one flat band, so no element's box moves and nothing in `features/` knows which theme is on. The state hues derive from the seven as they do for every scheme; PHAROS names no state colour.
+
+In this slice PHAROS wears the MEDICAL scheme's seven colours, fixed. PHAROS on any scheme — shape and colour as two declarations — is a later slice.
+
+== Shape grammar
+
+Six shapes, and every piece of ornament on the surface is one of them.
+
+[cols="1,4"]
+|===
+| Shape | Definition
+
+| *Stone* | Every block of the frame is one flat colour with a lit band 3 px along its top edge (white at 55%, flat, never a gradient) and the black joint below it that the imported look already leaves between blocks. Structure wears `--harvestgold`, courses `--october-sunset` and `--orange`, the lit stone `--butter`.
+| *Cut* | A 45° facet. A body stone in the gutter is dressed at its outer top corner (9 px), the screen edge: the weather side, where a tower's stones are dressed; its inner edge, facing the room, is square and flush. Every cap, capsule, action, pill and lamp carries the same cut at its top-right, small (5 px). The cut replaces the swept elbow as the language's corner, but as a block's edge and never as a junction.
+| *Inset* | The gutter stone whose pane holds focus tucks in 18 px from the outer edge, and when focus moves the old stone extends as the new one tucks (one property, 180 ms, still under `prefers-reduced-motion`). A binder tab pulled, a key engaged: the chosen one is told apart by geometry, not only by colour. The gap to the room is untouched, so the column keeps its full weight; a variant that slid the stone across the gap to touch the room was rejected because the strip it opened read as waste. Focus is one declaration on the body, `data-focus`, written by the layout.
+| *Lens* | The one curve inside the frame, in one seat: the header stone's foot, where the imported look's elbow stood. It is the lighthouse's Fresnel lens, concentric flat rings (2 px on a 9 px pitch, 78 px radius) around the lamp at the corner, and the lamp breathes on a five-second swing. Distinctive, and an homage: the curve is in the elbow's seat, but it is a lens and not a sweep, and it never joins anything to anything.
+| *Flank* | The frame's outer silhouette is rounded at its two outer corners only, the header stone's top-left and the last gutter stone's bottom-left (26 px), behind a 3 px course-blue wall down the outer edge so the curve reads on a black page: a round tower's flank. Found by accident in a chat client's rounded thumbnail, and kept. Every joint inside the frame stays square or cut.
+| *Course* | A bar between rooms is a stone course: flat, lit along the top, ending in a point rather than a cap. The mode elbow's sweep becomes a square junction, the strip and its fill square blocks. The header's gallery rail (a course of 3 px lamps along its top edge, drawn in the mocks) is owed: as a border it moved the header's content, and the header pane's own frame decides where a rail can sit.
+|===
+
+== Type
+
+Chakra Petch for labels (its letterforms are chamfered; the geometry speaks in the type) and JetBrains Mono for data, both vendored under the OFL in `src/lcars/fonts/pharos/`, so the surface has its type offline. Caps for labels only; content keeps its case. The console keeps MesloLGS NF, whose glyphs the prompt segments need. Open: the mocks were drawn with Saira Condensed for the frame's labels, nearer the imported look's rhythm; the choice between it and Chakra Petch is the operator's.
+
+== Palette
+
+Colour is role, never decoration, and in this slice the roles wear the MEDICAL scheme's hues exactly: cyan structure, pale cyan actionable, lit white-cyan attention, sky data, deep-blue courses; done is sky, running deep blue, error the scheme's hot red, ONLINE the lime lamp. Nothing else on the surface wears red or green. A harbor palette (night harbor, limestone, beacon amber, sweep white, seaglass) was drawn in the first study and rejected in favour of the operator's daily scheme.
+
+== Open
+
+* The lit band on every stone: keep, or drop it and let the joint alone carry depth.
+* Label face: Saira Condensed or Chakra Petch.
+* Room walls: the mocks drew a 2 px course-blue wall around a pane; the build leaves the pane's own frame.
+* The indicated row: the mocks drew it as the lit stone with dark text; the build keeps the imported look's indication without its glow.
+* PHAROS on any scheme.
+
+== Status
+
+[cols="1,3"]
+|===
+| 2026-09-08 (PHAROS, slice 1, work in progress) | Five rounds of mocks (medical side-by-side, three mass studies, the tower flat, the binder with inset, lens and flank) settled the grammar above; built as `data-theme='pharos'` on the existing frame, CSS-only but for the body's `data-focus` declaration. The imported look stays the default in MEDICAL. Chakra Petch and JetBrains Mono vendored under the OFL. `data-lcars` renamed `data-theme` with the remembered choice migrated. A smoke scenario walks the pill to PHAROS and reads the cut and the face back off the caps.
+|===

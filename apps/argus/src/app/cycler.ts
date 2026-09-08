@@ -46,7 +46,7 @@ export class PipelineCycler {
     this.scene = new DagScene(mount, {}, { ambient: true });
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,
-      { attributes: true, attributeFilter: ['data-lcars'] },
+      { attributes: true, attributeFilter: ['data-theme'] },
     );
     // The cycler is a header face now: returning to it after another face
     // (or a slid-away header) leaves the canvas at whatever size the hidden

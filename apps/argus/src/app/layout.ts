@@ -336,6 +336,9 @@ export class LayoutManager {
   public focus_set(pane: string): void {
     if (this.focusedPane === pane) return;
     this.focusedPane = pane;
+    // The focused pane is one declaration on the body as well, so the frame
+    // (the gutter stone that opened it) can answer it without being told.
+    document.body.dataset['focus'] = pane;
     for (const leaf of this.root.querySelectorAll('.layout-leaf')) {
       leaf.classList.remove('pane-focused');
     }

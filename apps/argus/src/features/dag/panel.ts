@@ -402,7 +402,7 @@ export class DagPanel {
     // The THEME pill re-seats the palette on the root element; follow it.
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,
-      { attributes: true, attributeFilter: ['data-lcars'] },
+      { attributes: true, attributeFilter: ['data-theme'] },
     );
     window.addEventListener('resize', (): void => this.scene.size_fit());
     // A zoom glide resizes the canvas without a window resize; refit once

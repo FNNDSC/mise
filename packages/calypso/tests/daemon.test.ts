@@ -469,6 +469,71 @@ describe('CalypsoDaemon prompt line push', () => {
     }
   });
 
+  it('pushes the promptline from the heartbeat while a command is executing, though the counts stand still', async () => {
+    // A feed's topology walk reports its progress into the prompt context
+    // page by page, but adds its instances to the index only once the walk
+    // is done — so the counts do not move, and the command's own push comes
+    // only at its end. The heartbeat carries the walk while it runs.
+    let release: () => void = (): void => {};
+    const held: Promise<void> = new Promise<void>((resolve) => { release = resolve; });
+    let walking: boolean = false;
+    const engine = stubEngine_create();
+    engine.line_execute = async (): Promise<CommandEnvelope[]> => {
+      walking = true;
+      await held;
+      walking = false;
+      return [];
+    };
+    let page: number = 0;
+    const promptContext = () => ({
+      user: 'chris', uri: 'http://cube/', cwd: '~', pacsserver: null,
+      physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+      ...(walking
+        ? { procWarmup: { loaded: 0, total: 0, state: 'cached' as const, sweeping: false, feed: { id: 834, loaded: ++page * 100, total: 1323 } } }
+        : {}),
+    });
+    const daemon = new CalypsoDaemon({
+      engine,
+      token: TOKEN,
+      promptProvider: promptContext,
+      // The counts never move: nothing but the running command can justify a push.
+      telemetryProvider: (): { jobs: number; feeds: number } => ({ jobs: 7, feeds: 3 }),
+    });
+    const port = await daemon.start();
+    try {
+      const ws = await client_open(port);
+      const prompts: Array<{ context: { procWarmup?: { feed?: { id: number; loaded: number } } } }> = [];
+      let beats: number = 0;
+      ws.on('message', (d) => {
+        const msg = JSON.parse(d.toString()) as Record<string, unknown>;
+        if (msg['type'] === 'promptline') prompts.push(msg as unknown as { context: { procWarmup?: { feed?: { id: number; loaded: number } } } });
+        if (msg['type'] === 'telemetry') beats += 1;
+      });
+      send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      // The attach pushes once, and the first heartbeat pushes once more (it
+      // has no previous counts to compare). Let both pass, so any push from
+      // here on is the heartbeat acting on a running command alone.
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no quiet heartbeat within 4s')), 4000);
+        const poll = setInterval(() => { if (beats >= 2) { clearTimeout(timer); clearInterval(poll); resolve(); } }, 20);
+      });
+      const before: number = prompts.length;
+      send(ws, { type: 'execute', id: '834', line: 'proc refresh 834' });
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('no heartbeat prompt push while the command ran')), 4000);
+        const poll = setInterval(() => { if (prompts.length > before) { clearTimeout(timer); clearInterval(poll); resolve(); } }, 20);
+      });
+      const carried = prompts[prompts.length - 1];
+      expect(carried.context.procWarmup?.feed?.id).toBe(834);
+      expect(carried.context.procWarmup?.feed?.loaded).toBeGreaterThan(0);
+      release();
+      ws.terminate();
+    } finally {
+      release();
+      await daemon.stop();
+    }
+  });
+
   it('does not push a prompt when no provider is configured', async () => {
     const engine = stubEngine_create();
     const daemon = new CalypsoDaemon({ engine, token: TOKEN });

@@ -815,8 +815,15 @@ try {
     // when HOME is pressed, so "more than one row" is true before the answer
     // arrives and the walk then measures the previous place.
     const before = names().join(',');
+    const bar = () => fp.querySelector('.pane-state')?.textContent ?? '';
     fp.querySelector('.files-home').click();
     await settle(() => names().length > 1 && names().join(',') !== before);
+    // A listing served from the cache says STALE on the bar until the
+    // session's refresh replaces it in place. Snapshot the FRESH home, or
+    // BACK's fresh listing is compared with a picture the surface itself
+    // had already corrected.
+    await settle(() => !/STALE/.test(bar()));
+    const homeBar = bar();
     const home = names();
     const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => r.querySelector('.files-name')?.textContent.trim() !== '..');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
@@ -828,8 +835,9 @@ try {
     fp.querySelector('.files-back').click();
     await settle(() => names().join(',') === home.join(','));
     const back = names();
+    const backBar = bar();
     await bind(true);
-    return { home, into, inside, back };`);
+    return { home, into, inside, back, homeBar, backBar };`);
   // The console language reaches each verb where it now lives, which is the
   // point of moving them through a host capability rather than a capsule.
   const spoken = await evalIn(`
@@ -849,7 +857,17 @@ try {
 
   check('HOME lands a rooted browser home', walk.home.length > 1 && walk.into !== '');
   check('a folder still descends from the listing', walk.inside.join(',') !== walk.home.join(','));
-  check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','), JSON.stringify({ home: walk.home.length, into: walk.into, inside: walk.inside.length, back: walk.back.slice(0, 4) }));
+  // On a miss, say exactly how the second listing of home differed from
+  // the first: what it gained, what it lost, and whether only the order
+  // moved — three different bugs, and a count cannot tell them apart.
+  const homeSet = new Set(walk.home); const backSet = new Set(walk.back);
+  const backDiff = {
+    home: walk.home.length, into: walk.into, inside: walk.inside.length, back: walk.back.length,
+    gained: walk.back.filter((n) => !homeSet.has(n)), lost: walk.home.filter((n) => !backSet.has(n)),
+    sameSetOtherOrder: walk.back.length === walk.home.length && walk.back.every((n) => homeSet.has(n)) && walk.back.join(',') !== walk.home.join(','),
+    homeBar: walk.homeBar, backBar: walk.backBar,
+  };
+  check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','), JSON.stringify(backDiff));
   }
 
   if (stage('row-verbs')) {

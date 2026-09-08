@@ -126,7 +126,7 @@ Row state that belongs to the pane (a refused read, an arrival, a status) goes t
 
 `caps-are-the-sort` and `roster-grid-single-source`. The caps are the frame, the track list is computed once from the traits and written as `--roster-cols`, and caps and rows read it alike. A pane never states a column count; the façade refuses a trait without a width at construction, so a miscount is a boot error and not a shifted row.
 
-`listing-is-one-abstraction`. A pane declares its listing and never builds one. S5 makes reaching past the façade to `RosterOrder` or `ListingHost` the violation the lint names.
+`listing-is-one-abstraction`. A pane declares its listing and never builds one. Reaching past the façade — to `RosterOrder`, `ListingHost`, the row or capsule builders, or a hand-typed `--roster-cols` — is the violation the lint names (S5); the PACS pane carries the one allowance, printed as debt, until S4.
 
 === Stylesheet
 

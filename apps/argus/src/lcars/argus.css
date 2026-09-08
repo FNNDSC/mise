@@ -1364,14 +1364,6 @@ body[data-zoom]:not([data-zoom='console'])
   50% { opacity: 1; }
 }
 
-.feedlist-row {
-  display: grid;
-  grid-template-columns: var(--roster-cols);
-  gap: 0 var(--roster-gap);
-  padding: 2px var(--roster-pad);
-  cursor: pointer;
-}
-
 .feedlist-row:hover {
   background: rgb(255 119 0 / 18%);
 }
@@ -1996,15 +1988,6 @@ body[data-header='dag'] #header-dag {
   position: static;
   border-bottom: 2px solid var(--orange);
   margin-bottom: 0.3rem;
-}
-
-.files-grid {
-  display: grid;
-  grid-template-columns: var(--roster-cols);
-  column-gap: var(--roster-gap);
-  padding: 0 var(--roster-pad);
-  row-gap: 2px;
-  font-size: 0.8rem;
 }
 
 .files-row > span {

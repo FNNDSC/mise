@@ -144,6 +144,18 @@ describe('listingTemplate_of', () => {
     expect((): string => listingTemplate_of(traits)).toThrow(/declares no width/);
   });
 
+  it('refuses a content-sized track, and accepts a fixed one, a share, or a minmax with a fixed minimum', () => {
+    const named = (width: string): ReadonlyArray<ListingTrait<Entry>> =>
+      [{ key: 'w', label: 'W', className: 'w', width, cell: (): string => '' }];
+    for (const bad of ['auto', 'min-content', 'max-content', 'fit-content(10em)', 'minmax(0, 13em)', 'minmax(0px, 1fr)']) {
+      expect((): string => listingTemplate_of(named(bad))).toThrow(/content-sized/);
+    }
+    for (const good of ['13em', '1fr', '7.5em', 'minmax(5em, 1fr)', 'minmax(4em, 12em)', '120px', '0.5fr']) {
+      expect(listingTemplate_of(named(good))).toBe(good);
+    }
+    expect((): string => listingTemplate_of(ENTRY_TRAITS, { width: 'auto', of: (): [] => [] })).toThrow(/content-sized/);
+  });
+
   it('refuses an uncapped trait that does not lead', () => {
     const traits: ReadonlyArray<ListingTrait<Entry>> = [
       { key: 'a', label: 'A', className: 'a', width: '1fr', cell: (): string => '' },

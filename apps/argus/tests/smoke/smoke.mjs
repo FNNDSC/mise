@@ -536,7 +536,8 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-row.files-type-plugin')) break; }
     const plugin = fp.querySelector('.files-row.files-type-plugin');
     if (!plugin) return { skipped: 'no plugin rows' };
-    plugin.click();
+    // A row with verbs is entered by double-click; a single click indicates (a-row-is-indicated-before-it-is-acted-on).
+    plugin.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     // Esc is about to be a level test, so the command line — the topmost
     // transient, which takes any Esc while open — closes first. Running a
     // line closes the palette; the pill press above reopened it.
@@ -587,12 +588,12 @@ try {
     // take the press — close it first).
     if (!document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
     const beforeEsc = fp.querySelector('.files-row.files-type-plugin');
-    if (beforeEsc) { beforeEsc.click(); await sleep(1500); }
+    if (beforeEsc) { beforeEsc.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); await sleep(1500); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
     const escBack = !fp.querySelector('.files-diagram') && fp.querySelectorAll('.files-row').length > 0;
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
     if (!pipeline) return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
-    pipeline.click();
+    pipeline.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     let summary = false, canvas = false;
     for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
     // The diagram canvas fills its mount in CSS pixels at any device pixel
@@ -650,7 +651,7 @@ try {
 
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
     if (!pipeline) return { skipped: 'no pipeline in /bin' };
-    pipeline.click();
+    pipeline.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     for (let i=0;i<40;i++){ await sleep(250); if (fp.querySelector('.files-diagram')) break; }
     const diagram = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
       strategy: shown('.diagram-strategy'), projection: shown('.diagram-projection') };
@@ -1108,7 +1109,8 @@ try {
     const dp = document.querySelector('.pane-dag');
     const rows = dp.querySelectorAll('.feedlist-row');
     if (rows.length === 0) return { skipped: 'no roster' };
-    rows[rows.length - 1].click();
+    // Double-click enters: a roster row carries verbs, so a single click indicates rather than activates.
+    rows[rows.length - 1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     await sleep(30);
     const atOnce = {
       listHidden: dp.querySelector('.dag-feedlist').style.display === 'none',
@@ -1142,7 +1144,8 @@ try {
     const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
     const rows = [...dp.querySelectorAll('.feedlist-row')].filter(r => r.querySelector('.feedlist-id')?.textContent.trim() !== '21');
     if (rows.length === 0) { await run('cd ~', 1500); return { skipped: 'no other feed' }; }
-    rows[rows.length - 1].click();
+    // Double-click enters: a roster row carries verbs, so a single click indicates rather than activates.
+    rows[rows.length - 1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     for (let i = 0; i < 120; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
     const picked = dp.querySelector('.dag-title').textContent;
     await run('proc feeds', 1500); // a promptline, as any command brings
@@ -1688,8 +1691,12 @@ try {
     const caps = [...dp.querySelectorAll('.roster-cap')].map(c => c.textContent.replace(/[▲▼\\s]/g, ''));
     const rows = [...dp.querySelectorAll('.feedlist-row')];
     const cells = rows.map(r => r.children.length);
+    // The invariant that protects the grid is that every row holds as many
+    // cells as the grid has TRACKS — the caps head only the sortable columns,
+    // and the action track is a real track with no cap of its own.
+    const tracks = rows.length > 0 ? getComputedStyle(rows[0]).gridTemplateColumns.split(' ').length : 0;
     const sizes = rows.map(r => r.querySelector('.feedlist-size')?.textContent ?? '');
-    return { caps, cellsUniform: cells.every(n => n === caps.length), rows: rows.length, honest: sizes.every(s => s === '—' || /\\d/.test(s)) };`);
+    return { caps, tracks, cellsUniform: rows.length > 0 && tracks >= caps.length && cells.every(n => n === tracks), rows: rows.length, honest: sizes.every(s => s === '—' || /\\d/.test(s)) };`);
   check('the roster carries SIZE and TIME on its grid, dashes where nodes are not resident', totals.caps.includes('SIZE') && totals.caps.includes('TIME') && totals.cellsUniform && totals.rows > 0 && totals.honest, JSON.stringify(totals));
   }
 

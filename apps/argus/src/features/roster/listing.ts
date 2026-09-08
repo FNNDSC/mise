@@ -124,6 +124,11 @@ export interface ListingActions<T> {
 export interface ListingRowBuild<T> {
   className?: (row: T) => string;
   decorate?: (element: HTMLElement, row: T) => void;
+  /**
+   * Extra classes for the GROUP a row heads when the level has a child:
+   * the wrapper holding the row and, while the row is open, its level.
+   */
+  groupClassName?: (row: T) => string;
 }
 
 /**
@@ -217,6 +222,12 @@ export interface ListingDeclaration<T> extends ListingLevel<T> {
   caps?: 'root' | 'each';
   selection?: ListingSelection<T>;
   state?: (parts: ListingStateParts) => string | null;
+  /**
+   * What the field says when blocks were set but hold no rows: an answer
+   * with nothing in it, which is a fact worth a line, as against no answer
+   * yet, which is silence. Absent, the field is simply empty.
+   */
+  empty?: () => HTMLElement;
 }
 
 /**
@@ -246,6 +257,12 @@ interface ChildSeat<T> {
   render(parent: T, into: HTMLElement, whole: boolean): void;
   /** Drops everything it held about the rows last drawn. */
   forget(): void;
+  /** Sets which rows are open at a depth beneath this seat's level. */
+  open_set(depth: number, keys: ReadonlyArray<string>): void;
+  /** Closes every row at every depth beneath. */
+  open_clear(): void;
+  /** The template at a depth beneath this seat's level. */
+  template_at(depth: number): string;
 }
 
 /** What a level asks of the listing that holds it. */
@@ -357,6 +374,8 @@ class Level<T> {
   /** Rows drawn outside the order: no verbs, no selection. */
   private readonly leadKeys: Set<string> = new Set();
   private indicated: string | null = null;
+  /** How many levels above this one: the root is 0. */
+  private readonly depth: number;
 
   /**
    * @param declaration - The level's shape.
@@ -364,11 +383,13 @@ class Level<T> {
    * @param capsInRoot - Whether this level's frame carries a caps row.
    * @param select - Gathers a clicked row while SELECT is on, returning
    *   true when it did; null for a level that never selects.
+   * @param depth - How many levels above this one; the root is 0.
    */
-  constructor(declaration: ListingLevel<T>, host: LevelHost, capsInRoot: boolean, select: LevelSelect<T>) {
+  constructor(declaration: ListingLevel<T>, host: LevelHost, capsInRoot: boolean, select: LevelSelect<T>, depth: number = 0) {
     this.declaration = declaration;
     this.host = host;
     this.select = select;
+    this.depth = depth;
     this.template = listingTemplate_of(declaration.traits, declaration.actions);
     const capped: ReadonlyArray<ListingTrait<T>> = declaration.traits.filter(
       (trait: ListingTrait<T>): boolean => trait.capped !== false,
@@ -392,7 +413,7 @@ class Level<T> {
   /** Builds the level beneath this one, its row type kept to itself. */
   private childSeat_build(child: ListingChild<T>): ChildSeat<T> {
     return child.level_visit(<C>(of: (row: T) => ReadonlyArray<C>, declaration: ListingLevel<C>): ChildSeat<T> => {
-      const level: Level<C> = new Level<C>(declaration, this.host, false, null);
+      const level: Level<C> = new Level<C>(declaration, this.host, false, null, this.depth + 1);
       return {
         filter_set: (text: string): void => level.filter_set(text),
         sort_set: (key: string, dir: 'asc' | 'desc'): void => level.sort_set(key, dir),
@@ -400,12 +421,17 @@ class Level<T> {
         render: (parent: T, into: HTMLElement, whole: boolean): void => {
           const element: HTMLElement = document.createElement('div');
           element.className = 'listing-level';
+          // The stylesheet indents by depth, never by which pane this is.
+          element.dataset['depth'] = String(this.depth + 1);
           element.style.setProperty('--roster-cols', level.template);
           element.appendChild(level.order.caps_mint());
           level.rows_draw(of(parent), [], element, whole);
           into.appendChild(element);
         },
         forget: (): void => level.forget(),
+        open_set: (depth: number, keys: ReadonlyArray<string>): void => level.open_set(depth, keys),
+        open_clear: (): void => level.open_clear(),
+        template_at: (depth: number): string => level.template_at(depth),
       };
     });
   }
@@ -433,6 +459,40 @@ class Level<T> {
   public sort_set(key: string, dir: 'asc' | 'desc'): void {
     this.order.sort_set(key, dir);
     this.child?.sort_set(key, dir);
+  }
+
+  /**
+   * Sets which rows are open at a depth counted from this level (0 = here).
+   *
+   * @param depth - Levels beneath this one.
+   * @param keys - The keys to hold open there; every other row closes.
+   */
+  public open_set(depth: number, keys: ReadonlyArray<string>): void {
+    if (depth === 0) {
+      this.expansion.open.clear();
+      if (this.expansion.mode === 'fold') for (const key of keys) this.expansion.open.add(key);
+      return;
+    }
+    this.child?.open_set(depth - 1, keys);
+  }
+
+  /** Closes every row at this level and every level beneath. */
+  public open_clear(): void {
+    this.expansion.open.clear();
+    this.child?.open_clear();
+  }
+
+  /**
+   * The grid template at a depth counted from this level (0 = here).
+   *
+   * @param depth - Levels beneath this one.
+   * @returns The template.
+   * @throws {Error} When no level exists at that depth.
+   */
+  public template_at(depth: number): string {
+    if (depth === 0) return this.template;
+    if (this.child === null) throw new Error(`no listing level at depth ${this.depth + depth}`);
+    return this.child.template_at(depth - 1);
   }
 
   /** Whether any row of a set survives the filter, at this level or beneath. */
@@ -485,12 +545,24 @@ class Level<T> {
     const kept: T[] = this.rows_keep(rows, whole);
     for (const row of kept) {
       const element: HTMLElement = this.row_build(row, false);
-      into.appendChild(element);
-      const key: string = this.declaration.key(row);
-      if (this.child !== null && expansion_isOpen(this.expansion, key)) {
-        element.classList.add('listing-open');
-        this.child.render(row, into, whole || this.order.matches(row));
+      if (this.child === null) {
+        into.appendChild(element);
+        continue;
       }
+      // A row that heads a level is wrapped with it: the group is the
+      // thing that opens and closes, and a stylesheet or a scenario can
+      // address "this study and its series" as one element.
+      const key: string = this.declaration.key(row);
+      const open: boolean = expansion_isOpen(this.expansion, key);
+      const group: HTMLElement = document.createElement('div');
+      const own: string | undefined = this.declaration.row?.groupClassName?.(row);
+      group.className = `listing-group${open ? ' listing-open' : ''}${own === undefined || own === '' ? '' : ` ${own}`}`;
+      group.appendChild(element);
+      if (open) {
+        element.classList.add('listing-open');
+        this.child.render(row, group, whole || this.order.matches(row));
+      }
+      into.appendChild(group);
     }
     return kept.length;
   }
@@ -723,6 +795,10 @@ export class Listing<T> {
     const whole: boolean = this.level.filter_isEmpty();
     let shown: number = 0;
     let total: number = 0;
+    const governed: number = this.blocks.reduce((sum: number, block: ListingBlock<T>): number => sum + block.rows.length, 0);
+    if (this.blocks.length > 0 && governed === 0 && this.declaration.empty !== undefined) {
+      field.appendChild(this.declaration.empty());
+    }
     for (const block of this.blocks) {
       const section: HTMLElement = document.createElement('section');
       section.className = 'listing-block';
@@ -782,9 +858,37 @@ export class Listing<T> {
     return this.level.row_element(key);
   }
 
-  /** The grid template the traits declare, for a form that stands on it. */
-  public template_get(): string {
-    return this.level.template;
+  /**
+   * The grid template a level's traits declare, for a form that stands on it.
+   *
+   * @param depth - Which level: 0 for the root, 1 for its child, and so on.
+   * @returns The template.
+   */
+  public template_get(depth: number = 0): string {
+    return this.level.template_at(depth);
+  }
+
+  /** The field on stage, or null before the first render — for a pane that seats a wait in it. */
+  public field_get(): HTMLElement | null {
+    return this.host.field_get();
+  }
+
+  /**
+   * Holds open exactly these rows at a depth, and repaints when rows are
+   * on stage. A level with one row opens itself this way; a cohort still
+   * arrives folded.
+   *
+   * @param depth - Which level: 0 for the root, 1 for its child, and so on.
+   * @param keys - The keys to hold open there.
+   */
+  public open_set(depth: number, keys: ReadonlyArray<string>): void {
+    this.level.open_set(depth, keys);
+    if (this.field !== null) this.render();
+  }
+
+  /** Closes every row at every level. Takes effect at the next render. */
+  public open_clear(): void {
+    this.level.open_clear();
   }
 
   /**

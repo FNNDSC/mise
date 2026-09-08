@@ -360,14 +360,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
      study, PROGRESS, date, accession, modality, SERVER, series, verbs.
      The list is positional — it gains a track wherever the traits gain a
      column, or every cell after the new one lands under the wrong cap. */
-  /* Every track is a fixed length but the one expanse: a track sized to
-     its content (minmax(0, …), auto) would size per ROW, since each row is
-     its own grid, and shift every column after it row by row. PROGRESS is
-     the expanse, and it follows the description at every level; the four
-     leading tracks are the same widths on the patient grid, so the bars
-     line up level over level. */
-  --roster-cols:
-    1.4em 13em 7.5em 12em 1fr 7.5em 9em 6.5em 9em 4em 7em;
+  /* The STUDY level's template — which the form stands on — is the
+     façade's, computed from the study traits and written here by the pane
+     (features/pacs/panel.ts). Only the gap and the edge padding are the
+     stylesheet's. */
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
   overflow-y: auto;
@@ -928,12 +924,7 @@ main {
 /* One study, on the study grid: the fold glyph, its facts, its summed
  * progress, and its verb. Activating it unfolds its series in place. */
 .pacs-study-row {
-  display: grid;
-  grid-template-columns: var(--roster-cols);
-  align-items: center;
-  gap: 0 var(--roster-gap);
-  padding: 3px var(--roster-pad);
-  font-size: 0.8rem;
+  padding-block: 3px;
   color: var(--orange);
   border-bottom: 2px solid var(--orange);
   cursor: pointer;
@@ -961,12 +952,13 @@ main {
 
 /* The series are a listing of their own, on their own grid, inside the
  * study that stands over them. */
-.pacs-series-level {
-  /* series, STATE (the expanse: the bar rides beside the description),
-     modality, files, verbs. The description is as wide as the study grid's
-     four leading tracks and three gaps less this level's own indent, so the
-     bar begins where the study's and the patient's do. */
-  --roster-cols: 35.5em 1fr 4em 6em 5em;
+/* The series level: the façade's level at depth 2, indented one fold
+ * glyph since its rows carry no fold column of their own. Its template
+ * (series, STATE as the expanse beside the description, modality, files,
+ * verbs) is the façade's, from the series traits; the description is as
+ * wide as the study grid's four leading tracks and three gaps less this
+ * indent, so the bar begins where the study's and the patient's do. */
+#pacs-results .listing-level[data-depth="2"] {
   font-size: 0.8rem;
   padding-left: 1.4em;
 }
@@ -974,7 +966,7 @@ main {
 /* Every study heads its series with caps, minted from the one column
  * declaration the pane makes: the same bar segments the file browser and
  * the runs listing wear, over the same grid as the rows beneath them. */
-.pacs-series-level .roster-caps {
+#pacs-results .listing-level[data-depth="2"] .roster-caps {
   margin: 0.35rem 0 0.3rem;
 }
 
@@ -982,12 +974,7 @@ main {
  * track takes the rest; the last track is the row's verbs, which answer to
  * no cap. */
 .pacs-series {
-  display: grid;
-  grid-template-columns: var(--roster-cols);
-  align-items: center;
-  gap: 0 var(--roster-gap);
-  padding: 2px var(--roster-pad);
-  font-size: 0.8rem;
+  padding-block: 2px;
 }
 
 .pacs-series:hover {
@@ -1844,10 +1831,17 @@ body[data-header='dag'] #header-dag {
   cursor: pointer;
 }
 
-/* A level beneath a level stands inside the row it belongs to, on a grid
- * of its own that the façade writes on the level, indented one glyph. */
+/* A row that heads a level is wrapped with it: the group opens and closes
+ * as one thing. A level beneath a level stands on a grid of its own that
+ * the façade writes on the level; whether it indents is the pane's call,
+ * by depth (`.listing-level[data-depth="2"]`), since a level whose rows
+ * carry their own fold column needs none. */
+.listing-group {
+  display: block;
+}
+
 .listing-level {
-  padding-left: 1.4em;
+  padding-left: 0;
 }
 
 .listing-indicated > span:first-child,
@@ -2933,9 +2927,8 @@ body[data-zoom] #header-restore {
 
 /* A folded study shows its own row alone: caps over hidden rows would name
  * columns nothing is standing in. */
-.pacs-collapsed .pacs-series-level {
-  display: none;
-}
+/* A closed group holds no level: the façade draws a level only under an
+ * open row, so nothing here needs hiding. */
 
 /* A study's progress: its series' summed, in its own column. */
 .pacs-study-progress {
@@ -2945,6 +2938,20 @@ body[data-zoom] #header-restore {
 
 .pacs-fold {
   color: var(--harvestgold);
+}
+
+/* The fold glyph reads the group's open state, so it can never disagree
+ * with what is beneath the row. A row with nothing to unfold shows none. */
+.pacs-fold::before {
+  content: '▸';
+}
+
+.listing-group.listing-open > .listing-row > .pacs-fold::before {
+  content: '▾';
+}
+
+.pacs-fold.pacs-fold-none::before {
+  content: '';
 }
 
 /* The study-level pull wears the deeper shade. */
@@ -3246,27 +3253,19 @@ body[data-zoom] #header-restore {
 }
 
 .pacs-patient-row {
-  /* fold, patient, MRN, answered, PROGRESS, studies, series, server — the
-     same four leading widths as the study grid, so the expanse begins at
-     one x on both levels. Same font size as the caps and the study rows:
-     the tracks are in em, and a larger em here put every patient cell a
-     few pixels right of the cap that names it. */
-  --roster-cols: 1.4em 13em 7.5em 12em 1fr 6em 5em 9em;
-  display: grid;
-  grid-template-columns: var(--roster-cols);
-  align-items: center;
-  gap: 0 var(--roster-gap);
-  padding: 4px var(--roster-pad);
-  font-size: 0.8rem;
+  /* The patient grid is the façade's root template (fold, patient, MRN,
+     answered, PROGRESS, studies, series, server): the same four leading
+     widths as the study grid, so the expanse begins at one x on both
+     levels. One font size for every level, since the tracks are in em. */
+  padding-block: 4px;
   color: var(--harvestgold);
   border-bottom: 2px solid var(--harvestgold);
   cursor: pointer;
 }
 
 /* The caps that head the region stand on the patient grid, not the study's. */
-#pacs-results > .roster-order .roster-caps {
-  --roster-cols: 1.4em 13em 7.5em 12em 1fr 6em 5em 9em;
-}
+/* The caps heading the region read the root (patient) template the façade
+ * writes on the mount; nothing here spells one. */
 
 .pacs-patient-row:hover {
   background: rgb(255 204 102 / 12%);
@@ -3302,17 +3301,18 @@ body[data-zoom] #header-restore {
    them — the nesting is said by the patient's row and this edge rule
    instead: an inset shadow rather than a border, since a border of its own
    width would shift the grid inside it by exactly that much. */
-.pacs-study-level {
+/* The study level: the façade's level at depth 1, on the study template
+ * it writes there; no indent, since a study row carries its own fold column. */
+#pacs-results .listing-level[data-depth="1"] {
   box-shadow: inset 2px 0 0 rgb(255 204 102 / 35%);
 }
 
-.pacs-study-level .roster-caps {
+#pacs-results .listing-level[data-depth="1"] .roster-caps {
   margin: 0.35rem 0 0.3rem;
 }
 
-.pacs-patient-collapsed .pacs-study-level {
-  display: none;
-}
+/* A closed patient holds no study level: the façade draws a level only
+ * under an open row. */
 
 /* --------------------------------------------- the PACS server control */
 

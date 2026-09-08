@@ -428,12 +428,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 
 .dag-roster {
-  /* id, title, status, nodes, progress, size, time, owner, created, and the
-   * action track — the track list is positional, so it must gain a column
-   * wherever the traits do or every cell after the new one lands under the
-   * wrong cap. The last column is fixed: a track that sized to its content
-   * would move every column left of it each time a row was indicated. */
-  --roster-cols: 4em 1fr 8em 4em 7em 5.5em 6em 7em 7em 19em;
+  /* The gap and edge padding of the roster grid; the column tracks
+   * (`--roster-cols`) are the Listing façade's, computed from the traits
+   * and written on the mount (features/roster/listing.ts), the action
+   * track included — so a cell count can no longer disagree with them. */
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
 }
@@ -1817,8 +1815,8 @@ body[data-header='dag'] #header-dag {
   padding-block: 0;
 }
 
-.feedlist-indicated .feedlist-title,
-.feedlist-indicated .feedlist-id {
+.feedlist-row.listing-indicated .feedlist-title,
+.feedlist-row.listing-indicated .feedlist-id {
   color: var(--butter);
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }

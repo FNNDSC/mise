@@ -21,7 +21,7 @@ Each section follows one order. *Purpose* says what the component answers. *Anat
 
 Source: `apps/argus/src/features/roster/listing.ts` (the façade), over `order.ts` (sort and filter), `host.ts` (frame and field) and `row.ts` (traits, actions, progress, expansion).
 
-Status: on stage in the browser since 2026-09-07 (epic #428, S2); the roster (S3) and PACS (S4) still compose their listings by hand. The browser was the first pane converted, and its conversion is what turned this section from a declaration into a description of a thing that runs.
+Status: on stage in the browser (2026-09-07, S2) and the runs roster (2026-09-08, S3); PACS (S4) still composes its listing by hand. The browser was the first pane converted, and its conversion is what turned this section from a declaration into a description of a thing that runs.
 
 === Purpose
 
@@ -100,6 +100,8 @@ A block is `{ key, header?, lead?, rows }`. A flat listing passes one; a browser
 
 As the browser uses it: one block per listed directory, each led by its `..` as a lead row; the row type carries the entry and the full path it sits at, since a listed name does not know its own directory. The card and preview projections are a painter; the cwd binding, the stale readout and the content views (a file, an image, a /bin entry) are the browser's own, layered around the listing rather than inside it. A node overlay declares no verbs, so it mints no action track and keeps its single click — the case the reserved track would otherwise have spent a column on.
 
+As the roster uses it: one block, the constant field `roster`; PROGRESS is the expanse right after TITLE; the surface's row verbs are declared at construction (a roster given none keeps its single click); a feed's arrival pulse is a mark toggled on `row_element(key)` between renders; and the state composer yields the bar to the graph (returns null) whenever a graph rather than the roster is on stage. The pane's forwarders stringify the feed id at the boundary, since the façade keys rows by string.
+
 === States
 
 [cols="1,1,3"]
@@ -128,7 +130,7 @@ Row state that belongs to the pane (a refused read, an arrival, a status) goes t
 
 === Stylesheet
 
-A track is a fixed length, or the listing's one expanse (`1fr`). Never a track sized to its content — `auto`, `minmax(0, …)`, `min-content`, `max-content`, `fit-content` — because a row is its own grid, and a content-sized track sizes per row: a short value narrows the track for that row alone and every column after it jogs. A listing that carries progress makes PROGRESS the expanse, right after its description column, with the trailing facts and the verbs after it. Levels beneath a level share the expanse's left edge: the leading tracks are the same widths on every level (or the child's description is widened to make up the difference), so the bars line up level over level. Every row and caps row of one listing shares one font size, since the tracks are in em. The façade refuses a content-sized track at construction (S3) and computes the alignment across levels (S4); until then the rule is kept by hand in the PACS pane.
+A track is a fixed length, or the listing's one expanse (`1fr`). Never a track sized to its content — `auto`, `minmax(0, …)`, `min-content`, `max-content`, `fit-content` — because a row is its own grid, and a content-sized track sizes per row: a short value narrows the track for that row alone and every column after it jogs. A listing that carries progress makes PROGRESS the expanse, right after its description column, with the trailing facts and the verbs after it. Levels beneath a level share the expanse's left edge: the leading tracks are the same widths on every level (or the child's description is widened to make up the difference), so the bars line up level over level. Every row and caps row of one listing shares one font size, since the tracks are in em. The façade refuses a content-sized track at construction (`listingTemplate_of` throws on `auto`, `minmax(0, …)` and the content keywords) and will compute the alignment across levels (S4); until then the PACS pane keeps the alignment by hand.
 
 A theme may set, per pane: `--roster-gap` and `--roster-pad` on the grid host, the hues of `.listing-indicated` and `.listing-selected`, and the per-trait cell rules the trait's `className` names (alignment lives there, right-aligned numbers included). A theme may not write `--roster-cols` on a converted pane, since the façade owns it; nor size `.listing-action`, whose height is declared once and read by the track that reserves room for it.
 

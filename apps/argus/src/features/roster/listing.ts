@@ -281,6 +281,9 @@ export function listingTemplate_of<T>(
     if (trait.width === undefined || trait.width.trim() === '') {
       throw new Error(`listing trait '${trait.key}' declares no width`);
     }
+    if (!track_isFixed(trait.width)) {
+      throw new Error(`listing trait '${trait.key}' declares a content-sized track '${trait.width.trim()}': a row is its own grid, so a track sized to its content sizes per row and jogs every column after it`);
+    }
     if (trait.capped === false) {
       if (cappedSeen) throw new Error(`uncapped listing trait '${trait.key}' must lead the traits`);
     } else {
@@ -288,8 +291,38 @@ export function listingTemplate_of<T>(
     }
     tracks.push(trait.width.trim());
   }
-  if (actions !== undefined) tracks.push(actions.width.trim());
+  if (actions !== undefined) {
+    if (!track_isFixed(actions.width)) {
+      throw new Error(`listing actions declare a content-sized track '${actions.width.trim()}'`);
+    }
+    tracks.push(actions.width.trim());
+  }
   return tracks.join(' ');
+}
+
+/**
+ * Whether a track is deterministic: a fixed length, a share of the
+ * remaining space (`1fr`), or a `minmax` whose minimum is a fixed length.
+ *
+ * Not `auto`, not `min-content`, `max-content` or `fit-content`, and not
+ * `minmax(0, …)`: on a per-row grid each of those sizes to the row's own
+ * content, so a short value narrows the track for that row alone and every
+ * column after it jogs — the misalignment a listing exists to prevent.
+ *
+ * @param track - The declared track.
+ * @returns True when the track is the same width on every row.
+ */
+export function track_isFixed(track: string): boolean {
+  const declared: string = track.trim();
+  if (/^(auto|min-content|max-content)$/.test(declared) || /^fit-content\(/.test(declared)) return false;
+  const minmax: RegExpMatchArray | null = /^minmax\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)$/.exec(declared);
+  if (minmax !== null) {
+    const minimum: string = minmax[1] ?? '';
+    // A zero minimum is content-sizing in disguise: the track grows with
+    // the row's content up to its maximum, which differs row by row.
+    return /^(?:[1-9]\d*|0*\.\d*[1-9]\d*|[1-9]\d*\.\d+)(px|em|rem|ch|vw|vh|%)$/.test(minimum);
+  }
+  return /^(?:\d+\.?\d*|\.\d+)(px|em|rem|ch|vw|vh|%|fr)$/.test(declared);
 }
 
 /** The count of leading uncapped traits: the cells the caps row blanks. */

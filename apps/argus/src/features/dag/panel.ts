@@ -28,12 +28,8 @@ import {
   type WatchState,
 } from '@fnndsc/menu';
 import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
-import { RosterOrder } from '../roster/order.js';
-import { ListingHost } from '../roster/host.js';
-import {
-  listingRow_build, progressCell_build, traitColumns_of, traitValue_of, actionCell_build,
-  type ListingProgress, type ListingTrait, type ListingAction,
-} from '../roster/row.js';
+import { Listing, type ListingStateParts } from '../roster/listing.js';
+import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 
 /** What the pane asks of its host. */
@@ -103,16 +99,22 @@ function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
 }
 
 /**
- * The runs roster's columns, declared once.
+ * The runs roster's columns, declared once, each with its grid track.
  *
- * Totals are derived from resident nodes, so a feed not yet resident reads
- * a dash and sorts below every known value rather than as a zero.
+ * Identity, description, then PROGRESS as the one expanse — a running feed
+ * says how far it has got without anyone opening it, and the bar is what
+ * the eye scans, so it takes the middle of the row — then the trailing
+ * facts. Every other track is a fixed length: a row is its own grid, and a
+ * track sized to its content would size per row and jog every column after
+ * it. Totals are derived from resident nodes, so a feed not yet resident
+ * reads a dash and sorts below every known value rather than as a zero.
  */
 const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   {
     key: 'id',
     label: 'ID',
     className: 'feedlist-id',
+    width: '4em',
     cell: (feed: FeedListEntry): string => String(feed.id),
     compare: (feed: FeedListEntry): number => feed.id,
   },
@@ -120,28 +122,15 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     key: 'title',
     label: 'TITLE',
     className: 'feedlist-title',
+    width: '24em',
     cell: (feed: FeedListEntry): string => feed.title || '(untitled)',
     compare: (feed: FeedListEntry): string => feed.title,
-  },
-  {
-    key: 'status',
-    label: 'STATUS',
-    className: 'feedlist-status',
-    cell: (feed: FeedListEntry): string => feed.status.toUpperCase(),
-    compare: (feed: FeedListEntry): string => feed.status,
-  },
-  {
-    key: 'nodes',
-    label: 'NODES',
-    className: 'feedlist-nodes',
-    cell: (feed: FeedListEntry): string => (feed.jobsTotal === undefined ? '—' : String(feed.jobsTotal)),
-    compare: (feed: FeedListEntry): number => feed.jobsTotal ?? -1,
   },
   {
     key: 'progress',
     label: 'PROGRESS',
     className: 'feedlist-progress',
-    // A running feed says how far it has got without anyone opening it.
+    width: '1fr',
     // A feed with nothing scheduled still gets a track: nothing has
     // happened yet reads differently from there is nothing here.
     cell: (feed: FeedListEntry): HTMLElement => progressCell_build(feedProgress_of(feed)),
@@ -152,9 +141,26 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     },
   },
   {
+    key: 'status',
+    label: 'STATUS',
+    className: 'feedlist-status',
+    width: '8em',
+    cell: (feed: FeedListEntry): string => feed.status.toUpperCase(),
+    compare: (feed: FeedListEntry): string => feed.status,
+  },
+  {
+    key: 'nodes',
+    label: 'NODES',
+    className: 'feedlist-nodes',
+    width: '4em',
+    cell: (feed: FeedListEntry): string => (feed.jobsTotal === undefined ? '—' : String(feed.jobsTotal)),
+    compare: (feed: FeedListEntry): number => feed.jobsTotal ?? -1,
+  },
+  {
     key: 'sizeBytes',
     label: 'SIZE',
     className: 'feedlist-size',
+    width: '5.5em',
     cell: (feed: FeedListEntry): string => (feed.sizeBytes === undefined ? '—' : size_format(feed.sizeBytes)),
     compare: (feed: FeedListEntry): number => feed.sizeBytes ?? -1,
   },
@@ -162,6 +168,7 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     key: 'wallSeconds',
     label: 'TIME',
     className: 'feedlist-time',
+    width: '6em',
     cell: (feed: FeedListEntry): string => (feed.wallSeconds === undefined ? '—' : duration_format(feed.wallSeconds)),
     compare: (feed: FeedListEntry): number => feed.wallSeconds ?? -1,
   },
@@ -169,16 +176,21 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     key: 'owner',
     label: 'OWNER',
     className: 'feedlist-owner',
+    width: '7em',
     cell: (feed: FeedListEntry): string => feed.owner,
   },
   {
     key: 'createdAt',
     label: 'CREATED',
     className: 'feedlist-created',
+    width: '7em',
     cell: (feed: FeedListEntry): string => feed.createdAt.slice(0, 10),
     compare: (feed: FeedListEntry): string => feed.createdAt,
   },
 ];
+
+/** The width of the roster's action track, reserved on every row. */
+const FEED_ACTIONS_WIDTH: string = '19em';
 
 export class DagPanel {
   private readonly scene: DagScene;
@@ -189,9 +201,6 @@ export class DagPanel {
   private readonly strategyPill: HTMLElement;
   private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
-  /** The indicated feed's id, and every row's action cell by feed id. */
-  private indicated: number | null = null;
-  private actionCells: Map<number, HTMLElement> = new Map();
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
   private shownFeedId: number | null = null;
   private pinnedFeedId: number | null = null;
@@ -207,11 +216,9 @@ export class DagPanel {
   private arrivals: Set<number> = new Set();
   /** The last arrival set seen, so one set asks for the roster once. */
   private arrivalsKey: string = '';
-  /** Per-column sort + filter over the resident roster. */
-  private readonly order: RosterOrder<FeedListEntry>;
-  /** The frame-and-field host both tabular panes share. */
-  private readonly host: ListingHost<FeedListEntry>;
-  /** The title bar's state span (FILTERED n/m on the list; LIVE / SETTLED / STALE on a graph). */
+  /** The roster, declared into the listing façade. */
+  private readonly listing: Listing<FeedListEntry>;
+  /** The title bar's state span (LIVE / SETTLED / STALE on a graph; the listing writes FILTERED n/m). */
   private readonly stateSpan: HTMLElement | null;
   /** The feed this pane currently holds a watch on. */
   private watchedFeedId: number | null = null;
@@ -250,20 +257,38 @@ export class DagPanel {
     this.empty = empty;
     this.strategyPill = strategyPill;
     this.handlers = handlers;
-    this.order = new RosterOrder<FeedListEntry>(
-      traitColumns_of(FEED_TRAITS),
-      traitValue_of(FEED_TRAITS),
-      (): void => { if (this.lastRoster.length > 0) this.chooser_show(this.lastRoster); },
-      { key: 'createdAt', dir: 'desc' },
-    );
-    this.host = new ListingHost<FeedListEntry>(this.feedList, this.order);
     const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
-    this.filterBlock = paneRootEl?.querySelector<HTMLElement>('.runs-filter') ?? null;
-    this.filterBlock?.classList.add('rail-off');
-    this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
-    this.order.stripChange_observe((): void => this.filterBlock_sync());
+    const verbs: DagPanelHandlers['feed_verbs'] = handlers.feed_verbs;
+    this.listing = new Listing<FeedListEntry>({
+      mount: this.feedList,
+      traits: FEED_TRAITS,
+      key: (feed: FeedListEntry): string => String(feed.id),
+      chrome: paneRootEl === null ? undefined : { root: paneRootEl, prefix: 'runs' },
+      // Declared verbs mint the action track and split click from
+      // double-click; a roster given none keeps its single click.
+      actions: verbs === undefined ? undefined : { width: FEED_ACTIONS_WIDTH, of: (feed: FeedListEntry): ReadonlyArray<ListingAction<FeedListEntry>> => verbs(feed) },
+      activate: (feed: FeedListEntry): void => this.feed_activate(feed),
+      indicated: (feed: FeedListEntry): void => this.handlers.feed_indicated?.(feed),
+      row: {
+        // Row state is not a column: a feed's status and its arrival mark
+        // the row, they do not sit under a cap.
+        className: (feed: FeedListEntry): string =>
+          `feedlist-row feedlist-${feed.status}${this.arrivals.has(feed.id) ? ' feedlist-arrived' : ''}`,
+        decorate: (element: HTMLElement, feed: FeedListEntry): void => {
+          element.dataset['feed'] = String(feed.id);
+          element.title = verbs === undefined
+            ? 'enter the feed (Esc returns to this list)'
+            : 'click to indicate, double-click to enter (Esc returns to this list)';
+        },
+      },
+      // The bar is the graph's while a graph is on stage (LIVE / SETTLED /
+      // STALE); the listing's summary is written only while the roster is.
+      state: (parts: ListingStateParts): string | null =>
+        this.canvas.style.display === 'block' ? null : parts.filter,
+      defaultSort: { key: 'createdAt', dir: 'desc' },
+    });
     // The roster is the subscription too, at a slower beat: while the list
     // stays on screen it re-asks the session, so a feed run from a console
     // shows up without a reload. Nothing is asked while the pane is off
@@ -273,12 +298,6 @@ export class DagPanel {
       if (this.rosterPending || document.visibilityState !== 'visible') return;
       this.handlers.command_run('proc feeds');
     }, ROSTER_TICK_MS);
-    paneRootEl?.addEventListener('argus:roster', (event: Event): void => {
-      const detail = (event as CustomEvent<{ op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }>).detail;
-      if (detail.op === 'sort') this.order.sort_set(detail.key, detail.dir ?? 'asc');
-      else if (detail.text === '') this.order.strip_toggle(false);
-      else this.order.filter_set(detail.text);
-    });
     this.scene = new DagScene(canvas, {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
@@ -519,8 +538,6 @@ export class DagPanel {
     }
     return legend;
   }
-  /** The roster frame's FILTER block. */
-  private filterBlock: HTMLElement | null = null;
 
   /**
    * The bar's mode readout: every display mode that is not the default,
@@ -825,10 +842,8 @@ export class DagPanel {
     this.empty.style.display = 'block';
     this.roster_show(true);
     this.title.textContent = this.defaultTitle;
-    if (this.stateSpan !== null) {
-      this.stateSpan.classList.remove('state-wait');
-      this.stateSpan.textContent = this.order.summary();
-    }
+    this.stateSpan?.classList.remove('state-wait');
+    this.listing.state_refresh();
   }
 
   /** Asks for the cache-resident feed roster (the RUNS-02 gesture). */
@@ -919,10 +934,8 @@ export class DagPanel {
       this.empty.style.display = 'none';
       this.roster_show(true);
       this.title.textContent = this.defaultTitle;
-      if (this.stateSpan !== null) {
-        this.stateSpan.classList.remove('state-wait');
-        this.stateSpan.textContent = this.order.summary();
-      }
+      this.stateSpan?.classList.remove('state-wait');
+      this.listing.state_refresh();
       return true;
     }
     if (this.canvas.style.display === 'none') {
@@ -941,7 +954,7 @@ export class DagPanel {
     this.facts.replaceChildren();
     this.scene.selection_clear();
     this.roster_show(true);
-    if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
+    this.listing.state_refresh();
     return true;
   }
 
@@ -962,8 +975,8 @@ export class DagPanel {
     if (key === this.arrivalsKey) return;
     this.arrivalsKey = key;
     this.arrivals = new Set(arrived);
-    for (const row of this.feedList.querySelectorAll<HTMLElement>('.feedlist-row')) {
-      row.classList.toggle('feedlist-arrived', this.arrivals.has(Number(row.dataset.feed)));
+    for (const feed of this.lastRoster) {
+      this.listing.row_element(String(feed.id))?.classList.toggle('feedlist-arrived', this.arrivals.has(feed.id));
     }
     const listed: Set<number> = new Set(this.lastRoster.map((feed: FeedListEntry): number => feed.id));
     const unlisted: boolean = arrived.some((id: number): boolean => !listed.has(id));
@@ -972,54 +985,14 @@ export class DagPanel {
 
   private chooser_show(feeds: FeedListEntry[]): void {
     this.lastRoster = feeds;
-    // A rebuilt roster holds none of the old rows, so the indication and
-    // the cells that carried it go with them.
-    this.actionCells = new Map();
-    this.indicated = null;
     this.empty.style.display = 'none';
-    // Rows scroll; the frame does not. The host seats the frame and opens
-    // the field beneath it.
-    const field: HTMLElement = this.host.field_open();
-    this.rosterFrame_track();
-    for (const feed of this.order.apply(feeds)) {
-      const row: HTMLElement = listingRow_build(feed, FEED_TRAITS, {
-        className: (entry: FeedListEntry): string => {
-          // Row state is not a column: a feed's status and its arrival mark
-          // the row, they do not sit under a cap.
-          const marks: string[] = ['feedlist-row', `feedlist-${entry.status}`];
-          if (this.arrivals.has(entry.id)) marks.push('feedlist-arrived');
-          return marks.join(' ');
-        },
-        decorate: (element: HTMLElement, entry: FeedListEntry): void => {
-          element.dataset.feed = String(entry.id);
-          // The action track: on every row, empty until the row is
-          // indicated, so a roster with verbs does not jump when one row
-          // starts speaking.
-          const actions: HTMLSpanElement = document.createElement('span');
-          actions.className = 'listing-actions feedlist-actions';
-          element.appendChild(actions);
-          this.actionCells.set(entry.id, actions);
-          const verbs = this.handlers.feed_verbs;
-          if (verbs === undefined) {
-            element.title = 'enter the feed (Esc returns to this list)';
-            element.addEventListener('click', (): void => this.feed_activate(entry));
-            return;
-          }
-          // A listing that hides its verbs until a row is indicated must
-          // distinguish indicating from activating: a click says "this
-          // one", a double-click says "go" (docs/aegis.adoc).
-          element.title = 'click to indicate, double-click to enter (Esc returns to this list)';
-          element.addEventListener('click', (): void => this.row_indicate(entry));
-          element.addEventListener('dblclick', (): void => {
-            this.row_indicate(null);
-            this.feed_activate(entry);
-          });
-        },
-      });
-      field.appendChild(row);
-    }
+    // The roster is shown before the rows are set: the listing writes the
+    // bar only while the roster, not a graph, is on stage.
     this.roster_show(true);
-    if (this.stateSpan !== null) this.stateSpan.textContent = this.order.summary();
+    // One block, one field: the roster is a constant place, so a selection
+    // (should the roster ever gain one) would survive every re-listing.
+    this.listing.rows_set([{ key: 'roster', rows: feeds }], { field: 'roster' });
+    this.rosterFrame_track();
   }
 
   /**
@@ -1043,20 +1016,7 @@ export class DagPanel {
    * @param entry - The feed to indicate, or null to indicate none.
    */
   public row_indicate(entry: FeedListEntry | null): void {
-    if (this.indicated !== null) {
-      this.actionCells.get(this.indicated)?.replaceChildren();
-      this.feedList.querySelector('.feedlist-indicated')?.classList.remove('feedlist-indicated');
-    }
-    this.indicated = entry === null ? null : entry.id;
-    if (entry === null) return;
-    const cell: HTMLElement | undefined = this.actionCells.get(entry.id);
-    if (cell === undefined) return;
-    cell.parentElement?.classList.add('feedlist-indicated');
-    const offered: ReadonlyArray<ListingAction<FeedListEntry>> = this.handlers.feed_verbs?.(entry) ?? [];
-    if (offered.length > 0) {
-      cell.replaceChildren(...actionCell_build(entry, offered).childNodes);
-    }
-    this.handlers.feed_indicated?.(entry);
+    this.listing.row_indicate(entry === null ? null : String(entry.id));
   }
 
   /**
@@ -1069,27 +1029,13 @@ export class DagPanel {
    * @param text - What to say beside the verbs.
    */
   public rowReadout_show(feedId: number, text: string): void {
-    if (this.indicated !== feedId) return;
-    const cell: HTMLElement | undefined = this.actionCells.get(feedId);
-    if (cell === undefined) return;
-    const readout: HTMLSpanElement = document.createElement('span');
-    readout.className = 'listing-readout';
-    readout.textContent = text;
-    cell.querySelector('.listing-readout')?.remove();
-    cell.appendChild(readout);
+    // The feed id is stringified at the boundary: the façade keys by string.
+    this.listing.readout_show(String(feedId), text);
   }
 
   /** Shows or hides the roster filter strip (the mode frame's FILTER, or `runs filter`). */
   public filter_toggle(open?: boolean): void {
-    this.order.strip_toggle(open);
-  }
-
-  /** The roster's FILTER block reads the strip's state, like every mode block. */
-  private filterBlock_sync(): void {
-    if (this.filterBlock === null) return;
-    const on: boolean = this.order.strip_isOpen();
-    this.filterBlock.textContent = on ? 'FILTER ON' : 'FILTER OFF';
-    this.filterBlock.classList.toggle('rail-off', !on);
+    this.listing.filter_toggle(open);
   }
 
   /** Keeps the roster frame's rule beneath the caps (and the filter strip). */

@@ -37,12 +37,10 @@ import {
   type WireEnvelope,
 } from '@fnndsc/menu';
 import type { ProgressMessage } from '../../calypso/client.js';
-import { RosterOrder } from '../roster/order.js';
-import { ListingHost } from '../roster/host.js';
+import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
 import {
-  actionCell_build, expansion_isOpen, expansion_toggle, listingRow_build,
-  progress_aggregate, progressCell_build, traitColumns_of, traitValue_of,
-  type Expansion, type ListingAction, type ListingProgress, type ListingTrait,
+  progress_aggregate, progressCell_build,
+  type ListingAction, type ListingProgress, type ListingTrait,
 } from '../roster/row.js';
 
 /** What the workspace asks of its host. */
@@ -172,7 +170,6 @@ function elapsed_describe(at: string): string | null {
  * level above behind. A PACS result cannot, because the operator is
  * comparing studies while reading one — so the parent stays on stage.
  */
-const STUDY_EXPANSION: 'fold' = 'fold';
 
 /**
  * The PACS workspace controller.
@@ -196,17 +193,10 @@ export class PacsPanel {
   private readonly studyTraits: ReadonlyArray<ListingTrait<StudyRow>>;
   private readonly studyActions: ReadonlyArray<ListingAction<StudyRow>>;
   private readonly patientTraits: ReadonlyArray<ListingTrait<PatientRow>>;
-  private readonly order: RosterOrder<SeriesRow>;
-  private readonly studyOrder: RosterOrder<StudyRow>;
-  private readonly patientOrder: RosterOrder<PatientRow>;
-  private readonly host: ListingHost<PatientRow>;
-  private readonly expansion: Expansion = { mode: STUDY_EXPANSION, open: new Set<string>() };
-  /** Which patients are unfolded. A patient keeps its place, like a study. */
-  private readonly patientExpansion: Expansion = { mode: STUDY_EXPANSION, open: new Set<string>() };
+  /** The three levels, declared once into the listing façade. */
+  private readonly listing: Listing<PatientRow>;
   /** Each patient's progress mount and the series it sums over. */
   private readonly patientTracks: Map<string, { mount: HTMLElement; uids: string[] }> = new Map();
-  private readonly filterPill: HTMLElement | null;
-  private readonly stateSpan: HTMLElement | null;
   /**
    * Says when an answer was answered, when it was not answered just now.
    *
@@ -244,71 +234,67 @@ export class PacsPanel {
     this.studyTraits = this.studyTraits_declare();
     this.studyActions = this.studyActions_declare();
     this.patientTraits = this.patientTraits_declare();
-    // Three levels, three column declarations, one frame. The PATIENT caps
-    // head the region and are always on stage; a patient's STUDY caps are
-    // minted inside it, and a study's SERIES caps inside that.
-    this.patientOrder = new RosterOrder<PatientRow>(
-      traitColumns_of(this.patientTraits),
-      traitValue_of(this.patientTraits),
-      (): void => this.results_repaint(),
-      undefined,
-      // The fold glyph is a cell of the grid, so the caps carry a blank
-      // over it and every cap still sits above its column.
-      1,
-    );
-    this.studyOrder = new RosterOrder<StudyRow>(
-      traitColumns_of(this.studyTraits),
-      traitValue_of(this.studyTraits),
-      (): void => this.results_repaint(),
-      undefined,
-      1,
-      // Minted inside each patient; this order's own frame is never mounted.
-      false,
-    );
-    this.order = new RosterOrder<SeriesRow>(
-      traitColumns_of(this.traits),
-      traitValue_of(this.traits),
-      (): void => this.results_repaint(),
-      undefined,
-      0,
-      // The series caps are minted per study; this order's own frame is
-      // never mounted, so it carries no caps and no strip of its own.
-      false,
-    );
-    this.host = new ListingHost<PatientRow>(this.results, this.patientOrder);
-    this.filterPill = root.querySelector<HTMLElement>('.pacs-filter');
-    this.stateSpan = root.querySelector<HTMLElement>('.pane-state');
-    this.filterPill?.addEventListener('click', (): void => this.patientOrder.strip_toggle());
-    this.patientOrder.stripChange_observe((): void => this.filterPill_sync());
-    // One filter, read down the levels: the strip belongs to the outermost
-    // order, and the two beneath it are told the same text — so a patient
-    // that does not match itself can still keep the studies that do, and a
-    // study that does not can still keep its matching series.
-    this.patientOrder.filterChange_observe((text: string): void => {
-      this.studyOrder.filter_set(text, false);
-      this.order.filter_set(text, false);
+    // Three levels, one declaration each, one frame: the PATIENT caps head
+    // the region; a patient's STUDY caps are minted inside it when it opens,
+    // and a study's SERIES caps inside that. One filter strip reads down
+    // the levels, one sort names its level, and the bar is written by the
+    // façade through a composer that puts the answer's tally ahead of the
+    // view's summary. The fold glyph is each folding row's own leading
+    // cell, drawn by the stylesheet from the group's open state.
+    this.listing = new Listing<PatientRow>({
+      mount: this.results,
+      traits: this.patientTraits,
+      key: (row: PatientRow): string => row.key,
+      chrome: { root, prefix: 'pacs' },
+      // A patient with no studies has nothing to unfold, and a glyph
+      // promising otherwise is a control that cannot act.
+      activatable: (row: PatientRow): boolean => row.studies.length > 0,
+      row: {
+        className: (): string => 'pacs-patient-row',
+        groupClassName: (row: PatientRow): string =>
+          row.patient.status === 'unasked' ? 'pacs-patient pacs-patient-unasked' : 'pacs-patient',
+        decorate: (element: HTMLElement, row: PatientRow): void => {
+          if (row.studies.length > 0) element.title = 'unfold this patient\'s studies (the patient keeps its place)';
+        },
+      },
+      child: listingChild_declare(
+        (row: PatientRow): ReadonlyArray<StudyRow> =>
+          row.studies.map((study: PacsStudy, index: number): StudyRow => ({ study, key: study_key(study, index) })),
+        {
+          traits: this.studyTraits,
+          key: (row: StudyRow): string => row.key,
+          // A study's verb stands on every row: pulling is what a study is for.
+          actions: { width: '7em', of: (): ReadonlyArray<ListingAction<StudyRow>> => this.studyActions, always: true },
+          row: {
+            className: (): string => 'pacs-study-row',
+            groupClassName: (): string => 'pacs-study',
+            decorate: (element: HTMLElement): void => {
+              element.title = 'unfold this study\'s series (the study keeps its place)';
+            },
+          },
+          child: listingChild_declare(
+            (row: StudyRow): ReadonlyArray<SeriesRow> =>
+              row.study.series.map((series: PacsSeries): SeriesRow => ({ study: row.study, studyKey: row.key, series })),
+            {
+              traits: this.traits,
+              key: (row: SeriesRow): string => row.series.seriesUID,
+              actions: { width: '5em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
+              // A series opens nothing: its verbs are the whole of what it does.
+              activatable: (): boolean => false,
+              row: { className: (): string => 'pacs-series' },
+            },
+          ),
+        },
+      ),
+      state: (parts: ListingStateParts): string => this.stateLine_compose(parts),
+      empty: (): HTMLElement => element_note('NO STUDIES FOUND'),
     });
-    this.filterPill_sync();
+    // The form stands on the STUDY grid (a-form-stands-where-its-answer-will):
+    // the workspace carries that level's template, computed by the façade.
+    root.style.setProperty('--roster-cols', this.listing.template_get(1));
     // The frame is seated before the first query, so FILTER means something
     // the moment the pane is on stage rather than only after an answer.
-    this.host.field_open();
-    // The language reaches the same state the frame's block does.
-    root.addEventListener('argus:roster', (event: Event): void => {
-      const detail = (event as CustomEvent<
-        { op: 'sort'; key: string; dir?: 'asc' | 'desc' } | { op: 'filter'; text: string }
-      >).detail;
-      // A column names its level: `pacs sort accession` orders studies,
-      // `pacs sort modality` orders every study's series.
-      if (detail.op === 'sort') {
-        this.patientOrder.sort_set(detail.key, detail.dir ?? 'asc');
-        this.studyOrder.sort_set(detail.key, detail.dir ?? 'asc');
-        this.order.sort_set(detail.key, detail.dir ?? 'asc');
-      } else if (detail.text === '') {
-        this.patientOrder.strip_toggle(false);
-      } else {
-        this.patientOrder.filter_set(detail.text);
-      }
-    });
+    this.listing.rows_set([], { field: 'pacs' });
 
     for (const { id } of FORM_TERMS) {
       const field: HTMLInputElement = element_input(root, `#${id}`);
@@ -359,21 +345,39 @@ export class PacsPanel {
   private patientTraits_declare(): ReadonlyArray<ListingTrait<PatientRow>> {
     return [
       {
+        // The fold glyph is the row's own leading cell: it sits in the grid
+        // so every cap keeps its column, and the stylesheet draws it from
+        // the group's open state. A patient with no studies shows none.
+        key: 'fold',
+        label: '',
+        className: 'pacs-fold',
+        capped: false,
+        width: '1.4em',
+        cell: (row: PatientRow): HTMLElement => {
+          const fold: HTMLSpanElement = document.createElement('span');
+          fold.className = row.studies.length === 0 ? 'pacs-fold pacs-fold-none' : 'pacs-fold';
+          return fold;
+        },
+      },
+      {
         key: 'patient',
         label: 'PATIENT',
         className: 'pacs-patient-name',
+        width: '13em',
         cell: (row: PatientRow): string => row.patient.patientName || '(unknown)',
       },
       {
         key: 'mrn',
         label: 'MRN',
         className: 'pacs-patient-mrn',
+        width: '7.5em',
         cell: (row: PatientRow): string => row.patient.patientId || '—',
       },
       {
         key: 'answered',
         label: 'ANSWERED',
         className: 'pacs-patient-answered',
+        width: '12em',
         cell: (row: PatientRow): HTMLElement => {
           const said: HTMLSpanElement = document.createElement('span');
           said.className = row.patient.status === 'unasked'
@@ -405,6 +409,7 @@ export class PacsPanel {
         key: 'progress',
         label: 'PROGRESS',
         className: 'pacs-patient-progress',
+        width: '1fr',
         cell: (row: PatientRow): HTMLElement => {
           const holder: HTMLSpanElement = document.createElement('span');
           holder.className = 'pacs-patient-progress';
@@ -425,6 +430,7 @@ export class PacsPanel {
         key: 'studies',
         label: 'STUDIES',
         className: 'pacs-patient-count',
+        width: '6em',
         cell: (row: PatientRow): string =>
           row.patient.status === 'unasked' ? '—' : String(row.patient.studyCount),
         compare: (row: PatientRow): number =>
@@ -434,6 +440,7 @@ export class PacsPanel {
         key: 'series',
         label: 'SERIES',
         className: 'pacs-patient-count',
+        width: '5em',
         cell: (row: PatientRow): string =>
           row.patient.status === 'unasked' ? '—' : String(row.patient.seriesCount),
         compare: (row: PatientRow): number =>
@@ -443,6 +450,7 @@ export class PacsPanel {
         key: 'server',
         label: 'SERVER',
         className: 'pacs-patient-server',
+        width: '9em',
         cell: (row: PatientRow): string => row.patient.server ?? this.model?.pacsName ?? '—',
       },
     ];
@@ -530,27 +538,43 @@ export class PacsPanel {
   private studyTraits_declare(): ReadonlyArray<ListingTrait<StudyRow>> {
     return [
       {
+        key: 'fold',
+        label: '',
+        className: 'pacs-fold',
+        capped: false,
+        width: '1.4em',
+        cell: (): HTMLElement => {
+          const fold: HTMLSpanElement = document.createElement('span');
+          fold.className = 'pacs-fold';
+          return fold;
+        },
+      },
+      {
         key: 'patient',
         label: 'PATIENT',
         className: 'pacs-study-patient',
+        width: '13em',
         cell: (row: StudyRow): string => row.study.patientName || '(unknown)',
       },
       {
         key: 'mrn',
         label: 'MRN',
         className: 'pacs-study-mrn',
+        width: '7.5em',
         cell: (row: StudyRow): string => row.study.patientId || '—',
       },
       {
         key: 'study',
         label: 'STUDY',
         className: 'pacs-study-desc',
+        width: '12em',
         cell: (row: StudyRow): string => row.study.description || '(no description)',
       },
       {
         key: 'progress',
         label: 'PROGRESS',
         className: 'pacs-study-progress',
+        width: '1fr',
         // The study's bar is its series' summed. The mount is remembered so
         // a retrieve in flight moves it without a re-render.
         cell: (row: StudyRow): HTMLElement => {
@@ -572,24 +596,28 @@ export class PacsPanel {
         key: 'date',
         label: 'DATE',
         className: 'pacs-study-date',
+        width: '7.5em',
         cell: (row: StudyRow): string => row.study.date,
       },
       {
         key: 'accession',
         label: 'ACCESSION',
         className: 'pacs-study-accession',
+        width: '9em',
         cell: (row: StudyRow): string => row.study.accession || '—',
       },
       {
         key: 'modality',
         label: 'MODALITY',
         className: 'pacs-study-modalities',
+        width: '6.5em',
         cell: (row: StudyRow): string => row.study.modalities,
       },
       {
         key: 'server',
         label: 'SERVER',
         className: 'pacs-study-server',
+        width: '9em',
         // A study says which PACS holds it. On a single-server answer that
         // is the server the question was put to, which is still the fact —
         // the column exists so the FORM has one to stand its field in.
@@ -599,6 +627,7 @@ export class PacsPanel {
         key: 'series',
         label: 'SERIES',
         className: 'pacs-study-count',
+        width: '4em',
         cell: (row: StudyRow): string => String(row.study.series.length),
         compare: (row: StudyRow): number => row.study.series.length,
       },
@@ -651,6 +680,7 @@ export class PacsPanel {
         key: 'series',
         label: 'SERIES',
         className: 'pacs-series-desc',
+        width: '35.5em',
         cell: (row: SeriesRow): string => row.series.description || '(no description)',
         compare: (row: SeriesRow): string => row.series.description,
       },
@@ -658,6 +688,7 @@ export class PacsPanel {
         key: 'state',
         label: 'STATE',
         className: 'pacs-badge',
+        width: '1fr',
         cell: (row: SeriesRow): HTMLElement => this.badge_build(row.series),
         compare: (row: SeriesRow): string => this.state_name(row.series),
       },
@@ -665,12 +696,14 @@ export class PacsPanel {
         key: 'modality',
         label: 'MODALITY',
         className: 'pacs-series-modality',
+        width: '4em',
         cell: (row: SeriesRow): string => row.series.modality,
       },
       {
         key: 'files',
         label: 'FILES',
         className: 'pacs-series-files',
+        width: '6em',
         cell: (row: SeriesRow): string =>
           row.series.fileCount !== undefined ? `${row.series.fileCount} FILES` : '',
         compare: (row: SeriesRow): number => row.series.fileCount ?? -1,
@@ -912,7 +945,8 @@ export class PacsPanel {
     const line: string = this.command.value.trim();
     if (line.length === 0) return;
     this.model = null;
-    this.host.field_open().appendChild(this.waiting_build());
+    this.listing.rows_set([], { field: 'pending' });
+    this.listing.field_get()?.appendChild(this.waiting_build());
     this.handlers.command_run(line);
   }
 
@@ -1123,18 +1157,17 @@ export class PacsPanel {
     this.model = model;
     this.provenance_show(model.provenance);
     if (!sameQuery) {
-      this.expansion.open.clear();
-      this.patientExpansion.open.clear();
+      this.listing.open_clear();
       this.badgeStates.clear();
       // A level holding one row opens itself, at every level: an accession
       // query costs no extra gesture while a cohort still arrives folded.
       const patients: PatientRow[] = this.patientRows_build(model);
       const lone: PatientRow | undefined = patients.length === 1 ? patients[0] : undefined;
       if (lone !== undefined && lone.studies.length > 0) {
-        this.patientExpansion.open.add(lone.key);
+        this.listing.open_set(0, [lone.key]);
       }
       if (model.studies.length === 1) {
-        this.expansion.open.add(study_key(model.studies[0] as PacsStudy, 0));
+        this.listing.open_set(1, [study_key(model.studies[0] as PacsStudy, 0)]);
       }
     }
     for (const study of model.studies) {
@@ -1149,158 +1182,25 @@ export class PacsPanel {
   }
 
   /**
-   * Paints the listing: one frame, two levels, a group per study.
-   *
-   * The whole answer is counted as ONE listing so the state line reports
-   * the series the operator is actually looking at, rather than whichever
-   * study happened to be rendered last.
-   *
-   * The filter reads down the levels: a study that matches on its own
-   * columns keeps all its series, a study that does not keeps the series
-   * that match, and a study with neither leaves the stage — so filtering by
-   * an accession gives a whole study, and by a modality gives the series.
+   * Puts the answer on stage: one block of patients, keyed by the query, so
+   * a repeat of the same answer is the same field and a new query is not.
+   * The levels beneath — a patient's studies, a study's series — are the
+   * façade's to draw from the child declarations; the badges and tracks
+   * their cells register are cleared first, since the rows are rebuilt.
    */
   private results_repaint(): void {
     const model: PacsQueryModel | null = this.model;
-    const field: HTMLElement = this.host.field_open();
     this.badges.clear();
     this.studyTracks.clear();
     this.patientTracks.clear();
-    if (model === null) return;
-    const patientRows: PatientRow[] = this.patientRows_build(model);
-    if (patientRows.length === 0) {
-      field.appendChild(element_note('NO STUDIES FOUND'));
-      this.state_sync();
+    if (model === null) {
+      this.listing.rows_set([], { field: 'pacs' });
       return;
     }
-
-    const filtering: boolean = this.patientOrder.state_get().filter.length > 0;
-    let shown: number = 0;
-    let total: number = 0;
-    for (const patientRow of this.patientOrder.sorted(patientRows)) {
-      const wholePatient: boolean = !filtering || this.patientOrder.matches(patientRow);
-      const studyRows: StudyRow[] = patientRow.studies.map(
-        (study: PacsStudy, index: number): StudyRow => ({ study, key: study_key(study, index) }),
-      );
-      const kept: Array<{ row: StudyRow; series: SeriesRow[] }> = [];
-      for (const row of this.studyOrder.sorted(studyRows)) {
-        const seriesRows: SeriesRow[] = row.study.series.map(
-          (series: PacsSeries): SeriesRow => ({ study: row.study, studyKey: row.key, series }),
-        );
-        total += seriesRows.length;
-        const wholeStudy: boolean = wholePatient || this.studyOrder.matches(row);
-        const keptSeries: SeriesRow[] = wholeStudy
-          ? seriesRows
-          : seriesRows.filter((entry: SeriesRow): boolean => this.order.matches(entry));
-        if (keptSeries.length === 0 && filtering && !wholeStudy) continue;
-        shown += keptSeries.length;
-        kept.push({ row, series: this.order.sorted(keptSeries) });
-      }
-      // A patient with nothing left after filtering leaves the stage —
-      // unless the patient row itself matched, in which case the whole
-      // patient stays, misses included.
-      if (filtering && !wholePatient && kept.length === 0) continue;
-      field.appendChild(this.patient_render(patientRow, kept));
-    }
-    this.patientOrder.counts_set(shown, total);
-    this.state_sync();
-  }
-
-  /**
-   * Renders one patient: its row on the patient grid, then its studies.
-   *
-   * A patient holding one study opens itself, and that study opens itself
-   * in turn — the rule the study level already follows, which is what makes
-   * an accession query cost no extra gesture while a cohort still arrives
-   * folded.
-   *
-   * @param row - The patient.
-   * @param studies - Its studies, each with the series that survived the filter.
-   * @returns The patient's block.
-   */
-  private patient_render(row: PatientRow, studies: Array<{ row: StudyRow; series: SeriesRow[] }>): HTMLElement {
-    const open: boolean = expansion_isOpen(this.patientExpansion, row.key);
-    const block: HTMLElement = document.createElement('section');
-    block.className = open ? 'pacs-patient' : 'pacs-patient pacs-patient-collapsed';
-    if (row.patient.status === 'unasked') block.classList.add('pacs-patient-unasked');
-    const head: HTMLElement = listingRow_build(row, this.patientTraits, {
-      className: (): string => 'pacs-patient-row',
-      leading: (entry: PatientRow): HTMLElement[] => {
-        const fold: HTMLSpanElement = document.createElement('span');
-        fold.className = 'pacs-fold';
-        // A patient with no studies has nothing to unfold, and a glyph
-        // promising otherwise is a control that cannot act.
-        fold.textContent = entry.studies.length === 0
-          ? ''
-          : (expansion_isOpen(this.patientExpansion, entry.key) ? '▾' : '▸');
-        return [fold];
-      },
-      decorate: (element: HTMLElement, entry: PatientRow): void => {
-        if (entry.studies.length === 0) return;
-        element.title = 'unfold this patient\'s studies (the patient keeps its place)';
-        element.addEventListener('click', (): void => {
-          const nowOpen: boolean = expansion_toggle(this.patientExpansion, entry.key);
-          block.classList.toggle('pacs-patient-collapsed', !nowOpen);
-          const glyph: HTMLElement | null = element.querySelector('.pacs-fold');
-          if (glyph !== null) glyph.textContent = nowOpen ? '▾' : '▸';
-        });
-      },
-    });
-    block.appendChild(head);
-    if (studies.length === 0) return block;
-    const level: HTMLElement = document.createElement('div');
-    level.className = 'pacs-study-level';
-    level.appendChild(this.studyOrder.caps_mint());
-    for (const entry of studies) {
-      level.appendChild(this.study_render(entry.row, entry.series));
-    }
-    block.appendChild(level);
-    return block;
-  }
-
-  /** Renders one study: its row on the study grid, then its series. */
-  private study_render(row: StudyRow, rows: SeriesRow[]): HTMLElement {
-    const open: boolean = expansion_isOpen(this.expansion, row.key);
-    const block: HTMLElement = document.createElement('section');
-    block.className = open ? 'pacs-study' : 'pacs-study pacs-collapsed';
-    const head: HTMLElement = listingRow_build(row, this.studyTraits, {
-      className: (): string => 'pacs-study-row',
-      // The fold glyph is the row's own cell: it says what activation does,
-      // and it sits in the grid so every cap keeps its column.
-      leading: (entry: StudyRow): HTMLElement[] => {
-        const fold: HTMLSpanElement = document.createElement('span');
-        fold.className = 'pacs-fold';
-        fold.textContent = expansion_isOpen(this.expansion, entry.key) ? '▾' : '▸';
-        return [fold];
-      },
-      decorate: (element: HTMLElement, entry: StudyRow): void => {
-        element.appendChild(actionCell_build(entry, this.studyActions));
-        element.title = 'unfold this study\'s series (the study keeps its place)';
-        element.addEventListener('click', (): void => {
-          const nowOpen: boolean = expansion_toggle(this.expansion, entry.key);
-          block.classList.toggle('pacs-collapsed', !nowOpen);
-          const glyph: HTMLElement | null = element.querySelector('.pacs-fold');
-          if (glyph !== null) glyph.textContent = nowOpen ? '▾' : '▸';
-        });
-      },
-    });
-    block.appendChild(head);
-    // The series are a listing of their own, on their own grid: every study
-    // heads them with caps minted from the one column declaration, so a
-    // sort touched in any study lights and orders them all.
-    const level: HTMLElement = document.createElement('div');
-    level.className = 'pacs-series-level';
-    level.appendChild(this.order.caps_mint());
-    for (const entry of rows) {
-      level.appendChild(listingRow_build(entry, this.traits, {
-        className: (): string => 'pacs-series',
-        decorate: (element: HTMLElement, series: SeriesRow): void => {
-          element.appendChild(actionCell_build(series, this.actions));
-        },
-      }));
-    }
-    block.appendChild(level);
-    return block;
+    this.listing.rows_set(
+      [{ key: String(model.queryId), rows: this.patientRows_build(model) }],
+      { field: String(model.queryId) },
+    );
   }
 
   /** Re-sums a study's progress from its series and repaints its track. */
@@ -1314,41 +1214,30 @@ export class PacsPanel {
   }
 
   /**
-   * Writes the listing's state onto the pane's bar, and lights the pill.
+   * Composes the bar: the answer's tally ahead of the view's summary.
    *
    * A listing that reports on a set says what happened to every member of
    * it: found, none, and could-not-ask are three answers, not two. The
-   * counts ride ahead of the filter summary, because they describe the
-   * answer while the summary describes the view.
+   * counts describe the answer; the façade's summary describes the view.
+   *
+   * @param parts - The façade's parts.
+   * @returns The line.
    */
-  private state_sync(): void {
-    if (this.stateSpan === null) return;
-    const parts: string[] = [];
+  private stateLine_compose(parts: ListingStateParts): string {
+    const words: string[] = [];
     const patients: ReadonlyArray<PacsPatient> = this.model?.patients ?? [];
     if (patients.length > 0) {
       const tally = (state: PacsPatient['status']): number =>
         patients.filter((patient: PacsPatient): boolean => patient.status === state).length;
-      parts.push(`FOUND ${tally('found')} · NONE ${tally('none')} · UNASKED ${tally('unasked')}`);
+      words.push(`FOUND ${tally('found')} · NONE ${tally('none')} · UNASKED ${tally('unasked')}`);
     }
-    const summary: string = this.patientOrder.summary();
-    if (summary !== '') parts.push(summary);
-    this.stateSpan.textContent = parts.join('  ·  ');
-  }
-
-  /** The FILTER pill reads the strip's state, like every mode block. */
-  private filterPill_sync(): void {
-    if (this.filterPill === null) return;
-    // The strip belongs to the outermost order, so its state is the one
-    // the pill reads.
-    const open: boolean = this.patientOrder.strip_isOpen();
-    this.filterPill.textContent = open ? 'FILTER ON' : 'FILTER OFF';
-    this.filterPill.classList.toggle('rail-off', !open);
-    this.state_sync();
+    if (parts.filter !== '') words.push(parts.filter);
+    return words.join('  ·  ');
   }
 
   /** Shows or hides the results filter strip (the drawer's FILTER). */
   public filter_toggle(open?: boolean): void {
-    this.patientOrder.strip_toggle(open);
+    this.listing.filter_toggle(open);
   }
 
   /** Records one series into the gather without touching badges. */

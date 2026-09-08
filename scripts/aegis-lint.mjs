@@ -171,7 +171,7 @@ LINT_CHECKS['roster-grid-single-source'] = () => {
   // Caps and rows read one declaration: any roster grid that spells its own
   // template has drifted from the caps (or will).
   // The façade's row grid, the caps, and the PACS grids that S4 will fold in.
-  for (const selector of ['.roster-caps', '.listing-row', '.pacs-series', '.pacs-study-row', '#pacs-form']) {
+  for (const selector of ['.roster-caps', '.listing-row', '#pacs-form']) {
     const m = css.match(new RegExp(`\n${selector.replace('.', '\\.')} \\{([^}]*)\\}`));
     if (!m) { fail('roster-grid-single-source', `${selector} rule not found`); continue; }
     if (!/grid-template-columns:\s*var\(--roster-cols\)/.test(m[1])) fail('roster-grid-single-source', `${selector} does not read --roster-cols`);
@@ -245,10 +245,9 @@ LINT_CHECKS['listing-is-one-abstraction'] = () => {
   // because that is how three panes came to spell the same table three
   // ways, and then the same action track, indication and readout twice.
   //
-  // One allowance, named and expiring: the PACS pane still composes its
-  // three levels by hand until S4 converts it. The debt is printed on every
-  // run so it cannot be forgotten, and the allowance is deleted with S4.
-  const ALLOWED_UNTIL_S4 = new Set(['apps/argus/src/features/pacs/panel.ts']);
+  // No allowances: every pane declares. The PACS pane's, which expired
+  // with S4, was the last.
+  const ALLOWED_UNTIL_S4 = new Set([]);
   const REACHING = [
     [/new RosterOrder</, 'builds a RosterOrder itself'],
     [/new ListingHost</, 'builds a ListingHost itself'],
@@ -271,8 +270,8 @@ LINT_CHECKS['listing-is-one-abstraction'] = () => {
   }
   // The stylesheet reaches past it too when it spells a track list by
   // hand: `--roster-cols` is the façade's to write, computed from the
-  // traits. Only the PACS grids may still declare one, until S4.
-  const ALLOWED_TRACK_HOSTS_UNTIL_S4 = ['#pacs-workspace', '.pacs-series-level', '.pacs-patient-row', '#pacs-results > .roster-order .roster-caps'];
+  // traits. No selector may declare one.
+  const ALLOWED_TRACK_HOSTS_UNTIL_S4 = [];
   for (const m of css.matchAll(/--roster-cols:/g)) {
     const before = css.slice(0, m.index);
     const host = before.slice(before.lastIndexOf('\n\n')).trim().split('\n')[0].replace(/\s*\{.*$/, '').trim();

@@ -281,6 +281,12 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
     for (const part of ['=== Purpose', '=== Anatomy', '=== Declaration', '=== States', '=== Laws', '=== Stylesheet', '=== Do not']) {
       if (!body.includes(part)) fail('a-component-lands-with-its-reference', `section '${title}' lacks '${part}'`);
     }
+    // The anatomy is drawn, not only described: a picture a reader can
+    // point at, checked into the tree beside the words.
+    const anatomy = body.match(/^=== Anatomy$\n([\s\S]*?)(?=^=== )/m);
+    const image = anatomy?.[1].match(/^image::([^\[]+)\[/m);
+    if (!image) fail('a-component-lands-with-its-reference', `section '${title}' has no anatomy drawing (image:: under === Anatomy)`);
+    else if (!existsSync(`apps/argus/docs/${image[1]}`)) fail('a-component-lands-with-its-reference', `section '${title}' names a drawing that does not exist: ${image[1]}`);
   }
   for (const source of COMPONENT_SOURCES) {
     if (!existsSync(source)) fail('a-component-lands-with-its-reference', `component source missing: ${source}`);

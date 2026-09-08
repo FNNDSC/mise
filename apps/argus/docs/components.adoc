@@ -9,13 +9,13 @@ Rudolph Pienaar <rudolph.pienaar@gmail.com>
 [abstract]
 == Abstract
 
-AEGIS (`aegis.adoc`) is the doctrine: what the surface is, and the laws it keeps. This document is the reference beneath it: the components a pane is built from, one section each, in the shape a component library owes its users. A section says what the component is for, what it looks like (its anatomy), what a pane declares to get one, the states it can be in, the laws it carries so a pane does not have to, the stylesheet hooks it wears, and what not to do with it.
+AEGIS (`aegis.adoc`) is the doctrine: what the surface is, and the laws it keeps. This document is the reference beneath it: the components a pane is built from, one section each, in the shape a component library owes its users. A section says what the component is for, what it looks like (its anatomy, drawn and labelled in `images/`, and once the component is on stage, photographed in each of its states by the smoke driver), what a pane declares to get one, the states it can be in, the laws it carries so a pane does not have to, the stylesheet hooks it wears, and what not to do with it.
 
 A component lands with its section, in the same pull request, and the section is amended by every slice that changes the component. The lint gate holds this table to the tree: every section names its source, and the sources that are components must have a section.
 
 == Reading a section
 
-Each section follows one order. *Purpose* says what the component answers. *Anatomy* names its parts, outermost first, with the class each part wears. *Declaration* is the TypeScript a pane writes, complete, with every optional field explained. *States* are the classes a part can wear and what puts them there. *Laws* names the AEGIS laws the component expresses as consequences of its declaration. *Stylesheet* lists the custom properties and selectors a theme may touch and the ones it may not. *Do not* lists the ways the component has been misused, or would be.
+Each section follows one order. *Purpose* says what the component answers. *Anatomy* opens with the drawing, then names its parts, outermost first, with the class each part wears; a component on stage adds a picture per state. *Declaration* is the TypeScript a pane writes, complete, with every optional field explained. *States* are the classes a part can wear and what puts them there. *Laws* names the AEGIS laws the component expresses as consequences of its declaration. *Stylesheet* lists the custom properties and selectors a theme may touch and the ones it may not. *Do not* lists the ways the component has been misused, or would be.
 
 == Listing
 
@@ -28,6 +28,9 @@ Status: declared 2026-09-07 (epic #428, S1). Not yet on stage: the browser (S2),
 A listing shows rows of one kind under column caps that sort them, behind a filter strip that narrows them, with a frame that stays while the rows scroll. It is the one tabular pattern of the surface: a directory's entries, a session's feeds, a query's studies and their series are all listings. A pane declares one and calls `rows_set`; it never assembles caps, strip, track or selection itself.
 
 === Anatomy
+
+.The listing, numbered: frame and field, a block with a lead row, an indicated row with its verbs and readout, a selected row, an open row with its level, a second block, and the chrome that reads its state
+image::images/listing-anatomy.svg[Listing anatomy,1180]
 
 [cols="1,1,3"]
 |===

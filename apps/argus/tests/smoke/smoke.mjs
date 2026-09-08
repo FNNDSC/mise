@@ -849,7 +849,7 @@ try {
 
   check('HOME lands a rooted browser home', walk.home.length > 1 && walk.into !== '');
   check('a folder still descends from the listing', walk.inside.join(',') !== walk.home.join(','));
-  check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','));
+  check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','), JSON.stringify({ home: walk.home.length, into: walk.into, inside: walk.inside.length, back: walk.back.slice(0, 4) }));
   }
 
   if (stage('row-verbs')) {

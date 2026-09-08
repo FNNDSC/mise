@@ -371,30 +371,6 @@ export class PacsPanel {
         cell: (row: PatientRow): string => row.patient.patientId || '—',
       },
       {
-        key: 'studies',
-        label: 'STUDIES',
-        className: 'pacs-patient-count',
-        cell: (row: PatientRow): string =>
-          row.patient.status === 'unasked' ? '—' : String(row.patient.studyCount),
-        compare: (row: PatientRow): number =>
-          row.patient.status === 'unasked' ? -1 : row.patient.studyCount,
-      },
-      {
-        key: 'series',
-        label: 'SERIES',
-        className: 'pacs-patient-count',
-        cell: (row: PatientRow): string =>
-          row.patient.status === 'unasked' ? '—' : String(row.patient.seriesCount),
-        compare: (row: PatientRow): number =>
-          row.patient.status === 'unasked' ? -1 : row.patient.seriesCount,
-      },
-      {
-        key: 'server',
-        label: 'SERVER',
-        className: 'pacs-patient-server',
-        cell: (row: PatientRow): string => row.patient.server ?? this.model?.pacsName ?? '—',
-      },
-      {
         key: 'answered',
         label: 'ANSWERED',
         className: 'pacs-patient-answered',
@@ -444,6 +420,30 @@ export class PacsPanel {
           const progress: ListingProgress = this.patientProgress_of(row);
           return progress.total === 0 ? -1 : progress.done / progress.total;
         },
+      },
+      {
+        key: 'studies',
+        label: 'STUDIES',
+        className: 'pacs-patient-count',
+        cell: (row: PatientRow): string =>
+          row.patient.status === 'unasked' ? '—' : String(row.patient.studyCount),
+        compare: (row: PatientRow): number =>
+          row.patient.status === 'unasked' ? -1 : row.patient.studyCount,
+      },
+      {
+        key: 'series',
+        label: 'SERIES',
+        className: 'pacs-patient-count',
+        cell: (row: PatientRow): string =>
+          row.patient.status === 'unasked' ? '—' : String(row.patient.seriesCount),
+        compare: (row: PatientRow): number =>
+          row.patient.status === 'unasked' ? -1 : row.patient.seriesCount,
+      },
+      {
+        key: 'server',
+        label: 'SERVER',
+        className: 'pacs-patient-server',
+        cell: (row: PatientRow): string => row.patient.server ?? this.model?.pacsName ?? '—',
       },
     ];
   }
@@ -548,6 +548,27 @@ export class PacsPanel {
         cell: (row: StudyRow): string => row.study.description || '(no description)',
       },
       {
+        key: 'progress',
+        label: 'PROGRESS',
+        className: 'pacs-study-progress',
+        // The study's bar is its series' summed. The mount is remembered so
+        // a retrieve in flight moves it without a re-render.
+        cell: (row: StudyRow): HTMLElement => {
+          const holder: HTMLSpanElement = document.createElement('span');
+          holder.className = 'pacs-study-progress';
+          this.studyTracks.set(row.key, {
+            mount: holder,
+            uids: row.study.series.map((series: PacsSeries): string => series.seriesUID),
+          });
+          this.studyTrack_paint(row.key);
+          return holder;
+        },
+        compare: (row: StudyRow): number => {
+          const progress: ListingProgress = this.studyProgress_of(row);
+          return progress.total === 0 ? -1 : progress.done / progress.total;
+        },
+      },
+      {
         key: 'date',
         label: 'DATE',
         className: 'pacs-study-date',
@@ -580,27 +601,6 @@ export class PacsPanel {
         className: 'pacs-study-count',
         cell: (row: StudyRow): string => String(row.study.series.length),
         compare: (row: StudyRow): number => row.study.series.length,
-      },
-      {
-        key: 'progress',
-        label: 'PROGRESS',
-        className: 'pacs-study-progress',
-        // The study's bar is its series' summed. The mount is remembered so
-        // a retrieve in flight moves it without a re-render.
-        cell: (row: StudyRow): HTMLElement => {
-          const holder: HTMLSpanElement = document.createElement('span');
-          holder.className = 'pacs-study-progress';
-          this.studyTracks.set(row.key, {
-            mount: holder,
-            uids: row.study.series.map((series: PacsSeries): string => series.seriesUID),
-          });
-          this.studyTrack_paint(row.key);
-          return holder;
-        },
-        compare: (row: StudyRow): number => {
-          const progress: ListingProgress = this.studyProgress_of(row);
-          return progress.total === 0 ? -1 : progress.done / progress.total;
-        },
       },
     ];
   }

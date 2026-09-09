@@ -44,12 +44,14 @@ const mockDaemonLaunch = jest.fn(
     return mockLaunchInfo;
   },
 );
-const mockFaceBoot = jest.fn((): boolean => true);
-const mockFaceReady = jest.fn((): boolean => true);
-const mockFaceSuspend = jest.fn();
-const mockFaceResume = jest.fn();
-const mockFaceStop = jest.fn();
+/** The console put on the daemon's terminal once it is up; inert here. */
+const mockConsole = jest.fn(async (_target: { identity: string; url: string; token: string }): Promise<void> => undefined);
 
+// The daemon console would spawn a real surface on this terminal; every
+// daemon test runs against this inert stand-in instead.
+jest.unstable_mockModule('../src/core/daemonConsole.js', () => ({
+  daemonConsole_run: mockConsole,
+}));
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   warmupFailure_note: mockWarmupFailureNote,
   warmupFailure_clear: mockWarmupFailureClear,
@@ -57,6 +59,8 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   vfs: { data_get: mockDataGet },
   prefetch_path: mockPrefetchPath,
   prefetch_withSpinner: mockPrefetchWithSpinner,
+  count_noun: (count: number, singular: string, plural: string = `${singular}s`): string =>
+    `${count} ${count === 1 ? singular : plural}`,
   repl_question: mockQuestion,
   error_stripDebugPrefix: (message: string): string => message,
   // Daemon warm-up installs a real progress renderer so its spinners reach
@@ -133,11 +137,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   daemon_launch: mockDaemonLaunch,
-  face_boot: mockFaceBoot,
-  face_ready: mockFaceReady,
-  face_suspend: mockFaceSuspend,
-  face_resume: mockFaceResume,
-  face_stop: mockFaceStop,
+  consoleCage_start: jest.fn(),
+  consoleCage_stop: jest.fn((): string[] => []),
   identity_forSession: (user: string, url: string): string => `${user}@${url}`,
   hostControl_fromInputs: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
   hostControl_describe: (): string => '',
@@ -176,33 +177,31 @@ describe('daemonSession_run', () => {
     }));
   });
 
-  it('keeps the classic boot and raises the face once the daemon is up', async () => {
+  it('ends an interactive boot at a login: the console attaches to the daemon just published', async () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
     };
     const flags = { plugins: false, feeds: false, publicFeeds: false, jobs: false };
+    const report = jest.fn<StartupWarmupReporter['log']>();
 
-    await daemonSession_run(engine, 'rudolph', flags, true, { log: jest.fn() });
-    // The boot itself stays in the normal buffer (no boot-phase face).
-    expect(mockFaceBoot).not.toHaveBeenCalled();
-    expect(mockFaceReady).toHaveBeenCalledTimes(1);
-    const options = mockFaceReady.mock.calls[0]![0] as {
-      info: Array<{ label: string; value: string }>;
-      telemetry_get: () => { sessions: number; busy: boolean; jobs: number; feeds: number };
-    };
-    // The face panel carries the launch's addresses verbatim.
-    expect(options.info).toEqual(expect.arrayContaining([
-      { label: 'wire', value: 'ws://pangea:42479' },
-      { label: 'ARGUS', value: 'http://pangea:42479/?token=tok' },
-    ]));
-    // Live readings come from the daemon handle plus the proc index.
-    expect(options.telemetry_get()).toEqual({ sessions: 0, busy: false, jobs: 12, feeds: 3 });
+    await daemonSession_run(engine, 'rudolph', flags, true, { log: report });
+    // The console is given the launch's own address and token, verbatim.
+    expect(mockConsole).toHaveBeenCalledTimes(1);
+    expect(mockConsole).toHaveBeenCalledWith({
+      identity: 'me@https://cube.example.org/api/v1/',
+      url: 'ws://pangea:42479',
+      token: 'tok',
+    });
+    // And only once the daemon is listening: the login comes after boot.
+    const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
+    expect(mockDaemonListen.mock.invocationCallOrder[0]).toBeGreaterThan(readyOrder);
+    expect(mockConsole.mock.invocationCallOrder[0]).toBeGreaterThan(mockDaemonListen.mock.invocationCallOrder[0]);
 
     // A non-interactive host (systemd) never takes the terminal over.
-    mockFaceReady.mockClear();
+    mockConsole.mockClear();
     await daemonSession_run(engine, 'rudolph', flags, false, { log: jest.fn() });
-    expect(mockFaceReady).not.toHaveBeenCalled();
+    expect(mockConsole).not.toHaveBeenCalled();
   });
 
   it('warms and reports every startup cache before advertising the daemon', async () => {
@@ -219,16 +218,16 @@ describe('daemonSession_run', () => {
       jobs: true,
     }, true, { log: report });
 
-    expect(report).toHaveBeenCalledWith('ok', 'Plugins', 'Cached 2 plugin(s)');
-    expect(report).toHaveBeenCalledWith('ok', 'Pipelines', 'Cached 1 pipeline(s)');
+    expect(report).toHaveBeenCalledWith('ok', 'Plugins', 'Cached 2 plugins');
+    expect(report).toHaveBeenCalledWith('ok', 'Pipelines', 'Cached 1 pipeline');
     // Feeds, Public and Shared warm behind the prompt now: boot blocks
     // only on what the shell cannot work without, which is /bin.
     expect(report).toHaveBeenCalledWith('pending', 'Feeds', 'Warming /home/rudolph/feeds behind the prompt');
     expect(report).toHaveBeenCalledWith('pending', 'Public', 'Warming /PUBLIC behind the prompt');
     expect(report).toHaveBeenCalledWith('pending', 'Shared', 'Warming /SHARED behind the prompt');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feed(s) — topology reconciling in background');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feeds — topology reconciling in background');
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
-    expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 job(s) indexed');
+    expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 jobs indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
     expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function), { hostControl: { tiers: new Set<string>(), exposed: false } });
 
@@ -250,13 +249,13 @@ describe('daemonSession_run', () => {
 
     expect(mockCheckpointRestore).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
     expect(mockCheckpointWatch).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 job(s); 3 feed(s), 1 new — full roster refresh in background');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 jobs; 3 feeds, 1 new — full roster refresh in background');
     expect(mockProcCacheRefresh).not.toHaveBeenCalled();
     expect(mockWarmupComplete).toHaveBeenCalled();
     expect(mockRosterSync).toHaveBeenCalledWith(true);
     expect(mockTopologyWarmup).not.toHaveBeenCalled();
     expect(mockTopologyReconcileFeeds).not.toHaveBeenCalled();
-    expect(report).toHaveBeenCalledWith('ok', 'Roster', '2 feed(s) moved while away; each refreshes on its next visit');
+    expect(report).toHaveBeenCalledWith('ok', 'Roster', '2 feeds moved while away; each refreshes on its next visit');
   });
 
   it('reports a background topology failure after publishing engine readiness', async () => {
@@ -432,14 +431,19 @@ describe('daemonSession_run', () => {
 
     it('names the row Folders and says folder listings, not the plugin index', async () => {
       const message: string = await restoreRow_message(47, 5 * 60_000);
-      expect(message).toContain('Restored 47 folder listing(s)');
+      expect(message).toContain('Restored 47 folder listings');
       expect(message).toContain('stale until revisited');
     });
 
     it('reports age as well as count, because a count alone says nothing', async () => {
       expect(await restoreRow_message(47, 5 * 60_000)).toContain('oldest 5 min');
-      expect(await restoreRow_message(47, 3 * 60 * 60_000)).toContain('oldest 3 hour(s)');
-      expect(await restoreRow_message(47, 3 * 24 * 60 * 60_000)).toContain('oldest 3 day(s)');
+      expect(await restoreRow_message(47, 3 * 60 * 60_000)).toContain('oldest 3 hours');
+      expect(await restoreRow_message(47, 3 * 24 * 60 * 60_000)).toContain('oldest 3 days');
+    });
+
+    it('says one hour and one day in the singular: the count is known before the row prints', async () => {
+      expect(await restoreRow_message(1, 60 * 60_000)).toContain('Restored 1 folder listing, oldest 1 hour');
+      expect(await restoreRow_message(1, 2 * 24 * 60 * 60_000)).toContain('oldest 2 days');
     });
 
     it('says all fresh when nothing has aged a minute', async () => {
@@ -448,7 +452,7 @@ describe('daemonSession_run', () => {
 
     it('omits the age phrase when the cache holds nothing to age', async () => {
       const message: string = await restoreRow_message(0, null);
-      expect(message).toBe('Restored 0 folder listing(s), stale until revisited');
+      expect(message).toBe('Restored 0 folder listings, stale until revisited');
     });
 
     it('reports the absent checkpoint in folder-listing words', async () => {
@@ -543,6 +547,80 @@ describe('daemonSession_run', () => {
     // the failure is held until a later attempt clears it.
     expect(mockWarmupFailureNote).toHaveBeenCalledWith('Groups', 'membership service unavailable');
     expect(mockWarmupFailureClear).not.toHaveBeenCalledWith('Groups');
+  });
+
+  it('prints a deferred step once: the pending row, never the spinner\'s plain-log stand-in beneath it', async () => {
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\n' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: true,
+      publicFeeds: true,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+    await Promise.all(cache.deferred.map((step) => step.settled));
+
+    // The spinner helper logs its label and message as a plain line when it
+    // cannot animate, which put an untagged copy of every pending row
+    // directly under the tagged one. Deferred attempts bypass it.
+    expect(mockPrefetchWithSpinner).not.toHaveBeenCalled();
+    expect(report.mock.calls.filter(([, label]) => label === 'Groups')).toHaveLength(1);
+  });
+
+  it('lands the outcome row on a readout that persists, tagged [ OK ] with what it cached', async () => {
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\npacs_users:x:2:rudolph\n' });
+    mockPrefetchPath.mockImplementation(async (target: string) => ({ ok: true, count: target === '/PUBLIC' ? 9 : 4 }));
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: true,
+      publicFeeds: true,
+      jobs: false,
+    }, 'rudolph', false, { log: report }, true);
+    await Promise.all(cache.deferred.map((step) => step.settled));
+
+    // The daemon face keeps its boot log, so a step that started as
+    // [PENDING] finishes there as [ OK ] rather than leaving the row open.
+    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 groups');
+    expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 items from /home/rudolph/feeds');
+    expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 items from /PUBLIC');
+    expect(report).toHaveBeenCalledWith('ok', 'Shared', 'Cached 4 items from /SHARED');
+    expect(report).toHaveBeenCalledWith('ok', 'Queries', 'Indexed 0 PACS queries');
+  });
+
+  it('lands a deferred failure on a persisting readout as [FAIL], and still holds it for the prompt', async () => {
+    mockVfsRead.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', false, { log: report }, true);
+    await cache.deferred.find((step) => step.label === 'Groups')!.settled;
+
+    expect(report).toHaveBeenCalledWith('fail', 'Groups', 'membership service unavailable');
+    expect(mockWarmupFailureNote).toHaveBeenCalledWith('Groups', 'membership service unavailable');
+  });
+
+  it('keeps an interactive readout silent on settle: it has scrolled away, and the prompt carries a failure', async () => {
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\n' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', true, { log: report });
+    await cache.deferred.find((step) => step.label === 'Groups')!.settled;
+
+    expect(report).not.toHaveBeenCalledWith('ok', 'Groups', expect.anything());
+    expect(report).not.toHaveBeenCalledWith('fail', 'Groups', expect.anything());
   });
 
   it('warms /SHARED, where another identity\'s work becomes visible', async () => {

@@ -12,7 +12,7 @@
  *
  * @module
  */
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,6 +83,26 @@ export function webRoot_resolve(candidates: Array<string | undefined>): string |
  * the checkout root; the extra margin covers a workspace symlinked through
  * `node_modules/@fnndsc/calypso`.
  */
+/**
+ * Reads the version of the app a web root was built from.
+ *
+ * The bundle carries no manifest of its own; the app's package.json sits
+ * beside its dist directory in the checkout that built it.
+ *
+ * @param webRoot - The resolved web root (the app's dist directory).
+ * @returns The app's version, or `unknown` when no package.json is beside it.
+ */
+export function webRootVersion_read(webRoot: string): string {
+  try {
+    const manifest: { version?: unknown } = JSON.parse(
+      readFileSync(path.join(webRoot, '..', 'package.json'), 'utf8'),
+    ) as { version?: unknown };
+    return typeof manifest.version === 'string' ? manifest.version : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 const CHECKOUT_SEARCH_DEPTH: number = 6;
 
 /**

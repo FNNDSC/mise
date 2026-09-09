@@ -5,6 +5,7 @@
  */
 
 import chalk from 'chalk';
+import { streamRows_track, stdoutRows_ensure, stdoutRows_current, type RowStream, type StreamRows } from './terminalRows.js';
 
 /**
  * A single labeled boot-info line.
@@ -77,14 +78,65 @@ export const BOOT_TAG_WIDTH: number = Math.max(
   ...Object.values(BOOT_STATUS_TAGS).map((tag: BootStatusTag): number => tag.text.length),
 );
 
+/** What the boot readout needs of its terminal. */
+export interface BootTerminal extends RowStream {
+  isTTY?: boolean;
+  rows?: number;
+}
+
+/** Where the readout draws, and which other streams scroll the same screen. */
+export interface BootLoggerOptions {
+  /** The readout's own stream; `process.stdout` by default. */
+  terminal?: BootTerminal;
+  /**
+   * Streams that share the terminal's screen without being the readout's
+   * own — `process.stderr` by default — so what they scroll is counted too.
+   */
+  shared?: RowStream[];
+}
+
+/** A row still open on the readout: pending or retrying, awaiting its outcome. */
+interface OpenRow {
+  /** The rows scrolled before this row was printed. */
+  at: number;
+  /** The screen rows the row occupied. */
+  rows: number;
+}
+
 /**
  * Creates a boot logger that renders a titled status box.
  *
+ * On a terminal, a step that starts as `[PENDING]` (or falls to `[RETRY]`)
+ * is rewritten in place when its outcome lands, the way a boot screen
+ * settles a row rather than repeating it beneath. Every write to the screen
+ * is counted between the two moments, so the rewrite reaches the right row
+ * however much scrolled meanwhile — and gives up, appending instead, when
+ * the row has left the screen or the outcome needs more rows than it had.
+ * Off a terminal rows only append.
+ *
  * @param title - Box title.
  * @param useAscii - Use ASCII (vs unicode) box characters.
+ * @param options - The terminal to draw on; the process's own by default.
  * @returns A boot logger exposing status-logging helpers.
  */
-export function bootLogger_create(title: string, useAscii: boolean) {
+export function bootLogger_create(title: string, useAscii: boolean, options: BootLoggerOptions = {}) {
+  const terminal: BootTerminal = options.terminal ?? process.stdout;
+  const ownsStdout: boolean = terminal === process.stdout;
+  // On the real terminal the boot readout shares one row tracker with the
+  // brain animation, so neither hooks stdout's write twice nor miscounts the
+  // other's scrolling. An injected test terminal gets its own local tracker.
+  const localTracked: StreamRows | null =
+    terminal.isTTY === true && !ownsStdout ? streamRows_track(terminal) : null;
+  if (localTracked !== null) {
+    for (const stream of options.shared ?? []) streamRows_track(stream, localTracked.counter);
+  }
+  const rows_tracked = (): StreamRows | null => {
+    if (terminal.isTTY !== true) return null;
+    if (!ownsStdout) return localTracked;
+    // Whatever the animation installed; failing that, install it here.
+    return stdoutRows_current() ?? stdoutRows_ensure();
+  };
+  const open: Map<string, OpenRow> = new Map();
   const horiz: string = useAscii ? '-' : '─';
   const cornerTL: string = useAscii ? '+' : '┌';
   const cornerTR: string = useAscii ? '+' : '┐';
@@ -104,12 +156,56 @@ export function bootLogger_create(title: string, useAscii: boolean) {
     return paint(text.padEnd(BOOT_TAG_WIDTH));
   };
 
-  return {
-    header_print(): void { console.log(lineTop); },
-    footer_print(): void { console.log(lineBot); },
-    log(status: BootStatus, label: string, message: string): void {
-      console.log(`${statusTag(status)} ${statusPad(label)} ${message}`);
+  /**
+   * Rewrites an open row where it stands.
+   *
+   * @param row - The settled row, painted.
+   * @param target - Where the open row was printed and how many rows it took.
+   * @returns False when the row cannot be reached or the outcome does not fit.
+   */
+  const row_rewrite = (row: string, target: OpenRow, tracked: StreamRows): boolean => {
+    const up: number = tracked.counter.rows_get() - target.at;
+    // A terminal that reports no height (a pty that never sent its size)
+    // reads as zero, not absent, so default on any non-positive height —
+    // never `?? 24`, which a real zero slips straight through.
+    const screenRows: number = terminal.rows && terminal.rows > 0 ? terminal.rows : 24;
+    if (up <= 0 || up >= screenRows) return false;
+    const needed: number = Math.max(1, Math.ceil(text_visibleLength(row) / (terminal.columns || 80)));
+    if (needed > target.rows) return false;
+    // One write: save the cursor, climb to the row, clear every row it took,
+    // paint the outcome from its first row, and return — so a spinner
+    // mid-row below is left exactly where it was.
+    let text: string = `\x1b[s\x1b[${up}A`;
+    for (let index: number = 0; index < target.rows; index++) {
+      text += `\r\x1b[2K${index < target.rows - 1 ? '\x1b[1B' : ''}`;
     }
+    if (target.rows > 1) text += `\x1b[${target.rows - 1}A`;
+    text += `\r${row}\x1b[u`;
+    tracked.write_raw(text);
+    return true;
+  };
+
+  return {
+    header_print(): void { terminal.write(`${lineTop}\n`); },
+    footer_print(): void { terminal.write(`${lineBot}\n`); },
+    log(status: BootStatus, label: string, message: string): void {
+      const row: string = `${statusTag(status)} ${statusPad(label)} ${message}`;
+      const stillOpen: boolean = status === 'pending' || status === 'retry';
+      const tracked: StreamRows | null = rows_tracked();
+      const target: OpenRow | undefined = open.get(label);
+      if (target !== undefined && tracked !== null && row_rewrite(row, target, tracked)) {
+        if (!stillOpen) open.delete(label);
+        return;
+      }
+      // A row lands on a row of its own. A spinner mid-row is cleared first
+      // and redraws itself beneath on its next tick.
+      if (tracked !== null && tracked.counter.column_get() > 0) terminal.write('\r\x1b[2K');
+      const at: number = tracked?.counter.rows_get() ?? 0;
+      terminal.write(`${row}\n`);
+      const rows: number = tracked === null ? 1 : tracked.counter.rows_get() - at;
+      if (stillOpen) open.set(label, { at, rows });
+      else open.delete(label);
+    },
   };
 }
 

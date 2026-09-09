@@ -90,6 +90,7 @@ export {
   type FaceOptions,
   type FaceFrame,
 } from './daemon/face.js';
+export { consoleCage_start, consoleCage_stop, consoleCage_isActive } from './daemon/console.js';
 export { discovery_read, discovery_write, discovery_path, type Discovery } from './daemon/discovery.js';
 export {
   identity_normalise,

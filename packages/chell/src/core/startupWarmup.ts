@@ -20,10 +20,10 @@ import {
   type BrasaEngine,
   type PrefetchResult,
 } from '@fnndsc/brasa';
-import { daemon_launch, face_ready, face_stop, identity_forSession, type DaemonLaunchInfo, type FaceInfo, type FaceTelemetry, hostControl_fromInputs, hostControl_describe, type HostControlInputs } from '@fnndsc/calypso';
-import { procIndex_snapshot } from '@fnndsc/brasa';
+import { daemon_launch, identity_forSession, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
+import { daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
 import { logo_animateHalt } from '../lib/logo.js';
-import { sink_set, StdoutSink } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import {
   chrisContext,
@@ -127,16 +127,40 @@ async function startupPrefetch_retry(
   reporter: StartupWarmupReporter | null,
   action: () => Promise<PrefetchResult>,
 ): Promise<PrefetchResult> {
+  return startupAttempts_run(
+    label,
+    reporter,
+    (): Promise<PrefetchResult> => prefetch_withSpinner(label, message, interactive, action, BOOT_TAG_WIDTH),
+  );
+}
+
+/**
+ * Runs one warm-up attempt at a time under the bounded retry policy.
+ *
+ * Draws nothing itself: a blocking step wraps each attempt in the spinner
+ * (or its plain-log stand-in), and a deferred step has already printed its
+ * pending row and must not print another.
+ *
+ * @param label - Stable boot-step label.
+ * @param reporter - Where retry rows go, or null to retry silently.
+ * @param attempt - One attempt at the cache operation.
+ * @returns The first successful result, or the last failed result.
+ */
+async function startupAttempts_run(
+  label: string,
+  reporter: StartupWarmupReporter | null,
+  attempt: () => Promise<PrefetchResult>,
+): Promise<PrefetchResult> {
   let last: PrefetchResult = { ok: false, message: 'Warm-up did not run.' };
-  for (let attempt: number = 1; attempt <= STARTUP_WARMUP_ATTEMPTS; attempt++) {
-    last = await prefetch_withSpinner(label, message, interactive, action, BOOT_TAG_WIDTH);
-    if (last.ok || attempt === STARTUP_WARMUP_ATTEMPTS) return last;
+  for (let turn: number = 1; turn <= STARTUP_WARMUP_ATTEMPTS; turn++) {
+    last = await attempt();
+    if (last.ok || turn === STARTUP_WARMUP_ATTEMPTS) return last;
     reporter?.log(
       'retry',
       label,
-      `Attempt ${attempt}/${STARTUP_WARMUP_ATTEMPTS} failed: ${last.message ?? 'unknown error'}; retrying.`,
+      `Attempt ${turn}/${STARTUP_WARMUP_ATTEMPTS} failed: ${last.message ?? 'unknown error'}; retrying.`,
     );
-    await startupRetry_wait(attempt);
+    await startupRetry_wait(turn);
   }
   return last;
 }
@@ -181,37 +205,49 @@ export interface DeferredWarmup {
  * A deferred step leaves the boot failure gate with this call, so its
  * failure is announced afterwards rather than holding the daemon.
  *
+ * The pending row is the only thing printed here. The attempts themselves
+ * run without the spinner helper: its plain-log stand-in printed the same
+ * label and message again, untagged, directly under the pending row.
+ *
  * @param label - Stable boot-step label.
  * @param message - What the row says while it runs.
  * @param reporter - Host status logger, or null.
+ * @param settlement - Whether the readout persists to take the outcome
+ *   row: the daemon face keeps its boot log, so `[ OK ]` and `[FAIL]`
+ *   land there when the step settles; an interactive readout has scrolled
+ *   away, and the prompt carries a failure instead.
  * @param action - The warm-up itself.
+ * @param describe - Words for a successful outcome's row.
  * @returns The step's label and the promise of its outcome.
  */
 function warmup_defer(
   label: string,
   message: string,
   reporter: StartupWarmupReporter | null,
+  settlement: boolean,
   action: () => Promise<PrefetchResult>,
+  describe: (outcome: PrefetchResult) => string,
 ): DeferredWarmup {
   reporter?.log('pending', label, message);
-  // Nothing reports a deferred completion: a warm that finishes and
-  // changes nothing is not news. Only a failure is, and that is
-  // annunciated rather than printed to a readout already scrolled past.
+  const outcomes: StartupWarmupReporter | null = settlement ? reporter : null;
   // A deferred step keeps the bounded retry policy a blocking one had: a
-  // transient failure should be retried before it is announced. The retry
-  // rows go nowhere, though — the readout they would print to is already
-  // scrolled past.
-  const settled: Promise<PrefetchResult> = startupPrefetch_retry(label, message, false, null, action)
+  // transient failure should be retried before it is announced.
+  const settled: Promise<PrefetchResult> = startupAttempts_run(label, outcomes, action)
     .catch((error: unknown): PrefetchResult => ({
       ok: false,
       message: error instanceof Error ? error.message : String(error),
     }))
     .then((outcome: PrefetchResult): PrefetchResult => {
-      // Held until a later attempt succeeds. The readout it would have
-      // been printed to has scrolled away by now, so the prompt and the
-      // status strip carry it instead.
-      if (outcome.ok) warmupFailure_clear(label);
-      else warmupFailure_note(label, outcome.message ?? `${label} warm-up failed`);
+      // A failure is held until a later attempt succeeds, so a surface
+      // whose readout has scrolled away still announces it at the prompt.
+      if (outcome.ok) {
+        warmupFailure_clear(label);
+        outcomes?.log('ok', label, describe(outcome));
+      } else {
+        const failure: string = outcome.message ?? `${label} warm-up failed`;
+        warmupFailure_note(label, failure);
+        outcomes?.log('fail', label, failure);
+      }
       return outcome;
     });
   return { label, settled };
@@ -234,8 +270,8 @@ function restoreAge_describe(): string {
   if (minutes < 1) return ', all fresh';
   if (minutes < 60) return `, oldest ${minutes} min`;
   const hours: number = Math.floor(minutes / 60);
-  if (hours < 48) return `, oldest ${hours} hour(s)`;
-  return `, oldest ${Math.floor(hours / 24)} day(s)`;
+  if (hours < 48) return `, oldest ${count_noun(hours, 'hour')}`;
+  return `, oldest ${count_noun(Math.floor(hours / 24), 'day')}`;
 }
 
 
@@ -296,8 +332,10 @@ export async function queryCheckpoint_flush(): Promise<void> {
  * @param user - Authenticated username used to construct the feed path.
  * @param interactive - Whether progress may use an interactive spinner.
  * @param reporter - Host status logger, or null for silent status reporting.
- * @param reportTopologySettlement - Whether to report the asynchronous topology
- *   result; daemon hosts enable this, while interactive hosts use prompt progress.
+ * @param reportSettlement - Whether to report outcomes that arrive after
+ *   boot (the topology walk, the steps warming behind the prompt); daemon
+ *   hosts enable this because the face keeps the readout, while interactive
+ *   hosts use prompt progress.
  * @returns Cache counts and the labels of any failed warm-up operations.
  */
 export async function startupWarmup_run(
@@ -305,7 +343,7 @@ export async function startupWarmup_run(
   user: string | undefined,
   interactive: boolean,
   reporter: StartupWarmupReporter | null,
-  reportTopologySettlement: boolean = false,
+  reportSettlement: boolean = false,
 ): Promise<StartupWarmupCache> {
   const result: StartupWarmupCache = { failures: [], deferred: [] };
   /** The identity whose checkpoints this boot restored, once known. */
@@ -339,7 +377,7 @@ export async function startupWarmup_run(
         listings.restored ? 'ok' : 'skip',
         'Folders',
         listings.restored
-          ? `Restored ${listings.count} folder listing(s)${restoreAge_describe()}, stale until revisited`
+          ? `Restored ${count_noun(listings.count, 'folder listing')}${restoreAge_describe()}, stale until revisited`
           : (listings.reason ?? 'No folder-listing checkpoint'),
       );
       // What has already been asked of a PACS. Expensive to build — every
@@ -351,7 +389,7 @@ export async function startupWarmup_run(
         queries.restored ? 'ok' : 'skip',
         'Queries',
         queries.restored
-          ? `Restored ${queries.count} PACS quer(y/ies) already asked`
+          ? `Restored ${count_noun(queries.count, 'PACS query', 'PACS queries')} already asked`
           : (queries.reason ?? 'No PACS query index'),
       );
     }
@@ -379,8 +417,8 @@ export async function startupWarmup_run(
     if (pluginsResult.ok) {
       result.plugins = pluginsResult.count;
       result.pipelines = pluginsResult.pipelineCount;
-      reporter?.log('ok', 'Plugins', `Cached ${pluginsResult.count ?? 0} plugin(s)`);
-      reporter?.log('ok', 'Pipelines', `Cached ${pluginsResult.pipelineCount ?? 0} pipeline(s)`);
+      reporter?.log('ok', 'Plugins', `Cached ${count_noun(pluginsResult.count ?? 0, 'plugin')}`);
+      reporter?.log('ok', 'Pipelines', `Cached ${count_noun(pluginsResult.pipelineCount ?? 0, 'pipeline')}`);
     } else {
       result.failures.push('Plugins');
       reporter?.log('fail', 'Plugins', pluginsResult.message || 'Failed to prefetch /bin');
@@ -398,6 +436,7 @@ export async function startupWarmup_run(
       'Groups',
       'Resolving /etc/group behind the prompt',
       reporter,
+      reportSettlement,
       async (): Promise<PrefetchResult> => {
         const projection: Result<string> = await vfsDispatcher.read('/etc/group');
         if (projection.ok) {
@@ -407,6 +446,7 @@ export async function startupWarmup_run(
         const error: StackMessage | undefined = errorStack.stack_pop();
         return { ok: false, message: error?.message ?? 'Failed to resolve /etc/group' };
       },
+      (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'group')}`,
     ));
   } else {
     reporter?.log('skip', 'Groups', 'Offline mode');
@@ -419,7 +459,9 @@ export async function startupWarmup_run(
         'Feeds',
         `Warming ${feedPath} behind the prompt`,
         reporter,
+        reportSettlement,
         (): Promise<PrefetchResult> => prefetch_path(feedPath),
+        (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'item')} from ${feedPath}`,
       ));
     } else {
       reporter?.log('skip', 'Feeds', 'No user context');
@@ -430,7 +472,9 @@ export async function startupWarmup_run(
         'Public',
         'Warming /PUBLIC behind the prompt',
         reporter,
+        reportSettlement,
         (): Promise<PrefetchResult> => prefetch_path('/PUBLIC'),
+        (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'item')} from /PUBLIC`,
       ));
     }
 
@@ -441,7 +485,9 @@ export async function startupWarmup_run(
       'Shared',
       'Warming /SHARED behind the prompt',
       reporter,
+      reportSettlement,
       (): Promise<PrefetchResult> => prefetch_path('/SHARED'),
+      (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'item')} from /SHARED`,
     ));
 
     // The PACS query back catalogue. It resumes from the index's floor, so
@@ -451,6 +497,7 @@ export async function startupWarmup_run(
       'Queries',
       'Indexing prior PACS queries behind the prompt',
       reporter,
+      reportSettlement,
       async (): Promise<PrefetchResult> => {
         // Every identity's queries, not just this one's: the index is also
         // the log that `/net/pacs/queries` lists, and that log has always
@@ -464,7 +511,7 @@ export async function startupWarmup_run(
         if (swept.value.bounded) {
           return {
             ok: false,
-            message: `Indexed ${swept.value.indexed} PACS quer(y/ies) and stopped at the page bound — the index is incomplete`,
+            message: `Indexed ${count_noun(swept.value.indexed, 'PACS query', 'PACS queries')} and stopped at the page bound — the index is incomplete`,
           };
         }
         // Made durable here rather than left to the debounced writer: that
@@ -482,6 +529,8 @@ export async function startupWarmup_run(
           ...(swept.value.resumed ? { message: 'resumed from the restored index' } : {}),
         };
       },
+      (outcome: PrefetchResult): string =>
+        `Indexed ${count_noun(outcome.count ?? 0, 'PACS query', 'PACS queries')}${outcome.message ? `, ${outcome.message}` : ''}`,
     ));
   } else if (!session.offline) {
     reporter?.log('skip', 'Feeds', 'Prefetch disabled');
@@ -492,7 +541,7 @@ export async function startupWarmup_run(
   if (!session.offline && flags.jobs) {
     let checkpoint: ProcCheckpointRestoreResult | null = null;
     let rosterAdded: number[] = [];
-    if (reportTopologySettlement && user) {
+    if (reportSettlement && user) {
       const cubeUrl: string | null = await chrisContext.ChRISURL_get();
       if (cubeUrl) {
         const identity: string = identity_forSession(user, cubeUrl);
@@ -526,8 +575,8 @@ export async function startupWarmup_run(
     );
     if (jobsResult.ok) {
       const jobsMessage: string = checkpoint?.restored
-        ? `Restored ${checkpoint.count} job(s)${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${jobsResult.count ?? 0} feed(s), ${rosterAdded.length} new — full roster refresh in background`
-        : `Indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`;
+        ? `Restored ${count_noun(checkpoint.count, 'job')}${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${count_noun(jobsResult.count ?? 0, 'feed')}, ${rosterAdded.length} new — full roster refresh in background`
+        : `Indexed ${count_noun(jobsResult.count ?? 0, 'feed')} — topology reconciling in background`;
       reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {
         let topologySweep: Promise<void>;
@@ -538,13 +587,13 @@ export async function startupWarmup_run(
           procCache_get().warmup_complete();
           topologySweep = procRoster_sync(true).then((changed: number[]): void => {
             if (changed.length > 0) {
-              reporter?.log('ok', 'Roster', `${changed.length} feed(s) moved while away; each refreshes on its next visit`);
+              reporter?.log('ok', 'Roster', `${count_noun(changed.length, 'feed')} moved while away; each refreshes on its next visit`);
             }
           });
         } else {
           topologySweep = procTopology_warmup();
         }
-        if (reportTopologySettlement) {
+        if (reportSettlement) {
           void topologySweep.then(
             (): void => {
               const topology: ProcTopologyStatus = procTopology_status();
@@ -554,7 +603,7 @@ export async function startupWarmup_run(
               }
               const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
               const total: number = progress.total > 0 ? progress.total : progress.loaded;
-              reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${total} job(s) indexed`);
+              reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${count_noun(total, 'job')} indexed`);
             },
             (error: unknown): void => {
               const message: string = error instanceof Error ? error.message : String(error);
@@ -586,6 +635,10 @@ export async function startupWarmup_run(
  * @param flags - Resource caches selected by daemon boot flags.
  * @param interactive - Whether progress may use an interactive spinner.
  * @param reporter - Daemon boot status logger.
+ * @param recovery - Asks the operator what to do after an exhausted warm-up.
+ * @param hostControlInputs - The host-control policy inputs.
+ * @param console - Puts a surface on this terminal once the daemon is up;
+ *   the daemon console by default, replaceable under test.
  */
 export async function daemonSession_run(
   engine: BrasaEngine,
@@ -595,6 +648,7 @@ export async function daemonSession_run(
   reporter: StartupWarmupReporter,
   recovery: DaemonWarmupRecovery = daemonWarmupFailure_decide,
   hostControlInputs: HostControlInputs = {},
+  console: (target: DaemonConsoleTarget) => Promise<void> = daemonConsole_run,
 ): Promise<void> {
   try {
     // Warm-up runs before the daemon installs its own sink, so the engine is
@@ -624,39 +678,15 @@ export async function daemonSession_run(
     }, { hostControl: parsedPolicy.policy });
 
     if (interactive) {
-      // Boot is over. The in-scroll pulse halts without a final repaint —
-      // the text record (addresses included) stays verbatim for the face's
-      // Esc view — and the alternate screen takes over as the resting
-      // state: the animating brain and one status line, nothing else.
+      // Boot is over. The pulse halts without a final repaint — its row
+      // arithmetic drifts over the addresses just printed — and the boot
+      // ends the way a boot should: at a login. The identity is already
+      // resolved, so the login is the attach, and this terminal becomes
+      // the daemon's first surface.
       logo_animateHalt();
-      const faceInfo: FaceInfo[] = [
-        { label: 'identity', value: info.identity },
-        { label: 'wire', value: info.url },
-        ...(info.argusUrl !== null ? [{ label: 'ARGUS', value: info.argusUrl }] : []),
-        { label: 'token', value: info.token },
-        { label: 'berth', value: info.berthPath },
-        { label: 'attach', value: `chell --remote --attach ${info.url} --token ${info.token}` },
-      ];
-      face_ready({
-        info: faceInfo,
-        ...(info.hostControl.tiers.size > 0
-          ? { hostControl: { tiers: hostControl_describe(info.hostControl), ...(info.hostControl.exposed && info.bindHost !== '127.0.0.1' ? { exposedOn: info.bindHost } : {}) } }
-          : {}),
-        telemetry_get: (): FaceTelemetry => {
-          const index: { jobs: number; feeds: number } = procIndex_snapshot();
-          return {
-            sessions: info.daemon.surfaces_count(),
-            busy: info.daemon.busy_get(),
-            jobs: index.jobs,
-            feeds: index.feeds,
-          };
-        },
-      });
+      await console({ identity: info.identity, url: info.url, token: info.token });
     }
   } catch (error: unknown) {
-    // A boot dying with the face up must hand the terminal back — and flush
-    // whatever the ring caged, the abort reason included.
-    face_stop();
     if (error instanceof DaemonWarmupAbortedError) {
       process.exitCode = 1;
       return;

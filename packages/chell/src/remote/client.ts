@@ -22,7 +22,7 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, fortune_random } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, fortune_random } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
@@ -190,8 +190,12 @@ export async function remote_run(
   commandToExecute?: string,
   attach?: { address: string; token?: string },
 ): Promise<void> {
+  const addressed: Berth | null = attach ? berth_fromAddress(attach.address, attach.token) : null;
+  // An address names no identity; a caller that knows one (the daemon
+  // console attaching to its own daemon) says so, and the surface greets
+  // with it rather than with the address twice.
   const berth: Berth | null = attach
-    ? berth_fromAddress(attach.address, attach.token)
+    ? (addressed !== null && identity !== undefined ? { ...addressed, identity } : addressed)
     : await berth_select(identity);
   if (!berth) {
     process.exit(1);
@@ -264,25 +268,22 @@ export async function remote_run(
 
   // Greet with the daemon's own reported versions and build hash; a daemon
   // that predates the handshake field falls back to the local install's.
+  // The daemon console skips the greeting: it sits on the daemon's own
+  // terminal, directly under the banner the daemon just printed.
   const stack: DaemonStack | undefined = engine.daemonStack();
-  const welcome: string = stack !== undefined
-    ? welcomeLine_compose('chell', stack.chell, stack.build)
-    : welcomeLine_build('chell');
-  console.log(chalk.bold.cyan(welcome));
+  const onDaemonTerminal: boolean = process.env['CHELL_CONSOLE'] === '1';
+  if (!onDaemonTerminal) {
+    const welcome: string = stack !== undefined
+      ? welcomeLine_compose('chell', stack.chell, stack.build)
+      : welcomeLine_build('chell');
+    console.log(chalk.bold.cyan(welcome));
+  }
   console.log(chalk.green(`[+] Attached to CALYPSO daemon ${berth.identity} at ${berth.url}`));
-  if (stack !== undefined) {
-    // Banner the daemon's whole stack, one aligned line per layer; older
-    // daemons report only chell and calypso.
-    const layers: Array<[string, string | undefined]> = [
-      ['chell', stack.chell], ['brasa', stack.brasa], ['chili', stack.chili],
-      ['salsa', stack.salsa], ['cumin', stack.cumin], ['calypso', stack.calypso],
-    ];
-    const present: Array<[string, string]> = layers.filter(
-      (entry: [string, string | undefined]): entry is [string, string] => entry[1] !== undefined,
-    );
-    const pkgWidth: number = Math.max(...present.map(([pkg]: [string, string]) => pkg.length));
-    for (const [pkg, version] of present) {
-      console.log(chalk.gray(`    ${pkg.padEnd(pkgWidth)}  ${version}`));
+  if (stack !== undefined && !onDaemonTerminal) {
+    // Banner the daemon's whole stack, every package written out in full;
+    // older daemons report only chell and calypso, and get only those rows.
+    for (const row of stackBanner_rows(stack)) {
+      console.log(`    ${stackBannerRow_paint(row, { name: chalk.bold.cyan, phrase: chalk.white, version: chalk.gray })}`);
     }
   }
   const hostControl: string[] = engine.hostControl ?? [];

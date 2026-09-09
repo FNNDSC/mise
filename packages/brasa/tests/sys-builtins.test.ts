@@ -42,7 +42,7 @@ const { builtin_fortune, fortune_random } = await import('../src/builtins/sys/fo
 const { FORTUNES } = await import('../src/builtins/sys/fortunes.data.js');
 const { builtin_date, date_format } = await import('../src/builtins/sys/date.js');
 const { builtin_cal } = await import('../src/builtins/sys/cal.js');
-const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, buildHash_get } = await import('../src/core/version.js');
+const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, stackBanner_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -259,10 +259,42 @@ describe('builtin_version', () => {
   it('composes the welcome line from explicit values', () => {
     expect(welcomeLine_compose('chell', '5.3.0', 'abc123'))
       .toBe('ChELL Executes Layered Logic, v 5.3.0 (abc123). Welcome.');
+    // A session host has nobody to welcome yet: its line ends at the build.
     expect(welcomeLine_compose('calypso', '0.5.0', 'abc123'))
-      .toContain('CALYPSO Accepts Language, Yielding Permitted Shell Operations, v 0.5.0');
+      .toBe('CALYPSO Accepts Language, Yielding Permitted Shell Operations, v 0.5.0 (abc123).');
     // Unknown packages fall back to the chell surface identity.
     expect(welcomeLine_compose('nonsense', '1.0.0', 'abc123')).toContain('ChELL');
+  });
+
+  it('writes every package out in full on the stack banner, argus last when served', () => {
+    const lines: string[] = stackBanner_build('0.6.0');
+    expect(lines[0]).toMatch(/^ChELL Executes Layered Logic\s+\d/);
+    expect(lines[lines.length - 1]).toMatch(/^ARGUS Renders Graphical User Surfaces\s+0\.6\.0$/);
+    // Versions sit in one column: every name is padded to the widest.
+    const versionColumn: Set<number> = new Set(lines.map((line: string): number => line.search(/\S+$/)));
+    expect(versionColumn.size).toBe(1);
+    // No web surface found, no argus row.
+    expect(stackBanner_build(null).some((line: string): boolean => line.startsWith('ARGUS'))).toBe(false);
+  });
+
+  it('composes the banner from a daemon-reported stack, rows only for versions it reported', () => {
+    const lines: string[] = stackBanner_compose({ chell: '5.6.2', calypso: '0.11.0' });
+    expect(lines).toEqual([
+      'ChELL Executes Layered Logic                                   5.6.2',
+      'CALYPSO Accepts Language, Yielding Permitted Shell Operations  0.11.0',
+    ]);
+    expect(stackBanner_compose({})).toEqual([]);
+  });
+
+  it('paints a banner row in three parts and keeps the version column aligned', () => {
+    const rows = stackBanner_rows({ chell: '5.6.2', calypso: '0.11.0' });
+    const paint = { name: (s: string): string => `<${s}>`, phrase: (s: string): string => `{${s}}`, version: (s: string): string => `[${s}]` };
+    const painted: string[] = rows.map((row) => stackBannerRow_paint(row, paint));
+    expect(painted[0]).toBe(`<ChELL>{ Executes Layered Logic}${' '.repeat(rows[0].nameWidth - 'ChELL Executes Layered Logic'.length)}  [5.6.2]`);
+    expect(painted[1]).toBe('<CALYPSO>{ Accepts Language, Yielding Permitted Shell Operations}  [0.11.0]');
+    // Stripped of paint, the versions stand in one column.
+    const plain: string[] = painted.map((line: string): string => line.replace(/[<>{}[\]]/g, ''));
+    expect(new Set(plain.map((line: string): number => line.search(/\S+$/))).size).toBe(1);
   });
 
   it('builds a welcome line with the resolved version and a build hash', () => {

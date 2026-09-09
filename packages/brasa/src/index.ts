@@ -31,6 +31,7 @@ export * from './lib/vfs/vfs.js';
 export * from './lib/spinner.js';
 export * from './logo/brain.js';
 export * from './lib/prefetch.js';
+export * from './lib/count.js';
 export * from './lib/parser.js';
 export * from './lib/pipe.js';
 export * from './lib/semicolonParser.js';

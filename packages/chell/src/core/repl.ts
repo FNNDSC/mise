@@ -18,6 +18,7 @@ import { cliSurface_create, type BytesFetch } from './cliSurface.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import { surfaceLine_executeSafely } from './surfaceDispatch.js';
+import { promptGuard_create, type PromptGuard } from './promptGuard.js';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 
 /**
@@ -54,6 +55,12 @@ export class REPL {
   private lastExitCode: number = 0;
   private promptText: string | (() => string) | undefined;
   private readonly bytesFetch: BytesFetch | undefined;
+  /**
+   * Keeps a stray write — another surface's output pushed by the daemon, a
+   * warm-up settling late — from landing across the idle prompt. Engaged
+   * once the prompt is drawn, released before a command's output starts.
+   */
+  private readonly guard: PromptGuard<NodeJS.WriteStream>;
 
   /**
    * Initializes the REPL interface around an engine.
@@ -65,9 +72,19 @@ export class REPL {
     this.engine = engine;
     this.promptText = options?.promptText;
     this.bytesFetch = options?.bytesFetch;
+    this.guard = promptGuard_create(process.stdout, (): void => {
+      try {
+        this.rl.prompt(true);
+      } catch {
+        // Interface might be closed.
+      }
+    });
     this.rl = readline.createInterface({
       input: process.stdin,
-      output: process.stdout,
+      // readline draws through the guard's own output, so the prompt's paint
+      // is never taken for a stray line.
+      output: this.guard.output,
+      terminal: process.stdout.isTTY === true,
       prompt: '> ',
       completer: (line: string, callback: (err: Error | null, result: [string[], string]) => void): void => {
         this.engine.line_complete(line)
@@ -96,6 +113,8 @@ export class REPL {
     await this.prompt_update();
 
     this.rl.on('line', async (line: string) => {
+      // The line is the command's now; its output flows raw.
+      this.guard.release();
       await this.history_append(line);
 
       // `exit` quits this shell, never the engine. Closing readline runs the
@@ -127,7 +146,7 @@ export class REPL {
       // A cancellable foreground command (currently recursive scans) gets the
       // interrupt first. Otherwise Ctrl+C retains readline's usual behavior:
       // clear an unfinished input line and redraw the prompt.
-      process.stdout.write('\n');
+      this.guard.write('\n');
       if (this.engine.line_cancel?.()) {
         return;
       }
@@ -137,6 +156,7 @@ export class REPL {
 
     this.rl.on('close', () => {
       this.isOpen = false;
+      this.guard.release();
       console.log(chalk.cyan('Exiting ChELL. Goodbye!'));
       process.exit(0);
     });
@@ -159,6 +179,7 @@ export class REPL {
       } catch (e: unknown) {
         // Interface might be closed
       }
+      this.guard.engage();
       return;
     }
 
@@ -172,6 +193,7 @@ export class REPL {
     } catch (e: unknown) {
       // Interface might be closed
     }
+    this.guard.engage();
   }
 
   /**

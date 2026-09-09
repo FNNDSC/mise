@@ -78,6 +78,14 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
     (pkg: string, version: string, build: string) => `ChELL Executes Layered Logic, v ${version} (${build}). Welcome.`,
   ),
   fortune_random: jest.fn(() => 'A test fortune.'),
+  // The banner names each package in full; the words the test looks for
+  // are the short names, which every full name carries.
+  stackBanner_rows: jest.fn((versions: Record<string, string | undefined>) =>
+    Object.entries(versions)
+      .filter(([pkg]: [string, string | undefined]): boolean => pkg !== 'build')
+      .map(([pkg, version]: [string, string | undefined]) => ({ pkg, name: `${pkg.toUpperCase()} written out`, version, nameWidth: 20 })),
+  ),
+  stackBannerRow_paint: jest.fn((row: { name: string; version: string }): string => `${row.name}  ${row.version}`),
 }));
 jest.unstable_mockModule('../src/remote/remoteEngine.js', () => ({
   RemoteEngine: MockRemoteEngine,
@@ -228,8 +236,9 @@ describe('remote_run', () => {
     const printed: string = log_spy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     log_spy.mockRestore();
     expect(printed).toContain('v 5.3.0 (abc123)');
-    for (const layer of ['chell', 'brasa', 'chili', 'salsa', 'cumin', 'calypso']) {
-      expect(printed).toContain(layer);
+    // Every layer the daemon reported is written out in full, its version beside it.
+    for (const [layer, version] of [['CHELL', '5.3.0'], ['BRASA', '0.10.0'], ['CHILI', '3.5.0'], ['SALSA', '2.1.0'], ['CUMIN', '3.9.0'], ['CALYPSO', '0.5.0']]) {
+      expect(printed).toContain(`${layer} written out  ${version}`);
     }
     expect(replStart_mock).toHaveBeenCalledTimes(1);
   });

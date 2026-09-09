@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { bundledWebRoot_find, webRoot_resolve } from '../src/daemon/static';
+import { bundledWebRoot_find, webRoot_resolve, webRootVersion_read } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -85,6 +85,29 @@ describe('webRoot_resolve', () => {
 
   it('returns null with no candidates', () => {
     expect(webRoot_resolve([undefined, undefined])).toBeNull();
+  });
+});
+
+describe('webRootVersion_read', () => {
+  it('reads the version from the package.json beside the app\'s dist directory', () => {
+    const app: string = mkdtempSync(path.join(tmpdir(), 'argus-app-'));
+    try {
+      mkdirSync(path.join(app, 'dist'));
+      writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: '@fnndsc/argus', version: '0.6.0' }));
+      expect(webRootVersion_read(path.join(app, 'dist'))).toBe('0.6.0');
+    } finally {
+      rmSync(app, { recursive: true, force: true });
+    }
+  });
+
+  it('says unknown when no manifest sits beside the web root', () => {
+    const app: string = mkdtempSync(path.join(tmpdir(), 'argus-app-'));
+    try {
+      mkdirSync(path.join(app, 'dist'));
+      expect(webRootVersion_read(path.join(app, 'dist'))).toBe('unknown');
+    } finally {
+      rmSync(app, { recursive: true, force: true });
+    }
   });
 });
 

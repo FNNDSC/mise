@@ -136,6 +136,13 @@ const STACK: readonly PackageDescriptor[] = [
 ];
 
 /**
+ * The web surface. It is not in {@link STACK}: argus is an app served from a
+ * checkout, not a package the others depend on, so its version is known only
+ * to the daemon that found its bundle and is passed in when the banner asks.
+ */
+const ARGUS: PackageDescriptor = { pkg: 'argus', name: 'ARGUS Renders Graphical User Surfaces', role: 'surface' };
+
+/**
  * Resolves the running version of a descriptor's package. brasa reads its own
  * package.json directly (this module lives in it); every other package resolves
  * by name.
@@ -210,10 +217,96 @@ export function versionReport_build(): string {
  * @param version - The package version to display.
  * @param build - The short build hash to display.
  * @returns A line of the form `ChELL Executes Layered Logic, v 5.3.0 (886f09). Welcome.`
+ *   for a surface; a session host's line ends at the build, with no welcome.
  */
 export function welcomeLine_compose(pkg: string, version: string, build: string): string {
   const descriptor: PackageDescriptor = STACK.find((d: PackageDescriptor) => d.pkg === pkg) ?? STACK[0];
-  return `${descriptor.name}, v ${version} (${build}). Welcome.`;
+  // The welcome belongs to a surface, where it marks the end of boot and the
+  // start of the operator's session. A session host has nobody to welcome
+  // yet: its boot ends with the readout's own last row.
+  const welcome: string = descriptor.role === 'surface' ? ' Welcome.' : '';
+  return `${descriptor.name}, v ${version} (${build}).${welcome}`;
+}
+
+/**
+ * Builds the stack banner a daemon prints under its own line: every package
+ * written out in full, backronym and version aligned, the web surface last
+ * when the daemon found one to serve.
+ *
+ * @param argusVersion - The served argus bundle's version, or null when the
+ *   daemon serves no web surface.
+ * @returns One `name  version` line per package.
+ */
+export function stackBanner_build(argusVersion: string | null): string[] {
+  return stackBanner_compose(versions_get(), argusVersion);
+}
+
+/**
+ * Composes the stack banner from explicit versions, so a surface attached to
+ * a daemon writes out the daemon's stack rather than its own install's.
+ *
+ * @param versions - Versions keyed by short package name; a package with no
+ *   version (an older daemon that did not report it) gets no row.
+ * @param argusVersion - The served web surface's version, or null for no row.
+ * @returns One `name  version` line per package known, in stack order.
+ */
+export function stackBanner_compose(
+  versions: Partial<StackVersions>,
+  argusVersion: string | null = null,
+): string[] {
+  return stackBanner_rows(versions, argusVersion).map(
+    (row: StackBannerRow): string => `${row.name.padEnd(row.nameWidth)}  ${row.version}`,
+  );
+}
+
+/** One banner row, with the width every name in the banner is padded to. */
+export interface StackBannerRow extends PackageInfo {
+  nameWidth: number;
+}
+
+/**
+ * The stack banner as rows, for a host that paints each part in its own
+ * colour: the package's name is the first word of its backronym, the rest
+ * of the phrase follows, and the version stands in one column.
+ *
+ * @param versions - Versions keyed by short package name; a package with no
+ *   version gets no row.
+ * @param argusVersion - The served web surface's version, or null for no row.
+ * @returns One row per package known, in stack order, each carrying the
+ *   shared name width.
+ */
+export function stackBanner_rows(
+  versions: Partial<StackVersions>,
+  argusVersion: string | null = null,
+): StackBannerRow[] {
+  const byPkg: Record<string, string | undefined> = Object.fromEntries(Object.entries(versions));
+  const rows: PackageInfo[] = [
+    ...STACK.flatMap((descriptor: PackageDescriptor): PackageInfo[] => {
+      const version: string | undefined = byPkg[descriptor.pkg];
+      return version === undefined ? [] : [{ ...descriptor, version }];
+    }),
+    ...(argusVersion !== null ? [{ ...ARGUS, version: argusVersion }] : []),
+  ];
+  const nameWidth: number = Math.max(0, ...rows.map((row: PackageInfo): number => row.name.length));
+  return rows.map((row: PackageInfo): StackBannerRow => ({ ...row, nameWidth }));
+}
+
+/**
+ * Paints one banner row: the package's own name bright, the rest of its
+ * backronym plain, the version dim in its column.
+ *
+ * @param row - The row to paint.
+ * @param paint - The three colours, applied to name, phrase, and version.
+ * @returns The painted line, aligned as the plain banner is.
+ */
+export function stackBannerRow_paint(
+  row: StackBannerRow,
+  paint: { name: (s: string) => string; phrase: (s: string) => string; version: (s: string) => string },
+): string {
+  const [first, ...rest]: string[] = row.name.split(' ');
+  const phrase: string = rest.length > 0 ? ` ${rest.join(' ')}` : '';
+  const padding: string = ' '.repeat(row.nameWidth - row.name.length);
+  return `${paint.name(first)}${paint.phrase(phrase)}${padding}  ${paint.version(row.version)}`;
 }
 
 /**

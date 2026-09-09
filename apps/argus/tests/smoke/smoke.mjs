@@ -1810,6 +1810,33 @@ try {
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
   }
 
+  if (stage('lane-instrument')) {
+  // LANE, BEAT and CUBE on the ARGUS WEB face: the lane reads IDLE while a
+  // feed indexes (the walk is off the lane), the beat is fresh, and CUBE's
+  // pace is a number once a page has been fetched.
+  const bigFeed = process.env.SMOKE_BIG_FEED ?? '';
+  const lanes = await evalIn(`
+    const box = document.getElementById('lane-instrument');
+    const rows = () => Object.fromEntries([...box.querySelectorAll('.lane-row')].map((r) => [r.querySelector('.telemetry-label').textContent, r.querySelector('.telemetry-value').textContent]));
+    await console_idle(); await sleep(1500);
+    const idle = rows();
+    if ('${bigFeed}' === '') return { idle, skipped: true };
+    const input = document.querySelector('#terminal input');
+    input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    let during = null;
+    for (let i = 0; i < 120; i++) { await sleep(250); if (/FEED ${bigFeed} /.test(document.getElementById('status-jobs').textContent)) { await sleep(1200); during = rows(); break; } }
+    for (let i = 0; i < 480 && /FEED ${bigFeed} /.test(document.getElementById('status-jobs').textContent); i++) await sleep(250);
+    await sleep(1500);
+    return { idle, during, after: rows() };`);
+  check('the lane reads IDLE and the beat is fresh on a quiet session', /^IDLE/.test(lanes.idle.LANE ?? '') && /^[0-2]\.\d S AGO$/.test(lanes.idle.BEAT ?? ''), JSON.stringify(lanes.idle));
+  if (lanes.skipped) {
+    console.log('  skipped the walk: set SMOKE_BIG_FEED=<id>');
+  } else {
+    check('the lane stays IDLE while a feed indexes off it', lanes.during !== null && /^IDLE/.test(lanes.during.LANE ?? ''), JSON.stringify(lanes.during));
+    check('CUBE has a pace once pages were fetched', /S\/PAGE · \d+ PAGES\/MIN$/.test(lanes.after.CUBE ?? ''), JSON.stringify(lanes.after));
+  }
+  }
+
   if (stage('header-index')) {
   // The INDEX instrument on the header's resting face: a quiet index reads
   // CURRENT; a feed's walk takes a row with a bar and its count; the row

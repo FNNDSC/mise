@@ -50,6 +50,7 @@ export * from "./output/runtimeOutput";
 
 // Re-export chrisapi types so downstream packages don't import chrisapi directly
 export { listData_get, itemData_get, items_get } from "./chrisapi/adapter";
+export { pace_get, pace_note, pace_reset, pace_isPageMethod, PACE_WINDOW, type CubePace } from "./chrisapi/pace";
 
 // Typed wire contract over the hot API surfaces (jobs, PACS): downstream
 // packages call these instead of casting the opaque client per call site.

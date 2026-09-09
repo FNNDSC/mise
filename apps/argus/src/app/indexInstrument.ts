@@ -30,6 +30,12 @@ interface IndexRow {
   degraded: boolean;
 }
 
+/** An ETA for a readout: minutes above a minute, else seconds. */
+function eta_format(ms: number): string {
+  if (ms >= 60_000) return `${Math.max(1, Math.round(ms / 60_000))} MIN`;
+  return `${Math.max(1, Math.round(ms / 1000))} S`;
+}
+
 /** A count for a readout: thin-space groups, as the listing shows sizes. */
 function count_format(n: number): string {
   return n.toLocaleString('en-US');
@@ -40,13 +46,55 @@ export class IndexInstrument {
   private readonly mount: HTMLElement;
   private counts: IndexCounts | null = null;
   private context: PromptContext | null = null;
+  /** CUBE's pace from the heartbeat, milliseconds per 100-row page. */
+  private msPerPage: number | null = null;
+  /** Each walk's last observed count and when: the rate an ETA is read from. */
+  private readonly walkSamples: Map<number, { loaded: number; at: number; rowsPerMs: number | null }> = new Map();
+  private readonly clock: () => number;
 
   /**
    * @param mount - The element the rows are drawn into (`#index-instrument`).
    */
-  constructor(mount: HTMLElement) {
+  constructor(mount: HTMLElement, clock: () => number = (): number => Date.now()) {
     this.mount = mount;
+    this.clock = clock;
     this.render();
+  }
+
+  /**
+   * CUBE's pace, from the telemetry heartbeat: the fallback an ETA uses
+   * before a walk has been observed moving.
+   *
+   * @param msPerPage - Milliseconds per 100-row page.
+   */
+  public pace_show(msPerPage: number): void {
+    this.msPerPage = msPerPage;
+    this.render();
+  }
+
+  /**
+   * How long a walk has left: from its observed rate (rows per millisecond
+   * across the last two counts), else from CUBE's pace with the walk's
+   * window of four; null when neither is known.
+   *
+   * @param feedId - The walk.
+   * @param loaded - Rows so far.
+   * @param total - Rows in all.
+   * @returns Milliseconds, or null.
+   */
+  private eta_of(feedId: number, loaded: number, total: number): number | null {
+    const now: number = this.clock();
+    const previous = this.walkSamples.get(feedId);
+    let rowsPerMs: number | null = previous?.rowsPerMs ?? null;
+    if (previous !== undefined && loaded > previous.loaded && now > previous.at) {
+      rowsPerMs = (loaded - previous.loaded) / (now - previous.at);
+    }
+    if (previous === undefined || loaded !== previous.loaded) this.walkSamples.set(feedId, { loaded, at: now, rowsPerMs });
+    const remaining: number = Math.max(0, total - loaded);
+    if (total <= 0) return null;
+    if (rowsPerMs !== null && rowsPerMs > 0) return remaining / rowsPerMs;
+    if (this.msPerPage !== null && this.msPerPage > 0) return Math.ceil(remaining / 100 / 4) * this.msPerPage;
+    return null;
   }
 
   /**
@@ -120,6 +168,9 @@ export class IndexInstrument {
     // Every feed's topology walk in flight, earliest first, and the walks
     // that stopped while their failure is remembered.
     const walks = warmup?.feeds ?? (warmup?.feed !== undefined ? [warmup.feed] : []);
+    for (const known of Array.from(this.walkSamples.keys())) {
+      if (!walks.some((w): boolean => w.id === known)) this.walkSamples.delete(known);
+    }
     for (const feed of walks) {
       const total: string = feed.total > 0 ? count_format(feed.total) : '?';
       if (feed.failed !== undefined) {
@@ -131,10 +182,11 @@ export class IndexInstrument {
           degraded: true,
         });
       } else {
+        const eta: number | null = this.eta_of(feed.id, feed.loaded, feed.total);
         rows.push({
           label: `FEED ${feed.id}`,
           bar: { loaded: feed.loaded, total: feed.total, state: 'running' },
-          value: `INDEXING ${count_format(feed.loaded)} / ${total}`,
+          value: `INDEXING ${count_format(feed.loaded)} / ${total}${eta !== null ? ` · ETA ${eta_format(eta)}` : ''}`,
           title: 'A feed is being indexed on its first visit; it opens when the walk lands.',
           degraded: false,
         });

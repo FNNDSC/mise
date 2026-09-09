@@ -141,6 +141,17 @@ export class IndexInstrument {
       }
     }
 
+    // The roster's own walk: the delta, or the ten-minute full walk.
+    if (warmup?.roster !== undefined) {
+      rows.push({
+        label: 'ROSTER',
+        bar: null,
+        value: warmup.roster === 'full' ? 'FULL WALK · every feed the identity can see' : 'DELTA · feeds newer than the roster knows',
+        title: 'The roster is being brought up to date; the listing answered from the cache and refreshes when arrivals land.',
+        degraded: false,
+      });
+    }
+
     // Roster arrivals: feeds the index gained in the last half minute.
     const arrived: number[] = warmup?.arrived ?? [];
     if (arrived.length > 0) {

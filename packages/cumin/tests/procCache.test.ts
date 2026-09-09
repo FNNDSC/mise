@@ -265,6 +265,14 @@ describe('ProcCache', () => {
       expect(cache.feedInstanceIDs_get(7)).toEqual([]);
     });
 
+    it('annunciates the roster walk in flight until cleared', () => {
+      expect(cache.rosterSync_get()).toBeNull();
+      cache.rosterSync_progress('full');
+      expect(cache.rosterSync_get()).toBe('full');
+      cache.rosterSync_clear();
+      expect(cache.rosterSync_get()).toBeNull();
+    });
+
     it('names every walk in flight, earliest first', () => {
       cache.feedLoad_progress(7, 100, 0);
       cache.feedLoad_progress(9, 5, 50);

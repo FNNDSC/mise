@@ -34,6 +34,7 @@ const jobsFind_mock = jest.fn(async () => ({ ok: true, value: [] }));
 const contextGetSingle_mock = jest.fn(async () => ({ user: 'me' }));
 const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
 const procFeedRefreshStart_mock = jest.fn(async (): Promise<'ready' | 'pending'> => 'pending');
+const procRosterSyncStart_mock = jest.fn((): 'none' | 'delta' | 'full' => 'delta');
 const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyRetry_mock = jest.fn(async (): Promise<void> => undefined);
@@ -90,6 +91,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feedGraphData_ensure: jest.fn(async (): Promise<'ready' | 'pending'> => 'ready'),
   feedGraph_build: jest.fn(),
   procRoster_sync: jest.fn(async (): Promise<void> => undefined),
+  procRoster_syncStart: procRosterSyncStart_mock,
   feedVisit_sync: jest.fn(async (): Promise<boolean> => true),
   feedCached_isSettled: jest.fn((): boolean => true),
   procFeed_ensureLoaded: procFeedEnsureLoaded_mock,

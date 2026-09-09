@@ -23,7 +23,7 @@
  * @module
  */
 
-import {
+import { type ProcRosterSyncKind,
   chrisConnection,
   errorStack,
   procCache_get,
@@ -1066,15 +1066,43 @@ async function feedVisit_run(feedID: number, force: boolean): Promise<void> {
  */
 export async function procRoster_sync(force: boolean = false): Promise<number[]> {
   if (rosterSyncInflight) return rosterSyncInflight;
+  const cache: ProcCache = procCache_get();
+  const kind: ProcRosterSyncKind | null = procRosterSync_kind(cache, force);
+  if (kind !== null) cache.rosterSync_progress(kind);
   const run: Promise<number[]> = procRoster_run(force)
     .catch((error: unknown): number[] => {
       const msg: string = error instanceof Error ? error.message : String(error);
       errorStack.stack_push('warning', `proc roster: live sync failed (${msg}); showing cached roster`);
       return [];
     })
-    .finally((): void => { rosterSyncInflight = null; });
+    .finally((): void => { rosterSyncInflight = null; cache.rosterSync_clear(); });
   rosterSyncInflight = run;
   return run;
+}
+
+/** Which roster walk a sync would run now, or null when the cache is not in service. */
+function procRosterSync_kind(cache: ProcCache, force: boolean): ProcRosterSyncKind | null {
+  if (!cache.built || cache.lifecycle_get().state !== 'current') return null;
+  return force || Date.now() - rosterWalkedAt >= ROSTER_FULL_WALK_MS ? 'full' : 'delta';
+}
+
+/**
+ * Starts the roster's sync and returns at once. The roster is index
+ * movement: a command that lists it answers from the cache now, the walk
+ * runs off the session's lane (deduped with any sync in flight), the
+ * prompt names it while it runs, and arrivals land as they do today.
+ *
+ * @param force - Whether to run the full walk regardless of the timer.
+ * @returns The walk started or already in flight, or `none` when the cache is not in service.
+ */
+export function procRoster_syncStart(force: boolean = false): ProcRosterSyncKind | 'none' {
+  const cache: ProcCache = procCache_get();
+  const inflight: ProcRosterSyncKind | null = cache.rosterSync_get();
+  if (inflight !== null) return inflight;
+  const kind: ProcRosterSyncKind | null = procRosterSync_kind(cache, force);
+  if (kind === null) return 'none';
+  void procRoster_sync(force);
+  return kind;
 }
 
 async function procRoster_run(force: boolean): Promise<number[]> {

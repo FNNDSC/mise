@@ -15,7 +15,7 @@ import type { ProcFeedPromptProgress } from '@fnndsc/menu';
 import { session } from '../session/index.js';
 import { warmupFailures_list, type WarmupFailure } from './warmupFailures.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import {
+import { type ProcRosterSyncKind,
   SingleContext,
   procCache_get,
   type ProcCacheLifecycle,
@@ -107,11 +107,12 @@ export async function sessionPromptContext_build(
     id: load.feedID, loaded: load.loaded, total: load.total, ...(load.failed !== undefined ? { failed: load.failed } : {}),
   }));
   const arrived: number[] = procCache_get().arrivals_recent();
+  const roster: ProcRosterSyncKind | null = procCache_get().rosterSync_get();
   const sweeping: boolean =
     warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed';
   const warmupFailures: WarmupFailure[] = warmupFailures_list();
   const procWarmup: ProcPromptProgress | undefined =
-    sweeping || feedLoad !== null || arrived.length > 0
+    sweeping || feedLoad !== null || arrived.length > 0 || roster !== null
       ? {
           loaded: warmupRaw.loaded,
           total: warmupRaw.total,
@@ -120,6 +121,7 @@ export async function sessionPromptContext_build(
           sweeping,
           ...(feedLoad !== null ? { feed: feeds[0], feeds } : {}),
           ...(arrived.length > 0 ? { arrived } : {}),
+          ...(roster !== null ? { roster } : {}),
         }
       : undefined;
   // Steady-state counts stay visible after warm-up settles: warmup progress

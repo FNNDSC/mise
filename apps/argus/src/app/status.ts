@@ -123,6 +123,7 @@ export class StatusBar {
       const total: string = walk.total > 0 ? `/${walk.total}` : '';
       parts.push(walk.failed !== undefined ? `FEED ${walk.id} FAILED ${walk.loaded}${total}` : `FEED ${walk.id} ${walk.loaded}${total}`);
     }
+    if (warmup?.roster !== undefined) parts.push(warmup.roster === 'full' ? 'ROSTER WALK' : 'ROSTER DELTA');
     if (warmup?.arrived !== undefined && warmup.arrived.length > 0) {
       parts.push(warmup.arrived.length <= 2
         ? `+FEED ${warmup.arrived.join(' ')}`

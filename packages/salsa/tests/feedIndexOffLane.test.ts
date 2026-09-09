@@ -14,7 +14,7 @@ jest.mock('@fnndsc/cumin', () => ({
 jest.mock('../src/jobs/index', () => ({}));
 
 import { procCache_get } from '@fnndsc/cumin';
-import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procVisitState_reset } from '../src/vfs/providers/proc';
+import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procRoster_syncStart, procVisitState_reset } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
 
@@ -121,6 +121,29 @@ describe('feedInstances_ensureStarted', () => {
     await flush();
     expect(cache.topologyLoaded_has(834)).toBe(true);
     expect(cache.feedInstanceIDs_get(834)).toHaveLength(3);
+  });
+
+  it('the roster sync is started and named, deduped while it runs, and cleared when it lands', async () => {
+    expect(procRoster_syncStart()).toBe('none'); // not in service yet
+    cache.feed_add({ id: 5, title: 'f', ownerUsername: 'u', public: false, creationDate: 'd', finishedJobs: 0, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 });
+    cache.built_set();
+    cache.warmup_complete();
+    const gates: Array<() => void> = [];
+    const client = {
+      getFeeds: jest.fn(() => new Promise<{ data: unknown[]; totalCount: number }>((resolve) => { gates.push(() => resolve({ data: [], totalCount: 0 })); })),
+      getPublicFeeds: jest.fn(async () => ({ data: [], totalCount: 0 })),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    const kind = procRoster_syncStart();
+    expect(kind === 'full' || kind === 'delta').toBe(true);
+    expect(cache.rosterSync_get()).toBe(kind);           // named while it runs
+    expect(procRoster_syncStart()).toBe(kind);            // deduped
+    await flush();
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    while (gates.length > 0) { (gates.shift() as () => void)(); await flush(); }
+    for (let i = 0; i < 5 && cache.rosterSync_get() !== null; i++) { while (gates.length > 0) (gates.shift() as () => void)(); await flush(); }
+    expect(cache.rosterSync_get()).toBeNull();            // cleared when it lands
   });
 
   it('feedInstances_ensureLoaded still waits for the walk it shares', async () => {

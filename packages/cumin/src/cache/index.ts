@@ -55,6 +55,7 @@ export type {
   ProcFeedScopeCounts,
   ProcWarmupProgress,
   ProcFeedLoadProgress,
+  ProcRosterSyncKind,
   ProcCacheState,
   ProcCacheLifecycle,
   ProcCacheSnapshot,

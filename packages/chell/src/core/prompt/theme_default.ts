@@ -77,6 +77,9 @@ export class ThemeDefault implements PromptTheme {
           ? chalk.hex(PROMPT_PALETTE.ERROR)(` [feed ${feed.id} indexing: FAILED at ${procProgress_format(feed.loaded, feed.total)}]`)
           : chalk.hex(PROMPT_PALETTE.WARMUP)(` [feed ${feed.id} indexing: ${procProgress_format(feed.loaded, feed.total)}]`);
       }
+      if (ctx.procWarmup.roster !== undefined) {
+        warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(` [roster: ${ctx.procWarmup.roster === 'full' ? 'full walk' : 'delta'}]`);
+      }
       if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {
         warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(feedArrivals_format(ctx.procWarmup.arrived));
       }

@@ -1810,6 +1810,37 @@ try {
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
   }
 
+  if (stage('header-index')) {
+  // The INDEX instrument on the header's resting face: a quiet index reads
+  // CURRENT; a feed's walk takes a row with a bar and its count; the row
+  // goes when the walk lands. Same context the status line reads.
+  const bigFeed = process.env.SMOKE_BIG_FEED ?? '';
+  const instrument = await evalIn(`
+    const box = document.getElementById('index-instrument');
+    await console_idle();
+    const idle = box.textContent;
+    const idleRows = box.querySelectorAll('.index-row').length;
+    if ('${bigFeed}' === '') return { idle, idleRows, skipped: true };
+    const input = document.querySelector('#terminal input');
+    input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    let named = '', barred = false;
+    for (let i = 0; i < 240; i++) {
+      await sleep(250);
+      const row = [...box.querySelectorAll('.index-row')].find((r) => /FEED ${bigFeed}/.test(r.textContent));
+      if (row) { named = row.textContent; if (row.querySelector('.index-bar .listing-progress-fill')) barred = true; }
+      if (named && !row) break;
+    }
+    for (let i = 0; i < 480 && /FEED ${bigFeed}/.test(box.textContent); i++) await sleep(250);
+    return { idle, idleRows, named, barred, after: box.textContent, afterRows: box.querySelectorAll('.index-row').length };`);
+  check('a quiet index reads CURRENT on the header, in one row', /CURRENT/.test(instrument.idle) && instrument.idleRows === 1, JSON.stringify(instrument));
+  if (instrument.skipped) {
+    console.log('  skipped the walk: set SMOKE_BIG_FEED=<id> to a feed of about a thousand nodes');
+  } else {
+    check('a feed being indexed takes a row of its own with a bar and its count', /INDEXING \d/.test(instrument.named) && instrument.barred, JSON.stringify(instrument));
+    check('the row goes when the walk lands and the index reads CURRENT again', instrument.afterRows === 1 && /CURRENT/.test(instrument.after), JSON.stringify(instrument));
+  }
+  }
+
   if (stage('lane')) {
   // Index movement never holds the lane: `proc refresh <id>` starts a feed's
   // re-walk and answers at once that the feed is indexing; a command sent

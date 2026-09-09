@@ -503,6 +503,12 @@ export const promptContextSchema = z.object({
       total: z.number(),
       failed: z.string().optional(),
     }).optional(),
+    feeds: z.array(z.object({
+      id: z.number(),
+      loaded: z.number(),
+      total: z.number(),
+      failed: z.string().optional(),
+    })).optional(),
     arrived: z.array(z.number()).optional(),
   }).optional(),
   procIndex: z.object({

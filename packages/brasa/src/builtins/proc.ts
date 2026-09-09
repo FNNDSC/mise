@@ -236,7 +236,7 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
       const readiness: FeedTopologyReadiness = await procFeed_refreshStart(feedID);
       spinner.stop();
       return readiness === 'pending'
-        ? feedIndexing_envelope(feedID)
+        ? feedIndexing_envelope(feedID, { model: false })
         : envelope_ok(`${chalk.green(`/proc cache refreshed (${scope})`)}\n`);
     }
     await procCache_refresh(feedID);

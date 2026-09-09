@@ -117,9 +117,11 @@ export class StatusBar {
       const state: string = warmup.state !== undefined ? ` ${warmup.state.toUpperCase()}` : '';
       parts.push(`JOBS ${warmup.loaded}${total}${state}`);
     }
-    if (warmup?.feed !== undefined) {
-      const total: string = warmup.feed.total > 0 ? `/${warmup.feed.total}` : '';
-      parts.push(`FEED ${warmup.feed.id} ${warmup.feed.loaded}${total}`);
+    // Every walk in flight, earliest first (older daemons send only the first).
+    const walks = warmup?.feeds ?? (warmup?.feed !== undefined ? [warmup.feed] : []);
+    for (const walk of walks) {
+      const total: string = walk.total > 0 ? `/${walk.total}` : '';
+      parts.push(walk.failed !== undefined ? `FEED ${walk.id} FAILED ${walk.loaded}${total}` : `FEED ${walk.id} ${walk.loaded}${total}`);
     }
     if (warmup?.arrived !== undefined && warmup.arrived.length > 0) {
       parts.push(warmup.arrived.length <= 2
@@ -137,7 +139,7 @@ export class StatusBar {
     this.fields.jobs.classList.toggle('status-degraded', failed.length > 0);
     this.fields.jobs.title = failed.length > 0
       ? failed.map((f) => `${f.label}: ${f.message}`).join('\n')
-      : warmup?.feed !== undefined
+      : walks.length > 0
         ? 'A feed is being indexed on its first visit; it opens when the walk completes.'
         : '';
 

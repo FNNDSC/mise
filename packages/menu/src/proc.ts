@@ -29,8 +29,10 @@ export interface ProcPromptProgress {
   state?: ProcPromptState;
   /** Whether the global index sweep is what `loaded`/`total` describe; absent means yes (older daemons). */
   sweeping?: boolean;
-  /** One feed's first-visit topology load in flight, when there is one. */
+  /** The earliest feed topology load in flight, when there is one (older readers; the first of `feeds`). */
   feed?: ProcFeedPromptProgress;
+  /** Every feed topology load in flight or lately failed, earliest first. */
+  feeds?: ProcFeedPromptProgress[];
   /** Feeds the roster gained (created or shared) in the last half minute. */
   arrived?: number[];
 }

@@ -69,7 +69,7 @@ export async function feedDiagram_handle(feedId: number, dialect: DiagramDialect
  * @param feedId - The feed being indexed.
  * @returns An `ok` envelope with the `feed.indexing` model.
  */
-export function feedIndexing_envelope(feedId: number): CommandEnvelope {
+export function feedIndexing_envelope(feedId: number, options: { model?: boolean } = {}): CommandEnvelope {
   const load: ProcFeedLoadProgress | null = procCache_get().feedLoad_of(feedId);
   const model: FeedIndexingModel = {
     feedId,
@@ -81,7 +81,12 @@ export function feedIndexing_envelope(feedId: number): CommandEnvelope {
   const line: string = model.failed !== undefined
     ? `Feed ${feedId}: indexing failed at ${count} (${model.failed}); ask again to retry.`
     : `Feed ${feedId}: indexing ${count} — the prompt tracks it; ask again when it lands.`;
-  return envelope_ok(`${chalk.yellow(line)}\n`, { kind: DAG_MODEL_KINDS.feedIndexing, data: model });
+  // A refresh is not a request to view: it says the walk started and
+  // carries no model, so no pane claims it. A diagram ask carries the
+  // model, which is the pane's cue to show the wait in place.
+  return options.model === false
+    ? envelope_ok(`${chalk.yellow(line)}\n`)
+    : envelope_ok(`${chalk.yellow(line)}\n`, { kind: DAG_MODEL_KINDS.feedIndexing, data: model });
 }
 
 /**

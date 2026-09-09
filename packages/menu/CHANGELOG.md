@@ -1,5 +1,12 @@
 # @fnndsc/menu
 
+## 0.6.0
+
+### Minor Changes
+
+- 49634f2: feat(menu): the telemetry heartbeat carries the lane (the running line, since when, how many wait) and CUBE's pace
+- 2545ffa: feat(menu): the telemetry heartbeat carries the lab's pulse (`state`)
+
 ## 0.5.0
 
 ### Minor Changes

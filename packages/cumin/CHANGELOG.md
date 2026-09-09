@@ -1,5 +1,21 @@
 # @fnndsc/cumin
 
+## 3.19.0
+
+### Minor Changes
+
+- 6cd5ab1: feat(cumin): the feed-load register learns failure — `feedLoad_fail` names where a walk stopped, `feedLoad_of` reads one feed's load, and a failed entry is forgotten after a minute
+- 57ba039: feat(cumin): `feedLoads_all` names every feed topology walk in flight, earliest first, with the failures still remembered; `feedTopology_evict` drops a feed's instances, roots and loaded mark while keeping its roster row
+- adf8cc1: feat(cumin): `listPages_walkWindowed` — the one pagination loop, windowed: the first page alone to learn the total, then up to N pages in flight, each yielded as it lands; sequential when the server reports no total; a failing page ends the walk once the window settles
+- 98ab832: feat(cumin): the process cache annunciates the roster walk in flight (`rosterSync_progress`/`rosterSync_get`, delta or full)
+
+### Patch Changes
+
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [57ba039]
+- Updated dependencies [98ab832]
+  - @fnndsc/menu@0.5.0
+
 ## 3.18.0
 
 ### Minor Changes

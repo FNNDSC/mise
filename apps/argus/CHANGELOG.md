@@ -1,5 +1,21 @@
 # @fnndsc/argus
 
+## 0.5.0
+
+### Minor Changes
+
+- 6cd5ab1: feat(argus): the DAG pane shows a cold feed's walk in place — INDEXING FEED n with the live count from the prompt, FAILED with REFRESH retrying — and opens the feed's watch on the pending answer so the graph lands without a re-ask
+- 57ba039: feat(argus): the INDEX instrument — index movement read on the header's resting face: a quiet index reads CURRENT with what it holds, the global sweep rides that row with a bar, a feed's walk takes a row of its own with a bar that follows the count (FAILED where it stopped), arrivals a third, and a failed warm-up step keeps the row red with the steps named
+- 98ab832: feat(argus): the status line reads ROSTER WALK / ROSTER DELTA and the INDEX instrument shows a ROSTER row while the roster syncs off the lane
+
+### Patch Changes
+
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [57ba039]
+- Updated dependencies [98ab832]
+  - @fnndsc/menu@0.5.0
+  - @fnndsc/calypso@0.10.2
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @fnndsc/menu
 
+## 0.5.0
+
+### Minor Changes
+
+- 6cd5ab1: feat(menu): the `feed.indexing` envelope model — a feed asked for while its topology is still being indexed — and a `failed` field on the prompt context's feed-load progress
+- 57ba039: feat(menu): the prompt context carries every feed topology walk in flight (`procWarmup.feeds`); `feed` stays the first for older readers
+- 98ab832: feat(menu): the prompt context names the roster walk in flight (`procWarmup.roster`: delta or full)
+
 ## 0.4.0
 
 ### Minor Changes

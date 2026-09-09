@@ -1,5 +1,22 @@
 # @fnndsc/salsa
 
+## 3.14.0
+
+### Minor Changes
+
+- 6cd5ab1: feat(salsa): index movement never holds the lane — `feedInstances_ensureStarted` starts a cold feed's topology walk and returns `pending`, the walk runs detached and deduped, a failure is named in the load register, and `feedGraphData_ensure` reports readiness instead of waiting
+- 57ba039: fix(salsa): `proc refresh <feed>` keeps the feed's roster row and evicts only its topology — a feed seen through the public listing is not in the own-feeds endpoint, and a refresh that removed the row and could not re-read it left the feed "not found" after its re-walk; the row is re-read from the own feeds, then the public ones
+- adf8cc1: feat(salsa): a feed's topology walk fetches four pages at once (`FEED_WALK_IN_FLIGHT`), so a 58,760-node feed that walked for 28 minutes sequentially on a 2.8 s/page CUBE lands in about a quarter of that; the global sweep keeps its sequential, resumable loop
+- 98ab832: feat(salsa): `procRoster_syncStart` starts the roster sync and returns at once, deduped with a sync in flight and named in the cache while it runs; `procRoster_sync` still waits for callers that must
+
+### Patch Changes
+
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [57ba039]
+- Updated dependencies [adf8cc1]
+- Updated dependencies [98ab832]
+  - @fnndsc/cumin@3.19.0
+
 ## 3.13.0
 
 ### Minor Changes

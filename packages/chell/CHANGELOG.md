@@ -1,5 +1,32 @@
 # @fnndsc/chell
 
+## 5.6.1
+
+### Patch Changes
+
+- 6cd5ab1: fix(chell): the prompt's feed-indexing segment says FAILED, in the failure colour, when a walk stopped
+- 57ba039: fix(chell): both prompt themes show every feed being indexed, not only the earliest
+- 98ab832: feat(chell): the prompt says `[roster: full walk]` or `[roster: delta]` while the roster is being brought up to date
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [57ba039]
+- Updated dependencies [57ba039]
+- Updated dependencies [57ba039]
+- Updated dependencies [57ba039]
+- Updated dependencies [adf8cc1]
+- Updated dependencies [adf8cc1]
+- Updated dependencies [98ab832]
+- Updated dependencies [98ab832]
+- Updated dependencies [98ab832]
+- Updated dependencies [98ab832]
+  - @fnndsc/brasa@0.18.0
+  - @fnndsc/cumin@3.19.0
+  - @fnndsc/menu@0.5.0
+  - @fnndsc/salsa@3.14.0
+  - @fnndsc/calypso@0.10.2
+
 ## 5.6.0
 
 ### Minor Changes

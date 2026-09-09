@@ -33,6 +33,8 @@ export interface ProcPromptProgress {
   feed?: ProcFeedPromptProgress;
   /** Every feed topology load in flight or lately failed, earliest first. */
   feeds?: ProcFeedPromptProgress[];
+  /** The roster's own walk in flight: the delta, or the ten-minute full walk. */
+  roster?: 'delta' | 'full';
   /** Feeds the roster gained (created or shared) in the last half minute. */
   arrived?: number[];
 }

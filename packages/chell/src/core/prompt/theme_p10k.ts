@@ -229,6 +229,9 @@ export class ThemeP10k implements PromptTheme {
           color: feed.failed !== undefined ? PROC_STATE_SEGMENTS.failed.color : PROMPT_PALETTE.TIME,
         });
       }
+      if (ctx.procWarmup.roster !== undefined) {
+        procSegments.push({ text: `${ICON_REFRESH} roster: ${ctx.procWarmup.roster === 'full' ? 'full walk' : 'delta'}`, color: PROMPT_PALETTE.TIME });
+      }
       if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {
         procSegments.push({
           text: feedArrivals_format(ctx.procWarmup.arrived).trim(),

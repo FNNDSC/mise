@@ -186,6 +186,9 @@ export interface ProcFeedLoadProgress {
   failed?: string;
 }
 
+/** The roster walks the cache can have in flight: the delta, or the ten-minute full walk. */
+export type ProcRosterSyncKind = 'delta' | 'full';
+
 /** How long a failed feed load stays annunciated before the register forgets it. */
 export const PROC_FEED_LOAD_FAILURE_TTL_MS: number = 60_000;
 
@@ -307,6 +310,7 @@ export class ProcCache {
   /** Per-feed topology loads in flight, keyed by feed id. */
   private feedLoads: Map<number, ProcFeedLoadProgress> = new Map();
   private feedLoadFailedAt: Map<number, number> = new Map();
+  private rosterSync: ProcRosterSyncKind | null = null;
 
   /** Feeds the roster gained (created or shared) with the moment they landed. */
   private arrivals: Map<number, number> = new Map();
@@ -734,6 +738,33 @@ export class ProcCache {
 
   warmupProgress_get(): ProcWarmupProgress {
     return { ...this._warmupProgress };
+  }
+
+  // ── The roster's own movement ─────────────────────────────────────────────
+
+  /**
+   * Notes that the roster is being brought up to date: a delta (feeds newer
+   * than the highest known id) or the ten-minute full walk. Index movement
+   * no command announces; the prompt says it while it runs.
+   *
+   * @param kind - Which walk is in flight.
+   */
+  rosterSync_progress(kind: ProcRosterSyncKind): void {
+    this.rosterSync = kind;
+  }
+
+  /** Ends the roster's annunciation. */
+  rosterSync_clear(): void {
+    this.rosterSync = null;
+  }
+
+  /**
+   * The roster walk in flight, if any.
+   *
+   * @returns The kind, or null when the roster is not moving.
+   */
+  rosterSync_get(): ProcRosterSyncKind | null {
+    return this.rosterSync;
   }
 
   // ── Per-feed load and roster arrivals ─────────────────────────────────────

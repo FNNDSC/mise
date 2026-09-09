@@ -106,6 +106,17 @@ describe('IndexInstrument', () => {
     expect((mount.querySelector('.index-row') as HTMLElement).title).toBe('roster: connection lost');
   });
 
+  it('the roster walk is a row of its own, full or delta', () => {
+    const mount: HTMLElement = mount_make();
+    const instrument: IndexInstrument = new IndexInstrument(mount);
+    instrument.promptContext_show(context_make({ procWarmup: { loaded: 0, sweeping: false, roster: 'full' } }));
+    expect(rows_text(mount)[1]).toBe('ROSTERFULL WALK · every feed the identity can see');
+    instrument.promptContext_show(context_make({ procWarmup: { loaded: 0, sweeping: false, roster: 'delta' } }));
+    expect(rows_text(mount)[1]).toBe('ROSTERDELTA · feeds newer than the roster knows');
+    instrument.promptContext_show(context_make({}));
+    expect(rows_text(mount)).toEqual(['INDEXCURRENT']);
+  });
+
   it('arrivals are a row of their own, by name up to three', () => {
     const mount: HTMLElement = mount_make();
     const instrument: IndexInstrument = new IndexInstrument(mount);

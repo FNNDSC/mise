@@ -22,7 +22,7 @@ const mockRegular = {
   fileContent_getRegularStream: jest.fn(),
 };
 const mockPacs = { fileContent_getPACS: jest.fn(), fileContent_getPACSBinary: jest.fn() };
-const mockDispatcher = { provider_get: jest.fn(), read: jest.fn(), readBinary: jest.fn() };
+const mockDispatcher = { provider_get: jest.fn(), read: jest.fn(), readBinary: jest.fn(), path_isVirtual: jest.fn((): boolean => false) };
 
 jest.mock('@fnndsc/cumin', () => ({
   ...jest.requireActual('@fnndsc/cumin'),
@@ -102,6 +102,23 @@ describe('files_getGroup', () => {
 
   it('returns null for an unsupported asset type', async () => {
     expect(await files_getGroup('bogus', '/p')).toBeNull();
+  });
+
+  it('returns null for a projection path without asking cumin to build a context', async () => {
+    // /proc, /net/pacs and the like have no CUBE folder; a path walk that
+    // visited every ancestor turned that into a wall of identical errors.
+    mockDispatcher.path_isVirtual.mockReturnValueOnce(true);
+    mockObjCreate.mockResolvedValue(group({}));
+    expect(await files_getGroup('links', '/proc/jobs/feed_4461/pl-dircopy_588089')).toBeNull();
+    expect(mockDispatcher.path_isVirtual).toHaveBeenCalledWith('/proc/jobs/feed_4461/pl-dircopy_588089');
+    expect(mockObjCreate).not.toHaveBeenCalled();
+  });
+
+  it('still builds a context for a real folder the projection guard passes', async () => {
+    mockDispatcher.path_isVirtual.mockReturnValue(false);
+    mockObjCreate.mockResolvedValue(group({}));
+    await files_getGroup('files', '/home/chris/feeds');
+    expect(mockObjCreate).toHaveBeenCalledWith('ChRISFilesContext', 'folder:/home/chris/feeds');
   });
 
   it('returns null when creation throws', async () => {

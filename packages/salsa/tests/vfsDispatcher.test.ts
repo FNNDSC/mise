@@ -65,6 +65,43 @@ beforeEach(() => {
   Object.values(providerFns).forEach((fn: jest.Mock) => fn.mockReset());
 });
 
+describe('path_isVirtual', () => {
+  const d: VFSDispatcher = new VFSDispatcher();
+
+  it('calls a projection path virtual: owned by a provider, at or under its prefix', () => {
+    expect(d.path_isVirtual('/proc')).toBe(true);
+    expect(d.path_isVirtual('/proc/jobs/feed_4461/pl-dircopy_588089')).toBe(true);
+    expect(d.path_isVirtual('/net/pacs')).toBe(true);
+    expect(d.path_isVirtual('/net/pacs/PACSDCM')).toBe(true);
+    expect(d.path_isVirtual('/etc')).toBe(true);
+    expect(d.path_isVirtual('/etc/group')).toBe(true);
+  });
+
+  it('calls a strict ancestor of a projection prefix virtual: its only children are projections', () => {
+    // /net has no CUBE folder — /net/pacs lives beneath it.
+    expect(d.path_isVirtual('/net')).toBe(true);
+  });
+
+  it('never calls a real CUBE folder virtual, the store root included', () => {
+    expect(d.path_isVirtual('/')).toBe(false);
+    expect(d.path_isVirtual('/home/chris')).toBe(false);
+    expect(d.path_isVirtual('/home/chris/feeds/feed_4461')).toBe(false);
+    expect(d.path_isVirtual('/SHARED')).toBe(false);
+    expect(d.path_isVirtual('/PUBLIC')).toBe(false);
+  });
+
+  it('does not mistake a look-alike name for a projection prefix', () => {
+    // /procedures is not under /proc.
+    expect(d.path_isVirtual('/procedures')).toBe(false);
+    expect(d.path_isVirtual('/network')).toBe(false);
+  });
+
+  it('reads a root-relative or trailing-slash path the same as its clean form', () => {
+    expect(d.path_isVirtual('proc/jobs')).toBe(true);
+    expect(d.path_isVirtual('/proc/')).toBe(true);
+  });
+});
+
 describe('provider matching', () => {
   it('routes prefixed paths to their provider and everything else to native', () => {
     const d: VFSDispatcher = new VFSDispatcher();

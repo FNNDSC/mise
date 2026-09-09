@@ -40,7 +40,7 @@ import {
   publicFeedsPage_get,
   pluginInstancesPage_get,
   pluginInstance_get,
-  listPages_walk,
+  listPages_walk, listPages_walkWindowed,
   ListPage,
   FeedData,
   PluginInstanceData,
@@ -62,6 +62,8 @@ const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
 
 const PROC_JOBS_PREFIX: string = '/proc/jobs';
 const PAGE: number = 100;
+/** Pages of one feed's topology walk fetched at once (PACS plural's precedent: four). */
+export const FEED_WALK_IN_FLIGHT: number = 4;
 /** How long a settled feed's counters are trusted before a visit re-checks them. */
 export const FEED_RECHECK_MS: number = 10 * 60 * 1000;
 /** How old the roster may be before a visit walks the whole feed index again. */
@@ -293,10 +295,14 @@ async function feedInstances_load(feedID: number): Promise<void> {
   // hang. The register is cleared on every exit, including failure.
   cache.feedLoad_progress(feedID, 0, 0);
   try {
-    for await (const step of listPages_walk(
+    // Several pages in flight: the rows are keyed by id and committed as a
+    // whole when the walk lands, so the order pages arrive in is nothing
+    // to this consumer, and the walk is as long as the slowest page in
+    // each window rather than the sum of every page.
+    for await (const step of listPages_walkWindowed(
       (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> =>
         pluginInstancesPage_get(client, { feed_id: feedID, limit, offset }),
-      { pageSize: PAGE },
+      { pageSize: PAGE, inFlight: FEED_WALK_IN_FLIGHT },
     )) {
       for (const instance of step.items) instances.set(Number(instance.id), instance);
       cache.feedLoad_progress(feedID, instances.size, step.total ?? 0);

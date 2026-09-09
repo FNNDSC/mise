@@ -65,6 +65,8 @@ describe('feedInstances_ensureStarted', () => {
     gated.release(); await flush();
     expect(cache.feedLoad_of(21)).toEqual({ feedID: 21, loaded: 100, total: 250 });
     expect(cache.topologyLoaded_has(21)).toBe(false); // committed only when whole
+    // The first page told the total: the remaining two pages fly together.
+    expect(gated.pending()).toBe(2);
     gated.release(); await flush();
     gated.release(); await flush();
 

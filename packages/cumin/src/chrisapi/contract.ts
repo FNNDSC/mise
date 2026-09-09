@@ -137,6 +137,90 @@ export async function* listPages_walk<T>(
 }
 
 /**
+ * Options for a windowed walk. See {@link listPages_walkWindowed}.
+ *
+ * @property pageSize - Rows requested per page. Defaults to 100.
+ * @property inFlight - Pages fetched concurrently once the total is known.
+ *   Defaults to 4.
+ */
+export interface WindowedPageWalkOptions {
+  pageSize?: number;
+  inFlight?: number;
+}
+
+/**
+ * Walks every page of a paginated CUBE list with several pages in flight.
+ *
+ * The one pagination loop, windowed: the first page is fetched alone to
+ * learn the server's total, and every further offset is then known, so up
+ * to `inFlight` pages are fetched at once and yielded as each lands — in
+ * completion order, which is why this walk suits a consumer that keys rows
+ * by id and commits the whole set when it is done, and not one that reads
+ * rows in server order or resumes from an offset. A server that reports no
+ * total is walked one page at a time, exactly as {@link listPages_walk}
+ * does. A fetch error ends the walk once the pages already in flight have
+ * settled, and propagates.
+ *
+ * @param page_fetch - Fetches one page at the given offset and limit.
+ * @param options - Page size and window width. See WindowedPageWalkOptions.
+ * @returns Async generator yielding a PageWalkStep per fetched page.
+ */
+export async function* listPages_walkWindowed<T>(
+  page_fetch: (offset: number, limit: number) => Promise<ListPage<T>>,
+  options: WindowedPageWalkOptions = {},
+): AsyncGenerator<PageWalkStep<T>, void, void> {
+  const pageSize: number = options.pageSize ?? 100;
+  const inFlight: number = Math.max(1, options.inFlight ?? 4);
+
+  const first: ListPage<T> = await page_fetch(0, pageSize);
+  const total: number | null = first.totalCount ?? null;
+  const firstAdvance: number = first.fetchedCount ?? first.data.length;
+  yield { items: first.data, offset: 0, total };
+  if (firstAdvance === 0 || first.hasMore === false) return;
+  if (total === null) {
+    // No total, no window: the sequential loop owns termination from here.
+    yield* listPages_walk(page_fetch, { pageSize, startOffset: firstAdvance, startTotal: null });
+    return;
+  }
+  if (firstAdvance >= total) return;
+
+  interface Landed { key: number; step: PageWalkStep<T>; }
+  const flying: Map<number, Promise<Landed>> = new Map();
+  let nextOffset: number = firstAdvance;
+  let key: number = 0;
+  let failure: unknown = null;
+
+  const launch = (): void => {
+    const offset: number = nextOffset;
+    nextOffset += pageSize;
+    const id: number = key++;
+    flying.set(id, page_fetch(offset, pageSize).then((page: ListPage<T>): Landed => ({
+      key: id,
+      step: { items: page.data, offset, total },
+    })));
+  };
+
+  while (flying.size > 0 || (failure === null && nextOffset < total)) {
+    while (failure === null && nextOffset < total && flying.size < inFlight) launch();
+    if (flying.size === 0) break;
+    try {
+      const landed: Landed = await Promise.race(flying.values());
+      flying.delete(landed.key);
+      yield landed.step;
+    } catch (error: unknown) {
+      // Remember the first failure, let the rest of the window settle, then throw.
+      if (failure === null) failure = error;
+      const settled: PromiseSettledResult<Landed>[] = await Promise.allSettled(flying.values());
+      flying.clear();
+      for (const result of settled) {
+        if (result.status === 'fulfilled') yield result.value.step;
+      }
+    }
+  }
+  if (failure !== null) throw failure;
+}
+
+/**
  * Drains every page of a paginated CUBE list into one array.
  *
  * Convenience over listPages_walk for callers that need the complete

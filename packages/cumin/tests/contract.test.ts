@@ -17,6 +17,7 @@ import {
   pipelineSourceFilesPage_get,
   downloadToken_create,
   listPages_walk,
+  listPages_walkWindowed,
   collectionPage_wrap,
   ListPage,
   PageWalkStep,
@@ -332,6 +333,67 @@ describe('listPages_walk', () => {
     );
     expect(collected).toEqual(rows);
     expect(calls).toEqual([[0, 10], [10, 10], [20, 10]]);
+  });
+
+  describe('windowed', () => {
+    /** A fetcher whose pages resolve only when released, counting how many are in flight at once. */
+    function gatedFetch_fake(rows: number[], totalCount: number | null) {
+      const gates: Array<() => void> = [];
+      let inFlight: number = 0;
+      let peak: number = 0;
+      const calls: number[] = [];
+      const fetch = (offset: number, limit: number): Promise<ListPage<number>> => {
+        calls.push(offset);
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        return new Promise<ListPage<number>>((resolve: (page: ListPage<number>) => void): void => {
+          gates.push((): void => { inFlight -= 1; resolve({ data: rows.slice(offset, offset + limit), totalCount }); });
+        });
+      };
+      return { fetch, calls, release: (): void => { const g = gates.shift(); if (g) g(); }, releaseAll: (): void => { while (gates.length) (gates.shift() as () => void)(); }, peak: (): number => peak, waiting: (): number => gates.length };
+    }
+
+    test('fetches the first page alone, then up to the window at once, and lands every row', async () => {
+      const rows: number[] = Array.from({ length: 95 }, (_, i) => i);
+      const fake = gatedFetch_fake(rows, 95);
+      const landed: number[] = [];
+      const walk = (async (): Promise<void> => {
+        for await (const step of listPages_walkWindowed(fake.fetch, { pageSize: 10, inFlight: 4 })) landed.push(...step.items);
+      })();
+      await new Promise((r) => setImmediate(r));
+      expect(fake.waiting()).toBe(1); // the first page, alone: it tells the total
+      fake.release();
+      await new Promise((r) => setImmediate(r));
+      expect(fake.waiting()).toBe(4); // then the window opens
+      fake.releaseAll();
+      for (let i = 0; i < 20; i++) { await new Promise((r) => setImmediate(r)); fake.releaseAll(); }
+      await walk;
+      expect(landed.sort((a, b) => a - b)).toEqual(rows);
+      expect(fake.peak()).toBe(4);
+      expect(fake.calls.sort((a, b) => a - b)).toEqual([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+    });
+
+    test('walks one page at a time when the server reports no total', async () => {
+      const rows: number[] = Array.from({ length: 25 }, (_, i) => i);
+      const calls: Array<[number, number]> = [];
+      const collected: number[] = await walk_collect(
+        listPages_walkWindowed(pageFetch_fake(rows, null, calls), { pageSize: 10, inFlight: 4 }),
+      );
+      expect(collected).toEqual(rows);
+      expect(calls).toEqual([[0, 10], [10, 10], [20, 10]]);
+    });
+
+    test('a failing page ends the walk after the window settles, and the failure propagates', async () => {
+      const rows: number[] = Array.from({ length: 50 }, (_, i) => i);
+      let n: number = 0;
+      const fetch = async (offset: number, limit: number): Promise<ListPage<number>> => {
+        n += 1;
+        if (offset === 20) throw new Error('CUBE 502');
+        return { data: rows.slice(offset, offset + limit), totalCount: 50 };
+      };
+      await expect(walk_collect(listPages_walkWindowed(fetch, { pageSize: 10, inFlight: 4 }))).rejects.toThrow('CUBE 502');
+      expect(n).toBeLessThanOrEqual(5);
+    });
   });
 
   test('stops without an extra fetch when the total lands on a page boundary', async () => {

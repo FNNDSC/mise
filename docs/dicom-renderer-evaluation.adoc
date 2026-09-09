@@ -1,0 +1,156 @@
+= The DICOM Renderer: Candidates Judged Against the Requirements
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.3, 2026-09-09: Decision recorded
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: DECIDED 2026-09-09 (slice S2 of the DICOM viewing campaign, epic #359)
+
+[abstract]
+--
+mise needs a renderer behind its `image` pane: a guest component that draws DICOM series, NIfTI and MGZ volumes inside an argus pane, fed by bytes mise serves, driven by mise verbs, and owning nothing that mise must be able to print. The 2026-09-03 plan chose one by datasheet and paid for it later. This document judges four candidates against the requirements as re-grilled on 2026-09-09, on facts read from their source and registries rather than from their READMEs, and records what a throwaway prototype then showed on real bytes over the `/vfs` route. It ends with a recommendation; the choice is the user's.
+--
+
+== The requirements the renderer must serve
+
+The campaign's requirements, in the order the user ranked them: clinically familiar controls, not bespoke (R1); a full tag list per image (R2, the kernel's, already shipped in S1); the series as the unit of viewing with reliable wheel scroll (R3); linked MPR on choice with one shared 3D cursor (R4); viewing from wherever a series appears (R5); annotations persisted as standard DICOM objects (R6); NIfTI and MGZ through the same pane (R7).
+
+Decision 15 turned those into twelve criteria: lazy stack plus streamed volume; a pluggable source (file URLs now, DICOMweb later); a toolbar out of the box; an image-changed event; linked MPR with a shared cursor; SR export and reload; NIfTI and MGZ or a clean seam for a second renderer; decoder coverage (JPEG-LS, JPEG 2000, RLE); focus containment; licence; bundle weight; maintenance pulse.
+
+== The candidates
+
+Four were worth reading: Cornerstone3D (with the OHIF viewer considered as a source of a toolbar), niivue, DWV, and vtk.js. Papaya and AMI are unmaintained; VolView and OHIF are applications, and decision 1 rules out embedding an application. Every fact below was checked in the project's source tree or on the npm registry on 2026-09-09; a cell that could not be verified says so.
+
+=== Cornerstone3D
+
+https://github.com/cornerstonejs/cornerstone3D[cornerstonejs/cornerstone3D], MIT, org-maintained, npm latest 5.8.2 (2026-08-17), GitHub v5.9.1 (2026-09-09), about 250 stable npm versions in twelve months, 417 open issues.
+
+* Lazy stack: yes. `StackViewport.setStack(imageIds, index)` displays one image id at a time. Streamed volume: yes. `cornerstoneStreamingImageVolume` fills a volume image by image and fires `VOLUME_NEW_IMAGE` per slice. A separate progressive path (lossy first) exists but needs HTJ2K over DICOMweb with byte ranges, which CUBE does not offer today.
+* Source: plain HTTP works. The image loader registers `wadouri:` (one XHR GET of a Part 10 file), `dicomfile:` (a local File), and `wadors:` for DICOMweb later. The streaming volume loader special-cases `wadouri:` to fetch the first image first. This is the seam decision 4 asked for.
+* Toolbar: none. `@cornerstonejs/tools` ships tool classes only (Pan, Zoom, WindowLevel, StackScroll, Length, Angle, CobbAngle, Probe, RectangleROI, EllipticalROI, CircleROI, Bidirectional, ArrowAnnotate, PlanarFreehandROI, Crosshairs, ReferenceLines); a host binds them with `ToolGroup.setToolActive(name, { bindings })`. OHIF's assembled toolbar lives in `@ohif/extension-default` and depends on `@ohif/core` services; OHIF's own embedding guidance is an iframe. See <<toolbar-finding>>.
+* Image-changed event: `CORNERSTONE_STACK_NEW_IMAGE` (also `PRE_STACK_NEW_IMAGE`, `STACK_VIEWPORT_SCROLL`, `VOLUME_NEW_IMAGE`, `IMAGE_RENDERED`, `CAMERA_MODIFIED`, `VOI_MODIFIED`); cursor events `CROSSHAIR_TOOL_CENTER_CHANGED`, `WORLD_CROSSHAIR_POINT_CHANGED`.
+* Linked MPR: `CrosshairsTool` aligns every viewport in a tool group to one point; synchronizers for camera, VOI, slab thickness, slice, zoom and pan.
+* SR: `@cornerstonejs/adapters` builds TID 1500 measurement reports on dcmjs, `MeasurementReport.generateReport` out and `generateToolState` in, with adapters for Length, Angle, Bidirectional, Probe, the ROI tools, CobbAngle, PlanarFreehandROI, ArrowAnnotate; SEG and RTSTRUCT adapters exist beside them.
+* NIfTI: `@cornerstonejs/nifti-volume-loader`, maintained, bumped with every release, but it fetches the whole file in one XHR (its source says so). MGZ: no hit anywhere in the repository.
+* Decoders: JPEG-LS (CharLS wasm), JPEG 2000 (OpenJPEG wasm), HTJ2K (OpenJPH wasm, transfer syntaxes .201 to .203), JPEG baseline 8 bit (libjpeg-turbo wasm), JPEG 12 bit and lossless in JS, RLE, little and big endian, deflate. Not supported: JPEG 2000 part 2 multicomponent, JPEG baseline 12 bit through wasm (a placeholder file), video syntaxes.
+* Focus: wheel and keydown listeners are bound per enabled element with `passive: false`; only keyup and visibilitychange touch `document`, and only while a key is held.
+* Weight (npm unpacked): core 2.1 MB, tools 3.3 MB, dicom-image-loader 0.3 MB, codecs charls 1.4 MB, openjpeg 2.1 MB, libjpeg-turbo 2.0 MB, openjph 0.4 MB. Peers: `@cornerstonejs/metadata`, `@cornerstonejs/utils`, `@kitware/vtk.js` 36.4.1, `dicom-parser`. No React. Static assets: `decodeImageFrameWorker.js` and four decode wasms, relocatable through `init({ wasmBasePath })`.
+* Backend: vtk.js on WebGL2, `RenderBackends` auto, gpu or cpu; WebGPU only through an extension hook. Vite: `optimizeDeps.exclude: ['@cornerstonejs/dicom-image-loader']`, `optimizeDeps.include: ['dicom-parser']`, `worker.format: 'es'`; the project publishes a Vite template.
+
+=== niivue
+
+https://github.com/niivue/niivue[niivue/niivue], BSD-2-Clause, three maintainers, stable 0.69.0 (2026-05-20), 1.0.0-rc.13 (2026-09-02, a WebGL2 plus WebGPU rewrite), 8 stable and 13 rc releases in twelve months, 26 open issues.
+
+* Lazy stack: no. `loadDicoms()` fetches every file, hands the list to the dcm2niix wasm worker, and shows a first pixel only after the whole series has converted to NIfTI. A progressive path was discussed (issue 1122) and not built. NIfTI by URL streams the body but never uses HTTP ranges.
+* Source: `loadVolumes([{ url }])`, `loadFromUrl`, `loadFromArrayBuffer`. No DICOMweb anywhere in the tree.
+* Toolbar: none. The core is canvas plus API. `@niivue/uikit` 0.1.0 draws WebGL widgets (button, slider, toggle, colormap and view-mode selectors) with no window and level presets and no measurement toolbar; `niivue-ui` (React, MUI) was last pushed 2023-11-15.
+* Events: `onLocationChange({ mm, vox, frac, values, string })`, `onImageLoaded`, `onFrameChange(volume, index)`, `onVolumeUpdated`, `onSliceTypeChange`, `onMeasurementCompleted`, `onAngleCompleted`, `onClipPlaneChange`.
+* Linked MPR: `setSliceType(MULTIPLANAR)` with `setMultiplanarLayout`, one shared crosshair in `scene.crosshairPos`, `RENDER` for 3D, `setClipPlane([depth, azimuth, elevation])`.
+* Measurements: distance and angle only, persistent since 0.61.0; no area or ROI tool; no DICOM SR export; binary DICOM SEG read since 0.42.0 through dcm2niix, no SEG write. Drawing tools (pen, rectangle, ellipse, flood fill, grow-cut) save a NIfTI labelmap.
+* Native formats: NIfTI, NRRD, MIF, AFNI, MGH and MGZ, MHD, ECAT7, DSI-Studio, Zarr; meshes GIfTI, PLY, STL, OBJ, VTK, MZ3, FreeSurfer; tracts TCK, TRK, TRX.
+* Decoders through `@niivue/dcm2niix` 1.3.20260724: the default `dcm2niix.jpeg.wasm` (961 KB) adds JPEG-LS (CharLS) and JPEG 2000 (OpenJPEG) to raw, RLE, classic lossless JPEG and lossy JPEG. HTJ2K: the dcm2niix superbuild pins OpenJPEG 2.1, which predates HTJ2K, so unverified at best.
+* Focus: every pointer, wheel and key listener is bound on the canvas, which gets `tabindex=0` and focus; only `resize` is global.
+* Weight: `@niivue/niivue` 24.9 MB unpacked (ESM, with `./min`, `./drawing`, `./utils` entries); `@niivue/dcm2niix` 1.75 MB with two workers and two wasms to serve statically. Vite: `optimizeDeps.exclude: ['@niivue/dcm2niix']`, `worker.format: 'es'`.
+* Backend: WebGL2, `attachToCanvas`, `resizeListener()` reads `devicePixelRatio` with an override, `drawScene()` redraws.
+
+=== DWV
+
+https://github.com/ivmartel/dwv[ivmartel/dwv], GPL-3.0, one maintainer in practice (5,787 commits against 111 for the next human), 0.36.4 (2026-08-05) and 0.37.0-beta.12, 5 stable and 26 beta releases in twelve months, 40 open issues.
+
+* Lazy stack: yes, `viewOnFirstLoadItem` renders after the first file lands and `loaditem` fires per file. MPR: per-view orientation (axial, coronal, sagittal) from a loaded volume; no 3D rendering.
+* Source: URLs by XHR, File, ArrayBuffers, DICOMweb multipart through `MultipartLoader`.
+* Toolbar: tools only (WindowLevel, Scroll, ZoomAndPan, Opacity, Draw with Arrow, Circle, Ellipse, Protractor, Rectangle, Roi, Ruler, Brush, Filter, Floodfill, Livewire); no probe. The sister projects are applications, not components: dwv-react is a CRA app, dwv-jqui archived in 2022, dwv-angular a component wrapper of the same tools.
+* Events: `positionchange` on the view (index, value, changed dimensions), `wlchange`, `colourmapchange`, `zoomchange`, `offsetchange`, `annotationadd`, `annotationupdate`, `annotationremove`, load lifecycle events.
+* Linked MPR: `Stage.setBinders` with position, window level, zoom, offset, opacity binders; `LayerGroup.setShowCrosshair(true)` draws HTML crosshair lines.
+* SR: DICOM SR TID 1500 in and out (`AnnotationGroupFactory`, `DicomWriter`).
+* NIfTI and MGZ: none; the loader list is DICOM, JSON, multipart, raw image, raw video, zip.
+* Decoders: JPEG baseline and JPEG 2000 through pdf.js decoders, JPEG lossless, RLE. Not supported: JPEG-LS, HTJ2K, deflate.
+* Focus: pointer and wheel on the layer element, but keydown is captured on `window`, which is the wrong scope for a pane that must not steal the console's keys.
+* Weight: 7.1 MB unpacked, minified 609 KB, deps konva, jszip, magic-wand-tool, six workers resolved by `import.meta.url`; no wasm. Backend: canvas 2D plus a Konva draw layer.
+
+=== vtk.js
+
+https://github.com/Kitware/vtk-js[Kitware/vtk-js], BSD-3-Clause, Kitware team, 36.14.0 (2026-09-09), 96 releases in twelve months, 268 open issues.
+
+* Not a DICOM viewer. `vtkImageData` is one whole grid; no stack viewport, no per-slice loading, no DICOM or NIfTI reader in `Sources/IO` (those come from itk-wasm, another 23 MB with wasm pipelines to copy). No DICOMweb.
+* Tools only: widgets for angle, line, rectangle, ellipse, polyline, spline, paint, reslice cursor; `InteractorStyleImage` for window and level and slicing. `ResliceCursorWidget` gives a linked MPR crosshair.
+* No slice-changed event beyond `onModified`; no SR anywhere; NIfTI and MGH through itk-wasm, MGZ unverified.
+* Wheel, pointer and keydown on the container with `tabIndex=0`; keyup and visibility on `document`.
+* 13.3 MB unpacked, tree-shakeable, peers wslink and autoprefixer.
+
+Cornerstone3D is built on vtk.js; choosing vtk.js directly means rebuilding Cornerstone3D's stack viewport, loaders, codecs, tools and SR adapters. It is the wrong altitude.
+
+[[toolbar-finding]]
+== The finding that changes decision 1
+
+Decision 1 said the guest's toolbar comes from the library's own tool set and defaults, and mise never hand-draws image tools. Half of that survives the reading. No candidate ships a clinical toolbar as an embeddable component: Cornerstone3D and DWV ship tools, niivue ships a canvas, and OHIF's toolbar is welded to OHIF's service layer and only embeds as an iframe, which decision 1 rejected.
+
+What the old ChRIS_ui viewer lost on was not the buttons. It was the behaviours behind them: window and level presets that drifted, a stack scroll that never worked, measurements that were not measurements. Those behaviours are what a library owns. The buttons are a declared list of tool names, each bound to one library tool with the library's own bindings and defaults. That is cheap, it stays current when the library updates, and it stays honest with the AEGIS frame law because the buttons are mise's and live in mise's frame while the field is the guest's.
+
+Proposed amendment to decision 1, for the user to accept or refuse: the guest supplies every tool behaviour and its defaults; mise composes the toolbar as a declared list of library tools, adds no behaviour of its own, and puts the toolbar in the pane's mode frame rather than over the field. Decision 2 then needs no exception to the frame law at all, and the new AEGIS law becomes narrower: an instrument's field is foreign, its frame is native.
+
+== Verdict by criterion
+
+[cols="3,2,2,2,2",options="header"]
+|===
+|Criterion |Cornerstone3D |niivue |DWV |vtk.js
+
+|Lazy stack |yes |no, whole series first |yes |no
+|Streamed volume |yes |no |no volume rendering |whole grid only
+|Plain file URLs now |`wadouri:` |URL and buffer |URL and buffer |itk-wasm only
+|DICOMweb later |`wadors:` in the same loader |none |multipart loader |none
+|Toolbar out of the box |tools only |canvas only |tools only |widgets only
+|Image-changed event |`STACK_NEW_IMAGE` |`onFrameChange`, `onLocationChange` |`positionchange` |`onModified`
+|Linked MPR, shared cursor |`CrosshairsTool` plus synchronizers |built in |binders plus HTML crosshair |`ResliceCursorWidget`
+|SR export and reload |TID 1500 both ways, dcmjs |none |TID 1500 both ways |none
+|NIfTI |whole-file loader |native |none |itk-wasm
+|MGZ |none |native |none |unverified
+|JPEG-LS, JPEG 2000, RLE, HTJ2K |all four |first three, HTJ2K doubtful |JPEG 2000 and RLE only |itk-wasm, unverified
+|Focus containment |per element |canvas only |keydown on `window` |container, keyup on document
+|Licence |MIT |BSD-2 |GPL-3.0 |BSD-3
+|Weight |about 5.7 MB plus 5.8 MB codecs |24.9 MB plus 1.75 MB |7.1 MB |13.3 MB plus 23 MB itk
+|Pulse |org, near-daily |three maintainers, monthly |one maintainer |Kitware, weekly
+|===
+
+DWV falls on licence before anything else: GPL-3.0 linked into a bundle mise serves makes the surface a derivative work, and mise is MIT. Its `window`-scoped keydown and missing JPEG-LS would have failed it anyway. vtk.js falls on altitude. That leaves the two that were always the real contest, and they do not compete: Cornerstone3D is the DICOM renderer (lazy stack, streamed volume, every decoder, tools, SR round trip, per-element focus) and niivue is the NIfTI and MGZ renderer (native formats, MPR, 3D). Decision 12 already allowed a second renderer behind the same pane as long as pane, verbs, frame and focus law stay one.
+
+== Recommendation
+
+Cornerstone3D for DICOM series behind the `image` pane; niivue for NIfTI and MGZ behind the same pane, selected by what the kernel says the path is (`dicom.series` model versus a `.nii`, `.nii.gz`, `.mgz`, `.mgh` file). One pane kind, one verb set, one frame, one focus law; two engines under an `ImageEngine` seam that the pane drives and the smoke tests never look inside.
+
+Costs to state plainly: two engines is two sets of static assets (four Cornerstone wasms and a worker; niivue's engine is pure JS unless DICOM through dcm2niix, which mise will not use) and about 30 MB of unpacked dependency in argus's tree, of which the served bundle is a fraction and loaded lazily per engine. Cornerstone3D's release cadence is near-daily patch bumps; the lockfile pins, and upgrades are deliberate. Neither engine gives a toolbar, so the amendment above is part of this recommendation, not separate from it.
+
+== Decision
+
+Taken by the user on 2026-09-09: Cornerstone3D for DICOM series and niivue for NIfTI and MGZ, behind one `image` pane. Decision 1 amended as proposed above (the library owns every tool behaviour and default; mise composes a declared list of tool buttons and adds no behaviour). Decision 2 amended with it: those buttons are mise's and live in the mode frame, nothing overlays the image, and the AEGIS law narrows to an instrument's field being foreign and its frame native.
+
+== What the prototype showed
+
+A throwaway `image` pane was built on branch `agent/dicom-renderer-prototype` (never to be merged) with both engines behind it, and driven headless over CDP against a private daemon at device pixel ratio 1.5. The series was the S1 fixture: sixteen synthesized 64 by 64 MR slices named the way oxidicom names files, uploaded through the daemon's `/vfs` POST route, plus a hand-written 16 by 16 by 16 gzip NIfTI sphere. The pane was claimed the way S3 will claim it: `dcm series <folder>` typed into an empty pane's prompt, whose `dicom.series` model carried the ordered file list; the pane turned each path into a `wadouri:` image id over the token-gated `/vfs` route. Nothing was fetched from CUBE except through mise.
+
+* Lazy stack, confirmed. The first slice was on screen 763 ms after `setStack`, with 8,192 bytes in Cornerstone's cache, that is one file's pixel data; the other fifteen had not been fetched. Requirement R3's "first pixel after one file" holds on real bytes.
+* Wheel scroll, confirmed. Five synthetic wheel events over the field moved the stack from slice 1 to slice 6, the page did not scroll, and each move fired `CORNERSTONE_STACK_NEW_IMAGE` with the image id and index; the pane wrote `SLICE 6 OF 16 <file>` on its bar and a line in the console for each. That event is the regard seam S4's TAGS pane needs, and it carries the file path, so the tags pane can ask `dcm tags` for exactly the slice on screen.
+* Canvas discipline, confirmed. At device pixel ratio 1.5 the viewport canvas measured 1727 by 673 device pixels for a 1151 by 449 CSS field: Cornerstone sizes its canvas to the element and the pixel ratio without help.
+* Focus containment, confirmed at the element. A click on the field moved `document.activeElement` to the viewport element, an ArrowDown key then reached the field's own listener and stopped there. Cornerstone binds wheel and keys per element as its source said; the pane's Esc-releases-focus rule (decision 10) is mise's to add and costs one listener.
+* Linked MPR, confirmed. Three orthographic viewports over a `cornerstoneStreamingImageVolume` came up 3.0 s after the request, of which 2.6 s was loading all sixteen slices first (the volume path needs every header before it can build the grid, which is the cost decision 5 guards with LOAD). A drag in the axial viewport moved the crosshair in the other two and updated the readout. Reference lines drew in three colours.
+* Length measurement, confirmed. With the primary button rebound to `LengthTool`, one drag drew a length annotation and `annotation.state.getAllAnnotations()` reported it.
+* SR export, confirmed, after three lessons the adapter's source did not teach. `MeasurementReport.generateReport` wants annotations grouped by image id and then by tool name, not the flat list `getAllAnnotations()` returns. It asks the metadata layer for `sopCommonModule` and `instance` of each annotated image, and the `wadouri` loader in this build answered neither for the annotated id; the pane registered its own provider from the kernel's `dicom.series` model (SeriesInstanceUID, StudyInstanceUID) and oxidicom's file name (SOPInstanceUID), which is the right shape for S5 anyway: mise tells the adapter who an image is, from `dcm tags`, and never trusts the loader's memory. And dcmjs's browser writer, `datasetToBlob`, reaches for Node's `Buffer`, which OHIF polyfills and mise must too. With those three, one length measurement became a 2,638 byte Enhanced SR (SOP class 1.2.840.10008.5.1.4.1.1.88.22) and a POST to `/vfs` put it at `/home/<user>/annotations/<SeriesInstanceUID>/measurements.dcm` with HTTP 200, exactly where decision 6 said annotations live. `dcm tags` then read it back and `dcm series` listed it under ANNOTATIONS, see below.
+* niivue on NIfTI, confirmed. The sphere loaded over the same `/vfs` route and drew in multiplanar layout with a 3D render in 1.4 s; the canvas followed its mount at the same pixel ratio. `onLocationChange` delivered voxel, millimetre and value text for the bar.
+* Build facts. Vite built both engines with Cornerstone's documented recipe (`optimizeDeps.exclude` the image loader, `include` `dicom-parser`, `worker.format: 'es'`): four decode wasms (CharLS 145 KB, libjpeg-turbo 180 KB, OpenJPEG 255 KB, OpenJPH 2.3 MB) and the decode worker landed in `dist/assets` under hashed names and were served by calypso's static handler with the right content types. One trap: vtk.js's XML reader and writer import `xmlbuilder2`, a CommonJS package whose class hierarchy breaks under Vite's interop at module init and took the whole surface down (OFFLINE, no console error visible in the page); an alias to a stub fixed it, and S3 keeps that alias or a `manualChunks` split that leaves vtk.js's IO out. The unminified main chunk with both engines was 9.9 MB, minified 5 MB, gzip 1.4 MB; S3 should load each engine lazily by `import()` so a session that never opens an image pays nothing.
+
+* Read back through the kernel, confirmed. With the daemon down, a private headless chell ran `dcm tags` on the saved SR (it parsed; the top-level listing showed the study-level sequences, and the referenced-image sequence sits inside content items, which tells S4 that FILTER must descend into sequence items) and `dcm series` on the folder, which listed `/home/<user>/annotations/<SeriesInstanceUID>/measurements.dcm` under ANNOTATIONS with no change to S1's code. The annotation path from decision 6 is closed end to end: guest measures, mise names the file, `/vfs` writes it, the kernel finds it by UID.
+
+Screenshots (scratchpad, not committed): `proto-stack.png`, `proto-length.png`, `proto-mpr.png`, `proto-mpr-crosshair.png`, `proto-niivue.png`.
+
+== What S3 inherits from the prototype
+
+* Claim the pane by model: `dcm series <folder>` in an empty pane's prompt already carries the ordered files; the pane never lists a folder itself.
+* Image ids are `wadouri:` over `/vfs`; nothing else touches CUBE. The `ImageSource` seam swaps that prefix for `wadors:` when CUBE's DICOMweb lands.
+* Lazy stack first, volume on request, and the volume path loads every slice before it can start: the LOAD guard belongs on the MPR and 3D verbs, as decision 5 says.
+* Regard is `STACK_NEW_IMAGE`; its image id decodes to the slice's path, which is what the TAGS pane asks `dcm tags` about.
+* Metadata for the SR adapter comes from mise (`dicom.series` and `dcm tags`), registered as a Cornerstone metadata provider; the loader's own memory is not relied on.
+* `Buffer` is polyfilled from the `buffer` package before dcmjs writes; `xmlbuilder2` is aliased to a stub or vtk.js's IO is split out of the bundle.
+* Both engines load lazily by `import()` behind one `ImageEngine` interface; smoke asserts mise's seams (state, readouts, console lines, files landing) and never the engines' internals.

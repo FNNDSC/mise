@@ -175,3 +175,19 @@ export {
   type PacsServer,
   type PacsServersModel,
 } from './pacs.js';
+export {
+  DICOM_TAG_GROUPS,
+  dicomTagGroupSchema,
+  dicomTagSchema,
+  dicomVaryingTagSchema,
+  dicomTagsModelSchema,
+  dicomGeometrySchema,
+  dicomSeriesModelSchema,
+  DICOM_MODEL_KINDS,
+  type DicomTag,
+  type DicomTagGroup,
+  type DicomVaryingTag,
+  type DicomTagsModel,
+  type DicomGeometry,
+  type DicomSeriesModel,
+} from './dicom.js';

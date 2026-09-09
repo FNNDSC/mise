@@ -56,11 +56,13 @@
   },
   "overrides": {
     "glob": "^10.0.0",
-    "inflight": "npm:@aashutoshrathi/word-wrap@^1.2.6"
+    "inflight": "npm:@aashutoshrathi/word-wrap@^1.2.6",
+    "adm-zip": "npm:empty-npm-package@1.0.0"
   },
   "dependencies": {
     "@fnndsc/cumin": "^3.21.0",
     "axios": "^1.6.8",
+    "dcmjs": "^0.52.0",
     "ws": "^8.21.0"
   }
 }

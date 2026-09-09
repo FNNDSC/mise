@@ -27,6 +27,7 @@ export * from './net/logout.js';
 export * from './net/pacs.js';
 export * from './net/query.js';
 export * from './net/cubepath.js';
+export * from './res/dicom.js';
 
 export * from './sys/context.js';
 export * from './sys/physicalmode.js';

@@ -26,6 +26,7 @@ The vocabulary groups by domain; `help` inside `chell` is the authoritative, alw
 
 | Filesystem | `ls`, `cd`, `pwd`, `cat`, `touch`, `mkdir`, `cp`, `mv`, `rm`, `tree`, `du`, `upload`, `download`, `edit`, `pull`
 | PACS | `pacs query`, `pacs pull`, `pacs status`, `cubepath`
+| DICOM | `dcm series` (a folder as a series), `dcm tags` (every tag of a file; constant versus varying across a folder)
 | Resources | `feed`, `plugin`, `plugininstance`, `pipeline`, `workflow`, `pluginmeta`, `tag`, `group`, `user`, `compute`, `files`
 | Jobs | the `/proc` tree (`ls /proc/jobs`, `cat .../status`, `.../log`, `.../params`), `proc refresh`
 | Session | `connect`, `logout`, `whoami`, `context`, `version`, `date`, `cal`, `fortune`

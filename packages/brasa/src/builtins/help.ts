@@ -1121,6 +1121,34 @@ export const helpText: Record<string, CommandHelp> = {
       '! echo "test" > /tmp/file.txt  # Write to host file',
     ],
   },
+  dcm: {
+    usage: 'dcm <series|tags> <path> [options]',
+    summary: 'DICOM as the kernel sees it: a folder as a series, a file or folder as tags',
+    description: 'Read DICOM without leaving the session. `dcm series` answers what a folder is as a series: '
+      + 'identity, modality, instance count, stack order, geometry, transfer syntax, bytes, and any '
+      + 'annotations saved for its UID. `dcm tags` lists every element of a file, or what a folder\'s '
+      + 'files share against what changes across them. Identifying tags are marked PHI and shown; '
+      + 'a shared surface redacts them by that mark.',
+    options: [
+      'SUBCOMMANDS:',
+      '  series <folder>                 The folder as a series (one header read, order from file names)',
+      '  tags <file|folder>              Every tag of a file; constant versus varying across a folder',
+      '',
+      'OPTIONS (tags):',
+      '  --all                           Show meta and private groups too',
+      '  --filter <text>                 Only tags whose tag, name, value or decoding contains <text>',
+      '',
+      'A folder\'s tags are read from every file up to 512, then from an even sample; the listing says '
+      + 'how many were read of how many there are.',
+    ],
+    examples: [
+      'dcm series .                                  # This folder as a series',
+      'dcm series /SERVICES/PACS/PACSDCM/patient/study/00005-T1-abcdef0',
+      'dcm tags 0001-1.2.840.113619.2.55.3.1.dcm      # One file, grouped by module',
+      'dcm tags . --filter Position                   # Position tags across the folder',
+      'dcm tags . --all                               # Meta and private groups included',
+    ],
+  },
   cubepath: {
     usage: 'cubepath <vfs-path> [--pacsserver <id>]',
     description: 'Show CUBE FS path and file count for each series under a PACS VFS path. Zero files = not pulled.',

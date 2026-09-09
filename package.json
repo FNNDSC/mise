@@ -54,6 +54,7 @@
     "test-exclude": {
       ".": "^7.0.1",
       "glob": "^11.1.0"
-    }
+    },
+    "adm-zip": "npm:empty-npm-package@1.0.0"
   }
 }

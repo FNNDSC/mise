@@ -18,6 +18,7 @@ export default {
     '!<rootDir>/src/**/*.d.ts',
     '!<rootDir>/src/jobs/index.ts', // barrel
     '!<rootDir>/src/vfs/index.ts', // barrel
+    '!<rootDir>/src/dicom/index.ts', // barrel
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',

@@ -17,6 +17,8 @@
  */
 import {
   feedDagModelSchema,
+  feedIndexingModelSchema,
+  type FeedIndexingModel,
   feedListModelSchema,
   DAG_MODEL_KINDS,
   FEED_LIST_MODEL_KIND,
@@ -441,6 +443,23 @@ export class DagPanel {
       this.rosterRefusal_show(envelope);
       return;
     }
+    if (envelope.model?.kind === DAG_MODEL_KINDS.feedIndexing) {
+      // The session answered at once: the feed's topology is on its way.
+      // The pane holds its LOADING posture, names the walk, and opens the
+      // feed's watch, which carries the graph in when the walk lands.
+      const indexing = feedIndexingModelSchema.safeParse(envelope.model.data);
+      if (!indexing.success) return;
+      if (this.requestedFeedId === indexing.data.feedId) {
+        this.requestedFeedId = null;
+      } else if (this.pendingFeedId !== indexing.data.feedId) {
+        // The operator asked for this one by hand (the console, or another
+        // surface): it is the feed on its way, so pin it as a graph would be.
+        this.pinnedFeedId = indexing.data.feedId;
+        this.pendingFeedId = indexing.data.feedId;
+      }
+      this.feedIndexing_show(indexing.data);
+      return;
+    }
     if (envelope.model?.kind !== DAG_MODEL_KINDS.feedDag) {
       return;
     }
@@ -732,6 +751,11 @@ export class DagPanel {
       }
     }
     this.arrivals_observe(context.procWarmup?.arrived ?? []);
+    // A feed being indexed for this pane: the count moves with the prompt.
+    const walk = context.procWarmup?.feed;
+    if (walk !== undefined && this.pendingFeedId === walk.id) {
+      this.feedIndexing_show({ feedId: walk.id, loaded: walk.loaded, total: walk.total, ...(walk.failed !== undefined ? { failed: walk.failed } : {}) });
+    }
     // An offstage pane must not queue diagram traffic: following the cwd
     // while nobody can see the graph is pure session-queue congestion (and
     // exactly the kind of delay RUNS-02 then sits behind).
@@ -827,6 +851,34 @@ export class DagPanel {
       this.stateSpan.classList.add('state-wait');
       this.stateSpan.textContent = 'LOADING';
     }
+  }
+
+  /**
+   * Shows a feed's topology walk in place while it runs: index movement the
+   * session started and left to run, so the pane's own request ended at
+   * once. The count follows the prompt context; a failure names itself and
+   * REFRESH retries.
+   *
+   * @param indexing - The walk as the session last reported it.
+   */
+  private feedIndexing_show(indexing: FeedIndexingModel): void {
+    if (this.pendingFeedId === null) this.pendingFeedId = indexing.feedId;
+    this.roster_show(false);
+    this.canvas.style.display = 'none';
+    this.title.textContent = `DAG · FEED ${indexing.feedId}`;
+    const count: string = indexing.total > 0
+      ? `${indexing.loaded.toLocaleString()} / ${indexing.total.toLocaleString()}`
+      : `${indexing.loaded.toLocaleString()} / ?`;
+    this.empty.textContent = indexing.failed !== undefined
+      ? `INDEXING FEED ${indexing.feedId} FAILED AT ${count} — ${indexing.failed.toUpperCase()} — REFRESH RETRIES`
+      : `INDEXING FEED ${indexing.feedId} — ${count}`;
+    this.empty.style.display = 'block';
+    if (this.stateSpan !== null) {
+      this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale');
+      this.stateSpan.classList.add('state-wait');
+      this.stateSpan.textContent = indexing.failed !== undefined ? 'FAILED' : 'LOADING';
+    }
+    if (indexing.failed === undefined) this.watch_open(indexing.feedId);
   }
 
   /**

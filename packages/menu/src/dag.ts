@@ -120,6 +120,19 @@ export const feedDagModelSchema = z.object({
   nodes: z.array(feedDagNodeSchema),
 });
 
+/**
+ * The `feed.indexing` model: a feed asked for while its topology is still
+ * being indexed. The command returned at once (index movement never holds
+ * the session's lane); the graph follows on the feed's watch when the walk
+ * lands, and the prompt context carries the count meanwhile.
+ */
+export const feedIndexingModelSchema = z.object({
+  feedId: z.number(),
+  loaded: z.number(),
+  total: z.number(),
+  failed: z.string().optional(),
+});
+
 export type DagNodeCore = z.infer<typeof dagNodeCoreSchema>;
 export type PipelineDiagramNode = z.infer<typeof pipelineDiagramNodeSchema>;
 export type PipelineDiagramModel = z.infer<typeof pipelineDiagramModelSchema>;
@@ -127,11 +140,13 @@ export type DagNodeStatus = z.infer<typeof dagNodeStatusSchema>;
 export type DagNodeMetrics = z.infer<typeof dagNodeMetricsSchema>;
 export type FeedDagNode = z.infer<typeof feedDagNodeSchema>;
 export type FeedDagModel = z.infer<typeof feedDagModelSchema>;
+export type FeedIndexingModel = z.infer<typeof feedIndexingModelSchema>;
 
 /** The envelope model kinds this vocabulary defines. */
 export const DAG_MODEL_KINDS = {
   pipelineDiagram: 'pipeline.diagram',
   feedDag: 'feed.dag',
+  feedIndexing: 'feed.indexing',
 } as const;
 
 /** One feed in the titled chooser list, from the process cache. */

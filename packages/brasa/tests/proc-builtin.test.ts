@@ -33,6 +33,7 @@ let mockTopologyStatus: { state: 'idle' | 'running' | 'complete' | 'failed'; fai
 const jobsFind_mock = jest.fn(async () => ({ ok: true, value: [] }));
 const contextGetSingle_mock = jest.fn(async () => ({ user: 'me' }));
 const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
+const procFeedRefreshStart_mock = jest.fn(async (): Promise<'ready' | 'pending'> => 'pending');
 const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyRetry_mock = jest.fn(async (): Promise<void> => undefined);
@@ -46,6 +47,7 @@ let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
 let mockLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
 const mockCache = {
+  feedLoad_of: jest.fn(() => ({ feedID: 5, loaded: 0, total: 0 })),
   cache_clear: jest.fn((): void => {
     mockWarmup = { loaded: 0, total: 0, active: false };
     mockWarmupComplete = false;
@@ -84,6 +86,9 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: contextGetSingle_mock,
   jobs_find: jobsFind_mock,
   procCache_refresh: procCacheRefresh_mock,
+  procFeed_refreshStart: procFeedRefreshStart_mock,
+  feedGraphData_ensure: jest.fn(async (): Promise<'ready' | 'pending'> => 'ready'),
+  feedGraph_build: jest.fn(),
   procRoster_sync: jest.fn(async (): Promise<void> => undefined),
   feedVisit_sync: jest.fn(async (): Promise<boolean> => true),
   feedCached_isSettled: jest.fn((): boolean => true),
@@ -490,12 +495,14 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.rendered).toContain('loaded (2 instances)');
   });
 
-  it('refreshes a targeted feed', async () => {
+  it('refreshes a targeted feed: the re-walk is started, not waited for, and the answer says indexing', async () => {
     const envelope: TestEnvelope = await builtin_proc(['refresh', 'feed_5']);
 
     expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toContain('feed_5');
-    expect(procCacheRefresh_mock).toHaveBeenCalledWith(5);
+    expect(envelope.rendered).toContain('Feed 5: indexing');
+    expect((envelope as { model?: { kind: string } }).model?.kind).toBe('feed.indexing');
+    expect(procFeedRefreshStart_mock).toHaveBeenCalledWith(5);
+    expect(procCacheRefresh_mock).not.toHaveBeenCalled();
     expect(procTopologyWarmup_mock).not.toHaveBeenCalled();
   });
 

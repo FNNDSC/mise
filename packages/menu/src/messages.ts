@@ -501,6 +501,7 @@ export const promptContextSchema = z.object({
       id: z.number(),
       loaded: z.number(),
       total: z.number(),
+      failed: z.string().optional(),
     }).optional(),
     arrived: z.array(z.number()).optional(),
   }).optional(),

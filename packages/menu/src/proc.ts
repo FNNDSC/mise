@@ -57,6 +57,8 @@ export interface ProcFeedPromptProgress {
   id: number;
   loaded: number;
   total: number;
+  /** What the walk said when it failed; absent while it runs. */
+  failed?: string;
 }
 
 /**

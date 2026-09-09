@@ -66,8 +66,12 @@ counters, and only when they moved (or work is still running) a `min_end_date` w
 nodes created or finished since the last visit plus an `active=true` sweep of the nodes
 still in flight — so a dynamic pipeline's new nodes appear on the next render, at a cost
 proportional to the change rather than the feed. A settled feed is re-checked at most once
-per ten minutes. A cold invocation loads once; a warm one is near-instant. This is a hard
-design rule: *the FeedGraph is a projection of the cache, not a crawl of the backend.*
+per ten minutes. A cold invocation starts the load and answers at once that the feed is
+indexing (`feed.indexing`, with the walk's count); the walk runs off the session's lane,
+the prompt carries its progress, and the graph follows on the feed's watch when the walk
+lands. A warm one is near-instant. This is a hard design rule: *the FeedGraph is a
+projection of the cache, not a crawl of the backend*, and its corollary: *index movement
+never holds the lane.*
 
 [[joins]]
 == Topological joins

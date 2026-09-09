@@ -4,7 +4,7 @@ import {
   ProcFeed,
   ProcInstance,
   status_isTerminal,
-  PROC_ARRIVAL_TTL_MS,
+  PROC_ARRIVAL_TTL_MS, PROC_FEED_LOAD_FAILURE_TTL_MS,
 } from '../src/cache/procCache';
 import { listCache_get } from '../src/cache/listCache';
 import { listingInvalidation_flush, listingInvalidation_reset } from '../src/cache/listingInvalidation';
@@ -252,6 +252,19 @@ describe('ProcCache', () => {
       expect(cache.feedLoad_get()).toEqual({ feedID: 9, loaded: 5, total: 50 });
       cache.feedLoad_clear(9);
       expect(cache.feedLoad_get()).toBeNull();
+    });
+
+    it('a failed feed load stays named where it stopped for its window, then is forgotten', () => {
+      cache.feedLoad_progress(7, 6500, 58760);
+      cache.feedLoad_fail(7, 'CUBE 502', 1000);
+      expect(cache.feedLoad_of(7, 1000)).toEqual({ feedID: 7, loaded: 6500, total: 58760, failed: 'CUBE 502' });
+      expect(cache.feedLoad_get(1000 + PROC_FEED_LOAD_FAILURE_TTL_MS)).toEqual({ feedID: 7, loaded: 6500, total: 58760, failed: 'CUBE 502' });
+      expect(cache.feedLoad_get(1000 + PROC_FEED_LOAD_FAILURE_TTL_MS + 1)).toBeNull();
+      expect(cache.feedLoad_of(7)).toBeNull();
+      // A fresh walk clears the failure as it starts.
+      cache.feedLoad_fail(7, 'CUBE 502', 5000);
+      cache.feedLoad_progress(7, 0, 0);
+      expect(cache.feedLoad_of(7, 5000)).toEqual({ feedID: 7, loaded: 0, total: 0 });
     });
 
     it('keeps roster arrivals for their window and forgets them after', () => {

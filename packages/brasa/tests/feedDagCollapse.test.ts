@@ -9,6 +9,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string) => ({ status: 'error', rendered }),
+  procCache_get: () => ({ feedLoad_of: () => null }),
 }));
 
 const { feedDagModel_build } = await import('../src/builtins/res/feed.diagram.js');

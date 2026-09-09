@@ -74,9 +74,9 @@ export class ThemeDefault implements PromptTheme {
       // command announces, so the prompt says it.
       if (ctx.procWarmup.feed) {
         const feed = ctx.procWarmup.feed;
-        warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(
-          ` [feed ${feed.id} indexing: ${procProgress_format(feed.loaded, feed.total)}]`,
-        );
+        warmup += feed.failed !== undefined
+          ? chalk.hex(PROMPT_PALETTE.ERROR)(` [feed ${feed.id} indexing: FAILED at ${procProgress_format(feed.loaded, feed.total)}]`)
+          : chalk.hex(PROMPT_PALETTE.WARMUP)(` [feed ${feed.id} indexing: ${procProgress_format(feed.loaded, feed.total)}]`);
       }
       if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {
         warmup += chalk.hex(PROMPT_PALETTE.WARMUP)(feedArrivals_format(ctx.procWarmup.arrived));

@@ -500,7 +500,8 @@ describe('builtin_proc warm-up policy', () => {
 
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('Feed 5: indexing');
-    expect((envelope as { model?: { kind: string } }).model?.kind).toBe('feed.indexing');
+    // A refresh is not a request to view: no model, so no pane claims it.
+    expect((envelope as { model?: { kind: string } }).model).toBeUndefined();
     expect(procFeedRefreshStart_mock).toHaveBeenCalledWith(5);
     expect(procCacheRefresh_mock).not.toHaveBeenCalled();
     expect(procTopologyWarmup_mock).not.toHaveBeenCalled();

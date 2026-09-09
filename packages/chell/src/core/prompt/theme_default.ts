@@ -72,8 +72,7 @@ export class ThemeDefault implements PromptTheme {
       }
       // A feed's first-visit load and roster arrivals: index movement no
       // command announces, so the prompt says it.
-      if (ctx.procWarmup.feed) {
-        const feed = ctx.procWarmup.feed;
+      for (const feed of ctx.procWarmup.feeds ?? (ctx.procWarmup.feed ? [ctx.procWarmup.feed] : [])) {
         warmup += feed.failed !== undefined
           ? chalk.hex(PROMPT_PALETTE.ERROR)(` [feed ${feed.id} indexing: FAILED at ${procProgress_format(feed.loaded, feed.total)}]`)
           : chalk.hex(PROMPT_PALETTE.WARMUP)(` [feed ${feed.id} indexing: ${procProgress_format(feed.loaded, feed.total)}]`);

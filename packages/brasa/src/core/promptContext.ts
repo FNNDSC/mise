@@ -11,6 +11,7 @@
  * @module
  */
 
+import type { ProcFeedPromptProgress } from '@fnndsc/menu';
 import { session } from '../session/index.js';
 import { warmupFailures_list, type WarmupFailure } from './warmupFailures.js';
 import { context_getSingle } from '@fnndsc/salsa';
@@ -100,7 +101,11 @@ export async function sessionPromptContext_build(
   // A feed's first-visit load and roster arrivals ride the same segment:
   // both are index movement no command announces, and the daemon keeps
   // pushing the promptline while the segment is present.
-  const feedLoad: ProcFeedLoadProgress | null = procCache_get().feedLoad_get();
+  const feedLoads: ProcFeedLoadProgress[] = procCache_get().feedLoads_all();
+  const feedLoad: ProcFeedLoadProgress | null = feedLoads[0] ?? null;
+  const feeds: ProcFeedPromptProgress[] = feedLoads.map((load: ProcFeedLoadProgress): ProcFeedPromptProgress => ({
+    id: load.feedID, loaded: load.loaded, total: load.total, ...(load.failed !== undefined ? { failed: load.failed } : {}),
+  }));
   const arrived: number[] = procCache_get().arrivals_recent();
   const sweeping: boolean =
     warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed';
@@ -113,9 +118,7 @@ export async function sessionPromptContext_build(
           restored,
           state: procState,
           sweeping,
-          ...(feedLoad !== null
-            ? { feed: { id: feedLoad.feedID, loaded: feedLoad.loaded, total: feedLoad.total, ...(feedLoad.failed !== undefined ? { failed: feedLoad.failed } : {}) } }
-            : {}),
+          ...(feedLoad !== null ? { feed: feeds[0], feeds } : {}),
           ...(arrived.length > 0 ? { arrived } : {}),
         }
       : undefined;

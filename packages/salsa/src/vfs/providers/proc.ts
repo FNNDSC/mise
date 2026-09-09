@@ -338,21 +338,24 @@ export function feedInstances_ensureStarted(feedID: number): FeedTopologyReadine
 }
 
 /**
- * Drops one feed from the cache and re-fetches its row (job counters), so
- * the next topology walk starts from nothing the cache remembers.
+ * Drops one feed's topology from the cache and re-reads its row (job
+ * counters), so the next walk starts from nothing the cache remembers
+ * about the graph. The roster row STAYS: a feed the identity sees through
+ * the public listing is not in the own-feeds endpoint, and a refresh that
+ * removed the row and could not re-read it left the feed "not found".
  *
  * @param feedID - The feed to evict.
  */
 async function procFeed_evict(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   feedVisits.delete(feedID);
-  cache.feed_remove(feedID);
+  cache.feedTopology_evict(feedID);
   const client = await chrisConnection.client_get();
-  if (client) {
-    const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
-    const f: FeedData | undefined = page.data[0];
-    if (f) cache.feed_add(procFeed_create(f));
-  }
+  if (!client) return;
+  const own: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
+  const row: FeedData | undefined = own.data[0]
+    ?? ((await publicFeedsPage_get(client, { id: feedID, limit: 1, offset: 0 })) ?? { data: [], totalCount: 0 }).data[0];
+  if (row) cache.feed_add(procFeed_create(row));
 }
 
 /**

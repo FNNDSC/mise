@@ -639,6 +639,13 @@ export class DagPanel {
    * @param model - The refreshed feed model.
    */
   public model_refresh(model: FeedDagModel): void {
+    // The graph a pending pane was waiting for: the walk landed and the
+    // watch was kicked. It arrives as the answer to the ask, not as a
+    // repaint, so it takes the pane the way a requested graph does.
+    if (this.pendingFeedId === model.feedId && this.canvas.style.display === 'none') {
+      this.envelope_observe({ status: 'ok', rendered: '', model: { kind: DAG_MODEL_KINDS.feedDag, data: model } });
+      return;
+    }
     if (this.shownFeedId !== model.feedId || this.canvas.style.display === 'none') return;
     const previous: FeedDagModel | null = this.lastModel;
     this.lastModel = model;
@@ -752,8 +759,9 @@ export class DagPanel {
     }
     this.arrivals_observe(context.procWarmup?.arrived ?? []);
     // A feed being indexed for this pane: the count moves with the prompt.
-    const walk = context.procWarmup?.feed;
-    if (walk !== undefined && this.pendingFeedId === walk.id) {
+    const walks = context.procWarmup?.feeds ?? (context.procWarmup?.feed !== undefined ? [context.procWarmup.feed] : []);
+    const walk = walks.find((w): boolean => w.id === this.pendingFeedId);
+    if (walk !== undefined) {
       this.feedIndexing_show({ feedId: walk.id, loaded: walk.loaded, total: walk.total, ...(walk.failed !== undefined ? { failed: walk.failed } : {}) });
     }
     // An offstage pane must not queue diagram traffic: following the cwd

@@ -36,6 +36,7 @@ import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
+import { IndexInstrument } from './indexInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
 import { argusLine_run, type ArgusHost } from '../console/argusLang.js';
@@ -629,6 +630,7 @@ let cascade: Cascade | null = null;
 
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
+  const indexInstrument: IndexInstrument = new IndexInstrument(element_require('index-instrument'));
 
   // Panel rosters: every live controller by instance id, for routing —
   // targeted progress, and the claim rule for console-issued models.
@@ -2762,11 +2764,14 @@ async function surface_start(token: string): Promise<void> {
         });
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);
+        indexInstrument.promptContext_show(context);
         cascade?.promptContext_observe(context);
         dagPanel.promptContext_observe(context);
       },
-      telemetry_receive: (index: { jobs: number; feeds: number }): void =>
-        cascade?.index_observe(index),
+      telemetry_receive: (index: { jobs: number; feeds: number }): void => {
+        indexInstrument.counts_show(index);
+        cascade?.index_observe(index);
+      },
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
       // The sampler's refreshed models: every DAG pane showing that feed

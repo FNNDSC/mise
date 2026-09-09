@@ -254,6 +254,25 @@ describe('ProcCache', () => {
       expect(cache.feedLoad_get()).toBeNull();
     });
 
+    it('evicting a topology keeps the roster row and drops the instances and the loaded mark', () => {
+      cache.feed_add({ id: 7, title: 'f', ownerUsername: 'u', public: true, creationDate: 'd', finishedJobs: 1, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 });
+      cache.instance_add({ id: 70, feedID: 7, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+      cache.topologyLoaded_mark(7);
+      cache.feedTopology_evict(7);
+      expect(cache.feed_get(7)?.title).toBe('f');
+      expect(cache.instance_get(70)).toBeUndefined();
+      expect(cache.topologyLoaded_has(7)).toBe(false);
+      expect(cache.feedInstanceIDs_get(7)).toEqual([]);
+    });
+
+    it('names every walk in flight, earliest first', () => {
+      cache.feedLoad_progress(7, 100, 0);
+      cache.feedLoad_progress(9, 5, 50);
+      expect(cache.feedLoads_all()).toEqual([{ feedID: 7, loaded: 100, total: 0 }, { feedID: 9, loaded: 5, total: 50 }]);
+      cache.feedLoad_clear(7);
+      expect(cache.feedLoads_all()).toEqual([{ feedID: 9, loaded: 5, total: 50 }]);
+    });
+
     it('a failed feed load stays named where it stopped for its window, then is forgotten', () => {
       cache.feedLoad_progress(7, 6500, 58760);
       cache.feedLoad_fail(7, 'CUBE 502', 1000);

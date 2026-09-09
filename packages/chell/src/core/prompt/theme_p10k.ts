@@ -221,8 +221,7 @@ export class ThemeP10k implements PromptTheme {
       }
       // A feed's first-visit load and roster arrivals: index movement no
       // command announces, so the prompt says it.
-      if (ctx.procWarmup.feed) {
-        const feed = ctx.procWarmup.feed;
+      for (const feed of ctx.procWarmup.feeds ?? (ctx.procWarmup.feed ? [ctx.procWarmup.feed] : [])) {
         procSegments.push({
           text: feed.failed !== undefined
             ? `${ICON_ERROR} feed ${feed.id}: FAILED at ${procProgress_format(feed.loaded, feed.total)}`

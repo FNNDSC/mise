@@ -415,6 +415,22 @@ export class ProcCache {
   }
 
   /**
+   * Drops a feed's topology — its instances, roots and the loaded mark —
+   * and keeps its roster row, so a re-walk starts from nothing the cache
+   * remembers about the graph while the feed stays where the roster put it.
+   *
+   * @param feedID - The feed whose topology is dropped.
+   */
+  feedTopology_evict(feedID: number): void {
+    this.topologyLoaded.delete(feedID);
+    for (const inst of Array.from(this.instances.values())) {
+      if (inst.feedID === feedID) this.instance_remove(inst.id);
+    }
+    this.feedRoots.delete(feedID);
+    this.change_emit({ scope: 'feed', feedID });
+  }
+
+  /**
    * Removes a feed and all its instances from the cache.
    */
   feed_remove(feedID: number): void {
@@ -757,6 +773,19 @@ export class ProcCache {
   feedLoad_clear(feedID: number): void {
     this.feedLoads.delete(feedID);
     this.feedLoadFailedAt.delete(feedID);
+  }
+
+  /**
+   * Every feed load worth showing, earliest first: the walks in flight and
+   * the failures still remembered. Two feeds can walk at once (an operator
+   * and a pane, or two panes), and each is index movement of its own.
+   *
+   * @param now - The clock (default now), against which failures expire.
+   * @returns The loads, earliest first; empty when nothing moves.
+   */
+  feedLoads_all(now: number = Date.now()): ProcFeedLoadProgress[] {
+    this.feedLoadFailures_expire(now);
+    return Array.from(this.feedLoads.values(), (entry: ProcFeedLoadProgress): ProcFeedLoadProgress => ({ ...entry }));
   }
 
   /**

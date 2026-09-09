@@ -14,7 +14,7 @@ jest.mock('@fnndsc/cumin', () => ({
 jest.mock('../src/jobs/index', () => ({}));
 
 import { procCache_get } from '@fnndsc/cumin';
-import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procVisitState_reset } from '../src/vfs/providers/proc';
+import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procVisitState_reset } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
 
@@ -100,6 +100,25 @@ describe('feedInstances_ensureStarted', () => {
     expect(cache.topologyLoaded_has(22)).toBe(true);
     expect(cache.feedLoad_of(22)).toBeNull();
     expect(client.getPluginInstances).toHaveBeenCalledTimes(4);
+  });
+
+  it('a refresh of a feed the own-feeds endpoint does not list keeps its roster row and re-walks it', async () => {
+    cache.feed_add({ id: 834, title: 'shared', ownerUsername: 'someone', public: true, creationDate: 'd', finishedJobs: 1, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 });
+    cache.instance_add({ id: 1, feedID: 834, parentID: null, pluginName: 'pl-old', params: null, status: 'finishedSuccessfully' });
+    cache.topologyLoaded_mark(834);
+    const rows = rows_make(834, 3);
+    const client = {
+      getFeeds: jest.fn(async () => ({ data: [], totalCount: 0 })),
+      getPluginInstances: jest.fn(async (params: { offset?: number; limit?: number }) => ({ data: rows.slice(params.offset ?? 0, (params.offset ?? 0) + (params.limit ?? 100)), totalCount: rows.length })),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    await expect(procFeed_refreshStart(834)).resolves.toBe('pending');
+    expect(cache.feed_get(834)?.title).toBe('shared'); // the row stayed
+    expect(cache.instance_get(1)).toBeUndefined();       // the old topology went
+    await flush();
+    expect(cache.topologyLoaded_has(834)).toBe(true);
+    expect(cache.feedInstanceIDs_get(834)).toHaveLength(3);
   });
 
   it('feedInstances_ensureLoaded still waits for the walk it shares', async () => {

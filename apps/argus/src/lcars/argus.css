@@ -1657,6 +1657,27 @@ body[data-header='dag'] #header-dag {
   font-size: 0.72rem;
 }
 
+/* The INDEX instrument: one row across the whole band, above the versions.
+ * Label capsule as the versions wear, then a bar in the façade's progress
+ * idiom (state hues, never a raw colour), then the figure. */
+#index-instrument {
+  column-span: all;
+  margin-bottom: 0.35rem;
+}
+
+#index-instrument .index-row {
+  margin-bottom: 0.15rem;
+}
+
+#index-instrument .index-bar {
+  flex: 0 1 16rem;
+  min-width: 6rem;
+}
+
+#index-instrument .status-degraded .telemetry-value {
+  color: var(--state-error);
+}
+
 /* Three columns, as the ARGUS WEB face has. The columns belong on the
  * readout, not on the face: `about-rows` is a wrapper, so columns set a
  * level up fragment the wrapper rather than its rows, which left every

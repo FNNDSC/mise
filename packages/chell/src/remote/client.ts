@@ -22,7 +22,7 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, fortune_random } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_compose, fortune_random } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
@@ -271,18 +271,10 @@ export async function remote_run(
   console.log(chalk.bold.cyan(welcome));
   console.log(chalk.green(`[+] Attached to CALYPSO daemon ${berth.identity} at ${berth.url}`));
   if (stack !== undefined) {
-    // Banner the daemon's whole stack, one aligned line per layer; older
-    // daemons report only chell and calypso.
-    const layers: Array<[string, string | undefined]> = [
-      ['chell', stack.chell], ['brasa', stack.brasa], ['chili', stack.chili],
-      ['salsa', stack.salsa], ['cumin', stack.cumin], ['calypso', stack.calypso],
-    ];
-    const present: Array<[string, string]> = layers.filter(
-      (entry: [string, string | undefined]): entry is [string, string] => entry[1] !== undefined,
-    );
-    const pkgWidth: number = Math.max(...present.map(([pkg]: [string, string]) => pkg.length));
-    for (const [pkg, version] of present) {
-      console.log(chalk.gray(`    ${pkg.padEnd(pkgWidth)}  ${version}`));
+    // Banner the daemon's whole stack, every package written out in full;
+    // older daemons report only chell and calypso, and get only those rows.
+    for (const line of stackBanner_compose(stack)) {
+      console.log(chalk.gray(`    ${line}`));
     }
   }
   const hostControl: string[] = engine.hostControl ?? [];

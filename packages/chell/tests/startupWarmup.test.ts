@@ -44,12 +44,14 @@ const mockDaemonLaunch = jest.fn(
     return mockLaunchInfo;
   },
 );
-const mockFaceBoot = jest.fn((): boolean => true);
-const mockFaceReady = jest.fn((): boolean => true);
-const mockFaceSuspend = jest.fn();
-const mockFaceResume = jest.fn();
-const mockFaceStop = jest.fn();
+/** The console put on the daemon's terminal once it is up; inert here. */
+const mockConsole = jest.fn(async (_target: { identity: string; url: string; token: string }): Promise<void> => undefined);
 
+// The daemon console would spawn a real surface on this terminal; every
+// daemon test runs against this inert stand-in instead.
+jest.unstable_mockModule('../src/core/daemonConsole.js', () => ({
+  daemonConsole_run: mockConsole,
+}));
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   warmupFailure_note: mockWarmupFailureNote,
   warmupFailure_clear: mockWarmupFailureClear,
@@ -135,11 +137,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   daemon_launch: mockDaemonLaunch,
-  face_boot: mockFaceBoot,
-  face_ready: mockFaceReady,
-  face_suspend: mockFaceSuspend,
-  face_resume: mockFaceResume,
-  face_stop: mockFaceStop,
+  consoleCage_start: jest.fn(),
+  consoleCage_stop: jest.fn((): string[] => []),
   identity_forSession: (user: string, url: string): string => `${user}@${url}`,
   hostControl_fromInputs: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
   hostControl_describe: (): string => '',
@@ -178,33 +177,31 @@ describe('daemonSession_run', () => {
     }));
   });
 
-  it('keeps the classic boot and raises the face once the daemon is up', async () => {
+  it('ends an interactive boot at a login: the console attaches to the daemon just published', async () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
     };
     const flags = { plugins: false, feeds: false, publicFeeds: false, jobs: false };
+    const report = jest.fn<StartupWarmupReporter['log']>();
 
-    await daemonSession_run(engine, 'rudolph', flags, true, { log: jest.fn() });
-    // The boot itself stays in the normal buffer (no boot-phase face).
-    expect(mockFaceBoot).not.toHaveBeenCalled();
-    expect(mockFaceReady).toHaveBeenCalledTimes(1);
-    const options = mockFaceReady.mock.calls[0]![0] as {
-      info: Array<{ label: string; value: string }>;
-      telemetry_get: () => { sessions: number; busy: boolean; jobs: number; feeds: number };
-    };
-    // The face panel carries the launch's addresses verbatim.
-    expect(options.info).toEqual(expect.arrayContaining([
-      { label: 'wire', value: 'ws://pangea:42479' },
-      { label: 'ARGUS', value: 'http://pangea:42479/?token=tok' },
-    ]));
-    // Live readings come from the daemon handle plus the proc index.
-    expect(options.telemetry_get()).toEqual({ sessions: 0, busy: false, jobs: 12, feeds: 3 });
+    await daemonSession_run(engine, 'rudolph', flags, true, { log: report });
+    // The console is given the launch's own address and token, verbatim.
+    expect(mockConsole).toHaveBeenCalledTimes(1);
+    expect(mockConsole).toHaveBeenCalledWith({
+      identity: 'me@https://cube.example.org/api/v1/',
+      url: 'ws://pangea:42479',
+      token: 'tok',
+    });
+    // And only once the daemon is listening: the login comes after boot.
+    const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
+    expect(mockDaemonListen.mock.invocationCallOrder[0]).toBeGreaterThan(readyOrder);
+    expect(mockConsole.mock.invocationCallOrder[0]).toBeGreaterThan(mockDaemonListen.mock.invocationCallOrder[0]);
 
     // A non-interactive host (systemd) never takes the terminal over.
-    mockFaceReady.mockClear();
+    mockConsole.mockClear();
     await daemonSession_run(engine, 'rudolph', flags, false, { log: jest.fn() });
-    expect(mockFaceReady).not.toHaveBeenCalled();
+    expect(mockConsole).not.toHaveBeenCalled();
   });
 
   it('warms and reports every startup cache before advertising the daemon', async () => {

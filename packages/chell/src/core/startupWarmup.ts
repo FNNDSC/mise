@@ -20,8 +20,8 @@ import {
   type BrasaEngine,
   type PrefetchResult,
 } from '@fnndsc/brasa';
-import { daemon_launch, face_ready, face_stop, identity_forSession, type DaemonLaunchInfo, type FaceInfo, type FaceTelemetry, hostControl_fromInputs, hostControl_describe, type HostControlInputs } from '@fnndsc/calypso';
-import { procIndex_snapshot } from '@fnndsc/brasa';
+import { daemon_launch, identity_forSession, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
+import { daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
 import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
@@ -635,6 +635,10 @@ export async function startupWarmup_run(
  * @param flags - Resource caches selected by daemon boot flags.
  * @param interactive - Whether progress may use an interactive spinner.
  * @param reporter - Daemon boot status logger.
+ * @param recovery - Asks the operator what to do after an exhausted warm-up.
+ * @param hostControlInputs - The host-control policy inputs.
+ * @param console - Puts a surface on this terminal once the daemon is up;
+ *   the daemon console by default, replaceable under test.
  */
 export async function daemonSession_run(
   engine: BrasaEngine,
@@ -644,6 +648,7 @@ export async function daemonSession_run(
   reporter: StartupWarmupReporter,
   recovery: DaemonWarmupRecovery = daemonWarmupFailure_decide,
   hostControlInputs: HostControlInputs = {},
+  console: (target: DaemonConsoleTarget) => Promise<void> = daemonConsole_run,
 ): Promise<void> {
   try {
     // Warm-up runs before the daemon installs its own sink, so the engine is
@@ -673,39 +678,15 @@ export async function daemonSession_run(
     }, { hostControl: parsedPolicy.policy });
 
     if (interactive) {
-      // Boot is over. The in-scroll pulse halts without a final repaint —
-      // the text record (addresses included) stays verbatim for the face's
-      // Esc view — and the alternate screen takes over as the resting
-      // state: the animating brain and one status line, nothing else.
+      // Boot is over. The pulse halts without a final repaint — its row
+      // arithmetic drifts over the addresses just printed — and the boot
+      // ends the way a boot should: at a login. The identity is already
+      // resolved, so the login is the attach, and this terminal becomes
+      // the daemon's first surface.
       logo_animateHalt();
-      const faceInfo: FaceInfo[] = [
-        { label: 'identity', value: info.identity },
-        { label: 'wire', value: info.url },
-        ...(info.argusUrl !== null ? [{ label: 'ARGUS', value: info.argusUrl }] : []),
-        { label: 'token', value: info.token },
-        { label: 'berth', value: info.berthPath },
-        { label: 'attach', value: `chell --remote --attach ${info.url} --token ${info.token}` },
-      ];
-      face_ready({
-        info: faceInfo,
-        ...(info.hostControl.tiers.size > 0
-          ? { hostControl: { tiers: hostControl_describe(info.hostControl), ...(info.hostControl.exposed && info.bindHost !== '127.0.0.1' ? { exposedOn: info.bindHost } : {}) } }
-          : {}),
-        telemetry_get: (): FaceTelemetry => {
-          const index: { jobs: number; feeds: number } = procIndex_snapshot();
-          return {
-            sessions: info.daemon.surfaces_count(),
-            busy: info.daemon.busy_get(),
-            jobs: index.jobs,
-            feeds: index.feeds,
-          };
-        },
-      });
+      await console({ identity: info.identity, url: info.url, token: info.token });
     }
   } catch (error: unknown) {
-    // A boot dying with the face up must hand the terminal back — and flush
-    // whatever the ring caged, the abort reason included.
-    face_stop();
     if (error instanceof DaemonWarmupAbortedError) {
       process.exitCode = 1;
       return;

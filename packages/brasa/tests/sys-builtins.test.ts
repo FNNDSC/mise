@@ -42,7 +42,7 @@ const { builtin_fortune, fortune_random } = await import('../src/builtins/sys/fo
 const { FORTUNES } = await import('../src/builtins/sys/fortunes.data.js');
 const { builtin_date, date_format } = await import('../src/builtins/sys/date.js');
 const { builtin_cal } = await import('../src/builtins/sys/cal.js');
-const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, buildHash_get } = await import('../src/core/version.js');
+const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, stackBanner_compose, buildHash_get } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -275,6 +275,15 @@ describe('builtin_version', () => {
     expect(versionColumn.size).toBe(1);
     // No web surface found, no argus row.
     expect(stackBanner_build(null).some((line: string): boolean => line.startsWith('ARGUS'))).toBe(false);
+  });
+
+  it('composes the banner from a daemon-reported stack, rows only for versions it reported', () => {
+    const lines: string[] = stackBanner_compose({ chell: '5.6.2', calypso: '0.11.0' });
+    expect(lines).toEqual([
+      'ChELL Executes Layered Logic                                   5.6.2',
+      'CALYPSO Accepts Language, Yielding Permitted Shell Operations  0.11.0',
+    ]);
+    expect(stackBanner_compose({})).toEqual([]);
   });
 
   it('builds a welcome line with the resolved version and a build hash', () => {

@@ -252,6 +252,8 @@ is a later ergonomic follow-up; it changes how the process starts, not the berth
 semantics, so deferring it costs nothing.) The standalone `calypso` binary likewise
 writes an identity-keyed berth from the session it restores.
 
+On a terminal, the boot ends at a login. Once the daemon is listening, `chell --daemon` puts an ordinary `chell --remote --attach <url> --token <token>` surface on its own terminal, as a child process on the wire: the same hop every other surface pays, and no share of the daemon's in-process sink or surface. `exit` detaches and leaves the daemon running with its terminal idle; Enter attaches again; Ctrl-C at the idle terminal stops the daemon. Whatever the daemon writes to its terminal while a surface holds it is held and printed on detach, so it never lands across the surface's prompt. Off a TTY nothing attaches. The design record is in the ARGUS AEGIS document, _The daemon console_.
+
 === `--remote`: resolve by identity, pick on ambiguity
 
 [cols="2,3",options="header"]

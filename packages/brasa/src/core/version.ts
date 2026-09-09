@@ -238,11 +238,31 @@ export function welcomeLine_compose(pkg: string, version: string, build: string)
  * @returns One `name  version` line per package.
  */
 export function stackBanner_build(argusVersion: string | null): string[] {
+  return stackBanner_compose(versions_get(), argusVersion);
+}
+
+/**
+ * Composes the stack banner from explicit versions, so a surface attached to
+ * a daemon writes out the daemon's stack rather than its own install's.
+ *
+ * @param versions - Versions keyed by short package name; a package with no
+ *   version (an older daemon that did not report it) gets no row.
+ * @param argusVersion - The served web surface's version, or null for no row.
+ * @returns One `name  version` line per package known, in stack order.
+ */
+export function stackBanner_compose(
+  versions: Partial<StackVersions>,
+  argusVersion: string | null = null,
+): string[] {
+  const byPkg: Record<string, string | undefined> = Object.fromEntries(Object.entries(versions));
   const rows: PackageInfo[] = [
-    ...stackInfo_get(),
+    ...STACK.flatMap((descriptor: PackageDescriptor): PackageInfo[] => {
+      const version: string | undefined = byPkg[descriptor.pkg];
+      return version === undefined ? [] : [{ ...descriptor, version }];
+    }),
     ...(argusVersion !== null ? [{ ...ARGUS, version: argusVersion }] : []),
   ];
-  const nameWidth: number = Math.max(...rows.map((row: PackageInfo): number => row.name.length));
+  const nameWidth: number = Math.max(0, ...rows.map((row: PackageInfo): number => row.name.length));
   return rows.map((row: PackageInfo): string => `${row.name.padEnd(nameWidth)}  ${row.version}`);
 }
 

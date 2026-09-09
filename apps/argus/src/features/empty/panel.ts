@@ -15,7 +15,7 @@ import type { WireEnvelope } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../../calypso/client.js';
 
 /** The pane kinds an envelope model can claim. */
-export type ClaimKind = 'files' | 'dag' | 'pacs';
+export type ClaimKind = 'files' | 'dag' | 'pacs' | 'image';
 
 /** What the empty pane asks of its host. */
 export interface EmptyPanelHandlers {
@@ -31,6 +31,7 @@ const CLAIM_BY_MODEL: Readonly<Record<string, ClaimKind>> = {
   'feed.dag': 'dag',
   'feed.list': 'dag',
   'pacs.query': 'pacs',
+  'dicom.series': 'image',
 };
 
 /**
@@ -76,6 +77,11 @@ export class EmptyPanel {
    */
   private async line_run(line: string): Promise<void> {
     this.result.textContent = '…';
+    // THROWAWAY PROTOTYPE: `image <path>` claims an image pane on a NIfTI.
+    if (line.startsWith('image ')) {
+      this.handlers.claim('image', [{ status: 'ok', rendered: '', model: { kind: 'proto.volume', data: { path: line.slice(6).trim() } } } as WireEnvelope]);
+      return;
+    }
     let outcome: ExecuteOutcome;
     try {
       outcome = await this.handlers.execute(line);

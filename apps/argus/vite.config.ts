@@ -9,6 +9,7 @@
  */
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const require: NodeRequire = createRequire(import.meta.url);
@@ -27,6 +28,18 @@ function gitHash_read(): string {
 
 export default defineConfig({
   base: './',
+  // THROWAWAY PROTOTYPE (renderer evaluation): Cornerstone3D's documented Vite recipe.
+  optimizeDeps: {
+    exclude: ['@cornerstonejs/dicom-image-loader'],
+    include: ['dicom-parser'],
+  },
+  worker: { format: 'es' },
+  resolve: {
+    alias: {
+      // THROWAWAY PROTOTYPE: see src/features/image/xmlbuilder2-stub.ts.
+      xmlbuilder2: fileURLToPath(new URL('./src/features/image/xmlbuilder2-stub.ts', import.meta.url)),
+    },
+  },
   define: {
     __ARGUS_GIT__: JSON.stringify(gitHash_read()),
     __ARGUS_BUILT__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),

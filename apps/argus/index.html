@@ -327,6 +327,45 @@
                 <div class="view-body"></div>
               </div>
             </template>
+            <!-- THROWAWAY PROTOTYPE: the image pane (renderer evaluation, S2). -->
+            <template id="tpl-pane-image">
+              <div class="workspace-pane pane-image">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title image-title">IMAGE</span>
+                  </div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <span class="drawer-group drawer-structure">
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                    <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                    <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  </span>
+                  <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                    <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                  </span>
+                  <span class="drawer-group drawer-children"></span>
+                </div>
+                <div class="image-toolbar">
+                  <button class="pacs-capsule image-go-stack">STACK</button>
+                  <button class="pacs-capsule image-go-mpr">MPR</button>
+                  <button class="pacs-capsule image-go-wl">W/L</button>
+                  <button class="pacs-capsule image-go-zoom">ZOOM</button>
+                  <button class="pacs-capsule image-go-pan">PAN</button>
+                  <button class="pacs-capsule image-go-length">LENGTH</button>
+                  <button class="pacs-capsule image-go-sr">SR</button>
+                  <span class="image-readout"></span>
+                </div>
+                <div class="image-field"></div>
+              </div>
+            </template>
             <!-- The empty pane: what a split creates. Its prompt is the pane
                  specifier — whatever command runs there claims the pane; the
                  capsules are shortcuts for the frequent. -->

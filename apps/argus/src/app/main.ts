@@ -34,6 +34,8 @@ import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
+import { ImagePanel } from '../features/image/panel.js';
+import { dicomSeriesModelSchema, DICOM_MODEL_KINDS } from '@fnndsc/menu';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
@@ -1442,6 +1444,27 @@ async function surface_start(token: string): Promise<void> {
   // regard. The subscription happens at spawn time, after the instance has
   // joined its group (the retained cell then replays immediately).
   const viewerPanels: Map<string, ViewerPanel> = new Map();
+  // THROWAWAY PROTOTYPE: the image pane (renderer evaluation, S2).
+  const imagePanels: Map<string, ImagePanel> = new Map();
+  const imageInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-image');
+    const panel: ImagePanel = new ImagePanel(mount, {
+      vfsUrl_build,
+      console_note: (line: string): void => terminal.line_note(line),
+    });
+    imagePanels.set(id, panel);
+    (window as unknown as { argusImagePanels?: Map<string, ImagePanel> }).argusImagePanels = imagePanels;
+    return {
+      id,
+      kind: 'image',
+      mount,
+      dispose: (): void => {
+        panel.dispose();
+        imagePanels.delete(id);
+        subjects.pane_leave(id);
+      },
+    };
+  };
   const viewInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-view');
     const panel: ViewerPanel = new ViewerPanel(
@@ -2407,6 +2430,18 @@ async function surface_start(token: string): Promise<void> {
     layout.leaf_replace(emptyId, instance.id);
     paneInstance_dispose(emptyId);
     layout.mount_remove(emptyId);
+    if (kind === 'image') {
+      const imagePanel: ImagePanel | undefined = imagePanels.get(instance.id);
+      for (const envelope of envelopes) {
+        if (envelope.model?.kind === DICOM_MODEL_KINDS.series) {
+          const parsed = dicomSeriesModelSchema.safeParse(envelope.model.data);
+          if (parsed.success) void imagePanel?.series_show(parsed.data);
+        } else if (envelope.model?.kind === 'proto.volume') {
+          void imagePanel?.volume_show(String((envelope.model.data as { path: string }).path));
+        }
+      }
+      return;
+    }
     const panel: FilesPanel | DagPanel | undefined =
       kind === 'files' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
     for (const envelope of envelopes) {
@@ -2417,6 +2452,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
   paneFactory_register('view', viewInstance_build);
+  paneFactory_register('image', imageInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {

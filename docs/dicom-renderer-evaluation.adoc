@@ -1,6 +1,6 @@
 = The DICOM Renderer: Candidates Judged Against the Requirements
 Rudolph Pienaar <rudolph.pienaar@gmail.com>
-0.1, 2026-09-09: Research pass; prototype findings to follow
+0.2, 2026-09-09: Research pass and prototype findings
 :doctype: article
 :toc: left
 :toclevels: 3
@@ -125,4 +125,28 @@ Costs to state plainly: two engines is two sets of static assets (four Cornersto
 
 == What the prototype showed
 
-_To be filled by the throwaway prototype on the private daemon: stack scroll over `/vfs`, MPR with crosshairs, the image-changed event reaching the console, focus containment, SR export bytes, and niivue on a synthesized NIfTI. Screenshots stay in the scratchpad and are cited here._
+A throwaway `image` pane was built on branch `agent/dicom-renderer-prototype` (never to be merged) with both engines behind it, and driven headless over CDP against a private daemon at device pixel ratio 1.5. The series was the S1 fixture: sixteen synthesized 64 by 64 MR slices named the way oxidicom names files, uploaded through the daemon's `/vfs` POST route, plus a hand-written 16 by 16 by 16 gzip NIfTI sphere. The pane was claimed the way S3 will claim it: `dcm series <folder>` typed into an empty pane's prompt, whose `dicom.series` model carried the ordered file list; the pane turned each path into a `wadouri:` image id over the token-gated `/vfs` route. Nothing was fetched from CUBE except through mise.
+
+* Lazy stack, confirmed. The first slice was on screen 763 ms after `setStack`, with 8,192 bytes in Cornerstone's cache, that is one file's pixel data; the other fifteen had not been fetched. Requirement R3's "first pixel after one file" holds on real bytes.
+* Wheel scroll, confirmed. Five synthetic wheel events over the field moved the stack from slice 1 to slice 6, the page did not scroll, and each move fired `CORNERSTONE_STACK_NEW_IMAGE` with the image id and index; the pane wrote `SLICE 6 OF 16 <file>` on its bar and a line in the console for each. That event is the regard seam S4's TAGS pane needs, and it carries the file path, so the tags pane can ask `dcm tags` for exactly the slice on screen.
+* Canvas discipline, confirmed. At device pixel ratio 1.5 the viewport canvas measured 1727 by 673 device pixels for a 1151 by 449 CSS field: Cornerstone sizes its canvas to the element and the pixel ratio without help.
+* Focus containment, confirmed at the element. A click on the field moved `document.activeElement` to the viewport element, an ArrowDown key then reached the field's own listener and stopped there. Cornerstone binds wheel and keys per element as its source said; the pane's Esc-releases-focus rule (decision 10) is mise's to add and costs one listener.
+* Linked MPR, confirmed. Three orthographic viewports over a `cornerstoneStreamingImageVolume` came up 3.0 s after the request, of which 2.6 s was loading all sixteen slices first (the volume path needs every header before it can build the grid, which is the cost decision 5 guards with LOAD). A drag in the axial viewport moved the crosshair in the other two and updated the readout. Reference lines drew in three colours.
+* Length measurement, confirmed. With the primary button rebound to `LengthTool`, one drag drew a length annotation and `annotation.state.getAllAnnotations()` reported it.
+* SR export, confirmed, after three lessons the adapter's source did not teach. `MeasurementReport.generateReport` wants annotations grouped by image id and then by tool name, not the flat list `getAllAnnotations()` returns. It asks the metadata layer for `sopCommonModule` and `instance` of each annotated image, and the `wadouri` loader in this build answered neither for the annotated id; the pane registered its own provider from the kernel's `dicom.series` model (SeriesInstanceUID, StudyInstanceUID) and oxidicom's file name (SOPInstanceUID), which is the right shape for S5 anyway: mise tells the adapter who an image is, from `dcm tags`, and never trusts the loader's memory. And dcmjs's browser writer, `datasetToBlob`, reaches for Node's `Buffer`, which OHIF polyfills and mise must too. With those three, one length measurement became a 2,638 byte Enhanced SR (SOP class 1.2.840.10008.5.1.4.1.1.88.22) and a POST to `/vfs` put it at `/home/<user>/annotations/<SeriesInstanceUID>/measurements.dcm` with HTTP 200, exactly where decision 6 said annotations live. `dcm tags` then read it back and `dcm series` listed it under ANNOTATIONS, see below.
+* niivue on NIfTI, confirmed. The sphere loaded over the same `/vfs` route and drew in multiplanar layout with a 3D render in 1.4 s; the canvas followed its mount at the same pixel ratio. `onLocationChange` delivered voxel, millimetre and value text for the bar.
+* Build facts. Vite built both engines with Cornerstone's documented recipe (`optimizeDeps.exclude` the image loader, `include` `dicom-parser`, `worker.format: 'es'`): four decode wasms (CharLS 145 KB, libjpeg-turbo 180 KB, OpenJPEG 255 KB, OpenJPH 2.3 MB) and the decode worker landed in `dist/assets` under hashed names and were served by calypso's static handler with the right content types. One trap: vtk.js's XML reader and writer import `xmlbuilder2`, a CommonJS package whose class hierarchy breaks under Vite's interop at module init and took the whole surface down (OFFLINE, no console error visible in the page); an alias to a stub fixed it, and S3 keeps that alias or a `manualChunks` split that leaves vtk.js's IO out. The unminified main chunk with both engines was 9.9 MB, minified 5 MB, gzip 1.4 MB; S3 should load each engine lazily by `import()` so a session that never opens an image pays nothing.
+
+* Read back through the kernel, confirmed. With the daemon down, a private headless chell ran `dcm tags` on the saved SR (it parsed; the top-level listing showed the study-level sequences, and the referenced-image sequence sits inside content items, which tells S4 that FILTER must descend into sequence items) and `dcm series` on the folder, which listed `/home/<user>/annotations/<SeriesInstanceUID>/measurements.dcm` under ANNOTATIONS with no change to S1's code. The annotation path from decision 6 is closed end to end: guest measures, mise names the file, `/vfs` writes it, the kernel finds it by UID.
+
+Screenshots (scratchpad, not committed): `proto-stack.png`, `proto-length.png`, `proto-mpr.png`, `proto-mpr-crosshair.png`, `proto-niivue.png`.
+
+== What S3 inherits from the prototype
+
+* Claim the pane by model: `dcm series <folder>` in an empty pane's prompt already carries the ordered files; the pane never lists a folder itself.
+* Image ids are `wadouri:` over `/vfs`; nothing else touches CUBE. The `ImageSource` seam swaps that prefix for `wadors:` when CUBE's DICOMweb lands.
+* Lazy stack first, volume on request, and the volume path loads every slice before it can start: the LOAD guard belongs on the MPR and 3D verbs, as decision 5 says.
+* Regard is `STACK_NEW_IMAGE`; its image id decodes to the slice's path, which is what the TAGS pane asks `dcm tags` about.
+* Metadata for the SR adapter comes from mise (`dicom.series` and `dcm tags`), registered as a Cornerstone metadata provider; the loader's own memory is not relied on.
+* `Buffer` is polyfilled from the `buffer` package before dcmjs writes; `xmlbuilder2` is aliased to a stub or vtk.js's IO is split out of the bundle.
+* Both engines load lazily by `import()` behind one `ImageEngine` interface; smoke asserts mise's seams (state, readouts, console lines, files landing) and never the engines' internals.

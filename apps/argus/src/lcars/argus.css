@@ -3727,3 +3727,13 @@ body[data-zoom] #header-restore {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* THROWAWAY PROTOTYPE: the image pane (renderer evaluation, S2). */
+.pane-image { display: flex; flex-direction: column; min-height: 0; }
+.image-toolbar { display: flex; gap: 6px; align-items: center; padding: 4px 8px; flex: 0 0 auto; }
+.image-readout { margin-left: auto; font-size: 12px; opacity: 0.85; white-space: nowrap; }
+.image-field { flex: 1 1 auto; min-height: 0; position: relative; background: #000; }
+.image-viewport { position: absolute; inset: 0; }
+.image-mpr { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; }
+.image-mpr .image-viewport { position: relative; inset: auto; min-width: 0; min-height: 0; }
+.image-canvas { display: block; width: 100% !important; height: 100% !important; }

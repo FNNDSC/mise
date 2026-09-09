@@ -254,6 +254,31 @@ export function stackBanner_compose(
   versions: Partial<StackVersions>,
   argusVersion: string | null = null,
 ): string[] {
+  return stackBanner_rows(versions, argusVersion).map(
+    (row: StackBannerRow): string => `${row.name.padEnd(row.nameWidth)}  ${row.version}`,
+  );
+}
+
+/** One banner row, with the width every name in the banner is padded to. */
+export interface StackBannerRow extends PackageInfo {
+  nameWidth: number;
+}
+
+/**
+ * The stack banner as rows, for a host that paints each part in its own
+ * colour: the package's name is the first word of its backronym, the rest
+ * of the phrase follows, and the version stands in one column.
+ *
+ * @param versions - Versions keyed by short package name; a package with no
+ *   version gets no row.
+ * @param argusVersion - The served web surface's version, or null for no row.
+ * @returns One row per package known, in stack order, each carrying the
+ *   shared name width.
+ */
+export function stackBanner_rows(
+  versions: Partial<StackVersions>,
+  argusVersion: string | null = null,
+): StackBannerRow[] {
   const byPkg: Record<string, string | undefined> = Object.fromEntries(Object.entries(versions));
   const rows: PackageInfo[] = [
     ...STACK.flatMap((descriptor: PackageDescriptor): PackageInfo[] => {
@@ -263,7 +288,25 @@ export function stackBanner_compose(
     ...(argusVersion !== null ? [{ ...ARGUS, version: argusVersion }] : []),
   ];
   const nameWidth: number = Math.max(0, ...rows.map((row: PackageInfo): number => row.name.length));
-  return rows.map((row: PackageInfo): string => `${row.name.padEnd(nameWidth)}  ${row.version}`);
+  return rows.map((row: PackageInfo): StackBannerRow => ({ ...row, nameWidth }));
+}
+
+/**
+ * Paints one banner row: the package's own name bright, the rest of its
+ * backronym plain, the version dim in its column.
+ *
+ * @param row - The row to paint.
+ * @param paint - The three colours, applied to name, phrase, and version.
+ * @returns The painted line, aligned as the plain banner is.
+ */
+export function stackBannerRow_paint(
+  row: StackBannerRow,
+  paint: { name: (s: string) => string; phrase: (s: string) => string; version: (s: string) => string },
+): string {
+  const [first, ...rest]: string[] = row.name.split(' ');
+  const phrase: string = rest.length > 0 ? ` ${rest.join(' ')}` : '';
+  const padding: string = ' '.repeat(row.nameWidth - row.name.length);
+  return `${paint.name(first)}${paint.phrase(phrase)}${padding}  ${paint.version(row.version)}`;
 }
 
 /**

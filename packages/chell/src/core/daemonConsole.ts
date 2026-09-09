@@ -62,7 +62,11 @@ export const CHELL_ENTRY: string = fileURLToPath(new URL('../index.js', import.m
 export type SpawnedChild = Pick<ChildProcess, 'once'>;
 
 /** A process spawner with the shape of `child_process.spawn`. */
-export type Spawn = (command: string, args: string[], options: { stdio: 'inherit' }) => SpawnedChild;
+export type Spawn = (
+  command: string,
+  args: string[],
+  options: { stdio: 'inherit'; env: NodeJS.ProcessEnv },
+) => SpawnedChild;
 
 /** What the Enter wait needs of the terminal's input. */
 export type ConsoleInput = Pick<EventEmitter, 'on' | 'once' | 'off'> & { resume(): unknown; pause(): unknown };
@@ -75,10 +79,13 @@ export type ConsoleInput = Pick<EventEmitter, 'on' | 'once' | 'off'> & { resume(
  * @returns The child, settling with its exit code when the operator detaches.
  */
 export function surface_spawn(target: DaemonConsoleTarget, spawn: Spawn = childSpawn): ConsoleChild {
+  // The identity rides along so the surface greets with it, not with the
+  // address twice; the environment mark tells it whose terminal it is on,
+  // so it skips the greeting the daemon's banner already gave.
   const child: SpawnedChild = spawn(
     process.execPath,
-    [CHELL_ENTRY, '--remote', '--attach', target.url, '--token', target.token],
-    { stdio: 'inherit' },
+    [CHELL_ENTRY, '--remote', target.identity, '--attach', target.url, '--token', target.token],
+    { stdio: 'inherit', env: { ...process.env, CHELL_CONSOLE: '1' } },
   );
   const exited: Promise<number> = new Promise<number>((resolve: (code: number) => void): void => {
     child.once('exit', (code: number | null): void => { resolve(code ?? 0); });

@@ -23,7 +23,7 @@ import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
-import { welcomeLine_build, stackBanner_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
+import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get, fortune_random, type StackBannerRow } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
@@ -264,9 +264,12 @@ export async function daemon_launch(
     process.once('SIGTERM', (): void => { cleanup(); process.exit(0); });
   }
 
-  console.log(chalk.bold.cyan(welcomeLine_build('calypso')));
-  for (const line of stackBanner_build(webRoot !== null ? webRootVersion_read(webRoot) : null)) {
-    console.log(chalk.gray(`    ${line}`));
+  // The stack, every package written out once: the daemon's own row carries
+  // the build hash, so there is no headline to repeat it.
+  const build: string = buildHash_get();
+  for (const row of stackBanner_rows(versions_get(), webRoot !== null ? webRootVersion_read(webRoot) : null)) {
+    const painted: StackBannerRow = row.pkg === 'calypso' ? { ...row, version: `${row.version} (${build})` } : row;
+    console.log(`    ${stackBannerRow_paint(painted, { name: chalk.bold.cyan, phrase: chalk.white, version: chalk.gray })}`);
   }
   console.log(chalk.gray(fortune_random(4)));
   console.log(chalk.green(`[+] CALYPSO listening on ${url}`));

@@ -92,8 +92,8 @@ describe('surface_spawn', () => {
     const running = surface_spawn(TARGET, spawn);
     expect(spawn).toHaveBeenCalledWith(
       process.execPath,
-      [CHELL_ENTRY, '--remote', '--attach', TARGET.url, '--token', TARGET.token],
-      { stdio: 'inherit' },
+      [CHELL_ENTRY, '--remote', TARGET.identity, '--attach', TARGET.url, '--token', TARGET.token],
+      { stdio: 'inherit', env: expect.objectContaining({ CHELL_CONSOLE: '1' }) },
     );
     expect(CHELL_ENTRY.endsWith('/index.js')).toBe(true);
     child.emit('exit', 0);

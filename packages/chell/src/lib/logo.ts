@@ -11,54 +11,34 @@
  * @module
  */
 import { logo_frameRender, logo_linesRender, logoRows_count } from '@fnndsc/brasa';
+import { RowCounter, stdoutRows_ensure, stdoutRows_current, stdoutRows_release } from './terminalRows.js';
 
 export { logo_frameRender, logo_linesRender };
 
 let logoInterval: NodeJS.Timeout | null = null;
 let logoFrameIndex: number = 0;
 
-let originalWrite: typeof process.stdout.write | null = null;
-let linesPrinted: number = 0;
-/** Columns occupied by output not yet terminated by a newline. */
-let pendingColumns: number = 0;
-
-/**
- * Matches every ANSI escape, not only the colour codes {@link ANSI_PATTERN}
- * strips: anything that moves a cursor or sets a mode occupies no columns
- * either, and a width count that ignores it over-shoots.
- */
-const ESCAPE_PATTERN: RegExp = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
+/** A width helper, independent of the shared tracker: pure row arithmetic. */
+const widthCounter: RowCounter = new RowCounter(process.stdout);
 
 /**
  * Counts the screen rows a run of printed text occupies.
  *
- * The animation repaints by moving the cursor up a fixed number of rows, so it
- * must know rows and not newlines. A line longer than the terminal is wrapped
- * by the terminal into several rows while contributing one newline; counting
- * newlines therefore under-shoots, and the animation paints over whatever was
- * printed. Long lines — a URL carrying a token, say — make that immediate.
+ * A line longer than the terminal is wrapped by the terminal into several
+ * rows while contributing one newline; counting newlines therefore
+ * under-shoots. Long lines — a URL carrying a token, say — make that
+ * immediate.
  *
  * @param text - The text written to stdout, escapes included.
  * @returns The rows it occupied, advancing the pending-column position.
  */
 export function rows_count(text: string): number {
-  const columns: number = process.stdout.columns || 80;
-  const segments: string[] = text.replace(ESCAPE_PATTERN, '').split('\n');
-  let rows: number = 0;
-  segments.forEach((segment: string, index: number): void => {
-    const width: number = pendingColumns + segment.length;
-    if (index < segments.length - 1) {
-      // A completed line occupies at least one row, and one more for each
-      // full width it wrapped past.
-      rows += Math.max(1, Math.ceil(width / columns) || 1);
-      pendingColumns = 0;
-    } else {
-      pendingColumns = width % columns;
-      // Text that wrapped but has not yet ended still consumed rows.
-      rows += Math.floor(width / columns);
-    }
-  });
-  return rows;
+  return widthCounter.count(text);
+}
+
+/** Rows scrolled since tracking began, from the shared stdout tracker. */
+function linesPrinted_get(): number {
+  return stdoutRows_current()?.counter.rows_get() ?? 0;
 }
 
 /**
@@ -72,7 +52,7 @@ export function logo_isAnimating(): boolean {
 
 /** Test seam: the rows counted since tracking began. */
 export function rowsPrinted_peek(): number {
-  return linesPrinted;
+  return linesPrinted_get();
 }
 
 /** Test seam: starts row tracking without printing a logo first. */
@@ -86,17 +66,7 @@ export function rowsPrinted_untrack(): void {
 }
 
 function stdoutTrack_start(): void {
-  if (originalWrite) return;
-  originalWrite = process.stdout.write.bind(process.stdout);
-  linesPrinted = 0;
-  pendingColumns = 0;
-  process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]): boolean => {
-    const str: string = typeof chunk === 'string'
-      ? chunk
-      : (chunk && chunk.toString ? chunk.toString() : '');
-    linesPrinted += rows_count(str);
-    return (originalWrite as (...a: unknown[]) => boolean)(chunk, ...args);
-  }) as typeof process.stdout.write;
+  stdoutRows_ensure().counter.reset();
 }
 
 /**
@@ -110,21 +80,16 @@ function stdoutTrack_start(): void {
  * @param text - The text to write.
  */
 function write_untracked(text: string): void {
-  if (originalWrite) {
-    (originalWrite as (chunk: string) => boolean)(text);
-  } else {
-    process.stdout.write(text);
-  }
+  const tracked: ReturnType<typeof stdoutRows_current> = stdoutRows_current();
+  if (tracked !== null) tracked.write_raw(text);
+  else process.stdout.write(text);
 }
 
 /**
  * Stops hijacking process.stdout.write, restoring the original function handler.
  */
 function stdoutTrack_stop(): void {
-  if (originalWrite) {
-    process.stdout.write = originalWrite as any;
-    originalWrite = null;
-  }
+  stdoutRows_release();
 }
 
 /**
@@ -179,7 +144,7 @@ export function logo_animatePulse(): void {
   const totalLines: number = logoRows_count();
 
   logoInterval = setInterval(() => {
-    const upOffset: number = totalLines + 1 + linesPrinted;
+    const upOffset: number = totalLines + 1 + linesPrinted_get();
 
     // The repaint is cursor-relative, which holds only while the logo is still
     // on screen. Once output has pushed it past the top, moving up clamps at
@@ -245,7 +210,7 @@ export function logo_animateStop(): void {
     logoInterval = null;
 
     const totalLines: number = logoRows_count();
-    const upOffset: number = totalLines + 1 + linesPrinted;
+    const upOffset: number = totalLines + 1 + linesPrinted_get();
     write_untracked('\x1b[s');
     write_untracked(`\x1b[${upOffset}A\r`);
     

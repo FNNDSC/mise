@@ -42,7 +42,7 @@ const { builtin_fortune, fortune_random } = await import('../src/builtins/sys/fo
 const { FORTUNES } = await import('../src/builtins/sys/fortunes.data.js');
 const { builtin_date, date_format } = await import('../src/builtins/sys/date.js');
 const { builtin_cal } = await import('../src/builtins/sys/cal.js');
-const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, stackBanner_compose, buildHash_get } = await import('../src/core/version.js');
+const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, stackBanner_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -284,6 +284,17 @@ describe('builtin_version', () => {
       'CALYPSO Accepts Language, Yielding Permitted Shell Operations  0.11.0',
     ]);
     expect(stackBanner_compose({})).toEqual([]);
+  });
+
+  it('paints a banner row in three parts and keeps the version column aligned', () => {
+    const rows = stackBanner_rows({ chell: '5.6.2', calypso: '0.11.0' });
+    const paint = { name: (s: string): string => `<${s}>`, phrase: (s: string): string => `{${s}}`, version: (s: string): string => `[${s}]` };
+    const painted: string[] = rows.map((row) => stackBannerRow_paint(row, paint));
+    expect(painted[0]).toBe(`<ChELL>{ Executes Layered Logic}${' '.repeat(rows[0].nameWidth - 'ChELL Executes Layered Logic'.length)}  [5.6.2]`);
+    expect(painted[1]).toBe('<CALYPSO>{ Accepts Language, Yielding Permitted Shell Operations}  [0.11.0]');
+    // Stripped of paint, the versions stand in one column.
+    const plain: string[] = painted.map((line: string): string => line.replace(/[<>{}[\]]/g, ''));
+    expect(new Set(plain.map((line: string): number => line.search(/\S+$/))).size).toBe(1);
   });
 
   it('builds a welcome line with the resolved version and a build hash', () => {

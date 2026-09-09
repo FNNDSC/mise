@@ -80,11 +80,12 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   fortune_random: jest.fn(() => 'A test fortune.'),
   // The banner names each package in full; the words the test looks for
   // are the short names, which every full name carries.
-  stackBanner_compose: jest.fn((versions: Record<string, string | undefined>): string[] =>
+  stackBanner_rows: jest.fn((versions: Record<string, string | undefined>) =>
     Object.entries(versions)
       .filter(([pkg]: [string, string | undefined]): boolean => pkg !== 'build')
-      .map(([pkg, version]: [string, string | undefined]): string => `${pkg.toUpperCase()} written out  ${version}`),
+      .map(([pkg, version]: [string, string | undefined]) => ({ pkg, name: `${pkg.toUpperCase()} written out`, version, nameWidth: 20 })),
   ),
+  stackBannerRow_paint: jest.fn((row: { name: string; version: string }): string => `${row.name}  ${row.version}`),
 }));
 jest.unstable_mockModule('../src/remote/remoteEngine.js', () => ({
   RemoteEngine: MockRemoteEngine,

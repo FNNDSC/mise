@@ -665,6 +665,15 @@ export async function daemonSession_run(
     }
     const info: DaemonLaunchInfo = await daemon_launch(engine, async (): Promise<void> => {
       const cache: StartupWarmupCache = await startupWarmup_run(flags, user, interactive, reporter, true);
+      // The steps warming behind the prompt settle on the readout before the
+      // login takes the terminal. They ran in parallel with the blocking
+      // warm-up; the boot now waits out whatever has not yet landed, so every
+      // row the operator is left looking at reads [ OK ] or [FAIL], never an
+      // open [PENDING] the console would cage before it could finish. The
+      // wait is bounded — each step carries its own retry budget — and the
+      // daemon is moments from listening, so nothing reaches it any sooner
+      // for the wait.
+      await Promise.allSettled(cache.deferred.map((step: DeferredWarmup): Promise<PrefetchResult> => step.settled));
       if (cache.failures.length === 0) {
         reporter.log('ok', 'Engine', 'Ready');
         return;

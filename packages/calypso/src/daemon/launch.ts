@@ -23,7 +23,7 @@ import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
-import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get, fortune_random, type StackBannerRow } from '@fnndsc/brasa';
+import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
@@ -264,15 +264,14 @@ export async function daemon_launch(
     process.once('SIGTERM', (): void => { cleanup(); process.exit(0); });
   }
 
-  // The stack, every package written out once: the daemon's own row carries
-  // the build hash, so there is no headline to repeat it.
+  // The stack, every package written out once, versions in a clean column:
+  // the build hash rides the listening line below rather than one row's
+  // version, which pushed that row past the column the rest share.
   const build: string = buildHash_get();
   for (const row of stackBanner_rows(versions_get(), webRoot !== null ? webRootVersion_read(webRoot) : null)) {
-    const painted: StackBannerRow = row.pkg === 'calypso' ? { ...row, version: `${row.version} (${build})` } : row;
-    console.log(`    ${stackBannerRow_paint(painted, { name: chalk.bold.cyan, phrase: chalk.white, version: chalk.gray })}`);
+    console.log(`    ${stackBannerRow_paint(row, { name: chalk.bold.cyan, phrase: chalk.white, version: chalk.gray })}`);
   }
-  console.log(chalk.gray(fortune_random(4)));
-  console.log(chalk.green(`[+] CALYPSO listening on ${url}`));
+  console.log(chalk.green(`[+] CALYPSO listening on ${url} ${chalk.gray(`(build ${build})`)}`));
   if (hostControl.tiers.size > 0) {
     // Annunciated every launch: this daemon acts on its own host.
     console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl_describe(hostControl)} — \`!\`, pipes, and the disk are this host's`));

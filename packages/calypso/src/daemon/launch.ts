@@ -11,11 +11,11 @@
  *
  * @module
  */
-import { hostname } from 'node:os';
 import * as path from 'node:path';
 import chalk from 'chalk';
 import { CalypsoDaemon } from './server.js';
-import { bundledWebRoot_find, webRoot_resolve } from './static.js';
+import { bundledWebRoot_find, webRoot_resolve, webRootVersion_read } from './static.js';
+import { hostFqdn_get } from './host.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
@@ -23,7 +23,7 @@ import type { ProgressEvent } from '@fnndsc/brasa';
 import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
-import { welcomeLine_build, versionReport_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
+import { welcomeLine_build, stackBanner_build, versions_get, buildHash_get, fortune_random } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
 import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
@@ -231,8 +231,12 @@ export async function daemon_launch(
   // wire to the network: a berth copied to another machine, or an address
   // pasted into `chell --remote --attach`, has to name a host that resolves
   // from somewhere else.
-  const wireHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
-  const url: string = `ws://${wireHost}:${port}`;
+  // Every address printed or written below names this host once, and by
+  // its fully qualified name: a wildcard bind has no routable form, and the
+  // bare hostname resolves only inside its own search domain. Pasted on
+  // another machine, the qualified name still works.
+  const displayHost: string = bindHost === '0.0.0.0' ? await hostFqdn_get() : bindHost;
+  const url: string = `ws://${displayHost}:${port}`;
   const berth: Berth = { identity, url, token };
   berth_write(berth);
 
@@ -245,7 +249,7 @@ export async function daemon_launch(
     `wire:      ${url}`,
     `token:     ${token}`,
     ...(webRoot !== null
-      ? [`ARGUS:     http://${bindHost === '0.0.0.0' ? hostname() : bindHost}:${port}/?token=${token}`]
+      ? [`ARGUS:     http://${displayHost}:${port}/?token=${token}`]
       : []),
     `attach:    chell --remote --attach ${url} --token ${token}`,
     ...(hostControl.tiers.size > 0
@@ -261,7 +265,7 @@ export async function daemon_launch(
   }
 
   console.log(chalk.bold.cyan(welcomeLine_build('calypso')));
-  for (const line of versionReport_build().split('\n')) {
+  for (const line of stackBanner_build(webRoot !== null ? webRootVersion_read(webRoot) : null)) {
     console.log(chalk.gray(`    ${line}`));
   }
   console.log(chalk.gray(fortune_random(4)));
@@ -284,9 +288,6 @@ export async function daemon_launch(
     console.log(chalk.gray(`    from another machine:   chell --remote --attach ${url} --token ${token}`));
   }
   if (webRoot !== null) {
-    // A wildcard bind has no routable form for a URL; name the machine so
-    // the printed address works from another host.
-    const displayHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
     console.log(chalk.green(`[+] ARGUS web surface at http://${displayHost}:${port}/?token=${token}`));
     console.log(chalk.gray(`    serving:   ${webRoot}`));
   }
@@ -295,7 +296,6 @@ export async function daemon_launch(
     console.log(chalk.gray('    or run:               calypso --berths'));
   }
 
-  const displayHost: string = bindHost === '0.0.0.0' ? hostname() : bindHost;
   return {
     identity,
     url,

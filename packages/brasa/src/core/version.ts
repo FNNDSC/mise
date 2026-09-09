@@ -136,6 +136,13 @@ const STACK: readonly PackageDescriptor[] = [
 ];
 
 /**
+ * The web surface. It is not in {@link STACK}: argus is an app served from a
+ * checkout, not a package the others depend on, so its version is known only
+ * to the daemon that found its bundle and is passed in when the banner asks.
+ */
+const ARGUS: PackageDescriptor = { pkg: 'argus', name: 'ARGUS Renders Graphical User Surfaces', role: 'surface' };
+
+/**
  * Resolves the running version of a descriptor's package. brasa reads its own
  * package.json directly (this module lives in it); every other package resolves
  * by name.
@@ -210,10 +217,33 @@ export function versionReport_build(): string {
  * @param version - The package version to display.
  * @param build - The short build hash to display.
  * @returns A line of the form `ChELL Executes Layered Logic, v 5.3.0 (886f09). Welcome.`
+ *   for a surface; a session host's line ends at the build, with no welcome.
  */
 export function welcomeLine_compose(pkg: string, version: string, build: string): string {
   const descriptor: PackageDescriptor = STACK.find((d: PackageDescriptor) => d.pkg === pkg) ?? STACK[0];
-  return `${descriptor.name}, v ${version} (${build}). Welcome.`;
+  // The welcome belongs to a surface, where it marks the end of boot and the
+  // start of the operator's session. A session host has nobody to welcome
+  // yet: its boot ends with the readout's own last row.
+  const welcome: string = descriptor.role === 'surface' ? ' Welcome.' : '';
+  return `${descriptor.name}, v ${version} (${build}).${welcome}`;
+}
+
+/**
+ * Builds the stack banner a daemon prints under its own line: every package
+ * written out in full, backronym and version aligned, the web surface last
+ * when the daemon found one to serve.
+ *
+ * @param argusVersion - The served argus bundle's version, or null when the
+ *   daemon serves no web surface.
+ * @returns One `name  version` line per package.
+ */
+export function stackBanner_build(argusVersion: string | null): string[] {
+  const rows: PackageInfo[] = [
+    ...stackInfo_get(),
+    ...(argusVersion !== null ? [{ ...ARGUS, version: argusVersion }] : []),
+  ];
+  const nameWidth: number = Math.max(...rows.map((row: PackageInfo): number => row.name.length));
+  return rows.map((row: PackageInfo): string => `${row.name.padEnd(nameWidth)}  ${row.version}`);
 }
 
 /**

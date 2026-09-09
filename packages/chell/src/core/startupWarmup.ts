@@ -23,7 +23,7 @@ import {
 import { daemon_launch, face_ready, face_stop, identity_forSession, type DaemonLaunchInfo, type FaceInfo, type FaceTelemetry, hostControl_fromInputs, hostControl_describe, type HostControlInputs } from '@fnndsc/calypso';
 import { procIndex_snapshot } from '@fnndsc/brasa';
 import { logo_animateHalt } from '../lib/logo.js';
-import { sink_set, StdoutSink } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import {
   chrisContext,
@@ -270,8 +270,8 @@ function restoreAge_describe(): string {
   if (minutes < 1) return ', all fresh';
   if (minutes < 60) return `, oldest ${minutes} min`;
   const hours: number = Math.floor(minutes / 60);
-  if (hours < 48) return `, oldest ${hours} hour(s)`;
-  return `, oldest ${Math.floor(hours / 24)} day(s)`;
+  if (hours < 48) return `, oldest ${count_noun(hours, 'hour')}`;
+  return `, oldest ${count_noun(Math.floor(hours / 24), 'day')}`;
 }
 
 
@@ -377,7 +377,7 @@ export async function startupWarmup_run(
         listings.restored ? 'ok' : 'skip',
         'Folders',
         listings.restored
-          ? `Restored ${listings.count} folder listing(s)${restoreAge_describe()}, stale until revisited`
+          ? `Restored ${count_noun(listings.count, 'folder listing')}${restoreAge_describe()}, stale until revisited`
           : (listings.reason ?? 'No folder-listing checkpoint'),
       );
       // What has already been asked of a PACS. Expensive to build — every
@@ -389,7 +389,7 @@ export async function startupWarmup_run(
         queries.restored ? 'ok' : 'skip',
         'Queries',
         queries.restored
-          ? `Restored ${queries.count} PACS quer(y/ies) already asked`
+          ? `Restored ${count_noun(queries.count, 'PACS query', 'PACS queries')} already asked`
           : (queries.reason ?? 'No PACS query index'),
       );
     }
@@ -417,8 +417,8 @@ export async function startupWarmup_run(
     if (pluginsResult.ok) {
       result.plugins = pluginsResult.count;
       result.pipelines = pluginsResult.pipelineCount;
-      reporter?.log('ok', 'Plugins', `Cached ${pluginsResult.count ?? 0} plugin(s)`);
-      reporter?.log('ok', 'Pipelines', `Cached ${pluginsResult.pipelineCount ?? 0} pipeline(s)`);
+      reporter?.log('ok', 'Plugins', `Cached ${count_noun(pluginsResult.count ?? 0, 'plugin')}`);
+      reporter?.log('ok', 'Pipelines', `Cached ${count_noun(pluginsResult.pipelineCount ?? 0, 'pipeline')}`);
     } else {
       result.failures.push('Plugins');
       reporter?.log('fail', 'Plugins', pluginsResult.message || 'Failed to prefetch /bin');
@@ -446,7 +446,7 @@ export async function startupWarmup_run(
         const error: StackMessage | undefined = errorStack.stack_pop();
         return { ok: false, message: error?.message ?? 'Failed to resolve /etc/group' };
       },
-      (outcome: PrefetchResult): string => `Cached ${outcome.count ?? 0} group(s)`,
+      (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'group')}`,
     ));
   } else {
     reporter?.log('skip', 'Groups', 'Offline mode');
@@ -461,7 +461,7 @@ export async function startupWarmup_run(
         reporter,
         reportSettlement,
         (): Promise<PrefetchResult> => prefetch_path(feedPath),
-        (outcome: PrefetchResult): string => `Cached ${outcome.count ?? 0} item(s) from ${feedPath}`,
+        (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'item')} from ${feedPath}`,
       ));
     } else {
       reporter?.log('skip', 'Feeds', 'No user context');
@@ -474,7 +474,7 @@ export async function startupWarmup_run(
         reporter,
         reportSettlement,
         (): Promise<PrefetchResult> => prefetch_path('/PUBLIC'),
-        (outcome: PrefetchResult): string => `Cached ${outcome.count ?? 0} item(s) from /PUBLIC`,
+        (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'item')} from /PUBLIC`,
       ));
     }
 
@@ -487,7 +487,7 @@ export async function startupWarmup_run(
       reporter,
       reportSettlement,
       (): Promise<PrefetchResult> => prefetch_path('/SHARED'),
-      (outcome: PrefetchResult): string => `Cached ${outcome.count ?? 0} item(s) from /SHARED`,
+      (outcome: PrefetchResult): string => `Cached ${count_noun(outcome.count ?? 0, 'item')} from /SHARED`,
     ));
 
     // The PACS query back catalogue. It resumes from the index's floor, so
@@ -511,7 +511,7 @@ export async function startupWarmup_run(
         if (swept.value.bounded) {
           return {
             ok: false,
-            message: `Indexed ${swept.value.indexed} PACS quer(y/ies) and stopped at the page bound — the index is incomplete`,
+            message: `Indexed ${count_noun(swept.value.indexed, 'PACS query', 'PACS queries')} and stopped at the page bound — the index is incomplete`,
           };
         }
         // Made durable here rather than left to the debounced writer: that
@@ -530,7 +530,7 @@ export async function startupWarmup_run(
         };
       },
       (outcome: PrefetchResult): string =>
-        `Indexed ${outcome.count ?? 0} PACS quer(y/ies)${outcome.message ? `, ${outcome.message}` : ''}`,
+        `Indexed ${count_noun(outcome.count ?? 0, 'PACS query', 'PACS queries')}${outcome.message ? `, ${outcome.message}` : ''}`,
     ));
   } else if (!session.offline) {
     reporter?.log('skip', 'Feeds', 'Prefetch disabled');
@@ -575,8 +575,8 @@ export async function startupWarmup_run(
     );
     if (jobsResult.ok) {
       const jobsMessage: string = checkpoint?.restored
-        ? `Restored ${checkpoint.count} job(s)${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${jobsResult.count ?? 0} feed(s), ${rosterAdded.length} new — full roster refresh in background`
-        : `Indexed ${jobsResult.count ?? 0} feed(s) — topology reconciling in background`;
+        ? `Restored ${count_noun(checkpoint.count, 'job')}${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${count_noun(jobsResult.count ?? 0, 'feed')}, ${rosterAdded.length} new — full roster refresh in background`
+        : `Indexed ${count_noun(jobsResult.count ?? 0, 'feed')} — topology reconciling in background`;
       reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {
         let topologySweep: Promise<void>;
@@ -587,7 +587,7 @@ export async function startupWarmup_run(
           procCache_get().warmup_complete();
           topologySweep = procRoster_sync(true).then((changed: number[]): void => {
             if (changed.length > 0) {
-              reporter?.log('ok', 'Roster', `${changed.length} feed(s) moved while away; each refreshes on its next visit`);
+              reporter?.log('ok', 'Roster', `${count_noun(changed.length, 'feed')} moved while away; each refreshes on its next visit`);
             }
           });
         } else {
@@ -603,7 +603,7 @@ export async function startupWarmup_run(
               }
               const progress: ProcWarmupProgress = procCache_get().warmupProgress_get();
               const total: number = progress.total > 0 ? progress.total : progress.loaded;
-              reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${total} job(s) indexed`);
+              reporter?.log('ok', 'Topology', `Ready — ${progress.loaded}/${count_noun(total, 'job')} indexed`);
             },
             (error: unknown): void => {
               const message: string = error instanceof Error ? error.message : String(error);

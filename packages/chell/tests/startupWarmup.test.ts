@@ -57,6 +57,8 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   vfs: { data_get: mockDataGet },
   prefetch_path: mockPrefetchPath,
   prefetch_withSpinner: mockPrefetchWithSpinner,
+  count_noun: (count: number, singular: string, plural: string = `${singular}s`): string =>
+    `${count} ${count === 1 ? singular : plural}`,
   repl_question: mockQuestion,
   error_stripDebugPrefix: (message: string): string => message,
   // Daemon warm-up installs a real progress renderer so its spinners reach
@@ -219,16 +221,16 @@ describe('daemonSession_run', () => {
       jobs: true,
     }, true, { log: report });
 
-    expect(report).toHaveBeenCalledWith('ok', 'Plugins', 'Cached 2 plugin(s)');
-    expect(report).toHaveBeenCalledWith('ok', 'Pipelines', 'Cached 1 pipeline(s)');
+    expect(report).toHaveBeenCalledWith('ok', 'Plugins', 'Cached 2 plugins');
+    expect(report).toHaveBeenCalledWith('ok', 'Pipelines', 'Cached 1 pipeline');
     // Feeds, Public and Shared warm behind the prompt now: boot blocks
     // only on what the shell cannot work without, which is /bin.
     expect(report).toHaveBeenCalledWith('pending', 'Feeds', 'Warming /home/rudolph/feeds behind the prompt');
     expect(report).toHaveBeenCalledWith('pending', 'Public', 'Warming /PUBLIC behind the prompt');
     expect(report).toHaveBeenCalledWith('pending', 'Shared', 'Warming /SHARED behind the prompt');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feed(s) — topology reconciling in background');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feeds — topology reconciling in background');
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
-    expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 job(s) indexed');
+    expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 jobs indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
     expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function), { hostControl: { tiers: new Set<string>(), exposed: false } });
 
@@ -250,13 +252,13 @@ describe('daemonSession_run', () => {
 
     expect(mockCheckpointRestore).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
     expect(mockCheckpointWatch).toHaveBeenCalledWith('rudolph@https://cube.example.org/api/v1/');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 job(s); 3 feed(s), 1 new — full roster refresh in background');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 7009 jobs; 3 feeds, 1 new — full roster refresh in background');
     expect(mockProcCacheRefresh).not.toHaveBeenCalled();
     expect(mockWarmupComplete).toHaveBeenCalled();
     expect(mockRosterSync).toHaveBeenCalledWith(true);
     expect(mockTopologyWarmup).not.toHaveBeenCalled();
     expect(mockTopologyReconcileFeeds).not.toHaveBeenCalled();
-    expect(report).toHaveBeenCalledWith('ok', 'Roster', '2 feed(s) moved while away; each refreshes on its next visit');
+    expect(report).toHaveBeenCalledWith('ok', 'Roster', '2 feeds moved while away; each refreshes on its next visit');
   });
 
   it('reports a background topology failure after publishing engine readiness', async () => {
@@ -432,14 +434,19 @@ describe('daemonSession_run', () => {
 
     it('names the row Folders and says folder listings, not the plugin index', async () => {
       const message: string = await restoreRow_message(47, 5 * 60_000);
-      expect(message).toContain('Restored 47 folder listing(s)');
+      expect(message).toContain('Restored 47 folder listings');
       expect(message).toContain('stale until revisited');
     });
 
     it('reports age as well as count, because a count alone says nothing', async () => {
       expect(await restoreRow_message(47, 5 * 60_000)).toContain('oldest 5 min');
-      expect(await restoreRow_message(47, 3 * 60 * 60_000)).toContain('oldest 3 hour(s)');
-      expect(await restoreRow_message(47, 3 * 24 * 60 * 60_000)).toContain('oldest 3 day(s)');
+      expect(await restoreRow_message(47, 3 * 60 * 60_000)).toContain('oldest 3 hours');
+      expect(await restoreRow_message(47, 3 * 24 * 60 * 60_000)).toContain('oldest 3 days');
+    });
+
+    it('says one hour and one day in the singular: the count is known before the row prints', async () => {
+      expect(await restoreRow_message(1, 60 * 60_000)).toContain('Restored 1 folder listing, oldest 1 hour');
+      expect(await restoreRow_message(1, 2 * 24 * 60 * 60_000)).toContain('oldest 2 days');
     });
 
     it('says all fresh when nothing has aged a minute', async () => {
@@ -448,7 +455,7 @@ describe('daemonSession_run', () => {
 
     it('omits the age phrase when the cache holds nothing to age', async () => {
       const message: string = await restoreRow_message(0, null);
-      expect(message).toBe('Restored 0 folder listing(s), stale until revisited');
+      expect(message).toBe('Restored 0 folder listings, stale until revisited');
     });
 
     it('reports the absent checkpoint in folder-listing words', async () => {
@@ -579,11 +586,11 @@ describe('daemonSession_run', () => {
 
     // The daemon face keeps its boot log, so a step that started as
     // [PENDING] finishes there as [ OK ] rather than leaving the row open.
-    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 group(s)');
-    expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 item(s) from /home/rudolph/feeds');
-    expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 item(s) from /PUBLIC');
-    expect(report).toHaveBeenCalledWith('ok', 'Shared', 'Cached 4 item(s) from /SHARED');
-    expect(report).toHaveBeenCalledWith('ok', 'Queries', 'Indexed 0 PACS quer(y/ies)');
+    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 groups');
+    expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 items from /home/rudolph/feeds');
+    expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 items from /PUBLIC');
+    expect(report).toHaveBeenCalledWith('ok', 'Shared', 'Cached 4 items from /SHARED');
+    expect(report).toHaveBeenCalledWith('ok', 'Queries', 'Indexed 0 PACS queries');
   });
 
   it('lands a deferred failure on a persisting readout as [FAIL], and still holds it for the prompt', async () => {

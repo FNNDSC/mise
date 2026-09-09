@@ -1,5 +1,30 @@
 # @fnndsc/brasa
 
+## 0.18.0
+
+### Minor Changes
+
+- 6cd5ab1: feat(brasa): `feed diagram`, `feed tree`, wire `feed.dag` and `proc refresh <feed>` answer at once with `feed.indexing` when the feed is cold; a feed watch holds the floor while its topology is indexing, never settles on an empty topology, and is kicked by the cache the moment the walk lands
+- 57ba039: feat(brasa): the prompt context names every feed walk in flight, not only the earliest
+- 98ab832: feat(brasa): `proc feeds` and `proc jobs list` answer from the cache at once and start the roster sync off the session's lane; the prompt context names the walk while it runs
+
+### Patch Changes
+
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [6cd5ab1]
+- Updated dependencies [57ba039]
+- Updated dependencies [57ba039]
+- Updated dependencies [57ba039]
+- Updated dependencies [adf8cc1]
+- Updated dependencies [adf8cc1]
+- Updated dependencies [98ab832]
+- Updated dependencies [98ab832]
+- Updated dependencies [98ab832]
+  - @fnndsc/cumin@3.19.0
+  - @fnndsc/menu@0.5.0
+  - @fnndsc/salsa@3.14.0
+
 ## 0.17.0
 
 ### Minor Changes

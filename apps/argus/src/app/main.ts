@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -631,7 +631,11 @@ let cascade: Cascade | null = null;
 
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
-  const indexInstrument: IndexInstrument = new IndexInstrument(element_require('index-instrument'));
+  const indexInstrument: IndexInstrument = new IndexInstrument(element_require('index-instrument'), (): number => Date.now(), {
+    // The ERRORED figure is a control: it opens the runs roster filtered to
+    // the feeds it counted. The pane it acts on is put on stage first.
+    errored_open: (): void => runs_show('status:error'),
+  });
   const laneInstrument: LaneInstrument = new LaneInstrument(element_require('lane-instrument'));
   // The beat's age moves on the surface's own clock, not only on beats.
   window.setInterval((): void => laneInstrument.tick(), 500);
@@ -2434,17 +2438,23 @@ async function surface_start(token: string): Promise<void> {
     layout.focus_set('files');
     consoleFocused_set(false);
   });
-  element_require('gutter-runs').addEventListener('click', (): void => {
-    // The DAG takes the whole workspace, PACS-style, and always lands on
-    // the feed list: a graph retained from an earlier visit is dismissed
-    // before the roster paints.
+  /**
+   * RUNS-02's gesture, as a function: the DAG takes the whole workspace and
+   * lands on the feed list, a graph retained from an earlier visit dismissed
+   * before the roster paints. With a filter, the roster opens filtered.
+   *
+   * @param filter - A roster filter to apply, or none.
+   */
+  const runs_show = (filter: string = ''): void => {
     layout.preset_apply('dag');
     orphans_dispose();
     dagPanel.list_reset();
+    dagPanel.roster_filter(filter);
     dagPanel.feedsChooser_request();
     layout.focus_set('dag');
     consoleFocused_set(false);
-  });
+  };
+  element_require('gutter-runs').addEventListener('click', (): void => runs_show());
   // CONSOLE-05: a given always renders its target — the console open with
   // the prompt live; never a toggle (the lid and the drawer's CLOSE retract).
   element_require('gutter-console').addEventListener('click', (): void => {
@@ -2772,8 +2782,9 @@ async function surface_start(token: string): Promise<void> {
         cascade?.promptContext_observe(context);
         dagPanel.promptContext_observe(context);
       },
-      telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry }): void => {
+      telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }): void => {
         indexInstrument.counts_show(index);
+        if (extra?.state !== undefined) indexInstrument.state_show(extra.state);
         laneInstrument.telemetry_show(extra ?? {});
         if (extra?.cube !== undefined) indexInstrument.pace_show(extra.cube.msPerPage);
         cascade?.index_observe(index);

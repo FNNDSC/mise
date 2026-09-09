@@ -133,6 +133,18 @@ describe('IndexInstrument', () => {
     expect(rows_text(mount)).toEqual(['INDEXCURRENT']);
   });
 
+  it('the lab\'s pulse is a row, and its ERRORED figure is a press that opens the roster filtered', () => {
+    const mount: HTMLElement = mount_make();
+    let opened: number = 0;
+    const instrument: IndexInstrument = new IndexInstrument(mount, (): number => 0, { errored_open: (): void => { opened += 1; } });
+    instrument.state_show({ running: 480, runningFeeds: 12, scheduled: 3, errored: 2301, erroredFeeds: 27 });
+    expect(rows_text(mount)[1]).toBe('RUNNING480 IN 12 FEEDS · SCHEDULED 3ERRORED 2,301 IN 27 FEEDS');
+    const press: HTMLButtonElement = mount.querySelector('.index-verb') as HTMLButtonElement;
+    expect(press.title).toContain('filtered');
+    press.click();
+    expect(opened).toBe(1);
+  });
+
   it('arrivals are a row of their own, by name up to three', () => {
     const mount: HTMLElement = mount_make();
     const instrument: IndexInstrument = new IndexInstrument(mount);

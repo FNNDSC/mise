@@ -623,12 +623,22 @@ export const telemetryMessageSchema = z.object({
     msPerPage: z.number(),
     samples: z.number(),
   }).optional(),
+  /** The lab's pulse from the roster's counters: jobs running and waiting, and the feeds that errored. */
+  state: z.object({
+    running: z.number(),
+    runningFeeds: z.number(),
+    scheduled: z.number(),
+    errored: z.number(),
+    erroredFeeds: z.number(),
+  }).optional(),
 });
 
 /** What a telemetry heartbeat says about the lane. */
 export type LaneTelemetry = z.infer<typeof telemetryMessageSchema>['lane'];
 /** What a telemetry heartbeat says about CUBE's pace. */
 export type CubeTelemetry = z.infer<typeof telemetryMessageSchema>['cube'];
+/** What a telemetry heartbeat says about the lab's pulse. */
+export type JobsStateTelemetry = z.infer<typeof telemetryMessageSchema>['state'];
 
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [

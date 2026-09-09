@@ -922,6 +922,19 @@ export class Listing<T> {
     this.level.order.strip_toggle(open);
   }
 
+  /**
+   * Sets the filter text, as the strip's input would: a readout that acts
+   * on this listing (the header's ERRORED figure) filters it by this path.
+   * The text holds across the rows arriving, as the strip's does.
+   *
+   * @param text - The filter (`status:error`, or a plain term), or empty.
+   */
+  public filter_set(text: string): void {
+    // The order owns the text: it syncs the strip's input, opens the strip
+    // for a non-empty filter, and tells the level beneath.
+    this.level.order.filter_set(text);
+  }
+
   /** The FILTER block reads the strip's state, like every mode block. */
   private filterBlock_sync(): void {
     if (this.filterBlock === null) return;

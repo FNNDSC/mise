@@ -87,6 +87,7 @@ export {
   telemetryMessageSchema,
   type LaneTelemetry,
   type CubeTelemetry,
+  type JobsStateTelemetry,
   regardSchema,
   regardMessageSchema,
   watchMessageSchema,

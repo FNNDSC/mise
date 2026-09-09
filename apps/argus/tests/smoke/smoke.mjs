@@ -1810,6 +1810,27 @@ try {
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
   }
 
+  if (stage('running-row')) {
+  // The RUNNING row on the ARGUS WEB face reads the lab's pulse, and its
+  // ERRORED figure is a press: it opens the runs roster filtered to the
+  // feeds with errored jobs, and the bar says FILTERED.
+  const pulse = await evalIn(`
+    const box = document.getElementById('index-instrument');
+    await console_idle(); await sleep(1500);
+    const row = [...box.querySelectorAll('.index-row')].find((r) => /RUNNING/.test(r.textContent));
+    const press = row?.querySelector('.index-verb');
+    if (!row || !press) return { row: row?.textContent ?? null, pressed: false };
+    press.click();
+    let rows = 0, bar = '';
+    for (let i = 0; i < 120; i++) { await sleep(250); rows = document.querySelectorAll('.feedlist-row').length; bar = document.querySelector('#layout-root .listing-state, .feedlist-state, .roster-state')?.textContent ?? ''; if (rows > 0) break; }
+    await sleep(600);
+    const statuses = [...document.querySelectorAll('.feedlist-row')].map((r) => r.textContent).filter((t) => t.length > 0);
+    const allErrored = statuses.every((t) => /ERROR/.test(t));
+    return { row: row.textContent, pressed: true, rows, allErrored, filterOpen: !!document.querySelector('.roster-filter:not([hidden])') };`);
+  check('the RUNNING row reads the lab\'s pulse with an ERRORED press', pulse.pressed && /RUNNING\d/.test(pulse.row ?? ''), JSON.stringify(pulse));
+  check('the ERRORED figure opens the roster filtered to errored feeds', pulse.rows > 0 && pulse.allErrored && pulse.filterOpen, JSON.stringify(pulse));
+  }
+
   if (stage('lane-instrument')) {
   // LANE, BEAT and CUBE on the ARGUS WEB face: the lane reads IDLE while a
   // feed indexes (the walk is off the lane), the beat is fresh, and CUBE's
@@ -1859,12 +1880,13 @@ try {
     }
     for (let i = 0; i < 480 && /FEED ${bigFeed}/.test(box.textContent); i++) await sleep(250);
     return { idle, idleRows, named, barred, after: box.textContent, afterRows: box.querySelectorAll('.index-row').length };`);
-  check('a quiet index reads CURRENT on the header, in one row', /CURRENT/.test(instrument.idle) && instrument.idleRows === 1, JSON.stringify(instrument));
+  // The pulse row (RUNNING) is permanent too; quiet means no walk row.
+  check('a quiet index reads CURRENT on the header, with no walk row', /CURRENT/.test(instrument.idle) && !/FEED \d/.test(instrument.idle), JSON.stringify(instrument));
   if (instrument.skipped) {
     console.log('  skipped the walk: set SMOKE_BIG_FEED=<id> to a feed of about a thousand nodes');
   } else {
     check('a feed being indexed takes a row of its own with a bar and its count', /INDEXING \d/.test(instrument.named) && instrument.barred, JSON.stringify(instrument));
-    check('the row goes when the walk lands and the index reads CURRENT again', instrument.afterRows === 1 && /CURRENT/.test(instrument.after), JSON.stringify(instrument));
+    check('the row goes when the walk lands and the index reads CURRENT again', !/FEED \d/.test(instrument.after) && /CURRENT/.test(instrument.after), JSON.stringify(instrument));
   }
   }
 

@@ -233,6 +233,16 @@ describe('daemonSession_run', () => {
 
     const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
     expect(readyOrder).toBeLessThan(mockDaemonListen.mock.invocationCallOrder[0]);
+
+    // Every deferred step settled before Engine Ready: the boot waits the
+    // behind-the-prompt warm-ups out so the login sees no open pending row.
+    for (const label of ['Groups', 'Feeds', 'Public', 'Shared']) {
+      const settled: number = report.mock.calls.findIndex(
+        (call: unknown[]): boolean => (call[0] === 'ok' || call[0] === 'fail') && call[1] === label,
+      );
+      expect(settled).toBeGreaterThanOrEqual(0);
+      expect(report.mock.invocationCallOrder[settled]).toBeLessThan(readyOrder);
+    }
   });
 
   it('brings a restored checkpoint into service on a roster delta, with the full walk behind the listening daemon', async () => {

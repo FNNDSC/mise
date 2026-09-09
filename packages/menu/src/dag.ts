@@ -171,6 +171,12 @@ export const feedListEntrySchema = z.object({
    */
   jobsDone: z.number().optional(),
   jobsTotal: z.number().optional(),
+  /**
+   * How many of the settled jobs errored or were cancelled, so a surface
+   * can show an errored feed's bar filled to the work that succeeded
+   * (`jobsDone - jobsErrored`) rather than run it full in the error hue.
+   */
+  jobsErrored: z.number().optional(),
 });
 
 /**

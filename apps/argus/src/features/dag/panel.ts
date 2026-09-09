@@ -97,7 +97,15 @@ const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
 function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
   if (feed.jobsTotal === undefined || feed.jobsDone === undefined) return null;
   const failed: boolean = feed.status === 'finishedWithError' || feed.status === 'cancelled';
-  return { done: feed.jobsDone, total: feed.jobsTotal, ...(failed ? { failed: true } : {}) };
+  // The nodes that finished cleanly, when the daemon reported the errored
+  // count: an errored feed's bar fills to these, not to every settled node.
+  const succeeded: number | undefined = feed.jobsErrored === undefined ? undefined : feed.jobsDone - feed.jobsErrored;
+  return {
+    done: feed.jobsDone,
+    total: feed.jobsTotal,
+    ...(failed ? { failed: true } : {}),
+    ...(succeeded !== undefined ? { succeeded } : {}),
+  };
 }
 
 /**

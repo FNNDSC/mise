@@ -1378,7 +1378,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .feedlist-id {
-  color: var(--pumpkin-pie);
+  color: var(--daybreak);
   text-align: right;
 }
 
@@ -1406,7 +1406,7 @@ body[data-zoom]:not([data-zoom='console'])
 
 .feedlist-owner,
 .feedlist-created {
-  color: var(--pumpkin-pie);
+  color: var(--daybreak);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1758,7 +1758,11 @@ body[data-header='dag'] #header-dag {
 }
 
 .listing-progress-running .listing-progress-fill { background: var(--state-running); }
-.listing-progress-done .listing-progress-fill { background: var(--state-done); }
+/* A finished feed's bar takes the recessive dark tone the ID/owner/created
+ * columns wore (`--pumpkin-pie`): most DAGs finish, so the roster's mass of
+ * full bars must sit back, not shout, leaving a running feed's brighter bar
+ * the thing the eye catches. The columns take the progress shade in trade. */
+.listing-progress-done .listing-progress-fill { background: var(--pumpkin-pie); }
 .listing-progress-failed .listing-progress-fill { background: var(--state-error); }
 
 /* A row's verbs, outside the column grid: they answer to no cap. The track's

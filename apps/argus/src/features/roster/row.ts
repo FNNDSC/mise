@@ -138,6 +138,13 @@ export interface ListingProgress {
   total: number;
   /** Whether the work errored, which a count alone cannot say. */
   failed?: boolean;
+  /**
+   * How many units finished cleanly, when that differs from `done` — a feed
+   * that errored has settled every node but succeeded at only some. An
+   * errored bar fills to this over `total`, not to `done`, so its length is
+   * how far the work got before it died.
+   */
+  succeeded?: number;
 }
 
 /**
@@ -181,13 +188,20 @@ export function progressCell_build(progress: ListingProgress | null): HTMLElemen
     return track;
   }
 
-  const fraction: number = Math.min(1, progress.done / progress.total);
+  const failed: boolean = progress.failed === true;
   const settled: boolean = progress.done >= progress.total;
+  // An errored feed's bar is as long as the work that succeeded, not as long
+  // as the work that settled: a full red bar says nothing a red mark would
+  // not. Everything else fills to what has settled.
+  const filled: number = failed && progress.succeeded !== undefined ? progress.succeeded : progress.done;
+  const fraction: number = Math.min(1, Math.max(0, filled / progress.total));
   track.classList.add(
-    progress.failed === true ? 'listing-progress-failed'
+    failed ? 'listing-progress-failed'
       : settled ? 'listing-progress-done' : 'listing-progress-running',
   );
-  track.title = `${progress.done}/${progress.total}`;
+  track.title = failed && progress.succeeded !== undefined
+    ? `${progress.succeeded}/${progress.total} succeeded — errored`
+    : `${progress.done}/${progress.total}`;
 
   const fill: HTMLSpanElement = document.createElement('span');
   fill.className = 'listing-progress-fill';

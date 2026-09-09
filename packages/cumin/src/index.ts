@@ -64,7 +64,7 @@ export {
   pipelineSourceFilesPage_get,
   pipelineSourceFiles_drain,
   downloadToken_create,
-  listPages_walk,
+  listPages_walk, listPages_walkWindowed, type WindowedPageWalkOptions,
   listPages_drain,
   collectionPage_wrap,
 } from "./chrisapi/contract";

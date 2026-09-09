@@ -51,6 +51,8 @@ export interface PacsPanelHandlers {
   command_show: (line: string) => void;
   /** The mars pill: dismiss this workspace. */
   workspace_close: () => void;
+  /** Opens a pulled series' folder as an image beside the workspace. */
+  image_open: (folderPath: string) => void;
 }
 
 /** One gathered series: the cohort's unit. */
@@ -724,6 +726,15 @@ export class PacsPanel {
         label: 'GATHER',
         offered: (row: SeriesRow): boolean => row.series.pulled === true,
         run: (row: SeriesRow): void => this.gather_note(row.study, row.series),
+      },
+      {
+        // A series CUBE holds is an image: the verb rides the row it acts
+        // on, and only once the kernel can say where the series landed.
+        label: 'IMAGE',
+        offered: (row: SeriesRow): boolean => row.series.pulled === true && row.series.folderPath !== undefined,
+        run: (row: SeriesRow): void => {
+          if (row.series.folderPath !== undefined) this.handlers.image_open(row.series.folderPath);
+        },
       },
       {
         label: 'PULL',

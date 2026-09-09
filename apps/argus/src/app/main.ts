@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, DICOM_MODEL_KINDS, type DicomSeriesModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -34,6 +34,8 @@ import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
+import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
+import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
@@ -1238,6 +1240,12 @@ async function surface_start(token: string): Promise<void> {
       binEntry_show(panel, action.path, action.kind);
       return;
     }
+    // A volume or a DICOM slice is an image: it opens beside the browser,
+    // never as bytes in a text view.
+    if (VOLUME_FILE_PATTERN.test(action.path) || DICOM_FILE_PATTERN.test(action.path)) {
+      void image_open(id, action.path).then((line: string): void => terminal.line_note(line));
+      return;
+    }
     subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });
     if (subjects.groupHasViewer(id)) {
       return;
@@ -1309,6 +1317,16 @@ async function surface_start(token: string): Promise<void> {
     // store: `rm` on it would be a verb that cannot act, which is worse
     // than no verb at all.
     if (entry.type === 'plugin' || entry.type === 'pipeline') return verbs;
+    // A series folder, as oxidicom names one, is an image: the verb rides
+    // its row (a control lives where it acts).
+    if (directory && SERIES_FOLDER_PATTERN.test(entry.name)) {
+      verbs.push({
+        label: 'IMAGE',
+        run: (): void => {
+          void image_open(id, path).then((line: string): void => terminal.line_note(line));
+        },
+      });
+    }
     if (entry.type === 'file') {
       verbs.push({
         label: 'DOWNLOAD',
@@ -1442,6 +1460,133 @@ async function surface_start(token: string): Promise<void> {
   // regard. The subscription happens at spawn time, after the instance has
   // joined its group (the retained cell then replays immediately).
   const viewerPanels: Map<string, ViewerPanel> = new Map();
+
+  // The image pane: a series or a volume on a guest engine's field, inside
+  // mise's frame (docs/aegis.adoc: an-instruments-field-is-foreign,
+  // focus-stays-in-the-field).
+  const imagePanels: Map<string, ImagePanel> = new Map();
+  const imageInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-image');
+    const panel: ImagePanel = new ImagePanel(mount, {
+      source: { url_of: vfsUrl_build },
+      note: (line: string): void => terminal.line_note(line),
+      regard: (path: string): void => subjects.regard_write(id, { address: path, modelKind: 'dicom.instance' }),
+      file_put: async (path: string, body: Blob): Promise<number> => {
+        try {
+          return (await fetch(vfsUrl_build(path), { method: 'POST', body })).status;
+        } catch {
+          return 0;
+        }
+      },
+    });
+    imagePanels.set(id, panel);
+    return {
+      id,
+      kind: 'image',
+      mount,
+      dispose: (): void => {
+        panel.dispose();
+        imagePanels.delete(id);
+        subjects.pane_leave(id);
+      },
+    };
+  };
+
+  /**
+   * Asks the kernel what a folder is as a series. Silent: an instrument's
+   * question, not a command the operator issued.
+   */
+  const series_ask = async (path: string): Promise<DicomSeriesModel | null> => {
+    try {
+      const outcome: ExecuteOutcome = await client.line_execute(`dcm series "${path}"`, { silent: true, observe: false });
+      for (const envelope of outcome.envelopes) {
+        if (envelope.model?.kind !== DICOM_MODEL_KINDS.series) continue;
+        const parsed = dicomSeriesModelSchema.safeParse(envelope.model.data);
+        if (parsed.success) return parsed.data;
+      }
+    } catch {
+      /* a refusal is answered below */
+    }
+    return null;
+  };
+
+  /** The folders under a path, from a silent listing. */
+  const subfolders_ask = async (path: string): Promise<string[]> => {
+    try {
+      const outcome: ExecuteOutcome = await client.line_execute(`ls "${path}"`, { silent: true, observe: false });
+      for (const envelope of outcome.envelopes) {
+        if (envelope.model?.kind !== 'fs.listing') continue;
+        const listing = envelope.model.data as { path?: string; entries?: Array<{ name: string; type: string }> };
+        const base: string = (listing.path ?? path).replace(/\/$/, '');
+        return (listing.entries ?? [])
+          .filter((entry): boolean => entry.type === 'dir')
+          .map((entry): string => `${base}/${entry.name}`);
+      }
+    } catch {
+      /* no listing, no folders */
+    }
+    return [];
+  };
+
+  /**
+   * The image pane that answers for a pane: itself when it is one, else
+   * the image pane in its link group, else a new one split beside it.
+   */
+  const imagePane_for = (fromId: string | null): ImagePanel | null => {
+    if (fromId !== null && imagePanels.has(fromId)) return imagePanels.get(fromId) ?? null;
+    const shown: Set<string> = new Set(layout.panes_shown());
+    const group: string | null = fromId !== null ? subjects.group_of(fromId) : null;
+    for (const [id, panel] of imagePanels) {
+      if (shown.has(id) && group !== null && subjects.group_of(id) === group) return panel;
+    }
+    const host: string | null = fromId !== null && shown.has(fromId) ? fromId : errandHost_find();
+    if (host === null) return null;
+    const spawned: PaneInstance = instance_spawn('image', fromId ?? undefined);
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return null;
+    }
+    return imagePanels.get(spawned.id) ?? null;
+  };
+
+  /**
+   * Opens a path as an image: a series folder, a study folder (its first
+   * series, the rest offered to `image series <n>`), one DICOM file (its
+   * series, starting at that slice), or a NIfTI/MGZ volume. Never a blank
+   * field: what could not open is said by name.
+   *
+   * @returns The console line to print.
+   */
+  const image_open = async (fromId: string | null, path: string): Promise<string> => {
+    if (VOLUME_FILE_PATTERN.test(path)) {
+      const panel: ImagePanel | null = imagePane_for(fromId);
+      if (panel === null) return 'image: no pane to open beside';
+      void panel.volume_show(path);
+      return `image ${path}`;
+    }
+    const isFile: boolean = DICOM_FILE_PATTERN.test(path);
+    const folder: string = isFile ? path.slice(0, path.lastIndexOf('/')) : path.replace(/\/$/, '');
+    let series: DicomSeriesModel | null = await series_ask(folder);
+    let siblings: SeriesChoice[] = [];
+    if (series === null && !isFile) {
+      // A study folder: hang its first series, list the rest.
+      const folders: string[] = (await subfolders_ask(folder)).slice(0, 32);
+      for (const candidate of folders) {
+        const found: DicomSeriesModel | null = await series_ask(candidate);
+        if (found === null) continue;
+        siblings = folders.map((sibling: string): SeriesChoice => ({ path: sibling, label: sibling.split('/').pop() ?? sibling }));
+        series = found;
+        break;
+      }
+    }
+    if (series === null) return `image: ${path}: not a readable DICOM series, study, or volume`;
+    const panel: ImagePanel | null = imagePane_for(fromId);
+    if (panel === null) return 'image: no pane to open beside';
+    const startAt: number = isFile ? Math.max(1, series.files.indexOf(path) + 1) : 1;
+    void panel.series_show(series, { siblings, startAt });
+    return `image ${series.path}${siblings.length > 1 ? ` (1 of ${siblings.length} series)` : ''}`;
+  };
   const viewInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-view');
     const panel: ViewerPanel = new ViewerPanel(
@@ -1813,6 +1958,9 @@ async function surface_start(token: string): Promise<void> {
     command_show: (line: string): void => {
       terminal.line_run(line);
     },
+    image_open: (folderPath: string): void => {
+      void image_open(null, folderPath).then((line: string): void => terminal.line_note(line));
+    },
     workspace_close: (): void => home_apply(),
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
@@ -1897,6 +2045,9 @@ async function surface_start(token: string): Promise<void> {
     if (kind === 'view') {
       subjects.viewer_mark(instance.id);
       subjects.regard_subscribe(instance.id, (value: RegardValue): void => {
+        // A DICOM instance is the tags pane's regard; a text viewer would
+        // only cat its bytes.
+        if (value.modelKind === 'dicom.instance') return;
         viewerPanels.get(instance.id)?.regard_show(value);
       });
     }
@@ -2250,6 +2401,15 @@ async function surface_start(token: string): Promise<void> {
         // SELECT is transient chrome of its own: Esc leaves the mode before
         // it retreats anywhere, and leaving it keeps the selection — the
         // field still holds what was gathered.
+        // An image field holding the keyboard gives it back first: one
+        // press, one level (focus-stays-in-the-field).
+        for (const panel of imagePanels.values()) {
+          if (panel.field_release()) {
+            event.stopImmediatePropagation();
+            sound_play('audio3');
+            return;
+          }
+        }
         let selectLeft: boolean = false;
         // An open question owns Esc: abandoning it is an answer, and a
         // press that also left a mode would answer two things at once.
@@ -2407,6 +2567,15 @@ async function surface_start(token: string): Promise<void> {
     layout.leaf_replace(emptyId, instance.id);
     paneInstance_dispose(emptyId);
     layout.mount_remove(emptyId);
+    if (kind === 'image') {
+      const imagePanel: ImagePanel | undefined = imagePanels.get(instance.id);
+      for (const envelope of envelopes) {
+        if (envelope.model?.kind !== DICOM_MODEL_KINDS.series) continue;
+        const parsed = dicomSeriesModelSchema.safeParse(envelope.model.data);
+        if (parsed.success) void imagePanel?.series_show(parsed.data);
+      }
+      return;
+    }
     const panel: FilesPanel | DagPanel | undefined =
       kind === 'files' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
     for (const envelope of envelopes) {
@@ -2417,6 +2586,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
   paneFactory_register('view', viewInstance_build);
+  paneFactory_register('image', imageInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {
@@ -2514,6 +2684,60 @@ async function surface_start(token: string): Promise<void> {
       if (regard === null || regard.modelKind !== 'fs.file') return false;
       window.open(vfsUrl_build(regard.address), '_blank');
       return true;
+    },
+    image_open: (paneId: string | null, path: string): Promise<string> => image_open(paneId, path),
+    image_control: async (paneId: string, verb: string, args: string[]): Promise<string> => {
+      // The verb reaches the image pane the target stands for: itself, the
+      // one in its link group, or the only one on stage.
+      const shown: Set<string> = new Set(layout.panes_shown());
+      const group: string = subjects.group_of(paneId);
+      const onStage: Array<[string, ImagePanel]> = [...imagePanels.entries()].filter(([id]: [string, ImagePanel]): boolean => shown.has(id));
+      const panel: ImagePanel | undefined =
+        imagePanels.get(paneId)
+        ?? onStage.find(([id]: [string, ImagePanel]): boolean => subjects.group_of(id) === group)?.[1]
+        ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
+      if (panel === undefined) return `image ${verb}: no image pane on stage for '${paneId}'`;
+      if (verb === 'layout') {
+        const layout: string = args[0] ?? '';
+        if (!(IMAGE_LAYOUTS as readonly string[]).includes(layout)) return 'image layout single|mpr|3d';
+        return (await panel.layout_set(layout as ImageLayout)) ? `image layout ${layout}` : `image layout ${layout}: not offered`;
+      }
+      if (verb === 'slice') {
+        const slice: number = Number(args[0]);
+        if (!Number.isInteger(slice) || slice < 1) return 'image slice <n>';
+        return panel.slice_set(slice) ? `image slice ${slice}` : `image slice ${slice}: not offered`;
+      }
+      if (verb === 'series') {
+        const n: number = Number(args[0]);
+        const siblings: readonly SeriesChoice[] = panel.siblings_get();
+        if (siblings.length === 0) return 'image series: this pane holds one series, not a study';
+        const choice: SeriesChoice | undefined = siblings[n - 1];
+        if (choice === undefined) return `image series <1..${siblings.length}>: ${siblings.map((sibling: SeriesChoice, index: number): string => `${index + 1} ${sibling.label}`).join(' · ')}`;
+        const series: DicomSeriesModel | null = await series_ask(choice.path);
+        if (series === null) return `image series ${n}: ${choice.path}: not a readable DICOM series`;
+        void panel.series_show(series, { siblings: [...siblings] });
+        return `image series ${n} ${choice.label}`;
+      }
+      if (verb === 'wl') {
+        if ((args[0] ?? '').toLowerCase() === 'preset') {
+          const name: string = args[1] ?? '';
+          if (name === '') return 'image wl preset <brain|bone|lung|soft|liver>';
+          return panel.wlPreset_set(name) ? `image wl preset ${name}` : `image wl preset ${name}: none for this modality`;
+        }
+        const lower: number = Number(args[0]);
+        const upper: number = Number(args[1]);
+        if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower >= upper) return 'image wl <lower> <upper> | image wl preset <name>';
+        return panel.wl_set(lower, upper) ? `image wl ${lower} ${upper}` : 'image wl: not offered';
+      }
+      if (verb === 'colormap') {
+        const name: string = (args[0] ?? '').toLowerCase();
+        if (!(IMAGE_COLORMAPS as readonly string[]).includes(name)) return 'image colormap gray|hot|jet|cool';
+        return panel.colormap_set(name as ImageColormap) ? `image colormap ${name}` : `image colormap ${name}: not offered`;
+      }
+      if (verb === 'save') {
+        return (await panel.annotations_save()) ? 'image save' : 'image save: nothing saved (the console says why)';
+      }
+      return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
     },
     file_delete: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);

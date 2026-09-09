@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="520" viewBox="0 0 1180 520" font-family="sans-serif" font-size="16">
+  <title>Image pane anatomy</title>
+  <rect x="0" y="0" width="1180" height="520" fill="#000"/>
+  <!-- 1 bar -->
+  <rect x="20" y="20" width="1140" height="34" rx="17" fill="#1ebef0"/>
+  <text x="44" y="44" fill="#000" font-weight="bold">IMAGE MR T1 AXIAL</text>
+  <text x="700" y="44" fill="#000">MPR</text>
+  <text x="900" y="44" fill="#000">SLICE 6 OF 16</text>
+  <text x="1100" y="44" fill="#fff">1</text>
+  <!-- 2 rule, 3 elbow, 4 spine widened into the frame -->
+  <rect x="20" y="70" width="1000" height="6" fill="#1ebef0"/>
+  <rect x="1020" y="70" width="140" height="30" rx="0" fill="#1ebef0"/>
+  <rect x="1020" y="76" width="36" height="24" fill="#000"/>
+  <!-- 5 blocks -->
+  <g fill="#1ebef0">
+    <rect x="1020" y="104" width="140" height="24"/>
+    <rect x="1020" y="131" width="140" height="24" opacity="0.35"/>
+    <rect x="1020" y="158" width="140" height="24" opacity="0.35"/>
+    <rect x="1020" y="185" width="140" height="24" opacity="0.35"/>
+    <rect x="1020" y="212" width="140" height="24" opacity="0.35"/>
+    <rect x="1020" y="239" width="140" height="24" opacity="0.35"/>
+    <rect x="1020" y="270" width="140" height="24"/>
+    <rect x="1020" y="297" width="140" height="24"/>
+    <rect x="1020" y="324" width="140" height="24"/>
+    <rect x="1020" y="351" width="140" height="24" opacity="0.35"/>
+    <rect x="1020" y="382" width="140" height="118" fill="#7edcf7"/>
+  </g>
+  <g fill="#000" text-anchor="end" font-size="14">
+    <text x="1150" y="121">W/L</text>
+    <text x="1150" y="148" fill="#7fd9f7">ZOOM</text>
+    <text x="1150" y="175" fill="#7fd9f7">PAN</text>
+    <text x="1150" y="202" fill="#7fd9f7">LENGTH</text>
+    <text x="1150" y="229" fill="#7fd9f7">ANGLE</text>
+    <text x="1150" y="256" fill="#7fd9f7">PROBE</text>
+    <text x="1150" y="287">MPR</text>
+    <text x="1150" y="314">GRAY</text>
+    <text x="1150" y="341">SAVE</text>
+    <text x="1150" y="368" fill="#7fd9f7">FOCUS</text>
+  </g>
+  <!-- 6 field: three linked planes -->
+  <rect x="20" y="80" width="1000" height="420" fill="#000" stroke="#1ebef0" stroke-width="2"/>
+  <g stroke="#333">
+    <rect x="30" y="90" width="320" height="400" fill="#111"/>
+    <rect x="360" y="90" width="320" height="400" fill="#111"/>
+    <rect x="690" y="90" width="320" height="400" fill="#111"/>
+  </g>
+  <g stroke-width="1">
+    <line x1="30" y1="290" x2="350" y2="290" stroke="#c00"/><line x1="190" y1="90" x2="190" y2="490" stroke="#cc0"/>
+    <line x1="360" y1="290" x2="680" y2="290" stroke="#c00"/><line x1="520" y1="90" x2="520" y2="490" stroke="#0c0"/>
+    <line x1="690" y1="290" x2="1010" y2="290" stroke="#cc0"/><line x1="850" y1="90" x2="850" y2="490" stroke="#0c0"/>
+  </g>
+  <!-- numbers -->
+  <g fill="#fff" font-size="14">
+    <text x="30" y="110">6 field (the engine's; no control ever sits here)</text>
+    <text x="40" y="66">2 rule</text>
+    <text x="1060" y="94" fill="#000">3 elbow</text>
+    <text x="30" y="480">focus ring when the field holds the keyboard</text>
+  </g>
+  <text x="1030" y="410" fill="#000" font-size="13">4 spine /</text>
+  <text x="1030" y="428" fill="#000" font-size="13">5 blocks</text>
+  <text x="1030" y="446" fill="#000" font-size="13">then fill</text>
+</svg>

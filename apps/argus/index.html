@@ -327,6 +327,60 @@
                 <div class="view-body"></div>
               </div>
             </template>
+            <!-- The image pane: a series or a volume on a guest engine's
+                 field, inside mise's frame. The field is foreign; the frame
+                 is native (docs/aegis.adoc: an-instruments-field-is-foreign). -->
+            <template id="tpl-pane-image">
+              <div class="workspace-pane pane-image">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title pane-title">IMAGE</span>
+                    <span class="pane-mode"></span>
+                    <span class="pane-state"></span>
+                  </div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <span class="drawer-group drawer-structure">
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                    <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                    <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  </span>
+                  <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                    <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                  </span>
+                  <span class="drawer-group drawer-children"></span>
+                </div>
+                <div class="image-body">
+                  <span class="field-rule"></span>
+                  <button class="mode-strip" title="image modes" aria-label="image modes"></button>
+                  <span class="mode-elbow"></span>
+                  <aside class="mode-frame">
+                    <!-- One block per library tool: the behaviour is the
+                         engine's, the button is mise's. The active one is
+                         lit; the rest recede. -->
+                    <button class="strategy-pill image-tool" data-tool="wl" title="window and level on the primary button">W/L</button>
+                    <button class="strategy-pill image-tool" data-tool="zoom" title="zoom on the primary button">ZOOM</button>
+                    <button class="strategy-pill image-tool" data-tool="pan" title="pan on the primary button">PAN</button>
+                    <button class="strategy-pill image-tool" data-tool="length" title="measure a length">LENGTH</button>
+                    <button class="strategy-pill image-tool" data-tool="angle" title="measure an angle">ANGLE</button>
+                    <button class="strategy-pill image-tool" data-tool="probe" title="read a voxel">PROBE</button>
+                    <button class="strategy-pill image-layout" title="layout: single plane, three linked planes, or a 3D render">SINGLE</button>
+                    <button class="strategy-pill image-colormap" title="colormap">GRAY</button>
+                    <button class="strategy-pill image-save" title="save the measurements as a DICOM SR under ~/annotations">SAVE</button>
+                    <span class="image-focus strategy-pill rail-off" hidden title="the field holds the keyboard; Esc gives it back">FOCUS</span>
+                    <span class="mode-fill"></span>
+                  </aside>
+                  <section class="image-field" aria-label="Image"></section>
+                </div>
+              </div>
+            </template>
             <!-- The empty pane: what a split creates. Its prompt is the pane
                  specifier — whatever command runs there claims the pane; the
                  capsules are shortcuts for the frequent. -->

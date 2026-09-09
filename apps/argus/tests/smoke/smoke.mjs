@@ -1953,6 +1953,144 @@ try {
     check('the feed indexing readout clears when the walk completes', indexing.cleared, JSON.stringify(indexing));
   }
   }
+
+  // ---------------------------------------------------------------- image
+  // An image pane on a guest engine's field. Needs a DICOM series folder
+  // on the daemon's CFS (SMOKE_DICOM_SERIES=<folder>, e.g. the synthesized
+  // series the S7 fixtures upload) and, optionally, a volume
+  // (SMOKE_NIFTI=<path>). Assertions read mise's seams — state, bar,
+  // console lines, focus — never the engine's internals.
+  const dicomSeries = process.env.SMOKE_DICOM_SERIES ?? '';
+  const niftiPath = process.env.SMOKE_NIFTI ?? '';
+  if (stage('image-pane')) {
+  if (dicomSeries === '') {
+    console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
+  } else {
+    await evalIn(`await console_idle();`);
+    const opened = await evalIn(`
+      document.getElementById('gutter-files').click(); await sleep(600);
+      const pane = document.querySelector('.pane-files');
+      pane.querySelector('.pane-handle').click(); await sleep(150);
+      pane.querySelector('[data-split="col"][data-place="after"]').click(); await sleep(600);
+      const prompt = document.querySelector('.empty-prompt'); if (!prompt) return { error: 'no empty prompt' };
+      prompt.value = 'dcm series ${dicomSeries}';
+      prompt.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      let image = null;
+      for (let i = 0; i < 120; i++) { await sleep(500); image = document.querySelector('.pane-image'); if (image && /SLICE \\d+ OF \\d+/.test(image.querySelector('.pane-state').textContent)) break; }
+      if (!image) return { error: 'no image pane' };
+      const state = image.querySelector('.pane-state').textContent;
+      // The engine sizes its canvas on its next frame; measure after it.
+      await sleep(600);
+      const field = image.querySelector('.image-field').getBoundingClientRect();
+      const canvas = image.querySelector('.image-field canvas');
+      const c = canvas ? canvas.getBoundingClientRect() : null;
+      const fits = c !== null && Math.abs(c.width - field.width) < 4 && Math.abs(c.height - field.height) < 4;
+      const dprOk = canvas !== null && Math.abs(canvas.width - c.width * devicePixelRatio) < 4;
+      const inField = image.querySelector('.image-field button, .image-field .strategy-pill') === null;
+      const onFrame = image.querySelectorAll('.mode-frame .image-tool').length;
+      const hue = image.dataset.modality;
+      const noted = document.getElementById('terminal').innerText.split('\\n').some((l) => /^image: \\d+ slices, first on screen in \\d+ ms/.test(l.trim()));
+      const r = image.querySelector('.image-viewport').getBoundingClientRect();
+      return { state, fits, dprOk, canvasPx: canvas ? canvas.width : null, cssPx: c ? Math.round(c.width) : null, dpr: devicePixelRatio, inField, onFrame, hue, noted, wheelAt: { x: r.x + r.width / 2, y: r.y + r.height / 2 } };`);
+    // The wheel over the field turns the stack; the page stays put. A real
+    // wheel through the debugger, as the operator's would arrive.
+    if (opened.error === undefined) {
+      for (let i = 0; i < 3; i++) {
+        await page.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: opened.wheelAt.x, y: opened.wheelAt.y, deltaX: 0, deltaY: 120 });
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const turned = await evalIn(`
+        const image = document.querySelector('.pane-image');
+        let after = image.querySelector('.pane-state').textContent;
+        for (let i = 0; i < 40 && /SLICE 1 OF/.test(after); i++) { await sleep(100); after = image.querySelector('.pane-state').textContent; }
+        return { after, scrollY: window.scrollY };`);
+      opened.after = turned.after;
+      opened.scrollY = turned.scrollY;
+    }
+    check('an image pane opens on a series with the first slice on its bar', opened.error === undefined && /SLICE 1 OF \d+/.test(opened.state), JSON.stringify(opened));
+    check('the engine\'s canvas fills its mount at the device pixel ratio', opened.fits === true && opened.dprOk === true, JSON.stringify(opened));
+    check('no control sits inside the image field and the tool blocks ride the frame', opened.inField === true && opened.onFrame === 6, JSON.stringify(opened));
+    check('the frame wears the modality as its hue', typeof opened.hue === 'string' && opened.hue.length > 0, JSON.stringify(opened));
+    check('the wheel over the field turns the stack and the page stays put', opened.after !== opened.state && /SLICE [2-9]/.test(opened.after ?? '') && opened.scrollY === 0, JSON.stringify(opened));
+    check('the pane says in the console when the first slice landed', opened.noted === true, JSON.stringify(opened));
+  }
+  }
+  if (stage('image-focus')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    const focus = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const field = image.querySelector('.image-field');
+      field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await sleep(150);
+      const taken = field.contains(document.activeElement) || document.activeElement === field;
+      const markOn = !image.querySelector('.image-focus').hidden;
+      // A key pressed on the field stays there: the drawer's verbs do not walk.
+      const drawerBefore = image.querySelector('.pane-drawer').hidden;
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await sleep(100);
+      const drawerAfter = image.querySelector('.pane-drawer').hidden;
+      // Esc gives the keyboard back, one press, one level: the frame it did not touch stays as it was.
+      image.dataset.modes = 'open';
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(200);
+      const released = !(field.contains(document.activeElement) || document.activeElement === field);
+      const markOff = image.querySelector('.image-focus').hidden;
+      const frameStillOpen = image.dataset.modes === 'open';
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(200);
+      const frameClosedNext = image.dataset.modes !== 'open';
+      return { taken, markOn, drawerBefore, drawerAfter, released, markOff, frameStillOpen, frameClosedNext };`);
+    check('the image field keeps the keyboard until Esc', focus.taken && focus.markOn && focus.drawerBefore === focus.drawerAfter && focus.released && focus.markOff, JSON.stringify(focus));
+    check('Esc from the field is one level: the open frame waits for the next press', focus.frameStillOpen && focus.frameClosedNext, JSON.stringify(focus));
+  }
+  }
+  if (stage('image-verbs')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    const verbs = await evalIn(`
+      await console_idle();
+      const image = document.querySelector('.pane-image');
+      image.click();
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image slice 4');
+      let slice = image.querySelector('.pane-state').textContent;
+      for (let i = 0; i < 40 && !/SLICE 4 OF/.test(slice); i++) { await sleep(100); slice = image.querySelector('.pane-state').textContent; }
+      await run('image colormap hot');
+      const colormap = image.querySelector('.image-colormap').textContent;
+      await run('image layout mpr');
+      let mode = '';
+      for (let i = 0; i < 120; i++) { await sleep(500); mode = image.querySelector('.pane-mode').textContent; if (mode === 'MPR' && image.querySelectorAll('.image-mpr .image-viewport').length === 3) break; }
+      const planes = image.querySelectorAll('.image-mpr .image-viewport').length;
+      const layoutPill = image.querySelector('.image-layout').textContent;
+      await run('image layout single');
+      await settled(() => image.querySelector('.pane-state').textContent, { limit: 6000 });
+      const back = image.querySelector('.pane-mode').textContent;
+      return { slice, colormap, mode, planes, layoutPill, back };`);
+    check('image slice <n> moves the stack and the bar says which slice', /SLICE 4 OF/.test(verbs.slice ?? ''), JSON.stringify(verbs));
+    check('image colormap names the block', verbs.colormap === 'HOT', JSON.stringify(verbs));
+    check('image layout mpr stands three linked planes and the bar annunciates the mode', verbs.mode === 'MPR' && verbs.planes === 3 && verbs.layoutPill === 'MPR', JSON.stringify(verbs));
+    check('image layout single returns and the mode annunciation clears', verbs.back === '', JSON.stringify(verbs));
+  }
+  }
+  if (stage('image-volume')) {
+  if (niftiPath === '') {
+    console.log('  skipped: set SMOKE_NIFTI=<volume path on the daemon>');
+  } else {
+    const volume = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = 'image ${niftiPath}';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      let image = null; let drawn = false;
+      for (let i = 0; i < 120; i++) { await sleep(500); drawn = document.getElementById('terminal').innerText.includes('drawn in'); image = [...document.querySelectorAll('.pane-image')].find((p) => p.dataset.modality === 'NIFTI'); if (drawn && image) break; }
+      if (!image) return { error: 'no NIFTI pane' };
+      const canvas = image.querySelector('.image-canvas');
+      const field = image.querySelector('.image-field').getBoundingClientRect();
+      const c = canvas ? canvas.getBoundingClientRect() : null;
+      return { drawn, fits: c !== null && Math.abs(c.width - field.width) < 4, state: image.querySelector('.pane-state').textContent };`);
+    check('image <volume> opens a NIfTI on the same pane kind and says when it drew', volume.error === undefined && volume.drawn === true && volume.fits === true, JSON.stringify(volume));
+  }
+  }
 } finally {
   stage_close();
   page.close();

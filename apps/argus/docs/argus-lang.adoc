@@ -37,6 +37,21 @@ Some verbs act at workspace scope and take no target: `view`, `header`, `console
 
 Each row says what the sentence lowers to. "Drawer" means the pane's drawer capsule of that label; "mode frame" means a pill on the pane's mode frame (the strip at the field's right edge; a verb reaches the pill whether the frame is in or retracted); "given" means a gutter button; "event" means a DOM event the pane listens for.
 
+=== image — a series or a volume on a guest engine's field
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `image <path>` | an image pane beside the focused one, or the focused image pane | A series folder, a study folder (its first series; `image series <n>` for the rest), one `.dcm` (its series, starting at that slice), or a `.nii`, `.nii.gz`, `.mgz`, `.mgh` volume. The kernel's `dcm series` answers what the folder is; the pane never lists it itself.
+| `image layout single\|mpr\|3d` | frame LAYOUT block | One plane; three linked planes with one crosshair; a 3D render. A volume layout loads every slice first and the bar says so.
+| `image slice <n>` | the stack | One-based; the bar reads `SLICE n OF m`.
+| `image series <n>` | the study's series list | Only when the pane opened a study folder.
+| `image wl <lower> <upper>` | frame W/L | A range in the image's own units.
+| `image wl preset <name>` | frame W/L | `brain`, `bone`, `lung`, `soft`, `liver` for CT; none for MR yet.
+| `image colormap gray\|hot\|jet\|cool` | frame COLORMAP block |
+| `image save` | frame SAVE block | The measurements on the field as a DICOM SR at `~/annotations/<SeriesInstanceUID>/measurements.dcm`, through the surface's own route.
+|===
+
 === pane — the tile itself
 
 [cols="2,3,3",options="header"]

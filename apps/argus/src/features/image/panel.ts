@@ -1,0 +1,346 @@
+/**
+ * @file The image pane: a series or a volume on a guest engine's field,
+ * inside mise's frame.
+ *
+ * The field is foreign — an engine draws it and owns every tool behaviour —
+ * and the frame is native: one block per library tool, LAYOUT, COLORMAP,
+ * SAVE and the FOCUS mark ride the pane's mode frame like every mise
+ * control, and nothing sits over the image. The bar reads the slice on
+ * screen, what could not be read, and the layout when it is not the
+ * default. Every verb the console offers lands on the same methods the
+ * blocks press.
+ *
+ * Focus stays in the field: a click there takes it, keys stay there, Esc
+ * gives it back. The FOCUS mark says who has the keyboard.
+ *
+ * @module
+ */
+import type { DicomSeriesModel } from '@fnndsc/menu';
+import {
+  IMAGE_COLORMAPS,
+  IMAGE_LAYOUTS,
+  IMAGE_TOOLS,
+  type ImageColormap,
+  type ImageEngine,
+  type ImageEngineHost,
+  type ImageEngineState,
+  type ImageLayout,
+  type ImageSource,
+  type ImageTool,
+  windowLevelPreset_find,
+} from './engine.js';
+
+/** Host callbacks. */
+export interface ImagePanelHandlers {
+  source: ImageSource;
+  /** One line in the console. */
+  note: (line: string) => void;
+  /** The instance on screen, as this pane's regard. */
+  regard: (path: string) => void;
+  /** Puts bytes at a CFS path through the surface's own route; resolves to the HTTP status. */
+  file_put: (path: string, body: Blob) => Promise<number>;
+}
+
+/** A sibling series in a study folder, for `image series <n>`. */
+export interface SeriesChoice {
+  path: string;
+  label: string;
+}
+
+/** The hue a modality wears on the frame. */
+function modalityHue_of(modality: string): string {
+  const upper: string = modality.toUpperCase();
+  if (upper === 'MR' || upper === 'CT' || upper === 'PT') return upper;
+  return 'OT';
+}
+
+/** The image pane controller. */
+export class ImagePanel {
+  private readonly pane: HTMLElement;
+  private readonly field: HTMLElement;
+  private readonly title: HTMLElement;
+  private readonly modeSpan: HTMLElement;
+  private readonly stateSpan: HTMLElement;
+  private readonly layoutPill: HTMLButtonElement;
+  private readonly colormapPill: HTMLButtonElement;
+  private readonly savePill: HTMLButtonElement;
+  private readonly focusMark: HTMLElement;
+  private readonly toolPills: Map<ImageTool, HTMLButtonElement> = new Map<ImageTool, HTMLButtonElement>();
+  private readonly handlers: ImagePanelHandlers;
+  private engine: ImageEngine | null = null;
+  private series: DicomSeriesModel | null = null;
+  private siblings: SeriesChoice[] = [];
+  private colormap: ImageColormap = 'gray';
+  private tool: ImageTool = 'wl';
+
+  /**
+   * @param mount - The stamped pane element.
+   * @param handlers - Host callbacks.
+   */
+  constructor(mount: HTMLElement, handlers: ImagePanelHandlers) {
+    this.handlers = handlers;
+    this.pane = mount;
+    this.field = element_find(mount, '.image-field');
+    this.title = element_find(mount, '.pane-title');
+    this.modeSpan = element_find(mount, '.pane-mode');
+    this.stateSpan = element_find(mount, '.pane-state');
+    this.layoutPill = element_find(mount, '.image-layout') as HTMLButtonElement;
+    this.colormapPill = element_find(mount, '.image-colormap') as HTMLButtonElement;
+    this.savePill = element_find(mount, '.image-save') as HTMLButtonElement;
+    this.focusMark = element_find(mount, '.image-focus');
+    this.field.tabIndex = 0;
+
+    this.layoutPill.addEventListener('click', (): void => void this.layout_cycle());
+    this.colormapPill.addEventListener('click', (): void => void this.colormap_cycle());
+    this.savePill.addEventListener('click', (): void => void this.annotations_save());
+    for (const tool of IMAGE_TOOLS) {
+      const pill: HTMLButtonElement = element_find(mount, `.image-tool[data-tool="${tool}"]`) as HTMLButtonElement;
+      this.toolPills.set(tool, pill);
+      pill.addEventListener('click', (): void => void this.tool_set(tool));
+    }
+    this.toolPills_paint();
+
+    // Focus stays in the field: a click takes it, keys stay, Esc gives it
+    // back. The mark on the frame says who has the keyboard.
+    // The mark is painted from the gestures themselves as well as from the
+    // focus events: a window without focus (a headless run, a background
+    // tab) still moves activeElement but fires no focusin.
+    this.field.addEventListener('mousedown', (): void => {
+      this.field.focus();
+      this.focusMark_paint(true);
+    });
+    this.field.addEventListener('focusin', (): void => this.focusMark_paint(true));
+    this.field.addEventListener('focusout', (event: FocusEvent): void => {
+      if (!(event.relatedTarget instanceof Node) || !this.field.contains(event.relatedTarget)) this.focusMark_paint(false);
+    });
+    this.field.addEventListener('keydown', (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        this.field_release();
+        event.stopPropagation();
+        return;
+      }
+      event.stopPropagation();
+    });
+  }
+
+  /** Whether the field holds the keyboard. */
+  public field_hasFocus(): boolean {
+    return document.activeElement instanceof Node && this.field.contains(document.activeElement);
+  }
+
+  /** Gives the keyboard back. */
+  public field_release(): boolean {
+    if (!this.field_hasFocus()) return false;
+    (document.activeElement as HTMLElement).blur();
+    this.focusMark_paint(false);
+    return true;
+  }
+
+  /**
+   * Shows a DICOM series the kernel answered with.
+   *
+   * @param model - The series.
+   * @param options - Sibling series for a study folder, and the slice to start at.
+   */
+  public async series_show(model: DicomSeriesModel, options: { siblings?: SeriesChoice[]; startAt?: number } = {}): Promise<void> {
+    this.engine_dispose();
+    this.series = model;
+    this.siblings = options.siblings ?? [];
+    this.pane.dataset['modality'] = modalityHue_of(model.modality);
+    this.title.textContent = `IMAGE ${model.modality.toUpperCase()} ${model.seriesDescription}`.trim();
+    if (this.siblings.length > 1) {
+      const at: number = this.siblings.findIndex((choice: SeriesChoice): boolean => choice.path === model.path) + 1;
+      this.handlers.note(`image: series ${at} of ${this.siblings.length} in this study; image series <n> switches`);
+    }
+    const { CornerstoneEngine } = await import('./cornerstoneEngine.js');
+    const engine: ImageEngine = new CornerstoneEngine(this.engineHost_get(), model, options.startAt ?? 1);
+    await this.engine_open(engine);
+  }
+
+  /**
+   * Shows a NIfTI or MGZ volume.
+   *
+   * @param path - The volume's CFS path.
+   */
+  public async volume_show(path: string): Promise<void> {
+    this.engine_dispose();
+    this.series = null;
+    this.siblings = [];
+    this.pane.dataset['modality'] = 'NIFTI';
+    this.title.textContent = `IMAGE ${path.split('/').pop() ?? ''}`;
+    const { NiivueEngine } = await import('./niivueEngine.js');
+    await this.engine_open(new NiivueEngine(this.engineHost_get(), path));
+  }
+
+  /** The sibling series a study folder offered. */
+  public siblings_get(): readonly SeriesChoice[] {
+    return this.siblings;
+  }
+
+  /** The series on the field, or null. */
+  public series_get(): DicomSeriesModel | null {
+    return this.series;
+  }
+
+  /** What is on the field, for the bar and the smoke probe. */
+  public state_get(): (ImageEngineState & { colormap: ImageColormap; path: string | null }) | null {
+    if (this.engine === null) return null;
+    return { ...this.engine.state_get(), colormap: this.colormap, path: this.series?.path ?? null };
+  }
+
+  /**
+   * Sets the layout; false when the field has no engine or it refused.
+   */
+  public async layout_set(layout: ImageLayout): Promise<boolean> {
+    if (this.engine === null) return false;
+    const ok: boolean = await this.engine.layout_set(layout);
+    if (!ok) {
+      this.handlers.note(`image: layout ${layout}: not offered by ${this.engine.name}`);
+      return false;
+    }
+    this.layoutPill.textContent = layout.toUpperCase();
+    this.modeSpan.textContent = layout === 'single' ? '' : layout.toUpperCase();
+    return true;
+  }
+
+  public slice_set(slice: number): boolean {
+    if (this.engine === null) return false;
+    const ok: boolean = this.engine.slice_set(slice);
+    if (!ok) this.handlers.note(`image: slice ${slice}: not offered in ${this.engine.state_get().layout} layout by ${this.engine.name}`);
+    return ok;
+  }
+
+  public wl_set(lower: number, upper: number): boolean {
+    if (this.engine === null) return false;
+    const ok: boolean = this.engine.wl_set(lower, upper);
+    if (!ok) this.handlers.note(`image: wl: not offered by ${this.engine.name}`);
+    return ok;
+  }
+
+  /** A named window and level preset for the series' modality. */
+  public wlPreset_set(name: string): boolean {
+    const modality: string = this.series?.modality ?? 'NIFTI';
+    const preset = windowLevelPreset_find(name, modality);
+    if (preset === undefined) {
+      this.handlers.note(`image: wl preset ${name}: none for ${modality}`);
+      return false;
+    }
+    return this.wl_set(preset.lower, preset.upper);
+  }
+
+  public colormap_set(name: ImageColormap): boolean {
+    if (this.engine === null) return false;
+    const ok: boolean = this.engine.colormap_set(name);
+    if (!ok) {
+      this.handlers.note(`image: colormap ${name}: not offered by ${this.engine.name}`);
+      return false;
+    }
+    this.colormap = name;
+    this.colormapPill.textContent = name.toUpperCase();
+    return true;
+  }
+
+  public tool_set(tool: ImageTool): boolean {
+    if (this.engine === null) return false;
+    const ok: boolean = this.engine.tool_set(tool);
+    if (!ok) {
+      this.handlers.note(`image: ${tool}: not offered by ${this.engine.name}`);
+      return false;
+    }
+    this.tool = tool;
+    this.toolPills_paint();
+    return true;
+  }
+
+  /**
+   * Saves the measurements on the field as a DICOM SR under
+   * `~/annotations/<SeriesInstanceUID>/`, through the surface's own route.
+   */
+  public async annotations_save(): Promise<boolean> {
+    if (this.engine === null) return false;
+    const uid: string | undefined = this.series?.seriesInstanceUID;
+    const home: string | undefined = /^(\/home\/[^/]+)\//.exec(this.series?.path ?? '')?.[1];
+    if (uid === undefined || home === undefined) {
+      this.handlers.note('image: save: this series has no UID to file an annotation under');
+      return false;
+    }
+    const blob: Blob | null = await this.engine.annotations_export();
+    if (blob === null) {
+      this.handlers.note(`image: save: nothing measured, or ${this.engine.name} writes no report`);
+      return false;
+    }
+    const target: string = `${home}/annotations/${uid}/measurements.dcm`;
+    const status: number = await this.handlers.file_put(target, blob);
+    this.handlers.note(status === 200 ? `✓ ${target}` : `image: save: ${target}: HTTP ${status}`);
+    return status === 200;
+  }
+
+  /** Releases the field. */
+  public dispose(): void {
+    this.engine_dispose();
+  }
+
+  private async layout_cycle(): Promise<void> {
+    const current: ImageLayout = this.engine?.state_get().layout ?? 'single';
+    const next: ImageLayout = IMAGE_LAYOUTS[(IMAGE_LAYOUTS.indexOf(current) + 1) % IMAGE_LAYOUTS.length] ?? 'single';
+    await this.layout_set(next);
+  }
+
+  private async colormap_cycle(): Promise<void> {
+    const next: ImageColormap = IMAGE_COLORMAPS[(IMAGE_COLORMAPS.indexOf(this.colormap) + 1) % IMAGE_COLORMAPS.length] ?? 'gray';
+    this.colormap_set(next);
+  }
+
+  private async engine_open(engine: ImageEngine): Promise<void> {
+    this.engine = engine;
+    this.field.replaceChildren();
+    this.layoutPill.textContent = 'SINGLE';
+    this.modeSpan.textContent = '';
+    this.colormapPill.textContent = this.colormap.toUpperCase();
+    try {
+      await engine.open(this.field);
+    } catch (error: unknown) {
+      this.stateSpan.textContent = 'REFUSED';
+      this.handlers.note(`image: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const layout: ImageLayout = engine.state_get().layout;
+    this.layoutPill.textContent = layout.toUpperCase();
+    this.modeSpan.textContent = layout === 'single' ? '' : layout.toUpperCase();
+    engine.tool_set(this.tool);
+    this.toolPills_paint();
+  }
+
+  private engine_dispose(): void {
+    this.engine?.dispose();
+    this.engine = null;
+    this.field.replaceChildren();
+    this.stateSpan.textContent = '';
+  }
+
+  private engineHost_get(): ImageEngineHost {
+    return {
+      source: this.handlers.source,
+      readout_set: (text: string): void => {
+        this.stateSpan.textContent = text;
+      },
+      note: this.handlers.note,
+      regard: this.handlers.regard,
+    };
+  }
+
+  private toolPills_paint(): void {
+    for (const [tool, pill] of this.toolPills) pill.classList.toggle('rail-off', tool !== this.tool);
+  }
+
+  private focusMark_paint(on: boolean): void {
+    this.focusMark.hidden = !on;
+    this.pane.classList.toggle('image-field-focused', on);
+  }
+}
+
+function element_find(mount: HTMLElement, selector: string): HTMLElement {
+  const found: HTMLElement | null = mount.querySelector<HTMLElement>(selector);
+  if (found === null) throw new Error(`image pane: missing ${selector}`);
+  return found;
+}

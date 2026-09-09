@@ -9,6 +9,7 @@
  */
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const require: NodeRequire = createRequire(import.meta.url);
@@ -27,6 +28,21 @@ function gitHash_read(): string {
 
 export default defineConfig({
   base: './',
+  // Cornerstone3D's documented Vite recipe: the image loader carries its own
+  // workers and wasm codecs, and dicom-parser is CommonJS.
+  optimizeDeps: {
+    exclude: ['@cornerstonejs/dicom-image-loader'],
+    include: ['dicom-parser'],
+  },
+  worker: { format: 'es' },
+  resolve: {
+    alias: {
+      // vtk.js's XML reader and writer import xmlbuilder2 (CommonJS), whose
+      // class hierarchy breaks under Vite's interop at module init and takes
+      // the whole surface down; the image pane never reads or writes VTK XML.
+      xmlbuilder2: fileURLToPath(new URL('./src/features/image/xmlbuilder2-stub.ts', import.meta.url)),
+    },
+  },
   define: {
     __ARGUS_GIT__: JSON.stringify(gitHash_read()),
     __ARGUS_BUILT__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),

@@ -1450,6 +1450,7 @@ body[data-zoom]:not([data-zoom='console'])
  * pane scale (docs/aegis.adoc: field-is-content, frame-retracts-to-a-strip).
  * A hover only lights the spine — a beckon, never an opening. */
 .files-body,
+.image-body,
 .dag-canvas,
 .dag-roster,
 .pacs-listing {
@@ -1461,6 +1462,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .workspace-pane[data-modes='open'] .files-body,
+.workspace-pane[data-modes='open'] .image-body,
 .workspace-pane[data-modes='open'] .dag-canvas,
 .workspace-pane[data-modes='open'] .dag-roster,
 .workspace-pane[data-modes='open'] .pacs-listing {
@@ -3726,4 +3728,80 @@ body[data-zoom] #header-restore {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* The image pane. The field is a guest engine's; the frame is ours, and the
+ * hue on the frame is the modality's (hue-is-a-mode): the body shadows the
+ * frame's token so rule, spine, elbow and blocks all wear it. */
+.pane-image {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.image-body {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-image[data-modality='MR'] .image-body { --harvestgold: var(--daybreak); }
+.pane-image[data-modality='CT'] .image-body { --harvestgold: var(--honey); }
+.pane-image[data-modality='PT'] .image-body { --harvestgold: var(--tomato, #f77); }
+.pane-image[data-modality='NIFTI'] .image-body { --harvestgold: var(--daybreak); }
+
+.image-field {
+  position: absolute;
+  top: calc(var(--frame-top) + var(--rule-h));
+  left: 0;
+  right: var(--spine-w);
+  bottom: 0;
+  background: #000;
+  outline: none;
+  transition: right 0.22s ease-out;
+}
+
+.pane-image.image-field-focused .image-field {
+  box-shadow: inset 0 0 0 2px var(--harvestgold);
+}
+
+.image-viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.image-mpr,
+.image-render {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.image-mpr {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.image-mpr .image-viewport,
+.image-render .image-viewport {
+  position: relative;
+  inset: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.image-canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.mode-frame .image-focus {
+  text-align: right;
+  padding: 0 0.6rem 0 0.4rem;
+  height: 1.6rem;
+  line-height: 1.6rem;
+  background-color: var(--harvestgold);
+  color: #000;
 }

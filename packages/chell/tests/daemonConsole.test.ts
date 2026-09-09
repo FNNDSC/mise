@@ -11,7 +11,9 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   consoleCage_stop: jest.fn((): string[] => []),
 }));
 
-const { daemonConsole_run } = await import('../src/core/daemonConsole.js');
+import { EventEmitter } from 'node:events';
+
+const { daemonConsole_run, surface_spawn, enter_await, CHELL_ENTRY } = await import('../src/core/daemonConsole.js');
 type Deps = NonNullable<Parameters<typeof daemonConsole_run>[1]>;
 
 const TARGET = { identity: 'me@https://cube.example.org/api/v1/', url: 'ws://pangea.tch.harvard.edu:42655', token: 'tok' };
@@ -80,5 +82,58 @@ describe('daemonConsole_run', () => {
     });
     await expect(daemonConsole_run(TARGET, deps)).rejects.toThrow('spawn ENOENT');
     expect(deps.cage_stop).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('surface_spawn', () => {
+  it('spawns chell itself as a remote surface on this terminal, attached by address', async () => {
+    const child = new EventEmitter();
+    const spawn = jest.fn((): EventEmitter => child);
+    const running = surface_spawn(TARGET, spawn);
+    expect(spawn).toHaveBeenCalledWith(
+      process.execPath,
+      [CHELL_ENTRY, '--remote', '--attach', TARGET.url, '--token', TARGET.token],
+      { stdio: 'inherit' },
+    );
+    expect(CHELL_ENTRY.endsWith('/index.js')).toBe(true);
+    child.emit('exit', 0);
+    expect(await running.exited).toBe(0);
+  });
+
+  it('settles with the exit code, or with 1 when the surface cannot start at all', async () => {
+    const bySignal = new EventEmitter();
+    const signalled = surface_spawn(TARGET, jest.fn((): EventEmitter => bySignal));
+    bySignal.emit('exit', null);
+    expect(await signalled.exited).toBe(0);
+
+    const failing = new EventEmitter();
+    const failed = surface_spawn(TARGET, jest.fn((): EventEmitter => failing));
+    failing.emit('error', new Error('spawn ENOENT'));
+    expect(await failed.exited).toBe(1);
+  });
+});
+
+describe('enter_await', () => {
+  function input_make(): EventEmitter & { resume: jest.Mock; pause: jest.Mock } {
+    return Object.assign(new EventEmitter(), { resume: jest.fn(), pause: jest.fn() });
+  }
+
+  it('resolves true on a line of input and lets the terminal go', async () => {
+    const input = input_make();
+    const waiting: Promise<boolean> = enter_await(input);
+    expect(input.resume).toHaveBeenCalledTimes(1);
+    input.emit('data', Buffer.from('\n'));
+    expect(await waiting).toBe(true);
+    expect(input.pause).toHaveBeenCalledTimes(1);
+    expect(input.listenerCount('data')).toBe(0);
+    expect(input.listenerCount('end')).toBe(0);
+  });
+
+  it('resolves false when the input ends, so the loop returns instead of waiting forever', async () => {
+    const input = input_make();
+    const waiting: Promise<boolean> = enter_await(input);
+    input.emit('end');
+    expect(await waiting).toBe(false);
+    expect(input.listenerCount('data')).toBe(0);
   });
 });

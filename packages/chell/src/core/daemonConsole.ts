@@ -23,7 +23,8 @@
  *
  * @module
  */
-import { spawn as childSpawn } from 'node:child_process';
+import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
+import type { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { consoleCage_start, consoleCage_stop } from '@fnndsc/calypso';
@@ -55,16 +56,26 @@ export interface DaemonConsoleDeps {
 }
 
 /** The chell entry this module was built beside: the surface to spawn. */
-const CHELL_ENTRY: string = fileURLToPath(new URL('../index.js', import.meta.url));
+export const CHELL_ENTRY: string = fileURLToPath(new URL('../index.js', import.meta.url));
+
+/** What the spawner needs of a child: its exit and error events. */
+export type SpawnedChild = Pick<ChildProcess, 'once'>;
+
+/** A process spawner with the shape of `child_process.spawn`. */
+export type Spawn = (command: string, args: string[], options: { stdio: 'inherit' }) => SpawnedChild;
+
+/** What the Enter wait needs of the terminal's input. */
+export type ConsoleInput = Pick<EventEmitter, 'on' | 'once' | 'off'> & { resume(): unknown; pause(): unknown };
 
 /**
  * Starts a remote chell surface on this terminal, attached by address.
  *
  * @param target - The daemon's wire address and token.
+ * @param spawn - The process spawner; `child_process.spawn` by default.
  * @returns The child, settling with its exit code when the operator detaches.
  */
-function surface_spawn(target: DaemonConsoleTarget): ConsoleChild {
-  const child = childSpawn(
+export function surface_spawn(target: DaemonConsoleTarget, spawn: Spawn = childSpawn): ConsoleChild {
+  const child: SpawnedChild = spawn(
     process.execPath,
     [CHELL_ENTRY, '--remote', '--attach', target.url, '--token', target.token],
     { stdio: 'inherit' },
@@ -79,29 +90,30 @@ function surface_spawn(target: DaemonConsoleTarget): ConsoleChild {
 /**
  * Waits for the operator to press Enter at the idle daemon terminal.
  *
- * @returns True on a line of input; false when stdin ends.
+ * @param input - The terminal's input; `process.stdin` by default.
+ * @returns True on a line of input; false when the input ends.
  */
-function enter_await(): Promise<boolean> {
+export function enter_await(input: ConsoleInput = process.stdin): Promise<boolean> {
   return new Promise<boolean>((resolve: (again: boolean) => void): void => {
     const cleanup = (): void => {
-      process.stdin.off('data', onData);
-      process.stdin.off('end', onEnd);
-      process.stdin.pause();
+      input.off('data', onData);
+      input.off('end', onEnd);
+      input.pause();
     };
     const onData = (): void => { cleanup(); resolve(true); };
     const onEnd = (): void => { cleanup(); resolve(false); };
-    process.stdin.on('data', onData);
-    process.stdin.once('end', onEnd);
-    process.stdin.resume();
+    input.on('data', onData);
+    input.once('end', onEnd);
+    input.resume();
   });
 }
 
 /** The live seams: a real child on the wire, the real cage, the real terminal. */
 const LIVE_DEPS: DaemonConsoleDeps = {
-  attach: surface_spawn,
+  attach: (target: DaemonConsoleTarget): ConsoleChild => surface_spawn(target),
   cage_start: consoleCage_start,
   cage_stop: consoleCage_stop,
-  enter_wait: enter_await,
+  enter_wait: (): Promise<boolean> => enter_await(),
   log: (line: string): void => { console.log(line); },
 };
 

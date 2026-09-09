@@ -1,13 +1,13 @@
 = The DICOM Renderer: Candidates Judged Against the Requirements
 Rudolph Pienaar <rudolph.pienaar@gmail.com>
-0.2, 2026-09-09: Research pass and prototype findings
+0.3, 2026-09-09: Decision recorded
 :doctype: article
 :toc: left
 :toclevels: 3
 :sectnums:
 :sectnumlevels: 3
 :icons: font
-:status: DRAFT (slice S2 of the DICOM viewing campaign, epic #359)
+:status: DECIDED 2026-09-09 (slice S2 of the DICOM viewing campaign, epic #359)
 
 [abstract]
 --
@@ -122,6 +122,10 @@ DWV falls on licence before anything else: GPL-3.0 linked into a bundle mise ser
 Cornerstone3D for DICOM series behind the `image` pane; niivue for NIfTI and MGZ behind the same pane, selected by what the kernel says the path is (`dicom.series` model versus a `.nii`, `.nii.gz`, `.mgz`, `.mgh` file). One pane kind, one verb set, one frame, one focus law; two engines under an `ImageEngine` seam that the pane drives and the smoke tests never look inside.
 
 Costs to state plainly: two engines is two sets of static assets (four Cornerstone wasms and a worker; niivue's engine is pure JS unless DICOM through dcm2niix, which mise will not use) and about 30 MB of unpacked dependency in argus's tree, of which the served bundle is a fraction and loaded lazily per engine. Cornerstone3D's release cadence is near-daily patch bumps; the lockfile pins, and upgrades are deliberate. Neither engine gives a toolbar, so the amendment above is part of this recommendation, not separate from it.
+
+== Decision
+
+Taken by the user on 2026-09-09: Cornerstone3D for DICOM series and niivue for NIfTI and MGZ, behind one `image` pane. Decision 1 amended as proposed above (the library owns every tool behaviour and default; mise composes a declared list of tool buttons and adds no behaviour). Decision 2 amended with it: those buttons are mise's and live in the mode frame, nothing overlays the image, and the AEGIS law narrows to an instrument's field being foreign and its frame native.
 
 == What the prototype showed
 

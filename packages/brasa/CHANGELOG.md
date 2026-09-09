@@ -1,5 +1,24 @@
 # @fnndsc/brasa
 
+## 0.20.0
+
+### Minor Changes
+
+- 3d11f59: Boot readout, second pass. A step that starts as `[PENDING]` (or falls to `[RETRY]`) is now rewritten in place when its outcome lands, the way a boot screen settles a row rather than repeating it beneath, so a settled step leaves one `[ OK ]`/`[FAIL]` row and no open pending row. The brain animation and the readout now share one stdout row counter, so neither miscounts the other's scrolling; a row that has scrolled off the screen, or an outcome taller than the pending row it replaces, appends as before. The daemon banner paints each package in three parts (its name bright, the rest of its backronym plain, the version dim in one column) and carries the build hash on its own CALYPSO row, so the redundant headline line is gone; a remote surface paints the daemon's stack the same way.
+- 9c320a0: The boot ends at a login. An interactive `chell --daemon` no longer rests on the console face: once the daemon is listening it puts an ordinary `chell --remote --attach` surface on its own terminal, as a child on the wire, so the boot log runs straight into a prompt. `exit` detaches and leaves the daemon running, Enter attaches again, Ctrl-C at the idle terminal stops the daemon, and whatever the daemon writes while a surface holds the terminal is held (calypso `consoleCage_start`/`consoleCage_stop`) and printed on detach. Every chell REPL, local or remote, now guards its idle prompt: a stray line (another surface's output, a late warm-up) lands on its own line with the prompt redrawn beneath it.
+
+  The boot readout is lifted with it. A warm-up step running behind the prompt printed its pending row twice and never reported an outcome; it now prints once as `[PENDING]` and settles on the daemon's readout as `[ OK ]` with what it cached or `[FAIL]` with why. Every count takes its noun in the right number (`1 PACS query`, `3 feeds`) through a new brasa `count_noun`. The daemon banner writes every package out in full (brasa `stackBanner_build`/`stackBanner_compose`), adds an ARGUS row when a web surface is served, and drops the welcome; the remote surface banners the daemon's stack the same way. A daemon bound on every interface advertises its fully qualified host name.
+
+### Patch Changes
+
+- d89e31b: A feed-list row now carries `jobsErrored` (the errored-or-cancelled count, from the proc cache's per-status counters), so a surface can fill an errored feed's progress bar to the work that actually succeeded — `jobsDone - jobsErrored` over `jobsTotal` — rather than run it full in the error hue. The RUNS roster uses it; a full red bar said nothing a red mark would not.
+- Updated dependencies [711e1b3]
+- Updated dependencies [612c052]
+- Updated dependencies [d89e31b]
+  - @fnndsc/cumin@3.21.0
+  - @fnndsc/salsa@3.15.0
+  - @fnndsc/menu@0.7.0
+
 ## 0.19.0
 
 ### Minor Changes

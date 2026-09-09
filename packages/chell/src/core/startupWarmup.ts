@@ -511,7 +511,7 @@ export async function startupWarmup_run(
         if (swept.value.bounded) {
           return {
             ok: false,
-            message: `Indexed ${count_noun(swept.value.indexed, 'PACS query', 'PACS queries')} and stopped at the page bound — the index is incomplete`,
+            message: `${count_noun(swept.value.total, 'PACS query', 'PACS queries')} indexed, stopped at the page bound — the index is incomplete`,
           };
         }
         // Made durable here rather than left to the debounced writer: that
@@ -525,12 +525,17 @@ export async function startupWarmup_run(
         }
         return {
           ok: true,
-          count: swept.value.indexed,
-          ...(swept.value.resumed ? { message: 'resumed from the restored index' } : {}),
+          count: swept.value.total,
+          pipelineCount: swept.value.indexed,
         };
       },
-      (outcome: PrefetchResult): string =>
-        `Indexed ${count_noun(outcome.count ?? 0, 'PACS query', 'PACS queries')}${outcome.message ? `, ${outcome.message}` : ''}`,
+      // The amount of queries the index holds, and how many this top-up added
+      // — a resume that found nothing new says just the total, not "1".
+      (outcome: PrefetchResult): string => {
+        const total: number = outcome.count ?? 0;
+        const fresh: number = outcome.pipelineCount ?? 0;
+        return `${count_noun(total, 'PACS query', 'PACS queries')} indexed${fresh > 0 ? `, ${fresh} new` : ''}`;
+      },
     ));
   } else if (!session.offline) {
     reporter?.log('skip', 'Feeds', 'Prefetch disabled');

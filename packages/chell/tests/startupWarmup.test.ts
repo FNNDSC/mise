@@ -129,7 +129,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   queryIndexCheckpoint_restore: mockQueryIndexRestore,
   queryIndexCheckpoint_save: mockQueryIndexSave,
   queryIndexCheckpoint_watch: jest.fn(() => (): void => undefined),
-  queryIndex_sweep: jest.fn(async () => ({ ok: true, value: { indexed: 0, pages: 1, bounded: false } })),
+  queryIndex_sweep: jest.fn(async () => ({ ok: true, value: { indexed: 0, total: 1905, pages: 1, bounded: false } })),
   listCache_get: jest.fn(() => ({
     stats_get: (): { oldestAge: number | null } => ({ oldestAge: mockOldestAge }),
   })),
@@ -597,7 +597,7 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 items from /home/rudolph/feeds');
     expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 items from /PUBLIC');
     expect(report).toHaveBeenCalledWith('ok', 'Shared', 'Cached 4 items from /SHARED');
-    expect(report).toHaveBeenCalledWith('ok', 'Queries', 'Indexed 0 PACS queries');
+    expect(report).toHaveBeenCalledWith('ok', 'Queries', '1905 PACS queries indexed');
   });
 
   it('lands a deferred failure on a persisting readout as [FAIL], and still holds it for the prompt', async () => {

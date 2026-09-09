@@ -142,6 +142,59 @@ describe('queryIndex_sweep', () => {
     if (swept.ok) expect(swept.value.resumed).toBe(true);
   });
 
+  it('counts only genuinely new records, not the boundary its inclusive resume re-fetches', async () => {
+    // The index already holds query 1; the newest record's date is the
+    // resume floor, so CUBE hands query 1 back on the first page.
+    queryIndex_get().entry_note({
+      queryId: 1, server: 'PACSDCM', criteria: { PatientID: 'held' },
+      owner: 'someone', answeredAt: '2026-06-01T00:00:00.000Z', hasResult: true,
+    });
+    // The boundary record comes back, plus one genuinely new query.
+    pacsQueries_listMock.mockResolvedValueOnce(page_of([
+      row_make(1, { PatientID: 'held' }, { creation_date: '2026-06-01T00:00:00.000Z' }),
+      row_make(2, { PatientID: 'fresh' }, { creation_date: '2026-06-02T00:00:00.000Z' }),
+    ]));
+    const swept: Result<QuerySweepResult> = await queryIndex_sweep();
+    expect(swept.ok).toBe(true);
+    if (swept.ok) {
+      // One new, not two: the re-fetched boundary record is not counted.
+      expect(swept.value.indexed).toBe(1);
+      // The total is the amount the index now holds, all told.
+      expect(swept.value.total).toBe(2);
+      expect(swept.value.resumed).toBe(true);
+    }
+  });
+
+  it('a resume that finds nothing new counts zero, and reports the amount held', async () => {
+    queryIndex_get().entry_note({
+      queryId: 1, server: 'PACSDCM', criteria: { PatientID: 'held' },
+      owner: 'someone', answeredAt: '2026-06-01T00:00:00.000Z', hasResult: true,
+    });
+    // Only the boundary record comes back — the defect showed this as 1.
+    pacsQueries_listMock.mockResolvedValueOnce(page_of([
+      row_make(1, { PatientID: 'held' }, { creation_date: '2026-06-01T00:00:00.000Z' }),
+    ]));
+    const swept: Result<QuerySweepResult> = await queryIndex_sweep();
+    expect(swept.ok).toBe(true);
+    if (swept.ok) {
+      expect(swept.value.indexed).toBe(0);
+      expect(swept.value.total).toBe(1);
+    }
+  });
+
+  it('reports the total held on a full rebuild', async () => {
+    pacsQueries_listMock.mockResolvedValueOnce(page_of([
+      row_make(1, { PatientID: 'a' }), row_make(2, { PatientID: 'b' }), row_make(3, { PatientID: 'c' }),
+    ]));
+    const swept: Result<QuerySweepResult> = await queryIndex_sweep();
+    expect(swept.ok).toBe(true);
+    if (swept.ok) {
+      expect(swept.value.indexed).toBe(3);
+      expect(swept.value.total).toBe(3);
+      expect(swept.value.resumed).toBe(false);
+    }
+  });
+
   it('reports a refusal rather than pretending the collection was empty', async () => {
     pacsQueries_listMock.mockResolvedValueOnce({ ok: false });
     const swept: Result<QuerySweepResult> = await queryIndex_sweep();

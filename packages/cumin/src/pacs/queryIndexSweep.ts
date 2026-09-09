@@ -60,8 +60,10 @@ export const QUERY_LOG_PATH: string = "/net/pacs/queries";
 
 /** What a sweep did, for the boot readout that reports it. */
 export interface QuerySweepResult {
-  /** Records newly filed. */
+  /** Records this sweep filed that the index did not already hold. */
   indexed: number;
+  /** Records the index holds after the sweep — the amount asked, all told. */
+  total: number;
   /** True when the sweep resumed from a restored index rather than rebuilding. */
   resumed: boolean;
   /** Pages fetched. */
@@ -151,8 +153,13 @@ export async function queryIndex_sweep(
     for (const row of rows) {
       const entry: QueryIndexEntry | null = queryRow_toEntry(row);
       if (entry === null) continue;
+      // The resume filter is inclusive, so the newest record the index
+      // already holds comes back on the first page. Note it — it may carry a
+      // fresher result — but count only what the index did not already have,
+      // or a resume that found nothing new still reports one.
+      const known: boolean = index.has(entry.queryId);
       index.entry_note(entry);
-      indexed += 1;
+      if (!known) indexed += 1;
       if (oldest === null || Date.parse(entry.answeredAt) < Date.parse(oldest)) {
         oldest = entry.answeredAt;
       }
@@ -161,12 +168,12 @@ export async function queryIndex_sweep(
     if (rows.length < QUERY_SWEEP_PAGE) {
       if (oldest !== null) index.floor_set(oldest);
       if (indexed > 0) listCache_get().cache_invalidate(QUERY_LOG_PATH);
-      return Ok({ indexed, pages, bounded: false, resumed: newest !== null });
+      return Ok({ indexed, total: index.size_get(), pages, bounded: false, resumed: newest !== null });
     }
     offset += rows.length;
   }
 
   if (oldest !== null) index.floor_set(oldest);
   if (indexed > 0) listCache_get().cache_invalidate(QUERY_LOG_PATH);
-  return Ok({ indexed, pages, bounded: true, resumed: newest !== null });
+  return Ok({ indexed, total: index.size_get(), pages, bounded: true, resumed: newest !== null });
 }

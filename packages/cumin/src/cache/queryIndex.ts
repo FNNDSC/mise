@@ -242,6 +242,19 @@ export class QueryIndex {
     return this.entries.size;
   }
 
+  /**
+   * Whether the index already holds a record for a query id.
+   *
+   * A resumed sweep asks this to count what it newly filed apart from the
+   * boundary record its inclusive resume re-fetches.
+   *
+   * @param queryId - The query's numeric id.
+   * @returns True when the id is already indexed.
+   */
+  public has(queryId: number): boolean {
+    return this.entries.has(queryId);
+  }
+
   /** How many distinct questions those records answer. */
   public questions_count(): number {
     return this.byQuestion.size;

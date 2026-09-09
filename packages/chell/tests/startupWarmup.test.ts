@@ -545,6 +545,80 @@ describe('daemonSession_run', () => {
     expect(mockWarmupFailureClear).not.toHaveBeenCalledWith('Groups');
   });
 
+  it('prints a deferred step once: the pending row, never the spinner\'s plain-log stand-in beneath it', async () => {
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\n' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: true,
+      publicFeeds: true,
+      jobs: false,
+    }, 'rudolph', false, { log: report });
+    await Promise.all(cache.deferred.map((step) => step.settled));
+
+    // The spinner helper logs its label and message as a plain line when it
+    // cannot animate, which put an untagged copy of every pending row
+    // directly under the tagged one. Deferred attempts bypass it.
+    expect(mockPrefetchWithSpinner).not.toHaveBeenCalled();
+    expect(report.mock.calls.filter(([, label]) => label === 'Groups')).toHaveLength(1);
+  });
+
+  it('lands the outcome row on a readout that persists, tagged [ OK ] with what it cached', async () => {
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\npacs_users:x:2:rudolph\n' });
+    mockPrefetchPath.mockImplementation(async (target: string) => ({ ok: true, count: target === '/PUBLIC' ? 9 : 4 }));
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: true,
+      publicFeeds: true,
+      jobs: false,
+    }, 'rudolph', false, { log: report }, true);
+    await Promise.all(cache.deferred.map((step) => step.settled));
+
+    // The daemon face keeps its boot log, so a step that started as
+    // [PENDING] finishes there as [ OK ] rather than leaving the row open.
+    expect(report).toHaveBeenCalledWith('ok', 'Groups', 'Cached 2 group(s)');
+    expect(report).toHaveBeenCalledWith('ok', 'Feeds', 'Cached 4 item(s) from /home/rudolph/feeds');
+    expect(report).toHaveBeenCalledWith('ok', 'Public', 'Cached 9 item(s) from /PUBLIC');
+    expect(report).toHaveBeenCalledWith('ok', 'Shared', 'Cached 4 item(s) from /SHARED');
+    expect(report).toHaveBeenCalledWith('ok', 'Queries', 'Indexed 0 PACS quer(y/ies)');
+  });
+
+  it('lands a deferred failure on a persisting readout as [FAIL], and still holds it for the prompt', async () => {
+    mockVfsRead.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValue({ message: 'membership service unavailable' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', false, { log: report }, true);
+    await cache.deferred.find((step) => step.label === 'Groups')!.settled;
+
+    expect(report).toHaveBeenCalledWith('fail', 'Groups', 'membership service unavailable');
+    expect(mockWarmupFailureNote).toHaveBeenCalledWith('Groups', 'membership service unavailable');
+  });
+
+  it('keeps an interactive readout silent on settle: it has scrolled away, and the prompt carries a failure', async () => {
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'all_users:x:1:rudolph\n' });
+    const report = jest.fn<StartupWarmupReporter['log']>();
+
+    const cache = await startupWarmup_run({
+      plugins: false,
+      feeds: false,
+      publicFeeds: false,
+      jobs: false,
+    }, 'rudolph', true, { log: report });
+    await cache.deferred.find((step) => step.label === 'Groups')!.settled;
+
+    expect(report).not.toHaveBeenCalledWith('ok', 'Groups', expect.anything());
+    expect(report).not.toHaveBeenCalledWith('fail', 'Groups', expect.anything());
+  });
+
   it('warms /SHARED, where another identity\'s work becomes visible', async () => {
     const report = jest.fn<StartupWarmupReporter['log']>();
 

@@ -30,6 +30,10 @@
    * must not become indistinguishable from the frame when a scheme happens
    * to be warm; it is mixed toward the palette rather than taken from it. */
   --state-done: var(--daybreak);
+  /* A finished feed's bar is calm, not a bright wall: most DAGs finish, so a
+   * roster of full success bars shouts where nothing is wrong. The quiet done
+   * fill lets a running feed's bright bar be the thing the eye catches. */
+  --state-done-quiet: color-mix(in srgb, var(--state-done) 34%, transparent);
   --state-running: var(--orange);
   --state-idle: color-mix(in srgb, var(--pumpkin-pie) 45%, transparent);
   --state-error: color-mix(in srgb, #f2402a 80%, var(--october-sunset));
@@ -1758,7 +1762,7 @@ body[data-header='dag'] #header-dag {
 }
 
 .listing-progress-running .listing-progress-fill { background: var(--state-running); }
-.listing-progress-done .listing-progress-fill { background: var(--state-done); }
+.listing-progress-done .listing-progress-fill { background: var(--state-done-quiet); }
 .listing-progress-failed .listing-progress-fill { background: var(--state-error); }
 
 /* A row's verbs, outside the column grid: they answer to no cap. The track's

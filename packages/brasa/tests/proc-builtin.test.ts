@@ -424,6 +424,10 @@ describe('builtin_proc warm-up policy', () => {
     // Newest first, id + title + owner + derived status carried.
     expect(model?.data.feeds[0]).toMatchObject({ id: 5, title: 'newer run', owner: 'bob' });
     expect(model?.data.feeds[1]).toMatchObject({ id: 2, title: 'older run' });
+    // The failed count travels with each row so a surface can fill an errored
+    // feed's bar to the work that succeeded: feed 5 errored its one job.
+    expect(model?.data.feeds[0]).toMatchObject({ jobsDone: 1, jobsTotal: 1, jobsErrored: 1 });
+    expect(model?.data.feeds[1]).toMatchObject({ jobsDone: 1, jobsTotal: 1, jobsErrored: 0 });
   });
 
   it('reports zero loaded jobs deterministically after an empty sweep', async () => {

@@ -465,11 +465,15 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
  * @param feed - The cached feed row.
  * @returns Its job counts.
  */
-function feedJobs_count(feed: ProcFeed): { jobsDone: number; jobsTotal: number } {
+function feedJobs_count(feed: ProcFeed): { jobsDone: number; jobsTotal: number; jobsErrored: number } {
   // Settled means it will not change again: finished, errored or cancelled.
-  const done: number = feed.finishedJobs + feed.erroredJobs + feed.cancelledJobs;
+  const errored: number = feed.erroredJobs + feed.cancelledJobs;
+  const done: number = feed.finishedJobs + errored;
   const total: number = done + feed.startedJobs + feed.scheduledJobs + feed.createdJobs;
-  return { jobsDone: done, jobsTotal: total };
+  // The failed count travels too, so a surface can fill an errored feed's bar
+  // to the work that actually succeeded rather than run it full in the error
+  // hue: `jobsDone - jobsErrored` is the nodes that finished cleanly.
+  return { jobsDone: done, jobsTotal: total, jobsErrored: errored };
 }
 
 /**

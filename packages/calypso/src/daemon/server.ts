@@ -136,6 +136,14 @@ export interface PromptLastCommand {
   exitCode: number;
 }
 
+/** What the daemon's telemetry provider snapshots once a second. */
+export interface TelemetrySnapshot {
+  jobs: number;
+  feeds: number;
+  cube?: { msPerPage: number; samples: number };
+  state?: { running: number; runningFeeds: number; scheduled: number; errored: number; erroredFeeds: number };
+}
+
 export interface DaemonOptions {
   engine: HostedEngine;
   token: string;
@@ -147,7 +155,7 @@ export interface DaemonOptions {
    * Supplies the live process-index counts for the once-a-second telemetry
    * heartbeat. Omitted, no heartbeat is sent (e.g. tests).
    */
-  telemetryProvider?: () => { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } };
+  telemetryProvider?: () => TelemetrySnapshot;
   /** The hosting process's versions and build hash, reported on attach. */
   stack?: DaemonStackInfo;
   webRoot?: string;
@@ -192,7 +200,7 @@ export class CalypsoDaemon {
     | undefined;
   /** The last executed command's measured facts, sticky across pushes. */
   private lastCommand: PromptLastCommand | undefined;
-  private readonly telemetryProvider: (() => { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } }) | undefined;
+  private readonly telemetryProvider: (() => TelemetrySnapshot) | undefined;
   /** Commands queued behind the one running: the lane's depth. */
   private queueWaiting: number = 0;
   /** The line holding the lane, and since when; null while the lane is idle. */
@@ -277,7 +285,7 @@ export class CalypsoDaemon {
     if (this.telemetryProvider === undefined || this.telemetryTimer !== null) {
       return;
     }
-    const provider: () => { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } } = this.telemetryProvider;
+    const provider: () => TelemetrySnapshot = this.telemetryProvider;
     this.telemetryTimer = setInterval((): void => {
       if (this.surfaces.size === 0) {
         return;
@@ -293,7 +301,11 @@ export class CalypsoDaemon {
         waiting: this.queueWaiting,
       };
       for (const surface of this.surfaces) {
-        this.send(surface.socket, { type: 'telemetry', index, lane, ...(snapshot.cube !== undefined ? { cube: snapshot.cube } : {}) });
+        this.send(surface.socket, {
+          type: 'telemetry', index, lane,
+          ...(snapshot.cube !== undefined ? { cube: snapshot.cube } : {}),
+          ...(snapshot.state !== undefined ? { state: snapshot.state } : {}),
+        });
       }
       // Warm-up is a prompt-context change no command announces: the counts
       // climb while every surface sits idle. While the index moves — or the

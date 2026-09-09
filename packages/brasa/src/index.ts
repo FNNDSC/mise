@@ -35,3 +35,4 @@ export * from './lib/parser.js';
 export * from './lib/pipe.js';
 export * from './lib/semicolonParser.js';
 export * from './lib/completer/index.js';
+export { jobsState_derive, type JobsState } from './core/jobsState.js';

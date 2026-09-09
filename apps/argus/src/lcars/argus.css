@@ -1678,6 +1678,14 @@ body[data-header='dag'] #header-dag {
   color: var(--state-error);
 }
 
+/* A readout that acts wears a capsule at its end, in the errand's hue. */
+#index-instrument .index-verb {
+  flex: none;
+  margin-left: 0.4rem;
+  background-color: var(--state-error);
+  color: var(--butter);
+}
+
 /* Three columns, as the ARGUS WEB face has. The columns belong on the
  * readout, not on the face: `about-rows` is a wrapper, so columns set a
  * level up fragment the wrapper rather than its rows, which left every

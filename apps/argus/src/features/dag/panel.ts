@@ -1098,6 +1098,19 @@ export class DagPanel {
     this.listing.filter_toggle(open);
   }
 
+  /**
+   * Sets the roster's filter, opening the strip when there is one and
+   * closing it when it is emptied: what a readout that acts on the roster
+   * (the header's ERRORED figure) asks for. The filter is the listing's
+   * own; it holds across the rows arriving.
+   *
+   * @param text - The filter text (`status:error`), or empty for none.
+   */
+  public roster_filter(text: string): void {
+    this.listing.filter_toggle(text !== '');
+    this.listing.filter_set(text);
+  }
+
   /** Keeps the roster frame's rule beneath the caps (and the filter strip). */
   private rosterFrameObserver: ResizeObserver | null = null;
 

@@ -13,7 +13,13 @@
  * @module
  */
 
-import type { PromptContext } from '@fnndsc/menu';
+import type { PromptContext, JobsStateTelemetry } from '@fnndsc/menu';
+
+/** What a press on the instrument does. */
+export interface IndexInstrumentActs {
+  /** The ERRORED figure was pressed: open the runs roster filtered to the feeds it counted. */
+  errored_open?: () => void;
+}
 
 /** The steady-state counts the daemon's telemetry heartbeat carries. */
 export interface IndexCounts {
@@ -28,6 +34,8 @@ interface IndexRow {
   value: string;
   title: string;
   degraded: boolean;
+  /** A press the row carries at its end: its label, and what it does. */
+  verb?: { label: string; title: string; act: () => void } | null;
 }
 
 /** An ETA for a readout: minutes above a minute, else seconds. */
@@ -51,13 +59,26 @@ export class IndexInstrument {
   /** Each walk's last observed count and when: the rate an ETA is read from. */
   private readonly walkSamples: Map<number, { loaded: number; at: number; rowsPerMs: number | null }> = new Map();
   private readonly clock: () => number;
+  private readonly acts: IndexInstrumentActs;
+  private state: JobsStateTelemetry | undefined = undefined;
 
   /**
    * @param mount - The element the rows are drawn into (`#index-instrument`).
    */
-  constructor(mount: HTMLElement, clock: () => number = (): number => Date.now()) {
+  constructor(mount: HTMLElement, clock: () => number = (): number => Date.now(), acts: IndexInstrumentActs = {}) {
     this.mount = mount;
     this.clock = clock;
+    this.acts = acts;
+    this.render();
+  }
+
+  /**
+   * The lab's pulse, from the telemetry heartbeat.
+   *
+   * @param state - Jobs running and waiting, and the feeds that errored.
+   */
+  public state_show(state: JobsStateTelemetry): void {
+    this.state = state;
     this.render();
   }
 
@@ -165,6 +186,22 @@ export class IndexInstrument {
       });
     }
 
+    // The lab's pulse: what is running, what waits, what went wrong. The
+    // errored figure is a press: it opens the roster filtered to those feeds.
+    if (this.state !== undefined) {
+      const st = this.state;
+      rows.push({
+        label: 'RUNNING',
+        bar: null,
+        value: `${count_format(st.running)} IN ${count_format(st.runningFeeds)} FEEDS · SCHEDULED ${count_format(st.scheduled)}`,
+        title: 'Jobs running and waiting across every feed the index holds, from the roster\'s own counters.',
+        degraded: false,
+        verb: this.acts.errored_open !== undefined
+          ? { label: `ERRORED ${count_format(st.errored)} IN ${count_format(st.erroredFeeds)} FEEDS`, title: 'Open the runs roster filtered to the feeds with errored jobs.', act: this.acts.errored_open }
+          : null,
+      });
+    }
+
     // Every feed's topology walk in flight, earliest first, and the walks
     // that stopped while their failure is remembered.
     const walks = warmup?.feeds ?? (warmup?.feed !== undefined ? [warmup.feed] : []);
@@ -245,6 +282,15 @@ export class IndexInstrument {
       value.className = 'telemetry-value';
       value.textContent = row.value;
       line.appendChild(value);
+      if (row.verb !== undefined && row.verb !== null) {
+        const press: HTMLButtonElement = document.createElement('button');
+        press.type = 'button';
+        press.className = 'index-verb pacs-capsule';
+        press.textContent = row.verb.label;
+        press.title = row.verb.title;
+        press.addEventListener('click', row.verb.act);
+        line.appendChild(press);
+      }
       this.mount.appendChild(line);
     }
   }

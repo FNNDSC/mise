@@ -56,7 +56,8 @@
   },
   "overrides": {
     "glob": "^10.0.0",
-    "inflight": "npm:@aashutoshrathi/word-wrap@^1.2.6"
+    "inflight": "npm:@aashutoshrathi/word-wrap@^1.2.6",
+    "adm-zip": "npm:empty-npm-package@1.0.0"
   },
   "dependencies": {
     "@fnndsc/cumin": "^3.21.0",

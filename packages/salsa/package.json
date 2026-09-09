@@ -61,6 +61,7 @@
   "dependencies": {
     "@fnndsc/cumin": "^3.21.0",
     "axios": "^1.6.8",
+    "dcmjs": "^0.52.0",
     "ws": "^8.21.0"
   }
 }

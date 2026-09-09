@@ -214,6 +214,11 @@ jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
   directory_archive: archiveMock,
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  dicomSeries_summarize: jest.fn(),
+  dicomFolder_list: jest.fn(),
+  dicomHeader_get: jest.fn(),
+  dicomTags_summarize: jest.fn(),
+  dicomFiles_sample: jest.fn(),
   files_path_isDirectory: isDirectoryMock,
   files_listRecursive: listRecursiveMock,
   retrieveTask_make: (info: Record<string, unknown>) => ({ ...info, syntheticQueryId: null, retrieveId: null, status: 'pending', actualFiles: 0, lastProgressFiles: 0, lastProgressTime: 0, startTime: 0, lonkConfirmed: false, cubePathDir: null }),

@@ -86,6 +86,7 @@ command domains:
 |`feed.*`    |feeds: `feed.listing`, `feed.detail`, `feed.note`, `feed.tree`, `feed.diagram`
 |`plugin.*`  |plugins and instances: `plugin.listing`, `plugin.run`, `plugin.params`
 |`pacs.*`    |PACS: `pacs.servers`, `pacs.query`, `pacs.series`
+|`dicom.*`   |DICOM: `dicom.series` (a folder as a series), `dicom.tags` (a file's tags; constant versus varying across a folder)
 |`pipeline.*`|pipelines: `pipeline.listing`, `pipeline.run`, `pipeline.diagram`
 |`sys.*`     |session/context: `sys.context`, `sys.whoami`, `sys.proc`
 |===

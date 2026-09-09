@@ -1,5 +1,23 @@
 # @fnndsc/calypso
 
+## 0.11.0
+
+### Minor Changes
+
+- 49634f2: feat(calypso): the telemetry heartbeat carries the lane — the command holding it, for how long, how many wait behind it — and CUBE's pace
+- 2545ffa: feat(calypso): the telemetry heartbeat carries the lab's pulse the engine snapshots
+
+### Patch Changes
+
+- Updated dependencies [49634f2]
+- Updated dependencies [49634f2]
+- Updated dependencies [49634f2]
+- Updated dependencies [2545ffa]
+- Updated dependencies [2545ffa]
+  - @fnndsc/brasa@0.19.0
+  - @fnndsc/cumin@3.20.0
+  - @fnndsc/menu@0.6.0
+
 ## 0.10.2
 
 ### Patch Changes

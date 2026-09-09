@@ -1,5 +1,21 @@
 # @fnndsc/argus
 
+## 0.6.0
+
+### Minor Changes
+
+- 49634f2: feat(argus): LANE, BEAT and CUBE rows on the ARGUS WEB face, and an ETA on every feed walk of the INDEX instrument
+- 2545ffa: feat(argus): the RUNNING row on the ARGUS WEB face, whose ERRORED figure opens the runs roster filtered to the feeds with errored jobs — a readout that acts, and says so
+
+### Patch Changes
+
+- Updated dependencies [49634f2]
+- Updated dependencies [49634f2]
+- Updated dependencies [2545ffa]
+- Updated dependencies [2545ffa]
+  - @fnndsc/calypso@0.11.0
+  - @fnndsc/menu@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

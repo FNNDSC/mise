@@ -1,5 +1,20 @@
 # @fnndsc/brasa
 
+## 0.19.0
+
+### Minor Changes
+
+- 49634f2: feat(brasa): the index snapshot the daemon heartbeats carries CUBE's pace
+- 2545ffa: feat(brasa): the index snapshot carries the lab's pulse — jobs running and waiting, and the feeds that errored — derived from the roster's counters
+
+### Patch Changes
+
+- Updated dependencies [49634f2]
+- Updated dependencies [49634f2]
+- Updated dependencies [2545ffa]
+  - @fnndsc/cumin@3.20.0
+  - @fnndsc/menu@0.6.0
+
 ## 0.18.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # @fnndsc/cumin
 
+## 3.20.0
+
+### Minor Changes
+
+- 49634f2: feat(cumin): CUBE pace — every paged list read is timed as it passes through `resource_call`, and `pace_get` reports the median of the last twenty
+
+### Patch Changes
+
+- Updated dependencies [49634f2]
+- Updated dependencies [2545ffa]
+  - @fnndsc/menu@0.6.0
+
 ## 3.19.0
 
 ### Minor Changes

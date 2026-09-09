@@ -47,7 +47,7 @@ export {
   listingInvalidation_reset,
   LISTING_INVALIDATION_WINDOW_MS,
 } from './listingInvalidation.js';
-export { ProcCache, procCache_get, status_isTerminal, feed_isActive, feedTopology_changed, PROC_TERMINAL_STATUSES, PROC_ARRIVAL_TTL_MS } from './procCache.js';
+export { ProcCache, procCache_get, status_isTerminal, feed_isActive, feedTopology_changed, PROC_TERMINAL_STATUSES, PROC_ARRIVAL_TTL_MS, PROC_FEED_LOAD_FAILURE_TTL_MS } from './procCache.js';
 export type {
   RosterFolders,
   ProcInstance,

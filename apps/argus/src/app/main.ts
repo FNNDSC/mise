@@ -2793,7 +2793,7 @@ async function surface_start(token: string): Promise<void> {
         // The claim rule for console-issued models: a DAG-shaped model goes
         // to the focused DAG instance when one is focused, else the primary.
         const kind: string | undefined = envelope.model?.kind;
-        if (kind === 'feed.dag' || kind === 'feed.list') {
+        if (kind === 'feed.dag' || kind === 'feed.list' || kind === DAG_MODEL_KINDS.feedIndexing) {
           const focused: string | null = layout.focused_get();
           const target: DagPanel =
             focused !== null && dagPanels.has(focused)

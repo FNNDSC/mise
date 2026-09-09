@@ -113,7 +113,9 @@ export async function sessionPromptContext_build(
           restored,
           state: procState,
           sweeping,
-          ...(feedLoad !== null ? { feed: { id: feedLoad.feedID, loaded: feedLoad.loaded, total: feedLoad.total } } : {}),
+          ...(feedLoad !== null
+            ? { feed: { id: feedLoad.feedID, loaded: feedLoad.loaded, total: feedLoad.total, ...(feedLoad.failed !== undefined ? { failed: feedLoad.failed } : {}) } }
+            : {}),
           ...(arrived.length > 0 ? { arrived } : {}),
         }
       : undefined;

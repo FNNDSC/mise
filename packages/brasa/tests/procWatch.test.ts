@@ -104,6 +104,37 @@ describe('watchSubject_parse', () => {
   });
 });
 
+describe('a watch on a feed still being indexed', () => {
+  it('holds the floor, never settles or backs off, and publishes the graph the moment the topology lands', async () => {
+    // The roster knows the feed but its topology is not in the cache: an
+    // empty topology would look settled to the cache, and must not.
+    cache.feed_add(feed({ startedJobs: 0 }));
+    feedDag_handle.mockResolvedValue({ status: 'ok', rendered: 'indexing', model: { kind: 'feed.indexing', data: { feedId: 7, loaded: 0, total: 3 } } });
+    expect(procWatch_add(7, 'pane-a')).toBe('live');
+    await flush();
+    expect(events).toEqual([]); // nothing to publish yet
+    expect(procWatch_list()).toEqual([{ feedID: 7, owners: 1, state: 'live' }]);
+
+    // Quiet ticks while the walk runs: still live, still at the floor.
+    jest.advanceTimersByTime(WATCH_FLOOR_MS);
+    await flush();
+    jest.advanceTimersByTime(WATCH_FLOOR_MS);
+    await flush();
+    expect(procWatch_list()).toEqual([{ feedID: 7, owners: 1, state: 'live' }]);
+    expect(events).toEqual([]);
+
+    // The walk lands: the cache emits the feed's change, the watch is kicked
+    // (0 ms, no floor to wait out), and the graph goes out on the next build.
+    feedDag_handle.mockResolvedValue({ status: 'ok', rendered: 'dag', model: { kind: 'feed.dag', data: {} } });
+    cache.instance_add({ id: 70, feedID: 7, parentID: null, pluginName: 'pl-root', params: null, status: 'started' });
+    cache.topologyLoaded_mark(7);
+    jest.advanceTimersByTime(0);
+    await flush();
+    expect(events).toEqual([{ kind: 'envelope', envelope: { status: 'ok', rendered: 'dag', model: { kind: 'feed.dag', data: {} } } }]);
+    expect(procWatch_list()).toEqual([{ feedID: 7, owners: 1, state: 'live' }]);
+  });
+});
+
 describe('feed watches', () => {
   it('a new watch samples at once and publishes the model without a visit of its own', async () => {
     activeFeed_seed();

@@ -3,13 +3,14 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procRoster_sync, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, type FeedListModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
 import { procWatch_add, procWatch_remove, procWatch_list, watchSubject_parse, type ProcWatchEntry } from './procWatch.js';
+import { feedIndexing_envelope } from './res/feed.diagram.js';
 import { feedTotals_derive } from './feedTotals.js';
 import { session } from '../session/index.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
@@ -229,10 +230,17 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
   spinner.start(`Refreshing /proc cache (${scope})...`);
 
   try {
-    await procCache_refresh(feedID);
-    if (feedID === undefined) {
-      void procTopology_warmup().catch((): void => { /* surfaced by proc topology status */ });
+    if (feedID !== undefined) {
+      // One feed's re-walk is index movement: started here, finished off
+      // the lane, annunciated on the prompt. The command ends now.
+      const readiness: FeedTopologyReadiness = await procFeed_refreshStart(feedID);
+      spinner.stop();
+      return readiness === 'pending'
+        ? feedIndexing_envelope(feedID)
+        : envelope_ok(`${chalk.green(`/proc cache refreshed (${scope})`)}\n`);
     }
+    await procCache_refresh(feedID);
+    void procTopology_warmup().catch((): void => { /* surfaced by proc topology status */ });
     spinner.stop();
     return envelope_ok(`${chalk.green(`/proc cache refreshed (${scope})`)}\n`);
   } catch (error: unknown) {

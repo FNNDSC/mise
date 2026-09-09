@@ -1,12 +1,13 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
-const feedGraphData_ensure = jest.fn(async (_id: number): Promise<void> => undefined);
+const feedGraphData_ensure = jest.fn(async (_id: number): Promise<'ready' | 'pending'> => 'ready');
 const feedGraph_build = jest.fn();
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ feedGraphData_ensure, feedGraph_build }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
+  procCache_get: () => ({ feedLoad_of: () => null }),
 }));
 
 const { feedTree_handle } = await import('../src/builtins/res/feed.tree.js');

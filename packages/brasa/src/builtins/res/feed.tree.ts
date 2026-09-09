@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { feedTree_render, FeedTreeRender } from './feed.tree.render.js';
+import { feedIndexing_envelope } from './feed.diagram.js';
 
 /**
  * Handles `feed tree <feedId> [--focus <id>] [--max-nodes <n>] [--flat]`. Prepares the
@@ -28,7 +29,8 @@ export async function feedTree_handle(
   flat: boolean = false,
 ): Promise<CommandEnvelope> {
   // Cache-first: reuse warm ProcCache, fetch only what's missing (see feedGraphData_ensure).
-  await feedGraphData_ensure(feedId);
+  // A cold feed's walk is started and left to run: the answer is the indexing line.
+  if ((await feedGraphData_ensure(feedId)) === 'pending') return feedIndexing_envelope(feedId);
 
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {

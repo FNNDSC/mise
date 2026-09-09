@@ -303,9 +303,69 @@ async function feedInstances_load(feedID: number): Promise<void> {
     }
     for (const inst of instances.values()) cache.instance_add(procInstance_fromRow(inst));
     cache.topologyLoaded_mark(feedID);
-  } finally {
     cache.feedLoad_clear(feedID);
+  } catch (error: unknown) {
+    // A walk that stops names where it stopped and stays annunciated for a
+    // minute; the next visit starts again from the beginning.
+    cache.feedLoad_fail(feedID, error instanceof Error ? error.message : String(error));
+    throw error;
   }
+}
+
+/** Whether a feed's topology is in the cache, or still on its way. */
+export type FeedTopologyReadiness = 'ready' | 'pending';
+
+/**
+ * Ensures a feed's topology walk is at least under way, without waiting for
+ * it. Index movement never holds the session's lane: a cold feed's walk is
+ * started here and runs detached, deduped by the in-flight map, annunciated
+ * by the load register, and committed to the cache when it lands (which
+ * emits the feed's change event, the signal a watch answers).
+ *
+ * @param feedID - The feed whose topology is wanted.
+ * @returns `ready` when the cache has it, `pending` when a walk is running.
+ */
+export function feedInstances_ensureStarted(feedID: number): FeedTopologyReadiness {
+  const cache: ProcCache = procCache_get();
+  if (cache.topologyLoaded_has(feedID)) return 'ready';
+  if (cache.loading_get(feedID) !== undefined) return 'pending';
+  const walk: Promise<void> = feedInstances_load(feedID);
+  cache.loading_set(feedID, walk);
+  walk
+    .catch((): void => { /* named in the load register; the next visit retries */ })
+    .finally((): void => { cache.loading_clear(feedID); });
+  return 'pending';
+}
+
+/**
+ * Drops one feed from the cache and re-fetches its row (job counters), so
+ * the next topology walk starts from nothing the cache remembers.
+ *
+ * @param feedID - The feed to evict.
+ */
+async function procFeed_evict(feedID: number): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  feedVisits.delete(feedID);
+  cache.feed_remove(feedID);
+  const client = await chrisConnection.client_get();
+  if (client) {
+    const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
+    const f: FeedData | undefined = page.data[0];
+    if (f) cache.feed_add(procFeed_create(f));
+  }
+}
+
+/**
+ * The operator's `proc refresh <feed>`: evicts the feed and STARTS its
+ * re-walk. The walk is index movement, finished off the lane; the caller
+ * answers `pending` and the prompt carries the count.
+ *
+ * @param feedID - The feed to re-index.
+ * @returns `pending` while the walk runs (always, right after an eviction).
+ */
+export async function procFeed_refreshStart(feedID: number): Promise<FeedTopologyReadiness> {
+  await procFeed_evict(feedID);
+  return feedInstances_ensureStarted(feedID);
 }
 
 /**
@@ -315,18 +375,9 @@ async function feedInstances_load(feedID: number): Promise<void> {
  */
 export async function feedInstances_ensureLoaded(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
-  if (cache.topologyLoaded_has(feedID)) return;
-
+  if (feedInstances_ensureStarted(feedID) === 'ready') return;
   const inflight: Promise<void> | undefined = cache.loading_get(feedID);
-  if (inflight) return inflight;
-
-  const promise: Promise<void> = feedInstances_load(feedID);
-  cache.loading_set(feedID, promise);
-  try {
-    await promise;
-  } finally {
-    cache.loading_clear(feedID);
-  }
+  if (inflight) await inflight;
 }
 
 // ── Aggregate status ───────────────────────────────────────────────────────
@@ -1332,18 +1383,7 @@ export async function procTopology_await(): Promise<void> {
  */
 export async function procCache_refresh(feedID?: number): Promise<number[]> {
   if (feedID !== undefined) {
-    const cache: ProcCache = procCache_get();
-    feedVisits.delete(feedID);
-    cache.feed_remove(feedID);
-    // Re-fetch feed metadata with job counters
-    const client = await chrisConnection.client_get();
-    if (client) {
-      const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
-      const f: FeedData | undefined = page.data[0];
-      if (f) {
-        cache.feed_add(procFeed_create(f));
-      }
-    }
+    await procFeed_evict(feedID);
     await feedInstances_ensureLoaded(feedID);
     return [feedID];
   } else {

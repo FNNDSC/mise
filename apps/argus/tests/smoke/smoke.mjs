@@ -1810,6 +1810,41 @@ try {
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
   }
 
+  if (stage('lane')) {
+  // Index movement never holds the lane: `proc refresh <id>` starts a feed's
+  // re-walk and answers at once that the feed is indexing; a command sent
+  // right behind it answers while the walk still counts on the JOBS readout.
+  const bigFeed = process.env.SMOKE_BIG_FEED ?? '';
+  if (bigFeed === '') {
+    console.log('  skipped: set SMOKE_BIG_FEED=<id> to a feed of about a thousand nodes');
+  } else {
+    const lane = await evalIn(`
+      const input = document.querySelector('#terminal input');
+      const jobs = document.getElementById('status-jobs');
+      const say = (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
+      await console_idle();
+      const t0 = performance.now();
+      say('proc refresh ${bigFeed}');
+      await sleep(80);
+      await console_idle();
+      const refreshMs = Math.round(performance.now() - t0);
+      const walking = /FEED ${bigFeed} /.test(jobs.textContent);
+      const term = document.getElementById('terminal').textContent;
+      const answeredIndexing = /Feed ${bigFeed}: indexing/.test(term);
+      const t1 = performance.now();
+      say('ls ~');
+      await sleep(80);
+      await console_idle();
+      const lsMs = Math.round(performance.now() - t1);
+      const stillWalking = /FEED ${bigFeed} /.test(jobs.textContent);
+      for (let i = 0; i < 480 && /FEED ${bigFeed} /.test(jobs.textContent); i++) await sleep(250);
+      return { refreshMs, walking, answeredIndexing, lsMs, stillWalking, cleared: !/FEED ${bigFeed} /.test(jobs.textContent) };`);
+    check('a cold walk returns the lane at once', lane.answeredIndexing && lane.refreshMs < 3000, JSON.stringify(lane));
+    check('a command sent behind the walk answers while the feed still indexes', lane.walking && lane.stillWalking, JSON.stringify(lane));
+    check('the walk lands and its readout clears', lane.cleared, JSON.stringify(lane));
+  }
+  }
+
   if (stage('index-annunciation')) {
   // A feed's first-visit topology load is never a silent hang: the JOBS
   // readout names the feed and counts its instances while the daemon walks

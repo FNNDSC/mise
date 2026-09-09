@@ -182,7 +182,12 @@ export interface ProcFeedLoadProgress {
   feedID: number;
   loaded: number;
   total: number;
+  /** What the walk said when it failed; absent while it runs. A failed entry is kept for {@link PROC_FEED_LOAD_FAILURE_TTL_MS}. */
+  failed?: string;
 }
+
+/** How long a failed feed load stays annunciated before the register forgets it. */
+export const PROC_FEED_LOAD_FAILURE_TTL_MS: number = 60_000;
 
 /**
  * Where a feed appears for one identity, by how that identity sees it.
@@ -301,6 +306,7 @@ export class ProcCache {
 
   /** Per-feed topology loads in flight, keyed by feed id. */
   private feedLoads: Map<number, ProcFeedLoadProgress> = new Map();
+  private feedLoadFailedAt: Map<number, number> = new Map();
 
   /** Feeds the roster gained (created or shared) with the moment they landed. */
   private arrivals: Map<number, number> = new Map();
@@ -725,6 +731,22 @@ export class ProcCache {
    */
   feedLoad_progress(feedID: number, loaded: number, total: number): void {
     this.feedLoads.set(feedID, { feedID, loaded, total });
+    this.feedLoadFailedAt.delete(feedID);
+  }
+
+  /**
+   * Marks one feed's load as failed where it stopped. The entry stays
+   * annunciated for a minute so the failure is seen, then is forgotten; the
+   * next visit starts a fresh walk.
+   *
+   * @param feedID - The feed whose walk failed.
+   * @param message - What the failure said.
+   * @param at - When it failed (default now).
+   */
+  feedLoad_fail(feedID: number, message: string, at: number = Date.now()): void {
+    const current: ProcFeedLoadProgress | undefined = this.feedLoads.get(feedID);
+    this.feedLoads.set(feedID, { feedID, loaded: current?.loaded ?? 0, total: current?.total ?? 0, failed: message });
+    this.feedLoadFailedAt.set(feedID, at);
   }
 
   /**
@@ -734,6 +756,26 @@ export class ProcCache {
    */
   feedLoad_clear(feedID: number): void {
     this.feedLoads.delete(feedID);
+    this.feedLoadFailedAt.delete(feedID);
+  }
+
+  /**
+   * One feed's load annunciation, by feed.
+   *
+   * @param feedID - The feed in question.
+   * @param now - The clock (default now), against which a failure expires.
+   * @returns The load in flight or lately failed, or null.
+   */
+  feedLoad_of(feedID: number, now: number = Date.now()): ProcFeedLoadProgress | null {
+    this.feedLoadFailures_expire(now);
+    const entry: ProcFeedLoadProgress | undefined = this.feedLoads.get(feedID);
+    return entry === undefined ? null : { ...entry };
+  }
+
+  private feedLoadFailures_expire(now: number): void {
+    for (const [feedID, at] of this.feedLoadFailedAt) {
+      if (now - at > PROC_FEED_LOAD_FAILURE_TTL_MS) this.feedLoad_clear(feedID);
+    }
   }
 
   /**
@@ -741,7 +783,8 @@ export class ProcCache {
    *
    * @returns The load in progress, or null when none is.
    */
-  feedLoad_get(): ProcFeedLoadProgress | null {
+  feedLoad_get(now: number = Date.now()): ProcFeedLoadProgress | null {
+    this.feedLoadFailures_expire(now);
     const first: ProcFeedLoadProgress | undefined = this.feedLoads.values().next().value;
     return first === undefined ? null : { ...first };
   }

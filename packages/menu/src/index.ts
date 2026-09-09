@@ -125,6 +125,7 @@ export {
   dagNodeMetricsSchema,
   feedDagNodeSchema,
   feedDagModelSchema,
+  feedIndexingModelSchema,
   DAG_MODEL_KINDS,
   type DagNodeCore,
   type PipelineDiagramNode,
@@ -134,6 +135,7 @@ export {
   type FeedDagNode,
   type DagNodeTally,
   type FeedDagModel,
+  type FeedIndexingModel,
 } from './dag.js';
 export {
   feedListEntrySchema,

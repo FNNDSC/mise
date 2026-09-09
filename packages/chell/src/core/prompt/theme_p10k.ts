@@ -224,8 +224,10 @@ export class ThemeP10k implements PromptTheme {
       if (ctx.procWarmup.feed) {
         const feed = ctx.procWarmup.feed;
         procSegments.push({
-          text: `${ICON_REFRESH} feed ${feed.id}: ${procProgress_format(feed.loaded, feed.total)}`,
-          color: PROMPT_PALETTE.TIME,
+          text: feed.failed !== undefined
+            ? `${ICON_ERROR} feed ${feed.id}: FAILED at ${procProgress_format(feed.loaded, feed.total)}`
+            : `${ICON_REFRESH} feed ${feed.id}: ${procProgress_format(feed.loaded, feed.total)}`,
+          color: feed.failed !== undefined ? PROC_STATE_SEGMENTS.failed.color : PROMPT_PALETTE.TIME,
         });
       }
       if (ctx.procWarmup.arrived && ctx.procWarmup.arrived.length > 0) {

@@ -72,9 +72,27 @@ interface Watch {
   timer: NodeJS.Timeout | null;
   ticking: boolean;
   first: boolean;
+  /** The last build answered `feed.indexing`: the topology is on its way. */
+  pending: boolean;
 }
 
 const watches: Map<number, Watch> = new Map();
+
+// A pending watch is kicked by the cache itself: the walk that lands a
+// feed's topology emits the feed's change event, and the watch answers it
+// at once rather than on its next scheduled tick. One listener for all.
+let kickListener_remove: (() => void) | null = null;
+
+async function kickListener_ensure(): Promise<void> {
+  if (kickListener_remove !== null) return;
+  const { cumin }: WatchDeps = await deps_get();
+  if (kickListener_remove !== null) return;
+  kickListener_remove = cumin.procCache_get().changeListener_add((change: ProcCacheChange): void => {
+    if (change.scope !== 'feed') return;
+    const watch: Watch | undefined = watches.get(change.feedID);
+    if (watch !== undefined && watch.pending && !watch.ticking) watch_arm(watch, 0);
+  });
+}
 
 /**
  * Parses a watch subject into a feed id: `/proc/jobs/feed_N`, `feed_N`, or
@@ -119,6 +137,13 @@ function feed_isSettled(cumin: Cumin, salsa: SalsaVisit, cache: ProcCache, feedI
 async function model_publish(dag: DagBuilder, watch: Watch): Promise<boolean> {
   const envelope: CommandEnvelope = await dag.feedDag_handle(watch.feedID, undefined, 0, false);
   if (envelope.status !== 'ok') return false;
+  // A cold feed answers `feed.indexing`: nothing to publish yet. The watch
+  // holds the floor and is kicked when the topology lands.
+  if (envelope.model?.kind === 'feed.indexing') {
+    watch.pending = true;
+    return false;
+  }
+  watch.pending = false;
   ambient_publish({ kind: 'envelope', envelope });
   return true;
 }
@@ -135,7 +160,9 @@ async function watch_tick(watch: Watch): Promise<void> {
   const { cumin, salsa, dag }: WatchDeps = await deps_get();
   const cache: ProcCache = cumin.procCache_get();
   try {
-    let changed: boolean = watch.first;
+    // A kicked pending watch builds regardless: the change it answers
+    // happened before this tick's own listener was on.
+    let changed: boolean = watch.first || watch.pending;
     const listener_remove: () => void = cache.changeListener_add((change: ProcCacheChange): void => {
       if (change.scope === 'all' || (change.scope === 'feed' && change.feedID === watch.feedID)) changed = true;
     });
@@ -152,7 +179,13 @@ async function watch_tick(watch: Watch): Promise<void> {
     watch.first = false;
     if (!watches.has(watch.feedID)) return;
 
-    if (!synced) {
+    if (watch.pending) {
+      // Indexing: not stale, not settled (an empty topology looks settled
+      // to the cache), and never backed off, so a landed walk is answered
+      // within one floor even without the kick.
+      state_set(watch, 'live');
+      watch.delayMs = WATCH_FLOOR_MS;
+    } else if (!synced) {
       state_set(watch, 'stale');
       watch.delayMs = WATCH_CAP_MS;
     } else if (feed_isSettled(cumin, salsa, cache, watch.feedID)) {
@@ -210,8 +243,10 @@ export function procWatch_add(feedID: number, owner: string): WatchState {
     timer: null,
     ticking: false,
     first: true,
+    pending: false,
   };
   watches.set(feedID, watch);
+  void kickListener_ensure();
   void watch_tick(watch);
   return watch.state;
 }
@@ -269,4 +304,8 @@ export function procWatch_list(): ProcWatchEntry[] {
  */
 export function procWatch_reset(): void {
   for (const watch of Array.from(watches.values())) watch_stop(watch);
+  if (kickListener_remove !== null) {
+    kickListener_remove();
+    kickListener_remove = null;
+  }
 }

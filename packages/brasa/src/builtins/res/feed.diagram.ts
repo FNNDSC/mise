@@ -17,13 +17,14 @@
 import chalk from 'chalk';
 import { dump as yamlDump } from 'js-yaml';
 import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
-import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { type CommandEnvelope, envelope_ok, envelope_error, procCache_get, type ProcFeedLoadProgress } from '@fnndsc/cumin';
 import { feedDiagramNodes_build, feedTree_render, type FeedTreeRender } from './feed.tree.render.js';
 import { signalflowDoc_build } from './feed.tree.signalflow.js';
 import {
   DAG_MODEL_KINDS,
   dagNodeStatusSchema,
   type FeedDagModel,
+  type FeedIndexingModel,
   type DagNodeStatus,
 } from '@fnndsc/menu';
 import type { FeedNode } from '@fnndsc/salsa';
@@ -41,7 +42,7 @@ export type DiagramDialect = 'signalflow';
  * @returns An envelope whose rendered text is the diagram document (YAML).
  */
 export async function feedDiagram_handle(feedId: number, dialect: DiagramDialect): Promise<CommandEnvelope> {
-  await feedGraphData_ensure(feedId);
+  if ((await feedGraphData_ensure(feedId)) === 'pending') return feedIndexing_envelope(feedId);
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {
     process.exitCode = 1;
@@ -56,6 +57,31 @@ export async function feedDiagram_handle(feedId: number, dialect: DiagramDialect
   const yaml: string = yamlDump(doc, { lineWidth: -1, noRefs: true });
 
   return envelope_ok(yaml, { kind: DAG_MODEL_KINDS.feedDag, data: feedDagModel_build(graph) });
+}
+
+/**
+ * The answer to a feed whose topology is still on its way: the command ends
+ * now (index movement never holds the session's lane), the prompt carries
+ * the count, and the graph follows on the feed's watch when the walk lands.
+ * Rendered as one line for a terminal; carried as the `feed.indexing` model
+ * for a surface that shows the wait in place.
+ *
+ * @param feedId - The feed being indexed.
+ * @returns An `ok` envelope with the `feed.indexing` model.
+ */
+export function feedIndexing_envelope(feedId: number): CommandEnvelope {
+  const load: ProcFeedLoadProgress | null = procCache_get().feedLoad_of(feedId);
+  const model: FeedIndexingModel = {
+    feedId,
+    loaded: load?.loaded ?? 0,
+    total: load?.total ?? 0,
+    ...(load?.failed !== undefined ? { failed: load.failed } : {}),
+  };
+  const count: string = model.total > 0 ? `${model.loaded}/${model.total}` : `${model.loaded}/?`;
+  const line: string = model.failed !== undefined
+    ? `Feed ${feedId}: indexing failed at ${count} (${model.failed}); ask again to retry.`
+    : `Feed ${feedId}: indexing ${count} — the prompt tracks it; ask again when it lands.`;
+  return envelope_ok(`${chalk.yellow(line)}\n`, { kind: DAG_MODEL_KINDS.feedIndexing, data: model });
 }
 
 /**
@@ -185,7 +211,7 @@ export async function feedDag_handle(
   maxNodes: number,
   flat: boolean = false,
 ): Promise<CommandEnvelope> {
-  await feedGraphData_ensure(feedId);
+  if ((await feedGraphData_ensure(feedId)) === 'pending') return feedIndexing_envelope(feedId);
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {
     process.exitCode = 1;

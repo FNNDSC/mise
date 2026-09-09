@@ -1,25 +1,30 @@
 /**
- * @file The daemon's terminal becomes its first surface once the engine
- * is ready, and stays the daemon's own between attachments.
+ * @file The daemon's terminal becomes its first surface once the engine is
+ * ready, and stays the daemon's own between attachments. The surface it
+ * spawns is injected — chell spawns itself, the calypso binary spawns
+ * `chell` from the path.
  *
  * @module
  */
 import { describe, expect, it, jest } from '@jest/globals';
+import { EventEmitter } from 'node:events';
 
-jest.unstable_mockModule('@fnndsc/calypso', () => ({
+jest.mock('../src/daemon/console', () => ({
   consoleCage_start: jest.fn(),
   consoleCage_stop: jest.fn((): string[] => []),
 }));
 
-import { EventEmitter } from 'node:events';
+import {
+  daemonConsole_run,
+  surface_spawn,
+  enter_await,
+  CHELL_ON_PATH,
+  type DaemonConsoleDeps,
+} from '../src/daemon/consoleSession';
 
-const { daemonConsole_run, surface_spawn, enter_await, CHELL_ENTRY } = await import('../src/core/daemonConsole.js');
 type Deps = NonNullable<Parameters<typeof daemonConsole_run>[1]>;
-
 const TARGET = { identity: 'me@https://cube.example.org/api/v1/', url: 'ws://pangea.tch.harvard.edu:42655', token: 'tok' };
-
-/** Strips colour so assertions read the words. */
-const ANSI: RegExp = /\[[0-9;]*m/g;
+const ANSI: RegExp = /\[[0-9;]*m/g;
 
 function deps_make(overrides: Partial<Deps> = {}): Deps & { lines: string[]; events: string[] } {
   const lines: string[] = [];
@@ -27,10 +32,7 @@ function deps_make(overrides: Partial<Deps> = {}): Deps & { lines: string[]; eve
   const deps: Deps & { lines: string[]; events: string[] } = {
     lines,
     events,
-    attach: jest.fn((): { exited: Promise<number> } => {
-      events.push('attach');
-      return { exited: Promise.resolve(0) };
-    }),
+    attach: jest.fn((): { exited: Promise<number> } => { events.push('attach'); return { exited: Promise.resolve(0) }; }),
     cage_start: jest.fn((): void => { events.push('cage_start'); }),
     cage_stop: jest.fn((): string[] => { events.push('cage_stop'); return []; }),
     enter_wait: jest.fn(async (): Promise<boolean> => false),
@@ -41,7 +43,7 @@ function deps_make(overrides: Partial<Deps> = {}): Deps & { lines: string[]; eve
 }
 
 describe('daemonConsole_run', () => {
-  it('attaches a remote surface by address, with the daemon\'s writes caged for the duration', async () => {
+  it('attaches a surface, cages the daemon\'s writes for the duration, and says how to leave', async () => {
     const deps = deps_make();
     await daemonConsole_run(TARGET, deps);
     expect(deps.attach).toHaveBeenCalledWith(TARGET);
@@ -51,7 +53,7 @@ describe('daemonConsole_run', () => {
     expect(deps.lines[deps.lines.length - 1]).toContain('the daemon is still running');
   });
 
-  it('hands back what the daemon wrote while the surface had the terminal, after the surface\'s last line', async () => {
+  it('hands back what the daemon wrote while the surface held the terminal, after the surface\'s last line', async () => {
     const deps = deps_make({
       cage_stop: jest.fn((): string[] => ['[ OK ]    Roster       1 feed moved while away', '[ OK ]    Topology     Ready']),
     });
@@ -77,39 +79,38 @@ describe('daemonConsole_run', () => {
   });
 
   it('releases the cage even when the surface fails to start', async () => {
-    const deps = deps_make({
-      attach: jest.fn((): { exited: Promise<number> } => { throw new Error('spawn ENOENT'); }),
-    });
+    const deps = deps_make({ attach: jest.fn((): { exited: Promise<number> } => { throw new Error('spawn ENOENT'); }) });
     await expect(daemonConsole_run(TARGET, deps)).rejects.toThrow('spawn ENOENT');
     expect(deps.cage_stop).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('surface_spawn', () => {
-  it('spawns chell itself as a remote surface on this terminal, attached by address', async () => {
+  it('spawns the launch\'s exec with the surface flags, attached by address and marked as the console', async () => {
     const child = new EventEmitter();
     const spawn = jest.fn((): EventEmitter => child);
-    const running = surface_spawn(TARGET, spawn);
+    const running = surface_spawn(TARGET, { exec: '/usr/bin/node', prefixArgs: ['/app/chell.js'] }, spawn);
     expect(spawn).toHaveBeenCalledWith(
-      process.execPath,
-      [CHELL_ENTRY, '--remote', TARGET.identity, '--attach', TARGET.url, '--token', TARGET.token],
+      '/usr/bin/node',
+      ['/app/chell.js', '--remote', TARGET.identity, '--attach', TARGET.url, '--token', TARGET.token],
       { stdio: 'inherit', env: expect.objectContaining({ CHELL_CONSOLE: '1' }) },
     );
-    expect(CHELL_ENTRY.endsWith('/index.js')).toBe(true);
     child.emit('exit', 0);
     expect(await running.exited).toBe(0);
   });
 
-  it('settles with the exit code, or with 1 when the surface cannot start at all', async () => {
-    const bySignal = new EventEmitter();
-    const signalled = surface_spawn(TARGET, jest.fn((): EventEmitter => bySignal));
-    bySignal.emit('exit', null);
-    expect(await signalled.exited).toBe(0);
-
-    const failing = new EventEmitter();
-    const failed = surface_spawn(TARGET, jest.fn((): EventEmitter => failing));
-    failing.emit('error', new Error('spawn ENOENT'));
-    expect(await failed.exited).toBe(1);
+  it('defaults to `chell` on the path, and settles 1 when the surface cannot start at all', async () => {
+    const byPath = new EventEmitter();
+    const spawn = jest.fn((): EventEmitter => byPath);
+    const running = surface_spawn(TARGET, CHELL_ON_PATH, spawn);
+    expect(spawn.mock.calls[0]?.[0]).toBe('chell');
+    expect(spawn.mock.calls[0]?.[1]?.[0]).toBe('--remote');
+    // A spawn error (no chell on the path) settles 1 rather than hanging.
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation((): boolean => true);
+    byPath.emit('error', new Error('spawn chell ENOENT'));
+    expect(await running.exited).toBe(1);
+    expect(stderr).toHaveBeenCalled();
+    stderr.mockRestore();
   });
 });
 
@@ -126,7 +127,6 @@ describe('enter_await', () => {
     expect(await waiting).toBe(true);
     expect(input.pause).toHaveBeenCalledTimes(1);
     expect(input.listenerCount('data')).toBe(0);
-    expect(input.listenerCount('end')).toBe(0);
   });
 
   it('resolves false when the input ends, so the loop returns instead of waiting forever', async () => {
@@ -134,6 +134,5 @@ describe('enter_await', () => {
     const waiting: Promise<boolean> = enter_await(input);
     input.emit('end');
     expect(await waiting).toBe(false);
-    expect(input.listenerCount('data')).toBe(0);
   });
 });

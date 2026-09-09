@@ -91,6 +91,20 @@ export {
   type FaceFrame,
 } from './daemon/face.js';
 export { consoleCage_start, consoleCage_stop, consoleCage_isActive } from './daemon/console.js';
+export {
+  daemonConsole_run,
+  surface_spawn,
+  enter_await,
+  consoleDeps_live,
+  CHELL_ON_PATH,
+  type DaemonConsoleTarget,
+  type DaemonConsoleDeps,
+  type ConsoleChild,
+  type ConsoleInput,
+  type Spawn,
+  type SpawnedChild,
+  type SurfaceLaunch,
+} from './daemon/consoleSession.js';
 export { discovery_read, discovery_write, discovery_path, type Discovery } from './daemon/discovery.js';
 export {
   identity_normalise,

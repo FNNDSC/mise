@@ -13,11 +13,11 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { engine_create, procIndex_snapshot, sessionConnect_fromSaved, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
+import { engine_create, sessionConnect_fromSaved, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
 import chalk from 'chalk';
 import { daemon_launch, type DaemonLaunchInfo } from './daemon/launch.js';
-import { hostControl_describe, hostControl_parseArgv, type HostControlPolicy } from './daemon/hostControl.js';
-import { face_start, type FaceTelemetry } from './daemon/face.js';
+import { daemonConsole_run } from './daemon/consoleSession.js';
+import { hostControl_parseArgv, type HostControlPolicy } from './daemon/hostControl.js';
 import { LocalBerthResolver, berthUrl_isAlive, type Berth } from './daemon/berth.js';
 
 /**
@@ -43,30 +43,13 @@ async function calypso_start(): Promise<void> {
   }
   const policy: HostControlPolicy = parsedPolicy.policy;
   const info: DaemonLaunchInfo = await daemon_launch(engine, undefined, { hostControl: policy });
-  // On a TTY, the terminal's resting state is the console face; off one
-  // (systemd, nohup) face_start declines and logging stays sequential.
-  face_start({
-    ...(policy.tiers.size > 0
-      ? { hostControl: { tiers: hostControl_describe(policy), ...(policy.exposed && info.bindHost !== '127.0.0.1' ? { exposedOn: info.bindHost } : {}) } }
-      : {}),
-    info: [
-      { label: 'identity', value: info.identity },
-      { label: 'wire', value: info.url },
-      ...(info.argusUrl !== null ? [{ label: 'ARGUS', value: info.argusUrl }] : []),
-      { label: 'token', value: info.token },
-      { label: 'berth', value: info.berthPath },
-      { label: 'attach', value: `chell --remote --attach ${info.url} --token ${info.token}` },
-    ],
-    telemetry_get: (): FaceTelemetry => {
-      const index: { jobs: number; feeds: number } = procIndex_snapshot();
-      return {
-        sessions: info.daemon.surfaces_count(),
-        busy: info.daemon.busy_get(),
-        jobs: index.jobs,
-        feeds: index.feeds,
-      };
-    },
-  });
+  // The boot ends at a login, the same as `chell --daemon`: on a TTY the
+  // daemon's own terminal becomes its first surface, an ordinary
+  // `chell --remote` spawned onto it. Off a TTY (systemd, nohup) there is
+  // no terminal to attach, so the daemon just keeps listening.
+  if (process.stdin.isTTY === true && process.stdout.isTTY === true) {
+    await daemonConsole_run({ identity: info.identity, url: info.url, token: info.token });
+  }
 }
 
 /**

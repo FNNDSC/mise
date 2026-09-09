@@ -147,7 +147,7 @@ export interface DaemonOptions {
    * Supplies the live process-index counts for the once-a-second telemetry
    * heartbeat. Omitted, no heartbeat is sent (e.g. tests).
    */
-  telemetryProvider?: () => { jobs: number; feeds: number };
+  telemetryProvider?: () => { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } };
   /** The hosting process's versions and build hash, reported on attach. */
   stack?: DaemonStackInfo;
   webRoot?: string;
@@ -192,7 +192,12 @@ export class CalypsoDaemon {
     | undefined;
   /** The last executed command's measured facts, sticky across pushes. */
   private lastCommand: PromptLastCommand | undefined;
-  private readonly telemetryProvider: (() => { jobs: number; feeds: number }) | undefined;
+  private readonly telemetryProvider: (() => { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } }) | undefined;
+  /** Commands queued behind the one running: the lane's depth. */
+  private queueWaiting: number = 0;
+  /** The line holding the lane, and since when; null while the lane is idle. */
+  private currentLine: string | null = null;
+  private currentStartedAt: number = 0;
   private telemetryTimer: NodeJS.Timeout | null = null;
   /** The index counts at the last heartbeat, to detect movement. */
   private telemetryLastIndex: { jobs: number; feeds: number } | null = null;
@@ -272,14 +277,23 @@ export class CalypsoDaemon {
     if (this.telemetryProvider === undefined || this.telemetryTimer !== null) {
       return;
     }
-    const provider: () => { jobs: number; feeds: number } = this.telemetryProvider;
+    const provider: () => { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } } = this.telemetryProvider;
     this.telemetryTimer = setInterval((): void => {
       if (this.surfaces.size === 0) {
         return;
       }
-      const index: { jobs: number; feeds: number } = provider();
+      const snapshot = provider();
+      const index: { jobs: number; feeds: number } = { jobs: snapshot.jobs, feeds: snapshot.feeds };
+      // The lane rides the heartbeat: which command holds it, for how long,
+      // and how many wait behind it. A surface reads it as a gauge.
+      const lane = {
+        running: this.currentLine !== null && !this.currentInstrument
+          ? { line: this.currentLine, sinceMs: Math.round(performance.now() - this.currentStartedAt), surface: this.currentOrigin?.id ?? '' }
+          : null,
+        waiting: this.queueWaiting,
+      };
       for (const surface of this.surfaces) {
-        this.send(surface.socket, { type: 'telemetry', index });
+        this.send(surface.socket, { type: 'telemetry', index, lane, ...(snapshot.cube !== undefined ? { cube: snapshot.cube } : {}) });
       }
       // Warm-up is a prompt-context change no command announces: the counts
       // climb while every surface sits idle. While the index moves — or the
@@ -532,7 +546,11 @@ export class CalypsoDaemon {
           void this.execute_run(attached, value);
         } else {
           // One shared queue: commands from every surface run one at a time.
-          this.queue = this.queue.then(() => this.execute_run(attached, value));
+          this.queueWaiting += 1;
+          this.queue = this.queue.then((): Promise<void> => {
+            this.queueWaiting -= 1;
+            return this.execute_run(attached, value);
+          });
         }
       } else if (value.type === 'cancel') {
         this.cancel_run(attached, value);
@@ -776,12 +794,16 @@ export class CalypsoDaemon {
     const outerOrigin: Surface | null = this.currentOrigin;
     const outerId: string | null = this.currentId;
     const outerInstrument: boolean = this.currentInstrument;
+    const outerLine: string | null = this.currentLine;
+    const outerStartedAt: number = this.currentStartedAt;
     this.currentOrigin = origin;
     this.currentId = message.id;
     this.currentInstrument = message.instrument === true;
     let envelopes: CommandEnvelope[] | undefined;
     let failureReason: string | undefined;
     const startedAt: number = performance.now();
+    this.currentLine = message.line;
+    this.currentStartedAt = startedAt;
     try {
       try {
         envelopes = await this.engine.line_execute(message.line);
@@ -822,6 +844,8 @@ export class CalypsoDaemon {
       this.currentOrigin = outerOrigin;
       this.currentId = outerId;
       this.currentInstrument = outerInstrument;
+      this.currentLine = outerLine;
+      this.currentStartedAt = outerStartedAt;
     }
   }
 

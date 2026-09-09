@@ -166,6 +166,56 @@ describe('CalypsoDaemon', () => {
     expect(beat['index']).toEqual({ jobs: 7, feeds: 3 });
   });
 
+  it('the heartbeat carries the lane: the line holding it, since when, and how many wait', async () => {
+    await daemon.stop();
+    let release: () => void = (): void => undefined;
+    const slowEngine = stubEngine_create();
+    const executed: string[] = [];
+    slowEngine.line_execute = async (line: string): Promise<CommandEnvelope[]> => {
+      executed.push(line);
+      if (line === '__slow__') await new Promise<void>((resolve) => { release = resolve; });
+      return [{ status: 'ok', rendered: `ran: ${line}` }];
+    };
+    daemon = new CalypsoDaemon({
+      engine: slowEngine,
+      token: TOKEN,
+      telemetryProvider: (): { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } } => ({ jobs: 7, feeds: 3, cube: { msPerPage: 2800, samples: 5 } }),
+    });
+    port = await daemon.start();
+    const ws = await client_attach(port);
+    clients.push(ws);
+    const beats: Array<Record<string, unknown>> = [];
+    ws.on('message', (data) => {
+      const msg = JSON.parse(data.toString()) as Record<string, unknown>;
+      if (msg['type'] === 'telemetry') beats.push(msg);
+    });
+    send(ws, { type: 'execute', id: 'a', line: '__slow__' });
+    send(ws, { type: 'execute', id: 'b', line: 'ls' });
+    send(ws, { type: 'execute', id: 'c', line: 'pwd' });
+    const held = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no heartbeat with a held lane within 4s')), 4000);
+      const poll = setInterval(() => {
+        const beat = beats.find((b) => (b['lane'] as { running: unknown } | undefined)?.running !== null && (b['lane'] as { running: unknown } | undefined)?.running !== undefined);
+        if (beat) { clearTimeout(timer); clearInterval(poll); resolve(beat); }
+      }, 20);
+    });
+    const lane = held['lane'] as { running: { line: string; sinceMs: number; surface: string }; waiting: number };
+    expect(lane.running.line).toBe('__slow__');
+    expect(lane.running.sinceMs).toBeGreaterThanOrEqual(0);
+    expect(lane.waiting).toBe(2);
+    expect(held['cube']).toEqual({ msPerPage: 2800, samples: 5 });
+    release();
+    const idle = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no idle heartbeat within 4s')), 4000);
+      const poll = setInterval(() => {
+        const after = beats.slice().reverse().find((b) => (b['lane'] as { running: unknown; waiting: number } | undefined)?.running === null && (b['lane'] as { waiting: number }).waiting === 0);
+        if (after) { clearTimeout(timer); clearInterval(poll); resolve(after); }
+      }, 20);
+    });
+    expect((idle['lane'] as { waiting: number }).waiting).toBe(0);
+    expect(executed).toEqual(['__slow__', 'ls', 'pwd']);
+  });
+
   it('executes a line and returns its result envelopes', async () => {
     const ws = await client_attach(port);
     clients.push(ws);

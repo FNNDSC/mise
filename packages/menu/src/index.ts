@@ -85,6 +85,8 @@ export {
   deliverMessageSchema,
   serverMessageSchema,
   telemetryMessageSchema,
+  type LaneTelemetry,
+  type CubeTelemetry,
   regardSchema,
   regardMessageSchema,
   watchMessageSchema,

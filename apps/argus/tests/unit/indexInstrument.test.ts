@@ -74,6 +74,22 @@ describe('IndexInstrument', () => {
     expect(mount.querySelector('.index-bar')?.classList.contains('listing-progress-failed')).toBe(true);
   });
 
+  it('a walk row reads an ETA: from CUBE\'s pace before it moves, from its own rate once it has', () => {
+    const mount: HTMLElement = mount_make();
+    let now: number = 0;
+    const instrument: IndexInstrument = new IndexInstrument(mount, (): number => now);
+    instrument.pace_show(2800);
+    instrument.promptContext_show(context_make({ procWarmup: { loaded: 0, sweeping: false, feed: { id: 2384, loaded: 600, total: 58760 } } }));
+    // 58,160 rows left = 582 pages = 146 windows of four at 2.8 s: about 7 minutes.
+    expect(rows_text(mount)[1]).toBe('FEED 2384INDEXING 600 / 58,760 · ETA 7 MIN');
+    now = 10_000;
+    instrument.promptContext_show(context_make({ procWarmup: { loaded: 0, sweeping: false, feed: { id: 2384, loaded: 1600, total: 58760 } } }));
+    // 1,000 rows in 10 s: 57,160 left at 100 rows/s = 572 s, about 10 minutes.
+    expect(rows_text(mount)[1]).toBe('FEED 2384INDEXING 1,600 / 58,760 · ETA 10 MIN');
+    instrument.promptContext_show(context_make({}));
+    expect(rows_text(mount)).toEqual(['INDEXCURRENT']);
+  });
+
   it('two walks at once are two rows, earliest first', () => {
     const mount: HTMLElement = mount_make();
     const instrument: IndexInstrument = new IndexInstrument(mount);

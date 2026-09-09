@@ -15,7 +15,7 @@ import type { ProcFeedPromptProgress } from '@fnndsc/menu';
 import { session } from '../session/index.js';
 import { warmupFailures_list, type WarmupFailure } from './warmupFailures.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import { type ProcRosterSyncKind,
+import { pace_get, type CubePace, type ProcRosterSyncKind,
   SingleContext,
   procCache_get,
   type ProcCacheLifecycle,
@@ -71,11 +71,13 @@ export interface SessionPromptContextOptions {
  *
  * @returns The jobs and feeds the index currently holds.
  */
-export function procIndex_snapshot(): { jobs: number; feeds: number } {
+export function procIndex_snapshot(): { jobs: number; feeds: number; cube?: { msPerPage: number; samples: number } } {
   const cache = procCache_get();
+  const pace: CubePace | null = pace_get();
   return {
     jobs: cache.warmupProgress_get().loaded,
     feeds: cache.feedScopeCounts_get('').total,
+    ...(pace !== null ? { cube: { msPerPage: pace.msPerPage, samples: pace.samples } } : {}),
   };
 }
 

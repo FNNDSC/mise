@@ -14,7 +14,7 @@
  *
  * @module
  */
-import {
+import { type LaneTelemetry, type CubeTelemetry,
   CONTRACT_VERSION,
   serverMessage_parse,
   promptKind_of,
@@ -126,7 +126,7 @@ export interface ClientHandlers {
    * resolves null to abandon it.
    */
   ask_receive?: (request: SurfaceAsk) => Promise<string | null>;
-  telemetry_receive?: (index: { jobs: number; feeds: number }) => void;
+  telemetry_receive?: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry }) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
   /** The session's retained regard, pushed on any surface's write and on attach. */
@@ -417,7 +417,7 @@ export class ArgusClient {
         break;
       }
       case 'telemetry': {
-        this.handlers.telemetry_receive?.(message.index);
+        this.handlers.telemetry_receive?.(message.index, { lane: message.lane, cube: message.cube });
         break;
       }
       case 'regard': {

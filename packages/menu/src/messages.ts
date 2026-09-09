@@ -609,7 +609,26 @@ export const telemetryMessageSchema = z.object({
     jobs: z.number(),
     feeds: z.number(),
   }),
+  /** The serialized lane: the command holding it and how many wait behind it. Absent on older daemons. */
+  lane: z.object({
+    running: z.object({
+      line: z.string(),
+      sinceMs: z.number(),
+      surface: z.string(),
+    }).nullable(),
+    waiting: z.number(),
+  }).optional(),
+  /** CUBE's pace: the median page fetch over the last twenty, or absent before any was timed. */
+  cube: z.object({
+    msPerPage: z.number(),
+    samples: z.number(),
+  }).optional(),
 });
+
+/** What a telemetry heartbeat says about the lane. */
+export type LaneTelemetry = z.infer<typeof telemetryMessageSchema>['lane'];
+/** What a telemetry heartbeat says about CUBE's pace. */
+export type CubeTelemetry = z.infer<typeof telemetryMessageSchema>['cube'];
 
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [

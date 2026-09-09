@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -37,6 +37,7 @@ import { ViewerPanel } from '../features/view/panel.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
+import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
 import { argusLine_run, type ArgusHost } from '../console/argusLang.js';
@@ -631,6 +632,9 @@ let cascade: Cascade | null = null;
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
   const indexInstrument: IndexInstrument = new IndexInstrument(element_require('index-instrument'));
+  const laneInstrument: LaneInstrument = new LaneInstrument(element_require('lane-instrument'));
+  // The beat's age moves on the surface's own clock, not only on beats.
+  window.setInterval((): void => laneInstrument.tick(), 500);
 
   // Panel rosters: every live controller by instance id, for routing —
   // targeted progress, and the claim rule for console-issued models.
@@ -2768,8 +2772,10 @@ async function surface_start(token: string): Promise<void> {
         cascade?.promptContext_observe(context);
         dagPanel.promptContext_observe(context);
       },
-      telemetry_receive: (index: { jobs: number; feeds: number }): void => {
+      telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry }): void => {
         indexInstrument.counts_show(index);
+        laneInstrument.telemetry_show(extra ?? {});
+        if (extra?.cube !== undefined) indexInstrument.pace_show(extra.cube.msPerPage);
         cascade?.index_observe(index);
       },
       session_receive: (surface: string, envelope: WireEnvelope): void =>

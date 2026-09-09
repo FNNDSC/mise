@@ -17,6 +17,7 @@
  * @module
  */
 
+import { pace_isPageMethod, pace_note } from './pace.js';
 import Client, { ListResource, PACSRetrieve, Request } from '@fnndsc/chrisapi';
 
 /**
@@ -227,7 +228,15 @@ export async function resource_call<T>(
   if (typeof method !== 'function') {
     throw new Error(`chrisapi object has no method '${methodName}'`);
   }
-  return (method as (...callArgs: unknown[]) => Promise<T>).apply(obj, args);
+  if (!pace_isPageMethod(methodName)) {
+    return (method as (...callArgs: unknown[]) => Promise<T>).apply(obj, args);
+  }
+  // A page fetch is timed: the pace register is how a surface turns a
+  // walk's page count into minutes.
+  const startedAt: number = performance.now();
+  const result: T = await (method as (...callArgs: unknown[]) => Promise<T>).apply(obj, args);
+  pace_note(Math.round(performance.now() - startedAt));
+  return result;
 }
 
 /**

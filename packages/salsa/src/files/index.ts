@@ -381,6 +381,16 @@ export async function files_getGroup(
     path = fileContext ? fileContext : "/";
   }
 
+  // A projection path (/proc, /net/pacs, /etc, /usr/share, or an ancestor of
+  // one) has no CUBE folder of files behind it: its provider lists it. Asking
+  // cumin to build a folder context for it cannot succeed, and a path walk
+  // that visits every ancestor — `cd` resolving a /proc job's links, a
+  // listing probing parents — turns that failure into a wall of identical
+  // errors. The group a projection would answer with is no group at all.
+  if (vfsDispatcher.path_isVirtual(path)) {
+    return null;
+  }
+
   let chrisFileSystemGroup: ChRISEmbeddedResourceGroup<ChrisPathNode> | null = null;
 
   try {

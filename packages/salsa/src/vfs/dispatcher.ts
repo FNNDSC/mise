@@ -84,6 +84,37 @@ export class VFSDispatcher {
   }
 
   /**
+   * Whether a path belongs to a projection rather than a real CUBE folder.
+   *
+   * A projection root (`/proc`, `/net/pacs`, `/etc`, `/usr/share`) is served
+   * by its own provider and has no folder of files behind it. Three shapes
+   * count as virtual: a path a non-native provider owns (at or under its
+   * prefix), and a path that is a strict ancestor of such a prefix (`/proc`
+   * above `/proc/jobs`, `/net` above `/net/pacs`) — its only children are
+   * the projections beneath it. The real root `/` is never virtual: it is
+   * the CUBE store's own root, which the native provider lists.
+   *
+   * The point of the question is to keep the raw CUBE-files layer from
+   * being asked to build a folder context for a path that has none — the
+   * request cannot succeed and only litters the error log, once per
+   * ancestor a path walk visits.
+   *
+   * @param pathStr - The absolute (or root-relative) path to classify.
+   * @returns True when a projection owns or is owned by the path.
+   */
+  path_isVirtual(pathStr: string): boolean {
+    const absolutePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
+    const clean: string =
+      absolutePath.length > 1 && absolutePath.endsWith("/") ? absolutePath.slice(0, -1) : absolutePath;
+    if (clean === "/") return false;
+    return this.providers.some(
+      (p: VFSProvider) =>
+        p.prefix.length > 0 &&
+        (clean === p.prefix || clean.startsWith(p.prefix + "/") || p.prefix.startsWith(clean + "/")),
+    );
+  }
+
+  /**
    * Dispatches directory listing to matched provider.
    * Supports dynamic intermediate parent path synthesis for virtual prefixes.
    *

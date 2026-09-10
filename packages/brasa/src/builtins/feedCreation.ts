@@ -59,3 +59,46 @@ export function newFeed_cacheAdd(entry: NewFeedCacheEntry): void {
     });
   }
 }
+
+
+/**
+ * Keeps a run just started live until it settles.
+ *
+ * Kept OUT of {@link newFeed_cacheAdd}, which is a cache write and nothing
+ * more: a helper that quietly began visiting a remote service would surprise
+ * every caller, and it did — the moment it was tried, every test that
+ * records a feed started a sampler. A run is followed where a run is
+ * STARTED, which is a decision the command makes.
+ *
+ * A new feed enters the cache with its jobs SCHEDULED, because that is what
+ * they are at the instant of creation. Nothing then followed them: the
+ * operator's own run never turned over to running, never turned over to
+ * finished, and the lab's pulse in the header counted it as scheduled for
+ * as long as the cache lived. The count only ever climbed — one operator's
+ * header read SCHEDULED 90 with nothing running at all, which is not a
+ * gauge, it is a tally of everything they had ever started.
+ *
+ * The sampler already exists and already knows when to stop: it visits on
+ * an adaptive cadence and ends the moment the feed is settled, because a
+ * settled feed cannot change. Starting a run is exactly the moment worth
+ * watching, so the run itself takes out the watch. Nobody has to be looking
+ * at a pane for the header to tell the truth.
+ *
+ * Held behind a lazy import: a host that never starts a run never loads the
+ * sampler, and the module graph stays what it was.
+ *
+ * @param feedID - The feed that has just been given work.
+ */
+export function run_follow(feedID: number): void {
+  void import('./procWatch.js')
+    .then(({ procWatch_add }): void => {
+      procWatch_add(feedID, RUN_WATCH_OWNER);
+    })
+    .catch((): void => {
+      // A run that cannot be followed still ran. The pulse lags; nothing
+      // else is worse for it.
+    });
+}
+
+/** Who holds a watch taken out by the run itself, rather than by a pane. */
+export const RUN_WATCH_OWNER: string = 'kernel:run';

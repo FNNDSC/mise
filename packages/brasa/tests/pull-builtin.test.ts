@@ -46,6 +46,20 @@ const mockTasksFire = jest.fn();
 const mockSkipComplete = jest.fn();
 const mockFireAndWatch = jest.fn();
 const mockConfirmLoop = jest.fn();
+// A pull's feed is followed until it settles (the header's pulse counts it
+// while it works). The sampler is a live thing that visits CUBE, so it is
+// mocked here the way the rest of the outside world is.
+jest.unstable_mockModule('../src/builtins/procWatch.js', () => ({
+  procWatch_add: jest.fn(() => 'live'),
+  procWatch_remove: jest.fn(),
+  procWatch_release: jest.fn(),
+  procWatch_state: jest.fn(() => 'idle'),
+  procWatch_list: jest.fn(() => []),
+  procWatch_reset: jest.fn(),
+  watchSubject_parse: jest.fn(() => null),
+  WATCH_FLOOR_MS: 3000,
+  WATCH_CAP_MS: 30000,
+}));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feed_create: mockFeedCreate,
   plugin_run: mockPluginRun,

@@ -27,6 +27,23 @@ async function prompt_confirm(message: string): Promise<boolean> {
 }
 
 /**
+ * Why a question came back with no answer.
+ *
+ * A question can end without a yes or a no: the operator abandoned it, or
+ * the surface that was asked lost the ability to answer. Neither is a
+ * removal failing — nothing was attempted — so `rm` keeps the file, says
+ * which one it kept and why, and reports an ordinary outcome.
+ *
+ * @param error - Whatever the ask rejected with.
+ * @returns A phrase that finishes 'skipped x: ...'.
+ */
+function unanswered_reason(error: unknown): string {
+  return error instanceof Error && error.message !== ''
+    ? error.message
+    : 'the question could not be answered';
+}
+
+/**
  * Parsed `rm` arguments: flags plus the resolved list of path operands.
  */
 export interface RmArgs {
@@ -142,13 +159,18 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
       ? `'${paths[0]}'`
       : `${paths.length} items`;
     let agreed: boolean = false;
+    let unanswered: string | null = null;
     try {
       agreed = await prompt_confirm(`rm: remove ${many}? (y/n): `);
-    } catch {
-      agreed = false;
+    } catch (e: unknown) {
+      // A question with no answer keeps everything, the same as a no. It
+      // says why, so a surface that has quietly lost its voice is not read
+      // as an operator who declined.
+      unanswered = unanswered_reason(e);
     }
     if (!agreed) {
-      return envelope_ok(`${chalk.gray(`nothing removed (${paths.length} kept)`)}\n`, {
+      const why: string = unanswered === null ? '' : `: ${unanswered}`;
+      return envelope_ok(`${chalk.gray(`nothing removed (${paths.length} kept)${why}`)}\n`, {
         kind: 'fs.rm',
         data: paths.map((path: string): RmOutcome => ({ path, removed: false, skipped: true })),
       });
@@ -190,7 +212,13 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
     }
   };
 
-  for (const pathArg of paths) {
+  // Where the operator walked away, when they did: everything after it was
+  // never put to them, and a set of files silently left alone is worse than
+  // a set left alone out loud.
+  let abandonedAt: number | null = null;
+
+  for (let index: number = 0; index < paths.length; index++) {
+    const pathArg: string = paths[index] as string;
     try {
       const target: string = await path_resolve(pathArg);
 
@@ -202,7 +230,18 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
       }
 
       if (interactive) {
-        const confirmed: boolean = await prompt_confirm(`rm: remove '${pathArg}'? (y/n): `);
+        let confirmed: boolean = false;
+        try {
+          confirmed = await prompt_confirm(`rm: remove '${pathArg}'? (y/n): `);
+        } catch (e: unknown) {
+          // Abandoning is an answer, and it answers for the rest of the
+          // walk: an operator who backed out of this question is not
+          // waiting to be asked the next nineteen.
+          out_emit(chalk.gray(`skipped '${pathArg}': ${unanswered_reason(e)}`));
+          outcomes.push({ path: pathArg, removed: false, skipped: true });
+          abandonedAt = index;
+          break;
+        }
         if (!confirmed) {
           out_emit(chalk.gray(`skipped '${pathArg}'`));
           outcomes.push({ path: pathArg, removed: false, skipped: true });
@@ -238,6 +277,16 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
       err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${msg}`));
       outcomes.push({ path: pathArg, removed: false, skipped: false });
       failCount++;
+    }
+  }
+
+  if (abandonedAt !== null) {
+    const notAsked: string[] = paths.slice(abandonedAt + 1);
+    if (notAsked.length > 0) {
+      out_emit(chalk.gray(`${notAsked.length} more not asked about, and kept`));
+      for (const kept of notAsked) {
+        outcomes.push({ path: kept, removed: false, skipped: true });
+      }
     }
   }
 

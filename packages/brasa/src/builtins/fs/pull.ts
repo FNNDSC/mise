@@ -49,7 +49,7 @@ import { builtin_cubepath } from '../net/cubepath.js';
 import { pullArgs_parse, type PullArgs, type PullAttachment } from './pull.args.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import type { ProgressStatus } from '../../core/progress.js';
-import { newFeed_cacheAdd } from '../feedCreation.js';
+import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
 import { builtin_pipeline } from '../res/pipeline.js';
 import { executableArguments_parse } from '../argumentTokens.js';
 import { pluginSelector_normalize } from '../pluginSelector.js';
@@ -313,6 +313,9 @@ async function pulledFeed_create(
     ownerUsername: owner,
     rootInstanceID,
   });
+  // A pull's feed is a run like any other: followed until it settles, so
+  // the header's pulse counts it while it works and stops when it is done.
+  run_follow(feedID);
 
   sink_dataLine(chalk.green(`Feed created: ${feedID}`));
   sink_dataLine(chalk.green(`Root job: pl-dircopy (ID: ${rootInstanceID})`));

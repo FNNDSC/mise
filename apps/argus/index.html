@@ -371,7 +371,14 @@
                     <button class="strategy-pill image-tool" data-tool="length" title="measure a length">LENGTH</button>
                     <button class="strategy-pill image-tool" data-tool="angle" title="measure an angle">ANGLE</button>
                     <button class="strategy-pill image-tool" data-tool="probe" title="read a voxel">PROBE</button>
-                    <button class="strategy-pill image-layout" title="layout: single plane, three linked planes, or a 3D render">SINGLE</button>
+                    <!-- One control per layout rather than one that
+                         cycles: a cycling pill names where you are and
+                         hides where you could go, so the 3D render was
+                         reachable only by pressing SINGLE twice and the
+                         pill still read SINGLE while MPR was building. -->
+                    <button class="strategy-pill image-layout rail-off" data-layout="single" title="one plane, scrolled">SINGLE</button>
+                    <button class="strategy-pill image-layout rail-off" data-layout="mpr" title="three linked planes, with a shared cursor">MPR</button>
+                    <button class="strategy-pill image-layout rail-off" data-layout="3d" title="a 3D volume render">3D</button>
                     <button class="strategy-pill image-colormap" title="colormap">GRAY</button>
                     <button class="strategy-pill image-preset" hidden title="the modality's window presets">PRESET</button>
                     <!-- A volume layout pulls every slice; over the guard
@@ -379,6 +386,11 @@
                     <button class="strategy-pill image-load" hidden title="fetch every slice for the waiting layout">LOAD</button>
                     <button class="strategy-pill image-save" title="save the measurements as a DICOM SR under ~/annotations">SAVE</button>
                     <button class="strategy-pill image-tags" title="the slice's tags, in a pane that follows this one">TAGS</button>
+                    <!-- What a clinical viewer writes in the corners: who
+                         this is, which study, which series, when. Off by
+                         default, because the same pane is used where a
+                         screen is shared. -->
+                    <button class="strategy-pill image-overlay rail-off" title="the patient and study, written on the image">OVERLAY OFF</button>
                     <span class="image-focus strategy-pill rail-off" hidden title="the field holds the keyboard; Esc gives it back">FOCUS</span>
                     <span class="mode-fill"></span>
                   </aside>
@@ -544,9 +556,9 @@
                    would say otherwise. It reads its state the way FILTER
                    does, because it is the same gesture. -->
               <div id="pacs-commandline">
-                <button id="pacs-anon" class="strategy-pill rail-off" title="stand in for what the answer says about a person, for demonstrating against a live PACS">ANON OFF</button>
+                <button id="pacs-anon" class="pacs-capsule pacs-capsule-off" title="stand in for what the answer says about a person, for demonstrating against a live PACS">ANON OFF</button>
                 <input id="pacs-command" spellcheck="false" autocomplete="off" placeholder="pacs query ..." />
-                <button id="pacs-reveal" class="strategy-pill rail-off" title="show what is typed" hidden>REVEAL</button>
+                <button id="pacs-reveal" class="pacs-capsule pacs-capsule-off" title="show what is typed" hidden>REVEAL</button>
               </div>
               <!-- The results are a framed field like the other listings:
                    a rule turning through an elbow into the spine, whose

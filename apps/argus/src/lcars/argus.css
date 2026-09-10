@@ -844,6 +844,15 @@ main {
   cursor: pointer;
 }
 
+/* An armed control is filled; a resting one is the same capsule, dimmed.
+ * These two lived on the bare `.strategy-pill`, which is black on black
+ * outside the mode frame that fills it — so ANON was invisible rather than
+ * absent, and the operator reasonably reported it missing. */
+.pacs-capsule-off {
+  background-color: color-mix(in srgb, var(--harvestgold) 28%, transparent);
+  color: var(--honey);
+}
+
 .pacs-capsule:hover {
   filter: brightness(1.3);
   box-shadow: 0 0 8px var(--harvestgold);
@@ -3784,6 +3793,87 @@ body[data-zoom] #header-restore {
   transition: right 0.22s ease-out;
 }
 
+/* ------------------------------------------------- the field is working */
+
+/* An image arriving is work an operator can see the length of, so the field
+ * says so ON ITSELF rather than in the bar. Before this the field kept the
+ * previous image while a volume built, which is indistinguishable from a
+ * viewer that ignored the press. */
+.image-working {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 14rem;
+  padding: 1rem 1.4rem;
+  background: rgb(0 0 0 / 72%);
+  border-radius: 0.4rem;
+  font-family: var(--face-label);
+  letter-spacing: 0.12em;
+  color: var(--harvestgold);
+  font-size: 0.75rem;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.image-working-track {
+  width: 100%;
+  height: 0.35rem;
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, var(--harvestgold) 22%, transparent);
+  overflow: hidden;
+}
+
+.image-working-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 0.2rem;
+  background: var(--harvestgold);
+  transition: width 0.12s linear;
+}
+
+/* Work whose length nobody stated: motion, and no fraction to mislead. */
+.image-working-fill.image-working-pacing {
+  width: 35%;
+  animation: image-pacing 1.1s ease-in-out infinite;
+}
+
+@keyframes image-pacing {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(285%); }
+}
+
+.image-working-count {
+  font-size: 0.7rem;
+  color: var(--honey);
+}
+
+/* ------------------------------------------------ the header, on the image */
+
+/* What a clinical viewer writes in the corner. Small, quiet, and off by
+ * default: the same pane is used where a screen is shared. */
+.image-overlay-note {
+  position: absolute;
+  left: 0.8rem;
+  top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  font-family: var(--face-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.09em;
+  line-height: 1.35;
+  color: var(--honey);
+  text-shadow: 0 0 4px #000, 0 0 2px #000;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .pane-image.image-field-focused .image-field {
   box-shadow: inset 0 0 0 2px var(--harvestgold);
 }
@@ -3937,4 +4027,52 @@ body[data-zoom] #header-restore {
   opacity: 0.8;
   text-align: center;
   padding: 0 0.4rem;
+}
+
+/* ------------------------------------------------- clickable chrome breathes */
+
+/* LCARS chrome is flat colour, and a flat block that acts looks exactly
+ * like a flat block that decorates. The pieces an operator can press
+ * therefore breathe: a slow, shallow lift in brightness that reads as
+ * "this is alive" from across a room and is invisible when you are reading.
+ * Shallow on purpose — a pulse that draws the eye competes with the data,
+ * which is the thing the eye is meant to be on.
+ *
+ * Hover stops it, because hover is a stronger statement of the same fact
+ * and the two would fight over `filter`. */
+@keyframes lcars-breath {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.16); }
+}
+
+#drawer-toggle,
+#header-restore,
+.mode-strip,
+.mode-fill {
+  animation: lcars-breath 2.6s ease-in-out infinite alternate;
+}
+
+/* The console's lid and the header's lid are the way BACK to something that
+ * has gone away, so they breathe a little more plainly than a mode block. */
+#header-restore {
+  animation-duration: 2s;
+}
+
+#drawer-toggle:hover,
+#header-restore:hover,
+.mode-strip:hover,
+.mode-fill:hover {
+  animation: none;
+}
+
+/* Motion is a preference, and a surface that ignores it is one an operator
+ * cannot sit in front of all day. */
+@media (prefers-reduced-motion: reduce) {
+  #drawer-toggle,
+  #header-restore,
+  .mode-strip,
+  .mode-fill,
+  .image-working-fill.image-working-pacing {
+    animation: none;
+  }
 }

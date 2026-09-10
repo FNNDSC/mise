@@ -764,6 +764,67 @@ try {
   }
   }
 
+  // Diving into a DAG node: the gesture that had NO coverage at all. The
+  // files pane's inline diagram has a dive of its own and it is checked
+  // above, but that one immerses the FACTS chip; this one flies the camera
+  // inside a node and mounts the node's filesystem over the scene. Nothing
+  // asked whether the second half ever arrived — and when it did not, the
+  // camera sat parked inside a sphere filling the pane with one flat
+  // colour, which an operator reasonably read as a crash.
+  const dagFeed = process.env.SMOKE_DAG_FEED;
+  if (stage('node-dive')) {
+  if (!dagFeed) {
+    console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');
+  } else {
+    const dive = await evalIn(`
+      const input = document.querySelector('#terminal input');
+      input.value = 'feed diagram ${dagFeed}';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 160; i++) { await sleep(500); if (document.querySelector('.dag-canvas canvas')) break; }
+      await sleep(4500);
+      const canvas = document.querySelector('.dag-canvas canvas');
+      if (canvas === null) return { drew: false };
+      const box = canvas.getBoundingClientRect();
+      const facts = () => (document.querySelector('.dag-facts')?.textContent ?? '').replace(/\\s+/g, ' ');
+      // Walk down the middle until a click lands on a node.
+      let touched = '';
+      for (const f of [0.42, 0.52, 0.62, 0.72, 0.32]) {
+        const at = { clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + box.height * f) };
+        const hit = (type) => canvas.dispatchEvent(new MouseEvent(type, { ...at, bubbles: true, cancelable: true }));
+        hit('click'); await sleep(500);
+        if (facts() !== '') { touched = facts(); hit('dblclick'); break; }
+      }
+      if (touched === '') return { drew: true, touched: '' };
+      for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('.node-overlay')) break; }
+      await sleep(2500);
+      const ov = document.querySelector('.node-overlay');
+      const inside = {
+        opened: ov !== null,
+        header: ov?.querySelector('.node-overlay-header')?.textContent.trim() ?? '',
+        rows: ov ? ov.querySelectorAll('.listing-row').length : 0,
+      };
+      // Esc leaves the node and flies the camera home; the scene stays.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(2500);
+      return { drew: true, touched, inside,
+        left: document.querySelector('.node-overlay') === null,
+        keptScene: document.querySelector('.dag-canvas canvas') !== null };`);
+    if (dive.drew !== true) {
+      console.log('  skipped: the DAG did not draw in time');
+    } else if (dive.touched === '') {
+      console.log('  skipped: no node lay under the probe clicks');
+    } else {
+      check('diving into a node opens the node itself, not just an animation',
+        dive.inside?.opened === true && /INSIDE /.test(dive.inside?.header ?? ''),
+        JSON.stringify(dive.inside));
+      check("the node's own filesystem is what the dive arrives at",
+        dive.inside?.rows > 0, JSON.stringify(dive.inside));
+      check('Esc leaves the node and keeps the scene',
+        dive.left === true && dive.keptScene === true, JSON.stringify(dive));
+    }
+  }
+  }
+
   if (stage('follow-declared')) {
   // The following browser says so on its bar, and the binding is a verb
   // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.

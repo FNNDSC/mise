@@ -22,7 +22,7 @@ import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
-import { newFeed_cacheAdd } from './feedCreation.js';
+import { newFeed_cacheAdd, run_follow } from './feedCreation.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
@@ -136,6 +136,9 @@ export async function builtin_executePlugin(
         rootInstanceID: result.dircopyInstanceID,
         child: { id: result.pluginInstanceID, pluginName: result.pluginName },
       });
+      // The run follows itself until it settles, so the header's pulse is
+      // right whether or not anyone has a pane open on this feed.
+      run_follow(result.feedID);
     } else if (result.parentID !== null) {
       // Continue feed: push just the new instance
       const feedID: number | null = (() => {
@@ -147,6 +150,9 @@ export async function builtin_executePlugin(
           id: result.pluginInstanceID, feedID,
           parentID: result.parentID, pluginName: result.pluginName, params: null, status: 'scheduled',
         });
+        // Work added to an existing feed is a run starting too: follow it,
+        // or the header counts it as scheduled for the cache's whole life.
+        run_follow(feedID);
       }
     }
 

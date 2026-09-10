@@ -400,8 +400,14 @@ export class CornerstoneEngine implements ImageEngine {
       this.host.regard(path);
     });
     const started: number = performance.now();
+    // The stack draws its first slice and fetches the rest as they are
+    // scrolled to, so the wait here is one file — but it is a file over a
+    // wire, and an empty black field says nothing about whether anything
+    // is happening.
+    this.host.progress_set({ label: `READING ${this.imageIds.length} SLICES`, done: 0, total: 0 });
     await viewport.setStack(this.imageIds, this.startAt - 1);
     viewport.render();
+    this.host.progress_set(null);
     if (this.disposed) return;
     this.host.note(`image: ${this.imageIds.length} slices, first on screen in ${Math.round(performance.now() - started)} ms`);
     const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get()) ?? tools.ToolGroupManager.createToolGroup(this.toolGroupId_get());
@@ -421,13 +427,25 @@ export class CornerstoneEngine implements ImageEngine {
     if (this.libraries === null || this.field === null) return;
     const { core, tools } = this.libraries;
     const started: number = performance.now();
-    this.host.readout_set(`LOADING ${this.imageIds.length} SLICES FOR ${layout.toUpperCase()}`);
-    // A volume exists only once every header is known; the loader learns
-    // them by loading. This is the cost the LOAD guard stands in front of.
-    await Promise.all(this.imageIds.map((imageId: string): Promise<unknown> => core.imageLoader.loadAndCacheImage(imageId).catch((): null => null)));
-    if (this.disposed) return;
+    const total: number = this.imageIds.length;
+    this.host.readout_set(`LOADING ${total} SLICES FOR ${layout.toUpperCase()}`);
+    // Cleared BEFORE the wait, not after it. This load takes seconds, and
+    // leaving the previous image on the field throughout is a viewer that
+    // looks like it ignored the press — the operator reported exactly that.
     this.field_clear();
     this.layout = layout;
+    this.host.progress_set({ label: `BUILDING ${layout.toUpperCase()}`, done: 0, total });
+    // A volume exists only once every header is known; the loader learns
+    // them by loading. This is the cost the LOAD guard stands in front of.
+    let loaded: number = 0;
+    await Promise.all(this.imageIds.map((imageId: string): Promise<unknown> =>
+      core.imageLoader.loadAndCacheImage(imageId)
+        .catch((): null => null)
+        .finally((): void => {
+          loaded++;
+          this.host.progress_set({ label: `BUILDING ${layout.toUpperCase()}`, done: loaded, total });
+        })));
+    if (this.disposed) return;
     const engineId: string = this.engineId_get();
     const volumeId: string = `cornerstoneStreamingImageVolume:${engineId}`;
     const grid: HTMLElement = document.createElement('div');

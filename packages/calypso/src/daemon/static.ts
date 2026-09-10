@@ -52,6 +52,35 @@ export function contentType_forPath(filePath: string): string {
 }
 
 /**
+ * How long a browser may keep one file.
+ *
+ * The bundle is two kinds of file with opposite needs. The assets carry a
+ * content hash in their names, so a changed asset is a NEW name and the old
+ * one can be kept forever. `index.html` keeps its name and is the thing
+ * that NAMES those assets, so a stale copy pins a browser to the whole of
+ * an old surface.
+ *
+ * Sending nothing, which is what this did, is not neutral: with no
+ * `cache-control`, no `etag` and no `last-modified`, a browser is free to
+ * guess, and it guesses that it may keep the page. A rebuilt surface then
+ * does not arrive at all — the operator restarts the daemon, reloads, and
+ * is served the same page naming the same old assets, with nothing on
+ * either side saying why.
+ *
+ * @param filePath - The file being served.
+ * @returns The `cache-control` value for it.
+ */
+export function cacheControl_forPath(filePath: string): string {
+  const name: string = path.basename(filePath).toLowerCase();
+  if (name.endsWith('.html')) return 'no-store';
+  // A hashed name is its own validator: a different build is a different
+  // URL, so this copy is good forever.
+  return /-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/.test(name)
+    ? 'public, max-age=31536000, immutable'
+    : 'no-cache';
+}
+
+/**
  * Picks the first candidate directory that holds a servable web bundle.
  *
  * A candidate qualifies when it exists and contains an `index.html`; the
@@ -179,7 +208,10 @@ export function staticRequest_handle(
     return;
   }
 
-  response.writeHead(200, { 'content-type': contentType_forPath(resolvedPath) });
+  response.writeHead(200, {
+    'content-type': contentType_forPath(resolvedPath),
+    'cache-control': cacheControl_forPath(resolvedPath),
+  });
   if (request.method === 'HEAD') {
     response.end();
     return;

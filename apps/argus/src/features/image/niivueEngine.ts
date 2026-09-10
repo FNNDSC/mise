@@ -64,6 +64,10 @@ export class NiivueEngine implements ImageEngine {
     canvas.className = 'image-canvas';
     field.appendChild(canvas);
     this.host.readout_set('LOADING');
+    // One volume file over a wire whose length nobody stated, so the
+    // notice paces rather than fills: motion is the honest picture of
+    // work that cannot say how far along it is.
+    this.host.progress_set({ label: 'READING VOLUME', done: 0, total: 0 });
     const started: number = performance.now();
     this.module = await import('@niivue/niivue');
     if (this.disposed) return;
@@ -89,10 +93,12 @@ export class NiivueEngine implements ImageEngine {
       await nv.loadVolumes([{ url: `${location.origin}${this.host.source.url_of(this.path)}`, name }]);
     } catch (error: unknown) {
       this.refused = 1;
+      this.host.progress_set(null);
       this.host.readout_set('REFUSED 1 OF 1');
       this.host.note(`image: ${this.path}: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
+    this.host.progress_set(null);
     if (this.disposed) return;
     this.nv = nv;
     const dims: number[] | undefined = (nv.volumes[0] as { dims?: number[] } | undefined)?.dims;

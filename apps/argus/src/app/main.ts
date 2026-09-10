@@ -37,7 +37,7 @@ import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
-import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
+import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, seriesFolder_is, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
@@ -672,7 +672,17 @@ async function surface_start(token: string): Promise<void> {
    */
   const fileHead_fetch = async (path: string, maxBytes: number): Promise<string> => {
     const response: Response = await fetch(vfsUrl_build(path));
-    if (!response.ok || response.body === null) return '';
+    if (!response.ok || response.body === null) {
+      // The route serves what CUBE STORES. A file a VFS provider makes —
+      // a package's manifest, a readout under /proc — is perfectly real to
+      // the session and unknown to the route, which answered 404 and left
+      // the preview blank: a file that reads fine in the console looked
+      // like an empty file in the pane. So ask the session, which can read
+      // anything it can list. A refusal is carried through rather than
+      // swallowed, because a blank tile is the one thing that says nothing.
+      const read: FileText = await fileText_fetch(path);
+      return read.text.slice(0, maxBytes);
+    }
     const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
     const decoder: TextDecoder = new TextDecoder();
     let text: string = '';
@@ -1318,7 +1328,7 @@ async function surface_start(token: string): Promise<void> {
     const facts: FileRowFacts = {
       kind: entry.type === 'plugin' || entry.type === 'pipeline'
         ? 'catalogue'
-        : directory && SERIES_FOLDER_PATTERN.test(entry.name)
+        : directory && seriesFolder_is(path, entry.name)
           ? 'seriesFolder'
           : entry.type === 'file' ? 'file' : 'directory',
       feed: feedOf_path(path),
@@ -1467,6 +1477,9 @@ async function surface_start(token: string): Promise<void> {
           return 0;
         }
       },
+      // The overlay reads the header of the series on the field. Same ask
+      // the tags pane makes, same silence: an instrument never interrupts.
+      tags_read: (path: string): Promise<DicomTagsModel | null> => tags_ask(path),
       tags_open: (): void => {
         terminal.line_note(tagsPane_open(id));
       },
@@ -1685,7 +1698,26 @@ async function surface_start(token: string): Promise<void> {
   const nodeOverlay_open = (id: string, vfsPath: string): void => {
     const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
     const canvas: HTMLElement | null = mount?.querySelector<HTMLElement>('.dag-canvas') ?? null;
+    // A record whose element is no longer in the document is a ghost: the
+    // pane was rebuilt (a layout change, a preset) while a node was open,
+    // which takes the overlay's DOM with it and leaves this map holding a
+    // dead reference. That reference then refused EVERY later dive on this
+    // pane — and a refused dive is not nothing, because the camera has
+    // already flown inside. One wedged pane looked like a broken viewer.
+    const held = nodeOverlays.get(id);
+    if (held !== undefined && !held.element.isConnected) nodeOverlays.delete(id);
     if (canvas === null || nodeOverlays.has(id)) {
+      // By the time this runs the camera is already INSIDE the node — the
+      // fly-in dollies to just shy of its surface, which is the whole point
+      // of the gesture. Returning quietly therefore does not cancel a dive;
+      // it strands the operator looking at the inside of a sphere, filling
+      // the pane with one flat colour, with the scene held so nothing even
+      // moves. It reads exactly like a crash, and an operator reported it
+      // as one. So: fly back out, and say what happened.
+      terminal.line_note(
+        `dag: ${vfsPath}: ${canvas === null ? 'this pane has no scene to fly in' : 'a node is already open here'} — flew back out`,
+      );
+      dagPanels.get(id)?.flight_back((): void => undefined);
       return;
     }
     const element: HTMLElement = document.createElement('div');
@@ -2535,6 +2567,18 @@ async function surface_start(token: string): Promise<void> {
           } else {
             nodeOverlay_close(overlayId);
           }
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
+        // A camera parked inside a node with no overlay over it: the pane
+        // is filled by the inside of one sphere and the scene is held, so
+        // nothing moves and nothing reads as a control. Esc is the way out,
+        // whatever left it there.
+        const heldInside: [string, DagPanel] | undefined = [...dagPanels.entries()]
+          .find(([, panel]: [string, DagPanel]): boolean => panel.inside_isHeld());
+        if (heldInside !== undefined) {
+          heldInside[1].flight_back((): void => undefined);
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;

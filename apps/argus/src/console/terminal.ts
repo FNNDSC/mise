@@ -402,6 +402,26 @@ export class ArgusTerminal {
    * @param request - The question and what it wants.
    * @returns The answer, or null when the operator abandoned it.
    */
+  /**
+   * Abandons the open question, wherever the operator happened to be looking.
+   *
+   * A question's Escape used to be bound to the input line alone, so an
+   * operator who pressed a row's verb — leaving focus on the row — and then
+   * changed their mind pressed Escape into nothing. The question stayed
+   * open, the command that raised it waited on an answer that could no
+   * longer be given, and the lane counted the minutes. A question owns
+   * Escape wherever focus is; abandoning is an answer, and the command is
+   * told.
+   *
+   * @returns Whether there was a question to abandon.
+   */
+  public ask_abandon(): boolean {
+    const ask = this.pendingAsk;
+    if (ask === null) return false;
+    ask.settle(null);
+    return true;
+  }
+
   /** @returns Whether a question is open and waiting for an answer. */
   public ask_isOpen(): boolean {
     return this.pendingAsk !== null;

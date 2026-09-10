@@ -2455,6 +2455,15 @@ async function surface_start(token: string): Promise<void> {
           event.stopImmediatePropagation();
           return;
         }
+        // The console's own question owns Escape wherever focus is. Bound
+        // to the input line alone, it could not be abandoned by an operator
+        // whose hands were on a row's verbs — and the command that asked
+        // waited on an answer nobody could give any more.
+        if (terminal.ask_abandon()) {
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
         // An errand is a question standing on the stage: Esc abandons it
         // before anything else, because leaving it open while retreating
         // past it would leave a command waiting on an answer nobody is

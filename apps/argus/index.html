@@ -557,6 +557,11 @@
                 <span class="mode-elbow"></span>
                 <aside class="mode-frame">
                   <button class="strategy-pill pacs-filter rail-off" title="filter the results (the bar reads FILTERED n/m)">FILTER OFF</button>
+                  <!-- The whole answer, on the frame of the field it is the
+                       answer of. It lived in the GATHER strip, where its
+                       neighbours all act on the cohort, so the one control
+                       that acted on everything read as if it did not. -->
+                  <button id="pacs-export" class="strategy-pill rail-off" title="write the whole answer as CSV into ChRIS storage">EXPORT CSV</button>
                   <span class="mode-fill"></span>
                 </aside>
                 <div id="pacs-results"></div>
@@ -566,11 +571,12 @@
                   <span class="pacs-gather-title">GATHER</span>
                   <input id="pacs-gather-name" placeholder="cohort name" autocomplete="off" />
                   <button id="pacs-gather-save" class="pacs-capsule" title="write ~/gather/&lt;name&gt; manifest">SAVE</button>
-                  <!-- The answer as a table a spreadsheet reads. It lands
-                       in CFS, not on the machine the browser happens to be
-                       running on: the engine is elsewhere, and a redirect
-                       would write somebody else's disk. -->
-                  <button id="pacs-export" class="pacs-capsule" title="write the answer as CSV into ChRIS storage">EXPORT CSV</button>
+                  <!-- The cohort as a table a spreadsheet reads, named for
+                       what it covers so it is not read as the whole answer.
+                       It lands in CFS, not on the machine the browser
+                       happens to be running on: the engine is elsewhere,
+                       and a redirect would write somebody else's disk. -->
+                  <button id="pacs-gather-export" class="pacs-capsule" title="write the gathered series as CSV into ChRIS storage">EXPORT GATHER CSV</button>
                   <!-- Where the table went, said by the pane that made it:
                        a readout, not a capsule, since it answers no press. -->
                   <span id="pacs-wrote" class="pacs-wrote" hidden></span>

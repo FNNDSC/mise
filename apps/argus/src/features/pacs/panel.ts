@@ -120,6 +120,19 @@ export function seriesPulled_mark(
   return changed;
 }
 
+/**
+ * One CSV field, quoted when it has to be.
+ *
+ * A series description carries commas and the odd quotation mark, and a
+ * table that splits on the wrong comma is worse than no table.
+ *
+ * @param value - The field.
+ * @returns It, quoted if it holds a comma, a quote or a line break.
+ */
+function csvField_quote(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.split('"').join('""')}"` : value;
+}
+
 /** One gathered series: the cohort's unit. */
 interface GatherEntry {
   seriesUID: string;
@@ -423,6 +436,7 @@ export class PacsPanel {
     });
     element_query(root, '#pacs-gather-save').addEventListener('click', (): void => this.manifest_save());
     element_query(root, '#pacs-export').addEventListener('click', (): void => this.answer_export());
+    element_query(root, '#pacs-gather-export').addEventListener('click', (): void => this.gather_export());
     element_query(root, '#pacs-gather-feed').addEventListener('click', (): void => this.feed_create());
   }
 
@@ -1479,6 +1493,33 @@ export class PacsPanel {
     });
     this.handlers.command_run('mkdir ~/gather');
     this.handlers.command_show(`touch --withContents '${manifest}' ~/gather/${name}.json`);
+  }
+
+  /**
+   * Writes the gathered series as a table a spreadsheet reads.
+   *
+   * The cohort's own export, beside the cohort's own verbs. The answer has
+   * one of these too, on the results frame, and the two are different
+   * questions: this one covers what was gathered, which is a choice the
+   * operator made, and the other covers everything the PACS said.
+   *
+   * Composed here and written with the same visible command SAVE uses, so
+   * the operator reads where it lands before it lands. It goes into CFS
+   * rather than onto the machine the browser runs on, since the engine is
+   * elsewhere.
+   */
+  private gather_export(): void {
+    const cohort: GatherEntry[] = this.cohort_selected();
+    if (cohort.length === 0) return;
+    const name: string = this.gatherName.value.trim() || `gather-${Date.now()}`;
+    const rows: string[] = [
+      ['patient', 'series', 'modality', 'seriesUID', 'path'].join(','),
+      ...cohort.map((entry: GatherEntry): string => [
+        entry.patient, entry.description, entry.modality, entry.seriesUID, entry.vfsPath,
+      ].map(csvField_quote).join(',')),
+    ];
+    this.handlers.command_run('mkdir ~/gather');
+    this.handlers.command_show(`touch --withContents '${rows.join('\n')}' ~/gather/${name}.csv`);
   }
 
   /**

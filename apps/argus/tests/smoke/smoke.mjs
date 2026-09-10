@@ -2163,6 +2163,38 @@ try {
     check('a measurement saved as an SR comes back when the series reopens', saved.error === undefined && /measurements\.dcm$/.test(saved.file ?? '') && saved.before === '0' && saved.placed === '1', JSON.stringify(saved));
   }
   }
+  if (stage('image-guard')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    const guard = await evalIn(`
+      await console_idle();
+      const image = document.querySelector('.pane-image');
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image layout single');
+      for (let i = 0; i < 40 && !image.querySelector('.image-viewport-stack'); i++) await sleep(150);
+      const fetches = () => performance.getEntriesByType('resource').filter((e) => e.name.includes('/vfs?')).length;
+      await run('image guard 1000');
+      const before = fetches();
+      await run('image layout mpr');
+      await sleep(1500);
+      const state = image.querySelector('.pane-state').textContent;
+      const mode = image.querySelector('.pane-mode').textContent;
+      const loadShown = !image.querySelector('.image-load').hidden;
+      const during = fetches();
+      await run('image load');
+      let planes = 0;
+      for (let i = 0; i < 80; i++) { await sleep(250); planes = image.querySelectorAll('.image-mpr .image-viewport').length; if (planes === 3 && image.querySelector('.pane-mode').textContent === 'MPR') break; }
+      const loadHidden = image.querySelector('.image-load').hidden;
+      await run('image guard off');
+      await run('image layout single');
+      await sleep(1500);
+      return { state, mode, loadShown, fetched: during - before, planes, loadHidden };`);
+    check('a volume layout over the guard waits for LOAD and fetches nothing', /^SERIES .* · LOAD FOR MPR$/.test(guard.state ?? '') && guard.mode === '' && guard.loadShown === true && guard.fetched === 0, JSON.stringify(guard));
+    check('LOAD consents and the waiting layout follows', guard.planes === 3 && guard.loadHidden === true, JSON.stringify(guard));
+  }
+  }
   if (stage('image-volume')) {
   if (niftiPath === '') {
     console.log('  skipped: set SMOKE_NIFTI=<volume path on the daemon>');

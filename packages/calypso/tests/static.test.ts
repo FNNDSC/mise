@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { bundledWebRoot_find, webRoot_resolve, webRootVersion_read } from '../src/daemon/static';
+import { bundledWebRoot_find, cacheControl_forPath, webRoot_resolve, webRootVersion_read } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -22,7 +22,7 @@ function stubEngine_create(): HostedEngine {
 }
 
 /** Fetches a URL and resolves with status, headers, and body. */
-function http_get(url: string): Promise<{ status: number; type: string; body: string }> {
+function http_get(url: string): Promise<{ status: number; type: string; cache: string; body: string }> {
   return new Promise((resolve, reject) => {
     get(url, (response: IncomingMessage) => {
       const chunks: Buffer[] = [];
@@ -31,6 +31,7 @@ function http_get(url: string): Promise<{ status: number; type: string; body: st
         resolve({
           status: response.statusCode ?? 0,
           type: String(response.headers['content-type'] ?? ''),
+          cache: String(response.headers['cache-control'] ?? ''),
           body: Buffer.concat(chunks).toString('utf-8'),
         }),
       );
@@ -151,11 +152,15 @@ describe('CalypsoDaemon static serving', () => {
     rmSync(webRoot, { recursive: true, force: true });
   });
 
-  it('serves index.html at the root path', async () => {
+  it('serves index.html at the root path, and tells the browser not to keep it', async () => {
     const reply = await http_get(`http://127.0.0.1:${port}/`);
     expect(reply.status).toBe(200);
     expect(reply.type).toContain('text/html');
     expect(reply.body).toContain('argus');
+    // The header travels, not just the policy function: a rebuilt surface
+    // reaches an operator who reloads, which it did not when this was
+    // silent.
+    expect(reply.cache).toBe('no-store');
   });
 
   it('serves nested assets with their content type', async () => {
@@ -334,5 +339,32 @@ describe('CalypsoDaemon without a web root', () => {
     } finally {
       await daemon.stop();
     }
+  });
+});
+
+/**
+ * How long a browser may keep what the daemon serves.
+ *
+ * The defect this exists for: nothing said. With no `cache-control`, no
+ * `etag` and no `last-modified`, a browser is free to guess and it guesses
+ * that it may keep the page — so a rebuilt surface did not arrive at all.
+ * The operator restarted the daemon, reloaded, and was served the same
+ * `index.html`, which names the same old hashed assets, so the whole
+ * surface stayed the previous build with nothing saying why.
+ */
+describe('cacheControl_forPath', () => {
+  it('never lets a browser keep the page that names the assets', () => {
+    expect(cacheControl_forPath('/web/index.html')).toBe('no-store');
+    expect(cacheControl_forPath('/web/INDEX.HTML')).toBe('no-store');
+  });
+
+  it('lets a hashed asset be kept forever, since a new build is a new name', () => {
+    expect(cacheControl_forPath('/web/assets/index-DaupQIyb.js')).toBe('public, max-age=31536000, immutable');
+    expect(cacheControl_forPath('/web/assets/theme-a1b2c3d4e5.css')).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('makes anything else revalidate, which is the safe answer for a name that can be reused', () => {
+    expect(cacheControl_forPath('/web/favicon.ico')).toBe('no-cache');
+    expect(cacheControl_forPath('/web/fonts/Meslo.woff2')).toBe('no-cache');
   });
 });

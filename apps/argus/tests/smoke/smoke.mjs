@@ -10,6 +10,12 @@
  *
  * Run: npm run smoke   (needs a live daemon; ARGUS_URL overrides discovery)
  *
+ * The image scenarios need a DICOM series and a NIfTI on the daemon's CFS.
+ * Name them with SMOKE_DICOM_SERIES and SMOKE_NIFTI, or let the suite
+ * synthesize its own (tests/smoke/fixtures/synth.mjs), put them under the
+ * identity's uploads through /vfs, and remove them at the end;
+ * SMOKE_NO_FIXTURES=1 skips that and the scenarios say why they skipped.
+ *
  * The whole suite drives a real browser against a live daemon — about three
  * minutes for twenty-seven scenarios — so while building one thing,
  * `SMOKE_ONLY=pacs-listing npm run smoke` runs just that one (about thirty
@@ -1960,8 +1966,48 @@ try {
   // series the S7 fixtures upload) and, optionally, a volume
   // (SMOKE_NIFTI=<path>). Assertions read mise's seams — state, bar,
   // console lines, focus — never the engine's internals.
-  const dicomSeries = process.env.SMOKE_DICOM_SERIES ?? '';
-  const niftiPath = process.env.SMOKE_NIFTI ?? '';
+  // Without a series named in the environment, the suite makes its own:
+  // synthesized fixtures written now, put on the daemon through its own
+  // /vfs route under the identity's uploads, and removed at the end.
+  let dicomSeries = process.env.SMOKE_DICOM_SERIES ?? '';
+  let niftiPath = process.env.SMOKE_NIFTI ?? '';
+  let fixtureFolder = null;
+  if (dicomSeries === '' && process.env.SMOKE_NO_FIXTURES === undefined) {
+    const { series_write, nifti_write, SERIES_FOLDER } = await import('./fixtures/synth.mjs');
+    const { mkdtempSync, readFileSync: read } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join, basename } = await import('node:path');
+    const local = mkdtempSync(join(tmpdir(), 'argus-smoke-fixtures-'));
+    const slices = series_write(local);
+    const nifti = nifti_write(join(local, 'sphere.nii.gz'));
+    const home = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = 'cd ~; pwd'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 40; i++) { await sleep(250); const m = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).reverse().find((l) => /^\\/home\\/[^\\s]+$/.test(l)); if (m) return m; }
+      return null;`);
+    if (home === null) {
+      console.log('  fixtures: could not learn the identity\'s home; image scenarios will skip');
+    } else {
+      const url = new URL(argusUrl_discover());
+      const token = url.searchParams.get('token') ?? '';
+      fixtureFolder = `${home}/uploads/argus-smoke-${Date.now()}`;
+      const put = async (localPath, remotePath) => {
+        const response = await fetch(`${url.origin}/vfs?path=${encodeURIComponent(remotePath)}&token=${encodeURIComponent(token)}`, { method: 'POST', body: read(localPath) });
+        if (!response.ok) throw new Error(`upload ${remotePath}: HTTP ${response.status}`);
+      };
+      try {
+        for (const slice of slices) await put(slice, `${fixtureFolder}/${SERIES_FOLDER}/${basename(slice)}`);
+        await put(nifti, `${fixtureFolder}/sphere.nii.gz`);
+        dicomSeries = `${fixtureFolder}/${SERIES_FOLDER}`;
+        niftiPath = `${fixtureFolder}/sphere.nii.gz`;
+        console.log(`  fixtures: ${slices.length} slices and a NIfTI put under ${fixtureFolder}`);
+      } catch (error) {
+        console.log(`  fixtures: ${error.message}; image scenarios will skip`);
+        fixtureFolder = null;
+      }
+    }
+  }
   if (stage('image-pane')) {
   if (dicomSeries === '') {
     console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
@@ -2213,6 +2259,15 @@ try {
       return { drawn, fits: c !== null && Math.abs(c.width - field.width) < 4, state: image.querySelector('.pane-state').textContent };`);
     check('image <volume> opens a NIfTI on the same pane kind and says when it drew', volume.error === undefined && volume.drawn === true && volume.fits === true, JSON.stringify(volume));
   }
+  }
+  if (fixtureFolder !== null) {
+    // The identity's CFS is left as it was found.
+    await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = 'rm -r ${fixtureFolder}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 40; i++) { await sleep(250); if (document.getElementById('terminal').innerText.includes('Removed dir: ${fixtureFolder}')) return; }`);
+    console.log(`  fixtures: removed ${fixtureFolder}`);
   }
 } finally {
   stage_close();

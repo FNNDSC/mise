@@ -125,3 +125,5 @@ export async function pacsRetrieve_statusForQuery(
 ): Promise<Result<PACSQueryStatusReport>> {
   return cumin_pacsRetrieve_statusForQuery(queryId);
 }
+
+export * from './anonymise.js';

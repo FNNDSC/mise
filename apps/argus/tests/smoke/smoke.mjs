@@ -1395,6 +1395,70 @@ try {
     && pacsForm.line === 'pacs query PatientName:AAA,PatientID:111,StudyDate:20100101,AccessionNumber:222,Modality:CT',
     JSON.stringify(pacsForm));
 
+  // Two exports, two scopes. One control did both jobs and sat in the
+  // GATHER strip, where every neighbour acts on the cohort — so the one
+  // that acted on the whole answer read as if it did not.
+  const pacsExports = await evalIn(`
+    document.getElementById('gutter-tools').click(); await sleep(600);
+    const table = document.getElementById('pacs-export');
+    const gather = document.getElementById('pacs-gather-export');
+    const frame = document.querySelector('.pacs-listing .mode-frame');
+    const strip = document.getElementById('pacs-gather');
+    return {
+      tableLabel: table ? table.textContent.trim() : null,
+      gatherLabel: gather ? gather.textContent.trim() : null,
+      tableOnTheField: frame !== null && table !== null && frame.contains(table),
+      gatherInTheStrip: strip !== null && gather !== null && strip.contains(gather),
+    };`);
+  check("the answer's export stands on the field it exports",
+    pacsExports.tableLabel === 'EXPORT CSV' && pacsExports.tableOnTheField === true,
+    JSON.stringify(pacsExports));
+  check("the cohort's export stands with the cohort's verbs and names its scope",
+    pacsExports.gatherLabel === 'EXPORT GATHER CSV' && pacsExports.gatherInTheStrip === true,
+    JSON.stringify(pacsExports));
+
+  // Demonstrating against a live hospital PACS puts a real name and record
+  // number on a projector. ANON arms the kernel's stand-ins and masks every
+  // field in the pane that carries what was typed — including the command
+  // line, which spells the same values back.
+  const pacsAnon = await evalIn(`
+    document.getElementById('gutter-tools').click(); await sleep(600);
+    const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    const typed = (id) => document.getElementById(id).type;
+    set('pacs-f-mrn', '1234567');
+    await sleep(150);
+    const before = { line: document.getElementById('pacs-command').value, mrn: typed('pacs-f-mrn'), label: document.getElementById('pacs-anon').textContent.trim() };
+    document.getElementById('pacs-anon').click(); await sleep(250);
+    const armed = {
+      line: document.getElementById('pacs-command').value,
+      mrn: typed('pacs-f-mrn'), command: typed('pacs-command'), accession: typed('pacs-f-accession'),
+      label: document.getElementById('pacs-anon').textContent.trim(),
+      revealShown: document.getElementById('pacs-reveal').hidden === false,
+      rows: document.querySelectorAll('#pacs-results .listing-row').length,
+    };
+    document.getElementById('pacs-reveal').click(); await sleep(200);
+    const revealed = { mrn: typed('pacs-f-mrn'), command: typed('pacs-command') };
+    document.getElementById('pacs-anon').click(); await sleep(250);
+    const disarmed = { line: document.getElementById('pacs-command').value, mrn: typed('pacs-f-mrn'), label: document.getElementById('pacs-anon').textContent.trim() };
+    set('pacs-f-mrn', '');
+    await sleep(150);
+    return { before, armed, revealed, disarmed };`);
+  check("ANON arms the stand-ins on the line and reads its state",
+    pacsAnon.before.label === 'ANON OFF' && pacsAnon.before.line === 'pacs query PatientID:1234567'
+    && pacsAnon.armed.label === 'ANON ON' && pacsAnon.armed.line === 'pacs query PatientID:1234567 --anon',
+    JSON.stringify(pacsAnon));
+  check("ANON masks every field that carries what was typed, the command line included",
+    pacsAnon.before.mrn === 'text' && pacsAnon.armed.mrn === 'password'
+    && pacsAnon.armed.command === 'password' && pacsAnon.armed.accession === 'password',
+    JSON.stringify(pacsAnon));
+  check("REVEAL lifts the mask, so a typed record number can be checked before it is asked",
+    pacsAnon.armed.revealShown === true && pacsAnon.revealed.mrn === 'text' && pacsAnon.revealed.command === 'text',
+    JSON.stringify(pacsAnon));
+  check("disarming takes the flag off the line and unmasks",
+    pacsAnon.disarmed.label === 'ANON OFF' && pacsAnon.disarmed.line === 'pacs query PatientID:1234567'
+    && pacsAnon.disarmed.mrn === 'text',
+    JSON.stringify(pacsAnon));
+
   // Sorting needs an actual answer, so it needs a PACS to answer. Set
   // SMOKE_PACS_QUERY to a query that finds at least one study with two
   // series (e.g. 'pacs query PatientID:12345').
@@ -1478,6 +1542,40 @@ try {
       pacsSort.studies === 1 && pacsSort.caps >= 4 && pacsSort.track === true && pacsSort.verbs === true
       && pacsSort.accession.length > 0,
       JSON.stringify(pacsSort));
+    // The bars are read as a column, so their right edges must be one line.
+    // They were not: the bar and its state note shared a flexible cell, so
+    // every bar stopped where its own note began and `NOT RETRIEVED` beside
+    // `\u2713 74 IN CUBE` tore the edge. The note has a track of its own now,
+    // wide enough for the longest thing a series ever says.
+    const pacsBars = await evalIn(`
+      const badges = [...document.querySelectorAll('#pacs-results .pacs-badge')];
+      const bars = badges.map(b => b.querySelector('.listing-progress, .pacs-bar-full')).filter(Boolean)
+        .map(el => Math.round(el.getBoundingClientRect().right));
+      const notes = [...document.querySelectorAll('#pacs-results .pacs-badge-note')];
+      const clipped = notes.filter(n => n.scrollWidth > n.clientWidth + 1).map(n => n.textContent.trim());
+      // The widest note a series can carry, measured where it would sit.
+      let needed = 0, track = 0;
+      if (notes.length > 0) {
+        const probe = notes[0].cloneNode(true);
+        probe.textContent = 'RETRIEVING 1410/1760';
+        probe.style.width = 'max-content';
+        notes[0].parentElement.appendChild(probe);
+        needed = Math.ceil(probe.getBoundingClientRect().width);
+        probe.remove();
+        track = Math.round(notes[0].getBoundingClientRect().width);
+      }
+      const files = [...document.querySelectorAll('#pacs-results .pacs-series-files')];
+      const fileRights = files.map(f => Math.round(f.getBoundingClientRect().right));
+      return { bars: bars.length, edges: [...new Set(bars)], clipped, needed, track,
+        filesFlush: fileRights.length > 1 ? Math.max(...fileRights) - Math.min(...fileRights) : 0,
+        filesAlign: files[0] ? getComputedStyle(files[0]).textAlign : '' };`);
+    check('every series bar ends on the same line, whatever its state says',
+      pacsBars.bars > 1 && pacsBars.edges.length === 1, JSON.stringify(pacsBars));
+    check('the state note has room for the longest thing a series says',
+      pacsBars.clipped.length === 0 && pacsBars.track >= pacsBars.needed, JSON.stringify(pacsBars));
+    check('the file counts are set flush right, so a column of them reads',
+      pacsBars.filesAlign === 'right' && pacsBars.filesFlush === 0, JSON.stringify(pacsBars));
+
     check('sorting a study reorders its series, and reverses',
       pacsSort.rows > 1 && pacsSort.lit === true
       && pacsSort.ascending !== pacsSort.descending

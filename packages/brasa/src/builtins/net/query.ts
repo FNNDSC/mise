@@ -31,7 +31,7 @@ import {
   seriesStorage_resolveMany,
   type SeriesStorageFilter,
 } from '@fnndsc/cumin';
-import { queryFolderName_build } from '@fnndsc/salsa';
+import { queryFolderName_build, answer_standIn, criteria_standIn } from '@fnndsc/salsa';
 import {
   PACS_QUERY_MODEL_KIND,
   type PacsPatient,
@@ -707,6 +707,58 @@ function criteria_toExpression(criteria: Record<string, string>): string {
 }
 
 /**
+ * One answer with a stand-in for everything it says about a person.
+ *
+ * Substituted in the DECODED payload, which is what the model, the table,
+ * the CSV and the console line are all built from — so one substitution
+ * reaches every one of them and none of them has to know.
+ *
+ * @param answer - What came back.
+ * @returns The same answer, saying nothing identifying.
+ */
+function answer_stoodIn(answer: QueryAnswer): QueryAnswer {
+  if (answer.result === null) return answer;
+  return {
+    ...answer,
+    result: {
+      ...answer.result,
+      decoded: { ...answer.result.decoded, json: answer_standIn(answer.result.decoded.json) },
+    },
+  };
+}
+
+/**
+ * The typed line, with stand-ins for the values in it.
+ *
+ * The line an operator typed is the first identifying thing on a screen,
+ * and it is echoed above the answer. Rewriting the VALUES rather than
+ * starring them out keeps the line honest — a PACS reads `*` as a wildcard,
+ * so a starred line is one an onlooker could run to mean something else
+ * entirely — and ties the line to the rows below it, which carry the same
+ * tokens.
+ *
+ * @param expression - The line as typed.
+ * @param asks - The questions it lowered to, holding the real values.
+ * @returns The line with each value stood in for.
+ */
+function expression_standIn(expression: string, asks: ReadonlyArray<QueryAsk>): string {
+  let out: string = expression;
+  const seen: Array<[string, string]> = [];
+  for (const ask of asks) {
+    for (const [field, value] of Object.entries(ask.criteria)) seen.push([field, value]);
+  }
+  // Longest first: a short value that is a substring of a longer one must
+  // not be replaced inside it.
+  seen.sort((a: [string, string], b: [string, string]): number => b[1].length - a[1].length);
+  for (const [field, value] of seen) {
+    if (value === '') continue;
+    const stoodIn: string = criteria_standIn({ [field]: value })[field] ?? value;
+    out = out.split(value).join(stoodIn);
+  }
+  return out;
+}
+
+/**
  * Asks one question, replaying it when the same question has been asked
  * before.
  *
@@ -1055,16 +1107,21 @@ async function cohort_answer(
     csvToAsk: boolean;
     /** True when the operator said to overwrite an existing table. */
     force: boolean;
+    /** True to stand in for what the answers say about a person. */
+    anon: boolean;
   },
 ): Promise<CommandEnvelope> {
   spinner.start(`Querying PACS for ${asks.length} questions...`, true);
   const answers: QueryAnswer[] = await fanout_run(asks, facts.title, facts.owner, facts.fresh);
   spinner.stop();
 
-  const model: PacsQueryModel = fanoutModel_build(answers, {
-    pacsName: facts.pacsserver,
-    expression: facts.expression,
-  });
+  const model: PacsQueryModel = fanoutModel_build(
+    facts.anon ? answers.map(answer_stoodIn) : answers,
+    {
+      pacsName: facts.pacsserver,
+      expression: facts.expression,
+    },
+  );
   await modelPulledState_fill(model);
 
   const patients: ReadonlyArray<PacsPatient> = model.patients ?? [];
@@ -1132,6 +1189,13 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   let csvToAsk: boolean = false;
   /** True when the operator said to overwrite a table that already exists. */
   let force: boolean = false;
+  /**
+   * True to stand in for what the answer says about a person.
+   *
+   * For demonstrating against a live hospital PACS, where every answer
+   * carries somebody's name and record number onto the screen.
+   */
+  let anon: boolean = false;
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -1161,6 +1225,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       force = true;
     } else if (args[i] === '--fresh') {
       fresh = true;
+    } else if (args[i] === '--anon') {
+      anon = true;
     } else if (!args[i].startsWith('--')) {
       positional.push(args[i]);
     }
@@ -1279,8 +1345,9 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       // The model names the server the way CUBE does. `--pacsserver 1` and
       // `--pacsserver PACSDCM` are the same server, and a table that says
       // "1" tells an operator nothing about which PACS answered.
-      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk, force,
-      expression: patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(),
+      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk, force, anon,
+      expression: anon ? expression_standIn(patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(), asks)
+        : (patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim()),
     });
   }
 
@@ -1328,6 +1395,16 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     return envelope_error('', undefined, errOut);
   }
 
+  // Everything below reads from `decoded`, so standing in here reaches the
+  // table, the model a surface renders, and any CSV, all at once. The
+  // DICOM identifiers are left alone: they are never shown, and they are
+  // what the held-state reconciliation matches on.
+  if (anon) {
+    result = { ...result, decoded: { ...result.decoded, json: answer_standIn(result.decoded.json) } };
+  }
+  // What the operator typed, said in the same tokens the rows carry.
+  const shownExpr: string = anon ? criteria_toExpression(criteria_standIn(criteria)) : askExpr;
+
   const renderedResult: string | null = tableMode
     ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
     : queryResult_render(result.decoded);
@@ -1337,7 +1414,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     queryId: result.queryId,
     vfsPath: result.vfsPath,
     pacsName: identifier,
-    expression: askExpr,
+    expression: shownExpr,
     provenance: {
       replayed: answeredAt !== null,
       answeredAt: answeredAt ?? new Date().toISOString(),
@@ -1379,14 +1456,22 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     ? `${chalk.green(`✓ Query ${result.queryId} complete`)}\n`
     : `${chalk.green(`✓ Query ${result.queryId} — answered ${age ?? 'earlier'}`)}\n`;
   rendered += `${renderedResult}\n`;
-  rendered += `${chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`)}\n`;
-  rendered += `${chalk.gray(`  cd ${result.vfsPath}`)}\n`;
-  rendered += `${chalk.gray(`  pull ${result.vfsPath}`)}\n`;
+  if (anon) {
+    // The path spells the question, record number and all, and these three
+    // lines exist to be read off a screen — which is the one thing that
+    // must not happen here. The row's own controls still act on the real
+    // path, which the surface holds and never shows.
+    rendered += `${chalk.gray('  the path is held back while standing in for this answer')}\n`;
+  } else {
+    rendered += `${chalk.bold(`  VFS path: ${chalk.cyan(result.vfsPath)}`)}\n`;
+    rendered += `${chalk.gray(`  cd ${result.vfsPath}`)}\n`;
+    rendered += `${chalk.gray(`  pull ${result.vfsPath}`)}\n`;
+  }
   if (replayed !== undefined) {
     // Said, never decided: mise states the age and leaves the judgement
     // with the operator, who knows whether this question can gain an
     // answer between then and now.
-    rendered += `${chalk.gray(`  query ${askExpr} --fresh   # ask the PACS again`)}\n`;
+    rendered += `${chalk.gray(`  query ${shownExpr}${anon ? ' --anon' : ''} --fresh   # ask the PACS again`)}\n`;
   }
   return envelope_ok(rendered, { kind: PACS_QUERY_MODEL_KIND, data: model });
 }

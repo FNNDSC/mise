@@ -997,10 +997,25 @@ main {
 
 .pacs-series-desc { color: var(--butter); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .pacs-series-modality { color: var(--harvestgold); }
-.pacs-series-files { color: var(--pumpkin-pie); }
+/* A count is read against the counts above and below it, so it is set
+ * flush right, and its cap follows it there. */
+.pacs-series-files { color: var(--pumpkin-pie); text-align: right; }
+#pacs-results .roster-cap[data-key='files'] { text-align: right; }
 
+/* The bar and its note share the STATE cell, and the note is what the bar
+ * is measured against — so the note gets a track of its OWN WIDTH rather
+ * than its text's. Sized by flex, every bar ended where its own note began
+ * and a column of them read as a torn edge: `NOT RETRIEVED` is longer than
+ * `✓ 74 IN CUBE`, so the bars beside them stopped in different places. A
+ * fixed track puts every right edge on one line, which is what the expanse
+ * rule asks of a progress column. The width is measured, not guessed: the
+ * longest note a series can carry is a retrieve in flight — `RETRIEVING
+ * 1410/1760`, 120px — and a track cut to the resting states would clip it
+ * at the one moment an operator is watching it. Everything beyond that is
+ * bar the operator does not get, so it is not rounded up generously. */
 .pacs-badge {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 9.5em;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
@@ -1008,14 +1023,20 @@ main {
   color: var(--honey);
 }
 
-/* The bar stretches across the track; its note keeps to its own width. */
+/* A state with no bar — an error, an unconfirmed pull — is one statement
+ * across both tracks rather than a word pinned to the right. */
+.pacs-badge:not(:has(> .listing-progress, > .pacs-bar-full)) {
+  grid-template-columns: 1fr;
+}
+
 .pacs-badge .listing-progress {
-  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pacs-badge-note {
-  flex: none;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pacs-badge[data-state='running'] { color: var(--state-running); }
@@ -3180,7 +3201,6 @@ body[data-zoom] #header-restore {
 
 /* A series already home: a filled bar, quietly green. */
 .pacs-bar-full {
-  flex: 1 1 auto;
   min-width: 2rem;
   height: 0.45rem;
   border-radius: 0.25rem;

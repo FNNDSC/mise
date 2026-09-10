@@ -2123,6 +2123,46 @@ try {
     check("the tags pane wears the slice's modality as its hue", tags.hue === 'MR', JSON.stringify(tags));
   }
   }
+  if (stage('image-annotations')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    // A length drawn through the debugger, as the operator's would arrive.
+    const at = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image layout single');
+      const image = document.querySelector('.pane-image');
+      for (let i = 0; i < 40 && !image.querySelector('.image-viewport-stack'); i++) await sleep(150);
+      image.querySelector('.image-tool[data-tool="length"]').click(); await sleep(200);
+      const r = image.querySelector('.image-viewport').getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x - 40, y: at.y - 40, button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 8; i++) { await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 40 + i * 10, y: at.y - 40 + i * 10, button: 'left' }); await new Promise((r) => setTimeout(r, 40)); }
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x + 40, y: at.y + 40, button: 'left', clickCount: 1 });
+    const saved = await evalIn(`
+      await sleep(600);
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image save');
+      let landed = null;
+      for (let i = 0; i < 60; i++) { await sleep(300); landed = document.getElementById('terminal').innerText.split('\\n').find((l) => /^✓ \\/home\\/.*\\/annotations\\/.*measurements\\.dcm$/.test(l.trim())); if (landed) break; }
+      if (!landed) return { error: 'nothing landed', tail: document.getElementById('terminal').innerText.split('\\n').slice(-4) };
+      const file = landed.trim().slice(2);
+      // Reopen the series: the file the kernel now lists comes back onto the field.
+      const before = document.querySelector('.pane-image').dataset.annotations ?? null;
+      await run('image ${dicomSeries}');
+      let reloaded = null;
+      for (let i = 0; i < 80; i++) { await sleep(300); reloaded = document.getElementById('terminal').innerText.split('\\n').find((l) => /^image: \\d+ measurements? from measurements\\.dcm/.test(l.trim())); if (reloaded) break; }
+      const placed = document.querySelector('.pane-image').dataset.annotations ?? null;
+      // Leave the identity's CFS as it was found.
+      await run('rm -r ' + file.slice(0, file.lastIndexOf('/')));
+      await sleep(1500);
+      return { file, before, reloaded, placed };`);
+    check('a measurement saved as an SR comes back when the series reopens', saved.error === undefined && /measurements\.dcm$/.test(saved.file ?? '') && saved.before === '0' && saved.placed === '1', JSON.stringify(saved));
+  }
+  }
   if (stage('image-volume')) {
   if (niftiPath === '') {
     console.log('  skipped: set SMOKE_NIFTI=<volume path on the daemon>');

@@ -188,7 +188,7 @@ await panel.series_show(model, { siblings, startAt });   // a dicom.series model
 await panel.volume_show('/home/me/uploads/t1.nii.gz');   // a NIfTI or MGZ path
 ----
 
-`series_show` takes the kernel's `dicom.series` model: the ordered files become `wadouri:` image ids over `/vfs`, one per file, so the first slice is on screen after one fetch. `siblings` lists the other series of a study folder for `image series <n>`; `startAt` is the one-based slice to open on. `volume_show` hands the path to niivue. Every verb (`layout_set`, `slice_set`, `wl_set`, `wlPreset_set`, `colormap_set`, `tool_set`, `annotations_save`) returns whether the engine honoured it, and the pane writes a console line when it did not.
+`series_show` reloads every annotation file the model lists (the kernel found them by SeriesInstanceUID under `~/annotations/`) onto the field once the engine is up, and says in the console how many measurements each held. It takes the kernel's `dicom.series` model: the ordered files become `wadouri:` image ids over `/vfs`, one per file, so the first slice is on screen after one fetch. `siblings` lists the other series of a study folder for `image series <n>`; `startAt` is the one-based slice to open on. `volume_show` hands the path to niivue. Every verb (`layout_set`, `slice_set`, `wl_set`, `wlPreset_set`, `colormap_set`, `tool_set`, `annotations_save`) returns whether the engine honoured it, and the pane writes a console line when it did not.
 
 === States
 

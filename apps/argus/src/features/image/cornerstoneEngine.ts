@@ -97,6 +97,8 @@ export class CornerstoneEngine implements ImageEngine {
   private readonly serial: number = engineSerial++;
   private readonly imageIds: string[];
   private readonly pathByImageId: Map<string, string> = new Map<string, string>();
+  /** The SOPInstanceUID mise knows each image by (from the file name, else invented). */
+  private readonly sopByImageId: Map<string, string> = new Map<string, string>();
   private libraries: Loaded | null = null;
   private field: HTMLElement | null = null;
   private renderingEngine: import('@cornerstonejs/core').RenderingEngine | null = null;
@@ -197,13 +199,15 @@ export class CornerstoneEngine implements ImageEngine {
     const { tools, core } = this.libraries;
     const annotations = tools.annotation.state.getAllAnnotations();
     if (annotations.length === 0) return null;
-    // The adapter wants annotations grouped by image id, then by tool.
-    const toolState: Record<string, Record<string, unknown[]>> = {};
+    // The adapter wants annotations grouped by image id, then by tool, each
+    // tool's list under `data`; a group in any other shape is dropped
+    // without a word, which is how an empty report once went to disk.
+    const toolState: Record<string, Record<string, { data: unknown[] }>> = {};
     for (const entry of annotations as Array<{ metadata: { referencedImageId?: string; toolName: string } }>) {
       const imageId: string = entry.metadata.referencedImageId ?? '';
       if (!this.pathByImageId.has(imageId)) continue;
-      const byTool: Record<string, unknown[]> = (toolState[imageId] ??= {});
-      (byTool[entry.metadata.toolName] ??= []).push(entry);
+      const byTool: Record<string, { data: unknown[] }> = (toolState[imageId] ??= {});
+      (byTool[entry.metadata.toolName] ??= { data: [] }).data.push(entry);
     }
     if (Object.keys(toolState).length === 0) return null;
     const { adaptersSR } = await import('@cornerstonejs/adapters');
@@ -216,7 +220,75 @@ export class CornerstoneEngine implements ImageEngine {
     return dcmjs.data.datasetToBlob(report.dataset);
   }
 
+  /**
+   * Reads a TID 1500 report's measurements onto the field. Each referenced
+   * slice is loaded first, since the adapter needs its plane; what it
+   * cannot place (a tool this build lacks, a slice not in this series) it
+   * skips, and the count says how many landed.
+   */
+  public async annotations_import(bytes: ArrayBuffer): Promise<number> {
+    if (this.libraries === null || this.renderingEngine === null) return 0;
+    const { core, tools } = this.libraries;
+    const dcmjs = (await import('dcmjs')).default;
+    const { adaptersSR } = await import('@cornerstonejs/adapters');
+    let dataset: Record<string, unknown>;
+    try {
+      dataset = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dcmjs.data.DicomMessage.readFile(bytes, { ignoreErrors: true }).dict);
+    } catch (error: unknown) {
+      this.host.note(`image: annotation file could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      return 0;
+    }
+    // dcmjs reads a one-item sequence back as a one-item array; the adapter
+    // reads the template sequence as an object.
+    const template: unknown = dataset['ContentTemplateSequence'];
+    if (Array.isArray(template)) dataset['ContentTemplateSequence'] = template[0];
+    // The adapter finds images by `<SOPInstanceUID>:<frame>`; mise names them.
+    const imageIdBySop: Record<string, string> = {};
+    for (const [imageId, sop] of this.sopByImageId) {
+      imageIdBySop[`${sop}:1`] = imageId;
+      imageIdBySop[`${sop}:undefined`] = imageId;
+    }
+    const referenced: Set<string> = new Set<string>();
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node === null || typeof node !== 'object') return;
+      const record: Record<string, unknown> = node as Record<string, unknown>;
+      const sop: unknown = (record['ReferencedSOPSequence'] as { ReferencedSOPInstanceUID?: string } | undefined)?.ReferencedSOPInstanceUID;
+      if (typeof sop === 'string' && imageIdBySop[`${sop}:1`] !== undefined) referenced.add(imageIdBySop[`${sop}:1`] ?? '');
+      for (const value of Object.values(record)) if (typeof value === 'object') walk(value);
+    };
+    walk(dataset['ContentSequence']);
+    await Promise.all([...referenced].map((imageId: string): Promise<unknown> => core.imageLoader.loadAndCacheImage(imageId).catch((): null => null)));
+    let placed: number = 0;
+    try {
+      const toolState = adaptersSR.Cornerstone3D.MeasurementReport.generateToolState(dataset, imageIdBySop, core.metaData, {}) as Record<string, Array<{ annotation: { metadata: { referencedImageId?: string } } }>>;
+      const element: HTMLDivElement | undefined = this.field?.querySelector<HTMLDivElement>('.image-viewport') ?? undefined;
+      const held: string[] = [];
+      for (const [toolType, measurements] of Object.entries(toolState)) {
+        held.push(`${toolType}×${measurements.length}`);
+        for (const measurement of measurements) {
+          if (measurement.annotation.metadata.referencedImageId === undefined) {
+            this.host.note(`image: a ${toolType} in the report references a slice not in this series`);
+            continue;
+          }
+          if (element === undefined) continue;
+          tools.annotation.state.addAnnotation(measurement.annotation as never, element);
+          placed++;
+        }
+      }
+      if (placed === 0) this.host.note(`image: the report holds ${held.length === 0 ? 'no measurement group this build reads' : held.join(', ')}`);
+    } catch (error: unknown) {
+      this.host.note(`image: annotation file could not be placed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (placed > 0) this.renderingEngine.render();
+    return placed;
+  }
+
   public state_get(): ImageEngineState {
+    const annotations: number = this.libraries === null
+      ? 0
+      : (this.libraries.tools.annotation.state.getAllAnnotations() as Array<{ metadata: { referencedImageId?: string } }>)
+          .filter((entry): boolean => this.pathByImageId.has(entry.metadata.referencedImageId ?? '')).length;
     return {
       engine: 'cornerstone',
       layout: this.layout,
@@ -224,6 +296,7 @@ export class CornerstoneEngine implements ImageEngine {
       slices: this.imageIds.length,
       tool: this.tool,
       refused: this.refused.size,
+      annotations,
     };
   }
 
@@ -242,7 +315,7 @@ export class CornerstoneEngine implements ImageEngine {
     if (this.metadataRegistered || this.libraries === null) return;
     this.metadataRegistered = true;
     const series: DicomSeriesModel = this.series;
-    const sopByImageId: Map<string, string> = new Map<string, string>();
+    const sopByImageId: Map<string, string> = this.sopByImageId;
     for (const [imageId, path] of this.pathByImageId) {
       const name: string = path.split('/').pop() ?? '';
       const fromName: string | undefined = /^\d+-(.+)\.dcm$/i.exec(name)?.[1];

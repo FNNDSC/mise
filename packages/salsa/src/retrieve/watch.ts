@@ -81,6 +81,9 @@ const CHECKER_INTERVAL_MS: number = 2_000;
  * @property actualFiles - Most recent file count from LONK progress updates.
  * @property lastProgressFiles - `actualFiles` at the last progress tick (stall detection).
  * @property lastProgressTime - Timestamp of the last progress tick.
+ * @property firstFileTime - When this series' first file arrived; 0 while it
+ *   is still waiting its turn. The long stop counts from here, so a series
+ *   queued behind a dozen others is not charged for the wait.
  * @property startTime - Timestamp when the retrieve was fired.
  * @property lonkConfirmed - True only after an explicit LONK `done` or a storage confirmation.
  * @property cubePathDir - CUBE folder the series landed in (resolved post-pull).
@@ -97,6 +100,7 @@ export interface RetrieveTask {
   actualFiles: number;
   lastProgressFiles: number;
   lastProgressTime: number;
+  firstFileTime: number;
   startTime: number;
   lonkConfirmed: boolean;
   cubePathDir: string | null;
@@ -140,6 +144,7 @@ export function retrieveTask_make(info: {
     actualFiles: 0,
     lastProgressFiles: 0,
     lastProgressTime: Date.now(),
+    firstFileTime: 0,
     startTime: 0,
     lonkConfirmed: false,
     cubePathDir: null,
@@ -340,6 +345,11 @@ export async function retrieve_fireAndWatch(
   await new Promise<void>((resolve: () => void) => {
     let resolved: boolean = false;
     let reconnectsLeft: number = WATCH_RECONNECT_ATTEMPTS;
+    // When this watch last saw life from the PACS, on ANY of its series.
+    // Quiet is a property of the watch, not of each series: a PACS busy
+    // sending the first series has not gone silent on the ten queued
+    // behind it, and they cannot report files they have not been sent yet.
+    let lastActivityAt: number = Date.now();
     const done = (): void => {
       if (resolved) return;
       resolved = true;
@@ -385,6 +395,9 @@ export async function retrieve_fireAndWatch(
             return;
           }
           ws = replacement;
+          // A reconnection is a new view, not new silence: charging the
+          // gap to the PACS would declare the study dead on reconnect.
+          lastActivityAt = Date.now();
           socket_listen();
         })
         .catch((): void => socket_replace());
@@ -400,19 +413,29 @@ export async function retrieve_fireAndWatch(
         }
         allTerminal = false;
 
-        if (t.startTime > 0 && now - t.startTime > SERIES_TIMEOUT_MS) {
-          t.status = 'timeout';
-          emit(t, 'timeout');
-          continue;
-        }
-
+        // A series that began and then stopped is stalled on its own
+        // evidence: it was being sent, and it no longer is.
         if (t.actualFiles > 0 && now - t.lastProgressTime > STALL_TIMEOUT_MS) {
           t.status = 'stalled';
           emit(t, 'stalled');
           continue;
         }
 
-        if (t.startTime > 0 && t.actualFiles === 0 && now - t.startTime > NO_ACTIVITY_TIMEOUT_MS) {
+        // The long stop: a series that trickles and never ends. Counted
+        // from its first file, never from the fire, so waiting a turn in a
+        // large study costs a series nothing.
+        if (t.firstFileTime > 0 && now - t.firstFileTime > SERIES_TIMEOUT_MS) {
+          t.status = 'timeout';
+          emit(t, 'timeout');
+          continue;
+        }
+
+        // Nothing has arrived for this series. That is evidence of a lost
+        // retrieve only when nothing has arrived for ANY of them. Charged
+        // per series from its own fire time, this declared every series
+        // after the first few dead fifteen seconds into any study large
+        // enough that the PACS served them in turn.
+        if (t.startTime > 0 && t.actualFiles === 0 && now - lastActivityAt > NO_ACTIVITY_TIMEOUT_MS) {
           t.status = 'pulled';
           t.lonkConfirmed = false;
           emit(t, 'unconfirmed');
@@ -435,11 +458,13 @@ export async function retrieve_fireAndWatch(
         const t: RetrieveTask | undefined = taskByUID.get(seriesUID);
         if (!t) return;
 
+        lastActivityAt = Date.now();
         if ('ndicom' in message && typeof message.ndicom === 'number') {
           const n: number = message.ndicom;
           t.actualFiles = n;
           t.lastProgressFiles = n;
           t.lastProgressTime = Date.now();
+          if (t.firstFileTime === 0 && n > 0) t.firstFileTime = t.lastProgressTime;
           if (t.status === 'pending') t.status = 'pulling';
           emit(t, 'running');
         } else if ('done' in message && message.done === true) {
@@ -521,6 +546,7 @@ export async function retrieve_confirmLoop(
       t.actualFiles = 0;
       t.lastProgressFiles = 0;
       t.lastProgressTime = Date.now();
+      t.firstFileTime = 0;
       t.startTime = 0;
       t.lonkConfirmed = false;
       t.syntheticQueryId = null;

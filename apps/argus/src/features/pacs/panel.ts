@@ -55,6 +55,55 @@ export interface PacsPanelHandlers {
   image_open: (folderPath: string) => void;
 }
 
+/**
+ * Which verbs a series offers, as a fact about the series alone.
+ *
+ * Pure and exported because this is the thing that was wrong: a series the
+ * wire had just landed kept offering PULL, because nothing turned it over
+ * until the operator re-ran the query. A control that has already acted
+ * must say so, and a rule this small deserves a test that does not need a
+ * PACS to run.
+ *
+ * IMAGE waits on the folder CUBE put the series in, which only CUBE can
+ * name, so it appears with the next answer rather than the moment the
+ * retrieve lands. GATHER does not wait.
+ *
+ * @param series - The series as the model holds it.
+ * @returns Which of the three verbs are offered.
+ */
+export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; pull: boolean } {
+  const home: boolean = series.pulled === true;
+  return { gather: home, image: home && series.folderPath !== undefined, pull: !home };
+}
+
+/**
+ * Records that a series has landed, in every row that shows it.
+ *
+ * The rows are built from `model.studies` at every level, so marking the
+ * model is what makes a patient's, a study's and a series' row agree.
+ *
+ * @param model - The answer on stage.
+ * @param seriesUID - The series the wire reported done.
+ * @param files - How many files landed, when the wire said.
+ * @returns Whether anything changed, so a caller can skip a needless repaint.
+ */
+export function seriesPulled_mark(
+  model: PacsQueryModel,
+  seriesUID: string,
+  files: number | undefined,
+): boolean {
+  let changed: boolean = false;
+  for (const study of model.studies) {
+    for (const series of study.series) {
+      if (series.seriesUID !== seriesUID || series.pulled === true) continue;
+      series.pulled = true;
+      if (files !== undefined && files > 0) series.pulledFiles = files;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** One gathered series: the cohort's unit. */
 interface GatherEntry {
   seriesUID: string;
@@ -724,21 +773,21 @@ export class PacsPanel {
     return [
       {
         label: 'GATHER',
-        offered: (row: SeriesRow): boolean => row.series.pulled === true,
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).gather,
         run: (row: SeriesRow): void => this.gather_note(row.study, row.series),
       },
       {
         // A series CUBE holds is an image: the verb rides the row it acts
         // on, and only once the kernel can say where the series landed.
         label: 'IMAGE',
-        offered: (row: SeriesRow): boolean => row.series.pulled === true && row.series.folderPath !== undefined,
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).image,
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.image_open(row.series.folderPath);
         },
       },
       {
         label: 'PULL',
-        offered: (row: SeriesRow): boolean => row.series.pulled !== true,
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).pull,
         disabled: (row: SeriesRow): boolean => row.series.vfsPath === undefined,
         run: (row: SeriesRow): void => {
           const vfsPath: string | undefined = row.series.vfsPath;
@@ -1056,6 +1105,13 @@ export class PacsPanel {
     if (message.current !== undefined) state.current = message.current;
     if (message.total !== undefined) state.total = message.total;
     this.badgeState_set(message.itemId, state);
+    // A retrieve that finished has changed what the row can do. Repaint it
+    // now rather than waiting for the operator to ask the same question
+    // again, which is what the verbs used to require.
+    if (status === 'done' && this.model !== null
+      && seriesPulled_mark(this.model, message.itemId, message.current ?? message.total)) {
+      this.results_repaint();
+    }
   }
 
   /**

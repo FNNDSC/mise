@@ -28,6 +28,8 @@ import {
   envelope_error,
   listCache_get,
   queryIndex_get,
+  seriesStorage_resolveMany,
+  type SeriesStorageFilter,
 } from '@fnndsc/cumin';
 import { queryFolderName_build } from '@fnndsc/salsa';
 import {
@@ -432,18 +434,77 @@ export function pacsQueryModel_build(
   return { ...facts, studies };
 }
 
-/** How many already-in-CUBE checks run at once. */
+/**
+ * What to ask CUBE, for an answer's held state.
+ *
+ * One filter per STUDY, which is the shape that matters: asking per series
+ * costs two round trips each and a patient's history runs to hundreds,
+ * while studies are counted in tens. A study the answer does not name is
+ * left out, and its series are asked about one at a time instead.
+ *
+ * @param model - The answer.
+ * @returns One filter per named study, in the answer's order.
+ */
+export function pulledFilters_of(model: PacsQueryModel): SeriesStorageFilter[] {
+  return model.studies
+    .filter((study): boolean => typeof study.studyUID === 'string' && study.studyUID !== '')
+    .map((study): SeriesStorageFilter => ({ StudyInstanceUID: study.studyUID as string }));
+}
+
+/** How many already-in-CUBE checks run at once, on the per-series path. */
 const PULLED_CHECK_CONCURRENCY: number = 4;
 
 /**
  * Fills each series' `pulled` state by asking CUBE what it already holds.
- * Single-attempt lookups, a few at a time; an unreachable check leaves the
- * flag unset rather than guessing.
+ *
+ * Asked by STUDY, not by series. The obvious shape — ask about each series
+ * in turn — costs two round trips per series, and a patient's history runs
+ * to hundreds: reconciling one stored answer of 299 series took twenty
+ * seconds against a live CUBE, which is why a replayed query felt exactly
+ * like a fresh one. CUBE indexes a stored series by its study, so the same
+ * reconciliation is one page per study, and a study count is small.
+ *
+ * A study whose UID the answer does not carry falls back to asking about
+ * its series one at a time, since a study that cannot be named in bulk is
+ * still owed an answer.
  *
  * @param model - The query model to annotate in place.
  */
 async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
-  const allSeries = model.studies.flatMap((study) => study.series);
+  const named = model.studies.filter((study): boolean => typeof study.studyUID === 'string' && study.studyUID !== '');
+  const unnamed = model.studies.filter((study): boolean => !(typeof study.studyUID === 'string' && study.studyUID !== ''));
+
+  if (named.length > 0) {
+    const held = await seriesStorage_resolveMany(pulledFilters_of(model));
+    if (held.ok) {
+      for (const study of named) {
+        for (const series of study.series) {
+          const state = series.seriesUID === undefined ? undefined : held.value.get(series.seriesUID);
+          if (state === undefined || state.folderPath === null) continue;
+          series.pulled = true;
+          series.pulledFiles = state.fileCount;
+          // Where the series landed, so a surface can open it as an image.
+          series.folderPath = state.folderPath;
+        }
+      }
+    } else {
+      // CUBE would not answer in bulk. Ask the old way rather than report a
+      // whole answer as unheld, which would offer PULL for series already in.
+      await seriesPulledState_fillOneByOne(named.flatMap((study) => study.series));
+    }
+  }
+
+  if (unnamed.length > 0) await seriesPulledState_fillOneByOne(unnamed.flatMap((study) => study.series));
+}
+
+/**
+ * The per-series fallback: one lookup each, a few at a time.
+ *
+ * An unreachable check leaves the flag unset rather than guessing.
+ *
+ * @param allSeries - The series to ask about.
+ */
+async function seriesPulledState_fillOneByOne(allSeries: PacsQueryModel['studies'][number]['series']): Promise<void> {
   for (let start: number = 0; start < allSeries.length; start += PULLED_CHECK_CONCURRENCY) {
     const batch = allSeries.slice(start, start + PULLED_CHECK_CONCURRENCY);
     await Promise.all(batch.map(async (series): Promise<void> => {
@@ -452,7 +513,6 @@ async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
       if (home !== null) {
         series.pulled = true;
         series.pulledFiles = home.fileCount;
-        // Where the series landed, so a surface can open it as an image.
         if (home.folderPath !== null && home.folderPath !== undefined) series.folderPath = home.folderPath;
       }
     }));

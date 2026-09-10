@@ -723,6 +723,129 @@ async function studySeries_buildStatus(
   return studyStatus;
 }
 
+/** How many stored-series pages or file counts are asked for at once. */
+const SERIES_BULK_CONCURRENCY: number = 8;
+
+/** How many stored series one page asks for. */
+const SERIES_PAGE: number = 300;
+
+/**
+ * The exact keys CUBE indexes a stored series by.
+ *
+ * Only identifiers belong here. A name is matched loosely and would answer
+ * a different question from the one asked, which on this path means telling
+ * an operator a series is not held when it is.
+ */
+export interface SeriesStorageFilter {
+  PatientID?: string;
+  AccessionNumber?: string;
+  StudyInstanceUID?: string;
+  SeriesInstanceUID?: string;
+}
+
+/**
+ * Resolves the storage state of every series CUBE holds under the given
+ * filters, in one pass.
+ *
+ * This exists because the per-series resolver costs two round trips EACH,
+ * and a patient's history runs to hundreds of series: reconciling a stored
+ * PACS answer that way took twenty seconds against a live CUBE, all of it
+ * spent asking the same question three hundred times. CUBE already indexes
+ * a stored series by study, so the whole reconciliation is one page per
+ * study — the count of studies, not of series.
+ *
+ * The series record carries the folder but no file count, so counts are a
+ * second pass over what was actually found, which is only ever the series
+ * already home.
+ *
+ * @param filters - What to ask about, usually one per study in an answer.
+ * @param options - `counts: false` skips the file counts, leaving zero.
+ * @returns Series UID to storage state, holding only the series CUBE has.
+ */
+export async function seriesStorage_resolveMany(
+  filters: ReadonlyArray<SeriesStorageFilter>,
+  options?: { counts?: boolean }
+): Promise<Result<Map<string, SeriesStorageState>>> {
+  const found: Map<string, SeriesStorageState> = new Map<string, SeriesStorageState>();
+  try {
+    const client: Client | null = await chrisConnection.client_get();
+    if (!client) return Ok(found);
+
+    await batches_run(filters, SERIES_BULK_CONCURRENCY, async (filter: SeriesStorageFilter): Promise<void> => {
+      for (let offset: number = 0; ; offset += SERIES_PAGE) {
+        const page: Awaited<ReturnType<typeof client.getPACSSeriesList>> =
+          await client.getPACSSeriesList({ ...filter, limit: SERIES_PAGE, offset });
+        const items: ReturnType<typeof page.getItems> = page.getItems();
+        if (!items || items.length === 0) return;
+        for (const item of items) {
+          const data: { folder_path?: string; SeriesInstanceUID?: string } | null =
+            itemData_get<{ folder_path?: string; SeriesInstanceUID?: string }>(item);
+          const uid: string | undefined = data?.SeriesInstanceUID;
+          const rawFolder: string | undefined = data?.folder_path;
+          if (!uid || !rawFolder) continue;
+          found.set(uid, {
+            fileCount: 0,
+            folderPath: rawFolder.startsWith("/") ? rawFolder : `/${rawFolder}`,
+          });
+        }
+        if (items.length < SERIES_PAGE) return;
+      }
+    });
+
+    if (options?.counts === false) return Ok(found);
+
+    const homed: [string, SeriesStorageState][] = [...found.entries()];
+    await batches_run(homed, SERIES_BULK_CONCURRENCY, async (
+      [, state]: [string, SeriesStorageState]
+    ): Promise<void> => {
+      if (state.folderPath === null) return;
+      state.fileCount = await folderFiles_count(client, state.folderPath);
+    });
+    return Ok(found);
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push("warning", `Bulk series storage lookup failed: ${message}`);
+    return Err();
+  }
+}
+
+/**
+ * Counts the PACS files registered under one folder.
+ *
+ * Asks for a single row and reads the total, since the count is the whole
+ * question and the rows are not wanted.
+ *
+ * @param client - The connected CUBE client.
+ * @param folderPath - The folder, with or without its leading slash.
+ * @returns The number of files, or zero when CUBE will not say.
+ */
+async function folderFiles_count(client: Client, folderPath: string): Promise<number> {
+  const fname: string = folderPath.startsWith("/") ? folderPath.slice(1) : folderPath;
+  const probe: Awaited<ReturnType<typeof client.getPACSFiles>> =
+    await client.getPACSFiles({ fname, limit: 1 });
+  const total: number | undefined = probe.totalCount;
+  if (typeof total === "number" && total > 0) return total;
+  const items: ReturnType<typeof probe.getItems> = probe.getItems();
+  return items ? items.length : 0;
+}
+
+/**
+ * Runs work over a list, a bounded number at a time.
+ *
+ * @param items - What to work through.
+ * @param width - How many at once.
+ * @param work - What to do with one item.
+ */
+async function batches_run<T>(
+  items: ReadonlyArray<T>,
+  width: number,
+  work: (item: T) => Promise<void>
+): Promise<void> {
+  for (let start: number = 0; start < items.length; start += width) {
+    await Promise.all(items.slice(start, start + width).map(work));
+  }
+}
+
 /**
  * Reports the retrieve status for a PACS query.
  *

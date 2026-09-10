@@ -10,6 +10,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   studies_extractFromDecoded: dicomPayload.studies_extractFromDecoded,
   series_extractFromStudy: dicomPayload.series_extractFromStudy,
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
+  seriesStorage_resolveMany: jest.fn(async () => ({ ok: true, value: new Map() })),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_pop: jest.fn(), stack_push: jest.fn(), checkpoint_mark: jest.fn(() => 1), checkpoint_drain: jest.fn(() => []) },

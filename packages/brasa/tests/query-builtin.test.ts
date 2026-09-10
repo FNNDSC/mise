@@ -14,6 +14,7 @@ const mockIndexNote = jest.fn();
 const mockIndexDrop = jest.fn();
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
+  seriesStorage_resolveMany: jest.fn(async () => ({ ok: true, value: new Map() })),
   tag_extractValue: (v) => (v && typeof v === 'object' && 'value' in v ? String(v.value ?? '') : String(v ?? '')),
   studies_extractFromDecoded: jest.fn(() => []),
   series_extractFromStudy: jest.fn(() => []),

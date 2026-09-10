@@ -142,3 +142,72 @@ A theme may set, per pane: `--roster-gap` and `--roster-pad` on the grid host, t
 === Do not
 
 Do not size a track to its content, and do not put the expanse at the end of the row: a bar packed against the right edge after every fact is a readout nobody scans. Do not append a cell to a row outside the traits and the declared actions: a row one cell short or long shifts every cell of every row after it. Do not hold a row's element across a render; `rows_set` rebuilds the field, so ask `row_element(key)` again. Do not clear the selection from a pane; name the field and let the façade decide. Do not put a verb in a column; a verb answers to no cap and lives in the track. Do not use a painter to add a column; a painter replaces the grid, it does not extend it.
+
+== Image pane
+
+Source: `apps/argus/src/features/image/panel.ts` (the pane), over `engine.ts` (the seam), `cornerstoneEngine.ts` (DICOM series on Cornerstone3D) and `niivueEngine.ts` (NIfTI and MGZ on niivue).
+
+Status: on stage since 2026-09-09 (S3 of the DICOM campaign, epic #359). Opens from `image <path>`, from a `.dcm` or volume row in a browser, from the IMAGE verb on a series folder's row, and from the IMAGE verb on a pulled PACS series. The TAGS block and the slaved tags pane arrive with S4; the LOAD guard on volume layouts with S6.
+
+=== Purpose
+
+An image pane shows one DICOM series or one volume file on a guest engine's field, inside mise's frame. The field is the engine's: pixels, window and level, scroll, zoom, pan, length, angle, probe, crosshairs, every behaviour and its defaults. The frame is mise's: one block per library tool, LAYOUT, COLORMAP, SAVE, and the FOCUS mark. The bar reads the slice on screen, the layout when it is not the default, and what could not be read; the console gets the same lines.
+
+=== Anatomy
+
+.The image pane, numbered: the bar (1), the rule (2), the elbow (3), the spine widened into the frame (4) with its blocks (5), and the engine's field (6)
+image::images/image-pane-anatomy.svg[Image pane anatomy,1180]
+
+[cols="1,1,3"]
+|===
+| Part | Class | Holds
+
+| pane | `.pane-image` | `data-modality` (MR, CT, PT, OT, NIFTI): the hue the frame wears.
+| bar | `.pane-handle` | `.pane-title` `IMAGE <modality> <description>`, `.pane-mode` the layout when not single, `.pane-state` the readout: `SLICE n OF m`, `LOADING`, `MPR · m SLICES`, `REFUSED n OF m`, `UNSUPPORTED TRANSFER SYNTAX <uid>`.
+| body | `.image-body` | The frame members and the field; shadows the frame's hue token for the modality.
+| frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
+| tool blocks | `.image-tool[data-tool]` | One per library tool: `wl`, `zoom`, `pan`, `length`, `angle`, `probe`. The bound one is lit, the rest `rail-off`.
+| layout block | `.image-layout` | Cycles SINGLE, MPR, 3D.
+| colormap block | `.image-colormap` | Cycles GRAY, HOT, JET, COOL.
+| save block | `.image-save` | The measurements as a DICOM SR under `~/annotations/<SeriesInstanceUID>/`.
+| focus mark | `.image-focus` | Shown while the field holds the keyboard.
+| field | `.image-field` | The engine's mount; `tabindex=0`; holds `.image-viewport` elements or an `.image-canvas`, never a control.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+const panel = new ImagePanel(mount, {
+  source: { url_of: vfsUrl_build },                 // bytes reach the engine through mise only
+  note: (line) => terminal.line_note(line),         // the engine's events, as console lines
+  regard: (path) => subjects.regard_write(id, { address: path, modelKind: 'dicom.instance' }),
+  file_put: (path, blob) => fetch(vfsUrl_build(path), { method: 'POST', body: blob }).then((r) => r.status),
+});
+await panel.series_show(model, { siblings, startAt });   // a dicom.series model from the kernel
+await panel.volume_show('/home/me/uploads/t1.nii.gz');   // a NIfTI or MGZ path
+----
+
+`series_show` takes the kernel's `dicom.series` model: the ordered files become `wadouri:` image ids over `/vfs`, one per file, so the first slice is on screen after one fetch. `siblings` lists the other series of a study folder for `image series <n>`; `startAt` is the one-based slice to open on. `volume_show` hands the path to niivue. Every verb (`layout_set`, `slice_set`, `wl_set`, `wlPreset_set`, `colormap_set`, `tool_set`, `annotations_save`) returns whether the engine honoured it, and the pane writes a console line when it did not.
+
+=== States
+
+* `data-modality` on the pane: which hue the frame wears.
+* `.image-field-focused` on the pane and the FOCUS mark shown: the field holds the keyboard.
+* `.pane-mode` non-empty: a layout other than single.
+* `rail-off` on a tool block: not the bound tool.
+
+=== Laws
+
+`an-instruments-field-is-foreign` (no control inside `.image-field`; the lint reads the template), `focus-stays-in-the-field` (smoke), `frame-retracts-to-a-strip`, `a-control-lives-where-it-acts` (IMAGE on the row that holds the series), `hue-is-a-mode` (the modality on the frame), `a-readout-that-acts-says-so` (LOADING, REFUSED, UNSUPPORTED on the bar).
+
+=== Stylesheet
+
+A theme may set `--harvestgold` per `data-modality` on `.image-body` (the frame's hue); the field's background; `.image-field-focused .image-field` (the focus ring). It may not move anything into `.image-field`, size `.image-canvas` other than 100% of its mount, or restyle the engine's own overlays.
+
+=== Do not
+
+* Do not put a button, a readout or any control inside `.image-field`: the lint fails the template. What acts on the field rides the frame.
+* Do not fetch bytes anywhere but through `ImageSource`: the engine never talks to CUBE.
+* Do not draw a tool behaviour of your own: bind the library's, or say by name that the engine lacks it.
+* Do not swallow Esc in the field: it gives the keyboard back, one press, one level.

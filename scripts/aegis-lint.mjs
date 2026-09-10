@@ -288,6 +288,7 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
   // without its reference, and a reference cannot outlive its component.
   const COMPONENT_SOURCES = [
     'apps/argus/src/features/roster/listing.ts',
+    'apps/argus/src/features/image/panel.ts',
   ];
   if (!existsSync('apps/argus/docs/components.adoc')) {
     fail('a-component-lands-with-its-reference', 'apps/argus/docs/components.adoc is missing');
@@ -335,6 +336,23 @@ LINT_CHECKS['a-component-names-no-theme'] = () => {
     const text = readFileSync(path, 'utf8');
     const line = text.split('\n').findIndex((l) => THEME.test(l));
     if (line >= 0) fail('a-component-names-no-theme', `${path}:${line + 1} names the theme; a component speaks its own vocabulary`);
+  }
+};
+
+LINT_CHECKS['an-instruments-field-is-foreign'] = () => {
+  // An image pane's field is a guest engine's and the frame is mise's:
+  // every control the pane offers rides the mode frame, and nothing sits
+  // over the image. The template is the declaration: its field section
+  // carries no button, input or block.
+  const template = html.match(/<template id="tpl-pane-image">([\s\S]*?)<\/template>/);
+  if (!template) { fail('an-instruments-field-is-foreign', 'index.html has no tpl-pane-image template'); return; }
+  const field = template[1].match(/<section class="image-field"[^>]*>([\s\S]*?)<\/section>/);
+  if (!field) { fail('an-instruments-field-is-foreign', 'tpl-pane-image has no .image-field section'); return; }
+  if (/<(button|input|select|textarea)\b|strategy-pill|pacs-capsule/.test(field[1])) {
+    fail('an-instruments-field-is-foreign', 'a control sits inside .image-field; what acts on the field rides the frame');
+  }
+  if (!/class="mode-frame"[\s\S]*?image-tool/.test(template[1])) {
+    fail('an-instruments-field-is-foreign', 'the image pane\'s tool blocks are not on its mode frame');
   }
 };
 

@@ -452,6 +452,8 @@ async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
       if (home !== null) {
         series.pulled = true;
         series.pulledFiles = home.fileCount;
+        // Where the series landed, so a surface can open it as an image.
+        if (home.folderPath !== null && home.folderPath !== undefined) series.folderPath = home.folderPath;
       }
     }));
   }

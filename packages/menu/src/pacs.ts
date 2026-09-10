@@ -23,6 +23,8 @@ export const pacsSeriesSchema = z.object({
   pulled: z.boolean().optional(),
   /** How many files CUBE holds, when known. */
   pulledFiles: z.number().optional(),
+  /** The folder CUBE keeps the pulled series in, when known: what an image pane opens. */
+  folderPath: z.string().optional(),
 });
 
 /** One found study and its series. */

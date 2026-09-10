@@ -45,6 +45,10 @@ export interface ArgusHost {
   file_delete(paneId: string): boolean;
   /** Runs a session command silently, returning rendered output. */
   session_run(line: string): Promise<string>;
+  /** Opens a path as an image beside the pane (or the focused one); returns the console line. */
+  image_open(paneId: string | null, path: string): Promise<string>;
+  /** Drives an image pane's verbs (layout, slice, series, wl, colormap, save); returns the console line. */
+  image_control(paneId: string, verb: string, args: string[]): Promise<string>;
   /** Toggles the console's full-screen zoom (the bar carries no control). */
   consoleZoom_toggle(): void;
   /** The serialized desktop of the current composition. */
@@ -60,7 +64,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'header', 'console', 'back', 'desktop', 'argus',
 ]);
 
 /**
@@ -197,6 +201,7 @@ const VERBS_HELP: string = [
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
   'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
   'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)',
+  'image [@id] <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
@@ -407,6 +412,18 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       return host.file_delete(paneId) ? 'file delete' : 'file delete: nothing indicated';
     }
     return 'file home|back|download|delete|sort|filter|follow|root|list|cards|preview';
+  }
+
+  if (subject === 'image') {
+    const IMAGE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save']);
+    const first: string = words[0] ?? '';
+    if (first === '') return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
+    if (!IMAGE_VERBS.has(verb)) {
+      // A word that is not a verb is a path: a series folder, a study, a
+      // DICOM file, or a NIfTI/MGZ volume.
+      return host.image_open(sentence.target !== null ? paneId : host.focused_get(), first);
+    }
+    return host.image_control(paneId, verb, words.slice(1));
   }
 
   if (subject === 'node') {

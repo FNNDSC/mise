@@ -11,7 +11,10 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({ rm_render: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
-  listCache_get: jest.fn(),
+  // A real cache: the removal path invalidates the parent listing and the
+  // tree beneath the target, and a bare jest.fn() returning undefined turns
+  // a successful removal into a caught TypeError.
+  listCache_get: jest.fn(() => ({ cache_invalidate: jest.fn(), cache_invalidateTree: jest.fn() })),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -98,5 +101,73 @@ describe('rm -I', () => {
     (files_rm as jest.Mock).mockResolvedValue({ success: true });
     await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['only.txt'] });
     expect(mockConfirm).toHaveBeenCalledWith("rm: remove 'only.txt'? (y/n): ");
+  });
+});
+
+describe('a question that is never answered', () => {
+  beforeEach(() => {
+    (files_rm as jest.Mock).mockClear();
+    mockConfirm.mockClear();
+    mockSinkWrite.mockClear();
+  });
+
+  /** Everything the command wrote to the surface, as one string. */
+  function said(): string {
+    return mockSinkWrite.mock.calls.map((call: unknown[]): string => String(call[0])).join('');
+  }
+
+  it('keeps everything under -I, and says why, rather than reporting a failure', async () => {
+    mockConfirm.mockRejectedValue(new Error('the operator abandoned the question'));
+    const envelope = await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['a', 'b'] });
+    expect(files_rm).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('nothing removed (2 kept)');
+    // The reason travels: a surface that has lost its voice must not read
+    // as an operator who declined.
+    expect(envelope.rendered).toContain('the operator abandoned the question');
+  });
+
+  it('skips the file under -i, the way a no does, and does not report a failure', async () => {
+    mockConfirm.mockRejectedValue(new Error('the operator abandoned the question'));
+    const envelope = await rm_run({ recursive: false, force: false, interactive: true, once: false, paths: ['only.txt'] });
+    expect(files_rm).not.toHaveBeenCalled();
+    // Not `rm: cannot remove ...`, which is what an unguarded await made of
+    // an abandoned question: an error, over a file nothing had touched.
+    expect(said()).toContain("skipped 'only.txt': the operator abandoned the question");
+    expect(said()).not.toContain('cannot remove');
+    expect(envelope.status).toBe('ok');
+    expect(envelope.model).toEqual({ kind: 'fs.rm', data: [{ path: 'only.txt', removed: false, skipped: true }] });
+  });
+
+  it('stops asking about the rest, and says how many it left alone', async () => {
+    mockConfirm
+      .mockResolvedValueOnce(true)
+      .mockRejectedValue(new Error('the operator abandoned the question'));
+    (files_rm as jest.Mock).mockResolvedValue({ success: true });
+
+    const envelope = await rm_run({ recursive: false, force: false, interactive: true, once: false, paths: ['a', 'b', 'c', 'd'] });
+
+    // One removed, one abandoned, and the two behind it never put to an
+    // operator who had already walked away.
+    expect(files_rm).toHaveBeenCalledTimes(1);
+    expect(mockConfirm).toHaveBeenCalledTimes(2);
+    expect(said()).toContain('2 more not asked about, and kept');
+    expect(envelope.model).toEqual({
+      kind: 'fs.rm',
+      data: [
+        { path: 'a', removed: true, skipped: false },
+        { path: 'b', removed: false, skipped: true },
+        { path: 'c', removed: false, skipped: true },
+        { path: 'd', removed: false, skipped: true },
+      ],
+    });
+  });
+
+  it('still asks about every file when the operator keeps answering', async () => {
+    mockConfirm.mockResolvedValue(false);
+    const envelope = await rm_run({ recursive: false, force: false, interactive: true, once: false, paths: ['a', 'b', 'c'] });
+    expect(mockConfirm).toHaveBeenCalledTimes(3);
+    expect(said()).not.toContain('not asked about');
+    expect(envelope.status).toBe('ok');
   });
 });

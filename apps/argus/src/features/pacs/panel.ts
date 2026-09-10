@@ -38,6 +38,7 @@ import {
 } from '@fnndsc/menu';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
+import { PACS_SERIES_ROSTER, PACS_STUDY_ROSTER, verbRule_get, type PacsSeriesFacts } from '../roster/verbs.js';
 import {
   progress_aggregate, progressCell_build,
   type ListingAction, type ListingProgress, type ListingTrait,
@@ -53,6 +54,20 @@ export interface PacsPanelHandlers {
   workspace_close: () => void;
   /** Opens a pulled series' folder as an image beside the workspace. */
   image_open: (folderPath: string) => void;
+}
+
+/**
+ * A series as the verb roster sees it.
+ *
+ * @param series - The series as the model holds it.
+ * @returns Its facts.
+ */
+export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
+  return {
+    inCube: series.pulled === true,
+    folderKnown: series.folderPath !== undefined,
+    addressable: series.vfsPath !== undefined,
+  };
 }
 
 /**
@@ -72,8 +87,9 @@ export interface PacsPanelHandlers {
  * @returns Which of the three verbs are offered.
  */
 export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; pull: boolean } {
-  const home: boolean = series.pulled === true;
-  return { gather: home, image: home && series.folderPath !== undefined, pull: !home };
+  const facts: PacsSeriesFacts = seriesFacts_of(series);
+  const offers = (name: string): boolean => verbRule_get(PACS_SERIES_ROSTER, name).offered(facts);
+  return { gather: offers('gather'), image: offers('image'), pull: offers('pull') };
 }
 
 /**
@@ -693,8 +709,9 @@ export class PacsPanel {
   private studyActions_declare(): ReadonlyArray<ListingAction<StudyRow>> {
     return [
       {
-        label: 'PULL STUDY',
-        offered: (row: StudyRow): boolean => row.study.vfsPath !== undefined,
+        label: verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').label({ addressable: true }),
+        offered: (row: StudyRow): boolean =>
+          verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').offered({ addressable: row.study.vfsPath !== undefined }),
         run: (row: StudyRow): void => {
           const vfsPath: string | undefined = row.study.vfsPath;
           if (vfsPath === undefined) return;
@@ -776,21 +793,21 @@ export class PacsPanel {
   private actions_declare(): ReadonlyArray<ListingAction<SeriesRow>> {
     return [
       {
-        label: 'GATHER',
+        label: verbRule_get(PACS_SERIES_ROSTER, 'gather').label({ inCube: true, folderKnown: true, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).gather,
         run: (row: SeriesRow): void => this.gather_note(row.study, row.series),
       },
       {
         // A series CUBE holds is an image: the verb rides the row it acts
         // on, and only once the kernel can say where the series landed.
-        label: 'IMAGE',
+        label: verbRule_get(PACS_SERIES_ROSTER, 'image').label({ inCube: true, folderKnown: true, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).image,
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.image_open(row.series.folderPath);
         },
       },
       {
-        label: 'PULL',
+        label: verbRule_get(PACS_SERIES_ROSTER, 'pull').label({ inCube: false, folderKnown: false, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).pull,
         disabled: (row: SeriesRow): boolean => row.series.vfsPath === undefined,
         run: (row: SeriesRow): void => {

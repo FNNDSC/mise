@@ -30,6 +30,7 @@ import { ArgusTerminal } from '../console/terminal.js';
 import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
+import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -1312,46 +1313,32 @@ async function surface_start(token: string): Promise<void> {
   ): ReadonlyArray<ListingAction<FsListingEntry>> => {
     const quoted: string = `"${path}"`;
     const directory: boolean = entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'job';
-    const feed: number | null = feedOf_path(path);
-    const verbs: Array<ListingAction<FsListingEntry>> = [];
-    // A /bin entry is an executable the catalogue lists, not a file in a
-    // store: `rm` on it would be a verb that cannot act, which is worse
-    // than no verb at all.
-    if (entry.type === 'plugin' || entry.type === 'pipeline') return verbs;
-    // A series folder, as oxidicom names one, is an image: the verb rides
-    // its row (a control lives where it acts).
-    if (directory && SERIES_FOLDER_PATTERN.test(entry.name)) {
-      verbs.push({
-        label: 'IMAGE',
-        run: (): void => {
-          void image_open(id, path).then((line: string): void => terminal.line_note(line));
-        },
-      });
-    }
-    if (entry.type === 'file') {
-      verbs.push({
-        label: 'DOWNLOAD',
-        run: (): void => { window.open(vfsUrl_build(path), '_blank'); },
-      });
-    }
-    verbs.push(
-      { label: 'MOVE', run: (): void => terminal.line_run(`mv ${quoted}`) },
-      { label: 'COPY', run: (): void => terminal.line_run(`cp ${quoted}`) },
-      {
-        label: 'DELETE',
-        run: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
+    // Which verbs a row is offered is the roster's to say
+    // (features/roster/verbs.ts); what each one does is this pane's.
+    const facts: FileRowFacts = {
+      kind: entry.type === 'plugin' || entry.type === 'pipeline'
+        ? 'catalogue'
+        : directory && SERIES_FOLDER_PATTERN.test(entry.name)
+          ? 'seriesFolder'
+          : entry.type === 'file' ? 'file' : 'directory',
+      feed: feedOf_path(path),
+    };
+    const runs: Record<string, () => void> = {
+      image: (): void => {
+        void image_open(id, path).then((line: string): void => terminal.line_note(line));
       },
-    );
-    if (feed !== null) {
-      // The capsule NAMES the feed: CUBE grants a feed and never a file, so
-      // a bare SHARE on a file row would read as a lie about what happens.
-      verbs.push({
-        label: `SHARE FEED ${feed}`,
-        run: (): void => terminal.line_run(`setfacl ${quoted}`),
-      });
-    }
-    void id;
-    return verbs;
+      download: (): void => { window.open(vfsUrl_build(path), '_blank'); },
+      move: (): void => terminal.line_run(`mv ${quoted}`),
+      copy: (): void => terminal.line_run(`cp ${quoted}`),
+      delete: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
+      share: (): void => terminal.line_run(`setfacl ${quoted}`),
+    };
+    return FILE_ROW_ROSTER.rules
+      .filter((rule): boolean => rule.offered(facts))
+      .map((rule): ListingAction<FsListingEntry> => ({
+        label: rule.label(facts),
+        run: (): void => runs[rule.name]?.(),
+      }));
   };
 
   /**
@@ -1399,28 +1386,29 @@ async function surface_start(token: string): Promise<void> {
         const feed: number | null = feedOf_path(path);
         if (feed !== null && !feeds.includes(feed)) feeds.push(feed);
       }
-      const verbs: Array<ListingAction<void>> = [
+      const facts: FilesSelectionFacts = { count: paths.length, feeds };
+      const runs: Record<string, () => void> = {
         // -I asks ONCE for the whole list: twenty questions to remove
         // twenty files is a confirmation an operator learns to dismiss.
-        { label: `DELETE ${paths.length}`, run: (): void => terminal.line_run(`rm -rI ${quoted}`) },
+        delete: (): void => terminal.line_run(`rm -rI ${quoted}`),
         // `-t` with no value: every operand is a SOURCE and the target is
         // asked for. Without it `mv a b` is a rename of a onto b — the
         // right reading of that line, and the wrong thing for a set.
-        { label: `MOVE ${paths.length}`, run: (): void => terminal.line_run(`mv -t ${quoted}`) },
-        { label: `COPY ${paths.length}`, run: (): void => terminal.line_run(`cp -t ${quoted}`) },
-      ];
-      if (feeds.length > 0) {
+        move: (): void => terminal.line_run(`mv -t ${quoted}`),
+        copy: (): void => terminal.line_run(`cp -t ${quoted}`),
         // A grant is per feed, so a selection of twenty files in one feed
         // is ONE grant: the capsule names the feeds, not the files.
-        verbs.push({
-          label: feeds.length === 1 ? `SHARE FEED ${feeds[0]}` : `SHARE ${feeds.length} FEEDS`,
-          run: (): void => terminal.line_run(
-            `setfacl ${feeds.map((feed: number): string => `feed_${feed}`).join(' ')}`,
-          ),
-        });
-      }
+        share: (): void => terminal.line_run(
+          `setfacl ${feeds.map((feed: number): string => `feed_${feed}`).join(' ')}`,
+        ),
+      };
       void files;
-      return verbs;
+      return FILES_SELECTION_ROSTER.rules
+        .filter((rule): boolean => rule.offered(facts))
+        .map((rule): ListingAction<void> => ({
+          label: rule.label(facts),
+          run: (): void => runs[rule.name]?.(),
+        }));
     });
     panel.rowVerbs_declare(
       (entry, path: string) => rowVerbs_of(id, entry, path),
@@ -1826,16 +1814,19 @@ async function surface_start(token: string): Promise<void> {
         // sharing belongs — a browser row offers it only because the path
         // it holds names a feed. DELETE is the kernel's own removal, which
         // asks before it acts.
-        feed_verbs: (feed) => [
-          {
-            label: 'SHARE',
-            run: (): void => terminal.line_run(`setfacl feed_${feed.id}`),
-          },
-          {
-            label: 'DELETE',
-            run: (): void => terminal.line_run(`feed rm feed_${feed.id}`),
-          },
-        ],
+        feed_verbs: (feed) => {
+          const facts: RunsRowFacts = { feedId: feed.id };
+          const runs: Record<string, () => void> = {
+            share: (): void => terminal.line_run(`setfacl feed_${feed.id}`),
+            delete: (): void => terminal.line_run(`feed rm feed_${feed.id}`),
+          };
+          return RUNS_ROW_ROSTER.rules
+            .filter((rule): boolean => rule.offered(facts))
+            .map((rule) => ({
+              label: rule.label(facts),
+              run: (): void => runs[rule.name]?.(),
+            }));
+        },
         feed_indicated: (feed): void => {
           subjects.regard_write(id, { address: `/proc/jobs/feed_${feed.id}`, modelKind: 'feed' });
           // Who holds it is a readout, not a verb: it says what the grant

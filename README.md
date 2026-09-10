@@ -13,7 +13,7 @@
 
 **Drive ChRIS — a cloud platform for scientific analysis — like a computer, not a web API.**
 
-![packages](https://img.shields.io/badge/packages-6-blue)
+![packages](https://img.shields.io/badge/packages-7-blue)
 ![source](https://img.shields.io/badge/source-42k_LOC-blue)
 ![tests](https://img.shields.io/badge/tests-~2k-brightgreen)
 [![codecov](https://codecov.io/gh/FNNDSC/mise/branch/main/graph/badge.svg)](https://codecov.io/gh/FNNDSC/mise)
@@ -51,7 +51,7 @@ cat /proc/jobs/feed_123/pl-fshack_789/status   # watch it run
 
 If you've used a terminal, you already know most of it.
 
-Underneath, mise is more than the shell. It's a mature, layered stack of six
+Underneath, mise is more than the shell. It's a mature, layered stack of seven
 focused packages whose core is a reusable engine — an *intent kernel* — that
 turns *what you want* into validated ChRIS actions and hands back structured
 results. chell is just its first surface; the same engine is built to be driven
@@ -150,6 +150,139 @@ chell
 ```
 
 Requires Node.js ≥ 20.12 (22.x recommended).
+
+### What an install gives you, and what it does not
+
+Either install brings the whole stack: the shell, the engine, and **calypso**, the
+session daemon, with its own `calypso` binary. `chell --daemon` works, and other
+terminals can attach to it over the wire, on this machine or another.
+
+It does **not** bring the ARGUS web surface. That is not published — see
+**[Run the web surface](#run-the-web-surface-argus)** for why, and for how to run
+it from a checkout.
+
+Package versions do not move in step, and that is fine: chell depends on version
+*ranges*, so installing the latest chell pulls the latest compatible engine
+underneath it. A chell release older than a salsa release does not mean you are
+behind.
+
+---
+
+## Run it as a session others can attach to
+
+Everything above runs the engine **in-process**: chell starts it, uses it, and it
+dies with the shell. The other way to run it is **hosted** — one long-lived
+session that surfaces attach to over a WebSocket.
+
+**chell** is a *surface*: a terminal that drives the engine. **calypso** is a
+*host*: it holds one engine as a session and lets surfaces attach. They are the
+same host code, so `chell --daemon` and the `calypso` binary do the same thing;
+use whichever you have to hand.
+
+```bash
+chell --daemon                     # or: calypso
+```
+
+It logs into CUBE from your saved session, then prints where to reach it:
+
+```text
+[+] CALYPSO listening on ws://127.0.0.1:35739 (build bbff65)
+    identity:  you@http://cube.example.org/api/v1/
+    token:     4c9d98c3049ef1fe8fc86df3942fa552…
+    attach a surface with:  chell --remote you@http://cube.example.org/api/v1/
+```
+
+Attach a terminal to it from another window, or from another machine:
+
+```bash
+chell --remote you@http://cube.example.org/api/v1/   # same machine, found by identity
+chell --attach 'ws://host:35739/?token=4c9d98c3…'    # elsewhere; the URL carries the token
+calypso --berths                                     # what is running here
+```
+
+### Host control — letting the daemon act on its own machine
+
+A hosted session runs where the daemon runs, so by default it will not touch that
+machine: `!` shell escapes, pipes and `upload`/`download` all stay off. Turn on
+what you need, in tiers:
+
+```bash
+chell --daemon --host-control              # everything: shell, files, pipes
+chell --daemon --host-control=files        # just upload/download against this disk
+chell --daemon --host-control=shell,pipes  # a subset; or set CALYPSO_HOST_CONTROL
+```
+
+The daemon binds to loopback. `CALYPSO_BIND=0.0.0.0` opens it to the network for a
+demo, and combining that with host control needs `--expose-host-control` as well —
+an explicit "yes, hand a shell on this host to anyone holding the attach URL".
+The attach token still gates every session.
+
+---
+
+## Run the web surface (ARGUS)
+
+**ARGUS** is the browser surface over the same session: an LCARS console with the
+terminal indwelling, plus panes for files, feeds, the job graph, PACS query and
+retrieve, and a DICOM viewer.
+
+**It runs from a checkout, not from an install.** A published `chell` gives you
+the CLI, the session host and the wire — a remote chell can attach to it — but no
+web surface, because ARGUS is not published to npm. The reason is its theme, and
+it is worth reading the section below before you build.
+
+```bash
+git clone https://github.com/FNNDSC/mise && cd mise
+make prep                       # install dependencies
+make cook                       # build every package, ARGUS included
+chell --daemon --host-control   # `make daemon` runs it without host control
+```
+
+The daemon now prints one extra line:
+
+```text
+[+] ARGUS web surface at http://127.0.0.1:35739/?token=4c9d98c3…
+```
+
+Open that URL. The token is in it, so the link is the whole credential — treat it
+the way you would a password, and do not paste it into a chat you would not paste
+a password into.
+
+To show it on another machine, bind wider and open the printed address from there:
+
+```bash
+CALYPSO_BIND=0.0.0.0 chell --daemon --host-control --expose-host-control
+```
+
+### The LCARS theme, and why you have to fetch it yourself
+
+ARGUS wears the **Lower Decks** template from
+[TheLCARS.com](https://www.thelcars.com/), whose licence says *"You may not sell,
+distribute, or retransmit the Template"* and *"You may not hotlink any of my
+files … without permission."* So this repository neither ships the theme nor
+downloads it for you, and `apps/argus/src/lcars/theme/` is gitignored. Every real
+copy comes from the author's own distribution — yours.
+
+**The build works without it.** `theme_ensure.mjs` writes a generated stub when it
+finds no zip, so `make cook` succeeds and ARGUS runs with a plain, degraded look.
+
+**For the real thing**, go to
+[thelcars.com/download.php](https://www.thelcars.com/download.php) and press the
+download button there — it hands off to the author's own Proton Drive, and the
+file you want is `LCARS-26.zip`. The link is deliberately not reproduced here:
+it is a share URL the author can rotate, and his page is where the licence and
+the attribution terms are stated. Put the zip where the build looks. In order:
+
+1. `LCARS_ZIP=/path/to/LCARS-26.zip`
+2. `~/Downloads/LCARS-26.zip`
+3. `LCARS-26.zip` beside `apps/argus/`
+
+```bash
+LCARS_ZIP=~/Downloads/LCARS-26.zip make cook
+```
+
+The script extracts only the members the page uses — the stylesheet, the Antonio
+fonts, four beeps — into the gitignored theme directory. ARGUS credits the
+template and notes that changes were made, as the licence requires.
 
 ---
 
@@ -420,13 +553,16 @@ mise/
 ├── .changeset/              # changesets config + pending changes
 ├── .github/workflows/       # ci.yml (build+test) · release.yml (changesets publish)
 ├── eslint.config.base.mjs   # shared flat config enforcing the style guide
-└── packages/
-    ├── cumin/   @fnndsc/cumin    infrastructure
-    ├── salsa/   @fnndsc/salsa    logic + VFS
-    ├── chili/   @fnndsc/chili    controller + CLI
-    ├── brasa/   @fnndsc/brasa    the hostable shell engine (kernel)
-    ├── calypso/ @fnndsc/calypso  session daemon + wire contract + `calypso` bin
-    └── chell/   @fnndsc/chell    the CLI surface + `--remote` client
+├── packages/
+│   ├── menu/    @fnndsc/menu     the wire contract (zod schemas, models)
+│   ├── cumin/   @fnndsc/cumin    infrastructure
+│   ├── salsa/   @fnndsc/salsa    logic + VFS
+│   ├── chili/   @fnndsc/chili    controller + CLI
+│   ├── brasa/   @fnndsc/brasa    the hostable shell engine (kernel)
+│   ├── calypso/ @fnndsc/calypso  session daemon + `calypso` bin
+│   └── chell/   @fnndsc/chell    the CLI surface + `--remote` client
+└── apps/
+    └── argus/   @fnndsc/argus    the LCARS web surface (private: not published)
 ```
 
 Each package directory carries its **own full git history** (preserved through

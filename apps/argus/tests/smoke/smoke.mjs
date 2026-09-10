@@ -1463,16 +1463,22 @@ try {
     document.getElementById('gutter-tools').click(); await sleep(600);
     const table = document.getElementById('pacs-export');
     const gather = document.getElementById('pacs-gather-export');
-    const frame = document.querySelector('.pacs-listing .mode-frame');
+    const line = document.getElementById('pacs-commandline');
     const strip = document.getElementById('pacs-gather');
+    const box = table ? table.getBoundingClientRect() : null;
     return {
       tableLabel: table ? table.textContent.trim() : null,
       gatherLabel: gather ? gather.textContent.trim() : null,
-      tableOnTheField: frame !== null && table !== null && frame.contains(table),
+      tableOnTheLine: line !== null && table !== null && line.contains(table),
+      // Wide enough to read its own label: it lived on the results frame,
+      // which is the CLOSED spine until someone opens it, so it rendered as
+      // 22px of clipped text and read as missing.
+      tableWidth: box ? Math.round(box.width) : 0,
       gatherInTheStrip: strip !== null && gather !== null && strip.contains(gather),
     };`);
-  check("the answer's export stands on the field it exports",
-    pacsExports.tableLabel === 'EXPORT CSV' && pacsExports.tableOnTheField === true,
+  check("the answer's export is readable without opening anything",
+    pacsExports.tableLabel === 'EXPORT CSV' && pacsExports.tableOnTheLine === true
+    && pacsExports.tableWidth > 60,
     JSON.stringify(pacsExports));
   check("the cohort's export stands with the cohort's verbs and names its scope",
     pacsExports.gatherLabel === 'EXPORT GATHER CSV' && pacsExports.gatherInTheStrip === true,

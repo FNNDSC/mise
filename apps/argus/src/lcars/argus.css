@@ -1486,7 +1486,12 @@ body[data-zoom]:not([data-zoom='console'])
 .dag-roster,
 .pacs-listing {
   --frame-top: var(--mode-frame-top, 0px);
-  --spine-w: 8px;
+  /* The closed spine is a CONTROL — pressing it opens the mode frame — and
+   * at 8px it was a hairline that happened to be clickable. Doubled, which
+   * is a target a hand can find without hunting. The field is inset by this
+   * width rather than overlaid by it, so the listing's own scrollbar simply
+   * moves with it and nothing is covered. */
+  --spine-w: 21px;
   --rule-h: 6px;
   --bar-w: 7.2rem;
   --elbow-h: 30px;
@@ -4033,23 +4038,37 @@ body[data-zoom] #header-restore {
 
 /* LCARS chrome is flat colour, and a flat block that acts looks exactly
  * like a flat block that decorates. The pieces an operator can press
- * therefore breathe: a slow, shallow lift in brightness that reads as
- * "this is alive" from across a room and is invisible when you are reading.
- * Shallow on purpose — a pulse that draws the eye competes with the data,
- * which is the thing the eye is meant to be on.
+ * therefore breathe: a slow swing in brightness that reads as "this is
+ * alive" from across a room. The first attempt swung 16 percent and the
+ * operator could not see it at all — on a saturated LCARS block a small
+ * multiplier is no change worth noticing, so the swing goes BOTH ways from
+ * the resting colour, down as well as up, which the eye catches where a
+ * one-sided lift does not.
  *
  * Hover stops it, because hover is a stronger statement of the same fact
  * and the two would fight over `filter`. */
 @keyframes lcars-breath {
-  from { filter: brightness(1); }
-  to { filter: brightness(1.16); }
+  from { filter: brightness(0.82); }
+  to { filter: brightness(1.28); }
 }
 
 #drawer-toggle,
 #header-restore,
 .mode-strip,
 .mode-fill {
-  animation: lcars-breath 2.6s ease-in-out infinite alternate;
+  animation: lcars-breath 2.2s ease-in-out infinite alternate;
+}
+
+/* The spine is the narrowest thing that breathes, and area is what makes a
+ * brightness swing readable: the same swing that is plain on a wide lid is
+ * nearly invisible on a strip. So it swings further. */
+@keyframes lcars-breath-spine {
+  from { filter: brightness(0.45); }
+  to { filter: brightness(1.6); }
+}
+
+.mode-strip {
+  animation: lcars-breath-spine 1.6s ease-in-out infinite alternate;
 }
 
 /* The console's lid and the header's lid are the way BACK to something that
@@ -4073,6 +4092,6 @@ body[data-zoom] #header-restore {
   .mode-strip,
   .mode-fill,
   .image-working-fill.image-working-pacing {
-    animation: none;
+    animation: none !important;
   }
 }

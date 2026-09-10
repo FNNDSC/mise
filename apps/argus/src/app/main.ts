@@ -1633,7 +1633,7 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns The console line to print.
    */
-  const image_open = async (fromId: string | null, path: string): Promise<string> => {
+  const image_open = async (fromId: string | null, path: string, options: { force?: boolean } = {}): Promise<string> => {
     if (VOLUME_FILE_PATTERN.test(path)) {
       const panel: ImagePanel | null = imagePane_for(fromId);
       if (panel === null) return 'image: no pane to open beside';
@@ -1659,7 +1659,7 @@ async function surface_start(token: string): Promise<void> {
     const panel: ImagePanel | null = imagePane_for(fromId);
     if (panel === null) return 'image: no pane to open beside';
     const startAt: number = isFile ? Math.max(1, series.files.indexOf(path) + 1) : 1;
-    void panel.series_show(series, { siblings, startAt });
+    void panel.series_show(series, { siblings, startAt, ...(options.force === true ? { force: true } : {}) });
     return `image ${series.path}${siblings.length > 1 ? ` (1 of ${siblings.length} series)` : ''}`;
   };
   const viewInstance_build = (id: string): PaneInstance => {
@@ -2775,7 +2775,7 @@ async function surface_start(token: string): Promise<void> {
       window.open(vfsUrl_build(regard.address), '_blank');
       return true;
     },
-    image_open: (paneId: string | null, path: string): Promise<string> => image_open(paneId, path),
+    image_open: (paneId: string | null, path: string, options?: { force?: boolean }): Promise<string> => image_open(paneId, path, options ?? {}),
     image_control: async (paneId: string, verb: string, args: string[]): Promise<string> => {
       // The verb reaches the image pane the target stands for: itself, the
       // one in its link group, or the only one on stage.
@@ -2790,7 +2790,8 @@ async function surface_start(token: string): Promise<void> {
       if (verb === 'layout') {
         const layout: string = args[0] ?? '';
         if (!(IMAGE_LAYOUTS as readonly string[]).includes(layout)) return 'image layout single|mpr|3d';
-        return (await panel.layout_set(layout as ImageLayout)) ? `image layout ${layout}` : `image layout ${layout}: not offered`;
+        if (await panel.layout_set(layout as ImageLayout)) return `image layout ${layout}`;
+        return panel.state_get()?.waiting === layout ? `image layout ${layout}: waiting for LOAD` : `image layout ${layout}: not offered`;
       }
       if (verb === 'slice') {
         const slice: number = Number(args[0]);
@@ -2826,6 +2827,20 @@ async function surface_start(token: string): Promise<void> {
       }
       if (verb === 'save') {
         return (await panel.annotations_save()) ? 'image save' : 'image save: nothing saved (the console says why)';
+      }
+      if (verb === 'load') {
+        return (await panel.load_press()) ? 'image load' : 'image load: nothing was waiting';
+      }
+      if (verb === 'guard') {
+        const word: string = (args[0] ?? '').toLowerCase();
+        if (word === 'off') {
+          panel.guard_set(null);
+          return 'image guard off';
+        }
+        const bytes: number = Number(args[0]);
+        if (!Number.isFinite(bytes) || bytes < 0) return `image guard <bytes>|off (now ${panel.guard_get() === null ? 'off' : panel.guard_get()})`;
+        panel.guard_set(bytes);
+        return `image guard ${bytes}`;
       }
       if (verb === 'tags') {
         const imageId: string | undefined = [...imagePanels.entries()].find(([, candidate]: [string, ImagePanel]): boolean => candidate === panel)?.[0];

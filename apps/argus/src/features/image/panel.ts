@@ -20,6 +20,8 @@ import {
   IMAGE_COLORMAPS,
   IMAGE_LAYOUTS,
   IMAGE_TOOLS,
+  WINDOW_LEVEL_PRESETS,
+  type WindowLevelPreset,
   type ImageColormap,
   type ImageEngine,
   type ImageEngineHost,
@@ -49,6 +51,21 @@ export interface SeriesChoice {
   label: string;
 }
 
+/** Bytes a series may reach before a volume layout waits for LOAD. */
+export const VOLUME_GUARD_BYTES: number = 256 * 1024 * 1024;
+
+/** Bytes in the nearest unit, for the bar. */
+function bytes_format(bytes: number): string {
+  const units: string[] = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value: number = bytes;
+  let unit: number = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return unit === 0 ? `${bytes} B` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
 /** The hue a modality wears on the frame. */
 function modalityHue_of(modality: string): string {
   const upper: string = modality.toUpperCase();
@@ -66,7 +83,16 @@ export class ImagePanel {
   private readonly layoutPill: HTMLButtonElement;
   private readonly colormapPill: HTMLButtonElement;
   private readonly savePill: HTMLButtonElement;
+  private readonly loadPill: HTMLButtonElement;
+  private readonly presetPill: HTMLButtonElement;
   private readonly focusMark: HTMLElement;
+  /** Bytes a series may reach before MPR or 3D waits for LOAD; null turns the guard off. */
+  private guardBytes: number | null = VOLUME_GUARD_BYTES;
+  /** LOAD was pressed (or `--force` given) for the series on the field. */
+  private forced: boolean = false;
+  /** The layout LOAD will apply. */
+  private pendingLayout: ImageLayout | null = null;
+  private presetIndex: number = -1;
   private readonly toolPills: Map<ImageTool, HTMLButtonElement> = new Map<ImageTool, HTMLButtonElement>();
   private readonly handlers: ImagePanelHandlers;
   private engine: ImageEngine | null = null;
@@ -89,12 +115,16 @@ export class ImagePanel {
     this.layoutPill = element_find(mount, '.image-layout') as HTMLButtonElement;
     this.colormapPill = element_find(mount, '.image-colormap') as HTMLButtonElement;
     this.savePill = element_find(mount, '.image-save') as HTMLButtonElement;
+    this.loadPill = element_find(mount, '.image-load') as HTMLButtonElement;
+    this.presetPill = element_find(mount, '.image-preset') as HTMLButtonElement;
     this.focusMark = element_find(mount, '.image-focus');
     this.field.tabIndex = 0;
 
     this.layoutPill.addEventListener('click', (): void => void this.layout_cycle());
     this.colormapPill.addEventListener('click', (): void => void this.colormap_cycle());
     this.savePill.addEventListener('click', (): void => void this.annotations_save());
+    this.loadPill.addEventListener('click', (): void => void this.load_press());
+    this.presetPill.addEventListener('click', (): void => this.preset_cycle());
     element_find(mount, '.image-tags').addEventListener('click', (): void => this.handlers.tags_open());
     for (const tool of IMAGE_TOOLS) {
       const pill: HTMLButtonElement = element_find(mount, `.image-tool[data-tool="${tool}"]`) as HTMLButtonElement;
@@ -145,9 +175,13 @@ export class ImagePanel {
    * @param model - The series.
    * @param options - Sibling series for a study folder, and the slice to start at.
    */
-  public async series_show(model: DicomSeriesModel, options: { siblings?: SeriesChoice[]; startAt?: number } = {}): Promise<void> {
+  public async series_show(model: DicomSeriesModel, options: { siblings?: SeriesChoice[]; startAt?: number; force?: boolean } = {}): Promise<void> {
     this.engine_dispose();
     this.series = model;
+    this.forced = options.force === true;
+    this.pendingLayout = null;
+    this.loadPill.hidden = true;
+    this.presets_paint(model.modality);
     this.siblings = options.siblings ?? [];
     this.pane.dataset['modality'] = modalityHue_of(model.modality);
     this.title.textContent = `IMAGE ${model.modality.toUpperCase()} ${model.seriesDescription}`.trim();
@@ -197,6 +231,9 @@ export class ImagePanel {
     this.siblings = [];
     this.pane.dataset['modality'] = 'NIFTI';
     this.title.textContent = `IMAGE ${path.split('/').pop() ?? ''}`;
+    this.forced = true;
+    this.loadPill.hidden = true;
+    this.presets_paint('NIFTI');
     const { NiivueEngine } = await import('./niivueEngine.js');
     await this.engine_open(new NiivueEngine(this.engineHost_get(), path));
   }
@@ -212,9 +249,9 @@ export class ImagePanel {
   }
 
   /** What is on the field, for the bar and the smoke probe. */
-  public state_get(): (ImageEngineState & { colormap: ImageColormap; path: string | null }) | null {
+  public state_get(): (ImageEngineState & { colormap: ImageColormap; path: string | null; guard: number | null; waiting: ImageLayout | null }) | null {
     if (this.engine === null) return null;
-    return { ...this.engine.state_get(), colormap: this.colormap, path: this.series?.path ?? null };
+    return { ...this.engine.state_get(), colormap: this.colormap, path: this.series?.path ?? null, guard: this.guardBytes, waiting: this.pendingLayout };
   }
 
   /**
@@ -222,6 +259,15 @@ export class ImagePanel {
    */
   public async layout_set(layout: ImageLayout): Promise<boolean> {
     if (this.engine === null) return false;
+    // A volume layout pulls every slice; over the guard it waits for LOAD.
+    // The stack never asks: its first slice costs one file.
+    if (layout !== 'single' && this.guard_trips()) {
+      this.pendingLayout = layout;
+      this.loadPill.hidden = false;
+      this.stateSpan.textContent = `SERIES ${bytes_format(this.series?.bytes ?? 0)} · LOAD FOR ${layout.toUpperCase()}`;
+      this.handlers.note(`image: ${bytes_format(this.series?.bytes ?? 0)} to fetch for ${layout}; press LOAD, image load, or image --force <path>`);
+      return false;
+    }
     const ok: boolean = await this.engine.layout_set(layout);
     if (!ok) {
       this.handlers.note(`image: layout ${layout}: not offered by ${this.engine.name}`);
@@ -230,6 +276,56 @@ export class ImagePanel {
     this.layoutPill.textContent = layout.toUpperCase();
     this.modeSpan.textContent = layout === 'single' ? '' : layout.toUpperCase();
     return true;
+  }
+
+  /** Whether the series on the field is over the guard and not yet consented to. */
+  private guard_trips(): boolean {
+    return this.guardBytes !== null && !this.forced && this.engine?.name === 'cornerstone' && (this.series?.bytes ?? 0) > this.guardBytes;
+  }
+
+  /** LOAD: consent for this series, then the layout that was waiting. */
+  public async load_press(): Promise<boolean> {
+    this.forced = true;
+    this.loadPill.hidden = true;
+    const layout: ImageLayout | null = this.pendingLayout;
+    this.pendingLayout = null;
+    if (layout === null) return false;
+    return this.layout_set(layout);
+  }
+
+  /**
+   * Sets the guard: bytes, or null for none. A readout that acts says so,
+   * so the console line names the new threshold.
+   */
+  public guard_set(bytes: number | null): void {
+    this.guardBytes = bytes;
+  }
+
+  public guard_get(): number | null {
+    return this.guardBytes;
+  }
+
+  /** Cycles the modality's window presets on the PRESET block. */
+  private preset_cycle(): void {
+    const presets: WindowLevelPreset[] = this.presets_for(this.series?.modality ?? 'NIFTI');
+    if (presets.length === 0) return;
+    this.presetIndex = (this.presetIndex + 1) % presets.length;
+    const preset: WindowLevelPreset | undefined = presets[this.presetIndex];
+    if (preset === undefined) return;
+    if (this.wl_set(preset.lower, preset.upper)) this.presetPill.textContent = preset.name.toUpperCase();
+  }
+
+  private presets_for(modality: string): WindowLevelPreset[] {
+    const upper: string = modality.toUpperCase();
+    return WINDOW_LEVEL_PRESETS.filter((preset: WindowLevelPreset): boolean => preset.modalities.length === 0 || preset.modalities.includes(upper));
+  }
+
+  /** The PRESET block shows only where the modality has presets: a block that cannot act is no block. */
+  private presets_paint(modality: string): void {
+    this.presetIndex = -1;
+    const presets: WindowLevelPreset[] = this.presets_for(modality);
+    this.presetPill.hidden = presets.length === 0;
+    this.presetPill.textContent = 'PRESET';
   }
 
   public slice_set(slice: number): boolean {

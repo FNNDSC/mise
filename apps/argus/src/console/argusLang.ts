@@ -46,7 +46,7 @@ export interface ArgusHost {
   /** Runs a session command silently, returning rendered output. */
   session_run(line: string): Promise<string>;
   /** Opens a path as an image beside the pane (or the focused one); returns the console line. */
-  image_open(paneId: string | null, path: string): Promise<string>;
+  image_open(paneId: string | null, path: string, options?: { force?: boolean }): Promise<string>;
   /** Drives an image pane's verbs (layout, slice, series, wl, colormap, save, tags); returns the console line. */
   image_control(paneId: string, verb: string, args: string[]): Promise<string>;
   /** Drives a tags pane's verbs (redact, filter); returns the console line. */
@@ -206,7 +206,7 @@ const VERBS_HELP: string = [
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
   'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
   'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)',
-  'image [@id] <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags',
+  'image [@id] [--force] <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags · load · guard <bytes>|off',
   'tags [@id] redact on|off · filter <text>|off   (the pane that follows an image pane\'s slice)',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
@@ -421,13 +421,15 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'image') {
-    const IMAGE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags']);
-    const first: string = words[0] ?? '';
-    if (first === '') return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
-    if (!IMAGE_VERBS.has(verb)) {
+    const IMAGE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard']);
+    const force: boolean = words.includes('--force');
+    const plain: string[] = words.filter((word: string): boolean => word !== '--force');
+    const first: string = plain[0] ?? '';
+    if (first === '') return 'image [--force] <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save · tags · load · guard <bytes>|off';
+    if (!IMAGE_VERBS.has(first.toLowerCase())) {
       // A word that is not a verb is a path: a series folder, a study, a
-      // DICOM file, or a NIfTI/MGZ volume.
-      return host.image_open(sentence.target !== null ? paneId : host.focused_get(), first);
+      // DICOM file, or a NIfTI/MGZ volume. `--force` skips the volume guard.
+      return host.image_open(sentence.target !== null ? paneId : host.focused_get(), first, { force });
     }
     return host.image_control(paneId, verb, words.slice(1));
   }

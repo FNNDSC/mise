@@ -170,6 +170,8 @@ image::images/image-pane-anatomy.svg[Image pane anatomy,1180]
 | layout block | `.image-layout` | Cycles SINGLE, MPR, 3D.
 | colormap block | `.image-colormap` | Cycles GRAY, HOT, JET, COOL.
 | save block | `.image-save` | The measurements as a DICOM SR under `~/annotations/<SeriesInstanceUID>/`.
+| preset block | `.image-preset` | Cycles the modality's window presets; hidden where the modality has none.
+| load block | `.image-load` | Shown while a volume layout waits on the guard; pressing it consents and applies the layout.
 | focus mark | `.image-focus` | Shown while the field holds the keyboard.
 | field | `.image-field` | The engine's mount; `tabindex=0`; holds `.image-viewport` elements or an `.image-canvas`, never a control.
 |===
@@ -199,7 +201,7 @@ await panel.volume_show('/home/me/uploads/t1.nii.gz');   // a NIfTI or MGZ path
 
 === Laws
 
-`an-instruments-field-is-foreign` (no control inside `.image-field`; the lint reads the template), `focus-stays-in-the-field` (smoke), `frame-retracts-to-a-strip`, `a-control-lives-where-it-acts` (IMAGE on the row that holds the series), `hue-is-a-mode` (the modality on the frame), `a-readout-that-acts-says-so` (LOADING, REFUSED, UNSUPPORTED on the bar).
+`an-instruments-field-is-foreign` (no control inside `.image-field`; the lint reads the template), `focus-stays-in-the-field` (smoke), `series-loads-by-consent` (smoke), `an-annotation-is-a-file` (smoke), `frame-retracts-to-a-strip`, `a-control-lives-where-it-acts` (IMAGE on the row that holds the series), `hue-is-a-mode` (the modality on the frame), `a-readout-that-acts-says-so` (LOADING, REFUSED, UNSUPPORTED on the bar).
 
 === Stylesheet
 

@@ -1,5 +1,14 @@
 # @fnndsc/argus
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [7c793ad]
+- Updated dependencies [af2df66]
+  - @fnndsc/menu@0.8.0
+  - @fnndsc/calypso@0.13.1
+
 ## 0.6.1
 
 ### Patch Changes

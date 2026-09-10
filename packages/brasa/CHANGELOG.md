@@ -1,5 +1,24 @@
 # @fnndsc/brasa
 
+## 0.21.0
+
+### Minor Changes
+
+- af2df66: New `dcm` builtin: `dcm series <folder>` renders a folder as a series and carries the `dicom.series` model; `dcm tags <file|folder> [--all] [--filter <text>]` renders a grouped tag listing, or a folder's constant and varying tags, and carries `dicom.tags`. Folder listings read every file up to 512 then sample evenly, and the text says how many were read of how many, and which were refused.
+
+### Patch Changes
+
+- 7c793ad: `pacs query` fills each pulled series' `folderPath` from the storage state it already resolves.
+- 0eb202f: `dcm tags --filter` descends into sequence items, so a needle inside a referenced-image sequence keeps the sequence on screen.
+- 183bf02: `rm` treats an abandoned question as an answer, not a failure. A confirmation that comes back with no answer — the operator pressed Esc, or the surface lost its ability to ask — used to abort the per-file `-i` walk with `rm: cannot remove '<path>'`, an error over a file nothing had touched, and left every file behind it silently unoffered. It now skips that file by name, says why, stops asking, and says how many it left alone. The one-question `-I` path keeps everything as before and now states the reason too, so a surface that has quietly lost its voice is not reported as an operator who declined.
+- Updated dependencies [7c793ad]
+- Updated dependencies [af2df66]
+- Updated dependencies [af2df66]
+- Updated dependencies [b9ec3aa]
+  - @fnndsc/menu@0.8.0
+  - @fnndsc/salsa@3.16.0
+  - @fnndsc/cumin@3.21.1
+
 ## 0.20.0
 
 ### Minor Changes

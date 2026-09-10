@@ -1,5 +1,16 @@
 # @fnndsc/salsa
 
+## 3.16.0
+
+### Minor Changes
+
+- af2df66: DICOM in the kernel: `dicomTags_read` parses a file's elements with dcmjs (dictionary names, VR, module group, PHI flag, decoded words, nested sequences), `dicomTags_summarize` tells constant from varying across a folder, and `dicomSeries_summarize` answers what a folder is as a series from its listing plus one header read (identity, modality, instance count, stack order from oxidicom's file names, geometry, transfer syntax, bytes, annotations by SeriesInstanceUID). Headers read once are cached by path.
+
+### Patch Changes
+
+- b9ec3aa: A retrieve watch measures quiet across the whole study, not per series. A PACS serves a study's series in turn, so every series still queued fifteen seconds after firing had no files and was declared unconfirmed: pulling a whole study reported every series after the first few as lost while pulling one series alone always worked. Silence is now evidence only when nothing has arrived for any series, the long stop counts from a series' first file rather than from the fire, and a reconnection no longer reads as silence.
+  - @fnndsc/cumin@3.21.1
+
 ## 3.15.0
 
 ### Minor Changes

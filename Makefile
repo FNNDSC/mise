@@ -247,8 +247,13 @@ merge: ci-watch
 
 # Bot-opened PRs (the changesets Version Packages PR) get their CI runs
 # parked as action_required; this approves them so the checks can run.
+# A run held for approval reports status=completed with conclusion
+# action_required, NOT status=action_required — asking for the latter matched
+# nothing, so this approved nothing and `publish` then waited forever on
+# checks that were never going to start. Both spellings are selected here,
+# since a run held before it starts reports status=waiting instead.
 vp-approve:
-	@for id in $$(gh api "repos/{owner}/{repo}/actions/runs?branch=changeset-release/main&status=action_required" --jq '.workflow_runs[].id'); do \
+	@for id in $$(gh api "repos/{owner}/{repo}/actions/runs?branch=changeset-release/main&per_page=20" --jq '.workflow_runs[] | select(.conclusion == "action_required" or .status == "waiting") | .id'); do \
 		echo "Approving CI run $$id..."; \
 		gh api -X POST "repos/{owner}/{repo}/actions/runs/$$id/approve" >/dev/null; \
 	done

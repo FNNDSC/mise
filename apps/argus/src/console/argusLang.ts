@@ -47,8 +47,10 @@ export interface ArgusHost {
   session_run(line: string): Promise<string>;
   /** Opens a path as an image beside the pane (or the focused one); returns the console line. */
   image_open(paneId: string | null, path: string): Promise<string>;
-  /** Drives an image pane's verbs (layout, slice, series, wl, colormap, save); returns the console line. */
+  /** Drives an image pane's verbs (layout, slice, series, wl, colormap, save, tags); returns the console line. */
   image_control(paneId: string, verb: string, args: string[]): Promise<string>;
+  /** Drives a tags pane's verbs (redact, filter); returns the console line. */
+  tags_control(paneId: string, verb: string, args: string[]): string;
   /** Toggles the console's full-screen zoom (the bar carries no control). */
   consoleZoom_toggle(): void;
   /** The serialized desktop of the current composition. */
@@ -64,7 +66,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'header', 'console', 'back', 'desktop', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'argus',
 ]);
 
 /**
@@ -77,6 +79,9 @@ const SUBJECTS: ReadonlySet<string> = new Set([
  */
 const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   pacs: new Set(['sort', 'filter']),
+  // `tags` is the kernel's tag resource; the surface claims only the two
+  // verbs its tags pane has and the session lacks.
+  tags: new Set(['redact', 'filter']),
 };
 
 /** Desktop replay ordinals: %n → the n-th pane created during this load. */
@@ -201,7 +206,8 @@ const VERBS_HELP: string = [
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
   'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
   'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)',
-  'image [@id] <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save',
+  'image [@id] <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags',
+  'tags [@id] redact on|off · filter <text>|off   (the pane that follows an image pane\'s slice)',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
@@ -415,7 +421,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'image') {
-    const IMAGE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save']);
+    const IMAGE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags']);
     const first: string = words[0] ?? '';
     if (first === '') return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
     if (!IMAGE_VERBS.has(verb)) {
@@ -424,6 +430,11 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       return host.image_open(sentence.target !== null ? paneId : host.focused_get(), first);
     }
     return host.image_control(paneId, verb, words.slice(1));
+  }
+
+  if (subject === 'tags') {
+    if (paneId === null) return 'tags: no pane in focus';
+    return host.tags_control(paneId, verb, words.slice(1));
   }
 
   if (subject === 'node') {

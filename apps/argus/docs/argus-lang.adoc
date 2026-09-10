@@ -50,6 +50,16 @@ Each row says what the sentence lowers to. "Drawer" means the pane's drawer caps
 | `image wl preset <name>` | frame W/L | `brain`, `bone`, `lung`, `soft`, `liver` for CT; none for MR yet.
 | `image colormap gray\|hot\|jet\|cool` | frame COLORMAP block |
 | `image save` | frame SAVE block | The measurements on the field as a DICOM SR at `~/annotations/<SeriesInstanceUID>/measurements.dcm`, through the surface's own route.
+| `image tags` | frame TAGS block | Opens, or focuses, the tags pane that follows this image pane's slice, beside it in the same link group.
+|===
+
+=== tags — the elements of the slice on screen
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `tags redact on\|off` | frame REDACT block | Identifying values (the kernel's PHI flag) read `••••` while on. On by default.
+| `tags filter <text>\|off` | frame FILTER block and the strip | The listing's own filter; it descends into sequence items. `off` closes the strip.
 |===
 
 === pane — the tile itself

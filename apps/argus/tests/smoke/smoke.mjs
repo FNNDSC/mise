@@ -2072,6 +2072,57 @@ try {
     check('image layout single returns and the mode annunciation clears', verbs.back === '', JSON.stringify(verbs));
   }
   }
+  if (stage('image-tags')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    const tags = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image layout single');
+      await run('image slice 2');
+      await run('image tags');
+      let pane = null;
+      for (let i = 0; i < 60; i++) { await sleep(500); pane = document.querySelector('.pane-tags'); if (pane && pane.querySelectorAll('.tags-row').length > 0) break; }
+      if (!pane) return { error: 'no tags pane' };
+      const groups = [...pane.querySelectorAll('.tags-group-row .tags-group-name')].map((e) => e.textContent);
+      const rowOf = (name) => [...pane.querySelectorAll('.tags-row')].find((r) => r.querySelector('.tags-name')?.textContent === name);
+      const instance = () => rowOf('InstanceNumber')?.querySelector('.tags-value')?.textContent ?? null;
+      const before = instance();
+      const phiBefore = rowOf('PatientName')?.querySelector('.tags-value')?.textContent ?? null;
+      const redactBlock = pane.querySelector('.tags-redact').textContent;
+      const state = pane.querySelector('.pane-state').textContent;
+      // The image pane moves; the tags pane follows.
+      await run('image slice 5');
+      let after = before;
+      for (let i = 0; i < 40 && after === before; i++) { await sleep(150); after = instance(); }
+      // REDACT off reveals; on hides again.
+      await run('tags redact off');
+      await sleep(300);
+      const phiRevealed = rowOf('PatientName')?.querySelector('.tags-value')?.textContent ?? null;
+      await run('tags redact on');
+      await sleep(300);
+      const phiHidden = rowOf('PatientName')?.querySelector('.tags-value')?.textContent ?? null;
+      // The filter narrows, and descends into a sequence.
+      await run('tags filter Position');
+      await sleep(400);
+      const filtered = [...pane.querySelectorAll('.tags-row')].filter((r) => r.getBoundingClientRect().height > 0).map((r) => r.querySelector('.tags-name')?.textContent);
+      await run('tags filter ReferencedSOPClass');
+      await sleep(400);
+      const deep = [...pane.querySelectorAll('.tags-row')].filter((r) => r.getBoundingClientRect().height > 0).map((r) => r.querySelector('.tags-name')?.textContent);
+      await run('tags filter off');
+      await sleep(300);
+      const hue = pane.dataset.modality;
+      const sameGroup = pane.closest('.layout-leaf') !== null;
+      return { groups, before, after, phiBefore, phiRevealed, phiHidden, redactBlock, state, filtered, deep, hue, sameGroup };`);
+    check('image tags opens a tags pane beside the image pane with module groups', tags.error === undefined && tags.groups.includes('PATIENT') && tags.groups.includes('IMAGE') && tags.sameGroup, JSON.stringify(tags));
+    check("the tags pane follows the image pane's slice", tags.before === '2' && tags.after === '5', JSON.stringify(tags));
+    check('identifying values show redacted until REDACT says otherwise', tags.phiBefore === '••••' && tags.phiRevealed !== '••••' && tags.phiRevealed !== null && tags.phiHidden === '••••' && /REDACT ON/.test(tags.redactBlock) && /REDACTED/.test(tags.state), JSON.stringify(tags));
+    check('the tags filter narrows the listing and descends into sequences', Array.isArray(tags.filtered) && tags.filtered.includes('ImagePositionPatient') && !tags.filtered.includes('PatientName') && tags.deep.includes('ReferencedImageSequence'), JSON.stringify(tags));
+    check("the tags pane wears the slice's modality as its hue", tags.hue === 'MR', JSON.stringify(tags));
+  }
+  }
   if (stage('image-volume')) {
   if (niftiPath === '') {
     console.log('  skipped: set SMOKE_NIFTI=<volume path on the daemon>');

@@ -39,6 +39,8 @@ export interface ImagePanelHandlers {
   regard: (path: string) => void;
   /** Puts bytes at a CFS path through the surface's own route; resolves to the HTTP status. */
   file_put: (path: string, body: Blob) => Promise<number>;
+  /** Opens (or focuses) the tags pane that follows this one. */
+  tags_open: () => void;
 }
 
 /** A sibling series in a study folder, for `image series <n>`. */
@@ -93,6 +95,7 @@ export class ImagePanel {
     this.layoutPill.addEventListener('click', (): void => void this.layout_cycle());
     this.colormapPill.addEventListener('click', (): void => void this.colormap_cycle());
     this.savePill.addEventListener('click', (): void => void this.annotations_save());
+    element_find(mount, '.image-tags').addEventListener('click', (): void => this.handlers.tags_open());
     for (const tool of IMAGE_TOOLS) {
       const pill: HTMLButtonElement = element_find(mount, `.image-tool[data-tool="${tool}"]`) as HTMLButtonElement;
       this.toolPills.set(tool, pill);

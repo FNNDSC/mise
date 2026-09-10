@@ -374,10 +374,56 @@
                     <button class="strategy-pill image-layout" title="layout: single plane, three linked planes, or a 3D render">SINGLE</button>
                     <button class="strategy-pill image-colormap" title="colormap">GRAY</button>
                     <button class="strategy-pill image-save" title="save the measurements as a DICOM SR under ~/annotations">SAVE</button>
+                    <button class="strategy-pill image-tags" title="the slice's tags, in a pane that follows this one">TAGS</button>
                     <span class="image-focus strategy-pill rail-off" hidden title="the field holds the keyboard; Esc gives it back">FOCUS</span>
                     <span class="mode-fill"></span>
                   </aside>
                   <section class="image-field" aria-label="Image"></section>
+                </div>
+              </div>
+            </template>
+            <!-- The tags pane: a DICOM instance's elements as a listing that
+                 follows the image pane's slice (docs/aegis.adoc:
+                 tags-follow-the-image). -->
+            <template id="tpl-pane-tags">
+              <div class="workspace-pane pane-tags">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title pane-title">TAGS</span>
+                    <span class="pane-mode"></span>
+                    <span class="pane-state"></span>
+                  </div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <span class="drawer-group drawer-structure">
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                    <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                    <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  </span>
+                  <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                    <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                  </span>
+                  <span class="drawer-group drawer-children"></span>
+                </div>
+                <div class="tags-body">
+                  <span class="field-rule"></span>
+                  <button class="mode-strip" title="tag modes" aria-label="tag modes"></button>
+                  <span class="mode-elbow"></span>
+                  <aside class="mode-frame">
+                    <button class="strategy-pill tags-filter" title="filter the tags (the bar reads FILTERED n/m)">FILTER OFF</button>
+                    <!-- Identifying values are hidden until asked for: the
+                         kernel flags them, the surface chooses. -->
+                    <button class="strategy-pill tags-redact" title="hide or show identifying values">REDACT ON</button>
+                    <span class="mode-fill"></span>
+                  </aside>
+                  <section class="tags-panel" aria-label="Tags"></section>
                 </div>
               </div>
             </template>

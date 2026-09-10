@@ -37,7 +37,7 @@ import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
-import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
+import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, seriesFolder_is, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
@@ -1318,7 +1318,7 @@ async function surface_start(token: string): Promise<void> {
     const facts: FileRowFacts = {
       kind: entry.type === 'plugin' || entry.type === 'pipeline'
         ? 'catalogue'
-        : directory && SERIES_FOLDER_PATTERN.test(entry.name)
+        : directory && seriesFolder_is(path, entry.name)
           ? 'seriesFolder'
           : entry.type === 'file' ? 'file' : 'directory',
       feed: feedOf_path(path),

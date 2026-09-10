@@ -1023,19 +1023,38 @@ try {
     [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'DELETE')?.click();
     let confirm = '';
     for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a && a.textContent.trim() !== asked) { confirm = a.textContent.trim(); break; } }
-    key('Escape'); await sleep(1200);
+    // Escape from the ROW, which is where the hand already is after pressing
+    // the row's own verb. Pressed at the console input a question was always
+    // abandoned; pressed anywhere else it reached nothing at all.
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(1200);
     const feedsAfter = rows().length;
+    // Abandoning a question releases the command that asked it. Bound to the
+    // input line alone, Escape pressed with focus on a row reached nothing:
+    // the question stayed open and the removal held the lane for as long as
+    // the session lived. The lane is where that shows.
+    const lane = () => {
+      const box = document.getElementById('lane-instrument');
+      const row = [...(box?.querySelectorAll('.lane-row') ?? [])]
+        .find((r) => r.querySelector('.telemetry-label')?.textContent === 'LANE');
+      return row?.querySelector('.telemetry-value')?.textContent ?? '';
+    };
+    // The lane rides a heartbeat, so give it a few before believing it.
+    await sleep(3000);
+    const laneAfter = lane();
 
     // a double-click still enters the feed
     target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     let entered = false;
     for (let i = 0; i < 60; i++) { await sleep(400); if (!rosterShown()) { entered = true; break; } }
-    return { verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, entered };`);
+    return { verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, laneAfter, entered };`);
   check('a feed row carries the verbs that act on a feed',
     shares.verbs.join(',') === 'SHARE,DELETE' && shares.others);
   check('the row reads back who holds it', /^SHARED WITH /.test(shares.readout));
   check('no roster row moves when one is indicated', !shares.moved);
   check('indicating a feed does not enter it', shares.stayed);
+  check('abandoning the confirmation releases the command that asked it',
+    !/feed rm/.test(shares.laneAfter ?? ''), `LANE ${shares.laneAfter}`);
   check('SHARE asks who, and says the grant cannot be taken back',
     /with which user/.test(shares.asked) && /cannot be taken back/.test(shares.asked));
   check('DELETE raises the kernel\'s own confirmation', /Remove feed \d+ and everything in it/.test(shares.confirm));
@@ -1523,6 +1542,38 @@ try {
       && cohort.studyCaps.includes('ACCESSION'),
       JSON.stringify({ folded: cohort.foldedBefore, open: cohort.openAfter, caps: cohort.studyCaps }));
   }
+  }
+
+  if (stage('verbs-fit-their-track')) {
+    // A row's verbs must fit the track declared for them. The PACS series
+    // track was sized for one verb; adding a second pushed the first out of
+    // its cell, and the GATHER a whole workflow starts with went missing
+    // from every series already in CUBE. Nothing caught it, because nothing
+    // had ever asked whether a capsule lands inside the cell holding it.
+    // Whatever listing is on stage answers: this needs no PACS of its own.
+    const fit = await evalIn(`
+      const bad = [];
+      let cells = 0;
+      for (const cell of document.querySelectorAll('.listing-actions')) {
+        const box = cell.getBoundingClientRect();
+        if (box.width === 0) continue;
+        const verbs = [...cell.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().width > 0);
+        if (verbs.length === 0) continue;
+        cells += 1;
+        for (const verb of verbs) {
+          const v = verb.getBoundingClientRect();
+          // A pixel of rounding is not an overflow; a whole capsule is.
+          if (v.left < box.left - 1 || v.right > box.right + 1) {
+            bad.push(\`\${verb.textContent.trim()} in a \${Math.round(box.width)}px track\`);
+          }
+        }
+      }
+      return { cells, bad: bad.slice(0, 6) };`);
+    if (fit.cells === 0) {
+      console.log('  skipped: no listing with row verbs on stage');
+    } else {
+      check('every row verb fits inside the track that holds it', fit.bad.length === 0, `${fit.cells} cells · ${fit.bad.join('; ')}`);
+    }
   }
 
   if (stage('pacs-server-control')) {

@@ -38,6 +38,7 @@ import {
 } from '@fnndsc/menu';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
+import { PACS_SERIES_ROSTER, PACS_STUDY_ROSTER, verbRule_get, type PacsSeriesFacts } from '../roster/verbs.js';
 import {
   progress_aggregate, progressCell_build,
   type ListingAction, type ListingProgress, type ListingTrait,
@@ -53,6 +54,70 @@ export interface PacsPanelHandlers {
   workspace_close: () => void;
   /** Opens a pulled series' folder as an image beside the workspace. */
   image_open: (folderPath: string) => void;
+}
+
+/**
+ * A series as the verb roster sees it.
+ *
+ * @param series - The series as the model holds it.
+ * @returns Its facts.
+ */
+export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
+  return {
+    inCube: series.pulled === true,
+    folderKnown: series.folderPath !== undefined,
+    addressable: series.vfsPath !== undefined,
+  };
+}
+
+/**
+ * Which verbs a series offers, as a fact about the series alone.
+ *
+ * Pure and exported because this is the thing that was wrong: a series the
+ * wire had just landed kept offering PULL, because nothing turned it over
+ * until the operator re-ran the query. A control that has already acted
+ * must say so, and a rule this small deserves a test that does not need a
+ * PACS to run.
+ *
+ * IMAGE waits on the folder CUBE put the series in, which only CUBE can
+ * name, so it appears with the next answer rather than the moment the
+ * retrieve lands. GATHER does not wait.
+ *
+ * @param series - The series as the model holds it.
+ * @returns Which of the three verbs are offered.
+ */
+export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; pull: boolean } {
+  const facts: PacsSeriesFacts = seriesFacts_of(series);
+  const offers = (name: string): boolean => verbRule_get(PACS_SERIES_ROSTER, name).offered(facts);
+  return { gather: offers('gather'), image: offers('image'), pull: offers('pull') };
+}
+
+/**
+ * Records that a series has landed, in every row that shows it.
+ *
+ * The rows are built from `model.studies` at every level, so marking the
+ * model is what makes a patient's, a study's and a series' row agree.
+ *
+ * @param model - The answer on stage.
+ * @param seriesUID - The series the wire reported done.
+ * @param files - How many files landed, when the wire said.
+ * @returns Whether anything changed, so a caller can skip a needless repaint.
+ */
+export function seriesPulled_mark(
+  model: PacsQueryModel,
+  seriesUID: string,
+  files: number | undefined,
+): boolean {
+  let changed: boolean = false;
+  for (const study of model.studies) {
+    for (const series of study.series) {
+      if (series.seriesUID !== seriesUID || series.pulled === true) continue;
+      series.pulled = true;
+      if (files !== undefined && files > 0) series.pulledFiles = files;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /** One gathered series: the cohort's unit. */
@@ -280,7 +345,11 @@ export class PacsPanel {
             {
               traits: this.traits,
               key: (row: SeriesRow): string => row.series.seriesUID,
-              actions: { width: '5em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
+              // The track holds what the row can offer at once, which is two
+              // verbs for a series already home (gather it, or open it). Sized
+              // for one, the second pushed the first out of the cell and the
+              // GATHER a whole workflow starts with went missing.
+              actions: { width: '12em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
               // A series opens nothing: its verbs are the whole of what it does.
               activatable: (): boolean => false,
               row: { className: (): string => 'pacs-series' },
@@ -640,8 +709,9 @@ export class PacsPanel {
   private studyActions_declare(): ReadonlyArray<ListingAction<StudyRow>> {
     return [
       {
-        label: 'PULL STUDY',
-        offered: (row: StudyRow): boolean => row.study.vfsPath !== undefined,
+        label: verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').label({ addressable: true }),
+        offered: (row: StudyRow): boolean =>
+          verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').offered({ addressable: row.study.vfsPath !== undefined }),
         run: (row: StudyRow): void => {
           const vfsPath: string | undefined = row.study.vfsPath;
           if (vfsPath === undefined) return;
@@ -723,22 +793,22 @@ export class PacsPanel {
   private actions_declare(): ReadonlyArray<ListingAction<SeriesRow>> {
     return [
       {
-        label: 'GATHER',
-        offered: (row: SeriesRow): boolean => row.series.pulled === true,
+        label: verbRule_get(PACS_SERIES_ROSTER, 'gather').label({ inCube: true, folderKnown: true, addressable: true }),
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).gather,
         run: (row: SeriesRow): void => this.gather_note(row.study, row.series),
       },
       {
         // A series CUBE holds is an image: the verb rides the row it acts
         // on, and only once the kernel can say where the series landed.
-        label: 'IMAGE',
-        offered: (row: SeriesRow): boolean => row.series.pulled === true && row.series.folderPath !== undefined,
+        label: verbRule_get(PACS_SERIES_ROSTER, 'image').label({ inCube: true, folderKnown: true, addressable: true }),
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).image,
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.image_open(row.series.folderPath);
         },
       },
       {
-        label: 'PULL',
-        offered: (row: SeriesRow): boolean => row.series.pulled !== true,
+        label: verbRule_get(PACS_SERIES_ROSTER, 'pull').label({ inCube: false, folderKnown: false, addressable: true }),
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).pull,
         disabled: (row: SeriesRow): boolean => row.series.vfsPath === undefined,
         run: (row: SeriesRow): void => {
           const vfsPath: string | undefined = row.series.vfsPath;
@@ -1056,6 +1126,13 @@ export class PacsPanel {
     if (message.current !== undefined) state.current = message.current;
     if (message.total !== undefined) state.total = message.total;
     this.badgeState_set(message.itemId, state);
+    // A retrieve that finished has changed what the row can do. Repaint it
+    // now rather than waiting for the operator to ask the same question
+    // again, which is what the verbs used to require.
+    if (status === 'done' && this.model !== null
+      && seriesPulled_mark(this.model, message.itemId, message.current ?? message.total)) {
+      this.results_repaint();
+    }
   }
 
   /**

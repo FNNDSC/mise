@@ -198,6 +198,69 @@ describe('retrieve_fireAndWatch', () => {
     expect(t.lonkConfirmed).toBe(false);
   });
 
+  it('leaves the queued series alone while the PACS is still sending another', async () => {
+    // A study is served in turn: while series one is arriving, the rest have
+    // been fired and have nothing to report yet. Charging each of them a
+    // no-activity clock from its own fire time declared every series after
+    // the first dead fifteen seconds in, which is how a whole study came
+    // back UNCONFIRMED while pulling one series alone always worked.
+    jest.useFakeTimers();
+    const first = task('1.1', 4);
+    const queued = [task('2.2', 4), task('3.3', 4)];
+    const run = retrieve_fireAndWatch([first, ...queued], 'PACSDCM', fakeClient, {});
+    await flush();
+
+    // Twenty-four seconds of the PACS sending series one, well past the
+    // fifteen-second window, in ticks it would have fired on.
+    for (let file = 1; file <= 4; file++) {
+      wsInstances[0].emit('message', lonk('1.1', { ndicom: file }));
+      await jest.advanceTimersByTimeAsync(6_000);
+    }
+    for (const t of queued) {
+      expect(t.status).toBe('pending');
+      expect(t.lonkConfirmed).toBe(false);
+    }
+
+    // Series one ends and series two starts: the queue was never lost.
+    wsInstances[0].emit('message', lonk('1.1', { done: true }));
+    wsInstances[0].emit('message', lonk('2.2', { ndicom: 1 }));
+    await jest.advanceTimersByTimeAsync(4_000);
+    expect(queued[0].status).toBe('pulling');
+
+    // Now the PACS goes quiet on everything. That is the real evidence,
+    // and it is what the guard is for.
+    await jest.advanceTimersByTimeAsync(40_000);
+    await run;
+    expect(first.status).toBe('pulled');
+    expect(first.lonkConfirmed).toBe(true);
+    expect(queued[0].status).toBe('stalled');
+    expect(queued[1].status).toBe('pulled');
+    expect(queued[1].lonkConfirmed).toBe(false);
+  });
+
+  it('does not charge a series for the turn it waited before its first file', async () => {
+    // The long stop counts from a series' first file. One that waited ten
+    // minutes in a queue and then arrived normally is not a timeout.
+    jest.useFakeTimers();
+    const first = task('1.1', 1);
+    const late = task('9.9', 1);
+    const run = retrieve_fireAndWatch([first, late], 'PACSDCM', fakeClient, {});
+    await flush();
+    // Ten minutes of the PACS working through the series ahead of it.
+    for (let tick = 0; tick < 60; tick++) {
+      wsInstances[0].emit('message', lonk('1.1', { ndicom: 1 }));
+      await jest.advanceTimersByTimeAsync(10_000);
+    }
+    expect(late.status).toBe('pending');
+    wsInstances[0].emit('message', lonk('1.1', { done: true }));
+    wsInstances[0].emit('message', lonk('9.9', { ndicom: 1 }));
+    wsInstances[0].emit('message', lonk('9.9', { done: true }));
+    await jest.advanceTimersByTimeAsync(4_000);
+    await run;
+    expect(late.status).toBe('pulled');
+    expect(late.lonkConfirmed).toBe(true);
+  });
+
   it('reconnects a dropped socket and keeps watching the same retrieve', async () => {
     // The retrieve runs on the server; the socket is only how the client
     // watches it. Losing the view is not losing the work, so a reconnect

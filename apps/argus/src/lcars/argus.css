@@ -1491,7 +1491,7 @@ body[data-zoom]:not([data-zoom='console'])
    * is a target a hand can find without hunting. The field is inset by this
    * width rather than overlaid by it, so the listing's own scrollbar simply
    * moves with it and nothing is covered. */
-  --spine-w: 16px;
+  --spine-w: 21px;
   --rule-h: 6px;
   --bar-w: 7.2rem;
   --elbow-h: 30px;
@@ -4063,12 +4063,12 @@ body[data-zoom] #header-restore {
  * brightness swing readable: the same swing that is plain on a wide lid is
  * nearly invisible on a strip. So it swings further. */
 @keyframes lcars-breath-spine {
-  from { filter: brightness(0.62); }
-  to { filter: brightness(1.45); }
+  from { filter: brightness(0.45); }
+  to { filter: brightness(1.6); }
 }
 
 .mode-strip {
-  animation: lcars-breath-spine 1.9s ease-in-out infinite alternate;
+  animation: lcars-breath-spine 1.6s ease-in-out infinite alternate;
 }
 
 /* The console's lid and the header's lid are the way BACK to something that

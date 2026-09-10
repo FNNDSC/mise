@@ -559,6 +559,12 @@
                 <button id="pacs-anon" class="pacs-capsule pacs-capsule-off" title="stand in for what the answer says about a person, for demonstrating against a live PACS">ANON OFF</button>
                 <input id="pacs-command" spellcheck="false" autocomplete="off" placeholder="pacs query ..." />
                 <button id="pacs-reveal" class="pacs-capsule pacs-capsule-off" title="show what is typed" hidden>REVEAL</button>
+                <!-- The whole answer, beside the question that produced it.
+                     It sat on the results frame, which is the CLOSED spine
+                     until someone opens it — so the control was 22px of
+                     clipped label and the operator reported it missing. A
+                     control nobody can see is a control that is not there. -->
+                <button id="pacs-export" class="pacs-capsule" title="write the whole answer as CSV into ChRIS storage">EXPORT CSV</button>
               </div>
               <!-- The results are a framed field like the other listings:
                    a rule turning through an elbow into the spine, whose
@@ -569,11 +575,6 @@
                 <span class="mode-elbow"></span>
                 <aside class="mode-frame">
                   <button class="strategy-pill pacs-filter rail-off" title="filter the results (the bar reads FILTERED n/m)">FILTER OFF</button>
-                  <!-- The whole answer, on the frame of the field it is the
-                       answer of. It lived in the GATHER strip, where its
-                       neighbours all act on the cohort, so the one control
-                       that acted on everything read as if it did not. -->
-                  <button id="pacs-export" class="strategy-pill rail-off" title="write the whole answer as CSV into ChRIS storage">EXPORT CSV</button>
                   <span class="mode-fill"></span>
                 </aside>
                 <div id="pacs-results"></div>

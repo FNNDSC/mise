@@ -1525,6 +1525,38 @@ try {
   }
   }
 
+  if (stage('verbs-fit-their-track')) {
+    // A row's verbs must fit the track declared for them. The PACS series
+    // track was sized for one verb; adding a second pushed the first out of
+    // its cell, and the GATHER a whole workflow starts with went missing
+    // from every series already in CUBE. Nothing caught it, because nothing
+    // had ever asked whether a capsule lands inside the cell holding it.
+    // Whatever listing is on stage answers: this needs no PACS of its own.
+    const fit = await evalIn(`
+      const bad = [];
+      let cells = 0;
+      for (const cell of document.querySelectorAll('.listing-actions')) {
+        const box = cell.getBoundingClientRect();
+        if (box.width === 0) continue;
+        const verbs = [...cell.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().width > 0);
+        if (verbs.length === 0) continue;
+        cells += 1;
+        for (const verb of verbs) {
+          const v = verb.getBoundingClientRect();
+          // A pixel of rounding is not an overflow; a whole capsule is.
+          if (v.left < box.left - 1 || v.right > box.right + 1) {
+            bad.push(\`\${verb.textContent.trim()} in a \${Math.round(box.width)}px track\`);
+          }
+        }
+      }
+      return { cells, bad: bad.slice(0, 6) };`);
+    if (fit.cells === 0) {
+      console.log('  skipped: no listing with row verbs on stage');
+    } else {
+      check('every row verb fits inside the track that holds it', fit.bad.length === 0, `${fit.cells} cells · ${fit.bad.join('; ')}`);
+    }
+  }
+
   if (stage('pacs-server-control')) {
     // SERVER is a choice, not a phrase: the cell reads its own state and
     // unfolds a strip of segments — the FILTER gesture, in the caps'

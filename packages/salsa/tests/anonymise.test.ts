@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import {
+  STOOD_IN_FIELDS,
   answer_standIn,
   birthDate_toYear,
   criteria_standIn,
@@ -126,6 +127,12 @@ describe('a whole answer', () => {
     expect(out[0]?.StudyDate?.value).toBe('20260901');
   });
 
+  it('stands in for a bare value too, since not every field arrives wrapped', () => {
+    const bare = answer_standIn({ PatientID: '1279049', Modality: 'MR' }) as Record<string, string>;
+    expect(bare.PatientID).not.toBe('1279049');
+    expect(bare.Modality).toBe('MR');
+  });
+
   it('leaves the original untouched, since the real answer is still needed', () => {
     answer_standIn(answer);
     expect(answer[0]?.PatientID?.value).toBe('1279049');
@@ -144,4 +151,45 @@ describe('the question itself', () => {
   it('leaves a term that names nobody, so the question still reads', () => {
     expect(criteria_standIn({ Modality: 'MR' }).Modality).toBe('MR');
   });
+});
+
+describe('every field the roster names', () => {
+  /** A value of the right shape for each field, so the stand-in has something to work on. */
+  const SAMPLE: Readonly<Record<string, string>> = {
+    PatientID: '1279049',
+    PatientName: 'PIENAAR^CHLOE',
+    OtherPatientIDs: '9988776',
+    OtherPatientNames: 'DOE^JOHN',
+    PatientMotherBirthName: 'ROE^MARY',
+    AccessionNumber: '22119730',
+    PatientBirthDate: '19971013',
+    PatientBirthTime: '134500',
+    PatientAge: '028Y',
+    PatientAddress: '12 SOMEWHERE ST',
+    PatientTelephoneNumbers: '555-0100',
+    StudyDate: '20260910',
+    SeriesDate: '20260910',
+    ReferringPhysicianName: 'GREY^MEREDITH',
+    PerformingPhysicianName: 'HOUSE^GREGORY',
+    OperatorsName: 'SMITH^ANNE',
+    PhysiciansOfRecord: 'JONES^PAUL',
+    NameOfPhysiciansReadingStudy: 'PATEL^RAVI',
+    InstitutionName: 'BOSTON CHILDRENS',
+    InstitutionAddress: '300 LONGWOOD AVE',
+  };
+
+  it('has a sample here, so a field added to the roster is a field this notices', () => {
+    expect([...STOOD_IN_FIELDS].sort()).toEqual(Object.keys(SAMPLE).sort());
+  });
+
+  for (const field of Object.keys(SAMPLE)) {
+    it(`stands in for ${field}`, () => {
+      const real: string = SAMPLE[field] as string;
+      const stoodIn: string = field_standIn(field, real);
+      // Either replaced or dropped, never passed through: a field named in
+      // the roster and returned unchanged is the failure that matters.
+      expect(stoodIn).not.toBe(real);
+      if (stoodIn !== '') expect(stoodIn).not.toContain(real);
+    });
+  }
 });

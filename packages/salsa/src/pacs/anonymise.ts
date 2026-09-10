@@ -194,25 +194,3 @@ export function criteria_standIn(criteria: Record<string, string>): Record<strin
       [field, field_standIn(field, value)]),
   );
 }
-
-/**
- * Stands in for identifying values inside a path.
- *
- * A query's VFS path spells the question, and CUBE's own PACS folders are
- * built from the record number, the name and the date of birth. Both are
- * shown beside an answer, so both are walked for anything that looks like
- * a value this module has already stood in for.
- *
- * @param path - The path as it reads.
- * @param values - The real values to stand in for, longest first.
- * @returns The path with those values replaced by their stand-ins.
- */
-export function path_standIn(path: string, values: ReadonlyArray<{ field: string; value: string }>): string {
-  let out: string = path;
-  const byLength = [...values].sort((a, b): number => b.value.length - a.value.length);
-  for (const { field, value } of byLength) {
-    if (value === '') continue;
-    out = out.split(value).join(field_standIn(field, value));
-  }
-  return out;
-}

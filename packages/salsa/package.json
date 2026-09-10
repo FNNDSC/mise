@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/salsa",
-  "version": "3.16.0",
+  "version": "3.17.0",
   "description": "Shared Application Logic and Service Assets for ChRIS",
   "repository": {
     "type": "git",
@@ -60,7 +60,7 @@
     "adm-zip": "npm:empty-npm-package@1.0.0"
   },
   "dependencies": {
-    "@fnndsc/cumin": "^3.21.1",
+    "@fnndsc/cumin": "^3.22.0",
     "axios": "^1.6.8",
     "dcmjs": "^0.52.0",
     "ws": "^8.21.0"

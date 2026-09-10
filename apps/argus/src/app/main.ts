@@ -672,7 +672,17 @@ async function surface_start(token: string): Promise<void> {
    */
   const fileHead_fetch = async (path: string, maxBytes: number): Promise<string> => {
     const response: Response = await fetch(vfsUrl_build(path));
-    if (!response.ok || response.body === null) return '';
+    if (!response.ok || response.body === null) {
+      // The route serves what CUBE STORES. A file a VFS provider makes —
+      // a package's manifest, a readout under /proc — is perfectly real to
+      // the session and unknown to the route, which answered 404 and left
+      // the preview blank: a file that reads fine in the console looked
+      // like an empty file in the pane. So ask the session, which can read
+      // anything it can list. A refusal is carried through rather than
+      // swallowed, because a blank tile is the one thing that says nothing.
+      const read: FileText = await fileText_fetch(path);
+      return read.text.slice(0, maxBytes);
+    }
     const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
     const decoder: TextDecoder = new TextDecoder();
     let text: string = '';

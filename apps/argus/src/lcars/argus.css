@@ -4028,3 +4028,51 @@ body[data-zoom] #header-restore {
   text-align: center;
   padding: 0 0.4rem;
 }
+
+/* ------------------------------------------------- clickable chrome breathes */
+
+/* LCARS chrome is flat colour, and a flat block that acts looks exactly
+ * like a flat block that decorates. The pieces an operator can press
+ * therefore breathe: a slow, shallow lift in brightness that reads as
+ * "this is alive" from across a room and is invisible when you are reading.
+ * Shallow on purpose — a pulse that draws the eye competes with the data,
+ * which is the thing the eye is meant to be on.
+ *
+ * Hover stops it, because hover is a stronger statement of the same fact
+ * and the two would fight over `filter`. */
+@keyframes lcars-breath {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.16); }
+}
+
+#drawer-toggle,
+#header-restore,
+.mode-strip,
+.mode-fill {
+  animation: lcars-breath 2.6s ease-in-out infinite alternate;
+}
+
+/* The console's lid and the header's lid are the way BACK to something that
+ * has gone away, so they breathe a little more plainly than a mode block. */
+#header-restore {
+  animation-duration: 2s;
+}
+
+#drawer-toggle:hover,
+#header-restore:hover,
+.mode-strip:hover,
+.mode-fill:hover {
+  animation: none;
+}
+
+/* Motion is a preference, and a surface that ignores it is one an operator
+ * cannot sit in front of all day. */
+@media (prefers-reduced-motion: reduce) {
+  #drawer-toggle,
+  #header-restore,
+  .mode-strip,
+  .mode-fill,
+  .image-working-fill.image-working-pacing {
+    animation: none;
+  }
+}

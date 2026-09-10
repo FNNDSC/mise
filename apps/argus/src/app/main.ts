@@ -1467,6 +1467,9 @@ async function surface_start(token: string): Promise<void> {
           return 0;
         }
       },
+      // The overlay reads the header of the series on the field. Same ask
+      // the tags pane makes, same silence: an instrument never interrupts.
+      tags_read: (path: string): Promise<DicomTagsModel | null> => tags_ask(path),
       tags_open: (): void => {
         terminal.line_note(tagsPane_open(id));
       },
@@ -1685,7 +1688,26 @@ async function surface_start(token: string): Promise<void> {
   const nodeOverlay_open = (id: string, vfsPath: string): void => {
     const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
     const canvas: HTMLElement | null = mount?.querySelector<HTMLElement>('.dag-canvas') ?? null;
+    // A record whose element is no longer in the document is a ghost: the
+    // pane was rebuilt (a layout change, a preset) while a node was open,
+    // which takes the overlay's DOM with it and leaves this map holding a
+    // dead reference. That reference then refused EVERY later dive on this
+    // pane — and a refused dive is not nothing, because the camera has
+    // already flown inside. One wedged pane looked like a broken viewer.
+    const held = nodeOverlays.get(id);
+    if (held !== undefined && !held.element.isConnected) nodeOverlays.delete(id);
     if (canvas === null || nodeOverlays.has(id)) {
+      // By the time this runs the camera is already INSIDE the node — the
+      // fly-in dollies to just shy of its surface, which is the whole point
+      // of the gesture. Returning quietly therefore does not cancel a dive;
+      // it strands the operator looking at the inside of a sphere, filling
+      // the pane with one flat colour, with the scene held so nothing even
+      // moves. It reads exactly like a crash, and an operator reported it
+      // as one. So: fly back out, and say what happened.
+      terminal.line_note(
+        `dag: ${vfsPath}: ${canvas === null ? 'this pane has no scene to fly in' : 'a node is already open here'} — flew back out`,
+      );
+      dagPanels.get(id)?.flight_back((): void => undefined);
       return;
     }
     const element: HTMLElement = document.createElement('div');
@@ -2535,6 +2557,18 @@ async function surface_start(token: string): Promise<void> {
           } else {
             nodeOverlay_close(overlayId);
           }
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
+        // A camera parked inside a node with no overlay over it: the pane
+        // is filled by the inside of one sphere and the scene is held, so
+        // nothing moves and nothing reads as a control. Esc is the way out,
+        // whatever left it there.
+        const heldInside: [string, DagPanel] | undefined = [...dagPanels.entries()]
+          .find(([, panel]: [string, DagPanel]): boolean => panel.inside_isHeld());
+        if (heldInside !== undefined) {
+          heldInside[1].flight_back((): void => undefined);
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;

@@ -908,7 +908,7 @@ export class PacsPanel {
     this.anon = on;
     this.revealed = false;
     this.anonPill.textContent = on ? 'ANON ON' : 'ANON OFF';
-    this.anonPill.classList.toggle('rail-off', !on);
+    this.anonPill.classList.toggle('pacs-capsule-off', !on);
     this.revealPill.hidden = !on;
     this.model = null;
     this.listing.rows_set([], { field: 'pending' });
@@ -932,7 +932,7 @@ export class PacsPanel {
   private reveal_set(on: boolean): void {
     this.revealed = on;
     this.revealPill.textContent = on ? 'HIDE' : 'REVEAL';
-    this.revealPill.classList.toggle('rail-off', !on);
+    this.revealPill.classList.toggle('pacs-capsule-off', !on);
     this.masking_apply();
   }
 

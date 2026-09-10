@@ -1243,6 +1243,15 @@ export class DagPanel {
   }
 
   /**
+   * Whether the camera is parked inside a node.
+   *
+   * @returns True while the scene holds the camera inside one.
+   */
+  public inside_isHeld(): boolean {
+    return this.scene.holding_get();
+  }
+
+  /**
    * Flies the camera back out of a node once its overlay has closed.
    *
    * @param onDone - Called when the camera is home.

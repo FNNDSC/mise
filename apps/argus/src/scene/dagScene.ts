@@ -661,6 +661,20 @@ export class DagScene {
   }
 
   /**
+   * Whether the camera is parked inside a node.
+   *
+   * The fly-in dollies to just shy of a node's surface, so while this is
+   * true the pane is filled by the inside of one sphere. Anything that can
+   * leave an operator there without an overlay on top has to be able to ask
+   * this and fly them back.
+   *
+   * @returns True while the camera is held inside a node.
+   */
+  public holding_get(): boolean {
+    return this.holding;
+  }
+
+  /**
    * Flies the camera back out to its pre-dive stance and releases the hold.
    *
    * @param onDone - Called once the camera is home.

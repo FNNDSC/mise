@@ -57,11 +57,34 @@ export interface ImageSource {
   url_of(path: string): string;
 }
 
+/**
+ * What a load looks like while it is happening.
+ *
+ * `total` of zero means the work is real but uncountable — a single file
+ * arriving over a wire whose length nobody stated — and the field shows
+ * motion without a fraction rather than a bar that would be a guess.
+ */
+export interface ImageProgress {
+  /** What is being done, in the frame's own voice: `BUILDING MPR`. */
+  label: string;
+  done: number;
+  total: number;
+}
+
 /** What the pane lends an engine: the bar, the console, and the regard. */
 export interface ImageEngineHost {
   source: ImageSource;
   /** The bar's state readout. */
   readout_set(text: string): void;
+  /**
+   * Says the field is working, and how far along.
+   *
+   * Null takes the notice away. An engine that fetches a whole series
+   * before it can draw anything MUST say so: a viewer that holds the
+   * previous image on screen while it works is indistinguishable from one
+   * that has ignored the press.
+   */
+  progress_set(progress: ImageProgress | null): void;
   /** One line in the console: text is first-class, an engine's events included. */
   note(line: string): void;
   /** The instance now on screen, as the pane's regard. */

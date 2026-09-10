@@ -1,5 +1,20 @@
 # @fnndsc/brasa
 
+## 0.22.0
+
+### Minor Changes
+
+- 163e4b1: `pacs query --anon` stands in for what an answer says about a person, for demonstrating against a live hospital PACS. Record numbers and accessions become salted tokens, a name becomes a stand-in name of the same DICOM shape, a study date falls back to the first of its month and a birth date to its year. The substitution happens on the decoded payload, so the model a surface renders, the console table and any CSV all say the same thing. The salt is made once per daemon and never written down, which makes tokens stable through one demo and meaningless after it: an unsalted digest of a seven-digit record number is a second's work to reverse. DICOM identifiers are left alone, since they are never shown and are what the held-state reconciliation matches on.
+
+### Patch Changes
+
+- aa923c6: A replayed PACS query no longer costs a round trip per series. Reconciling a stored answer against what CUBE already holds asked about every series in turn, two requests each, and held the whole answer back until the last one replied: a patient's history of 299 series took 20.6 seconds against a live CUBE, so a replay — whose entire purpose is not to trouble the wire — felt exactly like a fresh query. CUBE indexes a stored series by its study, so the reconciliation is now one page per study, with file counts fetched only for the series actually home. The same question costs 3.1 seconds. `seriesStorage_resolveMany` is the new bulk resolver; the per-series resolver stays for the paths that need it and for a study the answer cannot name.
+- 59aa79b: A run now follows itself until it settles, so the header's pulse tells the truth without a pane open on the feed. A new feed entered the cache with its jobs scheduled and nothing revisited them, so RUNNING stayed at zero through the operator's own run and SCHEDULED only ever climbed — one header read `SCHEDULED 90` with nothing running. Starting a run takes out a watch on that feed; the sampler already knew to stop when the feed settles. The watch is taken where a run is started, never inside the cache-writing helper, which would make recording a feed quietly begin visiting CUBE.
+- Updated dependencies [163e4b1]
+- Updated dependencies [aa923c6]
+  - @fnndsc/salsa@3.17.0
+  - @fnndsc/cumin@3.22.0
+
 ## 0.21.0
 
 ### Minor Changes

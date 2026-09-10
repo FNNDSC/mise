@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/chell",
-  "version": "5.7.2",
+  "version": "5.7.3",
   "description": "ChELL Executes Layered Logic - Interactive ChRIS REPL Shell",
   "repository": {
     "type": "git",
@@ -38,11 +38,11 @@
   "author": "FNNDSC <dev@babyMRI.org>",
   "license": "MIT",
   "dependencies": {
-    "@fnndsc/brasa": "^0.21.0",
-    "@fnndsc/calypso": "^0.13.1",
+    "@fnndsc/brasa": "^0.22.0",
+    "@fnndsc/calypso": "^0.13.2",
     "@fnndsc/chili": "^3.6.6",
-    "@fnndsc/cumin": "^3.21.1",
-    "@fnndsc/salsa": "^3.16.0",
+    "@fnndsc/cumin": "^3.22.0",
+    "@fnndsc/salsa": "^3.17.0",
     "chalk": "^4.1.2",
     "cli-progress": "^3.12.0",
     "commander": "^12.1.0",

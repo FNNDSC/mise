@@ -191,6 +191,10 @@ describe('dcm tags on a file', () => {
     expect(byDecoded.rendered).not.toContain('PatientName');
     const byTag: CommandEnvelope = await builtin_dcm(['tags', '/s/0001-x.dcm', '--filter', '0010,0010']);
     expect(byTag.rendered).toContain('PatientName');
+    // A needle found inside a sequence item keeps the sequence: the filter descends.
+    const inItems: CommandEnvelope = await builtin_dcm(['tags', '/s/0001-x.dcm', '--filter', 'ReferencedSOPClass']);
+    expect(inItems.rendered).toContain('ReferencedImageSequence');
+    expect(inItems.rendered).not.toContain('PatientName');
     const none: CommandEnvelope = await builtin_dcm(['tags', '/s/0001-x.dcm', '--filter', 'zzz']);
     expect(none.rendered).toContain("no tags match 'zzz'");
     expect(none.rendered).not.toContain('hidden');

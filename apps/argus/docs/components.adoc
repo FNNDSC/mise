@@ -21,7 +21,7 @@ Each section follows one order. *Purpose* says what the component answers. *Anat
 
 Source: `apps/argus/src/features/roster/listing.ts` (the façade), over `order.ts` (sort and filter), `host.ts` (frame and field) and `row.ts` (traits, actions, progress, expansion).
 
-Status: on stage in every tabular pane — the browser (2026-09-07, S2), the runs roster (2026-09-08, S3) and PACS with its three levels (2026-09-08, S4). No pane composes a listing by hand; the lint fails one that tries. The browser was the first pane converted, and its conversion is what turned this section from a declaration into a description of a thing that runs.
+Status: on stage in every tabular pane — the browser (2026-09-07, S2), the runs roster (2026-09-08, S3), PACS with its three levels (2026-09-08, S4), and the DICOM tags pane with four (module groups, tags, sequence items, their tags; 2026-09-09). No pane composes a listing by hand; the lint fails one that tries. The browser was the first pane converted, and its conversion is what turned this section from a declaration into a description of a thing that runs.
 
 === Purpose
 

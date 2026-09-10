@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, DICOM_MODEL_KINDS, type DicomSeriesModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, DICOM_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -35,6 +35,7 @@ import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
+import { TagsPanel } from '../features/tags/panel.js';
 import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
@@ -1478,6 +1479,9 @@ async function surface_start(token: string): Promise<void> {
           return 0;
         }
       },
+      tags_open: (): void => {
+        terminal.line_note(tagsPane_open(id));
+      },
     });
     imagePanels.set(id, panel);
     return {
@@ -1490,6 +1494,77 @@ async function surface_start(token: string): Promise<void> {
         subjects.pane_leave(id);
       },
     };
+  };
+
+  // The tags pane: a DICOM instance's elements, following the image pane's
+  // slice through the group's regard (docs/aegis.adoc: tags-follow-the-image).
+  const tagsPanels: Map<string, TagsPanel> = new Map();
+  const tagsInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-tags');
+    const panel: TagsPanel = new TagsPanel(mount, {
+      note: (line: string): void => terminal.line_note(line),
+    });
+    tagsPanels.set(id, panel);
+    return {
+      id,
+      kind: 'tags',
+      mount,
+      dispose: (): void => {
+        tagsPanels.delete(id);
+        subjects.pane_leave(id);
+      },
+    };
+  };
+
+  /** Asks the kernel for a file's tags, silently, and paints them on a tags pane. */
+  const tags_ask = async (path: string): Promise<DicomTagsModel | null> => {
+    try {
+      const outcome: ExecuteOutcome = await client.line_execute(`dcm tags "${path}"`, { silent: true, observe: false });
+      for (const envelope of outcome.envelopes) {
+        if (envelope.model?.kind !== DICOM_MODEL_KINDS.tags) continue;
+        const parsed = dicomTagsModelSchema.safeParse(envelope.model.data);
+        if (parsed.success) return parsed.data;
+      }
+    } catch {
+      /* answered below */
+    }
+    return null;
+  };
+  const tagsPane_follow = (id: string, path: string): void => {
+    const panel: TagsPanel | undefined = tagsPanels.get(id);
+    if (panel === undefined || panel.path_get() === path) return;
+    void tags_ask(path).then((model: DicomTagsModel | null): void => {
+      if (model === null) {
+        terminal.line_note(`tags: ${path}: not a readable DICOM file`);
+        return;
+      }
+      tagsPanels.get(id)?.model_show(model);
+    });
+  };
+
+  /**
+   * Opens the tags pane that follows an image pane: the one already in its
+   * link group, else a new one split beside it. It joins the group, so the
+   * retained regard replays and the slice on screen is the first thing it
+   * shows.
+   */
+  const tagsPane_open = (imageId: string): string => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    const group: string = subjects.group_of(imageId);
+    for (const id of tagsPanels.keys()) {
+      if (shown.has(id) && subjects.group_of(id) === group) {
+        layout.focus_set(id);
+        return 'image tags';
+      }
+    }
+    if (!shown.has(imageId)) return 'image tags: the image pane is not on stage';
+    const spawned: PaneInstance = instance_spawn('tags', imageId);
+    if (!layout.leaf_split(imageId, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return 'image tags: could not open beside the image pane';
+    }
+    return 'image tags';
   };
 
   /**
@@ -2042,6 +2117,11 @@ async function surface_start(token: string): Promise<void> {
       instance.id,
       inheritFrom !== undefined ? subjects.group_of(inheritFrom) : instance.id,
     );
+    if (kind === 'tags') {
+      subjects.regard_subscribe(instance.id, (value: RegardValue): void => {
+        if (value.modelKind === 'dicom.instance') tagsPane_follow(instance.id, value.address);
+      });
+    }
     if (kind === 'view') {
       subjects.viewer_mark(instance.id);
       subjects.regard_subscribe(instance.id, (value: RegardValue): void => {
@@ -2567,6 +2647,15 @@ async function surface_start(token: string): Promise<void> {
     layout.leaf_replace(emptyId, instance.id);
     paneInstance_dispose(emptyId);
     layout.mount_remove(emptyId);
+    if (kind === 'tags') {
+      const tagsPanel: TagsPanel | undefined = tagsPanels.get(instance.id);
+      for (const envelope of envelopes) {
+        if (envelope.model?.kind !== DICOM_MODEL_KINDS.tags) continue;
+        const parsed = dicomTagsModelSchema.safeParse(envelope.model.data);
+        if (parsed.success) tagsPanel?.model_show(parsed.data);
+      }
+      return;
+    }
     if (kind === 'image') {
       const imagePanel: ImagePanel | undefined = imagePanels.get(instance.id);
       for (const envelope of envelopes) {
@@ -2587,6 +2676,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);
+  paneFactory_register('tags', tagsInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {
@@ -2737,7 +2827,37 @@ async function surface_start(token: string): Promise<void> {
       if (verb === 'save') {
         return (await panel.annotations_save()) ? 'image save' : 'image save: nothing saved (the console says why)';
       }
+      if (verb === 'tags') {
+        const imageId: string | undefined = [...imagePanels.entries()].find(([, candidate]: [string, ImagePanel]): boolean => candidate === panel)?.[0];
+        return imageId === undefined ? 'image tags: no image pane' : tagsPane_open(imageId);
+      }
       return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
+    },
+    tags_control: (paneId: string, verb: string, args: string[]): string => {
+      const shown: Set<string> = new Set(layout.panes_shown());
+      const group: string = subjects.group_of(paneId);
+      const onStage: Array<[string, TagsPanel]> = [...tagsPanels.entries()].filter(([id]: [string, TagsPanel]): boolean => shown.has(id));
+      const panel: TagsPanel | undefined =
+        tagsPanels.get(paneId)
+        ?? onStage.find(([id]: [string, TagsPanel]): boolean => subjects.group_of(id) === group)?.[1]
+        ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
+      if (panel === undefined) return `tags ${verb}: no tags pane on stage for '${paneId}'`;
+      if (verb === 'redact') {
+        const wanted: string = (args[0] ?? '').toLowerCase();
+        if (wanted !== 'on' && wanted !== 'off') return 'tags redact on|off';
+        panel.redact_set(wanted === 'on');
+        return `tags redact ${wanted}`;
+      }
+      if (verb === 'filter') {
+        const text: string = args.join(' ');
+        if (text === '' || text.toLowerCase() === 'off') {
+          panel.filter_set(null);
+          return 'tags filter off';
+        }
+        panel.filter_set(text);
+        return `tags filter ${text}`;
+      }
+      return 'tags redact on|off · filter <text>|off';
     },
     file_delete: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);

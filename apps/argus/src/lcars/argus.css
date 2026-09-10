@@ -1451,6 +1451,7 @@ body[data-zoom]:not([data-zoom='console'])
  * A hover only lights the spine — a beckon, never an opening. */
 .files-body,
 .image-body,
+.tags-body,
 .dag-canvas,
 .dag-roster,
 .pacs-listing {
@@ -1463,6 +1464,7 @@ body[data-zoom]:not([data-zoom='console'])
 
 .workspace-pane[data-modes='open'] .files-body,
 .workspace-pane[data-modes='open'] .image-body,
+.workspace-pane[data-modes='open'] .tags-body,
 .workspace-pane[data-modes='open'] .dag-canvas,
 .workspace-pane[data-modes='open'] .dag-roster,
 .workspace-pane[data-modes='open'] .pacs-listing {
@@ -3804,4 +3806,93 @@ body[data-zoom] #header-restore {
   line-height: 1.6rem;
   background-color: var(--harvestgold);
   color: #000;
+}
+
+/* The tags pane: a listing that follows the image pane's slice. Its body
+ * and panel are the browser's, its hue the file's modality. */
+.pane-tags {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tags-body {
+  --roster-gap: 0px;
+  --roster-pad: 0px;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-right: var(--spine-w);
+}
+
+.pane-tags[data-modality='MR'] .tags-body { --harvestgold: var(--daybreak); }
+.pane-tags[data-modality='CT'] .tags-body { --harvestgold: var(--honey); }
+.pane-tags[data-modality='PT'] .tags-body { --harvestgold: var(--tomato, #f77); }
+
+.tags-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tags-panel > .roster-order {
+  position: static;
+  z-index: auto;
+  flex: none;
+}
+
+.tags-panel > .listing-field {
+  padding-right: 0.5rem;
+}
+
+.tags-fold {
+  color: var(--harvestgold);
+}
+
+.tags-fold::before {
+  content: '▸';
+}
+
+.listing-group.listing-open > .listing-row > .tags-fold::before {
+  content: '▾';
+}
+
+.tags-fold.tags-fold-none::before {
+  content: '';
+}
+
+.tags-group-row {
+  font-weight: bold;
+}
+
+.tags-tag,
+.tags-vr {
+  opacity: 0.7;
+  font-family: monospace;
+}
+
+.tags-name,
+.tags-value-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tags-decoded {
+  opacity: 0.6;
+}
+
+.tags-redacted .tags-phi .tags-value {
+  letter-spacing: 0.15em;
+  opacity: 0.6;
+}
+
+.tags-note {
+  padding: 1rem;
+  opacity: 0.7;
 }

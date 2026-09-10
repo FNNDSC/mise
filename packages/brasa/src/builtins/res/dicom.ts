@@ -253,10 +253,20 @@ function tag_shown(tag: { group: DicomTagGroup; tag: string; name: string; decod
   if (!options.all && HIDDEN_GROUPS.has(tag.group)) return false;
   if (options.filter === undefined) return true;
   const needle: string = options.filter.toLowerCase();
+  return tag_matches(tag, needle);
+}
+
+/**
+ * Whether a tag, or any item inside a sequence it carries, mentions the
+ * needle. A filter that stopped at the top level hid the referenced-image
+ * sequences an SR is made of.
+ */
+function tag_matches(tag: { tag: string; name: string; decoded?: string; items?: DicomTag[][] } & ({ value: string } | { first: string; last: string }), needle: string): boolean {
   const haystack: string[] = [tag.tag, tag.name, tag.decoded ?? ''];
   if ('value' in tag) haystack.push(tag.value);
   else haystack.push(tag.first, tag.last);
-  return haystack.some((text: string): boolean => text.toLowerCase().includes(needle));
+  if (haystack.some((text: string): boolean => text.toLowerCase().includes(needle))) return true;
+  return (tag.items ?? []).some((item: DicomTag[]): boolean => item.some((inner: DicomTag): boolean => tag_matches(inner, needle)));
 }
 
 /**

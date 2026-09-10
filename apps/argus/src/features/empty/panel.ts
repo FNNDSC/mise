@@ -15,7 +15,7 @@ import type { WireEnvelope } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../../calypso/client.js';
 
 /** The pane kinds an envelope model can claim. */
-export type ClaimKind = 'files' | 'dag' | 'pacs' | 'image';
+export type ClaimKind = 'files' | 'dag' | 'pacs' | 'image' | 'tags';
 
 /** What the empty pane asks of its host. */
 export interface EmptyPanelHandlers {
@@ -32,6 +32,7 @@ const CLAIM_BY_MODEL: Readonly<Record<string, ClaimKind>> = {
   'feed.list': 'dag',
   'pacs.query': 'pacs',
   'dicom.series': 'image',
+  'dicom.tags': 'tags',
 };
 
 /**

@@ -100,6 +100,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   studies_extractFromDecoded: dicomPayload.studies_extractFromDecoded,
   series_extractFromStudy: dicomPayload.series_extractFromStudy,
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
+  seriesStorage_resolveMany: jest.fn(async () => ({ ok: true, value: new Map() })),
   currentIdentity_get: jest.fn<() => Promise<Result<ChrisIdentity>>>(),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },

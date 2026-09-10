@@ -265,9 +265,12 @@ copy comes from the author's own distribution — yours.
 **The build works without it.** `theme_ensure.mjs` writes a generated stub when it
 finds no zip, so `make cook` succeeds and ARGUS runs with a plain, degraded look.
 
-**For the real thing**, download `LCARS-26.zip` from
-[thelcars.com/download.php](https://www.thelcars.com/download.php) and put it
-where the build looks. In order:
+**For the real thing**, go to
+[thelcars.com/download.php](https://www.thelcars.com/download.php) and press the
+download button there — it hands off to the author's own Proton Drive, and the
+file you want is `LCARS-26.zip`. The link is deliberately not reproduced here:
+it is a share URL the author can rotate, and his page is where the licence and
+the attribution terms are stated. Put the zip where the build looks. In order:
 
 1. `LCARS_ZIP=/path/to/LCARS-26.zip`
 2. `~/Downloads/LCARS-26.zip`

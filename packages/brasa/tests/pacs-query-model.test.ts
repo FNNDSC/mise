@@ -20,7 +20,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   listCache_get: jest.fn(() => ({ cache_set: jest.fn() })),
   queryIndex_get: jest.fn(() => ({ entry_note: jest.fn(), entry_find: jest.fn(() => null) })),
 }));
-jest.unstable_mockModule('@fnndsc/salsa', () => ({ queryId_extractFromFolder: jest.fn(), queryLabel_extractFromFolder: jest.fn(), folderUID_get: jest.fn(), queryFolderName_build: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/salsa', () => ({ queryId_extractFromFolder: jest.fn(), queryLabel_extractFromFolder: jest.fn(), folderUID_get: jest.fn(), queryFolderName_build: jest.fn(), answer_standIn: (v: unknown) => v, criteria_standIn: (c: Record<string, string>) => c }));
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ screen: { table_output: jest.fn(() => '') } }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({
   spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() },

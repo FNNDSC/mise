@@ -1395,6 +1395,48 @@ try {
     && pacsForm.line === 'pacs query PatientName:AAA,PatientID:111,StudyDate:20100101,AccessionNumber:222,Modality:CT',
     JSON.stringify(pacsForm));
 
+  // Demonstrating against a live hospital PACS puts a real name and record
+  // number on a projector. ANON arms the kernel's stand-ins and masks every
+  // field in the pane that carries what was typed — including the command
+  // line, which spells the same values back.
+  const pacsAnon = await evalIn(`
+    document.getElementById('gutter-tools').click(); await sleep(600);
+    const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    const typed = (id) => document.getElementById(id).type;
+    set('pacs-f-mrn', '1234567');
+    await sleep(150);
+    const before = { line: document.getElementById('pacs-command').value, mrn: typed('pacs-f-mrn'), label: document.getElementById('pacs-anon').textContent.trim() };
+    document.getElementById('pacs-anon').click(); await sleep(250);
+    const armed = {
+      line: document.getElementById('pacs-command').value,
+      mrn: typed('pacs-f-mrn'), command: typed('pacs-command'), accession: typed('pacs-f-accession'),
+      label: document.getElementById('pacs-anon').textContent.trim(),
+      revealShown: document.getElementById('pacs-reveal').hidden === false,
+      rows: document.querySelectorAll('#pacs-results .listing-row').length,
+    };
+    document.getElementById('pacs-reveal').click(); await sleep(200);
+    const revealed = { mrn: typed('pacs-f-mrn'), command: typed('pacs-command') };
+    document.getElementById('pacs-anon').click(); await sleep(250);
+    const disarmed = { line: document.getElementById('pacs-command').value, mrn: typed('pacs-f-mrn'), label: document.getElementById('pacs-anon').textContent.trim() };
+    set('pacs-f-mrn', '');
+    await sleep(150);
+    return { before, armed, revealed, disarmed };`);
+  check("ANON arms the stand-ins on the line and reads its state",
+    pacsAnon.before.label === 'ANON OFF' && pacsAnon.before.line === 'pacs query PatientID:1234567'
+    && pacsAnon.armed.label === 'ANON ON' && pacsAnon.armed.line === 'pacs query PatientID:1234567 --anon',
+    JSON.stringify(pacsAnon));
+  check("ANON masks every field that carries what was typed, the command line included",
+    pacsAnon.before.mrn === 'text' && pacsAnon.armed.mrn === 'password'
+    && pacsAnon.armed.command === 'password' && pacsAnon.armed.accession === 'password',
+    JSON.stringify(pacsAnon));
+  check("REVEAL lifts the mask, so a typed record number can be checked before it is asked",
+    pacsAnon.armed.revealShown === true && pacsAnon.revealed.mrn === 'text' && pacsAnon.revealed.command === 'text',
+    JSON.stringify(pacsAnon));
+  check("disarming takes the flag off the line and unmasks",
+    pacsAnon.disarmed.label === 'ANON OFF' && pacsAnon.disarmed.line === 'pacs query PatientID:1234567'
+    && pacsAnon.disarmed.mrn === 'text',
+    JSON.stringify(pacsAnon));
+
   // Sorting needs an actual answer, so it needs a PACS to answer. Set
   // SMOKE_PACS_QUERY to a query that finds at least one study with two
   // series (e.g. 'pacs query PatientID:12345').

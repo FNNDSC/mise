@@ -234,6 +234,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   queryLabel_extractFromFolder: pacsGrammar.queryLabel_extractFromFolder,
   folderUID_get: pacsGrammar.folderUID_get,
   queryFolderName_build: pacsGrammar.queryFolderName_build,
+  answer_standIn: (value: unknown): unknown => value,
+  criteria_standIn: (criteria: Record<string, string>): Record<string, string> => criteria,
   localAccount_adminAccessEnsure: jest.fn(),
   localAccount_create: jest.fn(),
   localAccount_find: jest.fn(),

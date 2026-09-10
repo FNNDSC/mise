@@ -197,6 +197,15 @@ const BADGE_TEXT: Readonly<Record<string, string>> = {
 /** What re-asking lowers to. */
 const FRESH_FLAG: string = '--fresh';
 
+/** What standing in for an answer's people lowers to. */
+const ANON_FLAG: string = '--anon';
+
+/** Matches the flag anywhere on the line, so it is never doubled. */
+const ANON_FLAG_PATTERN: RegExp = /\s*--anon\b/;
+
+/** The form fields that name a person, masked while ANON is on. */
+const IDENTIFYING_FIELDS: ReadonlyArray<string> = ['pacs-f-name', 'pacs-f-mrn', 'pacs-f-accession', 'pacs-f-date'];
+
 /** Matches the flag anywhere on the line, so it is never doubled. */
 const FRESH_FLAG_PATTERN: RegExp = /\s*--fresh\b/;
 
@@ -275,6 +284,23 @@ export class PacsPanel {
   private readonly run: HTMLElement;
   private model: PacsQueryModel | null = null;
   /** Whether the answer on stage came from a stored query. */
+  /**
+   * True while the pane stands in for what an answer says about a person.
+   *
+   * A pre-query mode, not a view: the substitution happens in the kernel,
+   * so an answer already on stage was fetched one way or the other and
+   * cannot be turned. Toggling therefore clears what is shown rather
+   * than leaving rows whose state nobody could name.
+   */
+  private anon: boolean = false;
+
+  /** True while the operator is looking at what they typed. */
+  private revealed: boolean = false;
+
+  private readonly anonPill: HTMLButtonElement;
+
+  private readonly revealPill: HTMLButtonElement;
+
   private replayed: boolean = false;
   /** The cell that reads which servers are chosen, and unfolds the strip. */
   private readonly serverCell: HTMLElement;
@@ -385,6 +411,10 @@ export class PacsPanel {
     this.serverCell.addEventListener('click', (): void => this.serverStrip_toggle());
     this.serverCell_sync();
     this.provenance = element_query(root, '#pacs-provenance');
+    this.anonPill = element_query(root, '#pacs-anon') as HTMLButtonElement;
+    this.revealPill = element_query(root, '#pacs-reveal') as HTMLButtonElement;
+    this.anonPill.addEventListener('click', (): void => this.anon_set(!this.anon));
+    this.revealPill.addEventListener('click', (): void => this.reveal_set(!this.revealed));
     this.run = element_query(root, '#pacs-run');
     // The control carries the intent; the line carries the command.
     this.run.addEventListener('click', (): void => this.query_run(this.replayed));
@@ -840,9 +870,68 @@ export class PacsPanel {
     const fanout: string = this.chosen.size > 1
       ? ` --pacsserver ${[...this.chosen].join(',')}`
       : '';
+    const stoodIn: string = this.anon ? ` ${ANON_FLAG}` : '';
     this.command.value = terms.length > 0 || fanout !== ''
-      ? `pacs query ${terms.join(',')}${fanout}`
+      ? `pacs query ${terms.join(',')}${fanout}${stoodIn}`
       : '';
+  }
+
+  /**
+   * Arms or disarms standing in for what an answer says about a person.
+   *
+   * Three things move together, and they have to: the line gains the flag,
+   * every field that names a person is masked — including the command line
+   * itself, which carries what was typed and is as readable off a screen as
+   * the form is — and the answer on stage is cleared. That last is not
+   * tidiness. The substitution happens in the kernel, so rows already here
+   * were fetched one way or the other; turning the pill cannot turn them,
+   * and rows whose state nobody could name are worse than none.
+   *
+   * @param on - True to stand in.
+   */
+  private anon_set(on: boolean): void {
+    if (on === this.anon) return;
+    this.anon = on;
+    this.revealed = false;
+    this.anonPill.textContent = on ? 'ANON ON' : 'ANON OFF';
+    this.anonPill.classList.toggle('rail-off', !on);
+    this.revealPill.hidden = !on;
+    this.model = null;
+    this.listing.rows_set([], { field: 'pending' });
+    this.provenance_show(undefined);
+    this.command.value = on
+      ? `${this.command.value.trim()} ${ANON_FLAG}`.trim()
+      : this.command.value.replace(ANON_FLAG_PATTERN, '').trimEnd();
+    this.masking_apply();
+  }
+
+  /**
+   * Shows or hides what is typed, while standing in is armed.
+   *
+   * Masking a field the operator is filling in hides their own typing
+   * mistakes from them, and a query put to a hospital PACS for the wrong
+   * record number is worse than a visible one. So the mask lifts on
+   * request, the way a password field's does.
+   *
+   * @param on - True to show what was typed.
+   */
+  private reveal_set(on: boolean): void {
+    this.revealed = on;
+    this.revealPill.textContent = on ? 'HIDE' : 'REVEAL';
+    this.revealPill.classList.toggle('rail-off', !on);
+    this.masking_apply();
+  }
+
+  /** Masks, or stops masking, every field that carries what was typed. */
+  private masking_apply(): void {
+    const mask: boolean = this.anon && !this.revealed;
+    for (const id of IDENTIFYING_FIELDS) {
+      element_input(this.root, `#${id}`).type = mask ? 'password' : 'text';
+    }
+    // The command line spells the same values back. It stays the line that
+    // runs — the pane's claim is that what is shown is what runs — but it
+    // is not readable from across a room.
+    this.command.type = mask ? 'password' : 'text';
   }
 
 

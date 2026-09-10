@@ -538,8 +538,15 @@
               <!-- The strip has the pane's full width, so it carries far
                    more servers than capsules crammed into one grid track. -->
               <div id="pacs-server-strip" class="pacs-server-strip" hidden></div>
+              <!-- ANON stands beside the line it changes, not beside the
+                   MRN: a name, an accession and a date identify a person as
+                   surely as a record number, and a pill against one field
+                   would say otherwise. It reads its state the way FILTER
+                   does, because it is the same gesture. -->
               <div id="pacs-commandline">
+                <button id="pacs-anon" class="strategy-pill rail-off" title="stand in for what the answer says about a person, for demonstrating against a live PACS">ANON OFF</button>
                 <input id="pacs-command" spellcheck="false" autocomplete="off" placeholder="pacs query ..." />
+                <button id="pacs-reveal" class="strategy-pill rail-off" title="show what is typed" hidden>REVEAL</button>
               </div>
               <!-- The results are a framed field like the other listings:
                    a rule turning through an elbow into the spine, whose

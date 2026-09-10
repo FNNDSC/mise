@@ -1,5 +1,12 @@
 # @fnndsc/menu
 
+## 0.8.0
+
+### Minor Changes
+
+- 7c793ad: `pacs.query` series carry `folderPath`, the CUBE folder a pulled series landed in, so a surface can open the series as an image from the row that holds it.
+- af2df66: New `dicom.series` and `dicom.tags` model kinds: a folder as a series, and a file's tags or a folder's constant-versus-varying split, with identifying tags flagged so a surface can redact by the flag.
+
 ## 0.7.0
 
 ### Minor Changes

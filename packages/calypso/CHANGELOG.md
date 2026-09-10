@@ -1,5 +1,19 @@
 # @fnndsc/calypso
 
+## 0.13.1
+
+### Patch Changes
+
+- Updated dependencies [7c793ad]
+- Updated dependencies [7c793ad]
+- Updated dependencies [af2df66]
+- Updated dependencies [af2df66]
+- Updated dependencies [0eb202f]
+- Updated dependencies [183bf02]
+  - @fnndsc/brasa@0.21.0
+  - @fnndsc/menu@0.8.0
+  - @fnndsc/cumin@3.21.1
+
 ## 0.13.0
 
 ### Minor Changes

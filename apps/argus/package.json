@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/argus",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "ARGUS: an LCARS web console and terminal surface for mise, attached to a CALYPSO session",
   "type": "module",
@@ -21,7 +21,7 @@
     "@cornerstonejs/tools": "^5.8.2",
     "@cornerstonejs/utils": "^5.8.2",
     "@fnndsc/calypso": "*",
-    "@fnndsc/menu": "^0.7.0",
+    "@fnndsc/menu": "^0.8.0",
     "@kitware/vtk.js": "^36.4.1",
     "@niivue/niivue": "^0.69.0",
     "@types/three": "^0.185.4",

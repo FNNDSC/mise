@@ -78,6 +78,8 @@ export interface ImageEngineState {
   tool: ImageTool;
   /** Slices that could not be read. */
   refused: number;
+  /** Measurements on the field, drawn or reloaded. */
+  annotations: number;
 }
 
 /** A guest engine behind the field. */
@@ -93,6 +95,8 @@ export interface ImageEngine {
   tool_set(tool: ImageTool): boolean;
   /** The measurements on the field as a DICOM SR, or null when the engine has none to give. */
   annotations_export(): Promise<Blob | null>;
+  /** Reads a DICOM SR's measurements onto the field; resolves to how many it could place. */
+  annotations_import(bytes: ArrayBuffer): Promise<number>;
   state_get(): ImageEngineState;
   dispose(): void;
 }

@@ -158,6 +158,32 @@ export class ImagePanel {
     const { CornerstoneEngine } = await import('./cornerstoneEngine.js');
     const engine: ImageEngine = new CornerstoneEngine(this.engineHost_get(), model, options.startAt ?? 1);
     await this.engine_open(engine);
+    await this.annotations_reload(engine, model);
+  }
+
+  /**
+   * Reads the annotation files the kernel found for the series back onto
+   * the field: what was saved comes back when the series reopens.
+   */
+  private async annotations_reload(engine: ImageEngine, model: DicomSeriesModel): Promise<void> {
+    let placed: number = 0;
+    for (const path of model.annotations.filter((file: string): boolean => /\.dcm$/i.test(file))) {
+      if (this.engine !== engine) return;
+      const name: string = path.split('/').pop() ?? path;
+      try {
+        const response: Response = await fetch(this.handlers.source.url_of(path));
+        if (!response.ok) {
+          this.handlers.note(`image: ${name}: HTTP ${response.status}`);
+          continue;
+        }
+        const count: number = await engine.annotations_import(await response.arrayBuffer());
+        placed += count;
+        this.handlers.note(count > 0 ? `image: ${count} measurement${count === 1 ? '' : 's'} from ${name}` : `image: ${name}: no measurements this engine can place`);
+      } catch (error: unknown) {
+        this.handlers.note(`image: ${name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    this.pane.dataset['annotations'] = String(placed);
   }
 
   /**

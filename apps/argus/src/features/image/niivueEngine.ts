@@ -149,8 +149,12 @@ export class NiivueEngine implements ImageEngine {
     return Promise.resolve(null);
   }
 
+  public annotations_import(): Promise<number> {
+    return Promise.resolve(0);
+  }
+
   public state_get(): ImageEngineState {
-    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, refused: this.refused };
+    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, refused: this.refused, annotations: 0 };
   }
 
   public dispose(): void {

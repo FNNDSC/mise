@@ -27,6 +27,16 @@
 
 ## What mise is
 
+> **CUBE is the reality.** The data, the analyses, the record of what produced what.
+>
+> **mise makes CUBE a POSIX-like computer.** Your data is a filesystem, every plugin is a command, every running job is a file you can read.
+>
+> **calypso brings that computer to life, under one login.** A session that holds your place and keeps working when you look away.
+>
+> **chell and ARGUS are two windows onto that login.** A terminal and a browser console showing one session, never two copies.
+
+The longer version.
+
 ChRIS is a cloud platform for scientific analysis. It stores research data — it
 grew up processing hospital brain-imaging studies — and runs containerized
 analysis programs ("plugins") on that data wherever the compute lives, keeping a
@@ -214,15 +224,15 @@ host control means handing a shell on this machine to anyone holding the URL.
 Seven, in a strict stack: each layer talks only to the one below it, so a script
 or a surface bites in wherever it needs and ignores the rest.
 
-| package | role |
+| package | in one line |
 |---|---|
-| `@fnndsc/menu` | the wire contract — envelope, session protocol, result models |
-| `@fnndsc/cumin` | infrastructure — connection, context, state. The **only** layer that touches the raw ChRIS REST client |
-| `@fnndsc/salsa` | logic, the virtual filesystem, intents |
-| `@fnndsc/chili` | typed commands, views, its own CLI |
-| `@fnndsc/brasa` | the hostable engine — parser, dispatch, pipes, builtins, session |
-| `@fnndsc/calypso` | the session daemon — bus, berths, routing, and the `calypso` binary |
-| `@fnndsc/chell` | the CLI surface, and the `--remote` client |
+| `@fnndsc/menu` | the words every layer agrees on |
+| `@fnndsc/cumin` | the only layer that speaks CUBE's REST, so nothing above it has to |
+| `@fnndsc/salsa` | the logic, and the filesystem CUBE never had |
+| `@fnndsc/chili` | typed commands and the views that render them |
+| `@fnndsc/brasa` | the engine that turns a typed line into a validated action |
+| `@fnndsc/calypso` | where a session lives, under one login, when nobody is looking at it |
+| `@fnndsc/chell` | the terminal you drive it from, here or over the wire |
 
 The filesystem those layers project — `/home`, `/bin`, `/proc`, `/SERVICES/PACS`
 — is described in **[docs/workspace-model.adoc](docs/workspace-model.adoc)**. Why

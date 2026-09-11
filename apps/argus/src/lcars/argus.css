@@ -62,6 +62,12 @@ html {
   /* The sweep the gutter's corners are cut with. One measurement, because
    * the mask that blacks the cut has to match the corner it hides. */
   --elbow-radius: 100px;
+  /* An elbow has two halves. The outer one is the gutter block's own swept
+   * corner; the inner one is a square of page laid against the gutter with
+   * a corner rounded away, which is what turns the bar into the frame
+   * instead of ending it there. Measured off the frame as it stood. */
+  --elbow-inner: 60px;
+  --elbow-inner-radius: 44px;
   /* The rule that separates one gutter block from the next. Existing rules
    * already ask for this token; only the template ever defined it, which is
    * why the console and language blocks lost their rule the moment the
@@ -1031,6 +1037,62 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   width: var(--elbow-radius);
   height: var(--elbow-radius);
   background-color: #000;
+}
+
+/* The elbow's inner half, once per pane: the head's turns down into the body,
+ * the body's turns up into the head, and between them they are what reads as
+ * an elbow rather than as a bar that stops dead against the gutter.
+ *
+ * It takes two layers in one square, sat flush above (or below) the bar so
+ * the bar's colour appears to continue round the turn. `::before` lays the
+ * colour as a hard-split diagonal — half frame, half page, no blend, the
+ * split being the only place a gradient is allowed to appear in this frame.
+ * `::after` drops a square of page over it with the corner facing the turn
+ * rounded away, and what survives underneath is the fillet. Both sit behind
+ * the pane's content, `::after` over `::before` by paint order.
+ *
+ * These are pseudo-elements, which is exactly why the rebuild lost them and
+ * the canon did not notice: the fingerprint reads elements only. The shape
+ * is measured off the frame as it stood, down to the 50% stops. */
+.right-frame-top::before,
+.right-frame-top::after,
+.right-frame::before,
+.right-frame::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  z-index: -1;
+  width: var(--elbow-inner);
+  height: var(--elbow-inner);
+}
+
+/* The turn happens where the bar is, so the bar's height is the offset. */
+.right-frame-top::before,
+.right-frame-top::after {
+  bottom: var(--bar-height);
+}
+
+.right-frame::before,
+.right-frame::after {
+  top: var(--bar-height);
+}
+
+.right-frame-top::before {
+  background-image: linear-gradient(to right top, var(--october-sunset) 50%, #000 50%);
+}
+
+.right-frame-top::after {
+  background-color: #000;
+  border-bottom-left-radius: var(--elbow-inner-radius);
+}
+
+.right-frame::before {
+  background-image: linear-gradient(to right bottom, var(--october-sunset) 50%, #000 50%);
+}
+
+.right-frame::after {
+  background-color: #000;
+  border-top-left-radius: var(--elbow-inner-radius);
 }
 
 /* Every segment is positioned so that it paints above the mask; unpositioned
@@ -3071,6 +3133,7 @@ body[data-zoom] #header-restore {
    * the gutter's elbow included — and a corner that is not cut needs no
    * mask behind it. */
   --elbow-radius: 0;
+  --elbow-inner-radius: 0;
   --radius-top: 0;
   --radius-bottom: 0;
   --radius-content-top: 0;

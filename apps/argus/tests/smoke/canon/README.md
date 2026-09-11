@@ -32,3 +32,23 @@ it is present only once a reading has landed.
 Only when a change to the frame is **intended**. Re-record both themes, and say
 in the same commit what moved and why — the point of a baseline is that it does
 not quietly follow the code.
+
+## What the fingerprint cannot see
+
+`getComputedStyle(el)` is called on elements only, so **pseudo-elements are
+invisible to it**. Every `::before` and `::after` in the frame — masks, lit
+bands, the lens rings, the elbow's black corner — can be wrong, or missing
+entirely, while the diff still reports zero.
+
+That is not hypothetical. The clean-room rebuild dropped the black mask behind
+FILES-01's swept corner, so the gutter's own colour showed through the sweep
+and the elbow read as an arc painted on a rectangle. Both canons scored zero
+differences the whole time; the defect was found by looking at the surface.
+
+The same blind spot covers anything a theme never declares: LOWER DECKS is the
+*absence* of `data-theme`, and a property no rule sets resolves to nothing
+rather than to a difference.
+
+**So the gate is necessary, not sufficient.** Look at the frame in every theme
+after changing it, and treat a zero-difference diff as evidence that nothing
+*watched* moved — not as evidence that the frame is right.

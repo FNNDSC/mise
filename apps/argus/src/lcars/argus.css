@@ -59,6 +59,9 @@ html {
   --lfw: 168px;
   --bar-height: 28px;
   --left-frame-padding: 0.75rem;
+  /* The sweep the gutter's corners are cut with. One measurement, because
+   * the mask that blacks the cut has to match the corner it hides. */
+  --elbow-radius: 100px;
   /* The rule that separates one gutter block from the next. Existing rules
    * already ask for this token; only the template ever defined it, which is
    * why the console and language blocks lost their rule the moment the
@@ -137,7 +140,7 @@ main {
   flex-direction: column;
   flex: none;
   width: var(--lfw);
-  border-bottom-left-radius: 100px;
+  border-bottom-left-radius: var(--elbow-radius);
   background-color: var(--october-sunset);
   /* The banner beside the gutter's head: LCARS lettering, hard right. */
   color: #000;
@@ -184,12 +187,12 @@ button.panel-2 {
   position: relative;
   flex: 1 1 auto;
   border-bottom: 0;
-  border-bottom-left-radius: 100px;
+  border-bottom-left-radius: var(--elbow-radius);
 }
 
 button.panel-3 {
   align-items: flex-end;
-  border-top-left-radius: 100px;
+  border-top-left-radius: var(--elbow-radius);
 }
 
 /* The last block closes the column, so it carries no rule either. */
@@ -1003,18 +1006,35 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * proportions, with floors that keep every label legible. Every given is
  * always on stage — a preset hidden behind a scroll is not a given. */
 .left-frame > div:first-child {
+  position: relative;
   flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-/* The theme's corner-mask rectangle (.left-frame::before, 340px of black,
- * absolute) was sized to the original fixed FILES-01; elastic buttons can
- * be shorter than it, and unpositioned buttons paint UNDER it — RUNS-02
- * vanished beneath the mask. Positioning every segment lifts them all
- * above the mask, which keeps doing its one job: blacking out the frame
- * color behind FILES-01's rounded corners. */
+/* An elbow is a corner cut out of the column, and a cut shows the page, not
+ * the gutter. FILES-01 sweeps its top-left away over a gutter that is itself
+ * colored, so without a mask the sweep reads as an arc painted on a
+ * rectangle instead of as a corner that was never there.
+ *
+ * The mask is the corner and nothing more. Blacking the whole gutter would
+ * do it too, but the inert blocks are half-opaque and take their cast from
+ * what lies behind them — they would darken with it. The imported template
+ * masked 340px, a height measured from a FILES-01 that could not stretch;
+ * ours can, so the mask is sized to the radius it hides. */
+.left-frame > div:first-child::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--elbow-radius);
+  height: var(--elbow-radius);
+  background-color: #000;
+}
+
+/* Every segment is positioned so that it paints above the mask; unpositioned
+ * buttons fall under it, and RUNS-02 vanished that way once. */
 .left-frame button[class^='panel-'],
 .left-frame .panel-spacer {
   position: relative;
@@ -3047,7 +3067,10 @@ body[data-zoom] #header-restore {
   --pumpkin-pie: #0f3566;
   --face-label: 'Chakra Petch', 'Arial Narrow', sans-serif;
   --face-data: 'JetBrains Mono', 'MesloLGS NF', monospace;
-  /* The imported look's swept corners are no corner at all under PHAROS. */
+  /* The imported look's swept corners are no corner at all under PHAROS,
+   * the gutter's elbow included — and a corner that is not cut needs no
+   * mask behind it. */
+  --elbow-radius: 0;
   --radius-top: 0;
   --radius-bottom: 0;
   --radius-content-top: 0;

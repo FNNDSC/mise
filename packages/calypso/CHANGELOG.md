@@ -1,5 +1,18 @@
 # @fnndsc/calypso
 
+## 0.14.0
+
+### Minor Changes
+
+- c601a42: ARGUS is published, and a released install now serves it. `@fnndsc/argus` ships its built bundle, calypso depends on it, and the daemon's web-root search ends by resolving the installed package — so `npm install -g @fnndsc/chell` followed by `chell --daemon` prints a URL a browser can open, where before it printed only a WebSocket address. The unused `@fnndsc/calypso` dependency is dropped from argus, whose browser code imports only the wire contract.
+
+### Patch Changes
+
+- Updated dependencies [c601a42]
+- Updated dependencies [3660509]
+- Updated dependencies [c0e92f7]
+  - @fnndsc/argus@0.7.0
+
 ## 0.13.2
 
 ### Patch Changes

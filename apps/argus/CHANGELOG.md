@@ -1,5 +1,13 @@
 # @fnndsc/argus
 
+## 0.7.0
+
+### Minor Changes
+
+- c601a42: ARGUS is published, and a released install now serves it. `@fnndsc/argus` ships its built bundle, calypso depends on it, and the daemon's web-root search ends by resolving the installed package — so `npm install -g @fnndsc/chell` followed by `chell --daemon` prints a URL a browser can open, where before it printed only a WebSocket address. The unused `@fnndsc/calypso` dependency is dropped from argus, whose browser code imports only the wire contract.
+- 3660509: ARGUS carries its own font and its own voice, and needs nothing downloaded. The typeface is Antonio, vendored under the SIL Open Font License — it is the Antonio Project's, and TheLCARS.com's template only ever carried a copy — and the four sounds are synthesised by `scripts/sounds_make.mjs` rather than borrowed. With the frame already written from ARGUS's own canon, nothing is left that the template supplied: `theme_ensure.mjs`, the gitignored theme directory and the build's materialization step are all gone, and there is no stand-in to degrade to. Both themes verified identical after every step. The attribution to TheLCARS.com stays.
+- c0e92f7: ARGUS's page frame is its own. The shell, the left gutter, the bands, the right frame and the base element rules are now written in `argus.css` from `tests/smoke/canon/lcars.json` — the computed style of ARGUS's own rendered page — and TheLCARS.com's stylesheet is no longer imported. Nothing was transcribed from the template's source; the provenance is measurement of our own surface. The look is unchanged and provably so: identical across 275 elements and 55 properties under both LCARS and PHAROS, and identical again with the template's file emptied. The operator's own `LCARS-26.zip` still supplies the typeface, which the frame names and does without when it is absent.
+
 ## 0.6.4
 
 ### Patch Changes

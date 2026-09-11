@@ -6,17 +6,11 @@ toc::[]
 
 == Purpose
 
-This is chell from *mise's* side: what the two shipped programs are, how they
-relate to the engine beneath them, and every way to start and reach a session.
-`packages/chell/` carries its own documentation of the shell itself — the
-commands, the virtual filesystem, plugin execution, the store. What is here is
-the part a reader of the mise README needs next, and no more.
+This is chell from *mise's* side: what the two shipped programs are, how they relate to the engine beneath them, and every way to start and reach a session. `packages/chell/` carries its own documentation of the shell itself — the commands, the virtual filesystem, plugin execution, the store. What is here is the part a reader of the mise README needs next, and no more.
 
 == A surface and a host
 
-`brasa` is the engine: it turns a line into validated ChRIS actions and hands
-back a structured envelope. It has no terminal of its own. Two programs put a
-face on it.
+`brasa` is the engine: it turns a line into validated ChRIS actions and hands back a structured envelope. It has no terminal of its own. Two programs put a face on it.
 
 *chell* is a *surface*. It is a terminal that drives the engine, renders what
 comes back, and reads the next line. By default it holds the engine
@@ -25,10 +19,7 @@ comes back, and reads the next line. By default it holds the engine
 *calypso* is a *host*. It holds one engine as a long-lived *session* and serves
 it over a WebSocket to whatever attaches. It renders nothing itself.
 
-They are the same host code. `chell --daemon` and the `calypso` binary do the
-same thing, and the flags match; use whichever is to hand. A `calypso` session
-outlives any surface attached to it, which is the point: a walk that takes
-twenty minutes keeps walking when the terminal showing it is closed.
+They are the same host code. `chell --daemon` and the `calypso` binary do the same thing, and the flags match; use whichever is to hand. A `calypso` session outlives any surface attached to it, which is the point: a walk that takes twenty minutes keeps walking when the terminal showing it is closed.
 
 == Running modes
 
@@ -40,8 +31,7 @@ $ chell
 > connect --user you --password •••• https://cube.chrisproject.org/api/v1/
 ----
 
-One process, one session, nothing to clean up. The right mode for scripting and
-for a single operator at one machine.
+One process, one session, nothing to clean up. The right mode for scripting and for a single operator at one machine.
 
 === Hosted
 
@@ -50,10 +40,7 @@ for a single operator at one machine.
 $ chell --daemon          # or: calypso
 ----
 
-The daemon logs into CUBE from the saved session — no prompt, because nobody may
-be watching — and prints its address, its identity, its attach token, and its
-berth file. The same lines are written to a file it names, so a second terminal
-can find them without scrollback.
+The daemon logs into CUBE from the saved session — no prompt, because nobody may be watching — and prints its address, its identity, its attach token, and its berth file. The same lines are written to a file it names, so a second terminal can find them without scrollback.
 
 == Reaching a session
 
@@ -65,22 +52,13 @@ $ chell --attach ws://host:35739/ --token 4c9d98c3…    # when the URL does not
 $ calypso --berths                                     # what is running on this machine
 ----
 
-A *berth* is the record of a running session, keyed by identity, so
-`--remote you@url` finds the right daemon without being told a port. Berths are
-per-identity: several daemons for several CUBE logins coexist on one machine
-without colliding.
+A *berth* is the record of a running session, keyed by identity, so `--remote you@url` finds the right daemon without being told a port. Berths are per-identity: several daemons for several CUBE logins coexist on one machine without colliding.
 
-The *attach token* gates every session. Anyone holding it can drive the session
-as the identity that started it, so the URL the daemon prints is a credential in
-full.
+The *attach token* gates every session. Anyone holding it can drive the session as the identity that started it, so the URL the daemon prints is a credential in full.
 
 == Host control
 
-A hosted session runs on the daemon's machine, not the operator's. It therefore
-refuses to touch that machine unless told otherwise: `!` shell escapes, pipeline
-segments, and `upload`/`download` against the local disk are all off. This is
-the safe default, and it is why a remote surface cannot quietly read the disk of
-the host it attached to.
+A hosted session runs on the daemon's machine, not the operator's. It therefore refuses to touch that machine unless told otherwise: `!` shell escapes, pipeline segments, and `upload`/`download` against the local disk are all off. This is the safe default, and it is why a remote surface cannot quietly read the disk of the host it attached to.
 
 Turn on what is needed, in tiers:
 
@@ -95,31 +73,19 @@ $ chell --daemon --host-control=shell,pipes  # a subset
 
 === Binding beyond loopback
 
-The daemon binds to `127.0.0.1`. `CALYPSO_BIND=0.0.0.0` opens it to the network,
-which is what a demo on a trusted network needs. Combining a non-loopback bind
+The daemon binds to `127.0.0.1`. `CALYPSO_BIND=0.0.0.0` opens it to the network, which is what a demo on a trusted network needs. Combining a non-loopback bind
 *with* host control requires `--expose-host-control` as well — a deliberate
-second yes, because the combination hands a shell on that machine to anyone
-holding the attach URL. Without the flag the daemon refuses to start and says
-why.
+second yes, because the combination hands a shell on that machine to anyone holding the attach URL. Without the flag the daemon refuses to start and says why.
 
 == The web surface
 
-When a built ARGUS bundle is found, the daemon serves it from the same port as
-the wire and prints one more line naming the URL. The bundle is looked for in
-`CALYPSO_WEB_ROOT`, then `apps/argus/dist` under the working directory, then the
-checkout enclosing the calypso module — so a dev tree serves the surface from any
-directory with no configuration.
+When a built ARGUS bundle is found, the daemon serves it from the same port as the wire and prints one more line naming the URL. The bundle is looked for in `CALYPSO_WEB_ROOT`, then `apps/argus/dist` under the working directory, then the checkout enclosing the calypso module — so a dev tree serves the surface from any directory with no configuration.
 
-A published install has none of those, so `npm install -g @fnndsc/chell` gives
-the CLI, the daemon and the wire, and no web surface. ARGUS is not published;
-the reason is its theme, and it is set out in `docs/argus.adoc`.
+A published install has none of those, so `npm install -g @fnndsc/chell` gives the CLI, the daemon and the wire, and no web surface. ARGUS is not published; the reason is its theme, and it is set out in `docs/argus.adoc`.
 
 == Scripting
 
-chell is a shell, and the shell things work: pipes between commands, `>` and `>>`
-redirection, `;` sequencing, `!` to reach the host OS, `#` comments, and
-`#!/usr/bin/env chell` shebangs. `-c` runs a line and exits, `-f` runs a file,
-and `-e` stops on the first error rather than continuing.
+chell is a shell, and the shell things work: pipes between commands, `>` and `>>` redirection, `;` sequencing, `!` to reach the host OS, `#` comments, and `#!/usr/bin/env chell` shebangs. `-c` runs a line and exits, `-f` runs a file, and `-e` stops on the first error rather than continuing.
 
 [source,console]
 ----

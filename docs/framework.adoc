@@ -1,0 +1,72 @@
+= Where the framework is: mise, ARGUS, and whether a view framework is needed
+:toc: macro
+:toclevels: 2
+
+toc::[]
+
+== Abstract
+
+ARGUS is a web surface of some seventeen thousand lines with no view framework in it — no React, no Vue, no Svelte — and it is comparable to, and in places better than, the React application it replaces. That invites a conclusion: that mise makes a view framework unnecessary, because mise keeps state better than a web application can. The conclusion is roughly right and the reasoning behind it is wrong in a way worth writing down, because the wrong reasoning predicts the wrong next move. This note records what mise actually removes, what it does not, what that has cost so far in named defects, and when the answer would change.
+
+== The comparison is off by one layer
+
+ARGUS is not a framework. It is an application. The framework is mise, and specifically `brasa`, the engine that turns a line into validated actions and answers with typed envelopes.
+
+React's peer in this repository is not ARGUS but the small toolkit ARGUS grew in order to render itself: the listing façade, the row and order modules, the verb roster, the layout tree. That is about 2,445 lines. It does a few percent of React's job and all of ARGUS's, which is a reasonable trade and, today, probably the right one.
+
+Measured at the time of writing: 17,517 lines of TypeScript in `apps/argus`, and not one UI framework among its dependencies — every dependency is domain (Cornerstone3D, niivue, three.js, vtk.js, d3).
+
+== What mise genuinely removes
+
+Session state does not live in the browser. The working directory, the process cache, the PACS replay index, the feed topology, the watches on running feeds: all of it lives in the calypso session and survives the page. Reload and nothing is lost, because nothing that mattered was ever in the tab.
+
+That is a stronger property than any client-side store can offer, and it removes most of what a client state layer exists for. A surface that renders typed envelopes is performing a projection, not maintaining a model, and projection is a much smaller problem than modelling. Client state libraries largely exist to simulate durability that mise simply has.
+
+== What mise does not remove
+
+A view framework is not primarily a state manager. It is a reconciler: it turns "here is the DOM this data implies" into minimal, safe mutations, composably. mise does not touch that problem, and ARGUS has quietly reimplemented a slice of it by hand. Every "and repaint" in the surface is a manual reconciliation step.
+
+The evidence is unusually clean, because a single day's defects were all of this kind and none of them were state defects.
+
+* A PACS series that had landed kept offering PULL, because the wire said "done" and nothing wrote that fact onto the surface.
+* The answer's CSV export rendered twenty-two pixels wide with its label clipped, because it was mounted into a container whose width depended on a mode nobody had opened.
+* The layout control kept reading SINGLE for the two minutes an MPR volume took to build, because the label was written after the await rather than before it.
+* A dive into a DAG node stranded the camera inside the node, because a map held a reference to DOM that a pane rebuild had already destroyed.
+
+The last is the sharpest. Object identity outliving DOM lifetime is precisely the class of failure a component lifecycle prevents by construction. It was fixed with a liveness check, which is the code one writes when one is being one's own framework.
+
+== The comparison with the old UI is confounded
+
+ARGUS is measured against ChRIS_ui, a React application. But that application carried its own hand-rolled API plumbing, and stalled under it — the same plumbing mise exists to delete. ARGUS wins because the plumbing is gone, not because the absence of React beats its presence.
+
+The experiment that would actually settle the question is React-on-mise against no-framework-on-mise, and it has not been run. There is no reason to expect it to be lopsided in either direction.
+
+== The recommendation
+
+*For ARGUS, no.* Three of its four largest panels are wrappers around imperative libraries: Cornerstone viewports, a three.js scene, niivue canvases. A view framework does not help there; it interposes a layer that must then be escaped by refs and effects, which is the well-known way frameworks end up in the way. Nor is there reuse to pay for composition with — every pane is a singleton. And it cuts against mise's own argument, that a surface is a thin, replaceable projection: a surface that drags a large framework into itself is less replaceable, not more.
+
+*For the next surface, quite possibly yes.* A patient-facing view, a read-only portal for a referrer, anything built by another pair of hands. mise makes that unusually cheap: the session is external, the models are typed at the wire, and the surface has no plumbing to write. This is the strongest form of the original insight and it survives the criticism intact — *mise turns the choice of view framework from an architectural commitment into a local decision, made differently per surface.*
+
+== What to do instead, and what it costs
+
+The defects above have structural answers inside the toolkit that already exists, at a cost of a few hundred lines against a rewrite of seventeen thousand.
+
+* *A pane owns its DOM lifetime.* Anything registered against a pane is dropped when that pane's mount is replaced. The ghost reference becomes impossible rather than guarded against.
+* *Repainting derives rather than remembers.* A row's verbs are computed from facts at paint time — which the verb roster now does — so a fact arriving on the wire cannot fail to reach the screen.
+
+The costs of the present approach are real and should be stated: a 1,590-line PACS panel, a 1,389-line DAG panel, and a verification strategy that leans on a live browser because computed geometry is not something jsdom can answer.
+
+== When the answer changes
+
+Three signals, any one of which is worth revisiting this note for.
+
+. Two panes need the same component rendered differently. Composition is the thing the current toolkit does worst.
+. Someone other than the original author maintains a panel. Hand-written DOM is legible to its writer and expensive to everyone else.
+. The listing façade acquires a second general abstraction. One bespoke component is a component; a family of them is a framework being maintained badly.
+
+== See also
+
+* `docs/mise.adoc` — the intent kernel, and why the stack is shaped this way
+* `docs/surfaces.adoc` — what a surface is, and what it owes the session
+* `docs/argus.adoc` — this surface in particular
+* `apps/argus/docs/aegis.adoc` — the design log, where these defects are recorded as they were found

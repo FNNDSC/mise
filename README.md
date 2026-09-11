@@ -228,7 +228,9 @@ The filesystem those layers project — `/home`, `/bin`, `/proc`, `/SERVICES/PAC
 — is described in **[docs/workspace-model.adoc](docs/workspace-model.adoc)**. Why
 the stack is shaped this way: **[docs/mise.adoc](docs/mise.adoc)**. The engine's
 contract with its surfaces: **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)**
-and **[docs/envelope-model.adoc](docs/envelope-model.adoc)**.
+and **[docs/envelope-model.adoc](docs/envelope-model.adoc)**. Whether a surface
+needs a view framework at all, and what mise does and does not remove:
+**[docs/framework.adoc](docs/framework.adoc)**.
 
 ---
 

@@ -83,7 +83,6 @@ body {
   display: flex;
   flex: 1 1 auto;
   width: 100%;
-  margin-top: 0.75rem;
   padding: 0 15px 0 5px;
   overflow: hidden;
 }
@@ -113,7 +112,7 @@ main {
   justify-content: space-between;
   position: relative;
   width: var(--lfw);
-  background-color: var(--october-sunset);
+  background-color: var(--orange);
   color: #000;
   text-align: right;
   font-weight: 700;
@@ -123,48 +122,81 @@ main {
 .left-frame-top {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   width: var(--lfw);
   border-bottom-left-radius: 100px;
-  background-color: var(--mars);
+  background-color: var(--october-sunset);
+  /* The banner beside the gutter's head: LCARS lettering, hard right. */
   color: #000;
   text-align: right;
   font-weight: 700;
   line-height: 1.2;
 }
 
+/* Each block is a button, so it states the type a button does not inherit, and
+ * the 8px black rule beneath it that separates one block from the next. The
+ * blocks then differ only in ground and corner, which is the canon's own
+ * arrangement: a column that reads dark, dark, light towards the elbow. */
 button[class^='panel-'] {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
+  justify-content: flex-end;
   width: var(--lfw);
-  padding: var(--left-frame-padding) var(--left-frame-padding) 0 0;
+  padding: var(--left-frame-padding);
   border: none;
-  background-color: var(--october-sunset);
+  border-bottom: 8px solid #000;
   color: #000;
   text-align: right;
   font-family: inherit;
   font-weight: 700;
   font-size: inherit;
   line-height: 1.2;
-  overflow-y: hidden;
   cursor: pointer;
 }
 
-/* The elbow: the block that carries the frame's corner sits on its own darker
- * ground and turns the column into the page. */
+/* The topmost block holds its label against the bottom and clips what will not
+ * fit, since a long name must not push the frame open. */
+.panel-1 {
+  min-height: 160px;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+/* The elbow carries the frame's corner and no rule beneath it: the corner IS
+ * the separation there, and it takes whatever height the head has left. */
 .panel-2 {
-  flex-direction: row;
-  justify-content: flex-end;
   position: relative;
-  background-color: var(--mars);
+  border-bottom: 0;
   border-bottom-left-radius: 100px;
 }
 
+.panel-3 {
+  align-items: flex-end;
+  border-top-left-radius: 100px;
+}
+
+/* The last block closes the column, so it carries no rule either. */
+.panel-7 {
+  border-bottom: 0;
+}
+
+.banner {
+  min-width: 0;
+  min-height: 0;
+  padding-left: 5px;
+  color: var(--honey);
+  text-align: right;
+  text-transform: uppercase;
+  line-height: 1.792;
+}
+
+.panel-1, .panel-4, .panel-spacer { background-color: var(--orange); }
+.panel-2, .panel-3, .panel-6 { background-color: var(--october-sunset); }
+.panel-5, .panel-7 { background-color: var(--harvestgold); }
+
 .panel-spacer {
   width: var(--lfw);
-  background-color: var(--october-sunset);
+  background-color: var(--orange);
   color: #000;
   text-align: right;
   font-weight: 700;
@@ -210,8 +242,7 @@ h1 {
 
 .right-frame-top {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: block;
   width: 100%;
 }
 
@@ -221,26 +252,40 @@ h1 {
   gap: 5px;
 }
 
+/* The header's own row of blocks wraps and packs to the right, and holds itself
+ * off the band below it. */
+.data-cascade-button-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: var(--left-frame-padding);
+}
+
 .first-bar-panel {
   position: relative;
-  margin-top: 2.5vh;
+  margin-top: 0.75rem;
 }
 
 .bar-1, .bar-2, .bar-3, .bar-4, .bar-5,
 .bar-6, .bar-7, .bar-8, .bar-9, .bar-10 {
-  position: relative;
   height: var(--bar-height);
 }
 
-/* The stagger, twice: the frame reads the same closing as opening. */
-.bar-1, .bar-6 { width: 10%; background-color: var(--mars); }
-.bar-2, .bar-7 { width: 12%; background-color: var(--october-sunset); }
-.bar-3, .bar-8 { width: 17%; background-color: var(--daybreak); }
-.bar-5, .bar-10 { width: 5%; background-color: var(--mars); }
+/* The stagger, twice: the frame reads the same closing as opening. The blocks
+ * are separated by a black rule carried on the block itself rather than by a
+ * gap, so a band is one unbroken run of colour with cuts in it. */
+.bar-1, .bar-6 { width: 10%; background-color: var(--october-sunset); }
+.bar-2, .bar-7 { width: 12%; background-color: var(--orange); border-right: 8px solid #000; }
+.bar-3, .bar-8 { width: 17%; background-color: var(--honey); }
+.bar-5, .bar-10 { width: 5%; background-color: var(--october-sunset); border-left: 8px solid #000; }
 
 /* The long block rides BEHIND its neighbours: the frame overlaps rather than
  * abuts, which is what gives an LCARS band its depth. */
 .bar-4, .bar-9 {
+  position: relative;
   width: 56%;
   background-color: var(--harvestgold);
   z-index: -1;
@@ -280,15 +325,15 @@ select,
 textarea {
   font-family: inherit;
   font-size: inherit;
-  line-height: 1.125;
+  line-height: 1.5;
   color: inherit;
 }
 
 a {
-  color: var(--daybreak);
+  color: var(--honey);
   text-decoration: none;
   text-transform: uppercase;
-  line-height: 1.12;
+  line-height: 1.792;
 }
 
 p {
@@ -296,7 +341,7 @@ p {
 }
 
 label {
-  line-height: 1.2;
+  line-height: 1.5;
 }
 
 /* The left frame reads better ~30% slimmer than the template's default

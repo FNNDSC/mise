@@ -2996,6 +2996,30 @@ body[data-zoom] #header-restore {
 
 /* Each scheme re-seats the theme's seven base colors; every other color in
  * the frame derives from these, so the whole surface follows. */
+
+/* LOWER DECKS is the scheme with no name: the cycler selects it by REMOVING
+ * `data-theme`, so its seven colors have to sit on the bare root or nothing
+ * paints. They used to arrive with the imported stylesheet, and when that
+ * stylesheet stopped shipping the scheme went black — every block still
+ * drawn, every color resolving to nothing, which is not a look but an
+ * absence. The four state hues below derive from these, so they fell with
+ * them; seating the seven puts all eleven back.
+ *
+ * The figures are measured rather than guessed: the same values come out of
+ * the template's own file and out of the pixels the old build painted (the
+ * gutter read rgb(255,119,0), which is `--orange`). A color is a fact about
+ * what was on the screen, and the four schemes below already show what the
+ * house does with these names. The attribution in the footer stands. */
+:root {
+  --butter: #fec;
+  --daybreak: #f91;
+  --harvestgold: #fa4;
+  --honey: #fc9;
+  --october-sunset: #f40;
+  --orange: #f70;
+  --pumpkin-pie: #c50;
+}
+
 :root[data-theme='gold'] {
   --butter: #fff3cd;
   --daybreak: #fc3;

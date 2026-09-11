@@ -31,26 +31,26 @@
 
 ## What mise is
 
-**CUBE is physics.** Objects and the laws between them. It has weather of its
-own — a job finishes at three in the morning, files land from a PACS pull —
-and it has no opinion whatever about where you are standing.
+**CUBE is physics** — objects, and the laws between them. It has no opinion
+about where you are standing and no memory that you were just somewhere.
 
-**mise is the world assembled.** The same objects, given *place*: a POSIX-like
+**mise is a world built on it**, and deliberately a familiar one: a POSIX-like
 computer where your data is a filesystem, every plugin a command, every running
-job a file you can read. A map, not a motor. Nothing in it is invented that the
-physics will not confirm.
+job a file you can read. A map, not a motor.
 
-**brasa is how anything acts.** The verbs, and the senses that go with them.
-Nothing here moves of its own accord.
+**brasa is how anything acts there** — the verbs, and the senses that go with
+them. Nothing moves of its own accord.
 
 **Calypso is the one living thing in that world.** One login, one individual.
-She holds the *now* and the *here*, she is the only thing that can choose, and
-she persists and goes on in the world after you leave.
+She holds the *now* and the *here*, and she persists and goes on after you
+leave.
 
-**chell and ARGUS are two views of that world through her eyes.** Never two
-copies: type `cd` in the terminal and the browser has already moved.
+**chell and ARGUS are two views of it through her eyes.** Never two copies:
+type `cd` in the terminal and the browser has already moved.
 
-The longer version.
+There is a longer telling of that — the physics, the world, the bird and the
+flight, the nymph of one island — at the head of
+**[docs/mise.adoc](docs/mise.adoc)**. The practical version follows here.
 
 ChRIS is a cloud platform for scientific analysis. It stores research data — it
 grew up processing hospital brain-imaging studies — and runs containerized

@@ -10,17 +10,31 @@ Rudolph Pienaar <rudolph.pienaar@gmail.com>
 [abstract]
 == The shape of it, before the argument
 
-CUBE is physics: objects and the laws between them. It has weather of its own — a job finishes at three in the morning, files land from a PACS pull — and no opinion whatever about where you are standing, nor any memory that you were just somewhere.
+This is the whole system as a story, for a reader who would rather hold a picture than a diagram. Nothing in it is decorative: each image carries a rule that the rest of this document then argues for.
 
-mise is the world assembled on that physics. The same objects, given *place*: a POSIX-like computer where data is a filesystem, every plugin a command, every running job a file that can be read. A map, not a motor. Nothing in it is invented that the physics will not confirm — the filesystem is a re-description, never a fabrication. And its inhabitants obey the world's rules without knowing any physics, which is this document's architecture restated as a fiction: one layer alone speaks REST, and nothing above it ever has to.
+CUBE is physics. The laws themselves: how things grow, how things move, how one thing becomes another. It knows no particular tree and no particular bird, only the rules that would govern one.
 
-`brasa` is how anything acts there. The verbs, and the senses that go with them. Nothing moves of its own accord; the kernel never polls, and an open pane is the subscription.
+mise is a world built from those laws — one of many that could have been built, and deliberately the most familiar. A POSIX-like world, because people already know how to walk one. Here a thing that grows is a *feed*, branching as a tree does. A thing that transforms is a *plugin*: a species of bird, known by what it eats and what it drops. The landscape holding them is a filesystem — places with names, a here and a there. Nothing in this world contradicts the physics; it is one arrangement of what the physics already allows.
 
-CALYPSO is the one living thing in that world. One login, one individual. She holds the *now* and the *here*, she is the only thing that can choose, and she persists and goes on in the world after you leave.
+`brasa` is the potential of intent. Not a thing in the world but the manner of things happening in it. The laws permit flight; `brasa` is this bird, this fruit, this morning — and that particular flight is a *job*.
 
-`chell` and ARGUS are two views of that world through her eyes. Never two copies: `cd` in the terminal and the browser has already moved, because there was only ever one of her.
+CALYPSO is the one aware thing there. A nymph of a single island: she did not make the laws and cannot break them, but within them she tells the birds when to fly. One login, one individual. She holds the *now* and the *here*, and she persists and goes on when nobody is looking. And though she is the only thing there that can choose, she wants nothing — she never acts unbidden.
 
-In a breath: *CUBE says what is true. mise says where things are. CALYPSO is who is there. chell and ARGUS are how you look.*
+`chell` and ARGUS are how you reach her. Two levers on one world, not two worlds kept in step. You are not in this world. She is, and you work through her.
+
+In a breath: *CUBE says what is true. mise says where things are. CALYPSO is who is there. `chell` and ARGUS are how you look.*
+
+=== What each image is holding
+
+The story is not ornament, and it is worth saying which rule sits under each turn of it.
+
+*A species and a flight are different things.* A plugin is a kind; a job is one occurrence of that kind, with its own inputs, its own moment, its own outcome. Conflating them is the commonest error made by clients of CUBE, and the filesystem keeps them apart: `/bin` holds the species, `/proc` holds the flights.
+
+*She never acts unbidden.* The kernel does not poll. A watch exists because a pane is open; when the pane closes the sampler stops. Nothing in mise runs on a timer of its own hoping to be useful.
+
+*Two levers, one world.* A terminal and a browser console are not two clients to be reconciled. They are two ways into one session, which is why `cd` in one has already moved the other, and why no synchronisation protocol appears anywhere in this stack.
+
+*You are not in this world.* The session outlives every surface attached to it. That is what lets a surface be thin, a walk of 58,000 nodes survive a closed browser, and the engine live inside a trust boundary while an operator drives it from outside.
 
 == Abstract
 

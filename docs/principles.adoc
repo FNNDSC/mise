@@ -192,7 +192,7 @@ Six breaches were known at the time of writing. One is now closed.
 
 *5. The Files panel bypasses the command vocabulary.* `apps/argus/src/app/main.ts:254` fetches `/vfs?path=&token=` directly on an image click. No command, no envelope, no bus, and no other surface learns it happened. Violates <<intent-equivalence>>. *Resolution: the click emits an intent; the byte fetch stays as mechanics. Folded into the panel work rather than filed separately.*
 
-*6. The stand-in theme does not announce itself.* `apps/argus/scripts/theme_ensure.mjs` warns on the build console when `LCARS-26.zip` is absent, but the served page carries no marker, so a viewer cannot distinguish the real theme from the generated stand-in. Violates <<degradation>>. *Resolution: a visible marker in the page when the stand-in is in use.*
+*6. The stand-in theme does not announce itself.* [RESOLVED 2026-09-11 — by removal.] `theme_ensure.mjs` materialized the LCARS theme from an operator-supplied zip and wrote a generated stand-in when none was found, and the served page carried no marker to say which a viewer was looking at. There is no stand-in now: ARGUS's frame is its own, written from its own canon; the typeface is vendored under the OFL; the sounds are synthesised. A build has nothing to degrade to, so the violation is gone rather than mitigated.
 
 [[enforcement]]
 == Enforcement

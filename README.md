@@ -118,39 +118,23 @@ release does not mean you are behind.
 
 ---
 
-## ARGUS and the LCARS theme
+## ARGUS and TheLCARS.com
 
-ARGUS wears the **Lower Decks** template from
-[TheLCARS.com](https://www.thelcars.com/). Its licence permits free
-non-commercial use with attribution, and forbids two things that matter here:
-*"You may not sell, distribute, or retransmit the Template"*, and *"You may not
-hotlink any of my files … without permission."*
+ARGUS wears an LCARS interface, and it grew inside the **Lower Decks** template
+from [TheLCARS.com](https://www.thelcars.com/). It no longer uses any of it.
 
-So this repository can neither ship the theme nor fetch it for you, and there is
-no npm package to depend on. `apps/argus/src/lcars/theme/` is gitignored and
-filled per machine from a zip **you** download. Every real copy comes from the
-author's own distribution, exactly as a dependency would, with the download
-manual only because no registry endpoint exists. This is also why ARGUS is not
-published and why a released `chell` serves no web surface.
+The frame is ARGUS's own, written from a measurement of ARGUS's own rendered
+page and held to it at zero differences. The typeface is **Antonio**, vendored
+here under the SIL Open Font License — it is the Antonio Project's, and the
+template only ever carried a copy. The four sounds are synthesised by
+`scripts/sounds_make.mjs` rather than borrowed.
 
-**Get the theme.** Go to
-[thelcars.com/download.php](https://www.thelcars.com/download.php) and press the
-download button — it hands off to the author's own Proton Drive. The file is
-`LCARS-26.zip`. The build looks for it in this order:
+**So there is nothing to download.** No `LCARS-26.zip`, no theme step, no
+degraded build: clone it, build it, and it looks the way it looks. That is also
+why ARGUS can be published at all.
 
-1. `LCARS_ZIP=/path/to/LCARS-26.zip`
-2. `~/Downloads/LCARS-26.zip`
-3. `LCARS-26.zip` beside `apps/argus/`
-
-```bash
-LCARS_ZIP=~/Downloads/LCARS-26.zip make cook
-```
-
-**Without the zip the build still works.** `theme_ensure.mjs` writes a generated
-stand-in, so `make cook` and CI succeed and ARGUS runs with a plain, degraded
-look. The page footer carries the attribution the licence requires.
-
-Full reasoning, including the trade-dress question:
+The attribution stays, and should — the page footer credits the template as the
+inspiration it was. Full reasoning, including the trade-dress question:
 **[docs/argus.adoc](docs/argus.adoc)**.
 
 ---

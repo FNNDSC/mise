@@ -5,11 +5,11 @@
   "description": "ARGUS: an LCARS web console and terminal surface for mise, attached to a CALYPSO session",
   "type": "module",
   "scripts": {
-    "theme": "node scripts/theme_ensure.mjs",
-    "build": "npm run theme && tsc --noEmit && vite build",
-    "dev": "npm run theme && vite",
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite",
     "test": "tsc --noEmit && NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
-    "smoke": "node tests/smoke/smoke.mjs"
+    "smoke": "node tests/smoke/smoke.mjs",
+    "sounds": "node scripts/sounds_make.mjs"
   },
   "author": "Rudolph Pienaar",
   "license": "MIT",

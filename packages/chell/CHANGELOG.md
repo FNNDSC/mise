@@ -1,5 +1,12 @@
 # @fnndsc/chell
 
+## 5.7.4
+
+### Patch Changes
+
+- Updated dependencies [c601a42]
+  - @fnndsc/calypso@0.14.0
+
 ## 5.7.3
 
 ### Patch Changes

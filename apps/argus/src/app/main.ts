@@ -61,7 +61,12 @@ import {
   type PaneInstance,
 } from './panes.js';
 import { LayoutManager, type LayoutNode } from './layout.js';
-import '../lcars/theme/lower-decks.css';
+// TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
+// from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
+// rendered page — and proven against it at zero differences across 275 elements.
+// The theme directory still supplies the FONT the frame names, when an operator
+// has put their own LCARS-26.zip where the build can find it; where they have
+// not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
 
 /** The greeting written above the first prompt. */

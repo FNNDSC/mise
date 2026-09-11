@@ -9,6 +9,296 @@
  * theme's custom properties so the instruments sit inside its palette.
  */
 
+/* ══════════════════════════════════════════════════ the frame, slice 1: shell
+ *
+ * ARGUS's page skeleton, written from ARGUS's own canon.
+ *
+ * The surface grew inside TheLCARS.com's template and drifted from it — our
+ * gutter is 168px where the template sets 240 — so the frame on screen is our
+ * design wearing their colours. That makes it ours to own, and owning it means
+ * stating it here rather than inheriting it from a stylesheet we may not ship.
+ *
+ * Every number below is READ FROM `tests/smoke/canon/lcars.json`: the computed
+ * style of the rendered page, measured from our own surface. Nothing here was
+ * transcribed from the template's source, which is what makes this a clean room
+ * rather than a fork. The canon is both the specification and the proof — the
+ * gate is zero differences against it.
+ *
+ * The typeface is named, not shipped. Antonio arrives from the operator's own
+ * LCARS-26.zip; where it is absent the stack falls through to a condensed face
+ * and the frame is unchanged, which is what lets a build without the zip still
+ * be ARGUS.
+ */
+
+@font-face {
+  font-family: 'Antonio';
+  src: url('./theme/Antonio-Regular.woff2') format('woff2'),
+       url('./theme/Antonio-Regular.woff') format('woff');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Antonio';
+  src: url('./theme/Antonio-Bold.woff2') format('woff2'),
+       url('./theme/Antonio-Bold.woff') format('woff');
+  font-weight: 700;
+  font-display: swap;
+}
+
+html {
+  font-size: 22px;
+  color: #fff;
+}
+
+:root {
+  /* The frame's own measurements, ours: the gutter narrowed to fit a listing
+   * with seven columns in it, and the band height that closes it. */
+  --lfw: 168px;
+  --bar-height: 28px;
+  --left-frame-padding: 0.75rem;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 10px 0 0 5px;
+  background-color: #000;
+  color: var(--daybreak);
+  font-family: Antonio, 'Arial Narrow', 'Avenir Next Condensed', sans-serif;
+  line-height: 1.5;
+}
+
+.wrap-all {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: auto;
+  min-height: auto;
+  width: 100%;
+}
+
+.wrap {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0 15px 0 5px;
+  overflow: hidden;
+}
+
+main {
+  display: block;
+  flex: 1 1 auto;
+  padding: 60px 0 11px 50px;
+}
+
+
+
+/* ══════════════════════════════════ the frame, slice 2: the left gutter
+ *
+ * The column of blocks down the left, and the elbow that turns it into the
+ * page. Again read from the canon, not from anyone's source: 168px wide, which
+ * is the drift that makes this frame ours — the template it grew from sets 240,
+ * a width never chosen for a listing with seven columns in it.
+ *
+ * The blocks are BUTTONS, so they carry their own type rules: LCARS lettering
+ * sits hard right, bold, tight, and on the block's own dark ground.
+ */
+
+.left-frame {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  width: var(--lfw);
+  background-color: var(--october-sunset);
+  color: #000;
+  text-align: right;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.left-frame-top {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: var(--lfw);
+  border-bottom-left-radius: 100px;
+  background-color: var(--mars);
+  color: #000;
+  text-align: right;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+button[class^='panel-'] {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  width: var(--lfw);
+  padding: var(--left-frame-padding) var(--left-frame-padding) 0 0;
+  border: none;
+  background-color: var(--october-sunset);
+  color: #000;
+  text-align: right;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: inherit;
+  line-height: 1.2;
+  overflow-y: hidden;
+  cursor: pointer;
+}
+
+/* The elbow: the block that carries the frame's corner sits on its own darker
+ * ground and turns the column into the page. */
+.panel-2 {
+  flex-direction: row;
+  justify-content: flex-end;
+  position: relative;
+  background-color: var(--mars);
+  border-bottom-left-radius: 100px;
+}
+
+.panel-spacer {
+  width: var(--lfw);
+  background-color: var(--october-sunset);
+  color: #000;
+  text-align: right;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* The word that rides the elbow, small and hard right. */
+.hop {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: right;
+}
+
+/* The page's own title, set the way LCARS sets a title: large, open, upper. */
+h1 {
+  margin: 0;
+  font-size: 4rem;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  line-height: 1.2;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+
+/* ═══════════════════ the frame, slices 3-5: bar panels, right frame, trim
+ *
+ * The horizontal bands that close the frame top and bottom, the region they
+ * close, and the two strips that hold the page off the screen edge. Read from
+ * the canon: the bands are five blocks at 10, 12, 17, 56 and 5 percent, which
+ * is a stagger that sums to the whole and therefore scales with any width.
+ */
+
+.right-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.right-frame-top {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.bar-panel {
+  display: flex;
+  width: 100%;
+  gap: 5px;
+}
+
+.first-bar-panel {
+  position: relative;
+  margin-top: 2.5vh;
+}
+
+.bar-1, .bar-2, .bar-3, .bar-4, .bar-5,
+.bar-6, .bar-7, .bar-8, .bar-9, .bar-10 {
+  position: relative;
+  height: var(--bar-height);
+}
+
+/* The stagger, twice: the frame reads the same closing as opening. */
+.bar-1, .bar-6 { width: 10%; background-color: var(--mars); }
+.bar-2, .bar-7 { width: 12%; background-color: var(--october-sunset); }
+.bar-3, .bar-8 { width: 17%; background-color: var(--daybreak); }
+.bar-5, .bar-10 { width: 5%; background-color: var(--mars); }
+
+/* The long block rides BEHIND its neighbours: the frame overlaps rather than
+ * abuts, which is what gives an LCARS band its depth. */
+.bar-4, .bar-9 {
+  width: 56%;
+  background-color: var(--harvestgold);
+  z-index: -1;
+}
+
+/* Two strips pinned over the very top and bottom of the viewport, so the page
+ * never touches the screen edge however it scrolls. */
+.headtrim,
+.baseboard {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background-color: #000;
+  z-index: 999;
+}
+
+.headtrim { top: 0; }
+.baseboard { bottom: 0; }
+
+
+/* ══════════════════════════ the frame, base elements: type that inherits
+ *
+ * The rules a browser would otherwise answer for. Buttons and inputs do not
+ * inherit type by default, links come blue and underlined, and LCARS lettering
+ * is upper and open — so the frame states all of it once, and everything inside
+ * it inherits rather than declaring its own.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.125;
+  color: inherit;
+}
+
+a {
+  color: var(--daybreak);
+  text-decoration: none;
+  text-transform: uppercase;
+  line-height: 1.12;
+}
+
+p {
+  margin: 0;
+}
+
+label {
+  line-height: 1.2;
+}
+
 /* The left frame reads better ~30% slimmer than the template's default
  * 240px; every frame element derives from this one variable. */
 :root {

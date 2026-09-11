@@ -23,51 +23,62 @@
 
 <br>
 
-### CUBE says what is true.<br>mise says where things are.<br>Calypso is who is there.<br>chell and ARGUS are how you look.
+### CUBE says what is true.<br>`mise` says where things are.<br>Calypso is who is there.<br>`chell` and `argus` are how you look.
 
 </div>
 
 ---
 
-## What mise is
+## What `mise` is
 
-**CUBE is physics** — objects, and the laws between them. It has no opinion
+`mise` presents ChRIS — a platform of users, data, analysis programs and compute,
+reached through a low-level web API — as a **POSIX-like computer**, and gives
+that computer more than one surface.
+
+The shell surface, `chell`, casts the world as files, directories and
+executables. The web surface, `argus`, shows the same world as components you
+drive in a browser. Neither is a client of the other, and neither is the
+framework: they are two ways into one machine.
+
+Underneath, `mise` is a stack of layers, each abstracting exactly one thing, all
+standing on a single truth.
+
+**CUBE is the truth** — the objects and the laws between them. It has no opinion
 about where you are standing and no memory that you were just somewhere.
 
-**mise is a world built on it**, and deliberately a familiar one: a POSIX-like
-computer where your data is a filesystem, every plugin a command, every running
-job a file you can read. A map, not a motor.
+**`mise` is the world built on it**, and deliberately a familiar one: your data
+is a filesystem, every plugin a command, every running job a file you can read.
+A map, not a motor.
 
-**brasa is how anything acts there** — the verbs, and the senses that go with
+**`brasa` is how anything acts there** — the verbs, and the senses that go with
 them. Nothing moves of its own accord.
 
-**Calypso is the one living thing in that world.** One login, one individual.
-She holds the *now* and the *here*, and she persists and goes on after you
-leave.
+**`calypso` is the one living thing in that world.** One login, one individual.
+It holds the *now* and the *here*, and it persists and goes on after you leave.
 
-**chell and ARGUS are two views of it through her eyes.** Never two copies:
-type `cd` in the terminal and the browser has already moved.
+**`chell` and `argus` are two views of it.** Never two copies: type `cd` in the
+terminal and the browser has already moved.
 
 There is a longer telling of that — the physics, the world, the bird and the
 flight, the nymph of one island — at the head of
-**[docs/mise.adoc](docs/mise.adoc)**. The practical version follows here.
+**[docs/mise.adoc](docs/mise.adoc)**.
 
-ChRIS is a cloud platform for scientific analysis. It stores research data — it
-grew up processing hospital brain-imaging studies — and runs containerized
-analysis programs ("plugins") on that data wherever the compute lives, keeping a
-precise record of what ran to produce every result. You reach it through a
-low-level web API, where one useful task — *find this scan, run this pipeline,
-fetch the result* — unfolds into a long chain of dependent calls. Every tool
-built on ChRIS used to re-implement that plumbing, and most stalled under it.
+### Why it exists
 
-mise builds the plumbing once. At its centre is an **intent kernel**: a
+ChRIS stores research data — it grew up processing hospital brain-imaging
+studies — and runs containerized analysis programs ("plugins") on that data
+wherever the compute lives, keeping a precise record of what ran to produce
+every result. You reach it through a web API where one useful task — *find this
+scan, run this pipeline, fetch the result* — unfolds into a long chain of
+dependent calls. Every tool built on ChRIS used to re-implement that plumbing,
+and most stalled under it.
+
+`mise` builds the plumbing once. At its centre is an **intent kernel**: a
 deterministic engine that turns *what you want* into validated ChRIS actions and
 hands back structured results. Nothing above it ever touches the raw API.
 
-What that buys you is a machine instead of an endpoint. Your data is a
-filesystem. Every plugin and registered pipeline is an executable in `/bin`. A
-running job is a live entry under `/proc`. If you have used a terminal, you
-already know most of it:
+What that buys you is a machine instead of an endpoint. If you have used a
+terminal, you already know most of it:
 
 ```bash
 cd /home/chris/uploads/SAG-anon              # your data is a filesystem
@@ -76,7 +87,7 @@ pl-fshack-v1.2.0 --inputFile brain.mgz       # run an analysis by name
 cat /proc/jobs/feed_123/pl-fshack_789/status # watch it run
 ```
 
-**mise is the framework; the kernel is the product.** The argument for why it is
+**`mise` is the framework; the kernel is the product.** The argument for why it is
 built this way, and how the layers fit, is a paper of its own:
 **[docs/mise.adoc](docs/mise.adoc)**. The shorter tour is
 **[docs/gettingStarted.adoc](docs/gettingStarted.adoc)**.
@@ -89,11 +100,11 @@ Three things, all driving the same engine.
 
 | | what it is |
 |---|---|
-| **chell** | The shell. A terminal that holds the engine in-process. This is the deliverable most people want. |
-| **calypso** | The daemon. Holds one engine as a long-lived **session** that surfaces attach to over a WebSocket. `chell --daemon` and the `calypso` binary run the same host code. |
-| **ARGUS** | The web surface: an LCARS console over a calypso session, with panes for files, feeds, the job graph, PACS, and a DICOM viewer. Ships with the stack — see [below](#argus-and-its-two-faces). |
+| **`chell`** | The shell. A terminal that holds the engine in-process. This is the deliverable most people want. |
+| **`calypso`** | The daemon. Holds one engine as a long-lived **session** that surfaces attach to over a WebSocket. `chell --daemon` and the `calypso` binary run the same host code. |
+| **`argus`** | The web surface: an LCARS console over a `calypso` session, with panes for files, feeds, the job graph, PACS, and a DICOM viewer. Ships with the stack — see [below](#argus-and-its-two-faces). |
 
-chell is a *surface*; calypso is a *host*. That is the whole distinction. Detail —
+`chell` is a *surface*; `calypso` is a *host*. That is the whole distinction. Detail —
 running modes, attaching, host control, scripting — is in
 **[docs/chell.adoc](docs/chell.adoc)**.
 
@@ -109,7 +120,7 @@ chell
 ```
 
 Requires Node.js ≥ 20.12 (22.x recommended). This brings the whole stack —
-calypso the session daemon, and **ARGUS** the web surface — so `chell --daemon`
+`calypso` the session daemon, and **`argus`** the web surface — so `chell --daemon`
 serves a browser console as well as the wire.
 
 ### From a release binary — no Node.js
@@ -125,7 +136,7 @@ Published for `linux-x64`, `linux-arm64`, `macos-x64` and `macos-arm64`, with a
 
 ### From the repository
 
-The way to develop, and to run an unreleased ARGUS:
+The way to develop, and to run an unreleased `argus`:
 
 ```bash
 git clone https://github.com/FNNDSC/mise && cd mise
@@ -137,15 +148,15 @@ make serve    # link `chell` globally, so it runs from anywhere
 `make taco` does the full course: scrub, prep, cook, taste, serve.
 
 **On versions:** the packages do not release in step, and they do not need to.
-chell depends on version *ranges*, so installing the latest chell pulls the
-latest compatible engine beneath it. A chell release numbered below a salsa
+`chell` depends on version *ranges*, so installing the latest `chell` pulls the
+latest compatible engine beneath it. A `chell` release numbered below a `salsa`
 release does not mean you are behind.
 
 ---
 
-## ARGUS, and the faces it wears
+## `argus`, and the faces it wears
 
-**ARGUS** is the web surface: an LCARS console with the terminal indwelling, and
+**`argus`** is the web surface: an LCARS console with the terminal indwelling, and
 panes for files, feeds, the job graph, PACS query and retrieve, and a DICOM
 viewer. It ships with the stack — nothing to download, nothing to configure.
 
@@ -162,7 +173,7 @@ Antonio set hard right.
 | **CERRITOS GOLD** | Gold and orange. |
 | **NEMESIS** | Cool and dark. |
 
-**PHAROS** is not a scheme but a theme of its own on the same tokens: ARGUS's own
+**PHAROS** is not a scheme but a theme of its own on the same tokens: `argus`'s own
 visual language, the lighthouse, flat. Square corners, one curve in one seat, set
 in Chakra Petch. Owing nothing to anyone.
 
@@ -173,8 +184,8 @@ loud that it meant to change it.
 
 ### On TheLCARS.com
 
-ARGUS grew inside that template and no longer uses any of it. The frame is
-written from ARGUS's own canon. The typeface is **Antonio**, vendored here under
+`argus` grew inside that template and no longer uses any of it. The frame is
+written from `argus`'s own canon. The typeface is **Antonio**, vendored here under
 the SIL Open Font License — it is the Antonio Project's, and the template only
 carried a copy. The four sounds are synthesised by `scripts/sounds_make.mjs`.
 
@@ -254,7 +265,7 @@ The filesystem those layers project — `/home`, `/bin`, `/proc`, `/SERVICES/PAC
 the stack is shaped this way: **[docs/mise.adoc](docs/mise.adoc)**. The engine's
 contract with its surfaces: **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)**
 and **[docs/envelope-model.adoc](docs/envelope-model.adoc)**. Whether a surface
-needs a view framework at all, and what mise does and does not remove:
+needs a view framework at all, and what `mise` does and does not remove:
 **[docs/framework.adoc](docs/framework.adoc)**.
 
 ---
@@ -267,13 +278,13 @@ One kitchen for the whole monorepo. `make` with no target lists everything.
 |--------|------|----------------|
 | `shop` | freshen the pantry | `git pull` |
 | `prep` | install deps (links all workspaces) | `npm install` |
-| `cook` | build all, in dependency order | `npm run build` (cumin→salsa→chili→brasa→calypso→chell) |
+| `cook` | build all, in dependency order | `npm run build` (`cumin`→`salsa`→`chili`→`brasa`→`calypso`→`chell`) |
 | `taste` | run the full test suite | `npm test` |
 | `taste-flight` | tests with coverage | workspace Jest configs (Istanbul/Babel provider) |
 | `serve` | link `chell` globally | `npm link` |
 | `scrub` | clean the kitchen | remove `dist/` + `node_modules` |
 | `run` | build + launch the shell | `node packages/chell/dist/index.js` |
-| `daemon` | build + run CALYPSO daemon | `node packages/calypso/dist/calypso.js` |
+| `daemon` | build + run `calypso` daemon | `node packages/calypso/dist/calypso.js` |
 | `remote` | build + attach to daemon | `node packages/chell/dist/index.js --remote` |
 | `taco` / `meal` | the full course | scrub → prep → cook → taste → serve |
 

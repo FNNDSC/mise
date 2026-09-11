@@ -57,11 +57,16 @@ html {
   --lfw: 168px;
   --bar-height: 28px;
   --left-frame-padding: 0.75rem;
+  /* The rule that separates one gutter block from the next. Existing rules
+   * already ask for this token; only the template ever defined it, which is
+   * why the console and language blocks lost their rule the moment the
+   * template was withheld. */
+  --panel-border: 8px solid #000;
 }
 
 body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   margin: 0;
   padding: 10px 0 0 5px;
   background-color: #000;
@@ -85,6 +90,11 @@ body {
   width: 100%;
   padding: 0 15px 0 5px;
   overflow: hidden;
+}
+
+/* The page's own column stands off the band that closes the head. */
+#gap.wrap {
+  margin-top: var(--left-frame-padding);
 }
 
 main {
@@ -111,6 +121,7 @@ main {
   flex-direction: column;
   justify-content: space-between;
   position: relative;
+  flex: none;
   width: var(--lfw);
   background-color: var(--orange);
   color: #000;
@@ -122,6 +133,7 @@ main {
 .left-frame-top {
   display: flex;
   flex-direction: column;
+  flex: none;
   width: var(--lfw);
   border-bottom-left-radius: 100px;
   background-color: var(--october-sunset);
@@ -154,7 +166,7 @@ button[class^='panel-'] {
 
 /* The topmost block holds its label against the bottom and clips what will not
  * fit, since a long name must not push the frame open. */
-.panel-1 {
+button.panel-1 {
   min-height: 160px;
   flex-direction: column;
   justify-content: space-between;
@@ -164,30 +176,43 @@ button[class^='panel-'] {
 
 /* The elbow carries the frame's corner and no rule beneath it: the corner IS
  * the separation there, and it takes whatever height the head has left. */
-.panel-2 {
+/* The elbow takes whatever the head has left once the first block has its
+ * 160px: the gutter's head is as tall as the frame's head beside it. */
+button.panel-2 {
   position: relative;
+  flex: 1 1 auto;
   border-bottom: 0;
   border-bottom-left-radius: 100px;
 }
 
-.panel-3 {
+button.panel-3 {
   align-items: flex-end;
   border-top-left-radius: 100px;
 }
 
 /* The last block closes the column, so it carries no rule either. */
-.panel-7 {
+button.panel-7 {
+  border-top: 8px solid #000;
   border-bottom: 0;
 }
 
+button.panel-console,
+button.panel-lang {
+  border-bottom: 8px solid #000;
+}
+
+/* The banner is set at its own scale, larger than the page and tighter than
+ * it: 1.1 on 35.84px, which is why one ratio could not serve both it and the
+ * footer's 1.3 on 13.64px. */
 .banner {
   min-width: 0;
   min-height: 0;
   padding-left: 5px;
+  padding-bottom: 4.4px;
   color: var(--honey);
   text-align: right;
   text-transform: uppercase;
-  line-height: 1.792;
+  line-height: 1.1;
 }
 
 .panel-1, .panel-4, .panel-spacer { background-color: var(--orange); }
@@ -237,7 +262,6 @@ h1 {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  min-width: 0;
 }
 
 .right-frame-top {
@@ -249,7 +273,6 @@ h1 {
 .bar-panel {
   display: flex;
   width: 100%;
-  gap: 5px;
 }
 
 /* The header's own row of blocks wraps and packs to the right, and holds itself
@@ -264,9 +287,11 @@ h1 {
   padding-bottom: var(--left-frame-padding);
 }
 
+/* The first band holds itself off the top of the page by a share of the
+ * VIEWPORT, not of the type: the frame's head breathes with the screen. */
 .first-bar-panel {
   position: relative;
-  margin-top: 0.75rem;
+  margin-top: 2.5vh;
 }
 
 .bar-1, .bar-2, .bar-3, .bar-4, .bar-5,
@@ -277,16 +302,16 @@ h1 {
 /* The stagger, twice: the frame reads the same closing as opening. The blocks
  * are separated by a black rule carried on the block itself rather than by a
  * gap, so a band is one unbroken run of colour with cuts in it. */
-.bar-1, .bar-6 { width: 10%; background-color: var(--october-sunset); }
+.bar-1, .bar-6 { width: 10%; background-color: var(--october-sunset); border-right: 8px solid #000; }
 .bar-2, .bar-7 { width: 12%; background-color: var(--orange); border-right: 8px solid #000; }
-.bar-3, .bar-8 { width: 17%; background-color: var(--honey); }
+.bar-3, .bar-8 { width: 17%; background-color: var(--honey); border-right: 8px solid #000; }
 .bar-5, .bar-10 { width: 5%; background-color: var(--october-sunset); border-left: 8px solid #000; }
 
 /* The long block rides BEHIND its neighbours: the frame overlaps rather than
  * abuts, which is what gives an LCARS band its depth. */
 .bar-4, .bar-9 {
   position: relative;
-  width: 56%;
+  width: 56.0022%;
   background-color: var(--harvestgold);
   z-index: -1;
 }
@@ -319,21 +344,47 @@ h1 {
   box-sizing: border-box;
 }
 
-button,
+button {
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: 1.5;
+  color: inherit;
+}
+
 input,
 select,
 textarea {
+  margin: 0;
+  padding: 0;
   font-family: inherit;
   font-size: inherit;
   line-height: 1.5;
   color: inherit;
 }
 
+.argus-input-line input {
+  font-weight: 700;
+}
+
 a {
   color: var(--honey);
   text-decoration: none;
   text-transform: uppercase;
-  line-height: 1.792;
+  line-height: 1.3;
+}
+
+.banner a {
+  line-height: 1.1;
+}
+
+/* The credit in the header's footer reads as part of its sentence, not as a
+ * control: the frame's dark blue, and the words as they were written. */
+.about-footer a {
+  color: var(--october-sunset);
+  text-transform: none;
 }
 
 p {
@@ -1854,6 +1905,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .mode-strip {
+  color: #000;
   position: absolute;
   top: var(--frame-top);
   right: 0;
@@ -4429,4 +4481,21 @@ body[data-zoom] #header-restore {
   .image-working-fill.image-working-pacing {
     animation: none !important;
   }
+}
+
+/* PHAROS is FLAT: the corners the imported frame turned are square here, and
+ * the curve lives in one seat of its own (the header stone's lens). The frame
+ * above states LCARS's radii as the default, so PHAROS takes them back. */
+[data-theme='pharos'] .left-frame-top,
+[data-theme='pharos'] button.panel-2,
+[data-theme='pharos'] button.panel-3 {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* The one curve PHAROS keeps at the head of the gutter: the stone's own
+ * shoulder, which its lens sits under. */
+[data-theme='pharos'] button.panel-3 {
+  border-top-left-radius: 0;
 }

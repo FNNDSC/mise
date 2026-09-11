@@ -65,7 +65,7 @@ const SNAPSHOT_SCRIPT = (watched) => `
   // The latency readout shows only once a reading has landed, so it is present
   // or absent depending on the wire, not the theme.
   const SKIP = ['.argus-output', '.listing-field', '#pacs-results', '#files-results',
-    '.dag-canvas', '#status-latency'];
+    '.dag-canvas', '#status-latency', '#drawer-status'];
   for (const el of document.querySelectorAll('*')) {
     if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
     if (SKIP.some((s) => el.closest(s) !== null)) continue;

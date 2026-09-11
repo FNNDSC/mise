@@ -14,7 +14,7 @@
 import * as path from 'node:path';
 import chalk from 'chalk';
 import { CalypsoDaemon } from './server.js';
-import { bundledWebRoot_find, webRoot_resolve, webRootVersion_read } from './static.js';
+import { bundledWebRoot_find, installedWebRoot_find, webRoot_resolve, webRootVersion_read } from './static.js';
 import { hostFqdn_get } from './host.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
@@ -188,6 +188,9 @@ export async function daemon_launch(
     process.env['CALYPSO_WEB_ROOT'],
     path.join(process.cwd(), 'apps', 'argus', 'dist'),
     bundledWebRoot_find() ?? undefined,
+    // Last, and the one that matters to somebody who installed rather than
+    // cloned: the bundle `@fnndsc/argus` ships.
+    installedWebRoot_find() ?? undefined,
   ]);
   // Loopback is the posture; CALYPSO_BIND is a deliberate, per-launch
   // opt-out for demos on a trusted network. The attach token still gates

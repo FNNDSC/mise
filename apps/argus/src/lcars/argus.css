@@ -30,18 +30,20 @@
  * be ARGUS.
  */
 
+/* Antonio, vendored under the SIL Open Font License (fonts/antonio/OFL.txt).
+ * The face is the Antonio Project's, not the template's — the template merely
+ * carried a copy — so ARGUS takes it from the source, the way PHAROS takes
+ * Chakra Petch, and needs nobody's zip to set type. */
 @font-face {
   font-family: 'Antonio';
-  src: url('./theme/Antonio-Regular.woff2') format('woff2'),
-       url('./theme/Antonio-Regular.woff') format('woff');
+  src: url('./fonts/antonio/antonio-latin-400-normal.woff2') format('woff2');
   font-weight: 400;
   font-display: swap;
 }
 
 @font-face {
   font-family: 'Antonio';
-  src: url('./theme/Antonio-Bold.woff2') format('woff2'),
-       url('./theme/Antonio-Bold.woff') format('woff');
+  src: url('./fonts/antonio/antonio-latin-700-normal.woff2') format('woff2');
   font-weight: 700;
   font-display: swap;
 }

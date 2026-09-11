@@ -66,7 +66,7 @@ Three things, all driving the same engine.
 |---|---|
 | **chell** | The shell. A terminal that holds the engine in-process. This is the deliverable most people want. |
 | **calypso** | The daemon. Holds one engine as a long-lived **session** that surfaces attach to over a WebSocket. `chell --daemon` and the `calypso` binary run the same host code. |
-| **ARGUS** | The web surface: an LCARS console over a calypso session, with panes for files, feeds, the job graph, PACS, and a DICOM viewer. Runs from a checkout only — see [below](#argus-and-the-lcars-theme). |
+| **ARGUS** | The web surface: an LCARS console over a calypso session, with panes for files, feeds, the job graph, PACS, and a DICOM viewer. Ships with the stack — see [below](#argus-and-its-two-faces). |
 
 chell is a *surface*; calypso is a *host*. That is the whole distinction. Detail —
 running modes, attaching, host control, scripting — is in
@@ -83,9 +83,9 @@ npm install -g @fnndsc/chell
 chell
 ```
 
-Requires Node.js ≥ 20.12 (22.x recommended). This brings the whole stack,
-calypso included, so `chell --daemon` works and other terminals can attach to it.
-It does **not** bring ARGUS.
+Requires Node.js ≥ 20.12 (22.x recommended). This brings the whole stack —
+calypso the session daemon, and **ARGUS** the web surface — so `chell --daemon`
+serves a browser console as well as the wire.
 
 ### From a release binary — no Node.js
 
@@ -100,7 +100,7 @@ Published for `linux-x64`, `linux-arm64`, `macos-x64` and `macos-arm64`, with a
 
 ### From the repository
 
-The only way to get ARGUS, and the way to develop:
+The way to develop, and to run an unreleased ARGUS:
 
 ```bash
 git clone https://github.com/FNNDSC/mise && cd mise
@@ -118,39 +118,43 @@ release does not mean you are behind.
 
 ---
 
-## ARGUS and the LCARS theme
+## ARGUS, and the faces it wears
 
-ARGUS wears the **Lower Decks** template from
-[TheLCARS.com](https://www.thelcars.com/). Its licence permits free
-non-commercial use with attribution, and forbids two things that matter here:
-*"You may not sell, distribute, or retransmit the Template"*, and *"You may not
-hotlink any of my files … without permission."*
+**ARGUS** is the web surface: an LCARS console with the terminal indwelling, and
+panes for files, feeds, the job graph, PACS query and retrieve, and a DICOM
+viewer. It ships with the stack — nothing to download, nothing to configure.
 
-So this repository can neither ship the theme nor fetch it for you, and there is
-no npm package to depend on. `apps/argus/src/lcars/theme/` is gitignored and
-filled per machine from a zip **you** download. Every real copy comes from the
-author's own distribution, exactly as a dependency would, with the download
-manual only because no registry endpoint exists. This is also why ARGUS is not
-published and why a released `chell` serves no web surface.
+The look is switched in the page and remembered per browser. There are two kinds
+of choice on that control.
 
-**Get the theme.** Go to
-[thelcars.com/download.php](https://www.thelcars.com/download.php) and press the
-download button — it hands off to the author's own Proton Drive. The file is
-`LCARS-26.zip`. The build looks for it in this order:
+**LCARS**, in four colour schemes on one frame: curved elbows, a coloured gutter,
+Antonio set hard right.
 
-1. `LCARS_ZIP=/path/to/LCARS-26.zip`
-2. `~/Downloads/LCARS-26.zip`
-3. `LCARS-26.zip` beside `apps/argus/`
+| scheme | |
+|---|---|
+| **MEDICAL** *(default)* | Clinical blues. What a PACS pane sits in all day. |
+| **LOWER DECKS** | The original, warm and loud. |
+| **CERRITOS GOLD** | Gold and orange. |
+| **NEMESIS** | Cool and dark. |
 
-```bash
-LCARS_ZIP=~/Downloads/LCARS-26.zip make cook
-```
+**PHAROS** is not a scheme but a theme of its own on the same tokens: ARGUS's own
+visual language, the lighthouse, flat. Square corners, one curve in one seat, set
+in Chakra Petch. Owing nothing to anyone.
 
-**Without the zip the build still works.** `theme_ensure.mjs` writes a generated
-stand-in, so `make cook` and CI succeed and ARGUS runs with a plain, degraded
-look. The page footer carries the attribution the licence requires.
+Both looks are held to a **canon** — the computed style of every element of the
+frame, committed under `apps/argus/tests/smoke/canon/` — so neither drifts by
+accident. A change to the frame either matches the canon exactly, or says out
+loud that it meant to change it.
 
-Full reasoning, including the trade-dress question:
+### On TheLCARS.com
+
+ARGUS grew inside that template and no longer uses any of it. The frame is
+written from ARGUS's own canon. The typeface is **Antonio**, vendored here under
+the SIL Open Font License — it is the Antonio Project's, and the template only
+carried a copy. The four sounds are synthesised by `scripts/sounds_make.mjs`.
+
+The attribution stays, and should: the footer credits the template as the
+inspiration it was. Full reasoning, including the trade-dress question:
 **[docs/argus.adoc](docs/argus.adoc)**.
 
 ---
@@ -187,8 +191,7 @@ calypso --berths                                     # what is running here
 escapes, pipes, `upload`/`download` — and is off unless asked for. It takes
 tiers: `--host-control=files`, `--host-control=shell,pipes`, or bare for all.
 
-**The web surface.** From a checkout that has been built, the same daemon prints
-one more line:
+**The web surface.** The same daemon prints one more line:
 
 ```text
 [+] ARGUS web surface at http://127.0.0.1:35739/?token=4c9d98c3…

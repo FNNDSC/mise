@@ -1,0 +1,8 @@
+# Deliberately almost empty, and that is the point.
+#
+# With no .npmignore, npm falls back to .gitignore when deciding what a tarball
+# carries — and this app's .gitignore lists `dist/`, which is exactly the thing
+# the package exists to ship. The first publish of @fnndsc/argus went out with
+# two files and no bundle because of it. `files: ["dist"]` in package.json says
+# what goes in; this file stops .gitignore from taking anything back out.
+node_modules/

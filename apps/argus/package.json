@@ -1,8 +1,7 @@
 {
   "name": "@fnndsc/argus",
   "version": "0.6.4",
-  "private": true,
-  "description": "ARGUS: an LCARS web console and terminal surface for mise, attached to a CALYPSO session",
+  "description": "ARGUS: the LCARS web surface for mise \u2014 a browser console over a calypso session",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build",
@@ -20,7 +19,6 @@
     "@cornerstonejs/metadata": "^5.8.2",
     "@cornerstonejs/tools": "^5.8.2",
     "@cornerstonejs/utils": "^5.8.2",
-    "@fnndsc/calypso": "*",
     "@fnndsc/menu": "^0.8.0",
     "@kitware/vtk.js": "^36.4.1",
     "@niivue/niivue": "^0.69.0",
@@ -39,5 +37,22 @@
     "ts-jest": "^29.2.5",
     "typescript": "^5.0.0",
     "vite": "^7.1.0"
-  }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FNNDSC/mise.git",
+    "directory": "apps/argus"
+  },
+  "keywords": [
+    "chris",
+    "mise",
+    "argus",
+    "lcars",
+    "dicom",
+    "pacs",
+    "web"
+  ]
 }

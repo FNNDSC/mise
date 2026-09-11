@@ -13,6 +13,7 @@
  * @module
  */
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -145,6 +146,25 @@ const CHECKOUT_SEARCH_DEPTH: number = 6;
  *
  * @returns The absolute bundle directory, or null when no checkout encloses
  *   this module.
+ */
+export function installedWebRoot_find(): string | null {
+  try {
+    // `@fnndsc/argus` ships its built bundle, so a PUBLISHED install can serve
+    // the surface too. Before this, the web root was only ever found by walking
+    // up to an enclosing checkout — which an npm install does not have — so a
+    // released daemon served the wire and nothing a browser could load.
+    const resolve: (specifier: string) => string = createRequire(import.meta.url).resolve;
+    const manifest: string = resolve('@fnndsc/argus/package.json');
+    const candidate: string = path.join(path.dirname(manifest), 'dist');
+    return existsSync(path.join(candidate, 'index.html')) ? candidate : null;
+  } catch {
+    // Not installed. The checkout walk below is the other way to find it.
+    return null;
+  }
+}
+
+/**
+ * Finds the argus bundle belonging to the checkout that built this calypso.
  */
 export function bundledWebRoot_find(): string | null {
   let directory: string = path.dirname(fileURLToPath(import.meta.url));

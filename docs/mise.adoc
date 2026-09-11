@@ -8,6 +8,20 @@ Rudolph Pienaar <rudolph.pienaar@gmail.com>
 :icons: font
 
 [abstract]
+== The shape of it, before the argument
+
+CUBE is physics: objects and the laws between them. It has weather of its own — a job finishes at three in the morning, files land from a PACS pull — and no opinion whatever about where you are standing, nor any memory that you were just somewhere.
+
+mise is the world assembled on that physics. The same objects, given *place*: a POSIX-like computer where data is a filesystem, every plugin a command, every running job a file that can be read. A map, not a motor. Nothing in it is invented that the physics will not confirm — the filesystem is a re-description, never a fabrication. And its inhabitants obey the world's rules without knowing any physics, which is this document's architecture restated as a fiction: one layer alone speaks REST, and nothing above it ever has to.
+
+`brasa` is how anything acts there. The verbs, and the senses that go with them. Nothing moves of its own accord; the kernel never polls, and an open pane is the subscription.
+
+CALYPSO is the one living thing in that world. One login, one individual. She holds the *now* and the *here*, she is the only thing that can choose, and she persists and goes on in the world after you leave.
+
+`chell` and ARGUS are two views of that world through her eyes. Never two copies: `cd` in the terminal and the browser has already moved, because there was only ever one of her.
+
+In a breath: *CUBE says what is true. mise says where things are. CALYPSO is who is there. chell and ARGUS are how you look.*
+
 == Abstract
 
 ChRIS is both a scientific-computing pipeline orchestrator and the data platform

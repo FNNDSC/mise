@@ -21,19 +21,34 @@
 
 `menu` · `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso`
 
+<br>
+
+### CUBE says what is true.<br>mise says where things are.<br>Calypso is who is there.<br>chell and ARGUS are how you look.
+
 </div>
 
 ---
 
 ## What mise is
 
-> **CUBE is the reality.** The data, the analyses, the record of what produced what.
->
-> **mise makes CUBE a POSIX-like computer.** Your data is a filesystem, every plugin is a command, every running job is a file you can read.
->
-> **calypso brings that computer to life, under one login.** A session that holds your place and keeps working when you look away.
->
-> **chell and ARGUS are two windows onto that login.** A terminal and a browser console showing one session, never two copies.
+**CUBE is physics.** Objects and the laws between them. It has weather of its
+own — a job finishes at three in the morning, files land from a PACS pull —
+and it has no opinion whatever about where you are standing.
+
+**mise is the world assembled.** The same objects, given *place*: a POSIX-like
+computer where your data is a filesystem, every plugin a command, every running
+job a file you can read. A map, not a motor. Nothing in it is invented that the
+physics will not confirm.
+
+**brasa is how anything acts.** The verbs, and the senses that go with them.
+Nothing here moves of its own accord.
+
+**Calypso is the one living thing in that world.** One login, one individual.
+She holds the *now* and the *here*, she is the only thing that can choose, and
+she persists and goes on in the world after you leave.
+
+**chell and ARGUS are two views of that world through her eyes.** Never two
+copies: type `cd` in the terminal and the browser has already moved.
 
 The longer version.
 

@@ -19,6 +19,30 @@ plan and should be read as a historical sequence, not current implementation sta
 
 This document specifies CALYPSO, an intent interpretation layer and session daemon for the ChRIS distributed computing platform. CALYPSO transposes the results of a prior design study (ARGUS) onto production infrastructure: the CUBE backend assumes the role of sole state authority, the mise software stack (cumin, salsa, chili, chell) supplies the deterministic execution substrate, and CALYPSO itself provides natural-language intent resolution and session management above them. The design commits to a terminal-central user interface: a single shell grammar, available identically on the command line and inside a future web console, is the primary interaction surface, and graphical elements are renderings of the same session rather than a parallel control path. We argue that this architecture removes the Collection+JSON client burden from user interface development entirely, improves rather than degrades interactive latency for compound operations, and preserves the central safety doctrine of the design study: deterministic resolution precedes probabilistic interpretation, and workflow truth is always materialized platform state, never an assertion made by a language model.
 
+== What CALYPSO is
+
+CALYPSO is where the session lives when nobody is looking at it.
+
+That is the load-bearing idea and the rest follows from it. The session is the noun — a login, a working directory, a process cache, a PACS replay index, the feeds being watched — and CALYPSO is what holds it, keeps it alive, and lets surfaces attach to it.
+
+The closest familiar thing is a *Jupyter kernel*. The kernel holds the namespace and does the work; notebooks and consoles are front-ends that attach to it and render. The mapping is direct: `brasa` is the runtime, CALYPSO is the kernel process, `chell` and ARGUS are front-ends. For a reader who has not met Jupyter, `tmux` serves: a session that survives the window closing and can be reattached from somewhere else.
+
+Four consequences, which are the reasons it exists.
+
+*Work outlives its viewer.* A topology walk over 58,000 nodes keeps walking when the browser closes. Nothing is lost on reload because nothing that mattered was in the tab.
+
+*Several surfaces see one truth, not copies.* A terminal and a web console are not two clients synchronising; they are two projections of one session. `cd` in one moves the other. Copies would need reconciliation, and reconciliation is where multi-client interfaces go wrong.
+
+*A session has an identity and an address.* One daemon per CUBE login, found by berth rather than by port, so "your session" is an object with a name.
+
+*The engine can live where the data must stay.* Because a surface is thin and attaches over a wire, the engine can sit inside a hospital's trust boundary while an operator drives it from outside. This is the property that matters most in the long run, and it has nothing to do with browsers.
+
+CALYPSO is also where policy lives, which is the part most easily missed. One command holds the lane at a time. A pane's silent refresh may never interrupt an operator with a question. A hosted session will not touch the machine it runs on unless told to, in tiers. No surface has a say in any of it.
+
+What CALYPSO is not: a web server, though it will serve ARGUS when a bundle is to hand; a message broker, since there are no peers, only viewers of one engine; multi-tenant, since one daemon serves one identity.
+
+In one sentence: *chell is a surface, ARGUS is a surface, and CALYPSO is the session they are surfaces of.*
+
 == Introduction
 
 ChRIS is an open-source distributed computing platform for medical imaging and analysis <<chris>>. Its backend, CUBE, exposes all platform state (feeds, plugin instances, files, pipelines) through a REST API whose wire format is Collection+JSON <<cjson>>, consumed by clients through the `@fnndsc/chrisapi` JavaScript library <<chrisapi>>. Practical experience across multiple user interface efforts has shown that this client burden is substantial. Collection+JSON traversal is verbose, the published typings lag the live API surface, and compound operations decompose into long chains of sequential requests. Each new client has historically paid this cost again.

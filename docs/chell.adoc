@@ -8,6 +8,13 @@ toc::[]
 
 This is chell from *mise's* side: what the two shipped programs are, how they relate to the engine beneath them, and every way to start and reach a session. `packages/chell/` carries its own documentation of the shell itself — the commands, the virtual filesystem, plugin execution, the store. What is here is the part a reader of the mise README needs next, and no more.
 
+== In one line each
+
+* *CUBE is the reality* — the data, the analyses, the record of what produced what.
+* *mise makes CUBE a POSIX-like computer* — the data is a filesystem, every plugin a command, every running job a file.
+* *calypso brings that computer to life, under one login* — a session that holds your place and keeps working when you look away.
+* *chell and ARGUS are two windows onto that login* — a terminal and a browser console showing one session, never two copies.
+
 == A surface and a host
 
 `brasa` is the engine: it turns a line into validated ChRIS actions and hands back a structured envelope. It has no terminal of its own. Two programs put a face on it.

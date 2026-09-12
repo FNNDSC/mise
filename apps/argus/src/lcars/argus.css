@@ -68,6 +68,11 @@ html {
    * instead of ending it there. Measured off the frame as it stood. */
   --elbow-inner: 60px;
   --elbow-inner-radius: 44px;
+  /* The marks the long block of a band carries: the stub that stands off it,
+   * how far off it stands, and the radius of the bite out of its corner. */
+  --bar-spur: 8px;
+  --bar-spur-lift: 22px;
+  --bar-bite-radius: 8px;
   /* The rule that separates one gutter block from the next. Existing rules
    * already ask for this token; only the template ever defined it, which is
    * why the console and language blocks lost their rule the moment the
@@ -325,6 +330,57 @@ h1 {
   width: 56.0022%;
   background-color: var(--harvestgold);
   z-index: -1;
+}
+
+/* The spur, and the bite. The long block carries two marks that are most of
+ * what makes a band read as LCARS rather than as a rule: a short stub of the
+ * head's colour standing off the block towards the frame's edge, and a bite
+ * of page taken out of the block's own corner on the side the stub leans
+ * away from. The header's pair lean up, the drawer's lean down, so the frame
+ * closes the way it opened.
+ *
+ * Sized against the block rather than the screen, from the frame as it
+ * stood: the stub covers the middle two fifths, the bite the last third and
+ * just under half the height.
+ *
+ * Both are pseudo-elements, which is why the rebuild lost them and the
+ * fingerprint, reading elements only, called the result identical. */
+.bar-4::before,
+.bar-9::before,
+.bar-4::after,
+.bar-9::after {
+  content: '';
+  position: absolute;
+}
+
+.bar-4::before,
+.bar-9::before {
+  right: 60%;
+  width: 40%;
+  height: var(--bar-spur);
+  background-color: var(--october-sunset);
+}
+
+.bar-4::before { top: calc(-1 * var(--bar-spur-lift)); }
+.bar-9::before { bottom: calc(-1 * var(--bar-spur-lift)); }
+
+.bar-4::after,
+.bar-9::after {
+  right: 68%;
+  width: 32%;
+  height: 48%;
+  background-color: #000;
+  z-index: -1;
+}
+
+.bar-4::after {
+  top: 52%;
+  border-top-right-radius: var(--bar-bite-radius);
+}
+
+.bar-9::after {
+  bottom: 52%;
+  border-bottom-right-radius: var(--bar-bite-radius);
 }
 
 /* Two strips pinned over the very top and bottom of the viewport, so the page

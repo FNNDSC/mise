@@ -1,5 +1,15 @@
 # @fnndsc/argus
 
+## 0.7.3
+
+### Patch Changes
+
+- a24d813: The look-fingerprint now sees what draws the frame. It read elements only, so every `::before` and `::after` was outside it — and the clean-room rebuild had dropped seven of them while both canons scored zero differences. Four more omissions named themselves the moment it was widened: the spur and the bite carried by the long block of each band are back. The record covers each element and both its pseudo-elements across 71 properties, including `content`, `background-image`, `clip-path`, `mask-image` and `filter`, with every animation stopped first so it measures the stylesheet and not the moment.
+- b6d0264: The gutter's elbow is a cut corner again. FILES-01 sweeps its top-left away over a coloured gutter, and the black mask that made the sweep read as a corner rather than as an arc painted on a rectangle was lost when the frame was rebuilt clean-room. The mask is back, sized to the radius it hides rather than to a fixed height, and both the corner and the mask now take the same `--elbow-radius`. PHAROS cuts no corner and so declares no mask.
+- 7b5a7b9: The elbow's inner half is back in both panes. The bar met the gutter in a hard T where the frame had always turned: the clean-room rebuild kept the gutter block's swept outer corner and dropped the fillet that turns the bar into it. It is two pseudo-elements in one square — a hard-split diagonal laying the colour, a square of page over it with one corner rounded away — and with animations frozen the joint now matches the old frame pixel for pixel on every scheme.
+- 6990c3a: LOWER DECKS has its palette again. It is the scheme selected by removing `data-theme`, so its seven colours have to sit on the bare root; they used to arrive with the imported stylesheet, and when that stopped shipping the scheme rendered black — every block drawn, every colour resolving to nothing. The seven are seated, which also restores the four state hues derived from them, and the four named schemes are unchanged to the property.
+- 0215547: PHAROS speaks in lower case. The imported look sets every label in caps; PHAROS sets its own in lower, the same move as swapping the face carried to the letters. The frame may re-case its own words, the session's words never: listing cells, console lines, typed fields, a pipeline's title and the footer's attribution all keep the case they arrived in. LCARS is untouched.
+
 ## 0.7.2
 
 ### Patch Changes

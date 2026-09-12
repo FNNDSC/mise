@@ -3278,6 +3278,50 @@ body[data-zoom] #header-restore {
   [data-theme='pharos'] .left-frame button[class^='panel-'] { transition: none; }
 }
 
+/* CASE. The imported look shouts: every label is set in caps, and the caps
+ * are half of what makes it read as a starship. PHAROS is an instrument, so
+ * it speaks in lower case throughout — the same move as swapping the face,
+ * carried to the letters themselves.
+ *
+ * The frame's labels are the frame's own words and may be re-cased at will.
+ * The session's words may not: a file called README.md is not readme.md, and
+ * a listing cell, a console line or anything typed carries content, where
+ * changing a letter's case changes what it says. That line — chrome re-cased,
+ * content never — is the same one the faces already draw. */
+[data-theme='pharos'] body,
+[data-theme='pharos'] .banner,
+[data-theme='pharos'] h1,
+[data-theme='pharos'] a,
+[data-theme='pharos'] button,
+[data-theme='pharos'] #status-strip,
+[data-theme='pharos'] .dag-node-tip,
+[data-theme='pharos'] .feedlist-refusal,
+[data-theme='pharos'] .telemetry-label,
+[data-theme='pharos'] .lcars-bar-horizontal {
+  text-transform: lowercase;
+}
+
+/* Buttons are named because a form control does not inherit case: the browser
+ * hands every one of them `text-transform: none`, so a gutter block, a cap and
+ * a capsule each have to be told. */
+
+/* What the session says, in its own case. A listing cell, a console line, a
+ * typed field and a pipeline's name are content: README.md is not readme.md.
+ * The attribution keeps its case because a name is being credited, and
+ * TheLCARS.com is how that name is spelled. */
+[data-theme='pharos'] .listing-row,
+[data-theme='pharos'] .argus-output,
+[data-theme='pharos'] #pacs-results,
+[data-theme='pharos'] #files-results,
+[data-theme='pharos'] #pipeline-cycler-name,
+[data-theme='pharos'] input,
+[data-theme='pharos'] textarea,
+[data-theme='pharos'] select,
+[data-theme='pharos'] .about-footer,
+[data-theme='pharos'] .about-footer a {
+  text-transform: none;
+}
+
 /* ------------------------------------------------------- the tactical drawer */
 
 /* The console unfurls from behind the workspace lid (the bar-panel below

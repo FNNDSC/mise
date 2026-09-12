@@ -59,6 +59,20 @@ html {
   --lfw: 168px;
   --bar-height: 28px;
   --left-frame-padding: 0.75rem;
+  /* The sweep the gutter's corners are cut with. One measurement, because
+   * the mask that blacks the cut has to match the corner it hides. */
+  --elbow-radius: 100px;
+  /* An elbow has two halves. The outer one is the gutter block's own swept
+   * corner; the inner one is a square of page laid against the gutter with
+   * a corner rounded away, which is what turns the bar into the frame
+   * instead of ending it there. Measured off the frame as it stood. */
+  --elbow-inner: 60px;
+  --elbow-inner-radius: 44px;
+  /* The marks the long block of a band carries: the stub that stands off it,
+   * how far off it stands, and the radius of the bite out of its corner. */
+  --bar-spur: 8px;
+  --bar-spur-lift: 22px;
+  --bar-bite-radius: 8px;
   /* The rule that separates one gutter block from the next. Existing rules
    * already ask for this token; only the template ever defined it, which is
    * why the console and language blocks lost their rule the moment the
@@ -137,7 +151,7 @@ main {
   flex-direction: column;
   flex: none;
   width: var(--lfw);
-  border-bottom-left-radius: 100px;
+  border-bottom-left-radius: var(--elbow-radius);
   background-color: var(--october-sunset);
   /* The banner beside the gutter's head: LCARS lettering, hard right. */
   color: #000;
@@ -184,12 +198,12 @@ button.panel-2 {
   position: relative;
   flex: 1 1 auto;
   border-bottom: 0;
-  border-bottom-left-radius: 100px;
+  border-bottom-left-radius: var(--elbow-radius);
 }
 
 button.panel-3 {
   align-items: flex-end;
-  border-top-left-radius: 100px;
+  border-top-left-radius: var(--elbow-radius);
 }
 
 /* The last block closes the column, so it carries no rule either. */
@@ -316,6 +330,57 @@ h1 {
   width: 56.0022%;
   background-color: var(--harvestgold);
   z-index: -1;
+}
+
+/* The spur, and the bite. The long block carries two marks that are most of
+ * what makes a band read as LCARS rather than as a rule: a short stub of the
+ * head's colour standing off the block towards the frame's edge, and a bite
+ * of page taken out of the block's own corner on the side the stub leans
+ * away from. The header's pair lean up, the drawer's lean down, so the frame
+ * closes the way it opened.
+ *
+ * Sized against the block rather than the screen, from the frame as it
+ * stood: the stub covers the middle two fifths, the bite the last third and
+ * just under half the height.
+ *
+ * Both are pseudo-elements, which is why the rebuild lost them and the
+ * fingerprint, reading elements only, called the result identical. */
+.bar-4::before,
+.bar-9::before,
+.bar-4::after,
+.bar-9::after {
+  content: '';
+  position: absolute;
+}
+
+.bar-4::before,
+.bar-9::before {
+  right: 60%;
+  width: 40%;
+  height: var(--bar-spur);
+  background-color: var(--october-sunset);
+}
+
+.bar-4::before { top: calc(-1 * var(--bar-spur-lift)); }
+.bar-9::before { bottom: calc(-1 * var(--bar-spur-lift)); }
+
+.bar-4::after,
+.bar-9::after {
+  right: 68%;
+  width: 32%;
+  height: 48%;
+  background-color: #000;
+  z-index: -1;
+}
+
+.bar-4::after {
+  top: 52%;
+  border-top-right-radius: var(--bar-bite-radius);
+}
+
+.bar-9::after {
+  bottom: 52%;
+  border-bottom-right-radius: var(--bar-bite-radius);
 }
 
 /* Two strips pinned over the very top and bottom of the viewport, so the page
@@ -1003,18 +1068,91 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * proportions, with floors that keep every label legible. Every given is
  * always on stage — a preset hidden behind a scroll is not a given. */
 .left-frame > div:first-child {
+  position: relative;
   flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-/* The theme's corner-mask rectangle (.left-frame::before, 340px of black,
- * absolute) was sized to the original fixed FILES-01; elastic buttons can
- * be shorter than it, and unpositioned buttons paint UNDER it — RUNS-02
- * vanished beneath the mask. Positioning every segment lifts them all
- * above the mask, which keeps doing its one job: blacking out the frame
- * color behind FILES-01's rounded corners. */
+/* An elbow is a corner cut out of the column, and a cut shows the page, not
+ * the gutter. FILES-01 sweeps its top-left away over a gutter that is itself
+ * colored, so without a mask the sweep reads as an arc painted on a
+ * rectangle instead of as a corner that was never there.
+ *
+ * The mask is the corner and nothing more. Blacking the whole gutter would
+ * do it too, but the inert blocks are half-opaque and take their cast from
+ * what lies behind them — they would darken with it. The imported template
+ * masked 340px, a height measured from a FILES-01 that could not stretch;
+ * ours can, so the mask is sized to the radius it hides. */
+.left-frame > div:first-child::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--elbow-radius);
+  height: var(--elbow-radius);
+  background-color: #000;
+}
+
+/* The elbow's inner half, once per pane: the head's turns down into the body,
+ * the body's turns up into the head, and between them they are what reads as
+ * an elbow rather than as a bar that stops dead against the gutter.
+ *
+ * It takes two layers in one square, sat flush above (or below) the bar so
+ * the bar's colour appears to continue round the turn. `::before` lays the
+ * colour as a hard-split diagonal — half frame, half page, no blend, the
+ * split being the only place a gradient is allowed to appear in this frame.
+ * `::after` drops a square of page over it with the corner facing the turn
+ * rounded away, and what survives underneath is the fillet. Both sit behind
+ * the pane's content, `::after` over `::before` by paint order.
+ *
+ * These are pseudo-elements, which is exactly why the rebuild lost them and
+ * the canon did not notice: the fingerprint reads elements only. The shape
+ * is measured off the frame as it stood, down to the 50% stops. */
+.right-frame-top::before,
+.right-frame-top::after,
+.right-frame::before,
+.right-frame::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  z-index: -1;
+  width: var(--elbow-inner);
+  height: var(--elbow-inner);
+}
+
+/* The turn happens where the bar is, so the bar's height is the offset. */
+.right-frame-top::before,
+.right-frame-top::after {
+  bottom: var(--bar-height);
+}
+
+.right-frame::before,
+.right-frame::after {
+  top: var(--bar-height);
+}
+
+.right-frame-top::before {
+  background-image: linear-gradient(to right top, var(--october-sunset) 50%, #000 50%);
+}
+
+.right-frame-top::after {
+  background-color: #000;
+  border-bottom-left-radius: var(--elbow-inner-radius);
+}
+
+.right-frame::before {
+  background-image: linear-gradient(to right bottom, var(--october-sunset) 50%, #000 50%);
+}
+
+.right-frame::after {
+  background-color: #000;
+  border-top-left-radius: var(--elbow-inner-radius);
+}
+
+/* Every segment is positioned so that it paints above the mask; unpositioned
+ * buttons fall under it, and RUNS-02 vanished that way once. */
 .left-frame button[class^='panel-'],
 .left-frame .panel-spacer {
   position: relative;
@@ -2996,6 +3134,30 @@ body[data-zoom] #header-restore {
 
 /* Each scheme re-seats the theme's seven base colors; every other color in
  * the frame derives from these, so the whole surface follows. */
+
+/* LOWER DECKS is the scheme with no name: the cycler selects it by REMOVING
+ * `data-theme`, so its seven colors have to sit on the bare root or nothing
+ * paints. They used to arrive with the imported stylesheet, and when that
+ * stylesheet stopped shipping the scheme went black — every block still
+ * drawn, every color resolving to nothing, which is not a look but an
+ * absence. The four state hues below derive from these, so they fell with
+ * them; seating the seven puts all eleven back.
+ *
+ * The figures are measured rather than guessed: the same values come out of
+ * the template's own file and out of the pixels the old build painted (the
+ * gutter read rgb(255,119,0), which is `--orange`). A color is a fact about
+ * what was on the screen, and the four schemes below already show what the
+ * house does with these names. The attribution in the footer stands. */
+:root {
+  --butter: #fec;
+  --daybreak: #f91;
+  --harvestgold: #fa4;
+  --honey: #fc9;
+  --october-sunset: #f40;
+  --orange: #f70;
+  --pumpkin-pie: #c50;
+}
+
 :root[data-theme='gold'] {
   --butter: #fff3cd;
   --daybreak: #fc3;
@@ -3047,7 +3209,11 @@ body[data-zoom] #header-restore {
   --pumpkin-pie: #0f3566;
   --face-label: 'Chakra Petch', 'Arial Narrow', sans-serif;
   --face-data: 'JetBrains Mono', 'MesloLGS NF', monospace;
-  /* The imported look's swept corners are no corner at all under PHAROS. */
+  /* The imported look's swept corners are no corner at all under PHAROS,
+   * the gutter's elbow included — and a corner that is not cut needs no
+   * mask behind it. */
+  --elbow-radius: 0;
+  --elbow-inner-radius: 0;
   --radius-top: 0;
   --radius-bottom: 0;
   --radius-content-top: 0;
@@ -3190,6 +3356,50 @@ body[data-zoom] #header-restore {
 @media (prefers-reduced-motion: reduce) {
   [data-theme='pharos'] .left-frame-top::after { animation: none; }
   [data-theme='pharos'] .left-frame button[class^='panel-'] { transition: none; }
+}
+
+/* CASE. The imported look shouts: every label is set in caps, and the caps
+ * are half of what makes it read as a starship. PHAROS is an instrument, so
+ * it speaks in lower case throughout — the same move as swapping the face,
+ * carried to the letters themselves.
+ *
+ * The frame's labels are the frame's own words and may be re-cased at will.
+ * The session's words may not: a file called README.md is not readme.md, and
+ * a listing cell, a console line or anything typed carries content, where
+ * changing a letter's case changes what it says. That line — chrome re-cased,
+ * content never — is the same one the faces already draw. */
+[data-theme='pharos'] body,
+[data-theme='pharos'] .banner,
+[data-theme='pharos'] h1,
+[data-theme='pharos'] a,
+[data-theme='pharos'] button,
+[data-theme='pharos'] #status-strip,
+[data-theme='pharos'] .dag-node-tip,
+[data-theme='pharos'] .feedlist-refusal,
+[data-theme='pharos'] .telemetry-label,
+[data-theme='pharos'] .lcars-bar-horizontal {
+  text-transform: lowercase;
+}
+
+/* Buttons are named because a form control does not inherit case: the browser
+ * hands every one of them `text-transform: none`, so a gutter block, a cap and
+ * a capsule each have to be told. */
+
+/* What the session says, in its own case. A listing cell, a console line, a
+ * typed field and a pipeline's name are content: README.md is not readme.md.
+ * The attribution keeps its case because a name is being credited, and
+ * TheLCARS.com is how that name is spelled. */
+[data-theme='pharos'] .listing-row,
+[data-theme='pharos'] .argus-output,
+[data-theme='pharos'] #pacs-results,
+[data-theme='pharos'] #files-results,
+[data-theme='pharos'] #pipeline-cycler-name,
+[data-theme='pharos'] input,
+[data-theme='pharos'] textarea,
+[data-theme='pharos'] select,
+[data-theme='pharos'] .about-footer,
+[data-theme='pharos'] .about-footer a {
+  text-transform: none;
 }
 
 /* ------------------------------------------------------- the tactical drawer */

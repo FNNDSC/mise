@@ -40,6 +40,15 @@ const WATCHED = [
   'text-align', 'text-transform', 'white-space', 'overflow-x', 'overflow-y',
   'flex-direction', 'flex-wrap', 'justify-content', 'align-items', 'gap',
   'grid-template-columns', 'grid-template-rows', 'z-index', 'box-shadow',
+  // What actually DRAWS the frame's signature shapes. Every one of these was
+  // absent while four pseudo-elements went missing and the diff read zero:
+  // the elbow's fillet is a background-image, PHAROS cuts its stone with
+  // clip-path, the nameplate is a mask, and `content` is what says a
+  // pseudo-element exists at all.
+  'content', 'background-image', 'background-size', 'background-position',
+  'background-repeat', 'clip-path', 'mask-image', 'filter', 'transform',
+  'animation-name', 'animation-duration', 'transition-property',
+  'border-top-style', 'border-left-style', 'outline-width', 'outline-color',
 ];
 
 /** Reads the page and returns one record per element. */
@@ -66,15 +75,34 @@ const SNAPSHOT_SCRIPT = (watched) => `
   // or absent depending on the wire, not the theme.
   const SKIP = ['.argus-output', '.listing-field', '#pacs-results', '#files-results',
     '.dag-canvas', '#status-latency', '#drawer-status'];
+  // An element and the two boxes it can draw without owning a node. The frame's
+  // masks, fillets, lit bands and lens rings all live in ::before and ::after,
+  // and a fingerprint that reads only elements cannot see any of them — which
+  // is how a rebuild dropped four of them and still diffed clean.
+  const record = (el, pseudo) => {
+    const cs = getComputedStyle(el, pseudo);
+    if (pseudo && (cs.content === 'none' || cs.display === 'none')) return;
+    const rec = {};
+    // A url() carries the daemon's origin, which changes every run and says
+    // nothing about the look. Keep the asset, drop the host.
+    for (const p of watched) {
+      rec[p] = cs.getPropertyValue(p).replace(/url\\("https?:\\/\\/[^/]+\\//g, 'url("');
+    }
+    if (pseudo) {
+      // A pseudo-element has no node to measure, so its own box is the record.
+      rec['@box'] = [cs.width, cs.height].join('x');
+    } else {
+      const r = el.getBoundingClientRect();
+      rec['@box'] = [Math.round(r.width), Math.round(r.height)].join('x');
+    }
+    out[key_of(el) + (pseudo ?? '')] = rec;
+  };
   for (const el of document.querySelectorAll('*')) {
     if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
     if (SKIP.some((s) => el.closest(s) !== null)) continue;
-    const cs = getComputedStyle(el);
-    const rec = {};
-    for (const p of watched) rec[p] = cs.getPropertyValue(p);
-    const r = el.getBoundingClientRect();
-    rec['@box'] = [Math.round(r.width), Math.round(r.height)].join('x');
-    out[key_of(el)] = rec;
+    record(el, null);
+    record(el, '::before');
+    record(el, '::after');
   }
   return out;
 `;
@@ -128,6 +156,12 @@ const evalIn = (body) =>
   page.eval('(async () => { const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); ' + body + ' })()');
 try {
   await evalIn('for (let i = 0; i < 200; i++) { if (/READY/.test(document.getElementById("drawer-status")?.textContent ?? "")) return; await sleep(200); }');
+  // The chrome breathes, so `filter` and anything mid-transition reads
+  // differently depending on when the snapshot lands. Stop every clock first,
+  // and the fingerprint measures the stylesheet rather than the moment.
+  await evalIn(`const still = document.createElement('style');
+    still.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+    document.head.append(still); await sleep(400); return 1;`);
   if (theme) {
     await evalIn(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)});
       document.body.setAttribute('data-theme', ${JSON.stringify(theme)}); await sleep(1500); return 1;`);

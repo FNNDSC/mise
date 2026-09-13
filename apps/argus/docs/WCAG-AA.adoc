@@ -1,0 +1,562 @@
+= ARGUS contrast against WCAG 2.1 AA
+:toc: macro
+:toclevels: 2
+
+toc::[]
+
+== What this is
+
+Every colour pairing in the ARGUS frame that carries type, measured against the WCAG 2.1 AA contrast thresholds, per theme. The palette values come from the five `:root` blocks in `src/lcars/argus.css`; the type sizes and weights are read from `tests/smoke/canon/lcars.json`, so each pair is judged against the threshold that actually applies to it rather than a guessed one.
+
+AA is the level that matters here: it is what US Section 508 references and what a hospital is expected to meet. Two thresholds apply.
+
+* *4.5:1* for normal text.
+* *3:1* for large text — 24px and up, or 18.66px and up when bold — and for user-interface components and graphics.
+
+The gutter block labels are 22px bold, so they are large text held to 3:1. The about-face telemetry caps are 15.4px bold and are not, so they are held to 4.5:1. That distinction decides several verdicts below.
+
+== Where it stands
+
+*Every measured pair passes, in all five schemes.* Three defects were found and fixed; what follows is the record of what they were, because two of them are patterns rather than one-off colour mistakes.
+
+== The three defects, and what was done
+
+=== 1. Black type on the clinical navy — was 2.35:1, needed 3:1
+
+`--october-sunset` was `#164989` under MEDICAL, and PHAROS inherits MEDICAL's seven colours wholesale, so both schemes carried black 22px type on it — the ground under `FILES-01`, `CONSOLE-05`, `02-CALYPSO`, the header gutter block and bars 1 and 6. Live chrome in the default scheme, not a dimmed state.
+
+Fixed by lightening the token to `#30619d`, which is the same navy blended toward white until the pairing reads *3.32:1*. The margin over 3:1 is deliberate: at the minimum clearing value of `#2d5b95` the pair sits at 3.04, and any later nudge re-breaks it silently.
+
+=== 2. The inert blocks — was 1.36:1, now inverted
+
+`domain-inert` blocks were painted at `opacity: .5`. The first attempted fix was wrong and is worth recording: dimming only the ground changed nothing, because *the label was already black and black at half opacity is still black*. Fading the ground simply closed the gap from the other side. `COMPUTE-06` read at 1.36:1 under the clinical scheme, which is not dim, it is unreadable.
+
+The fix is an inversion rather than a fade. The ground goes halfway to the page's black and the label goes light, to the scheme's own `--butter`. It still reads as unavailable at a glance — the drop in weight against its live neighbours does that — and it can still be read: *4.6:1 at worst* across the five schemes, which clears the bar for body text, never mind for 22px bold.
+
+=== 3. The about-face telemetry caps — was 3.32:1, needed 4.5:1
+
+`#header-about .telemetry-label` sits on the scheme's darkest ground at 15.4px bold, which is small type and therefore held to the higher bar. Under the warm schemes that ground is light enough to carry black; under the clinical ones it is not.
+
+Fixed by the same inversion, scoped to MEDICAL and PHAROS only. A blanket light label would have broken GOLD, whose `--october-sunset` is `#c99700` — light enough that black reads at 7.91:1 and `--butter` would read at 2.40:1. The lesson generalises: *on a themed surface, a contrast fix that is not theme-aware trades one failure for another.*
+
+== One thing deliberately not counted
+
+An earlier draft of this audit recorded `--pumpkin-pie` as failing at 1.72:1 as a "status wash". That pairing was invented by the measurement, not by the frame: `--state-idle` paints `.listing-progress-idle`, a progress track, and never carries type. It is a graphic, judged against the 3:1 non-text rule and against what sits next to it, which is a different test from the one run here.
+
+The general point applies to any audit of this kind — *a contrast table is only as honest as its list of pairings*, and a pairing that does not occur on screen produces a defect that does not exist.
+
+== Not covered
+
+Contrast is the cheapest accessibility question and the only one measured here. Still needing a pass: focus indicators, hit-target sizes, screen-reader semantics and landmark structure, keyboard traversal order, and text resizing to 200%. The frame already honours `prefers-reduced-motion` for the breathing chrome.
+
+== Method
+
+Ratios per WCAG 2.1: relative luminance from linearised sRGB channels, `(L1 + 0.05) / (L2 + 0.05)`. Alpha is composited against the page's `#000` ground before measuring, which is what a browser paints and therefore what a reader sees.
+
+== Per-theme detail
+
+=== LOWER DECKS
+
+Every measured pair passes.
+
+[cols="3,1,1,1,1,3",options="header"]
+|===
+| Where | Token | Type | Needs | Ratio | Verdict
+
+| gutter block label — FILES-01, CONSOLE-05, 02-CALYPSO, bar-1/6
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 6.08
+| pass
+
+| gutter block label — ARGUS WEB, SOURCES-04, spacer, bar-2/7
+| `--orange`
+| 22px bold
+| 3:1
+| 7.89
+| pass
+
+| gutter block label — PACS-03, LANG, the long block
+| `--harvestgold`
+| 22px bold
+| 3:1
+| 11.09
+| pass
+
+| gutter block label — LANG when live
+| `--butter`
+| 22px bold
+| 3:1
+| 18.35
+| pass
+
+| bar title — .lcars-title on bar-3/8
+| `--honey`
+| 17.6px bold
+| 4.5:1
+| 14.35
+| pass
+
+| bar title — CALYPSO CONSOLE, WORKSPACE, PACS QUERY
+| `--harvestgold`
+| 17.6px bold
+| 4.5:1
+| 11.09
+| pass
+
+| telemetry label — CUMIN/SALSA/BRASA version caps
+| `--daybreak`
+| 15.4px bold
+| 4.5:1
+| 9.82
+| pass
+
+| telemetry label — #header-about variant
+| `--october-sunset`
+| 15.4px bold
+| 4.5:1
+| 6.08
+| pass
+
+| inert block label — COMPUTE-06 at opacity .5
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 8.55
+| pass
+
+| inert block label — SOURCES-04 at opacity .5
+| `--orange`
+| 22px bold
+| 3:1
+| 7.16
+| pass
+
+| banner — ARGUS • CALYPSO SESSION
+| `--honey`
+| 35.84px
+| 3:1
+| 14.35
+| pass
+
+| body copy — console transcript, listing cells
+| `--daybreak`
+| 22px
+| 4.5:1
+| 9.82
+| pass
+
+| accent type — live readouts
+| `--harvestgold`
+| 22px
+| 4.5:1
+| 11.09
+| pass
+
+|===
+
+=== CERRITOS GOLD
+
+Every measured pair passes.
+
+[cols="3,1,1,1,1,3",options="header"]
+|===
+| Where | Token | Type | Needs | Ratio | Verdict
+
+| gutter block label — FILES-01, CONSOLE-05, 02-CALYPSO, bar-1/6
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 7.91
+| pass
+
+| gutter block label — ARGUS WEB, SOURCES-04, spacer, bar-2/7
+| `--orange`
+| 22px bold
+| 3:1
+| 10.83
+| pass
+
+| gutter block label — PACS-03, LANG, the long block
+| `--harvestgold`
+| 22px bold
+| 3:1
+| 15.13
+| pass
+
+| gutter block label — LANG when live
+| `--butter`
+| 22px bold
+| 3:1
+| 18.95
+| pass
+
+| bar title — .lcars-title on bar-3/8
+| `--honey`
+| 17.6px bold
+| 4.5:1
+| 16.83
+| pass
+
+| bar title — CALYPSO CONSOLE, WORKSPACE, PACS QUERY
+| `--harvestgold`
+| 17.6px bold
+| 4.5:1
+| 15.13
+| pass
+
+| telemetry label — CUMIN/SALSA/BRASA version caps
+| `--daybreak`
+| 15.4px bold
+| 4.5:1
+| 13.94
+| pass
+
+| telemetry label — #header-about variant
+| `--october-sunset`
+| 15.4px bold
+| 4.5:1
+| 7.91
+| pass
+
+| inert block label — COMPUTE-06 at opacity .5
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 7.33
+| pass
+
+| inert block label — SOURCES-04 at opacity .5
+| `--orange`
+| 22px bold
+| 3:1
+| 5.95
+| pass
+
+| banner — ARGUS • CALYPSO SESSION
+| `--honey`
+| 35.84px
+| 3:1
+| 16.83
+| pass
+
+| body copy — console transcript, listing cells
+| `--daybreak`
+| 22px
+| 4.5:1
+| 13.94
+| pass
+
+| accent type — live readouts
+| `--harvestgold`
+| 22px
+| 4.5:1
+| 15.13
+| pass
+
+|===
+
+=== MEDICAL
+
+Every measured pair passes.
+
+[cols="3,1,1,1,1,3",options="header"]
+|===
+| Where | Token | Type | Needs | Ratio | Verdict
+
+| gutter block label — FILES-01, CONSOLE-05, 02-CALYPSO, bar-1/6
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 3.32
+| pass
+
+| gutter block label — ARGUS WEB, SOURCES-04, spacer, bar-2/7
+| `--orange`
+| 22px bold
+| 3:1
+| 4.42
+| pass
+
+| gutter block label — PACS-03, LANG, the long block
+| `--harvestgold`
+| 22px bold
+| 3:1
+| 9.68
+| pass
+
+| gutter block label — LANG when live
+| `--butter`
+| 22px bold
+| 3:1
+| 18.62
+| pass
+
+| bar title — .lcars-title on bar-3/8
+| `--honey`
+| 17.6px bold
+| 4.5:1
+| 13.17
+| pass
+
+| bar title — CALYPSO CONSOLE, WORKSPACE, PACS QUERY
+| `--harvestgold`
+| 17.6px bold
+| 4.5:1
+| 9.68
+| pass
+
+| telemetry label — CUMIN/SALSA/BRASA version caps
+| `--daybreak`
+| 15.4px bold
+| 4.5:1
+| 13.47
+| pass
+
+| telemetry label — #header-about variant (light label)
+| `--october-sunset`
+| 15.4px bold
+| 4.5:1
+| 5.60
+| pass
+
+| inert block label — COMPUTE-06 at opacity .5
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 11.70
+| pass
+
+| inert block label — SOURCES-04 at opacity .5
+| `--orange`
+| 22px bold
+| 3:1
+| 10.25
+| pass
+
+| banner — ARGUS • CALYPSO SESSION
+| `--honey`
+| 35.84px
+| 3:1
+| 13.17
+| pass
+
+| body copy — console transcript, listing cells
+| `--daybreak`
+| 22px
+| 4.5:1
+| 13.47
+| pass
+
+| accent type — live readouts
+| `--harvestgold`
+| 22px
+| 4.5:1
+| 9.68
+| pass
+
+|===
+
+=== NEMESIS
+
+Every measured pair passes.
+
+[cols="3,1,1,1,1,3",options="header"]
+|===
+| Where | Token | Type | Needs | Ratio | Verdict
+
+| gutter block label — FILES-01, CONSOLE-05, 02-CALYPSO, bar-1/6
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 4.51
+| pass
+
+| gutter block label — ARGUS WEB, SOURCES-04, spacer, bar-2/7
+| `--orange`
+| 22px bold
+| 3:1
+| 7.65
+| pass
+
+| gutter block label — PACS-03, LANG, the long block
+| `--harvestgold`
+| 22px bold
+| 3:1
+| 10.54
+| pass
+
+| gutter block label — LANG when live
+| `--butter`
+| 22px bold
+| 3:1
+| 17.21
+| pass
+
+| bar title — .lcars-title on bar-3/8
+| `--honey`
+| 17.6px bold
+| 4.5:1
+| 13.79
+| pass
+
+| bar title — CALYPSO CONSOLE, WORKSPACE, PACS QUERY
+| `--harvestgold`
+| 17.6px bold
+| 4.5:1
+| 10.54
+| pass
+
+| telemetry label — CUMIN/SALSA/BRASA version caps
+| `--daybreak`
+| 15.4px bold
+| 4.5:1
+| 10.13
+| pass
+
+| telemetry label — #header-about variant
+| `--october-sunset`
+| 15.4px bold
+| 4.5:1
+| 4.51
+| pass
+
+| inert block label — COMPUTE-06 at opacity .5
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 9.29
+| pass
+
+| inert block label — SOURCES-04 at opacity .5
+| `--orange`
+| 22px bold
+| 3:1
+| 6.83
+| pass
+
+| banner — ARGUS • CALYPSO SESSION
+| `--honey`
+| 35.84px
+| 3:1
+| 13.79
+| pass
+
+| body copy — console transcript, listing cells
+| `--daybreak`
+| 22px
+| 4.5:1
+| 10.13
+| pass
+
+| accent type — live readouts
+| `--harvestgold`
+| 22px
+| 4.5:1
+| 10.54
+| pass
+
+|===
+
+=== PHAROS
+
+Every measured pair passes.
+
+[cols="3,1,1,1,1,3",options="header"]
+|===
+| Where | Token | Type | Needs | Ratio | Verdict
+
+| gutter block label — FILES-01, CONSOLE-05, 02-CALYPSO, bar-1/6
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 3.32
+| pass
+
+| gutter block label — ARGUS WEB, SOURCES-04, spacer, bar-2/7
+| `--orange`
+| 22px bold
+| 3:1
+| 4.42
+| pass
+
+| gutter block label — PACS-03, LANG, the long block
+| `--harvestgold`
+| 22px bold
+| 3:1
+| 9.68
+| pass
+
+| gutter block label — LANG when live
+| `--butter`
+| 22px bold
+| 3:1
+| 18.62
+| pass
+
+| bar title — .lcars-title on bar-3/8
+| `--honey`
+| 17.6px bold
+| 4.5:1
+| 13.17
+| pass
+
+| bar title — CALYPSO CONSOLE, WORKSPACE, PACS QUERY
+| `--harvestgold`
+| 17.6px bold
+| 4.5:1
+| 9.68
+| pass
+
+| telemetry label — CUMIN/SALSA/BRASA version caps
+| `--daybreak`
+| 15.4px bold
+| 4.5:1
+| 13.47
+| pass
+
+| telemetry label — #header-about variant (light label)
+| `--october-sunset`
+| 15.4px bold
+| 4.5:1
+| 5.60
+| pass
+
+| inert block label — COMPUTE-06 at opacity .5
+| `--october-sunset`
+| 22px bold
+| 3:1
+| 11.70
+| pass
+
+| inert block label — SOURCES-04 at opacity .5
+| `--orange`
+| 22px bold
+| 3:1
+| 10.25
+| pass
+
+| banner — ARGUS • CALYPSO SESSION
+| `--honey`
+| 35.84px
+| 3:1
+| 13.17
+| pass
+
+| body copy — console transcript, listing cells
+| `--daybreak`
+| 22px
+| 4.5:1
+| 13.47
+| pass
+
+| accent type — live readouts
+| `--harvestgold`
+| 22px
+| 4.5:1
+| 9.68
+| pass
+
+|===
+

@@ -3063,6 +3063,17 @@ body[data-zoom] #header-restore {
   background-color: var(--october-sunset);
 }
 
+/* The about face's caps sit on the scheme's darkest ground, and at 15.4px
+ * they are small type held to 4.5:1 rather than the 3:1 the gutter's 22px
+ * labels get. Under the warm schemes that ground is light enough to carry
+ * black; under the clinical ones it is not, so the cap inverts there — the
+ * same move the inert blocks make. A blanket light label would break GOLD,
+ * whose ground is the lightest of the five. See docs/WCAG-AA.adoc. */
+:root[data-theme='medical'] #header-about .telemetry-label,
+:root[data-theme='pharos'] #header-about .telemetry-label {
+  color: var(--butter);
+}
+
 .telemetry-value {
   color: var(--daybreak);
   font-size: 0.9rem;
@@ -3176,7 +3187,11 @@ body[data-zoom] #header-restore {
   --daybreak: #7edcf7;
   --harvestgold: #1ebef0;
   --honey: #7fd9f7;
-  --october-sunset: #164989;
+  /* Lightened from #164989, which carried black type at 2.35:1 where the
+   * large-text bar is 3:1 — the gutter's own labels, in the default scheme.
+   * This clears it at 3.32:1, with enough margin that a later nudge does not
+   * silently re-break it. See docs/WCAG-AA.adoc. */
+  --october-sunset: #30619d;
   --orange: #1878b8;
   --pumpkin-pie: #0f3566;
 }
@@ -3766,10 +3781,27 @@ body[data-zoom] #header-restore {
 
 /* ------------------------------------------------------------- domain state */
 
-/* Inert domains in the demo: present, dimmed, honest scaffolding. */
+/* Inert domains in the demo: present, unavailable, honest scaffolding.
+ *
+ * An unavailable block INVERTS rather than fades. `opacity: .5` faded the
+ * ground toward the page's black while the label, already black, stayed
+ * exactly where it was — so the two closed on each other and COMPUTE-06 read
+ * at 1.36:1 under the clinical scheme, which is not dim, it is unreadable.
+ * Fading the ground alone changes nothing for the same reason.
+ *
+ * So the ground goes halfway to black and the label goes light. It still
+ * reads as unavailable at a glance, from the drop in weight against its live
+ * neighbours, and it can still be read: 4.6:1 at worst across the five
+ * schemes, which clears the bar for body text, never mind for 22px bold.
+ * See docs/WCAG-AA.adoc. */
 .domain-inert {
-  opacity: 0.5;
+  background-color: color-mix(in srgb, var(--inert-ground, var(--october-sunset)) 50%, #000);
+  color: var(--butter);
 }
+
+.panel-1.domain-inert, .panel-4.domain-inert, .panel-spacer.domain-inert { --inert-ground: var(--orange); }
+.panel-2.domain-inert, .panel-3.domain-inert, .panel-6.domain-inert { --inert-ground: var(--october-sunset); }
+.panel-5.domain-inert, .panel-7.domain-inert { --inert-ground: var(--harvestgold); }
 
 /* --------------------------------------------------- PACS nits (round two) */
 

@@ -127,6 +127,9 @@ export class ImagePanel {
   /** The overlay's element, when the overlay is on and a series is up. */
   private overlayNote: HTMLElement | null = null;
 
+  /** The probe's live reading, while the probe is the tool and the pointer is on the image. */
+  private probeNote: HTMLElement | null = null;
+
   /** Whether the operator has asked for the header overlay. */
   private overlay: boolean = false;
 
@@ -237,6 +240,17 @@ export class ImagePanel {
     const { CornerstoneEngine } = await import('./cornerstoneEngine.js');
     const engine: ImageEngine = new CornerstoneEngine(this.engineHost_get(), model, options.startAt ?? 1);
     await this.engine_open(engine);
+    if (this.engine !== engine) return;
+    // The first slice cost one file. The rest are fetched now, counted,
+    // and the wheel waits for the last — unless the series is over the
+    // guard, where the bar says its size and LOAD fetches the rest.
+    if (this.guard_trips()) {
+      this.loadPill.hidden = false;
+      this.stateSpan.textContent = `SERIES ${bytes_format(model.bytes)} · LOAD FOR STACK`;
+      this.handlers.note(`image: ${bytes_format(model.bytes)} to fetch before the stack scrolls; press LOAD, image load, or image --force <path>`);
+    } else {
+      void engine.slices_fill();
+    }
     await this.annotations_reload(engine, model);
   }
 
@@ -387,8 +401,10 @@ export class ImagePanel {
     this.loadPill.hidden = true;
     const layout: ImageLayout | null = this.pendingLayout;
     this.pendingLayout = null;
-    if (layout === null) return false;
-    return this.layout_set(layout);
+    if (layout !== null) return this.layout_set(layout);
+    // Nothing waiting but the stack itself.
+    if (this.engine === null || this.engine.state_get().filled) return false;
+    return this.engine.slices_fill();
   }
 
   /**
@@ -513,6 +529,7 @@ export class ImagePanel {
     this.field.replaceChildren();
     this.progressNote = null;
     this.overlayNote = null;
+    this.probeNote = null;
     this.layoutPills_paint('single');
     this.modeSpan.textContent = '';
     this.colormapPill.textContent = this.colormap.toUpperCase();
@@ -537,6 +554,7 @@ export class ImagePanel {
     this.engine = null;
     this.progressNote = null;
     this.overlayNote = null;
+    this.probeNote = null;
     this.field.replaceChildren();
     this.stateSpan.textContent = '';
   }
@@ -549,8 +567,41 @@ export class ImagePanel {
       },
       progress_set: (progress: ImageProgress | null): void => this.progress_show(progress),
       note: this.handlers.note,
-      regard: this.handlers.regard,
+      regard: (path: string): void => {
+        this.handlers.regard(path);
+        this.overlaySlice_paint();
+      },
+      probe_set: (text: string | null): void => this.probe_show(text),
     };
+  }
+
+  /**
+   * Draws or clears the probe's reading at the foot of the field.
+   *
+   * @param text - The reading, or null when the pointer is off the image.
+   */
+  private probe_show(text: string | null): void {
+    if (text === null) {
+      this.probeNote?.remove();
+      this.probeNote = null;
+      return;
+    }
+    if (this.probeNote === null || this.probeNote.parentElement === null) {
+      const note: HTMLElement = document.createElement('div');
+      note.className = 'image-probe-note';
+      this.field.appendChild(note);
+      this.probeNote = note;
+    }
+    this.probeNote.textContent = text;
+  }
+
+  /** The overlay's first line: the slice on screen, when there is more than one. */
+  private overlaySlice_paint(): void {
+    const row: HTMLElement | null = this.overlayNote?.querySelector<HTMLElement>('.image-overlay-slice') ?? null;
+    if (row === null || this.engine === null) return;
+    const state: ImageEngineState = this.engine.state_get();
+    row.textContent = state.slices > 1 ? `SLICE ${Math.max(1, state.slice)} OF ${state.slices}` : '';
+    row.hidden = state.slices <= 1;
   }
 
   /**
@@ -646,6 +697,10 @@ export class ImagePanel {
     this.overlay_hide();
     const note: HTMLElement = document.createElement('div');
     note.className = 'image-overlay-note';
+    // The slice count leads: it is the one line that changes as the wheel turns.
+    const sliceRow: HTMLElement = document.createElement('span');
+    sliceRow.className = 'image-overlay-slice';
+    note.appendChild(sliceRow);
     for (const line of this.overlayLines) {
       const row: HTMLElement = document.createElement('span');
       row.textContent = line;
@@ -653,6 +708,7 @@ export class ImagePanel {
     }
     this.field.appendChild(note);
     this.overlayNote = note;
+    this.overlaySlice_paint();
   }
 
   private toolPills_paint(): void {

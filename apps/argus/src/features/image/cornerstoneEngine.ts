@@ -87,6 +87,16 @@ const TOOL_NAMES: Readonly<Record<ImageTool, string>> = {
   probe: 'Probe',
 };
 
+/** A cached image, as far as the probe reads it: its pixels and how to scale them. */
+interface ProbeImage {
+  rows: number;
+  columns: number;
+  slope: number;
+  intercept: number;
+  preScale?: { scaled?: boolean };
+  getPixelData: () => ArrayLike<number>;
+}
+
 let engineSerial: number = 0;
 
 /** Cornerstone3D as the image engine. */
@@ -109,6 +119,13 @@ export class CornerstoneEngine implements ImageEngine {
   private startAt: number;
   private disposed: boolean = false;
   private metadataRegistered: boolean = false;
+  /** Every slice fetched; the wheel is honoured only then. A one-slice series is whole at once. */
+  private filled: boolean = false;
+  private filling: Promise<boolean> | null = null;
+  /** Keeps the canvas the size of the field: the frame opening beside it must not stretch the pixels. */
+  private resizeObserver: ResizeObserver | null = null;
+  /** The probe's listeners on the stack viewport, while the probe is the tool. */
+  private probeOff: (() => void) | null = null;
 
   /**
    * @param host - The pane's lendings.
@@ -126,6 +143,7 @@ export class CornerstoneEngine implements ImageEngine {
     this.imageIds.forEach((imageId: string, index: number): void => {
       this.pathByImageId.set(imageId, series.files.length === 1 ? (series.files[0] ?? '') : (series.files[index] ?? ''));
     });
+    this.filled = this.imageIds.length <= 1;
   }
 
   public async open(field: HTMLElement): Promise<void> {
@@ -135,7 +153,48 @@ export class CornerstoneEngine implements ImageEngine {
     if (this.disposed) return;
     this.metadata_register();
     this.loadFailures_watch();
+    this.field_observe(field);
     await this.stack_show();
+  }
+
+  /**
+   * Fetches the rest of the stack, counted, and unlocks the wheel.
+   *
+   * The first slice was one file; the rest were fetched as the wheel
+   * reached them, and a series that arrives in pieces scrolls in pieces —
+   * the operator called it jagged. Now every slice is on hand before the
+   * stack turns, the field counts them in, and the bar says so.
+   */
+  public async slices_fill(): Promise<boolean> {
+    if (this.filled) return true;
+    if (this.filling !== null) return this.filling;
+    if (this.libraries === null || this.renderingEngine === null) return false;
+    const { core } = this.libraries;
+    const total: number = this.imageIds.length;
+    const started: number = performance.now();
+    this.filling = (async (): Promise<boolean> => {
+      let done: number = 0;
+      const say = (): void => {
+        this.host.readout_set(`LOADING ${done} OF ${total}`);
+        this.host.progress_set({ label: 'READING SLICES', done, total });
+      };
+      say();
+      await Promise.all(this.imageIds.map((imageId: string): Promise<unknown> =>
+        core.imageLoader.loadAndCacheImage(imageId)
+          .catch((): null => null)
+          .finally((): void => {
+            done++;
+            if (!this.disposed) say();
+          })));
+      if (this.disposed) return false;
+      this.filled = true;
+      this.host.progress_set(null);
+      this.scroll_unlock();
+      this.host.readout_set(this.sliceReadout_get());
+      this.host.note(`image: ${total} slices on hand in ${Math.round(performance.now() - started)} ms${this.refused.size > 0 ? `, ${this.refused.size} refused` : ''}`);
+      return true;
+    })();
+    return this.filling;
   }
 
   public async layout_set(layout: ImageLayout): Promise<boolean> {
@@ -150,7 +209,7 @@ export class CornerstoneEngine implements ImageEngine {
   }
 
   public slice_set(slice: number): boolean {
-    if (this.layout !== 'single' || this.renderingEngine === null) return false;
+    if (this.layout !== 'single' || this.renderingEngine === null || !this.filled) return false;
     const viewport = this.stackViewport_get();
     if (viewport === null) return false;
     const index: number = Math.max(0, Math.min(slice - 1, this.imageIds.length - 1));
@@ -186,8 +245,21 @@ export class CornerstoneEngine implements ImageEngine {
     const group = this.libraries.tools.ToolGroupManager.getToolGroup(this.toolGroupId_get());
     if (group === undefined) return false;
     const bindings = this.libraries.tools.Enums.MouseBindings;
+    // The probe is a readout, not a mark: it reads what is under the
+    // pointer while the pointer is there, and leaves nothing behind. The
+    // library's probe left a ring on the image and nothing on the bar.
+    if (tool === 'probe') {
+      if (this.layout !== 'single') return false;
+      for (const other of IMAGE_TOOLS) {
+        if (other !== 'probe') group.setToolPassive(TOOL_NAMES[other]);
+      }
+      this.tool = tool;
+      this.probe_arm();
+      return true;
+    }
+    this.probe_disarm();
     for (const other of IMAGE_TOOLS) {
-      if (other !== tool) group.setToolPassive(TOOL_NAMES[other]);
+      if (other !== tool && other !== 'probe') group.setToolPassive(TOOL_NAMES[other]);
     }
     group.setToolActive(TOOL_NAMES[tool], { bindings: [{ mouseButton: bindings.Primary }] });
     this.tool = tool;
@@ -297,13 +369,114 @@ export class CornerstoneEngine implements ImageEngine {
       tool: this.tool,
       refused: this.refused.size,
       annotations,
+      filled: this.filled,
     };
   }
 
   public dispose(): void {
     this.disposed = true;
+    this.probe_disarm();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.field_clear();
     this.field = null;
+  }
+
+  /**
+   * Keeps the canvases the size of the field.
+   *
+   * The mode frame opens beside the field and the field narrows; the
+   * library sizes its canvas once, at enable, and a canvas stretched by
+   * CSS to a narrower box draws a squeezed image with every measurement
+   * stranded where it was. Resizing the engine keeps the camera, so the
+   * pixels keep their shape and the annotations stay on the anatomy.
+   */
+  private field_observe(field: HTMLElement): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    let queued: boolean = false;
+    this.resizeObserver = new ResizeObserver((): void => {
+      if (queued || this.disposed) return;
+      queued = true;
+      requestAnimationFrame((): void => {
+        queued = false;
+        if (this.disposed || this.renderingEngine === null) return;
+        this.renderingEngine.resize(true, true);
+      });
+    });
+    this.resizeObserver.observe(field);
+  }
+
+  /** The bar's line for the slice on screen. */
+  private sliceReadout_get(): string {
+    return `SLICE ${Math.max(1, this.slice)} OF ${this.imageIds.length}${this.refused.size > 0 ? ` · REFUSED ${this.refused.size}` : ''}`;
+  }
+
+  /** Binds the wheel to the stack. Called once every slice is on hand. */
+  private scroll_unlock(): void {
+    if (this.libraries === null || this.layout !== 'single') return;
+    const { tools } = this.libraries;
+    const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get());
+    if (group === undefined) return;
+    group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: tools.Enums.MouseBindings.Wheel }] });
+  }
+
+  /**
+   * Reads the voxel under the pointer and says it, live.
+   *
+   * Position in the image's own indices, the slice on screen, and the
+   * value in the modality's unit (HU for CT). Off the image the reading
+   * goes away, as it does when the pointer leaves the field.
+   */
+  private probe_arm(): void {
+    this.probe_disarm();
+    const element: HTMLDivElement | null = this.field?.querySelector<HTMLDivElement>('.image-viewport-stack') ?? null;
+    if (element === null) return;
+    const modality: string = this.series.modality.toUpperCase();
+    const unit: string = modality === 'CT' ? ' HU' : '';
+    const libraries: Loaded | null = this.libraries;
+    const move = (event: MouseEvent): void => {
+      const viewport = this.stackViewport_get();
+      if (viewport === null || libraries === null) return;
+      const { core } = libraries;
+      const rect: DOMRect = element.getBoundingClientRect();
+      const world: [number, number, number] = viewport.canvasToWorld([event.clientX - rect.left, event.clientY - rect.top]) as [number, number, number];
+      const imageId: string = viewport.getCurrentImageId() ?? '';
+      const image: ProbeImage | undefined = core.cache.getImage(imageId) as unknown as ProbeImage | undefined;
+      const coords: [number, number] | undefined = core.utilities.worldToImageCoords(imageId, world) as [number, number] | undefined;
+      if (image === undefined || coords === undefined) {
+        this.host.probe_set(null);
+        return;
+      }
+      const i: number = Math.floor(coords[0]);
+      const j: number = Math.floor(coords[1]);
+      if (i < 0 || j < 0 || i >= image.columns || j >= image.rows) {
+        this.host.probe_set(null);
+        return;
+      }
+      const pixels: ArrayLike<number> = image.getPixelData();
+      // A colour image holds three samples a pixel; the first is read.
+      const samples: number = Math.max(1, Math.round(pixels.length / (image.rows * image.columns)));
+      const raw: number | undefined = pixels[(j * image.columns + i) * samples];
+      // The loader may have applied the modality LUT already; if not, it is applied here.
+      const value: number | undefined = raw === undefined
+        ? undefined
+        : (image.preScale?.scaled === true ? raw : raw * (image.slope ?? 1) + (image.intercept ?? 0));
+      const shown: string = value === undefined || Number.isNaN(value) ? '—' : `${Math.round(value * 10) / 10}${unit}`;
+      this.host.probe_set(`X ${i}  Y ${j}  ·  SLICE ${viewport.getCurrentImageIdIndex() + 1}  ·  ${shown}`);
+    };
+    const leave = (): void => this.host.probe_set(null);
+    element.addEventListener('mousemove', move);
+    element.addEventListener('mouseleave', leave);
+    this.probeOff = (): void => {
+      element.removeEventListener('mousemove', move);
+      element.removeEventListener('mouseleave', leave);
+      this.host.probe_set(null);
+    };
+  }
+
+  private probe_disarm(): void {
+    this.probeOff?.();
+    this.probeOff = null;
   }
 
   /**
@@ -416,8 +589,10 @@ export class CornerstoneEngine implements ImageEngine {
     group.addTool(tools.StackScrollTool.toolName);
     group.addViewport(viewportId, engineId);
     const bindings = tools.Enums.MouseBindings;
-    group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }] });
-    group.setToolActive(TOOL_NAMES[this.tool], { bindings: [{ mouseButton: bindings.Primary }] });
+    // The wheel turns the stack only once the stack is whole.
+    if (this.filled) group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }] });
+    if (this.tool === 'probe') this.probe_arm();
+    else group.setToolActive(TOOL_NAMES[this.tool], { bindings: [{ mouseButton: bindings.Primary }] });
     group.setToolActive(TOOL_NAMES.zoom, { bindings: [{ mouseButton: bindings.Secondary }] });
     group.setToolActive(TOOL_NAMES.pan, { bindings: [{ mouseButton: bindings.Auxiliary }] });
   }
@@ -514,6 +689,7 @@ export class CornerstoneEngine implements ImageEngine {
   }
 
   private field_clear(): void {
+    this.probe_disarm();
     if (this.renderingEngine !== null && this.libraries !== null) {
       for (const layout of ['single', 'mpr', '3d']) {
         this.libraries.tools.ToolGroupManager.destroyToolGroup(`${this.engineId_get()}-${layout}`);

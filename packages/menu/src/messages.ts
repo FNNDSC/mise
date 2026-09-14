@@ -373,6 +373,15 @@ export const progressMessageSchema = z.object({
   percent: z.number().min(0).max(100).optional(),
   unit: progressUnitSchema.optional(),
   status: progressStatusSchema.optional(),
+  /**
+   * Where the item landed, when the kernel can name it.
+   *
+   * A retrieve is confirmed by count and filed by CUBE a beat later, so the
+   * message that says a series is home may not yet know where. This is the
+   * one that does: a surface offering a verb on the landed thing (IMAGE on a
+   * PACS row) needs the place, and only the kernel can say it.
+   */
+  path: z.string().optional(),
 });
 
 /** A progress event as it appears on the wire, correlated to its command. */

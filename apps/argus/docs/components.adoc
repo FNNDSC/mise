@@ -163,7 +163,8 @@ image::images/image-pane-anatomy.svg[Image pane anatomy,1180]
 | Part | Class | Holds
 
 | pane | `.pane-image` | `data-modality` (MR, CT, PT, OT, NIFTI): the hue the frame wears.
-| bar | `.pane-handle` | `.pane-title` `IMAGE <modality> <description>`, `.pane-mode` the layout when not single, `.pane-state` the readout: `SLICE n OF m`, `LOADING`, `MPR · m SLICES`, `REFUSED n OF m`, `UNSUPPORTED TRANSFER SYNTAX <uid>`.
+| bar | `.pane-handle` | `.pane-title` `IMAGE <modality> <description>`, `.pane-mode` the layout when not single, `.pane-state` the readout: `OPENING`, `SLICE n OF m`, `LOADING`, `MPR · m SLICES`, `REFUSED n OF m`, `UNSUPPORTED TRANSFER SYNTAX <uid>`, `NOT A READABLE SERIES`.
+| working note | `.image-working` | Stands on the field while something is arriving: `.image-working-label` (`OPENING <name>`, `READING n SLICES`, `BUILDING MPR`), `.image-working-track` with its `.image-working-fill` (pacing when the length is unknown), `.image-working-count` `done / total · nn%` when counted. With `.image-working-failed` it is the notice of what could not open: the reason as the label, the path asked for as the count line, no track.
 | body | `.image-body` | The frame members and the field; shadows the frame's hue token for the modality.
 | frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
 | tool blocks | `.image-tool[data-tool]` | One per library tool: `wl`, `zoom`, `pan`, `length`, `angle`, `probe`. The bound one is lit, the rest `rail-off`.

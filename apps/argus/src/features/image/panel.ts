@@ -283,6 +283,44 @@ export class ImagePanel {
     await this.engine_open(new NiivueEngine(this.engineHost_get(), path));
   }
 
+  /**
+   * Says on the field that an open is under way, before the kernel has
+   * answered.
+   *
+   * The ask behind `image <path>` is a header read over a wire, and it can
+   * take seconds. A press that shows nothing for those seconds is a press
+   * the operator repeats, or gives up on; the pane is therefore on stage
+   * and working from the moment of the press, and the engine's own notice
+   * takes over from this one when the series arrives.
+   *
+   * @param path - What is being opened.
+   */
+  public opening_show(path: string): void {
+    const name: string = path.replace(/\/$/, '').split('/').pop() ?? path;
+    this.stateSpan.textContent = 'OPENING';
+    this.progress_show({ label: `OPENING ${name}`, done: 0, total: 0 });
+  }
+
+  /**
+   * Says on the field what could not open, and why.
+   *
+   * Never a blank field: a pane that opened for a press and then shows
+   * nothing has told the operator less than a console line would. The
+   * notice stays until the next open; whatever was on the field before
+   * stays beneath it.
+   *
+   * @param path - What was asked for.
+   * @param reason - Why it could not open, in the frame's voice.
+   */
+  public opening_fail(path: string, reason: string): void {
+    this.stateSpan.textContent = reason;
+    this.progress_show({ label: reason, done: 0, total: 0 });
+    const note: HTMLElement | null = this.progressNote;
+    if (note === null) return;
+    note.classList.add('image-working-failed');
+    (note.querySelector('.image-working-count') as HTMLElement).textContent = path;
+  }
+
   /** The sibling series a study folder offered. */
   public siblings_get(): readonly SeriesChoice[] {
     return this.siblings;
@@ -539,11 +577,15 @@ export class ImagePanel {
       this.progressNote = note;
     }
     const note: HTMLElement = this.progressNote;
+    // A notice that failed is not working; a fresh report is.
+    note.classList.remove('image-working-failed');
     const counted: boolean = progress.total > 0;
     const fraction: number = counted ? Math.min(1, progress.done / progress.total) : 0;
     (note.querySelector('.image-working-label') as HTMLElement).textContent = progress.label;
+    // Counted work says the fraction as a percentage too: a count of files
+    // reads as a count, and how far along is the question being asked.
     (note.querySelector('.image-working-count') as HTMLElement).textContent =
-      counted ? `${progress.done} / ${progress.total}` : '';
+      counted ? `${progress.done} / ${progress.total} · ${Math.round(fraction * 100)}%` : '';
     const fill: HTMLElement = note.querySelector('.image-working-fill') as HTMLElement;
     fill.classList.toggle('image-working-pacing', !counted);
     fill.style.width = counted ? `${Math.round(fraction * 100)}%` : '';

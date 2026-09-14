@@ -79,7 +79,35 @@ function pullProgress_emit(task: RetrieveTask, status?: ProgressStatus, phase: '
     percent: total > 0 ? Math.min(100, (current / total) * 100) : undefined,
     unit: 'files',
     status: status ?? retrieveProgress_classify(task),
+    ...(task.cubePathDir !== null ? { path: task.cubePathDir } : {}),
   });
+}
+
+/**
+ * Says where each landed series was filed.
+ *
+ * LONK confirms a retrieve by count, and CUBE registers the folder a beat
+ * later, so the watch ends knowing that a series is home but not where. A
+ * surface offering IMAGE on the row needs the folder, and only the kernel
+ * can name it: it is resolved here, once per series that landed, and said
+ * on the same channel the retrieve reported on. A folder CUBE cannot yet
+ * name is left for the next query to fill in.
+ *
+ * @param allTasks - Every task this pull covered.
+ */
+async function pulledFolders_announce(allTasks: RetrieveTask[]): Promise<void> {
+  const landed: RetrieveTask[] = allTasks.filter(
+    (t: RetrieveTask) => t.status === 'pulled' && t.lonkConfirmed,
+  );
+  await Promise.all(landed.map(async (task: RetrieveTask): Promise<void> => {
+    if (task.cubePathDir === null) {
+      const stateResult = await seriesStorage_resolve(task.seriesUID, { attempts: 4, delayMs: 2_000 });
+      if (!stateResult.ok || stateResult.value.folderPath === null) return;
+      task.cubePathDir = stateResult.value.folderPath;
+      if (stateResult.value.fileCount > task.actualFiles) task.actualFiles = stateResult.value.fileCount;
+    }
+    pullProgress_emit(task, 'done');
+  }));
 }
 
 /**
@@ -433,6 +461,9 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     : 0;
   totalFiringErrors += await retrieve_confirmLoop(allTasks, retryMax, pacsserver, client, events);
 
+  // Where each series landed, before the channel closes: a surface can offer
+  // the image the moment the pull says it is home.
+  await pulledFolders_announce(allTasks);
   pullSummary_print(allTasks, totalFiringErrors);
 
   // Report CUBE paths via cubepath; --retry handles pacsseries DB lag post-pull

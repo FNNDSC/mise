@@ -77,4 +77,22 @@ describe('seriesPulled_mark', () => {
     expect(series.pulled).toBe(true);
     expect(series.pulledFiles).toBeUndefined();
   });
+
+  it('takes the folder the kernel names, and that is what offers IMAGE', () => {
+    const series: PacsSeries = series_make();
+    const model: PacsQueryModel = model_make(series);
+    expect(seriesPulled_mark(model, '1.2.3', 62, '/SERVICES/PACS/PACSDCM/X/Y/AX-T2')).toBe(true);
+    expect(series.folderPath).toBe('/SERVICES/PACS/PACSDCM/X/Y/AX-T2');
+    expect(seriesVerbs_offered(series)).toEqual({ gather: true, image: true, pull: false });
+  });
+
+  it('changes a row already marked home when the folder arrives after the count', () => {
+    const series: PacsSeries = series_make({ pulled: true, pulledFiles: 62 });
+    const model: PacsQueryModel = model_make(series);
+    expect(seriesPulled_mark(model, '1.2.3', 62)).toBe(false);
+    expect(seriesVerbs_offered(series).image).toBe(false);
+    expect(seriesPulled_mark(model, '1.2.3', 62, '/SERVICES/PACS/PACSDCM/X/Y/AX-T2')).toBe(true);
+    expect(seriesVerbs_offered(series).image).toBe(true);
+    expect(seriesPulled_mark(model, '1.2.3', 62, '/SERVICES/PACS/PACSDCM/X/Y/AX-T2')).toBe(false);
+  });
 });

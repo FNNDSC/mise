@@ -642,13 +642,29 @@ export class CornerstoneEngine implements ImageEngine {
       };
     });
     this.renderingEngine.setViewports(inputs);
+    // Built fresh every time. The id is the engine's, so a volume built for
+    // one layout is cached under it; switching layouts (MPR to 3D) would
+    // hand `createAndCacheVolume` the loaded volume back, `load()` would be
+    // a no-op, no streaming event would fire, and a 3D viewport that waits
+    // on those events to first render would stay black — the operator's
+    // "select 3D, nada", seen only from MPR because a first 3D built the
+    // volume itself. Purged, so each build streams and renders as the first.
+    if (core.cache.getVolume(volumeId) !== undefined) {
+      try { core.cache.removeVolumeLoadObject(volumeId); } catch { /* not loaded yet */ }
+    }
     const volume = await core.volumeLoader.createAndCacheVolume(volumeId, { imageIds: this.imageIds });
     void (volume as { load: () => void }).load();
     const viewportIds: string[] = inputs.map((input): string => input.viewportId);
     await core.setVolumesForViewports(this.renderingEngine, [{ volumeId }], viewportIds);
     if (layout === '3d') {
-      const render = this.renderingEngine.getViewport(viewportIds[0] ?? '') as { setProperties?: (properties: { preset: string }) => void } | undefined;
+      const render = this.renderingEngine.getViewport(viewportIds[0] ?? '') as {
+        setProperties?: (properties: { preset: string }) => void;
+        resetCamera?: () => void;
+      } | undefined;
       render?.setProperties?.({ preset: this.series.modality.toUpperCase() === 'CT' ? 'CT-Bone' : 'MR-Default' });
+      // The camera is framed here rather than left to the streaming events,
+      // so the render does not depend on a fresh load to first appear.
+      render?.resetCamera?.();
     }
     const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get()) ?? tools.ToolGroupManager.createToolGroup(this.toolGroupId_get());
     if (group === undefined) return;

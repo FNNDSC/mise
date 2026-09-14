@@ -2491,13 +2491,26 @@ try {
       for (let i = 0; i < 120; i++) { await sleep(500); mode = image.querySelector('.pane-mode').textContent; if (mode === 'MPR' && image.querySelectorAll('.image-mpr .image-viewport').length === 3) break; }
       const planes = image.querySelectorAll('.image-mpr .image-viewport').length;
       const layoutPill = image.querySelector('.image-layout:not(.rail-off)').textContent;
+      // 3D reached FROM MPR, the operator's path: the volume is cached
+      // under the engine's id by the MPR build, so a 3D that waited on a
+      // fresh load's events would render nothing. The render must carry
+      // lit pixels.
+      await run('image layout 3d');
+      let render3d = 0;
+      for (let i = 0; i < 120; i++) { await sleep(500); if (image.querySelector('.pane-mode').textContent === '3D' && image.querySelector('.image-render .image-viewport')) break; }
+      await sleep(2000);
+      const render = image.querySelector('.image-render');
+      const canvas3d = render ? render.querySelector('canvas') : null;
+      if (canvas3d) { try { const ctx = canvas3d.getContext('2d'); const d = ctx.getImageData(0, 0, canvas3d.width, canvas3d.height).data; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i+1] + d[i+2] > 30) render3d++; } catch (e) { render3d = -1; } }
+      const mode3d = image.querySelector('.pane-mode').textContent;
       await run('image layout single');
       await settled(() => image.querySelector('.pane-state').textContent, { limit: 6000 });
       const back = image.querySelector('.pane-mode').textContent;
-      return { slice, colormap, mode, planes, layoutPill, back };`);
+      return { slice, colormap, mode, planes, layoutPill, mode3d, render3d, back };`);
     check('image slice <n> moves the stack and the bar says which slice', /SLICE 4 OF/.test(verbs.slice ?? ''), JSON.stringify(verbs));
     check('image colormap names the block', verbs.colormap === 'HOT', JSON.stringify(verbs));
     check('image layout mpr stands three linked planes and the bar annunciates the mode', verbs.mode === 'MPR' && verbs.planes === 3 && verbs.layoutPill === 'MPR', JSON.stringify(verbs));
+    check('image layout 3d from MPR renders a volume, not a black field', verbs.mode3d === '3D' && verbs.render3d > 1000, JSON.stringify(verbs));
     check('image layout single returns and the mode annunciation clears', verbs.back === '', JSON.stringify(verbs));
   }
   }

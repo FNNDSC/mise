@@ -903,7 +903,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   display: grid;
   grid-template-columns: var(--roster-cols);
   column-gap: var(--roster-gap);
-  padding: 0 var(--roster-pad);
+  padding: 0 calc(var(--roster-pad) + var(--elbow-clear, 0px)) 0 var(--roster-pad);
   margin: 0.2rem 0 0.45rem;
   font-size: 0.8rem;
 }
@@ -1286,7 +1286,7 @@ main {
   grid-template-columns: var(--roster-cols);
   align-items: end;
   column-gap: var(--roster-gap);
-  padding: 0 var(--roster-pad);
+  padding: 0 calc(var(--roster-pad) + var(--elbow-clear, 0px)) 0 var(--roster-pad);
   margin: 0.3rem 0 0.5rem;
   font-size: 0.8rem;
 }
@@ -2021,6 +2021,10 @@ body[data-zoom]:not([data-zoom='console'])
   --rule-h: 6px;
   --bar-w: 7.2rem;
   --elbow-h: 30px;
+  /* How far the elbow reaches into the field past the spine. Its fillet is
+   * cut in page over whatever lies there, so the field's grids keep this
+   * much clear on the right: a cap that ran under it lost its corner. */
+  --elbow-clear: 36px;
 }
 
 .workspace-pane[data-modes='open'] .files-body,
@@ -2054,7 +2058,13 @@ body[data-zoom]:not([data-zoom='console'])
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 0 0 4px 4px;
+  /* The top-right takes the elbow's own sweep. The strip starts at the
+   * frame's top beneath the elbow and BREATHES while the elbow does not, so
+   * a square corner here showed past the elbow's arc at every phase but
+   * one: dark on the dim swing, bright on the lift, and only at unity did
+   * the join read as the square it had looked like all along. Curved to
+   * the elbow's radius, nothing of the strip lies outside the arc. */
+  border-radius: 0 22px 4px 4px;
   background-color: var(--harvestgold);
   cursor: pointer;
   transition: width 0.22s ease-out;
@@ -2072,7 +2082,7 @@ body[data-zoom]:not([data-zoom='console'])
   position: absolute;
   top: var(--frame-top);
   right: 0;
-  width: calc(var(--spine-w) + 36px);
+  width: calc(var(--spine-w) + var(--elbow-clear));
   height: var(--elbow-h);
   background-color: var(--harvestgold);
   border-top-right-radius: 22px;
@@ -2086,7 +2096,7 @@ body[data-zoom]:not([data-zoom='console'])
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 36px;
+  width: var(--elbow-clear);
   height: calc(var(--elbow-h) - var(--rule-h));
   background-color: #000;
   border-top-right-radius: 12px;
@@ -2425,7 +2435,7 @@ body[data-header='dag'] #header-dag {
   grid-template-columns: var(--roster-cols);
   align-items: center;
   column-gap: var(--roster-gap);
-  padding: 2px var(--roster-pad);
+  padding: 2px calc(var(--roster-pad) + var(--elbow-clear, 0px)) 2px var(--roster-pad);
   font-size: 0.8rem;
 }
 

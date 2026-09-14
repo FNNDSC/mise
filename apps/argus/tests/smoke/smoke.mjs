@@ -1419,6 +1419,19 @@ try {
     && pacsFrame.patientCaps.includes('MRN') && pacsFrame.patientCaps.includes('ANSWERED')
     && pacsFrame.patientCaps.includes('STUDIES') && pacsFrame.patientCaps.includes('SERVER'),
     JSON.stringify(pacsFrame.patientCaps));
+  // The join is round at every phase of the breath, and nothing sits under
+  // the elbow's fillet: the caps row clears its reach.
+  const join = await evalIn(`
+    const listing = document.querySelector('.pacs-listing');
+    const elbow = listing.querySelector('.mode-elbow');
+    const strip = listing.querySelector('.mode-strip');
+    const e = elbow.getBoundingClientRect();
+    const cs = getComputedStyle(elbow, '::after');
+    const fillet = { left: e.left + parseFloat(cs.left), top: e.top + parseFloat(cs.top), right: e.left + parseFloat(cs.left) + parseFloat(cs.width), bottom: e.top + parseFloat(cs.top) + parseFloat(cs.height) };
+    const under = [...listing.querySelectorAll('.roster-cap, .listing-row > span')].filter((c) => { const r = c.getBoundingClientRect(); return r.width > 0 && r.right > fillet.left && r.left < fillet.right && r.bottom > fillet.top && r.top < fillet.bottom; }).map((c) => c.textContent.trim());
+    return { stripRadius: getComputedStyle(strip).borderTopRightRadius, elbowRadius: getComputedStyle(elbow).borderTopRightRadius, under };`);
+  check('the strip wears the elbow\'s sweep, so the join is round at every phase of the breath', join.stripRadius === join.elbowRadius && join.elbowRadius !== '0px', JSON.stringify(join));
+  check('nothing sits under the elbow\'s fillet: the caps clear its reach', join.under.length === 0, JSON.stringify(join));
   check('FILTER summons the results strip and reads its state',
     pacsFrame.rest === 0 && pacsFrame.open === true && pacsFrame.onLabel === 'FILTER ON'
     && pacsFrame.shut === 0 && pacsFrame.offLabel === 'FILTER OFF', JSON.stringify(pacsFrame));

@@ -283,6 +283,26 @@ describe('builtin_pull engine consumption', () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it('says where each landed series was filed, on the retrieve channel', async () => {
+    await builtin_pull([QUERY_PATH]);
+    expect(mockStorageResolve).toHaveBeenCalledWith('1.2.3', expect.objectContaining({ attempts: 4 }));
+    expect(progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: 'pull', itemId: '1.2.3', status: 'done', path: '/SERVICES/PACS/A/series-1' }),
+    ]));
+    // The folder is said before the channel closes, never after.
+    const said: number = progressEvents.findIndex((e: ProgressEvent) => e.path !== undefined);
+    const closed: number = progressEvents.findIndex((e: ProgressEvent) => e.phase === 'complete');
+    expect(said).toBeGreaterThanOrEqual(0);
+    expect(said).toBeLessThan(closed);
+  });
+
+  it('leaves a folder CUBE cannot yet name for the next query', async () => {
+    mockStorageResolve.mockResolvedValue({ ok: true, value: { fileCount: 0, folderPath: null } });
+    await builtin_pull([QUERY_PATH]);
+    expect(progressEvents.some((e: ProgressEvent) => e.path !== undefined)).toBe(false);
+    expect(sinkData).toContain('1/1 series pulled successfully');
+  });
+
   it('labels unfired series as permanent loss and watch failures as verifiable', async () => {
     mockCollect.mockResolvedValue([info('1.2.3'), info('4.5.6')]);
     mockFireAndWatch.mockImplementation(async (tasks: TestTask[]) => {

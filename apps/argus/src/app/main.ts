@@ -1640,14 +1640,19 @@ async function surface_start(token: string): Promise<void> {
    * @returns The console line to print.
    */
   const image_open = async (fromId: string | null, path: string, options: { force?: boolean } = {}): Promise<string> => {
+    // The pane is on stage before the kernel is asked. The ask is a header
+    // read over a wire and can take seconds; a press that shows nothing for
+    // those seconds is a press the operator repeats.
+    const panel: ImagePanel | null = imagePane_for(fromId);
+    if (panel === null) return 'image: no pane to open beside';
     if (VOLUME_FILE_PATTERN.test(path)) {
-      const panel: ImagePanel | null = imagePane_for(fromId);
-      if (panel === null) return 'image: no pane to open beside';
+      panel.opening_show(path);
       void panel.volume_show(path);
       return `image ${path}`;
     }
     const isFile: boolean = DICOM_FILE_PATTERN.test(path);
     const folder: string = isFile ? path.slice(0, path.lastIndexOf('/')) : path.replace(/\/$/, '');
+    panel.opening_show(folder);
     let series: DicomSeriesModel | null = await series_ask(folder);
     let siblings: SeriesChoice[] = [];
     if (series === null && !isFile) {
@@ -1661,9 +1666,10 @@ async function surface_start(token: string): Promise<void> {
         break;
       }
     }
-    if (series === null) return `image: ${path}: not a readable DICOM series, study, or volume`;
-    const panel: ImagePanel | null = imagePane_for(fromId);
-    if (panel === null) return 'image: no pane to open beside';
+    if (series === null) {
+      panel.opening_fail(path, 'NOT A READABLE SERIES');
+      return `image: ${path}: not a readable DICOM series, study, or volume`;
+    }
     const startAt: number = isFile ? Math.max(1, series.files.indexOf(path) + 1) : 1;
     void panel.series_show(series, { siblings, startAt, ...(options.force === true ? { force: true } : {}) });
     return `image ${series.path}${siblings.length > 1 ? ` (1 of ${siblings.length} series)` : ''}`;

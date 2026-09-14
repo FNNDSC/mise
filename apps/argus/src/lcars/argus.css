@@ -4489,6 +4489,22 @@ body[data-zoom] #header-restore {
   color: var(--honey);
 }
 
+/* What could not open, said where the image would have been. No track: a
+ * failure is not work in progress, and a bar that pretends otherwise
+ * promises an arrival. The count line carries the path that was asked for. */
+.image-working-failed {
+  color: var(--tomato, #f77);
+}
+
+.image-working-failed .image-working-track {
+  display: none;
+}
+
+.image-working-failed .image-working-count {
+  color: var(--tomato, #f77);
+  letter-spacing: 0.04em;
+}
+
 /* ------------------------------------------------ the header, on the image */
 
 /* What a clinical viewer writes in the corner. Small, quiet, and off by

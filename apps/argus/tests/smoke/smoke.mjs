@@ -2277,6 +2277,46 @@ try {
     check('the pane says in the console when the first slice landed', opened.noted === true, JSON.stringify(opened));
   }
   }
+  if (stage('image-answers')) {
+  if (dicomSeries === '') {
+    console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
+  } else {
+    // The press is answered before the kernel is: an observer catches the
+    // OPENING notice however briefly it stands, and the first slice's
+    // readout marks the answer arriving.
+    const answered = await evalIn(`
+      await console_idle();
+      const seen = { openingAt: null, sliceAt: null, label: null, state: null };
+      const started = performance.now();
+      const observer = new MutationObserver(() => {
+        const note = document.querySelector('.pane-image .image-working-label');
+        if (note && seen.openingAt === null && /^OPENING /.test(note.textContent)) { seen.openingAt = performance.now() - started; seen.label = note.textContent; seen.state = document.querySelector('.pane-image .pane-state').textContent; }
+        const pane = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state').textContent));
+        if (pane && seen.sliceAt === null) seen.sliceAt = performance.now() - started;
+      });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+      const input = document.querySelector('#terminal input');
+      input.value = 'image ${dicomSeries}';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 120 && seen.sliceAt === null; i++) await sleep(250);
+      observer.disconnect();
+      return seen;`);
+    check('the image pane opens and says OPENING before the kernel answers', answered.openingAt !== null && answered.sliceAt !== null && answered.openingAt < answered.sliceAt && answered.state === 'OPENING', JSON.stringify(answered));
+    check('the press is answered within a beat', answered.openingAt !== null && answered.openingAt < 400, JSON.stringify(answered));
+    const refused = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = 'image ~/argus-smoke-nowhere-${Date.now()}';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      let note = null;
+      for (let i = 0; i < 80; i++) { await sleep(250); note = document.querySelector('.pane-image .image-working-failed'); if (note) break; }
+      if (!note) return { error: 'no failure notice' };
+      const pane = note.closest('.pane-image');
+      const said = document.getElementById('terminal').innerText.split('\\n').some((l) => /^image: .*not a readable DICOM series/.test(l.trim()));
+      return { label: note.querySelector('.image-working-label').textContent, path: note.querySelector('.image-working-count').textContent, state: pane.querySelector('.pane-state').textContent, track: getComputedStyle(note.querySelector('.image-working-track')).display, said };`);
+    check('what could not open is named on the field and on the bar', refused.error === undefined && refused.label === 'NOT A READABLE SERIES' && /argus-smoke-nowhere/.test(refused.path) && refused.state === 'NOT A READABLE SERIES' && refused.track === 'none' && refused.said === true, JSON.stringify(refused));
+  }
+  }
   if (stage('image-focus')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');

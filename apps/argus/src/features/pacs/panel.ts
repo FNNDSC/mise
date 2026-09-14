@@ -79,9 +79,10 @@ export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
  * must say so, and a rule this small deserves a test that does not need a
  * PACS to run.
  *
- * IMAGE waits on the folder CUBE put the series in, which only CUBE can
- * name, so it appears with the next answer rather than the moment the
- * retrieve lands. GATHER does not wait.
+ * IMAGE needs the folder CUBE put the series in, which only the kernel can
+ * name: the pull says it on the retrieve channel once CUBE has filed the
+ * series, and the row takes it from there. A folder the pull could not
+ * name arrives with the next answer. GATHER does not wait.
  *
  * @param series - The series as the model holds it.
  * @returns Which of the three verbs are offered.
@@ -98,20 +99,32 @@ export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; imag
  * The rows are built from `model.studies` at every level, so marking the
  * model is what makes a patient's, a study's and a series' row agree.
  *
+ * The folder is what turns IMAGE on. A retrieve is confirmed by count and
+ * filed by CUBE a beat later, so the wire says "done" twice: once without
+ * the place and once with it. The second message changes the row even
+ * though the series was already marked home.
+ *
  * @param model - The answer on stage.
  * @param seriesUID - The series the wire reported done.
  * @param files - How many files landed, when the wire said.
+ * @param folderPath - Where CUBE filed the series, when the wire said.
  * @returns Whether anything changed, so a caller can skip a needless repaint.
  */
 export function seriesPulled_mark(
   model: PacsQueryModel,
   seriesUID: string,
   files: number | undefined,
+  folderPath?: string,
 ): boolean {
   let changed: boolean = false;
   for (const study of model.studies) {
     for (const series of study.series) {
-      if (series.seriesUID !== seriesUID || series.pulled === true) continue;
+      if (series.seriesUID !== seriesUID) continue;
+      if (folderPath !== undefined && series.folderPath !== folderPath) {
+        series.folderPath = folderPath;
+        changed = true;
+      }
+      if (series.pulled === true) continue;
       series.pulled = true;
       if (files !== undefined && files > 0) series.pulledFiles = files;
       changed = true;
@@ -1231,9 +1244,10 @@ export class PacsPanel {
     this.badgeState_set(message.itemId, state);
     // A retrieve that finished has changed what the row can do. Repaint it
     // now rather than waiting for the operator to ask the same question
-    // again, which is what the verbs used to require.
+    // again, which is what the verbs used to require. The folder, when the
+    // kernel names it, is what puts IMAGE on the row.
     if (status === 'done' && this.model !== null
-      && seriesPulled_mark(this.model, message.itemId, message.current ?? message.total)) {
+      && seriesPulled_mark(this.model, message.itemId, message.current ?? message.total, message.path)) {
       this.results_repaint();
     }
   }

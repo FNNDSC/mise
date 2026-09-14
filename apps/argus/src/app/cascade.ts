@@ -175,13 +175,22 @@ export class Cascade {
    */
   public progress_observe(message: ProgressMessage): void {
     const key: string = `${message.operation}:${message.itemId ?? ''}`;
-    if (message.phase === 'complete') {
-      this.activeOperations.delete(key);
-      if (message.status === 'error') {
+    if (message.phase === 'complete' || message.phase === 'failed') {
+      // Clear the operation and every item it owns, the same way the status
+      // bar does: a pull closes under `pull:` with no id, never matching the
+      // `pull:<uid>` keys its series opened.
+      const prefix: string = `${message.operation}:`;
+      for (const held of [...this.activeOperations]) {
+        if (held === key || held.startsWith(prefix)) this.activeOperations.delete(held);
+      }
+      if (message.status === 'error' || message.phase === 'failed') {
         this.telemetry.opsFailed++;
       } else {
         this.telemetry.opsDone++;
       }
+    } else if (message.itemId !== undefined && message.status !== undefined
+        && ['done', 'error', 'unconfirmed', 'stalled', 'timeout'].includes(message.status)) {
+      this.activeOperations.delete(key);
     } else {
       this.activeOperations.add(key);
     }

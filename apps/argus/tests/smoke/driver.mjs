@@ -72,11 +72,12 @@ export async function page_open(url) {
   await new Promise((r) => ws.on('open', r));
   await send('Page.enable');
   // SMOKE_DPR emulates a HiDPI display (a real desktop at 1.25–2×): canvas
-  // sizing bugs hide at the headless default of 1.
+  // sizing bugs hide at the headless default of 1. The viewport is pinned
+  // at every ratio: left to the window, its height is whatever a chromium
+  // build's own chrome leaves of 1440, and the canon recorded on one
+  // machine then scores a hundred moved heights on the next.
   const dpr = Number(process.env.SMOKE_DPR ?? '1');
-  if (dpr !== 1) {
-    await send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1440, deviceScaleFactor: dpr, mobile: false });
-  }
+  await send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1440, deviceScaleFactor: dpr, mobile: false });
   await send('Page.navigate', { url });
   await new Promise((r) => setTimeout(r, 4000));
   return {

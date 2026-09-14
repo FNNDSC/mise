@@ -2060,6 +2060,12 @@ async function surface_start(token: string): Promise<void> {
       // DAG pane's own commands already come back this way, and the PACS
       // pane needs the same — asking the session for the registered
       // servers is worth nothing if the answer goes nowhere.
+      // A query or a retrieve is a big, auditable action the operator took
+      // through a button, so it is echoed into the console — the transcript
+      // is the whole story of the session, not only of what was typed —
+      // then run silently so a long retrieve never locks the prompt. The
+      // incidental probes (`pacs list`, `mkdir ~/gather`) are not echoed.
+      if (/^(pacs query|pull )/.test(line)) terminal.line_echo(line);
       void client.line_execute(line, { silent: true }).then((outcome: ExecuteOutcome): void => {
         for (const envelope of outcome.envelopes) pacsPanel.envelope_observe(envelope);
       });

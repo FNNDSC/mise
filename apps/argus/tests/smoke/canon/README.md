@@ -34,6 +34,21 @@ Only when a change to the frame is **intended**. Re-record both themes, and say
 in the same commit what moved and why — the point of a baseline is that it does
 not quietly follow the code.
 
+### The state it is recorded in
+
+A fingerprint sees one session state, and the frame flexes with it: the gutter
+labels take their height from the page, the page from the PACS listing, the
+listing from whether an answer is on stage. The canons are recorded from a
+daemon with **no cached PACS answer** (the cache copied without its
+`vfs/pacs-queries-*.json`, so the pane shows its caps and nothing under them)
+and **no host control** (no `--host-control`, so the status row carries no
+HOST lamp), in a viewport the tool pins itself (2560×1440 CSS px at 1×), so a
+chromium build's window chrome cannot move the page. A session with a replayed
+answer on stage scores about 130 differences against them — every one of them
+state, none CSS — and the way to attribute a change in that condition is to
+snapshot the same daemon with the change stashed and diff the two live
+snapshots against each other.
+
 ## What it took to make it honest
 
 The first cut of this fingerprint read elements only, and called

@@ -33,6 +33,47 @@ interface StatusFields {
 /** Frames for the activity indicator, matching the console's spinner. */
 const ACTIVITY_FRAMES: readonly [string, ...string[]] = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
 
+/** The item states that mean an item is finished, however it finished. */
+const TERMINAL_ITEM_STATUSES: ReadonlySet<string> = new Set<string>([
+  'done', 'error', 'unconfirmed', 'stalled', 'timeout',
+]);
+
+/**
+ * Folds one progress message into the set of live keys.
+ *
+ * Pure, and exported for a test, because this is where "1 RUNNING" once
+ * stuck forever: a pull reports each series under `pull:<uid>` and closes
+ * the operation under `pull:` with no item id, so the closing message never
+ * matched the keys it was meant to clear. Two things end a key now — the
+ * operation saying it is complete or failed (which clears every key it
+ * owns, id or no id), and an item reaching a terminal status (which clears
+ * that one) — because a per-series retrieve carries its ending in `status`,
+ * never in `phase`.
+ *
+ * @param running - The live-key set, mutated in place.
+ * @param message - The progress event.
+ */
+export function running_reconcile(
+  running: Set<string>,
+  message: { operation: string; itemId?: string; phase?: string; status?: string },
+): void {
+  const key: string = `${message.operation}:${message.itemId ?? ''}`;
+  if (message.phase === 'complete' || message.phase === 'failed') {
+    // The operation is over: clear it and every item it owns.
+    const prefix: string = `${message.operation}:`;
+    for (const held of [...running]) {
+      if (held === key || held.startsWith(prefix)) running.delete(held);
+    }
+    return;
+  }
+  if (message.itemId !== undefined && message.status !== undefined
+      && TERMINAL_ITEM_STATUSES.has(message.status)) {
+    running.delete(key);
+    return;
+  }
+  running.add(key);
+}
+
 /** How often the activity indicator advances, in milliseconds. */
 const ACTIVITY_FRAME_MS: number = 100;
 
@@ -158,12 +199,7 @@ export class StatusBar {
    * @param message - A progress event from the daemon.
    */
   public progress_observe(message: ProgressMessage): void {
-    const key: string = `${message.operation}:${message.itemId ?? ''}`;
-    if (message.phase === 'complete' || message.phase === 'failed') {
-      this.running.delete(key);
-    } else {
-      this.running.add(key);
-    }
+    running_reconcile(this.running, message);
     this.activity_paint();
   }
 

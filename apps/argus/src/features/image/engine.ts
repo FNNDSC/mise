@@ -89,6 +89,14 @@ export interface ImageEngineHost {
   note(line: string): void;
   /** The instance now on screen, as the pane's regard. */
   regard(path: string): void;
+  /**
+   * The probe's live reading under the pointer, or null when there is none.
+   *
+   * A probe is a readout, not a mark: it says what is under the pointer
+   * while the pointer is there. Position in the image's own indices, the
+   * slice, and the value in the modality's unit.
+   */
+  probe_set(text: string | null): void;
 }
 
 /** What is on the field, for the bar and for a smoke probe. */
@@ -103,6 +111,12 @@ export interface ImageEngineState {
   refused: number;
   /** Measurements on the field, drawn or reloaded. */
   annotations: number;
+  /**
+   * Every slice is on hand. A stack that is still arriving does not scroll:
+   * a wheel that lands on a slice not yet fetched shows a gap, and a series
+   * that appears in pieces is not a series.
+   */
+  filled: boolean;
 }
 
 /** A guest engine behind the field. */
@@ -111,7 +125,13 @@ export interface ImageEngine {
   /** Mounts into the field and shows the first thing it can. */
   open(field: HTMLElement): Promise<void>;
   layout_set(layout: ImageLayout): Promise<boolean>;
-  /** One-based. */
+  /**
+   * Fetches every slice the field does not yet hold, saying how far along
+   * on the way, and unlocks the scroll when the last one lands. True once
+   * the stack is whole; false when the engine has no stack to fill.
+   */
+  slices_fill(): Promise<boolean>;
+  /** One-based. Refused while the stack is still arriving. */
   slice_set(slice: number): boolean;
   wl_set(lower: number, upper: number): boolean;
   colormap_set(name: ImageColormap): boolean;

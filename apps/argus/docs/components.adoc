@@ -163,16 +163,18 @@ image::images/image-pane-anatomy.svg[Image pane anatomy,1180]
 | Part | Class | Holds
 
 | pane | `.pane-image` | `data-modality` (MR, CT, PT, OT, NIFTI): the hue the frame wears.
-| bar | `.pane-handle` | `.pane-title` `IMAGE <modality> <description>`, `.pane-mode` the layout when not single, `.pane-state` the readout: `OPENING`, `SLICE n OF m`, `LOADING`, `MPR · m SLICES`, `REFUSED n OF m`, `UNSUPPORTED TRANSFER SYNTAX <uid>`, `NOT A READABLE SERIES`.
+| bar | `.pane-handle` | `.pane-title` `IMAGE <modality> <description>`, `.pane-mode` the layout when not single, `.pane-state` the readout: `OPENING`, `LOADING n OF m` while the stack fills, `SLICE n OF m`, `SERIES <size> · LOAD FOR STACK\|MPR\|3D` while the guard holds, `MPR · m SLICES`, `REFUSED n OF m`, `UNSUPPORTED TRANSFER SYNTAX <uid>`, `NOT A READABLE SERIES`.
 | working note | `.image-working` | Stands on the field while something is arriving: `.image-working-label` (`OPENING <name>`, `READING n SLICES`, `BUILDING MPR`), `.image-working-track` with its `.image-working-fill` (pacing when the length is unknown), `.image-working-count` `done / total · nn%` when counted. With `.image-working-failed` it is the notice of what could not open: the reason as the label, the path asked for as the count line, no track.
 | body | `.image-body` | The frame members and the field; shadows the frame's hue token for the modality.
 | frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
-| tool blocks | `.image-tool[data-tool]` | One per library tool: `wl`, `zoom`, `pan`, `length`, `angle`, `probe`. The bound one is lit, the rest `rail-off`.
+| tool blocks | `.image-tool[data-tool]` | One per tool: `wl`, `zoom`, `pan`, `length`, `angle`, `probe`. The bound one is lit, the rest `rail-off`. Five are the library's; `probe` is the pane's own readout (below).
+| probe note | `.image-probe-note` | While `probe` is the tool and the pointer is on the image: `X i  Y j  ·  SLICE k  ·  value HU` at the foot of the field. Gone when the pointer leaves; nothing is drawn on the image.
+| overlay note | `.image-overlay-note` | The header on the image while OVERLAY is on: `.image-overlay-slice` first, `SLICE n OF m` following the wheel (hidden for a single slice), then the study's and patient's lines read once per series.
 | layout block | `.image-layout` | Cycles SINGLE, MPR, 3D.
 | colormap block | `.image-colormap` | Cycles GRAY, HOT, JET, COOL.
 | save block | `.image-save` | The measurements as a DICOM SR under `~/annotations/<SeriesInstanceUID>/`.
 | preset block | `.image-preset` | Cycles the modality's window presets; hidden where the modality has none.
-| load block | `.image-load` | Shown while a volume layout waits on the guard; pressing it consents and applies the layout.
+| load block | `.image-load` | Shown while the stack or a volume layout waits on the guard; pressing it consents: the waiting layout is applied, or the rest of the stack is fetched.
 | focus mark | `.image-focus` | Shown while the field holds the keyboard.
 | field | `.image-field` | The engine's mount; `tabindex=0`; holds `.image-viewport` elements or an `.image-canvas`, never a control.
 |===

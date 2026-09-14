@@ -2238,7 +2238,7 @@ try {
       prompt.value = 'dcm series ${dicomSeries}';
       prompt.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let image = null;
-      for (let i = 0; i < 120; i++) { await sleep(500); image = document.querySelector('.pane-image'); if (image && /SLICE \\d+ OF \\d+/.test(image.querySelector('.pane-state').textContent)) break; }
+      for (let i = 0; i < 120; i++) { await sleep(500); image = document.querySelector('.pane-image'); if (image && /SLICE \\d+ OF \\d+/.test(image.querySelector('.pane-state').textContent) && !image.querySelector('.image-working')) break; }
       if (!image) return { error: 'no image pane' };
       const state = image.querySelector('.pane-state').textContent;
       // The engine sizes its canvas on its next frame; measure after it.
@@ -2317,6 +2317,120 @@ try {
     check('what could not open is named on the field and on the bar', refused.error === undefined && refused.label === 'NOT A READABLE SERIES' && /argus-smoke-nowhere/.test(refused.path) && refused.state === 'NOT A READABLE SERIES' && refused.track === 'none' && refused.said === true, JSON.stringify(refused));
   }
   }
+  if (stage('image-field')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    // A stack fills before it turns: reopen the series and record what the
+    // bar and the field say on the way, then wheel while it is still
+    // arriving and again once it is whole.
+    const filled = await evalIn(`
+      await console_idle();
+      const image = document.querySelector('.pane-image');
+      const seen = { readouts: [], notes: [], lockedTurn: null, wholeTurn: null };
+      const observer = new MutationObserver(() => {
+        const r = image.querySelector('.pane-state').textContent; if (seen.readouts[seen.readouts.length - 1] !== r) seen.readouts.push(r);
+        const n = image.querySelector('.image-working'); if (n) { const t = n.querySelector('.image-working-label').textContent + ' ' + n.querySelector('.image-working-count').textContent; if (seen.notes[seen.notes.length - 1] !== t) seen.notes.push(t); }
+      });
+      observer.observe(image, { subtree: true, childList: true, characterData: true });
+      const input = document.querySelector('#terminal input');
+      input.value = 'image ${dicomSeries}';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 200; i++) { await sleep(100); if (/^LOADING \\d+ OF/.test(image.querySelector('.pane-state').textContent)) break; }
+      seen.duringFill = image.querySelector('.pane-state').textContent;
+      for (let i = 0; i < 200; i++) { await sleep(100); if (/^SLICE 1 OF/.test(image.querySelector('.pane-state').textContent) && !image.querySelector('.image-working')) break; }
+      observer.disconnect();
+      seen.whole = image.querySelector('.pane-state').textContent;
+      const r = image.querySelector('.image-viewport').getBoundingClientRect();
+      seen.wheelAt = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      return seen;`);
+    // The observer, not a poll: with the slices already in the loader's
+    // cache the count runs to 100% inside a frame.
+    const firstSlice = filled.readouts.indexOf(filled.readouts.find((r) => /^SLICE 1 OF \d+$/.test(r)));
+    const counted = filled.readouts.slice(firstSlice + 1).some((r) => /^LOADING \d+ OF \d+$/.test(r));
+    check('a stack counts every slice in before it turns', firstSlice >= 0 && counted && filled.notes.some((n) => /^READING SLICES \d+ \/ \d+ · 100%$/.test(n)) && /^SLICE 1 OF \d+$/.test(filled.whole ?? ''), JSON.stringify(filled));
+    // Over the guard the stack waits for LOAD and nothing turns until it lands.
+    const held = await evalIn(`
+      await console_idle();
+      const image = document.querySelector('.pane-image');
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image guard 1000');
+      await run('image ${dicomSeries}');
+      let state = '';
+      for (let i = 0; i < 100; i++) { await sleep(150); state = image.querySelector('.pane-state').textContent; if (/LOAD FOR STACK/.test(state)) break; }
+      const loadShown = !image.querySelector('.image-load').hidden;
+      const r = image.querySelector('.image-viewport').getBoundingClientRect();
+      return { state, loadShown, wheelAt: { x: r.x + r.width / 2, y: r.y + r.height / 2 } };`);
+    for (let i = 0; i < 3; i++) {
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: held.wheelAt.x, y: held.wheelAt.y, deltaX: 0, deltaY: 120 });
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const loaded = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const stillHeld = image.querySelector('.pane-state').textContent;
+      const input = document.querySelector('#terminal input');
+      input.value = 'image load'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      let state = '';
+      for (let i = 0; i < 200; i++) { await sleep(100); state = image.querySelector('.pane-state').textContent; if (/^SLICE 1 OF/.test(state) && !image.querySelector('.image-working')) break; }
+      input.value = 'image guard off'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+      return { stillHeld, state, loadHidden: image.querySelector('.image-load').hidden };`);
+    for (let i = 0; i < 3; i++) {
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: held.wheelAt.x, y: held.wheelAt.y, deltaX: 0, deltaY: 120 });
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const turned = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      let after = image.querySelector('.pane-state').textContent;
+      for (let i = 0; i < 40 && /SLICE 1 OF/.test(after); i++) { await sleep(100); after = image.querySelector('.pane-state').textContent; }
+      return { after };`);
+    check('a stack over the guard shows its first slice and waits for LOAD, and the wheel does not turn it', /LOAD FOR STACK/.test(held.state ?? '') && held.loadShown === true && /LOAD FOR STACK/.test(loaded.stillHeld ?? ''), JSON.stringify({ held, loaded }));
+    check('LOAD fills the stack and the wheel turns it', /^SLICE 1 OF \d+$/.test(loaded.state ?? '') && loaded.loadHidden === true && /SLICE [2-9]/.test(turned.after ?? ''), JSON.stringify({ loaded, turned }));
+    // The overlay counts the slices, and follows the wheel.
+    const overlay = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      image.querySelector('.image-overlay').click();
+      let row = null;
+      for (let i = 0; i < 40; i++) { await sleep(150); row = image.querySelector('.image-overlay-slice'); if (row && row.textContent) break; }
+      return { first: row ? row.textContent : null, state: image.querySelector('.pane-state').textContent };`);
+    check('the overlay leads with the slice count and it matches the bar', overlay.first !== null && overlay.first === overlay.state, JSON.stringify(overlay));
+    // The probe reads live under the pointer and leaves nothing behind.
+    const armed = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      image.querySelector('.image-tool[data-tool="probe"]').click(); await sleep(200);
+      const r = image.querySelector('.image-viewport').getBoundingClientRect();
+      return { at: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, out: { x: r.x + 4, y: r.y + 4 } };`);
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: armed.at.x, y: armed.at.y });
+    await new Promise((r) => setTimeout(r, 200));
+    const probed = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const note = image.querySelector('.image-probe-note');
+      return { text: note ? note.textContent : null, rings: document.querySelectorAll('.pane-image svg circle').length };`);
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: armed.at.x, y: armed.at.y, button: 'left', clickCount: 1 });
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: armed.at.x, y: armed.at.y, button: 'left', clickCount: 1 });
+    await new Promise((r) => setTimeout(r, 300));
+    const clicked = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      return { rings: image.querySelectorAll('svg circle').length, annotations: (window.__argusImageState ? null : undefined) };`);
+    check('the probe reads position, slice and value live under the pointer', probed.text !== null && /^X \d+  Y \d+  ·  SLICE \d+  ·  -?[\d.]+/.test(probed.text), JSON.stringify(probed));
+    check('a probe press leaves no ring on the image', clicked.rings === 0 && probed.rings === 0, JSON.stringify({ probed, clicked }));
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: armed.out.x - 40, y: armed.out.y - 40 });
+    // The field keeps its shape when the frame opens beside it.
+    const shaped = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      image.querySelector('.image-tool[data-tool="wl"]').click(); await sleep(100);
+      const canvas = image.querySelector('.image-field canvas');
+      const before = { css: Math.round(canvas.getBoundingClientRect().width), px: canvas.width };
+      image.querySelector('.mode-strip').click();
+      let after = null;
+      for (let i = 0; i < 40; i++) { await sleep(150); const w = Math.round(canvas.getBoundingClientRect().width); if (w !== before.css && Math.abs(canvas.width - w * devicePixelRatio) < 4) { after = { css: w, px: canvas.width }; break; } }
+      if (after === null) after = { css: Math.round(canvas.getBoundingClientRect().width), px: canvas.width };
+      const open = image.dataset.modes === 'open';
+      image.querySelector('.mode-strip').click(); await sleep(600);
+      return { before, after, open, dpr: devicePixelRatio };`);
+    check('the field keeps its shape when the frame opens beside it', shaped.open === true && shaped.after.css < shaped.before.css && Math.abs(shaped.after.px - shaped.after.css * shaped.dpr) < 4, JSON.stringify(shaped));
+  }
+  }
   if (stage('image-focus')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
@@ -2363,7 +2477,7 @@ try {
       let mode = '';
       for (let i = 0; i < 120; i++) { await sleep(500); mode = image.querySelector('.pane-mode').textContent; if (mode === 'MPR' && image.querySelectorAll('.image-mpr .image-viewport').length === 3) break; }
       const planes = image.querySelectorAll('.image-mpr .image-viewport').length;
-      const layoutPill = image.querySelector('.image-layout').textContent;
+      const layoutPill = image.querySelector('.image-layout:not(.rail-off)').textContent;
       await run('image layout single');
       await settled(() => image.querySelector('.pane-state').textContent, { limit: 6000 });
       const back = image.querySelector('.pane-mode').textContent;

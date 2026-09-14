@@ -159,8 +159,13 @@ export class NiivueEngine implements ImageEngine {
     return Promise.resolve(0);
   }
 
+  /** A volume file arrives whole, so there is nothing to fill. */
+  public async slices_fill(): Promise<boolean> {
+    return this.nv !== null;
+  }
+
   public state_get(): ImageEngineState {
-    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, refused: this.refused, annotations: 0 };
+    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, refused: this.refused, annotations: 0, filled: this.nv !== null };
   }
 
   public dispose(): void {

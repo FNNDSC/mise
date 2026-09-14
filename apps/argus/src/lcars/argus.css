@@ -4526,6 +4526,21 @@ body[data-zoom] #header-restore {
   z-index: 2;
 }
 
+/* The probe's reading: what is under the pointer, said at the foot of the
+ * field while the pointer is there. A readout, not a mark. */
+.image-probe-note {
+  position: absolute;
+  left: 0.8rem;
+  bottom: 0.6rem;
+  font-family: var(--face-label);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  color: var(--harvestgold);
+  text-shadow: 0 0 4px #000, 0 0 2px #000;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .pane-image.image-field-focused .image-field {
   box-shadow: inset 0 0 0 2px var(--harvestgold);
 }

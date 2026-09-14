@@ -370,6 +370,23 @@ export class ArgusTerminal {
   }
 
   /**
+   * Echoes a command line into the transcript without running it.
+   *
+   * A pane that runs a big action of its own — a PACS query, a retrieve —
+   * should leave the same mark in the console a typed command would, so the
+   * transcript is the whole story of the session and not only of what was
+   * typed. Unlike {@link line_run} this neither submits nor touches the
+   * busy state: the pane runs the command its own way (often silently, so a
+   * long retrieve does not lock the prompt), and this is only the echo.
+   *
+   * @param line - The command line to show.
+   */
+  public line_echo(line: string): void {
+    this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+    this.size_fit();
+  }
+
+  /**
    * Runs a line as if the operator had typed it: echoed into the
    * transcript, then submitted. While a command is executing the line is
    * queued and runs when the prompt returns, so lowered gestures and

@@ -1567,12 +1567,12 @@ async function surface_start(token: string): Promise<void> {
     }
     if (!shown.has(imageId)) return 'image tags: the image pane is not on stage';
     const spawned: PaneInstance = instance_spawn('tags', imageId);
-    if (!layout.leaf_split(imageId, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(imageId, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return 'image tags: could not open beside the image pane';
     }
-    paneOrigin.set(spawned.id, imageId);
+    birth_record(spawned.id, imageId, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     return 'image tags';
   };
 
@@ -1637,12 +1637,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = fromId !== null && shown.has(fromId) ? fromId : errandHost_find();
     if (host === null) return null;
     const spawned: PaneInstance = instance_spawn('image', fromId ?? undefined);
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return null;
     }
-    paneOrigin.set(spawned.id, host);
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     anchor_set(spawned.id);
     return imagePanels.get(spawned.id) ?? null;
   };
@@ -1718,12 +1718,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = errandHost_find();
     if (host === null) return;
     const spawned: PaneInstance = instance_spawn('files', inheritFrom);
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
-    paneOrigin.set(spawned.id, host);
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     if (inheritFrom === undefined) subjects.regard_write(spawned.id, { address: folderPath, modelKind: 'dicom.series' });
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
@@ -2027,12 +2027,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = errandHost_find();
     if (host === null) return null;
     const spawned: PaneInstance = instance_spawn('files');
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return null;
     }
-    paneOrigin.set(spawned.id, host);
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     const anchor: string = request.path?.anchor ?? '~';
     if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
@@ -2188,7 +2188,48 @@ async function surface_start(token: string): Promise<void> {
   // own storage on load — dormant, never onto the stage.
   // Each pane's origin: the pane it split from at creation, so a desktop
   // records what each action acted FROM (its target), not a guessed context.
-  const paneOrigin: Map<string, string> = new Map<string, string>();
+  /**
+   * How each pane was born, for replaying a desktop faithfully: the pane it
+   * split FROM, the split's orientation and side, and — for a pane the drawer's
+   * SPLIT pill created — the binding it was created with (`view`/`fs`/`empty`).
+   * A desktop replays by re-running each birth, so a stacked or before-split
+   * pane returns where it was, not as another column on the right.
+   */
+  const paneBirth: Map<string, { parent: string; dir: 'row' | 'col'; before: boolean; binding?: string }> = new Map();
+  const birth_record = (childId: string, parent: string, dir: 'row' | 'col', before: boolean, binding?: string): void => {
+    paneBirth.set(childId, { parent, dir, before, ...(binding !== undefined ? { binding } : {}) });
+  };
+  /**
+   * Re-runs the drawer SPLIT pill's spawn: a pane of `binding` split from
+   * `parentId` at `dir`/`before`, an `fs` binding wired to follow the parent's
+   * regard at the directory level. The one code path the pill and a desktop
+   * replay share, so a pill-born pane returns exactly as it was made.
+   *
+   * @returns The new pane's id, or null when the split failed.
+   */
+  const pillPane_spawn = (parentId: string, binding: 'view' | 'fs' | 'empty', dir: 'row' | 'col', before: boolean): string | null => {
+    const spawned: PaneInstance = binding === 'view' ? instance_spawn('view', parentId)
+      : binding === 'fs' ? instance_spawn('files', parentId)
+      : instance_spawn('empty');
+    if (!layout.leaf_split(parentId, dir, spawned.id, before)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return null;
+    }
+    birth_record(spawned.id, parentId, dir, before, binding);
+    if (binding === 'fs') {
+      const browser_show = (value: RegardValue): void => {
+        const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+        if (panel === undefined) return;
+        const dirPath: string = value.modelKind === 'fs.file' ? (value.address.replace(/\/[^/]*$/, '') || '/') : value.address;
+        rootedListing_show(spawned.id, panel, dirPath);
+      };
+      subjects.regard_subscribe(spawned.id, browser_show);
+      const current: RegardValue | null = subjects.regard_get(parentId);
+      if (current !== null) browser_show(current);
+    }
+    return spawned.id;
+  };
   const dormant: DormantRegistry = new DormantRegistry(DORMANT_CAP, localKeyStore());
   // The dormant set is read (and, at slice 3, restored) by the PANES view.
   // Exposed for verification until that view exists.
@@ -2219,58 +2260,61 @@ async function surface_start(token: string): Promise<void> {
    */
   const stageStrip_capture = (stageIds: readonly string[]): string | undefined => {
     if (stageIds.length === 0) return undefined;
-    // Creation order is NOT visual order — a viewer opened before a browser can
-    // sit to its right — while the strip must read left-to-right as the stage
-    // does. Order the tiles by where each pane actually sits (left, then top).
-    const rects: { id: string; width: number; left: number; top: number }[] = [];
+    // A true mini-map: each pane drawn at its real position and size, scaled
+    // into the figure — so a stack reads as a stack and a column as a column,
+    // whatever order the panes were opened. Measured from the live boxes.
+    const rects: { id: string; left: number; top: number; width: number; height: number }[] = [];
     for (const id of stageIds) {
       const mount = paneInstance_get(id)?.mount;
       if (mount === undefined) continue;
       const box: DOMRect = mount.getBoundingClientRect();
-      if (box.width > 0) rects.push({ id, width: box.width, left: box.left, top: box.top });
+      if (box.width > 0 && box.height > 0) rects.push({ id, left: box.left, top: box.top, width: box.width, height: box.height });
     }
     if (rects.length === 0) return undefined;
-    rects.sort((a, b): number => (a.left - b.left) || (a.top - b.top));
-    const total: number = rects.reduce((sum, rect): number => sum + rect.width, 0);
+    const minLeft: number = Math.min(...rects.map((rect): number => rect.left));
+    const minTop: number = Math.min(...rects.map((rect): number => rect.top));
+    const spanW: number = Math.max(...rects.map((rect): number => rect.left + rect.width)) - minLeft;
+    const spanH: number = Math.max(...rects.map((rect): number => rect.top + rect.height)) - minTop;
+    if (spanW <= 0 || spanH <= 0) return undefined;
     const budget: number = 240;
-    const height: number = 90;
+    const scale: number = budget / spanW;
+    const canvasH: number = Math.max(40, Math.min(260, Math.round(spanH * scale)));
     try {
       const off: HTMLCanvasElement = document.createElement('canvas');
       off.width = budget;
-      off.height = height;
+      off.height = canvasH;
       const ctx: CanvasRenderingContext2D | null = off.getContext('2d');
       if (ctx === null) return undefined;
       const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
       const accent: string = style.getPropertyValue('--harvestgold').trim() || '#c9a15a';
       ctx.fillStyle = '#05070a';
-      ctx.fillRect(0, 0, budget, height);
-      let x: number = 0;
-      rects.forEach((rect, index): void => {
-        const last: boolean = index === rects.length - 1;
-        const tileW: number = last ? budget - x : Math.max(18, Math.round((rect.width / total) * budget));
+      ctx.fillRect(0, 0, budget, canvasH);
+      for (const rect of rects) {
+        const tx: number = Math.round((rect.left - minLeft) * scale);
+        const ty: number = Math.round((rect.top - minTop) * scale);
+        const tw: number = Math.max(6, Math.round(rect.width * scale));
+        const th: number = Math.max(6, Math.round(rect.height * scale));
         const canvas = paneInstance_get(rect.id)?.mount.querySelector<HTMLCanvasElement>('canvas');
         if (canvas !== null && canvas !== undefined && canvas.width > 0) {
-          const scale: number = Math.min(tileW / canvas.width, height / canvas.height);
-          const dw: number = Math.round(canvas.width * scale);
-          const dh: number = Math.round(canvas.height * scale);
+          const fit: number = Math.min(tw / canvas.width, th / canvas.height);
+          const dw: number = Math.round(canvas.width * fit);
+          const dh: number = Math.round(canvas.height * fit);
           ctx.fillStyle = '#000';
-          ctx.fillRect(x, 0, tileW, height);
-          ctx.drawImage(canvas, x + Math.round((tileW - dw) / 2), Math.round((height - dh) / 2), dw, dh);
+          ctx.fillRect(tx, ty, tw, th);
+          ctx.drawImage(canvas, tx + Math.round((tw - dw) / 2), ty + Math.round((th - dh) / 2), dw, dh);
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.05)';
-          ctx.fillRect(x, 0, tileW, height);
+          ctx.fillRect(tx, ty, tw, th);
           ctx.fillStyle = accent;
-          ctx.font = `${Math.min(28, Math.round(tileW * 0.5))}px serif`;
+          ctx.font = `${Math.max(9, Math.min(28, Math.round(Math.min(tw, th) * 0.5)))}px serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(kindGlyph_of(rect.id), x + tileW / 2, height / 2 + 1);
+          ctx.fillText(kindGlyph_of(rect.id), tx + tw / 2, ty + th / 2 + 1);
         }
-        if (!last) {
-          ctx.fillStyle = 'rgba(255,255,255,0.16)';
-          ctx.fillRect(x + tileW - 1, 0, 1, height);
-        }
-        x += tileW;
-      });
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx + 0.5, ty + 0.5, tw - 1, th - 1);
+      }
       return off.toDataURL('image/png');
     } catch {
       return undefined;
@@ -2279,6 +2323,12 @@ async function surface_start(token: string): Promise<void> {
 
   /** Whether a desktop replay is in flight; capture is suppressed during it. */
   let desktopReplaying: boolean = false;
+  /**
+   * The split a replayed open must use, set from the action being replayed so a
+   * pane returns at its captured orientation and side; null in normal use, when
+   * an automatic open falls to the column-after default.
+   */
+  let replayPlace: { dir: 'row' | 'col'; before: boolean } | null = null;
 
   /** Console-line verbs that tune an open viewer rather than open one. */
   const IMAGE_SUBVERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
@@ -2308,12 +2358,19 @@ async function surface_start(token: string): Promise<void> {
     const actions: DesktopAction[] = [];
     for (const id of stageIds) {
       const kind: string | null = paneKind_get(id);
-      const target: number = actionIndexOf.get(paneOrigin.get(id) ?? '') ?? 0;
+      const birth = paneBirth.get(id);
+      const target: number = actionIndexOf.get(birth?.parent ?? '') ?? 0;
+      // The real split the pane was born with \u2014 a stacked or before-split pane
+      // carries its own orientation and side, not the column-right default.
+      const place = { dir: birth?.dir ?? 'col', side: (birth?.before ? 'before' : 'after') as 'before' | 'after' };
+      const emit = (action: DesktopAction): void => { actionIndexOf.set(id, actions.length); actions.push(action); };
       if (id === 'pacs' || id === 'files' || id === 'dag') {
         const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
         const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
-        actionIndexOf.set(id, actions.length);
-        actions.push({ op: 'domain', domain, ...(query !== null ? { query } : {}) });
+        emit({ op: 'domain', domain, ...(query !== null ? { query } : {}) });
+      } else if (birth?.binding === 'fs' || birth?.binding === 'view' || birth?.binding === 'empty') {
+        // A drawer SPLIT-pill pane replays as its own birth, whatever it holds.
+        emit({ op: birth.binding, target, ...place });
       } else if (kind === 'image') {
         const panel = imagePanels.get(id);
         const state = panel?.state_get() ?? null;
@@ -2324,8 +2381,7 @@ async function surface_start(token: string): Promise<void> {
         if (state.voi !== undefined && state.voi !== null) view.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
         if (state.slice > 1) view.push(`image slice ${state.slice}`);
         if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') view.push(`image ghost ${state.ghost}`);
-        actionIndexOf.set(id, actions.length);
-        actions.push({ op: 'image', path: state.path, target, dir: 'col', side: 'after', ...(view.length > 0 ? { view } : {}) });
+        emit({ op: 'image', path: state.path, target, ...place, ...(view.length > 0 ? { view } : {}) });
         if (anchor === undefined) {
           anchor = state.path;
           const series = panel.series_get();
@@ -2335,16 +2391,15 @@ async function surface_start(token: string): Promise<void> {
       } else if (kind === 'files') {
         const path: string | null = filesPanels.get(id)?.path_current() ?? null;
         if (typeof path !== 'string' || path.length === 0) continue;
-        actionIndexOf.set(id, actions.length);
-        actions.push({ op: 'dir', path, target, dir: 'col', side: 'after' });
+        emit({ op: 'dir', path, target, ...place });
       } else if (kind === 'tags') {
-        actionIndexOf.set(id, actions.length);
-        actions.push({ op: 'tags', target });
+        emit({ op: 'tags', target, ...place });
       }
     }
     if (anchor === undefined) return;
     const thumbnail: string | undefined = stageStrip_capture(stageIds);
-    const members: string[] = [...new Set(actions.filter((action): boolean => action.op !== 'domain').map((action): string => (action.op === 'image' ? 'viewer' : action.op === 'dir' ? 'files' : 'tags')))];
+    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane' };
+    const members: string[] = [...new Set(actions.filter((action): boolean => action.op !== 'domain').map((action): string => memberOf[action.op] ?? 'pane'))];
     dormant.add({
       id: anchor,
       label: label ?? (anchor.split('/').pop() ?? anchor),
@@ -2435,13 +2490,17 @@ async function surface_start(token: string): Promise<void> {
       const produced: Array<string | null> = [];
       for (const action of snapshot.actions) {
         const host: string | null = produced[action.target ?? 0] ?? null;
+        // The split this pane was born with — replayed opens read it so a
+        // stacked or before-split pane returns where it was.
+        const place = { dir: action.dir ?? 'col', before: action.side === 'before' };
         if (action.op === 'domain') {
           await replayLine_run(`view ${action.domain ?? 'files'}`);
           if (action.query !== undefined) await replayLine_run(action.query);
           produced.push(action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files');
         } else if (action.op === 'image' && action.path !== undefined) {
           if (host !== null) layout.focus_set(host);
-          await image_open(null, action.path);
+          replayPlace = place;
+          try { await image_open(null, action.path); } finally { replayPlace = null; }
           const path: string = action.path;
           await wait_until((): boolean => viewerOf(path) !== null, 40000, 300);
           const viewerId: string | null = viewerOf(path);
@@ -2450,14 +2509,24 @@ async function surface_start(token: string): Promise<void> {
         } else if (action.op === 'dir' && action.path !== undefined) {
           if (host !== null) layout.focus_set(host);
           const before: Set<string> = new Set(paneOf('files'));
-          dir_open(action.path);
+          replayPlace = place;
+          try { dir_open(action.path); } finally { replayPlace = null; }
           await new Promise((resolve): void => { window.setTimeout(resolve, 600); });
           produced.push(paneOf('files').find((paneId): boolean => !before.has(paneId)) ?? null);
         } else if (action.op === 'tags') {
           if (host !== null) layout.focus_set(host);
           const before: Set<string> = new Set(paneOf('tags'));
-          await replayLine_run('image tags');
+          replayPlace = place;
+          try { await replayLine_run('image tags'); } finally { replayPlace = null; }
           produced.push(paneOf('tags').find((paneId): boolean => !before.has(paneId)) ?? null);
+        } else if (action.op === 'fs' || action.op === 'view' || action.op === 'empty') {
+          // A drawer-pill pane replays as its own birth: the pill's spawn, at
+          // the same parent, orientation and side.
+          if (host === null) { produced.push(null); continue; }
+          layout.focus_set(host);
+          const newId: string | null = pillPane_spawn(host, action.op, place.dir, place.before);
+          await new Promise((resolve): void => { window.setTimeout(resolve, 300); });
+          produced.push(newId);
         } else {
           produced.push(null);
         }
@@ -2562,32 +2631,10 @@ async function surface_start(token: string): Promise<void> {
         const before: boolean = splitter.dataset['place'] === 'before';
         const binding: string =
           drawer.querySelector<HTMLElement>('.drawer-bind-selected')?.dataset['bind'] ?? 'unlinked';
-        const spawned: PaneInstance =
-          binding === 'viewer' ? instance_spawn('view', id)
-          : binding === 'fs' ? instance_spawn('files', id)
-          : instance_spawn('empty');
-        if (!layout.leaf_split(id, dir, spawned.id, before)) {
-          paneInstance_dispose(spawned.id);
-          layout.mount_remove(spawned.id);
-          return;
-        }
-        if (binding === 'fs') {
-          // Linked filesystem: follows the parent's regard at the DIRECTORY
-          // level — an indicated file shows its directory, an indicated node
-          // shows the node's data space.
-          const browser_show = (value: RegardValue): void => {
-            const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
-            if (panel === undefined) return;
-            const dirPath: string =
-              value.modelKind === 'fs.file'
-                ? value.address.replace(/\/[^/]*$/, '') || '/'
-                : value.address;
-            rootedListing_show(spawned.id, panel, dirPath);
-          };
-          subjects.regard_subscribe(spawned.id, browser_show);
-          const current: RegardValue | null = subjects.regard_get(id);
-          if (current !== null) browser_show(current);
-        }
+        // A pill-born pane is a linked filesystem (follows the parent's regard
+        // at the directory level), a slaved viewer, or a blank pane.
+        const canonical: 'view' | 'fs' | 'empty' = binding === 'viewer' ? 'view' : binding === 'fs' ? 'fs' : 'empty';
+        if (pillPane_spawn(id, canonical, dir, before) === null) return;
         drawer.hidden = true;
         sound_play('audio3');
       });

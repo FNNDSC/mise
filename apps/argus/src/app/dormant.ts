@@ -21,15 +21,18 @@
  */
 
 /**
- * One action in a desktop's log, in creation order. `domain` enters a gutter
- * domain (action 0, the root — its pane is what later actions target);
- * `image`/`dir` open a viewer/browser splitting the pane produced by action
- * `target`; `tags` opens the tags pane on its target viewer. `dir`/`side` are
- * the captured split (ratio is emergent at 0.5), so a deliberate placement
- * survives regardless of the default tiling rule.
+ * One action in a desktop's log, in creation order — the birth of one pane.
+ * `domain` enters a gutter domain (action 0, the root — its pane is what later
+ * actions target); the rest split the pane produced by action `target`, each
+ * replaying how that pane was actually born: `image`/`dir` re-open a
+ * viewer/browser from a path, `tags` opens the tags pane on its target viewer,
+ * and `fs`/`view`/`empty` re-run the drawer SPLIT pill's own spawn (a linked
+ * browser, a slaved viewer, a blank pane). `dir`/`side` are the real split
+ * orientation and side the pane was born with (ratio is emergent at 0.5), so a
+ * pane stacked below or placed before its target returns exactly there.
  */
 export interface DesktopAction {
-  op: 'domain' | 'image' | 'dir' | 'tags';
+  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty';
   domain?: 'pacs' | 'files' | 'runs';
   query?: string;
   path?: string;

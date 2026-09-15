@@ -20,6 +20,28 @@
  * @module
  */
 
+/**
+ * One action in a desktop's log, in creation order — the birth of one pane.
+ * `domain` enters a gutter domain (action 0, the root — its pane is what later
+ * actions target); the rest split the pane produced by action `target`, each
+ * replaying how that pane was actually born: `image`/`dir` re-open a
+ * viewer/browser from a path, `tags` opens the tags pane on its target viewer,
+ * and `fs`/`view`/`empty` re-run the drawer SPLIT pill's own spawn (a linked
+ * browser, a slaved viewer, a blank pane). `dir`/`side` are the real split
+ * orientation and side the pane was born with (ratio is emergent at 0.5), so a
+ * pane stacked below or placed before its target returns exactly there.
+ */
+export interface DesktopAction {
+  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty';
+  domain?: 'pacs' | 'files' | 'runs';
+  query?: string;
+  path?: string;
+  view?: readonly string[];
+  target?: number;
+  dir?: 'col' | 'row';
+  side?: 'before' | 'after';
+}
+
 /** The image view state a snapshot restores. */
 export interface GroupView {
   layout: string;
@@ -39,6 +61,14 @@ export interface GroupSnapshot {
   regard: { address: string; modelKind: string };
   /** Member kinds for the card's badges: `viewer`, `tags`, `files`. */
   members: string[];
+  /**
+   * The action log that rebuilds the whole arrangement when replayed, in
+   * creation order: the domain (action 0), then each viewer/browser/tags
+   * against the pane a prior action produced. A desktop is a log of actions,
+   * not a pixel snapshot — replaying reproduces the tiles, their order and
+   * their widths.
+   */
+  actions?: readonly DesktopAction[];
   /** The image view state, when the group holds a viewer. */
   view?: GroupView;
   /** A small raster of the viewer at dormancy, as a data URL. */

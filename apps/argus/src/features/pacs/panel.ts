@@ -993,6 +993,16 @@ export class PacsPanel {
   }
 
   /** Whether the strip of servers is unfolded. */
+  /**
+   * The query line that reproduces the current results, for a desktop replay,
+   * or null when the workspace holds no answer yet.
+   *
+   * @returns `pacs query <expression>`, or null.
+   */
+  public query_get(): string | null {
+    return this.model === null ? null : `pacs query ${this.model.expression}`;
+  }
+
   public serverStrip_isOpen(): boolean {
     return !this.serverStrip.hidden;
   }

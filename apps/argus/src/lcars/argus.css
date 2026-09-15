@@ -835,7 +835,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
      stylesheet's. */
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
-  overflow-y: auto;
+  /* Scroll in both axes: a series row's fixed columns (verbs included) can be
+     wider than the pane when PACS sits split at half width beside a viewer,
+     and a fixed-column listing must not silently clip its last verb — it
+     scrolls to it instead. */
+  overflow: auto;
   min-height: 0;
 }
 
@@ -2588,6 +2592,10 @@ body[data-header='dag'] #header-dag {
 
 .files-listing {
   margin-bottom: 1rem;
+  /* A row keeps its columns their declared width (the NAME floor included);
+     when the pane is too narrow to hold them all, the listing scrolls to the
+     rest rather than collapsing or clipping a column. */
+  overflow-x: auto;
 }
 
 .files-path {

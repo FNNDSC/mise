@@ -1,5 +1,38 @@
 # @fnndsc/calypso
 
+## 0.15.0
+
+### Minor Changes
+
+- 9cf2ea2: `image <path>`'s text reflection now carries a thumbnail of the middle slice, so a TTY sharing the session shows the picture, not only the facts. The kernel reads the slice's pixels (`dicomSlice_gray` in salsa, uncompressed transfer syntaxes via dcmjs), window/levels to 8-bit with MONOCHROME1 inverted, and box-downsamples to a cell grid; brasa renders it as an ASCII ramp on any pipe or ANSI truecolour half-blocks (`▀`) on a colour terminal. Colour is a new declared surface capability: ARGUS declares it (its DOM console renders ANSI), chell reads its own terminal through chalk, a bare pipe gets the ramp. Compressed pixels say so in one line rather than pulling a codec into the kernel; an unreadable slice leaves the facts and no picture. The ASCII ramp is always the floor.
+
+### Patch Changes
+
+- Updated dependencies [7892529]
+- Updated dependencies [a24d813]
+- Updated dependencies [de4dac8]
+- Updated dependencies [26eaf6a]
+- Updated dependencies [b6d0264]
+- Updated dependencies [7ca8d04]
+- Updated dependencies [67f5fd5]
+- Updated dependencies [9cf2ea2]
+- Updated dependencies [d133ef6]
+- Updated dependencies [7b5a7b9]
+- Updated dependencies [c70e11e]
+- Updated dependencies [6990c3a]
+- Updated dependencies [aa486c5]
+- Updated dependencies [b4689e2]
+- Updated dependencies [a29635a]
+- Updated dependencies [0215547]
+- Updated dependencies [bf4c118]
+- Updated dependencies [5ed1785]
+- Updated dependencies [887c815]
+- Updated dependencies [8a4ddc8]
+  - @fnndsc/argus@0.8.0
+  - @fnndsc/brasa@0.23.0
+  - @fnndsc/menu@0.9.0
+  - @fnndsc/cumin@3.22.1
+
 ## 0.14.0
 
 ### Minor Changes

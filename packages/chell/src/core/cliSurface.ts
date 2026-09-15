@@ -14,6 +14,7 @@
  * @module
  */
 import * as readline from 'readline';
+import chalk from 'chalk';
 import { Writable } from 'stream';
 import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, existsSync, statSync } from 'fs';
@@ -275,6 +276,8 @@ export function cliSurface_create(
     hiddenInput: true,
     localEdit: true,
     tty: !!process.stdout.isTTY,
+    // chalk answers for the terminal it is writing to: >0 is some colour.
+    color: chalk.level > 0,
     pipeSegments: true,
     shellCommands: true,
     fileDelivery: true,

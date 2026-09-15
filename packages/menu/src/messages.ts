@@ -37,6 +37,8 @@ export const channelSchema = z.enum(['data', 'err', 'status']);
 export const surfaceCapabilitiesMessageSchema = z.object({
   shellCommands: z.boolean(),
   hiddenInput: z.boolean().optional(),
+  /** Renders ANSI colour, so a thumbnail can be half-blocks, not an ASCII ramp. */
+  color: z.boolean().optional(),
   /** Can put a file where its operator can reach it. */
   fileDelivery: z.boolean().optional(),
   /**

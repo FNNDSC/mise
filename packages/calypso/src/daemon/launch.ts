@@ -92,6 +92,9 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
         hiddenInput: true,
         localEdit: true,
         tty: true,
+        // Colour follows the executing surface: a colour terminal or a browser
+        // console renders ANSI, a bare pipe does not.
+        color: attached?.color ?? false,
         pipeSegments: true,
         shellCommands: true,
         fileDelivery: attached?.fileDelivery ?? false,

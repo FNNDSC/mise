@@ -121,6 +121,8 @@ export class RemoteEngine implements BrasaEngine {
             shellCommands: options.onShell !== undefined,
             hiddenInput: options.onPrompt !== undefined,
             fileDelivery: options.onDeliver !== undefined,
+            // chalk answers for the client terminal this shell writes to.
+            color: chalk.level > 0,
             // A shell has a disk and directories wherever it runs, so a folder
             // it asks for arrives as a folder rather than an archive of one.
             localFilesystem: options.onDeliver !== undefined,

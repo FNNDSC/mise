@@ -39,7 +39,7 @@ Each row says what the sentence lowers to. "Drawer" means the pane's drawer caps
 
 === image — a series or a volume on a guest engine's field
 
-`image` is a SHARED subject: `image <path>` (and `image --help`, `image` alone) is a kernel command — a brasa builtin that resolves what the path is and emits a typed `image.view` intent — so the same `image ~/uploads/sag-anon` opens a rendered pane in ARGUS and prints a text reflection on a TTY sharing the CALYPSO session. The surface claims only the subverbs below, the ones that drive a pane already on the field; every other `image` line falls through to the session. Law `surface-never-shadows-the-session`.
+`image` is a SHARED subject: `image <path>` (and `image --help`, `image` alone) is a kernel command — a brasa builtin that resolves what the path is and emits a typed `image.view` intent — so the same `image ~/uploads/sag-anon` opens a rendered pane in ARGUS and prints a text reflection on a TTY sharing the CALYPSO session. That reflection carries a thumbnail of the middle slice: an ASCII ramp on a plain pipe, ANSI colour half-blocks where the surface declares the `color` capability (ARGUS does, its console renders ANSI). The surface claims only the subverbs below, the ones that drive a pane already on the field; every other `image` line falls through to the session. Law `surface-never-shadows-the-session`.
 
 [cols="2,3,3",options="header"]
 |===

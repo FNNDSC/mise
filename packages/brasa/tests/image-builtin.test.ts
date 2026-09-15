@@ -9,15 +9,31 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 const mockSeries = jest.fn();
+const mockGray = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
   dicomSeries_summarize: mockSeries,
+  dicomSlice_gray: mockGray,
   dicomFolder_list: jest.fn(),
   dicomHeader_get: jest.fn(),
   dicomTags_summarize: jest.fn(),
   dicomFiles_sample: <T>(files: T[], cap: number): T[] => (files.length <= cap ? files : [files[0], files[files.length - 1]]),
 }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
+
+// The surface decides colour; a headless test surface renders the ASCII ramp
+// unless a case installs colour.
+let surfaceColor = false;
+jest.unstable_mockModule('../src/core/surface.js', () => ({
+  surface_get: (): { capabilities: { color: boolean } } => ({ capabilities: { color: surfaceColor } }),
+}));
+
+/** A small gradient grid, so a thumbnail has something to draw. */
+function grayGrid(width = 8, height = 8): { ok: true; value: { kind: 'gray'; width: number; height: number; gray: Uint8Array } } {
+  const gray = new Uint8Array(width * height);
+  for (let i = 0; i < gray.length; i++) gray[i] = ((i % width) / (width - 1)) * 255;
+  return { ok: true, value: { kind: 'gray', width, height, gray } };
+}
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown): CommandEnvelope => (model === undefined ? { status: 'ok', rendered } : ({ status: 'ok', rendered, model } as CommandEnvelope)),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): CommandEnvelope => {
@@ -55,6 +71,8 @@ const seriesSummary = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  surfaceColor = false;
+  mockGray.mockResolvedValue(grayGrid());
   process.exitCode = 0;
 });
 
@@ -112,5 +130,47 @@ describe('image on a series', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('image: nope: not a readable DICOM series, study, or volume');
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('image thumbnail in the reflection', () => {
+  it('draws the middle slice as an ASCII ramp on a plain surface', async () => {
+    mockSeries.mockResolvedValue(ok({ ...seriesSummary, files: ['/s/a.dcm', '/s/b.dcm', '/s/c.dcm'] }));
+    const envelope: CommandEnvelope = await builtin_image(['sag-anon']);
+    // The middle of three slices, read for the picture.
+    expect(mockGray).toHaveBeenCalledWith('/s/b.dcm');
+    expect(envelope.rendered).toContain('SERIES');
+    expect(envelope.rendered).toMatch(/[@#%*]/); // a bright ramp glyph
+    expect(envelope.rendered).not.toContain('▀');
+  });
+
+  it('draws half-blocks when the surface renders colour', async () => {
+    surfaceColor = true;
+    mockSeries.mockResolvedValue(ok(seriesSummary));
+    const envelope: CommandEnvelope = await builtin_image(['sag-anon']);
+    expect(envelope.rendered).toContain('▀');
+  });
+
+  it('says so, without a picture, when the pixels are compressed', async () => {
+    mockSeries.mockResolvedValue(ok(seriesSummary));
+    mockGray.mockResolvedValue(ok({ kind: 'compressed', transferSyntax: '1.2.840.10008.1.2.4.90' }));
+    const envelope: CommandEnvelope = await builtin_image(['sag-anon']);
+    expect(envelope.rendered).toContain('compressed');
+    expect(envelope.rendered).toContain('1.2.840.10008.1.2.4.90');
+    expect(envelope.rendered).not.toContain('▀');
+  });
+
+  it('keeps the facts and shows no picture when the slice cannot be read', async () => {
+    mockSeries.mockResolvedValue(ok(seriesSummary));
+    mockGray.mockResolvedValue(err());
+    const envelope: CommandEnvelope = await builtin_image(['sag-anon']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('SERIES');
+    expect(envelope.rendered).not.toContain('▀');
+  });
+
+  it('reads no pixels for a volume', async () => {
+    await builtin_image(['/data/brain.nii.gz']);
+    expect(mockGray).not.toHaveBeenCalled();
   });
 });

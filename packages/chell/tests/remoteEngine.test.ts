@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import chalk from 'chalk';
 import { jest } from '@jest/globals';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { OutputSink } from '@fnndsc/brasa';
@@ -152,7 +153,7 @@ describe('RemoteEngine live output', () => {
     remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
     expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
       type: 'attach',
-      capabilities: { shellCommands: false, hiddenInput: false, fileDelivery: false, localFilesystem: false },
+      capabilities: { shellCommands: false, hiddenInput: false, fileDelivery: false, color: chalk.level > 0, localFilesystem: false },
     }));
     const envelopes: CommandEnvelope[] = await remote.line_execute('echo live');
 
@@ -206,7 +207,7 @@ describe('RemoteEngine live output', () => {
     });
     expect(FakeWebSocket.instances[0].sent[0]).toEqual(expect.objectContaining({
       type: 'attach',
-      capabilities: { shellCommands: true, hiddenInput: false, fileDelivery: false, localFilesystem: false },
+      capabilities: { shellCommands: true, hiddenInput: false, fileDelivery: false, color: chalk.level > 0, localFilesystem: false },
     }));
     await remote.line_execute('!printf local');
 

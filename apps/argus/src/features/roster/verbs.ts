@@ -177,6 +177,9 @@ export const PACS_SERIES_ROSTER: VerbRoster<PacsSeriesFacts> = {
   rules: [
     { name: 'gather', label: (): string => 'GATHER', offered: (f: PacsSeriesFacts): boolean => f.inCube },
     { name: 'image', label: (): string => 'IMAGE', offered: (f: PacsSeriesFacts): boolean => f.inCube && f.folderKnown },
+    // DIR opens the series' own folder as a browser, the same face of a
+    // landed series as IMAGE, so it stands beside it under the same gate.
+    { name: 'dir', label: (): string => 'DIR', offered: (f: PacsSeriesFacts): boolean => f.inCube && f.folderKnown },
     { name: 'pull', label: (): string => 'PULL', offered: (f: PacsSeriesFacts): boolean => !f.inCube },
   ],
   states: [

@@ -32,16 +32,16 @@ function model_make(series: PacsSeries): PacsQueryModel {
 
 describe('seriesVerbs_offered', () => {
   it('offers the pull, and nothing else, for a series not yet in CUBE', () => {
-    expect(seriesVerbs_offered(series_make())).toEqual({ gather: false, image: false, pull: true });
+    expect(seriesVerbs_offered(series_make())).toEqual({ gather: false, image: false, dir: false, pull: true });
   });
 
   it('offers the gather, and withdraws the pull, once the series is home', () => {
-    expect(seriesVerbs_offered(series_make({ pulled: true }))).toEqual({ gather: true, image: false, pull: false });
+    expect(seriesVerbs_offered(series_make({ pulled: true }))).toEqual({ gather: true, image: false, dir: false, pull: false });
   });
 
   it('offers the image only once CUBE has named the folder', () => {
     const home: PacsSeries = series_make({ pulled: true, folderPath: '/SERVICES/PACS/X/p/s' });
-    expect(seriesVerbs_offered(home)).toEqual({ gather: true, image: true, pull: false });
+    expect(seriesVerbs_offered(home)).toEqual({ gather: true, image: true, dir: true, pull: false });
   });
 });
 
@@ -55,7 +55,7 @@ describe('seriesPulled_mark', () => {
 
     expect(series.pulled).toBe(true);
     expect(series.pulledFiles).toBe(62);
-    expect(seriesVerbs_offered(series)).toEqual({ gather: true, image: false, pull: false });
+    expect(seriesVerbs_offered(series)).toEqual({ gather: true, image: false, dir: false, pull: false });
   });
 
   it('reports nothing changed for a series already home, so no repaint is asked for', () => {
@@ -83,7 +83,7 @@ describe('seriesPulled_mark', () => {
     const model: PacsQueryModel = model_make(series);
     expect(seriesPulled_mark(model, '1.2.3', 62, '/SERVICES/PACS/PACSDCM/X/Y/AX-T2')).toBe(true);
     expect(series.folderPath).toBe('/SERVICES/PACS/PACSDCM/X/Y/AX-T2');
-    expect(seriesVerbs_offered(series)).toEqual({ gather: true, image: true, pull: false });
+    expect(seriesVerbs_offered(series)).toEqual({ gather: true, image: true, dir: true, pull: false });
   });
 
   it('changes a row already marked home when the folder arrives after the count', () => {

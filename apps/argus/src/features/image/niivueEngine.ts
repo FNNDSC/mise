@@ -112,6 +112,7 @@ export class NiivueEngine implements ImageEngine {
   }
 
   public async layout_set(layout: ImageLayout): Promise<boolean> {
+    if (layout === 'slab') return false;
     if (this.nv === null) return false;
     this.nv.setSliceType(layout === 'single' ? this.nv.sliceTypeAxial : layout === 'mpr' ? this.nv.sliceTypeMultiplanar : this.nv.sliceTypeRender);
     this.layout = layout;
@@ -146,6 +147,10 @@ export class NiivueEngine implements ImageEngine {
 
   public toolsOffered_get(): readonly ImageTool[] {
     return IMAGE_TOOLS;
+  }
+
+  public ghost_set(_level: number | null): boolean {
+    return false;
   }
 
   public tool_set(tool: ImageTool): boolean {

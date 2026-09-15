@@ -457,6 +457,14 @@ export class ImagePanel {
     return ok;
   }
 
+  /** SLAB: the ghost volume's opacity (0..1), or null to hide it. */
+  public ghost_set(level: number | null): boolean {
+    if (this.engine === null) return false;
+    const ok: boolean = this.engine.ghost_set(level);
+    if (!ok) this.handlers.note('image: ghost applies to the SLAB layout');
+    return ok;
+  }
+
   /** A named window and level preset for the series' modality. */
   public wlPreset_set(name: string): boolean {
     const modality: string = this.series?.modality ?? 'NIFTI';

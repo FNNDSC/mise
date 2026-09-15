@@ -2850,7 +2850,7 @@ async function surface_start(token: string): Promise<void> {
       if (panel === undefined) return `image ${verb}: no image pane on stage for '${paneId}'`;
       if (verb === 'layout') {
         const layout: string = args[0] ?? '';
-        if (!(IMAGE_LAYOUTS as readonly string[]).includes(layout)) return 'image layout single|mpr|3d';
+        if (!(IMAGE_LAYOUTS as readonly string[]).includes(layout)) return 'image layout single|mpr|3d|slab';
         if (await panel.layout_set(layout as ImageLayout)) return `image layout ${layout}`;
         return panel.state_get()?.waiting === layout ? `image layout ${layout}: waiting for LOAD` : `image layout ${layout}: not offered`;
       }
@@ -2902,6 +2902,12 @@ async function surface_start(token: string): Promise<void> {
         if (!Number.isFinite(bytes) || bytes < 0) return `image guard <bytes>|off (now ${panel.guard_get() === null ? 'off' : panel.guard_get()})`;
         panel.guard_set(bytes);
         return `image guard ${bytes}`;
+      }
+      if (verb === 'ghost') {
+        const word: string = (args[0] ?? '').toLowerCase();
+        const level: number | null = word === 'off' ? null : Number(args[0]);
+        if (level !== null && (!Number.isFinite(level) || level < 0 || level > 1)) return 'image ghost <0..1>|off (SLAB layout)';
+        return panel.ghost_set(level) ? `image ghost ${level === null ? 'off' : level}` : 'image ghost: SLAB layout only';
       }
       if (verb === 'tags') {
         const imageId: string | undefined = [...imagePanels.entries()].find(([, candidate]: [string, ImagePanel]): boolean => candidate === panel)?.[0];

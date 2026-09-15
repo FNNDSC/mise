@@ -15,6 +15,9 @@
  * @module
  */
 import type { DicomSeriesModel } from '@fnndsc/menu';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray.js';
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData.js';
+import type { SlabScene } from './slabScene.js';
 import {
   IMAGE_TOOLS,
   type ImageColormap,
@@ -104,6 +107,9 @@ interface ProbeImage {
   getPixelData: () => ArrayLike<number>;
 }
 
+/** The SLAB ghost's default opacity: faint enough that the crisp slice reads. */
+const SLAB_GHOST_DEFAULT: number = 0.12;
+
 let engineSerial: number = 0;
 
 /** Cornerstone3D as the image engine. */
@@ -133,6 +139,14 @@ export class CornerstoneEngine implements ImageEngine {
   private resizeObserver: ResizeObserver | null = null;
   /** The probe's listeners on the stack viewport, while the probe is the tool. */
   private probeOff: (() => void) | null = null;
+  /** SLAB: the raw-vtk scene, while SLAB is on the field. */
+  private slabScene: SlabScene | null = null;
+  /** SLAB: the ghost volume's opacity, 0..1, or null to hide it. */
+  private ghostLevel: number | null = SLAB_GHOST_DEFAULT;
+  /** SLAB: the volume's scalar range, for the ghost and the slice's window. */
+  private slabRange: [number, number] = [0, 1];
+  /** The window/level last set, shared with SLAB's crisp slice; null means the volume range. */
+  private lastVoi: { lower: number; upper: number } | null = null;
   /**
    * The frame tool on the primary (left) drag, or null for the layout's own
    * gesture — the crosshair in MPR, the trackball in 3D. A stack always has
@@ -217,11 +231,16 @@ export class CornerstoneEngine implements ImageEngine {
       await this.stack_show();
       return true;
     }
+    if (layout === 'slab') {
+      await this.slab_show();
+      return true;
+    }
     await this.volume_show(layout);
     return true;
   }
 
   public slice_set(slice: number): boolean {
+    if (this.layout === 'slab') return this.slabSlice_set(slice - 1);
     if (this.layout !== 'single' || this.renderingEngine === null || !this.filled) return false;
     const viewport = this.stackViewport_get();
     if (viewport === null) return false;
@@ -231,6 +250,8 @@ export class CornerstoneEngine implements ImageEngine {
   }
 
   public wl_set(lower: number, upper: number): boolean {
+    this.lastVoi = { lower, upper };
+    if (this.layout === 'slab') { if (this.slabScene === null) return false; this.slabScene.wl_set(lower, upper); return true; }
     if (this.renderingEngine === null) return false;
     for (const viewport of this.renderingEngine.getViewports()) {
       (viewport as { setProperties?: (properties: { voiRange: { lower: number; upper: number } }) => void }).setProperties?.({ voiRange: { lower, upper } });
@@ -261,6 +282,11 @@ export class CornerstoneEngine implements ImageEngine {
     if (!this.toolsOffered_get().includes(tool)) return false;
     const bindings = tools.Enums.MouseBindings;
     this.probe_disarm();
+
+    // SLAB drives its own vtk interactor: rotate on the left, zoom on the
+    // right, pan on the middle, always. The frame's zoom/pan blocks are
+    // offered but the gestures are already live, so the click is a no-op.
+    if (this.layout === 'slab') return true;
 
     // A rendered volume: zoom and pan take the primary drag, rotate keeps a
     // button of its own, and clicking the tool already on the primary hands
@@ -322,6 +348,13 @@ export class CornerstoneEngine implements ImageEngine {
     return true;
   }
 
+  public ghost_set(level: number | null): boolean {
+    if (this.layout !== 'slab' || this.slabScene === null) return false;
+    this.ghostLevel = level === null ? null : Math.max(0, Math.min(1, level));
+    this.slabScene.ghost_set(this.ghostLevel);
+    return true;
+  }
+
   /**
    * The frame tools that apply to what is on the field now.
    *
@@ -330,7 +363,7 @@ export class CornerstoneEngine implements ImageEngine {
    * no slice to measure or probe, so it offers navigation alone.
    */
   public toolsOffered_get(): readonly ImageTool[] {
-    if (this.layout === '3d') return ['zoom', 'pan'];
+    if (this.layout === '3d' || this.layout === 'slab') return ['zoom', 'pan'];
     if (this.layout === 'mpr') return ['wl', 'zoom', 'pan', 'length', 'angle', 'probe'];
     return IMAGE_TOOLS;
   }
@@ -469,8 +502,10 @@ export class CornerstoneEngine implements ImageEngine {
       queued = true;
       requestAnimationFrame((): void => {
         queued = false;
-        if (this.disposed || this.renderingEngine === null) return;
-        this.renderingEngine.resize(true, true);
+        if (this.disposed) return;
+        if (this.slabScene !== null) { this.slabScene.resize(); return; }
+        if (this.renderingEngine === null) return;
+        try { this.renderingEngine.resize(true, true); } catch { /* a mid-build volume resize can throw; the next render recovers */ }
       });
     });
     this.resizeObserver.observe(field);
@@ -837,6 +872,119 @@ export class CornerstoneEngine implements ImageEngine {
     if (rest[1] !== undefined) group.setToolActive(rest[1], { bindings: [{ mouseButton: bindings.Auxiliary }] });
   }
 
+  /**
+   * SLAB: a crisp acquisition slice sweeping through a ghost of the volume.
+   *
+   * One VOLUME_3D viewport carries two actors: the volume, ghosted to a
+   * faint shell, and a `vtkImageSlice` plane showing the real DICOM slice at
+   * full window/level. The wheel moves the plane through the volume; the
+   * plane rides the volume's own geometry, so it lands at each slice's true
+   * depth. Cornerstone keeps the pixels in a voxel manager rather than the
+   * image data's scalars, so they are attached here for the plane's mapper.
+   */
+  /**
+   * SLAB: a crisp acquisition slice sweeping through a ghost of the volume.
+   *
+   * The scene is vtk's own, not a Cornerstone viewport: a `vtkImageSlice`
+   * composited into a Cornerstone `VOLUME_3D` viewport crashes that
+   * viewport's z-buffer pass, while the same actors in a plain vtk renderer
+   * compose fine. Cornerstone still loads the pixels; they are handed to the
+   * scene as one `vtkImageData`. See `slabScene.ts`.
+   */
+  private async slab_show(): Promise<void> {
+    if (this.libraries === null || this.field === null) return;
+    const { core } = this.libraries;
+    const started: number = performance.now();
+    const total: number = this.imageIds.length;
+    this.host.readout_set(`LOADING ${total} SLICES FOR SLAB`);
+    this.field_clear();
+    this.layout = 'slab';
+    this.host.progress_set({ label: 'BUILDING SLAB', done: 0, total });
+    let loaded: number = 0;
+    await Promise.all(this.imageIds.map((imageId: string): Promise<unknown> =>
+      core.imageLoader.loadAndCacheImage(imageId)
+        .catch((): null => null)
+        .finally((): void => { loaded++; this.host.progress_set({ label: 'BUILDING SLAB', done: loaded, total }); })));
+    if (this.disposed || this.field === null) return;
+    // A Cornerstone volume is the easiest way to stack the slices with the
+    // right geometry; its pixels and geometry are copied into a fresh
+    // vtkImageData for the scene, so nothing Cornerstone renders is touched.
+    const engineId: string = `${this.engineId_get()}-slab-${engineSerial++}`;
+    const volumeId: string = `cornerstoneStreamingImageVolume:${engineId}`;
+    if (core.cache.getVolume(volumeId) !== undefined) {
+      try { core.cache.removeVolumeLoadObject(volumeId); } catch { /* not loaded */ }
+    }
+    const volume = await core.volumeLoader.createAndCacheVolume(volumeId, { imageIds: this.imageIds });
+    await (volume as { load: () => Promise<void> | void }).load();
+    if (this.disposed || this.field === null) return;
+    const volAny = volume as unknown as {
+      voxelManager?: { getCompleteScalarDataArray?: () => ArrayLike<number>; scalarData?: ArrayLike<number> };
+      dimensions?: number[]; spacing?: number[]; origin?: number[]; direction?: number[];
+    };
+    // Without a viewport the voxel manager has not materialized its array;
+    // getCompleteScalarDataArray() builds it from the cached frames.
+    const sd: ArrayLike<number> | undefined = volAny.voxelManager?.getCompleteScalarDataArray?.() ?? volAny.voxelManager?.scalarData;
+    const dimK: number = volAny.dimensions?.[2] ?? total;
+    if (sd === undefined || volAny.dimensions === undefined) {
+      this.host.progress_set(null);
+      this.host.readout_set('SLAB: could not read the volume');
+      return;
+    }
+    const da = vtkDataArray.newInstance({ numberOfComponents: 1, values: sd });
+    this.slabRange = da.getRange() as [number, number];
+    const imageData = vtkImageData.newInstance();
+    (imageData as unknown as { setDimensions: (d: number[]) => void }).setDimensions(volAny.dimensions);
+    if (volAny.spacing !== undefined) (imageData as unknown as { setSpacing: (s: number[]) => void }).setSpacing(volAny.spacing);
+    if (volAny.origin !== undefined) (imageData as unknown as { setOrigin: (o: number[]) => void }).setOrigin(volAny.origin);
+    if (volAny.direction !== undefined) (imageData as unknown as { setDirection: (d: number[]) => void }).setDirection(volAny.direction);
+    (imageData as unknown as { getPointData: () => { setScalars: (a: unknown) => void } }).getPointData().setScalars(da);
+    const startK: number = Math.max(0, Math.min((this.slice > 0 ? this.slice : (this.startAt || 1)) - 1, dimK - 1));
+    const element: HTMLDivElement = document.createElement('div');
+    element.className = 'image-viewport image-viewport-render';
+    const grid: HTMLElement = document.createElement('div');
+    grid.className = 'image-render';
+    grid.appendChild(element);
+    this.field.appendChild(grid);
+    for (let i = 0; i < 60 && element.offsetWidth === 0; i++) {
+      await new Promise<void>((resolve): void => { requestAnimationFrame((): void => resolve()); });
+    }
+    if (this.disposed) return;
+    const { slabScene_open } = await import('./slabScene.js');
+    this.slabScene = slabScene_open(element, {
+      imageData,
+      range: this.slabRange,
+      startK,
+      slices: dimK,
+      voi: this.lastVoi,
+      ghost: this.ghostLevel,
+      onSweep: (k: number): void => this.slabSwept(k, dimK),
+    });
+    this.slice = startK + 1;
+    this.primary = null;
+    this.host.progress_set(null);
+    this.host.readout_set(`SLAB \u00b7 z ${startK + 1} / ${dimK}`);
+    this.host.note(`image: slab up in ${Math.round(performance.now() - started)} ms`);
+    const path: string = this.imageIds[startK] !== undefined ? (this.pathByImageId.get(this.imageIds[startK] ?? '') ?? '') : '';
+    if (path !== '') this.host.regard(path);
+  }
+
+  /** Called by the scene when the wheel sweeps: update the bar and the regard. */
+  private slabSwept(k: number, dimK: number): void {
+    this.slice = k + 1;
+    this.host.readout_set(`SLAB \u00b7 z ${k + 1} / ${dimK}`);
+    const path: string = this.imageIds[k] !== undefined ? (this.pathByImageId.get(this.imageIds[k] ?? '') ?? '') : '';
+    if (path !== '') this.host.regard(path);
+  }
+
+  /** Sweeps the crisp slice to a zero-based index; false unless SLAB is up. */
+  private slabSlice_set(k: number): boolean {
+    if (this.layout !== 'slab' || this.slabScene === null) return false;
+    this.slabScene.sweep(k);
+    this.slabSwept(this.slabScene.slice_get(), this.imageIds.length);
+    return true;
+  }
+
+
   private viewport_make(name: string): HTMLDivElement {
     const element: HTMLDivElement = document.createElement('div');
     element.className = `image-viewport image-viewport-${name}`;
@@ -846,6 +994,8 @@ export class CornerstoneEngine implements ImageEngine {
 
   private field_clear(): void {
     this.probe_disarm();
+    this.slabScene?.dispose();
+    this.slabScene = null;
     if (this.renderingEngine !== null && this.libraries !== null) {
       for (const layout of ['single', 'mpr', '3d']) {
         this.libraries.tools.ToolGroupManager.destroyToolGroup(`${this.engineId_get()}-${layout}`);

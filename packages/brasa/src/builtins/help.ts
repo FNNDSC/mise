@@ -1151,16 +1151,22 @@ export const helpText: Record<string, CommandHelp> = {
   },
   image: {
     usage: 'image [--force] <path>',
-    description: 'Show a DICOM series or a volume. `image <path>` resolves what the path is — a series folder, a '
-      + '.dcm (its series), or a NIfTI/MGZ volume — and emits a show-this-image intent for whatever surface is '
-      + 'watching: a graphical surface (ARGUS) opens a rendered pane, a terminal prints this reflection. So the '
-      + 'same command works from a browser and from a TTY on one session. `--force` rides through the volume-size '
-      + 'guard a graphical surface would otherwise hold at. The pane\'s own controls (layout, slice, window, ...) '
-      + 'are driven where the pane lives.',
+    summary: 'Show a DICOM series or a volume — a browser draws it, a terminal reflects it',
+    description: 'Open an image as the kernel sees it. `image <path>` resolves what the path is — a series '
+      + 'folder, a `.dcm` file (its folder is the series), or a NIfTI/MGZ volume — and emits an image.view '
+      + 'intent every attached surface renders in its own way: a graphical surface (ARGUS) opens a rendered '
+      + 'pane; a text surface (a shared TTY) prints a reflection — the same facts `dcm series` shows, under an '
+      + '`image` line, with a small ASCII or truecolour thumbnail of the middle slice. So the same `image` line '
+      + 'works from a browser and from a terminal sharing one CALYPSO session.',
+    options: [
+      'OPTIONS:',
+      '  --force                         Ride through the volume-size guard a graphical surface would hold at',
+    ],
     examples: [
-      'image ~/uploads/sag-anon                       # A series folder',
+      'image ~/uploads/sag-anon                      # A series folder',
       'image /SERVICES/PACS/PACSDCM/patient/study/00005-T1-abcdef0',
-      'image ~/feeds/feed_12/.../brain.nii.gz          # A volume',
+      'image scan.dcm                                # A single file; its folder is the series',
+      'image brain.nii.gz --force                    # A volume, past the size guard',
     ],
   },
   cubepath: {
@@ -1516,6 +1522,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
     Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami'],
     Monitoring: ['proc'],
+    Imaging: ['dcm', 'image'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
     'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],

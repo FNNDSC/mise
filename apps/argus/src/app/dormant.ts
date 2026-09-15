@@ -46,6 +46,13 @@ export interface GroupSnapshot {
    * rebuilds the domain, its content and the tiles as they were.
    */
   script?: readonly string[];
+  /**
+   * CFS folders of the arrangement's DIR (file-browser) tiles, replayed after
+   * the script so the browser re-opens beside the viewer it accompanied.
+   * A files tile is not a console command, so it rides here rather than in the
+   * script.
+   */
+  dirs?: readonly string[];
   /** The image view state, when the group holds a viewer. */
   view?: GroupView;
   /** A small raster of the viewer at dormancy, as a data URL. */

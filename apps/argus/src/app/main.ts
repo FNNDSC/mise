@@ -2264,12 +2264,20 @@ async function surface_start(token: string): Promise<void> {
     }
     script.push(...viewerLines);
     if (hasTags) script.push('image tags');
+    // DIR (file-browser) tiles beside the viewer: their rooted folders, so the
+    // browser re-opens with the arrangement rather than being lost.
+    const dirs: string[] = paneInstances_list()
+      .filter((instance): boolean => shown.has(instance.id) && instance.id !== 'files' && paneKind_get(instance.id) === 'files')
+      .map((instance): string | null => filesPanels.get(instance.id)?.path_current() ?? null)
+      .filter((path): path is string => typeof path === 'string' && path.length > 0);
+    const members: string[] = ['viewer', ...(hasTags ? ['tags'] : []), ...(dirs.length > 0 ? ['files'] : [])];
     dormant.add({
       id: anchor,
       label: label ?? (anchor.split('/').pop() ?? anchor),
       regard: { address: anchor, modelKind: 'dicom.series' },
-      members: hasTags ? ['viewer', 'tags'] : ['viewer'],
+      members,
       script,
+      ...(dirs.length > 0 ? { dirs } : {}),
       ...(thumbnail === undefined ? {} : { thumbnail }),
       lastTouched: Date.now(),
     });
@@ -2356,6 +2364,9 @@ async function surface_start(token: string): Promise<void> {
     // so the whole arrangement (PACS beside the image) returns, not the image
     // beside a stray browser.
     await desktop_replay(snapshot.script);
+    // The DIR tiles re-open beside the viewer that is now on stage, joining
+    // its group — the third tile the arrangement had.
+    for (const dir of snapshot.dirs ?? []) dir_open(dir);
   };
 
   const panesPanel: PanesPanel = new PanesPanel(panesMount, {

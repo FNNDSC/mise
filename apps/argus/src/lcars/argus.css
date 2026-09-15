@@ -2592,6 +2592,10 @@ body[data-header='dag'] #header-dag {
 
 .files-listing {
   margin-bottom: 1rem;
+  /* A row keeps its columns their declared width (the NAME floor included);
+     when the pane is too narrow to hold them all, the listing scrolls to the
+     rest rather than collapsing or clipping a column. */
+  overflow-x: auto;
 }
 
 .files-path {

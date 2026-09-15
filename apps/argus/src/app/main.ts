@@ -1613,9 +1613,20 @@ async function surface_start(token: string): Promise<void> {
    * The image pane that answers for a pane: itself when it is one, else
    * the image pane in its link group, else a new one split beside it.
    */
-  const imagePane_for = (fromId: string | null): ImagePanel | null => {
-    if (fromId !== null && imagePanels.has(fromId)) return imagePanels.get(fromId) ?? null;
+  const imagePane_for = (fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null => {
+    // A series is a group anchored on its own address. When an anchor is
+    // given (a viewer opened from PACS, which has no host group of its own),
+    // the group's regard is set to the series so it IS that series' group,
+    // and a viewer already on stage regarding the same series is reused
+    // rather than spawning a second viewer for it.
+    const anchor_set = (id: string): void => { if (anchor !== undefined) subjects.regard_write(id, anchor); };
+    if (fromId !== null && imagePanels.has(fromId)) { anchor_set(fromId); return imagePanels.get(fromId) ?? null; }
     const shown: Set<string> = new Set(layout.panes_shown());
+    if (anchor !== undefined) {
+      for (const [id, panel] of imagePanels) {
+        if (shown.has(id) && subjects.regard_get(id)?.address === anchor.address) { anchor_set(id); return panel; }
+      }
+    }
     const group: string | null = fromId !== null ? subjects.group_of(fromId) : null;
     for (const [id, panel] of imagePanels) {
       if (shown.has(id) && group !== null && subjects.group_of(id) === group) return panel;
@@ -1628,6 +1639,7 @@ async function surface_start(token: string): Promise<void> {
       layout.mount_remove(spawned.id);
       return null;
     }
+    anchor_set(spawned.id);
     return imagePanels.get(spawned.id) ?? null;
   };
 
@@ -1643,7 +1655,16 @@ async function surface_start(token: string): Promise<void> {
     // The pane is on stage before the kernel is asked. The ask is a header
     // read over a wire and can take seconds; a press that shows nothing for
     // those seconds is a press the operator repeats.
-    const panel: ImagePanel | null = imagePane_for(fromId);
+    // A viewer opened without a host group (from PACS) anchors its own group
+    // on the series (or volume) it shows, so it is that series' group: the
+    // pane drawer reaches it, and a second IMAGE on the same series reuses it.
+    // A viewer opened from a pane that has a group (a files row) joins that
+    // group as before, so no anchor is passed.
+    const anchor: { address: string; modelKind: string } | undefined = fromId !== null ? undefined
+      : VOLUME_FILE_PATTERN.test(path)
+        ? { address: path, modelKind: 'image.volume' }
+        : { address: DICOM_FILE_PATTERN.test(path) ? path.slice(0, path.lastIndexOf('/')) : path.replace(/\/$/, ''), modelKind: 'dicom.series' };
+    const panel: ImagePanel | null = imagePane_for(fromId, anchor);
     if (panel === null) return 'image: no pane to open beside';
     if (VOLUME_FILE_PATTERN.test(path)) {
       panel.opening_show(path);

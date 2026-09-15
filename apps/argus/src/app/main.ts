@@ -2233,17 +2233,11 @@ async function surface_start(token: string): Promise<void> {
     const shown: Set<string> = new Set(layout.panes_shown());
     const preset: string = layout.activePreset_get();
     if (preset === 'panes') return;
-    const tree = layout.tree_get();
-    if (tree === null) return;
-    // Leaves left-to-right, so the tiles are captured in the order they sit.
-    type TreeNode = { pane: string } | { first: TreeNode; second: TreeNode };
-    const leaves: string[] = [];
-    const walk = (node: TreeNode): void => {
-      if ('pane' in node) { leaves.push(node.pane); return; }
-      walk(node.first);
-      walk(node.second);
-    };
-    walk(tree as TreeNode);
+    // Tiles in CREATION order (the registry's insertion order): a desktop is
+    // rebuilt by replaying the opens, each FROM the domain pane, so the order
+    // they were made — not where they ended up — is what reproduces the
+    // geometry (IMAGE from PACS, then DIR from PACS, gives PACS|DIR|IMAGE).
+    const leaves: string[] = paneInstances_list().map((instance): string => instance.id);
     let anchor: string | undefined;
     let label: string | undefined;
     let thumbnail: string | undefined;
@@ -2361,24 +2355,30 @@ async function surface_start(token: string): Promise<void> {
   const group_restore = async (id: string): Promise<void> => {
     const snapshot: GroupSnapshot | undefined = dormant.get(id);
     if (snapshot === undefined || snapshot.script === undefined) return;
-    // The desktop is coming back on stage; it re-cards itself when next left.
     dormant.dismiss(id);
-    // Replay under the capture guard so re-entering domains does not re-card
-    // mid-restore. The domain and its query come first, then the content tiles
-    // in their stage order — a DIR opens beside the domain, the viewer beside
-    // the DIR — so the arrangement returns in the same left-to-right order it
-    // left in, not with the tiles reshuffled.
+    // The domain pane every tile is launched FROM (as the operator launched
+    // each IMAGE/DIR from the PACS pane): re-focused before each open so the
+    // tile splits from the domain, not from the previous tile — which is what
+    // keeps the arrangement's order and widths.
+    const domainWord: string = (snapshot.script[0] ?? 'view files').split(/\s+/)[1] ?? 'files';
+    const domainPane: string = domainWord === 'runs' ? 'dag' : domainWord === 'pacs' ? 'pacs' : 'files';
     desktopReplaying = true;
     try {
       for (const line of snapshot.script) await replayLine_run(line);
+      let lastViewer: string | null = null;
       for (const tile of snapshot.tiles ?? []) {
         if (tile.kind === 'viewer' && tile.path !== undefined) {
-          await replayLine_run(`image ${tile.path}`);
-          for (const line of tile.view ?? []) await replayLine_run(line);
+          layout.focus_set(domainPane);
+          await image_open(null, tile.path);
+          await wait_until((): boolean => [...imagePanels].some(([paneId, panel]): boolean => layout.panes_shown().includes(paneId) && panel.state_get()?.path === tile.path), 40000, 300);
+          lastViewer = [...imagePanels].find(([, panel]): boolean => panel.state_get()?.path === tile.path)?.[0] ?? null;
+          for (const line of tile.view ?? []) { if (lastViewer !== null) layout.focus_set(lastViewer); await replayLine_run(line); }
         } else if (tile.kind === 'dir' && tile.path !== undefined) {
+          layout.focus_set(domainPane);
           dir_open(tile.path);
-          await new Promise((resolve): void => { window.setTimeout(resolve, 500); });
-        } else if (tile.kind === 'tags') {
+          await new Promise((resolve): void => { window.setTimeout(resolve, 600); });
+        } else if (tile.kind === 'tags' && lastViewer !== null) {
+          layout.focus_set(lastViewer);
           await replayLine_run('image tags');
         }
       }

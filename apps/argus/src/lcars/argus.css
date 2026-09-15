@@ -835,7 +835,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
      stylesheet's. */
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
-  overflow-y: auto;
+  /* Scroll in both axes: a series row's fixed columns (verbs included) can be
+     wider than the pane when PACS sits split at half width beside a viewer,
+     and a fixed-column listing must not silently clip its last verb — it
+     scrolls to it instead. */
+  overflow: auto;
   min-height: 0;
 }
 

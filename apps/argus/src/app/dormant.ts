@@ -39,6 +39,13 @@ export interface GroupSnapshot {
   regard: { address: string; modelKind: string };
   /** Member kinds for the card's badges: `viewer`, `tags`, `files`. */
   members: string[];
+  /**
+   * The console-line script that reproduces the whole arrangement when
+   * replayed — `view pacs`, `pacs query …`, `image <path>`, `image layout …`.
+   * A desktop is a replay of actions, not a pixel snapshot: running these
+   * rebuilds the domain, its content and the tiles as they were.
+   */
+  script?: readonly string[];
   /** The image view state, when the group holds a viewer. */
   view?: GroupView;
   /** A small raster of the viewer at dormancy, as a data URL. */

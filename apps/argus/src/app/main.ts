@@ -2213,74 +2213,125 @@ async function surface_start(token: string): Promise<void> {
     }
   };
 
+  /** Whether a desktop replay is in flight; capture is suppressed during it. */
+  let desktopReplaying: boolean = false;
+
+  /** Console-line verbs that tune an open viewer rather than open one. */
+  const IMAGE_SUBVERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
+
   /**
-   * Snapshots a link group about to leave the stage: its anchor, view state,
-   * members and a thumbnail, keyed by the anchor address so one series is one
-   * card. Returns null for a group with nothing to rebuild from (an empty
-   * pane), which is not worth retaining.
+   * Captures the current stage as a DESKTOP: a script of console lines that
+   * reproduces it when replayed — the domain, its content (a PACS query, a
+   * viewer at its layout/slice/W-L/colormap/ghost, its tags), and, by replay,
+   * the tiles as they were. A desktop is a replay of actions, not a pixel
+   * snapshot. Keyed by the on-stage viewer's series so returning to the same
+   * arrangement updates its one card. A stage with no viewer is a bare domain,
+   * reachable from its gutter button, so it is not carded.
    */
-  const group_snapshot = (paneIds: string[]): GroupSnapshot | null => {
-    const members: string[] = [];
-    let view: GroupSnapshot['view'];
-    let thumbnail: string | undefined;
-    let anchorAddress: string | undefined;
+  const stageDesktop_capture = (): void => {
+    if (desktopReplaying) return;
+    const shown: Set<string> = new Set(layout.panes_shown());
+    const preset: string = layout.activePreset_get();
+    if (preset === 'panes') return;
+    let anchor: string | undefined;
     let label: string | undefined;
-    for (const id of paneIds) {
-      const kind: string | null = paneKind_get(id);
-      if (kind === 'image') {
-        members.push('viewer');
-        const state = imagePanels.get(id)?.state_get() ?? null;
-        if (state !== null) {
-          view = { layout: state.layout, slice: state.slice, voi: state.voi, ghost: state.ghost, colormap: state.colormap };
-          if (state.path !== null) anchorAddress = state.path;
-          const series = imagePanels.get(id)?.series_get() ?? null;
-          const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
-          if (parts.length > 0) label = parts.join(' · ');
-          thumbnail = paneThumbnail_capture(id);
-        }
-      } else if (kind === 'tags') members.push('tags');
-      else if (kind === 'files') members.push('files');
-      else if (kind === 'view') members.push('viewer');
+    let thumbnail: string | undefined;
+    const viewerLines: string[] = [];
+    for (const [id, panel] of imagePanels) {
+      if (!shown.has(id)) continue;
+      const state = panel.state_get();
+      if (state === null || state.path === null) continue;
+      viewerLines.push(`image ${state.path}`);
+      if (state.layout !== 'single') viewerLines.push(`image layout ${state.layout}`);
+      if (state.colormap !== undefined && state.colormap !== 'gray') viewerLines.push(`image colormap ${state.colormap}`);
+      if (state.voi !== undefined && state.voi !== null) viewerLines.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
+      if (state.slice > 1) viewerLines.push(`image slice ${state.slice}`);
+      if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') viewerLines.push(`image ghost ${state.ghost}`);
+      if (anchor === undefined) {
+        anchor = state.path;
+        const series = panel.series_get();
+        const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
+        if (parts.length > 0) label = parts.join(' \u00b7 ');
+        thumbnail = paneThumbnail_capture(id);
+      }
     }
-    const regard = paneIds.map((id): RegardValue | null => subjects.regard_get(id)).find((value): boolean => value !== null) ?? null;
-    const address: string | undefined = anchorAddress ?? regard?.address;
-    if (address === undefined) return null;
-    return {
-      id: address,
-      label: label ?? (address.split('/').pop() ?? address),
-      regard: { address, modelKind: regard?.modelKind ?? 'fs.file' },
-      members: members.length > 0 ? members : ['viewer'],
-      ...(view === undefined ? {} : { view }),
+    if (anchor === undefined) return;
+    const hasTags: boolean = paneInstances_list().some((instance): boolean => shown.has(instance.id) && paneKind_get(instance.id) === 'tags');
+    const script: string[] = [`view ${preset === 'dag' ? 'runs' : preset}`];
+    if (preset === 'pacs') {
+      const query: string | null = pacsPanel.query_get();
+      if (query !== null) script.push(query);
+    }
+    script.push(...viewerLines);
+    if (hasTags) script.push('image tags');
+    dormant.add({
+      id: anchor,
+      label: label ?? (anchor.split('/').pop() ?? anchor),
+      regard: { address: anchor, modelKind: 'dicom.series' },
+      members: hasTags ? ['viewer', 'tags'] : ['viewer'],
+      script,
       ...(thumbnail === undefined ? {} : { thumbnail }),
       lastTouched: Date.now(),
-    };
+    });
   };
 
   const orphans_dispose = (): void => {
     const shown: Set<string> = new Set(layout.panes_shown());
-    const doomed: PaneInstance[] = paneInstances_list().filter(
-      (instance): boolean => !shown.has(instance.id) && instance.id !== 'files' && instance.id !== 'dag' && instance.id !== 'pacs' && instance.id !== 'panes',
-    );
-    // A leaving group is snapshotted dormant before its panes are disposed,
-    // so a navigation away never loses the arrangement — only DISMISS does.
-    const byGroup: Map<string, string[]> = new Map<string, string[]>();
-    for (const instance of doomed) {
-      const groupId: string = subjects.group_of(instance.id);
-      (byGroup.get(groupId) ?? byGroup.set(groupId, []).get(groupId) as string[]).push(instance.id);
-    }
-    for (const ids of byGroup.values()) {
-      const snapshot: GroupSnapshot | null = group_snapshot(ids);
-      if (snapshot !== null) dormant.add(snapshot);
-    }
-    for (const instance of doomed) {
+    for (const instance of paneInstances_list()) {
+      if (shown.has(instance.id)) continue;
+      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs' || instance.id === 'panes') continue;
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
     }
   };
 
-  const home_apply = (): void => {
-    layout.preset_apply('files');
+  /**
+   * Enters a gutter domain. The one chokepoint every domain switch routes
+   * through: it captures the outgoing stage as a desktop BEFORE the preset
+   * changes (so the context a switch would lose becomes a PANES card), then
+   * applies the new preset and disposes what it left behind.
+   */
+  const domain_enter = (preset: string): void => {
+    stageDesktop_capture();
+    layout.preset_apply(preset);
     orphans_dispose();
+  };
+
+  /** Waits until a read is true, or the limit passes; polls, never sleeps blind. */
+  const wait_until = async (read: () => boolean, limit: number = 3000, step: number = 200): Promise<void> => {
+    for (let waited = 0; waited < limit; waited += step) {
+      if (read()) return;
+      await new Promise((resolve): void => { window.setTimeout(resolve, step); });
+    }
+  };
+
+  /**
+   * Replays a desktop's script — the console lines that rebuild its
+   * arrangement. Each line runs as if typed; the loop waits on the DOM for
+   * the slow ones (a viewer loading, a query answering) rather than guessing
+   * at a delay, so a later `image layout` lands on a viewer that exists.
+   */
+  const desktop_replay = async (script: readonly string[]): Promise<void> => {
+    desktopReplaying = true;
+    try {
+      for (const line of script) {
+        terminal.line_run(line);
+        const words: string[] = line.trim().split(/\s+/);
+        if (words[0] === 'image' && words[1] !== undefined && !IMAGE_SUBVERBS.has(words[1]) && words[1] !== '--force') {
+          await wait_until((): boolean => [...document.querySelectorAll('.pane-image')].some((pane): boolean => /SLICE \d+ OF \d+/.test(pane.querySelector('.pane-state')?.textContent ?? '')), 40000, 300);
+        } else if (words[0] === 'pacs' && words[1] === 'query') {
+          await wait_until((): boolean => document.querySelector('#pacs-workspace .listing-row') !== null, 6000, 300);
+        } else {
+          await new Promise((resolve): void => { window.setTimeout(resolve, 400); });
+        }
+      }
+    } finally {
+      desktopReplaying = false;
+    }
+  };
+
+  const home_apply = (): void => {
+    domain_enter('files');
     dagPanel.size_fit();
   };
 
@@ -2297,33 +2348,14 @@ async function surface_start(token: string): Promise<void> {
    */
   const group_restore = async (id: string): Promise<void> => {
     const snapshot: GroupSnapshot | undefined = dormant.get(id);
-    if (snapshot === undefined) return;
+    if (snapshot === undefined || snapshot.script === undefined) return;
+    // The desktop is coming back on stage; it re-cards itself when next left.
     dormant.dismiss(id);
-    home_apply();
-    const address: string = snapshot.regard.address;
-    const panel: ImagePanel | null = imagePane_for(null, { address, modelKind: snapshot.regard.modelKind });
-    if (panel === null) return;
-    panel.opening_show(address);
-    if (VOLUME_FILE_PATTERN.test(address)) {
-      await panel.volume_show(address);
-    } else {
-      const series: DicomSeriesModel | null = await series_ask(address);
-      if (series === null) {
-        panel.opening_fail(address, 'NOT A READABLE SERIES');
-        return;
-      }
-      await panel.series_show(series, { startAt: snapshot.view?.slice ?? 1 });
-    }
-    const view: GroupSnapshot['view'] = snapshot.view;
-    if (view !== undefined) {
-      if (view.colormap !== undefined) panel.colormap_set(view.colormap as ImageColormap);
-      if (view.voi !== undefined && view.voi !== null) panel.wl_set(view.voi.lower, view.voi.upper);
-      if (view.layout !== 'single') await panel.layout_set(view.layout as ImageLayout);
-      if (view.ghost !== undefined && view.ghost !== null) panel.ghost_set(view.ghost);
-      if (view.slice > 0) panel.slice_set(view.slice);
-    }
-    const viewerId: string | null = imagePane_idOf(panel);
-    if (viewerId !== null && snapshot.members.includes('tags')) tagsPane_open(viewerId);
+    // Replaying `view <domain>` re-enters the domain and its content, and the
+    // viewer's own open splits it beside that domain exactly as it did live —
+    // so the whole arrangement (PACS beside the image) returns, not the image
+    // beside a stray browser.
+    await desktop_replay(snapshot.script);
   };
 
   const panesPanel: PanesPanel = new PanesPanel(panesMount, {
@@ -2966,8 +2998,7 @@ async function surface_start(token: string): Promise<void> {
    * @param filter - A roster filter to apply, or none.
    */
   const runs_show = (filter: string = ''): void => {
-    layout.preset_apply('dag');
-    orphans_dispose();
+    domain_enter('dag');
     dagPanel.list_reset();
     dagPanel.roster_filter(filter);
     dagPanel.feedsChooser_request();
@@ -2987,16 +3018,14 @@ async function surface_start(token: string): Promise<void> {
   element_require('gutter-tools').addEventListener('click', (): void => {
     // A given always renders its target (gutter law) — no toggling;
     // dismissal is the pane drawer's CLOSE.
-    layout.preset_apply('pacs');
-    orphans_dispose();
+    domain_enter('pacs');
     layout.focus_set('pacs');
     consoleFocused_set(false);
   });
   element_require('gutter-panes').addEventListener('click', (): void => {
-    // Opening PANES sends the current group dormant (orphans_dispose) — free
-    // and recoverable, since it becomes a card in the grid this draws.
-    layout.preset_apply('panes');
-    orphans_dispose();
+    // Opening PANES captures the current arrangement as a desktop card (the
+    // chokepoint), free and recoverable, then draws the grid.
+    domain_enter('panes');
     panesPanel.render();
     layout.focus_set('panes');
     consoleFocused_set(false);

@@ -17,6 +17,7 @@
  */
 import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
+import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot } from './dormant.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
   ArgusClient,
@@ -2139,11 +2140,100 @@ async function surface_start(token: string): Promise<void> {
 
   // Disposes split-born instances the current tree no longer holds; the
   // primaries (the presets' panes) always survive offstage.
+  // Groups that have left the stage are not gone: a snapshot of each is kept
+  // dormant so the PANES view can bring it back. Rehydrated from the surface's
+  // own storage on load — dormant, never onto the stage.
+  const dormant: DormantRegistry = new DormantRegistry(DORMANT_CAP, localKeyStore());
+  // The dormant set is read (and, at slice 3, restored) by the PANES view.
+  // Exposed for verification until that view exists.
+  Object.assign(globalThis as Record<string, unknown>, {
+    __argusDormant: {
+      list: (): GroupSnapshot[] => dormant.list(),
+      get: (id: string): GroupSnapshot | undefined => dormant.get(id),
+      dismiss: (id: string): boolean => dormant.dismiss(id),
+    },
+  });
+
+  /** A small raster of a pane's canvas at dormancy, for the group's card. */
+  const paneThumbnail_capture = (paneId: string): string | undefined => {
+    const canvas: HTMLCanvasElement | null | undefined = paneInstance_get(paneId)?.mount.querySelector<HTMLCanvasElement>('canvas');
+    if (canvas === null || canvas === undefined || canvas.width === 0) return undefined;
+    try {
+      const width: number = 96;
+      const height: number = Math.max(1, Math.round((canvas.height / canvas.width) * width));
+      const off: HTMLCanvasElement = document.createElement('canvas');
+      off.width = width;
+      off.height = height;
+      const ctx: CanvasRenderingContext2D | null = off.getContext('2d');
+      if (ctx === null) return undefined;
+      ctx.drawImage(canvas, 0, 0, width, height);
+      return off.toDataURL('image/png');
+    } catch {
+      // A tainted or non-preserving (WebGL) buffer: the card falls back to a glyph.
+      return undefined;
+    }
+  };
+
+  /**
+   * Snapshots a link group about to leave the stage: its anchor, view state,
+   * members and a thumbnail, keyed by the anchor address so one series is one
+   * card. Returns null for a group with nothing to rebuild from (an empty
+   * pane), which is not worth retaining.
+   */
+  const group_snapshot = (paneIds: string[]): GroupSnapshot | null => {
+    const members: string[] = [];
+    let view: GroupSnapshot['view'];
+    let thumbnail: string | undefined;
+    let anchorAddress: string | undefined;
+    let label: string | undefined;
+    for (const id of paneIds) {
+      const kind: string | null = paneKind_get(id);
+      if (kind === 'image') {
+        members.push('viewer');
+        const state = imagePanels.get(id)?.state_get() ?? null;
+        if (state !== null) {
+          view = { layout: state.layout, slice: state.slice, voi: state.voi, ghost: state.ghost, colormap: state.colormap };
+          if (state.path !== null) anchorAddress = state.path;
+          const series = imagePanels.get(id)?.series_get() ?? null;
+          const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
+          if (parts.length > 0) label = parts.join(' · ');
+          thumbnail = paneThumbnail_capture(id);
+        }
+      } else if (kind === 'tags') members.push('tags');
+      else if (kind === 'files') members.push('files');
+      else if (kind === 'view') members.push('viewer');
+    }
+    const regard = paneIds.map((id): RegardValue | null => subjects.regard_get(id)).find((value): boolean => value !== null) ?? null;
+    const address: string | undefined = anchorAddress ?? regard?.address;
+    if (address === undefined) return null;
+    return {
+      id: address,
+      label: label ?? (address.split('/').pop() ?? address),
+      regard: { address, modelKind: regard?.modelKind ?? 'fs.file' },
+      members: members.length > 0 ? members : ['viewer'],
+      ...(view === undefined ? {} : { view }),
+      ...(thumbnail === undefined ? {} : { thumbnail }),
+      lastTouched: Date.now(),
+    };
+  };
+
   const orphans_dispose = (): void => {
     const shown: Set<string> = new Set(layout.panes_shown());
-    for (const instance of paneInstances_list()) {
-      if (shown.has(instance.id)) continue;
-      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs') continue;
+    const doomed: PaneInstance[] = paneInstances_list().filter(
+      (instance): boolean => !shown.has(instance.id) && instance.id !== 'files' && instance.id !== 'dag' && instance.id !== 'pacs',
+    );
+    // A leaving group is snapshotted dormant before its panes are disposed,
+    // so a navigation away never loses the arrangement — only DISMISS does.
+    const byGroup: Map<string, string[]> = new Map<string, string[]>();
+    for (const instance of doomed) {
+      const groupId: string = subjects.group_of(instance.id);
+      (byGroup.get(groupId) ?? byGroup.set(groupId, []).get(groupId) as string[]).push(instance.id);
+    }
+    for (const ids of byGroup.values()) {
+      const snapshot: GroupSnapshot | null = group_snapshot(ids);
+      if (snapshot !== null) dormant.add(snapshot);
+    }
+    for (const instance of doomed) {
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
     }

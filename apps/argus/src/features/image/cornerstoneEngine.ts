@@ -147,6 +147,8 @@ export class CornerstoneEngine implements ImageEngine {
   private slabRange: [number, number] = [0, 1];
   /** The window/level last set, shared with SLAB's crisp slice; null means the volume range. */
   private lastVoi: { lower: number; upper: number } | null = null;
+  /** The colormap on the field, tracked so a group snapshot can restore it. */
+  private colormap: ImageColormap = 'gray';
   /**
    * The frame tool on the primary (left) drag, or null for the layout's own
    * gesture — the crosshair in MPR, the trackball in 3D. A stack always has
@@ -262,6 +264,7 @@ export class CornerstoneEngine implements ImageEngine {
 
   public colormap_set(name: ImageColormap): boolean {
     if (this.renderingEngine === null) return false;
+    this.colormap = name;
     const colormap: string = COLORMAP_NAMES[name];
     for (const viewport of this.renderingEngine.getViewports()) {
       try {
@@ -473,6 +476,9 @@ export class CornerstoneEngine implements ImageEngine {
       refused: this.refused.size,
       annotations,
       filled: this.filled,
+      voi: this.lastVoi,
+      ghost: this.layout === 'slab' ? this.ghostLevel : undefined,
+      colormap: this.colormap,
     };
   }
 

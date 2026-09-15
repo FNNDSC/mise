@@ -13,3 +13,4 @@ packages/chili/download/
 *.nii
 *.nii.gz
 /site/
+apps/argus/public/sounds/*.mp3

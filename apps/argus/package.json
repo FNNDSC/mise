@@ -8,7 +8,8 @@
     "dev": "vite",
     "test": "tsc --noEmit && NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
     "smoke": "node tests/smoke/smoke.mjs",
-    "sounds": "node scripts/sounds_make.mjs"
+    "sounds": "node scripts/sounds_make.mjs",
+    "sounds:import": "node scripts/sounds_import.mjs"
   },
   "author": "Rudolph Pienaar",
   "license": "MIT",

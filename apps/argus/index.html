@@ -17,10 +17,17 @@
     <!-- ARGUS's own four sounds, synthesised rather than borrowed
          (scripts/sounds_make.mjs): a press acknowledged, a thing arriving,
          a retreat, a refusal. -->
-    <audio id="audio1" src="/src/lcars/sounds/press.wav" preload="auto"></audio>
-    <audio id="audio2" src="/src/lcars/sounds/arrive.wav" preload="auto"></audio>
-    <audio id="audio3" src="/src/lcars/sounds/retreat.wav" preload="auto"></audio>
-    <audio id="audio4" src="/src/lcars/sounds/refuse.wav" preload="auto"></audio>
+    <!-- The four voices. The original TheLCARS.com beeps play when present
+         (materialized from the operator's LCARS-26.zip by
+         scripts/sounds_import.mjs into public/sounds/, gitignored because
+         the template's EULA forbids redistributing them); the synthesised
+         .wav is the committed fallback, so a clone without the zip still
+         answers a press. Served from public/ so the browser can fall from
+         one source to the next — a bundled import cannot. -->
+    <audio id="audio1" preload="auto"><source src="sounds/press.mp3" type="audio/mpeg" /><source src="sounds/press.wav" type="audio/wav" /></audio>
+    <audio id="audio2" preload="auto"><source src="sounds/arrive.mp3" type="audio/mpeg" /><source src="sounds/arrive.wav" type="audio/wav" /></audio>
+    <audio id="audio3" preload="auto"><source src="sounds/retreat.mp3" type="audio/mpeg" /><source src="sounds/retreat.wav" type="audio/wav" /></audio>
+    <audio id="audio4" preload="auto"><source src="sounds/refuse.mp3" type="audio/mpeg" /><source src="sounds/refuse.wav" type="audio/wav" /></audio>
 
     <div id="attach-form" class="attach-overlay">
       <div class="attach-card">

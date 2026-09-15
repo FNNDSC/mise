@@ -112,6 +112,13 @@ describe('builtin_help', () => {
     expect(envelope.rendered).toContain('USAGE');
   });
 
+  it('lists the imaging commands under their own category', async () => {
+    const envelope = await builtin_help([]);
+    expect(envelope.rendered).toContain('Imaging');
+    // A summary, not the whole description, on the listing line.
+    expect(envelope.rendered).toContain('Show a DICOM series or a volume');
+  });
+
   it('shows plugin executable help when a versioned plugin is named', async () => {
     const envelope = await builtin_help(['pl-dircopy-v2.1.3']);
     expect(envelope.rendered).toContain('pl-dircopy-v2.1.3');
@@ -125,6 +132,8 @@ describe('help metadata accessors', () => {
     expect(commands.length).toBeGreaterThan(0);
     expect(commands).toContain('ls');
     expect(commands).toContain('cd');
+    // `image` is a listable command, so tab-completion offers it.
+    expect(commands).toContain('image');
   });
 
   it('returns a description for a known command', () => {

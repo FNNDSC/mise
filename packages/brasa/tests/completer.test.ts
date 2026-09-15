@@ -292,6 +292,18 @@ describe('Tab Completion', () => {
       });
     });
 
+    it('should provide path completion for image command (its argument is a path)', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [] });
+
+      input_complete('image ', (err, result) => {
+        expect(err).toBeNull();
+        const [hits, original] = result;
+        expect(hits).toEqual([]);
+        expect(original).toBe('');
+        done();
+      });
+    });
+
     it('should provide path completion for upload command', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 

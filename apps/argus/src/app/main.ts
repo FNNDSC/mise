@@ -17,7 +17,7 @@
  */
 import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
-import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot } from './dormant.js';
+import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopTile } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -2233,51 +2233,63 @@ async function surface_start(token: string): Promise<void> {
     const shown: Set<string> = new Set(layout.panes_shown());
     const preset: string = layout.activePreset_get();
     if (preset === 'panes') return;
+    const tree = layout.tree_get();
+    if (tree === null) return;
+    // Leaves left-to-right, so the tiles are captured in the order they sit.
+    type TreeNode = { pane: string } | { first: TreeNode; second: TreeNode };
+    const leaves: string[] = [];
+    const walk = (node: TreeNode): void => {
+      if ('pane' in node) { leaves.push(node.pane); return; }
+      walk(node.first);
+      walk(node.second);
+    };
+    walk(tree as TreeNode);
     let anchor: string | undefined;
     let label: string | undefined;
     let thumbnail: string | undefined;
-    const viewerLines: string[] = [];
-    for (const [id, panel] of imagePanels) {
-      if (!shown.has(id)) continue;
-      const state = panel.state_get();
-      if (state === null || state.path === null) continue;
-      viewerLines.push(`image ${state.path}`);
-      if (state.layout !== 'single') viewerLines.push(`image layout ${state.layout}`);
-      if (state.colormap !== undefined && state.colormap !== 'gray') viewerLines.push(`image colormap ${state.colormap}`);
-      if (state.voi !== undefined && state.voi !== null) viewerLines.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
-      if (state.slice > 1) viewerLines.push(`image slice ${state.slice}`);
-      if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') viewerLines.push(`image ghost ${state.ghost}`);
-      if (anchor === undefined) {
-        anchor = state.path;
-        const series = panel.series_get();
-        const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
-        if (parts.length > 0) label = parts.join(' \u00b7 ');
-        thumbnail = paneThumbnail_capture(id);
+    const tiles: DesktopTile[] = [];
+    for (const id of leaves) {
+      if (!shown.has(id) || id === 'files' || id === 'dag' || id === 'pacs' || id === 'panes') continue;
+      const kind: string | null = paneKind_get(id);
+      if (kind === 'image') {
+        const panel = imagePanels.get(id);
+        const state = panel?.state_get() ?? null;
+        if (panel === undefined || state === null || state.path === null) continue;
+        const view: string[] = [];
+        if (state.layout !== 'single') view.push(`image layout ${state.layout}`);
+        if (state.colormap !== undefined && state.colormap !== 'gray') view.push(`image colormap ${state.colormap}`);
+        if (state.voi !== undefined && state.voi !== null) view.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
+        if (state.slice > 1) view.push(`image slice ${state.slice}`);
+        if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') view.push(`image ghost ${state.ghost}`);
+        tiles.push({ kind: 'viewer', path: state.path, ...(view.length > 0 ? { view } : {}) });
+        if (anchor === undefined) {
+          anchor = state.path;
+          const series = panel.series_get();
+          const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
+          if (parts.length > 0) label = parts.join(' \u00b7 ');
+          thumbnail = paneThumbnail_capture(id);
+        }
+      } else if (kind === 'files') {
+        const path: string | null = filesPanels.get(id)?.path_current() ?? null;
+        if (typeof path === 'string' && path.length > 0) tiles.push({ kind: 'dir', path });
+      } else if (kind === 'tags') {
+        tiles.push({ kind: 'tags' });
       }
     }
     if (anchor === undefined) return;
-    const hasTags: boolean = paneInstances_list().some((instance): boolean => shown.has(instance.id) && paneKind_get(instance.id) === 'tags');
     const script: string[] = [`view ${preset === 'dag' ? 'runs' : preset}`];
     if (preset === 'pacs') {
       const query: string | null = pacsPanel.query_get();
       if (query !== null) script.push(query);
     }
-    script.push(...viewerLines);
-    if (hasTags) script.push('image tags');
-    // DIR (file-browser) tiles beside the viewer: their rooted folders, so the
-    // browser re-opens with the arrangement rather than being lost.
-    const dirs: string[] = paneInstances_list()
-      .filter((instance): boolean => shown.has(instance.id) && instance.id !== 'files' && paneKind_get(instance.id) === 'files')
-      .map((instance): string | null => filesPanels.get(instance.id)?.path_current() ?? null)
-      .filter((path): path is string => typeof path === 'string' && path.length > 0);
-    const members: string[] = ['viewer', ...(hasTags ? ['tags'] : []), ...(dirs.length > 0 ? ['files'] : [])];
+    const members: string[] = [...new Set(tiles.map((tile): string => (tile.kind === 'viewer' ? 'viewer' : tile.kind === 'dir' ? 'files' : 'tags')))];
     dormant.add({
       id: anchor,
       label: label ?? (anchor.split('/').pop() ?? anchor),
       regard: { address: anchor, modelKind: 'dicom.series' },
       members,
       script,
-      ...(dirs.length > 0 ? { dirs } : {}),
+      tiles,
       ...(thumbnail === undefined ? {} : { thumbnail }),
       lastTouched: Date.now(),
     });
@@ -2314,27 +2326,19 @@ async function surface_start(token: string): Promise<void> {
   };
 
   /**
-   * Replays a desktop's script — the console lines that rebuild its
-   * arrangement. Each line runs as if typed; the loop waits on the DOM for
-   * the slow ones (a viewer loading, a query answering) rather than guessing
-   * at a delay, so a later `image layout` lands on a viewer that exists.
+   * Runs one replay line as if typed, waiting on the DOM for the slow ones —
+   * a viewer loading, a query answering — rather than guessing a delay, so a
+   * later `image layout` lands on a viewer that exists.
    */
-  const desktop_replay = async (script: readonly string[]): Promise<void> => {
-    desktopReplaying = true;
-    try {
-      for (const line of script) {
-        terminal.line_run(line);
-        const words: string[] = line.trim().split(/\s+/);
-        if (words[0] === 'image' && words[1] !== undefined && !IMAGE_SUBVERBS.has(words[1]) && words[1] !== '--force') {
-          await wait_until((): boolean => [...document.querySelectorAll('.pane-image')].some((pane): boolean => /SLICE \d+ OF \d+/.test(pane.querySelector('.pane-state')?.textContent ?? '')), 40000, 300);
-        } else if (words[0] === 'pacs' && words[1] === 'query') {
-          await wait_until((): boolean => document.querySelector('#pacs-workspace .listing-row') !== null, 6000, 300);
-        } else {
-          await new Promise((resolve): void => { window.setTimeout(resolve, 400); });
-        }
-      }
-    } finally {
-      desktopReplaying = false;
+  const replayLine_run = async (line: string): Promise<void> => {
+    terminal.line_run(line);
+    const words: string[] = line.trim().split(/\s+/);
+    if (words[0] === 'image' && words[1] !== undefined && !IMAGE_SUBVERBS.has(words[1]) && words[1] !== '--force') {
+      await wait_until((): boolean => [...document.querySelectorAll('.pane-image')].some((pane): boolean => /SLICE \d+ OF \d+/.test(pane.querySelector('.pane-state')?.textContent ?? '')), 40000, 300);
+    } else if (words[0] === 'pacs' && words[1] === 'query') {
+      await wait_until((): boolean => document.querySelector('#pacs-workspace .listing-row') !== null, 6000, 300);
+    } else {
+      await new Promise((resolve): void => { window.setTimeout(resolve, 400); });
     }
   };
 
@@ -2359,14 +2363,28 @@ async function surface_start(token: string): Promise<void> {
     if (snapshot === undefined || snapshot.script === undefined) return;
     // The desktop is coming back on stage; it re-cards itself when next left.
     dormant.dismiss(id);
-    // Replaying `view <domain>` re-enters the domain and its content, and the
-    // viewer's own open splits it beside that domain exactly as it did live —
-    // so the whole arrangement (PACS beside the image) returns, not the image
-    // beside a stray browser.
-    await desktop_replay(snapshot.script);
-    // The DIR tiles re-open beside the viewer that is now on stage, joining
-    // its group — the third tile the arrangement had.
-    for (const dir of snapshot.dirs ?? []) dir_open(dir);
+    // Replay under the capture guard so re-entering domains does not re-card
+    // mid-restore. The domain and its query come first, then the content tiles
+    // in their stage order — a DIR opens beside the domain, the viewer beside
+    // the DIR — so the arrangement returns in the same left-to-right order it
+    // left in, not with the tiles reshuffled.
+    desktopReplaying = true;
+    try {
+      for (const line of snapshot.script) await replayLine_run(line);
+      for (const tile of snapshot.tiles ?? []) {
+        if (tile.kind === 'viewer' && tile.path !== undefined) {
+          await replayLine_run(`image ${tile.path}`);
+          for (const line of tile.view ?? []) await replayLine_run(line);
+        } else if (tile.kind === 'dir' && tile.path !== undefined) {
+          dir_open(tile.path);
+          await new Promise((resolve): void => { window.setTimeout(resolve, 500); });
+        } else if (tile.kind === 'tags') {
+          await replayLine_run('image tags');
+        }
+      }
+    } finally {
+      desktopReplaying = false;
+    }
   };
 
   const panesPanel: PanesPanel = new PanesPanel(panesMount, {

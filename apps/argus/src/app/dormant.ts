@@ -20,6 +20,17 @@
  * @module
  */
 
+/**
+ * One content tile of a desktop, in stage order. A `viewer` opens its series
+ * and applies its `view` lines; a `dir` opens a file browser at its `path`; a
+ * `tags` opens the tags pane beside the viewer.
+ */
+export interface DesktopTile {
+  kind: 'viewer' | 'dir' | 'tags';
+  path?: string;
+  view?: readonly string[];
+}
+
 /** The image view state a snapshot restores. */
 export interface GroupView {
   layout: string;
@@ -47,12 +58,12 @@ export interface GroupSnapshot {
    */
   script?: readonly string[];
   /**
-   * CFS folders of the arrangement's DIR (file-browser) tiles, replayed after
-   * the script so the browser re-opens beside the viewer it accompanied.
-   * A files tile is not a console command, so it rides here rather than in the
-   * script.
+   * The content tiles beside the domain, in left-to-right stage order, so a
+   * restore rebuilds them in the same order and each lands where it was — a
+   * DIR browser between PACS and the viewer comes back between them, not
+   * after. A viewer carries its own view lines; a DIR carries its folder.
    */
-  dirs?: readonly string[];
+  tiles?: readonly DesktopTile[];
   /** The image view state, when the group holds a viewer. */
   view?: GroupView;
   /** A small raster of the viewer at dormancy, as a data URL. */

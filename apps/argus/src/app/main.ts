@@ -2200,22 +2200,74 @@ async function surface_start(token: string): Promise<void> {
     },
   });
 
-  /** A small raster of a pane's canvas at dormancy, for the group's card. */
-  const paneThumbnail_capture = (paneId: string): string | undefined => {
-    const canvas: HTMLCanvasElement | null | undefined = paneInstance_get(paneId)?.mount.querySelector<HTMLCanvasElement>('canvas');
-    if (canvas === null || canvas === undefined || canvas.width === 0) return undefined;
+  /** A glyph standing in for a pane whose surface is not a raster (a listing, tags). */
+  const kindGlyph_of = (id: string): string => {
+    if (id === 'pacs') return '⊞';
+    if (id === 'dag') return '⋔';
+    const kind: string | null = paneKind_get(id);
+    if (kind === 'image') return '▣';
+    if (kind === 'tags') return '≣';
+    return '▤';
+  };
+
+  /**
+   * A strip of the whole stage: each shown pane drawn as a tile in stage order,
+   * at a width proportional to the width it holds on screen — a raster where a
+   * pane has a canvas, a glyph tile where it does not. This is the card's
+   * figure, so a desktop reads as the arrangement it is (PACS | DIR | viewer),
+   * not as one lone viewer.
+   */
+  const stageStrip_capture = (stageIds: readonly string[]): string | undefined => {
+    if (stageIds.length === 0) return undefined;
+    const rects: { id: string; width: number }[] = [];
+    for (const id of stageIds) {
+      const mount = paneInstance_get(id)?.mount;
+      const width: number = mount === undefined ? 0 : mount.getBoundingClientRect().width;
+      if (width > 0) rects.push({ id, width });
+    }
+    if (rects.length === 0) return undefined;
+    const total: number = rects.reduce((sum, rect): number => sum + rect.width, 0);
+    const budget: number = 240;
+    const height: number = 90;
     try {
-      const width: number = 96;
-      const height: number = Math.max(1, Math.round((canvas.height / canvas.width) * width));
       const off: HTMLCanvasElement = document.createElement('canvas');
-      off.width = width;
+      off.width = budget;
       off.height = height;
       const ctx: CanvasRenderingContext2D | null = off.getContext('2d');
       if (ctx === null) return undefined;
-      ctx.drawImage(canvas, 0, 0, width, height);
+      const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
+      const accent: string = style.getPropertyValue('--harvestgold').trim() || '#c9a15a';
+      ctx.fillStyle = '#05070a';
+      ctx.fillRect(0, 0, budget, height);
+      let x: number = 0;
+      rects.forEach((rect, index): void => {
+        const last: boolean = index === rects.length - 1;
+        const tileW: number = last ? budget - x : Math.max(18, Math.round((rect.width / total) * budget));
+        const canvas = paneInstance_get(rect.id)?.mount.querySelector<HTMLCanvasElement>('canvas');
+        if (canvas !== null && canvas !== undefined && canvas.width > 0) {
+          const scale: number = Math.min(tileW / canvas.width, height / canvas.height);
+          const dw: number = Math.round(canvas.width * scale);
+          const dh: number = Math.round(canvas.height * scale);
+          ctx.fillStyle = '#000';
+          ctx.fillRect(x, 0, tileW, height);
+          ctx.drawImage(canvas, x + Math.round((tileW - dw) / 2), Math.round((height - dh) / 2), dw, dh);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.05)';
+          ctx.fillRect(x, 0, tileW, height);
+          ctx.fillStyle = accent;
+          ctx.font = `${Math.min(28, Math.round(tileW * 0.5))}px serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(kindGlyph_of(rect.id), x + tileW / 2, height / 2 + 1);
+        }
+        if (!last) {
+          ctx.fillStyle = 'rgba(255,255,255,0.16)';
+          ctx.fillRect(x + tileW - 1, 0, 1, height);
+        }
+        x += tileW;
+      });
       return off.toDataURL('image/png');
     } catch {
-      // A tainted or non-preserving (WebGL) buffer: the card falls back to a glyph.
       return undefined;
     }
   };
@@ -2248,7 +2300,6 @@ async function surface_start(token: string): Promise<void> {
     const actionIndexOf: Map<string, number> = new Map<string, number>();
     let anchor: string | undefined;
     let label: string | undefined;
-    let thumbnail: string | undefined;
     const actions: DesktopAction[] = [];
     for (const id of stageIds) {
       const kind: string | null = paneKind_get(id);
@@ -2275,7 +2326,6 @@ async function surface_start(token: string): Promise<void> {
           const series = panel.series_get();
           const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
           if (parts.length > 0) label = parts.join(' \u00b7 ');
-          thumbnail = paneThumbnail_capture(id);
         }
       } else if (kind === 'files') {
         const path: string | null = filesPanels.get(id)?.path_current() ?? null;
@@ -2288,6 +2338,7 @@ async function surface_start(token: string): Promise<void> {
       }
     }
     if (anchor === undefined) return;
+    const thumbnail: string | undefined = stageStrip_capture(stageIds);
     const members: string[] = [...new Set(actions.filter((action): boolean => action.op !== 'domain').map((action): string => (action.op === 'image' ? 'viewer' : action.op === 'dir' ? 'files' : 'tags')))];
     dormant.add({
       id: anchor,

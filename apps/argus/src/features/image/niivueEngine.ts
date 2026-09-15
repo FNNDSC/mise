@@ -46,6 +46,7 @@ export class NiivueEngine implements ImageEngine {
   private module: NiivueModule | null = null;
   private layout: ImageLayout = 'mpr';
   private tool: ImageTool = 'wl';
+  private colormap: ImageColormap = 'gray';
   private slice: number = 0;
   private slices: number = 0;
   private refused: number = 0;
@@ -141,6 +142,7 @@ export class NiivueEngine implements ImageEngine {
   public colormap_set(name: ImageColormap): boolean {
     const volume = this.nv?.volumes[0] as { id?: string } | undefined;
     if (this.nv === null || volume?.id === undefined) return false;
+    this.colormap = name;
     this.nv.setColormap(volume.id, COLORMAP_NAMES[name]);
     return true;
   }
@@ -175,7 +177,7 @@ export class NiivueEngine implements ImageEngine {
   }
 
   public state_get(): ImageEngineState {
-    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, primaryTool: this.tool, refused: this.refused, annotations: 0, filled: this.nv !== null };
+    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, primaryTool: this.tool, refused: this.refused, annotations: 0, filled: this.nv !== null, colormap: this.colormap };
   }
 
   public dispose(): void {

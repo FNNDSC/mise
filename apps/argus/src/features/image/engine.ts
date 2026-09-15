@@ -113,6 +113,12 @@ export interface ImageEngineState {
   refused: number;
   /** Measurements on the field, drawn or reloaded. */
   annotations: number;
+  /** The window/level on the field, when the engine tracks it. */
+  voi?: { lower: number; upper: number } | null;
+  /** The SLAB ghost opacity, 0..1 or null when hidden; absent off SLAB. */
+  ghost?: number | null;
+  /** The colormap on the field. */
+  colormap?: ImageColormap;
   /**
    * Every slice is on hand. A stack that is still arriving does not scroll:
    * a wheel that lands on a slice not yet fetched shows a gap, and a series

@@ -17,7 +17,7 @@
  */
 import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
-import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot } from './dormant.js';
+import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -1567,11 +1567,12 @@ async function surface_start(token: string): Promise<void> {
     }
     if (!shown.has(imageId)) return 'image tags: the image pane is not on stage';
     const spawned: PaneInstance = instance_spawn('tags', imageId);
-    if (!layout.leaf_split(imageId, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(imageId, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return 'image tags: could not open beside the image pane';
     }
+    birth_record(spawned.id, imageId, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     return 'image tags';
   };
 
@@ -1636,11 +1637,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = fromId !== null && shown.has(fromId) ? fromId : errandHost_find();
     if (host === null) return null;
     const spawned: PaneInstance = instance_spawn('image', fromId ?? undefined);
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return null;
     }
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     anchor_set(spawned.id);
     return imagePanels.get(spawned.id) ?? null;
   };
@@ -1716,11 +1718,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = errandHost_find();
     if (host === null) return;
     const spawned: PaneInstance = instance_spawn('files', inheritFrom);
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     if (inheritFrom === undefined) subjects.regard_write(spawned.id, { address: folderPath, modelKind: 'dicom.series' });
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
@@ -2024,11 +2027,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = errandHost_find();
     if (host === null) return null;
     const spawned: PaneInstance = instance_spawn('files');
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return null;
     }
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     const anchor: string = request.path?.anchor ?? '~';
     if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
@@ -2182,6 +2186,50 @@ async function surface_start(token: string): Promise<void> {
   // Groups that have left the stage are not gone: a snapshot of each is kept
   // dormant so the PANES view can bring it back. Rehydrated from the surface's
   // own storage on load — dormant, never onto the stage.
+  // Each pane's origin: the pane it split from at creation, so a desktop
+  // records what each action acted FROM (its target), not a guessed context.
+  /**
+   * How each pane was born, for replaying a desktop faithfully: the pane it
+   * split FROM, the split's orientation and side, and — for a pane the drawer's
+   * SPLIT pill created — the binding it was created with (`view`/`fs`/`empty`).
+   * A desktop replays by re-running each birth, so a stacked or before-split
+   * pane returns where it was, not as another column on the right.
+   */
+  const paneBirth: Map<string, { parent: string; dir: 'row' | 'col'; before: boolean; binding?: string }> = new Map();
+  const birth_record = (childId: string, parent: string, dir: 'row' | 'col', before: boolean, binding?: string): void => {
+    paneBirth.set(childId, { parent, dir, before, ...(binding !== undefined ? { binding } : {}) });
+  };
+  /**
+   * Re-runs the drawer SPLIT pill's spawn: a pane of `binding` split from
+   * `parentId` at `dir`/`before`, an `fs` binding wired to follow the parent's
+   * regard at the directory level. The one code path the pill and a desktop
+   * replay share, so a pill-born pane returns exactly as it was made.
+   *
+   * @returns The new pane's id, or null when the split failed.
+   */
+  const pillPane_spawn = (parentId: string, binding: 'view' | 'fs' | 'empty', dir: 'row' | 'col', before: boolean): string | null => {
+    const spawned: PaneInstance = binding === 'view' ? instance_spawn('view', parentId)
+      : binding === 'fs' ? instance_spawn('files', parentId)
+      : instance_spawn('empty');
+    if (!layout.leaf_split(parentId, dir, spawned.id, before)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return null;
+    }
+    birth_record(spawned.id, parentId, dir, before, binding);
+    if (binding === 'fs') {
+      const browser_show = (value: RegardValue): void => {
+        const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+        if (panel === undefined) return;
+        const dirPath: string = value.modelKind === 'fs.file' ? (value.address.replace(/\/[^/]*$/, '') || '/') : value.address;
+        rootedListing_show(spawned.id, panel, dirPath);
+      };
+      subjects.regard_subscribe(spawned.id, browser_show);
+      const current: RegardValue | null = subjects.regard_get(parentId);
+      if (current !== null) browser_show(current);
+    }
+    return spawned.id;
+  };
   const dormant: DormantRegistry = new DormantRegistry(DORMANT_CAP, localKeyStore());
   // The dormant set is read (and, at slice 3, restored) by the PANES view.
   // Exposed for verification until that view exists.
@@ -2193,94 +2241,225 @@ async function surface_start(token: string): Promise<void> {
     },
   });
 
-  /** A small raster of a pane's canvas at dormancy, for the group's card. */
-  const paneThumbnail_capture = (paneId: string): string | undefined => {
-    const canvas: HTMLCanvasElement | null | undefined = paneInstance_get(paneId)?.mount.querySelector<HTMLCanvasElement>('canvas');
-    if (canvas === null || canvas === undefined || canvas.width === 0) return undefined;
+  /** A glyph standing in for a pane whose surface is not a raster (a listing, tags). */
+  const kindGlyph_of = (id: string): string => {
+    if (id === 'pacs') return '⊞';
+    if (id === 'dag') return '⋔';
+    const kind: string | null = paneKind_get(id);
+    if (kind === 'image') return '▣';
+    if (kind === 'tags') return '≣';
+    return '▤';
+  };
+
+  /**
+   * A strip of the whole stage: each shown pane drawn as a tile in stage order,
+   * at a width proportional to the width it holds on screen — a raster where a
+   * pane has a canvas, a glyph tile where it does not. This is the card's
+   * figure, so a desktop reads as the arrangement it is (PACS | DIR | viewer),
+   * not as one lone viewer.
+   */
+  const stageStrip_capture = (stageIds: readonly string[]): string | undefined => {
+    if (stageIds.length === 0) return undefined;
+    // A true mini-map: each pane drawn at its real position and size, scaled
+    // into the figure — so a stack reads as a stack and a column as a column,
+    // whatever order the panes were opened. Measured from the live boxes.
+    const rects: { id: string; left: number; top: number; width: number; height: number }[] = [];
+    for (const id of stageIds) {
+      const mount = paneInstance_get(id)?.mount;
+      if (mount === undefined) continue;
+      const box: DOMRect = mount.getBoundingClientRect();
+      if (box.width > 0 && box.height > 0) rects.push({ id, left: box.left, top: box.top, width: box.width, height: box.height });
+    }
+    if (rects.length === 0) return undefined;
+    const minLeft: number = Math.min(...rects.map((rect): number => rect.left));
+    const minTop: number = Math.min(...rects.map((rect): number => rect.top));
+    const spanW: number = Math.max(...rects.map((rect): number => rect.left + rect.width)) - minLeft;
+    const spanH: number = Math.max(...rects.map((rect): number => rect.top + rect.height)) - minTop;
+    if (spanW <= 0 || spanH <= 0) return undefined;
+    const budget: number = 240;
+    const scale: number = budget / spanW;
+    const canvasH: number = Math.max(40, Math.min(260, Math.round(spanH * scale)));
     try {
-      const width: number = 96;
-      const height: number = Math.max(1, Math.round((canvas.height / canvas.width) * width));
       const off: HTMLCanvasElement = document.createElement('canvas');
-      off.width = width;
-      off.height = height;
+      off.width = budget;
+      off.height = canvasH;
       const ctx: CanvasRenderingContext2D | null = off.getContext('2d');
       if (ctx === null) return undefined;
-      ctx.drawImage(canvas, 0, 0, width, height);
+      const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
+      const accent: string = style.getPropertyValue('--harvestgold').trim() || '#c9a15a';
+      ctx.fillStyle = '#05070a';
+      ctx.fillRect(0, 0, budget, canvasH);
+      for (const rect of rects) {
+        const tx: number = Math.round((rect.left - minLeft) * scale);
+        const ty: number = Math.round((rect.top - minTop) * scale);
+        const tw: number = Math.max(6, Math.round(rect.width * scale));
+        const th: number = Math.max(6, Math.round(rect.height * scale));
+        const canvas = paneInstance_get(rect.id)?.mount.querySelector<HTMLCanvasElement>('canvas');
+        if (canvas !== null && canvas !== undefined && canvas.width > 0) {
+          const fit: number = Math.min(tw / canvas.width, th / canvas.height);
+          const dw: number = Math.round(canvas.width * fit);
+          const dh: number = Math.round(canvas.height * fit);
+          ctx.fillStyle = '#000';
+          ctx.fillRect(tx, ty, tw, th);
+          ctx.drawImage(canvas, tx + Math.round((tw - dw) / 2), ty + Math.round((th - dh) / 2), dw, dh);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.05)';
+          ctx.fillRect(tx, ty, tw, th);
+          ctx.fillStyle = accent;
+          ctx.font = `${Math.max(9, Math.min(28, Math.round(Math.min(tw, th) * 0.5)))}px serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(kindGlyph_of(rect.id), tx + tw / 2, ty + th / 2 + 1);
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx + 0.5, ty + 0.5, tw - 1, th - 1);
+      }
       return off.toDataURL('image/png');
     } catch {
-      // A tainted or non-preserving (WebGL) buffer: the card falls back to a glyph.
       return undefined;
     }
   };
 
+  /** Whether a desktop replay is in flight; capture is suppressed during it. */
+  let desktopReplaying: boolean = false;
   /**
-   * Snapshots a link group about to leave the stage: its anchor, view state,
-   * members and a thumbnail, keyed by the anchor address so one series is one
-   * card. Returns null for a group with nothing to rebuild from (an empty
-   * pane), which is not worth retaining.
+   * The split a replayed open must use, set from the action being replayed so a
+   * pane returns at its captured orientation and side; null in normal use, when
+   * an automatic open falls to the column-after default.
    */
-  const group_snapshot = (paneIds: string[]): GroupSnapshot | null => {
-    const members: string[] = [];
-    let view: GroupSnapshot['view'];
-    let thumbnail: string | undefined;
-    let anchorAddress: string | undefined;
+  let replayPlace: { dir: 'row' | 'col'; before: boolean } | null = null;
+
+  /** Console-line verbs that tune an open viewer rather than open one. */
+  const IMAGE_SUBVERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
+
+  /**
+   * Captures the current stage as a DESKTOP: a script of console lines that
+   * reproduces it when replayed — the domain, its content (a PACS query, a
+   * viewer at its layout/slice/W-L/colormap/ghost, its tags), and, by replay,
+   * the tiles as they were. A desktop is a replay of actions, not a pixel
+   * snapshot. Keyed by the on-stage viewer's series so returning to the same
+   * arrangement updates its one card. A stage with no viewer is a bare domain,
+   * reachable from its gutter button, so it is not carded.
+   */
+  const stageDesktop_capture = (): void => {
+    if (desktopReplaying) return;
+    const shown: Set<string> = new Set(layout.panes_shown());
+    const preset: string = layout.activePreset_get();
+    if (preset === 'panes') return;
+    // Panes on stage in creation order (the registry's insertion order): the
+    // domain primary is earliest (action 0), content follows as opened. Each
+    // action records the pane it split FROM, as that pane's index in this
+    // action log — which is what replay resolves against its produced table.
+    const stageIds: string[] = paneInstances_list().map((instance): string => instance.id).filter((id): boolean => shown.has(id));
+    const actionIndexOf: Map<string, number> = new Map<string, number>();
+    let anchor: string | undefined;
     let label: string | undefined;
-    for (const id of paneIds) {
+    const actions: DesktopAction[] = [];
+    for (const id of stageIds) {
       const kind: string | null = paneKind_get(id);
-      if (kind === 'image') {
-        members.push('viewer');
-        const state = imagePanels.get(id)?.state_get() ?? null;
-        if (state !== null) {
-          view = { layout: state.layout, slice: state.slice, voi: state.voi, ghost: state.ghost, colormap: state.colormap };
-          if (state.path !== null) anchorAddress = state.path;
-          const series = imagePanels.get(id)?.series_get() ?? null;
+      const birth = paneBirth.get(id);
+      const target: number = actionIndexOf.get(birth?.parent ?? '') ?? 0;
+      // The real split the pane was born with \u2014 a stacked or before-split pane
+      // carries its own orientation and side, not the column-right default.
+      const place = { dir: birth?.dir ?? 'col', side: (birth?.before ? 'before' : 'after') as 'before' | 'after' };
+      const emit = (action: DesktopAction): void => { actionIndexOf.set(id, actions.length); actions.push(action); };
+      if (id === 'pacs' || id === 'files' || id === 'dag') {
+        const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
+        const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
+        emit({ op: 'domain', domain, ...(query !== null ? { query } : {}) });
+      } else if (birth?.binding === 'fs' || birth?.binding === 'view' || birth?.binding === 'empty') {
+        // A drawer SPLIT-pill pane replays as its own birth, whatever it holds.
+        emit({ op: birth.binding, target, ...place });
+      } else if (kind === 'image') {
+        const panel = imagePanels.get(id);
+        const state = panel?.state_get() ?? null;
+        if (panel === undefined || state === null || state.path === null) continue;
+        const view: string[] = [];
+        if (state.layout !== 'single') view.push(`image layout ${state.layout}`);
+        if (state.colormap !== undefined && state.colormap !== 'gray') view.push(`image colormap ${state.colormap}`);
+        if (state.voi !== undefined && state.voi !== null) view.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
+        if (state.slice > 1) view.push(`image slice ${state.slice}`);
+        if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') view.push(`image ghost ${state.ghost}`);
+        emit({ op: 'image', path: state.path, target, ...place, ...(view.length > 0 ? { view } : {}) });
+        if (anchor === undefined) {
+          anchor = state.path;
+          const series = panel.series_get();
           const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
-          if (parts.length > 0) label = parts.join(' · ');
-          thumbnail = paneThumbnail_capture(id);
+          if (parts.length > 0) label = parts.join(' \u00b7 ');
         }
-      } else if (kind === 'tags') members.push('tags');
-      else if (kind === 'files') members.push('files');
-      else if (kind === 'view') members.push('viewer');
+      } else if (kind === 'files') {
+        const path: string | null = filesPanels.get(id)?.path_current() ?? null;
+        if (typeof path !== 'string' || path.length === 0) continue;
+        emit({ op: 'dir', path, target, ...place });
+      } else if (kind === 'tags') {
+        emit({ op: 'tags', target, ...place });
+      }
     }
-    const regard = paneIds.map((id): RegardValue | null => subjects.regard_get(id)).find((value): boolean => value !== null) ?? null;
-    const address: string | undefined = anchorAddress ?? regard?.address;
-    if (address === undefined) return null;
-    return {
-      id: address,
-      label: label ?? (address.split('/').pop() ?? address),
-      regard: { address, modelKind: regard?.modelKind ?? 'fs.file' },
-      members: members.length > 0 ? members : ['viewer'],
-      ...(view === undefined ? {} : { view }),
+    if (anchor === undefined) return;
+    const thumbnail: string | undefined = stageStrip_capture(stageIds);
+    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane' };
+    const members: string[] = [...new Set(actions.filter((action): boolean => action.op !== 'domain').map((action): string => memberOf[action.op] ?? 'pane'))];
+    dormant.add({
+      id: anchor,
+      label: label ?? (anchor.split('/').pop() ?? anchor),
+      regard: { address: anchor, modelKind: 'dicom.series' },
+      members,
+      actions,
       ...(thumbnail === undefined ? {} : { thumbnail }),
       lastTouched: Date.now(),
-    };
+    });
   };
 
   const orphans_dispose = (): void => {
     const shown: Set<string> = new Set(layout.panes_shown());
-    const doomed: PaneInstance[] = paneInstances_list().filter(
-      (instance): boolean => !shown.has(instance.id) && instance.id !== 'files' && instance.id !== 'dag' && instance.id !== 'pacs' && instance.id !== 'panes',
-    );
-    // A leaving group is snapshotted dormant before its panes are disposed,
-    // so a navigation away never loses the arrangement — only DISMISS does.
-    const byGroup: Map<string, string[]> = new Map<string, string[]>();
-    for (const instance of doomed) {
-      const groupId: string = subjects.group_of(instance.id);
-      (byGroup.get(groupId) ?? byGroup.set(groupId, []).get(groupId) as string[]).push(instance.id);
-    }
-    for (const ids of byGroup.values()) {
-      const snapshot: GroupSnapshot | null = group_snapshot(ids);
-      if (snapshot !== null) dormant.add(snapshot);
-    }
-    for (const instance of doomed) {
+    for (const instance of paneInstances_list()) {
+      if (shown.has(instance.id)) continue;
+      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs' || instance.id === 'panes') continue;
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
     }
   };
 
-  const home_apply = (): void => {
-    layout.preset_apply('files');
+  /**
+   * Enters a gutter domain. The one chokepoint every domain switch routes
+   * through: it captures the outgoing stage as a desktop BEFORE the preset
+   * changes (so the context a switch would lose becomes a PANES card), then
+   * applies the new preset and disposes what it left behind.
+   */
+  const domain_enter = (preset: string): void => {
+    stageDesktop_capture();
+    layout.preset_apply(preset);
     orphans_dispose();
+  };
+
+  /** Waits until a read is true, or the limit passes; polls, never sleeps blind. */
+  const wait_until = async (read: () => boolean, limit: number = 3000, step: number = 200): Promise<void> => {
+    for (let waited = 0; waited < limit; waited += step) {
+      if (read()) return;
+      await new Promise((resolve): void => { window.setTimeout(resolve, step); });
+    }
+  };
+
+  /**
+   * Runs one replay line as if typed, waiting on the DOM for the slow ones —
+   * a viewer loading, a query answering — rather than guessing a delay, so a
+   * later `image layout` lands on a viewer that exists.
+   */
+  const replayLine_run = async (line: string): Promise<void> => {
+    terminal.line_run(line);
+    const words: string[] = line.trim().split(/\s+/);
+    if (words[0] === 'image' && words[1] !== undefined && !IMAGE_SUBVERBS.has(words[1]) && words[1] !== '--force') {
+      await wait_until((): boolean => [...document.querySelectorAll('.pane-image')].some((pane): boolean => /SLICE \d+ OF \d+/.test(pane.querySelector('.pane-state')?.textContent ?? '')), 40000, 300);
+    } else if (words[0] === 'pacs' && words[1] === 'query') {
+      await wait_until((): boolean => document.querySelector('#pacs-workspace .listing-row') !== null, 6000, 300);
+    } else {
+      await new Promise((resolve): void => { window.setTimeout(resolve, 400); });
+    }
+  };
+
+  const home_apply = (): void => {
+    domain_enter('files');
     dagPanel.size_fit();
   };
 
@@ -2297,33 +2476,64 @@ async function surface_start(token: string): Promise<void> {
    */
   const group_restore = async (id: string): Promise<void> => {
     const snapshot: GroupSnapshot | undefined = dormant.get(id);
-    if (snapshot === undefined) return;
+    if (snapshot === undefined || snapshot.actions === undefined) return;
     dormant.dismiss(id);
-    home_apply();
-    const address: string = snapshot.regard.address;
-    const panel: ImagePanel | null = imagePane_for(null, { address, modelKind: snapshot.regard.modelKind });
-    if (panel === null) return;
-    panel.opening_show(address);
-    if (VOLUME_FILE_PATTERN.test(address)) {
-      await panel.volume_show(address);
-    } else {
-      const series: DicomSeriesModel | null = await series_ask(address);
-      if (series === null) {
-        panel.opening_fail(address, 'NOT A READABLE SERIES');
-        return;
+    // Replay the action log. `produced[i]` is the pane action i made, so an
+    // action's `target` resolves to the exact pane it split from — the domain
+    // for a from-PACS open, a viewer for its tags, whatever it actually was —
+    // and each open is launched FROM that pane (focus it first), reproducing
+    // the arrangement's order and geometry.
+    const paneOf = (kind: string): string[] => paneInstances_list().filter((instance): boolean => layout.panes_shown().includes(instance.id) && paneKind_get(instance.id) === kind).map((instance): string => instance.id);
+    const viewerOf = (path: string): string | null => [...imagePanels].find(([, panel]): boolean => panel.state_get()?.path === path)?.[0] ?? null;
+    desktopReplaying = true;
+    try {
+      const produced: Array<string | null> = [];
+      for (const action of snapshot.actions) {
+        const host: string | null = produced[action.target ?? 0] ?? null;
+        // The split this pane was born with — replayed opens read it so a
+        // stacked or before-split pane returns where it was.
+        const place = { dir: action.dir ?? 'col', before: action.side === 'before' };
+        if (action.op === 'domain') {
+          await replayLine_run(`view ${action.domain ?? 'files'}`);
+          if (action.query !== undefined) await replayLine_run(action.query);
+          produced.push(action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files');
+        } else if (action.op === 'image' && action.path !== undefined) {
+          if (host !== null) layout.focus_set(host);
+          replayPlace = place;
+          try { await image_open(null, action.path); } finally { replayPlace = null; }
+          const path: string = action.path;
+          await wait_until((): boolean => viewerOf(path) !== null, 40000, 300);
+          const viewerId: string | null = viewerOf(path);
+          produced.push(viewerId);
+          for (const line of action.view ?? []) { if (viewerId !== null) layout.focus_set(viewerId); await replayLine_run(line); }
+        } else if (action.op === 'dir' && action.path !== undefined) {
+          if (host !== null) layout.focus_set(host);
+          const before: Set<string> = new Set(paneOf('files'));
+          replayPlace = place;
+          try { dir_open(action.path); } finally { replayPlace = null; }
+          await new Promise((resolve): void => { window.setTimeout(resolve, 600); });
+          produced.push(paneOf('files').find((paneId): boolean => !before.has(paneId)) ?? null);
+        } else if (action.op === 'tags') {
+          if (host !== null) layout.focus_set(host);
+          const before: Set<string> = new Set(paneOf('tags'));
+          replayPlace = place;
+          try { await replayLine_run('image tags'); } finally { replayPlace = null; }
+          produced.push(paneOf('tags').find((paneId): boolean => !before.has(paneId)) ?? null);
+        } else if (action.op === 'fs' || action.op === 'view' || action.op === 'empty') {
+          // A drawer-pill pane replays as its own birth: the pill's spawn, at
+          // the same parent, orientation and side.
+          if (host === null) { produced.push(null); continue; }
+          layout.focus_set(host);
+          const newId: string | null = pillPane_spawn(host, action.op, place.dir, place.before);
+          await new Promise((resolve): void => { window.setTimeout(resolve, 300); });
+          produced.push(newId);
+        } else {
+          produced.push(null);
+        }
       }
-      await panel.series_show(series, { startAt: snapshot.view?.slice ?? 1 });
+    } finally {
+      desktopReplaying = false;
     }
-    const view: GroupSnapshot['view'] = snapshot.view;
-    if (view !== undefined) {
-      if (view.colormap !== undefined) panel.colormap_set(view.colormap as ImageColormap);
-      if (view.voi !== undefined && view.voi !== null) panel.wl_set(view.voi.lower, view.voi.upper);
-      if (view.layout !== 'single') await panel.layout_set(view.layout as ImageLayout);
-      if (view.ghost !== undefined && view.ghost !== null) panel.ghost_set(view.ghost);
-      if (view.slice > 0) panel.slice_set(view.slice);
-    }
-    const viewerId: string | null = imagePane_idOf(panel);
-    if (viewerId !== null && snapshot.members.includes('tags')) tagsPane_open(viewerId);
   };
 
   const panesPanel: PanesPanel = new PanesPanel(panesMount, {
@@ -2421,32 +2631,10 @@ async function surface_start(token: string): Promise<void> {
         const before: boolean = splitter.dataset['place'] === 'before';
         const binding: string =
           drawer.querySelector<HTMLElement>('.drawer-bind-selected')?.dataset['bind'] ?? 'unlinked';
-        const spawned: PaneInstance =
-          binding === 'viewer' ? instance_spawn('view', id)
-          : binding === 'fs' ? instance_spawn('files', id)
-          : instance_spawn('empty');
-        if (!layout.leaf_split(id, dir, spawned.id, before)) {
-          paneInstance_dispose(spawned.id);
-          layout.mount_remove(spawned.id);
-          return;
-        }
-        if (binding === 'fs') {
-          // Linked filesystem: follows the parent's regard at the DIRECTORY
-          // level — an indicated file shows its directory, an indicated node
-          // shows the node's data space.
-          const browser_show = (value: RegardValue): void => {
-            const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
-            if (panel === undefined) return;
-            const dirPath: string =
-              value.modelKind === 'fs.file'
-                ? value.address.replace(/\/[^/]*$/, '') || '/'
-                : value.address;
-            rootedListing_show(spawned.id, panel, dirPath);
-          };
-          subjects.regard_subscribe(spawned.id, browser_show);
-          const current: RegardValue | null = subjects.regard_get(id);
-          if (current !== null) browser_show(current);
-        }
+        // A pill-born pane is a linked filesystem (follows the parent's regard
+        // at the directory level), a slaved viewer, or a blank pane.
+        const canonical: 'view' | 'fs' | 'empty' = binding === 'viewer' ? 'view' : binding === 'fs' ? 'fs' : 'empty';
+        if (pillPane_spawn(id, canonical, dir, before) === null) return;
         drawer.hidden = true;
         sound_play('audio3');
       });
@@ -2966,8 +3154,7 @@ async function surface_start(token: string): Promise<void> {
    * @param filter - A roster filter to apply, or none.
    */
   const runs_show = (filter: string = ''): void => {
-    layout.preset_apply('dag');
-    orphans_dispose();
+    domain_enter('dag');
     dagPanel.list_reset();
     dagPanel.roster_filter(filter);
     dagPanel.feedsChooser_request();
@@ -2987,16 +3174,14 @@ async function surface_start(token: string): Promise<void> {
   element_require('gutter-tools').addEventListener('click', (): void => {
     // A given always renders its target (gutter law) — no toggling;
     // dismissal is the pane drawer's CLOSE.
-    layout.preset_apply('pacs');
-    orphans_dispose();
+    domain_enter('pacs');
     layout.focus_set('pacs');
     consoleFocused_set(false);
   });
   element_require('gutter-panes').addEventListener('click', (): void => {
-    // Opening PANES sends the current group dormant (orphans_dispose) — free
-    // and recoverable, since it becomes a card in the grid this draws.
-    layout.preset_apply('panes');
-    orphans_dispose();
+    // Opening PANES captures the current arrangement as a desktop card (the
+    // chokepoint), free and recoverable, then draws the grid.
+    domain_enter('panes');
     panesPanel.render();
     layout.focus_set('panes');
     consoleFocused_set(false);

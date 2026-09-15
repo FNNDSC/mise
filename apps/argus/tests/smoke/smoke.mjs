@@ -2785,8 +2785,13 @@ try {
       card.click();
       let viewer = null;
       for (let i = 0; i < 160; i++) { await sleep(300); viewer = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state')?.textContent || '')); if (viewer) break; }
-      return { restored: viewer !== null, state: viewer?.querySelector('.pane-state')?.textContent ?? null };`);
+      await sleep(500);
+      // The domain the viewer lived in comes back beside it, not a stray home:
+      // the desktop was opened in the FILES domain, so a files pane is on stage.
+      const domainBack = document.querySelector('.pane-files') !== null;
+      return { restored: viewer !== null, domainBack, state: viewer?.querySelector('.pane-state')?.textContent ?? null };`);
     check('pressing the card restores the group onto the stage', restored.error === undefined && restored.restored === true, JSON.stringify(restored));
+    check('the restored desktop brings its domain back beside the viewer', restored.domainBack === true, JSON.stringify(restored));
   }
   }
   if (fixtureFolder !== null) {

@@ -165,7 +165,7 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'not yet retrieved': ['PULL'],
     'not retrieved and unaddressable': ['PULL'],
     'home, folder not yet named': ['GATHER'],
-    'home, folder named': ['GATHER', 'IMAGE'],
+    'home, folder named': ['GATHER', 'IMAGE', 'DIR'],
   },
 };
 
@@ -202,7 +202,7 @@ describe('the PACS series row, where the verb went missing', () => {
       const home = roster.states.find((one: { name: string }): boolean => one.name === 'home, folder named');
       expect(home).toBeDefined();
       if (home === undefined) return;
-      expect(rendered_verbs(roster, home)).toEqual(['GATHER', 'IMAGE']);
+      expect(rendered_verbs(roster, home)).toEqual(['GATHER', 'IMAGE', 'DIR']);
     });
   });
 

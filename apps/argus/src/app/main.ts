@@ -1696,6 +1696,35 @@ async function surface_start(token: string): Promise<void> {
     void panel.series_show(series, { siblings, startAt, ...(options.force === true ? { force: true } : {}) });
     return `image ${series.path}${siblings.length > 1 ? ` (1 of ${siblings.length} series)` : ''}`;
   };
+
+  /**
+   * Opens a series' own CFS folder as a file browser, joined to the series'
+   * group so the browser and its viewer are one restorable group. A browser
+   * already showing this folder is reused; a viewer on stage for the series
+   * lends its group, else the browser anchors the group on the folder.
+   */
+  const dir_open = (folderPath: string): void => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    for (const [id] of filesPanels) {
+      if (shown.has(id) && subjects.regard_get(id)?.address === folderPath) { layout.focus_set(id); return; }
+    }
+    let inheritFrom: string | undefined;
+    for (const [id, panel] of imagePanels) {
+      if (shown.has(id) && (subjects.regard_get(id)?.address === folderPath || panel.state_get()?.path === folderPath)) { inheritFrom = id; break; }
+    }
+    const host: string | null = errandHost_find();
+    if (host === null) return;
+    const spawned: PaneInstance = instance_spawn('files', inheritFrom);
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return;
+    }
+    if (inheritFrom === undefined) subjects.regard_write(spawned.id, { address: folderPath, modelKind: 'dicom.series' });
+    const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+    if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
+  };
+
   const viewInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-view');
     const panel: ViewerPanel = new ViewerPanel(
@@ -2098,6 +2127,7 @@ async function surface_start(token: string): Promise<void> {
     image_open: (folderPath: string): void => {
       void image_open(null, folderPath).then((line: string): void => terminal.line_note(line));
     },
+    dir_open: (folderPath: string): void => dir_open(folderPath),
     workspace_close: (): void => home_apply(),
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });

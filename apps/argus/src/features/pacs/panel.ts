@@ -54,6 +54,8 @@ export interface PacsPanelHandlers {
   workspace_close: () => void;
   /** Opens a pulled series' folder as an image beside the workspace. */
   image_open: (folderPath: string) => void;
+  /** Opens the series' folder as a file browser, joined to its group. */
+  dir_open: (folderPath: string) => void;
 }
 
 /**
@@ -87,10 +89,10 @@ export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
  * @param series - The series as the model holds it.
  * @returns Which of the three verbs are offered.
  */
-export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; pull: boolean } {
+export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; dir: boolean; pull: boolean } {
   const facts: PacsSeriesFacts = seriesFacts_of(series);
   const offers = (name: string): boolean => verbRule_get(PACS_SERIES_ROSTER, name).offered(facts);
-  return { gather: offers('gather'), image: offers('image'), pull: offers('pull') };
+  return { gather: offers('gather'), image: offers('image'), dir: offers('dir'), pull: offers('pull') };
 }
 
 /**
@@ -861,6 +863,15 @@ export class PacsPanel {
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).image,
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.image_open(row.series.folderPath);
+        },
+      },
+      {
+        // The same landed series as a browser: its own CFS folder, opened
+        // into the series' group so it stands beside the viewer.
+        label: verbRule_get(PACS_SERIES_ROSTER, 'dir').label({ inCube: true, folderKnown: true, addressable: true }),
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).dir,
+        run: (row: SeriesRow): void => {
+          if (row.series.folderPath !== undefined) this.handlers.dir_open(row.series.folderPath);
         },
       },
       {

@@ -18,6 +18,7 @@
 import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot } from './dormant.js';
+import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
   ArgusClient,
@@ -1926,6 +1927,11 @@ async function surface_start(token: string): Promise<void> {
   paneInstance_adopt(filesPrimary);
   const dagPrimary: PaneInstance = dagInstance_build('dag', true);
   paneInstance_adopt(dagPrimary);
+  // PANES is a gutter domain like FILES/RUNS/PACS: its mount is a primary the
+  // layout can raise, its card grid wired once the dormant set and restore
+  // exist below.
+  const panesMount: HTMLElement = template_stamp('tpl-pane-panes');
+  paneInstance_adopt({ id: 'panes', kind: 'panes', mount: panesMount });
   const filesPanel: FilesPanel = filesPanels.get('files') as FilesPanel;
   const dagPanel: DagPanel = dagPanels.get('dag') as DagPanel;
 
@@ -2111,6 +2117,7 @@ async function surface_start(token: string): Promise<void> {
       ['dag', dagPrimary.mount],
       ['files', filesPrimary.mount],
       ['pacs', element_require('pacs-workspace')],
+      ['panes', panesMount],
     ]),
   );
   let dagShown: boolean = false;
@@ -2127,6 +2134,8 @@ async function surface_start(token: string): Promise<void> {
   layout.preset_register('pacs', (): LayoutNode => ({ pane: 'pacs' }));
   // RUNS-02 is a full-workspace preset like PACS-03, not a split variation.
   layout.preset_register('dag', (): LayoutNode => ({ pane: 'dag' }));
+  // PANES-06 is a full-workspace preset too: the grid of dormant groups.
+  layout.preset_register('panes', (): LayoutNode => ({ pane: 'panes' }));
   // Any geometry change (split, close, claim, preset, a settled divider
   // drag) refits the measured canvases once the DOM has settled; a
   // reparented WebGL canvas otherwise keeps its old pixel size.
@@ -2244,6 +2253,54 @@ async function surface_start(token: string): Promise<void> {
     orphans_dispose();
     dagPanel.size_fit();
   };
+
+  /** The image pane id backing a panel, for wiring members after a restore. */
+  const imagePane_idOf = (panel: ImagePanel): string | null =>
+    [...imagePanels.entries()].find(([, value]): boolean => value === panel)?.[0] ?? null;
+
+  /**
+   * Brings a dormant group back onto the stage: leaves the PANES domain,
+   * re-opens the series or volume it regarded at its saved view state
+   * (layout, slice, window/level, colormap, ghost), and re-opens its tags
+   * member. The group is taken out of the dormant set — it is live again, and
+   * re-snapshots when it next leaves.
+   */
+  const group_restore = async (id: string): Promise<void> => {
+    const snapshot: GroupSnapshot | undefined = dormant.get(id);
+    if (snapshot === undefined) return;
+    dormant.dismiss(id);
+    home_apply();
+    const address: string = snapshot.regard.address;
+    const panel: ImagePanel | null = imagePane_for(null, { address, modelKind: snapshot.regard.modelKind });
+    if (panel === null) return;
+    panel.opening_show(address);
+    if (VOLUME_FILE_PATTERN.test(address)) {
+      await panel.volume_show(address);
+    } else {
+      const series: DicomSeriesModel | null = await series_ask(address);
+      if (series === null) {
+        panel.opening_fail(address, 'NOT A READABLE SERIES');
+        return;
+      }
+      await panel.series_show(series, { startAt: snapshot.view?.slice ?? 1 });
+    }
+    const view: GroupSnapshot['view'] = snapshot.view;
+    if (view !== undefined) {
+      if (view.colormap !== undefined) panel.colormap_set(view.colormap as ImageColormap);
+      if (view.voi !== undefined && view.voi !== null) panel.wl_set(view.voi.lower, view.voi.upper);
+      if (view.layout !== 'single') await panel.layout_set(view.layout as ImageLayout);
+      if (view.ghost !== undefined && view.ghost !== null) panel.ghost_set(view.ghost);
+      if (view.slice > 0) panel.slice_set(view.slice);
+    }
+    const viewerId: string | null = imagePane_idOf(panel);
+    if (viewerId !== null && snapshot.members.includes('tags')) tagsPane_open(viewerId);
+  };
+
+  const panesPanel: PanesPanel = new PanesPanel(panesMount, {
+    list: (): GroupSnapshot[] => dormant.list(),
+    restore: (id: string): void => { void group_restore(id); },
+    dismiss: (id: string): void => { dormant.dismiss(id); },
+  });
   const dag_summon = (): void => {
     const preset: string = layout.activePreset_get();
     if (preset === 'pacs' || preset === 'dag') {
@@ -2538,6 +2595,7 @@ async function surface_start(token: string): Promise<void> {
   pane_chrome_wire('files', 'files', filesPrimary.mount);
   pane_chrome_wire('dag', 'dag', dagPrimary.mount);
   pane_chrome_wire('pacs', 'pacs', element_require('pacs-workspace'));
+  pane_chrome_wire('panes', 'panes', panesMount);
 
   // Keyboard machinery, tmux-shaped: Ctrl-B is the prefix — it opens the
   // focused pane's drawer with keyboard focus on its first verb (Tab walks,
@@ -2902,6 +2960,15 @@ async function surface_start(token: string): Promise<void> {
     layout.preset_apply('pacs');
     orphans_dispose();
     layout.focus_set('pacs');
+    consoleFocused_set(false);
+  });
+  element_require('gutter-panes').addEventListener('click', (): void => {
+    // Opening PANES sends the current group dormant (orphans_dispose) — free
+    // and recoverable, since it becomes a card in the grid this draws.
+    layout.preset_apply('panes');
+    orphans_dispose();
+    panesPanel.render();
+    layout.focus_set('panes');
     consoleFocused_set(false);
   });
 

@@ -131,3 +131,26 @@ export const DICOM_MODEL_KINDS = {
   tags: 'dicom.tags',
   series: 'dicom.series',
 } as const;
+
+/**
+ * The `image.view` model: the intent to show an image at a path.
+ *
+ * `image <path>` is a kernel command, not a surface verb, so it emits this
+ * for whatever surface is listening. A graphical surface (ARGUS) opens a
+ * rendered pane; a text surface (chell on a TTY) prints the reflection the
+ * command already rendered. `target` says which renderer the path wants.
+ */
+export const imageViewModelSchema = z.object({
+  path: z.string(),
+  target: z.enum(['series', 'volume']),
+  force: z.boolean().optional(),
+  startAt: z.number().int().positive().optional(),
+});
+
+/** The `image.view` model. */
+export type ImageViewModel = z.infer<typeof imageViewModelSchema>;
+
+/** The image intent's envelope kind. */
+export const IMAGE_MODEL_KINDS = {
+  view: 'image.view',
+} as const;

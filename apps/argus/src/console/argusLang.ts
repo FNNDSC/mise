@@ -77,11 +77,21 @@ const SUBJECTS: ReadonlySet<string> = new Set([
  * through to the session, which answers for its own vocabulary. Every other
  * subject is the surface's alone.
  */
+/**
+ * The image subverbs the surface owns: they drive a pane already on the
+ * field. Opening an image (`image <path>`, `image --help`, `image` alone) is
+ * the kernel's `image` command, so those lines fall through to the session.
+ */
+const IMAGE_SURFACE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
+
 const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   pacs: new Set(['sort', 'filter']),
   // `tags` is the kernel's tag resource; the surface claims only the two
   // verbs its tags pane has and the session lacks.
   tags: new Set(['redact', 'filter']),
+  // `image` is a kernel command; the surface claims only the subverbs that
+  // drive a pane on the field, and lets `image <path>` reach the wire.
+  image: IMAGE_SURFACE_VERBS,
 };
 
 /** Desktop replay ordinals: %n → the n-th pane created during this load. */
@@ -421,16 +431,14 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'image') {
-    const IMAGE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
-    const force: boolean = words.includes('--force');
+    // The pane's live controls are the surface's; opening an image is the
+    // kernel's. `image <path>` (and `image --help`, `image` alone) is a
+    // brasa command — it reaches the wire, resolves the path, and emits an
+    // `image.view` intent this surface renders (see envelope_observe). Only
+    // the subverbs that drive a pane already on the field are claimed here.
     const plain: string[] = words.filter((word: string): boolean => word !== '--force');
     const first: string = plain[0] ?? '';
-    if (first === '') return 'image [--force] <path> · layout single|mpr|3d|slab · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save · tags · load · guard <bytes>|off · ghost <0..1>|off';
-    if (!IMAGE_VERBS.has(first.toLowerCase())) {
-      // A word that is not a verb is a path: a series folder, a study, a
-      // DICOM file, or a NIfTI/MGZ volume. `--force` skips the volume guard.
-      return host.image_open(sentence.target !== null ? paneId : host.focused_get(), first, { force });
-    }
+    if (!IMAGE_SURFACE_VERBS.has(first.toLowerCase())) return null;
     return host.image_control(paneId, verb, words.slice(1));
   }
 

@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, DICOM_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -3241,6 +3241,17 @@ async function surface_start(token: string): Promise<void> {
         // The claim rule for console-issued models: a DAG-shaped model goes
         // to the focused DAG instance when one is focused, else the primary.
         const kind: string | undefined = envelope.model?.kind;
+        if (kind === IMAGE_MODEL_KINDS.view) {
+          // `image <path>` is a kernel command; the intent it emits opens the
+          // pane here, so the same command works from a TTY (which prints the
+          // reflection) and from this surface (which renders it).
+          const parsed = imageViewModelSchema.safeParse(envelope.model?.data);
+          if (parsed.success) {
+            void image_open(layout.focused_get(), parsed.data.path, parsed.data.force === true ? { force: true } : {})
+              .then((line: string): void => terminal.line_note(line));
+          }
+          return;
+        }
         if (kind === 'feed.dag' || kind === 'feed.list' || kind === DAG_MODEL_KINDS.feedIndexing) {
           const focused: string | null = layout.focused_get();
           const target: DagPanel =

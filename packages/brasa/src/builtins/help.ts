@@ -1149,6 +1149,20 @@ export const helpText: Record<string, CommandHelp> = {
       'dcm tags . --all                               # Meta and private groups included',
     ],
   },
+  image: {
+    usage: 'image [--force] <path>',
+    description: 'Show a DICOM series or a volume. `image <path>` resolves what the path is — a series folder, a '
+      + '.dcm (its series), or a NIfTI/MGZ volume — and emits a show-this-image intent for whatever surface is '
+      + 'watching: a graphical surface (ARGUS) opens a rendered pane, a terminal prints this reflection. So the '
+      + 'same command works from a browser and from a TTY on one session. `--force` rides through the volume-size '
+      + 'guard a graphical surface would otherwise hold at. The pane\'s own controls (layout, slice, window, ...) '
+      + 'are driven where the pane lives.',
+    examples: [
+      'image ~/uploads/sag-anon                       # A series folder',
+      'image /SERVICES/PACS/PACSDCM/patient/study/00005-T1-abcdef0',
+      'image ~/feeds/feed_12/.../brain.nii.gz          # A volume',
+    ],
+  },
   cubepath: {
     usage: 'cubepath <vfs-path> [--pacsserver <id>]',
     description: 'Show CUBE FS path and file count for each series under a PACS VFS path. Zero files = not pulled.',

@@ -433,7 +433,9 @@ textarea {
 }
 
 .argus-input-line input {
-  font-weight: 700;
+  /* The typed line is regular weight. Bold at this size and letter-spacing
+   * smeared the glyphs, and the operator read it as out of focus. */
+  font-weight: 400;
 }
 
 a {
@@ -3646,7 +3648,6 @@ body[data-zoom] #header-restore {
   border-top: 1px solid var(--pumpkin-pie);
   padding-top: 0.4rem;
   margin-top: 0.2rem;
-  font-weight: bold;
 }
 
 .argus-input-glyph {

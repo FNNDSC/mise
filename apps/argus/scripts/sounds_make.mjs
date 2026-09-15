@@ -12,7 +12,7 @@
  * refusal. A retreat falls; a refusal is flatter and shorter, and neither is
  * pleasant enough to be mistaken for the other.
  *
- * Run: `node scripts/sounds_make.mjs` — writes into `src/lcars/sounds/`.
+ * Run: `node scripts/sounds_make.mjs` — writes into `public/sounds/`.
  *
  * @module
  */
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const RATE = 44100;
 
 /** Where the sounds land, beside the surface's other vendored assets. */
-const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'lcars', 'sounds');
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'sounds');
 
 /**
  * One sound: partials, how long, and how sharply it dies away.

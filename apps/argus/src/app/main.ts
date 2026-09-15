@@ -2259,7 +2259,7 @@ async function surface_start(token: string): Promise<void> {
   const orphans_dispose = (): void => {
     const shown: Set<string> = new Set(layout.panes_shown());
     const doomed: PaneInstance[] = paneInstances_list().filter(
-      (instance): boolean => !shown.has(instance.id) && instance.id !== 'files' && instance.id !== 'dag' && instance.id !== 'pacs',
+      (instance): boolean => !shown.has(instance.id) && instance.id !== 'files' && instance.id !== 'dag' && instance.id !== 'pacs' && instance.id !== 'panes',
     );
     // A leaving group is snapshotted dormant before its panes are disposed,
     // so a navigation away never loses the arrangement — only DISMISS does.

@@ -39,10 +39,12 @@ Each row says what the sentence lowers to. "Drawer" means the pane's drawer caps
 
 === image — a series or a volume on a guest engine's field
 
+`image` is a SHARED subject: `image <path>` (and `image --help`, `image` alone) is a kernel command — a brasa builtin that resolves what the path is and emits a typed `image.view` intent — so the same `image ~/uploads/sag-anon` opens a rendered pane in ARGUS and prints a text reflection on a TTY sharing the CALYPSO session. The surface claims only the subverbs below, the ones that drive a pane already on the field; every other `image` line falls through to the session. Law `surface-never-shadows-the-session`.
+
 [cols="2,3,3",options="header"]
 |===
 | Sentence | Lowers to | Notes
-| `image <path>` | an image pane beside the focused one, or the focused image pane | A series folder, a study folder (its first series; `image series <n>` for the rest), one `.dcm` (its series, starting at that slice), or a `.nii`, `.nii.gz`, `.mgz`, `.mgh` volume. The kernel's `dcm series` answers what the folder is; the pane never lists it itself.
+| `image <path>` | the kernel, which opens a pane through its intent | A series folder, a study folder (its first series; `image series <n>` for the rest), one `.dcm` (its series, starting at that slice), or a `.nii`, `.nii.gz`, `.mgz`, `.mgh` volume. The kernel resolves the path and emits `image.view`; ARGUS opens the pane from it, a TTY prints the reflection. Not a surface verb.
 | `image layout single\|mpr\|3d` | frame LAYOUT block | One plane; three linked planes with one crosshair; a 3D render. A volume layout loads every slice first and the bar says so.
 | `image slice <n>` | the stack | One-based; the bar reads `SLICE n OF m`.
 | `image series <n>` | the study's series list | Only when the pane opened a study folder.
@@ -153,7 +155,7 @@ These act on the DAG pane's *regard*: the node last selected (or the feed picked
 
 A PACS answer is a listing like the other two, grouped by study: one sort and one filter govern every study on stage, and each study heads its own series with caps minted from the same column declaration.
 
-`pacs` is the one SHARED subject. It is also a kernel command (`pacs connect|disconnect|list|query|pull|status`), so the surface claims only `sort` and `filter` and every other `pacs` line falls through to the session untouched. Law `surface-never-shadows-the-session`.
+`pacs` is a SHARED subject, one of three (`pacs`, `tags`, `image`). It is also a kernel command (`pacs connect|disconnect|list|query|pull|status`), so the surface claims only `sort` and `filter` and every other `pacs` line falls through to the session untouched. Law `surface-never-shadows-the-session`.
 
 [cols="2,3,3",options="header"]
 |===

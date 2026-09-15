@@ -2290,44 +2290,84 @@ try {
     check('the pane says in the console when the first slice landed', opened.noted === true, JSON.stringify(opened));
   }
   }
+  if (stage('image-annotations')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    // A length drawn through the debugger, as the operator's would arrive.
+    const at = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image layout single');
+      const image = document.querySelector('.pane-image');
+      for (let i = 0; i < 40 && !image.querySelector('.image-viewport-stack'); i++) await sleep(150);
+      image.querySelector('.image-tool[data-tool="length"]').click(); await sleep(200);
+      const r = image.querySelector('.image-viewport').getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x - 40, y: at.y - 40, button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 8; i++) { await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 40 + i * 10, y: at.y - 40 + i * 10, button: 'left' }); await new Promise((r) => setTimeout(r, 40)); }
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x + 40, y: at.y + 40, button: 'left', clickCount: 1 });
+    const saved = await evalIn(`
+      await sleep(600);
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image save');
+      let landed = null;
+      for (let i = 0; i < 60; i++) { await sleep(300); landed = document.getElementById('terminal').innerText.split('\\n').find((l) => /^✓ \\/home\\/.*\\/annotations\\/.*measurements\\.dcm$/.test(l.trim())); if (landed) break; }
+      if (!landed) return { error: 'nothing landed', tail: document.getElementById('terminal').innerText.split('\\n').slice(-4) };
+      const file = landed.trim().slice(2);
+      // Reopen the series: the file the kernel now lists comes back onto the field.
+      const before = document.querySelector('.pane-image').dataset.annotations ?? null;
+      await run('image ${dicomSeries}');
+      let reloaded = null;
+      for (let i = 0; i < 80; i++) { await sleep(300); reloaded = document.getElementById('terminal').innerText.split('\\n').find((l) => /^image: \\d+ measurements? from measurements\\.dcm/.test(l.trim())); if (reloaded) break; }
+      const placed = document.querySelector('.pane-image').dataset.annotations ?? null;
+      // Leave the identity's CFS as it was found.
+      await run('rm -r ' + file.slice(0, file.lastIndexOf('/')));
+      await sleep(1500);
+      return { file, before, reloaded, placed };`);
+    check('a measurement saved as an SR comes back when the series reopens', saved.error === undefined && /measurements\.dcm$/.test(saved.file ?? '') && saved.before === '0' && saved.placed === '1', JSON.stringify(saved));
+  }
+  }
   if (stage('image-answers')) {
   if (dicomSeries === '') {
     console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
   } else {
-    // The press is answered before the kernel is: an observer catches the
-    // OPENING notice however briefly it stands, and the first slice's
-    // readout marks the answer arriving.
-    const answered = await evalIn(`
+    // `image <path>` is a KERNEL command now, not a surface verb: it crosses
+    // the wire, resolves the series and emits an intent this surface opens
+    // the pane from. So a typed open is a round-trip (no client-side instant
+    // notice), and the console carries the reflection a TTY would print.
+    const opened = await evalIn(`
       await console_idle();
-      const seen = { openingAt: null, sliceAt: null, label: null, state: null };
-      const started = performance.now();
+      const term = document.getElementById('terminal');
+      const before = term.innerText.length;
+      const seen = { openingSeen: false };
       const observer = new MutationObserver(() => {
         const note = document.querySelector('.pane-image .image-working-label');
-        if (note && seen.openingAt === null && /^OPENING /.test(note.textContent)) { seen.openingAt = performance.now() - started; seen.label = note.textContent; seen.state = document.querySelector('.pane-image .pane-state').textContent; }
-        const pane = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state').textContent));
-        if (pane && seen.sliceAt === null) seen.sliceAt = performance.now() - started;
+        if (note && /^OPENING /.test(note.textContent)) seen.openingSeen = true;
       });
-      observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true });
       const input = document.querySelector('#terminal input');
       input.value = 'image ${dicomSeries}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      for (let i = 0; i < 120 && seen.sliceAt === null; i++) await sleep(250);
+      let pane = null;
+      for (let i = 0; i < 200; i++) { await sleep(200); pane = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state').textContent)); if (pane) break; }
       observer.disconnect();
-      return seen;`);
-    check('the image pane opens and says OPENING before the kernel answers', answered.openingAt !== null && answered.sliceAt !== null && answered.openingAt < answered.sliceAt && answered.state === 'OPENING', JSON.stringify(answered));
-    check('the press is answered within a beat', answered.openingAt !== null && answered.openingAt < 400, JSON.stringify(answered));
+      const reflection = term.innerText.slice(before);
+      return { opened: pane !== null, openingSeen: seen.openingSeen, reflectsSeries: /MODALITY|SERIES\\b|slices/i.test(reflection) };`);
+    check('image <path> is a kernel command whose intent opens the pane', opened.opened === true, JSON.stringify(opened));
     const refused = await evalIn(`
       await console_idle();
+      const term = document.getElementById('terminal');
+      const before = term.innerText.length;
       const input = document.querySelector('#terminal input');
-      input.value = 'image ~/argus-smoke-nowhere-${Date.now()}';
+      input.value = 'image /home/does-not-exist/argus-smoke-nowhere-${Date.now()}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      let note = null;
-      for (let i = 0; i < 80; i++) { await sleep(250); note = document.querySelector('.pane-image .image-working-failed'); if (note) break; }
-      if (!note) return { error: 'no failure notice' };
-      const pane = note.closest('.pane-image');
-      const said = document.getElementById('terminal').innerText.split('\\n').some((l) => /^image: .*not a readable DICOM series/.test(l.trim()));
-      return { label: note.querySelector('.image-working-label').textContent, path: note.querySelector('.image-working-count').textContent, state: pane.querySelector('.pane-state').textContent, track: getComputedStyle(note.querySelector('.image-working-track')).display, said };`);
-    check('what could not open is named on the field and on the bar', refused.error === undefined && refused.label === 'NOT A READABLE SERIES' && /argus-smoke-nowhere/.test(refused.path) && refused.state === 'NOT A READABLE SERIES' && refused.track === 'none' && refused.said === true, JSON.stringify(refused));
+      let said = false;
+      for (let i = 0; i < 60; i++) { await sleep(200); if (/not a readable DICOM series/.test(term.innerText.slice(before))) { said = true; break; } }
+      return { said };`);
+    check('a bad image path is refused in the console by the kernel', refused.said === true, JSON.stringify(refused));
   }
   }
   if (stage('image-field')) {
@@ -2663,46 +2703,6 @@ try {
     check('identifying values show redacted until REDACT says otherwise', tags.phiBefore === '••••' && tags.phiRevealed !== '••••' && tags.phiRevealed !== null && tags.phiHidden === '••••' && /REDACT ON/.test(tags.redactBlock) && /REDACTED/.test(tags.state), JSON.stringify(tags));
     check('the tags filter narrows the listing and descends into sequences', Array.isArray(tags.filtered) && tags.filtered.includes('ImagePositionPatient') && !tags.filtered.includes('PatientName') && tags.deep.includes('ReferencedImageSequence'), JSON.stringify(tags));
     check("the tags pane wears the slice's modality as its hue", tags.hue === 'MR', JSON.stringify(tags));
-  }
-  }
-  if (stage('image-annotations')) {
-  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
-    console.log('  skipped: needs the image pane from image-pane');
-  } else {
-    // A length drawn through the debugger, as the operator's would arrive.
-    const at = await evalIn(`
-      await console_idle();
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
-      await run('image layout single');
-      const image = document.querySelector('.pane-image');
-      for (let i = 0; i < 40 && !image.querySelector('.image-viewport-stack'); i++) await sleep(150);
-      image.querySelector('.image-tool[data-tool="length"]').click(); await sleep(200);
-      const r = image.querySelector('.image-viewport').getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
-    await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x - 40, y: at.y - 40, button: 'left', clickCount: 1 });
-    for (let i = 1; i <= 8; i++) { await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 40 + i * 10, y: at.y - 40 + i * 10, button: 'left' }); await new Promise((r) => setTimeout(r, 40)); }
-    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x + 40, y: at.y + 40, button: 'left', clickCount: 1 });
-    const saved = await evalIn(`
-      await sleep(600);
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
-      await run('image save');
-      let landed = null;
-      for (let i = 0; i < 60; i++) { await sleep(300); landed = document.getElementById('terminal').innerText.split('\\n').find((l) => /^✓ \\/home\\/.*\\/annotations\\/.*measurements\\.dcm$/.test(l.trim())); if (landed) break; }
-      if (!landed) return { error: 'nothing landed', tail: document.getElementById('terminal').innerText.split('\\n').slice(-4) };
-      const file = landed.trim().slice(2);
-      // Reopen the series: the file the kernel now lists comes back onto the field.
-      const before = document.querySelector('.pane-image').dataset.annotations ?? null;
-      await run('image ${dicomSeries}');
-      let reloaded = null;
-      for (let i = 0; i < 80; i++) { await sleep(300); reloaded = document.getElementById('terminal').innerText.split('\\n').find((l) => /^image: \\d+ measurements? from measurements\\.dcm/.test(l.trim())); if (reloaded) break; }
-      const placed = document.querySelector('.pane-image').dataset.annotations ?? null;
-      // Leave the identity's CFS as it was found.
-      await run('rm -r ' + file.slice(0, file.lastIndexOf('/')));
-      await sleep(1500);
-      return { file, before, reloaded, placed };`);
-    check('a measurement saved as an SR comes back when the series reopens', saved.error === undefined && /measurements\.dcm$/.test(saved.file ?? '') && saved.before === '0' && saved.placed === '1', JSON.stringify(saved));
   }
   }
   if (stage('image-guard')) {

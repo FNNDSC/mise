@@ -403,7 +403,7 @@ export class PacsPanel {
               // verbs for a series already home (gather it, or open it). Sized
               // for one, the second pushed the first out of the cell and the
               // GATHER a whole workflow starts with went missing.
-              actions: { width: '12em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
+              actions: { width: '16em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
               // A series opens nothing: its verbs are the whole of what it does.
               activatable: (): boolean => false,
               row: { className: (): string => 'pacs-series' },

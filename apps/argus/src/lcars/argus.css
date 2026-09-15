@@ -840,6 +840,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
      and a fixed-column listing must not silently clip its last verb — it
      scrolls to it instead. */
   overflow: auto;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -2298,6 +2299,7 @@ body[data-header='dag'] #header-dag {
 
 .files-panel {
   flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
   /* The pane is a frame with a field under it. The frame (caps, filter
    * strip) belongs to the pane, not to the scroll: a scrollbar that runs
@@ -2609,6 +2611,12 @@ body[data-header='dag'] #header-dag {
   padding-bottom: 0.2rem;
   margin-bottom: calc(var(--rule-h, 6px) + 0.4rem);
   font-size: 0.9rem;
+  /* A CFS path is a long, mostly unbreakable token (`/` is no break point);
+     left free it establishes a min-content width wider than a narrow pane and
+     shoves the whole layout. It wraps within the pane instead — no floor. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .files-content-header {

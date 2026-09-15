@@ -2514,6 +2514,69 @@ try {
     check('image layout single returns and the mode annunciation clears', verbs.back === '', JSON.stringify(verbs));
   }
   }
+  if (stage('image-tools')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    // MPR offers the pointer tools on a plane; 3D offers only navigation.
+    const mpr = await evalIn(`
+      await console_idle();
+      const image = document.querySelector('.pane-image');
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image guard off');
+      await run('image layout mpr');
+      for (let i = 0; i < 80; i++) { await sleep(200); if (image.querySelector('.pane-mode').textContent === 'MPR' && image.querySelectorAll('.image-mpr .image-viewport').length === 3) break; }
+      const resting = [...image.querySelectorAll('.image-tool')].every((b) => b.classList.contains('rail-off') && !b.classList.contains('rail-na'));
+      image.querySelector('.image-tool[data-tool="length"]').click(); await sleep(150);
+      const lengthLit = !image.querySelector('.image-tool[data-tool="length"]').classList.contains('rail-off');
+      const plane = image.querySelector('.image-viewport-axial') || image.querySelector('.image-mpr .image-viewport');
+      const r = plane.getBoundingClientRect();
+      return { resting, lengthLit, at: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, from: { x: r.x + r.width * 0.35, y: r.y + r.height * 0.4 } };`);
+    // Draw a length across a plane with a real drag.
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: mpr.from.x, y: mpr.from.y });
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', button: 'left', x: mpr.at.x, y: mpr.at.y });
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: mpr.at.x, y: mpr.at.y });
+    await new Promise((r) => setTimeout(r, 400));
+    const drawn = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const lines = image.querySelectorAll('.image-mpr svg line').length;
+      image.querySelector('.image-tool[data-tool="probe"]').click(); await sleep(150);
+      const r = (image.querySelector('.image-viewport-axial') || image.querySelector('.image-mpr .image-viewport')).getBoundingClientRect();
+      window.__probeAt = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      return { lines };`);
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (await evalIn('return window.__probeAt.x')), y: (await evalIn('return window.__probeAt.y')) });
+    await new Promise((r) => setTimeout(r, 300));
+    const probed = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const note = image.querySelector('.image-probe-note');
+      return { text: note ? note.textContent : null };`);
+    check('MPR rests on the crosshair with no tool lit, and offers the pointer tools', mpr.resting === true && mpr.lengthLit === true, JSON.stringify(mpr));
+    check('a length drawn on an MPR plane leaves a measurement', drawn.lines >= 2, JSON.stringify(drawn));
+    check('the probe reads a voxel on an MPR plane', probed.text !== null && /^X \d+  Y \d+  Z \d+  ·  /.test(probed.text), JSON.stringify(probed));
+    const nav3d = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const input = document.querySelector('#terminal input');
+      input.value = 'image layout 3d'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 120; i++) { await sleep(250); if (image.querySelector('.pane-mode').textContent === '3D' && image.querySelector('.image-render .image-viewport')) break; }
+      await sleep(1200);
+      const pills = Object.fromEntries([...image.querySelectorAll('.image-tool')].map((b) => [b.dataset.tool, b.classList.contains('rail-na') ? 'na' : b.classList.contains('rail-off') ? 'off' : 'lit']));
+      const canvas = image.querySelector('.image-render canvas');
+      const bbox = () => { const c = canvas.getContext('2d'); const d = c.getImageData(0, 0, canvas.width, canvas.height).data; let minx = 1e9, maxx = -1; for (let y = 0; y < canvas.height; y += 3) for (let x = 0; x < canvas.width; x += 3) { const i = (y * canvas.width + x) * 4; if (d[i] + d[i+1] + d[i+2] > 30) { if (x < minx) minx = x; if (x > maxx) maxx = x; } } return maxx < 0 ? null : { w: maxx - minx, cx: Math.round((minx + maxx) / 2) }; };
+      window.__bbox = bbox;
+      const r = image.querySelector('.image-render .image-viewport').getBoundingClientRect();
+      image.querySelector('.image-tool[data-tool="pan"]').click(); await sleep(150);
+      return { pills, panLit: !image.querySelector('.image-tool[data-tool="pan"]').classList.contains('rail-off'), before: bbox(), at: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, to: { x: r.x + r.width * 0.78, y: r.y + r.height / 2 } };`);
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: nav3d.at.x, y: nav3d.at.y });
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', button: 'left', x: nav3d.to.x, y: nav3d.to.y });
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: nav3d.to.x, y: nav3d.to.y });
+    await new Promise((r) => setTimeout(r, 500));
+    const panned = await evalIn(`return { after: window.__bbox() };`);
+    check('3D offers zoom and pan, and marks the slice tools unavailable', nav3d.pills.zoom !== 'na' && nav3d.pills.pan !== 'na' && nav3d.pills.length === 'na' && nav3d.pills.angle === 'na' && nav3d.pills.probe === 'na' && nav3d.pills.wl === 'na', JSON.stringify(nav3d.pills));
+    check('PAN drags the 3D render across the field', nav3d.panLit === true && nav3d.before !== null && panned.after !== null && Math.abs(panned.after.cx - nav3d.before.cx) > 40, JSON.stringify({ before: nav3d.before, after: panned.after }));
+    await evalIn(`const input = document.querySelector('#terminal input'); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); return 1;`);
+  }
+  }
   if (stage('image-tags')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');

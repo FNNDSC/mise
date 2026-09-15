@@ -382,6 +382,7 @@ export class ImagePanel {
     }
     this.progress_show(null);
     this.overlay_paint();
+    this.toolPills_paint();
     return true;
   }
 
@@ -712,7 +713,20 @@ export class ImagePanel {
   }
 
   private toolPills_paint(): void {
-    for (const [tool, pill] of this.toolPills) pill.classList.toggle('rail-off', tool !== this.tool);
+    const offered: ReadonlySet<ImageTool> = new Set(this.engine?.toolsOffered_get() ?? IMAGE_TOOLS);
+    // Null when the layout's own gesture holds the primary (the MPR
+    // crosshair, the 3D trackball): then no tool pill is lit. Falls back to
+    // the panel's tool only when there is no engine yet.
+    const primary: ImageTool | null = this.engine !== null ? this.engine.state_get().primaryTool : this.tool;
+    for (const [tool, pill] of this.toolPills) {
+      // A tool a layout cannot honour is dimmed and does nothing; the one on
+      // the primary drag is lit; the rest are on the rail. A volume's own
+      // gesture (crosshair, trackball) holds the primary when nothing is lit.
+      const usable: boolean = offered.has(tool);
+      pill.classList.toggle('rail-na', !usable);
+      pill.classList.toggle('rail-off', usable && tool !== primary);
+      pill.disabled = !usable;
+    }
   }
 
   private focusMark_paint(on: boolean): void {

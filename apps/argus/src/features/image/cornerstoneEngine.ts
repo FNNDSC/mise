@@ -87,6 +87,13 @@ const TOOL_NAMES: Readonly<Record<ImageTool, string>> = {
   probe: 'Probe',
 };
 
+/** A volume viewport's data, as far as the probe reads it. */
+interface ProbeVolumeData {
+  dimensions: number[];
+  imageData: unknown;
+  voxelManager?: { getAtIJKPoint: (ijk: [number, number, number]) => unknown };
+}
+
 /** A cached image, as far as the probe reads it: its pixels and how to scale them. */
 interface ProbeImage {
   rows: number;
@@ -126,6 +133,12 @@ export class CornerstoneEngine implements ImageEngine {
   private resizeObserver: ResizeObserver | null = null;
   /** The probe's listeners on the stack viewport, while the probe is the tool. */
   private probeOff: (() => void) | null = null;
+  /**
+   * The frame tool on the primary (left) drag, or null for the layout's own
+   * gesture — the crosshair in MPR, the trackball in 3D. A stack always has
+   * a tool here; a volume rests on its gesture until the frame lends it one.
+   */
+  private primary: ImageTool | null = 'wl';
 
   /**
    * @param host - The pane's lendings.
@@ -242,28 +255,84 @@ export class CornerstoneEngine implements ImageEngine {
 
   public tool_set(tool: ImageTool): boolean {
     if (this.libraries === null) return false;
-    const group = this.libraries.tools.ToolGroupManager.getToolGroup(this.toolGroupId_get());
+    const { tools } = this.libraries;
+    const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get());
     if (group === undefined) return false;
-    const bindings = this.libraries.tools.Enums.MouseBindings;
-    // The probe is a readout, not a mark: it reads what is under the
-    // pointer while the pointer is there, and leaves nothing behind. The
-    // library's probe left a ring on the image and nothing on the bar.
+    if (!this.toolsOffered_get().includes(tool)) return false;
+    const bindings = tools.Enums.MouseBindings;
+    this.probe_disarm();
+
+    // A rendered volume: zoom and pan take the primary drag, rotate keeps a
+    // button of its own, and clicking the tool already on the primary hands
+    // it back to rotate. The pointer tools do not apply to a projection.
+    if (this.layout === '3d') {
+      this.primary = this.primary === tool ? null : tool;
+      this.volumeBindings_apply(group as never);
+      this.tool = tool;
+      return true;
+    }
+
+    // MPR: each plane is a slice, so the pointer tools apply. The chosen
+    // tool takes the primary drag off the crosshair; probe is the hover
+    // readout, and the crosshair simply stands down while it reads. Clicking
+    // the active tool restores the crosshair. Zoom stays on the secondary,
+    // pan on the auxiliary, the wheel scrolls throughout.
+    if (this.layout === 'mpr') {
+      const cross: string = tools.CrosshairsTool.toolName;
+      const release: boolean = this.primary === tool;
+      // Passivate everything the frame can bind, then set the drags fresh:
+      // setToolActive adds a binding rather than moving it.
+      for (const name of [cross, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle, TOOL_NAMES.zoom, TOOL_NAMES.pan]) group.setToolPassive(name);
+      group.setToolActive(TOOL_NAMES.zoom, { bindings: [{ mouseButton: bindings.Secondary }] });
+      group.setToolActive(TOOL_NAMES.pan, { bindings: [{ mouseButton: bindings.Auxiliary }] });
+      if (release) {
+        group.setToolActive(cross, { bindings: [{ mouseButton: bindings.Primary }] });
+        this.primary = null;
+      } else if (tool === 'probe') {
+        this.probe_arm();
+        this.primary = 'probe';
+      } else if (tool === 'zoom' || tool === 'pan') {
+        group.setToolActive(TOOL_NAMES[tool], { bindings: [{ mouseButton: bindings.Primary }] });
+        this.primary = tool;
+      } else {
+        group.setToolActive(TOOL_NAMES[tool], { bindings: [{ mouseButton: bindings.Primary }] });
+        this.primary = tool;
+      }
+      this.tool = tool;
+      return true;
+    }
+
+    // A stack. The probe is a readout, not a mark: it reads what is under
+    // the pointer while the pointer is there, and leaves nothing behind.
     if (tool === 'probe') {
-      if (this.layout !== 'single') return false;
       for (const other of IMAGE_TOOLS) {
         if (other !== 'probe') group.setToolPassive(TOOL_NAMES[other]);
       }
       this.tool = tool;
+      this.primary = 'probe';
       this.probe_arm();
       return true;
     }
-    this.probe_disarm();
     for (const other of IMAGE_TOOLS) {
       if (other !== tool && other !== 'probe') group.setToolPassive(TOOL_NAMES[other]);
     }
     group.setToolActive(TOOL_NAMES[tool], { bindings: [{ mouseButton: bindings.Primary }] });
     this.tool = tool;
+    this.primary = tool;
     return true;
+  }
+
+  /**
+   * The frame tools that apply to what is on the field now.
+   *
+   * A stack answers to every tool. An MPR plane is a slice too, so it takes
+   * the pointer tools and the navigators. A 3D render is a projection with
+   * no slice to measure or probe, so it offers navigation alone.
+   */
+  public toolsOffered_get(): readonly ImageTool[] {
+    if (this.layout === '3d') return ['zoom', 'pan'];
+    if (this.layout === 'mpr') return ['wl', 'zoom', 'pan', 'length', 'angle', 'probe'];
+    return IMAGE_TOOLS;
   }
 
   public async annotations_export(): Promise<Blob | null> {
@@ -367,6 +436,7 @@ export class CornerstoneEngine implements ImageEngine {
       slice: this.slice,
       slices: this.imageIds.length,
       tool: this.tool,
+      primaryTool: this.primary,
       refused: this.refused.size,
       annotations,
       filled: this.filled,
@@ -429,49 +499,76 @@ export class CornerstoneEngine implements ImageEngine {
    */
   private probe_arm(): void {
     this.probe_disarm();
-    const element: HTMLDivElement | null = this.field?.querySelector<HTMLDivElement>('.image-viewport-stack') ?? null;
-    if (element === null) return;
-    const modality: string = this.series.modality.toUpperCase();
-    const unit: string = modality === 'CT' ? ' HU' : '';
-    const libraries: Loaded | null = this.libraries;
-    const move = (event: MouseEvent): void => {
-      const viewport = this.stackViewport_get();
-      if (viewport === null || libraries === null) return;
-      const { core } = libraries;
-      const rect: DOMRect = element.getBoundingClientRect();
-      const world: [number, number, number] = viewport.canvasToWorld([event.clientX - rect.left, event.clientY - rect.top]) as [number, number, number];
-      const imageId: string = viewport.getCurrentImageId() ?? '';
-      const image: ProbeImage | undefined = core.cache.getImage(imageId) as unknown as ProbeImage | undefined;
-      const coords: [number, number] | undefined = core.utilities.worldToImageCoords(imageId, world) as [number, number] | undefined;
-      if (image === undefined || coords === undefined) {
-        this.host.probe_set(null);
-        return;
-      }
-      const i: number = Math.floor(coords[0]);
-      const j: number = Math.floor(coords[1]);
-      if (i < 0 || j < 0 || i >= image.columns || j >= image.rows) {
-        this.host.probe_set(null);
-        return;
-      }
-      const pixels: ArrayLike<number> = image.getPixelData();
-      // A colour image holds three samples a pixel; the first is read.
-      const samples: number = Math.max(1, Math.round(pixels.length / (image.rows * image.columns)));
-      const raw: number | undefined = pixels[(j * image.columns + i) * samples];
-      // The loader may have applied the modality LUT already; if not, it is applied here.
-      const value: number | undefined = raw === undefined
-        ? undefined
-        : (image.preScale?.scaled === true ? raw : raw * (image.slope ?? 1) + (image.intercept ?? 0));
-      const shown: string = value === undefined || Number.isNaN(value) ? '—' : `${Math.round(value * 10) / 10}${unit}`;
-      this.host.probe_set(`X ${i}  Y ${j}  ·  SLICE ${viewport.getCurrentImageIdIndex() + 1}  ·  ${shown}`);
-    };
-    const leave = (): void => this.host.probe_set(null);
-    element.addEventListener('mousemove', move);
-    element.addEventListener('mouseleave', leave);
+    const elements: HTMLDivElement[] = [...(this.field?.querySelectorAll<HTMLDivElement>('.image-viewport') ?? [])];
+    if (elements.length === 0 || this.libraries === null) return;
+    const { core } = this.libraries;
+    const unit: string = this.series.modality.toUpperCase() === 'CT' ? ' HU' : '';
+    const offs: Array<() => void> = [];
+    for (const element of elements) {
+      const move = (event: MouseEvent): void => {
+        const reading: string | null = this.probeReading_at(core, element, event, unit);
+        this.host.probe_set(reading);
+      };
+      const leave = (): void => this.host.probe_set(null);
+      element.addEventListener('mousemove', move);
+      element.addEventListener('mouseleave', leave);
+      offs.push((): void => {
+        element.removeEventListener('mousemove', move);
+        element.removeEventListener('mouseleave', leave);
+      });
+    }
     this.probeOff = (): void => {
-      element.removeEventListener('mousemove', move);
-      element.removeEventListener('mouseleave', leave);
+      for (const off of offs) off();
       this.host.probe_set(null);
     };
+  }
+
+  /**
+   * The probe's line for a pointer over one viewport, or null off the image.
+   *
+   * A stack reads its current image's pixels; an MPR plane reads the volume
+   * the plane samples. Either way the answer is position, the plane or
+   * slice, and the value in the modality's unit.
+   */
+  private probeReading_at(core: Cornerstone, element: HTMLDivElement, event: MouseEvent, unit: string): string | null {
+    const enabled = core.getEnabledElement(element) as { viewport?: unknown } | undefined;
+    const viewport = enabled?.viewport as {
+      canvasToWorld?: (point: [number, number]) => number[];
+      getCurrentImageId?: () => string | undefined;
+      getCurrentImageIdIndex?: () => number;
+      getImageData?: () => ProbeVolumeData | undefined;
+    } | undefined;
+    if (viewport?.canvasToWorld === undefined) return null;
+    const rect: DOMRect = element.getBoundingClientRect();
+    const world: [number, number, number] = viewport.canvasToWorld([event.clientX - rect.left, event.clientY - rect.top]) as [number, number, number];
+    // A stack slice reads its own image's pixels; an MPR plane reads the
+    // volume it samples, which is right for the reformatted planes too. The
+    // element's own class says which it is — an orthographic viewport also
+    // answers getCurrentImageId, so the method alone cannot tell them apart.
+    if (element.classList.contains('image-viewport-stack')) {
+      const imageId: string = viewport.getCurrentImageId?.() ?? '';
+      const image: ProbeImage | undefined = core.cache.getImage(imageId) as unknown as ProbeImage | undefined;
+      const coords: [number, number] | undefined = core.utilities.worldToImageCoords(imageId, world) as [number, number] | undefined;
+      if (image === undefined || coords === undefined) return null;
+      const i: number = Math.floor(coords[0]);
+      const j: number = Math.floor(coords[1]);
+      if (i < 0 || j < 0 || i >= image.columns || j >= image.rows) return null;
+      const pixels: ArrayLike<number> = image.getPixelData();
+      const samples: number = Math.max(1, Math.round(pixels.length / (image.rows * image.columns)));
+      const raw: number | undefined = pixels[(j * image.columns + i) * samples];
+      const value: number | undefined = raw === undefined ? undefined : (image.preScale?.scaled === true ? raw : raw * (image.slope ?? 1) + (image.intercept ?? 0));
+      const slice: number = typeof viewport.getCurrentImageIdIndex === 'function' ? (viewport.getCurrentImageIdIndex() ?? 0) + 1 : 1;
+      return `X ${i}  Y ${j}  ·  SLICE ${slice}  ·  ${value === undefined || Number.isNaN(value) ? '—' : `${Math.round(value * 10) / 10}${unit}`}`;
+    }
+    // An MPR plane: the volume the plane samples, at the world point.
+    const data: ProbeVolumeData | undefined = typeof viewport.getImageData === 'function' ? viewport.getImageData() : undefined;
+    if (data?.imageData === undefined || data.voxelManager === undefined) return null;
+    const ijk: number[] = (core.utilities.transformWorldToIndex(data.imageData, world) as number[]).map((v: number): number => Math.round(v));
+    const [i = 0, j = 0, k = 0] = ijk;
+    const [w = 0, h = 0, d = 0] = data.dimensions;
+    if (i < 0 || j < 0 || k < 0 || i >= w || j >= h || k >= d) return null;
+    const value: unknown = data.voxelManager.getAtIJKPoint([i, j, k]);
+    return `X ${i}  Y ${j}  Z ${k}  ·  ${typeof value === 'number' ? `${Math.round(value * 10) / 10}${unit}` : '—'}`;
   }
 
   private probe_disarm(): void {
@@ -591,6 +688,7 @@ export class CornerstoneEngine implements ImageEngine {
     const bindings = tools.Enums.MouseBindings;
     // The wheel turns the stack only once the stack is whole.
     if (this.filled) group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }] });
+    this.primary = this.tool;
     if (this.tool === 'probe') this.probe_arm();
     else group.setToolActive(TOOL_NAMES[this.tool], { bindings: [{ mouseButton: bindings.Primary }] });
     group.setToolActive(TOOL_NAMES.zoom, { bindings: [{ mouseButton: bindings.Secondary }] });
@@ -675,10 +773,16 @@ export class CornerstoneEngine implements ImageEngine {
         getReferenceLineColor: (id: string): string => (id.endsWith('axial') ? 'rgb(200, 0, 0)' : id.endsWith('coronal') ? 'rgb(200, 200, 0)' : 'rgb(0, 200, 0)'),
       });
       group.addTool(tools.StackScrollTool.toolName);
-      group.addTool(TOOL_NAMES.zoom);
+      // The pointer tools apply to an MPR plane as they do to a stack slice:
+      // each plane IS a slice. Added here so the frame can lend one to the
+      // primary drag; before this they were never on the MPR group and the
+      // button threw, so measuring and probing an MPR did nothing.
+      for (const name of [TOOL_NAMES.zoom, TOOL_NAMES.pan, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle]) group.addTool(name);
+      this.primary = null;
       group.setToolActive(tools.CrosshairsTool.toolName, { bindings: [{ mouseButton: bindings.Primary }] });
       group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }] });
       group.setToolActive(TOOL_NAMES.zoom, { bindings: [{ mouseButton: bindings.Secondary }] });
+      group.setToolActive(TOOL_NAMES.pan, { bindings: [{ mouseButton: bindings.Auxiliary }] });
       for (const input of inputs) {
         input.element.addEventListener(core.Enums.Events.VOLUME_NEW_IMAGE, (event: Event): void => {
           const detail: { imageIndex?: number } = (event as CustomEvent).detail;
@@ -686,15 +790,51 @@ export class CornerstoneEngine implements ImageEngine {
         });
       }
     } else {
+      // A rendered volume navigates with three drags at once: rotate, zoom
+      // and pan, one per mouse button, so none is lost when the frame moves
+      // one onto the primary drag. Pan was never added before, so the PAN
+      // button threw and only rotate answered — the operator saw exactly
+      // that.
       group.addTool(tools.TrackballRotateTool.toolName);
       group.addTool(TOOL_NAMES.zoom);
-      group.setToolActive(tools.TrackballRotateTool.toolName, { bindings: [{ mouseButton: bindings.Primary }] });
-      group.setToolActive(TOOL_NAMES.zoom, { bindings: [{ mouseButton: bindings.Secondary }] });
+      group.addTool(TOOL_NAMES.pan);
+      this.primary = null;
+      this.volumeBindings_apply(group);
     }
     this.renderingEngine.renderViewports(viewportIds);
     // The layout is the bar's mode annunciation; the state reads the count.
     this.host.readout_set(`${this.imageIds.length} SLICES${this.refused.size > 0 ? ` · REFUSED ${this.refused.size}` : ''}`);
     this.host.note(`image: ${layout} up in ${Math.round(performance.now() - started)} ms`);
+  }
+
+  /**
+   * Puts rotate, zoom and pan on the three mouse buttons of a volume,
+   * whichever the frame has chosen for the primary (left) drag.
+   *
+   * The chosen tool takes the primary; the other two take the secondary and
+   * auxiliary, rotate always among them, so a rendered volume rotates,
+   * zooms and pans no matter which button the frame has moved where.
+   *
+   * @param group - The layout's tool group.
+   */
+  private volumeBindings_apply(group: {
+    setToolActive: (name: string, options: { bindings: Array<{ mouseButton: number }> }) => void;
+    setToolPassive: (name: string) => void;
+  }): void {
+    if (this.libraries === null) return;
+    const { tools } = this.libraries;
+    const bindings = tools.Enums.MouseBindings;
+    const rotate: string = tools.TrackballRotateTool.toolName;
+    const chosen: string = this.primary === 'zoom' ? TOOL_NAMES.zoom : this.primary === 'pan' ? TOOL_NAMES.pan : rotate;
+    const rest: string[] = [rotate, TOOL_NAMES.zoom, TOOL_NAMES.pan].filter((name): boolean => name !== chosen);
+    // Passivate before binding: setToolActive ADDS a mouse binding rather
+    // than moving it, so without this the tool that held the primary keeps
+    // it and a second tool bound there never answers — the PAN button lit
+    // and did nothing.
+    for (const name of [rotate, TOOL_NAMES.zoom, TOOL_NAMES.pan]) group.setToolPassive(name);
+    group.setToolActive(chosen, { bindings: [{ mouseButton: bindings.Primary }] });
+    if (rest[0] !== undefined) group.setToolActive(rest[0], { bindings: [{ mouseButton: bindings.Secondary }] });
+    if (rest[1] !== undefined) group.setToolActive(rest[1], { bindings: [{ mouseButton: bindings.Auxiliary }] });
   }
 
   private viewport_make(name: string): HTMLDivElement {

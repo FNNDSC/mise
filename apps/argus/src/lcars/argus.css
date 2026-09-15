@@ -4785,3 +4785,124 @@ body[data-zoom] #header-restore {
 [data-theme='pharos'] button.panel-3 {
   border-top-left-radius: 0;
 }
+
+/* -------------------------------------------------------------- PANES-06
+ * The dormant set as a card grid: every group moved away from, to bring
+ * back. A card is the group's thumbnail, its label, and a badge per member;
+ * the whole card restores, the small DISMISS forgets. Component vocabulary
+ * only (docs/aegis.adoc: a component names no theme) — colour reaches it as
+ * tokens, so another theme sits on the same declaration. */
+.panes-body {
+  overflow: auto;
+  padding: 0.9rem;
+  min-height: 0;
+}
+
+.panes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.panes-empty {
+  color: var(--honey);
+  font-family: var(--face-data);
+  font-size: 0.8rem;
+  padding: 1.2rem 0.4rem;
+}
+
+.panes-card {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 0.4rem;
+  padding: 0.6rem;
+  border: none;
+  border-radius: 0.6rem;
+  background-color: color-mix(in srgb, var(--harvestgold) 14%, transparent);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+
+.panes-card:hover {
+  background-color: color-mix(in srgb, var(--harvestgold) 26%, transparent);
+  box-shadow: 0 0 8px var(--harvestgold);
+}
+
+.panes-card-figure {
+  display: block;
+  aspect-ratio: 4 / 3;
+  max-width: 100%;
+  background-color: #000;
+  border-radius: 0.3rem;
+  overflow: hidden;
+}
+
+.panes-card-figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.panes-card-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--harvestgold);
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.panes-card-label {
+  color: var(--daybreak);
+  font-family: var(--face-label);
+  font-weight: bold;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panes-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.panes-card-badge {
+  font-family: var(--face-label);
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  color: black;
+  background-color: var(--harvestgold);
+  border-radius: 0.5rem;
+  padding: 0.05rem 0.45rem;
+}
+
+.panes-card-dismiss {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.05rem 0.45rem;
+  font-family: var(--face-label);
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  color: var(--honey);
+  background-color: color-mix(in srgb, var(--october-sunset) 55%, transparent);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.panes-card:hover .panes-card-dismiss {
+  opacity: 1;
+}
+
+.panes-card-dismiss:hover {
+  color: black;
+  background-color: var(--october-sunset);
+}

@@ -21,14 +21,22 @@
  */
 
 /**
- * One content tile of a desktop, in stage order. A `viewer` opens its series
- * and applies its `view` lines; a `dir` opens a file browser at its `path`; a
- * `tags` opens the tags pane beside the viewer.
+ * One action in a desktop's log, in creation order. `domain` enters a gutter
+ * domain (action 0, the root — its pane is what later actions target);
+ * `image`/`dir` open a viewer/browser splitting the pane produced by action
+ * `target`; `tags` opens the tags pane on its target viewer. `dir`/`side` are
+ * the captured split (ratio is emergent at 0.5), so a deliberate placement
+ * survives regardless of the default tiling rule.
  */
-export interface DesktopTile {
-  kind: 'viewer' | 'dir' | 'tags';
+export interface DesktopAction {
+  op: 'domain' | 'image' | 'dir' | 'tags';
+  domain?: 'pacs' | 'files' | 'runs';
+  query?: string;
   path?: string;
   view?: readonly string[];
+  target?: number;
+  dir?: 'col' | 'row';
+  side?: 'before' | 'after';
 }
 
 /** The image view state a snapshot restores. */
@@ -51,19 +59,13 @@ export interface GroupSnapshot {
   /** Member kinds for the card's badges: `viewer`, `tags`, `files`. */
   members: string[];
   /**
-   * The console-line script that reproduces the whole arrangement when
-   * replayed — `view pacs`, `pacs query …`, `image <path>`, `image layout …`.
-   * A desktop is a replay of actions, not a pixel snapshot: running these
-   * rebuilds the domain, its content and the tiles as they were.
+   * The action log that rebuilds the whole arrangement when replayed, in
+   * creation order: the domain (action 0), then each viewer/browser/tags
+   * against the pane a prior action produced. A desktop is a log of actions,
+   * not a pixel snapshot — replaying reproduces the tiles, their order and
+   * their widths.
    */
-  script?: readonly string[];
-  /**
-   * The content tiles beside the domain, in left-to-right stage order, so a
-   * restore rebuilds them in the same order and each lands where it was — a
-   * DIR browser between PACS and the viewer comes back between them, not
-   * after. A viewer carries its own view lines; a DIR carries its folder.
-   */
-  tiles?: readonly DesktopTile[];
+  actions?: readonly DesktopAction[];
   /** The image view state, when the group holds a viewer. */
   view?: GroupView;
   /** A small raster of the viewer at dormancy, as a data URL. */

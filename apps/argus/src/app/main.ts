@@ -17,7 +17,7 @@
  */
 import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
-import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopTile } from './dormant.js';
+import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import {
@@ -1572,6 +1572,7 @@ async function surface_start(token: string): Promise<void> {
       layout.mount_remove(spawned.id);
       return 'image tags: could not open beside the image pane';
     }
+    paneOrigin.set(spawned.id, imageId);
     return 'image tags';
   };
 
@@ -1641,6 +1642,7 @@ async function surface_start(token: string): Promise<void> {
       layout.mount_remove(spawned.id);
       return null;
     }
+    paneOrigin.set(spawned.id, host);
     anchor_set(spawned.id);
     return imagePanels.get(spawned.id) ?? null;
   };
@@ -1721,6 +1723,7 @@ async function surface_start(token: string): Promise<void> {
       layout.mount_remove(spawned.id);
       return;
     }
+    paneOrigin.set(spawned.id, host);
     if (inheritFrom === undefined) subjects.regard_write(spawned.id, { address: folderPath, modelKind: 'dicom.series' });
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
@@ -2029,6 +2032,7 @@ async function surface_start(token: string): Promise<void> {
       layout.mount_remove(spawned.id);
       return null;
     }
+    paneOrigin.set(spawned.id, host);
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     const anchor: string = request.path?.anchor ?? '~';
     if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
@@ -2182,6 +2186,9 @@ async function surface_start(token: string): Promise<void> {
   // Groups that have left the stage are not gone: a snapshot of each is kept
   // dormant so the PANES view can bring it back. Rehydrated from the surface's
   // own storage on load — dormant, never onto the stage.
+  // Each pane's origin: the pane it split from at creation, so a desktop
+  // records what each action acted FROM (its target), not a guessed context.
+  const paneOrigin: Map<string, string> = new Map<string, string>();
   const dormant: DormantRegistry = new DormantRegistry(DORMANT_CAP, localKeyStore());
   // The dormant set is read (and, at slice 3, restored) by the PANES view.
   // Exposed for verification until that view exists.
@@ -2233,19 +2240,25 @@ async function surface_start(token: string): Promise<void> {
     const shown: Set<string> = new Set(layout.panes_shown());
     const preset: string = layout.activePreset_get();
     if (preset === 'panes') return;
-    // Tiles in CREATION order (the registry's insertion order): a desktop is
-    // rebuilt by replaying the opens, each FROM the domain pane, so the order
-    // they were made — not where they ended up — is what reproduces the
-    // geometry (IMAGE from PACS, then DIR from PACS, gives PACS|DIR|IMAGE).
-    const leaves: string[] = paneInstances_list().map((instance): string => instance.id);
+    // Panes on stage in creation order (the registry's insertion order): the
+    // domain primary is earliest (action 0), content follows as opened. Each
+    // action records the pane it split FROM, as that pane's index in this
+    // action log — which is what replay resolves against its produced table.
+    const stageIds: string[] = paneInstances_list().map((instance): string => instance.id).filter((id): boolean => shown.has(id));
+    const actionIndexOf: Map<string, number> = new Map<string, number>();
     let anchor: string | undefined;
     let label: string | undefined;
     let thumbnail: string | undefined;
-    const tiles: DesktopTile[] = [];
-    for (const id of leaves) {
-      if (!shown.has(id) || id === 'files' || id === 'dag' || id === 'pacs' || id === 'panes') continue;
+    const actions: DesktopAction[] = [];
+    for (const id of stageIds) {
       const kind: string | null = paneKind_get(id);
-      if (kind === 'image') {
+      const target: number = actionIndexOf.get(paneOrigin.get(id) ?? '') ?? 0;
+      if (id === 'pacs' || id === 'files' || id === 'dag') {
+        const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
+        const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
+        actionIndexOf.set(id, actions.length);
+        actions.push({ op: 'domain', domain, ...(query !== null ? { query } : {}) });
+      } else if (kind === 'image') {
         const panel = imagePanels.get(id);
         const state = panel?.state_get() ?? null;
         if (panel === undefined || state === null || state.path === null) continue;
@@ -2255,7 +2268,8 @@ async function surface_start(token: string): Promise<void> {
         if (state.voi !== undefined && state.voi !== null) view.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
         if (state.slice > 1) view.push(`image slice ${state.slice}`);
         if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') view.push(`image ghost ${state.ghost}`);
-        tiles.push({ kind: 'viewer', path: state.path, ...(view.length > 0 ? { view } : {}) });
+        actionIndexOf.set(id, actions.length);
+        actions.push({ op: 'image', path: state.path, target, dir: 'col', side: 'after', ...(view.length > 0 ? { view } : {}) });
         if (anchor === undefined) {
           anchor = state.path;
           const series = panel.series_get();
@@ -2265,25 +2279,22 @@ async function surface_start(token: string): Promise<void> {
         }
       } else if (kind === 'files') {
         const path: string | null = filesPanels.get(id)?.path_current() ?? null;
-        if (typeof path === 'string' && path.length > 0) tiles.push({ kind: 'dir', path });
+        if (typeof path !== 'string' || path.length === 0) continue;
+        actionIndexOf.set(id, actions.length);
+        actions.push({ op: 'dir', path, target, dir: 'col', side: 'after' });
       } else if (kind === 'tags') {
-        tiles.push({ kind: 'tags' });
+        actionIndexOf.set(id, actions.length);
+        actions.push({ op: 'tags', target });
       }
     }
     if (anchor === undefined) return;
-    const script: string[] = [`view ${preset === 'dag' ? 'runs' : preset}`];
-    if (preset === 'pacs') {
-      const query: string | null = pacsPanel.query_get();
-      if (query !== null) script.push(query);
-    }
-    const members: string[] = [...new Set(tiles.map((tile): string => (tile.kind === 'viewer' ? 'viewer' : tile.kind === 'dir' ? 'files' : 'tags')))];
+    const members: string[] = [...new Set(actions.filter((action): boolean => action.op !== 'domain').map((action): string => (action.op === 'image' ? 'viewer' : action.op === 'dir' ? 'files' : 'tags')))];
     dormant.add({
       id: anchor,
       label: label ?? (anchor.split('/').pop() ?? anchor),
       regard: { address: anchor, modelKind: 'dicom.series' },
       members,
-      script,
-      tiles,
+      actions,
       ...(thumbnail === undefined ? {} : { thumbnail }),
       lastTouched: Date.now(),
     });
@@ -2354,32 +2365,45 @@ async function surface_start(token: string): Promise<void> {
    */
   const group_restore = async (id: string): Promise<void> => {
     const snapshot: GroupSnapshot | undefined = dormant.get(id);
-    if (snapshot === undefined || snapshot.script === undefined) return;
+    if (snapshot === undefined || snapshot.actions === undefined) return;
     dormant.dismiss(id);
-    // The domain pane every tile is launched FROM (as the operator launched
-    // each IMAGE/DIR from the PACS pane): re-focused before each open so the
-    // tile splits from the domain, not from the previous tile — which is what
-    // keeps the arrangement's order and widths.
-    const domainWord: string = (snapshot.script[0] ?? 'view files').split(/\s+/)[1] ?? 'files';
-    const domainPane: string = domainWord === 'runs' ? 'dag' : domainWord === 'pacs' ? 'pacs' : 'files';
+    // Replay the action log. `produced[i]` is the pane action i made, so an
+    // action's `target` resolves to the exact pane it split from — the domain
+    // for a from-PACS open, a viewer for its tags, whatever it actually was —
+    // and each open is launched FROM that pane (focus it first), reproducing
+    // the arrangement's order and geometry.
+    const paneOf = (kind: string): string[] => paneInstances_list().filter((instance): boolean => layout.panes_shown().includes(instance.id) && paneKind_get(instance.id) === kind).map((instance): string => instance.id);
+    const viewerOf = (path: string): string | null => [...imagePanels].find(([, panel]): boolean => panel.state_get()?.path === path)?.[0] ?? null;
     desktopReplaying = true;
     try {
-      for (const line of snapshot.script) await replayLine_run(line);
-      let lastViewer: string | null = null;
-      for (const tile of snapshot.tiles ?? []) {
-        if (tile.kind === 'viewer' && tile.path !== undefined) {
-          layout.focus_set(domainPane);
-          await image_open(null, tile.path);
-          await wait_until((): boolean => [...imagePanels].some(([paneId, panel]): boolean => layout.panes_shown().includes(paneId) && panel.state_get()?.path === tile.path), 40000, 300);
-          lastViewer = [...imagePanels].find(([, panel]): boolean => panel.state_get()?.path === tile.path)?.[0] ?? null;
-          for (const line of tile.view ?? []) { if (lastViewer !== null) layout.focus_set(lastViewer); await replayLine_run(line); }
-        } else if (tile.kind === 'dir' && tile.path !== undefined) {
-          layout.focus_set(domainPane);
-          dir_open(tile.path);
+      const produced: Array<string | null> = [];
+      for (const action of snapshot.actions) {
+        const host: string | null = produced[action.target ?? 0] ?? null;
+        if (action.op === 'domain') {
+          await replayLine_run(`view ${action.domain ?? 'files'}`);
+          if (action.query !== undefined) await replayLine_run(action.query);
+          produced.push(action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files');
+        } else if (action.op === 'image' && action.path !== undefined) {
+          if (host !== null) layout.focus_set(host);
+          await image_open(null, action.path);
+          const path: string = action.path;
+          await wait_until((): boolean => viewerOf(path) !== null, 40000, 300);
+          const viewerId: string | null = viewerOf(path);
+          produced.push(viewerId);
+          for (const line of action.view ?? []) { if (viewerId !== null) layout.focus_set(viewerId); await replayLine_run(line); }
+        } else if (action.op === 'dir' && action.path !== undefined) {
+          if (host !== null) layout.focus_set(host);
+          const before: Set<string> = new Set(paneOf('files'));
+          dir_open(action.path);
           await new Promise((resolve): void => { window.setTimeout(resolve, 600); });
-        } else if (tile.kind === 'tags' && lastViewer !== null) {
-          layout.focus_set(lastViewer);
+          produced.push(paneOf('files').find((paneId): boolean => !before.has(paneId)) ?? null);
+        } else if (action.op === 'tags') {
+          if (host !== null) layout.focus_set(host);
+          const before: Set<string> = new Set(paneOf('tags'));
           await replayLine_run('image tags');
+          produced.push(paneOf('tags').find((paneId): boolean => !before.has(paneId)) ?? null);
+        } else {
+          produced.push(null);
         }
       }
     } finally {

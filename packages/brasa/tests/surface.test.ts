@@ -77,6 +77,7 @@ describe('HeadlessSurface', () => {
       hiddenInput: false,
       localEdit: false,
       tty: false,
+      color: false,
       pipeSegments: false,
       shellCommands: false,
       fileDelivery: false,

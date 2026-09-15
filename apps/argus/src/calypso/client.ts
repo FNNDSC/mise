@@ -218,6 +218,9 @@ export class ArgusClient {
             token,
             capabilities: {
               shellCommands: false,
+              // The DOM console renders ANSI, so a thumbnail can arrive as
+              // colour half-blocks rather than an ASCII ramp.
+              color: true,
               // A masked field in a browser is as private as a terminal's
               // no-echo line: the console asks, nothing is echoed, and the
               // answer never enters the transcript. Declaring false here is

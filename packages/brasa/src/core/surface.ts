@@ -33,6 +33,11 @@
  *   return the edited result.
  * @property tty - The surface is an interactive terminal (as opposed to a
  *   pipe, a script, or a headless host).
+ * @property color - The surface renders ANSI colour. A colour terminal and a
+ *   browser console both do; a bare pipe or a file does not. A command that
+ *   can render richly with colour and plainly without it — an image thumbnail
+ *   as ANSI half-blocks or an ASCII ramp — reads this to choose, and the
+ *   plain rendering is always the floor.
  * @property pipeSegments - The surface can run a pipeline's non-first
  *   segments (`... | grep foo`) through its own tools. Nothing ever spawns on
  *   a daemon host: the local CLI runs segments in-process, a remote CLI runs
@@ -60,6 +65,7 @@ export interface SurfaceCapabilities {
   hiddenInput: boolean;
   localEdit: boolean;
   tty: boolean;
+  color: boolean;
   pipeSegments: boolean;
   shellCommands: boolean;
   fileDelivery: boolean;
@@ -226,6 +232,7 @@ export class HeadlessSurface implements Surface {
     hiddenInput: false,
     localEdit: false,
     tty: false,
+    color: false,
     pipeSegments: false,
     shellCommands: false,
     fileDelivery: false,

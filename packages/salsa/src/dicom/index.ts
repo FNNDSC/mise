@@ -5,3 +5,4 @@
 export * from './dictionary.js';
 export * from './tags.js';
 export * from './series.js';
+export * from './pixels.js';

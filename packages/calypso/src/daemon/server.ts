@@ -80,6 +80,7 @@ interface Surface {
     hiddenInput: boolean;
     fileDelivery: boolean;
     localFilesystem: boolean;
+    color: boolean;
   };
 }
 
@@ -656,6 +657,7 @@ export class CalypsoDaemon {
         hiddenInput: attach.value.capabilities?.hiddenInput ?? false,
         fileDelivery: attach.value.capabilities?.fileDelivery ?? false,
         localFilesystem: attach.value.capabilities?.localFilesystem ?? false,
+        color: attach.value.capabilities?.color ?? false,
       },
     };
     this.surfaces.add(surface);
@@ -1013,11 +1015,12 @@ export class CalypsoDaemon {
    * @returns The executing surface's declared capabilities; nothing when no
    *   command is running.
    */
-  public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean } | null {
+  public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean; color: boolean } | null {
     const origin: Surface | null = this.currentOrigin;
     return origin ? {
       fileDelivery: origin.capabilities.fileDelivery,
       localFilesystem: origin.capabilities.localFilesystem,
+      color: origin.capabilities.color,
     } : null;
   }
 

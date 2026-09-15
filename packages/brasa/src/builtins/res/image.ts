@@ -18,12 +18,14 @@
  * @module
  */
 import { type CommandEnvelope, envelope_ok, envelope_error, type Result } from '@fnndsc/cumin';
-import { context_getSingle, dicomSeries_summarize, type DicomSeriesSummary } from '@fnndsc/salsa';
+import { context_getSingle, dicomSeries_summarize, dicomSlice_gray, type DicomSeriesSummary, type DicomGrayOutcome } from '@fnndsc/salsa';
 import { IMAGE_MODEL_KINDS, type DicomSeriesModel, type ImageViewModel } from '@fnndsc/menu';
 import chalk from 'chalk';
 import { commandArgs_process, path_resolve, type ParsedArgs } from '../utils.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
+import { surface_get } from '../../core/surface.js';
 import { series_render } from './dicom.js';
+import { thumbnail_render } from './thumbnail.js';
 
 /** Path endings a volume renderer answers to. */
 const VOLUME_PATTERN: RegExp = /\.(nii|nii\.gz|mgz|mgh)$/i;
@@ -64,9 +66,31 @@ export async function builtin_image(args: string[]): Promise<CommandEnvelope> {
   }
   const series: DicomSeriesModel = summary.value;
   const model: ImageViewModel = { path: resolved, target: 'series', ...(force ? { force } : {}) };
-  // The reflection: the same facts `dcm series` shows, under an `image` line.
-  const reflection: string = `${chalk.cyan('image')} ${series.seriesDescription || folder}\n${series_render(series)}`;
+  // The reflection: the same facts `dcm series` shows, under an `image` line,
+  // and a thumbnail of the middle slice so a text surface shows the image too.
+  const thumbnail: string = await sliceThumbnail_render(series);
+  const reflection: string = `${chalk.cyan('image')} ${series.seriesDescription || folder}\n${series_render(series)}${thumbnail}`;
   return envelope_ok(reflection, { kind: IMAGE_MODEL_KINDS.view, data: model });
+}
+
+/**
+ * Renders the middle slice of a series as a terminal thumbnail: an ASCII ramp,
+ * or ANSI half-blocks when the surface renders colour. A slice this build
+ * cannot decode (compressed pixels) says so in one line; anything else that
+ * cannot be read leaves the reflection with its facts and no picture.
+ *
+ * @param series - The resolved series.
+ * @returns The thumbnail block (leading newline), a one-line note, or empty.
+ */
+async function sliceThumbnail_render(series: DicomSeriesModel): Promise<string> {
+  const slice: string | undefined = series.files[Math.floor(series.files.length / 2)] ?? series.header;
+  if (slice === undefined) return '';
+  const gray: Result<DicomGrayOutcome> = await dicomSlice_gray(slice);
+  if (!gray.ok) return '';
+  if (gray.value.kind === 'compressed') {
+    return `\n${chalk.gray(`  (${gray.value.transferSyntax} — compressed pixels; no text preview in this build)`)}\n`;
+  }
+  return `\n${thumbnail_render(gray.value, surface_get().capabilities.color)}`;
 }
 
 /** Where the session's annotations live: `/home/<user>/annotations`. */

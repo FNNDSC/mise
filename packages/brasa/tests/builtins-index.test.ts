@@ -216,6 +216,7 @@ jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   dicomSeries_summarize: jest.fn(),
+  dicomSlice_gray: jest.fn(async () => ({ ok: false })),
   dicomFolder_list: jest.fn(),
   dicomHeader_get: jest.fn(),
   dicomTags_summarize: jest.fn(),

@@ -2219,13 +2219,18 @@ async function surface_start(token: string): Promise<void> {
    */
   const stageStrip_capture = (stageIds: readonly string[]): string | undefined => {
     if (stageIds.length === 0) return undefined;
-    const rects: { id: string; width: number }[] = [];
+    // Creation order is NOT visual order — a viewer opened before a browser can
+    // sit to its right — while the strip must read left-to-right as the stage
+    // does. Order the tiles by where each pane actually sits (left, then top).
+    const rects: { id: string; width: number; left: number; top: number }[] = [];
     for (const id of stageIds) {
       const mount = paneInstance_get(id)?.mount;
-      const width: number = mount === undefined ? 0 : mount.getBoundingClientRect().width;
-      if (width > 0) rects.push({ id, width });
+      if (mount === undefined) continue;
+      const box: DOMRect = mount.getBoundingClientRect();
+      if (box.width > 0) rects.push({ id, width: box.width, left: box.left, top: box.top });
     }
     if (rects.length === 0) return undefined;
+    rects.sort((a, b): number => (a.left - b.left) || (a.top - b.top));
     const total: number = rects.reduce((sum, rect): number => sum + rect.width, 0);
     const budget: number = 240;
     const height: number = 90;

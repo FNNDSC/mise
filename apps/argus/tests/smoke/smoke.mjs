@@ -2577,6 +2577,43 @@ try {
     await evalIn(`const input = document.querySelector('#terminal input'); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); return 1;`);
   }
   }
+  if (stage('image-slab')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    const slab = await evalIn(`
+      await console_idle();
+      const image = document.querySelector('.pane-image');
+      const input = document.querySelector('#terminal input');
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      await run('image guard off');
+      await run('image layout slab');
+      for (let i = 0; i < 120; i++) { await sleep(250); if (/^SLAB/.test(image.querySelector('.pane-state').textContent) && !image.querySelector('.image-working')) break; }
+      const canvas = image.querySelector('.image-render canvas');
+      const cr = canvas ? canvas.getBoundingClientRect() : null;
+      const pills = Object.fromEntries([...image.querySelectorAll('.image-tool')].map((b) => [b.dataset.tool, b.classList.contains('rail-na') ? 'na' : b.classList.contains('rail-off') ? 'off' : 'lit']));
+      const layoutLit = image.querySelector('.image-layout[data-layout="slab"]') && !image.querySelector('.image-layout[data-layout="slab"]').classList.contains('rail-off');
+      const vp = image.querySelector('.image-render .image-viewport');
+      const r = vp ? vp.getBoundingClientRect() : null;
+      return { state: image.querySelector('.pane-state').textContent, mode: image.querySelector('.pane-mode').textContent, hasCanvas: canvas !== null, canvasFits: cr !== null && cr.width > 100 && cr.height > 100, pills, layoutLit, at: r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null };`);
+    // The wheel sweeps the slice.
+    const slabAt = slab.at ?? { x: 1400, y: 1000 };
+    for (let i = 0; i < 4; i++) { await page.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: slabAt.x, y: slabAt.y, deltaX: 0, deltaY: 120 }); await new Promise((r) => setTimeout(r, 200)); }
+    const swept = await evalIn(`
+      const image = document.querySelector('.pane-image');
+      const input = document.querySelector('#terminal input');
+      const after = image.querySelector('.pane-state').textContent;
+      input.value = 'image ghost 0.3'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400);
+      const ghostLine = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => /^image ghost/.test(l)).slice(-1)[0] ?? '';
+      input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600);
+      const back = image.querySelector('.pane-mode').textContent;
+      return { after, ghostLine, back };`);
+    check('image layout slab renders a vtk scene and reads its slice on the bar', slab.mode === 'SLAB' && /^SLAB . z \d+ \/ \d+/.test(slab.state) && slab.hasCanvas && slab.canvasFits && slab.layoutLit, JSON.stringify(slab));
+    check('SLAB offers zoom and pan and marks the slice tools unavailable', slab.pills.zoom !== 'na' && slab.pills.pan !== 'na' && slab.pills.length === 'na' && slab.pills.probe === 'na' && slab.pills.wl === 'na', JSON.stringify(slab.pills));
+    check('the wheel sweeps the SLAB slice and the ghost tunes', /^SLAB . z \d+/.test(swept.after) && swept.after !== slab.state && swept.ghostLine === 'image ghost 0.3', JSON.stringify(swept));
+    check('SLAB returns to SINGLE', swept.back === '', JSON.stringify(swept));
+  }
+  }
   if (stage('image-tags')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');

@@ -17,10 +17,10 @@
  */
 
 /** How the field is laid out. */
-export type ImageLayout = 'single' | 'mpr' | '3d';
+export type ImageLayout = 'single' | 'mpr' | '3d' | 'slab';
 
 /** The layouts, in the order the LAYOUT block cycles them. */
-export const IMAGE_LAYOUTS: readonly ImageLayout[] = ['single', 'mpr', '3d'];
+export const IMAGE_LAYOUTS: readonly ImageLayout[] = ['single', 'mpr', '3d', 'slab'];
 
 /** A tool bound to the primary mouse button. */
 export type ImageTool = 'wl' | 'zoom' | 'pan' | 'length' | 'angle' | 'probe';
@@ -127,6 +127,11 @@ export interface ImageEngine {
   /** Mounts into the field and shows the first thing it can. */
   open(field: HTMLElement): Promise<void>;
   layout_set(layout: ImageLayout): Promise<boolean>;
+  /**
+   * The strength of the SLAB layout's ghost volume, 0..1, or null to hide it.
+   * False when the engine has no SLAB. The default is set when SLAB opens.
+   */
+  ghost_set(level: number | null): boolean;
   /**
    * Fetches every slice the field does not yet hold, saying how far along
    * on the way, and unlocks the scroll when the last one lands. True once

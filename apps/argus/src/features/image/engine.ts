@@ -107,6 +107,8 @@ export interface ImageEngineState {
   slice: number;
   slices: number;
   tool: ImageTool;
+  /** The tool on the primary drag, or null when the layout's own gesture (MPR crosshair, 3D trackball) holds it. */
+  primaryTool: ImageTool | null;
   /** Slices that could not be read. */
   refused: number;
   /** Measurements on the field, drawn or reloaded. */
@@ -136,6 +138,8 @@ export interface ImageEngine {
   wl_set(lower: number, upper: number): boolean;
   colormap_set(name: ImageColormap): boolean;
   tool_set(tool: ImageTool): boolean;
+  /** Which frame tools apply to what is on the field now (a render offers fewer than a stack). */
+  toolsOffered_get(): readonly ImageTool[];
   /** The measurements on the field as a DICOM SR, or null when the engine has none to give. */
   annotations_export(): Promise<Blob | null>;
   /** Reads a DICOM SR's measurements onto the field; resolves to how many it could place. */

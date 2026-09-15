@@ -9,6 +9,7 @@
  * @module
  */
 import {
+  IMAGE_TOOLS,
   type ImageColormap,
   type ImageEngine,
   type ImageEngineHost,
@@ -143,6 +144,10 @@ export class NiivueEngine implements ImageEngine {
     return true;
   }
 
+  public toolsOffered_get(): readonly ImageTool[] {
+    return IMAGE_TOOLS;
+  }
+
   public tool_set(tool: ImageTool): boolean {
     const mode: string | undefined = DRAG_MODES[tool];
     if (this.nv === null || mode === undefined) return false;
@@ -165,7 +170,7 @@ export class NiivueEngine implements ImageEngine {
   }
 
   public state_get(): ImageEngineState {
-    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, refused: this.refused, annotations: 0, filled: this.nv !== null };
+    return { engine: 'niivue', layout: this.layout, slice: this.slice, slices: this.slices, tool: this.tool, primaryTool: this.tool, refused: this.refused, annotations: 0, filled: this.nv !== null };
   }
 
   public dispose(): void {

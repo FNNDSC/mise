@@ -2756,6 +2756,39 @@ try {
     check('image <volume> opens a NIfTI on the same pane kind and says when it drew', volume.error === undefined && volume.drawn === true && volume.fits === true, JSON.stringify(volume));
   }
   }
+  if (stage('image-panes')) {
+  if (dicomSeries === '') {
+    console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
+  } else {
+    // A group moved away from waits in PANES-06, not lost. The regression this
+    // guards: navigating to another domain disposed the PANES pane itself, so
+    // the card grid came up empty after a domain switch (the pane was gone).
+    const panes = await evalIn(`
+      await console_idle();
+      const run = async (line) => { const i = document.querySelector('#terminal input'); i.value = line; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400); };
+      await run('image ${dicomSeries}');
+      let viewer = null;
+      for (let i = 0; i < 160; i++) { await sleep(300); viewer = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state')?.textContent || '')); if (viewer) break; }
+      if (!viewer) return { error: 'no viewer to set aside' };
+      // Move away to RUNS, then to PANES: the viewer's group must be a card.
+      document.getElementById('gutter-runs').click(); await sleep(1000);
+      const dormantAfterAway = (window.__argusDormant?.list?.() ?? []).length;
+      document.getElementById('gutter-panes').click(); await sleep(800);
+      const pane = document.querySelector('.pane-panes');
+      const cards = document.querySelectorAll('.panes-card');
+      const card = cards[0] ?? null;
+      return { dormantAfterAway, paneShown: pane !== null && pane.offsetParent !== null, cards: cards.length, label: card?.querySelector('.panes-card-label')?.textContent ?? null };`);
+    check('a group moved away from is a card in PANES, after a domain switch', panes.error === undefined && panes.paneShown === true && panes.cards >= 1, JSON.stringify(panes));
+    // Bring it back: pressing the card restores the viewer onto the stage.
+    const restored = await evalIn(`
+      const card = document.querySelector('.panes-card'); if (!card) return { error: 'no card to press' };
+      card.click();
+      let viewer = null;
+      for (let i = 0; i < 160; i++) { await sleep(300); viewer = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state')?.textContent || '')); if (viewer) break; }
+      return { restored: viewer !== null, state: viewer?.querySelector('.pane-state')?.textContent ?? null };`);
+    check('pressing the card restores the group onto the stage', restored.error === undefined && restored.restored === true, JSON.stringify(restored));
+  }
+  }
   if (fixtureFolder !== null) {
     // The identity's CFS is left as it was found.
     await evalIn(`

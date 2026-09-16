@@ -221,3 +221,6 @@ export async function chellApi_create(): Promise<ChellApi> {
       }).then(envelope_typed<'fs.rm'>),
   };
 }
+
+/** The identity's home in the CUBE filesystem, `/home/<user>`; the root with no identity. */
+export { homePath_of } from '../builtins/utils.js';

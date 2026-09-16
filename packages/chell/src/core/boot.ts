@@ -17,7 +17,7 @@ import { readFileSync, existsSync } from 'fs';
 import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
-import { session } from '@fnndsc/brasa';
+import { session, homePath_of } from '@fnndsc/brasa';
 import { Result, Ok, Err, Client, type CommandEnvelope } from '@fnndsc/cumin';
 import { spinner } from '@fnndsc/brasa';
 import { logo_print, logo_animatePulse, logo_animateStop, logo_reviveOnScreen } from '../lib/logo.js';
@@ -272,7 +272,10 @@ async function connection_fromArgs(
     session.offline = false;
     await chrisContext.current_set(Context.ChRISuser, user!);
     await chrisContext.current_set(Context.ChRISURL, url);
-    await chrisContext.current_set(Context.ChRISfolder, '/');
+    // The working directory is the identity's own and is NOT reset here:
+    // this line once wrote `/` on every credentialed boot, which is why a
+    // daemon always came up at the root however the operator had left it.
+    // With nothing stored the kernel answers the identity's home.
     await chrisContext.current_set(Context.ChRISfeed, '');
     await chrisContext.current_set(Context.ChRISplugin, '');
     spinner.stop();
@@ -511,7 +514,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   if (!ctxResult.ok) process.exit(1);
   let currentContext: SingleContext = ctxResult.value;
   if (!currentContext.folder) {
-    currentContext = { ...currentContext, folder: '/' };
+    currentContext = { ...currentContext, folder: homePath_of(currentContext.user) };
   }
 
   // Credentials are good: reset the screen and bring the brain to life above a

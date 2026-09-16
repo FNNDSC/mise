@@ -606,9 +606,41 @@ body[data-zoom] .wrap:not(#gap) {
   margin-bottom: calc(-1 * var(--zoom-header-height, 0px));
 }
 
-body[data-zoom] .left-frame {
+/* The gutter glides off stage left two ways: under a single-pane zoom, and
+ * under the operator's own dismissal (data-gutter='away') — a press on the
+ * domain already shown, mirroring the header's press-to-send-away. Either
+ * way the negative margin hands the gutter's width to the workspace. */
+body[data-zoom] .left-frame,
+body[data-gutter='away'] .left-frame {
   translate: calc(-100% - 20px) 0;
   margin-right: calc(-1 * var(--lfw));
+}
+
+/* The gutter's restore strip: the left-edge twin of #header-restore. The
+ * gutter carries the domain buttons off with it, so this pulsing strip is
+ * the only pointer target left — press it (or Esc) to bring the gutter back. */
+#gutter-restore {
+  display: none;
+}
+
+body[data-gutter='away'] #gutter-restore {
+  display: block;
+  position: fixed;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 12px;
+  z-index: 1000;
+  border-radius: 0 6px 6px 0;
+  background-color: var(--october-sunset);
+  cursor: pointer;
+  animation: beckon 3.5s ease-in-out infinite;
+}
+
+#gutter-restore:hover {
+  animation: none;
+  background-color: var(--harvestgold);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--harvestgold) 60%, transparent);
 }
 
 /* The drawer glides between its resting, zoomed, and retracted heights;

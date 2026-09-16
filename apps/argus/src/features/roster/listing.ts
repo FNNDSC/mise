@@ -230,18 +230,21 @@ export interface ListingLevel<T> {
  * @property chrome - The pane's chrome, when it has any to bind.
  * @property caps - Where the caps row lives: once in the frame (`root`),
  *   or minted afresh at the head of every block (`each`).
- * @property rowZone - The frame's row zone, when the listing's verbs live
- *   there rather than on the row. Declared, no level mints an action
- *   track — a row keeps its columns and the expanse grows into the freed
- *   width — and the indicated row's verbs are drawn in the zone, one
- *   beneath another as the frame's other blocks are, with the readout
- *   under them; a selection's verbs ride the same zone. Verbs arriving in
- *   the zone open the frame it stands on; the last of them leaving
- *   retracts it, unless the operator has since pressed something else on
- *   the frame; and the frame retracting (Esc, the strip, a touch on the
- *   field) un-indicates the row, so an indicated row and an open frame
- *   are one state. A listing that selects must declare one: a selection's
- *   verbs have nowhere else to go.
+ * @property rowZone - The frame's row zone, where a row's verbs live.
+ *   A listing whose mount stands in a framed field (a `.mode-frame`
+ *   beside it) gets one MINTED there by the façade and need declare
+ *   nothing; this names one explicitly for a mount framed some other way.
+ *   With a zone no level mints an action track — a row keeps its columns
+ *   and the expanse grows into the freed width — and the indicated row's
+ *   verbs are drawn in the zone, one beneath another as the frame's other
+ *   blocks are, with the readout under them; a selection's verbs ride the
+ *   same zone. Verbs arriving in the zone open the frame it stands on; the
+ *   last of them leaving retracts it, unless the operator has since
+ *   pressed something else on the frame; and the frame retracting (Esc,
+ *   the strip, a touch on the field) un-indicates the row, so an
+ *   indicated row and an open frame are one state. A listing with no
+ *   frame at all keeps the in-row track. A listing that selects must have
+ *   a zone: a selection's verbs have nowhere else to go.
  * @property selection - Declared when the listing can select.
  * @property state - Composes the state line from the façade's parts; a
  *   pane prepends its own words here. Null leaves the span untouched.
@@ -706,6 +709,10 @@ class Level<T> {
     element.addEventListener('click', (event: Event): void => {
       if (!lead && this.select !== null && this.select(key, row)) return;
       if (controlCell !== null && event.target instanceof Node && controlCell.contains(event.target)) {
+        // Entering or opening moves on, so whatever was indicated stands
+        // down first (as it does on a double-click) and the frame it held
+        // open retracts; a fold stays on stage and keeps its indication.
+        if (!folds) this.row_indicate(null);
         this.row_activate(row, key, lead);
         return;
       }
@@ -901,7 +908,7 @@ export class Listing<T> {
   constructor(declaration: ListingDeclaration<T>) {
     this.declaration = declaration;
     this.gridHost = declaration.gridHost ?? declaration.mount;
-    this.zone = declaration.rowZone ?? null;
+    this.zone = declaration.rowZone ?? zone_mint(declaration.mount, declaration.chrome?.prefix);
     if (declaration.selection !== undefined && this.zone === null) {
       throw new Error('a listing that selects declares a row zone: a selection\'s verbs ride the frame');
     }
@@ -1327,6 +1334,32 @@ export class Listing<T> {
     if (text === null) return;
     this.stateSpan.textContent = text;
   }
+}
+
+/**
+ * Mints the row zone into the mode frame that frames the mount's field,
+ * placed above the frame's fill so it stands beneath the field's own
+ * blocks; null when the field has no frame.
+ *
+ * The frame is the one beside the mount, in the same field element — a
+ * pane may carry two framed fields (a scene and a roster), and only the
+ * roster's frame is the roster's.
+ *
+ * @param mount - The listing region.
+ * @param prefix - The pane's block prefix, for a `<prefix>-row-zone` class
+ *   a scenario can find the zone by.
+ * @returns The zone, or null.
+ */
+function zone_mint(mount: HTMLElement, prefix: string | undefined): HTMLElement | null {
+  const frame: HTMLElement | null = mount.parentElement?.querySelector<HTMLElement>(':scope > .mode-frame') ?? null;
+  if (frame === null) return null;
+  const zone: HTMLSpanElement = document.createElement('span');
+  zone.className = prefix === undefined ? 'listing-zone' : `listing-zone ${prefix}-row-zone`;
+  zone.hidden = true;
+  const fill: HTMLElement | null = frame.querySelector<HTMLElement>(':scope > .mode-fill');
+  if (fill !== null) frame.insertBefore(zone, fill);
+  else frame.appendChild(zone);
+  return zone;
 }
 
 /**

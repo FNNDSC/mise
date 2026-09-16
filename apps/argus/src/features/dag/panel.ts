@@ -121,6 +121,21 @@ function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
  */
 const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   {
+    // The row's control, as the browser's and PACS's: OPEN enters the
+    // feed; the rest of the row selects it and puts its verbs in the frame.
+    key: 'control',
+    label: '',
+    className: 'feedlist-control',
+    capped: false,
+    width: '5.2em',
+    cell: (): HTMLElement => {
+      const cell: HTMLSpanElement = document.createElement('span');
+      cell.className = 'feedlist-control listing-capsule';
+      cell.textContent = 'OPEN';
+      return cell;
+    },
+  },
+  {
     key: 'id',
     label: 'ID',
     className: 'feedlist-id',
@@ -199,8 +214,6 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   },
 ];
 
-/** The width of the roster's action track, reserved on every row. */
-const FEED_ACTIONS_WIDTH: string = '19em';
 
 export class DagPanel {
   private readonly scene: DagScene;
@@ -276,9 +289,10 @@ export class DagPanel {
       traits: FEED_TRAITS,
       key: (feed: FeedListEntry): string => String(feed.id),
       chrome: paneRootEl === null ? undefined : { root: paneRootEl, prefix: 'runs' },
-      // Declared verbs mint the action track and split click from
-      // double-click; a roster given none keeps its single click.
-      actions: verbs === undefined ? undefined : { width: FEED_ACTIONS_WIDTH, of: (feed: FeedListEntry): ReadonlyArray<ListingAction<FeedListEntry>> => verbs(feed) },
+      // Declared verbs ride the frame's row zone on indication; a roster
+      // given none keeps its single click. OPEN is the control either way.
+      actions: verbs === undefined ? undefined : { of: (feed: FeedListEntry): ReadonlyArray<ListingAction<FeedListEntry>> => verbs(feed) },
+      control: 'control',
       activate: (feed: FeedListEntry): void => this.feed_activate(feed),
       indicated: (feed: FeedListEntry): void => this.handlers.feed_indicated?.(feed),
       row: {

@@ -91,26 +91,44 @@ async function frame(): Promise<void> {
 
 /**
  * A pane root carrying the chrome convention under one prefix: the state
- * span, a mode frame with the FILTER and SELECT blocks and a row zone, and
- * the mount. The root is the workspace pane, whose `data-modes` is what
+ * span, the FILTER and SELECT blocks, and the mount. Framed, the mount
+ * stands in a field beside a mode frame (with its fill), which is where the
+ * façade mints the row zone; unframed, there is no frame and the verbs stay
+ * on the row. The root is the workspace pane, whose `data-modes` is what
  * opens the frame.
  */
-function chrome_build(prefix: string): { root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
+function chrome_build(prefix: string, framed: boolean = false): { root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
   const root: HTMLElement = document.createElement('div');
   root.className = 'workspace-pane';
-  root.innerHTML = `
+  root.innerHTML = framed
+    ? `
     <span class="pane-state"></span>
-    <aside class="mode-frame">
-      <button class="${prefix}-filter">FILTER OFF</button>
-      <button class="${prefix}-select">SELECT OFF</button>
-      <span class="${prefix}-row-zone" hidden></span>
-    </aside>
+    <div class="field">
+      <aside class="mode-frame">
+        <button class="${prefix}-filter">FILTER OFF</button>
+        <button class="${prefix}-select">SELECT OFF</button>
+        <span class="mode-fill"></span>
+      </aside>
+      <div class="mount"></div>
+    </div>
+  `
+    : `
+    <span class="pane-state"></span>
+    <button class="${prefix}-filter">FILTER OFF</button>
+    <button class="${prefix}-select">SELECT OFF</button>
     <div class="mount"></div>
   `;
   document.body.appendChild(root);
   const mount: HTMLElement = root.querySelector<HTMLElement>('.mount') as HTMLElement;
-  const zone: HTMLElement = root.querySelector<HTMLElement>(`.${prefix}-row-zone`) as HTMLElement;
+  // The zone is the façade's to mint; a framed harness reads it back after
+  // construction. Unframed, a placeholder stands in that no listing touches.
+  const zone: HTMLElement = document.createElement('span');
   return { root, mount, zone };
+}
+
+/** The zone the façade minted into a framed harness. */
+function zone_minted(root: HTMLElement, prefix: string = 'files'): HTMLElement {
+  return root.querySelector<HTMLElement>(`.mode-frame > .${prefix}-row-zone`) as HTMLElement;
 }
 
 /** The tracks a template declares. */
@@ -144,21 +162,20 @@ function listing_build(
   return { listing, root, mount, zone };
 }
 
-/** A listing whose verbs ride the frame: the same, with the row zone declared. */
+/** A listing whose verbs ride the frame: the mount stands in a framed field, and the façade mints the zone. */
 function framed_build(
   overrides: Partial<ListingDeclaration<Entry>> = {},
 ): { listing: Listing<Entry>; root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
-  const { root, mount, zone } = chrome_build('files');
+  const { root, mount } = chrome_build('files', true);
   const listing: Listing<Entry> = new Listing<Entry>({
     mount,
     traits: ENTRY_TRAITS,
     key: (entry: Entry): string => entry.name,
     chrome: { root, prefix: 'files' },
-    rowZone: zone,
     defaultSort: { key: 'name', dir: 'asc' },
     ...overrides,
   });
-  return { listing, root, mount, zone };
+  return { listing, root, mount, zone: zone_minted(root) };
 }
 
 /** The labels of the verbs the zone holds. */
@@ -391,6 +408,17 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     await Promise.resolve();
   }
 
+  it('mints its zone into the field\'s frame, above the fill, and a listing with no frame keeps the track', () => {
+    const { root } = framed_build({ actions: { of: OPEN_FILES } });
+    const frame: HTMLElement = root.querySelector('.mode-frame') as HTMLElement;
+    const zone: HTMLElement = zone_minted(root);
+    expect(zone.classList.contains('listing-zone')).toBe(true);
+    expect(zone.nextElementSibling?.classList.contains('mode-fill')).toBe(true);
+    expect(frame.querySelectorAll('.listing-zone')).toHaveLength(1);
+    const { mount: bare } = listing_build({ actions: { width: '21em', of: OPEN_FILES } });
+    expect(bare.classList.contains('listing-framed')).toBe(false);
+  });
+
   it('mints no track: the grid has only the traits, and no row carries an action cell', () => {
     const { listing, mount } = framed_build({ actions: { of: OPEN_FILES } });
     listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
@@ -542,13 +570,12 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     interface Book { title: string; pages: string[] }
     const pull = jest.fn();
     const open = jest.fn();
-    const { root, mount, zone } = chrome_build('files');
+    const { root, mount } = chrome_build('files', true);
     const listing: Listing<Book> = new Listing<Book>({
       mount,
       traits: [{ key: 'title', label: 'TITLE', className: 'title', width: '1fr', cell: (book: Book): string => book.title }],
       key: (book: Book): string => book.title,
       chrome: { root, prefix: 'files' },
-      rowZone: zone,
       actions: { of: (book: Book): ReadonlyArray<{ label: string; run: (book: Book) => void }> => [{ label: `PULL ${book.title}`, run: pull }] },
       child: listingChild_declare(
         (book: Book): ReadonlyArray<string> => book.pages,
@@ -559,6 +586,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
         },
       ),
     });
+    const zone: HTMLElement = zone_minted(root);
     listing.rows_set([{ key: 'shelf', rows: [{ title: 'a', pages: ['a1', 'a2'] }, { title: 'b', pages: ['b1'] }] }], { field: 'shelf' });
     const bookA: HTMLElement = listing.row_element('a') as HTMLElement;
     bookA.click();
@@ -592,7 +620,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
 
   it('with a control declared, the control cell folds and selects nothing, and the row selects and folds nothing', async () => {
     interface Book { title: string; pages: string[] }
-    const { root, mount, zone } = chrome_build('files');
+    const { root, mount } = chrome_build('files', true);
     const listing: Listing<Book> = new Listing<Book>({
       mount,
       traits: [
@@ -601,7 +629,6 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
       ],
       key: (book: Book): string => book.title,
       chrome: { root, prefix: 'files' },
-      rowZone: zone,
       control: 'fold',
       actions: { of: (book: Book): ReadonlyArray<{ label: string; run: () => void }> => [{ label: `PULL ${book.title}`, run: (): void => {} }] },
       child: listingChild_declare(
@@ -609,6 +636,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
         { traits: [{ key: 'page', label: 'PAGE', className: 'page', width: '1fr', cell: (page: string): string => page }], key: (page: string): string => page },
       ),
     });
+    const zone: HTMLElement = zone_minted(root);
     listing.rows_set([{ key: 'shelf', rows: [{ title: 'a', pages: ['a1'] }] }], { field: 'shelf' });
     const row = (): HTMLElement => listing.row_element('a') as HTMLElement;
     const foldCell = (): HTMLElement => row().querySelector('.listing-control') as HTMLElement;
@@ -661,10 +689,13 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     expect(activate).toHaveBeenCalledTimes(1);
     expect(listing.indicated_get()).toBe('alpha');
     expect(zoneVerbs_of(zone)).toEqual(['RM']);
-    // A lead row's control activates it too.
+    // A lead row's control activates it too, and moving on stands the
+    // indicated row down and retracts the frame it opened.
     ((listing.row_element('..') as HTMLElement).querySelector('.listing-control') as HTMLElement).click();
     expect(activate).toHaveBeenCalledWith(UP);
-    void mount;
+    expect(listing.indicated_get()).toBeNull();
+    expect(zone.hidden).toBe(true);
+    expect(mount.querySelector('.listing-indicated')).toBeNull();
   });
 
   it('a refresh redraws the indicated row\'s verbs from their live predicates', () => {

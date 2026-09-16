@@ -1102,23 +1102,27 @@ try {
 
     const before = tops();
     const target = rows()[1];
-    target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // A roster row's verbs live in the frame's row zone, like every listing's.
+    const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
+    const zone = () => dp.querySelector('.runs-row-zone');
+    const zoneVerbs = () => [...zone().querySelectorAll('.listing-action')];
+    target.querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     let readout = '';
-    for (let i = 0; i < 50; i++) { await sleep(400); readout = target.querySelector('.listing-readout')?.textContent ?? ''; if (readout) break; }
-    const verbs = [...target.querySelectorAll('.listing-action')].map(b => b.textContent.trim());
-    const others = rows().filter(r => r !== target).every(r => r.querySelectorAll('.listing-action').length === 0);
+    for (let i = 0; i < 50; i++) { await sleep(400); readout = zone().querySelector('.listing-readout')?.textContent ?? ''; if (readout) break; }
+    const verbs = zoneVerbs().map(b => b.textContent.trim());
+    const others = rows().every(r => r.querySelectorAll('.listing-action').length === 0) && target.classList.contains('listing-indicated');
     const after = tops();
     const stayed = rosterShown();
 
     // SHARE asks who, and says what cannot be undone before it is answered
-    [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'SHARE')?.click();
+    zoneVerbs().find(b => b.textContent === 'SHARE')?.click();
     let asked = '';
     for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a) { asked = a.textContent.trim(); break; } }
     key('Escape'); await sleep(600);
 
     // DELETE raises the kernel's own confirmation, and NO removes nothing
     const feedsBefore = rows().length;
-    [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'DELETE')?.click();
+    zoneVerbs().find(b => b.textContent === 'DELETE')?.click();
     let confirm = '';
     for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a && a.textContent.trim() !== asked) { confirm = a.textContent.trim(); break; } }
     // Escape from the ROW, which is where the hand already is after pressing
@@ -1174,7 +1178,7 @@ try {
       const target = rows()[1];
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       for (let i = 0; i < 50; i++) { await sleep(400); if (target.querySelector('.listing-readout')) break; }
-      [...target.querySelectorAll('.listing-action')].find(b => b.textContent === 'SHARE')?.click();
+      zoneVerbs().find(b => b.textContent === 'SHARE')?.click();
       for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('#terminal .argus-ask')) break; }
       term.value = ${JSON.stringify(shareUser)};
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));

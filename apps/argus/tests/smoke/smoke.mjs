@@ -893,7 +893,7 @@ try {
     const homeBar = bar();
     const home = names();
     // Neither lead row: the updir goes up, and the place row is the place itself.
-    const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => !['..', '.'].includes(r.querySelector('.files-name')?.textContent.trim()));
+    const folder = fp.querySelector('.files-row.files-type-dir:not(.files-lead-up):not(.files-lead-here)');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
     // A directory is offered no verbs, so one click enters it; only a row
     // with verbs to show splits the click (a-row-is-indicated-before-it-is-acted-on).
@@ -989,7 +989,7 @@ try {
 
     // the place's own row (.) is offered what may be done to the directory
     // on stage, and one click indicates it though it stands outside the order
-    const here = named('.');
+    const here = fp().querySelector('.files-row.files-lead-here');
     click(here); await sleep(600);
     const placeVerbs = zoneVerbs();
     const placeLit = here.classList.contains('listing-indicated');

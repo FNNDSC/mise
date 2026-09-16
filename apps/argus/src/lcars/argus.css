@@ -2664,14 +2664,17 @@ body[data-header='dag'] #header-dag {
  * row, so the field can still be read and a press elsewhere still reads
  * as a press. Caps and block headers are frame and stay lit. Not while
  * SELECT is on: several rows are marked then, a different statement. */
-.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated) {
+/* UP is navigation and can never be the block, so it stays lit: rows
+ * recede, navigation does not. HERE is a row that can be the block and
+ * obeys the row rule. */
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up) {
   /* A quarter: the operator's call after seeing 45%, which still left
    * the field competing with the block. */
   opacity: 0.25;
   transition: opacity 0.12s ease-out;
 }
 
-.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):hover {
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up):hover {
   opacity: 1;
 }
 

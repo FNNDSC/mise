@@ -590,7 +590,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     expect(listing.indicated_get()).toBe('a');
   });
 
-  it('with a fold control declared, the fold cell folds and selects nothing, and the row selects and folds nothing', async () => {
+  it('with a control declared, the control cell folds and selects nothing, and the row selects and folds nothing', async () => {
     interface Book { title: string; pages: string[] }
     const { root, mount, zone } = chrome_build('files');
     const listing: Listing<Book> = new Listing<Book>({
@@ -602,7 +602,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
       key: (book: Book): string => book.title,
       chrome: { root, prefix: 'files' },
       rowZone: zone,
-      fold: 'fold',
+      control: 'fold',
       actions: { of: (book: Book): ReadonlyArray<{ label: string; run: () => void }> => [{ label: `PULL ${book.title}`, run: (): void => {} }] },
       child: listingChild_declare(
         (book: Book): ReadonlyArray<string> => book.pages,
@@ -611,7 +611,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     });
     listing.rows_set([{ key: 'shelf', rows: [{ title: 'a', pages: ['a1'] }] }], { field: 'shelf' });
     const row = (): HTMLElement => listing.row_element('a') as HTMLElement;
-    const foldCell = (): HTMLElement => row().querySelector('.listing-fold') as HTMLElement;
+    const foldCell = (): HTMLElement => row().querySelector('.listing-control') as HTMLElement;
     expect(foldCell().classList.contains('fold')).toBe(true);
     // The fold cell: folds, indicates nothing, opens no frame.
     foldCell().click();
@@ -633,13 +633,38 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     expect(listing.indicated_get()).toBe('a');
   });
 
-  it('a fold control naming no trait is a declaration error', () => {
+  it('a control naming no trait is a declaration error', () => {
     const { mount } = chrome_build('files');
     const listing: Listing<Entry> = new Listing<Entry>({
-      mount, traits: ENTRY_TRAITS, key: (entry: Entry): string => entry.name, fold: 'nope',
+      mount, traits: ENTRY_TRAITS, key: (entry: Entry): string => entry.name, control: 'nope',
       child: listingChild_declare((): ReadonlyArray<Entry> => [], { traits: ENTRY_TRAITS, key: (entry: Entry): string => entry.name }),
     });
     expect((): void => listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' })).toThrow(/names no trait/);
+  });
+
+  it('on a replacing level the control cell activates and selects nothing, and the row body selects and does not activate', () => {
+    const activate = jest.fn();
+    const { listing, mount, zone } = framed_build({
+      activate,
+      control: 'glyph',
+      actions: { of: (): ReadonlyArray<{ label: string; run: () => void }> => [{ label: 'RM', run: (): void => {} }] },
+    });
+    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
+    const alpha: HTMLElement = listing.row_element('alpha') as HTMLElement;
+    // The control cell (the glyph column here): enters, indicates nothing.
+    (alpha.querySelector('.listing-control') as HTMLElement).click();
+    expect(activate).toHaveBeenCalledWith(ENTRIES[1]);
+    expect(listing.indicated_get()).toBeNull();
+    expect(zone.hidden).toBe(true);
+    // The body: indicates, does not enter.
+    (alpha.querySelector('.name') as HTMLElement).click();
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(listing.indicated_get()).toBe('alpha');
+    expect(zoneVerbs_of(zone)).toEqual(['RM']);
+    // A lead row's control activates it too.
+    ((listing.row_element('..') as HTMLElement).querySelector('.listing-control') as HTMLElement).click();
+    expect(activate).toHaveBeenCalledWith(UP);
+    void mount;
   });
 
   it('a refresh redraws the indicated row\'s verbs from their live predicates', () => {

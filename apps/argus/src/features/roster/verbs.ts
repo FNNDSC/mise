@@ -103,15 +103,12 @@ export interface PacsSeriesFacts {
  * A browser row's verbs. A catalogue entry gets none: `rm` on a plugin
  * cannot act.
  *
- * A directory gets none either, since one click on it ENTERS it and a row
- * with no verbs to show keeps that click; what may be done to a directory
- * as a whole — moved, copied, removed, its feed shared — waits for the
- * selection, where it is out of the single-click path. A series folder is
- * the exception: it is opened as an image far more often than entered, so
- * it keeps IMAGE, indicates on a click, and is entered on a double. The
- * PLACE — the listed directory, as its own `.` row — is offered what may
- * be done to it as a whole: a directory made in it, a fresh listing, its
- * removal, and its feed shared when it sits in one.
+ * A directory is acted on like a file — moved, copied, removed, its feed
+ * shared — since entering it is its own control (OPEN) and no longer the
+ * row's click; a series folder adds IMAGE. The PLACE — the listed
+ * directory, as its own `.` row — is offered what may be done to it as a
+ * whole: a directory made in it, a fresh listing, its removal, and its
+ * feed shared when it sits in one.
  */
 export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
   listing: 'files.row',
@@ -120,15 +117,15 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
     { name: 'mkdir', label: (): string => 'NEW DIR', offered: (f: FileRowFacts): boolean => f.kind === 'place' },
     { name: 'refresh', label: (): string => 'REFRESH', offered: (f: FileRowFacts): boolean => f.kind === 'place' },
-    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
-    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
-    { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind === 'file' || f.kind === 'place' },
+    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.kind !== 'place' },
+    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.kind !== 'place' },
+    { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
     {
       name: 'share',
       // The capsule NAMES the feed: CUBE grants a feed and never a file, so
       // a bare SHARE on a file row would read as a lie about what happens.
       label: (f: FileRowFacts): string => `SHARE FEED ${f.feed ?? ''}`,
-      offered: (f: FileRowFacts): boolean => (f.kind === 'file' || f.kind === 'place') && f.feed !== null,
+      offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.feed !== null,
     },
   ],
   states: [

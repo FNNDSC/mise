@@ -382,7 +382,7 @@ export class PacsPanel {
       // promising otherwise is a control that cannot act.
       activatable: (row: PatientRow): boolean => row.studies.length > 0,
       // Navigating is not selecting: the fold cell folds, the row selects.
-      fold: 'fold',
+      control: 'fold',
       row: {
         className: (): string => 'pacs-patient-row',
         groupClassName: (row: PatientRow): string =>
@@ -400,7 +400,7 @@ export class PacsPanel {
           // Two intents, two targets: the fold cell unfolds the series (no
           // selection, the field stays lit); the rest of the row indicates
           // the study and puts PULL STUDY in the frame, without folding.
-          fold: 'fold',
+          control: 'fold',
           actions: { of: (): ReadonlyArray<ListingAction<StudyRow>> => this.studyActions },
           row: {
             className: (): string => 'pacs-study-row',

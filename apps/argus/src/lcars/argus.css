@@ -2860,7 +2860,7 @@ body[data-header='dag'] #header-dag {
  * Never a bare glyph: the target is what you see. Inset from the row so a
  * near miss lands on black rather than on the row's own gesture. */
 .files-capsule,
-.listing-fold.pacs-fold {
+.listing-control.pacs-fold {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2882,17 +2882,17 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-capsule:hover,
-.listing-fold.pacs-fold:hover {
+.listing-control.pacs-fold:hover {
   background: var(--harvestgold);
 }
 
 .listing-framed .listing-indicated .files-capsule,
-.listing-framed .listing-indicated .listing-fold.pacs-fold {
+.listing-framed .listing-indicated .listing-control.pacs-fold {
   background: rgb(0 0 0 / 28%);
 }
 
 .listing-framed .listing-indicated .files-capsule:hover,
-.listing-framed .listing-indicated .listing-fold.pacs-fold:hover {
+.listing-framed .listing-indicated .listing-control.pacs-fold:hover {
   background: #000;
   color: var(--harvestgold);
 }
@@ -4100,7 +4100,7 @@ body[data-zoom] #header-restore {
  * reads the group's open state as what it will do next, so it can never
  * disagree with the group and never has to be told: OPEN on a closed row,
  * CLOSE on an open one, nothing on a patient with no studies. */
-.listing-fold.pacs-fold-none {
+.listing-control.pacs-fold-none {
   background: transparent;
   cursor: default;
 }

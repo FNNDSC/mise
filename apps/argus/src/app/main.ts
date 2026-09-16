@@ -495,11 +495,13 @@ function headerFaces_wire(): void {
   };
   element_require('header-restore').addEventListener('click', header_restore);
   window.addEventListener('keydown', (event: KeyboardEvent): void => {
-    // Esc restores the header, but a zoomed pane's Esc comes first.
+    // Esc peels one layer at a time: a zoom first, then the gutter, then the
+    // header — so the header restores only when nothing inner is still away.
     if (
       event.key === 'Escape' &&
       body.dataset['header'] === 'away' &&
-      body.dataset['zoom'] === undefined
+      body.dataset['zoom'] === undefined &&
+      body.dataset['gutter'] !== 'away'
     ) {
       header_restore();
     }
@@ -3158,16 +3160,46 @@ async function surface_start(token: string): Promise<void> {
     return { id, kind: 'empty', mount };
   });
 
+  // The left gutter dismisses from its own edge, as the header does from the
+  // top: a press on the domain ALREADY shown sends the gutter off stage left
+  // (data-gutter='away'), handing its width to the workspace — a focus of the
+  // whole field, distinct from a single-pane zoom. A press that would NAVIGATE
+  // stays deterministic (the gutter law); only a press on the current domain
+  // toggles the chrome away. The pulsing left strip, or Esc, restores it.
+  const gutterAway_set = (away: boolean): void => {
+    if (away) document.body.dataset['gutter'] = 'away';
+    else delete document.body.dataset['gutter'];
+    sound_play('audio3');
+  };
+  const domainPress = (preset: string, navigate: () => void): void => {
+    if (layout.activePreset_get() === preset) {
+      gutterAway_set(true);
+      return;
+    }
+    if (document.body.dataset['gutter'] === 'away') delete document.body.dataset['gutter'];
+    navigate();
+  };
+  element_require('gutter-restore').addEventListener('click', (): void => gutterAway_set(false));
+  window.addEventListener('keydown', (event: KeyboardEvent): void => {
+    // Esc restores the gutter, after a zoom but before the header (one layer
+    // per press): the gutter is the middle chrome layer.
+    if (event.key === 'Escape' && document.body.dataset['gutter'] === 'away' && document.body.dataset['zoom'] === undefined) {
+      gutterAway_set(false);
+    }
+  });
+
   // FILES-01: home. RUNS-02: home + the feed chooser. PACS-03: toggles the
   // PACS tree against home.
   element_require('gutter-files').addEventListener('click', (): void => {
     // A gutter press is a preset declaration and must be deterministic:
     // FILES-01 always yields the full files pane. The DAG rejoins home only
     // when a feed next comes into view (the summon), never as leftovers.
-    dagShown = false;
-    home_apply();
-    layout.focus_set('files');
-    consoleFocused_set(false);
+    domainPress('files', (): void => {
+      dagShown = false;
+      home_apply();
+      layout.focus_set('files');
+      consoleFocused_set(false);
+    });
   });
   /**
    * RUNS-02's gesture, as a function: the DAG takes the whole workspace and
@@ -3184,7 +3216,7 @@ async function surface_start(token: string): Promise<void> {
     layout.focus_set('dag');
     consoleFocused_set(false);
   };
-  element_require('gutter-runs').addEventListener('click', (): void => runs_show());
+  element_require('gutter-runs').addEventListener('click', (): void => domainPress('dag', (): void => runs_show()));
   // CONSOLE-05: a given always renders its target — the console open with
   // the prompt live; never a toggle (the lid and the drawer's CLOSE retract).
   element_require('gutter-console').addEventListener('click', (): void => {
@@ -3195,19 +3227,24 @@ async function surface_start(token: string): Promise<void> {
     consoleFocused_set(true);
   });
   element_require('gutter-tools').addEventListener('click', (): void => {
-    // A given always renders its target (gutter law) — no toggling;
-    // dismissal is the pane drawer's CLOSE.
-    domain_enter('pacs');
-    layout.focus_set('pacs');
-    consoleFocused_set(false);
+    // Navigating to PACS is deterministic; pressing it while already there
+    // sends the gutter away (the field focus), not a re-render.
+    domainPress('pacs', (): void => {
+      domain_enter('pacs');
+      layout.focus_set('pacs');
+      consoleFocused_set(false);
+    });
   });
   element_require('gutter-panes').addEventListener('click', (): void => {
     // Opening PANES captures the current arrangement as a desktop card (the
-    // chokepoint), free and recoverable, then draws the grid.
-    domain_enter('panes');
-    panesPanel.render();
-    layout.focus_set('panes');
-    consoleFocused_set(false);
+    // chokepoint), free and recoverable, then draws the grid. Pressing PANES
+    // while already there sends the gutter away instead.
+    domainPress('panes', (): void => {
+      domain_enter('panes');
+      panesPanel.render();
+      layout.focus_set('panes');
+      consoleFocused_set(false);
+    });
   });
 
   // ------------------------------------------------------------ the language

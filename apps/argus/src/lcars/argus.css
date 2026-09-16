@@ -872,6 +872,10 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
      and a fixed-column listing must not silently clip its last verb — it
      scrolls to it instead. */
   overflow: auto;
+  /* Reserve the scrollbar's width whether or not it is showing, so a listing
+     that gains or loses its scrollbar (gathering a series grows the tray and
+     shrinks the field under it) does not jog every row and verb sideways. */
+  scrollbar-gutter: stable;
   min-width: 0;
   min-height: 0;
 }
@@ -1423,6 +1427,16 @@ main {
   box-shadow: 0 0 8px var(--harvestgold);
 }
 
+/* A press reads as a press in place: the capsule darkens to a deep hue, it
+   does not move. The ONLY thing that changes is the fill — no border, no
+   padding, nothing that would reflow the row and carry the verb sideways. */
+.pacs-capsule:active {
+  background-color: color-mix(in srgb, var(--harvestgold) 45%, #000);
+  color: var(--butter);
+  filter: none;
+  box-shadow: none;
+}
+
 .pacs-capsule:disabled {
   opacity: 0.35;
   cursor: default;
@@ -1635,6 +1649,14 @@ main {
   font-family: var(--face-label);
   font-weight: bold;
   letter-spacing: 0.12em;
+}
+
+/* The gathered rows scroll within a bounded tray rather than growing it
+   without limit: an unbounded tray steals height from the listing above it,
+   which reflows the field and jogs its rows every time a series is gathered. */
+#pacs-gather-rows {
+  max-height: 8rem;
+  overflow-y: auto;
 }
 
 .pacs-gather-row {

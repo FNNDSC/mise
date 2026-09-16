@@ -29,6 +29,7 @@ import {
   type SurfaceAsk,
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
+import { consolePalette_publish } from '../console/ansi.js';
 import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
@@ -3633,6 +3634,9 @@ async function surface_start(token: string): Promise<void> {
     drawerStatus.textContent = `MODE: [${mode}]`;
   };
 
+  // The browser wears the console's listing colours by token; the console
+  // says what they are.
+  consolePalette_publish(document.documentElement);
   const terminal: ArgusTerminal = new ArgusTerminal(
     element_require('terminal'),
     async (line: string): Promise<void> => {

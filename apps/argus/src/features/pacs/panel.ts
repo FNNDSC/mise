@@ -382,7 +382,7 @@ export class PacsPanel {
       // promising otherwise is a control that cannot act.
       activatable: (row: PatientRow): boolean => row.studies.length > 0,
       // Navigating is not selecting: the fold cell folds, the row selects.
-      fold: 'fold',
+      control: 'fold',
       row: {
         className: (): string => 'pacs-patient-row',
         groupClassName: (row: PatientRow): string =>
@@ -400,7 +400,7 @@ export class PacsPanel {
           // Two intents, two targets: the fold cell unfolds the series (no
           // selection, the field stays lit); the rest of the row indicates
           // the study and puts PULL STUDY in the frame, without folding.
-          fold: 'fold',
+          control: 'fold',
           actions: { of: (): ReadonlyArray<ListingAction<StudyRow>> => this.studyActions },
           row: {
             className: (): string => 'pacs-study-row',
@@ -501,9 +501,9 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        // The cell is the fold CONTROL, drawn as one: wide enough to be a
-        // target (past 24px at the listing's type size), not a glyph to aim at.
-        width: '2.2em',
+        // The cell is the fold CONTROL, drawn as a capsule that reads what
+        // it will do next (OPEN, CLOSE); the track holds the longer word.
+        width: '5.2em',
         cell: (row: PatientRow): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = row.studies.length === 0 ? 'pacs-fold pacs-fold-none' : 'pacs-fold';
@@ -693,7 +693,7 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        width: '2.2em',
+        width: '5.2em',
         cell: (): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = 'pacs-fold';

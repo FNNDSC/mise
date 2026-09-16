@@ -1611,12 +1611,17 @@ main {
 }
 
 /* A state with no bar — an error, an unconfirmed pull — is one statement
- * across both tracks rather than a word pinned to the right. */
-.pacs-badge:not(:has(> .listing-progress, > .pacs-bar-full)) {
+ * across both tracks rather than a word pinned to the right. A retrieve in
+ * flight HAS a bar (`.pacs-bar`) and keeps the two tracks: the operator
+ * caught it collapsing to one, the bar running out past every other bar
+ * and RETRIEVING dropping beneath it — a layout change for no reason, on
+ * the one row being watched. */
+.pacs-badge:not(:has(> .listing-progress, > .pacs-bar-full, > .pacs-bar)) {
   grid-template-columns: 1fr;
 }
 
-.pacs-badge .listing-progress {
+.pacs-badge .listing-progress,
+.pacs-badge .pacs-bar {
   min-width: 0;
 }
 
@@ -2664,14 +2669,17 @@ body[data-header='dag'] #header-dag {
  * row, so the field can still be read and a press elsewhere still reads
  * as a press. Caps and block headers are frame and stay lit. Not while
  * SELECT is on: several rows are marked then, a different statement. */
-.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated) {
+/* UP is navigation and can never be the block, so it stays lit: rows
+ * recede, navigation does not. HERE is a row that can be the block and
+ * obeys the row rule. */
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up) {
   /* A quarter: the operator's call after seeing 45%, which still left
    * the field competing with the block. */
   opacity: 0.25;
   transition: opacity 0.12s ease-out;
 }
 
-.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):hover {
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up):hover {
   opacity: 1;
 }
 
@@ -2822,23 +2830,71 @@ body[data-header='dag'] #header-dag {
   text-overflow: ellipsis;
 }
 
+/* The browser lists what the console lists, in the console's vocabulary:
+ * the same Nerd Font icon and the same colour per kind, by the tokens the
+ * console publishes (`--console-<name>`, from its own ANSI table), so a
+ * folder printed yellow by `ls` is the same yellow folder one pane over.
+ * The face is the console's, since the icons are its glyphs. */
 .files-glyph {
-  color: var(--harvestgold);
+  font-family: 'MesloLGS NF', 'Inconsolata', monospace;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--console-white, var(--butter));
 }
+
+.files-glyph-dir, .files-type-dir .files-name { color: var(--console-yellow, var(--harvestgold)); font-weight: bold; }
+.files-glyph-file, .files-type-file .files-name { color: var(--console-white, var(--butter)); }
+.files-glyph-link, .files-type-link .files-name { color: var(--console-cyan, var(--daybreak)); }
+.files-glyph-plugin, .files-type-plugin .files-name { color: var(--console-green, var(--honey)); font-weight: bold; }
+.files-glyph-pipeline, .files-type-pipeline .files-name { color: var(--console-magenta, var(--honey)); font-weight: bold; }
+.files-glyph-vfs, .files-type-vfs .files-name { color: var(--console-magenta, var(--harvestgold)); font-weight: bold; }
+.files-glyph-job, .files-type-job .files-name { color: var(--console-cyan, var(--harvestgold)); font-weight: bold; }
 
 .files-name {
-  color: var(--butter);
+  color: var(--console-white, var(--butter));
 }
 
-.files-type-dir .files-name,
-.files-type-vfs .files-name {
-  color: var(--harvestgold);
+/* A control in a row is a CAPSULE that reads as what it does — UP, HERE on
+ * the browser's lead rows; OPEN and CLOSE on a folding row — a block in the
+ * frame's hue, dim at rest, lit on hover, inverted on the indicated block.
+ * Never a bare glyph: the target is what you see. Inset from the row so a
+ * near miss lands on black rather than on the row's own gesture. */
+.files-capsule,
+.listing-control.pacs-fold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  box-sizing: border-box;
+  min-height: 24px;
+  margin: 2px 0;
+  padding: 0.1rem 0.7rem;
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--harvestgold) 38%, transparent);
+  color: #000;
+  font-family: var(--face-label);
   font-weight: bold;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease-out;
 }
 
-.files-type-plugin .files-name,
-.files-type-pipeline .files-name {
-  color: var(--honey);
+.files-capsule:hover,
+.listing-control.pacs-fold:hover {
+  background: var(--harvestgold);
+}
+
+.listing-framed .listing-indicated .files-capsule,
+.listing-framed .listing-indicated .listing-control.pacs-fold {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .files-capsule:hover,
+.listing-framed .listing-indicated .listing-control.pacs-fold:hover {
+  background: #000;
+  color: var(--harvestgold);
 }
 
 .files-type {
@@ -4040,57 +4096,23 @@ body[data-zoom] #header-restore {
   min-width: 0;
 }
 
-/* The fold cell is a CONTROL and is drawn as one: a small block in the
- * frame's hue, dim at rest, lit on hover, the arrow black on it — the
- * target is what you see, not an 8px glyph you aim at. Inset from the row
- * so a near miss lands on black (nothing happens) rather than on the row
- * (which selects): two adjacent targets with different intents must not
- * punish a miss with the wrong one. */
-.pacs-fold {
-  color: var(--harvestgold);
-}
-
-.listing-fold.pacs-fold {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: stretch;
-  margin: 3px 0;
-  min-height: 24px;
-  border-radius: 0.35rem;
-  background: color-mix(in srgb, var(--harvestgold) 38%, transparent);
-  color: #000;
-  cursor: pointer;
-  transition: background-color 0.12s ease-out;
-}
-
-.listing-fold.pacs-fold:hover {
-  background: var(--harvestgold);
-}
-
-.listing-fold.pacs-fold-none {
+/* The fold control is a capsule (styled with the browser's, above) that
+ * reads the group's open state as what it will do next, so it can never
+ * disagree with the group and never has to be told: OPEN on a closed row,
+ * CLOSE on an open one, nothing on a patient with no studies. */
+.listing-control.pacs-fold-none {
   background: transparent;
   cursor: default;
 }
 
-/* On the indicated block the control inverts with the type. */
-.listing-framed .listing-indicated .listing-fold.pacs-fold {
-  background: rgb(0 0 0 / 28%);
-}
-
-.listing-framed .listing-indicated .listing-fold.pacs-fold:hover {
-  background: #000;
-  color: var(--harvestgold);
-}
-
-/* The fold glyph reads the group's open state, so it can never disagree
+/* The fold capsule reads the group's open state, so it can never disagree
  * with what is beneath the row. A row with nothing to unfold shows none. */
 .pacs-fold::before {
-  content: '▸';
+  content: 'OPEN';
 }
 
 .listing-group.listing-open > .listing-row > .pacs-fold::before {
-  content: '▾';
+  content: 'CLOSE';
 }
 
 .pacs-fold.pacs-fold-none::before {
@@ -4142,8 +4164,18 @@ body[data-zoom] #header-restore {
   min-width: 2rem;
   height: 0.45rem;
   border-radius: 0.25rem;
-  background: rgb(255 119 0 / 18%);
+  background: color-mix(in srgb, var(--state-running) 18%, transparent);
   overflow: hidden;
+}
+
+/* On the indicated block the running bar inverts with the type, as every
+ * other bar does: black in a black track. */
+.listing-framed .listing-indicated .pacs-bar {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .pacs-bar-fill {
+  background: #000;
 }
 
 .pacs-bar-fill {

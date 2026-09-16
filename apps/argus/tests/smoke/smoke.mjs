@@ -893,11 +893,10 @@ try {
     const homeBar = bar();
     const home = names();
     // Neither lead row: the updir goes up, and the place row is the place itself.
-    const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => !['..', '.'].includes(r.querySelector('.files-name')?.textContent.trim()));
+    const folder = fp.querySelector('.files-row.files-type-dir:not(.files-lead-up):not(.files-lead-here)');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
-    // A directory is offered no verbs, so one click enters it; only a row
-    // with verbs to show splits the click (a-row-is-indicated-before-it-is-acted-on).
-    folder?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // A directory's OPEN control enters it; its body would select it.
+    folder?.querySelector('.listing-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await settle(() => names().join(',') !== home.join(','));
     const inside = names();
     fp.querySelector('.files-back').click();
@@ -989,21 +988,25 @@ try {
 
     // the place's own row (.) is offered what may be done to the directory
     // on stage, and one click indicates it though it stands outside the order
-    const here = named('.');
+    const here = fp().querySelector('.files-row.files-lead-here');
     click(here); await sleep(600);
     const placeVerbs = zoneVerbs();
     const placeLit = here.classList.contains('listing-indicated');
     click(fp().querySelector('.files-panel')); await sleep(400);
 
-    // a directory is offered no verbs: one click enters it, nothing opens
+    // a directory: its body selects it (MOVE / COPY / DELETE in the frame,
+    // nothing entered); its OPEN control enters it and selects nothing
     await say('cd ~', 2500);
     await settle(() => named('smoke-verbs'));
-    click(named('smoke-verbs'));
+    click(named('smoke-verbs')); await sleep(600);
+    const dirSelected = { lit: named('smoke-verbs')?.classList.contains('listing-indicated') ?? false, verbs: zoneVerbs(), stayed: !/smoke-verbs$/.test(heading()) };
+    click(fp().querySelector('.files-panel')); await sleep(400);
+    click(named('smoke-verbs').querySelector('.listing-control'));
     const entered = await settle(() => /smoke-verbs$/.test(heading()));
     const dirModes = modes();
     await say('cd ~', 2500);
     await say('rm -r ~/smoke-verbs', 3000);
-    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, placeVerbs, placeLit, entered, dirModes };`);
+    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, placeVerbs, placeLit, dirSelected, entered, dirModes };`);
   check('a click indicates rather than activates', verbs.stayed && verbs.indicated.length > 0);
   check("the verbs are the ones the row can be given",
     ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'].every((v) => verbs.indicated.includes(v)), verbs.indicated.join(','));
@@ -1014,7 +1017,9 @@ try {
   check('a touch on the field stands the row down and retracts the frame',
     verbs.stoodDown.modes === null && verbs.stoodDown.lit && verbs.stoodDown.zoneHidden, JSON.stringify(verbs.stoodDown));
   check('the place\'s own row is offered the place\'s verbs', verbs.placeLit && ['NEW DIR', 'REFRESH', 'DELETE'].every((v) => verbs.placeVerbs.includes(v)), verbs.placeVerbs.join(','));
-  check('a directory is offered no verbs, so one click enters it', verbs.entered && verbs.dirModes === null);
+  check("a directory's body selects it, with its verbs in the frame, and enters nothing",
+    verbs.dirSelected.lit && verbs.dirSelected.stayed && ['MOVE', 'COPY', 'DELETE'].every((v) => verbs.dirSelected.verbs.includes(v)), JSON.stringify(verbs.dirSelected));
+  check("a directory's OPEN enters it and selects nothing", verbs.entered && verbs.dirModes === null);
   // A row one cell short does not leave a gap: it shifts every cell of every
   // row after it into the wrong column, which is how the action track's own
   // column first landed under a name.
@@ -1593,7 +1598,7 @@ try {
       // A closed group holds no level; activating its row opens it (the
       // façade repaints on the next frame).
       if (!study().classList.contains('listing-open')) {
-        study().querySelector('.pacs-study-row .listing-fold').click(); await sleep(400);
+        study().querySelector('.pacs-study-row .listing-control').click(); await sleep(400);
       }
       const names = () => [...study().querySelectorAll('.pacs-series .pacs-series-desc')].map(e => e.textContent);
       const before = names().join('|');
@@ -1611,15 +1616,15 @@ try {
       const framed = ws.dataset.modes === 'open';
       const seriesLit = study().querySelector('.pacs-series.listing-indicated') !== null;
       const verbs = onRows === 0 && seriesVerbs.length > 0 && framed && seriesLit;
-      // Two intents on the study row: the fold cell folds and selects
+      // Two intents on the study row: the control cell folds and selects
       // nothing; the row body selects and folds nothing.
       const wasOpen = study().classList.contains('listing-open');
-      study().querySelector('.pacs-study-row .listing-fold').click(); await sleep(400);
+      study().querySelector('.pacs-study-row .listing-control').click(); await sleep(400);
       const foldOnly = { toggled: study().classList.contains('listing-open') !== wasOpen, studyLit: study().querySelector('.pacs-study-row').classList.contains('listing-indicated') };
-      study().querySelector('.pacs-study-row .listing-fold').click(); await sleep(400);
+      study().querySelector('.pacs-study-row .listing-control').click(); await sleep(400);
       study().querySelector('.pacs-study-row .pacs-study-desc, .pacs-study-row > span:nth-child(4)').click(); await sleep(400);
       const selectOnly = { stillOpen: study().classList.contains('listing-open') === wasOpen, studyLit: study().querySelector('.pacs-study-row').classList.contains('listing-indicated'), verbs: zoneVerbs() };
-      const foldBox = study().querySelector('.pacs-study-row .listing-fold').getBoundingClientRect();
+      const foldBox = study().querySelector('.pacs-study-row .listing-control').getBoundingClientRect();
       const foldTarget = { w: Math.round(foldBox.width), h: Math.round(foldBox.height) };
       ws.querySelector('.pacs-row-zone')?.closest('.mode-frame') && document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
       study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
@@ -1671,11 +1676,11 @@ try {
       && !/--fresh/.test(pacsProvenance.clearedLine),
       JSON.stringify(pacsProvenance));
 
-    check('the fold cell folds and selects nothing; the row selects and folds nothing',
+    check('the control cell folds and selects nothing; the row selects and folds nothing',
       pacsSort.foldOnly?.toggled === true && pacsSort.foldOnly?.studyLit === false
       && pacsSort.selectOnly?.stillOpen === true && pacsSort.selectOnly?.studyLit === true && pacsSort.selectOnly?.verbs.includes('PULL STUDY'),
       JSON.stringify({ fold: pacsSort.foldOnly, select: pacsSort.selectOnly }));
-    check('the fold cell is a target, not a glyph', pacsSort.foldTarget?.w >= 24 && pacsSort.foldTarget?.h >= 24, JSON.stringify(pacsSort.foldTarget));
+    check('the control cell is a target, not a glyph', pacsSort.foldTarget?.w >= 24 && pacsSort.foldTarget?.h >= 24, JSON.stringify(pacsSort.foldTarget));
     check('a study heads its series with caps and a summed track, and the series verbs live in the frame',
       pacsSort.studies === 1 && pacsSort.caps >= 4 && pacsSort.track === true && pacsSort.verbs === true
       && pacsSort.accession.length > 0,

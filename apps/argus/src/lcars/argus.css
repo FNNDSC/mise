@@ -2602,8 +2602,27 @@ body[data-header='dag'] #header-dag {
   line-height: 1.25;
 }
 
+/* The indicated row is a SEGMENT of the frame that holds its verbs: the
+ * frame's own block colour, the header bar's black type on it, run out to
+ * the spine so row and frame meet as one shape. Not a highlight over the
+ * row — the row, for the moment, is chrome. Every cell's own hue yields;
+ * black on the block colour clears AA on every scheme. */
 .listing-framed .listing-indicated {
-  background: color-mix(in srgb, var(--harvestgold) 24%, transparent);
+  background: var(--harvestgold);
+  /* The field keeps a scrollbar's width clear at its right edge; the
+   * block ignores that and reaches the spine. */
+  margin-right: -0.5rem;
+}
+
+.listing-framed .listing-indicated > span,
+.listing-framed .listing-indicated > span:first-child,
+.listing-framed .listing-indicated > span:nth-child(2) {
+  color: #000;
+  text-shadow: none;
+}
+
+.listing-framed .listing-indicated .files-name {
+  font-weight: bold;
 }
 
 /* ------------------------------------------------- listable, not readable */

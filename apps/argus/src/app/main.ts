@@ -199,6 +199,12 @@ function wsUrl_resolve(): string {
 
 /** Watches the header so its slide distance is never a stale measurement. */
 let headerHeightObserver: ResizeObserver | null = null;
+/**
+ * The header's last AT-REST extent. Zoom-from-away cannot measure the header
+ * directly — clearing the away state to zoom catches it mid-slide, and a
+ * mid-slide measurement is short — so it reads the last rested height here.
+ */
+let headerRestHeight: number = 0;
 
 /**
  * Keeps `--zoom-header-height` equal to the header's current extent.
@@ -219,10 +225,8 @@ function headerHeight_track(header: HTMLElement, body: HTMLElement): void {
     // distance it has to travel, and tracking it there would shorten the
     // slide until the header reappeared.
     if (body.dataset['zoom'] !== undefined || body.dataset['header'] === 'away') return;
-    body.style.setProperty(
-      '--zoom-header-height',
-      `${Math.ceil(header.getBoundingClientRect().bottom)}px`,
-    );
+    headerRestHeight = Math.ceil(header.getBoundingClientRect().bottom);
+    body.style.setProperty('--zoom-header-height', `${headerRestHeight}px`);
   };
   sync();
   if (headerHeightObserver !== null) return;
@@ -337,6 +341,8 @@ function drawer_wire(
 function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
+  // The header state set aside for the duration of a zoom (see below).
+  let headerBeforeZoom: string | undefined;
 
   const zoom_set = (pane: string | null): void => {
     for (const marked of document.querySelectorAll('.pane-zoomed, .pane-zoomed-path')) {
@@ -344,15 +350,32 @@ function zoom_wire(terminal: ArgusTerminal): (pane: string | null) => void {
     }
     if (pane === null) {
       delete body.dataset['zoom'];
+      // Give the header back the state zoom set aside.
+      if (headerBeforeZoom !== undefined) {
+        body.dataset['header'] = headerBeforeZoom;
+        headerBeforeZoom = undefined;
+      }
     } else {
       // A scrolled page would carry its offset into the clamped zoom view,
       // hiding the pane's top edge; zoom always starts from the origin.
       window.scrollTo(0, 0);
-      // The header's height is content-driven; measure its viewport bottom
-      // (not offsetHeight — the first bar's top margin collapses OUT of the
-      // wrap, and an offsetHeight slide left that margin's worth of header
-      // crushed on stage).
-      if (header !== null) {
+      // Zoom presents from the header-present geometry: its own slide is the
+      // one that reclaims the header's space. If the header is already away it
+      // has slid the wrap up once already, so leaving that state on with zoom
+      // slides the pane up twice — its top frame, and its controls, off the
+      // page. Set the away state aside for the duration; restore it on unzoom.
+      // Synchronous with the data-zoom set below, so no header flash paints.
+      if (body.dataset['header'] === 'away') {
+        headerBeforeZoom = 'away';
+        delete body.dataset['header'];
+        // The header is mid-slide as its away state clears, so it cannot be
+        // measured now; use its last rested extent for the slide distance.
+        if (headerRestHeight > 0) body.style.setProperty('--zoom-header-height', `${headerRestHeight}px`);
+      } else if (header !== null) {
+        // The header's height is content-driven; measure its viewport bottom
+        // (not offsetHeight — the first bar's top margin collapses OUT of the
+        // wrap, and an offsetHeight slide left that margin's worth of header
+        // crushed on stage).
         headerHeight_track(header, body);
       }
       body.dataset['zoom'] = pane;

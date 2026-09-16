@@ -1683,7 +1683,7 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns The console line to print.
    */
-  const image_open = async (fromId: string | null, path: string, options: { force?: boolean } = {}): Promise<string> => {
+  const image_open = async (fromId: string | null, path: string, options: { force?: boolean } = {}, onOpen?: (id: string) => void): Promise<string> => {
     // The pane is on stage before the kernel is asked. The ask is a header
     // read over a wire and can take seconds; a press that shows nothing for
     // those seconds is a press the operator repeats.
@@ -1698,6 +1698,11 @@ async function surface_start(token: string): Promise<void> {
         : { address: DICOM_FILE_PATTERN.test(path) ? path.slice(0, path.lastIndexOf('/')) : path.replace(/\/$/, ''), modelKind: 'dicom.series' };
     const panel: ImagePanel | null = imagePane_for(fromId, anchor);
     if (panel === null) return 'image: no pane to open beside';
+    // Structure-first: the pane exists now (spawned + split synchronously), so
+    // hand its id back before the header read over the wire — a replay resolves
+    // its next action's target against it without waiting for pixels to land.
+    const openedId: string | null = imagePane_idOf(panel);
+    if (openedId !== null) onOpen?.(openedId);
     if (VOLUME_FILE_PATTERN.test(path)) {
       panel.opening_show(path);
       void panel.volume_show(path);
@@ -2489,30 +2494,7 @@ async function surface_start(token: string): Promise<void> {
     orphans_dispose();
   };
 
-  /** Waits until a read is true, or the limit passes; polls, never sleeps blind. */
-  const wait_until = async (read: () => boolean, limit: number = 3000, step: number = 200): Promise<void> => {
-    for (let waited = 0; waited < limit; waited += step) {
-      if (read()) return;
-      await new Promise((resolve): void => { window.setTimeout(resolve, step); });
-    }
-  };
 
-  /**
-   * Runs one replay line as if typed, waiting on the DOM for the slow ones —
-   * a viewer loading, a query answering — rather than guessing a delay, so a
-   * later `image layout` lands on a viewer that exists.
-   */
-  const replayLine_run = async (line: string): Promise<void> => {
-    terminal.line_run(line);
-    const words: string[] = line.trim().split(/\s+/);
-    if (words[0] === 'image' && words[1] !== undefined && !IMAGE_SUBVERBS.has(words[1]) && words[1] !== '--force') {
-      await wait_until((): boolean => [...document.querySelectorAll('.pane-image')].some((pane): boolean => /SLICE \d+ OF \d+/.test(pane.querySelector('.pane-state')?.textContent ?? '')), 40000, 300);
-    } else if (words[0] === 'pacs' && words[1] === 'query') {
-      await wait_until((): boolean => document.querySelector('#pacs-workspace .listing-row') !== null, 6000, 300);
-    } else {
-      await new Promise((resolve): void => { window.setTimeout(resolve, 400); });
-    }
-  };
 
   const home_apply = (): void => {
     domain_enter('files');
@@ -2540,49 +2522,62 @@ async function surface_start(token: string): Promise<void> {
     // and each open is launched FROM that pane (focus it first), reproducing
     // the arrangement's order and geometry.
     const paneOf = (kind: string): string[] => paneInstances_list().filter((instance): boolean => layout.panes_shown().includes(instance.id) && paneKind_get(instance.id) === kind).map((instance): string => instance.id);
-    const viewerOf = (path: string): string | null => [...imagePanels].find(([, panel]): boolean => panel.state_get()?.path === path)?.[0] ?? null;
     desktopReplaying = true;
     try {
       const produced: Array<string | null> = [];
+      // Structure-first: every pane's FRAME opens synchronously and its id is
+      // known at once, so the whole arrangement appears in one pass and the
+      // slow parts — a series' header read, a query — load in parallel behind
+      // it. No pane waits for another's pixels; nothing sleeps a fixed guess.
       for (const action of snapshot.actions) {
         const host: string | null = produced[action.target ?? 0] ?? null;
         // The split this pane was born with — replayed opens read it so a
         // stacked or before-split pane returns where it was.
         const place = { dir: action.dir ?? 'col', before: action.side === 'before' };
         if (action.op === 'domain') {
-          await replayLine_run(`view ${action.domain ?? 'files'}`);
-          if (action.query !== undefined) await replayLine_run(action.query);
-          produced.push(action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files');
+          // The domain switch must FINISH before the content panes open, or its
+          // orphan sweep would dispose the panes opened after it. domain_enter
+          // is synchronous — call it directly rather than a deferred console
+          // line — so the preset is applied and swept before this pass moves
+          // on. The query then fires async; no pane targets its results.
+          const preset: string = action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files';
+          domain_enter(preset);
+          if (action.query !== undefined) terminal.line_run(action.query);
+          produced.push(preset);
         } else if (action.op === 'image' && action.path !== undefined) {
           if (host !== null) layout.focus_set(host);
+          let viewerId: string | null = null;
           replayPlace = place;
-          try { await image_open(null, action.path); } finally { replayPlace = null; }
-          const path: string = action.path;
-          await wait_until((): boolean => viewerOf(path) !== null, 40000, 300);
-          const viewerId: string | null = viewerOf(path);
+          const done: Promise<string> = image_open(null, action.path, {}, (openedId: string): void => { viewerId = openedId; });
+          replayPlace = null;
           produced.push(viewerId);
-          for (const line of action.view ?? []) { if (viewerId !== null) layout.focus_set(viewerId); await replayLine_run(line); }
+          // The saved view state lands when the series does — applied on the
+          // viewer's own completion, never blocking the other panes.
+          const view: readonly string[] | undefined = action.view;
+          const vid: string | null = viewerId;
+          if (view !== undefined && view.length > 0 && vid !== null) {
+            void done.then((): void => { for (const line of view) { layout.focus_set(vid); terminal.line_run(line); } }).catch((): void => { /* the pane stands; its view state simply did not land */ });
+          }
         } else if (action.op === 'dir' && action.path !== undefined) {
           if (host !== null) layout.focus_set(host);
           const before: Set<string> = new Set(paneOf('files'));
           replayPlace = place;
-          try { dir_open(action.path); } finally { replayPlace = null; }
-          await new Promise((resolve): void => { window.setTimeout(resolve, 600); });
+          dir_open(action.path);
+          replayPlace = null;
           produced.push(paneOf('files').find((paneId): boolean => !before.has(paneId)) ?? null);
         } else if (action.op === 'tags') {
           if (host !== null) layout.focus_set(host);
           const before: Set<string> = new Set(paneOf('tags'));
           replayPlace = place;
-          try { await replayLine_run('image tags'); } finally { replayPlace = null; }
+          terminal.line_run('image tags');
+          replayPlace = null;
           produced.push(paneOf('tags').find((paneId): boolean => !before.has(paneId)) ?? null);
         } else if (action.op === 'fs' || action.op === 'view' || action.op === 'empty') {
           // A drawer-pill pane replays as its own birth: the pill's spawn, at
           // the same parent, orientation and side.
           if (host === null) { produced.push(null); continue; }
           layout.focus_set(host);
-          const newId: string | null = pillPane_spawn(host, action.op, place.dir, place.before);
-          await new Promise((resolve): void => { window.setTimeout(resolve, 300); });
-          produced.push(newId);
+          produced.push(pillPane_spawn(host, action.op, place.dir, place.before));
         } else {
           produced.push(null);
         }

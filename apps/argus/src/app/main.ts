@@ -2450,7 +2450,19 @@ async function surface_start(token: string): Promise<void> {
       if (id === 'pacs' || id === 'files' || id === 'dag') {
         const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
         const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
-        emit({ op: 'domain', domain, ...(query !== null ? { query } : {}) });
+        // The runs domain with a graph on stage is content, as a PACS
+        // query is: the feed, and the view the operator chose for it.
+        const dagPanel: DagPanel | undefined = preset === 'dag' ? dagPanels.get('dag') : undefined;
+        const feed: number | null = dagPanel !== undefined && dagPanel.graph_isShown() ? dagPanel.feed_get() : null;
+        const dagView: string[] = feed !== null && dagPanel !== undefined ? dagPanel.view_lines() : [];
+        if (feed !== null && label === undefined) label = dagPanel?.feedTitle_get();
+        emit({
+          op: 'domain',
+          domain,
+          ...(query !== null ? { query } : {}),
+          ...(feed !== null ? { feed } : {}),
+          ...(dagView.length > 0 ? { view: dagView } : {}),
+        });
       } else if (birth?.binding === 'fs' || birth?.binding === 'view' || birth?.binding === 'empty') {
         // A drawer SPLIT-pill pane replays as its own birth, whatever it holds.
         emit({ op: birth.binding, target, ...place });
@@ -2484,10 +2496,12 @@ async function surface_start(token: string): Promise<void> {
     // pane is NOT carded: it is one gutter press away. It used to take a VIEWER
     // to be carded at all, so a files or runs layout with no image left nothing
     // behind; content of any kind is enough now.
-    const content = actions.filter((action): boolean => action.op !== 'domain');
+    // A bare domain is one gutter press away and is not carded; a domain
+    // with a feed on stage is content, like every pane opened beside it.
+    const content = actions.filter((action): boolean => action.op !== 'domain' || action.feed !== undefined);
     if (content.length === 0) return;
     const thumbnail: string | undefined = stageStrip_capture(stageIds);
-    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane' };
+    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag' };
     const members: string[] = [...new Set(content.map((action): string => memberOf[action.op] ?? 'pane'))];
     // A viewer desktop is keyed by its series, so returning to it updates the
     // one card. A viewer-less desktop is keyed by the SET of content it holds,
@@ -2502,10 +2516,12 @@ async function surface_start(token: string): Promise<void> {
       regard = { address: anchor, modelKind: 'dicom.series' };
     } else {
       const firstPath: string | undefined = content.map((action): string | undefined => action.path).find((path): boolean => path !== undefined);
-      const signature: string = content.map((action): string => action.path ?? action.op).sort().join('|');
+      const signature: string = content.map((action): string => action.path ?? (action.feed !== undefined ? `feed:${action.feed}` : action.op)).sort().join('|');
       const domainName: string = preset === 'dag' ? 'RUNS' : preset.toUpperCase();
       id = `${preset}:${signature}`;
-      cardLabel = firstPath !== undefined ? (firstPath.split('/').pop() ?? firstPath) : `${domainName} · ${content.length + 1} panes`;
+      cardLabel = label !== undefined && label !== ''
+        ? label
+        : firstPath !== undefined ? (firstPath.split('/').pop() ?? firstPath) : `${domainName} · ${content.length + 1} panes`;
       regard = { address: id, modelKind: 'argus.desktop' };
     }
     dormant.add({
@@ -2591,6 +2607,24 @@ async function surface_start(token: string): Promise<void> {
           const preset: string = action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files';
           domain_enter(preset);
           if (action.query !== undefined) terminal.line_run(action.query);
+          if (action.feed !== undefined) {
+            // The graph comes back as the roster would bring it, then the
+            // view the operator had chosen, once the graph has landed.
+            const feed: number = action.feed;
+            const view: readonly string[] = action.view ?? [];
+            const dagPanel: DagPanel | undefined = dagPanels.get('dag');
+            dagPanel?.feed_enter(feed);
+            if (view.length > 0 && dagPanel !== undefined) {
+              const landed = (tries: number): void => {
+                if (dagPanel.graph_isShown() && dagPanel.feed_get() === feed) {
+                  for (const line of view) terminal.line_run(line);
+                  return;
+                }
+                if (tries > 0) window.setTimeout((): void => landed(tries - 1), 250);
+              };
+              landed(240);
+            }
+          }
           produced.push(preset);
         } else if (action.op === 'image' && action.path !== undefined) {
           if (host !== null) layout.focus_set(host);

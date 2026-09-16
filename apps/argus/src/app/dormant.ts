@@ -35,6 +35,8 @@ export interface DesktopAction {
   op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty';
   domain?: 'pacs' | 'files' | 'runs';
   query?: string;
+  /** The feed the runs domain had on stage, so the card brings the graph back, not the roster. */
+  feed?: number;
   path?: string;
   view?: readonly string[];
   target?: number;

@@ -20,6 +20,35 @@ const BASE_COLORS: string[] = [
   '#77bbff', '#dd99ff', '#66dddd', '#ffffff',
 ];
 
+/** The named colours the console's listing speaks in, as chalk names them. */
+export type ConsoleColour = 'yellow' | 'white' | 'cyan' | 'green' | 'magenta';
+
+/**
+ * The console's palette by chalk name: what `ls` paints a directory, a
+ * file, a link, a plugin and a pipeline with, read from the same table the
+ * console renders SGR codes through.
+ */
+export const CONSOLE_PALETTE: Readonly<Record<ConsoleColour, string>> = {
+  yellow: BASE_COLORS[3] as string,
+  white: BASE_COLORS[7] as string,
+  cyan: BASE_COLORS[6] as string,
+  green: BASE_COLORS[2] as string,
+  magenta: BASE_COLORS[5] as string,
+};
+
+/**
+ * Publishes the console's palette as `--console-<name>` custom properties,
+ * so a surface that lists what the console lists (the browser) can wear
+ * the console's colours by token rather than by a second copy of the hex.
+ *
+ * @param target - The element to write the properties on (the root).
+ */
+export function consolePalette_publish(target: HTMLElement): void {
+  for (const [name, hex] of Object.entries(CONSOLE_PALETTE)) {
+    target.style.setProperty(`--console-${name}`, hex);
+  }
+}
+
 /** The active display attributes of one SGR run. */
 interface SgrState {
   fg: string | null;

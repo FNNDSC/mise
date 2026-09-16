@@ -111,12 +111,25 @@ export interface PathContext {
  * @param context - User and CWD context.
  * @returns The absolute path.
  */
+/**
+ * The identity's home directory in the CUBE filesystem.
+ *
+ * CUBE roots every user at `/home/<username>`; with no identity there is no
+ * home, and the root stands in.
+ *
+ * @param user - The identity's username, or null when there is none.
+ * @returns The home path.
+ */
+export function homePath_of(user: string | null | undefined): string {
+  return user ? `/home/${user}` : '/';
+}
+
 export function path_resolvePure(inputPath: string, context: PathContext): string {
   let resolved: string = inputPath;
   const { user, cwd } = context;
   
   if (inputPath.startsWith('~')) {
-    const home: string = user ? `/home/${user}` : '/';
+    const home: string = homePath_of(user);
     if (inputPath === '~' || inputPath === '~/') {
       resolved = home;
     } else if (inputPath.startsWith('~/')) {

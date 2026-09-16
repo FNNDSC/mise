@@ -1355,6 +1355,28 @@ async function surface_start(token: string): Promise<void> {
    * @param path - The row's path.
    * @returns The feed id, or null when nothing in the path names one.
    */
+  /**
+   * The plugin instance whose own `data/` a path is, when it is one:
+   * `…/<plugin>_<id>/data` (with or without a trailing slash). Inside a
+   * feed only such a directory can be processed — the kernel appends to the
+   * node whatever was named beneath it.
+   *
+   * @param path - The path.
+   * @returns The instance id, or null.
+   */
+  const nodeOf_path = (path: string): number | null => {
+    const match: RegExpMatchArray | null = /_(\d+)\/data\/?$/.exec(path);
+    return match === null ? null : parseInt(match[1] ?? '', 10);
+  };
+
+  /** What a bound catalogue processes: the input, and where a run of it lands. */
+  interface CatalogueBinding {
+    input: string;
+    feed: number | null;
+    node: number | null;
+  }
+  const catalogueBindings: Map<string, CatalogueBinding> = new Map();
+
   const feedOf_path = (path: string): number | null => {
     const held: RegExpMatchArray | null = path.match(/\/feeds\/feed_(\d+)(?:\/|$)/);
     return held === null ? null : Number(held[1]);
@@ -1383,19 +1405,26 @@ async function surface_start(token: string): Promise<void> {
     const directory: boolean = entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'job';
     // Which verbs a row is offered is the roster's to say
     // (features/roster/verbs.ts); what each one does is this pane's.
+    const feed: number | null = feedOf_path(path);
     const facts: FileRowFacts = {
       kind: entry.type === 'plugin' || entry.type === 'pipeline'
         ? 'catalogue'
         : directory && seriesFolder_is(path, entry.name)
           ? 'seriesFolder'
           : entry.type === 'file' ? 'file' : 'directory',
-      feed: feedOf_path(path),
+      feed,
+      node: feed === null ? null : nodeOf_path(path),
+      bound: catalogueBindings.has(id),
     };
     const runs: Record<string, () => void> = {
       image: (): void => {
         void image_open(id, path).then((line: string): void => terminal.line_note(line));
       },
       download: (): void => { window.open(vfsUrl_build(path), '_blank'); },
+      // PROCESS acts on the place: a bound catalogue opens beside this pane.
+      process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
+      // RUN runs the line on the catalogue's input, as the console would.
+      run: (): void => { void run_press(id, entry.name); },
       move: (): void => terminal.line_run(`mv ${quoted}`),
       copy: (): void => terminal.line_run(`cp ${quoted}`),
       delete: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
@@ -1434,13 +1463,15 @@ async function surface_start(token: string): Promise<void> {
     return 'ACCESS UNREAD';
   };
 
-  // Builds one files pane instance from the template.
-  const filesInstance_build = (id: string, primary: boolean): PaneInstance => {
+  // Builds one files pane instance from the template; a catalogue is the
+  // same pane wearing catalogue traits, for `/bin` bound to an input.
+  const filesInstance_build = (id: string, primary: boolean, catalogue: boolean = false): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-files');
     const panel: FilesPanel = new FilesPanel(
       pane_find(mount, '.files-panel'),
       (action: FileAction): void => fileAction_handle(id, panel, action),
       previewProvider,
+      { catalogue },
     );
     // A selection's verbs are the row's verbs over many rows, and the kernel
     // already takes many operands — so each is ONE line the operator could
@@ -1762,6 +1793,122 @@ async function surface_start(token: string): Promise<void> {
    * already showing this folder is reused; a viewer on stage for the series
    * lends its group, else the browser anchors the group on the folder.
    */
+  /**
+   * PROCESS: opens `/bin` as a catalogue bound to an input, right of the pane
+   * the verb was pressed in and joined to its group, so the operator picks
+   * what to run from a listing — the same gesture as every other choice.
+   *
+   * @param fromId - The pane PROCESS was pressed in.
+   * @param binding - The input, and the feed/node a run of it lands in.
+   */
+  const process_open = (fromId: string, binding: CatalogueBinding): void => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    for (const [id, bound] of catalogueBindings) {
+      if (shown.has(id) && bound.input === binding.input) { layout.focus_set(id); return; }
+    }
+    const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
+    const spawned: PaneInstance = instance_spawn('catalogue', fromId);
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return;
+    }
+    birth_record(spawned.id, host, 'col', false);
+    catalogueBindings.set(spawned.id, binding);
+    const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+    if (panel === undefined) return;
+    panel.binding_set({
+      input: binding.input,
+      place: binding.feed === null ? 'new feed' : `feed ${binding.feed}${binding.node === null ? '' : ` · node ${binding.node}`}`,
+    });
+    panel.feedOpen_declare((feedId: number): void => feed_open(spawned.id, feedId));
+    rootedListing_show(spawned.id, panel, '/bin');
+    layout.focus_set(spawned.id);
+  };
+
+  /**
+   * Opens a feed's graph in a runs pane beside the pane that asks, joined to
+   * its group — what a run's FEED capsule does.
+   *
+   * @param fromId - The pane asking.
+   * @param feedId - The feed.
+   */
+  const feed_open = (fromId: string, feedId: number): void => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    for (const [id, panel] of dagPanels) {
+      if (id !== 'dag' && shown.has(id) && panel.feed_get() === feedId) { layout.focus_set(id); return; }
+    }
+    const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
+    const spawned: PaneInstance = instance_spawn('dag', fromId);
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return;
+    }
+    birth_record(spawned.id, host, 'col', false);
+    dagPanels.get(spawned.id)?.feed_enter(feedId);
+  };
+
+  /**
+   * RUN: runs an executable on the catalogue's input. The line the strip
+   * holds is authoritative; empty, it is composed — a `cd` to the input
+   * (which is how the kernel takes its input) then the executable, and for
+   * a new feed a title, asked once with the input's name to hand. The line
+   * is echoed as if typed; the kernel's answer names the feed, which lights
+   * the strip's FEED capsule. A refusal reads beside the row's verbs.
+   *
+   * @param id - The catalogue pane.
+   * @param executable - The row's executable name.
+   */
+  const run_press = async (id: string, executable: string): Promise<void> => {
+    const binding: CatalogueBinding | undefined = catalogueBindings.get(id);
+    const panel: FilesPanel | undefined = filesPanels.get(id);
+    if (binding === undefined || panel === undefined) return;
+    let line: string = panel.commandLine_get();
+    if (line === '') {
+      line = `cd "${binding.input}"; ${executable}`;
+      if (binding.feed === null) {
+        const suggested: string = binding.input.split('/').filter(Boolean).pop() ?? 'feed';
+        const title: string | null = await terminal.ask_open({ message: `Feed title: `, kind: 'text', suggest: suggested });
+        const wanted: string = (title ?? '').trim();
+        if (wanted === '') return;
+        line += ` -- feed_title="${wanted.replace(/"/g, '\\"')}"`;
+      }
+      panel.commandLine_set(line);
+    }
+    terminal.line_echo(line);
+    let outcome: ExecuteOutcome;
+    try {
+      outcome = await client.line_execute(line, { silent: true });
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
+      const indicated: string | null = panel.indicated_get();
+      if (indicated !== null) panel.rowReadout_show(indicated, reason.toUpperCase().slice(0, 80));
+      return;
+    }
+    terminal.outcome_write(outcome);
+    if (outcome.envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
+      void client.line_execute('ls', { silent: true });
+    }
+    const scheduled: WireEnvelope | undefined = outcome.envelopes.find(
+      (envelope: WireEnvelope): boolean => envelope.model?.kind === 'run.scheduled',
+    );
+    const data: { feedId?: unknown } | undefined = scheduled?.model?.data as { feedId?: unknown } | undefined;
+    if (typeof data?.feedId === 'number') {
+      panel.run_show(data.feedId);
+      return;
+    }
+    const refusal: string = outcome.envelopes
+      .map((envelope: WireEnvelope): string => envelope.renderedErr ?? '')
+      .join(' ')
+      .replace(/\x1b\[[0-9;]*m/g, '')
+      .trim()
+      .split('\n')[0] ?? '';
+    const indicated: string | null = panel.indicated_get();
+    if (indicated !== null) panel.rowReadout_show(indicated, refusal === '' ? 'NOT SCHEDULED' : refusal.toUpperCase().slice(0, 80));
+  };
+
   const dir_open = (folderPath: string): void => {
     const shown: Set<string> = new Set(layout.panes_shown());
     for (const [id] of filesPanels) {
@@ -2194,6 +2341,9 @@ async function surface_start(token: string): Promise<void> {
       void image_open(null, folderPath).then((line: string): void => terminal.line_note(line));
     },
     dir_open: (folderPath: string): void => dir_open(folderPath),
+    // PROCESS on a series or a study: a catalogue bound to its folder,
+    // beside the PACS workspace. A PACS folder is outside any feed.
+    process_open: (folderPath: string): void => process_open('pacs', { input: folderPath, feed: null, node: null }),
     workspace_close: (): void => home_apply(),
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
@@ -2804,7 +2954,7 @@ async function surface_start(token: string): Promise<void> {
       });
       children.appendChild(capsule);
     };
-    if (kind === 'files') {
+    if (kind === 'files' || kind === 'catalogue') {
       // Binding is a statement about this pane and its neighbours, so it
       // rides the binding group beside LINKED FS rather than standing among
       // verbs: what the next split creates, and what THIS browser follows,
@@ -2918,6 +3068,15 @@ async function surface_start(token: string): Promise<void> {
           : regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/'
           : regard.address;
         if (place !== null) terminal.line_run(`cd "${place}"`);
+      });
+      child_offer('PROCESS NODE', 'run an executable on the indicated node\'s output (a catalogue opens beside)', (): void => {
+        const regard: RegardValue | null = subjects.regard_get(id);
+        const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        if (regard === null || feedId === null) return;
+        const place: string = regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/' : regard.address;
+        const node: number | null = nodeOf_path(place) ?? (/_(\d+)\/?$/.exec(place) === null ? null : parseInt(/_(\d+)\/?$/.exec(place)?.[1] ?? '', 10));
+        if (node === null) return;
+        process_open(id, { input: place.replace(/\/data\/?$/, '') + '/data', feed: feedId, node });
       });
       child_offer('ENTER FEED', 'move the session into the feed on stage (or the one picked in the roster)', (): void => {
         const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
@@ -3247,13 +3406,14 @@ async function surface_start(token: string): Promise<void> {
       return;
     }
     const panel: FilesPanel | DagPanel | undefined =
-      kind === 'files' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
+      kind === 'files' || (kind as string) === 'catalogue' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
     for (const envelope of envelopes) {
       panel?.envelope_observe(envelope);
     }
   };
 
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
+  paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);

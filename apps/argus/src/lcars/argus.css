@@ -2848,6 +2848,74 @@ body[data-header='dag'] #header-dag {
   color: var(--console-white, var(--butter));
 }
 
+.files-version {
+  color: var(--console-white, var(--butter));
+  font-variant-numeric: tabular-nums;
+}
+
+/* The run strip a bound catalogue wears at the head of its listing: what
+ * will be processed and where the run lands (a readout), the line RUN will
+ * run (editable, authoritative — the command line the PACS form has), and,
+ * once a run is scheduled, the FEED it landed in as a lit capsule. */
+.files-run-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-width: 0;
+  padding: 0.3rem var(--roster-pad, 6px) 0.4rem;
+  margin-right: calc(var(--elbow-clear, 0px) + 0.5rem);
+}
+
+/* The readout yields before the line does: a long input path ellipsises
+ * (its title holds the whole), the line wraps to its own row when narrow. */
+.files-binding {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--honey);
+  font-family: var(--face-label);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.files-command {
+  flex: 1 1 14em;
+  min-width: 0;
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  outline: none;
+}
+
+.files-command:focus {
+  border-color: var(--harvestgold);
+}
+
+.files-feed {
+  flex: none;
+  border: none;
+}
+
+/* A catalogue is a listing to pick from, not a place to build in: the
+ * frame keeps LIST, FILTER and REFRESH and drops the verbs that act on a
+ * place, which here could act on nothing. */
+.files-body.files-catalogue .files-home,
+.files-body.files-catalogue .files-back,
+.files-body.files-catalogue .files-mkdir,
+.files-body.files-catalogue .files-upload,
+.files-body.files-catalogue .files-select {
+  display: none;
+}
+
 /* A control in a row is a CAPSULE that reads as what it does — UP, HERE on
  * the browser's lead rows; OPEN and CLOSE on a folding row — a block in the
  * frame's hue, dim at rest, lit on hover, inverted on the indicated block.

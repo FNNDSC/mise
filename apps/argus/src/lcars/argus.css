@@ -2500,12 +2500,6 @@ body[data-header='dag'] #header-dag {
   text-shadow: 0 0 8px rgb(255 238 204 / 60%);
 }
 
-/* The roster's rows carry verbs the same way a browser's do: the track is
- * reserved on every row and the indicated row wears its own light. */
-.feedlist-row > .listing-actions {
-  padding-block: 0;
-}
-
 .feedlist-row.listing-indicated .feedlist-title,
 .feedlist-row.listing-indicated .feedlist-id {
   color: var(--butter);
@@ -2860,6 +2854,7 @@ body[data-header='dag'] #header-dag {
  * Never a bare glyph: the target is what you see. Inset from the row so a
  * near miss lands on black rather than on the row's own gesture. */
 .files-capsule,
+.listing-capsule,
 .listing-control.pacs-fold {
   display: inline-flex;
   align-items: center;
@@ -2882,16 +2877,19 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-capsule:hover,
+.listing-capsule:hover,
 .listing-control.pacs-fold:hover {
   background: var(--harvestgold);
 }
 
 .listing-framed .listing-indicated .files-capsule,
+.listing-framed .listing-indicated .listing-capsule,
 .listing-framed .listing-indicated .listing-control.pacs-fold {
   background: rgb(0 0 0 / 28%);
 }
 
 .listing-framed .listing-indicated .files-capsule:hover,
+.listing-framed .listing-indicated .listing-capsule:hover,
 .listing-framed .listing-indicated .listing-control.pacs-fold:hover {
   background: #000;
   color: var(--harvestgold);

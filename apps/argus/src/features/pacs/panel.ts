@@ -375,9 +375,8 @@ export class PacsPanel {
       key: (row: PatientRow): string => row.key,
       chrome: { root, prefix: 'pacs' },
       // A row's verbs live in the frame: a study's PULL STUDY and a
-      // series' GATHER / IMAGE / DIR / PULL are drawn in the row zone when
-      // the row is indicated, and no level reserves a track for them.
-      rowZone: element_query(root, '.pacs-row-zone'),
+      // series' GATHER / IMAGE / DIR / PULL are drawn in the row zone the
+      // façade mints into the listing's frame; no level reserves a track.
       // A patient with no studies has nothing to unfold, and a glyph
       // promising otherwise is a control that cannot act.
       activatable: (row: PatientRow): boolean => row.studies.length > 0,

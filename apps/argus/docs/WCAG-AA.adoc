@@ -41,7 +41,7 @@ Fixed by the same inversion, scoped to MEDICAL and PHAROS only. A blanket light 
 
 == One thing deliberately not counted
 
-An earlier draft of this audit recorded `--pumpkin-pie` as failing at 1.72:1 as a "status wash". That pairing was invented by the measurement, not by the frame: `--state-idle` paints `.listing-progress-idle`, a progress track, and never carries type. It is a graphic, judged against the 3:1 non-text rule and against what sits next to it, which is a different test from the one run here.
+An earlier draft of this audit recorded `--pumpkin-pie` as failing at 1.72:1 as a "status wash". That pairing was invented by the measurement, not by the frame: the idle progress track (`.listing-progress-idle`) never carries type. It is a graphic, judged against the 3:1 non-text rule and against what sits next to it, which is a different test from the one run here — and one the wash then failed on the clinical schemes, where a navy `--pumpkin-pie` at 45% sat at about 1.2:1 on black; since 2026-09-16 the idle track is an outline in the frame's hue, and on an indicated row's block every bar is drawn in black.
 
 The general point applies to any audit of this kind — *a contrast table is only as honest as its list of pairings*, and a pairing that does not occur on screen produces a defect that does not exist.
 

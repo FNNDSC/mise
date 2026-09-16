@@ -486,7 +486,6 @@ label {
    * to be warm; it is mixed toward the palette rather than taken from it. */
   --state-done: var(--daybreak);
   --state-running: var(--orange);
-  --state-idle: color-mix(in srgb, var(--pumpkin-pie) 45%, transparent);
   --state-error: color-mix(in srgb, #f2402a 80%, var(--october-sunset));
 
   /* LCARS mars: chrome that is red by design rather than by state — the
@@ -1533,7 +1532,7 @@ main {
 }
 
 .pacs-study-row:hover {
-  background: rgb(255 119 0 / 12%);
+  background: color-mix(in srgb, var(--harvestgold) 12%, transparent);
 }
 
 .pacs-study-row > span {
@@ -1580,7 +1579,7 @@ main {
 }
 
 .pacs-series:hover {
-  background: rgb(255 119 0 / 12%);
+  background: color-mix(in srgb, var(--harvestgold) 12%, transparent);
 }
 
 .pacs-series-desc { color: var(--butter); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -1983,7 +1982,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .feedlist-row:hover {
-  background: rgb(255 119 0 / 18%);
+  background: color-mix(in srgb, var(--harvestgold) 18%, transparent);
 }
 
 /* A roster arrival (a feed created or shared since the last look) breathes
@@ -2389,8 +2388,15 @@ body[data-header='dag'] #header-dag {
   overflow: hidden;
 }
 
+/* Nothing has happened yet: an EMPTY track, drawn as an outline, so it
+ * reads as a bar with nothing in it rather than as a faint smear. The
+ * wash it replaced was `--pumpkin-pie` at 45%, which on the clinical
+ * schemes (whose pumpkin-pie is a navy) measured about 1.2:1 on black —
+ * a graphic nobody could see. The outline takes the frame's own hue at
+ * a weight that clears the 3:1 non-text rule on every scheme. */
 .listing-progress-idle {
-  background: var(--state-idle);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--harvestgold) 60%, transparent);
 }
 
 .listing-progress-fill {
@@ -2628,6 +2634,47 @@ body[data-header='dag'] #header-dag {
   font-weight: bold;
 }
 
+/* On the block the bar inverts with the type: a black fill in a black
+ * track, an outlined empty track in black — the block IS the bright hue,
+ * and a bar in the scheme's progress colours vanished into it. */
+.listing-framed .listing-indicated .listing-progress {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .listing-progress-idle {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 55%);
+}
+
+.listing-framed .listing-indicated .listing-progress-fill,
+.listing-framed .listing-indicated .pacs-bar-full {
+  background: #000;
+}
+
+.listing-framed .listing-indicated .pacs-badge,
+.listing-framed .listing-indicated .pacs-badge[data-state] {
+  color: #000;
+}
+
+/* While one row is the block, the rest of the field RECEDES: the block is
+ * then the only bright thing in the field and the frame the only bright
+ * thing beside it, and the eye pairs them — which matters because the
+ * row zone sits at one place on the bar while the row sits wherever it
+ * scrolled to, so a verb can line up with a stranger. Hover restores a
+ * row, so the field can still be read and a press elsewhere still reads
+ * as a press. Caps and block headers are frame and stay lit. Not while
+ * SELECT is on: several rows are marked then, a different statement. */
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated) {
+  /* A quarter: the operator's call after seeing 45%, which still left
+   * the field competing with the block. */
+  opacity: 0.25;
+  transition: opacity 0.12s ease-out;
+}
+
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):hover {
+  opacity: 1;
+}
+
 /* ------------------------------------------------- listable, not readable */
 
 /* CUBE lists files a shared feed's guest may not read. A row that has been
@@ -2814,7 +2861,7 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-activatable:hover > span {
-  background: rgb(255 119 0 / 18%);
+  background: color-mix(in srgb, var(--harvestgold) 18%, transparent);
 }
 
 /* The file content view: cat output presented in the panel, with a mars
@@ -3993,7 +4040,46 @@ body[data-zoom] #header-restore {
   min-width: 0;
 }
 
+/* The fold cell is a CONTROL and is drawn as one: a small block in the
+ * frame's hue, dim at rest, lit on hover, the arrow black on it — the
+ * target is what you see, not an 8px glyph you aim at. Inset from the row
+ * so a near miss lands on black (nothing happens) rather than on the row
+ * (which selects): two adjacent targets with different intents must not
+ * punish a miss with the wrong one. */
 .pacs-fold {
+  color: var(--harvestgold);
+}
+
+.listing-fold.pacs-fold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  margin: 3px 0;
+  min-height: 24px;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--harvestgold) 38%, transparent);
+  color: #000;
+  cursor: pointer;
+  transition: background-color 0.12s ease-out;
+}
+
+.listing-fold.pacs-fold:hover {
+  background: var(--harvestgold);
+}
+
+.listing-fold.pacs-fold-none {
+  background: transparent;
+  cursor: default;
+}
+
+/* On the indicated block the control inverts with the type. */
+.listing-framed .listing-indicated .listing-fold.pacs-fold {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .listing-fold.pacs-fold:hover {
+  background: #000;
   color: var(--harvestgold);
 }
 
@@ -4315,7 +4401,7 @@ body[data-zoom] #header-restore {
  * writes on the mount; nothing here spells one. */
 
 .pacs-patient-row:hover {
-  background: rgb(255 204 102 / 12%);
+  background: color-mix(in srgb, var(--harvestgold) 12%, transparent);
 }
 
 .pacs-patient-row > span {

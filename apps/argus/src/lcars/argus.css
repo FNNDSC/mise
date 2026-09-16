@@ -2610,8 +2610,11 @@ body[data-header='dag'] #header-dag {
 .listing-framed .listing-indicated {
   background: var(--harvestgold);
   /* The field keeps a scrollbar's width clear at its right edge; the
-   * block ignores that and reaches the spine. */
+   * block ignores that and reaches the spine. The width it gains goes
+   * back as padding, so the grid inside is exactly the other rows' and
+   * no cell moves: the highlight is complete, and it shifts nothing. */
   margin-right: -0.5rem;
+  padding-right: calc(var(--roster-pad) + var(--elbow-clear, 0px) + 0.5rem);
 }
 
 .listing-framed .listing-indicated > span,

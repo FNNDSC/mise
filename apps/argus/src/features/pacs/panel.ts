@@ -374,9 +374,15 @@ export class PacsPanel {
       traits: this.patientTraits,
       key: (row: PatientRow): string => row.key,
       chrome: { root, prefix: 'pacs' },
+      // A row's verbs live in the frame: a study's PULL STUDY and a
+      // series' GATHER / IMAGE / DIR / PULL are drawn in the row zone when
+      // the row is indicated, and no level reserves a track for them.
+      rowZone: element_query(root, '.pacs-row-zone'),
       // A patient with no studies has nothing to unfold, and a glyph
       // promising otherwise is a control that cannot act.
       activatable: (row: PatientRow): boolean => row.studies.length > 0,
+      // Navigating is not selecting: the fold cell folds, the row selects.
+      fold: 'fold',
       row: {
         className: (): string => 'pacs-patient-row',
         groupClassName: (row: PatientRow): string =>
@@ -391,8 +397,11 @@ export class PacsPanel {
         {
           traits: this.studyTraits,
           key: (row: StudyRow): string => row.key,
-          // A study's verb stands on every row: pulling is what a study is for.
-          actions: { width: '7em', of: (): ReadonlyArray<ListingAction<StudyRow>> => this.studyActions, always: true },
+          // Two intents, two targets: the fold cell unfolds the series (no
+          // selection, the field stays lit); the rest of the row indicates
+          // the study and puts PULL STUDY in the frame, without folding.
+          fold: 'fold',
+          actions: { of: (): ReadonlyArray<ListingAction<StudyRow>> => this.studyActions },
           row: {
             className: (): string => 'pacs-study-row',
             groupClassName: (): string => 'pacs-study',
@@ -406,20 +415,15 @@ export class PacsPanel {
             {
               traits: this.traits,
               key: (row: SeriesRow): string => row.series.seriesUID,
-              // The track holds what the row can offer at once, which is two
-              // verbs for a series already home (gather it, or open it). Sized
-              // for one, the second pushed the first out of the cell and the
-              // GATHER a whole workflow starts with went missing.
-              actions: { width: '16em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
-              // A series opens nothing: its verbs are the whole of what it does.
-              activatable: (): boolean => false,
+              // A series is a leaf: a click indicates it and its verbs
+              // (gather it, open it, browse it, pull it) go to the frame;
+              // activating it does nothing, since its verbs are the whole
+              // of what it does.
+              actions: { of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions },
               row: {
                 className: (): string => 'pacs-series',
-                // Tag the row so a live stage change can re-light its verbs
-                // without re-rendering the listing (which would jog the rows).
                 decorate: (element: HTMLElement, row: SeriesRow): void => {
                   element.dataset['seriesuid'] = row.series.seriesUID;
-                  if (row.series.folderPath !== undefined) element.dataset['folder'] = folderKey(row.series.folderPath);
                 },
               },
             },
@@ -497,7 +501,9 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        width: '1.4em',
+        // The cell is the fold CONTROL, drawn as one: wide enough to be a
+        // target (past 24px at the listing's type size), not a glyph to aim at.
+        width: '2.2em',
         cell: (row: PatientRow): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = row.studies.length === 0 ? 'pacs-fold pacs-fold-none' : 'pacs-fold';
@@ -687,7 +693,7 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        width: '1.4em',
+        width: '2.2em',
         cell: (): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = 'pacs-fold';
@@ -772,7 +778,10 @@ export class PacsPanel {
         key: 'series',
         label: 'SERIES',
         className: 'pacs-study-count',
-        width: '4em',
+        // Wide enough for the form's control, which stands in this column
+        // (the last one, which a query cannot fill) and reads RE-QUERY on
+        // a replayed answer: at 5em that wrapped to two lines.
+        width: '6.5em',
         cell: (row: StudyRow): string => String(row.study.series.length),
         compare: (row: StudyRow): number => row.study.series.length,
       },
@@ -1519,25 +1528,13 @@ export class PacsPanel {
   }
 
   /**
-   * Re-derives the lit hue on every rendered series verb from the live stage
-   * (IMAGE/DIR) and the cohort (GATHER), toggling the class in place so the
-   * listing never re-renders or jogs.
+   * Re-derives the lit hue on the indicated series' verbs from the live
+   * stage (IMAGE/DIR) and the cohort (GATHER): the verbs in the frame are
+   * redrawn from their `selected` predicates, and the listing itself never
+   * re-renders or jogs.
    */
   private selected_refresh(): void {
-    for (const rowEl of this.root.querySelectorAll<HTMLElement>('.pacs-series[data-seriesuid]')) {
-      const folder: string | undefined = rowEl.dataset['folder'];
-      const uid: string = rowEl.dataset['seriesuid'] ?? '';
-      const lit = folder !== undefined ? this.litFolders.get(folder) : undefined;
-      for (const cap of rowEl.querySelectorAll<HTMLElement>('.listing-action')) {
-        const label: string = (cap.textContent ?? '').trim();
-        const on: boolean =
-          label === 'IMAGE' ? (lit?.viewer ?? false)
-          : label === 'DIR' ? (lit?.browser ?? false)
-          : label === 'GATHER' ? this.gather.has(uid)
-          : false;
-        cap.classList.toggle('listing-action-selected', on);
-      }
-    }
+    this.listing.indication_refresh();
   }
 
   /** Paints the gather tray: the curated cohort. */

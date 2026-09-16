@@ -887,6 +887,28 @@ async function surface_start(token: string): Promise<void> {
     else rootedListing_show(id, panel, place);
   };
 
+  /**
+   * Asks for a name and makes a directory in a place: the MKDIR block on
+   * the frame and the `.` row's NEW DIR are one gesture with two homes.
+   *
+   * @param id - The browser pane asking.
+   * @param place - The directory to make it in.
+   */
+  const directory_make = (id: string, place: string): void => {
+    void terminal
+      .ask_open({ message: `New directory in ${place}: `, kind: 'text' })
+      .then((name: string | null): void => {
+        const wanted: string = (name ?? '').trim();
+        // An abandoned question makes nothing, and says nothing: the
+        // operator withdrew it, which is not an error to report.
+        if (wanted === '') return;
+        terminal.line_run(`mkdir "${place}/${wanted}"`);
+        // `mkdir` renders what it made; it does not re-list the folder
+        // it made it in, so the browser asks for the place again.
+        listing_refresh(id, place);
+      });
+  };
+
   const rootedListing_show = (id: string, panel: FilesPanel, path: string): void => {
     // A bare `~` must reach the shell unquoted or it would not expand.
     const line: string = path === '~' ? 'ls ~' : `ls "${path}"`;
@@ -1363,9 +1385,11 @@ async function surface_start(token: string): Promise<void> {
     const facts: FileRowFacts = {
       kind: entry.type === 'plugin' || entry.type === 'pipeline'
         ? 'catalogue'
-        : directory && seriesFolder_is(path, entry.name)
-          ? 'seriesFolder'
-          : entry.type === 'file' ? 'file' : 'directory',
+        : entry.name === '.' && directory
+          ? 'place'
+          : directory && seriesFolder_is(path, entry.name)
+            ? 'seriesFolder'
+            : entry.type === 'file' ? 'file' : 'directory',
       feed: feedOf_path(path),
     };
     const runs: Record<string, () => void> = {
@@ -1373,6 +1397,8 @@ async function surface_start(token: string): Promise<void> {
         void image_open(id, path).then((line: string): void => terminal.line_note(line));
       },
       download: (): void => { window.open(vfsUrl_build(path), '_blank'); },
+      mkdir: (): void => directory_make(id, path),
+      refresh: (): void => listing_refresh(id, path),
       move: (): void => terminal.line_run(`mv ${quoted}`),
       copy: (): void => terminal.line_run(`cp ${quoted}`),
       delete: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
@@ -2825,19 +2851,7 @@ async function surface_start(token: string): Promise<void> {
       const here = (): string | null => filesPanels.get(id)?.path_current() ?? null;
       mount.querySelector<HTMLElement>('.files-mkdir')?.addEventListener('click', (): void => {
         const place: string | null = here();
-        if (place === null) return;
-        void terminal
-          .ask_open({ message: `New directory in ${place}: `, kind: 'text' })
-          .then((name: string | null): void => {
-            const wanted: string = (name ?? '').trim();
-            // An abandoned question makes nothing, and says nothing: the
-            // operator withdrew it, which is not an error to report.
-            if (wanted === '') return;
-            terminal.line_run(`mkdir "${place}/${wanted}"`);
-            // `mkdir` renders what it made; it does not re-list the folder
-            // it made it in, so the browser asks for the place again.
-            listing_refresh(id, place);
-          });
+        if (place !== null) directory_make(id, place);
       });
       const chooser: HTMLInputElement | null = mount.querySelector<HTMLInputElement>('.files-upload-input');
       mount.querySelector<HTMLElement>('.files-upload')?.addEventListener('click', (): void => {

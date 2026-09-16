@@ -62,11 +62,8 @@ export interface VerbRoster<F> {
 
 /** What a browser row is, as far as its verbs are concerned. */
 export interface FileRowFacts {
-  /**
-   * A catalogue entry is a plugin or a pipeline: listed, not stored. The
-   * place is the listed directory itself, as its own `.` row.
-   */
-  kind: 'file' | 'directory' | 'seriesFolder' | 'catalogue' | 'place';
+  /** A catalogue entry is a plugin or a pipeline: listed, not stored. */
+  kind: 'file' | 'directory' | 'seriesFolder' | 'catalogue';
   /** The feed the path names, when it names one. */
   feed: number | null;
 }
@@ -105,20 +102,17 @@ export interface PacsSeriesFacts {
  *
  * A directory is acted on like a file — moved, copied, removed, its feed
  * shared — since entering it is its own control (OPEN) and no longer the
- * row's click; a series folder adds IMAGE. The PLACE — the listed
- * directory, as its own `.` row — is offered what may be done to it as a
- * whole: a directory made in it, a fresh listing, its removal, and its
- * feed shared when it sits in one.
+ * row's click; a series folder adds IMAGE. What may be done to the
+ * directory ON STAGE as a whole is done from its parent's listing (select
+ * it there) or from the frame (MKDIR, UPLOAD, REFRESH act on the field).
  */
 export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
   listing: 'files.row',
   rules: [
     { name: 'image', label: (): string => 'IMAGE', offered: (f: FileRowFacts): boolean => f.kind === 'seriesFolder' },
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
-    { name: 'mkdir', label: (): string => 'NEW DIR', offered: (f: FileRowFacts): boolean => f.kind === 'place' },
-    { name: 'refresh', label: (): string => 'REFRESH', offered: (f: FileRowFacts): boolean => f.kind === 'place' },
-    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.kind !== 'place' },
-    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.kind !== 'place' },
+    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
+    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
     { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
     {
       name: 'share',
@@ -134,8 +128,6 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     { name: 'a directory', facts: { kind: 'directory', feed: null } },
     { name: 'a DICOM series folder', facts: { kind: 'seriesFolder', feed: null } },
     { name: 'a catalogue entry', facts: { kind: 'catalogue', feed: null } },
-    { name: 'the place, outside a feed', facts: { kind: 'place', feed: null } },
-    { name: 'the place, inside a feed', facts: { kind: 'place', feed: 12 } },
   ],
 };
 

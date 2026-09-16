@@ -892,8 +892,8 @@ try {
     await settle(() => !/STALE/.test(bar()));
     const homeBar = bar();
     const home = names();
-    // Neither lead row: the updir goes up, and the place row is the place itself.
-    const folder = fp.querySelector('.files-row.files-type-dir:not(.files-lead-up):not(.files-lead-here)');
+    // Not the updir: it goes up.
+    const folder = fp.querySelector('.files-row.files-type-dir:not(.files-lead-up)');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
     // A directory's OPEN control enters it; its body would select it.
     folder?.querySelector('.listing-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -986,14 +986,6 @@ try {
     click(fp().querySelector('.files-panel')); await sleep(600);
     const stoodDown = { modes: modes(), lit: fp().querySelector('.files-row.listing-indicated') === null, zoneHidden: zone().hidden };
 
-    // the place's own row (.) is offered what may be done to the directory
-    // on stage, and one click indicates it though it stands outside the order
-    const here = fp().querySelector('.files-row.files-lead-here');
-    click(here); await sleep(600);
-    const placeVerbs = zoneVerbs();
-    const placeLit = here.classList.contains('listing-indicated');
-    click(fp().querySelector('.files-panel')); await sleep(400);
-
     // a directory: its body selects it (MOVE / COPY / DELETE in the frame,
     // nothing entered); its OPEN control enters it and selects nothing
     await say('cd ~', 2500);
@@ -1006,7 +998,7 @@ try {
     const dirModes = modes();
     await say('cd ~', 2500);
     await say('rm -r ~/smoke-verbs', 3000);
-    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, placeVerbs, placeLit, dirSelected, entered, dirModes };`);
+    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, dirSelected, entered, dirModes };`);
   check('a click indicates rather than activates', verbs.stayed && verbs.indicated.length > 0);
   check("the verbs are the ones the row can be given",
     ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'].every((v) => verbs.indicated.includes(v)), verbs.indicated.join(','));
@@ -1016,7 +1008,6 @@ try {
   check('no row moves when one is indicated', verbs.before.join(',') === verbs.after.join(','));
   check('a touch on the field stands the row down and retracts the frame',
     verbs.stoodDown.modes === null && verbs.stoodDown.lit && verbs.stoodDown.zoneHidden, JSON.stringify(verbs.stoodDown));
-  check('the place\'s own row is offered the place\'s verbs', verbs.placeLit && ['NEW DIR', 'REFRESH', 'DELETE'].every((v) => verbs.placeVerbs.includes(v)), verbs.placeVerbs.join(','));
   check("a directory's body selects it, with its verbs in the frame, and enters nothing",
     verbs.dirSelected.lit && verbs.dirSelected.stayed && ['MOVE', 'COPY', 'DELETE'].every((v) => verbs.dirSelected.verbs.includes(v)), JSON.stringify(verbs.dirSelected));
   check("a directory's OPEN enters it and selects nothing", verbs.entered && verbs.dirModes === null);
@@ -1078,8 +1069,8 @@ try {
     await say('ls', 2500);
     const cleared = await settle(() => !names().includes('smoke-place'));
     return { onFrame, asked, made, landed, cleared };`);
-  check('MKDIR and UPLOAD ride the frame that answers to the field',
-    place.onFrame.includes('MKDIR') && place.onFrame.includes('UPLOAD'));
+  check('MKDIR, UPLOAD and REFRESH ride the frame that answers to the field',
+    place.onFrame.includes('MKDIR') && place.onFrame.includes('UPLOAD') && place.onFrame.includes('REFRESH'));
   check('MKDIR asks for a name, in the place the field holds', /New directory in \//.test(place.asked));
   check('the directory it made is in the listing', place.made);
   check("a file the operator picked lands in the folder on stage", place.landed);

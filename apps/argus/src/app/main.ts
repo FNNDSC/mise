@@ -1386,11 +1386,9 @@ async function surface_start(token: string): Promise<void> {
     const facts: FileRowFacts = {
       kind: entry.type === 'plugin' || entry.type === 'pipeline'
         ? 'catalogue'
-        : entry.name === '.' && directory
-          ? 'place'
-          : directory && seriesFolder_is(path, entry.name)
-            ? 'seriesFolder'
-            : entry.type === 'file' ? 'file' : 'directory',
+        : directory && seriesFolder_is(path, entry.name)
+          ? 'seriesFolder'
+          : entry.type === 'file' ? 'file' : 'directory',
       feed: feedOf_path(path),
     };
     const runs: Record<string, () => void> = {
@@ -1398,8 +1396,6 @@ async function surface_start(token: string): Promise<void> {
         void image_open(id, path).then((line: string): void => terminal.line_note(line));
       },
       download: (): void => { window.open(vfsUrl_build(path), '_blank'); },
-      mkdir: (): void => directory_make(id, path),
-      refresh: (): void => listing_refresh(id, path),
       move: (): void => terminal.line_run(`mv ${quoted}`),
       copy: (): void => terminal.line_run(`cp ${quoted}`),
       delete: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
@@ -2853,6 +2849,12 @@ async function surface_start(token: string): Promise<void> {
       mount.querySelector<HTMLElement>('.files-mkdir')?.addEventListener('click', (): void => {
         const place: string | null = here();
         if (place !== null) directory_make(id, place);
+      });
+      // REFRESH asks for the listing on stage again: a verb on the field,
+      // so it rides the frame with MKDIR and UPLOAD.
+      mount.querySelector<HTMLElement>('.files-refresh')?.addEventListener('click', (): void => {
+        const place: string | null = here();
+        if (place !== null) listing_refresh(id, place);
       });
       const chooser: HTMLInputElement | null = mount.querySelector<HTMLInputElement>('.files-upload-input');
       mount.querySelector<HTMLElement>('.files-upload')?.addEventListener('click', (): void => {

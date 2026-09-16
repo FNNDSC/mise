@@ -2665,7 +2665,9 @@ body[data-header='dag'] #header-dag {
  * as a press. Caps and block headers are frame and stay lit. Not while
  * SELECT is on: several rows are marked then, a different statement. */
 .listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated) {
-  opacity: 0.45;
+  /* A quarter: the operator's call after seeing 45%, which still left
+   * the field competing with the block. */
+  opacity: 0.25;
   transition: opacity 0.12s ease-out;
 }
 

@@ -1,5 +1,19 @@
 # @fnndsc/argus
 
+## 0.9.0
+
+### Minor Changes
+
+- f549b09: PANES is now a desktop switcher: a card is a whole ARRANGEMENT, not a single image. Restoring a card brings back the domain and its tiles as they were — a PACS query beside its viewer, not the viewer beside a stray files browser. A desktop is captured as a REPLAY of console actions (`view pacs`, `pacs query …`, `image <path>`, `image layout mpr`, `image tags`) at a single `domain_enter` chokepoint every gutter domain routes through, before the preset switches, so no context is lost. Replaying rebuilds the arrangement because each `image <path>` splits itself beside its domain exactly as it did live. Cards are keyed by the on-stage viewer's series (deduped — returning updates the one card); this unifies with the existing `desktop` feature (a card is a desktop; `desktop save <name>` pins one). The narrow-PACS clip is fixed in rendering — the workspace scrolls both axes rather than clip a verb — and replay inherits it.
+
+### Patch Changes
+
+- f6d818b: The DIR verb widened a PACS series row to three capsules (GATHER, IMAGE, DIR) where the action track was sized for two, so DIR clipped at the pane edge. The series action track grows from 12em to 16em, which the three capsules clear with room. Fixed track, so every series row reserves the same width and the caps stay aligned.
+- aef1a8d: The left body gutter now dismisses the way the header does. A press on the domain already shown (FILES while in files, PACS while in pacs) slides the gutter off stage left and hands its width to the workspace — a focus of the whole field, distinct from a single-pane zoom. A press that navigates still lands deterministically in that domain (the gutter law holds); only a press on the current domain carries the dismissal. The state (`data-gutter='away'`) is orthogonal to the header and to zoom, so header-away, gutter-away, or both (a full-bleed wall of panes) compose, each restored from its own edge. A pulsing left strip or Esc restores the gutter; Esc peels one layer per press — zoom, then gutter, then header. Not persisted across a reload.
+- 59a3f96: A file browser opened in a narrow split, resolving a long CFS path, could shove the whole body to the right — the viewer's frame off the edge, the header notch out of line. Three boxes carried `min-height: 0` but not `min-width: 0` (`.files-panel`, `#pacs-workspace`, and the sticky `.files-path` breadcrumb), so a wide child (a CFS path is a long, mostly unbreakable token) could set a min-content floor wider than the pane and push the row. Each now carries `min-width: 0`, and the breadcrumb wraps within the pane rather than establishing a floor. A pane's content scrolls or wraps inside the pane; it never resizes the layout.
+- 4aaad51: PANES-06 came up empty after navigating between domains. The gutter's original domains (files, dag, pacs) are primaries the orphan sweep spares so a domain switch never disposes them; PANES was added as a domain but omitted from that list, so moving to RUNS or FILES disposed the PANES pane itself and the card grid was gone on return. PANES now joins the spared primaries. A smoke scenario guards it: move away to RUNS, open PANES, assert the group is a card and restores on press.
+- 7126bca: Dismissing the page header expands the body to fill — but zooming a pane while the header was already away slid the pane up twice (the header-away slide and the zoom slide both applied), carrying its top frame and controls off the top of the page. Zoom now owns the presentation: it sets the away state aside for the duration and restores it on unzoom, so a zoom from away runs the same geometry as a zoom from a shown header. The slide distance is read from the header's last rested height, since clearing the away state leaves the header mid-slide and unmeasurable.
+
 ## 0.8.0
 
 ### Minor Changes

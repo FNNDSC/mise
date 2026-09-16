@@ -1532,7 +1532,7 @@ main {
 }
 
 .pacs-study-row:hover {
-  background: rgb(255 119 0 / 12%);
+  background: color-mix(in srgb, var(--harvestgold) 12%, transparent);
 }
 
 .pacs-study-row > span {
@@ -1579,7 +1579,7 @@ main {
 }
 
 .pacs-series:hover {
-  background: rgb(255 119 0 / 12%);
+  background: color-mix(in srgb, var(--harvestgold) 12%, transparent);
 }
 
 .pacs-series-desc { color: var(--butter); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -1982,7 +1982,7 @@ body[data-zoom]:not([data-zoom='console'])
 }
 
 .feedlist-row:hover {
-  background: rgb(255 119 0 / 18%);
+  background: color-mix(in srgb, var(--harvestgold) 18%, transparent);
 }
 
 /* A roster arrival (a feed created or shared since the last look) breathes
@@ -2656,6 +2656,23 @@ body[data-header='dag'] #header-dag {
   color: #000;
 }
 
+/* While one row is the block, the rest of the field RECEDES: the block is
+ * then the only bright thing in the field and the frame the only bright
+ * thing beside it, and the eye pairs them — which matters because the
+ * row zone sits at one place on the bar while the row sits wherever it
+ * scrolled to, so a verb can line up with a stranger. Hover restores a
+ * row, so the field can still be read and a press elsewhere still reads
+ * as a press. Caps and block headers are frame and stay lit. Not while
+ * SELECT is on: several rows are marked then, a different statement. */
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated) {
+  opacity: 0.45;
+  transition: opacity 0.12s ease-out;
+}
+
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):hover {
+  opacity: 1;
+}
+
 /* ------------------------------------------------- listable, not readable */
 
 /* CUBE lists files a shared feed's guest may not read. A row that has been
@@ -2842,7 +2859,7 @@ body[data-header='dag'] #header-dag {
 }
 
 .files-activatable:hover > span {
-  background: rgb(255 119 0 / 18%);
+  background: color-mix(in srgb, var(--harvestgold) 18%, transparent);
 }
 
 /* The file content view: cat output presented in the panel, with a mars
@@ -4343,7 +4360,7 @@ body[data-zoom] #header-restore {
  * writes on the mount; nothing here spells one. */
 
 .pacs-patient-row:hover {
-  background: rgb(255 204 102 / 12%);
+  background: color-mix(in srgb, var(--harvestgold) 12%, transparent);
 }
 
 .pacs-patient-row > span {

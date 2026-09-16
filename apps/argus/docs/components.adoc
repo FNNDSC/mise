@@ -118,7 +118,7 @@ As the roster uses it: one block, the constant field `roster`; PROGRESS is the e
 | indicated | `.listing-indicated` on the row | A click on a row of a listing with actions (a folding row folds too), or `row_indicate(key)`. Exactly one row at a time across every level; the previous row stands down. Belongs to the field: restored after a repaint of the same field (a fold, a sort, a re-listing), gone with a row that left, cleared by navigation. `indication_refresh()` redraws its verbs from their live predicates.
 | selected | `.listing-selected` on the row | A click while SELECT is on, on a governed row. Kept across renders of the same field.
 | selecting | `.listing-selecting` on the mount | `select_toggle`. The SELECT block reads `SELECT ON` and loses `rail-off`.
-| framed | `.listing-framed` on the mount | A declared `rowZone`. The indicated row is drawn as a segment of the frame — the frame's block colour, black type, reaching the spine — and the zone wears `.listing-zone`.
+| framed | `.listing-framed` on the mount | A declared `rowZone`. The indicated row is drawn as a segment of the frame — the frame's block colour, black type, reaching the spine, its bars in black — and while one is, every other row recedes to 45% (hover restores; not while selecting), so the block and the frame's verbs read as one pair. The zone wears `.listing-zone`.
 | open | `.listing-open` on the row | Activation of a row that has a child level; its level follows it.
 | activatable | `.listing-activatable` on the row | Any row `activatable` does not refuse.
 | filtered | `FILTER ON` on the block, `FILTERED n/m` on the bar | The strip opening; the counts are taken across every block.

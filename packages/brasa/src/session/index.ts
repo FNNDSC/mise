@@ -7,6 +7,7 @@
  */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
 import type { Regard } from '@fnndsc/menu';
+import { homePath_of } from '../builtins/utils.js';
 
 /**
  * Manages the shell session state (Connection, Context).
@@ -56,10 +57,18 @@ export class Session {
   }
 
   /**
-   * Get Current Working Directory from Context.
+   * The current working directory: what the identity's context stores,
+   * or, before it has stored anything, the identity's home.
+   *
+   * A first session used to begin at `/`, which is a place nobody works
+   * in — the operator's own words: "she should be in the user's homedir".
+   * A shell lands in the home; so does this one. A stored directory is
+   * always honoured, `/` included, since the operator put it there.
    */
   async getCWD(): Promise<string> {
-    return await chrisContext.current_get(Context.ChRISfolder) || '/';
+    const stored: string | null = await chrisContext.current_get(Context.ChRISfolder);
+    if (stored) return stored;
+    return homePath_of(await chrisContext.current_get(Context.ChRISuser));
   }
 
   /**

@@ -226,6 +226,14 @@ export interface ListingAction<T> {
   offered?: (row: T) => boolean;
   /** Whether it is offered but refused, with the capsule shown disabled. */
   disabled?: (row: T) => boolean;
+  /**
+   * Whether the action's RESULT is currently on stage — a viewer this IMAGE
+   * opened, a browser this DIR opened, a series this GATHER holds. A selected
+   * capsule carries a persistent lit hue: the row's verbs read as a trace of
+   * what has been done to it. Derived live, not a click-flag, so it is honest
+   * across a close, a domain switch, and a desktop restore.
+   */
+  selected?: (row: T) => boolean;
 }
 
 /**
@@ -244,6 +252,7 @@ export function actionCell_build<T>(row: T, actions: ReadonlyArray<ListingAction
     capsule.className = 'listing-action';
     capsule.textContent = action.label;
     if (action.disabled?.(row) === true) capsule.disabled = true;
+    if (action.selected?.(row) === true) capsule.classList.add('listing-action-selected');
     capsule.addEventListener('click', (event: Event): void => {
       // A row's own activation is a different gesture from its actions.
       event.stopPropagation();

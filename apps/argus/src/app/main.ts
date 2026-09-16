@@ -691,6 +691,8 @@ async function surface_start(token: string): Promise<void> {
       groupId,
       paneId: value.paneId,
     });
+    // A pane's regard just changed — re-light the PACS rows' verbs to match.
+    pacsStage_relight();
   });
 
   /** Builds the token-gated /vfs URL serving a path's bytes. */
@@ -2167,6 +2169,33 @@ async function surface_start(token: string): Promise<void> {
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
 
+  /**
+   * Lights the PACS rows' verbs from the live stage: a folder gets a viewer
+   * bit when a shown image pane regards it, a browser bit when a shown files
+   * pane regards it. Called on every stage change, so a series' IMAGE and DIR
+   * light when their panes open and go dark when they leave — a restore lights
+   * them for free as the panes come back.
+   */
+  const pacsStage_relight = (): void => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    const lit: Map<string, { viewer: boolean; browser: boolean }> = new Map();
+    for (const instance of paneInstances_list()) {
+      if (!shown.has(instance.id)) continue;
+      const raw: string | undefined = subjects.regard_get(instance.id)?.address;
+      if (raw === undefined) continue;
+      const kind: string | null = paneKind_get(instance.id);
+      if (kind !== 'image' && kind !== 'files') continue;
+      // A viewer anchors on the folder with its trailing slash stripped; a
+      // browser keeps it — normalise so both light the same series row.
+      const address: string = raw.replace(/\/$/, '');
+      const entry = lit.get(address) ?? { viewer: false, browser: false };
+      if (kind === 'image') entry.viewer = true;
+      else entry.browser = true;
+      lit.set(address, entry);
+    }
+    pacsPanel.stage_lit(lit);
+  };
+
   // The tiling tree: presets are the gutter's trees; a feed in view varies
   // home by materializing the DAG pane (files left, DAG right); splits
   // carve the current tree until the next preset resets to givens.
@@ -2444,6 +2473,7 @@ async function surface_start(token: string): Promise<void> {
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
     }
+    pacsStage_relight();
   };
 
   /**
@@ -2558,6 +2588,7 @@ async function surface_start(token: string): Promise<void> {
       }
     } finally {
       desktopReplaying = false;
+      pacsStage_relight();
     }
   };
 

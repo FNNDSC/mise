@@ -2441,6 +2441,23 @@ body[data-header='dag'] #header-dag {
   box-shadow: 0 0 8px var(--harvestgold);
 }
 
+/* One engaged hue reads across the pills: bright is available, this deep fill
+   is engaged, dimmed is off. A PRESS shows it for the moment (in place — only
+   the fill changes, never a dimension that would reflow the row); a verb whose
+   result is on stage KEEPS it, so a row's lit verbs trace what has been done. */
+.listing-action:active:not(:disabled),
+.listing-action-selected:not(:disabled) {
+  background: color-mix(in srgb, var(--harvestgold) 42%, #000);
+  color: var(--butter);
+  filter: none;
+  box-shadow: none;
+}
+
+.listing-action-selected:hover:not(:disabled) {
+  filter: brightness(1.2);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--harvestgold) 60%, transparent);
+}
+
 .listing-action:disabled {
   opacity: 0.35;
   cursor: default;

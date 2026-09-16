@@ -286,6 +286,13 @@ export class PacsPanel {
   private readonly gatherName: HTMLInputElement;
   private readonly handlers: PacsPanelHandlers;
   private readonly gather: Map<string, GatherEntry> = new Map();
+  /**
+   * The series folders that currently have a viewer or a browser on THIS
+   * surface's stage, by folder path — the live source for lighting the IMAGE
+   * and DIR verbs. Set by `stage_lit` on every stage change; empty means
+   * nothing of that series is open here.
+   */
+  private litFolders: Map<string, { viewer: boolean; browser: boolean }> = new Map();
   private readonly badges: Map<string, HTMLElement> = new Map();
   private readonly badgeStates: Map<string, BadgeState> = new Map();
   /** Per-series progress, seeded from the model and driven by the wire. */
@@ -406,7 +413,15 @@ export class PacsPanel {
               actions: { width: '16em', of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.actions, always: true },
               // A series opens nothing: its verbs are the whole of what it does.
               activatable: (): boolean => false,
-              row: { className: (): string => 'pacs-series' },
+              row: {
+                className: (): string => 'pacs-series',
+                // Tag the row so a live stage change can re-light its verbs
+                // without re-rendering the listing (which would jog the rows).
+                decorate: (element: HTMLElement, row: SeriesRow): void => {
+                  element.dataset['seriesuid'] = row.series.seriesUID;
+                  if (row.series.folderPath !== undefined) element.dataset['folder'] = folderKey(row.series.folderPath);
+                },
+              },
             },
           ),
         },
@@ -854,6 +869,7 @@ export class PacsPanel {
       {
         label: verbRule_get(PACS_SERIES_ROSTER, 'gather').label({ inCube: true, folderKnown: true, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).gather,
+        selected: (row: SeriesRow): boolean => this.gather.has(row.series.seriesUID),
         run: (row: SeriesRow): void => this.gather_note(row.study, row.series),
       },
       {
@@ -861,6 +877,7 @@ export class PacsPanel {
         // on, and only once the kernel can say where the series landed.
         label: verbRule_get(PACS_SERIES_ROSTER, 'image').label({ inCube: true, folderKnown: true, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).image,
+        selected: (row: SeriesRow): boolean => row.series.folderPath !== undefined && (this.litFolders.get(folderKey(row.series.folderPath))?.viewer ?? false),
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.image_open(row.series.folderPath);
         },
@@ -870,6 +887,7 @@ export class PacsPanel {
         // into the series' group so it stands beside the viewer.
         label: verbRule_get(PACS_SERIES_ROSTER, 'dir').label({ inCube: true, folderKnown: true, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).dir,
+        selected: (row: SeriesRow): boolean => row.series.folderPath !== undefined && (this.litFolders.get(folderKey(row.series.folderPath))?.browser ?? false),
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.dir_open(row.series.folderPath);
         },
@@ -1483,6 +1501,43 @@ export class PacsPanel {
   private gather_add(entry: GatherEntry): void {
     this.gather.set(entry.seriesUID, entry);
     this.gather_render();
+    this.selected_refresh();
+  }
+
+  /**
+   * Records which series folders have a viewer or a browser on stage and
+   * re-lights the rows' verbs to match — called by the surface on every stage
+   * change (a pane opened or closed, a regard written, a domain entered, a
+   * desktop restored). A verb lights when its result is present and goes dark
+   * when it leaves, so the row's verbs read as a live trace of what is open.
+   *
+   * @param litFolders - Folder path to whether a viewer/browser regards it.
+   */
+  public stage_lit(litFolders: Map<string, { viewer: boolean; browser: boolean }>): void {
+    this.litFolders = litFolders;
+    this.selected_refresh();
+  }
+
+  /**
+   * Re-derives the lit hue on every rendered series verb from the live stage
+   * (IMAGE/DIR) and the cohort (GATHER), toggling the class in place so the
+   * listing never re-renders or jogs.
+   */
+  private selected_refresh(): void {
+    for (const rowEl of this.root.querySelectorAll<HTMLElement>('.pacs-series[data-seriesuid]')) {
+      const folder: string | undefined = rowEl.dataset['folder'];
+      const uid: string = rowEl.dataset['seriesuid'] ?? '';
+      const lit = folder !== undefined ? this.litFolders.get(folder) : undefined;
+      for (const cap of rowEl.querySelectorAll<HTMLElement>('.listing-action')) {
+        const label: string = (cap.textContent ?? '').trim();
+        const on: boolean =
+          label === 'IMAGE' ? (lit?.viewer ?? false)
+          : label === 'DIR' ? (lit?.browser ?? false)
+          : label === 'GATHER' ? this.gather.has(uid)
+          : false;
+        cap.classList.toggle('listing-action-selected', on);
+      }
+    }
   }
 
   /** Paints the gather tray: the curated cohort. */
@@ -1573,6 +1628,15 @@ export class PacsPanel {
 /** A study's key: its UID, or its place when the PACS sent none. */
 function study_key(study: PacsStudy, index: number): string {
   return study.studyUID ?? `study-${index}`;
+}
+
+/**
+ * A series folder's lighting key: its path with any trailing slash stripped,
+ * so a viewer (which anchors on the stripped folder) and a browser (which
+ * keeps the slash) light the same row.
+ */
+function folderKey(path: string): string {
+  return path.replace(/\/$/, '');
 }
 
 /** What a series' progress is before anything has been asked of it. */

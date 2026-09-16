@@ -3823,8 +3823,10 @@ async function surface_start(token: string): Promise<void> {
   aboutFace_fill(attached.attach);
 
   // Seed the ambient cycler: the registered pipelines are already listed
-  // in /bin, so one silent ls names them all.
-  void client.line_execute('ls /bin', { silent: true }).then((outcome: ExecuteOutcome): void => {
+  // in /bin, so one silent ls names them all. Unobserved: this is an
+  // instrument's read, and a browser that follows the session must not be
+  // steered to /bin by it — which is how every boot used to open there.
+  void client.line_execute('ls /bin', { silent: true, observe: false }).then((outcome: ExecuteOutcome): void => {
     const listing: WireEnvelope | undefined = outcome.envelopes.find(
       (envelope: WireEnvelope): boolean => envelope.model?.kind === 'fs.listing',
     );
@@ -3835,6 +3837,10 @@ async function surface_start(token: string): Promise<void> {
       .map((item): string => item.name);
     cycler.names_set(names);
   });
+  // The browser that follows the session shows the session's place from
+  // the first moment: one silent, observed listing of the working
+  // directory. (The seed above used to do this by accident, at /bin.)
+  void client.line_execute('ls', { silent: true });
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();

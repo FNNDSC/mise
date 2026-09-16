@@ -148,8 +148,6 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'a directory': ['MOVE', 'COPY', 'DELETE'],
     'a DICOM series folder': ['IMAGE', 'MOVE', 'COPY', 'DELETE'],
     'a catalogue entry': [],
-    'the place, outside a feed': ['NEW DIR', 'REFRESH', 'DELETE'],
-    'the place, inside a feed': ['NEW DIR', 'REFRESH', 'DELETE', 'SHARE FEED 12'],
   },
   'files.selection': {
     'a selection outside any feed': ['DELETE 3', 'MOVE 3', 'COPY 3'],

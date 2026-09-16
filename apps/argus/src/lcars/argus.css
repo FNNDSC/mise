@@ -1611,12 +1611,17 @@ main {
 }
 
 /* A state with no bar — an error, an unconfirmed pull — is one statement
- * across both tracks rather than a word pinned to the right. */
-.pacs-badge:not(:has(> .listing-progress, > .pacs-bar-full)) {
+ * across both tracks rather than a word pinned to the right. A retrieve in
+ * flight HAS a bar (`.pacs-bar`) and keeps the two tracks: the operator
+ * caught it collapsing to one, the bar running out past every other bar
+ * and RETRIEVING dropping beneath it — a layout change for no reason, on
+ * the one row being watched. */
+.pacs-badge:not(:has(> .listing-progress, > .pacs-bar-full, > .pacs-bar)) {
   grid-template-columns: 1fr;
 }
 
-.pacs-badge .listing-progress {
+.pacs-badge .listing-progress,
+.pacs-badge .pacs-bar {
   min-width: 0;
 }
 
@@ -4159,8 +4164,18 @@ body[data-zoom] #header-restore {
   min-width: 2rem;
   height: 0.45rem;
   border-radius: 0.25rem;
-  background: rgb(255 119 0 / 18%);
+  background: color-mix(in srgb, var(--state-running) 18%, transparent);
   overflow: hidden;
+}
+
+/* On the indicated block the running bar inverts with the type, as every
+ * other bar does: black in a black track. */
+.listing-framed .listing-indicated .pacs-bar {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .pacs-bar-fill {
+  background: #000;
 }
 
 .pacs-bar-fill {

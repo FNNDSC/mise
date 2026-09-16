@@ -472,8 +472,9 @@ function headerFaces_wire(): void {
 
   const face_select = (face: string): void => {
     if (body.dataset['header'] === face) {
-      // Second press on the selected face: the header itself departs. The
-      // slide distance is its measured height, same as the zoom glide.
+      // Second press on the selected face: the header itself departs, gliding
+      // up by its measured height while it leaves the flow (the CSS takes it
+      // absolute), so the workspace flows up to fill the top exactly.
       if (header !== null) {
         headerHeight_track(header, body);
       }

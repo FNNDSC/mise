@@ -3069,9 +3069,16 @@ body[data-header='stats'] #header-telemetry {
 
 /* Pressing the selected face's button again sends the whole header off the
  * top — the same glide the pane zoom uses — and the lid strip appears. */
+/* The header leaves FLOW when it is dismissed, not just the eye: taken out of
+ * the flex column (absolute, glided off the top by its own height), the
+ * workspace flows up to fill the top EXACTLY — deterministically, console open
+ * or closed, header tall or short. The negative-margin reclaim it replaces was
+ * amplified by the flex column and overshot, carrying the panes' own top
+ * frames off screen with it. */
 body[data-header='away'] .wrap:not(#gap) {
+  position: absolute;
+  inset: 0 0 auto 0;
   translate: 0 calc(-1 * var(--zoom-header-height, 100vh));
-  margin-bottom: calc(-1 * var(--zoom-header-height, 0px));
 }
 
 #header-restore {

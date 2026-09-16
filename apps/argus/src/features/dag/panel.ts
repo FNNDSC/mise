@@ -119,6 +119,24 @@ function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
  * it. Totals are derived from resident nodes, so a feed not yet resident
  * reads a dash and sorts below every known value rather than as a zero.
  */
+/**
+ * The console lines that put a graph back into a view, from what its mode
+ * blocks read. A block at its default says nothing: the defaults are what
+ * a fresh graph is drawn in, so replaying them would be noise.
+ *
+ * @param modes - What the blocks read, lower-cased; empty when a block is absent.
+ * @returns The lines, in the order the frame lists the blocks.
+ */
+export function dagView_lines(modes: { layout: string; projection: string; scale: string; hue: string; census: string }): string[] {
+  const lines: string[] = [];
+  if (modes.layout === 'molecule') lines.push('dag layout molecule');
+  if (modes.projection === '2d') lines.push('dag projection 2d');
+  if (modes.scale === 'size') lines.push('dag scale size');
+  if (modes.hue === 'compute') lines.push('dag hue compute');
+  if (modes.census === 'census') lines.push('dag census');
+  return lines;
+}
+
 const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   {
     // The row's control, as the browser's and PACS's: OPEN enters the
@@ -633,6 +651,33 @@ export class DagPanel {
   /** The feed on stage or being retrieved, or null at the roster. */
   public feed_get(): number | null {
     return this.pendingFeedId ?? this.shownFeedId;
+  }
+
+  /** Whether a graph is on stage (as against the roster, or a wait). */
+  public graph_isShown(): boolean {
+    return this.canvas.style.display === 'block';
+  }
+
+  /** What the title bar reads for the feed on stage, without the pane's own prefix. */
+  public feedTitle_get(): string {
+    return (this.title.textContent ?? '').replace(/^DAG\s*·\s*/i, '').trim();
+  }
+
+  /**
+   * The view the graph is drawn in, as the console lines that reproduce
+   * it — only what differs from the defaults, so a desktop replays what
+   * the operator chose and nothing else.
+   */
+  public view_lines(): string[] {
+    const frame: HTMLElement | null = this.strategyPill.parentElement;
+    const read = (selector: string): string => frame?.querySelector<HTMLElement>(selector)?.textContent?.trim().toLowerCase() ?? '';
+    return dagView_lines({
+      layout: read('.dag-strategy'),
+      projection: read('.dag-projection'),
+      scale: read('.dag-scale'),
+      hue: read('.dag-hue'),
+      census: read('.dag-census'),
+    });
   }
 
   /**

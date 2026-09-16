@@ -77,6 +77,8 @@ const ENTRIES: Entry[] = [
 ];
 
 const UP: Entry = { name: '..', kind: 'dir', size: 0 };
+/** The place's own row, offered verbs though it stands outside the order. */
+const HERE: Entry = { name: '.', kind: 'file', size: 0 };
 
 /** Waits for the frame RosterOrder and the façade coalesce their repaints into. */
 async function frame(): Promise<void> {
@@ -287,19 +289,24 @@ describe('a-row-is-indicated-before-it-is-acted-on', () => {
     expect(listing.indicated_get()).toBeNull();
   });
 
-  it('a lead row keeps its single click and takes no verbs', () => {
+  it('a lead row offered no verbs keeps its single click; one offered verbs indicates like any row', () => {
     const activate = jest.fn();
     const { listing, mount } = listing_build({
       activate,
-      actions: { width: '21em', of: (): ReadonlyArray<{ label: string; run: () => void }> => [{ label: 'OPEN', run: (): void => {} }] },
+      actions: { width: '21em', of: OPEN_FILES },
     });
-    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
+    // `..` is a directory: nothing offered, one click, never indicated.
+    listing.rows_set([{ key: '/x', lead: [UP, HERE], rows: ENTRIES }], { field: '/x' });
     const up: HTMLElement = rows_onStage(mount)[0] as HTMLElement;
     up.click();
     expect(activate).toHaveBeenCalledWith(UP);
-    listing.row_indicate('..');
     expect(listing.indicated_get()).toBeNull();
-    expect(up.querySelector('.listing-action')).toBeNull();
+    // `.` is offered the place's verbs: a click indicates it.
+    const here: HTMLElement = rows_onStage(mount)[1] as HTMLElement;
+    here.click();
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(listing.indicated_get()).toBe('.');
+    expect(here.querySelector('.listing-action')?.textContent).toBe('OPEN');
   });
 
   it('a readout lands beside the indicated row and nowhere else', () => {
@@ -485,7 +492,7 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     expect(zoneVerbs_of(zone)).toEqual(['RM 1']);
   });
 
-  it('a readout lands beneath the zone\'s verbs, and a render empties the zone', () => {
+  it('a readout lands beneath the zone\'s verbs', () => {
     const { listing, mount, zone } = framed_build({ actions: { of: OPEN_FILES } });
     listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
     listing.readout_show('beta', 'NOBODY');
@@ -496,10 +503,105 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     expect(zone.lastElementChild?.classList.contains('listing-readout')).toBe(true);
     listing.readout_show('gamma', 'STALE');
     expect(zone.querySelectorAll('.listing-readout')).toHaveLength(1);
+  });
+
+  it('the indication belongs to the field: it survives a re-listing of the same field, and a sort, and clears on another', async () => {
+    const indicated = jest.fn();
+    const { listing, root, mount, zone } = framed_build({ indicated, actions: { of: OPEN_FILES } });
     listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    expect(listing.indicated_get()).toBe('beta');
+    expect(indicated).toHaveBeenCalledTimes(1);
+    // The same rows arrive again: the new row is indicated, the pane is
+    // not told twice, the frame stays.
+    listing.rows_set([{ key: '/x', rows: [...ENTRIES] }], { field: '/x' });
+    expect(listing.indicated_get()).toBe('beta');
+    expect(listing.row_element('beta')?.classList.contains('listing-indicated')).toBe(true);
+    expect(zoneVerbs_of(zone)).toEqual(['OPEN']);
+    expect(indicated).toHaveBeenCalledTimes(1);
+    expect(root.dataset['modes']).toBe('open');
+    // A sort repaints; the indication holds.
+    root.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'sort', key: 'size', dir: 'desc' } }));
+    await frame();
+    expect(listing.indicated_get()).toBe('beta');
+    expect(mount.querySelectorAll('.listing-indicated')).toHaveLength(1);
+    // The row leaves: the indication goes with it.
+    listing.rows_set([{ key: '/x', rows: ENTRIES.filter((entry: Entry): boolean => entry.name !== 'beta') }], { field: '/x' });
     expect(listing.indicated_get()).toBeNull();
     expect(zone.hidden).toBe(true);
-    expect(zone.childElementCount).toBe(0);
+    expect(root.dataset['modes']).toBeUndefined();
+    // Navigation clears it.
+    (listing.row_element('gamma') as HTMLElement).click();
+    expect(listing.indicated_get()).toBe('gamma');
+    listing.rows_set([{ key: '/y', rows: ENTRIES }], { field: '/y' });
+    expect(listing.indicated_get()).toBeNull();
+    expect(mount.querySelector('.listing-indicated')).toBeNull();
+  });
+
+  it('a folding row\'s click folds AND indicates, the indication survives the repaint, and a level beneath takes the one indication over', async () => {
+    interface Book { title: string; pages: string[] }
+    const pull = jest.fn();
+    const open = jest.fn();
+    const { root, mount, zone } = chrome_build('files');
+    const listing: Listing<Book> = new Listing<Book>({
+      mount,
+      traits: [{ key: 'title', label: 'TITLE', className: 'title', width: '1fr', cell: (book: Book): string => book.title }],
+      key: (book: Book): string => book.title,
+      chrome: { root, prefix: 'files' },
+      rowZone: zone,
+      actions: { of: (book: Book): ReadonlyArray<{ label: string; run: (book: Book) => void }> => [{ label: `PULL ${book.title}`, run: pull }] },
+      child: listingChild_declare(
+        (book: Book): ReadonlyArray<string> => book.pages,
+        {
+          traits: [{ key: 'page', label: 'PAGE', className: 'page', width: '1fr', cell: (page: string): string => page }],
+          key: (page: string): string => page,
+          actions: { of: (page: string): ReadonlyArray<{ label: string; run: (page: string) => void }> => [{ label: `OPEN ${page}`, run: open }] },
+        },
+      ),
+    });
+    listing.rows_set([{ key: 'shelf', rows: [{ title: 'a', pages: ['a1', 'a2'] }, { title: 'b', pages: ['b1'] }] }], { field: 'shelf' });
+    const bookA: HTMLElement = listing.row_element('a') as HTMLElement;
+    bookA.click();
+    // Indicated at once, and folded open on the next frame; still indicated after.
+    expect(listing.indicated_get()).toBe('a');
+    expect(zoneVerbs_of(zone)).toEqual(['PULL a']);
+    await frame();
+    expect(mount.querySelector('.listing-group.listing-open')).not.toBeNull();
+    expect(listing.indicated_get()).toBe('a');
+    expect(listing.row_element('a')?.classList.contains('listing-indicated')).toBe(true);
+    expect(zoneVerbs_of(zone)).toEqual(['PULL a']);
+    expect(root.dataset['modes']).toBe('open');
+    // A page beneath it: the book stands down, the page's verbs take the zone.
+    const page: HTMLElement = mount.querySelector('.listing-level .listing-row') as HTMLElement;
+    page.click();
+    expect(listing.indicated_get()).toBe('a1');
+    expect(zoneVerbs_of(zone)).toEqual(['OPEN a1']);
+    expect(mount.querySelectorAll('.listing-indicated')).toHaveLength(1);
+    expect(listing.row_element('a')?.classList.contains('listing-indicated')).toBe(false);
+    // Standing down from the listing clears whichever level holds it.
+    listing.row_indicate(null);
+    expect(listing.indicated_get()).toBeNull();
+    expect(mount.querySelector('.listing-indicated')).toBeNull();
+    expect(zone.hidden).toBe(true);
+    // Folding the book closed keeps it indicated (it is still on stage).
+    bookA.click();
+    await frame();
+    expect(mount.querySelector('.listing-group.listing-open')).toBeNull();
+    expect(listing.indicated_get()).toBe('a');
+  });
+
+  it('a refresh redraws the indicated row\'s verbs from their live predicates', () => {
+    let lit: boolean = false;
+    const { listing, mount, zone } = framed_build({
+      actions: { of: (): ReadonlyArray<{ label: string; run: () => void; selected: () => boolean }> => [{ label: 'IMAGE', run: (): void => {}, selected: (): boolean => lit }] },
+    });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    (rows_onStage(mount)[0] as HTMLElement).click();
+    expect(zone.querySelector('.listing-action')?.classList.contains('listing-action-selected')).toBe(false);
+    lit = true;
+    listing.indication_refresh();
+    expect(zone.querySelector('.listing-action')?.classList.contains('listing-action-selected')).toBe(true);
+    expect(mount.querySelectorAll('.listing-indicated')).toHaveLength(1);
   });
 });
 

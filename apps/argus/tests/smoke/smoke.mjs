@@ -892,7 +892,8 @@ try {
     await settle(() => !/STALE/.test(bar()));
     const homeBar = bar();
     const home = names();
-    const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => r.querySelector('.files-name')?.textContent.trim() !== '..');
+    // Neither lead row: the updir goes up, and the place row is the place itself.
+    const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => !['..', '.'].includes(r.querySelector('.files-name')?.textContent.trim()));
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
     // A directory is offered no verbs, so one click enters it; only a row
     // with verbs to show splits the click (a-row-is-indicated-before-it-is-acted-on).
@@ -986,6 +987,14 @@ try {
     click(fp().querySelector('.files-panel')); await sleep(600);
     const stoodDown = { modes: modes(), lit: fp().querySelector('.files-row.listing-indicated') === null, zoneHidden: zone().hidden };
 
+    // the place's own row (.) is offered what may be done to the directory
+    // on stage, and one click indicates it though it stands outside the order
+    const here = named('.');
+    click(here); await sleep(600);
+    const placeVerbs = zoneVerbs();
+    const placeLit = here.classList.contains('listing-indicated');
+    click(fp().querySelector('.files-panel')); await sleep(400);
+
     // a directory is offered no verbs: one click enters it, nothing opens
     await say('cd ~', 2500);
     await settle(() => named('smoke-verbs'));
@@ -994,7 +1003,7 @@ try {
     const dirModes = modes();
     await say('cd ~', 2500);
     await say('rm -r ~/smoke-verbs', 3000);
-    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, entered, dirModes };`);
+    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, placeVerbs, placeLit, entered, dirModes };`);
   check('a click indicates rather than activates', verbs.stayed && verbs.indicated.length > 0);
   check("the verbs are the ones the row can be given",
     ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'].every((v) => verbs.indicated.includes(v)), verbs.indicated.join(','));
@@ -1004,6 +1013,7 @@ try {
   check('no row moves when one is indicated', verbs.before.join(',') === verbs.after.join(','));
   check('a touch on the field stands the row down and retracts the frame',
     verbs.stoodDown.modes === null && verbs.stoodDown.lit && verbs.stoodDown.zoneHidden, JSON.stringify(verbs.stoodDown));
+  check('the place\'s own row is offered the place\'s verbs', verbs.placeLit && ['NEW DIR', 'REFRESH', 'DELETE'].every((v) => verbs.placeVerbs.includes(v)), verbs.placeVerbs.join(','));
   check('a directory is offered no verbs, so one click enters it', verbs.entered && verbs.dirModes === null);
   // A row one cell short does not leave a gap: it shifts every cell of every
   // row after it into the wrong column, which is how the action track's own
@@ -1590,7 +1600,18 @@ try {
       const caps = study().querySelectorAll('.roster-cap').length;
       const track = study().querySelector('.pacs-study-progress .listing-progress') !== null;
       const accession = study().querySelector('.pacs-study-accession')?.textContent ?? '';
-      const verbs = study().querySelector('.pacs-series .listing-action') !== null;
+      // A row's verbs live in the frame: no series row carries one; a
+      // click on a series puts its verbs in the row zone and opens the
+      // frame, and the study row, clicked, is indicated as well as folded.
+      const ws = document.getElementById('pacs-workspace');
+      const zoneVerbs = () => [...ws.querySelectorAll('.pacs-row-zone .listing-action')].map(b => b.textContent.trim());
+      const onRows = study().querySelectorAll('.listing-action').length;
+      study().querySelector('.pacs-series').click(); await sleep(400);
+      const seriesVerbs = zoneVerbs();
+      const framed = ws.dataset.modes === 'open';
+      const seriesLit = study().querySelector('.pacs-series.listing-indicated') !== null;
+      const verbs = onRows === 0 && seriesVerbs.length > 0 && framed && seriesLit;
+      ws.querySelector('.pacs-row-zone')?.closest('.mode-frame') && document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
       study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
       const ascending = names().join('|');
       const lit = study().querySelector('.roster-cap.roster-active') !== null;
@@ -1640,7 +1661,7 @@ try {
       && !/--fresh/.test(pacsProvenance.clearedLine),
       JSON.stringify(pacsProvenance));
 
-    check('a study heads its series with caps, a summed track, and verbs',
+    check('a study heads its series with caps and a summed track, and the series verbs live in the frame',
       pacsSort.studies === 1 && pacsSort.caps >= 4 && pacsSort.track === true && pacsSort.verbs === true
       && pacsSort.accession.length > 0,
       JSON.stringify(pacsSort));

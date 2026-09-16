@@ -299,6 +299,31 @@ interface LevelHost {
   zoneVerbs_set(capsules: ReadonlyArray<Node>): void;
   /** Says something beneath the zone's verbs, about the indicated row. */
   zoneReadout_set(text: string): void;
+  /**
+   * A level indicated a row: the listing holds ONE indication across its
+   * levels, so the level that held it before stands down quietly, and the
+   * listing can restore this one after a repaint.
+   */
+  indication_claim(claim: IndicationClaim): void;
+  /** A level stood its row down of its own accord (or had nothing). */
+  indication_release(level: object): void;
+}
+
+/**
+ * The one indication a listing holds, whichever level holds it.
+ *
+ * @property level - The level holding it, as an identity.
+ * @property key - The indicated row's key at that level.
+ * @property drop - Stands the row down quietly: class off, cell emptied,
+ *   no callbacks and no zone change — the claim that replaces it draws.
+ * @property restore - Indicates the same row again without telling the
+ *   pane, after a repaint or a stage change; false when the row has left.
+ */
+interface IndicationClaim {
+  level: object;
+  key: string;
+  drop: () => void;
+  restore: () => boolean;
 }
 
 /**
@@ -651,13 +676,18 @@ class Level<T> {
     if (declaration.activatable?.(row) === false) return element;
     element.classList.add('listing-activatable');
     // Only a row with verbs to hide learns the split; one offered none —
-    // a directory the browser enters, say — has nothing to indicate
-    // before acting on it, and asking for a second click while offering
-    // nothing for the first is a worse bargain than the one it replaced.
-    const splits: boolean = !lead
-      && declaration.actions !== undefined
+    // a directory the browser enters, say, or its `..` — has nothing to
+    // indicate before acting on it, and asking for a second click while
+    // offering nothing for the first is a worse bargain than the one it
+    // replaced. A lead row is judged the same way: `..` is offered
+    // nothing and keeps one click; `.` is offered the place's verbs.
+    const splits: boolean = declaration.actions !== undefined
       && declaration.actions.always !== true
       && declaration.actions.of(row).length > 0;
+    // A row that FOLDS stays on stage when activated, so its click can
+    // do both: open or close it, and indicate it. A row that replaces
+    // the listing cannot — going and staying are different gestures.
+    const folds: boolean = !lead && this.child !== null;
     element.addEventListener('click', (): void => {
       if (!lead && this.select !== null && this.select(key, row)) return;
       if (!splits) {
@@ -667,13 +697,14 @@ class Level<T> {
       // A click says "this one"; a double-click says "go". Only a listing
       // that hides verbs until a row is indicated needs the split.
       this.row_indicate(key);
+      if (folds) this.row_activate(row, key, false);
     });
-    if (splits) {
+    if (splits && !folds) {
       element.addEventListener('dblclick', (): void => {
         // The click that opened the double-click indicated the row;
         // activating moves on, so the indication goes too.
         this.row_indicate(null);
-        this.row_activate(row, key, false);
+        this.row_activate(row, key, lead);
       });
     }
     return element;
@@ -695,26 +726,34 @@ class Level<T> {
    *
    * @param key - The row's key, or null to indicate nothing.
    */
-  public row_indicate(key: string | null): void {
+  public row_indicate(key: string | null, quiet: boolean = false): void {
     const framed: boolean = this.host.framed();
-    if (this.indicated !== null) {
-      this.cellsByKey.get(this.indicated)?.replaceChildren();
-      this.rowsByKey.get(this.indicated)?.classList.remove('listing-indicated');
-    }
-    this.indicated = key;
+    this.indication_drop();
     if (key === null) {
-      if (framed) this.host.zoneVerbs_set([]);
+      this.host.indication_release(this);
       return;
     }
     const row: T | undefined = this.dataByKey.get(key);
     const element: HTMLElement | undefined = this.rowsByKey.get(key);
-    if (row === undefined || element === undefined || this.leadKeys.has(key)) {
-      this.indicated = null;
-      if (framed) this.host.zoneVerbs_set([]);
+    if (row === undefined || element === undefined) {
+      this.host.indication_release(this);
       return;
     }
+    this.indicated = key;
     element.classList.add('listing-indicated');
     const offered: ReadonlyArray<ListingAction<T>> = this.declaration.actions?.of(row) ?? [];
+    // The claim goes in before the zone is drawn, so the level that held
+    // the indication before has stood down by the time the verbs land.
+    this.host.indication_claim({
+      level: this,
+      key,
+      drop: (): void => this.indication_drop(),
+      restore: (): boolean => {
+        if (!this.rowsByKey.has(key)) return false;
+        this.row_indicate(key, true);
+        return true;
+      },
+    });
     if (framed) {
       this.host.zoneVerbs_set([...actionCell_build(row, offered).childNodes]);
     } else {
@@ -723,10 +762,22 @@ class Level<T> {
         cell.replaceChildren(...actionCell_build(row, offered).childNodes);
       }
     }
-    this.declaration.indicated?.(row);
+    if (!quiet) this.declaration.indicated?.(row);
   }
 
-  /** The indicated row's key, or null. */
+  /**
+   * Stands the indicated row down quietly: its light off, its cell
+   * emptied, nothing told and the zone untouched — for a claim another
+   * level is taking, or a row about to be indicated again.
+   */
+  private indication_drop(): void {
+    if (this.indicated === null) return;
+    this.cellsByKey.get(this.indicated)?.replaceChildren();
+    this.rowsByKey.get(this.indicated)?.classList.remove('listing-indicated');
+    this.indicated = null;
+  }
+
+  /** The key this level indicates, or null. */
   public indicated_get(): string | null {
     return this.indicated;
   }
@@ -790,6 +841,13 @@ export class Listing<T> {
    * pressed something else on since, is theirs to close.
    */
   private zoneOpened: boolean = false;
+  /**
+   * The one indication across every level, kept across a repaint of the
+   * same field (a fold, a sort, a re-listing) and dropped by navigation —
+   * the same life a selection has, for the same reason: what the operator
+   * pointed at is the field's until they point elsewhere or leave.
+   */
+  private claim: IndicationClaim | null = null;
   /** What was last given to `rows_set`, repainted on any order change. */
   private blocks: ReadonlyArray<ListingBlock<T>> = [];
   /** The field the rows belong to; a different one is navigation. */
@@ -818,6 +876,15 @@ export class Listing<T> {
         framed: (): boolean => this.zone !== null,
         zoneVerbs_set: (capsules: ReadonlyArray<Node>): void => this.zoneVerbs_set(capsules),
         zoneReadout_set: (text: string): void => this.zoneReadout_set(text),
+        indication_claim: (claim: IndicationClaim): void => {
+          if (this.claim !== null && this.claim.level !== claim.level) this.claim.drop();
+          this.claim = claim;
+        },
+        indication_release: (level: object): void => {
+          if (this.claim === null || this.claim.level !== level) return;
+          this.claim = null;
+          this.zoneVerbs_set([]);
+        },
       },
       declaration.caps !== 'each',
       declaration.selection === undefined ? null : (key: string, row: T): boolean => this.selection_gather(key, row),
@@ -862,7 +929,12 @@ export class Listing<T> {
    * @param context - The field the rows belong to.
    */
   public rows_set(blocks: ReadonlyArray<ListingBlock<T>>, context: { field: string }): void {
-    if (this.field !== null && context.field !== this.field) this.selection.clear();
+    if (this.field !== null && context.field !== this.field) {
+      this.selection.clear();
+      // Navigation: what was pointed at is not here any more.
+      this.claim?.drop();
+      this.claim = null;
+    }
     this.field = context.field;
     this.blocks = blocks;
     this.render();
@@ -909,22 +981,49 @@ export class Listing<T> {
       field.appendChild(section);
     }
     this.level.order.counts_set(shown, total);
+    // The rows were rebuilt; the indication is restored onto the new row
+    // if it is still on stage, and stood down if the repaint dropped it.
+    if (this.claim !== null && !this.claim.restore()) {
+      this.claim = null;
+      this.zoneVerbs_set([]);
+    }
     this.selection_render();
     this.state_render();
   }
 
   /**
-   * Indicates one row, or nothing.
+   * Indicates one row of the root level, or nothing.
    *
    * @param key - The row's key, or null.
    */
   public row_indicate(key: string | null): void {
+    if (key === null) {
+      // Whichever level holds it.
+      this.claim?.drop();
+      const claim: IndicationClaim | null = this.claim;
+      this.claim = null;
+      if (claim !== null) this.zoneVerbs_set([]);
+      return;
+    }
     this.level.row_indicate(key);
   }
 
-  /** The indicated row's key, or null. */
+  /** The indicated row's key at whichever level holds it, or null. */
   public indicated_get(): string | null {
-    return this.level.indicated_get();
+    return this.claim?.key ?? null;
+  }
+
+  /**
+   * Redraws the indicated row's verbs from their live predicates — a verb
+   * whose result is on stage lights, one whose result left goes dark —
+   * without re-rendering the listing or telling the pane again.
+   */
+  public indication_refresh(): void {
+    if (this.claim === null) return;
+    if (!this.claim.restore()) {
+      this.claim = null;
+      this.zoneVerbs_set([]);
+    }
   }
 
   /**
@@ -1045,7 +1144,7 @@ export class Listing<T> {
     // Entering or leaving the mode is the operator's hand on the frame:
     // the indication standing down must not retract it.
     this.zoneOpened = false;
-    if (this.level.indicated_get() !== null) this.level.row_indicate(null);
+    if (this.claim !== null) this.row_indicate(null);
     this.declaration.mount.classList.toggle('listing-selecting', this.selecting);
     this.selectBlock?.classList.toggle('rail-off', !this.selecting);
     if (this.selectBlock !== null) this.selectBlock.textContent = this.selecting ? 'SELECT ON' : 'SELECT OFF';
@@ -1084,9 +1183,9 @@ export class Listing<T> {
     }
     if (this.zone === null) return;
     if (!this.selecting) {
-      // A render drops the indication, and the zone follows it; while
-      // SELECT is off the zone is the indicated row's alone.
-      if (this.level.indicated_get() === null) this.zoneVerbs_set([]);
+      // While SELECT is off the zone is the indicated row's alone; with
+      // nothing indicated it is empty.
+      if (this.claim === null) this.zoneVerbs_set([]);
       return;
     }
     const rows: Array<[string, T]> = [...this.selection.entries()];
@@ -1115,7 +1214,7 @@ export class Listing<T> {
     const observer: MutationObserver = new MutationObserver((): void => {
       if (pane.dataset['modes'] === 'open') return;
       this.zoneOpened = false;
-      if (this.level.indicated_get() !== null) this.level.row_indicate(null);
+      if (this.claim !== null) this.row_indicate(null);
     });
     observer.observe(pane, { attributes: true, attributeFilter: ['data-modes'] });
   }

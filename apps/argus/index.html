@@ -576,8 +576,7 @@
                 <!-- PROGRESS is the expanse in the middle of every level, right
                      after the description; the form's cell over it carries
                      how-this-came-about, since an answer that was not fetched
-                     now says when it was. The control that re-asks stands in
-                     the verbs column at the end, where a row's verbs stand. -->
+                     now says when it was. -->
                 <span class="pacs-form-blank" data-key="progress">
                   <span id="pacs-provenance" class="pacs-provenance" hidden></span>
                 </span>
@@ -592,8 +591,11 @@
                 <span class="pacs-form-field" data-key="server">SERVER
                   <button id="pacs-f-server" class="pacs-server-cell" title="choose which PACS to ask (one moves the session, several fan out)">—</button>
                 </span>
-                <span class="pacs-form-blank" data-key="series"></span>
-                <button id="pacs-run" class="pacs-capsule">QUERY</button>
+                <!-- QUERY stands in the last column, SERIES, which a query
+                     cannot know: a row's verbs no longer keep a column at
+                     the end, so the control that re-asks takes the one
+                     the form leaves blank. -->
+                <button id="pacs-run" class="pacs-capsule" data-key="series">QUERY</button>
               </div>
               <!-- The strip has the pane's full width, so it carries far
                    more servers than capsules crammed into one grid track. -->
@@ -623,6 +625,10 @@
                 <span class="mode-elbow"></span>
                 <aside class="mode-frame">
                   <button class="strategy-pill pacs-filter rail-off" title="filter the results (the bar reads FILTERED n/m)">FILTER OFF</button>
+                  <!-- The ROW ZONE: the indicated study's or series' verbs,
+                       one under another; empty when nothing is indicated
+                       (aegis.adoc: a-row-s-verbs-live-in-the-frame). -->
+                  <span class="pacs-row-zone" hidden></span>
                   <span class="mode-fill"></span>
                 </aside>
                 <div id="pacs-results"></div>

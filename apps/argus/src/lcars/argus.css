@@ -486,7 +486,6 @@ label {
    * to be warm; it is mixed toward the palette rather than taken from it. */
   --state-done: var(--daybreak);
   --state-running: var(--orange);
-  --state-idle: color-mix(in srgb, var(--pumpkin-pie) 45%, transparent);
   --state-error: color-mix(in srgb, #f2402a 80%, var(--october-sunset));
 
   /* LCARS mars: chrome that is red by design rather than by state — the
@@ -2389,8 +2388,15 @@ body[data-header='dag'] #header-dag {
   overflow: hidden;
 }
 
+/* Nothing has happened yet: an EMPTY track, drawn as an outline, so it
+ * reads as a bar with nothing in it rather than as a faint smear. The
+ * wash it replaced was `--pumpkin-pie` at 45%, which on the clinical
+ * schemes (whose pumpkin-pie is a navy) measured about 1.2:1 on black —
+ * a graphic nobody could see. The outline takes the frame's own hue at
+ * a weight that clears the 3:1 non-text rule on every scheme. */
 .listing-progress-idle {
-  background: var(--state-idle);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--harvestgold) 60%, transparent);
 }
 
 .listing-progress-fill {
@@ -2626,6 +2632,28 @@ body[data-header='dag'] #header-dag {
 
 .listing-framed .listing-indicated .files-name {
   font-weight: bold;
+}
+
+/* On the block the bar inverts with the type: a black fill in a black
+ * track, an outlined empty track in black — the block IS the bright hue,
+ * and a bar in the scheme's progress colours vanished into it. */
+.listing-framed .listing-indicated .listing-progress {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .listing-progress-idle {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 55%);
+}
+
+.listing-framed .listing-indicated .listing-progress-fill,
+.listing-framed .listing-indicated .pacs-bar-full {
+  background: #000;
+}
+
+.listing-framed .listing-indicated .pacs-badge,
+.listing-framed .listing-indicated .pacs-badge[data-state] {
+  color: #000;
 }
 
 /* ------------------------------------------------- listable, not readable */

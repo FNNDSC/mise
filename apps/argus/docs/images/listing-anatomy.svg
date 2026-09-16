@@ -182,7 +182,7 @@
     </g>
     <g transform="translate(720,248)">
       <circle cx="8" cy="0" r="9" fill="#ffcc66"/><text class="num" x="8" y="4">9</text>
-      <text class="label" x="24" y="4">action track: reserved on EVERY row, one height</text>
+      <text class="label" x="24" y="4">action track: verbs kept on the row, one height</text>
     </g>
     <g transform="translate(720,274)">
       <circle cx="8" cy="0" r="9" fill="#ffcc66"/><text class="num" x="8" y="4">10</text>
@@ -208,7 +208,7 @@
     <g transform="translate(720,440)">
       <circle cx="8" cy="0" r="9" fill="#ffcc66"/><text class="num" x="8" y="4">15</text>
       <text class="label" x="24" y="4">mode frame: FILTER and SELECT blocks read state;</text>
-      <text class="label" x="24" y="20">the selection bar carries the selection's verbs</text>
+      <text class="label" x="24" y="20">the row zone carries the row's or the selection's verbs</text>
     </g>
     <g transform="translate(720,486)">
       <circle cx="8" cy="0" r="9" fill="#ffcc66"/><text class="num" x="8" y="4">16</text>

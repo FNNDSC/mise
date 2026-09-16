@@ -381,6 +381,8 @@ export class PacsPanel {
       // A patient with no studies has nothing to unfold, and a glyph
       // promising otherwise is a control that cannot act.
       activatable: (row: PatientRow): boolean => row.studies.length > 0,
+      // Navigating is not selecting: the fold cell folds, the row selects.
+      fold: 'fold',
       row: {
         className: (): string => 'pacs-patient-row',
         groupClassName: (row: PatientRow): string =>
@@ -395,9 +397,10 @@ export class PacsPanel {
         {
           traits: this.studyTraits,
           key: (row: StudyRow): string => row.key,
-          // A study folds AND indicates on one click: it stays on stage
-          // when opened, so the same press can also put its verb in the
-          // frame.
+          // Two intents, two targets: the fold cell unfolds the series (no
+          // selection, the field stays lit); the rest of the row indicates
+          // the study and puts PULL STUDY in the frame, without folding.
+          fold: 'fold',
           actions: { of: (): ReadonlyArray<ListingAction<StudyRow>> => this.studyActions },
           row: {
             className: (): string => 'pacs-study-row',
@@ -498,7 +501,9 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        width: '1.4em',
+        // The cell is the fold CONTROL, drawn as one: wide enough to be a
+        // target (past 24px at the listing's type size), not a glyph to aim at.
+        width: '2.2em',
         cell: (row: PatientRow): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = row.studies.length === 0 ? 'pacs-fold pacs-fold-none' : 'pacs-fold';
@@ -688,7 +693,7 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        width: '1.4em',
+        width: '2.2em',
         cell: (): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = 'pacs-fold';

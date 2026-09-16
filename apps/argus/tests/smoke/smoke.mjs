@@ -1593,7 +1593,7 @@ try {
       // A closed group holds no level; activating its row opens it (the
       // façade repaints on the next frame).
       if (!study().classList.contains('listing-open')) {
-        study().querySelector('.pacs-study-row').click(); await sleep(400);
+        study().querySelector('.pacs-study-row .listing-fold').click(); await sleep(400);
       }
       const names = () => [...study().querySelectorAll('.pacs-series .pacs-series-desc')].map(e => e.textContent);
       const before = names().join('|');
@@ -1611,13 +1611,23 @@ try {
       const framed = ws.dataset.modes === 'open';
       const seriesLit = study().querySelector('.pacs-series.listing-indicated') !== null;
       const verbs = onRows === 0 && seriesVerbs.length > 0 && framed && seriesLit;
+      // Two intents on the study row: the fold cell folds and selects
+      // nothing; the row body selects and folds nothing.
+      const wasOpen = study().classList.contains('listing-open');
+      study().querySelector('.pacs-study-row .listing-fold').click(); await sleep(400);
+      const foldOnly = { toggled: study().classList.contains('listing-open') !== wasOpen, studyLit: study().querySelector('.pacs-study-row').classList.contains('listing-indicated') };
+      study().querySelector('.pacs-study-row .listing-fold').click(); await sleep(400);
+      study().querySelector('.pacs-study-row .pacs-study-desc, .pacs-study-row > span:nth-child(4)').click(); await sleep(400);
+      const selectOnly = { stillOpen: study().classList.contains('listing-open') === wasOpen, studyLit: study().querySelector('.pacs-study-row').classList.contains('listing-indicated'), verbs: zoneVerbs() };
+      const foldBox = study().querySelector('.pacs-study-row .listing-fold').getBoundingClientRect();
+      const foldTarget = { w: Math.round(foldBox.width), h: Math.round(foldBox.height) };
       ws.querySelector('.pacs-row-zone')?.closest('.mode-frame') && document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
       study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
       const ascending = names().join('|');
       const lit = study().querySelector('.roster-cap.roster-active') !== null;
       study().querySelector('.roster-cap[data-key="series"]').click(); await sleep(400);
       const descending = names().join('|');
-      return { studies: 1, rows: names().length, before, ascending, descending, caps, track, verbs, lit, accession };`);
+      return { studies: 1, rows: names().length, before, ascending, descending, caps, track, verbs, lit, accession, foldOnly, selectOnly, foldTarget };`);
     // An answer that was not fetched now says when it was, and the control
     // reads as what it will do next.
     const pacsProvenance = await evalIn(`
@@ -1661,6 +1671,11 @@ try {
       && !/--fresh/.test(pacsProvenance.clearedLine),
       JSON.stringify(pacsProvenance));
 
+    check('the fold cell folds and selects nothing; the row selects and folds nothing',
+      pacsSort.foldOnly?.toggled === true && pacsSort.foldOnly?.studyLit === false
+      && pacsSort.selectOnly?.stillOpen === true && pacsSort.selectOnly?.studyLit === true && pacsSort.selectOnly?.verbs.includes('PULL STUDY'),
+      JSON.stringify({ fold: pacsSort.foldOnly, select: pacsSort.selectOnly }));
+    check('the fold cell is a target, not a glyph', pacsSort.foldTarget?.w >= 24 && pacsSort.foldTarget?.h >= 24, JSON.stringify(pacsSort.foldTarget));
     check('a study heads its series with caps and a summed track, and the series verbs live in the frame',
       pacsSort.studies === 1 && pacsSort.caps >= 4 && pacsSort.track === true && pacsSort.verbs === true
       && pacsSort.accession.length > 0,

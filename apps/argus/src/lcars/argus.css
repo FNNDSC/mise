@@ -4040,7 +4040,46 @@ body[data-zoom] #header-restore {
   min-width: 0;
 }
 
+/* The fold cell is a CONTROL and is drawn as one: a small block in the
+ * frame's hue, dim at rest, lit on hover, the arrow black on it — the
+ * target is what you see, not an 8px glyph you aim at. Inset from the row
+ * so a near miss lands on black (nothing happens) rather than on the row
+ * (which selects): two adjacent targets with different intents must not
+ * punish a miss with the wrong one. */
 .pacs-fold {
+  color: var(--harvestgold);
+}
+
+.listing-fold.pacs-fold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  margin: 3px 0;
+  min-height: 24px;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--harvestgold) 38%, transparent);
+  color: #000;
+  cursor: pointer;
+  transition: background-color 0.12s ease-out;
+}
+
+.listing-fold.pacs-fold:hover {
+  background: var(--harvestgold);
+}
+
+.listing-fold.pacs-fold-none {
+  background: transparent;
+  cursor: default;
+}
+
+/* On the indicated block the control inverts with the type. */
+.listing-framed .listing-indicated .listing-fold.pacs-fold {
+  background: rgb(0 0 0 / 28%);
+}
+
+.listing-framed .listing-indicated .listing-fold.pacs-fold:hover {
+  background: #000;
   color: var(--harvestgold);
 }
 

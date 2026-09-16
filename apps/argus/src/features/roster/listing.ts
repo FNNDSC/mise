@@ -194,6 +194,14 @@ export function listingChild_declare<T, C>(
  * @property row - The pane's own row-level concerns.
  * @property defaultSort - The initial sort, when the level has a natural one.
  * @property child - The level beneath this one, if any.
+ * @property fold - On a level with a child: the key of the trait whose
+ *   cell is the FOLD CONTROL. Navigating and selecting are two intents,
+ *   and a row that folds must keep them apart: a press in this cell folds
+ *   the row and nothing else — no indication, no verbs, the field stays
+ *   lit — while a press anywhere else on the row indicates it and does
+ *   not fold. The cell wears `.listing-fold` so it can be drawn as the
+ *   control it is. Absent, a folding row's click folds and indicates at
+ *   once.
  */
 export interface ListingLevel<T> {
   traits: ReadonlyArray<ListingTrait<T>>;
@@ -205,6 +213,7 @@ export interface ListingLevel<T> {
   row?: ListingRowBuild<T>;
   defaultSort?: { key: string; dir: 'asc' | 'desc' };
   child?: ListingChild<T>;
+  fold?: string;
 }
 
 /**
@@ -688,8 +697,16 @@ class Level<T> {
     // do both: open or close it, and indicate it. A row that replaces
     // the listing cannot — going and staying are different gestures.
     const folds: boolean = !lead && this.child !== null;
-    element.addEventListener('click', (): void => {
+    // With a fold control declared, the two intents are kept apart on the
+    // row itself: the control's cell folds and nothing else, the rest of
+    // the row indicates and does not fold.
+    const foldCell: HTMLElement | null = folds ? this.foldCell_of(element) : null;
+    element.addEventListener('click', (event: Event): void => {
       if (!lead && this.select !== null && this.select(key, row)) return;
+      if (foldCell !== null && event.target instanceof Node && foldCell.contains(event.target)) {
+        this.row_activate(row, key, false);
+        return;
+      }
       if (!splits) {
         this.row_activate(row, key, lead);
         return;
@@ -697,7 +714,7 @@ class Level<T> {
       // A click says "this one"; a double-click says "go". Only a listing
       // that hides verbs until a row is indicated needs the split.
       this.row_indicate(key);
-      if (folds) this.row_activate(row, key, false);
+      if (folds && foldCell === null) this.row_activate(row, key, false);
     });
     if (splits && !folds) {
       element.addEventListener('dblclick', (): void => {
@@ -708,6 +725,25 @@ class Level<T> {
       });
     }
     return element;
+  }
+
+  /**
+   * The cell of the declared fold trait on a built row, marked as the
+   * control it is; null when the level declares none.
+   *
+   * @param element - The row, its cells in trait order.
+   * @returns The fold cell, or null.
+   */
+  private foldCell_of(element: HTMLElement): HTMLElement | null {
+    const foldKey: string | undefined = this.declaration.fold;
+    if (foldKey === undefined) return null;
+    const index: number = this.declaration.traits.findIndex((trait: ListingTrait<T>): boolean => trait.key === foldKey);
+    if (index < 0) throw new Error(`listing level declares fold '${foldKey}', which names no trait`);
+    const cell: Element | undefined = element.children[index];
+    if (!(cell instanceof HTMLElement)) return null;
+    cell.classList.add('listing-fold');
+    cell.title = 'unfold or fold (the row itself selects)';
+    return cell;
   }
 
   /** Activates a row: folds it when it has children, and tells the pane. */

@@ -145,8 +145,8 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'files.row': {
     'a plain file outside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
     'a file inside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    'a directory': ['MOVE', 'COPY', 'DELETE'],
-    'a DICOM series folder': ['IMAGE', 'MOVE', 'COPY', 'DELETE'],
+    'a directory': [],
+    'a DICOM series folder': ['IMAGE'],
     'a catalogue entry': [],
   },
   'files.selection': {

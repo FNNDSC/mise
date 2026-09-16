@@ -281,11 +281,15 @@
                     <button class="strategy-pill files-upload" title="put a local file into the listing on stage">UPLOAD</button>
                     <input class="files-upload-input" type="file" multiple hidden />
                     <!-- SELECT is a MODE: it changes what a click means, so
-                         it is a block on the frame like every other mode.
-                         The selection's own verbs ride the frame beneath
-                         it, because a selection belongs to the field. -->
+                         it is a block on the frame like every other mode. -->
                     <button class="strategy-pill files-select rail-off" title="select rows instead of indicating them">SELECT OFF</button>
-                    <span class="files-selection-bar listing-actions" hidden></span>
+                    <!-- The ROW ZONE: everything above acts on the field
+                         and stays; this holds the verbs of the row the
+                         operator indicated, or of the selection, and is
+                         empty when nothing is. A row's verbs live here and
+                         never on the row (aegis.adoc:
+                         a-row-s-verbs-live-in-the-frame). -->
+                    <span class="files-row-zone" hidden></span>
                     <!-- A pane has ONE frame, and its blocks answer to what
                          the field currently holds: a listing offers a
                          projection and a filter, a diagram offers the modes

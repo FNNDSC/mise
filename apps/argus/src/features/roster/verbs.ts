@@ -96,21 +96,31 @@ export interface PacsSeriesFacts {
   addressable: boolean;
 }
 
-/** A browser row's verbs. A catalogue entry gets none: `rm` on a plugin cannot act. */
+/**
+ * A browser row's verbs. A catalogue entry gets none: `rm` on a plugin
+ * cannot act.
+ *
+ * A directory gets none either, since one click on it ENTERS it and a row
+ * with no verbs to show keeps that click; what may be done to a directory
+ * as a whole — moved, copied, removed, its feed shared — waits for the
+ * selection, where it is out of the single-click path. A series folder is
+ * the exception: it is opened as an image far more often than entered, so
+ * it keeps IMAGE, indicates on a click, and is entered on a double.
+ */
 export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
   listing: 'files.row',
   rules: [
     { name: 'image', label: (): string => 'IMAGE', offered: (f: FileRowFacts): boolean => f.kind === 'seriesFolder' },
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
-    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
-    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
-    { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
+    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
+    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
+    { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
     {
       name: 'share',
       // The capsule NAMES the feed: CUBE grants a feed and never a file, so
       // a bare SHARE on a file row would read as a lie about what happens.
       label: (f: FileRowFacts): string => `SHARE FEED ${f.feed ?? ''}`,
-      offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.feed !== null,
+      offered: (f: FileRowFacts): boolean => f.kind === 'file' && f.feed !== null,
     },
   ],
   states: [

@@ -2921,6 +2921,11 @@ async function surface_start(token: string): Promise<void> {
     // press that opened it.
     if (event.target.closest('#pacs-server-strip') !== null
       || event.target.closest('#pacs-f-server') !== null) return;
+    // A row of a listing whose verbs ride the frame is the frame's other
+    // half: touching one puts its verbs there and opens the frame, and
+    // the field's retraction must not close what the same press opened.
+    // The façade retracts it when the row stands down.
+    if (event.target.closest('.listing-framed .listing-row') !== null) return;
     const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
     const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane') ?? null;
     const wasOpen: boolean = pane?.dataset['modes'] === 'open';

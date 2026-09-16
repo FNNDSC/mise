@@ -87,19 +87,28 @@ async function frame(): Promise<void> {
   });
 }
 
-/** A pane root carrying the chrome convention under one prefix. */
-function chrome_build(prefix: string): { root: HTMLElement; mount: HTMLElement } {
+/**
+ * A pane root carrying the chrome convention under one prefix: the state
+ * span, a mode frame with the FILTER and SELECT blocks and a row zone, and
+ * the mount. The root is the workspace pane, whose `data-modes` is what
+ * opens the frame.
+ */
+function chrome_build(prefix: string): { root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
   const root: HTMLElement = document.createElement('div');
+  root.className = 'workspace-pane';
   root.innerHTML = `
     <span class="pane-state"></span>
-    <button class="${prefix}-filter">FILTER OFF</button>
-    <button class="${prefix}-select">SELECT OFF</button>
-    <span class="${prefix}-selection-bar" hidden></span>
+    <aside class="mode-frame">
+      <button class="${prefix}-filter">FILTER OFF</button>
+      <button class="${prefix}-select">SELECT OFF</button>
+      <span class="${prefix}-row-zone" hidden></span>
+    </aside>
     <div class="mount"></div>
   `;
   document.body.appendChild(root);
   const mount: HTMLElement = root.querySelector<HTMLElement>('.mount') as HTMLElement;
-  return { root, mount };
+  const zone: HTMLElement = root.querySelector<HTMLElement>(`.${prefix}-row-zone`) as HTMLElement;
+  return { root, mount, zone };
 }
 
 /** The tracks a template declares. */
@@ -120,8 +129,8 @@ function names_onStage(mount: HTMLElement): string[] {
 function listing_build(
   overrides: Partial<ListingDeclaration<Entry>> = {},
   prefix: string = 'files',
-): { listing: Listing<Entry>; root: HTMLElement; mount: HTMLElement } {
-  const { root, mount } = chrome_build(prefix);
+): { listing: Listing<Entry>; root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
+  const { root, mount, zone } = chrome_build(prefix);
   const listing: Listing<Entry> = new Listing<Entry>({
     mount,
     traits: ENTRY_TRAITS,
@@ -130,8 +139,34 @@ function listing_build(
     defaultSort: { key: 'name', dir: 'asc' },
     ...overrides,
   });
-  return { listing, root, mount };
+  return { listing, root, mount, zone };
 }
+
+/** A listing whose verbs ride the frame: the same, with the row zone declared. */
+function framed_build(
+  overrides: Partial<ListingDeclaration<Entry>> = {},
+): { listing: Listing<Entry>; root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
+  const { root, mount, zone } = chrome_build('files');
+  const listing: Listing<Entry> = new Listing<Entry>({
+    mount,
+    traits: ENTRY_TRAITS,
+    key: (entry: Entry): string => entry.name,
+    chrome: { root, prefix: 'files' },
+    rowZone: zone,
+    defaultSort: { key: 'name', dir: 'asc' },
+    ...overrides,
+  });
+  return { listing, root, mount, zone };
+}
+
+/** The labels of the verbs the zone holds. */
+function zoneVerbs_of(zone: HTMLElement): string[] {
+  return [...zone.querySelectorAll('.listing-action')].map((b: Element): string => b.textContent ?? '');
+}
+
+/** The verbs one row is offered: OPEN for a file, none for a directory. */
+const OPEN_FILES: (entry: Entry) => ReadonlyArray<{ label: string; run: (entry: Entry) => void }> =
+  (entry: Entry) => (entry.kind === 'file' ? [{ label: 'OPEN', run: (): void => {} }] : []);
 
 describe('listingTemplate_of', () => {
   it('lists every trait track, then the action track', () => {
@@ -154,6 +189,10 @@ describe('listingTemplate_of', () => {
       expect(listingTemplate_of(named(good))).toBe(good);
     }
     expect((): string => listingTemplate_of(ENTRY_TRAITS, { width: 'auto', of: (): [] => [] })).toThrow(/content-sized/);
+  });
+
+  it('refuses actions on the row that declare no track', () => {
+    expect((): string => listingTemplate_of(ENTRY_TRAITS, { of: (): [] => [] })).toThrow(/declare no track/);
   });
 
   it('refuses an uncapped trait that does not lead', () => {
@@ -279,9 +318,9 @@ describe('a-row-is-indicated-before-it-is-acted-on', () => {
 });
 
 describe('a-selection-belongs-to-the-field', () => {
-  function selectable(): { listing: Listing<Entry>; root: HTMLElement; mount: HTMLElement } {
-    return listing_build({
-      actions: { width: '21em', of: (): [] => [] },
+  function selectable(): { listing: Listing<Entry>; root: HTMLElement; mount: HTMLElement; zone: HTMLElement } {
+    return framed_build({
+      actions: { of: (): [] => [] },
       selection: {
         verbs: (rows: ReadonlyArray<[string, Entry]>): ReadonlyArray<{ label: string; run: () => void }> =>
           [{ label: `RM ${rows.length}`, run: (): void => {} }],
@@ -289,8 +328,14 @@ describe('a-selection-belongs-to-the-field', () => {
     });
   }
 
-  it('gathers on click while SELECT is on, and the bar reads the verbs', () => {
-    const { listing, root, mount } = selectable();
+  it('refuses a listing that selects without a row zone for the verbs', () => {
+    expect((): Listing<Entry> => listing_build({
+      selection: { verbs: (): [] => [] },
+    }).listing).toThrow(/row zone/);
+  });
+
+  it('gathers on click while SELECT is on, and the zone holds the verbs', () => {
+    const { listing, root, mount, zone } = selectable();
     listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
     listing.select_toggle(true);
     expect(root.querySelector('.files-select')?.textContent).toBe('SELECT ON');
@@ -298,7 +343,7 @@ describe('a-selection-belongs-to-the-field', () => {
     (rows_onStage(mount)[2] as HTMLElement).click();
     expect(listing.selection_get()).toEqual(['alpha', 'beta']);
     expect(listing.indicated_get()).toBeNull();
-    expect(root.querySelector('.files-selection-bar')?.textContent).toBe('RM 2');
+    expect(zoneVerbs_of(zone)).toEqual(['RM 2']);
     expect(root.querySelector('.pane-state')?.textContent).toBe('SELECT · 2 SELECTED');
     // The lead row is not a member of anything.
     (rows_onStage(mount)[0] as HTMLElement).click();
@@ -330,6 +375,131 @@ describe('a-selection-belongs-to-the-field', () => {
 
     listing.rows_set([{ key: '/y', rows: ENTRIES }], { field: '/y' });
     expect(listing.selection_get()).toEqual([]);
+  });
+});
+
+describe('a-row-s-verbs-live-in-the-frame', () => {
+  /** MutationObserver delivers on a microtask; one turn is enough. */
+  async function observed(): Promise<void> {
+    await Promise.resolve();
+  }
+
+  it('mints no track: the grid has only the traits, and no row carries an action cell', () => {
+    const { listing, mount } = framed_build({ actions: { of: OPEN_FILES } });
+    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
+    expect(listing.template_get()).toBe('1.4em 1fr 6em');
+    expect(mount.style.getPropertyValue('--roster-cols')).toBe('1.4em 1fr 6em');
+    expect(mount.querySelector('.listing-actions')).toBeNull();
+    expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 3)).toBe(true);
+    expect(mount.classList.contains('listing-framed')).toBe(true);
+  });
+
+  it('a click puts the row\'s verbs in the zone and opens the frame; another row replaces them; standing down empties the zone and retracts the frame', () => {
+    const run = jest.fn();
+    const activate = jest.fn();
+    const { listing, root, mount, zone } = framed_build({
+      activate,
+      actions: { of: (entry: Entry): ReadonlyArray<{ label: string; run: (entry: Entry) => void }> => (entry.kind === 'file' ? [{ label: `OPEN ${entry.name}`, run }] : []) },
+    });
+    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
+    expect(zone.hidden).toBe(true);
+    expect(root.dataset['modes']).toBeUndefined();
+    const beta: HTMLElement = rows_onStage(mount)[2] as HTMLElement;
+    beta.click();
+    expect(activate).not.toHaveBeenCalled();
+    expect(listing.indicated_get()).toBe('beta');
+    expect(beta.classList.contains('listing-indicated')).toBe(true);
+    expect(beta.querySelector('.listing-action')).toBeNull();
+    expect(zoneVerbs_of(zone)).toEqual(['OPEN beta']);
+    expect(zone.hidden).toBe(false);
+    expect(root.dataset['modes']).toBe('open');
+    // The verb runs on the row it was offered for.
+    (zone.querySelector<HTMLButtonElement>('.listing-action') as HTMLButtonElement).click();
+    expect(run).toHaveBeenCalledWith(ENTRIES[0]);
+    // Another row's verbs replace them; the frame stays open.
+    (rows_onStage(mount)[3] as HTMLElement).click();
+    expect(zoneVerbs_of(zone)).toEqual(['OPEN gamma']);
+    expect(beta.classList.contains('listing-indicated')).toBe(false);
+    expect(root.dataset['modes']).toBe('open');
+    // Standing down empties the zone and retracts the frame the verbs opened.
+    listing.row_indicate(null);
+    expect(zone.hidden).toBe(true);
+    expect(zoneVerbs_of(zone)).toEqual([]);
+    expect(root.dataset['modes']).toBeUndefined();
+  });
+
+  it('a row offered no verbs keeps its single click', () => {
+    const activate = jest.fn();
+    const { listing, mount, zone } = framed_build({ activate, actions: { of: OPEN_FILES } });
+    listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
+    // alpha is a directory: one click activates, nothing is indicated.
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    expect(activate).toHaveBeenCalledWith(ENTRIES[1]);
+    expect(listing.indicated_get()).toBeNull();
+    expect(zone.hidden).toBe(true);
+  });
+
+  it('the frame retracting stands the row down', async () => {
+    const { listing, root, mount, zone } = framed_build({ actions: { of: OPEN_FILES } });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    expect(listing.indicated_get()).toBe('beta');
+    // Esc, the strip, a touch on the field: whatever retracts it.
+    delete root.dataset['modes'];
+    await observed();
+    expect(listing.indicated_get()).toBeNull();
+    expect(zone.hidden).toBe(true);
+  });
+
+  it('a frame the operator opened, or pressed something else on, is theirs to close', async () => {
+    const { listing, root, mount } = framed_build({ actions: { of: OPEN_FILES } });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    root.dataset['modes'] = 'open';
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    listing.row_indicate(null);
+    expect(root.dataset['modes']).toBe('open');
+    delete root.dataset['modes'];
+    await observed();
+    // Opened by the verbs, then a block on the frame is pressed: the
+    // frame is the operator's now, and the row standing down leaves it.
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    expect(root.dataset['modes']).toBe('open');
+    (root.querySelector<HTMLElement>('.files-filter') as HTMLElement).click();
+    listing.row_indicate(null);
+    expect(root.dataset['modes']).toBe('open');
+  });
+
+  it('SELECT standing the indication down does not retract the frame', () => {
+    const { listing, root, mount, zone } = framed_build({
+      actions: { of: OPEN_FILES },
+      selection: { verbs: (rows: ReadonlyArray<[string, Entry]>): ReadonlyArray<{ label: string; run: () => void }> => [{ label: `RM ${rows.length}`, run: (): void => {} }] },
+    });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    expect(root.dataset['modes']).toBe('open');
+    listing.select_toggle(true);
+    expect(listing.indicated_get()).toBeNull();
+    expect(root.dataset['modes']).toBe('open');
+    expect(zone.hidden).toBe(true);
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    expect(zoneVerbs_of(zone)).toEqual(['RM 1']);
+  });
+
+  it('a readout lands beneath the zone\'s verbs, and a render empties the zone', () => {
+    const { listing, mount, zone } = framed_build({ actions: { of: OPEN_FILES } });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    listing.readout_show('beta', 'NOBODY');
+    expect(zone.querySelector('.listing-readout')).toBeNull();
+    (rows_onStage(mount)[1] as HTMLElement).click();
+    listing.readout_show('beta', 'SHARED WITH x');
+    expect(zone.querySelector('.listing-readout')?.textContent).toBe('SHARED WITH x');
+    expect(zone.lastElementChild?.classList.contains('listing-readout')).toBe(true);
+    listing.readout_show('gamma', 'STALE');
+    expect(zone.querySelectorAll('.listing-readout')).toHaveLength(1);
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    expect(listing.indicated_get()).toBeNull();
+    expect(zone.hidden).toBe(true);
+    expect(zone.childElementCount).toBe(0);
   });
 });
 

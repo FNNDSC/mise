@@ -562,8 +562,8 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-row.files-type-plugin')) break; }
     const plugin = fp.querySelector('.files-row.files-type-plugin');
     if (!plugin) return { skipped: 'no plugin rows' };
-    // A row with verbs is entered by double-click; a single click indicates (a-row-is-indicated-before-it-is-acted-on).
-    plugin.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    // A catalogue row is offered no verbs, so one click enters it (a-row-is-indicated-before-it-is-acted-on).
+    plugin.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     // Esc is about to be a level test, so the command line — the topmost
     // transient, which takes any Esc while open — closes first. Running a
     // line closes the palette; the pill press above reopened it.
@@ -614,12 +614,12 @@ try {
     // take the press — close it first).
     if (!document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
     const beforeEsc = fp.querySelector('.files-row.files-type-plugin');
-    if (beforeEsc) { beforeEsc.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); await sleep(1500); }
+    if (beforeEsc) { beforeEsc.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(1500); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
     const escBack = !fp.querySelector('.files-diagram') && fp.querySelectorAll('.files-row').length > 0;
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
     if (!pipeline) return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
-    pipeline.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    pipeline.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     let summary = false, canvas = false;
     for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
     // The diagram canvas fills its mount in CSS pixels at any device pixel
@@ -677,7 +677,7 @@ try {
 
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
     if (!pipeline) return { skipped: 'no pipeline in /bin' };
-    pipeline.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    pipeline.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     for (let i=0;i<40;i++){ await sleep(250); if (fp.querySelector('.files-diagram')) break; }
     const diagram = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
       strategy: shown('.diagram-strategy'), projection: shown('.diagram-projection') };
@@ -894,9 +894,9 @@ try {
     const home = names();
     const folder = [...fp.querySelectorAll('.files-row.files-type-dir')].find(r => r.querySelector('.files-name')?.textContent.trim() !== '..');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
-    // A click indicates and a double-click activates, since this listing
-    // carries row verbs (a-row-is-indicated-before-it-is-acted-on).
-    folder?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    // A directory is offered no verbs, so one click enters it; only a row
+    // with verbs to show splits the click (a-row-is-indicated-before-it-is-acted-on).
+    folder?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await settle(() => names().join(',') !== home.join(','));
     const inside = names();
     fp.querySelector('.files-back').click();
@@ -938,9 +938,10 @@ try {
   }
 
   if (stage('row-verbs')) {
-  // A row's verbs appear when the row is INDICATED, and indicating is not
-  // activating: a click says "this one", a double-click says "go". The
-  // track that holds the verbs is reserved on every row, so nothing moves.
+  // A row's verbs live in the FRAME, never on the row: indicating a row
+  // puts them in the frame's row zone and opens the frame, the row carries
+  // only its light, and no row reserves a track. A directory is offered no
+  // verbs and one click enters it; a file's click indicates. Nothing moves.
   const verbs = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
@@ -951,32 +952,59 @@ try {
     const named = (n) => rows().find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const heading = () => fp().querySelector('.files-path')?.textContent.trim() ?? '';
     const tops = () => rows().map(r => Math.round(r.querySelector('.files-name')?.getBoundingClientRect().top ?? 0));
+    const zone = () => fp().querySelector('.files-row-zone');
+    const zoneVerbs = () => [...zone().querySelectorAll('.listing-action')].map(b => b.textContent.trim());
+    const modes = () => fp().dataset.modes ?? null;
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
 
-    await say('cd ~', 1500);
-    for (let i = 0; i < 40; i++) { await sleep(300); if (named('feeds')) break; }
+    // A scenario starts from nothing of its own.
+    await say('rm -r ~/smoke-verbs', 2500);
+    await say('mkdir ~/smoke-verbs', 2500);
+    await say('cd ~/smoke-verbs', 2500);
+    const chooser = fp().querySelector('.files-upload-input');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new TextEncoder().encode('verbs\\n')], 'smoke-verbs.txt', { type: 'text/plain' }));
+    chooser.files = dt.files;
+    chooser.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle(() => named('smoke-verbs.txt'));
+
     const before = tops();
-    const dir = named('feeds');
-    dir.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(700);
-    const indicated = [...dir.querySelectorAll('.listing-action')].map(b => b.textContent.trim());
-    const others = rows().filter(r => r !== dir).every(r => r.querySelectorAll('.listing-action').length === 0);
+    const modesBefore = modes();
+    const file = named('smoke-verbs.txt');
+    click(file); await sleep(700);
+    const indicated = zoneVerbs();
+    const modesAfter = modes();
+    const rowLit = file.classList.contains('listing-indicated');
+    const tracks = fp().querySelectorAll('.files-row .listing-actions').length;
+    const onRow = fp().querySelectorAll('.files-row .listing-action').length;
     const after = tops();
-    const stayed = heading();
-    dir.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    for (let i = 0; i < 40; i++) { await sleep(300); if (heading() !== stayed) break; }
-    const entered = heading();
+    const stayed = fp().querySelector('.files-content') === null && /smoke-verbs$/.test(heading());
+    const zoneCol = (() => { const xs = [...zone().querySelectorAll('.listing-action')].map(b => Math.round(b.getBoundingClientRect().left)); return xs.length > 1 && xs.every(x => x === xs[0]); })();
 
-    // a feed row names the feed it would share, and reads out its grants
-    for (let i = 0; i < 40; i++) { await sleep(300); if (rows().some(r => /^feed_\\d+$/.test(r.querySelector('.files-name')?.textContent.trim() ?? ''))) break; }
-    const feedRow = rows().find(r => /^feed_\\d+$/.test(r.querySelector('.files-name')?.textContent.trim() ?? ''));
-    feedRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    let readout = '';
-    for (let i = 0; i < 40; i++) { await sleep(400); readout = feedRow?.querySelector('.listing-readout')?.textContent ?? ''; if (readout) break; }
-    const share = [...(feedRow?.querySelectorAll('.listing-action') ?? [])].map(b => b.textContent.trim()).find(l => l.startsWith('SHARE')) ?? '';
-    return { before, after, indicated, others, stayed, entered, share, readout };`);
-  check('a click indicates rather than activates',
-    verbs.stayed === verbs.entered.replace(/\/feeds$/, '') && verbs.indicated.length > 0);
-  check('a double-click still enters', /\/feeds$/.test(verbs.entered));
-  check('the indicated row shows its verbs and only its row', verbs.others);
+    // a touch on the field stands the row down and retracts the frame
+    click(fp().querySelector('.files-panel')); await sleep(600);
+    const stoodDown = { modes: modes(), lit: fp().querySelector('.files-row.listing-indicated') === null, zoneHidden: zone().hidden };
+
+    // a directory is offered no verbs: one click enters it, nothing opens
+    await say('cd ~', 2500);
+    await settle(() => named('smoke-verbs'));
+    click(named('smoke-verbs'));
+    const entered = await settle(() => /smoke-verbs$/.test(heading()));
+    const dirModes = modes();
+    await say('cd ~', 2500);
+    await say('rm -r ~/smoke-verbs', 3000);
+    return { before, after, modesBefore, modesAfter, indicated, rowLit, tracks, onRow, stayed, zoneCol, stoodDown, entered, dirModes };`);
+  check('a click indicates rather than activates', verbs.stayed && verbs.indicated.length > 0);
+  check("the verbs are the ones the row can be given",
+    ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'].every((v) => verbs.indicated.includes(v)), verbs.indicated.join(','));
+  check("a row's verbs live in the frame's row zone, one beneath another, and the frame opens as they arrive",
+    verbs.onRow === 0 && verbs.zoneCol && verbs.modesBefore === null && verbs.modesAfter === 'open');
+  check('the indicated row carries its light and no row reserves a track', verbs.rowLit && verbs.tracks === 0);
+  check('no row moves when one is indicated', verbs.before.join(',') === verbs.after.join(','));
+  check('a touch on the field stands the row down and retracts the frame',
+    verbs.stoodDown.modes === null && verbs.stoodDown.lit && verbs.stoodDown.zoneHidden, JSON.stringify(verbs.stoodDown));
+  check('a directory is offered no verbs, so one click enters it', verbs.entered && verbs.dirModes === null);
   // A row one cell short does not leave a gap: it shifts every cell of every
   // row after it into the wrong column, which is how the action track's own
   // column first landed under a name.
@@ -989,12 +1017,6 @@ try {
   check("every row's name sits under the NAME cap",
     grid.names.length > 1 && grid.names.every((left) => Math.abs(left - grid.cap) <= 8),
     JSON.stringify(grid));
-
-  check('the verbs are the ones the row can be given',
-    verbs.indicated.includes('MOVE') && verbs.indicated.includes('COPY') && verbs.indicated.includes('DELETE'));
-  check('no row moves when one is indicated', verbs.before.join(',') === verbs.after.join(','));
-  check('a feed row names the feed it would share', /^SHARE FEED \d+$/.test(verbs.share));
-  check('a grant capsule reads out the access list', /^SHARED WITH /.test(verbs.readout));
   }
 
   if (stage('place-verbs')) {
@@ -1163,7 +1185,7 @@ try {
     const rows = () => [...fp().querySelectorAll('.files-row')];
     const named = (n) => rows().find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const bar = () => fp().querySelector('.pane-state')?.textContent.trim() ?? '';
-    const verbs = () => [...fp().querySelectorAll('.files-selection-bar .listing-action')].map(b => b.textContent.trim());
+    const verbs = () => [...fp().querySelectorAll('.files-row-zone .listing-action')].map(b => b.textContent.trim());
     const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
 
     // A scenario starts from nothing of its own: a folder left by a run that
@@ -1194,7 +1216,7 @@ try {
     await say('file filter', 1800);
 
     // the bulk removal is ONE command that asks ONCE, naming how many
-    verbs().find((v) => v.startsWith('DELETE')) && [...fp().querySelectorAll('.files-selection-bar .listing-action')]
+    verbs().find((v) => v.startsWith('DELETE')) && [...fp().querySelectorAll('.files-row-zone .listing-action')]
       .find(b => b.textContent.startsWith('DELETE')).click();
     let asked = '';
     for (let i = 0; i < 60; i++) { await sleep(400); const a = [...document.querySelectorAll('#terminal .argus-ask')].pop(); if (a) { asked = a.textContent.trim(); break; } }

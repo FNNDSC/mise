@@ -17,10 +17,13 @@
  * included, so a pane never states a column count and cannot get it
  * wrong. Two laws of `docs/aegis.adoc` are consequences of the
  * declaration rather than behaviour a pane remembers to implement:
- * `a-row-is-indicated-before-it-is-acted-on` (declared actions mint the
- * track and split click from double-click; no actions, no track, one
- * click) and `a-selection-belongs-to-the-field` (`rows_set` names the
- * field, and a selection lives exactly as long as that name holds).
+ * `a-row-is-indicated-before-it-is-acted-on` (declared actions split
+ * click from double-click on every row that is offered one; no actions,
+ * one click) and `a-selection-belongs-to-the-field` (`rows_set` names the
+ * field, and a selection lives exactly as long as that name holds). A
+ * third, `a-row-s-verbs-live-in-the-frame`, is the row zone: declared, a
+ * row's verbs leave the row for the frame, no track is minted, and the
+ * frame opens as they arrive.
  *
  * Built OVER the existing parts, additively: `RosterOrder` and
  * `ListingHost` keep their signatures, and no pane is touched here. The
@@ -64,9 +67,10 @@ export interface ListingBlock<T> {
  * Where a pane's listing chrome is found.
  *
  * Every pane already follows one convention with a per-pane prefix:
- * `.pane-state` is common, and the mode-frame blocks are `<prefix>-filter`,
- * `<prefix>-select` and `<prefix>-selection-bar`. The façade finds them
- * itself from the root, so the pane writes no lookups.
+ * `.pane-state` is common, and the mode-frame blocks are `<prefix>-filter`
+ * and `<prefix>-select`. The façade finds them itself from the root, so
+ * the pane writes no lookups. The row zone is not found this way: it is
+ * declared (`rowZone`), because declaring it changes the grid.
  *
  * @property root - The element the chrome lives under (the pane, or a
  *   stamped body that carries its own frame).
@@ -96,19 +100,23 @@ export interface ListingStateParts {
 }
 
 /**
- * The verbs a row may be given, and the track that holds them.
+ * The verbs a row may be given, and where they are held.
  *
- * Declaring actions is what mints the action track: a fixed column, on
- * every row, reserved whether or not the row is indicated. A listing that
- * declares none has no track and keeps its single click.
+ * On a listing without a row zone, declaring actions is what mints the
+ * action track: a fixed column, on every row, reserved whether or not the
+ * row is indicated. On a listing that declares a row zone the verbs leave
+ * the row for the frame and no track is minted, so `width` is not read.
+ * A listing that declares no actions keeps its single click.
  *
- * @property width - The track's CSS grid track (`21em`).
- * @property of - The verbs for one row.
+ * @property width - The track's CSS grid track (`21em`). Required unless
+ *   the listing routes its verbs to a row zone.
+ * @property of - The verbs for one row. A row offered none keeps its
+ *   single click: there is nothing to indicate before acting on it.
  * @property always - Draw every row's verbs at once rather than on
  *   indication; the click then activates, as with no actions at all.
  */
 export interface ListingActions<T> {
-  width: string;
+  width?: string;
   of: (row: T) => ReadonlyArray<ListingAction<T>>;
   always?: boolean;
 }
@@ -211,6 +219,18 @@ export interface ListingLevel<T> {
  * @property chrome - The pane's chrome, when it has any to bind.
  * @property caps - Where the caps row lives: once in the frame (`root`),
  *   or minted afresh at the head of every block (`each`).
+ * @property rowZone - The frame's row zone, when the listing's verbs live
+ *   there rather than on the row. Declared, no level mints an action
+ *   track — a row keeps its columns and the expanse grows into the freed
+ *   width — and the indicated row's verbs are drawn in the zone, one
+ *   beneath another as the frame's other blocks are, with the readout
+ *   under them; a selection's verbs ride the same zone. Verbs arriving in
+ *   the zone open the frame it stands on; the last of them leaving
+ *   retracts it, unless the operator has since pressed something else on
+ *   the frame; and the frame retracting (Esc, the strip, a touch on the
+ *   field) un-indicates the row, so an indicated row and an open frame
+ *   are one state. A listing that selects must declare one: a selection's
+ *   verbs have nowhere else to go.
  * @property selection - Declared when the listing can select.
  * @property state - Composes the state line from the façade's parts; a
  *   pane prepends its own words here. Null leaves the span untouched.
@@ -220,6 +240,7 @@ export interface ListingDeclaration<T> extends ListingLevel<T> {
   gridHost?: HTMLElement;
   chrome?: ListingChrome;
   caps?: 'root' | 'each';
+  rowZone?: HTMLElement;
   selection?: ListingSelection<T>;
   state?: (parts: ListingStateParts) => string | null;
   /**
@@ -269,6 +290,15 @@ interface ChildSeat<T> {
 interface LevelHost {
   /** Repaints the whole listing on the next frame. */
   repaint(): void;
+  /**
+   * Whether the listing routes its verbs to a row zone, so no level mints
+   * a track and every level's indication is drawn in the one zone.
+   */
+  framed(): boolean;
+  /** Draws the indicated row's verbs in the row zone; none empties it. */
+  zoneVerbs_set(capsules: ReadonlyArray<Node>): void;
+  /** Says something beneath the zone's verbs, about the indicated row. */
+  zoneReadout_set(text: string): void;
 }
 
 /**
@@ -282,11 +312,12 @@ type LevelSelect<T> = ((key: string, row: T) => boolean) | null;
  * Computes a level's grid template from its traits and its actions.
  *
  * @param traits - The columns.
- * @param actions - The action track, when declared.
+ * @param actions - The action track, when declared and when the verbs
+ *   live on the row; a listing whose verbs ride the frame passes none.
  * @returns The `grid-template-columns` value.
- * @throws {Error} When a trait carries no width, or an uncapped trait
- *   follows a capped one — both are declaration errors that would
- *   otherwise surface as a shifted row.
+ * @throws {Error} When a trait carries no width, an uncapped trait
+ *   follows a capped one, or actions on the row declare no track — each
+ *   a declaration error that would otherwise surface as a shifted row.
  */
 export function listingTemplate_of<T>(
   traits: ReadonlyArray<ListingTrait<T>>,
@@ -309,6 +340,9 @@ export function listingTemplate_of<T>(
     tracks.push(trait.width.trim());
   }
   if (actions !== undefined) {
+    if (actions.width === undefined || actions.width.trim() === '') {
+      throw new Error('listing actions on the row declare no track; declare a width, or a row zone for the verbs to ride');
+    }
     if (!track_isFixed(actions.width)) {
       throw new Error(`listing actions declare a content-sized track '${actions.width.trim()}'`);
     }
@@ -390,7 +424,7 @@ class Level<T> {
     this.host = host;
     this.select = select;
     this.depth = depth;
-    this.template = listingTemplate_of(declaration.traits, declaration.actions);
+    this.template = listingTemplate_of(declaration.traits, this.trackActions_get());
     const capped: ReadonlyArray<ListingTrait<T>> = declaration.traits.filter(
       (trait: ListingTrait<T>): boolean => trait.capped !== false,
     );
@@ -447,7 +481,16 @@ class Level<T> {
    */
   public actions_set(actions: ListingActions<T> | null): void {
     this.declaration = { ...this.declaration, ...(actions === null ? { actions: undefined } : { actions }) };
-    this.template = listingTemplate_of(this.declaration.traits, this.declaration.actions);
+    this.template = listingTemplate_of(this.declaration.traits, this.trackActions_get());
+  }
+
+  /**
+   * The actions the grid must make room for: the declared ones on a
+   * listing whose verbs live on the row, none on a listing whose verbs
+   * ride the frame's row zone.
+   */
+  private trackActions_get(): ListingActions<T> | undefined {
+    return this.host.framed() ? undefined : this.declaration.actions;
   }
 
   /** Sets this level's filter text and passes it beneath. */
@@ -569,7 +612,8 @@ class Level<T> {
 
   /**
    * Builds one row: a cell per trait, then the action track when actions
-   * are declared, then the pane's own decoration; and wires the click.
+   * are declared and live on the row, then the pane's own decoration; and
+   * wires the click.
    *
    * @param row - The row's data.
    * @param lead - Whether the row stands outside the order.
@@ -578,6 +622,7 @@ class Level<T> {
   private row_build(row: T, lead: boolean): HTMLElement {
     const declaration: ListingLevel<T> = this.declaration;
     const key: string = declaration.key(row);
+    const framed: boolean = this.host.framed();
     const element: HTMLElement = listingRow_build(row, declaration.traits, {
       className: (data: T): string => {
         const own: string | undefined = declaration.row?.className?.(data);
@@ -585,7 +630,7 @@ class Level<T> {
       },
       decorate: (built: HTMLElement, data: T): void => {
         built.dataset['key'] = key;
-        if (declaration.actions !== undefined) {
+        if (declaration.actions !== undefined && !framed) {
           // The track is on EVERY row, lead rows included, and empty until
           // the row is indicated: what changes on indication is what the
           // track holds, never the geometry around it.
@@ -605,7 +650,14 @@ class Level<T> {
     if (lead) this.leadKeys.add(key);
     if (declaration.activatable?.(row) === false) return element;
     element.classList.add('listing-activatable');
-    const splits: boolean = !lead && declaration.actions !== undefined && declaration.actions.always !== true;
+    // Only a row with verbs to hide learns the split; one offered none —
+    // a directory the browser enters, say — has nothing to indicate
+    // before acting on it, and asking for a second click while offering
+    // nothing for the first is a worse bargain than the one it replaced.
+    const splits: boolean = !lead
+      && declaration.actions !== undefined
+      && declaration.actions.always !== true
+      && declaration.actions.of(row).length > 0;
     element.addEventListener('click', (): void => {
       if (!lead && this.select !== null && this.select(key, row)) return;
       if (!splits) {
@@ -637,29 +689,39 @@ class Level<T> {
   }
 
   /**
-   * Indicates one row: its verbs fill its own track and the previously
-   * indicated row's track empties.
+   * Indicates one row: its verbs fill its own track — or the frame's row
+   * zone, on a listing that routes them there — and the previously
+   * indicated row's verbs go.
    *
    * @param key - The row's key, or null to indicate nothing.
    */
   public row_indicate(key: string | null): void {
+    const framed: boolean = this.host.framed();
     if (this.indicated !== null) {
       this.cellsByKey.get(this.indicated)?.replaceChildren();
       this.rowsByKey.get(this.indicated)?.classList.remove('listing-indicated');
     }
     this.indicated = key;
-    if (key === null) return;
+    if (key === null) {
+      if (framed) this.host.zoneVerbs_set([]);
+      return;
+    }
     const row: T | undefined = this.dataByKey.get(key);
     const element: HTMLElement | undefined = this.rowsByKey.get(key);
     if (row === undefined || element === undefined || this.leadKeys.has(key)) {
       this.indicated = null;
+      if (framed) this.host.zoneVerbs_set([]);
       return;
     }
     element.classList.add('listing-indicated');
-    const cell: HTMLElement | undefined = this.cellsByKey.get(key);
     const offered: ReadonlyArray<ListingAction<T>> = this.declaration.actions?.of(row) ?? [];
-    if (cell !== undefined && offered.length > 0) {
-      cell.replaceChildren(...actionCell_build(row, offered).childNodes);
+    if (framed) {
+      this.host.zoneVerbs_set([...actionCell_build(row, offered).childNodes]);
+    } else {
+      const cell: HTMLElement | undefined = this.cellsByKey.get(key);
+      if (cell !== undefined && offered.length > 0) {
+        cell.replaceChildren(...actionCell_build(row, offered).childNodes);
+      }
     }
     this.declaration.indicated?.(row);
   }
@@ -678,6 +740,10 @@ class Level<T> {
    */
   public readout_show(key: string, text: string): void {
     if (this.indicated !== key) return;
+    if (this.host.framed()) {
+      this.host.zoneReadout_set(text);
+      return;
+    }
     const cell: HTMLElement | undefined = this.cellsByKey.get(key);
     if (cell === undefined) return;
     const readout: HTMLSpanElement = document.createElement('span');
@@ -714,7 +780,16 @@ export class Listing<T> {
   private readonly stateSpan: HTMLElement | null;
   private readonly filterBlock: HTMLElement | null;
   private readonly selectBlock: HTMLElement | null;
-  private readonly selectionBar: HTMLElement | null;
+  /** The frame's row zone, when the verbs ride the frame. */
+  private readonly zone: HTMLElement | null;
+  /** The pane the zone's frame belongs to, whose `data-modes` opens it. */
+  private readonly zonePane: HTMLElement | null;
+  /**
+   * Whether verbs arriving in the zone are what opened the frame. Only then
+   * does the zone emptying retract it: a frame the operator opened, or has
+   * pressed something else on since, is theirs to close.
+   */
+  private zoneOpened: boolean = false;
   /** What was last given to `rows_set`, repainted on any order change. */
   private blocks: ReadonlyArray<ListingBlock<T>> = [];
   /** The field the rows belong to; a different one is navigation. */
@@ -731,21 +806,36 @@ export class Listing<T> {
   constructor(declaration: ListingDeclaration<T>) {
     this.declaration = declaration;
     this.gridHost = declaration.gridHost ?? declaration.mount;
+    this.zone = declaration.rowZone ?? null;
+    if (declaration.selection !== undefined && this.zone === null) {
+      throw new Error('a listing that selects declares a row zone: a selection\'s verbs ride the frame');
+    }
+    this.zonePane = this.zone?.closest<HTMLElement>('.workspace-pane') ?? null;
     this.level = new Level<T>(
       declaration,
-      { repaint: (): void => this.repaint_queue() },
+      {
+        repaint: (): void => this.repaint_queue(),
+        framed: (): boolean => this.zone !== null,
+        zoneVerbs_set: (capsules: ReadonlyArray<Node>): void => this.zoneVerbs_set(capsules),
+        zoneReadout_set: (text: string): void => this.zoneReadout_set(text),
+      },
       declaration.caps !== 'each',
       declaration.selection === undefined ? null : (key: string, row: T): boolean => this.selection_gather(key, row),
     );
     this.host = new ListingHost<T>(declaration.mount, this.level.order);
     // The grid is one declaration: track list, caps and cells all read it.
     this.gridHost.style.setProperty('--roster-cols', this.level.template);
+    if (this.zone !== null) {
+      this.zone.classList.add('listing-zone');
+      this.zone.hidden = true;
+      declaration.mount.classList.add('listing-framed');
+      this.zone_wire();
+    }
 
     const chrome: ListingChrome | undefined = declaration.chrome;
     this.stateSpan = chrome?.root.querySelector<HTMLElement>('.pane-state') ?? null;
     this.filterBlock = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-filter`) ?? null;
     this.selectBlock = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-select`) ?? null;
-    this.selectionBar = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-selection-bar`) ?? null;
     this.filterBlock?.classList.add('rail-off');
     this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
     this.level.order.stripChange_observe((): void => this.filterBlock_sync());
@@ -952,6 +1042,9 @@ export class Listing<T> {
   public select_toggle(on?: boolean): void {
     if (this.declaration.selection === undefined) return;
     this.selecting = on ?? !this.selecting;
+    // Entering or leaving the mode is the operator's hand on the frame:
+    // the indication standing down must not retract it.
+    this.zoneOpened = false;
     if (this.level.indicated_get() !== null) this.level.row_indicate(null);
     this.declaration.mount.classList.toggle('listing-selecting', this.selecting);
     this.selectBlock?.classList.toggle('rail-off', !this.selecting);
@@ -984,18 +1077,91 @@ export class Listing<T> {
     return true;
   }
 
-  /** Paints the selection: the marked rows, and the bar's verbs. */
+  /** Paints the selection: the marked rows, and the zone's verbs. */
   private selection_render(): void {
     for (const key of this.level.keys_onStage()) {
       this.level.row_element(key)?.classList.toggle('listing-selected', this.selection.has(key));
     }
-    const bar: HTMLElement | null = this.selectionBar;
-    if (bar === null) return;
+    if (this.zone === null) return;
+    if (!this.selecting) {
+      // A render drops the indication, and the zone follows it; while
+      // SELECT is off the zone is the indicated row's alone.
+      if (this.level.indicated_get() === null) this.zoneVerbs_set([]);
+      return;
+    }
     const rows: Array<[string, T]> = [...this.selection.entries()];
     const offered: ReadonlyArray<ListingAction<void>> =
-      this.selecting && rows.length > 0 ? this.declaration.selection?.verbs(rows) ?? [] : [];
-    bar.replaceChildren(...(offered.length === 0 ? [] : actionCell_build<void>(undefined, offered).childNodes));
-    bar.hidden = offered.length === 0;
+      rows.length > 0 ? this.declaration.selection?.verbs(rows) ?? [] : [];
+    this.zoneVerbs_set(offered.length === 0 ? [] : [...actionCell_build<void>(undefined, offered).childNodes]);
+  }
+
+  /**
+   * Binds the zone to its frame: a press on any other block of the frame
+   * makes the frame the operator's, so the zone emptying no longer
+   * retracts it; and the frame retracting — Esc, the strip, a touch on the
+   * field — un-indicates the row, since a row's verbs that nobody can see
+   * are not on offer.
+   */
+  private zone_wire(): void {
+    const zone: HTMLElement | null = this.zone;
+    const pane: HTMLElement | null = this.zonePane;
+    if (zone === null || pane === null) return;
+    // Capture phase: the block's own handler may empty the zone (SELECT
+    // stands the indication down), and the claim has to be in before it.
+    zone.closest<HTMLElement>('.mode-frame')?.addEventListener('click', (event: Event): void => {
+      if (event.target instanceof Node && zone.contains(event.target)) return;
+      this.zoneOpened = false;
+    }, true);
+    const observer: MutationObserver = new MutationObserver((): void => {
+      if (pane.dataset['modes'] === 'open') return;
+      this.zoneOpened = false;
+      if (this.level.indicated_get() !== null) this.level.row_indicate(null);
+    });
+    observer.observe(pane, { attributes: true, attributeFilter: ['data-modes'] });
+  }
+
+  /**
+   * Draws verbs in the row zone, or empties it.
+   *
+   * Verbs arriving open the frame; the last of them leaving retracts it
+   * when their arrival is what opened it.
+   *
+   * @param capsules - The verbs, built by `actionCell_build`; none empties.
+   */
+  private zoneVerbs_set(capsules: ReadonlyArray<Node>): void {
+    const zone: HTMLElement | null = this.zone;
+    if (zone === null) return;
+    zone.replaceChildren(...capsules);
+    zone.hidden = capsules.length === 0;
+    const pane: HTMLElement | null = this.zonePane;
+    if (pane === null) return;
+    if (capsules.length > 0) {
+      if (pane.dataset['modes'] !== 'open') {
+        pane.dataset['modes'] = 'open';
+        this.zoneOpened = true;
+      }
+      return;
+    }
+    if (this.zoneOpened) {
+      this.zoneOpened = false;
+      delete pane.dataset['modes'];
+    }
+  }
+
+  /**
+   * Says something beneath the zone's verbs; replaces what was said before.
+   *
+   * @param text - The readout.
+   */
+  private zoneReadout_set(text: string): void {
+    const zone: HTMLElement | null = this.zone;
+    if (zone === null) return;
+    zone.querySelector('.listing-readout')?.remove();
+    const readout: HTMLSpanElement = document.createElement('span');
+    readout.className = 'listing-readout';
+    readout.textContent = text;
+    zone.appendChild(readout);
+    zone.hidden = false;
   }
 
   /** How many selected rows are on stage under the current filter. */

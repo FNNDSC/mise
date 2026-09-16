@@ -2180,6 +2180,11 @@ body[data-zoom]:not([data-zoom='console'])
   opacity: 0;
   transition: opacity 0.12s ease-out, visibility 0s linear 0.12s;
   z-index: 5;
+  /* A short pane can hold fewer blocks than the frame carries once a row's
+   * verbs join the field's; the bar then scrolls rather than running past
+   * the pane's foot, where its last verbs would be cut off unseen. */
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .workspace-pane[data-modes='open'] .mode-frame {
@@ -2478,12 +2483,6 @@ body[data-header='dag'] #header-dag {
   text-overflow: ellipsis;
 }
 
-/* The row's cell padding would be added to the track's reserved height and
- * only when a capsule is in it; the track keeps its own vertical box. */
-.files-row > .listing-actions {
-  padding-block: 0;
-}
-
 .files-row-indicated .files-name,
 .files-row-indicated .files-glyph {
   color: var(--butter);
@@ -2554,6 +2553,57 @@ body[data-header='dag'] #header-dag {
 
 .listing-selected > span {
   color: var(--butter);
+}
+
+/* ------------------------------------------------------------ the row zone */
+
+/* A listing whose verbs ride the frame (`rowZone` declared) draws them in
+ * the frame's ROW ZONE: beneath the blocks that act on the field and stay,
+ * a black band apart, one capsule under another as the frame's own blocks
+ * stand, right-aligned to the same edge. Empty, it takes no room. The row
+ * itself carries only its light and a wash of the frame's own hue, so the
+ * row and the verbs read as two halves of one thing: this row, these
+ * actions. Its verbs are `.listing-action` still — one capsule idiom, the
+ * lit hue included — wearing the frame's geometry rather than a row's. */
+.mode-frame .listing-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 0.75rem;
+}
+
+.mode-frame .listing-zone[hidden] {
+  display: none;
+}
+
+.mode-frame .listing-zone .listing-action {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 1.6rem;
+  line-height: 1.2;
+  margin: 0;
+  padding: 0.2rem 0.6rem 0.2rem 0.4rem;
+  border-radius: 0;
+  font-size: 0.65rem;
+  text-align: right;
+  /* A label longer than the bar wraps; it is never cut, since a verb the
+   * operator cannot read is a verb they cannot trust. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mode-frame .listing-zone .listing-readout {
+  padding: 0.1rem 0.6rem 0 0.4rem;
+  text-align: right;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.25;
+}
+
+.listing-framed .listing-indicated {
+  background: color-mix(in srgb, var(--harvestgold) 24%, transparent);
 }
 
 /* ------------------------------------------------- listable, not readable */
@@ -4181,17 +4231,8 @@ body[data-zoom] #header-restore {
 .files-body.diagram-shown .files-mkdir,
 .files-body.diagram-shown .files-upload,
 .files-body.diagram-shown .files-select,
-.files-body.diagram-shown .files-selection-bar {
+.files-body.diagram-shown .files-row-zone {
   display: none;
-}
-
-/* A selection belongs to the field, so its verbs ride the frame under the
- * mode that gathered them — never a row, since while SELECT is on a row is
- * not indicated, it is selected. */
-.files-selection-bar {
-  flex-wrap: wrap;
-  margin-top: 0.35rem;
-  padding: 0 0.2rem;
 }
 
 /* A selected row wears its state; the indicated row's light says something

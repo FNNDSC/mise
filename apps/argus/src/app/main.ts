@@ -2456,14 +2456,39 @@ async function surface_start(token: string): Promise<void> {
         emit({ op: 'tags', target, ...place });
       }
     }
-    if (anchor === undefined) return;
+    // A desktop is any arrangement with content beyond the bare domain — a
+    // wall of browsers, a runs layout, a viewer and its tags. A single primary
+    // pane is NOT carded: it is one gutter press away. It used to take a VIEWER
+    // to be carded at all, so a files or runs layout with no image left nothing
+    // behind; content of any kind is enough now.
+    const content = actions.filter((action): boolean => action.op !== 'domain');
+    if (content.length === 0) return;
     const thumbnail: string | undefined = stageStrip_capture(stageIds);
     const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane' };
-    const members: string[] = [...new Set(actions.filter((action): boolean => action.op !== 'domain').map((action): string => memberOf[action.op] ?? 'pane'))];
+    const members: string[] = [...new Set(content.map((action): string => memberOf[action.op] ?? 'pane'))];
+    // A viewer desktop is keyed by its series, so returning to it updates the
+    // one card. A viewer-less desktop is keyed by the SET of content it holds,
+    // so the same arrangement of browsers updates its own card rather than
+    // minting a new one each time it is left.
+    let id: string;
+    let cardLabel: string;
+    let regard: { address: string; modelKind: string };
+    if (anchor !== undefined) {
+      id = anchor;
+      cardLabel = label ?? (anchor.split('/').pop() ?? anchor);
+      regard = { address: anchor, modelKind: 'dicom.series' };
+    } else {
+      const firstPath: string | undefined = content.map((action): string | undefined => action.path).find((path): boolean => path !== undefined);
+      const signature: string = content.map((action): string => action.path ?? action.op).sort().join('|');
+      const domainName: string = preset === 'dag' ? 'RUNS' : preset.toUpperCase();
+      id = `${preset}:${signature}`;
+      cardLabel = firstPath !== undefined ? (firstPath.split('/').pop() ?? firstPath) : `${domainName} · ${content.length + 1} panes`;
+      regard = { address: id, modelKind: 'argus.desktop' };
+    }
     dormant.add({
-      id: anchor,
-      label: label ?? (anchor.split('/').pop() ?? anchor),
-      regard: { address: anchor, modelKind: 'dicom.series' },
+      id,
+      label: cardLabel,
+      regard,
       members,
       actions,
       ...(thumbnail === undefined ? {} : { thumbnail }),

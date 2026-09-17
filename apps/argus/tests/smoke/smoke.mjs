@@ -772,6 +772,36 @@ try {
   // camera sat parked inside a sphere filling the pane with one flat
   // colour, which an operator reasonably read as a crash.
   const dagFeed = process.env.SMOKE_DAG_FEED;
+  if (stage('pane-title')) {
+  // A pane's header is one line of a fixed height. A long name (a series
+  // description, a converter's filename) wrapped inside it, which cut the
+  // letters top and bottom and pushed the mode and state readouts onto a
+  // second row. The name gives way first; the readouts keep their line.
+  const header = await evalIn(`
+    await console_idle();
+    const bars = [...document.querySelectorAll('.workspace-pane')]
+      .filter((p) => p.offsetParent !== null)
+      .map((p) => p.querySelector('.lcars-bar-horizontal'))
+      .filter((b) => b !== null);
+    if (bars.length === 0) return { bars: 0 };
+    const measured = bars.map((bar) => {
+      const title = bar.querySelector('.lcars-title');
+      const state = bar.querySelector('.pane-state');
+      const box = (el) => { const r = el.getBoundingClientRect(); return { h: Math.round(r.height), top: Math.round(r.top) }; };
+      return {
+        text: title?.textContent?.slice(0, 40) ?? '',
+        barH: Math.round(bar.getBoundingClientRect().height),
+        titleH: title ? box(title).h : 0,
+        offLine: title !== null && state !== null && state.textContent !== ''
+          ? Math.abs(box(title).top - box(state).top) > 8 : false,
+      };
+    });
+    return { bars: bars.length, measured,
+      wrapped: measured.filter((m) => m.titleH > m.barH || m.offLine) };`);
+  check('every pane header keeps its title on one line, readouts beside it',
+    header.bars > 0 && header.wrapped.length === 0, JSON.stringify(header.wrapped ?? header));
+  }
+
   if (stage('node-dive')) {
   if (!dagFeed) {
     console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');

@@ -3812,6 +3812,26 @@ body[data-zoom] #header-restore {
   letter-spacing: 1px;
 }
 
+/* A pane's header is one line of a fixed height, so its title keeps that
+ * line: a long name (a series description, a converter's filename) used to
+ * wrap inside a 28px bar, which cut the letters top and bottom and pushed
+ * the mode and state readouts across two rows. The name gives way first —
+ * ellipsised, with the whole of it on the element's own tooltip — and the
+ * readouts beside it keep their width. */
+.lcars-bar-horizontal > .lcars-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lcars-bar-horizontal > .pane-mode,
+.lcars-bar-horizontal > .pane-state {
+  flex: none;
+  white-space: nowrap;
+}
+
 .lcars-terminal-status {
   font-size: 0.6rem;
   opacity: 0.8;

@@ -445,13 +445,35 @@ export async function file_write(filePath: string, bytes: Buffer): Promise<void>
  * Reads one ChRIS file's raw bytes through ChILI, resolved against the
  * session's working directory.
  *
- * @param filePath - The file's path (absolute or cwd-relative).
+ * Resolved, as its twin {@link file_write} is: a surface addresses a file
+ * the way the session does, and the session's paths include the relative
+ * ones and the `/proc` projections. Handing the raw path to ChILI meant a
+ * volume produced by a run could not be read at the address the graph
+ * itself gives for it — the node's own `data` — while the same bytes read
+ * fine under `/home`. One file, two names, one of them refused.
+ *
+ * @param filePath - The file's path (absolute, cwd-relative, or projected).
  * @returns The file's bytes.
  * @throws {Error} When the path does not resolve to a readable file.
  */
 export async function file_read(filePath: string): Promise<Buffer> {
+  const { path_resolve } = await import('../builtins/utils.js');
+  const resolved: string = await path_resolve(filePath);
+  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  // A projection is read by the provider that owns it — `/proc/jobs/…/data`
+  // follows the node's own data link and delegates to the file behind it.
+  // ChILI's cat knows only CFS, so a path under a projection reached this
+  // route and 404'd: the volume a run had just produced could not be read
+  // at the address its own graph gives for it.
+  if (vfsDispatcher.path_isVirtual(resolved)) {
+    const projected: Result<Buffer> = await vfsDispatcher.readBinary(resolved);
+    if (!projected.ok) {
+      throw new Error(`cannot read ${filePath}`);
+    }
+    return projected.value;
+  }
   const { files_catBinary } = await import('@fnndsc/chili/commands/fs/cat.js');
-  const result: Result<Buffer> = await files_catBinary(filePath);
+  const result: Result<Buffer> = await files_catBinary(resolved);
   if (!result.ok) {
     throw new Error(`cannot read ${filePath}`);
   }

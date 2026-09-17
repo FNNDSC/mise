@@ -716,8 +716,12 @@ export class ProcVfsProvider implements VFSProvider {
     if (instanceID !== null && virtualFile === 'data' && dataRemainder !== null && dataRemainder !== '') {
       const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
       if (!target.ok) return Err();
-      const { vfsDispatcher } = await import('../dispatcher.js');
-      return vfsDispatcher.readBinary(target.value);
+      // The target is a CFS file, and the dispatcher's default provider is
+      // the HOST filesystem — handing it back there refused every byte a
+      // node's data holds. `fileContent_getBinary` is the whole door: it
+      // routes a projection to its provider and a CFS path to CUBE.
+      const { fileContent_getBinary } = await import('../../files/index.js');
+      return fileContent_getBinary(target.value);
     }
     const text: Result<string> = await this.read(pathStr);
     return text.ok ? Ok(Buffer.from(text.value, 'utf8')) : text;
@@ -733,8 +737,8 @@ export class ProcVfsProvider implements VFSProvider {
     if (instanceID !== null && virtualFile === 'data' && dataRemainder !== null && dataRemainder !== '') {
       const target: Result<string> = await dataTarget_resolve(instanceID, dataRemainder);
       if (!target.ok) return Err();
-      const { vfsDispatcher } = await import('../dispatcher.js');
-      return vfsDispatcher.read(target.value);
+      const { fileContent_get } = await import('../../files/index.js');
+      return fileContent_get(target.value);
     }
 
     // Feed-level virtual files

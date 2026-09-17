@@ -1523,6 +1523,63 @@ try {
   else check('a pick survives promptlines while the cwd sits elsewhere', pin.picked === pin.later && !/FEED 21\b/.test(pin.later), `${pin.picked} -> ${pin.later}`);
   }
 
+  if (stage('roster-settles')) {
+  // A run the surface can see must stop reading RUNNING when it finishes.
+  // The regression this guards: the roster asked its flex-laid-out element
+  // whether it was `block`, so it never re-asked the session and every row
+  // it had ever drawn was frozen.
+  const settles = await evalIn(`
+    await console_idle();
+    const outEl = document.querySelector('#terminal .argus-output');
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { const b = outEl.children.length; term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms);
+      return [...outEl.children].slice(b).map(e => e.textContent).join('\\n'); };
+    await say('rm -r ~/smoke-roster', 2000);
+    await say('mkdir ~/smoke-roster', 2000);
+    await say('cd ~/smoke-roster', 2000);
+    await say('touch --withContents "roster" input.txt', 2500);
+    const ran = await say('pl-simpledsapp-v2.1.5 -- feed_title="smoke roster"', 12000);
+    const feed = (ran.match(/Feed created: (\\d+)/) ?? [])[1] ?? null;
+    if (feed === null) return { error: 'no feed created' };
+    document.getElementById('gutter-runs').click(); await sleep(3000);
+    // The pane on stage that holds a roster: another scenario's graph pane
+    // may be on stage too, and it is not the one RUNS-02 just opened.
+    const dp = () => [...document.querySelectorAll('.pane-dag')]
+      .find((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist')) ?? null;
+    const row = () => [...(dp()?.querySelectorAll('.feedlist-row') ?? [])].find(r => r.dataset.feed === feed) ?? null;
+    const status = () => row()?.querySelector('.feedlist-status')?.textContent.trim()
+      ?? (row()?.className.match(/feedlist-(\\w+)/) ?? [])[1] ?? null;
+    // One patient watch, nothing asked of the session: the roster's own
+    // request may queue behind the walk of the feed just created, so the
+    // row's arrival is waited for, and then its settling.
+    let first = null;
+    let reached = null;
+    let seenAfterMs = null;
+    const startedAt = Date.now();
+    for (let i = 0; i < 120; i++) {
+      await sleep(1500);
+      const now = status();
+      if (now === null) continue;
+      if (first === null) { first = now; seenAfterMs = Date.now() - startedAt; }
+      if (!/running/i.test(now)) { reached = now; break; }
+    }
+    // And the roster is not painted over by a cwd inside the feed.
+    await say('cd ~/feeds/feed_' + feed, 4000);
+    const rosterUp = dp()?.querySelector('.dag-feedlist')?.style.display !== 'none'
+      && dp()?.querySelector('.dag-canvas')?.style.display !== 'block';
+    await say('cd ~', 2000);
+    await say('feed rm -f ' + feed, 5000);
+    await say('rm -r ~/smoke-roster', 3000);
+    return { feed, first, seenAfterMs, settled: reached, rosterUp };`);
+  // A row that reads RUNNING must stop; one the roster first drew after the
+  // run had already finished is honest as it stands.
+  check('a run the roster lists stops reading RUNNING when it finishes, with nothing asked of it',
+    settles.error === undefined && settles.first !== null && /finishedsuccessfully/i.test(settles.settled ?? ''),
+    JSON.stringify(settles));
+  check('a cwd inside a feed does not paint its graph over the roster',
+    settles.error === undefined && settles.rosterUp === true, JSON.stringify({ rosterUp: settles.rosterUp }));
+  }
   if (stage('enter-place')) {
   // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
   // session (and so the cwd-following browser) into /proc/jobs/feed_N.

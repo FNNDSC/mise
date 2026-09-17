@@ -2950,6 +2950,25 @@ body[data-header='dag'] #header-dag {
   background: var(--harvestgold);
 }
 
+/* The browser's control is the kind's glyph: the console's icon in the
+ * console's colour, as a capsule of that colour when the row opens (the
+ * glyph goes black on it), bare when it opens nothing. */
+.files-control.files-capsule {
+  font-family: 'MesloLGS NF', 'Inconsolata', monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0;
+  padding: 0.1rem 0.5rem;
+  color: #000;
+}
+
+.files-control.files-capsule.files-glyph-dir { background: var(--console-yellow, var(--harvestgold)); }
+.files-control.files-capsule.files-glyph-file,
+.files-control.files-capsule.files-glyph-job { background: var(--console-white, var(--butter)); }
+.files-control.files-capsule.files-glyph-link { background: var(--console-cyan, var(--daybreak)); }
+.files-control.files-capsule.files-glyph-plugin { background: var(--console-green, var(--honey)); }
+.files-control.files-capsule.files-glyph-pipeline,
+.files-control.files-capsule.files-glyph-vfs { background: var(--console-magenta, var(--honey)); }
+
 .listing-framed .listing-indicated .files-capsule,
 .listing-framed .listing-indicated .listing-capsule,
 .listing-framed .listing-indicated .listing-control.pacs-fold {

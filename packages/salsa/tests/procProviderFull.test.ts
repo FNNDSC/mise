@@ -196,8 +196,13 @@ describe('ProcVfsProvider.list', () => {
     const listSpy = jest.spyOn(vfsDispatcher, 'list').mockResolvedValue(
       Ok([{ name: 'brain.mgz', type: 'file', size: 7, owner: 'alice', date: '' }]),
     );
-    const readSpy = jest.spyOn(vfsDispatcher, 'read').mockResolvedValue(Ok('bytes'));
-    const binSpy = jest.spyOn(vfsDispatcher, 'readBinary').mockResolvedValue(Ok(Buffer.from('img')));
+    // A file under the link is read through the door that knows both
+    // worlds: the target is a CFS file, and the dispatcher's own default
+    // provider is the HOST filesystem, which refuses it.
+    const files = await import('../src/files/index');
+    const readSpy = jest.spyOn(files, 'fileContent_get').mockResolvedValue(Ok('bytes'));
+    const binSpy = jest.spyOn(files, 'fileContent_getBinary').mockResolvedValue(Ok(Buffer.from('img')));
+    const dispatcherBinSpy = jest.spyOn(vfsDispatcher, 'readBinary');
     try {
       const listing = await provider.list('/proc/jobs/feed_5/pl-root_10/data');
       expect(listSpy).toHaveBeenCalledWith('/home/alice/outputs/result-set', undefined);
@@ -220,9 +225,13 @@ describe('ProcVfsProvider.list', () => {
       const synthesized = await provider.readBinary('/proc/jobs/feed_5/pl-root_10/status');
       expect(synthesized.ok && synthesized.value.toString('utf8')).toBe('finishedSuccessfully');
       expect(binSpy).toHaveBeenCalledTimes(1);
+      // Never back through the dispatcher: that is the bounce that refused
+      // every byte a node's data holds.
+      expect(dispatcherBinSpy).not.toHaveBeenCalled();
     } finally {
       listSpy.mockRestore();
       readSpy.mockRestore();
+      dispatcherBinSpy.mockRestore();
       binSpy.mockRestore();
     }
   });

@@ -1496,7 +1496,7 @@ try {
   if (enterPlace.skipped) {
     console.log(`  skipped: ${enterPlace.skipped}`);
   } else {
-    check('ENTER FEED moves the session into the feed', enterPlace.offered && typeof enterPlace.path === 'string' && enterPlace.path.startsWith('/proc/jobs/feed_'));
+    check('ENTER FEED moves the session into the feed', enterPlace.offered && typeof enterPlace.path === 'string' && enterPlace.path.startsWith('/proc/jobs/feed_'), JSON.stringify(enterPlace));
   }
   }
 

@@ -471,6 +471,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   if (cubeEnvelope.rendered.length > 0) sink_get().data_write(cubeEnvelope.rendered);
   if (cubeEnvelope.renderedErr !== undefined && cubeEnvelope.renderedErr.length > 0) sink_get().err_write(cubeEnvelope.renderedErr);
 
+  let created: PulledFeedResult | null = null;
   if (newFeedTitle !== null) {
     if (!selectionComplete) {
       sink_errLine(chalk.red(
@@ -492,6 +493,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
       process.exitCode = 1;
       return envelope_error('');
     }
+    created = feedResult;
     const attachment: PullAttachment | undefined = parsed.attachment;
     if (attachment?.kind === 'pipeline') {
       const attachmentEnvelope: CommandEnvelope = await builtin_pipeline([
@@ -543,6 +545,19 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
 
   if (newFeedTitle === null) {
     sink_dataLine(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
+    return envelope_ok('');
   }
-  return envelope_ok('');
+  if (created === null) return envelope_ok('');
+  // The feed a pull created is a model, so a surface binds to its root
+  // (the place a run appended to it takes as input) rather than reading
+  // the id and the path out of the text above.
+  return envelope_ok('', {
+    kind: 'feed.created',
+    data: {
+      feedId: created.feedID,
+      rootInstanceId: created.rootInstanceID,
+      owner: created.owner,
+      path: `/home/${created.owner}/feeds/feed_${created.feedID}/pl-dircopy_${created.rootInstanceID}/data`,
+    },
+  });
 }

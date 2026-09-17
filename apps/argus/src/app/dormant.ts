@@ -62,6 +62,8 @@ export interface DesktopAction {
   /** `gather`: the cohort's series, so restore re-gathers them; `name` its name when SAVE gave it one. */
   series?: readonly DesktopSeries[];
   name?: string;
+  /** `gather`: the root the cohort's feed was created with, when it was (`feed` carries the feed). */
+  root?: { instance: number; path: string };
   view?: readonly string[];
   target?: number;
   dir?: 'col' | 'row';

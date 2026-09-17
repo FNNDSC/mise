@@ -78,9 +78,27 @@ export interface PluginInstanceRow {
 }
 
 /**
+ * A feed `pull --new-feed` created: its id, the pl-dircopy root the pulled
+ * series landed under, and the root's data folder as the session addresses
+ * it — the place a run appended to the feed takes as its input.
+ *
+ * @property feedId - The feed.
+ * @property rootInstanceId - The pl-dircopy root instance.
+ * @property owner - The username that owns it.
+ * @property path - The root's data folder (`/home/<owner>/feeds/feed_N/pl-dircopy_M/data`).
+ */
+export interface FeedCreated {
+  feedId: number;
+  rootInstanceId: number;
+  owner: string;
+  path: string;
+}
+
+/**
  * Model kinds emitted by the filesystem commands, mapped to their payloads.
  */
 export interface FsModelMap {
+  'feed.created': FeedCreated;
   'fs.cwd': CwdModel;
   'run.scheduled': RunScheduled;
   'plugininstance.list': PluginInstanceRow[];

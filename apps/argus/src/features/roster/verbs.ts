@@ -256,6 +256,8 @@ export const GATHER_SERIES_ROSTER: VerbRoster<GatherSeriesFacts> = {
 export interface GatherCohortFacts {
   /** How many series it holds; an emptied cohort keeps only DISMISS. */
   count: number;
+  /** The feed the cohort was rooted in, once PROCESS or CREATE FEED made one. */
+  feed: number | null;
 }
 
 /**
@@ -269,12 +271,18 @@ export const GATHER_COHORT_ROSTER: VerbRoster<GatherCohortFacts> = {
   rules: [
     { name: 'save', label: (): string => 'SAVE', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
     { name: 'export', label: (): string => 'EXPORT CSV', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
-    { name: 'feed', label: (): string => 'CREATE FEED', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
+    // CREATE FEED roots the cohort's feed and stops there; once it has one
+    // the verb is spent, and PROCESS appends to it.
+    { name: 'feed', label: (): string => 'CREATE FEED', offered: (f: GatherCohortFacts): boolean => f.count > 0 && f.feed === null },
+    // PROCESS: the cohort's feed (made first when there is none), then a
+    // catalogue bound to its root — a run appends to the cohort.
+    { name: 'process', label: (): string => 'PROCESS', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
     { name: 'dismiss', label: (): string => 'DISMISS', offered: (): boolean => true },
   ],
   states: [
-    { name: 'holding series', facts: { count: 2 } },
-    { name: 'emptied', facts: { count: 0 } },
+    { name: 'holding series', facts: { count: 2, feed: null } },
+    { name: 'holding series, rooted in a feed', facts: { count: 2, feed: 4501 } },
+    { name: 'emptied', facts: { count: 0, feed: null } },
   ],
 };
 

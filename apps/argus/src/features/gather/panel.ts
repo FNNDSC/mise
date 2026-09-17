@@ -55,6 +55,23 @@ export interface GatherPanelHandlers {
   changed: () => void;
   /** DISMISS: forget the cohort on the surface — the host closes the pane. */
   dismiss: () => void;
+  /**
+   * Runs a feed-creating line the operator could have typed (echoed, run,
+   * its answer written) and reads the feed it made; null when it made none.
+   */
+  feed_create: (line: string) => Promise<GatherFeed | null>;
+  /** PROCESS on a cohort with a feed: a catalogue bound to the feed's root, so a run appends to it. */
+  cohort_process: (binding: { input: string; feed: number; node: number }) => void;
+  /** Opens the cohort's feed as a graph beside the pane. */
+  feed_open: (feedId: number) => void;
+}
+
+/** The feed a cohort was rooted in: its id, and the root a run appends to. */
+export interface GatherFeed {
+  feedId: number;
+  rootInstanceId: number;
+  /** The root's data folder — what a run on the cohort takes as input. */
+  path: string;
 }
 
 /** The one cohort row: the level above the series. */
@@ -101,6 +118,8 @@ export class GatherPanel {
   private readonly entries: Map<string, GatherSeries> = new Map();
   /** The cohort's name once SAVE has asked it; null until then. */
   private name: string | null = null;
+  /** The feed the cohort was rooted in, once CREATE FEED or PROCESS made one. */
+  private feed: GatherFeed | null = null;
   private readonly listing: Listing<CohortRow>;
   private readonly cohortActions: ReadonlyArray<ListingAction<CohortRow>>;
   private readonly seriesActions: ReadonlyArray<ListingAction<SeriesRow>>;
@@ -168,6 +187,22 @@ export class GatherPanel {
   /** The cohort's name, when SAVE has asked it. */
   public name_get(): string | null {
     return this.name;
+  }
+
+  /** The feed the cohort was rooted in, when it was. */
+  public feed_get(): GatherFeed | null {
+    return this.feed;
+  }
+
+  /**
+   * Records the cohort's feed (made here, or restored by a desktop): the
+   * cohort row lights FEED N, and PROCESS appends from now on.
+   *
+   * @param feed - The feed, or null for none.
+   */
+  public feed_set(feed: GatherFeed | null): void {
+    this.feed = feed;
+    this.render();
   }
 
   /**
@@ -255,6 +290,28 @@ export class GatherPanel {
         cell: (): string => String(this.patients_count()),
         compare: (): number => this.patients_count(),
       },
+      {
+        // The feed the cohort landed in, as the catalogue's strip wears it:
+        // a lit capsule that opens the feed's graph beside the pane.
+        key: 'feed',
+        label: 'FEED',
+        className: 'gather-cohort-feed',
+        width: '7em',
+        cell: (): HTMLElement | string => {
+          if (this.feed === null) return '—';
+          const capsule: HTMLButtonElement = document.createElement('button');
+          capsule.className = 'gather-feed listing-capsule listing-action-selected';
+          capsule.textContent = `FEED ${this.feed.feedId}`;
+          capsule.title = 'open the feed\'s graph beside the cohort';
+          const feedId: number = this.feed.feedId;
+          capsule.addEventListener('click', (event: Event): void => {
+            event.stopPropagation();
+            this.handlers.feed_open(feedId);
+          });
+          return capsule;
+        },
+        compare: (): number => this.feed?.feedId ?? -1,
+      },
     ];
   }
 
@@ -311,11 +368,12 @@ export class GatherPanel {
    * @returns The actions, in capsule order.
    */
   private cohortActions_declare(): ReadonlyArray<ListingAction<CohortRow>> {
-    const facts = (): GatherCohortFacts => ({ count: this.entries.size });
+    const facts = (): GatherCohortFacts => ({ count: this.entries.size, feed: this.feed?.feedId ?? null });
     const runs: Record<string, () => void> = {
       save: (): void => { void this.manifest_save(); },
       export: (): void => { void this.cohort_export(); },
-      feed: (): void => { void this.feed_create(); },
+      feed: (): void => { void this.feed_ensure(); },
+      process: (): void => { void this.cohort_process(); },
       dismiss: (): void => this.handlers.dismiss(),
     };
     return GATHER_COHORT_ROSTER.rules.map((rule): ListingAction<CohortRow> => ({
@@ -420,14 +478,30 @@ export class GatherPanel {
   }
 
   /**
-   * Roots a new feed on the cohort: one visible, auditable command. Pull is
-   * idempotent, so series already home confirm rather than re-fetch.
+   * The cohort's feed: the one it has, else one rooted on it now by one
+   * visible, auditable command (pull is idempotent, so series already home
+   * confirm rather than re-fetch), named at the ask if it was not yet.
+   *
+   * @returns The feed, or null when none was made.
    */
-  private async feed_create(): Promise<void> {
-    if (this.entries.size === 0) return;
+  private async feed_ensure(): Promise<GatherFeed | null> {
+    if (this.feed !== null) return this.feed;
+    if (this.entries.size === 0) return null;
     const name: string | null = await this.name_ensure();
-    if (name === null) return;
+    if (name === null) return null;
     const paths: string = [...this.entries.values()].map((entry: GatherSeries): string => entry.vfsPath).join(' ');
-    this.handlers.command_show(`pull --new-feed "${name}" ${paths}`);
+    const made: GatherFeed | null = await this.handlers.feed_create(`pull --new-feed "${name}" ${paths}`);
+    if (made !== null) this.feed_set(made);
+    return made;
+  }
+
+  /**
+   * PROCESS on the cohort: its feed first (made if there is none), then a
+   * catalogue bound to the feed's root — a run appends to the cohort.
+   */
+  private async cohort_process(): Promise<void> {
+    const feed: GatherFeed | null = await this.feed_ensure();
+    if (feed === null) return;
+    this.handlers.cohort_process({ input: feed.path, feed: feed.feedId, node: feed.rootInstanceId });
   }
 }

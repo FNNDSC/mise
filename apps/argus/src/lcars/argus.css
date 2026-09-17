@@ -1213,6 +1213,23 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   border-top-left-radius: var(--elbow-inner-radius);
 }
 
+/* An elbow is a JOIN, so it needs something to turn into. A zoom sends the
+ * gutter off stage, and the operator's own dismissal does the same; what is
+ * left of the turn is a dark hook hanging in the corner over the pane that
+ * now starts there — which is exactly how it was reported ("that top left
+ * weird join artifact"). The fillet's two halves go with the member they
+ * join to. */
+body[data-zoom] .right-frame::before,
+body[data-zoom] .right-frame::after,
+body[data-zoom] .right-frame-top::before,
+body[data-zoom] .right-frame-top::after,
+body[data-gutter='away'] .right-frame::before,
+body[data-gutter='away'] .right-frame::after,
+body[data-gutter='away'] .right-frame-top::before,
+body[data-gutter='away'] .right-frame-top::after {
+  display: none;
+}
+
 /* Every segment is positioned so that it paints above the mask; unpositioned
  * buttons fall under it, and RUNS-02 vanished that way once. */
 .left-frame button[class^='panel-'],

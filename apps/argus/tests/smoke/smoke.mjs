@@ -823,10 +823,18 @@ try {
     const workspaceShown = main !== null && main.offsetParent !== null
       && main.getBoundingClientRect().top < vp;
     const scroller = document.scrollingElement;
+    // An elbow is a join: with the gutter off stage it has nothing to turn
+    // into, and what is left of it is a hook in the corner.
+    const frame = document.querySelector('.right-frame');
+    const fillet = {
+      before: getComputedStyle(frame, '::before').display,
+      after: getComputedStyle(frame, '::after').display,
+    };
     const shot = {
       state: document.body.dataset.zoom,
       vp,
       drawer,
+      fillet,
       // Inside the viewport, top frame included.
       framed: drawer !== null && drawer.top >= 0 && drawer.bottom <= vp,
       workspaceShown,
@@ -839,6 +847,8 @@ try {
     zoom.state === 'console' && zoom.framed === true, JSON.stringify(zoom));
   check('the workspace steps off stage for it, and nothing is left to scroll',
     zoom.workspaceShown === false && zoom.overflows === false, JSON.stringify(zoom));
+  check('the elbow does not hang in the corner with nothing to turn into',
+    zoom.fillet?.before === 'none' && zoom.fillet?.after === 'none', JSON.stringify(zoom.fillet));
   }
 
   if (stage('launcher')) {

@@ -1399,7 +1399,29 @@ main {
   width: 100%;
 }
 
-#pacs-form input,
+/* A field is black with a lit border, like the command line beneath it: a
+ * form on the listing's grid reads as part of the instrument. These
+ * declarations lived on a selector list shared with the gather tray's name
+ * field; removing the tray took the list's second half AND the block with
+ * it, leaving a dangling `#pacs-form input,` that fused onto the rule
+ * below — so every field fell back to the browser's white, with the
+ * frame's own light type on it. A selector list is deleted whole. */
+#pacs-form input {
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--butter);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  outline: none;
+}
+
+#pacs-form input:focus,
+#pacs-command:focus {
+  border-color: var(--harvestgold);
+  box-shadow: 0 0 6px rgb(255 170 68 / 40%);
+}
 
 #pacs-commandline {
   display: flex;

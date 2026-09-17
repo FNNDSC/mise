@@ -1907,19 +1907,69 @@ body[data-zoom]:not([data-zoom='console'])
 
 /* The subway strip: a node's lifecycle as stops on a line, filled to where
  * the job is (the classic ChRIS UI progression, in LCARS dress). */
+/* The lifecycle as a line of named stops. The names are the point: as bare
+   dots the strip could only be read by a hand that already knew the
+   lifecycle, and the one moment it earns its place — a node in flight — is
+   exactly when the stage has to be legible at a glance. The line runs
+   through the stops' centres, so the labels sit under their own stop. */
 .dag-subway {
   display: flex;
+  align-items: flex-start;
+  margin-top: 0.5rem;
+  padding-bottom: 0.1rem;
+}
+
+.subway-step {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  margin-top: 0.35rem;
+  gap: 0.2rem;
+  flex: none;
+  /* The stop's own row is the line's height, so the link meets its centre. */
+  margin-top: 0;
 }
 
 .subway-stop {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 1px solid var(--pumpkin-pie);
   background: transparent;
   flex: none;
+}
+
+/* The word under the stop. Dim until the line reaches it: what has not
+   happened yet is not news. */
+.subway-label {
+  font-family: var(--face-label);
+  font-size: 0.5rem;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--pumpkin-pie);
+  white-space: nowrap;
+}
+
+.subway-step-here .subway-label {
+  color: var(--orange);
+  font-weight: bold;
+}
+
+/* A stop already passed keeps its name readable, in the line's own hue. */
+.subway-step:has(.subway-passed) .subway-label,
+.subway-step:has(.subway-done) .subway-label {
+  color: var(--harvestgold);
+}
+
+.subway-step:has(.subway-failed) .subway-label {
+  color: var(--state-error);
+}
+
+/* The stop the node stands at is drawn larger as well as lit, so the strip
+   reads at a glance rather than by comparing fills. */
+.subway-step-here .subway-stop {
+  width: 13px;
+  height: 13px;
+  margin-top: -1.5px;
 }
 
 .subway-stop.subway-passed {
@@ -1947,7 +1997,9 @@ body[data-zoom]:not([data-zoom='console'])
 .subway-link {
   height: 2px;
   flex: 1 1 8px;
-  min-width: 8px;
+  min-width: 10px;
+  /* Meets the stops' centres, which sit 5px down from the strip's top. */
+  margin-top: 4px;
   background: rgb(204 85 0 / 45%);
 }
 

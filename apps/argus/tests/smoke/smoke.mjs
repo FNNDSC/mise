@@ -2082,12 +2082,81 @@ try {
       gather.error === undefined && gather.caps.includes('COHORT') && gather.caps.includes('SERIES') && /1 SERIES · 1 PATIENTS/.test(gather.state ?? ''),
       JSON.stringify({ caps: gather.caps, state: gather.state }));
     check("the PACS row's GATHER lights from the cohort", gather.error === undefined && gather.lit === true, String(gather.lit));
-    check('a series row carries REMOVE / IMAGE / PROCESS, the cohort row SAVE / EXPORT CSV / CREATE FEED / DISMISS',
-      gather.error === undefined && gather.seriesVerbs.join(',') === 'REMOVE,IMAGE,PROCESS' && gather.cohortVerbs.join(',') === 'SAVE,EXPORT CSV,CREATE FEED,DISMISS',
+    check('a series row carries REMOVE / IMAGE / PROCESS, the cohort row SAVE / EXPORT CSV / CREATE FEED / PROCESS / DISMISS',
+      gather.error === undefined && gather.seriesVerbs.join(',') === 'REMOVE,IMAGE,PROCESS' && gather.cohortVerbs.join(',') === 'SAVE,EXPORT CSV,CREATE FEED,PROCESS,DISMISS',
       JSON.stringify({ series: gather.seriesVerbs, cohort: gather.cohortVerbs }));
     check('REMOVE takes the series out; DISMISS closes the pane',
       gather.error === undefined && gather.afterRemove.length === 0 && gather.dismissed === true,
       JSON.stringify({ afterRemove: gather.afterRemove, dismissed: gather.dismissed }));
+  }
+  }
+  if (stage('gather-process')) {
+  // PROCESS on the cohort: its feed first (made by the pull the operator
+  // could have typed, named at the ask), then a catalogue bound to the
+  // feed's root; the cohort row lights FEED N. A real feed on the user's
+  // CUBE, removed at the end.
+  if (!process.env.SMOKE_PACS_QUERY) {
+    console.log('  skipped: set SMOKE_PACS_QUERY=<a `pacs query ...` line that finds a study with a series in CUBE>');
+  } else {
+    const cohort = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(500);
+      const ws = document.getElementById('pacs-workspace');
+      const term = document.querySelector('#terminal input');
+      const say = async (line, ms) => { term.value = line;
+        term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const cmd = document.getElementById('pacs-command');
+      const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
+      cmd.value = ${JSON.stringify(process.env.SMOKE_PACS_QUERY)};
+      cmd.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 60; i++) { await sleep(100); if (document.querySelector('#pacs-results .pacs-waiting')) break; }
+      for (let i = 0; i < 240; i++) { await sleep(1000); if (studies() > 0) break; }
+      await sleep(2500);
+      const study = document.querySelector('#pacs-results .pacs-study');
+      if (!study) return { error: 'no study' };
+      if (!study.classList.contains('listing-open')) { study.querySelector('.pacs-study-row .listing-control').click(); await sleep(400); }
+      const zoneVerbs = (root, zone) => [...root.querySelectorAll(zone + ' .listing-action')].map(b => b.textContent.trim());
+      let picked = null;
+      for (const row of [...study.querySelectorAll('.pacs-series')]) { row.click(); await sleep(300); if (zoneVerbs(ws, '.pacs-row-zone').includes('GATHER')) { picked = row; break; } }
+      if (!picked) return { error: 'no series in CUBE to gather' };
+      [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER').click();
+      const pane = () => [...document.querySelectorAll('.pane-gather')].find(p => p.offsetParent !== null);
+      for (let i = 0; i < 40; i++) { await sleep(250); if (pane()) break; }
+      await sleep(600);
+      const gp = pane();
+      if (!gp) return { error: 'no gather pane' };
+      gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
+      const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
+      const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+      [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
+      let asked = false;
+      for (let i = 0; i < 20; i++) { await sleep(500); if (document.querySelector('#terminal .argus-ask')) { asked = true; break; } }
+      const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
+      term.value = 'smoke cohort';
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 30; i++) { await sleep(500); if (document.querySelectorAll('#terminal .argus-echo').length > echoesBefore) break; }
+      const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+      let capsule = null;
+      for (let i = 0; i < 240; i++) { await sleep(500); const c = gp.querySelector('.gather-feed'); if (c) { capsule = c.textContent.trim(); break; } }
+      const feedId = parseInt((capsule ?? '').replace(/\\D/g, ''), 10);
+      const catalogue = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && p.querySelector('.files-binding'));
+      for (let i = 0; i < 40; i++) { await sleep(500); if (catalogue()) break; }
+      const binding = catalogue()?.querySelector('.files-binding')?.textContent ?? '';
+      const title = gp.querySelector('.gather-title')?.textContent.trim();
+      gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
+      const verbsAfter = zoneVerbs(gp, '.gather-row-zone');
+      if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
+      [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'DISMISS')?.click(); await sleep(500);
+      return { cohortVerbs, asked, askText, echoed, capsule, feedId, binding, title, verbsAfter };`);
+    check('the cohort row offers PROCESS beside CREATE FEED', cohort.error === undefined && cohort.cohortVerbs.join(',') === 'SAVE,EXPORT CSV,CREATE FEED,PROCESS,DISMISS', JSON.stringify(cohort.cohortVerbs ?? cohort));
+    check('PROCESS asks the cohort\'s name once and makes its feed by the pull the operator could have typed',
+      cohort.error === undefined && cohort.asked && /Cohort name/.test(cohort.askText) && /^❯ pull --new-feed "smoke cohort" \/net\/pacs\//.test(cohort.echoed) && Number.isFinite(cohort.feedId),
+      JSON.stringify({ asked: cohort.asked, askText: cohort.askText, echoed: cohort.echoed, capsule: cohort.capsule }));
+    check('the cohort row lights FEED N, the pane wears the name, and CREATE FEED is spent',
+      cohort.error === undefined && /^FEED \d+$/.test(cohort.capsule ?? '') && cohort.title === 'GATHER · SMOKE COHORT' && cohort.verbsAfter.join(',') === 'SAVE,EXPORT CSV,PROCESS,DISMISS',
+      JSON.stringify({ capsule: cohort.capsule, title: cohort.title, verbsAfter: cohort.verbsAfter }));
+    check("a catalogue opens bound to the feed's root, so a run appends to the cohort",
+      cohort.error === undefined && new RegExp('^INPUT /home/[^ ]+/feeds/feed_' + cohort.feedId + '/pl-dircopy_\\d+/data → feed ' + cohort.feedId + ' · node \\d+$').test(cohort.binding),
+      cohort.binding);
   }
   }
   if (stage('pacs-server-control')) {

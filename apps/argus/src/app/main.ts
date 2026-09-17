@@ -34,7 +34,7 @@ import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
-import { GatherPanel, type GatherSeries } from '../features/gather/panel.js';
+import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
@@ -2128,6 +2128,30 @@ async function surface_start(token: string): Promise<void> {
         orphans_dispose();
         pacsStage_relight();
       },
+      // The cohort's feed is made by the line the operator could have typed:
+      // echoed, run, its answer written; the kernel's model names the feed
+      // and the root a run appends to.
+      feed_create: async (line: string): Promise<GatherFeed | null> => {
+        terminal.line_echo(line);
+        let outcome: ExecuteOutcome;
+        try {
+          outcome = await client.line_execute(line, { silent: true });
+        } catch (error: unknown) {
+          terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
+          return null;
+        }
+        terminal.outcome_write(outcome);
+        for (const envelope of outcome.envelopes) {
+          if (envelope.model?.kind !== 'feed.created') continue;
+          const data = envelope.model.data as { feedId?: unknown; rootInstanceId?: unknown; path?: unknown };
+          if (typeof data.feedId === 'number' && typeof data.rootInstanceId === 'number' && typeof data.path === 'string') {
+            return { feedId: data.feedId, rootInstanceId: data.rootInstanceId, path: data.path };
+          }
+        }
+        return null;
+      },
+      cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(id, binding),
+      feed_open: (feedId: number): void => feed_open(id, feedId),
     });
     gatherPanels.set(id, panel);
     return {
@@ -2901,7 +2925,12 @@ async function surface_start(token: string): Promise<void> {
         if (panel === undefined) continue;
         const series: GatherSeries[] = [...panel.entries_get()];
         const name: string | null = panel.name_get();
-        emit({ op: 'gather', series, target, ...place, ...(name !== null ? { name } : {}) });
+        const made: GatherFeed | null = panel.feed_get();
+        emit({
+          op: 'gather', series, target, ...place,
+          ...(name !== null ? { name } : {}),
+          ...(made !== null ? { feed: made.feedId, root: { instance: made.rootInstanceId, path: made.path } } : {}),
+        });
         if (label === undefined) label = name ?? `GATHER · ${series.length} series`;
       } else if (kind === 'dag') {
         // A run's graph beside its catalogue: the feed it graphs.
@@ -3097,6 +3126,9 @@ async function surface_start(token: string): Promise<void> {
           const opened: string | null = gather_open([...action.series], host ?? 'pacs');
           replayPlace = null;
           if (opened !== null && action.name !== undefined) gatherPanels.get(opened)?.name_set(action.name);
+          if (opened !== null && action.feed !== undefined && action.root !== undefined) {
+            gatherPanels.get(opened)?.feed_set({ feedId: action.feed, rootInstanceId: action.root.instance, path: action.root.path });
+          }
           produced.push(opened);
         } else if (action.op === 'graph' && action.feed !== undefined) {
           if (host !== null) layout.focus_set(host);

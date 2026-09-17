@@ -174,7 +174,8 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'home, folder named': ['GATHER', 'IMAGE', 'DIR', 'PROCESS'],
   },
   'gather.cohort': {
-    'holding series': ['SAVE', 'EXPORT CSV', 'CREATE FEED', 'DISMISS'],
+    'holding series': ['SAVE', 'EXPORT CSV', 'CREATE FEED', 'PROCESS', 'DISMISS'],
+    'holding series, rooted in a feed': ['SAVE', 'EXPORT CSV', 'PROCESS', 'DISMISS'],
     'emptied': ['DISMISS'],
   },
   'gather.series': {

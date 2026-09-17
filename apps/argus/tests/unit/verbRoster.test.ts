@@ -145,9 +145,12 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'files.row': {
     'a plain file outside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
     'a file inside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    'a directory': ['MOVE', 'COPY', 'DELETE'],
-    'a DICOM series folder': ['IMAGE', 'MOVE', 'COPY', 'DELETE'],
+    'a directory': ['PROCESS', 'MOVE', 'COPY', 'DELETE'],
+    'a directory inside a feed that is not a node': ['MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    "a node's data inside a feed": ['PROCESS', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    'a DICOM series folder': ['IMAGE', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
     'a catalogue entry': [],
+    'a catalogue entry in a bound catalogue': ['RUN'],
   },
   'files.selection': {
     'a selection outside any feed': ['DELETE 3', 'MOVE 3', 'COPY 3'],
@@ -160,12 +163,13 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'pacs.study': {
     'a study with a path': ['PULL STUDY'],
     'a study with none': [],
+    'a study wholly home': ['PULL STUDY', 'PROCESS'],
   },
   'pacs.series': {
     'not yet retrieved': ['PULL'],
     'not retrieved and unaddressable': ['PULL'],
     'home, folder not yet named': ['GATHER'],
-    'home, folder named': ['GATHER', 'IMAGE', 'DIR'],
+    'home, folder named': ['GATHER', 'IMAGE', 'DIR', 'PROCESS'],
   },
 };
 
@@ -202,7 +206,7 @@ describe('the PACS series row, where the verb went missing', () => {
       const home = roster.states.find((one: { name: string }): boolean => one.name === 'home, folder named');
       expect(home).toBeDefined();
       if (home === undefined) return;
-      expect(rendered_verbs(roster, home)).toEqual(['GATHER', 'IMAGE', 'DIR']);
+      expect(rendered_verbs(roster, home)).toEqual(['GATHER', 'IMAGE', 'DIR', 'PROCESS']);
     });
   });
 

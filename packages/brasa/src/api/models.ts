@@ -35,10 +35,30 @@ export interface CwdModel {
 }
 
 /**
+ * A run the kernel has scheduled: what a surface needs to point at it —
+ * which feed it landed in, which instance it is, whether the feed is new.
+ *
+ * @property pluginName - The executable that was run, as typed.
+ * @property instanceId - The plugin instance CUBE scheduled.
+ * @property feedId - The feed the instance belongs to.
+ * @property newFeed - True when this run created the feed (a dircopy root
+ *   stands above it); false when it was appended to an existing node.
+ * @property outputPath - Where the instance's output will land.
+ */
+export interface RunScheduled {
+  pluginName: string;
+  instanceId: number;
+  feedId: number;
+  newFeed: boolean;
+  outputPath: string;
+}
+
+/**
  * Model kinds emitted by the filesystem commands, mapped to their payloads.
  */
 export interface FsModelMap {
   'fs.cwd': CwdModel;
+  'run.scheduled': RunScheduled;
   'fs.mkdir': MkdirOutcome[];
   'fs.touch': TouchOutcome[];
   'fs.rm': RmOutcome[];

@@ -162,7 +162,22 @@ export async function builtin_executePlugin(
     }
     sink_dataLine(chalk.green(`Job scheduled: ${pluginName} (ID: ${result.pluginInstanceID})`));
     sink_dataLine(chalk.cyan(`Output will be in: ${result.outputPath}`));
-    return envelope_ok('');
+    // The run as a model, so a surface can point at what it started — the
+    // feed it landed in and the instance it is — rather than parse the lines.
+    const feedID: number | null = result.feedID !== undefined
+      ? result.feedID
+      : result.parentID !== null ? (procCache_get().instance_get(result.parentID)?.feedID ?? null) : null;
+    if (feedID === null) return envelope_ok('');
+    return envelope_ok('', {
+      kind: 'run.scheduled',
+      data: {
+        pluginName,
+        instanceId: result.pluginInstanceID,
+        feedId: feedID,
+        newFeed: result.feedID !== undefined,
+        outputPath: result.outputPath,
+      },
+    });
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     sink_errLine(chalk.red(`Error executing plugin: ${msg}`));

@@ -473,7 +473,7 @@ export class ArgusTerminal {
       this.pendingAsk = { settle, kind };
       this.inputGlyph.textContent = '?';
       if (kind === 'secret') this.input.type = 'password';
-      if (kind === 'path' && request.suggest !== undefined) this.input.value = request.suggest;
+      if ((kind === 'path' || kind === 'text') && request.suggest !== undefined) this.input.value = request.suggest;
       if (kind === 'confirm') {
         // The capsules are the instrument; typing y or n still works, since
         // a hand already on the keys should not have to reach for a mouse.

@@ -56,6 +56,8 @@ export interface PacsPanelHandlers {
   image_open: (folderPath: string) => void;
   /** Opens the series' folder as a file browser, joined to its group. */
   dir_open: (folderPath: string) => void;
+  /** Opens a catalogue bound to a folder (a series', or a whole study's), to run something on it. */
+  process_open: (folderPath: string) => void;
 }
 
 /**
@@ -89,6 +91,24 @@ export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
  * @param series - The series as the model holds it.
  * @returns Which of the three verbs are offered.
  */
+/**
+ * The folder a whole study can be processed as: the parent every series'
+ * folder shares, known only once every series is home with its folder named.
+ *
+ * @param study - The study.
+ * @returns The folder, or null when any series is not yet home.
+ */
+export function studyFolder_of(study: PacsStudy): string | null {
+  if (study.series.length === 0) return null;
+  const parents: string[] = [];
+  for (const series of study.series) {
+    if (series.pulled !== true || series.folderPath === undefined) return null;
+    parents.push(series.folderPath.replace(/\/[^/]+\/?$/, ''));
+  }
+  const first: string = parents[0] ?? '';
+  return parents.every((parent: string): boolean => parent === first) && first !== '' ? first : null;
+}
+
 export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; dir: boolean; pull: boolean } {
   const facts: PacsSeriesFacts = seriesFacts_of(series);
   const offers = (name: string): boolean => verbRule_get(PACS_SERIES_ROSTER, name).offered(facts);
@@ -791,9 +811,9 @@ export class PacsPanel {
   private studyActions_declare(): ReadonlyArray<ListingAction<StudyRow>> {
     return [
       {
-        label: verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').label({ addressable: true }),
+        label: verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').label({ addressable: true, allInCube: false }),
         offered: (row: StudyRow): boolean =>
-          verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').offered({ addressable: row.study.vfsPath !== undefined }),
+          verbRule_get(PACS_STUDY_ROSTER, 'pullStudy').offered({ addressable: row.study.vfsPath !== undefined, allInCube: false }),
         run: (row: StudyRow): void => {
           const vfsPath: string | undefined = row.study.vfsPath;
           if (vfsPath === undefined) return;
@@ -804,6 +824,16 @@ export class PacsPanel {
               this.badgeState_set(series.seriesUID, { status: 'queued' });
             }
           }
+        },
+      },
+      {
+        // A study whose every series is home can be processed as one folder:
+        // the series folders share a parent, and that parent is the input.
+        label: verbRule_get(PACS_STUDY_ROSTER, 'process').label({ addressable: true, allInCube: true }),
+        offered: (row: StudyRow): boolean => studyFolder_of(row.study) !== null,
+        run: (row: StudyRow): void => {
+          const folder: string | null = studyFolder_of(row.study);
+          if (folder !== null) this.handlers.process_open(folder);
         },
       },
     ];
@@ -898,6 +928,13 @@ export class PacsPanel {
         selected: (row: SeriesRow): boolean => row.series.folderPath !== undefined && (this.litFolders.get(folderKey(row.series.folderPath))?.browser ?? false),
         run: (row: SeriesRow): void => {
           if (row.series.folderPath !== undefined) this.handlers.dir_open(row.series.folderPath);
+        },
+      },
+      {
+        label: verbRule_get(PACS_SERIES_ROSTER, 'process').label({ inCube: true, folderKnown: true, addressable: true }),
+        offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).image,
+        run: (row: SeriesRow): void => {
+          if (row.series.folderPath !== undefined) this.handlers.process_open(row.series.folderPath);
         },
       },
       {

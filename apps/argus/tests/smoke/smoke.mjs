@@ -1077,6 +1077,82 @@ try {
   check('the artefacts are removed again', place.cleared);
   }
 
+  if (stage('process-workflow')) {
+  // Building compute from the surface: PROCESS on a directory opens /bin as
+  // a catalogue bound to it, joined to the pane; RUN on a plugin composes
+  // the line the console would take, asks the new feed's title once, runs
+  // it, and lights a FEED capsule that opens the run's graph beside the
+  // catalogue. A real run on a scratch directory, removed at the end.
+  const proc = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
+    const fp = () => panes()[0];
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const rows = (p) => [...p.querySelectorAll('.files-row')];
+    const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const settle = async (want, n = 140) => { for (let i = 0; i < n; i++) { await sleep(500); if (want()) return true; } return false; };
+
+    await say('rm -r ~/smoke-process', 2500);
+    await say('mkdir ~/smoke-process', 2500);
+    await say('cd ~/smoke-process', 2500);
+    const chooser = fp().querySelector('.files-upload-input');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new TextEncoder().encode('process me\\n')], 'input.txt', { type: 'text/plain' }));
+    chooser.files = dt.files;
+    chooser.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle(() => named(fp(), 'input.txt'));
+    await say('cd ~', 2500);
+    await settle(() => named(fp(), 'smoke-process'));
+
+    // PROCESS on the directory: a catalogue bound to it opens beside
+    click(named(fp(), 'smoke-process').querySelector('.files-name')); await sleep(600);
+    const dirVerbs = [...fp().querySelectorAll('.files-row-zone .listing-action')].map(b => b.textContent.trim());
+    [...fp().querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
+    const opened = await settle(() => panes().length === 2, 40);
+    const cat = panes()[1];
+    await settle(() => rows(cat).length > 3, 60);
+    const catalogue = { heading: cat.querySelector('.files-path')?.textContent.trim(), caps: [...cat.querySelectorAll('.roster-cap')].map(c => c.textContent.trim()),
+      binding: cat.querySelector('.files-binding')?.textContent ?? '' };
+
+    // RUN on a plugin that needs nothing (simpledsapp's parameters are all
+    // optional; dircopy's --dir is required, and CUBE refuses it): the line
+    // composed, the title asked
+    const plugin = rows(cat).filter(r => /^pl-simpledsapp-v/.test(r.querySelector('.files-name')?.textContent.trim() ?? '')).pop();
+    click(plugin.querySelector('.files-name')); await sleep(600);
+    const pluginVerbs = [...cat.querySelectorAll('.files-row-zone .listing-action')].map(b => b.textContent.trim());
+    const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    [...cat.querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'RUN')?.click();
+    const asked = await settle(() => document.querySelector('#terminal .argus-ask') !== null, 20);
+    const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
+    term.value = 'smoke process run';
+    term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await settle(() => document.querySelectorAll('#terminal .argus-echo').length > echoesBefore, 30);
+    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+    const scheduled = await settle(() => cat.querySelector('.files-feed') !== null, 160);
+    const capsule = cat.querySelector('.files-feed')?.textContent.trim() ?? '';
+    const feedId = parseInt(capsule.replace(/\\D/g, ''), 10);
+    let graph = false;
+    if (scheduled) {
+      click(cat.querySelector('.files-feed'));
+      graph = await settle(() => [...document.querySelectorAll('.pane-dag')].some(p => p.offsetParent !== null && p.querySelector('.dag-canvas')?.style.display === 'block'), 120);
+    }
+    if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
+    await say('cd ~', 2000);
+    await say('rm -r ~/smoke-process', 3000);
+    return { dirVerbs, opened, catalogue, pluginVerbs, asked, askText, echoed, scheduled, capsule, graph };`);
+  check('PROCESS is offered on a directory', proc.dirVerbs.includes('PROCESS'), proc.dirVerbs.join(','));
+  check('PROCESS opens a catalogue bound to the place, and RUN schedules a run on it',
+    proc.opened && proc.catalogue.heading === '/bin' && /^INPUT .*smoke-process → new feed$/.test(proc.catalogue.binding) && proc.scheduled,
+    JSON.stringify({ opened: proc.opened, catalogue: proc.catalogue, scheduled: proc.scheduled, echoed: proc.echoed }));
+  check('the catalogue lists executables in catalogue traits', proc.catalogue.caps.join(',').startsWith('NAME'), proc.catalogue.caps.join(','));
+  check('a plugin row is offered RUN, and RUN asks the new feed\'s title once', proc.pluginVerbs.includes('RUN') && proc.asked && /Feed title/.test(proc.askText), proc.askText);
+  check('RUN lowers to the line the console would take', /^❯ cd ".*smoke-process"; pl-simpledsapp-v[\d.]+ -- feed_title="smoke process run"$/.test(proc.echoed), proc.echoed);
+  check('the FEED capsule opens the run\'s graph beside the catalogue', proc.graph, proc.capsule);
+  }
+
   if (stage('roster-shares')) {
   // The roster's rows carry the verbs that act on a FEED: setfacl grants to
   // an identity on a feed, so sharing belongs here. Indicating is not

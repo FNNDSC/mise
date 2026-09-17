@@ -66,6 +66,17 @@ export interface FileRowFacts {
   kind: 'file' | 'directory' | 'seriesFolder' | 'catalogue';
   /** The feed the path names, when it names one. */
   feed: number | null;
+  /**
+   * The plugin instance whose `data/` this row IS, when it is one: inside
+   * a feed only a node's own output can be processed, never a directory
+   * beneath it, since the kernel runs on the whole node whatever was named.
+   */
+  node?: number | null;
+  /**
+   * Whether the row stands in a catalogue BOUND to an input (a `/bin`
+   * pane PROCESS opened): only then can an executable be RUN from it.
+   */
+  bound?: boolean;
 }
 
 /** What a browser selection is. */
@@ -84,6 +95,8 @@ export interface RunsRowFacts {
 export interface PacsStudyFacts {
   /** The study resolves to a VFS path, so it can be pulled. */
   addressable: boolean;
+  /** Every series is home and its folder known, so the study's folder can be processed. */
+  allInCube: boolean;
 }
 
 /** What a PACS series row is. */
@@ -110,6 +123,15 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
   listing: 'files.row',
   rules: [
     { name: 'image', label: (): string => 'IMAGE', offered: (f: FileRowFacts): boolean => f.kind === 'seriesFolder' },
+    // PROCESS acts on a place: a directory outside a feed (a new feed roots
+    // on it), or a node's own data inside one (the run appends to the node).
+    {
+      name: 'process',
+      label: (): string => 'PROCESS',
+      offered: (f: FileRowFacts): boolean =>
+        (f.kind === 'directory' || f.kind === 'seriesFolder') && (f.feed === null || (f.node ?? null) !== null),
+    },
+    { name: 'run', label: (): string => 'RUN', offered: (f: FileRowFacts): boolean => f.kind === 'catalogue' && f.bound === true },
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
     { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
     { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
@@ -126,8 +148,11 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     { name: 'a plain file outside a feed', facts: { kind: 'file', feed: null } },
     { name: 'a file inside a feed', facts: { kind: 'file', feed: 12 } },
     { name: 'a directory', facts: { kind: 'directory', feed: null } },
+    { name: 'a directory inside a feed that is not a node', facts: { kind: 'directory', feed: 12, node: null } },
+    { name: "a node's data inside a feed", facts: { kind: 'directory', feed: 12, node: 456 } },
     { name: 'a DICOM series folder', facts: { kind: 'seriesFolder', feed: null } },
     { name: 'a catalogue entry', facts: { kind: 'catalogue', feed: null } },
+    { name: 'a catalogue entry in a bound catalogue', facts: { kind: 'catalogue', feed: null, bound: true } },
   ],
 };
 
@@ -167,10 +192,12 @@ export const PACS_STUDY_ROSTER: VerbRoster<PacsStudyFacts> = {
   listing: 'pacs.study',
   rules: [
     { name: 'pullStudy', label: (): string => 'PULL STUDY', offered: (f: PacsStudyFacts): boolean => f.addressable },
+    { name: 'process', label: (): string => 'PROCESS', offered: (f: PacsStudyFacts): boolean => f.allInCube },
   ],
   states: [
-    { name: 'a study with a path', facts: { addressable: true } },
-    { name: 'a study with none', facts: { addressable: false } },
+    { name: 'a study with a path', facts: { addressable: true, allInCube: false } },
+    { name: 'a study with none', facts: { addressable: false, allInCube: false } },
+    { name: 'a study wholly home', facts: { addressable: true, allInCube: true } },
   ],
 };
 
@@ -189,6 +216,7 @@ export const PACS_SERIES_ROSTER: VerbRoster<PacsSeriesFacts> = {
     // DIR opens the series' own folder as a browser, the same face of a
     // landed series as IMAGE, so it stands beside it under the same gate.
     { name: 'dir', label: (): string => 'DIR', offered: (f: PacsSeriesFacts): boolean => f.inCube && f.folderKnown },
+    { name: 'process', label: (): string => 'PROCESS', offered: (f: PacsSeriesFacts): boolean => f.inCube && f.folderKnown },
     { name: 'pull', label: (): string => 'PULL', offered: (f: PacsSeriesFacts): boolean => !f.inCube },
   ],
   states: [

@@ -31,8 +31,19 @@
  * orientation and side the pane was born with (ratio is emergent at 0.5), so a
  * pane stacked below or placed before its target returns exactly there.
  */
+/** One gathered series, as a desktop carries it (the GATHER pane's own row). */
+export interface DesktopSeries {
+  seriesUID: string;
+  description: string;
+  modality: string;
+  patient: string;
+  vfsPath: string;
+  folderPath?: string;
+  files?: number;
+}
+
 export interface DesktopAction {
-  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty' | 'catalogue' | 'graph';
+  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty' | 'catalogue' | 'graph' | 'gather';
   domain?: 'pacs' | 'files' | 'runs';
   query?: string;
   /**
@@ -48,6 +59,9 @@ export interface DesktopAction {
   node?: number;
   /** `catalogue`: the run strip's line, verbatim, so restore returns with RUN ready. */
   line?: string;
+  /** `gather`: the cohort's series, so restore re-gathers them; `name` its name when SAVE gave it one. */
+  series?: readonly DesktopSeries[];
+  name?: string;
   view?: readonly string[];
   target?: number;
   dir?: 'col' | 'row';

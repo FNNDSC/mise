@@ -39,6 +39,7 @@ import {
 import type { ProgressMessage } from '../../calypso/client.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
 import { PACS_SERIES_ROSTER, PACS_STUDY_ROSTER, verbRule_get, type PacsSeriesFacts } from '../roster/verbs.js';
+import type { GatherSeries } from '../gather/panel.js';
 import {
   progress_aggregate, progressCell_build,
   type ListingAction, type ListingProgress, type ListingTrait,
@@ -58,6 +59,10 @@ export interface PacsPanelHandlers {
   dir_open: (folderPath: string) => void;
   /** Opens a catalogue bound to a folder (a series', or a whole study's), to run something on it. */
   process_open: (folderPath: string) => void;
+  /** Gathers a series into the cohort: the GATHER pane beside the workspace takes it. */
+  gather_add: (entry: GatherSeries) => void;
+  /** Whether the cohort on stage holds this series (lights the row's GATHER). */
+  gathered_is: (seriesUID: string) => boolean;
 }
 
 /**
@@ -166,16 +171,6 @@ export function seriesPulled_mark(
  */
 function csvField_quote(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.split('"').join('""')}"` : value;
-}
-
-/** One gathered series: the cohort's unit. */
-interface GatherEntry {
-  seriesUID: string;
-  description: string;
-  modality: string;
-  patient: string;
-  vfsPath: string;
-  selected: boolean;
 }
 
 /**
@@ -302,10 +297,7 @@ export class PacsPanel {
   private readonly root: HTMLElement;
   private readonly command: HTMLInputElement;
   private readonly results: HTMLElement;
-  private readonly gatherRows: HTMLElement;
-  private readonly gatherName: HTMLInputElement;
   private readonly handlers: PacsPanelHandlers;
-  private readonly gather: Map<string, GatherEntry> = new Map();
   /**
    * The series folders that currently have a viewer or a browser on THIS
    * surface's stage, by folder path — the live source for lighting the IMAGE
@@ -375,8 +367,6 @@ export class PacsPanel {
     this.handlers = handlers;
     this.command = element_input(root, '#pacs-command');
     this.results = element_query(root, '#pacs-results');
-    this.gatherRows = element_query(root, '#pacs-gather-rows');
-    this.gatherName = element_input(root, '#pacs-gather-name');
     this.traits = this.traits_declare();
     this.actions = this.actions_declare();
     this.studyTraits = this.studyTraits_declare();
@@ -487,10 +477,7 @@ export class PacsPanel {
     this.command.addEventListener('keydown', (event: KeyboardEvent): void => {
       if (event.key === 'Enter') this.query_run();
     });
-    element_query(root, '#pacs-gather-save').addEventListener('click', (): void => this.manifest_save());
     element_query(root, '#pacs-export').addEventListener('click', (): void => this.answer_export());
-    element_query(root, '#pacs-gather-export').addEventListener('click', (): void => this.gather_export());
-    element_query(root, '#pacs-gather-feed').addEventListener('click', (): void => this.feed_create());
   }
 
   /**
@@ -907,7 +894,7 @@ export class PacsPanel {
       {
         label: verbRule_get(PACS_SERIES_ROSTER, 'gather').label({ inCube: true, folderKnown: true, addressable: true }),
         offered: (row: SeriesRow): boolean => seriesVerbs_offered(row.series).gather,
-        selected: (row: SeriesRow): boolean => this.gather.has(row.series.seriesUID),
+        selected: (row: SeriesRow): boolean => this.handlers.gathered_is(row.series.seriesUID),
         run: (row: SeriesRow): void => this.gather_note(row.study, row.series),
       },
       {
@@ -1529,23 +1516,21 @@ export class PacsPanel {
     this.listing.filter_toggle(open);
   }
 
-  /** Records one series into the gather without touching badges. */
+  /**
+   * Hands one series to the cohort: the GATHER pane beside the workspace
+   * lists it, and this row's GATHER lights from the cohort's answer.
+   */
   private gather_note(study: PacsStudy, series: PacsSeries): void {
     if (series.vfsPath === undefined) return;
-    this.gather_add({
+    this.handlers.gather_add({
       seriesUID: series.seriesUID,
       description: series.description,
       modality: series.modality,
       patient: study.patientId || study.patientName,
       vfsPath: series.vfsPath,
-      selected: true,
+      ...(series.folderPath !== undefined ? { folderPath: series.folderPath } : {}),
+      ...(series.fileCount !== undefined ? { files: series.fileCount } : {}),
     });
-  }
-
-  /** Adds one series to the gather and repaints the tray. */
-  private gather_add(entry: GatherEntry): void {
-    this.gather.set(entry.seriesUID, entry);
-    this.gather_render();
     this.selected_refresh();
   }
 
@@ -1571,90 +1556,6 @@ export class PacsPanel {
    */
   private selected_refresh(): void {
     this.listing.indication_refresh();
-  }
-
-  /** Paints the gather tray: the curated cohort. */
-  private gather_render(): void {
-    this.gatherRows.replaceChildren();
-    for (const entry of this.gather.values()) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = 'pacs-gather-row';
-      const check: HTMLInputElement = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = entry.selected;
-      check.addEventListener('change', (): void => {
-        entry.selected = check.checked;
-      });
-      const label: HTMLSpanElement = document.createElement('span');
-      label.className = 'pacs-gather-label';
-      label.textContent = `${entry.patient} · ${entry.description || entry.seriesUID} [${entry.modality}]`;
-      row.append(check, label);
-      this.gatherRows.appendChild(row);
-    }
-  }
-
-  /** @returns The curated (still-selected) cohort. */
-  private cohort_selected(): GatherEntry[] {
-    return [...this.gather.values()].filter((entry: GatherEntry): boolean => entry.selected);
-  }
-
-  /** Writes the cohort manifest to `~/gather/<name>`. */
-  private manifest_save(): void {
-    const cohort: GatherEntry[] = this.cohort_selected();
-    const name: string = this.gatherName.value.trim() || `gather-${Date.now()}`;
-    if (cohort.length === 0) return;
-    const manifest: string = JSON.stringify({
-      name,
-      gatheredAt: new Date().toISOString(),
-      series: cohort.map((entry: GatherEntry) => ({
-        seriesUID: entry.seriesUID,
-        description: entry.description,
-        modality: entry.modality,
-        patient: entry.patient,
-        vfsPath: entry.vfsPath,
-      })),
-    });
-    this.handlers.command_run('mkdir ~/gather');
-    this.handlers.command_show(`touch --withContents '${manifest}' ~/gather/${name}.json`);
-  }
-
-  /**
-   * Writes the gathered series as a table a spreadsheet reads.
-   *
-   * The cohort's own export, beside the cohort's own verbs. The answer has
-   * one of these too, on the results frame, and the two are different
-   * questions: this one covers what was gathered, which is a choice the
-   * operator made, and the other covers everything the PACS said.
-   *
-   * Composed here and written with the same visible command SAVE uses, so
-   * the operator reads where it lands before it lands. It goes into CFS
-   * rather than onto the machine the browser runs on, since the engine is
-   * elsewhere.
-   */
-  private gather_export(): void {
-    const cohort: GatherEntry[] = this.cohort_selected();
-    if (cohort.length === 0) return;
-    const name: string = this.gatherName.value.trim() || `gather-${Date.now()}`;
-    const rows: string[] = [
-      ['patient', 'series', 'modality', 'seriesUID', 'path'].join(','),
-      ...cohort.map((entry: GatherEntry): string => [
-        entry.patient, entry.description, entry.modality, entry.seriesUID, entry.vfsPath,
-      ].map(csvField_quote).join(',')),
-    ];
-    this.handlers.command_run('mkdir ~/gather');
-    this.handlers.command_show(`touch --withContents '${rows.join('\n')}' ~/gather/${name}.csv`);
-  }
-
-  /**
-   * Roots a new feed on the cohort: one visible, auditable command. Pull is
-   * idempotent, so already-retrieved series confirm rather than re-fetch.
-   */
-  private feed_create(): void {
-    const cohort: GatherEntry[] = this.cohort_selected();
-    const name: string = this.gatherName.value.trim() || `gather-${Date.now()}`;
-    if (cohort.length === 0) return;
-    const paths: string = cohort.map((entry: GatherEntry): string => entry.vfsPath).join(' ');
-    this.handlers.command_show(`pull --new-feed "${name}" ${paths}`);
   }
 }
 

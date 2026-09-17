@@ -100,6 +100,8 @@ describe('the verb roster', () => {
       'runs.row',
       'pacs.study',
       'pacs.series',
+      'gather.cohort',
+      'gather.series',
     ]);
   });
 
@@ -170,6 +172,14 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'not retrieved and unaddressable': ['PULL'],
     'home, folder not yet named': ['GATHER'],
     'home, folder named': ['GATHER', 'IMAGE', 'DIR', 'PROCESS'],
+  },
+  'gather.cohort': {
+    'holding series': ['SAVE', 'EXPORT CSV', 'CREATE FEED', 'DISMISS'],
+    'emptied': ['DISMISS'],
+  },
+  'gather.series': {
+    'folder named': ['REMOVE', 'IMAGE', 'PROCESS'],
+    'folder not yet named': ['REMOVE'],
   },
 };
 

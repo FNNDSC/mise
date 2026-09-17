@@ -34,6 +34,7 @@ import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
+import { GatherPanel, type GatherSeries } from '../features/gather/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
@@ -682,6 +683,8 @@ async function surface_start(token: string): Promise<void> {
   // Panel rosters: every live controller by instance id, for routing —
   // targeted progress, and the claim rule for console-issued models.
   const filesPanels: Map<string, FilesPanel> = new Map();
+  /** The GATHER panes on stage, by pane id (one cohort each). */
+  const gatherPanels: Map<string, GatherPanel> = new Map();
   const dagPanels: Map<string, DagPanel> = new Map();
 
   // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
@@ -2100,6 +2103,72 @@ async function surface_start(token: string): Promise<void> {
     if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
   };
 
+  /**
+   * The GATHER pane: a cohort as a listing, born beside the PACS workspace
+   * and joined to its group. Its rows' IMAGE and PROCESS open into that
+   * group; DISMISS closes the pane (the cohort is forgotten on the surface
+   * only — a saved manifest is a file in ~/gather).
+   *
+   * @param id - The pane id.
+   * @returns The instance.
+   */
+  const gatherInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-gather');
+    const panel: GatherPanel = new GatherPanel(mount, pane_find(mount, '.gather-rows'), {
+      command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
+      command_show: (line: string): void => terminal.line_run(line),
+      image_open: (folderPath: string): void => {
+        void image_open(id, folderPath).then((line: string): void => terminal.line_note(line));
+      },
+      process_open: (folderPath: string): void => process_open(id, { input: folderPath, feed: null, node: null }),
+      name_ask: (suggest: string): Promise<string | null> => terminal.ask_open({ message: 'Cohort name: ', kind: 'text', suggest }),
+      changed: (): void => pacsStage_relight(),
+      dismiss: (): void => {
+        if (!layout.leaf_close(id)) home_apply();
+        orphans_dispose();
+        pacsStage_relight();
+      },
+    });
+    gatherPanels.set(id, panel);
+    return {
+      id,
+      kind: 'gather',
+      mount,
+      dispose: (): void => {
+        gatherPanels.delete(id);
+        subjects.pane_leave(id);
+      },
+    };
+  };
+
+  /**
+   * Gathers series into the cohort on stage, opening the GATHER pane below
+   * the PACS listing (joined to its group) when there is none.
+   *
+   * @param entries - The series to gather.
+   * @param host - The pane the GATHER pane splits from; the PACS workspace by default.
+   * @returns The GATHER pane's id, or null when no pane could be opened.
+   */
+  const gather_open = (entries: ReadonlyArray<GatherSeries>, host: string = 'pacs'): string | null => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    let id: string | null = [...gatherPanels.keys()].find((paneId: string): boolean => shown.has(paneId)) ?? null;
+    if (id === null) {
+      const from: string = shown.has(host) ? host : (errandHost_find() ?? host);
+      const spawned: PaneInstance = instance_spawn('gather', 'pacs');
+      if (!layout.leaf_split(from, replayPlace?.dir ?? 'row', spawned.id, replayPlace?.before ?? false)) {
+        paneInstance_dispose(spawned.id);
+        layout.mount_remove(spawned.id);
+        return null;
+      }
+      birth_record(spawned.id, from, replayPlace?.dir ?? 'row', replayPlace?.before ?? false);
+      id = spawned.id;
+    }
+    const panel: GatherPanel | undefined = gatherPanels.get(id);
+    if (panel === undefined) return null;
+    for (const entry of entries) panel.series_add(entry);
+    return id;
+  };
+
   const viewInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-view');
     const panel: ViewerPanel = new ViewerPanel(
@@ -2512,6 +2581,12 @@ async function surface_start(token: string): Promise<void> {
     // PROCESS on a series or a study: a catalogue bound to its folder,
     // beside the PACS workspace. A PACS folder is outside any feed.
     process_open: (folderPath: string): void => process_open('pacs', { input: folderPath, feed: null, node: null }),
+    // GATHER: the cohort is a pane beside the workspace, not a tray under it.
+    gather_add: (entry: GatherSeries): void => { gather_open([entry]); },
+    gathered_is: (seriesUID: string): boolean => {
+      const shown: Set<string> = new Set(layout.panes_shown());
+      return [...gatherPanels].some(([paneId, panel]): boolean => shown.has(paneId) && panel.has(seriesUID));
+    },
     workspace_close: (): void => home_apply(),
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
@@ -2820,6 +2895,14 @@ async function surface_start(token: string): Promise<void> {
         const path: string | null = filesPanels.get(id)?.path_current() ?? null;
         if (typeof path !== 'string' || path.length === 0) continue;
         emit({ op: 'dir', path, target, ...place });
+      } else if (kind === 'gather') {
+        // The cohort travels with the desktop: its series, and its name.
+        const panel: GatherPanel | undefined = gatherPanels.get(id);
+        if (panel === undefined) continue;
+        const series: GatherSeries[] = [...panel.entries_get()];
+        const name: string | null = panel.name_get();
+        emit({ op: 'gather', series, target, ...place, ...(name !== null ? { name } : {}) });
+        if (label === undefined) label = name ?? `GATHER · ${series.length} series`;
       } else if (kind === 'dag') {
         // A run's graph beside its catalogue: the feed it graphs.
         const graphed: number | null = dagPanels.get(id)?.feed_get() ?? null;
@@ -2839,7 +2922,7 @@ async function surface_start(token: string): Promise<void> {
     const content = actions.filter((action): boolean => action.op !== 'domain' || action.feed !== undefined);
     if (content.length === 0) return;
     const thumbnail: string | undefined = stageStrip_capture(stageIds);
-    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag' };
+    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag', gather: 'gather' };
     const members: string[] = [...new Set(content.map((action): string => memberOf[action.op] ?? 'pane'))];
     // A viewer desktop is keyed by its series, so returning to it updates the
     // one card. A viewer-less desktop is keyed by the SET of content it holds,
@@ -2854,7 +2937,10 @@ async function surface_start(token: string): Promise<void> {
       regard = { address: anchor, modelKind: 'dicom.series' };
     } else {
       const firstPath: string | undefined = content.map((action): string | undefined => action.path).find((path): boolean => path !== undefined);
-      const signature: string = content.map((action): string => action.path ?? (action.input !== undefined ? `catalogue:${action.input}` : action.feed !== undefined ? `feed:${action.feed}` : action.op)).sort().join('|');
+      const signature: string = content.map((action): string => action.path
+        ?? (action.input !== undefined ? `catalogue:${action.input}`
+          : action.series !== undefined ? `gather:${action.series.map((one): string => one.seriesUID).join(',')}`
+            : action.feed !== undefined ? `feed:${action.feed}` : action.op)).sort().join('|');
       const domainName: string = preset === 'dag' ? 'RUNS' : preset.toUpperCase();
       id = `${preset}:${signature}`;
       cardLabel = label !== undefined && label !== ''
@@ -3003,6 +3089,14 @@ async function surface_start(token: string): Promise<void> {
           replayPlace = null;
           const opened: string | null = catalogues().find((paneId): boolean => !before.has(paneId)) ?? null;
           if (opened !== null && action.line !== undefined) filesPanels.get(opened)?.commandLine_set(action.line);
+          produced.push(opened);
+        } else if (action.op === 'gather' && action.series !== undefined) {
+          // The cohort returns as it was gathered, named if it was named.
+          if (host !== null) layout.focus_set(host);
+          replayPlace = place;
+          const opened: string | null = gather_open([...action.series], host ?? 'pacs');
+          replayPlace = null;
+          if (opened !== null && action.name !== undefined) gatherPanels.get(opened)?.name_set(action.name);
           produced.push(opened);
         } else if (action.op === 'graph' && action.feed !== undefined) {
           if (host !== null) layout.focus_set(host);
@@ -3625,6 +3719,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);
   paneFactory_register('tags', tagsInstance_build);
+  paneFactory_register('gather', gatherInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {

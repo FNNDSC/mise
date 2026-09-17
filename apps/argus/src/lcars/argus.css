@@ -1363,23 +1363,6 @@ main {
 }
 
 #pacs-form input,
-#pacs-gather-name {
-  background: black;
-  border: 1px solid var(--pumpkin-pie);
-  border-radius: 0.4rem;
-  color: var(--butter);
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.8rem;
-  padding: 0.15rem 0.5rem;
-  outline: none;
-}
-
-#pacs-form input:focus,
-#pacs-command:focus,
-#pacs-gather-name:focus {
-  border-color: var(--harvestgold);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--harvestgold) 40%, transparent);
-}
 
 #pacs-commandline {
   display: flex;
@@ -1636,42 +1619,36 @@ main {
 .pacs-badge[data-state='error'] { color: var(--state-error); }
 .pacs-badge[data-state='unconfirmed'] { color: var(--honey); }
 
-#pacs-gather {
-  border-top: 2px solid var(--pumpkin-pie);
-  padding-top: 0.4rem;
-}
-
-.pacs-gather-head {
+/* The GATHER pane: a cohort as a listing, framed like the roster (a rule
+ * turning through an elbow into the spine, the mode frame on the spine). */
+.pane-gather {
   display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  margin-bottom: 0.4rem;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.pacs-gather-title {
-  color: var(--harvestgold);
-  font-family: var(--face-label);
-  font-weight: bold;
-  letter-spacing: 0.12em;
+.gather-listing {
+  --roster-gap: 0.8rem;
+  --roster-pad: 6px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-right: var(--spine-w);
 }
 
-/* The gathered rows scroll within a bounded tray rather than growing it
-   without limit: an unbounded tray steals height from the listing above it,
-   which reflows the field and jogs its rows every time a series is gathered. */
-#pacs-gather-rows {
-  max-height: 8rem;
+.gather-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
 }
 
-.pacs-gather-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.8rem;
-  padding: 1px 6px;
-}
-
-.pacs-gather-label { color: var(--butter); }
+.gather-cohort-name { color: var(--harvestgold); font-weight: bold; }
+.gather-series-desc { color: var(--butter); }
+.gather-series-state { color: var(--honey); text-transform: uppercase; font-size: 0.75rem; }
 
 /* ------------------------------------------------------------ workspace row */
 
@@ -2075,6 +2052,7 @@ body[data-zoom]:not([data-zoom='console'])
 .tags-body,
 .dag-canvas,
 .dag-roster,
+.gather-listing,
 .pacs-listing {
   --frame-top: var(--mode-frame-top, 0px);
   /* The closed spine is a CONTROL — pressing it opens the mode frame — and
@@ -2097,6 +2075,7 @@ body[data-zoom]:not([data-zoom='console'])
 .workspace-pane[data-modes='open'] .tags-body,
 .workspace-pane[data-modes='open'] .dag-canvas,
 .workspace-pane[data-modes='open'] .dag-roster,
+.workspace-pane[data-modes='open'] .gather-listing,
 .workspace-pane[data-modes='open'] .pacs-listing {
   --spine-w: var(--bar-w);
 }

@@ -55,6 +55,8 @@ export interface ArgusHost {
   consoleZoom_toggle(): void;
   /** Opens the launcher, the place a session begins when nothing is open. */
   launcher_enter(): void;
+  /** Who this session belongs to, as the prompt names them; null before the first prompt. */
+  identity_get(): string | null;
   /** The serialized desktop of the current composition. */
   desktop_serialize(): string;
 }
@@ -68,7 +70,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'launcher', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'launcher', 'attach', 'argus',
 ]);
 
 /**
@@ -224,8 +226,56 @@ const VERBS_HELP: string = [
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
   'desktop save|load|show|list|delete [name]',
+  'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
 ].join('\n');
+
+/**
+ * How to reach this session from somewhere else, as lines that can be run.
+ *
+ * The token is a bearer credential with no expiry and no revocation, so it
+ * is masked until it is asked for: this surface is screenshotted, pasted
+ * and projected, and a secret that only appears on purpose is one that
+ * cannot leave by accident. `--reveal` prints it whole, the same bargain
+ * the PACS form makes with what it stands in for.
+ *
+ * Loopback is stated rather than implied. A daemon bound to 127.0.0.1 is
+ * unreachable from another machine whatever line is printed, and a screen
+ * that offers an address nobody else can use is worse than one that says so.
+ *
+ * @param host - The surface bindings.
+ * @param reveal - Whether to print the token rather than mask it.
+ * @returns The block to print.
+ */
+function attachLines_compose(host: ArgusHost, reveal: boolean): string {
+  const here: URL = new URL(window.location.href);
+  const token: string = here.searchParams.get('token') ?? '';
+  const shown: string = token === '' ? '' : reveal ? token : '\u2022'.repeat(8);
+  const url: string = token === '' ? here.origin + here.pathname : `${here.origin}${here.pathname}?token=${shown}`;
+  const identity: string | null = host.identity_get();
+  const loopback: boolean = /^(127\.|\[?::1\]?$|localhost$)/.test(here.hostname);
+  const lines: string[] = ['attach \u2014 this session, from anywhere that can reach it'];
+  if (identity !== null && identity !== '') lines.push(`  identity          ${identity}`);
+  lines.push('');
+  lines.push('  this machine      chell --remote');
+  lines.push(`  another machine   chell --remote --attach "${url}"`);
+  lines.push(`  another browser   ${url}`);
+  lines.push('');
+  if (loopback) {
+    lines.push('  bound to loopback \u2014 another machine cannot reach this session;');
+    lines.push('  relaunch the daemon with CALYPSO_BIND=0.0.0.0 to change that');
+  }
+  if (token === '') {
+    lines.push('  this page carries no token: it was opened without one, and a');
+    lines.push('  second surface cannot attach with what is on screen');
+  } else if (!reveal) {
+    lines.push('  the token is masked \u2014 `attach --reveal` prints it. It is a bearer');
+    lines.push('  credential with no expiry: treat the line like a password');
+  } else {
+    lines.push('  revealed \u2014 anyone who reads this line holds the session');
+  }
+  return lines.join('\n');
+}
 
 /**
  * Runs one argus-language line.
@@ -246,6 +296,14 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   if (subject === 'back') {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     return 'back';
+  }
+
+  if (subject === 'attach') {
+    // The surface holds what a second surface needs: this page reached the
+    // daemon by a URL that carries the attach token, so nothing is asked of
+    // the session to answer this — and nothing could be, since the daemon
+    // deliberately has no route that hands a token out.
+    return attachLines_compose(host, verb === '--reveal' || arg === '--reveal');
   }
 
   if (subject === 'dashboard' || subject === 'launcher') {

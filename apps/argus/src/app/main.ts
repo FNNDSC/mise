@@ -1437,7 +1437,7 @@ async function surface_start(token: string): Promise<void> {
     }
     // A volume or a DICOM slice is an image: it opens beside the browser,
     // never as bytes in a text view.
-    if (VOLUME_FILE_PATTERN.test(action.path) || DICOM_FILE_PATTERN.test(action.path)) {
+    if (imagery_is(action.path)) {
       void image_open(id, action.path).then((line: string): void => terminal.line_note(line));
       return;
     }
@@ -1461,6 +1461,21 @@ async function surface_start(token: string): Promise<void> {
       panel.content_show(action.path, read.text);
     });
   };
+
+  /**
+   * Whether a path names something an image pane draws rather than a text
+   * view: a NIfTI/MGZ volume, or a DICOM slice.
+   *
+   * One rule, asked by every surface that answers a file click. The browser
+   * knew it and the node dive did not, so a volume a run had just produced
+   * was read as text inside its own node and refused by the kernel — the
+   * one file in the feed the operator most wanted to see.
+   *
+   * @param path - The file's path.
+   * @returns True when an image pane is what opens it.
+   */
+  const imagery_is = (path: string): boolean =>
+    VOLUME_FILE_PATTERN.test(path) || DICOM_FILE_PATTERN.test(path);
 
   /** Stamps a files body (frame members + panel) from the files template. */
   const filesBody_stamp = (): HTMLElement => {
@@ -2294,6 +2309,13 @@ async function surface_start(token: string): Promise<void> {
       // group (the overlay shares its identity), feeding any slaved viewer.
       subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });
       if (subjects.groupHasViewer(id)) {
+        return;
+      }
+      // A run's own output is usually a volume, and a volume is an image:
+      // it opens beside the graph, joined to its group, exactly as it does
+      // from the browser. Reading it as text is what the kernel refuses.
+      if (imagery_is(action.path)) {
+        void image_open(id, action.path).then((line: string): void => terminal.line_note(line));
         return;
       }
       if (extension_isImage(action.path)) {

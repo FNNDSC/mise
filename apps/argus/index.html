@@ -86,10 +86,15 @@
       <div class="wrap" id="gap">
         <div class="left-frame">
           <div>
-            <button class="panel-3 domain-live" id="gutter-files" title="the console's browser: the workspace, following the session cwd">FILES<span class="hop">-01</span></button>
-            <button class="panel-4 domain-live" id="gutter-runs">RUNS<span class="hop">-02</span></button>
-            <button class="panel-5 domain-live" id="gutter-tools">PACS<span class="hop">-03</span></button>
-            <button class="panel-6 domain-inert">SOURCES<span class="hop">-04</span></button>
+            <!-- The gutter reads top down, and the first block is where a
+                 session begins. The panel-N classes are POSITIONS in the
+                 frame's hue cycle (and carry the first block's own corner),
+                 so a domain moving up takes the class of the seat it moves
+                 into rather than its colour with it. -->
+            <button class="panel-3 domain-live" id="gutter-dashboard" title="where a session begins: what each domain holds, and the way into it">DASHBOARD<span class="hop">-01</span></button>
+            <button class="panel-4 domain-live" id="gutter-files" title="the console's browser: the workspace, following the session cwd">FILES<span class="hop">-02</span></button>
+            <button class="panel-5 domain-live" id="gutter-runs">RUNS<span class="hop">-03</span></button>
+            <button class="panel-6 domain-live" id="gutter-tools">PACS<span class="hop">-04</span></button>
             <button class="panel-console domain-live" id="gutter-console" title="summon the console">CONSOLE<span class="hop">-05</span></button>
             <button class="panel-lang domain-live" id="lang-pill" title="the argus command line (Ctrl-B :)">LANG</button>
             <div class="panel-spacer"></div>
@@ -547,6 +552,42 @@
                          placeholder="run a command to claim this pane &mdash; feed diagram feed_12, ls ~/feeds, pacs query ..." />
                 </div>
                 <div class="empty-result"></div>
+              </div>
+            </template>
+            <template id="tpl-pane-launcher">
+              <!-- LAUNCHER: where a session begins when nothing is open. One
+                   block per domain, each carrying what it holds now and
+                   ending in the verb that opens it; its rows are doors. -->
+              <div class="workspace-pane pane-launcher">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title pane-title">DASHBOARD</span>
+                    <span class="pane-mode"></span>
+                    <span class="pane-state"></span>
+                  </div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <span class="drawer-group drawer-structure">
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                    <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                    <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  </span>
+                  <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                    <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                  </span>
+                  <span class="drawer-group drawer-children"></span>
+                </div>
+                <div class="launcher-body">
+                  <div class="launcher-grid" aria-label="Where to begin"></div>
+                  <button class="pacs-capsule launcher-start" title="begin here every time, or leave the session as you last had it">START HERE · OFF</button>
+                </div>
               </div>
             </template>
             <template id="tpl-pane-panes">

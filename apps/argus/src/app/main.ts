@@ -15,7 +15,7 @@
  *
  * @module
  */
-import { feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
@@ -35,6 +35,7 @@ import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, exten
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
+import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
@@ -525,6 +526,43 @@ const LCARS_SCHEMES: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'nemesis', label: 'NEMESIS' },
   { key: 'pharos', label: 'PHAROS' },
 ];
+
+/** The localStorage key remembering where a session begins. */
+const LANDING_STORAGE_KEY: string = 'argus-landing';
+
+/** How often the dashboard re-reads what each domain holds, while it is on stage. */
+const DASHBOARD_TICK_MS: number = 15_000;
+
+/**
+ * Whether this browser begins at the launcher.
+ *
+ * A browser that has never said starts there once: the launcher is the
+ * answer to "where am I, what can I do, what next", and the resting
+ * workspace answers none of them at once. Having seen it, the operator's
+ * own choice stands — the capsule on the launcher itself sets this.
+ *
+ * @returns True when a session should open on the launcher.
+ */
+function landing_isLauncher(): boolean {
+  try {
+    return (window.localStorage.getItem(LANDING_STORAGE_KEY) ?? 'launcher') === 'launcher';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Remembers where a session begins.
+ *
+ * @param on - True to begin at the launcher, false to begin as last left.
+ */
+function landing_set(on: boolean): void {
+  try {
+    window.localStorage.setItem(LANDING_STORAGE_KEY, on ? 'launcher' : 'last');
+  } catch {
+    // A browser without storage still gets the session-long choice.
+  }
+}
 
 /** The localStorage key remembering the theme. */
 const LCARS_STORAGE_KEY: string = 'argus-theme';
@@ -1881,6 +1919,7 @@ async function surface_start(token: string): Promise<void> {
    * @returns The console line to print.
    */
   const image_open = async (fromId: string | null, path: string, options: { force?: boolean } = {}, onOpen?: (id: string) => void): Promise<string> => {
+    launcher_yield();
     // The pane is on stage before the kernel is asked. The ask is a header
     // read over a wire and can take seconds; a press that shows nothing for
     // those seconds is a press the operator repeats.
@@ -1945,6 +1984,7 @@ async function surface_start(token: string): Promise<void> {
    * @param binding - The input, and the feed/node a run of it lands in.
    */
   const process_open = (fromId: string, binding: CatalogueBinding): void => {
+    launcher_yield();
     const shown: Set<string> = new Set(layout.panes_shown());
     for (const [id, bound] of catalogueBindings) {
       if (shown.has(id) && bound.input === binding.input) { layout.focus_set(id); return; }
@@ -2010,6 +2050,7 @@ async function surface_start(token: string): Promise<void> {
    * @param feedId - The feed.
    */
   const feed_open = (fromId: string, feedId: number): void => {
+    launcher_yield();
     const shown: Set<string> = new Set(layout.panes_shown());
     for (const [id, panel] of dagPanels) {
       if (id !== 'dag' && shown.has(id) && panel.feed_get() === feedId) { layout.focus_set(id); return; }
@@ -2096,6 +2137,7 @@ async function surface_start(token: string): Promise<void> {
   };
 
   const dir_open = (folderPath: string): void => {
+    launcher_yield();
     const shown: Set<string> = new Set(layout.panes_shown());
     for (const [id] of filesPanels) {
       if (shown.has(id) && subjects.regard_get(id)?.address === folderPath) { layout.focus_set(id); return; }
@@ -2448,6 +2490,8 @@ async function surface_start(token: string): Promise<void> {
   // PANES is a gutter domain like FILES/RUNS/PACS: its mount is a primary the
   // layout can raise, its card grid wired once the dormant set and restore
   // exist below.
+  const launcherMount: HTMLElement = template_stamp('tpl-pane-launcher');
+  paneInstance_adopt({ id: 'launcher', kind: 'launcher', mount: launcherMount });
   const panesMount: HTMLElement = template_stamp('tpl-pane-panes');
   paneInstance_adopt({ id: 'panes', kind: 'panes', mount: panesMount });
   const filesPanel: FilesPanel = filesPanels.get('files') as FilesPanel;
@@ -2673,6 +2717,7 @@ async function surface_start(token: string): Promise<void> {
       ['dag', dagPrimary.mount],
       ['files', filesPrimary.mount],
       ['pacs', element_require('pacs-workspace')],
+      ['launcher', launcherMount],
       ['panes', panesMount],
     ]),
   );
@@ -2692,6 +2737,9 @@ async function surface_start(token: string): Promise<void> {
   layout.preset_register('dag', (): LayoutNode => ({ pane: 'dag' }));
   // PANES-06 is a full-workspace preset too: the grid of dormant groups.
   layout.preset_register('panes', (): LayoutNode => ({ pane: 'panes' }));
+  // The launcher owns the stage as well: it is where a session begins, and
+  // what it says is the whole of what is on screen.
+  layout.preset_register('launcher', (): LayoutNode => ({ pane: 'launcher' }));
   // Any geometry change (split, close, claim, preset, a settled divider
   // drag) refits the measured canvases once the DOM has settled; a
   // reparented WebGL canvas otherwise keeps its old pixel size.
@@ -2868,7 +2916,7 @@ async function surface_start(token: string): Promise<void> {
     if (desktopReplaying) return;
     const shown: Set<string> = new Set(layout.panes_shown());
     const preset: string = layout.activePreset_get();
-    if (preset === 'panes') return;
+    if (preset === 'panes' || preset === 'launcher') return;
     // Panes on stage in creation order (the registry's insertion order): the
     // domain primary is earliest (action 0), content follows as opened. Each
     // action records the pane it split FROM, as that pane's index in this
@@ -3014,7 +3062,11 @@ async function surface_start(token: string): Promise<void> {
     const shown: Set<string> = new Set(layout.panes_shown());
     for (const instance of paneInstances_list()) {
       if (shown.has(instance.id)) continue;
-      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs' || instance.id === 'panes') continue;
+      // The primaries are the domains' own panes and outlive any preset;
+      // the launcher is one of them, and disposing it left the word that
+      // opens it pointing at a pane that no longer existed (an empty stage).
+      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs'
+        || instance.id === 'panes' || instance.id === 'launcher') continue;
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
     }
@@ -3175,6 +3227,139 @@ async function surface_start(token: string): Promise<void> {
     }
   };
 
+  /**
+   * The launcher is the EMPTY state, so the moment anything opens it is no
+   * longer the truth: content arriving (a viewer, a browser, a catalogue)
+   * takes the stage back to home, where a pane has somewhere to live. A
+   * pane spawned against a stage that holds only the launcher has no host
+   * and lands nowhere, which reads as a press that did nothing.
+   */
+  /** Opens the launcher: the domain a session begins in, and returns to. */
+  const launcher_enter = (): void => {
+    domain_enter('launcher');
+    launcherPanel.render();
+    layout.focus_set('launcher');
+  };
+
+  const launcher_yield = (): void => {
+    if (layout.activePreset_get() !== 'launcher') return;
+    dagShown = false;
+    home_apply();
+  };
+
+  /**
+   * What the launcher's blocks say, asked of the kernel at paint time.
+   *
+   * Cache-resident reads only: the roster the RUNS pane already keeps, a
+   * listing of home, and the dormant set the surface holds itself. A first
+   * screen that costs a visit to CUBE is a first screen that opens slowly.
+   *
+   * @returns The blocks, the one with most to say first.
+   */
+  const launcherTiles_build = async (): Promise<ReadonlyArray<LauncherTile>> => {
+    const [roster, home]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
+      client.line_execute('proc feeds', { silent: true, observe: false }),
+      client.line_execute('ls ~', { silent: true, observe: false }),
+    ]);
+    interface RosterFeed { id: number; title: string; status: string }
+    let feeds: RosterFeed[] = [];
+    for (const envelope of roster.envelopes) {
+      const model = envelope.model;
+      if (model === undefined || model.kind !== FEED_LIST_MODEL_KIND) continue;
+      const parsed = feedListModelSchema.safeParse(model.data);
+      if (parsed.success) feeds = parsed.data.feeds as RosterFeed[];
+    }
+    const errored: number = feeds.filter((feed: RosterFeed): boolean => /error/i.test(feed.status)).length;
+    const live: number = feeds.filter((feed: RosterFeed): boolean => /running|scheduled|created|started/i.test(feed.status)).length;
+    let entries: FsListingEntry[] = [];
+    let homePath: string = '~';
+    for (const envelope of home.envelopes) {
+      if (envelope.model?.kind !== 'fs.listing') continue;
+      const listings = envelope.model.data as Array<{ path?: unknown; items?: unknown }>;
+      const first = listings[0];
+      if (first !== undefined && Array.isArray(first.items)) {
+        entries = first.items as FsListingEntry[];
+        if (typeof first.path === 'string') homePath = first.path;
+      }
+    }
+    const folders: FsListingEntry[] = entries.filter((entry: FsListingEntry): boolean => entry.type === 'dir');
+    const desktops: GroupSnapshot[] = dormant.list();
+
+    const analyses: LauncherTile = {
+      key: 'analyses', name: 'ANALYSES', hue: '--october-sunset', numeral: '3',
+      figures: [
+        { text: `${feeds.length} FEEDS` },
+        ...(live > 0 ? [{ text: `${live} RUNNING` }] : []),
+        ...(errored > 0 ? [{ text: `${errored} ERRORED`, errored: true, open: (): void => runs_show('status:error') }] : []),
+      ],
+      rows: feeds.slice(0, 6).map((feed: RosterFeed): LauncherRow => ({
+        text: `${feed.id}  ${feed.title}`,
+        errored: /error/i.test(feed.status),
+        open: (): void => { runs_show(); dagPanels.get('dag')?.feed_enter(feed.id); },
+      })),
+      verb: 'OPEN THE ROSTER',
+      enter: (): void => runs_show(),
+    };
+    const files: LauncherTile = {
+      key: 'files', name: 'FILES', hue: '--harvestgold', numeral: '2',
+      figures: [{ text: `${entries.length} ENTRIES` }],
+      rows: folders.slice(0, 5).map((entry: FsListingEntry): LauncherRow => ({
+        text: entry.name,
+        open: (): void => {
+          dagShown = false;
+          home_apply();
+          const at: string = homePath.endsWith('/') ? `${homePath}${entry.name}` : `${homePath}/${entry.name}`;
+          terminal.line_run(`cd "${at}"`);
+        },
+      })),
+      verb: 'OPEN HOME',
+      enter: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
+    };
+    const pacsAnswer: string = pacsPanel.query_get() ?? '';
+    const pacs: LauncherTile = {
+      key: 'pacs', name: 'PACS', hue: '--daybreak', numeral: '4',
+      figures: [{ text: pacsAnswer === '' ? 'NO ANSWER' : 'ANSWERED' }],
+      // With nothing asked yet the block teaches instead of apologising:
+      // the line it would take, dropped into the console ready to finish.
+      rows: pacsAnswer === ''
+        ? [
+          { text: 'pacs query PatientID:…', open: (): void => terminal.line_offer('pacs query PatientID:') },
+          { text: 'pacs query AccessionNumber:…', open: (): void => terminal.line_offer('pacs query AccessionNumber:') },
+        ]
+        : [{ text: pacsAnswer.slice(0, 48) }],
+      verb: 'ASK A PACS',
+      enter: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
+    };
+    const panes: LauncherTile = {
+      key: 'panes', name: 'PANES', hue: '--butter', numeral: '6',
+      figures: [{ text: desktops.length === 0 ? 'EMPTY' : `${desktops.length} DESKTOPS` }],
+      rows: desktops.slice(0, 5).map((group: GroupSnapshot): LauncherRow => ({
+        text: group.label,
+        open: (): void => { void group_restore(group.id); },
+      })),
+      verb: 'SEE DESKTOPS',
+      enter: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
+    };
+    // The block with the most to say takes the wide seat.
+    const rest: LauncherTile[] = [files, pacs, panes];
+    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes];
+  };
+
+  const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {
+    tiles: launcherTiles_build,
+    startHere_get: landing_isLauncher,
+    startHere_set: landing_set,
+  });
+  // A dashboard read once is a dashboard that lies by the time it is read.
+  // It re-asks on its own beat while it is the thing on screen, and asks
+  // nothing at all when it is not — the roster's own rule, and the defect
+  // the roster was carrying this morning.
+  setInterval((): void => {
+    if (layout.activePreset_get() !== 'launcher') return;
+    if (!launcherMount.isConnected || document.visibilityState !== 'visible') return;
+    launcherPanel.render();
+  }, DASHBOARD_TICK_MS);
+
   const panesPanel: PanesPanel = new PanesPanel(panesMount, {
     list: (): GroupSnapshot[] => dormant.list(),
     restore: (id: string): void => { void group_restore(id); },
@@ -3182,7 +3367,10 @@ async function surface_start(token: string): Promise<void> {
   });
   const dag_summon = (): void => {
     const preset: string = layout.activePreset_get();
-    if (preset === 'pacs' || preset === 'dag') {
+    // A preset that owns the whole workspace is the operator's own choice,
+    // and the launcher owns it as PACS and RUNS do: a feed coming into view
+    // must not paint a graph over the screen they are reading.
+    if (preset === 'pacs' || preset === 'dag' || preset === 'launcher') {
       // A full-workspace preset is the operator's choice; the summon only
       // notes that home should include the DAG when they return to it.
       dagShown = true;
@@ -3455,6 +3643,7 @@ async function surface_start(token: string): Promise<void> {
   pane_chrome_wire('files', 'files', filesPrimary.mount);
   pane_chrome_wire('dag', 'dag', dagPrimary.mount);
   pane_chrome_wire('pacs', 'pacs', element_require('pacs-workspace'));
+  pane_chrome_wire('launcher', 'launcher', launcherMount);
   pane_chrome_wire('panes', 'panes', panesMount);
 
   // Keyboard machinery, tmux-shaped: Ctrl-B is the prefix — it opens the
@@ -3859,6 +4048,11 @@ async function surface_start(token: string): Promise<void> {
       consoleFocused_set(false);
     });
   });
+  element_require('gutter-dashboard').addEventListener('click', (): void => {
+    // DASHBOARD-04 is the way back to where a session begins. Pressing it
+    // while already there sends the gutter away, as every domain does.
+    domainPress('launcher', launcher_enter);
+  });
   element_require('gutter-panes').addEventListener('click', (): void => {
     // Opening PANES captures the current arrangement as a desktop card (the
     // chokepoint), free and recoverable, then draws the grid. Pressing PANES
@@ -3898,6 +4092,7 @@ async function surface_start(token: string): Promise<void> {
     paneLinked_get: (id: string): boolean => subjects.group_of(id) !== id,
     feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
     consoleZoom_toggle,
+    launcher_enter,
     node_immerse: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
@@ -4178,8 +4373,15 @@ async function surface_start(token: string): Promise<void> {
     }
   });
 
-  // Boot: the remembered preset, or home.
-  layout.preset_apply(layout.savedPreset_get() ?? 'files');
+  // Boot: the launcher for a browser that has never chosen otherwise (a
+  // first screen that answers where am I, what can I do, what next), else
+  // the arrangement this browser last had.
+  if (landing_isLauncher()) {
+    layout.preset_apply('launcher');
+    launcherPanel.render();
+  } else {
+    layout.preset_apply(layout.savedPreset_get() ?? 'files');
+  }
 
   const drawerStatus: HTMLElement = element_require('drawer-status');
   const mode_show = (mode: string): void => {
@@ -4392,6 +4594,10 @@ async function surface_start(token: string): Promise<void> {
   // the first moment: one silent, observed listing of the working
   // directory. (The seed above used to do this by accident, at /bin.)
   void client.line_execute('ls', { silent: true });
+  // The launcher's blocks are what the session says it holds, so they are
+  // asked for once the session can answer. The paint at boot puts the pane
+  // on stage; this fills it.
+  if (layout.activePreset_get() === 'launcher') launcherPanel.render();
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();

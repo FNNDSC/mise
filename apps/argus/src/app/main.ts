@@ -1546,6 +1546,8 @@ async function surface_start(token: string): Promise<void> {
    */
   /** The session's user, as the prompt context last named it; null before the first. */
   let promptUser: string | null = null;
+  /** The session's identity (user and CUBE), as the prompt last named it. */
+  let promptIdentity: string | null = null;
 
   const nodeOf_path = (path: string): number | null => {
     const match: RegExpMatchArray | null = /_(\d+)\/data\/?$/.exec(path);
@@ -4140,6 +4142,9 @@ async function surface_start(token: string): Promise<void> {
     feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
     consoleZoom_toggle,
     launcher_enter,
+    // The prompt already says who and where; `attach` repeats it rather
+    // than asking the session a question it has just been told the answer to.
+    identity_get: (): string | null => promptIdentity,
     node_immerse: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
@@ -4528,6 +4533,8 @@ async function surface_start(token: string): Promise<void> {
       },
       promptline_receive: (context: PromptContext): void => {
         promptUser = context.user;
+        // The prompt's own two facts, in the shape every attach line takes.
+        promptIdentity = context.uri === '' ? context.user : `${context.user}@${context.uri}`;
         // The smoke suite is argus's only executable verification — there
         // is no unit level here — so the surface exposes the last context
         // it was handed, and a way to re-show one. Read-only to the page.

@@ -911,6 +911,37 @@ try {
     JSON.stringify({ gutter: launcher.gutter, pane: launcher.paneTitle }));
   }
 
+  if (stage('attach')) {
+  // The surface holds what a second surface needs: this page reached the
+  // daemon by a URL carrying the attach token, so `attach` can say how to
+  // reach the same session from a terminal or another browser without
+  // asking the session anything. The token is a bearer credential with no
+  // expiry, so the masked form must never carry it.
+  const attach = await evalIn(`
+    await console_idle();
+    const outEl = document.querySelector('#terminal .argus-output');
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms) => { const before = outEl.children.length; input.value = line;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms);
+      return [...outEl.children].slice(before).map((e) => e.textContent).join('\\n'); };
+    const token = new URLSearchParams(location.search).get('token') ?? '';
+    const masked = await say('attach', 2200);
+    const revealed = await say('attach --reveal', 2200);
+    return {
+      token: token === '' ? null : token.length,
+      masked, revealed,
+      leaks: token !== '' && masked.includes(token),
+      reveals: token !== '' && revealed.includes(token),
+      remote: /chell --remote/.test(masked),
+      byAddress: /chell --remote --attach "http/.test(masked),
+    };`);
+  check('attach says how to reach this session from a terminal and another browser',
+    attach.remote === true && attach.byAddress === true, attach.masked?.slice(0, 120));
+  check('the masked form never carries the token, and --reveal does',
+    attach.token !== null && attach.leaks === false && attach.reveals === true,
+    JSON.stringify({ tokenLength: attach.token, leaks: attach.leaks, reveals: attach.reveals }));
+  }
+
   if (stage('pane-ask')) {
   // A question the surface asks stands on the pane that asked it. The
   // console is closed here on purpose: that is the state the question used

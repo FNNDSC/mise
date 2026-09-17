@@ -39,6 +39,28 @@ The fix is an inversion rather than a fade. The ground goes halfway to the page'
 
 Fixed by the same inversion, scoped to MEDICAL and PHAROS only. A blanket light label would have broken GOLD, whose `--october-sunset` is `#c99700` — light enough that black reads at 7.91:1 and `--butter` would read at 2.40:1. The lesson generalises: *on a themed surface, a contrast fix that is not theme-aware trades one failure for another.*
 
+=== 4. The STALE readout — was 1.38:1, needed 4.5:1
+
+Found by the gate, not by the eye. `.pane-state.state-stale` painted the theme's `--orange` on the header bar, whose ground is the frame's light gold: 1.38:1 under NEMESIS, 1.40 under LOWER DECKS and GOLD, 2.19 under MEDICAL and PHAROS. The one readout that says what you are looking at is out of date was the hardest thing on the bar to read, in every scheme.
+
+Fixed by burning the same orange toward black at 40%, which keeps the warning's hue and clears 4.5:1 everywhere (5.35:1 at worst, under NEMESIS). The dotted underline it already carried stays, so the state does not depend on hue alone.
+
+=== 5. The SIZE cap — was 4.42:1, needed 4.5:1
+
+The frame's hue cycle puts every third cap on `--orange`, in black 10.5px type, which is small text. Under MEDICAL and PHAROS that measured 4.42:1 — a pairing that was inside the audit's list and still short, because the token had never been measured against the cap.
+
+Fixed by lightening those schemes' `--orange` from `#1878b8` to `#1d7bb9`, two parts white, the smallest nudge that clears the bar (4.59:1).
+
+=== 6. PHAROS kept the navy MEDICAL was lightened away from
+
+Defect 1 lightened `--october-sunset` to `#30619d`. PHAROS carries MEDICAL's clinical palette but declares its own copy of the token, and kept `#164989` — so the gutter's 22px black labels measured 2.35:1 there, which is defect 1 exactly, surviving in the one scheme the fix did not reach. Now the same lightened navy, and the same margin.
+
+== The gate
+
+The audit above was a document, and a document cannot stop the next pairing from regressing — defects 4 to 6 were all found the day the measurement became executable. The smoke suite's `contrast` scenario now walks the frame's type on the live surface, in all five schemes, composites every translucent layer between the type and its first opaque ground, and holds each pairing to its own threshold.
+
+Two things it does deliberately. It measures what is actually on stage rather than a table of colour pairs, so a pairing nobody paints cannot fail and a pairing invented by a stylesheet cannot hide. And it excludes the console's scrollback, which is the session's own output wearing the daemon's ANSI rather than the theme's palette.
+
 == One thing deliberately not counted
 
 An earlier draft of this audit recorded `--pumpkin-pie` as failing at 1.72:1 as a "status wash". That pairing was invented by the measurement, not by the frame: the idle progress track (`.listing-progress-idle`) never carries type. It is a graphic, judged against the 3:1 non-text rule and against what sits next to it, which is a different test from the one run here — and one the wash then failed on the clinical schemes, where a navy `--pumpkin-pie` at 45% sat at about 1.2:1 on black; since 2026-09-16 the idle track is an outline in the frame's hue, and on an indicated row's block every bar is drawn in black.

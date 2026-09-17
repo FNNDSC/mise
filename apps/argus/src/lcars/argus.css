@@ -1088,7 +1088,17 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 /* A watched feed's liveness: the bar says whether what you see is current. */
 .pane-state.state-live { color: var(--harvestgold); opacity: 1; }
 .pane-state.state-settled { opacity: 0.7; }
-.pane-state.state-stale { color: var(--orange); opacity: 1; text-decoration: underline dotted; }
+/* STALE rides the header bar, whose ground is the frame's light gold, and
+ * the theme's orange on it measured 1.38:1 — the one readout that says what
+ * you are looking at is out of date was the hardest thing on the bar to
+ * read. A dark burn of the SAME orange keeps the warning's hue and clears
+ * 4.5:1 in every scheme (5.35 at worst); the dotted underline still carries
+ * the state for anyone who cannot use the hue at all. */
+.pane-state.state-stale {
+  color: color-mix(in srgb, var(--orange) 40%, #000);
+  opacity: 1;
+  text-decoration: underline dotted;
+}
 /* A selection in flight: the bar says the pane is waiting, not idle. */
 .pane-state.state-wait { color: var(--butter); opacity: 1; }
 
@@ -3547,7 +3557,10 @@ body[data-zoom] #header-restore {
    * This clears it at 3.32:1, with enough margin that a later nudge does not
    * silently re-break it. See docs/WCAG-AA.adoc. */
   --october-sunset: #30619d;
-  --orange: #1878b8;
+  /* Lightened from #1878b8, where black 10.5px type on a cap measured
+   * 4.42:1 against the 4.5 a small-text pairing needs. The nudge is two
+   * parts white, which is the smallest that clears it (4.59:1). */
+  --orange: #1d7bb9;
   --pumpkin-pie: #0f3566;
 }
 
@@ -3574,8 +3587,13 @@ body[data-zoom] #header-restore {
   --daybreak: #7edcf7;
   --harvestgold: #1ebef0;
   --honey: #7fd9f7;
-  --october-sunset: #164989;
-  --orange: #1878b8;
+  /* PHAROS carries MEDICAL's clinical palette, and kept this navy after
+   * MEDICAL was lightened away from it: black 22px gutter type on #164989
+   * measured 2.35:1 against the 3 a large pairing needs — the very defect
+   * docs/WCAG-AA.adoc records as fixed. The same lightened navy, and the
+   * same margin. */
+  --october-sunset: #30619d;
+  --orange: #1d7bb9;
   --pumpkin-pie: #0f3566;
   --face-label: 'Chakra Petch', 'Arial Narrow', sans-serif;
   --face-data: 'JetBrains Mono', 'MesloLGS NF', monospace;

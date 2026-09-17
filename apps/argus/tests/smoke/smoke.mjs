@@ -841,6 +841,99 @@ try {
     zoom.workspaceShown === false && zoom.overflows === false, JSON.stringify(zoom));
   }
 
+  if (stage('contrast')) {
+  // The frame's type, measured against WCAG 2.1 AA in every scheme.
+  //
+  // docs/WCAG-AA.adoc records the audit that found and fixed three defects;
+  // until now it was a document, so nothing stopped the next pairing from
+  // regressing. This walks what is actually on stage, composites every
+  // translucent layer between the type and its first opaque ground (a chip
+  // painted black at .72 over gold IS the type's ground; skipping it
+  // measures a pairing that is not on screen), and holds each to its own
+  // threshold: 3:1 for large text, 24px or 18.66px bold and up, 4.5:1 for
+  // the rest.
+  //
+  // Scope is the frame that carries type, as the audit's is: the console's
+  // scrollback is the session's own output and wears the daemon's ANSI, not
+  // the theme's palette.
+  const contrast = await evalIn(`
+    await console_idle();
+    const FRAME = [
+      '.lcars-title', '.pane-state', '.pane-mode', '.lcars-bar-horizontal',
+      '.roster-cap', '.listing-action', '.strategy-pill', '.pacs-capsule',
+      '.files-name', '.files-type', '.files-path', '.files-binding',
+      '.feedlist-title', '.feedlist-status', '.feedlist-id',
+      '.telemetry-label', '.telemetry-value', '.left-frame button',
+      '.drawer-label', '.drawer-child', '.lamp-online', '.lamp-host',
+    ].join(', ');
+    const lin = (c) => { const x = c / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    const lum = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    const parse = (text) => { const m = text.match(/rgba?\\(([^)]+)\\)/); if (m === null) return null;
+      const p = m[1].split(',').map(Number); return { rgb: [p[0], p[1], p[2]], a: p.length > 3 ? p[3] : 1 }; };
+    const over = (top, base) => top.rgb.map((c, i) => c * top.a + base[i] * (1 - top.a));
+    const ratio = (a, b) => { const la = lum(a); const lb = lum(b);
+      const hi = Math.max(la, lb); const lo = Math.min(la, lb); return (hi + 0.05) / (lo + 0.05); };
+    const ground = (el) => {
+      const layers = []; let node = el;
+      while (node !== null) {
+        const bg = parse(getComputedStyle(node).backgroundColor);
+        if (bg !== null && bg.a > 0) { layers.push(bg); if (bg.a === 1) break; }
+        node = node.parentElement;
+      }
+      let base = [0, 0, 0];
+      for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base);
+      return base;
+    };
+    const ownText = (el) => [...el.childNodes]
+      .filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(' ').trim();
+    const opacityOf = (el) => { let o = 1; let node = el;
+      while (node !== null && node !== document.body) { o *= parseFloat(getComputedStyle(node).opacity); node = node.parentElement; }
+      return o; };
+    const sweep = () => {
+      const seen = [];
+      for (const el of document.querySelectorAll(FRAME)) {
+        const text = ownText(el);
+        if (text === '') continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2 || el.offsetParent === null) continue;
+        const cs = getComputedStyle(el);
+        if (cs.visibility === 'hidden') continue;
+        const alpha = opacityOf(el);
+        if (alpha < 0.05) continue;
+        const fg = parse(cs.color);
+        if (fg === null) continue;
+        const size = parseFloat(cs.fontSize);
+        const bold = parseInt(cs.fontWeight, 10) >= 700;
+        const need = size >= 24 || (bold && size >= 18.66) ? 3 : 4.5;
+        const bg = ground(el);
+        const ink = over({ rgb: fg.rgb, a: fg.a * alpha }, bg);
+        const r = ratio(ink, bg);
+        if (r + 0.005 < need) {
+          seen.push({ text: text.slice(0, 22), cls: (el.className || el.tagName).toString().slice(0, 34),
+            px: Math.round(size * 10) / 10, need, ratio: Math.round(r * 100) / 100 });
+        }
+      }
+      return seen;
+    };
+    const schemes = ['lower-decks', 'gold', 'medical', 'nemesis', 'pharos'];
+    const root = document.documentElement;
+    const before = root.dataset.theme;
+    const out = {};
+    for (const scheme of schemes) {
+      if (scheme === 'lower-decks') delete root.dataset.theme; else root.dataset.theme = scheme;
+      await sleep(700);
+      out[scheme] = sweep();
+    }
+    if (before === undefined) delete root.dataset.theme; else root.dataset.theme = before;
+    await sleep(500);
+    return out;`);
+  const themes = Object.keys(contrast);
+  const failing = themes.filter((theme) => contrast[theme].length > 0);
+  const detail = failing.map((theme) => `${theme}: ${contrast[theme].slice(0, 4).map((f) => `${f.cls} "${f.text}" ${f.ratio}<${f.need}`).join(' | ')}`).join('  ·  ');
+  check('every pairing the frame paints clears WCAG AA, in all five schemes',
+    failing.length === 0, detail === '' ? JSON.stringify(themes) : detail);
+  }
+
   if (stage('node-dive')) {
   if (!dagFeed) {
     console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');

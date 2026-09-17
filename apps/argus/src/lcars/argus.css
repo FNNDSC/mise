@@ -653,15 +653,25 @@ body[data-gutter='away'] #gutter-restore {
 }
 
 /* !important: a drag leaves an inline height on the drawer, and the zoom
- * states must win over it without erasing it. */
+ * states must win over it without erasing it.
+ *
+ * The height is what is LEFT, not a guessed constant. A fixed
+ * `100dvh - 3.6rem` was measured from the viewport while the console still
+ * began below the header's own gap, so the drawer ran past the foot of the
+ * screen: the workspace showed under it in a band, and the page grew taller
+ * than the viewport — which, once `overflow: hidden` had frozen it, could
+ * leave the console's own top frame above the fold. Flexing into the
+ * column's remainder cannot overshoot at any window size or type scale. */
 body[data-zoom='console'] #drawer {
-  height: calc(100dvh - 3.6rem) !important;
+  height: auto !important;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-/* Retained for clarity: the console's zoom owns the stage. The workspace
- * no longer keeps a floor to step aside from. */
+/* The console's zoom owns the stage, so the workspace leaves it: a pane
+ * zoom hides its siblings for the same reason. */
 body[data-zoom='console'] main {
-  min-height: 0;
+  display: none;
 }
 
 /* Zooming any tree pane retracts the console; only the console's own zoom

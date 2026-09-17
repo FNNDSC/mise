@@ -772,6 +772,45 @@ try {
   // camera sat parked inside a sphere filling the pane with one flat
   // colour, which an operator reasonably read as a crash.
   const dagFeed = process.env.SMOKE_DAG_FEED;
+  if (stage('console-zoom')) {
+  // The console's zoom owns the stage. The regression this guards: the
+  // drawer was given a height measured from the viewport while it still
+  // began below the header's gap, so it ran past the foot of the screen —
+  // the workspace showed under it in a band, and the page grew taller than
+  // the viewport, which (with overflow frozen) could carry the console's
+  // own top frame above the fold.
+  const zoom = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms) => { input.value = line;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const box = (sel) => { const el = document.querySelector(sel); if (el === null) return null;
+      const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+    await say('console zoom', 1800);
+    const vp = window.innerHeight;
+    const drawer = box('#drawer');
+    const main = document.querySelector('main');
+    const workspaceShown = main !== null && main.offsetParent !== null
+      && main.getBoundingClientRect().top < vp;
+    const scroller = document.scrollingElement;
+    const shot = {
+      state: document.body.dataset.zoom,
+      vp,
+      drawer,
+      // Inside the viewport, top frame included.
+      framed: drawer !== null && drawer.top >= 0 && drawer.bottom <= vp,
+      workspaceShown,
+      // Nothing to scroll: a frozen scroll is what hid the top edge.
+      overflows: Math.round(scroller.scrollHeight) > vp + 1,
+    };
+    await say('console zoom', 1500);
+    return shot;`);
+  check('the zoomed console sits inside the viewport, top frame and all',
+    zoom.state === 'console' && zoom.framed === true, JSON.stringify(zoom));
+  check('the workspace steps off stage for it, and nothing is left to scroll',
+    zoom.workspaceShown === false && zoom.overflows === false, JSON.stringify(zoom));
+  }
+
   if (stage('node-dive')) {
   if (!dagFeed) {
     console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');

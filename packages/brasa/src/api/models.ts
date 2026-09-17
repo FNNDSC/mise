@@ -54,11 +54,36 @@ export interface RunScheduled {
 }
 
 /**
+ * One plugin instance as `plugininstance list` lists it — the run history a
+ * surface reads (what ran, on which feed, by whom, when). Only `id` is
+ * certain: the other fields ride along when the listing selected them
+ * (`--fields`), so a surface asks for what it needs.
+ *
+ * @property id - The instance id.
+ * @property pluginName - The plugin's name (`pl-dcm2niix`).
+ * @property pluginVersion - Its version (`1.0.2`).
+ * @property feedId - The feed it belongs to.
+ * @property owner - The username that owns it.
+ * @property status - CUBE's status word.
+ * @property startedAt - ISO start, when known.
+ */
+export interface PluginInstanceRow {
+  id: number;
+  pluginName?: string;
+  pluginVersion?: string;
+  feedId?: number;
+  owner?: string;
+  status?: string;
+  startedAt?: string;
+}
+
+/**
  * Model kinds emitted by the filesystem commands, mapped to their payloads.
  */
 export interface FsModelMap {
   'fs.cwd': CwdModel;
   'run.scheduled': RunScheduled;
+  'plugininstance.list': PluginInstanceRow[];
   'fs.mkdir': MkdirOutcome[];
   'fs.touch': TouchOutcome[];
   'fs.rm': RmOutcome[];

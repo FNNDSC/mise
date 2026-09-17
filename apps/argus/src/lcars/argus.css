@@ -5561,3 +5561,77 @@ button.launcher-row:hover {
   color: black;
   background-color: var(--october-sunset);
 }
+
+/* ------------------------------------------- a question stands on its pane */
+
+/* A question the surface asks rides a bar across the head of the pane that
+   asked it, under the title bar and the drawer, above whatever field the
+   pane holds. Same idiom as the errand's bar, and for the same reason: the
+   mode frame is a narrow rail against the spine, right for a column of
+   capsules and hopeless for a caption and a value. It is exposed rather
+   than merely present — a band that arrives under the hand that provoked
+   it — and it leaves with its answer. */
+.ask-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.6rem;
+  flex: none;
+  max-height: 0;
+  overflow: hidden;
+  border-bottom: 2px solid var(--harvestgold);
+  transition: max-height 0.16s ease-out, padding 0.16s ease-out;
+}
+
+.ask-bar-shown {
+  max-height: 3rem;
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+/* The mark that says a question is standing, in the console's own glyph so
+   the two places a question can appear read as one thing. */
+.ask-bar-glyph {
+  color: var(--harvestgold);
+  font-family: var(--face-label);
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+
+.ask-bar-caption {
+  color: var(--butter);
+  font-family: var(--face-label);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.ask-bar-field {
+  flex: 1 1 12em;
+  min-width: 0;
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  outline: none;
+}
+
+.ask-bar-field:focus {
+  border-color: var(--harvestgold);
+}
+
+/* The verb that answers reads what it will do; ABANDON is the way out and
+   wears the retreat's own hue, never the alarm red of a destructive act. */
+.ask-bar-commit,
+.ask-bar-yes {
+  background-color: var(--harvestgold);
+}
+
+.ask-bar-no,
+.ask-bar-abandon {
+  background-color: var(--october-sunset);
+}

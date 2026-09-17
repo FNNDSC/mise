@@ -120,6 +120,12 @@ export class GatherPanel {
   private name: string | null = null;
   /** The feed the cohort was rooted in, once CREATE FEED or PROCESS made one. */
   private feed: GatherFeed | null = null;
+  /**
+   * Whether the cohort row has been indicated once, at the pane's arrival.
+   * Only once: a later repaint must not re-open a frame the operator had
+   * stood down, since motion is asked for and never ambient.
+   */
+  private greeted: boolean = false;
   private readonly listing: Listing<CohortRow>;
   private readonly cohortActions: ReadonlyArray<ListingAction<CohortRow>>;
   private readonly seriesActions: ReadonlyArray<ListingAction<SeriesRow>>;
@@ -246,6 +252,16 @@ export class GatherPanel {
     }
     this.listing.rows_set([{ key: 'gather', rows: [{ key: COHORT_KEY }] }], { field: 'gather' });
     if (this.entries.size > 0) this.listing.open_set(0, [COHORT_KEY]);
+    // A pane whose listing holds exactly one row has nothing to choose
+    // between: it indicates that row itself, so the cohort's verbs stand
+    // in the frame the moment the pane arrives. The operator reasonably
+    // read the fold capsule as the only control there was and pressed it
+    // to find them, which is a listing asking to be interrogated before it
+    // will say what it can do.
+    if (!this.greeted) {
+      this.greeted = true;
+      this.listing.row_indicate(COHORT_KEY);
+    }
   }
 
   /**

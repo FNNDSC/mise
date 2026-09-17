@@ -82,13 +82,57 @@ function usage_error(reason: string): CommandEnvelope {
 }
 
 /**
+ * The address the bytes actually live at.
+ *
+ * A path can name a file three times over: the logical place a listing shows
+ * it (`/home/me/feeds/feed_42/pl-dircopy_1/data/...`), the projection the
+ * graph gives for the same place (`/proc/jobs/feed_42/pl-dircopy_1/data/...`),
+ * and the physical file CUBE stores. A `pl-dircopy` of a PACS pull is the
+ * case where all three differ: its output folder is a LINK, and the DICOM
+ * under it is stored beneath `/SERVICES/PACS`. Reading the logical name got
+ * no file id, so every slice of a pulled series was unreadable from the feed
+ * it was pulled into — a listing that shows what it cannot open — while the
+ * same series read fine at its PACS address, and `cd` into the folder (which
+ * does follow links) made the very same command work.
+ *
+ * So the address is resolved before anything is read: a projection through
+ * the provider that owns it, then the link walk the rest of the file
+ * commands already do. A path that resolves to nothing stands as it was, so
+ * a bad path still refuses by its own name.
+ *
+ * @param input - The path as the operator or a surface gave it.
+ * @returns The physical path, or the input when it resolves no further.
+ */
+async function path_physical(input: string): Promise<string> {
+  // Resolution is best effort by design: whatever cannot answer — a stubbed
+  // dispatcher, a path no link walk knows — leaves the address as it was,
+  // and the command refuses by its own name rather than by an exception.
+  try {
+    const { vfsDispatcher } = await import('@fnndsc/salsa');
+    let candidate: string = input;
+    if (vfsDispatcher?.path_isVirtual?.(input) === true) {
+      const link: RegExpExecArray | null = /^(\/proc\/jobs\/feed_\d+\/[^/]+\/data)(\/.*)?$/.exec(input);
+      if (link === null) return input;
+      const target: Result<string> = await vfsDispatcher.linkTarget_resolve(link[1] as string);
+      if (!target.ok) return input;
+      candidate = `${target.value}${link[2] ?? ''}`;
+    }
+    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
+    const physical: Result<string> = await logical_toPhysical(candidate);
+    return physical.ok ? physical.value : candidate;
+  } catch {
+    return input;
+  }
+}
+
+/**
  * `dcm series <folder>`: the folder as a series.
  */
 async function dcmSeries_handle(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
   const target: string | undefined = (parsed._ as string[])[0];
   if (target === undefined) return usage_error('dcm series: a folder is required');
-  const folder: string = await path_resolve(target);
+  const folder: string = await path_physical(await path_resolve(target));
   const annotationRoot: string | undefined = await annotationRoot_get();
   const summary: Result<DicomSeriesSummary> = await dicomSeries_summarize(folder, annotationRoot !== undefined ? { annotationRoot } : {});
   if (!summary.ok) {
@@ -118,7 +162,7 @@ async function dcmTags_handle(args: string[]): Promise<CommandEnvelope> {
     all: parsed.all === true,
     filter: typeof parsed.filter === 'string' ? parsed.filter : undefined,
   };
-  const resolved: string = await path_resolve(target);
+  const resolved: string = await path_physical(await path_resolve(target));
   const model: Result<DicomTagsModel> = /\.dcm$/i.test(resolved) ? await fileTags_model(resolved) : await folderTags_model(resolved);
   if (!model.ok) {
     process.exitCode = 1;

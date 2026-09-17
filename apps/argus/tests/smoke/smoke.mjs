@@ -1153,6 +1153,79 @@ try {
   check('the FEED capsule opens the run\'s graph beside the catalogue', proc.graph, proc.capsule);
   }
 
+  if (stage('process-form')) {
+  // The graph is the form: opening a plugin from a bound catalogue dives
+  // straight into its one node, whose parameters are VALUE cells writing
+  // their flags into the run strip's line; a hand edit on the line stands;
+  // RUN on the graph's frame runs the line as it reads. A real run on a
+  // scratch directory, removed at the end.
+  const form = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
+    const fp = () => panes()[0];
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const rows = (p) => [...p.querySelectorAll('.files-row')];
+    const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const settle = async (want, n = 140) => { for (let i = 0; i < n; i++) { await sleep(500); if (want()) return true; } return false; };
+    const cell = (cat, flag) => [...cat.querySelectorAll('.dag-facts .telemetry-row')]
+      .find(r => r.querySelector('.telemetry-label')?.textContent === flag)?.querySelector('.telemetry-input');
+
+    await say('rm -r ~/smoke-form', 2500);
+    await say('mkdir ~/smoke-form', 2500);
+    await say('cd ~', 2500);
+    await settle(() => named(fp(), 'smoke-form'));
+    click(named(fp(), 'smoke-form').querySelector('.files-name')); await sleep(600);
+    [...fp().querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
+    await settle(() => panes().length === 2, 40);
+    const cat = panes()[1];
+    await settle(() => rows(cat).length > 3, 60);
+    const plugin = rows(cat).filter(r => /^pl-simpledsapp-v/.test(r.querySelector('.files-name')?.textContent.trim() ?? '')).pop();
+
+    // OPEN from the row's control: the one-node graph dives itself
+    click(plugin.querySelector('.files-control'));
+    const dived = await settle(() => cat.querySelector('.dag-facts-immersed .telemetry-input') !== null, 60);
+    await sleep(600);
+    const lineBefore = cat.querySelector('.files-command')?.value ?? '';
+    const cells = [...cat.querySelectorAll('.dag-facts .telemetry-row')].map(r => [r.querySelector('.telemetry-label')?.textContent, r.querySelector('.telemetry-input')?.type ?? 'readout']);
+    const prefix = cell(cat, '--prefix');
+    prefix.value = 'smoke-'; prefix.dispatchEvent(new Event('input', { bubbles: true })); await sleep(200);
+    const ignore = cell(cat, '--ignoreInputDir');
+    ignore.checked = true; ignore.dispatchEvent(new Event('change', { bubbles: true })); await sleep(200);
+    const lineWritten = cat.querySelector('.files-command')?.value ?? '';
+    const line = cat.querySelector('.files-command');
+    line.value = line.value + ' --dummyInt 7'; line.dispatchEvent(new Event('input', { bubbles: true }));
+    prefix.value = 'smoke-run-'; prefix.dispatchEvent(new Event('input', { bubbles: true })); await sleep(200);
+    const lineHand = line.value;
+    const runPill = getComputedStyle(cat.querySelector('.diagram-run')).display;
+
+    const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    cat.querySelector('.diagram-run').click();
+    const asked = await settle(() => document.querySelector('#terminal .argus-ask') !== null, 20);
+    term.value = 'smoke form run';
+    term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await settle(() => document.querySelectorAll('#terminal .argus-echo').length > echoesBefore, 30);
+    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+    const scheduled = await settle(() => cat.querySelector('.files-feed') !== null, 160);
+    const feedId = parseInt((cat.querySelector('.files-feed')?.textContent ?? '').replace(/\\D/g, ''), 10);
+    if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
+    await say('cd ~', 2000);
+    await say('rm -r ~/smoke-form', 3000);
+    return { dived, lineBefore, cells, lineWritten, lineHand, runPill, asked, echoed, scheduled };`);
+  check('a plugin opened from a bound catalogue dives into its one node, its parameters as cells',
+    form.dived && form.cells.some(([l, t]) => l === '--prefix' && t === 'text') && form.cells.some(([l, t]) => l === '--ignoreInputDir' && t === 'checkbox'),
+    JSON.stringify(form.cells));
+  check('a cell writes its flag into the line as typed, a boolean bare',
+    /pl-simpledsapp-v[\d.]+ --prefix smoke- --ignoreInputDir$/.test(form.lineWritten), form.lineWritten);
+  check('a hand edit on the line stands when a cell writes again',
+    /--prefix smoke-run- --ignoreInputDir --dummyInt 7$/.test(form.lineHand), form.lineHand);
+  check('RUN rides the graph\'s frame and runs the line as it reads',
+    form.runPill !== 'none' && form.asked && /^❯ cd ".*smoke-form"; pl-simpledsapp-v[\d.]+ --prefix smoke-run- --ignoreInputDir --dummyInt 7 -- feed_title="smoke form run"$/.test(form.echoed) && form.scheduled,
+    JSON.stringify({ runPill: form.runPill, asked: form.asked, echoed: form.echoed, scheduled: form.scheduled }));
+  }
+
   if (stage('roster-shares')) {
   // The roster's rows carry the verbs that act on a FEED: setfacl grants to
   // an identity on a feed, so sharing belongs here. Indicating is not

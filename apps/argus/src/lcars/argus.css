@@ -4476,6 +4476,51 @@ body[data-zoom] #header-restore {
   display: block;
 }
 
+/* RUN rides the graph's frame only where the graph is a form: a catalogue
+ * bound to an input. A browser's /bin graph offers no run. */
+.files-body .diagram-run {
+  display: none;
+}
+
+.files-body.files-catalogue.diagram-shown .diagram-run {
+  display: block;
+  background-color: var(--october-sunset);
+  color: #000;
+}
+
+/* A parameter in a bound dive is a VALUE cell: the line's word for that
+ * flag, typed here and written there. Booleans are a bare flag: a check. */
+.telemetry-input {
+  flex: 1 1 8em;
+  min-width: 0;
+  background: black;
+  border: 1px solid var(--pumpkin-pie);
+  border-radius: 0.4rem;
+  color: var(--daybreak);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.5rem;
+  outline: none;
+}
+
+.telemetry-input:focus {
+  border-color: var(--harvestgold);
+}
+
+.telemetry-input[type='checkbox'] {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--harvestgold);
+}
+
+.telemetry-hint {
+  flex: none;
+  color: var(--honey);
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
 /* A wave is a thing you fire, not a state you are in: it reads as the verb
  * for the whole time it is not running, because the cockpit animates
  * nothing at rest and this is the hand on it. */

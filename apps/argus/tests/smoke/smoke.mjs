@@ -1226,6 +1226,63 @@ try {
     JSON.stringify({ runPill: form.runPill, asked: form.asked, echoed: form.echoed, scheduled: form.scheduled }));
   }
 
+  if (stage('process-desktop')) {
+  // A catalogue is a desktop: left for another domain, it returns from PANES
+  // bound as it was, its line verbatim and RUN ready; and it leads with
+  // RECENT, the operator's lately-run executables from the kernel's listing.
+  const desk = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
+    const fp = () => panes()[0];
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const rows = (p) => [...p.querySelectorAll('.files-row')];
+    const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const settle = async (want, n = 140) => { for (let i = 0; i < n; i++) { await sleep(500); if (want()) return true; } return false; };
+    const catalogue = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && /smoke-desk/.test(p.querySelector('.files-binding')?.textContent ?? ''));
+
+    await say('rm -r ~/smoke-desk', 2500);
+    await say('mkdir ~/smoke-desk', 2500);
+    await say('cd ~', 2500);
+    await settle(() => named(fp(), 'smoke-desk'));
+    click(named(fp(), 'smoke-desk').querySelector('.files-name')); await sleep(600);
+    [...fp().querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
+    await settle(() => catalogue() !== undefined, 40);
+    await settle(() => rows(catalogue()).length > 3, 60);
+    const headersBefore = await settle(() => [...catalogue().querySelectorAll('.files-path')].some(h => h.textContent.trim() === 'RECENT'), 40);
+    const recentRows = [...catalogue().querySelectorAll('section[data-key="/bin/recent"] .files-row .files-name')].map(n => n.textContent.trim());
+    const line = catalogue().querySelector('.files-command');
+    line.value = 'cd "/home/x/smoke-desk"; pl-simpledsapp-v2.1.5 --prefix kept-'; line.dispatchEvent(new Event('input', { bubbles: true }));
+    const bindingBefore = catalogue().querySelector('.files-binding')?.textContent ?? '';
+
+    // Away to RUNS, then PANES: the catalogue's arrangement is a card
+    document.getElementById('gutter-runs').click(); await sleep(1200);
+    document.getElementById('gutter-panes').click(); await sleep(800);
+    // The desktop that holds THIS catalogue (another scenario's may still be
+    // on stage and name the card): found by its action, pressed by its label.
+    const desktop = (window.__argusDormant?.list?.() ?? []).find(g => (g.actions ?? []).some(a => a.op === 'catalogue' && /smoke-desk$/.test(a.input ?? '')));
+    const cardLabel = desktop?.label ?? null;
+    const card = [...document.querySelectorAll('.panes-card')].find(c => c.querySelector('.panes-card-label')?.textContent === cardLabel);
+    const catalogueLine = (desktop?.actions ?? []).find(a => a.op === 'catalogue' && /smoke-desk$/.test(a.input ?? ''))?.line ?? null;
+    if (card) card.click();
+    const mine = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && /smoke-desk/.test(p.querySelector('.files-binding')?.textContent ?? ''));
+    const back = await settle(() => mine() !== undefined && (mine().querySelector('.files-command')?.value ?? '') !== '', 60);
+    await settle(() => mine() && rows(mine()).length > 3, 60);
+    const bindingAfter = mine()?.querySelector('.files-binding')?.textContent ?? '';
+    const lineAfter = mine()?.querySelector('.files-command')?.value ?? '';
+    const listingBack = mine()?.querySelector('.files-diagram') === null;
+    await say('cd ~', 2000);
+    await say('rm -r ~/smoke-desk', 3000);
+    return { headersBefore, recentRows, bindingBefore, cardLabel, catalogueLine, back, bindingAfter, lineAfter, listingBack };`);
+  check('a bound catalogue leads with RECENT, the executables lately run', desk.headersBefore && desk.recentRows.length > 0 && desk.recentRows.every(n => /^pl-/.test(n)), JSON.stringify(desk.recentRows));
+  check('a catalogue left for another domain is a PROCESS card in PANES, carrying its line', desk.cardLabel !== null && /^PROCESS /.test(desk.cardLabel) && desk.catalogueLine === 'cd "/home/x/smoke-desk"; pl-simpledsapp-v2.1.5 --prefix kept-', JSON.stringify({ label: desk.cardLabel, line: desk.catalogueLine }));
+  check('restore returns the catalogue bound as it was, its line verbatim, as a listing',
+    desk.back && desk.bindingAfter === desk.bindingBefore && /smoke-desk → new feed$/.test(desk.bindingAfter) && desk.lineAfter === 'cd "/home/x/smoke-desk"; pl-simpledsapp-v2.1.5 --prefix kept-' && desk.listingBack,
+    JSON.stringify({ back: desk.back, bindingBefore: desk.bindingBefore, bindingAfter: desk.bindingAfter, lineAfter: desk.lineAfter, listingBack: desk.listingBack }));
+  }
+
   if (stage('roster-shares')) {
   // The roster's rows carry the verbs that act on a FEED: setfacl grants to
   // an identity on a feed, so sharing belongs here. Indicating is not

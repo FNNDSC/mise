@@ -32,12 +32,22 @@
  * pane stacked below or placed before its target returns exactly there.
  */
 export interface DesktopAction {
-  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty';
+  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty' | 'catalogue' | 'graph';
   domain?: 'pacs' | 'files' | 'runs';
   query?: string;
-  /** The feed the runs domain had on stage, so the card brings the graph back, not the roster. */
+  /**
+   * The feed the runs domain had on stage, so the card brings the graph back,
+   * not the roster; for `graph`, the feed the pane graphs; for `catalogue`,
+   * the feed a run lands in (absent: a new feed).
+   */
   feed?: number;
   path?: string;
+  /** `catalogue`: what PROCESS was pressed on — the input a run takes. */
+  input?: string;
+  /** `catalogue`: the node a run appends to, when the input is a node's data. */
+  node?: number;
+  /** `catalogue`: the run strip's line, verbatim, so restore returns with RUN ready. */
+  line?: string;
   view?: readonly string[];
   target?: number;
   dir?: 'col' | 'row';

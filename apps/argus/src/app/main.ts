@@ -1486,6 +1486,9 @@ async function surface_start(token: string): Promise<void> {
    * @param path - The path.
    * @returns The instance id, or null.
    */
+  /** The session's user, as the prompt context last named it; null before the first. */
+  let promptUser: string | null = null;
+
   const nodeOf_path = (path: string): number | null => {
     const match: RegExpMatchArray | null = /_(\d+)\/data\/?$/.exec(path);
     return match === null ? null : parseInt(match[1] ?? '', 10);
@@ -1930,12 +1933,12 @@ async function surface_start(token: string): Promise<void> {
     }
     const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
     const spawned: PaneInstance = instance_spawn('catalogue', fromId);
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
-    birth_record(spawned.id, host, 'col', false);
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     catalogueBindings.set(spawned.id, binding);
     const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
     if (panel === undefined) return;
@@ -1945,7 +1948,40 @@ async function surface_start(token: string): Promise<void> {
     });
     panel.feedOpen_declare((feedId: number): void => feed_open(spawned.id, feedId));
     rootedListing_show(spawned.id, panel, '/bin');
+    recent_lead(panel);
     layout.focus_set(spawned.id);
+  };
+
+  /** How many executables the catalogue leads with, and how far back it looks for them. */
+  const RECENT_SHOWN: number = 5;
+  const RECENT_LOOKBACK: number = 40;
+
+  /**
+   * Leads a catalogue with what this operator ran lately: the kernel's own
+   * instance listing (newest first, as a model), reduced to the distinct
+   * executables of the operator's runs, the feed root's copy left out.
+   *
+   * @param panel - The catalogue.
+   */
+  const recent_lead = (panel: FilesPanel): void => {
+    const fields: string = 'id,plugin_name,plugin_version,owner_username';
+    void client.line_execute(`plugininstance list --limit ${RECENT_LOOKBACK} --fields ${fields}`, { silent: true, observe: false })
+      .then((outcome: ExecuteOutcome): void => {
+        const names: string[] = [];
+        for (const envelope of outcome.envelopes) {
+          if (envelope.model?.kind !== 'plugininstance.list' || !Array.isArray(envelope.model.data)) continue;
+          for (const row of envelope.model.data as Array<{ pluginName?: unknown; pluginVersion?: unknown; owner?: unknown }>) {
+            if (typeof row.pluginName !== 'string' || typeof row.pluginVersion !== 'string') continue;
+            if (promptUser !== null && typeof row.owner === 'string' && row.owner !== promptUser) continue;
+            if (row.pluginName === 'pl-dircopy') continue;
+            const name: string = `${row.pluginName}-v${row.pluginVersion}`;
+            if (!names.includes(name)) names.push(name);
+            if (names.length >= RECENT_SHOWN) break;
+          }
+        }
+        panel.recent_set(names.length === 0 ? null : names);
+      })
+      .catch((): void => { /* no history is no block */ });
   };
 
   /**
@@ -1962,12 +1998,12 @@ async function surface_start(token: string): Promise<void> {
     }
     const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
     const spawned: PaneInstance = instance_spawn('dag', fromId);
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
-    birth_record(spawned.id, host, 'col', false);
+    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     dagPanels.get(spawned.id)?.feed_enter(feedId);
   };
 
@@ -2765,10 +2801,30 @@ async function surface_start(token: string): Promise<void> {
           const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
           if (parts.length > 0) label = parts.join(' \u00b7 ');
         }
+      } else if (catalogueBindings.has(id)) {
+        // A catalogue is a files pane by kind and a catalogue by its binding:
+        // what PROCESS was pressed on, where a run lands, and the line RUN
+        // would run, verbatim. Asked before the files branch, or it would
+        // be logged as a browser at /bin.
+        const bound: CatalogueBinding | undefined = catalogueBindings.get(id);
+        if (bound === undefined) continue;
+        const line: string = filesPanels.get(id)?.commandLine_get() ?? '';
+        emit({
+          op: 'catalogue', input: bound.input, target, ...place,
+          ...(bound.feed !== null ? { feed: bound.feed } : {}),
+          ...(bound.node !== null ? { node: bound.node } : {}),
+          ...(line !== '' ? { line } : {}),
+        });
+        if (label === undefined) label = `PROCESS ${bound.input.split('/').filter(Boolean).pop() ?? bound.input}`;
       } else if (kind === 'files') {
         const path: string | null = filesPanels.get(id)?.path_current() ?? null;
         if (typeof path !== 'string' || path.length === 0) continue;
         emit({ op: 'dir', path, target, ...place });
+      } else if (kind === 'dag') {
+        // A run's graph beside its catalogue: the feed it graphs.
+        const graphed: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        if (graphed === null) continue;
+        emit({ op: 'graph', feed: graphed, target, ...place });
       } else if (kind === 'tags') {
         emit({ op: 'tags', target, ...place });
       }
@@ -2783,7 +2839,7 @@ async function surface_start(token: string): Promise<void> {
     const content = actions.filter((action): boolean => action.op !== 'domain' || action.feed !== undefined);
     if (content.length === 0) return;
     const thumbnail: string | undefined = stageStrip_capture(stageIds);
-    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag' };
+    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag' };
     const members: string[] = [...new Set(content.map((action): string => memberOf[action.op] ?? 'pane'))];
     // A viewer desktop is keyed by its series, so returning to it updates the
     // one card. A viewer-less desktop is keyed by the SET of content it holds,
@@ -2798,7 +2854,7 @@ async function surface_start(token: string): Promise<void> {
       regard = { address: anchor, modelKind: 'dicom.series' };
     } else {
       const firstPath: string | undefined = content.map((action): string | undefined => action.path).find((path): boolean => path !== undefined);
-      const signature: string = content.map((action): string => action.path ?? (action.feed !== undefined ? `feed:${action.feed}` : action.op)).sort().join('|');
+      const signature: string = content.map((action): string => action.path ?? (action.input !== undefined ? `catalogue:${action.input}` : action.feed !== undefined ? `feed:${action.feed}` : action.op)).sort().join('|');
       const domainName: string = preset === 'dag' ? 'RUNS' : preset.toUpperCase();
       id = `${preset}:${signature}`;
       cardLabel = label !== undefined && label !== ''
@@ -2936,6 +2992,25 @@ async function surface_start(token: string): Promise<void> {
           terminal.line_run('image tags');
           replayPlace = null;
           produced.push(paneOf('tags').find((paneId): boolean => !before.has(paneId)) ?? null);
+        } else if (action.op === 'catalogue' && action.input !== undefined) {
+          // The catalogue returns bound as it was, its line intact and RUN
+          // ready — the listing, not the dive: what to run is a choice again.
+          if (host !== null) layout.focus_set(host);
+          const catalogues = (): string[] => [...catalogueBindings.keys()].filter((paneId: string): boolean => layout.panes_shown().includes(paneId));
+          const before: Set<string> = new Set(catalogues());
+          replayPlace = place;
+          process_open(host ?? 'files', { input: action.input, feed: action.feed ?? null, node: action.node ?? null });
+          replayPlace = null;
+          const opened: string | null = catalogues().find((paneId): boolean => !before.has(paneId)) ?? null;
+          if (opened !== null && action.line !== undefined) filesPanels.get(opened)?.commandLine_set(action.line);
+          produced.push(opened);
+        } else if (action.op === 'graph' && action.feed !== undefined) {
+          if (host !== null) layout.focus_set(host);
+          const before: Set<string> = new Set(paneOf('dag'));
+          replayPlace = place;
+          feed_open(host ?? 'files', action.feed);
+          replayPlace = null;
+          produced.push(paneOf('dag').find((paneId): boolean => !before.has(paneId)) ?? null);
         } else if (action.op === 'fs' || action.op === 'view' || action.op === 'empty') {
           // A drawer-pill pane replays as its own birth: the pill's spawn, at
           // the same parent, orientation and side.
@@ -4050,6 +4125,7 @@ async function surface_start(token: string): Promise<void> {
         return answer;
       },
       promptline_receive: (context: PromptContext): void => {
+        promptUser = context.user;
         // The smoke suite is argus's only executable verification — there
         // is no unit level here — so the surface exposes the last context
         // it was handed, and a way to re-show one. Read-only to the page.

@@ -37,7 +37,7 @@ import { cp_run } from '../builtins/fs/cp.js';
 import { mv_run } from '../builtins/fs/mv.js';
 import { envelope_typed, type TypedEnvelope } from './models.js';
 
-export type { TypedEnvelope, ModelKind, FsModelMap, CwdModel, RunScheduled } from './models.js';
+export type { TypedEnvelope, ModelKind, FsModelMap, CwdModel, RunScheduled, PluginInstanceRow } from './models.js';
 export { envelope_typed } from './models.js';
 
 /** Options for {@link ChellApi.touch}. */

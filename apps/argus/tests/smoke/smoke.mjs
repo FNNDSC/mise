@@ -1707,33 +1707,29 @@ try {
     && pacsForm.line === 'pacs query PatientName:AAA,PatientID:111,StudyDate:20100101,AccessionNumber:222,Modality:CT',
     JSON.stringify(pacsForm));
 
-  // Two exports, two scopes. One control did both jobs and sat in the
-  // GATHER strip, where every neighbour acts on the cohort — so the one
-  // that acted on the whole answer read as if it did not.
+  // Two exports, two scopes. The answer's export stands on the command
+  // line; the cohort's rides the cohort row in the GATHER pane (below), so
+  // there is no tray under the results for the two to be confused in.
   const pacsExports = await evalIn(`
     document.getElementById('gutter-tools').click(); await sleep(600);
     const table = document.getElementById('pacs-export');
-    const gather = document.getElementById('pacs-gather-export');
     const line = document.getElementById('pacs-commandline');
-    const strip = document.getElementById('pacs-gather');
     const box = table ? table.getBoundingClientRect() : null;
     return {
       tableLabel: table ? table.textContent.trim() : null,
-      gatherLabel: gather ? gather.textContent.trim() : null,
       tableOnTheLine: line !== null && table !== null && line.contains(table),
       // Wide enough to read its own label: it lived on the results frame,
       // which is the CLOSED spine until someone opens it, so it rendered as
       // 22px of clipped text and read as missing.
       tableWidth: box ? Math.round(box.width) : 0,
-      gatherInTheStrip: strip !== null && gather !== null && strip.contains(gather),
+      trayGone: document.getElementById('pacs-gather') === null,
     };`);
   check("the answer's export is readable without opening anything",
     pacsExports.tableLabel === 'EXPORT CSV' && pacsExports.tableOnTheLine === true
     && pacsExports.tableWidth > 60,
     JSON.stringify(pacsExports));
-  check("the cohort's export stands with the cohort's verbs and names its scope",
-    pacsExports.gatherLabel === 'EXPORT GATHER CSV' && pacsExports.gatherInTheStrip === true,
-    JSON.stringify(pacsExports));
+  check('no tray stands under the results: the cohort is a pane',
+    pacsExports.trayGone === true, JSON.stringify(pacsExports));
 
   // Demonstrating against a live hospital PACS puts a real name and record
   // number on a projector. ANON arms the kernel's stand-ins and masks every
@@ -2018,6 +2014,82 @@ try {
     }
   }
 
+  if (stage('gather-pane')) {
+  // GATHER is a listing pane, not a tray: gathering the first series opens
+  // it below the PACS results, joined to the workspace; the cohort row
+  // carries SAVE / EXPORT CSV / CREATE FEED / DISMISS, a series row REMOVE /
+  // IMAGE / PROCESS; REMOVE takes the row out, DISMISS closes the pane.
+  if (!process.env.SMOKE_PACS_QUERY) {
+    console.log('  skipped: set SMOKE_PACS_QUERY=<a `pacs query ...` line that finds a study with a series in CUBE>');
+  } else {
+    const gather = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(500);
+      const ws = document.getElementById('pacs-workspace');
+      const cmd = document.getElementById('pacs-command');
+      const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
+      cmd.value = ${JSON.stringify(process.env.SMOKE_PACS_QUERY)};
+      cmd.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 60; i++) { await sleep(100); if (document.querySelector('#pacs-results .pacs-waiting')) break; }
+      for (let i = 0; i < 240; i++) { await sleep(1000); if (studies() > 0) break; }
+      await sleep(2500);
+      const study = document.querySelector('#pacs-results .pacs-study');
+      if (!study) return { error: 'no study' };
+      if (!study.classList.contains('listing-open')) { study.querySelector('.pacs-study-row .listing-control').click(); await sleep(400); }
+      const zoneVerbs = (root, zone) => [...root.querySelectorAll(zone + ' .listing-action')].map(b => b.textContent.trim());
+      const series = [...study.querySelectorAll('.pacs-series')];
+      // a series CUBE holds is gathered, not pulled
+      let picked = null;
+      for (const row of series) { row.click(); await sleep(300); if (zoneVerbs(ws, '.pacs-row-zone').includes('GATHER')) { picked = row; break; } }
+      if (!picked) return { error: 'no series in CUBE to gather' };
+      const uid = picked.dataset.seriesuid;
+      const desc = picked.querySelector('.pacs-series-desc')?.textContent.trim();
+      const pane = () => [...document.querySelectorAll('.pane-gather')].find(p => p.offsetParent !== null);
+      const before = pane() !== undefined;
+      [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER').click();
+      for (let i = 0; i < 40; i++) { await sleep(250); if (pane()) break; }
+      await sleep(600);
+      const opened = pane() !== undefined;
+      if (!opened) return { error: 'no gather pane', before };
+      const gp = pane();
+      const below = gp.getBoundingClientRect().top > ws.getBoundingClientRect().top;
+      const header = gp.querySelector('.gather-title')?.textContent.trim();
+      const caps = [...gp.querySelectorAll('.roster-cap')].map(c => c.textContent.trim());
+      const rows = () => [...gp.querySelectorAll('.gather-series')].map(r => r.dataset.seriesuid);
+      const listed = rows();
+      const state = gp.querySelector('.pane-state')?.textContent.trim();
+      // the PACS row's GATHER lights from the cohort
+      picked.click(); await sleep(300);
+      const lit = [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER')?.classList.contains('listing-action-selected') ?? false;
+      // series row: its verbs
+      gp.querySelector('.gather-series').click(); await sleep(400);
+      const seriesVerbs = zoneVerbs(gp, '.gather-row-zone');
+      // cohort row: its verbs
+      gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
+      const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
+      // REMOVE takes the row out
+      gp.querySelector('.gather-series').click(); await sleep(300);
+      [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'REMOVE')?.click(); await sleep(500);
+      const afterRemove = rows();
+      // DISMISS closes the pane
+      gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(300);
+      [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'DISMISS')?.click(); await sleep(800);
+      const dismissed = pane() === undefined;
+      return { before, opened, below, header, caps, listed, uid, desc, state, lit, seriesVerbs, cohortVerbs, afterRemove, dismissed };`);
+    check('gathering the first series opens the GATHER pane below the PACS results, listing it',
+      gather.error === undefined && !gather.before && gather.opened && gather.below && gather.header === 'GATHER' && gather.listed.length === 1 && gather.listed[0] === gather.uid,
+      JSON.stringify(gather));
+    check('the cohort and its series wear caps, and the bar counts the cohort',
+      gather.error === undefined && gather.caps.includes('COHORT') && gather.caps.includes('SERIES') && /1 SERIES · 1 PATIENTS/.test(gather.state ?? ''),
+      JSON.stringify({ caps: gather.caps, state: gather.state }));
+    check("the PACS row's GATHER lights from the cohort", gather.error === undefined && gather.lit === true, String(gather.lit));
+    check('a series row carries REMOVE / IMAGE / PROCESS, the cohort row SAVE / EXPORT CSV / CREATE FEED / DISMISS',
+      gather.error === undefined && gather.seriesVerbs.join(',') === 'REMOVE,IMAGE,PROCESS' && gather.cohortVerbs.join(',') === 'SAVE,EXPORT CSV,CREATE FEED,DISMISS',
+      JSON.stringify({ series: gather.seriesVerbs, cohort: gather.cohortVerbs }));
+    check('REMOVE takes the series out; DISMISS closes the pane',
+      gather.error === undefined && gather.afterRemove.length === 0 && gather.dismissed === true,
+      JSON.stringify({ afterRemove: gather.afterRemove, dismissed: gather.dismissed }));
+  }
+  }
   if (stage('pacs-server-control')) {
     // SERVER is a choice, not a phrase: the cell reads its own state and
     // unfolds a strip of segments — the FILTER gesture, in the caps'

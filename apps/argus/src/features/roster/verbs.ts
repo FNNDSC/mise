@@ -30,7 +30,9 @@ export type VerbListing =
   | 'files.selection'
   | 'runs.row'
   | 'pacs.study'
-  | 'pacs.series';
+  | 'pacs.series'
+  | 'gather.cohort'
+  | 'gather.series';
 
 /**
  * One verb a row may be offered.
@@ -227,6 +229,55 @@ export const PACS_SERIES_ROSTER: VerbRoster<PacsSeriesFacts> = {
   ],
 };
 
+/** What a gathered series is, as far as its verbs are concerned. */
+export interface GatherSeriesFacts {
+  /** Whether CUBE has said where the series landed (IMAGE and PROCESS need a folder). */
+  folderKnown: boolean;
+}
+
+/**
+ * A gathered series: membership is the row, so REMOVE is its first verb;
+ * the landed series is an image and an input, as it is on the PACS row.
+ */
+export const GATHER_SERIES_ROSTER: VerbRoster<GatherSeriesFacts> = {
+  listing: 'gather.series',
+  rules: [
+    { name: 'remove', label: (): string => 'REMOVE', offered: (): boolean => true },
+    { name: 'image', label: (): string => 'IMAGE', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
+    { name: 'process', label: (): string => 'PROCESS', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
+  ],
+  states: [
+    { name: 'folder named', facts: { folderKnown: true } },
+    { name: 'folder not yet named', facts: { folderKnown: false } },
+  ],
+};
+
+/** What a cohort is, as far as its verbs are concerned. */
+export interface GatherCohortFacts {
+  /** How many series it holds; an emptied cohort keeps only DISMISS. */
+  count: number;
+}
+
+/**
+ * The cohort row's verbs: what the gather tray's head used to carry, now
+ * on the row they act on. SAVE writes the manifest, EXPORT CSV the table,
+ * CREATE FEED roots a feed on the cohort; DISMISS forgets it on the
+ * surface only (a saved manifest is a file in ~/gather).
+ */
+export const GATHER_COHORT_ROSTER: VerbRoster<GatherCohortFacts> = {
+  listing: 'gather.cohort',
+  rules: [
+    { name: 'save', label: (): string => 'SAVE', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
+    { name: 'export', label: (): string => 'EXPORT CSV', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
+    { name: 'feed', label: (): string => 'CREATE FEED', offered: (f: GatherCohortFacts): boolean => f.count > 0 },
+    { name: 'dismiss', label: (): string => 'DISMISS', offered: (): boolean => true },
+  ],
+  states: [
+    { name: 'holding series', facts: { count: 2 } },
+    { name: 'emptied', facts: { count: 0 } },
+  ],
+};
+
 /**
  * A roster whose row type is its own business, so they can be held in one
  * list and walked together. The same visitor idiom the listing façade uses
@@ -260,6 +311,8 @@ export const VERB_ROSTERS: ReadonlyArray<AnyVerbRoster> = [
   verbRoster_any(RUNS_ROW_ROSTER),
   verbRoster_any(PACS_STUDY_ROSTER),
   verbRoster_any(PACS_SERIES_ROSTER),
+  verbRoster_any(GATHER_COHORT_ROSTER),
+  verbRoster_any(GATHER_SERIES_ROSTER),
 ];
 
 /**

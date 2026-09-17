@@ -224,6 +224,49 @@
                 <div class="dag-empty files-empty">NO FEED IN VIEW &mdash; PRESS RUNS-02, cd INTO A FEED, OR RUN `feed diagram &lt;feed&gt;`</div>
               </div>
             </template>
+            <template id="tpl-pane-gather">
+              <!-- The GATHER pane: a cohort as a listing, born beside the
+                   PACS workspace when the first series is gathered. One
+                   block, the cohort row over its series; the verbs in the
+                   frame's row zone (aegis.adoc: a-row-s-verbs-live-in-the-frame). -->
+              <div class="workspace-pane pane-gather">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title gather-title">GATHER</span>
+                    <span class="pane-mode"></span>
+                    <span class="pane-state"></span>
+                  </div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <span class="drawer-group drawer-structure">
+                    <span class="drawer-label">SPLIT</span>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                    <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                    <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  </span>
+                  <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                    <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                  </span>
+                  <span class="drawer-group drawer-children"></span>
+                </div>
+                <div class="gather-listing">
+                  <span class="field-rule"></span>
+                  <button class="mode-strip" title="display modes" aria-label="display modes"></button>
+                  <span class="mode-elbow"></span>
+                  <aside class="mode-frame">
+                    <button class="strategy-pill gather-filter rail-off" title="filter the cohort (the bar reads FILTERED n/m)">FILTER OFF</button>
+                    <span class="mode-fill"></span>
+                  </aside>
+                  <div class="gather-rows"></div>
+                </div>
+              </div>
+            </template>
             <template id="tpl-pane-files">
               <div class="workspace-pane pane-files">
                 <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
@@ -617,6 +660,9 @@
                      clipped label and the operator reported it missing. A
                      control nobody can see is a control that is not there. -->
                 <button id="pacs-export" class="pacs-capsule" title="write the whole answer as CSV into ChRIS storage">EXPORT CSV</button>
+                <!-- Where the table went, said by the pane that made it:
+                     a readout, not a capsule, since it answers no press. -->
+                <span id="pacs-wrote" class="pacs-wrote" hidden></span>
               </div>
               <!-- The results are a framed field like the other listings:
                    a rule turning through an elbow into the spine, whose
@@ -633,24 +679,6 @@
                   <span class="mode-fill"></span>
                 </aside>
                 <div id="pacs-results"></div>
-              </div>
-              <div id="pacs-gather">
-                <div class="pacs-gather-head">
-                  <span class="pacs-gather-title">GATHER</span>
-                  <input id="pacs-gather-name" placeholder="cohort name" autocomplete="off" />
-                  <button id="pacs-gather-save" class="pacs-capsule" title="write ~/gather/&lt;name&gt; manifest">SAVE</button>
-                  <!-- The cohort as a table a spreadsheet reads, named for
-                       what it covers so it is not read as the whole answer.
-                       It lands in CFS, not on the machine the browser
-                       happens to be running on: the engine is elsewhere,
-                       and a redirect would write somebody else's disk. -->
-                  <button id="pacs-gather-export" class="pacs-capsule" title="write the gathered series as CSV into ChRIS storage">EXPORT GATHER CSV</button>
-                  <!-- Where the table went, said by the pane that made it:
-                       a readout, not a capsule, since it answers no press. -->
-                  <span id="pacs-wrote" class="pacs-wrote" hidden></span>
-                  <button id="pacs-gather-feed" class="pacs-capsule" title="create a feed rooted on the cohort">CREATE FEED</button>
-                </div>
-                <div id="pacs-gather-rows"></div>
               </div>
             </div>
           </main>

@@ -1,5 +1,22 @@
 # @fnndsc/chell
 
+## 5.8.1
+
+### Patch Changes
+
+- 3f96d86: A daemon comes up where the operator left it. A credentialed boot used to write `/` into the working-directory context after connecting, so every restart began at the root whatever was stored; it no longer touches the directory, and with nothing stored the kernel's home default (`/home/<user>`, now exported as `homePath_of`) applies to the boot context too.
+- Updated dependencies [3f96d86]
+- Updated dependencies [6d8a595]
+- Updated dependencies [a4a38b1]
+- Updated dependencies [0d99ec5]
+- Updated dependencies [480632d]
+- Updated dependencies [b4d9282]
+- Updated dependencies [b337285]
+- Updated dependencies [ab127ea]
+  - @fnndsc/brasa@0.23.1
+  - @fnndsc/salsa@3.18.1
+  - @fnndsc/calypso@0.15.1
+
 ## 5.8.0
 
 ### Minor Changes

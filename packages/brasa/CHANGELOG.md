@@ -1,5 +1,20 @@
 # @fnndsc/brasa
 
+## 0.23.1
+
+### Patch Changes
+
+- 3f96d86: A daemon comes up where the operator left it. A credentialed boot used to write `/` into the working-directory context after connecting, so every restart began at the root whatever was stored; it no longer touches the directory, and with nothing stored the kernel's home default (`/home/<user>`, now exported as `homePath_of`) applies to the boot context too.
+- 6d8a595: `pipeline run` answers with the `run.scheduled` model a plugin run answers with (pipeline name, first instance, feed), so a surface lights the feed it landed in without reading the id out of the text.
+- a4a38b1: A file under a `/proc` projection can be read. The proc provider resolved a node's `data` to the CFS file behind it and then handed that file back to the dispatcher, whose default provider is the host filesystem — which refused it; it now reads the target through `fileContent_get`, the door that knows both worlds. The engine's `file_read` (the daemon's `/vfs` route) resolves the path it is given, so a surface can read a file at the address the session uses for it.
+- 0d99ec5: `pull --new-feed` answers with a `feed.created` model beside its text: the feed it made, its pl-dircopy root instance, the owner, and the root's data folder, so a surface binds to the place rather than parsing the id and path out of the lines.
+- 480632d: A scheduled run answers with a typed model. Running a plugin from the shell now returns a `run.scheduled` envelope model (the executable, the instance, the feed it landed in, whether that feed is new, the output path) beside the lines it already printed, so a surface can point at what it started rather than parse the console.
+- b4d9282: A first session begins in the identity's home directory. Before the context had stored a working directory the session answered `/`, which is a place nobody works in; it now answers `/home/<user>`, as a shell would. A stored directory is always honoured, the root included.
+- b337285: `image` is a kernel command, but it was missing from the two places that enumerate commands for the operator: tab-completion (offered from the help registry) and the grouped `help` listing (grouped by a hardcoded category map that had no imaging category). It had a help entry, so `image --help` worked, but the entry carried no summary and belonged to no category, so it never appeared in `help`. Now `dcm` and `image` share an `Imaging` category in the listing, the `image` entry carries a one-line summary, and `image`/`dcm` take path-argument completion like the other path commands — so `ima⇥` completes to `image` and `image ~/up⇥` completes a path.
+- ab127ea: `plugininstance list` answers with a `plugininstance.list` model beside its table: the listed instances as typed rows (id, plugin name and version, feed, owner, status, start), the fields the listing selected. A surface reads its run history rather than scraping it.
+- Updated dependencies [a4a38b1]
+  - @fnndsc/salsa@3.18.1
+
 ## 0.23.0
 
 ### Minor Changes

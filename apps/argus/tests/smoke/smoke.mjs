@@ -942,6 +942,42 @@ try {
     JSON.stringify({ tokenLength: attach.token, leaks: attach.leaks, reveals: attach.reveals }));
   }
 
+  if (stage('pane-ask')) {
+  // A question the surface asks stands on the pane that asked it. The
+  // console is closed here on purpose: that is the state the question used
+  // to vanish into, taking the press with it and leaving the surface
+  // waiting on something nobody could see.
+  const asked = await evalIn(`
+    await console_idle();
+    document.getElementById('gutter-files').click(); await sleep(700);
+    const drawerEl = document.getElementById('drawer');
+    if (!drawerEl.classList.contains('drawer-closed')) { document.getElementById('drawer-toggle').click(); await sleep(400); }
+    const pane = document.querySelector('.pane-files');
+    pane.querySelector('.files-mkdir').click(); await sleep(500);
+    const bar = pane.querySelector('.ask-bar');
+    const asks = [...document.querySelectorAll('#terminal .argus-ask')].map((e) => e.textContent.trim());
+    const state = {
+      onPane: bar !== null,
+      words: bar?.querySelector('.ask-bar-caption')?.textContent ?? '',
+      tall: bar?.getBoundingClientRect().height ?? 0,
+      focused: document.activeElement?.className ?? '',
+      commit: bar?.querySelector('.ask-bar-commit')?.textContent ?? '',
+      noted: asks.some((line) => line.includes('New directory')),
+      consoleClosed: drawerEl.classList.contains('drawer-closed') && drawerEl.getBoundingClientRect().height < 1,
+    };
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(400);
+    state.leftOnAbandon = pane.querySelector('.ask-bar') === null;
+    return state;`);
+  check('a question the surface asks stands on the pane that asked, not in a closed console',
+    asked.onPane === true && asked.consoleClosed === true && asked.tall > 10
+    && asked.words.includes('New directory') && asked.commit === 'MAKE IT',
+    JSON.stringify(asked));
+  check('the question takes the keyboard, the console keeps the exchange, and Esc abandons it',
+    asked.focused === 'ask-bar-field' && asked.noted === true && asked.leftOnAbandon === true,
+    JSON.stringify(asked));
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //

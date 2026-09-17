@@ -38,6 +38,7 @@ import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gat
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
+import { paneAsk_open, paneAsk_abandon, type PaneAskRequest } from '../features/ask/paneAsk.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
@@ -275,7 +276,7 @@ function drawer_wire(
   strip: HTMLElement,
   toggle: HTMLElement,
   terminal: ArgusTerminal,
-): void {
+): (closed: boolean) => void {
   // A drag leaves an inline height on the drawer, which would defeat the
   // closed class; stash it while closed and restore it on reopen.
   let openHeight: string = '';
@@ -331,6 +332,8 @@ function drawer_wire(
     dragging = false;
     drawer.classList.remove('drawer-dragging');
   });
+
+  return closed_set;
 }
 
 /**
@@ -938,8 +941,7 @@ async function surface_start(token: string): Promise<void> {
    * @param place - The directory to make it in.
    */
   const directory_make = (id: string, place: string): void => {
-    void terminal
-      .ask_open({ message: `New directory in ${place}: `, kind: 'text' })
+    void ask_onPane(id, { message: `New directory in ${place}: `, kind: 'text', commit: 'MAKE IT' })
       .then((name: string | null): void => {
         const wanted: string = (name ?? '').trim();
         // An abandoned question makes nothing, and says nothing: the
@@ -2102,7 +2104,7 @@ async function surface_start(token: string): Promise<void> {
     if (line === '' || runLine_executable(line) !== executable) line = runLine_compose(binding.input, executable);
     if (binding.feed === null && !runLine_hasTitle(line)) {
       const suggested: string = binding.input.split('/').filter(Boolean).pop() ?? 'feed';
-      const title: string | null = await terminal.ask_open({ message: `Feed title: `, kind: 'text', suggest: suggested });
+      const title: string | null = await ask_onPane(id, { message: 'Feed title: ', kind: 'text', suggest: suggested, commit: 'RUN' });
       const wanted: string = (title ?? '').trim();
       if (wanted === '') return;
       line = runLine_titleAppend(line, wanted);
@@ -2180,7 +2182,8 @@ async function surface_start(token: string): Promise<void> {
         void image_open(id, folderPath).then((line: string): void => terminal.line_note(line));
       },
       process_open: (folderPath: string): void => process_open(id, { input: folderPath, feed: null, node: null }),
-      name_ask: (suggest: string): Promise<string | null> => terminal.ask_open({ message: 'Cohort name: ', kind: 'text', suggest }),
+      name_ask: (suggest: string): Promise<string | null> =>
+        ask_onPane(id, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
       changed: (): void => pacsStage_relight(),
       dismiss: (): void => {
         if (!layout.leaf_close(id)) home_apply();
@@ -2646,6 +2649,42 @@ async function surface_start(token: string): Promise<void> {
 
   /** Abandons the errand on stage, when there is one. */
   let errandClose: (() => void) | null = null;
+
+  /** Opens or retracts the console drawer; set once the drawer is wired. */
+  let consoleClosed_set: ((closed: boolean) => void) | null = null;
+
+  /**
+   * Puts a question on the pane that provoked it.
+   *
+   * A transient question belongs where the hand is. Every surface question
+   * used to go to the console, and a console can be closed: PROCESS on a
+   * cohort asked for a name into a drawer of zero height, so the press
+   * read as dead and the surface waited on a question nobody could see.
+   * The pane asks now, and the console still records the exchange, so the
+   * scrollback stays the whole story of the session.
+   *
+   * @param id - The pane asking.
+   * @param request - The question.
+   * @returns The answer, or null when abandoned.
+   */
+  const ask_onPane = async (id: string, request: PaneAskRequest): Promise<string | null> => {
+    const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
+    // A pane that is not on stage cannot carry a question; the console can,
+    // and it exposes itself to do it.
+    if (mount === undefined) {
+      consoleClosed_set?.(false);
+      return terminal.ask_open({
+        message: request.message,
+        kind: request.kind,
+        ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
+      });
+    }
+    const noted: (answer: string | null) => void = terminal.ask_note(request.message);
+    const answer: string | null = await paneAsk_open(mount, request);
+    // A secret never enters the transcript, not even as a length.
+    noted(request.kind === 'secret' && answer !== null ? '\u2022\u2022\u2022\u2022\u2022\u2022' : answer);
+    return answer;
+  };
 
   const pacsPanel: PacsPanel = new PacsPanel(element_require('pacs-workspace'), {
     command_run: (line: string): void => {
@@ -3738,6 +3777,14 @@ async function surface_start(token: string): Promise<void> {
           sound_play('audio3');
           return;
         }
+        // A question standing on a pane is abandoned the same way and for
+        // the same reason: retreating past it would leave the surface
+        // waiting on an answer nobody is being asked for any more.
+        if (paneAsk_abandon()) {
+          event.stopImmediatePropagation();
+          sound_play('audio3');
+          return;
+        }
         // An errand is a question standing on the stage: Esc abandons it
         // before anything else, because leaving it open while retreating
         // past it would leave a command waiting on an answer nobody is
@@ -4466,6 +4513,10 @@ async function surface_start(token: string): Promise<void> {
        */
       ask_receive: async (request: SurfaceAsk): Promise<string | null> => {
         if (request.kind !== 'path') {
+          // The SESSION's question stays where the session speaks. But a
+          // closed console is a question nobody can see, so asking one
+          // exposes it — the same event the lid's own toggle fires.
+          consoleClosed_set?.(false);
           return terminal.ask_open({
             message: request.message,
             kind: request.kind,
@@ -4610,7 +4661,7 @@ async function surface_start(token: string): Promise<void> {
   terminal.prompt_draw();
   terminal.focus_take();
 
-  drawer_wire(
+  consoleClosed_set = drawer_wire(
     element_require('drawer'),
     element_require('drawer-strip'),
     element_require('drawer-toggle'),

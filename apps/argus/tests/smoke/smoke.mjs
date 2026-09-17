@@ -825,6 +825,71 @@ try {
   }
   }
 
+  if (stage('node-volume')) {
+  // Imagery a run produced opens at the address the graph gives for it.
+  // Two faults met here: a file click read every non-raster file as text
+  // (so a NIfTI in a node answered READ REFUSED), and the kernel could not
+  // serve bytes under a /proc projection at all — the proc provider handed
+  // its CFS target back to the dispatcher, whose default provider is the
+  // host filesystem, which refused it. The browser is walked rather than
+  // the graph: the same file click, at the same projected path, without
+  // hunting a node under a canvas.
+  if (!dagFeed) {
+    console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has a node holding imagery>');
+  } else {
+    const volume = await evalIn(`
+      await console_idle();
+      document.getElementById('gutter-files').click(); await sleep(800);
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const pane = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+      const rows = () => [...(pane()?.querySelectorAll('.files-row') ?? [])];
+      const name = (r) => r.querySelector('.files-name')?.textContent.trim() ?? '';
+      const imagery = () => rows().find((r) => /\\.(nii|nii\\.gz|mgz)$/.test(name(r)));
+      const settleRows = async (want) => { for (let i = 0; i < 40; i++) { await sleep(500); if (want()) return true; } return false; };
+
+      // Every node of the feed, until one holds a volume in its own data.
+      // The feed's own directory lists its ROOT only (children hang under
+      // it), so the node names come from the kernel's tree; each is
+      // addressable flat under the feed. The path is the projection:
+      // /proc, not /home.
+      const outEl = document.querySelector('#terminal .argus-output');
+      const before = outEl.children.length;
+      await say('feed tree ${dagFeed}', 6000);
+      const tree = [...outEl.children].slice(before).map((e) => e.textContent).join(' ');
+      const nodes = [...new Set((tree.match(/pl-[A-Za-z0-9_.-]+_\\d+/g) ?? []))];
+      let at = null;
+      for (const node of nodes) {
+        await say('cd "/proc/jobs/feed_${dagFeed}/' + node + '/data"', 3500);
+        await settleRows(() => rows().length > 0);
+        if (imagery()) { at = node; break; }
+      }
+      if (at === null) return { nodes, volume: null };
+      const found = imagery();
+      const volumeName = name(found);
+      // In a browser a row with verbs indicates on a click and opens from
+      // its control: the kind's glyph is the press that acts.
+      found.querySelector('.files-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      let viewer = null;
+      for (let i = 0; i < 160; i++) { await sleep(500);
+        viewer = [...document.querySelectorAll('.pane-image')].find((p) => p.offsetParent !== null);
+        if (viewer && /SLICES/.test(viewer.querySelector('.pane-state')?.textContent ?? '')) break; }
+      await sleep(1500);
+      const state = viewer?.querySelector('.pane-state')?.textContent.trim() ?? null;
+      const refused = pane()?.textContent.includes('READ REFUSED') ?? false;
+      await say('cd ~', 2500);
+      return { nodes, node: at, volume: volumeName, state, refused };`);
+    if (volume.volume === null) {
+      console.log('  skipped: no node of this feed holds a volume');
+    } else {
+      check('a volume under a node opens as an image at its projected address',
+        volume.refused === false && /SLICES/.test(volume.state ?? ''),
+        JSON.stringify(volume));
+    }
+  }
+  }
+
   if (stage('follow-declared')) {
   // The following browser says so on its bar, and the binding is a verb
   // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.

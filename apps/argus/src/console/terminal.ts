@@ -394,6 +394,22 @@ export class ArgusTerminal {
    *
    * @param line - The command line to run.
    */
+  /**
+   * Puts a line in the input, unrun, with the caret at its end.
+   *
+   * What a surface does when it knows most of a command but not all of it —
+   * a launcher block offering `pacs query PatientID:` rather than a dead
+   * "nothing asked yet". The operator finishes it and presses return, so
+   * nothing is issued in their name.
+   *
+   * @param line - The line to offer.
+   */
+  public line_offer(line: string): void {
+    this.input.value = line;
+    this.focus_take();
+    this.input.setSelectionRange(line.length, line.length);
+  }
+
   public line_run(line: string): void {
     if (this.busy) {
       this.queuedLines.push(line);

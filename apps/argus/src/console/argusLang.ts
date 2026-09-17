@@ -53,6 +53,8 @@ export interface ArgusHost {
   tags_control(paneId: string, verb: string, args: string[]): string;
   /** Toggles the console's full-screen zoom (the bar carries no control). */
   consoleZoom_toggle(): void;
+  /** Opens the launcher, the place a session begins when nothing is open. */
+  launcher_enter(): void;
   /** The serialized desktop of the current composition. */
   desktop_serialize(): string;
 }
@@ -66,7 +68,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'launcher', 'argus',
 ]);
 
 /**
@@ -244,6 +246,14 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   if (subject === 'back') {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     return 'back';
+  }
+
+  if (subject === 'dashboard' || subject === 'launcher') {
+    // DASHBOARD-04 on the gutter is the pointer's way in; this is the
+    // keyboard's. `launcher` still answers, since that is what the thing
+    // was called before it had a block of its own.
+    host.launcher_enter();
+    return 'dashboard';
   }
 
   if (subject === 'view') {

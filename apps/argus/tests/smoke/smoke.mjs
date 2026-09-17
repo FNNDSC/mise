@@ -772,6 +772,66 @@ try {
   // camera sat parked inside a sphere filling the pane with one flat
   // colour, which an operator reasonably read as a crash.
   const dagFeed = process.env.SMOKE_DAG_FEED;
+  if (stage('launcher')) {
+  // Where a session begins when nothing is open: one block per domain,
+  // each carrying what it holds and ending in the verb that opens it, its
+  // rows doors into recent work. The launcher is the empty state, so it
+  // yields the moment content opens.
+  const launcher = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms) => { input.value = line;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const tiles = () => [...document.querySelectorAll('.launcher-tile')];
+    const named = (name) => tiles().find((t) => t.querySelector('.launcher-name')?.textContent === name);
+    // The gutter's own way in: DASHBOARD-04, where a dead SOURCES block was.
+    document.getElementById('gutter-dashboard')?.click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
+    await sleep(1500);
+    const painted = tiles().map((t) => ({
+      name: t.querySelector('.launcher-name')?.textContent ?? '',
+      figures: [...t.querySelectorAll('.launcher-figure')].map((f) => f.textContent),
+      rows: t.querySelectorAll('.launcher-row').length,
+      verb: t.querySelector('.launcher-verb')?.textContent ?? '',
+      numeral: t.dataset.numeral,
+    }));
+    const alone = [...document.querySelectorAll('.workspace-pane')]
+      .filter((p) => p.offsetParent !== null).map((p) => p.className.replace('workspace-pane ', ''));
+    // A row is a door: the first folder in FILES lands the browser there.
+    const row = named('FILES')?.querySelector('button.launcher-row');
+    const wanted = row?.querySelector('.launcher-row-text')?.textContent ?? '';
+    row?.click();
+    for (let i = 0; i < 80; i++) { await sleep(500);
+      if (document.querySelector('.pane-files') !== null && tiles().length === 0) break; }
+    await sleep(2500);
+    const pane = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    const landed = pane?.querySelector('.files-path')?.textContent?.trim() ?? '';
+    const yielded = tiles().length === 0;
+    // And the word brings it back.
+    await say('dashboard', 2500);
+    for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
+    const returned = tiles().length > 0;
+    // The gutter block names the place, and the pane agrees with it.
+    const named2 = document.getElementById('gutter-dashboard')?.textContent?.trim() ?? '';
+    const paneTitle = document.querySelector('.pane-launcher .pane-title')?.textContent?.trim() ?? '';
+    await say('view files', 2000);
+    return { painted, alone, wanted, landed, yielded, returned, gutter: named2, paneTitle };`);
+  check('the launcher opens as blocks, one per domain, each with its verb',
+    launcher.painted.length >= 3
+    && launcher.painted.every((t) => t.name !== '' && t.verb !== '' && t.numeral !== undefined)
+    && launcher.painted.some((t) => t.name === 'FILES') && launcher.painted.some((t) => t.name === 'ANALYSES'),
+    JSON.stringify(launcher.painted));
+  check('it owns the stage while it is the empty state',
+    launcher.alone.length === 1 && launcher.alone[0] === 'pane-launcher', JSON.stringify(launcher.alone));
+  check('a row is a door: pressing one lands there, and the launcher yields',
+    launcher.yielded === true && launcher.wanted !== '' && launcher.landed.endsWith(launcher.wanted),
+    JSON.stringify({ wanted: launcher.wanted, landed: launcher.landed, yielded: launcher.yielded }));
+  check('the word dashboard brings it back', launcher.returned === true, String(launcher.returned));
+  check('the gutter names the place, and the pane agrees',
+    /^DASHBOARD/.test(launcher.gutter) && launcher.paneTitle === 'DASHBOARD',
+    JSON.stringify({ gutter: launcher.gutter, pane: launcher.paneTitle }));
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //

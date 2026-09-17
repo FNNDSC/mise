@@ -34,6 +34,7 @@ import { ArgusProgress } from '../console/progress.js';
 import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
+import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -946,12 +947,38 @@ async function surface_start(token: string): Promise<void> {
    *
    * @property text - Summary HTML shown above the stage; '' for none.
    * @property nodes - The graph, as the scene wants it.
-   * @property facts_show - Fills the overlay for one node, selected or immersed.
+   * @property facts_show - Fills the overlay for one node, selected or immersed,
+   *   writing into the form's line when the view is a form.
    */
   interface BinGraph {
     text: string;
     nodes: SceneNode[];
-    facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean) => void;
+    facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean, form: BinForm | null) => void;
+  }
+
+  /**
+   * The graph as a form: the line a bound catalogue holds, read and written
+   * by the dive's VALUE cells. The line is the only state — a value typed
+   * here is a flag there, and a hand edit there is what a cell reads here.
+   *
+   * @property line_get - The line as the strip holds it.
+   * @property line_set - Writes the line back to the strip.
+   * @property run - Runs the line, as RUN in the row zone does.
+   */
+  interface BinForm {
+    line_get: () => string;
+    line_set: (line: string) => void;
+    run: () => void;
+  }
+
+  /**
+   * One row of a node's readout: a label and what it says, and — in a form —
+   * the flag the row edits, with the kind of value it takes.
+   */
+  interface FactRow {
+    label: string;
+    value: string;
+    edit?: { flag: string; type: string; placeholder: string };
   }
 
   /**
@@ -970,6 +997,7 @@ async function surface_start(token: string): Promise<void> {
     panel: FilesPanel,
     path: string,
     graph_fetch: () => Promise<BinGraph | null>,
+    form: BinForm | null,
   ): void => {
     let scene: DagScene | null = null;
     let modeRelease: (() => void) | null = null;
@@ -1000,19 +1028,25 @@ async function surface_start(token: string): Promise<void> {
       const built: DagScene = new DagScene(mount, {
         // A node's substance already arrived with the graph, so a touch
         // reads it out and a dive goes in. Nothing is fetched for either.
-        select: (node: SceneNode): void => graph.facts_show(facts, node.id, false),
-        activate: (node: SceneNode): void => {
-          built.flight_into(node.id, (): void => {
-            binDive = { scene: built, facts };
-            graph.facts_show(facts, node.id, true);
-          });
-        },
+        select: (node: SceneNode): void => graph.facts_show(facts, node.id, false, form),
+        activate: (node: SceneNode): void => dive(node),
         deselect: (): void => facts.replaceChildren(),
       }, {});
+      const dive = (node: SceneNode): void => {
+        built.flight_into(node.id, (): void => {
+          binDive = { scene: built, facts };
+          graph.facts_show(facts, node.id, true, form);
+        });
+      };
       scene = built;
       built.graph_set({ nodes: graph.nodes }, { wave: false });
       built.size_fit();
-      modeRelease = diagramModes_wire(mount, built, panel);
+      modeRelease = diagramModes_wire(mount, built, panel, form === null ? undefined : form.run);
+      // A level of one opens itself: a plugin is one node, and the only
+      // thing to do on its stage is go in. The camera still flies, so the
+      // dive reads as the same gesture a pipeline's node answers to.
+      const only: SceneNode | undefined = graph.nodes.length === 1 ? graph.nodes[0] : undefined;
+      if (only !== undefined) dive(only);
     });
   };
 
@@ -1046,8 +1080,9 @@ async function surface_start(token: string): Promise<void> {
           parentIds: node.parentIds,
           joinParentIds: node.joinParentIds,
         })),
-        facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean): void => {
-          facts_paint(facts, pipelineNodeRows_build(authored.get(nodeId), immersed), immersed);
+        facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean, form: BinForm | null): void => {
+          const titles: string[] = parsed.data.nodes.map((node: PipelineDiagramNode): string => node.label);
+          facts_paint(facts, pipelineNodeRows_build(authored.get(nodeId), immersed, form !== null, titles), immersed, form);
         },
       };
     }
@@ -1071,8 +1106,8 @@ async function surface_start(token: string): Promise<void> {
       return {
         text: '',
         nodes: [{ id: entry, label: model.name, parentIds: [], joinParentIds: [] }],
-        facts_show: (facts: HTMLElement, _nodeId: string, immersed: boolean): void => {
-          facts_paint(facts, pluginRows_build(model, immersed), immersed);
+        facts_show: (facts: HTMLElement, _nodeId: string, immersed: boolean, form: BinForm | null): void => {
+          facts_paint(facts, pluginRows_build(model, immersed, form !== null), immersed, form);
         },
       };
     }
@@ -1086,9 +1121,34 @@ async function surface_start(token: string): Promise<void> {
    * @param path - The entry's path.
    * @param kind - Whether the entry is a plugin or a pipeline.
    */
-  const binEntry_show = (panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => {
+  const binEntry_show = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => {
     binGraph_show(panel, path, (): Promise<BinGraph | null> =>
-      kind === 'plugin' ? pluginGraph_fetch(path) : pipelineGraph_fetch(path));
+      kind === 'plugin' ? pluginGraph_fetch(path) : pipelineGraph_fetch(path), binForm_of(id, panel, path, kind));
+  };
+
+  /**
+   * The form a /bin entry's graph is, when the pane is a catalogue bound to
+   * an input: the strip's line, started afresh for this executable unless
+   * it already runs it (a hand edit stands; another entry's line does not).
+   *
+   * @param id - The pane.
+   * @param panel - Its files panel.
+   * @param path - The entry on stage.
+   * @param kind - Whether it is a plugin or a pipeline.
+   * @returns The form, or null when the pane is a browser.
+   */
+  const binForm_of = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): BinForm | null => {
+    const binding: CatalogueBinding | undefined = catalogueBindings.get(id);
+    if (binding === undefined) return null;
+    const executable: string = path.replace(/^.*\//, '');
+    if (runLine_executable(panel.commandLine_get()) !== executable) {
+      panel.commandLine_set(runLine_compose(binding.input, executable));
+    }
+    return {
+      line_get: (): string => panel.commandLine_get(),
+      line_set: (line: string): void => panel.commandLine_set(line),
+      run: (): void => { void run_press(id, executable, kind); },
+    };
   };
 
 
@@ -1138,27 +1198,61 @@ async function surface_start(token: string): Promise<void> {
    * One painter for every /bin entry: a pipeline's node and a plugin differ
    * in what they have to say, never in how it is said.
    *
+   * In a form, a row that edits a flag carries a VALUE cell: what the line
+   * says for that flag now, written back to the line on every keystroke. A
+   * boolean is a check, since the console takes it bare.
+   *
    * @param facts - The overlay to fill.
-   * @param rows - Label/value pairs, in reading order.
+   * @param rows - The rows, in reading order.
    * @param immersed - Whether the camera has flown into the node.
+   * @param form - The line the cells read and write, or null for a readout.
    */
   function facts_paint(
     facts: HTMLElement,
-    rows: ReadonlyArray<[string, string]>,
+    rows: ReadonlyArray<FactRow>,
     immersed: boolean,
+    form: BinForm | null,
   ): void {
     facts.replaceChildren();
     facts.classList.toggle('dag-facts-immersed', immersed);
-    for (const [label, value] of rows) {
+    for (const { label, value, edit } of rows) {
       const row: HTMLDivElement = document.createElement('div');
       row.className = 'telemetry-row';
       const name: HTMLSpanElement = document.createElement('span');
       name.className = 'telemetry-label';
       name.textContent = label;
-      const figure: HTMLSpanElement = document.createElement('span');
-      figure.className = 'telemetry-value';
-      figure.textContent = value;
-      row.append(name, figure);
+      row.appendChild(name);
+      if (edit === undefined || form === null) {
+        const figure: HTMLSpanElement = document.createElement('span');
+        figure.className = 'telemetry-value';
+        figure.textContent = value;
+        row.appendChild(figure);
+      } else {
+        const current: RunFlagValue = runLine_flagGet(form.line_get(), edit.flag);
+        const input: HTMLInputElement = document.createElement('input');
+        input.className = 'telemetry-input';
+        input.spellcheck = false;
+        input.autocomplete = 'off';
+        input.title = `${edit.flag} — ${value}`;
+        if (edit.type === 'boolean') {
+          input.type = 'checkbox';
+          input.checked = current === true;
+          input.addEventListener('change', (): void => {
+            form.line_set(runLine_flagSet(form.line_get(), edit.flag, input.checked ? true : null));
+          });
+        } else {
+          input.type = 'text';
+          input.placeholder = edit.placeholder;
+          input.value = current === null || current === true ? '' : current;
+          input.addEventListener('input', (): void => {
+            form.line_set(runLine_flagSet(form.line_get(), edit.flag, input.value));
+          });
+        }
+        const hint: HTMLSpanElement = document.createElement('span');
+        hint.className = 'telemetry-hint';
+        hint.textContent = value;
+        row.append(input, hint);
+      }
       facts.appendChild(row);
     }
   }
@@ -1174,30 +1268,44 @@ async function surface_start(token: string): Promise<void> {
    * see — a glance is not a wall of text, the complaint that started this
    * epic.
    *
+   * As a form, the node's header reads `title · @id` and each authored
+   * argument is a VALUE cell writing `--<node>.<param>` — the node its
+   * title when shell-safe and unique, else `@<pipingId>`, as the kernel
+   * resolves it. Only edited values reach the line: a sparse overlay on
+   * what the author fixed.
+   *
    * @param node - The authored node, when the model carried one.
    * @param immersed - Whether the camera has flown into it.
+   * @param form - Whether the view is a form.
+   * @param titles - Every node title in the pipeline, for the selector.
    * @returns The rows to paint.
    */
   function pipelineNodeRows_build(
     node: PipelineDiagramNode | undefined,
     immersed: boolean,
-  ): Array<[string, string]> {
+    form: boolean,
+    titles: ReadonlyArray<string>,
+  ): FactRow[] {
     if (node === undefined) return [];
     const args: ReadonlyArray<{ name: string; value?: unknown }> = node.arguments ?? [];
-    const rows: Array<[string, string]> = [
-      ['PLUGIN', node.pluginName],
-      ...(node.pluginVersion !== undefined
-        ? ([['VERSION', node.pluginVersion]] as Array<[string, string]>)
-        : []),
+    const rows: FactRow[] = [
+      { label: 'NODE', value: `${node.label} · @${node.id}` },
+      { label: 'PLUGIN', value: node.pluginName },
+      ...(node.pluginVersion !== undefined ? [{ label: 'VERSION', value: node.pluginVersion }] : []),
     ];
     if (immersed) {
       // An authored node with nothing fixed says so: an empty panel would
       // read as a failure to load rather than as a plugin run on defaults.
+      const selector: string = pipelineNode_selector(node.label, node.id, titles);
       rows.push(...(args.length === 0
-        ? ([['ARGUMENTS', 'none — this node runs on the plugin\'s defaults']] as Array<[string, string]>)
-        : args.map((argument): [string, string] => [argument.name, String(argument.value ?? '')])));
+        ? [{ label: 'ARGUMENTS', value: 'none — this node runs on the plugin\'s defaults' }]
+        : args.map((argument): FactRow => ({
+          label: argument.name,
+          value: String(argument.value ?? ''),
+          ...(form ? { edit: { flag: `--${selector}.${argument.name}`, type: typeof argument.value === 'boolean' ? 'boolean' : 'string', placeholder: String(argument.value ?? '') } } : {}),
+        }))));
     } else {
-      rows.push(['ARGUMENTS', args.length === 0 ? 'none' : `${args.length} — open the node to read them`]);
+      rows.push({ label: 'ARGUMENTS', value: args.length === 0 ? 'none' : `${args.length} — open the node to read them` });
     }
     return rows;
   }
@@ -1210,44 +1318,56 @@ async function surface_start(token: string): Promise<void> {
    * a plugin's says the ones nobody has fixed yet. Same gesture, same
    * shape, and the difference is honest.
    *
+   * As a form, every parameter is a VALUE cell writing its flag into the
+   * line; what the readout said (type, required, default, help) stays as
+   * the cell's hint.
+   *
    * @param model - The plugin model.
    * @param immersed - Whether the camera has flown into the node.
+   * @param form - Whether the view is a form.
    * @returns The rows to paint.
    */
-  function pluginRows_build(model: PluginInfoModel, immersed: boolean): Array<[string, string]> {
-    const rows: Array<[string, string]> = [
-      ['PLUGIN', model.name],
-      ['VERSION', model.version],
-      ['TYPE', model.type.toUpperCase()],
+  function pluginRows_build(model: PluginInfoModel, immersed: boolean, form: boolean): FactRow[] {
+    const rows: FactRow[] = [
+      { label: 'PLUGIN', value: model.name },
+      { label: 'VERSION', value: model.version },
+      { label: 'TYPE', value: model.type.toUpperCase() },
     ];
     const parameters: ReadonlyArray<PluginParameter> = model.parameters;
     if (!immersed) {
-      rows.push(['PARAMETERS', parameters.length === 0
+      rows.push({ label: 'PARAMETERS', value: parameters.length === 0
         ? 'none'
-        : `${parameters.length} — open the node to read them`]);
+        : `${parameters.length} — open the node to read them` });
       return rows;
     }
     if (parameters.length === 0) {
-      rows.push(['PARAMETERS', 'none — this plugin takes no arguments']);
+      rows.push({ label: 'PARAMETERS', value: 'none — this plugin takes no arguments' });
       return rows;
     }
     for (const parameter of parameters) {
       const parts: string[] = [parameter.type];
       if (!parameter.optional) parts.push('required');
-      if (parameter.default !== undefined && parameter.default !== null && String(parameter.default) !== '') {
-        parts.push(`default ${String(parameter.default)}`);
-      }
+      const fallback: string = parameter.default === undefined || parameter.default === null ? '' : String(parameter.default);
+      if (fallback !== '') parts.push(`default ${fallback}`);
       const meta: string = parts.join(' · ');
-      rows.push([parameter.flag, parameter.help === undefined ? meta : `${meta} — ${parameter.help}`]);
+      rows.push({
+        label: parameter.flag,
+        value: parameter.help === undefined ? meta : `${meta} — ${parameter.help}`,
+        // The cell's ghost is the default alone: the hint beside it says the rest.
+        ...(form ? { edit: { flag: parameter.flag, type: parameter.type, placeholder: fallback } } : {}),
+      });
     }
     return rows;
   }
 
-  function diagramModes_wire(mount: HTMLElement, scene: DagScene, panel: FilesPanel): () => void {
+  function diagramModes_wire(mount: HTMLElement, scene: DagScene, panel: FilesPanel, run?: () => void): () => void {
   const body: HTMLElement | null = mount.closest<HTMLElement>('.files-body');
   const strategyPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-strategy') ?? null;
   const projectionPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-projection') ?? null;
   const pulsePill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-pulse') ?? null;
+  // RUN rides the graph's frame only when the graph is a form.
+  const runPill: HTMLElement | null = run === undefined ? null : body?.querySelector<HTMLElement>('.diagram-run') ?? null;
+  const run_press = (): void => run?.();
 
   const modes_annunciate = (): void => {
     // Only what is NOT the default is worth saying; a bar that repeats the
@@ -1279,12 +1399,14 @@ async function surface_start(token: string): Promise<void> {
   strategyPill?.addEventListener('click', strategy_flip);
   projectionPill?.addEventListener('click', projection_flip);
   pulsePill?.addEventListener('click', pulse_fire);
+  runPill?.addEventListener('click', run_press);
   modes_annunciate();
 
   return (): void => {
     strategyPill?.removeEventListener('click', strategy_flip);
     projectionPill?.removeEventListener('click', projection_flip);
     pulsePill?.removeEventListener('click', pulse_fire);
+    runPill?.removeEventListener('click', run_press);
     pulsePill?.classList.remove('pulse-running');
   };
   }
@@ -1307,7 +1429,7 @@ async function surface_start(token: string): Promise<void> {
       return;
     }
     if (action.kind === 'plugin' || action.kind === 'pipeline') {
-      binEntry_show(panel, action.path, action.kind);
+      binEntry_show(id, panel, action.path, action.kind);
       return;
     }
     // A volume or a DICOM slice is an image: it opens beside the browser,
@@ -1424,7 +1546,7 @@ async function surface_start(token: string): Promise<void> {
       // PROCESS acts on the place: a bound catalogue opens beside this pane.
       process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
       // RUN runs the line on the catalogue's input, as the console would.
-      run: (): void => { void run_press(id, entry.name); },
+      run: (): void => { void run_press(id, entry.name, entry.type === 'pipeline' ? 'pipeline' : 'plugin'); },
       move: (): void => terminal.line_run(`mv ${quoted}`),
       copy: (): void => terminal.line_run(`cp ${quoted}`),
       delete: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
@@ -1857,34 +1979,44 @@ async function surface_start(token: string): Promise<void> {
    * is echoed as if typed; the kernel's answer names the feed, which lights
    * the strip's FEED capsule. A refusal reads beside the row's verbs.
    *
+   * The line stands as the strip holds it when it runs this executable (a
+   * dive's values and hand edits alike); otherwise it starts afresh. A new
+   * feed's title is asked once, when the line has none. A pipeline runs on
+   * a node, so off one it is refused by name rather than sent to fail.
+   *
    * @param id - The catalogue pane.
    * @param executable - The row's executable name.
+   * @param kind - Whether it is a plugin or a pipeline.
    */
-  const run_press = async (id: string, executable: string): Promise<void> => {
+  const run_press = async (id: string, executable: string, kind: 'plugin' | 'pipeline'): Promise<void> => {
     const binding: CatalogueBinding | undefined = catalogueBindings.get(id);
     const panel: FilesPanel | undefined = filesPanels.get(id);
     if (binding === undefined || panel === undefined) return;
-    let line: string = panel.commandLine_get();
-    if (line === '') {
-      line = `cd "${binding.input}"; ${executable}`;
-      if (binding.feed === null) {
-        const suggested: string = binding.input.split('/').filter(Boolean).pop() ?? 'feed';
-        const title: string | null = await terminal.ask_open({ message: `Feed title: `, kind: 'text', suggest: suggested });
-        const wanted: string = (title ?? '').trim();
-        if (wanted === '') return;
-        line += ` -- feed_title="${wanted.replace(/"/g, '\\"')}"`;
-      }
-      panel.commandLine_set(line);
+    const refuse = (reason: string): void => {
+      terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
+      const indicated: string | null = panel.indicated_get();
+      if (indicated !== null) panel.rowReadout_show(indicated, reason.toUpperCase().slice(0, 80));
+    };
+    if (kind === 'pipeline' && binding.node === null) {
+      refuse(`${executable}: a pipeline runs on a node — PROCESS a node of a feed`);
+      return;
     }
+    let line: string = panel.commandLine_get();
+    if (line === '' || runLine_executable(line) !== executable) line = runLine_compose(binding.input, executable);
+    if (binding.feed === null && !runLine_hasTitle(line)) {
+      const suggested: string = binding.input.split('/').filter(Boolean).pop() ?? 'feed';
+      const title: string | null = await terminal.ask_open({ message: `Feed title: `, kind: 'text', suggest: suggested });
+      const wanted: string = (title ?? '').trim();
+      if (wanted === '') return;
+      line = runLine_titleAppend(line, wanted);
+    }
+    panel.commandLine_set(line);
     terminal.line_echo(line);
     let outcome: ExecuteOutcome;
     try {
       outcome = await client.line_execute(line, { silent: true });
     } catch (error: unknown) {
-      const reason: string = error instanceof Error ? error.message : String(error);
-      terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
-      const indicated: string | null = panel.indicated_get();
-      if (indicated !== null) panel.rowReadout_show(indicated, reason.toUpperCase().slice(0, 80));
+      refuse(error instanceof Error ? error.message : String(error));
       return;
     }
     terminal.outcome_write(outcome);

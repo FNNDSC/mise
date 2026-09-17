@@ -231,7 +231,14 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   }
   sink_dataLine(chalk.green(`✓ Workflow ${workflowId} created — ${pluginInstanceIds.length} node(s) queued`));
   sink_dataLine(chalk.gray(`  Instance IDs: ${pluginInstanceIds.join(', ')}`));
-  return envelope_ok('');
+  // A scheduled run is a model, as a plugin's is: a surface lights the feed
+  // it landed in rather than reading the id out of the text.
+  const firstInstance: number | undefined = pluginInstanceIds[0];
+  if (feedID === undefined || firstInstance === undefined) return envelope_ok('');
+  return envelope_ok('', {
+    kind: 'run.scheduled',
+    data: { pluginName: pipelineResult.value.name, instanceId: firstInstance, feedId: feedID, newFeed: false, outputPath: '' },
+  });
 }
 
 /**

@@ -772,6 +772,75 @@ try {
   // camera sat parked inside a sphere filling the pane with one flat
   // colour, which an operator reasonably read as a crash.
   const dagFeed = process.env.SMOKE_DAG_FEED;
+  if (stage('pane-title')) {
+  // A pane's header is one line of a fixed height. A long name (a series
+  // description, a converter's filename) wrapped inside it, which cut the
+  // letters top and bottom and pushed the mode and state readouts onto a
+  // second row. The name gives way first; the readouts keep their line.
+  const header = await evalIn(`
+    await console_idle();
+    const bars = [...document.querySelectorAll('.workspace-pane')]
+      .filter((p) => p.offsetParent !== null)
+      .map((p) => p.querySelector('.lcars-bar-horizontal'))
+      .filter((b) => b !== null);
+    if (bars.length === 0) return { bars: 0 };
+    const measured = bars.map((bar) => {
+      const title = bar.querySelector('.lcars-title');
+      const state = bar.querySelector('.pane-state');
+      const box = (el) => { const r = el.getBoundingClientRect(); return { h: Math.round(r.height), top: Math.round(r.top) }; };
+      return {
+        text: title?.textContent?.slice(0, 40) ?? '',
+        barH: Math.round(bar.getBoundingClientRect().height),
+        titleH: title ? box(title).h : 0,
+        offLine: title !== null && state !== null && state.textContent !== ''
+          ? Math.abs(box(title).top - box(state).top) > 8 : false,
+      };
+    });
+    return { bars: bars.length, measured,
+      wrapped: measured.filter((m) => m.titleH > m.barH || m.offLine) };`);
+  check('every pane header keeps its title on one line, readouts beside it',
+    header.bars > 0 && header.wrapped.length === 0, JSON.stringify(header.wrapped ?? header));
+  }
+
+  if (stage('console-zoom')) {
+  // The console's zoom owns the stage. The regression this guards: the
+  // drawer was given a height measured from the viewport while it still
+  // began below the header's gap, so it ran past the foot of the screen —
+  // the workspace showed under it in a band, and the page grew taller than
+  // the viewport, which (with overflow frozen) could carry the console's
+  // own top frame above the fold.
+  const zoom = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms) => { input.value = line;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const box = (sel) => { const el = document.querySelector(sel); if (el === null) return null;
+      const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+    await say('console zoom', 1800);
+    const vp = window.innerHeight;
+    const drawer = box('#drawer');
+    const main = document.querySelector('main');
+    const workspaceShown = main !== null && main.offsetParent !== null
+      && main.getBoundingClientRect().top < vp;
+    const scroller = document.scrollingElement;
+    const shot = {
+      state: document.body.dataset.zoom,
+      vp,
+      drawer,
+      // Inside the viewport, top frame included.
+      framed: drawer !== null && drawer.top >= 0 && drawer.bottom <= vp,
+      workspaceShown,
+      // Nothing to scroll: a frozen scroll is what hid the top edge.
+      overflows: Math.round(scroller.scrollHeight) > vp + 1,
+    };
+    await say('console zoom', 1500);
+    return shot;`);
+  check('the zoomed console sits inside the viewport, top frame and all',
+    zoom.state === 'console' && zoom.framed === true, JSON.stringify(zoom));
+  check('the workspace steps off stage for it, and nothing is left to scroll',
+    zoom.workspaceShown === false && zoom.overflows === false, JSON.stringify(zoom));
+  }
+
   if (stage('launcher')) {
   // Where a session begins when nothing is open: one block per domain,
   // each carrying what it holds and ending in the verb that opens it, its
@@ -974,6 +1043,71 @@ try {
         dive.inside?.rows > 0, JSON.stringify(dive.inside));
       check('Esc leaves the node and keeps the scene',
         dive.left === true && dive.keptScene === true, JSON.stringify(dive));
+    }
+  }
+  }
+
+  if (stage('node-volume')) {
+  // Imagery a run produced opens at the address the graph gives for it.
+  // Two faults met here: a file click read every non-raster file as text
+  // (so a NIfTI in a node answered READ REFUSED), and the kernel could not
+  // serve bytes under a /proc projection at all — the proc provider handed
+  // its CFS target back to the dispatcher, whose default provider is the
+  // host filesystem, which refused it. The browser is walked rather than
+  // the graph: the same file click, at the same projected path, without
+  // hunting a node under a canvas.
+  if (!dagFeed) {
+    console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has a node holding imagery>');
+  } else {
+    const volume = await evalIn(`
+      await console_idle();
+      document.getElementById('gutter-files').click(); await sleep(800);
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const pane = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+      const rows = () => [...(pane()?.querySelectorAll('.files-row') ?? [])];
+      const name = (r) => r.querySelector('.files-name')?.textContent.trim() ?? '';
+      const imagery = () => rows().find((r) => /\\.(nii|nii\\.gz|mgz)$/.test(name(r)));
+      const settleRows = async (want) => { for (let i = 0; i < 40; i++) { await sleep(500); if (want()) return true; } return false; };
+
+      // Every node of the feed, until one holds a volume in its own data.
+      // The feed's own directory lists its ROOT only (children hang under
+      // it), so the node names come from the kernel's tree; each is
+      // addressable flat under the feed. The path is the projection:
+      // /proc, not /home.
+      const outEl = document.querySelector('#terminal .argus-output');
+      const before = outEl.children.length;
+      await say('feed tree ${dagFeed}', 6000);
+      const tree = [...outEl.children].slice(before).map((e) => e.textContent).join(' ');
+      const nodes = [...new Set((tree.match(/pl-[A-Za-z0-9_.-]+_\\d+/g) ?? []))];
+      let at = null;
+      for (const node of nodes) {
+        await say('cd "/proc/jobs/feed_${dagFeed}/' + node + '/data"', 3500);
+        await settleRows(() => rows().length > 0);
+        if (imagery()) { at = node; break; }
+      }
+      if (at === null) return { nodes, volume: null };
+      const found = imagery();
+      const volumeName = name(found);
+      // In a browser a row with verbs indicates on a click and opens from
+      // its control: the kind's glyph is the press that acts.
+      found.querySelector('.files-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      let viewer = null;
+      for (let i = 0; i < 160; i++) { await sleep(500);
+        viewer = [...document.querySelectorAll('.pane-image')].find((p) => p.offsetParent !== null);
+        if (viewer && /SLICES/.test(viewer.querySelector('.pane-state')?.textContent ?? '')) break; }
+      await sleep(1500);
+      const state = viewer?.querySelector('.pane-state')?.textContent.trim() ?? null;
+      const refused = pane()?.textContent.includes('READ REFUSED') ?? false;
+      await say('cd ~', 2500);
+      return { nodes, node: at, volume: volumeName, state, refused };`);
+    if (volume.volume === null) {
+      console.log('  skipped: no node of this feed holds a volume');
+    } else {
+      check('a volume under a node opens as an image at its projected address',
+        volume.refused === false && /SLICES/.test(volume.state ?? ''),
+        JSON.stringify(volume));
     }
   }
   }
@@ -1676,6 +1810,63 @@ try {
   else check('a pick survives promptlines while the cwd sits elsewhere', pin.picked === pin.later && !/FEED 21\b/.test(pin.later), `${pin.picked} -> ${pin.later}`);
   }
 
+  if (stage('roster-settles')) {
+  // A run the surface can see must stop reading RUNNING when it finishes.
+  // The regression this guards: the roster asked its flex-laid-out element
+  // whether it was `block`, so it never re-asked the session and every row
+  // it had ever drawn was frozen.
+  const settles = await evalIn(`
+    await console_idle();
+    const outEl = document.querySelector('#terminal .argus-output');
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { const b = outEl.children.length; term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms);
+      return [...outEl.children].slice(b).map(e => e.textContent).join('\\n'); };
+    await say('rm -r ~/smoke-roster', 2000);
+    await say('mkdir ~/smoke-roster', 2000);
+    await say('cd ~/smoke-roster', 2000);
+    await say('touch --withContents "roster" input.txt', 2500);
+    const ran = await say('pl-simpledsapp-v2.1.5 -- feed_title="smoke roster"', 12000);
+    const feed = (ran.match(/Feed created: (\\d+)/) ?? [])[1] ?? null;
+    if (feed === null) return { error: 'no feed created' };
+    document.getElementById('gutter-runs').click(); await sleep(3000);
+    // The pane on stage that holds a roster: another scenario's graph pane
+    // may be on stage too, and it is not the one RUNS-02 just opened.
+    const dp = () => [...document.querySelectorAll('.pane-dag')]
+      .find((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist')) ?? null;
+    const row = () => [...(dp()?.querySelectorAll('.feedlist-row') ?? [])].find(r => r.dataset.feed === feed) ?? null;
+    const status = () => row()?.querySelector('.feedlist-status')?.textContent.trim()
+      ?? (row()?.className.match(/feedlist-(\\w+)/) ?? [])[1] ?? null;
+    // One patient watch, nothing asked of the session: the roster's own
+    // request may queue behind the walk of the feed just created, so the
+    // row's arrival is waited for, and then its settling.
+    let first = null;
+    let reached = null;
+    let seenAfterMs = null;
+    const startedAt = Date.now();
+    for (let i = 0; i < 120; i++) {
+      await sleep(1500);
+      const now = status();
+      if (now === null) continue;
+      if (first === null) { first = now; seenAfterMs = Date.now() - startedAt; }
+      if (!/running/i.test(now)) { reached = now; break; }
+    }
+    // And the roster is not painted over by a cwd inside the feed.
+    await say('cd ~/feeds/feed_' + feed, 4000);
+    const rosterUp = dp()?.querySelector('.dag-feedlist')?.style.display !== 'none'
+      && dp()?.querySelector('.dag-canvas')?.style.display !== 'block';
+    await say('cd ~', 2000);
+    await say('feed rm -f ' + feed, 5000);
+    await say('rm -r ~/smoke-roster', 3000);
+    return { feed, first, seenAfterMs, settled: reached, rosterUp };`);
+  // A row that reads RUNNING must stop; one the roster first drew after the
+  // run had already finished is honest as it stands.
+  check('a run the roster lists stops reading RUNNING when it finishes, with nothing asked of it',
+    settles.error === undefined && settles.first !== null && /finishedsuccessfully/i.test(settles.settled ?? ''),
+    JSON.stringify(settles));
+  check('a cwd inside a feed does not paint its graph over the roster',
+    settles.error === undefined && settles.rosterUp === true, JSON.stringify({ rosterUp: settles.rosterUp }));
+  }
   if (stage('enter-place')) {
   // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
   // session (and so the cwd-following browser) into /proc/jobs/feed_N.

@@ -72,6 +72,20 @@ export interface DagPanelHandlers {
 /** How often the roster re-asks the session while it stays on screen. */
 const ROSTER_TICK_MS: number = 60_000;
 
+/**
+ * How often the roster re-asks while any feed on it is still working.
+ *
+ * A run the operator just started is the one thing they watch, and a minute
+ * of a row reading RUNNING after it finished is a minute of the surface
+ * lying. The roster is cache-resident, so the faster beat costs a read and
+ * no visit; it falls back to {@link ROSTER_TICK_MS} once every row is
+ * terminal.
+ */
+const ROSTER_LIVE_TICK_MS: number = 10_000;
+
+/** Statuses a feed wears while it still has work to do. */
+const FEED_LIVE_STATUSES: ReadonlySet<string> = new Set(['running', 'scheduled', 'created', 'started']);
+
 /** Feed-id extraction from a working directory. */
 const CWD_FEED_PATTERNS: readonly RegExp[] = [
   /\/proc\/jobs\/feed_(\d+)(?:\/|$)/,
@@ -331,15 +345,21 @@ export class DagPanel {
         this.canvas.style.display === 'block' ? null : parts.filter,
       defaultSort: { key: 'createdAt', dir: 'desc' },
     });
-    // The roster is the subscription too, at a slower beat: while the list
-    // stays on screen it re-asks the session, so a feed run from a console
-    // shows up without a reload. Nothing is asked while the pane is off
-    // stage or hidden behind another tab.
+    // The roster is the subscription too: while the list stays on screen it
+    // re-asks the session, so a feed run from a console — or from this very
+    // surface — shows up, and settles, without a reload. Nothing is asked
+    // while the pane is off stage or hidden behind another tab. The beat
+    // follows the work: fast while a listed feed is live, slow when all of
+    // them have finished.
     this.rosterTimer = setInterval((): void => {
-      if (!this.feedList.isConnected || this.feedList.style.display !== 'block') return;
+      if (!this.feedList.isConnected || !this.rosterShown) return;
       if (this.rosterPending || document.visibilityState !== 'visible') return;
+      const live: boolean = this.lastRoster.some((feed: FeedListEntry): boolean => FEED_LIVE_STATUSES.has(feed.status));
+      const due: number = live ? ROSTER_LIVE_TICK_MS : ROSTER_TICK_MS;
+      if (Date.now() - this.rosterAskedAt < due) return;
+      this.rosterAskedAt = Date.now();
       this.handlers.command_run('proc feeds');
-    }, ROSTER_TICK_MS);
+    }, ROSTER_LIVE_TICK_MS);
     this.scene = new DagScene(canvas, {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
@@ -840,7 +860,7 @@ export class DagPanel {
     // The roster is a place the operator chose (RUNS-02 always lands on
     // it): while it is on stage, a cwd that happens to sit inside a feed
     // must not paint that feed over it. Following resumes once a graph is up.
-    if (this.feedList.style.display === 'block' || this.pendingFeedId !== null) {
+    if (this.rosterShown || this.pendingFeedId !== null) {
       return;
     }
     // Promptlines arrive after every command, the pane's own silent ones
@@ -984,11 +1004,27 @@ export class DagPanel {
     this.feedList.replaceChildren(loading);
     this.roster_show(true);
     this.rosterPending = true;
+    this.rosterAskedAt = Date.now();
     this.handlers.command_run('proc feeds');
   }
 
   /** An unanswered roster request, awaiting its envelope. */
   private rosterPending: boolean = false;
+
+  /**
+   * Whether the roster is the thing on stage.
+   *
+   * Held as state rather than read back off `style.display`: the roster is
+   * laid out as a flex column, and three separate checks asked it whether
+   * it was `block`. All three were false forever — the roster never re-asked
+   * (a finished run read RUNNING until the pane was rebuilt), a cwd inside a
+   * feed painted its graph over the roster, and an arriving feed that was
+   * not listed never prompted a look. One field, one answer.
+   */
+  private rosterShown: boolean = false;
+
+  /** When the roster last asked the session, so the beat can follow the work. */
+  private rosterAskedAt: number = 0;
 
   /** The live progress line of a refused roster, fed by the prompt. */
   private rosterProgress: HTMLElement | null = null;
@@ -1107,7 +1143,7 @@ export class DagPanel {
     }
     const listed: Set<number> = new Set(this.lastRoster.map((feed: FeedListEntry): number => feed.id));
     const unlisted: boolean = arrived.some((id: number): boolean => !listed.has(id));
-    if (unlisted && this.feedList.style.display === 'block') this.feedsChooser_request();
+    if (unlisted && this.rosterShown) this.feedsChooser_request();
   }
 
   private chooser_show(feeds: FeedListEntry[]): void {
@@ -1207,7 +1243,9 @@ export class DagPanel {
 
   /** Shows or hides the roster and its frame host together. */
   private roster_show(on: boolean): void {
-    // Flex, not block: the frame sits above a scrolling field.
+    this.rosterShown = on;
+    // Flex, not block: the frame sits above a scrolling field. Nothing
+    // asks this element what it is showing; `rosterShown` is the answer.
     this.feedList.style.display = on ? 'flex' : 'none';
     this.feedList.parentElement?.classList.toggle('roster-shown', on);
   }

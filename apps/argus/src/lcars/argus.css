@@ -653,15 +653,25 @@ body[data-gutter='away'] #gutter-restore {
 }
 
 /* !important: a drag leaves an inline height on the drawer, and the zoom
- * states must win over it without erasing it. */
+ * states must win over it without erasing it.
+ *
+ * The height is what is LEFT, not a guessed constant. A fixed
+ * `100dvh - 3.6rem` was measured from the viewport while the console still
+ * began below the header's own gap, so the drawer ran past the foot of the
+ * screen: the workspace showed under it in a band, and the page grew taller
+ * than the viewport — which, once `overflow: hidden` had frozen it, could
+ * leave the console's own top frame above the fold. Flexing into the
+ * column's remainder cannot overshoot at any window size or type scale. */
 body[data-zoom='console'] #drawer {
-  height: calc(100dvh - 3.6rem) !important;
+  height: auto !important;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-/* Retained for clarity: the console's zoom owns the stage. The workspace
- * no longer keeps a floor to step aside from. */
+/* The console's zoom owns the stage, so the workspace leaves it: a pane
+ * zoom hides its siblings for the same reason. */
 body[data-zoom='console'] main {
-  min-height: 0;
+  display: none;
 }
 
 /* Zooming any tree pane retracts the console; only the console's own zoom
@@ -3828,6 +3838,26 @@ body[data-zoom] #header-restore {
   font-family: var(--face-label);
   font-size: 0.8rem;
   letter-spacing: 1px;
+}
+
+/* A pane's header is one line of a fixed height, so its title keeps that
+ * line: a long name (a series description, a converter's filename) used to
+ * wrap inside a 28px bar, which cut the letters top and bottom and pushed
+ * the mode and state readouts across two rows. The name gives way first —
+ * ellipsised, with the whole of it on the element's own tooltip — and the
+ * readouts beside it keep their width. */
+.lcars-bar-horizontal > .lcars-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lcars-bar-horizontal > .pane-mode,
+.lcars-bar-horizontal > .pane-state {
+  flex: none;
+  white-space: nowrap;
 }
 
 .lcars-terminal-status {

@@ -232,7 +232,10 @@ export class ImagePanel {
     this.presets_paint(model.modality);
     this.siblings = options.siblings ?? [];
     this.pane.dataset['modality'] = modalityHue_of(model.modality);
+    // The header keeps one line, so a long description is ellipsised there;
+    // the whole of it stays reachable as the element's own title.
     this.title.textContent = `IMAGE ${model.modality.toUpperCase()} ${model.seriesDescription}`.trim();
+    this.title.title = this.title.textContent;
     if (this.siblings.length > 1) {
       const at: number = this.siblings.findIndex((choice: SeriesChoice): boolean => choice.path === model.path) + 1;
       this.handlers.note(`image: series ${at} of ${this.siblings.length} in this study; image series <n> switches`);
@@ -290,6 +293,7 @@ export class ImagePanel {
     this.siblings = [];
     this.pane.dataset['modality'] = 'NIFTI';
     this.title.textContent = `IMAGE ${path.split('/').pop() ?? ''}`;
+    this.title.title = path;
     this.forced = true;
     this.loadPill.hidden = true;
     this.presets_paint('NIFTI');

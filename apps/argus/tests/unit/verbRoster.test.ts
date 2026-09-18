@@ -193,6 +193,9 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'gather.series': {
     'folder named': ['REMOVE', 'IMAGE', 'PROCESS'],
     'folder not yet named': ['REMOVE'],
+    // A member that is not home is offered the fetch, on its own row: the
+    // frame pulls the whole cohort, the row pulls this one.
+    'not retrieved yet': ['REMOVE', 'PULL'],
   },
 };
 

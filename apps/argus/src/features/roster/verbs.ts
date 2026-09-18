@@ -266,6 +266,14 @@ export const PACS_SERIES_ROSTER: VerbRoster<PacsSeriesFacts> = {
 export interface GatherSeriesFacts {
   /** Whether CUBE has said where the series landed (IMAGE and PROCESS need a folder). */
   folderKnown: boolean;
+  /**
+   * Whether the cohort can still fetch it: it is not home, and it carries
+   * the path a pull takes. The cohort's own frame pulls the whole set;
+   * a row that is not home is offered the same act for itself, since
+   * gathering something not yet retrieved is the ordinary way to build a
+   * cohort and the row is where the operator is looking at that one.
+   */
+  pullable?: boolean;
 }
 
 /**
@@ -276,12 +284,14 @@ export const GATHER_SERIES_ROSTER: VerbRoster<GatherSeriesFacts> = {
   listing: 'gather.series',
   rules: [
     { name: 'remove', label: (): string => 'REMOVE', offered: (): boolean => true },
+    { name: 'pull', label: (): string => 'PULL', offered: (f: GatherSeriesFacts): boolean => f.pullable === true },
     { name: 'image', label: (): string => 'IMAGE', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
     { name: 'process', label: (): string => 'PROCESS', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
   ],
   states: [
     { name: 'folder named', facts: { folderKnown: true } },
     { name: 'folder not yet named', facts: { folderKnown: false } },
+    { name: 'not retrieved yet', facts: { folderKnown: false, pullable: true } },
   ],
 };
 

@@ -2164,6 +2164,7 @@ body[data-zoom]:not([data-zoom='console'])
 .dag-canvas,
 .dag-roster,
 .gather-listing,
+.files-table-field,
 .pacs-listing {
   --frame-top: var(--mode-frame-top, 0px);
   /* The closed spine is a CONTROL — pressing it opens the mode frame — and
@@ -2187,6 +2188,7 @@ body[data-zoom]:not([data-zoom='console'])
 .workspace-pane[data-modes='open'] .dag-canvas,
 .workspace-pane[data-modes='open'] .dag-roster,
 .workspace-pane[data-modes='open'] .gather-listing,
+.workspace-pane[data-modes='open'] .files-table-field,
 .workspace-pane[data-modes='open'] .pacs-listing {
   --spine-w: var(--bar-w);
 }
@@ -2334,10 +2336,15 @@ body[data-zoom]:not([data-zoom='console'])
 /* A content view (a file, a /bin entry) has no projection: no frame. And
  * while a node's browser is up over the canvas, the canvas's frame steps
  * aside for the browser's own. */
-.files-body.content-view .field-rule,
-.files-body.content-view .mode-strip,
-.files-body.content-view .mode-elbow,
-.files-body.content-view .mode-frame,
+/* A content view hides the PANE's own chrome — a wall of text has no field
+   for it to act on. Its own, though, it keeps: a CSV opens as a listing
+   and brings a field with it, and the descendant form of this rule reached
+   inside and hid that one too, leaving a table whose frame could not be
+   opened. Direct children only. */
+.files-body.content-view > .field-rule,
+.files-body.content-view > .mode-strip,
+.files-body.content-view > .mode-elbow,
+.files-body.content-view > .mode-frame,
 .dag-canvas:has(> .node-overlay) > .field-rule,
 .dag-canvas:has(> .node-overlay) > .mode-strip,
 .dag-canvas:has(> .node-overlay) > .mode-elbow,
@@ -5738,6 +5745,7 @@ button.launcher-row:hover {
   flex: 1 1 0;
   min-height: 0;
   padding-right: var(--spine-w);
+  transition: padding-right 0.22s ease-out;
 }
 
 .files-table-rows {

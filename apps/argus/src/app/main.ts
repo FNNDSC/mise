@@ -1629,10 +1629,10 @@ async function surface_start(token: string): Promise<void> {
       process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
       // RUN runs the line on the catalogue's input, as the console would.
       run: (): void => { void run_press(id, entry.name, entry.type === 'pipeline' ? 'pipeline' : 'plugin'); },
-      move: (): void => terminal.line_run(`mv ${quoted}`),
-      copy: (): void => terminal.line_run(`cp ${quoted}`),
-      delete: (): void => terminal.line_run(`rm ${directory ? '-ri' : '-i'} ${quoted}`),
-      share: (): void => terminal.line_run(`setfacl ${quoted}`),
+      move: (): void => verbLine_run(id, `mv ${quoted}`),
+      copy: (): void => verbLine_run(id, `cp ${quoted}`),
+      delete: (): void => verbLine_run(id, `rm ${directory ? '-ri' : '-i'} ${quoted}`),
+      share: (): void => verbLine_run(id, `setfacl ${quoted}`),
     };
     return FILE_ROW_ROSTER.rules
       .filter((rule): boolean => rule.offered(facts))
@@ -1693,7 +1693,7 @@ async function surface_start(token: string): Promise<void> {
       const runs: Record<string, () => void> = {
         // -I asks ONCE for the whole list: twenty questions to remove
         // twenty files is a confirmation an operator learns to dismiss.
-        delete: (): void => terminal.line_run(`rm -rI ${quoted}`),
+        delete: (): void => verbLine_run(id, `rm -rI ${quoted}`),
         // `-t` with no value: every operand is a SOURCE and the target is
         // asked for. Without it `mv a b` is a rename of a onto b — the
         // right reading of that line, and the wrong thing for a set.
@@ -2696,6 +2696,31 @@ async function surface_start(token: string): Promise<void> {
 
   /** Opens or retracts the console drawer; set once the drawer is wired. */
   let consoleClosed_set: ((closed: boolean) => void) | null = null;
+
+  /**
+   * The pane whose pressed verb is running a line.
+   *
+   * A verb lowers to a command, and the command may have a question of its
+   * own — `rm -i` asks before it removes. That question belongs where the
+   * press was, not in the console: the operator is looking at the row they
+   * just acted on. The session still SPEAKS in the console and the
+   * transcript still keeps the exchange; what moves is where the answer is
+   * given. Cleared as soon as it is used, so an unrelated question later
+   * does not inherit a stale pane.
+   */
+  let askingPane: string | null = null;
+
+  /**
+   * Runs a row's or a field's verb as the visible command it is, and
+   * remembers which pane pressed it.
+   *
+   * @param id - The pane whose verb this is.
+   * @param line - The command the operator could have typed.
+   */
+  const verbLine_run = (id: string, line: string): void => {
+    askingPane = id;
+    terminal.line_run(line);
+  };
 
   /**
    * Puts a question on the pane that provoked it.
@@ -4558,9 +4583,21 @@ async function surface_start(token: string): Promise<void> {
        */
       ask_receive: async (request: SurfaceAsk): Promise<string | null> => {
         if (request.kind !== 'path') {
-          // The SESSION's question stays where the session speaks. But a
-          // closed console is a question nobody can see, so asking one
-          // exposes it — the same event the lid's own toggle fires.
+          // A question a PRESSED VERB provoked stands on the pane that was
+          // pressed: `rm -i` asks before it removes, and the operator is
+          // looking at the row they just acted on, not at the console. The
+          // transcript still keeps the exchange either way.
+          const provoker: string | null = askingPane;
+          askingPane = null;
+          if (provoker !== null && paneInstance_get(provoker) !== undefined) {
+            return ask_onPane(provoker, {
+              message: request.message,
+              kind: request.kind === 'secret' ? 'secret' : request.kind === 'confirm' ? 'confirm' : 'text',
+              ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
+            });
+          }
+          // Otherwise the session speaks where it always does. A closed
+          // console is a question nobody can see, so asking one exposes it.
           consoleClosed_set?.(false);
           return terminal.ask_open({
             message: request.message,

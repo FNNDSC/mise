@@ -269,6 +269,10 @@
                     <!-- The frame acts on the whole cohort: PULL fetches
                          the members CUBE does not hold yet. -->
                     <button class="strategy-pill gather-pull" title="retrieve every member CUBE does not hold yet" hidden>PULL</button>
+                    <!-- REMOVE on a row takes one series out; the frame's
+                         takes them all, because emptying a cohort one row
+                         at a time is not a gesture anyone wants. -->
+                    <button class="strategy-pill gather-remove" title="take every member out of the cohort" hidden>REMOVE</button>
                     <span class="mode-fill"></span>
                   </aside>
                   <div class="gather-rows"></div>

@@ -311,6 +311,46 @@ function elapsed_describe(at: string): string | null {
  * @param series - The series.
  * @returns The badge.
  */
+/**
+ * Every badge element on stage for a series, wherever it is shown.
+ *
+ * A cohort is a REFLECTION of the same truth, not a copy of it: the series
+ * pulled from the PACS listing is the series in the cohort, so a retrieve
+ * has to move both. Keyed by UID and holding a set, because the same
+ * series legitimately appears in more than one pane at once; disconnected
+ * elements are dropped as they are found rather than tracked.
+ */
+const badgeElements: Map<string, Set<HTMLElement>> = new Map();
+
+/**
+ * Registers a badge so the wire's progress repaints it.
+ *
+ * @param seriesUID - The series it belongs to.
+ * @param badge - The element.
+ */
+function badgeElement_register(seriesUID: string, badge: HTMLElement): void {
+  const held: Set<HTMLElement> = badgeElements.get(seriesUID) ?? new Set();
+  held.add(badge);
+  badgeElements.set(seriesUID, held);
+}
+
+/**
+ * Runs a paint over every badge standing for a series, dropping the ones
+ * that have left the document.
+ *
+ * @param seriesUID - The series.
+ * @param paint - What to do to each badge.
+ */
+function badgeElements_paint(seriesUID: string, paint: (badge: HTMLElement) => void): void {
+  const held: Set<HTMLElement> | undefined = badgeElements.get(seriesUID);
+  if (held === undefined) return;
+  for (const badge of [...held]) {
+    if (!badge.isConnected) { held.delete(badge); continue; }
+    paint(badge);
+  }
+  if (held.size === 0) badgeElements.delete(seriesUID);
+}
+
 export function seriesBadge_build(series: PacsSeries): HTMLElement {
   const badge: HTMLSpanElement = document.createElement('span');
   badge.className = 'pacs-badge';
@@ -333,6 +373,9 @@ export function seriesBadge_build(series: PacsSeries): HTMLElement {
   note.textContent = 'NOT RETRIEVED';
   badge.append(track, note);
   badge.dataset['state'] = 'idle';
+  // Registered wherever it stands: a cohort's row moves with the pull the
+  // same as the answer's row does, because they are the same series.
+  badgeElement_register(series.seriesUID, badge);
   return badge;
 }
 
@@ -397,7 +440,7 @@ export class PacsPanel {
    * nothing of that series is open here.
    */
   private litFolders: Map<string, { viewer: boolean; browser: boolean }> = new Map();
-  private readonly badges: Map<string, HTMLElement> = new Map();
+
   private readonly badgeStates: Map<string, BadgeState> = new Map();
   /** Per-series progress, seeded from the model and driven by the wire. */
   private readonly seriesProgress: Map<string, ListingProgress> = new Map();
@@ -1443,8 +1486,8 @@ export class PacsPanel {
   private badgeState_set(seriesUID: string, state: BadgeState): void {
     this.badgeStates.set(seriesUID, state);
     this.seriesProgress.set(seriesUID, progress_ofState(state, this.seriesProgress.get(seriesUID)));
-    const badge: HTMLElement | undefined = this.badges.get(seriesUID);
-    if (badge) this.badge_paint(badge, state);
+    // Every badge for this series, in every pane showing it.
+    badgeElements_paint(seriesUID, (badge: HTMLElement): void => this.badge_paint(badge, state));
     for (const [key, track] of this.studyTracks) {
       if (track.uids.includes(seriesUID)) this.studyTrack_paint(key);
     }
@@ -1475,7 +1518,7 @@ export class PacsPanel {
       badge.dataset['state'] = 'done';
       return badge;
     }
-    this.badges.set(series.seriesUID, badge);
+    badgeElement_register(series.seriesUID, badge);
     // A series nothing has been asked of still gets a track, dimmed. An
     // empty cell reads as a column that does not apply here; a dim track
     // reads as nothing has happened yet, which is the truth.
@@ -1567,12 +1610,13 @@ export class PacsPanel {
    * Puts the answer on stage: one block of patients, keyed by the query, so
    * a repeat of the same answer is the same field and a new query is not.
    * The levels beneath — a patient's studies, a study's series — are the
-   * façade's to draw from the child declarations; the badges and tracks
-   * their cells register are cleared first, since the rows are rebuilt.
+   * façade's to draw from the child declarations; the tracks their cells
+   * register are cleared first, since the rows are rebuilt. The badge
+   * registry needs no clearing: it drops elements as it finds them gone,
+   * and it holds other panes' badges as well as this one's.
    */
   private results_repaint(): void {
     const model: PacsQueryModel | null = this.model;
-    this.badges.clear();
     this.studyTracks.clear();
     this.patientTracks.clear();
     if (model === null) {
@@ -1641,8 +1685,21 @@ export class PacsPanel {
    *
    * @returns The series, with the study each hangs under.
    */
-  private shown_gatherable(): Array<{ study: PacsStudy; series: PacsSeries }> {
+  private shown_candidates(): Array<{ study: PacsStudy; series: PacsSeries }> {
+    // With a filter on, what is shown IS the filtered set: the listing
+    // opens what the filter kept, so the painted series rows are it. With
+    // NO filter, what is shown is the whole answer — a study left folded
+    // is a way of looking, not a way of choosing, and reading the fold
+    // state as a choice withdrew the verb entirely on a fresh answer,
+    // where nothing is unfolded yet. The surface does not get to decide
+    // that an unfiltered table cannot be acted on.
     const found: Array<{ study: PacsStudy; series: PacsSeries }> = [];
+    if (!this.filtering()) {
+      for (const study of this.model?.studies ?? []) {
+        for (const series of study.series) found.push({ study, series });
+      }
+      return found;
+    }
     for (const element of this.root.querySelectorAll<HTMLElement>('#pacs-results .pacs-series')) {
       const uid: string | undefined = element.dataset['seriesuid'];
       if (uid === undefined) continue;
@@ -1650,13 +1707,21 @@ export class PacsPanel {
         const series: PacsSeries | undefined = study.series.find(
           (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
         );
-        if (series === undefined) continue;
-          if (seriesVerbs_offered(series).gather && !this.handlers.gathered_is(series.seriesUID)) {
-          found.push({ study, series });
-        }
+        if (series !== undefined) found.push({ study, series });
       }
     }
     return found;
+  }
+
+  /** Whether a filter is narrowing the field, for what a block says. */
+  private filtering(): boolean {
+    return this.listing.filterText_get() !== '';
+  }
+
+  /** What the cohort can still take from what is shown. */
+  private shown_gatherable(): Array<{ study: PacsStudy; series: PacsSeries }> {
+    return this.shown_candidates().filter(({ series }: { study: PacsStudy; series: PacsSeries }): boolean =>
+      seriesVerbs_offered(series).gather && !this.handlers.gathered_is(series.seriesUID));
   }
 
   /** Repaints the frame's GATHER block: what it would take, or nothing. */
@@ -1667,7 +1732,7 @@ export class PacsPanel {
     // A control that cannot act stands down rather than misleading, and a
     // readout that acts says what it will do: the count is the promise.
     block.hidden = count === 0;
-    block.textContent = `GATHER ${count} SHOWN`;
+    block.textContent = this.filtering() ? `GATHER ${count} SHOWN` : `GATHER ${count}`;
   }
 
   /**
@@ -1676,20 +1741,10 @@ export class PacsPanel {
    * @returns The series, in the order they stand.
    */
   private shown_pullable(): PacsSeries[] {
-    const found: PacsSeries[] = [];
-    for (const element of this.root.querySelectorAll<HTMLElement>('#pacs-results .pacs-series')) {
-      const uid: string | undefined = element.dataset['seriesuid'];
-      if (uid === undefined) continue;
-      for (const study of this.model?.studies ?? []) {
-        const series: PacsSeries | undefined = study.series.find(
-          (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
-        );
-        if (series !== undefined && seriesVerbs_offered(series).pull && series.vfsPath !== undefined) {
-          found.push(series);
-        }
-      }
-    }
-    return found;
+    return this.shown_candidates()
+      .map(({ series }: { study: PacsStudy; series: PacsSeries }): PacsSeries => series)
+      .filter((series: PacsSeries): boolean =>
+        seriesVerbs_offered(series).pull && series.vfsPath !== undefined);
   }
 
   /** Repaints the frame's PULL block: what it would fetch, or nothing. */
@@ -1698,7 +1753,7 @@ export class PacsPanel {
     if (block === null) return;
     const count: number = this.shown_pullable().length;
     block.hidden = count === 0;
-    block.textContent = `PULL ${count} SHOWN`;
+    block.textContent = this.filtering() ? `PULL ${count} SHOWN` : `PULL ${count}`;
   }
 
   /**
@@ -1725,7 +1780,9 @@ export class PacsPanel {
     const taking: Array<{ study: PacsStudy; series: PacsSeries }> = this.shown_gatherable();
     if (taking.length === 0) return;
     for (const { study, series } of taking) this.gather_note(study, series);
-    this.handlers.note(`gather: ${taking.length} series gathered from what the listing was showing`);
+    this.handlers.note(this.filtering()
+      ? `gather: ${taking.length} series gathered from what the filter left showing`
+      : `gather: ${taking.length} series gathered from the whole answer`);
     this.shownGather_render();
   }
 
@@ -1738,6 +1795,8 @@ export class PacsPanel {
       // The row itself travels: the cohort shows what the answer shows.
       series,
       patient: study.patientId || study.patientName,
+      // And where it came from, which the series alone does not know.
+      ...(study.description === undefined || study.description === '' ? {} : { study: study.description }),
       vfsPath: series.vfsPath,
       ...(series.folderPath !== undefined ? { folderPath: series.folderPath } : {}),
       ...(series.fileCount !== undefined ? { files: series.fileCount } : {}),

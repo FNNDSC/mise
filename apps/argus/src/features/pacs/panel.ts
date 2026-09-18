@@ -1282,7 +1282,10 @@ export class PacsPanel {
     // Where a table went is a fact about this pane's answer, so this pane
     // says it — the console carries the command, which is a different
     // thing from the result of it.
-    const wrote: RegExpMatchArray | null = /✓ wrote (\S+)/.exec(envelope.rendered ?? '');
+    // The kernel's line is coloured; the path it names is not. Taking the
+    // match raw carried the trailing reset sequence into the readout, where
+    // it showed as stray glyphs after the filename.
+    const wrote: RegExpMatchArray | null = /✓ wrote (\S+)/.exec((envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, ''));
     if (wrote !== null) this.wrote_show(wrote[1] as string);
     if (envelope.model?.kind === PACS_SERVERS_MODEL_KIND) {
       // What `pacs list` says, whoever asked it: the operator typing it in

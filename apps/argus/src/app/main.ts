@@ -2637,14 +2637,17 @@ async function surface_start(token: string): Promise<void> {
     const field: HTMLInputElement = document.createElement('input');
     field.className = 'errand-path';
     field.spellcheck = false;
-    const mkdir: HTMLButtonElement = document.createElement('button');
-    mkdir.className = 'pacs-capsule errand-mkdir';
-    mkdir.textContent = 'MKDIR';
-    mkdir.title = 'make the folder this path lives in';
     const commit: HTMLButtonElement = document.createElement('button');
     commit.className = 'pacs-capsule errand-commit';
     commit.textContent = request.commit ?? 'USE THIS';
-    bar.append(caption, field, mkdir, commit);
+    // The path typed IS the answer, whole. The bar used to carry a MKDIR
+    // of its own, which made the folder the path lives IN — so a field
+    // holding a directory made its parent, which already existed, and the
+    // browser appeared to walk up a level for no reason. The command that
+    // asked makes the holding folder itself and says so, or refuses by
+    // name, which is what a terminal does; and a browser's own frame still
+    // carries MKDIR for making a place before choosing it.
+    bar.append(caption, field, commit);
 
     /** Composes the answer from where the browser stands. */
     const path_compose = (): void => {
@@ -2662,9 +2665,11 @@ async function surface_start(token: string): Promise<void> {
     const walked = (): void => { if (!edited) path_compose(); };
     spawned.mount.addEventListener('click', walked);
 
+    terminal.question_set(true);
     return new Promise((resolve: (answer: string | null) => void): void => {
       const settle = (answer: string | null): void => {
         spawned.mount.removeEventListener('click', walked);
+        terminal.question_set(false);
         errandClose = null;
         layout.leaf_close(spawned.id);
         paneInstance_dispose(spawned.id);
@@ -2675,17 +2680,6 @@ async function surface_start(token: string): Promise<void> {
       commit.addEventListener('click', (): void => settle(field.value.trim() === '' ? null : field.value.trim()));
       field.addEventListener('keydown', (event: KeyboardEvent): void => {
         if (event.key === 'Enter') settle(field.value.trim() === '' ? null : field.value.trim());
-      });
-      mkdir.addEventListener('click', (): void => {
-        // The field is the name: an operator types where they want the file
-        // to land, and MKDIR makes the folder that path lives in. Visible
-        // in the console, because creating a directory is an act.
-        const parent: string = field.value.replace(/\/[^/]*$/, '');
-        if (parent === '') return;
-        terminal.line_run(`mkdir ${parent}`);
-        if (panel !== undefined) {
-          window.setTimeout((): void => rootedListing_show(spawned.id, panel, parent), 1200);
-        }
       });
     });
   };

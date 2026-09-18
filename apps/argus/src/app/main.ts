@@ -35,6 +35,7 @@ import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, exten
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
+import { Cohort } from '../features/gather/cohort.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
@@ -538,6 +539,9 @@ function headerBand_wire(): void {
   window.addEventListener('mouseup', (): void => { dragging = false; strip_place(); });
 }
 
+/** Set once the surface is up: puts the cohort on the main panel. */
+let cohortStage_run: (() => void) | null = null;
+
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
@@ -562,6 +566,10 @@ function headerFaces_wire(): void {
   // the strip toggles it, a press inside it acts, a press on the fill or
   // anywhere else on the band retracts it, as a pane's frame does.
   const bandField: HTMLElement | null = document.querySelector<HTMLElement>('.header-gather-field');
+  bandField?.querySelector('.gather-stage')?.addEventListener('click', (event: Event): void => {
+    event.stopPropagation();
+    cohortStage_run?.();
+  });
   bandField?.querySelector('.mode-strip')?.addEventListener('click', (): void => {
     const open: boolean = body.dataset['headerFrame'] === 'open';
     if (open) delete body.dataset['headerFrame'];
@@ -2305,7 +2313,7 @@ async function surface_start(token: string): Promise<void> {
       },
       cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(id, binding),
       feed_open: (feedId: number): void => feed_open(id, feedId),
-    });
+    }, cohort);
     gatherPanels.set(id, panel);
     return {
       id,
@@ -2328,6 +2336,16 @@ async function surface_start(token: string): Promise<void> {
    * rearranges the workspace — which is the whole reason it moved here.
    */
   let headerCohort: GatherPanel | null = null;
+
+  /**
+   * The session's cohort itself, which neither view owns.
+   *
+   * The band shows it; a pane on the main panel can show the same one at
+   * the same time, for a cohort too big for a band. Two reflections of one
+   * set, which is the rule the badge registry already follows for a series
+   * shown in two places.
+   */
+  const cohort: Cohort<GatherSeries> = new Cohort<GatherSeries>();
 
   /** Whether the operator sent the band away since the last gather. */
   let bandDismissed: boolean = false;
@@ -2440,7 +2458,35 @@ async function surface_start(token: string): Promise<void> {
       },
       cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(host, binding),
       feed_open: (feedId: number): void => feed_open(host, feedId),
-    });
+    }, cohort);
+  };
+
+  /**
+   * Puts the cohort on the main panel, as a pane.
+   *
+   * A band is right for reading and curating; a cohort of two hundred
+   * members with a filter on wants a whole field. It is the SAME cohort —
+   * neither view owns the set — so nothing is copied and nothing can
+   * drift. The band retracts as it goes, having done its job.
+   */
+  const cohort_stage = (): void => {
+    const shown: Set<string> = new Set(layout.panes_shown());
+    const standing: string | null = [...gatherPanels.keys()].find((id: string): boolean => shown.has(id)) ?? null;
+    if (standing !== null) {
+      layout.focus_set(standing);
+    } else {
+      const host: string = errandHost_find() ?? 'pacs';
+      const spawned: PaneInstance = instance_spawn('gather', 'pacs');
+      if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+        paneInstance_dispose(spawned.id);
+        layout.mount_remove(spawned.id);
+        return;
+      }
+      birth_record(spawned.id, host, 'col', false);
+      gatherPanels.get(spawned.id)?.render_now();
+    }
+    document.body.dataset['header'] = 'away';
+    bandDismissed = true;
   };
 
   /**
@@ -4977,6 +5023,7 @@ async function surface_start(token: string): Promise<void> {
   // The block reads its own state from the first frame: an empty cohort is
   // the same block dimmed, not a lit one promising something it does not
   // hold. The restore below may fill it a moment later.
+  cohortStage_run = cohort_stage;
   headerGather_annunciate();
   void cohort_restore();
   mode_show('READY');

@@ -18,6 +18,7 @@
  * @module
  */
 import type { PacsSeries } from '@fnndsc/menu';
+import { Cohort } from './cohort.js';
 import { seriesBadge_build, seriesTraits_build } from '../pacs/panel.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
@@ -136,11 +137,16 @@ function element_note(text: string): HTMLElement {
 export class GatherPanel {
   private readonly handlers: GatherPanelHandlers;
   private readonly title: HTMLElement | null;
-  private readonly entries: Map<string, GatherSeries> = new Map();
+  /**
+   * The cohort this panel SHOWS. It does not own it: the band and a pane
+   * on the main panel are two views of one set, and a view that owned its
+   * members would make the other a copy.
+   */
+  private readonly cohort: Cohort<GatherSeries>;
   /** The cohort's name once SAVE has asked it; null until then. */
-  private name: string | null = null;
+
   /** The feed the cohort was rooted in, once CREATE FEED or PROCESS made one. */
-  private feed: GatherFeed | null = null;
+
   /**
    * Whether the cohort row has been indicated once, at the pane's arrival.
    * Only once: a later repaint must not re-open a frame the operator had
@@ -156,8 +162,13 @@ export class GatherPanel {
    * @param mount - The `.gather-rows` element the listing renders into.
    * @param handlers - Host callbacks.
    */
-  constructor(root: HTMLElement, mount: HTMLElement, handlers: GatherPanelHandlers) {
+  constructor(root: HTMLElement, mount: HTMLElement, handlers: GatherPanelHandlers, cohort: Cohort<GatherSeries>) {
     this.handlers = handlers;
+    this.cohort = cohort;
+    // A view repaints when the set changes, whoever changed it — the band
+    // and a pane showing the same cohort stay in step without either one
+    // telling the other.
+    cohort.watch((): void => this.render());
     this.title = root.querySelector<HTMLElement>('.gather-title');
     this.cohortActions = this.cohortActions_declare();
     this.seriesActions = this.seriesActions_declare();
@@ -180,7 +191,7 @@ export class GatherPanel {
         },
       },
       child: listingChild_declare(
-        (): ReadonlyArray<SeriesRow> => [...this.entries.values()].map((entry: GatherSeries): SeriesRow => ({ entry })),
+        (): ReadonlyArray<SeriesRow> => [...this.cohort.members_get()].map((entry: GatherSeries): SeriesRow => ({ entry })),
         {
           traits: this.seriesTraits_declare(),
           key: (row: SeriesRow): string => row.entry.seriesUID,
@@ -218,15 +229,15 @@ export class GatherPanel {
 
   /** Takes every member out, leaving the pane standing and empty. */
   private cohort_empty(): void {
-    if (this.entries.size === 0) return;
-    this.entries.clear();
+    if (this.cohort.size() === 0) return;
+    this.cohort.clear();
     this.handlers.changed();
     this.render();
   }
 
   /** The cohort's members CUBE does not hold yet. */
   private away(): ReadonlyArray<GatherSeries> {
-    return [...this.entries.values()].filter(
+    return [...this.cohort.members_get()].filter(
       (entry: GatherSeries): boolean => entry.folderPath === undefined && entry.series?.pulled !== true,
     );
   }
@@ -239,24 +250,29 @@ export class GatherPanel {
     this.handlers.command_show(`pull ${paths}`);
   }
 
+  /** Paints now, for a view that has just joined the stage. */
+  public render_now(): void {
+    this.render();
+  }
+
   /** Whether the cohort holds this series. */
   public has(seriesUID: string): boolean {
-    return this.entries.has(seriesUID);
+    return this.cohort.has(seriesUID);
   }
 
   /** The cohort, in gather order. */
   public entries_get(): ReadonlyArray<GatherSeries> {
-    return [...this.entries.values()];
+    return [...this.cohort.members_get()];
   }
 
   /** The cohort's name, when SAVE has asked it. */
   public name_get(): string | null {
-    return this.name;
+    return this.cohort.name_get();
   }
 
   /** The feed the cohort was rooted in, when it was. */
   public feed_get(): GatherFeed | null {
-    return this.feed;
+    return this.cohort.feed_get();
   }
 
   /**
@@ -266,7 +282,7 @@ export class GatherPanel {
    * @param feed - The feed, or null for none.
    */
   public feed_set(feed: GatherFeed | null): void {
-    this.feed = feed;
+    if (feed !== null) this.cohort.feed_set(feed);
     this.render();
   }
 
@@ -276,7 +292,7 @@ export class GatherPanel {
    * @param name - The name, or null for unnamed.
    */
   public name_set(name: string | null): void {
-    this.name = name;
+    if (name !== null) this.cohort.name_set(name);
     this.render();
   }
 
@@ -286,9 +302,9 @@ export class GatherPanel {
    * @param entry - The series.
    */
   public series_add(entry: GatherSeries): void {
-    const held: GatherSeries | undefined = this.entries.get(entry.seriesUID);
+
     // A later hand-over may know the folder the first did not.
-    this.entries.set(entry.seriesUID, held === undefined ? entry : { ...held, ...entry });
+    this.cohort.take(entry);
     this.render();
     this.handlers.changed();
   }
@@ -299,7 +315,7 @@ export class GatherPanel {
    * @param seriesUID - The series.
    */
   public series_remove(seriesUID: string): void {
-    if (!this.entries.delete(seriesUID)) return;
+    if (!this.cohort.drop(seriesUID)) return;
     this.render();
     this.handlers.changed();
   }
@@ -307,10 +323,10 @@ export class GatherPanel {
   /** Paints the cohort as one block, its series open beneath it. */
   private render(): void {
     if (this.title !== null) {
-      this.title.textContent = this.name === null ? 'GATHER' : `GATHER · ${this.name}`.toUpperCase();
+      this.title.textContent = this.cohort.name_get() === null ? 'GATHER' : `GATHER · ${this.cohort.name_get() ?? ''}`.toUpperCase();
     }
     this.listing.rows_set([{ key: 'gather', rows: [{ key: COHORT_KEY }] }], { field: 'gather' });
-    if (this.entries.size > 0) this.listing.open_set(0, [COHORT_KEY]);
+    if (this.cohort.size() > 0) this.listing.open_set(0, [COHORT_KEY]);
     // A pane whose listing holds exactly one row has nothing to choose
     // between: it indicates that row itself, so the cohort's verbs stand
     // in the frame the moment the pane arrives. The operator reasonably
@@ -325,8 +341,8 @@ export class GatherPanel {
       this.pullBlock.textContent = `PULL ${away}`;
     }
     if (this.emptyBlock !== null) {
-      this.emptyBlock.hidden = this.entries.size === 0;
-      this.emptyBlock.textContent = `REMOVE ${this.entries.size}`;
+      this.emptyBlock.hidden = this.cohort.size() === 0;
+      this.emptyBlock.textContent = `REMOVE ${this.cohort.size()}`;
     }
     if (!this.greeted) {
       this.greeted = true;
@@ -358,15 +374,15 @@ export class GatherPanel {
         label: 'COHORT',
         className: 'gather-cohort-name',
         width: '1fr',
-        cell: (): string => this.name ?? '(unnamed — SAVE names it)',
+        cell: (): string => this.cohort.name_get() ?? '(unnamed — SAVE names it)',
       },
       {
         key: 'series',
         label: 'SERIES',
         className: 'gather-cohort-count',
         width: '6em',
-        cell: (): string => String(this.entries.size),
-        compare: (): number => this.entries.size,
+        cell: (): string => String(this.cohort.size()),
+        compare: (): number => this.cohort.size(),
       },
       {
         key: 'patients',
@@ -384,19 +400,19 @@ export class GatherPanel {
         className: 'gather-cohort-feed',
         width: '7em',
         cell: (): HTMLElement | string => {
-          if (this.feed === null) return '—';
+          if (this.cohort.feed_get() === null) return '—';
           const capsule: HTMLButtonElement = document.createElement('button');
           capsule.className = 'gather-feed listing-capsule listing-action-selected';
-          capsule.textContent = `FEED ${this.feed.feedId}`;
+          capsule.textContent = `FEED ${this.cohort.feed_get()?.feedId ?? 0}`;
           capsule.title = 'open the feed\'s graph beside the cohort';
-          const feedId: number = this.feed.feedId;
+          const feedId: number = this.cohort.feed_get()?.feedId ?? 0;
           capsule.addEventListener('click', (event: Event): void => {
             event.stopPropagation();
             this.handlers.feed_open(feedId);
           });
           return capsule;
         },
-        compare: (): number => this.feed?.feedId ?? -1,
+        compare: (): number => this.cohort.feed_get()?.feedId ?? -1,
       },
     ];
   }
@@ -447,7 +463,7 @@ export class GatherPanel {
    * @returns The actions, in capsule order.
    */
   private cohortActions_declare(): ReadonlyArray<ListingAction<CohortRow>> {
-    const facts = (): GatherCohortFacts => ({ count: this.entries.size, feed: this.feed?.feedId ?? null });
+    const facts = (): GatherCohortFacts => ({ count: this.cohort.size(), feed: this.cohort.feed_get()?.feedId ?? null });
     const runs: Record<string, () => void> = {
       save: (): void => { void this.manifest_save(); },
       export: (): void => { void this.cohort_export(); },
@@ -495,7 +511,7 @@ export class GatherPanel {
 
   /** How many distinct patients the cohort spans. */
   private patients_count(): number {
-    return new Set([...this.entries.values()].map((entry: GatherSeries): string => entry.patient)).size;
+    return new Set([...this.cohort.members_get()].map((entry: GatherSeries): string => entry.patient)).size;
   }
 
   /**
@@ -505,7 +521,7 @@ export class GatherPanel {
    * @returns The line.
    */
   private stateLine_compose(parts: ListingStateParts): string {
-    const words: string[] = [`${this.entries.size} SERIES · ${this.patients_count()} PATIENTS`];
+    const words: string[] = [`${this.cohort.size()} SERIES · ${this.patients_count()} PATIENTS`];
     if (parts.filter !== '') words.push(parts.filter);
     return words.join('  ·  ');
   }
@@ -517,24 +533,24 @@ export class GatherPanel {
    * @returns The name.
    */
   private async name_ensure(): Promise<string | null> {
-    if (this.name !== null) return this.name;
+    if (this.cohort.name_get() !== null) return this.cohort.name_get();
     const answered: string | null = await this.handlers.name_ask(`gather-${new Date().toISOString().slice(0, 10)}`);
     const wanted: string = (answered ?? '').trim();
     if (wanted === '') return null;
-    this.name = wanted;
+    this.cohort.name_set(wanted);
     this.render();
     return wanted;
   }
 
   /** Writes the cohort manifest to `~/gather/<name>.json`, one visible command. */
   private async manifest_save(): Promise<void> {
-    if (this.entries.size === 0) return;
+    if (this.cohort.size() === 0) return;
     const name: string | null = await this.name_ensure();
     if (name === null) return;
     const manifest: string = JSON.stringify({
       name,
       gatheredAt: new Date().toISOString(),
-      series: [...this.entries.values()].map((entry: GatherSeries) => ({
+      series: [...this.cohort.members_get()].map((entry: GatherSeries) => ({
         seriesUID: entry.seriesUID,
         description: entry.description,
         modality: entry.modality,
@@ -551,12 +567,12 @@ export class GatherPanel {
    * is elsewhere; a redirect would write somebody else's disk).
    */
   private async cohort_export(): Promise<void> {
-    if (this.entries.size === 0) return;
+    if (this.cohort.size() === 0) return;
     const name: string | null = await this.name_ensure();
     if (name === null) return;
     const rows: string[] = [
       ['patient', 'series', 'modality', 'seriesUID', 'path'].join(','),
-      ...[...this.entries.values()].map((entry: GatherSeries): string => [
+      ...[...this.cohort.members_get()].map((entry: GatherSeries): string => [
         entry.patient, entry.description, entry.modality, entry.seriesUID, entry.vfsPath,
       ].map(csvField_quote).join(',')),
     ];
@@ -572,11 +588,12 @@ export class GatherPanel {
    * @returns The feed, or null when none was made.
    */
   private async feed_ensure(): Promise<GatherFeed | null> {
-    if (this.feed !== null) return this.feed;
-    if (this.entries.size === 0) return null;
+    const standing: GatherFeed | null = this.cohort.feed_get();
+    if (standing !== null) return standing;
+    if (this.cohort.size() === 0) return null;
     const name: string | null = await this.name_ensure();
     if (name === null) return null;
-    const paths: string = [...this.entries.values()].map((entry: GatherSeries): string => entry.vfsPath).join(' ');
+    const paths: string = [...this.cohort.members_get()].map((entry: GatherSeries): string => entry.vfsPath).join(' ');
     const made: GatherFeed | null = await this.handlers.feed_create(`pull --new-feed "${name}" ${paths}`);
     if (made !== null) this.feed_set(made);
     return made;

@@ -1,5 +1,19 @@
 # @fnndsc/calypso
 
+## 0.15.2
+
+### Patch Changes
+
+- Updated dependencies [6c6ca51]
+- Updated dependencies [48e112d]
+- Updated dependencies [cd6a0ab]
+- Updated dependencies [ee75252]
+- Updated dependencies [fa90f05]
+- Updated dependencies [934d2d3]
+- Updated dependencies [de5508d]
+  - @fnndsc/argus@0.10.0
+  - @fnndsc/brasa@0.23.2
+
 ## 0.15.1
 
 ### Patch Changes

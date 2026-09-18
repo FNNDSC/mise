@@ -2377,6 +2377,21 @@ async function surface_start(token: string): Promise<void> {
         panel.content_show(action.path, read.text);
       });
     }, previewProvider);
+    // A listing inside a node is a listing. Declaring no row verbs left the
+    // façade with nothing to hide behind an indication, so it kept its old
+    // bargain — one click activates — and the node's browser alone behaved
+    // unlike every other listing on the surface: a click walked into the
+    // row instead of indicating it, and the frame never opened. The verbs
+    // are the same ones the browser offers, computed by the same roster, so
+    // a node's own `data` is offered PROCESS here exactly as it is outside.
+    panel.rowVerbs_declare(
+      (entry, path: string) => rowVerbs_of(id, entry, path),
+      (_entry, path: string): void => {
+        // Indicating IS the regard, on the DAG pane's own group: the
+        // overlay shares its identity, so a slaved viewer follows.
+        subjects.regard_write(id, { address: path, modelKind: 'fs.file' });
+      },
+    );
     nodeOverlays.set(id, { element, panel, history });
     canvas.appendChild(element);
     window.requestAnimationFrame((): void => element.classList.add('node-overlay-open'));

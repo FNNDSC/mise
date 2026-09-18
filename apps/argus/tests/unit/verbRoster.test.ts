@@ -169,7 +169,9 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'any feed': ['SHARE', 'DELETE'],
   },
   'pacs.study': {
-    'a study with a path': ['PULL STUDY'],
+    // A study with a path can be gathered: its addressable series are the
+    // cohort's targets, whether or not any of them is home yet.
+    'a study with a path': ['PULL STUDY', 'GATHER'],
     'a study with none': [],
     // A study with something home can be gathered; one with everything home
     // can also be processed as a folder. A study with nothing home is
@@ -178,7 +180,7 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'a study partly home': ['PULL STUDY', 'GATHER'],
   },
   'pacs.series': {
-    'not yet retrieved': ['PULL'],
+    'not yet retrieved': ['GATHER', 'PULL'],
     'not retrieved and unaddressable': ['PULL'],
     'home, folder not yet named': ['GATHER'],
     'home, folder named': ['GATHER', 'IMAGE', 'DIR', 'PROCESS'],
@@ -231,12 +233,15 @@ describe('the PACS series row, where the verb went missing', () => {
     });
   });
 
-  it('offers the pull, and nothing else, before a series is home', () => {
+  it('offers the gather and the pull before a series is home, and nothing that needs a folder', () => {
+    // Two different acts: GATHER marks it as a target of the cohort, PULL
+    // brings this one now. IMAGE, DIR and PROCESS still wait for CUBE to
+    // say where it landed.
     series.visit(<F,>(roster: VerbRoster<F>): void => {
       const away = roster.states.find((one: { name: string }): boolean => one.name === 'not yet retrieved');
       expect(away).toBeDefined();
       if (away === undefined) return;
-      expect(rendered_verbs(roster, away)).toEqual(['PULL']);
+      expect(rendered_verbs(roster, away)).toEqual(['GATHER', 'PULL']);
     });
   });
 });

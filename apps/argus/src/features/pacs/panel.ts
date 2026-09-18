@@ -1206,6 +1206,16 @@ export class PacsPanel {
     const said: HTMLElement | null = this.root.querySelector<HTMLElement>('#pacs-wrote');
     if (said === null) return;
     said.textContent = `WROTE ${path}`;
+    // A file written where nobody can see it is a file the operator has to
+    // go hunting for: the export says WROTE and nothing on stage changes,
+    // which reads exactly like nothing happened. The readout acts — it
+    // opens a browser on the folder the table landed in — and says so.
+    said.title = 'open the folder this landed in';
+    said.classList.add('pacs-wrote-opens');
+    said.onclick = (): void => {
+      const cut: number = path.lastIndexOf('/');
+      this.handlers.dir_open(cut <= 0 ? path : path.slice(0, cut));
+    };
     said.hidden = false;
   }
 
@@ -1583,7 +1593,9 @@ export class PacsPanel {
           (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
         );
         if (series === undefined) continue;
-        if (seriesVerbs_offered(series).gather) found.push({ study, series });
+          if (seriesVerbs_offered(series).gather && !this.handlers.gathered_is(series.seriesUID)) {
+          found.push({ study, series });
+        }
       }
     }
     return found;

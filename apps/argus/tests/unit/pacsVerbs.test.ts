@@ -31,8 +31,17 @@ function model_make(series: PacsSeries): PacsQueryModel {
 }
 
 describe('seriesVerbs_offered', () => {
-  it('offers the pull, and nothing else, for a series not yet in CUBE', () => {
+  it('offers the pull, and no gather, for a series nothing can address', () => {
     expect(seriesVerbs_offered(series_make())).toEqual({ gather: false, image: false, dir: false, pull: true });
+  });
+
+  it('offers the gather BEFORE the series is home, once it has a path', () => {
+    // A cohort is a set of targets, and the feed it roots is made by a pull
+    // over its members — so gathering something not yet home is the ordinary
+    // way to build one: query, filter, take what matched, fetch it as a set.
+    // PULL means bring this one now; the two are different acts.
+    const named: PacsSeries = series_make({ vfsPath: '/net/pacs/queries/q/study/series' });
+    expect(seriesVerbs_offered(named)).toEqual({ gather: true, image: false, dir: false, pull: true });
   });
 
   it('offers the gather, and withdraws the pull, once the series is home', () => {

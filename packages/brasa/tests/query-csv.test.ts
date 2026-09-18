@@ -115,6 +115,7 @@ describe('pacsAnswer_toCsv', () => {
 describe('csvFile_write', () => {
   /** The salsa and path seams a write reaches for. */
   const listAll = jest.fn<(...args: unknown[]) => Promise<{ tableData: Array<{ fname: string }> } | null>>();
+  const invalidate = jest.fn();
   const create = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
   const mkdir = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
   const isDirectory = jest.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
@@ -126,7 +127,13 @@ describe('csvFile_write', () => {
     isDirectory.mockResolvedValue(true);
     create.mockResolvedValue(true);
     mkdir.mockResolvedValue(true);
-    jest.unstable_mockModule('@fnndsc/cumin', () => ({ errorStack: { stack_pop: jest.fn() } }));
+    // The write invalidates the folder's cached listing, so the cache is
+    // part of the seam now: a table CUBE holds that `ls` cannot see is the
+    // defect this covers.
+    jest.unstable_mockModule('@fnndsc/cumin', () => ({
+      errorStack: { stack_pop: jest.fn() },
+      listCache_get: (): { cache_invalidate: (path: string) => void } => ({ cache_invalidate: invalidate }),
+    }));
     jest.unstable_mockModule('../src/builtins/utils.js', () => ({
       path_resolve: async (p: string): Promise<string> => p.replace('~', '/home/chris'),
       error_stripDebugPrefix: (m: string): string => m,
@@ -213,6 +220,10 @@ describe('csvFile_write', () => {
     const result = await write('csv', '~/audits/a.csv');
     expect(mkdir).toHaveBeenCalledWith('/home/chris/audits');
     expect(result.ok).toBe(true);
+    // Both listings the write made wrong: the folder it wrote into, and the
+    // one that would show the folder it had to make.
+    expect(invalidate).toHaveBeenCalledWith('/home/chris/audits');
+    expect(invalidate).toHaveBeenCalledWith('/home/chris');
     if (result.ok) expect(result.created).toBe('/home/chris/audits');
   });
 

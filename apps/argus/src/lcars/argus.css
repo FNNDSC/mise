@@ -5702,3 +5702,13 @@ button.launcher-row:hover {
 .files-projection .files-upload {
   display: none;
 }
+
+
+/* The WROTE readout, when it can act: a file written where nobody can see
+   it is one the operator has to go hunting for, so the readout opens the
+   folder it landed in — and says as much, per a-readout-that-acts-says-so. */
+.pacs-wrote-opens {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

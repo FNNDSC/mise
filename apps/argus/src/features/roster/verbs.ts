@@ -107,11 +107,7 @@ export interface PacsStudyFacts {
   addressable: boolean;
   /** Every series is home and its folder known, so the study's folder can be processed. */
   allInCube: boolean;
-  /**
-   * At least one series is home with its folder known, so there is
-   * something to gather. A study none of whose series are home is PULLed,
-   * not gathered — and pulling gathers what it pulls as it goes.
-   */
+  /** At least one series is home: kept for states that still say so. */
   anyInCube?: boolean;
 }
 
@@ -213,7 +209,7 @@ export const PACS_STUDY_ROSTER: VerbRoster<PacsStudyFacts> = {
     {
       name: 'gather',
       label: (): string => 'GATHER',
-      offered: (f: PacsStudyFacts): boolean => f.anyInCube === true,
+      offered: (f: PacsStudyFacts): boolean => f.addressable,
     },
     { name: 'process', label: (): string => 'PROCESS', offered: (f: PacsStudyFacts): boolean => f.allInCube },
   ],
@@ -228,14 +224,29 @@ export const PACS_STUDY_ROSTER: VerbRoster<PacsStudyFacts> = {
 /**
  * A PACS series row's verbs.
  *
- * A series already home is gathered, not pulled, and opened as an image
- * once CUBE has said where it landed. One that carries no path is still
- * offered the pull and refused it, which says more than hiding it would.
+ * A series is GATHERED whether or not it is home. A cohort is a set of
+ * targets, and the feed it roots is made by a pull over its members, so a
+ * series that has not been retrieved is exactly the kind of thing worth
+ * gathering — that is the ordinary way to build one: query, filter, take
+ * what matched, fetch it as a set. Requiring it to be home first left the
+ * whole gesture unavailable on a fresh answer, where nothing is home yet.
+ *
+ * PULL stays beside it and means something else: bring this one now. IMAGE
+ * and DIR and PROCESS still wait for CUBE to say where it landed. One that
+ * carries no path is offered the pull and refused it, which says more than
+ * hiding it would.
  */
 export const PACS_SERIES_ROSTER: VerbRoster<PacsSeriesFacts> = {
   listing: 'pacs.series',
   rules: [
-    { name: 'gather', label: (): string => 'GATHER', offered: (f: PacsSeriesFacts): boolean => f.inCube },
+    {
+      name: 'gather',
+      label: (): string => 'GATHER',
+      // Gatherable when the cohort can NAME it: a PACS path to pull it by,
+      // or the fact that it is already home. Not gatherable when it is
+      // neither, which is a series nothing can address.
+      offered: (f: PacsSeriesFacts): boolean => f.addressable || f.inCube,
+    },
     { name: 'image', label: (): string => 'IMAGE', offered: (f: PacsSeriesFacts): boolean => f.inCube && f.folderKnown },
     // DIR opens the series' own folder as a browser, the same face of a
     // landed series as IMAGE, so it stands beside it under the same gate.

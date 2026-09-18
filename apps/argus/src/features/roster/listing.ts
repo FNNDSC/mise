@@ -1193,6 +1193,20 @@ export class Listing<T> {
     this.level.order.filter_set(text);
   }
 
+  /**
+   * The filter as it stands, empty when the field is showing everything.
+   *
+   * A pane's own field verb needs to know: acting on "what is shown" means
+   * the filtered set while a filter is on, and the WHOLE answer when none
+   * is — never the subset that happens to be unfolded, since folding is a
+   * way of looking rather than a way of choosing.
+   *
+   * @returns The filter text.
+   */
+  public filterText_get(): string {
+    return this.level.order.filterText_get();
+  }
+
   /** The FILTER block reads the strip's state, like every mode block. */
   private filterBlock_sync(): void {
     if (this.filterBlock === null) return;

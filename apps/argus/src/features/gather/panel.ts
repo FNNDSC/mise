@@ -193,11 +193,27 @@ export class GatherPanel {
     // CUBE does not hold yet, in ONE command over many operands.
     this.pullBlock = root.querySelector<HTMLButtonElement>('.gather-pull');
     this.pullBlock?.addEventListener('click', (): void => this.cohort_pull());
+    // REMOVE on a row takes one series out; the frame's takes them all.
+    // Emptying a cohort one row at a time is not a gesture anyone wants,
+    // and DISMISS is a different act — it forgets the cohort entirely.
+    this.emptyBlock = root.querySelector<HTMLButtonElement>('.gather-remove');
+    this.emptyBlock?.addEventListener('click', (): void => this.cohort_empty());
     this.render();
   }
 
   /** The frame's PULL block, when the pane's markup carries one. */
   private readonly pullBlock: HTMLButtonElement | null = null;
+
+  /** The frame's REMOVE block: the whole cohort, not one row. */
+  private readonly emptyBlock: HTMLButtonElement | null = null;
+
+  /** Takes every member out, leaving the pane standing and empty. */
+  private cohort_empty(): void {
+    if (this.entries.size === 0) return;
+    this.entries.clear();
+    this.handlers.changed();
+    this.render();
+  }
 
   /** The cohort's members CUBE does not hold yet. */
   private away(): ReadonlyArray<GatherSeries> {
@@ -298,6 +314,10 @@ export class GatherPanel {
       const away: number = this.away().length;
       this.pullBlock.hidden = away === 0;
       this.pullBlock.textContent = `PULL ${away}`;
+    }
+    if (this.emptyBlock !== null) {
+      this.emptyBlock.hidden = this.entries.size === 0;
+      this.emptyBlock.textContent = `REMOVE ${this.entries.size}`;
     }
     if (!this.greeted) {
       this.greeted = true;

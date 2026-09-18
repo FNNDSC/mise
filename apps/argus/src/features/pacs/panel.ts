@@ -1641,8 +1641,21 @@ export class PacsPanel {
    *
    * @returns The series, with the study each hangs under.
    */
-  private shown_gatherable(): Array<{ study: PacsStudy; series: PacsSeries }> {
+  private shown_candidates(): Array<{ study: PacsStudy; series: PacsSeries }> {
+    // With a filter on, what is shown IS the filtered set: the listing
+    // opens what the filter kept, so the painted series rows are it. With
+    // NO filter, what is shown is the whole answer — a study left folded
+    // is a way of looking, not a way of choosing, and reading the fold
+    // state as a choice withdrew the verb entirely on a fresh answer,
+    // where nothing is unfolded yet. The surface does not get to decide
+    // that an unfiltered table cannot be acted on.
     const found: Array<{ study: PacsStudy; series: PacsSeries }> = [];
+    if (!this.filtering()) {
+      for (const study of this.model?.studies ?? []) {
+        for (const series of study.series) found.push({ study, series });
+      }
+      return found;
+    }
     for (const element of this.root.querySelectorAll<HTMLElement>('#pacs-results .pacs-series')) {
       const uid: string | undefined = element.dataset['seriesuid'];
       if (uid === undefined) continue;
@@ -1650,13 +1663,21 @@ export class PacsPanel {
         const series: PacsSeries | undefined = study.series.find(
           (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
         );
-        if (series === undefined) continue;
-          if (seriesVerbs_offered(series).gather && !this.handlers.gathered_is(series.seriesUID)) {
-          found.push({ study, series });
-        }
+        if (series !== undefined) found.push({ study, series });
       }
     }
     return found;
+  }
+
+  /** Whether a filter is narrowing the field, for what a block says. */
+  private filtering(): boolean {
+    return this.listing.filterText_get() !== '';
+  }
+
+  /** What the cohort can still take from what is shown. */
+  private shown_gatherable(): Array<{ study: PacsStudy; series: PacsSeries }> {
+    return this.shown_candidates().filter(({ series }: { study: PacsStudy; series: PacsSeries }): boolean =>
+      seriesVerbs_offered(series).gather && !this.handlers.gathered_is(series.seriesUID));
   }
 
   /** Repaints the frame's GATHER block: what it would take, or nothing. */
@@ -1667,7 +1688,7 @@ export class PacsPanel {
     // A control that cannot act stands down rather than misleading, and a
     // readout that acts says what it will do: the count is the promise.
     block.hidden = count === 0;
-    block.textContent = `GATHER ${count} SHOWN`;
+    block.textContent = this.filtering() ? `GATHER ${count} SHOWN` : `GATHER ${count}`;
   }
 
   /**
@@ -1676,20 +1697,10 @@ export class PacsPanel {
    * @returns The series, in the order they stand.
    */
   private shown_pullable(): PacsSeries[] {
-    const found: PacsSeries[] = [];
-    for (const element of this.root.querySelectorAll<HTMLElement>('#pacs-results .pacs-series')) {
-      const uid: string | undefined = element.dataset['seriesuid'];
-      if (uid === undefined) continue;
-      for (const study of this.model?.studies ?? []) {
-        const series: PacsSeries | undefined = study.series.find(
-          (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
-        );
-        if (series !== undefined && seriesVerbs_offered(series).pull && series.vfsPath !== undefined) {
-          found.push(series);
-        }
-      }
-    }
-    return found;
+    return this.shown_candidates()
+      .map(({ series }: { study: PacsStudy; series: PacsSeries }): PacsSeries => series)
+      .filter((series: PacsSeries): boolean =>
+        seriesVerbs_offered(series).pull && series.vfsPath !== undefined);
   }
 
   /** Repaints the frame's PULL block: what it would fetch, or nothing. */
@@ -1698,7 +1709,7 @@ export class PacsPanel {
     if (block === null) return;
     const count: number = this.shown_pullable().length;
     block.hidden = count === 0;
-    block.textContent = `PULL ${count} SHOWN`;
+    block.textContent = this.filtering() ? `PULL ${count} SHOWN` : `PULL ${count}`;
   }
 
   /**
@@ -1725,7 +1736,9 @@ export class PacsPanel {
     const taking: Array<{ study: PacsStudy; series: PacsSeries }> = this.shown_gatherable();
     if (taking.length === 0) return;
     for (const { study, series } of taking) this.gather_note(study, series);
-    this.handlers.note(`gather: ${taking.length} series gathered from what the listing was showing`);
+    this.handlers.note(this.filtering()
+      ? `gather: ${taking.length} series gathered from what the filter left showing`
+      : `gather: ${taking.length} series gathered from the whole answer`);
     this.shownGather_render();
   }
 

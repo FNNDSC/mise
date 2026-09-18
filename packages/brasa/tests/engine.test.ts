@@ -126,6 +126,9 @@ jest.unstable_mockModule('../src/lib/pipe.js', () => ({ segment_pipeThrough: moc
 // Engine creation registers the static VFS providers on the salsa dispatcher.
 const mockProviderRegister = jest.fn();
 const mockPathResolverRegister = jest.fn();
+const mockIsVirtual = jest.fn((path: string): boolean => path.startsWith('/proc/'));
+const mockReadBinary = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: Buffer }> => ({ ok: false }));
+const mockLinkTarget = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: string }> => ({ ok: false }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   dicomSeries_summarize: jest.fn(),
   dicomFolder_list: jest.fn(),
@@ -135,7 +138,24 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: {
     provider_register: mockProviderRegister,
     pathResolver_register: mockPathResolverRegister,
+    path_isVirtual: mockIsVirtual,
+    readBinary: mockReadBinary,
+    linkTarget_resolve: mockLinkTarget,
   },
+}));
+
+// The two doors `file_read` reaches for: ChILI's binary cat, and the link
+// walk that turns a logical path into the file CUBE actually stores.
+const mockCatBinary = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: Buffer }> => ({ ok: false }));
+const mockToPhysical = jest.fn(async (path: string): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: path }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_catBinary: mockCatBinary }));
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logical_toPhysical: mockToPhysical }));
+
+// The path a caller gave, already absolute in these cases.
+jest.unstable_mockModule('../src/builtins/utils.js', () => ({
+  path_resolve: jest.fn(async (path: string): Promise<string> => path),
+  path_resolvePure: jest.fn((path: string): string => path),
+  commandArgs_process: jest.fn(),
 }));
 class FakeStaticProvider { constructor(public readonly root: string) {} }
 jest.unstable_mockModule('../src/lib/vfs/providers/static.js', () => ({ StaticVfsProvider: FakeStaticProvider }));
@@ -153,6 +173,7 @@ const {
   command_handle,
   engine_create,
   stopOnError_set,
+  file_read,
 } = await import('../src/core/engine.js');
 const { surface_set } = await import('../src/core/surface.js');
 const { BufferSink, CaptureSink, sink_set } = await import('../src/core/sink.js');
@@ -427,5 +448,55 @@ describe('engine_create', () => {
     const stop: () => void = engine.ambient_listen!((): void => undefined);
     expect(typeof stop).toBe('function');
     stop();
+  });
+});
+
+describe('file_read: one file, three names', () => {
+  const PROC: string = '/proc/jobs/feed_42/pl-dircopy_7/data/series/0001.dcm';
+  const CFS: string = '/home/me/feeds/feed_42/pl-dircopy_7/data/series/0001.dcm';
+
+  beforeEach((): void => {
+    mockIsVirtual.mockClear();
+    mockReadBinary.mockClear();
+    mockLinkTarget.mockClear();
+    mockCatBinary.mockClear();
+    mockToPhysical.mockClear();
+    mockReadBinary.mockResolvedValue({ ok: false });
+    mockLinkTarget.mockResolvedValue({ ok: false });
+    mockCatBinary.mockResolvedValue({ ok: false });
+    mockToPhysical.mockImplementation(async (path: string) => ({ ok: true, value: path }));
+  });
+
+  it('reads a CFS path through the session cat', async (): Promise<void> => {
+    mockCatBinary.mockResolvedValue({ ok: true, value: Buffer.from('cfs') });
+    await expect(file_read(CFS)).resolves.toEqual(Buffer.from('cfs'));
+    expect(mockCatBinary).toHaveBeenCalledWith(CFS);
+  });
+
+  it('reads a projection through the provider that owns it', async (): Promise<void> => {
+    mockReadBinary.mockResolvedValue({ ok: true, value: Buffer.from('proc') });
+    await expect(file_read(PROC)).resolves.toEqual(Buffer.from('proc'));
+    expect(mockCatBinary).not.toHaveBeenCalled();
+  });
+
+  it('follows a data link whose folder is itself a link, rather than refusing', async (): Promise<void> => {
+    // What a pl-dircopy of a PACS pull looks like: the provider hands back a
+    // logical name no file id answers to, and the bytes live somewhere else.
+    mockLinkTarget.mockResolvedValue({ ok: true, value: '/home/me/feeds/feed_42/pl-dircopy_7/data' });
+    mockToPhysical.mockResolvedValue({ ok: true, value: '/SERVICES/PACS/x/0001.dcm' });
+    mockCatBinary.mockResolvedValue({ ok: true, value: Buffer.from('linked') });
+    await expect(file_read(PROC)).resolves.toEqual(Buffer.from('linked'));
+    expect(mockLinkTarget).toHaveBeenCalledWith('/proc/jobs/feed_42/pl-dircopy_7/data');
+    expect(mockCatBinary).toHaveBeenCalledWith('/SERVICES/PACS/x/0001.dcm');
+  });
+
+  it('refuses by name when nothing can read it', async (): Promise<void> => {
+    await expect(file_read(PROC)).rejects.toThrow(`cannot read ${PROC}`);
+    await expect(file_read(CFS)).rejects.toThrow(`cannot read ${CFS}`);
+  });
+
+  it('leaves a projection that is not a data path alone', async (): Promise<void> => {
+    await expect(file_read('/proc/jobs/feed_42/status')).rejects.toThrow('cannot read');
+    expect(mockLinkTarget).not.toHaveBeenCalled();
   });
 });

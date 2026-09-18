@@ -442,6 +442,29 @@ export async function file_write(filePath: string, bytes: Buffer): Promise<void>
 }
 
 /**
+ * A `/proc` job data path as the physical file behind it, when the node's
+ * output folder is a link. Returns the input unchanged when it is not a
+ * data path or resolves no further.
+ *
+ * @param projected - A path under a projection.
+ * @returns The physical path, or the input.
+ */
+async function projectedPath_physical(projected: string): Promise<string> {
+  try {
+    const link: RegExpExecArray | null = /^(\/proc\/jobs\/feed_\d+\/[^/]+\/data)(\/.*)?$/.exec(projected);
+    if (link === null) return projected;
+    const { vfsDispatcher } = await import('@fnndsc/salsa');
+    const target: Result<string> = await vfsDispatcher.linkTarget_resolve(link[1] as string);
+    if (!target.ok) return projected;
+    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
+    const physical: Result<string> = await logical_toPhysical(`${target.value}${link[2] ?? ''}`);
+    return physical.ok ? physical.value : projected;
+  } catch {
+    return projected;
+  }
+}
+
+/**
  * Reads one ChRIS file's raw bytes through ChILI, resolved against the
  * session's working directory.
  *
@@ -467,10 +490,19 @@ export async function file_read(filePath: string): Promise<Buffer> {
   // at the address its own graph gives for it.
   if (vfsDispatcher.path_isVirtual(resolved)) {
     const projected: Result<Buffer> = await vfsDispatcher.readBinary(resolved);
-    if (!projected.ok) {
-      throw new Error(`cannot read ${filePath}`);
+    if (projected.ok) return projected.value;
+    // A node's data link can point at a folder that is ITSELF a link — a
+    // `pl-dircopy` of a PACS pull stores its DICOM under `/SERVICES/PACS`
+    // — and the provider hands back the logical name, which no file id
+    // answers to. Follow it the rest of the way rather than refusing a
+    // file the same graph just listed.
+    const physical: string = await projectedPath_physical(resolved);
+    if (physical !== resolved) {
+      const { files_catBinary: catLinked } = await import('@fnndsc/chili/commands/fs/cat.js');
+      const followed: Result<Buffer> = await catLinked(physical);
+      if (followed.ok) return followed.value;
     }
-    return projected.value;
+    throw new Error(`cannot read ${filePath}`);
   }
   const { files_catBinary } = await import('@fnndsc/chili/commands/fs/cat.js');
   const result: Result<Buffer> = await files_catBinary(resolved);

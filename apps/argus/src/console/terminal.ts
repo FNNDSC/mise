@@ -139,6 +139,18 @@ export class ArgusTerminal {
    */
   private pendingAsk: { settle: (answer: string | null) => void; kind: AskKind } | null = null;
   private readonly queuedLines: string[] = [];
+  /**
+   * Whether a question is standing somewhere on the surface.
+   *
+   * A question occupies the PROMPT, not the session. While one was open
+   * the console stayed busy, so every verb that lowers to a visible line
+   * queued behind an answer that had not been given — the errand's own
+   * MKDIR could never run, since the question it served was what blocked
+   * it, and the browser's MKDIR read as dead while its listing kept
+   * refreshing on the silent channel. A verb the operator pressed goes
+   * around the question instead: echoed as always, dispatched at once.
+   */
+  private questionOpen: boolean = false;
   private readonly history: string[] = [];
   private historyIndex: number = 0;
   private streamBlock: HTMLElement | null = null;
@@ -410,9 +422,29 @@ export class ArgusTerminal {
     this.input.setSelectionRange(line.length, line.length);
   }
 
+  /**
+   * Says whether a question is standing, wherever it is being asked.
+   *
+   * @param open - True while the operator owes an answer.
+   */
+  public question_set(open: boolean): void {
+    this.questionOpen = open;
+    if (!open) return;
+  }
+
   public line_run(line: string): void {
-    if (this.busy) {
+    if (this.busy && !this.questionOpen) {
       this.queuedLines.push(line);
+      return;
+    }
+    if (this.questionOpen) {
+      // Around the question, not behind it. `busy` is left alone: it
+      // belongs to whatever asked, and the queue it guards drains when
+      // that command finishes.
+      this.history_push(line);
+      this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+      this.size_fit();
+      void this.submit(line);
       return;
     }
     this.busy = true;
@@ -474,6 +506,7 @@ export class ArgusTerminal {
       const settle = (answer: string | null): void => {
         if (this.pendingAsk === null) return;
         this.pendingAsk = null;
+        this.questionOpen = false;
         this.input.type = 'text';
         this.input.value = '';
         this.inputGlyph.textContent = '❯';
@@ -487,6 +520,7 @@ export class ArgusTerminal {
         resolve(answer);
       };
       this.pendingAsk = { settle, kind };
+      this.questionOpen = true;
       this.inputGlyph.textContent = '?';
       if (kind === 'secret') this.input.type = 'password';
       if ((kind === 'path' || kind === 'text') && request.suggest !== undefined) this.input.value = request.suggest;

@@ -4906,12 +4906,6 @@ body[data-zoom] #header-restore {
   border-color: var(--harvestgold);
 }
 
-/* MKDIR acts on the place the field names — a verb on the whole field,
-   which is what a frame block is for. */
-.errand-mkdir {
-  background-color: var(--pumpkin-pie);
-}
-
 /* The verb that ends the errand reads what the kernel said it does. */
 .errand-commit {
   background-color: var(--october-sunset);

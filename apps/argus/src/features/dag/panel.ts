@@ -750,6 +750,9 @@ export class DagPanel {
         this.scene.status_update(node.id, node.status);
         this.factsPayloads.set(node.id, node);
       }
+      // The pane is watching because something is moving; the facts on
+      // screen are part of what moved.
+      if (this.factsShown !== null) this.facts_show(this.factsShown);
       return;
     }
     this.graph_show(model, false);
@@ -819,10 +822,20 @@ export class DagPanel {
     for (const node of model.nodes) {
       this.factsPayloads.set(node.id, node);
     }
+    // A redrawn graph carries new facts for the node the operator is
+    // looking at; the overlay is repainted from them, or stood down when
+    // the node it was showing is no longer in the graph.
+    if (this.factsShown !== null) {
+      if (this.factsPayloads.has(this.factsShown.id)) this.facts_show(this.factsShown);
+      else this.factsShown = null;
+    }
   }
 
   /** Node facts, kept for the selection chip. */
   private readonly factsPayloads: Map<string, FeedDagNode> = new Map();
+
+  /** The node whose facts are on the overlay, so a live model can repaint it. */
+  private factsShown: SceneNode | null = null;
 
   /**
    * Follows the working directory: entering a different feed's tree
@@ -1252,6 +1265,10 @@ export class DagPanel {
 
   /** Paints the selection facts chip. */
   private facts_show(node: SceneNode): void {
+    // Kept so a live model can repaint the node the operator is looking at:
+    // a strip that says `scheduled` while the job has started is a readout
+    // that has stopped being true, which is worse than no readout.
+    this.factsShown = node;
     const payload: FeedDagNode | undefined = this.factsPayloads.get(node.id);
     if (!payload) {
       this.facts.textContent = node.label;
@@ -1418,11 +1435,11 @@ function size_format(bytes: number): string {
 
 /** The job lifecycle, in order — the subway line a node rides. */
 const SUBWAY_STAGES: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'created', label: 'created' },
-  { key: 'waiting', label: 'waiting' },
-  { key: 'scheduled', label: 'scheduled' },
-  { key: 'started', label: 'started' },
-  { key: 'registeringFiles', label: 'registering' },
+  { key: 'created', label: 'CREATED' },
+  { key: 'waiting', label: 'WAITING' },
+  { key: 'scheduled', label: 'SCHEDULED' },
+  { key: 'started', label: 'STARTED' },
+  { key: 'registeringFiles', label: 'REGISTERING' },
 ];
 
 /**
@@ -1430,6 +1447,14 @@ const SUBWAY_STAGES: ReadonlyArray<{ key: string; label: string }> = [
  * to where the job actually is — the classic ChRIS UI progression carried
  * over. A happy terminal fills the whole line; an error or cancellation
  * ends the line at a red terminal stop.
+ *
+ * Every stop is NAMED. As bare dots the strip could only be read by a hand
+ * that already knew the lifecycle, and a tooltip is not a readout: the one
+ * moment the strip earns its place is a node in flight, and that is exactly
+ * when the operator wants to know which stage it is standing at without
+ * hunting for it. The stop it stands at says so in words, and the strip
+ * says how far along the line that is. Nothing here animates: a node moves
+ * when the feed says it moved, and motion on this surface is asked for.
  *
  * @param status - The node's current CUBE status.
  * @returns The strip element.
@@ -1441,30 +1466,49 @@ function subway_build(status: string): HTMLElement {
   const failed: boolean = status === 'finishedWithError' || status === 'cancelled';
   const at: number = SUBWAY_STAGES.findIndex((stage): boolean => stage.key === status);
   const reached: number = doneAll || failed ? SUBWAY_STAGES.length : at;
+  if (!doneAll && !failed) strip.classList.add('dag-subway-live');
+
+  /**
+   * One stop and the word under it.
+   *
+   * @param label - The stage's name.
+   * @param classes - The stop's state classes.
+   * @param here - Whether the node stands here.
+   * @returns The step.
+   */
+  const step_build = (label: string, classes: string, here: boolean): HTMLElement => {
+    const step: HTMLSpanElement = document.createElement('span');
+    step.className = `subway-step${here ? ' subway-step-here' : ''}`;
+    const stop: HTMLSpanElement = document.createElement('span');
+    stop.className = classes;
+    const name: HTMLSpanElement = document.createElement('span');
+    name.className = 'subway-label';
+    name.textContent = label;
+    step.append(stop, name);
+    return step;
+  };
+
   SUBWAY_STAGES.forEach((stage, index): void => {
     if (index > 0) {
       const link: HTMLSpanElement = document.createElement('span');
       link.className = 'subway-link' + (index <= reached ? ' subway-passed' : '');
       strip.appendChild(link);
     }
-    const stop: HTMLSpanElement = document.createElement('span');
-    stop.className =
-      'subway-stop' +
-      (index < reached ? ' subway-passed' : '') +
-      (index === at && !doneAll && !failed ? ' subway-here' : '');
-    stop.title = stage.label;
-    strip.appendChild(stop);
+    const here: boolean = index === at && !doneAll && !failed;
+    strip.appendChild(step_build(
+      stage.label,
+      'subway-stop' + (index < reached ? ' subway-passed' : '') + (here ? ' subway-here' : ''),
+      here,
+    ));
   });
   const lastLink: HTMLSpanElement = document.createElement('span');
   lastLink.className = 'subway-link' + (doneAll || failed ? ' subway-passed' : '');
   strip.appendChild(lastLink);
-  const terminal: HTMLSpanElement = document.createElement('span');
-  terminal.className =
-    'subway-stop subway-terminal' +
-    (doneAll ? ' subway-done' : '') +
-    (failed ? ' subway-failed' : '');
-  terminal.title = doneAll ? 'finished' : failed ? status : 'pending';
-  strip.appendChild(terminal);
+  strip.appendChild(step_build(
+    doneAll ? 'FINISHED' : failed ? (status === 'cancelled' ? 'CANCELLED' : 'ERROR') : 'FINISHED',
+    'subway-stop subway-terminal' + (doneAll ? ' subway-done' : '') + (failed ? ' subway-failed' : ''),
+    false,
+  ));
   return strip;
 }
 

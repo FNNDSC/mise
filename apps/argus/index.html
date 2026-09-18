@@ -700,6 +700,13 @@
                      until someone opens it — so the control was 22px of
                      clipped label and the operator reported it missing. A
                      control nobody can see is a control that is not there. -->
+                <!-- GATHER acts on the whole answer, so it stands beside
+                     EXPORT CSV, which does too. NOT on the results frame:
+                     that is the closed spine until someone opens it, which
+                     is how EXPORT CSV once became 22px of clipped label
+                     that the operator reported as missing — and this block
+                     repeated it. A control nobody can see is not there. -->
+                <button id="pacs-gather-shown" class="pacs-capsule" title="gather every series the listing is showing, which is the filtered set when a filter is on" hidden>GATHER SHOWN</button>
                 <button id="pacs-export" class="pacs-capsule" title="write the whole answer as CSV into ChRIS storage">EXPORT CSV</button>
                 <!-- Where the table went, said by the pane that made it:
                      a readout, not a capsule, since it answers no press. -->
@@ -714,11 +721,6 @@
                 <span class="mode-elbow"></span>
                 <aside class="mode-frame">
                   <button class="strategy-pill pacs-filter rail-off" title="filter the results (the bar reads FILTERED n/m)">FILTER OFF</button>
-                  <!-- GATHER acts on the FIELD, so it rides the frame that
-                       answers to the field: it takes the series the listing
-                       is showing, which is the filtered set when a filter
-                       is on. It says its count, and stands down at zero. -->
-                  <button id="pacs-gather-shown" class="strategy-pill pacs-gather-shown" title="gather every series the listing is showing" hidden>GATHER SHOWN</button>
                   <!-- The ROW ZONE is minted here by the listing façade:
                        the indicated study's or series' verbs, one under
                        another (aegis.adoc: a-row-s-verbs-live-in-the-frame). -->

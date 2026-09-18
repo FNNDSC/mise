@@ -298,6 +298,20 @@ async function csvFile_put(
         message: `${resolved} was reported written but is not there; try again`,
       };
     }
+    // The folder's cached listing is now wrong, and nothing else will say
+    // so: the write went straight to CUBE, while `ls` and every browser
+    // read the cache. The operator exported a table, opened the folder it
+    // named, and saw everything except the file they had just written —
+    // which reads exactly like the export doing nothing. Every fs verb
+    // invalidates what it changed; this one now does too.
+    const { listCache_get } = await import('@fnndsc/cumin');
+    listCache_get().cache_invalidate(parent);
+    if (created !== undefined) {
+      // The folder itself is new, so the listing that would show IT is
+      // stale as well.
+      const above: number = parent.lastIndexOf('/');
+      listCache_get().cache_invalidate(above <= 0 ? '/' : parent.slice(0, above));
+    }
     return {
       ok: true,
       path: resolved,

@@ -419,6 +419,38 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
     expect(bare.classList.contains('listing-framed')).toBe(false);
   });
 
+  it('opens the frame of the pane it is IN, even when it was built before joining the document', () => {
+    // The node overlay stamps its body, builds the browser on it, and only
+    // then appends the whole thing to the scene. A pane looked up at
+    // construction is null forever after, and the zone then filled with
+    // verbs behind a frame that was never told to open: the listing held a
+    // stale answer to "where do I live" while the document held the true
+    // one. The façade asks the document each time instead.
+    const detached: HTMLElement = document.createElement('div');
+    detached.className = 'workspace-pane';
+    detached.innerHTML = `
+      <span class="pane-state"></span>
+      <div class="field">
+        <aside class="mode-frame"><span class="mode-fill"></span></aside>
+        <div class="mount"></div>
+      </div>`;
+    const mount: HTMLElement = detached.querySelector('.mount') as HTMLElement;
+    const listing: Listing<Entry> = new Listing<Entry>({
+      mount,
+      traits: ENTRY_TRAITS,
+      key: (entry: Entry): string => entry.name,
+      chrome: { root: detached, prefix: 'files' },
+      actions: { of: OPEN_FILES },
+    });
+    // Built while detached, then put on stage, exactly as the overlay does.
+    document.body.appendChild(detached);
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    (mount.querySelector('.listing-row') as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const zone: HTMLElement = zone_minted(detached);
+    expect(zone.querySelectorAll('.listing-action').length).toBeGreaterThan(0);
+    expect(detached.dataset['modes']).toBe('open');
+  });
+
   it('mints no track: the grid has only the traits, and no row carries an action cell', () => {
     const { listing, mount } = framed_build({ actions: { of: OPEN_FILES } });
     listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });

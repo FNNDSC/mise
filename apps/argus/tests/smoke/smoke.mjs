@@ -1410,12 +1410,21 @@ try {
     const onFrame = [...fp().querySelectorAll('.mode-frame .strategy-pill')].map(p => p.textContent.trim());
 
     // MKDIR asks for a name and makes it where the field points
+    // The question stands on the pane that asked it, and the console keeps
+    // the exchange — so the ask is READ in the transcript and ANSWERED on
+    // the bar. This scenario used to type the answer into the console, and
+    // went on passing its ask check while the answer went nowhere.
     fp().querySelector('.files-mkdir').click();
     let asked = '';
     for (let i = 0; i < 40; i++) { await sleep(300); const a = document.querySelector('#terminal .argus-ask'); if (a) { asked = a.textContent.trim(); break; } }
-    term.value = 'smoke-place';
-    term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    const made = await settle(() => names().includes('smoke-place'));
+    let bar = null;
+    for (let i = 0; i < 40; i++) { await sleep(150); bar = fp().querySelector('.ask-bar'); if (bar) break; }
+    const field = bar?.querySelector('.ask-bar-field');
+    if (field) {
+      field.value = 'smoke-place';
+      bar.querySelector('.ask-bar-commit').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+    const made = field !== null && field !== undefined && await settle(() => names().includes('smoke-place'));
 
     // UPLOAD delivers the browser's own bytes into the folder on stage
     await say('cd ~/smoke-place', 2500);

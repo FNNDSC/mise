@@ -1,5 +1,53 @@
 # @fnndsc/argus
 
+## 0.10.0
+
+### Minor Changes
+
+- cd6a0ab: ARGUS: a DAG node offers PROCESS, on the overlay that describes it.
+
+  Indicating a node shows its facts — plugin, instance, status, wall, size, data, and the lifecycle strip. It offered nothing to do about the node, so appending a run to a feed had to be reached through a browser even while the graph was on screen.
+
+  The overlay now carries a PROCESS pill. It opens the bound catalogue on the node's own data, joined to the graph's group, so a run appends to that node; the binding reads `INPUT … → feed N · node M` as it does from anywhere else. The verb keeps the name it has on a directory, a PACS series and a cohort, since one act with two names costs a concept.
+
+  A collapsed ×N group withholds the verb and says why: an aggregate has no single instance for a run to append to.
+
+- fa90f05: ARGUS: a question the surface asks stands on the pane that asked it.
+
+  Every question the surface put went to the console, and a console can be closed. PROCESS on a gathered cohort asked for a name into a drawer of zero height: the press read as dead, the surface sat waiting on a question nobody could see, and a second press was refused because one was already open. SAVE and EXPORT CSV did the same.
+
+  A surface question now opens on the pane that provoked it, as a bar across its head — the question stated, the value editable and holding the keyboard, one committing verb reading what it will do (NAME IT, RUN, MAKE IT), ABANDON beside it, a yes/no as two capsules, and Esc abandoning wherever the hands are. The console still records the exchange, so the scrollback remains the whole story of the session. A question the session puts still belongs in the console, which now exposes itself to carry one.
+
+  The GATHER pane also indicates its cohort row on arrival: a listing of one row has nothing to choose between, and its verbs should not have to be hunted for behind the fold capsule.
+
+  Law `a-question-stands-where-it-was-asked` (AEGIS), enforced by the smoke suite with the console deliberately closed.
+
+- de5508d: ARGUS: `attach` says how to reach this session from a terminal or another browser.
+
+  An operator working in the browser who wants a terminal on the same session needs the daemon's URL, port and attach token. The surface already holds all three, since the page reached the daemon by an address carrying the token, so the console now answers for them. `attach` prints the session identity, `chell --remote` for a terminal on the same machine, `chell --remote --attach "<url>"` for one anywhere else, and the browser URL for a second browser. Nothing is asked of the session.
+
+  The token is a bearer credential with no expiry, so the readout masks it and only `attach --reveal` prints it. An address on loopback says so, because a second machine cannot reach 127.0.0.1 whatever the token says. Law `a-surface-says-how-to-reach-it` (AEGIS), enforced by the smoke suite in both directions: the masked form never carries the token, the revealed one does.
+
+### Patch Changes
+
+- 6c6ca51: ARGUS: the PACS query form's fields are black again, not the browser's white.
+
+  Every field of the query form (PATIENT, MRN, DATE, ACCESSION, MODALITY) was drawn as a white box with the frame's own light type on it, which is unreadable. The fields shared one selector list with the gather tray's name field, and removing the tray took the list's second half and the declaration block with it, leaving a dangling `#pacs-form input,` that fused onto the rule below. The fields then had no background, no border and no colour of their own, so they fell back to the browser's defaults; they also picked up that rule's `display: flex` and bottom margin.
+
+  The block is restored: black ground, lit border, mono type, and the focus ring the command line beneath them has.
+
+- ee75252: ARGUS: the listing inside a node behaves like every other listing.
+
+  Diving into a DAG node overlays a browser on the node's data. That browser declared no row verbs, and a listing with nothing to hide behind an indication keeps its old bargain of activating on a single click — so alone among the surface's listings, a click there walked into the row instead of indicating it, and the mode frame never opened.
+
+  It now declares the same verbs as any browser, computed by the same roster: a click indicates and writes the regard, a double click goes, and a node's own `data` is offered PROCESS inside the graph exactly as it is outside it.
+
+- 934d2d3: ARGUS: a node's lifecycle stops say their names, and move while the node does.
+
+  The strip under a node's facts was six bare dots with the stage name in a tooltip, so it could only be read by someone who already knew the lifecycle — and the one moment it earns its place is a node in flight. Every stop now carries its name, the stop the node stands at is drawn larger as well as lit, and stages the line has not reached stay dim.
+
+  The overlay is also repainted whenever a fresh model arrives, from the feed watch the pane already holds or from a REFRESH. Before this the facts were a snapshot taken when the node was indicated, so a node that moved on kept showing the stage it was at when it was clicked.
+
 ## 0.9.0
 
 ### Minor Changes

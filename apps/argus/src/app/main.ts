@@ -4967,6 +4967,10 @@ async function surface_start(token: string): Promise<void> {
   // The cohort the session was working on comes back with it. Quietly: the
   // band is not revealed, because restoring is not an act the operator
   // just took — the count on its button is how they learn it is there.
+  // The block reads its own state from the first frame: an empty cohort is
+  // the same block dimmed, not a lit one promising something it does not
+  // hold. The restore below may fill it a moment later.
+  headerGather_annunciate();
   void cohort_restore();
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);

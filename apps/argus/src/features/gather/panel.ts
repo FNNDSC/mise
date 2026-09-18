@@ -468,9 +468,17 @@ export class GatherPanel {
    * @returns The actions, in capsule order.
    */
   private seriesActions_declare(): ReadonlyArray<ListingAction<SeriesRow>> {
-    const facts = (row: SeriesRow): GatherSeriesFacts => ({ folderKnown: row.entry.folderPath !== undefined });
+    const facts = (row: SeriesRow): GatherSeriesFacts => ({
+      folderKnown: row.entry.folderPath !== undefined,
+      // Not home, and it carries the path a pull takes. The frame pulls
+      // the whole cohort; the row pulls the one the operator is looking at.
+      pullable: row.entry.folderPath === undefined
+        && row.entry.series?.pulled !== true
+        && row.entry.vfsPath !== '',
+    });
     const runs: Record<string, (row: SeriesRow) => void> = {
       remove: (row: SeriesRow): void => this.series_remove(row.entry.seriesUID),
+      pull: (row: SeriesRow): void => this.handlers.command_show(`pull "${row.entry.vfsPath}"`),
       image: (row: SeriesRow): void => {
         if (row.entry.folderPath !== undefined) this.handlers.image_open(row.entry.folderPath);
       },
@@ -479,7 +487,7 @@ export class GatherPanel {
       },
     };
     return GATHER_SERIES_ROSTER.rules.map((rule): ListingAction<SeriesRow> => ({
-      label: rule.label({ folderKnown: true }),
+      label: rule.label({ folderKnown: true, pullable: true }),
       offered: (row: SeriesRow): boolean => rule.offered(facts(row)),
       run: (row: SeriesRow): void => runs[rule.name]?.(row),
     }));

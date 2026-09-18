@@ -878,7 +878,26 @@ export class Listing<T> {
   /** The frame's row zone, when the verbs ride the frame. */
   private readonly zone: HTMLElement | null;
   /** The pane the zone's frame belongs to, whose `data-modes` opens it. */
-  private readonly zonePane: HTMLElement | null;
+  /**
+   * The pane the row zone opens, resolved from the document each time it is
+   * needed rather than kept from construction.
+   *
+   * A listing can be built before its mount is in the document — the node
+   * overlay stamps its body, constructs the browser on it, and only then
+   * appends the whole thing to the scene — and a pane looked up at that
+   * moment is null forever after. The zone then filled with verbs that
+   * nobody could see, because the attribute that opens the frame was never
+   * written: one listing, two sources of truth about where it lives, and
+   * the stale one won. The DOM is the truth; ask it.
+   *
+   * @returns The enclosing pane, or null when the listing is detached.
+   */
+  /** Whether the zone's pane watcher is installed; see `zone_wire`. */
+  private wired: boolean = false;
+
+  private zonePane_get(): HTMLElement | null {
+    return this.zone?.closest<HTMLElement>('.workspace-pane') ?? null;
+  }
   /**
    * Whether verbs arriving in the zone are what opened the frame. Only then
    * does the zone emptying retract it: a frame the operator opened, or has
@@ -912,7 +931,6 @@ export class Listing<T> {
     if (declaration.selection !== undefined && this.zone === null) {
       throw new Error('a listing that selects declares a row zone: a selection\'s verbs ride the frame');
     }
-    this.zonePane = this.zone?.closest<HTMLElement>('.workspace-pane') ?? null;
     this.level = new Level<T>(
       declaration,
       {
@@ -1247,8 +1265,12 @@ export class Listing<T> {
    */
   private zone_wire(): void {
     const zone: HTMLElement | null = this.zone;
-    const pane: HTMLElement | null = this.zonePane;
-    if (zone === null || pane === null) return;
+    const pane: HTMLElement | null = this.zonePane_get();
+    // A detached listing has no pane to watch yet. It is wired on the first
+    // paint that finds one instead, so a listing built before it is in the
+    // document still stands its row down when the frame closes.
+    if (zone === null || pane === null || this.wired) return;
+    this.wired = true;
     // Capture phase: the block's own handler may empty the zone (SELECT
     // stands the indication down), and the claim has to be in before it.
     zone.closest<HTMLElement>('.mode-frame')?.addEventListener('click', (event: Event): void => {
@@ -1276,7 +1298,9 @@ export class Listing<T> {
     if (zone === null) return;
     zone.replaceChildren(...capsules);
     zone.hidden = capsules.length === 0;
-    const pane: HTMLElement | null = this.zonePane;
+    // The listing may have joined the document since it was built.
+    if (!this.wired) this.zone_wire();
+    const pane: HTMLElement | null = this.zonePane_get();
     if (pane === null) return;
     if (capsules.length > 0) {
       if (pane.dataset['modes'] !== 'open') {

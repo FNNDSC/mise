@@ -476,6 +476,68 @@ function cascade_build(): Cascade | null {
  * cascade. One declaration (`data-header` on the body) carries the state:
  * absent (cascade), 'stats', 'versions', or 'away'.
  */
+/** The band's floor and the headroom it leaves the workspace, in pixels. */
+const BAND_MIN_HEIGHT_PX: number = 96;
+const BAND_HEADROOM_PX: number = 220;
+/** Where the operator's chosen band height is remembered, per browser. */
+const BAND_HEIGHT_KEY: string = 'argus.headerBand.height';
+
+/**
+ * Wires the header band's drag strip: the boundary it shares with the body
+ * is a control, exactly as the console drawer's is from the other side.
+ *
+ * The height is ONE height for every face, so a face switch never moves
+ * the workspace, and it is remembered: an operator who wants a tall cohort
+ * should not have to ask for it twice. Dragged below the floor the band
+ * takes the floor rather than vanishing — a band nobody can see is a band
+ * they cannot drag back.
+ */
+function headerBand_wire(): void {
+  const root: HTMLElement = document.documentElement;
+  const strip: HTMLElement | null = document.getElementById('header-strip');
+  const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
+  if (strip === null || header === null) return;
+
+  const height_apply = (pixels: number): void => {
+    const ceiling: number = Math.max(BAND_MIN_HEIGHT_PX, window.innerHeight - BAND_HEADROOM_PX);
+    const wanted: number = Math.min(Math.max(BAND_MIN_HEIGHT_PX, pixels), ceiling);
+    root.style.setProperty('--header-band-h', `${wanted}px`);
+    try { window.localStorage.setItem(BAND_HEIGHT_KEY, String(wanted)); } catch { /* a private window keeps nothing */ }
+  };
+
+  const remembered: string | null = ((): string | null => {
+    try { return window.localStorage.getItem(BAND_HEIGHT_KEY); } catch { return null; }
+  })();
+  if (remembered !== null && Number.isFinite(Number(remembered))) height_apply(Number(remembered));
+
+  /** The strip rides the boundary, so it follows the band's own foot. */
+  const strip_place = (): void => {
+    const box: DOMRect = header.getBoundingClientRect();
+    strip.style.top = `${Math.max(0, box.bottom - 5)}px`;
+  };
+  strip_place();
+  window.addEventListener('resize', strip_place);
+  new MutationObserver(strip_place).observe(document.body, { attributes: true, attributeFilter: ['data-header'] });
+  window.setInterval(strip_place, 500);
+
+  let dragging: boolean = false;
+  let startY: number = 0;
+  let startHeight: number = 0;
+  strip.addEventListener('mousedown', (event: MouseEvent): void => {
+    const face: HTMLElement | null = document.querySelector<HTMLElement>('.header-face');
+    dragging = true;
+    startY = event.clientY;
+    startHeight = face === null ? BAND_MIN_HEIGHT_PX : face.getBoundingClientRect().height;
+    event.preventDefault();
+  });
+  window.addEventListener('mousemove', (event: MouseEvent): void => {
+    if (!dragging) return;
+    height_apply(startHeight + (event.clientY - startY));
+    strip_place();
+  });
+  window.addEventListener('mouseup', (): void => { dragging = false; strip_place(); });
+}
+
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
@@ -495,6 +557,16 @@ function headerFaces_wire(): void {
   };
   document.querySelector('.panel-1')?.addEventListener('click', (): void => face_select('stats'));
   document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('dag'));
+  document.querySelector('.panel-gather')?.addEventListener('click', (): void => face_select('gather'));
+  // The band is not a pane, so its own frame opens on its own declaration:
+  // the strip toggles it, a press inside it acts, a press on the fill or
+  // anywhere else on the band retracts it, as a pane's frame does.
+  const bandField: HTMLElement | null = document.querySelector<HTMLElement>('.header-gather-field');
+  bandField?.querySelector('.mode-strip')?.addEventListener('click', (): void => {
+    const open: boolean = body.dataset['headerFrame'] === 'open';
+    if (open) delete body.dataset['headerFrame'];
+    else body.dataset['headerFrame'] = 'open';
+  });
 
   const header_restore = (): void => {
     if (body.dataset['zoom'] !== undefined) {
@@ -2247,6 +2319,161 @@ async function surface_start(token: string): Promise<void> {
   };
 
   /**
+   * The session's cohort, which rides the header band.
+   *
+   * ONE cohort per session, and it belongs to the session rather than to
+   * any pane: a cohort spans PACS series, and will span directories, so it
+   * cannot live in whichever pane happened to start it. The header is the
+   * one region that does not change when the body does, so gathering never
+   * rearranges the workspace — which is the whole reason it moved here.
+   */
+  let headerCohort: GatherPanel | null = null;
+
+  /** Whether the operator sent the band away since the last gather. */
+  let bandDismissed: boolean = false;
+
+  /**
+   * Where the session keeps the cohort it is working on.
+   *
+   * A cohort belongs to the SESSION, so it outlives the page: a refresh
+   * keeps it, and a second surface attached to the same session sees the
+   * same one. A working file, not a format — SAVE still writes the named
+   * manifest beside it, which is the thing meant to be kept.
+   */
+  const COHORT_FILE: string = '~/gather/current.json';
+
+  /** Writes are debounced: gathering a study is twenty changes, one file. */
+  let cohortWrite: number | null = null;
+
+  /** Holds the cohort as the session's, after the surface changed it. */
+  const cohort_keep = (): void => {
+    if (cohortWrite !== null) window.clearTimeout(cohortWrite);
+    cohortWrite = window.setTimeout((): void => {
+      cohortWrite = null;
+      const held: ReadonlyArray<GatherSeries> = headerCohort?.entries_get() ?? [];
+      const kept: string = JSON.stringify({
+        version: 1,
+        name: headerCohort?.name_get() ?? null,
+        feed: headerCohort?.feed_get() ?? null,
+        series: held,
+      });
+      // Silent: this is the surface keeping its own state, not an act the
+      // operator took, and the transcript is for what they did.
+      void client.line_execute('mkdir ~/gather', { silent: true, observe: false });
+      void client.line_execute(
+        `touch --withContents '${kept.replace(/'/g, "'\\''")}' ${COHORT_FILE}`,
+        { silent: true, observe: false },
+      );
+    }, 1200);
+  };
+
+  /** Reads back the cohort the session was working on, at boot. */
+  const cohort_restore = async (): Promise<void> => {
+    const read: FileText = await fileText_fetch(COHORT_FILE);
+    if (!read.ok) return;
+    try {
+      const held = JSON.parse(read.text) as { series?: unknown };
+      if (!Array.isArray(held.series) || held.series.length === 0) return;
+      if (headerCohort === null) headerCohort = headerCohort_build();
+      for (const entry of held.series as GatherSeries[]) headerCohort.series_add(entry);
+      headerGather_annunciate();
+      pacsStage_relight();
+    } catch {
+      // A working file the operator may have edited: a cohort that cannot
+      // be read is not a reason to refuse the session.
+    }
+  };
+
+  /**
+   * Builds the cohort into the header's third face.
+   *
+   * Its handlers are the pane's, with the two that were about a pane made
+   * honest: a cohort in the band has no pane to close, so DISMISS empties
+   * and retracts instead, and what it opens (an image, a catalogue) lands
+   * in the BODY, where work happens.
+   *
+   * @returns The panel.
+   */
+  const headerCohort_build = (): GatherPanel => {
+    const face: HTMLElement = element_require('header-gather');
+    const host: string = 'pacs';
+    return new GatherPanel(face, pane_find(face, '.gather-rows'), {
+      command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
+      command_show: (line: string): void => terminal.line_run(line),
+      image_open: (folderPath: string): void => {
+        void image_open(host, folderPath).then((line: string): void => terminal.line_note(line));
+      },
+      process_open: (folderPath: string): void => process_open(host, { input: folderPath, feed: null, node: null }),
+      name_ask: (suggest: string): Promise<string | null> =>
+        ask_onPane(host, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
+      changed: (): void => {
+        pacsStage_relight();
+        headerGather_annunciate();
+        cohort_keep();
+      },
+      dismiss: (): void => {
+        // A band is not a pane: there is nothing to close. Sending the face
+        // away is what DISMISS means here, and the cohort it forgot is
+        // already empty by the time this runs.
+        document.body.dataset['header'] = 'away';
+        bandDismissed = true;
+        headerGather_annunciate();
+      },
+      feed_create: async (line: string): Promise<GatherFeed | null> => {
+        terminal.line_echo(line);
+        let outcome: ExecuteOutcome;
+        try {
+          outcome = await client.line_execute(line, { silent: true });
+        } catch (error: unknown) {
+          terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
+          return null;
+        }
+        terminal.outcome_write(outcome);
+        for (const envelope of outcome.envelopes) {
+          if (envelope.model?.kind !== 'feed.created') continue;
+          const data = envelope.model.data as { feedId?: unknown; rootInstanceId?: unknown; path?: unknown };
+          if (typeof data.feedId === 'number' && typeof data.rootInstanceId === 'number' && typeof data.path === 'string') {
+            return { feedId: data.feedId, rootInstanceId: data.rootInstanceId, path: data.path };
+          }
+        }
+        return null;
+      },
+      cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(host, binding),
+      feed_open: (feedId: number): void => feed_open(host, feedId),
+    });
+  };
+
+  /** The face's button carries the count, as a readout that acts. */
+  const headerGather_annunciate = (): void => {
+    const pill: HTMLElement | null = document.querySelector<HTMLElement>('#header-gather-pill');
+    if (pill === null) return;
+    const held: number = headerCohort?.entries_get().length ?? 0;
+    pill.textContent = held === 0 ? 'GATHER' : `GATHER ${held}`;
+    pill.classList.toggle('panel-gather-empty', held === 0);
+  };
+
+  /**
+   * Takes series into the session's cohort.
+   *
+   * The band reveals itself the first time, so the operator sees where the
+   * thing they gathered went; after they have deliberately sent it away it
+   * stays away and only the count moves, until they open it again.
+   *
+   * @param entries - The series to gather.
+   */
+  const cohort_gather = (entries: ReadonlyArray<GatherSeries>): void => {
+    if (headerCohort === null) headerCohort = headerCohort_build();
+    for (const entry of entries) headerCohort.series_add(entry);
+    const away: boolean = document.body.dataset['header'] === 'away';
+    if (!bandDismissed || !away) {
+      document.body.dataset['header'] = 'gather';
+      bandDismissed = false;
+    }
+    headerGather_annunciate();
+    cohort_keep();
+  };
+
+  /**
    * Gathers series into the cohort on stage, opening the GATHER pane below
    * the PACS listing (joined to its group) when there is none.
    *
@@ -2783,11 +3010,10 @@ async function surface_start(token: string): Promise<void> {
     // beside the PACS workspace. A PACS folder is outside any feed.
     process_open: (folderPath: string): void => process_open('pacs', { input: folderPath, feed: null, node: null }),
     // GATHER: the cohort is a pane beside the workspace, not a tray under it.
-    gather_add: (entry: GatherSeries): void => { gather_open([entry]); },
-    gathered_is: (seriesUID: string): boolean => {
-      const shown: Set<string> = new Set(layout.panes_shown());
-      return [...gatherPanels].some(([paneId, panel]): boolean => shown.has(paneId) && panel.has(seriesUID));
-    },
+    // The cohort is the session's, in the band: gathering takes a series
+    // wherever the operator is standing, and never moves the workspace.
+    gather_add: (entry: GatherSeries): void => cohort_gather([entry]),
+    gathered_is: (seriesUID: string): boolean => headerCohort?.has(seriesUID) === true,
     workspace_close: (): void => home_apply(),
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
@@ -4738,6 +4964,10 @@ async function surface_start(token: string): Promise<void> {
   // asked for once the session can answer. The paint at boot puts the pane
   // on stage; this fills it.
   if (layout.activePreset_get() === 'launcher') launcherPanel.render();
+  // The cohort the session was working on comes back with it. Quietly: the
+  // band is not revealed, because restoring is not an act the operator
+  // just took — the count on its button is how they learn it is there.
+  void cohort_restore();
   mode_show('READY');
   terminal.banner_write(BANNER_LINES);
   terminal.prompt_draw();
@@ -4779,6 +5009,7 @@ async function surface_start(token: string): Promise<void> {
 function page_boot(): void {
   cascade = cascade_build();
   headerFaces_wire();
+  headerBand_wire();
   audioPill_wire();
   themePill_wire();
   const params: URLSearchParams = new URLSearchParams(window.location.search);

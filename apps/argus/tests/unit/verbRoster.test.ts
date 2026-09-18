@@ -153,6 +153,12 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'a DICOM series folder': ['IMAGE', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
     'a catalogue entry': [],
     'a catalogue entry in a bound catalogue': ['RUN'],
+    // A projection is rendered by the kernel and written by nothing: there
+    // is no folder behind /proc to move into, copy within or remove from,
+    // and CUBE grants a feed on a feed's own path, not on a view of it.
+    // What a projection IS for stays: reading, opening, processing.
+    "a node's data seen through /proc": ['PROCESS'],
+    'a file seen through /proc': ['DOWNLOAD'],
   },
   'files.selection': {
     'a selection outside any feed': ['DELETE 3', 'MOVE 3', 'COPY 3'],

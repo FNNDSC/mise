@@ -79,6 +79,14 @@ export interface FileRowFacts {
    * pane PROCESS opened): only then can an executable be RUN from it.
    */
   bound?: boolean;
+  /**
+   * Whether the row lives in a PROJECTION — `/proc`'s jobs, `/net`'s
+   * servers — which the kernel renders and nothing writes. A projection
+   * has no folder behind it to move a file into, copy within, or remove
+   * from, so the verbs that would write are not offered there. Reading,
+   * opening and processing remain: they are what a projection is for.
+   */
+  projection?: boolean;
 }
 
 /** What a browser selection is. */
@@ -135,15 +143,15 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     },
     { name: 'run', label: (): string => 'RUN', offered: (f: FileRowFacts): boolean => f.kind === 'catalogue' && f.bound === true },
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
-    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
-    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
-    { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
+    { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
+    { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
+    { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
     {
       name: 'share',
       // The capsule NAMES the feed: CUBE grants a feed and never a file, so
       // a bare SHARE on a file row would read as a lie about what happens.
       label: (f: FileRowFacts): string => `SHARE FEED ${f.feed ?? ''}`,
-      offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.feed !== null,
+      offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.feed !== null && f.projection !== true,
     },
   ],
   states: [
@@ -155,6 +163,8 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     { name: 'a DICOM series folder', facts: { kind: 'seriesFolder', feed: null } },
     { name: 'a catalogue entry', facts: { kind: 'catalogue', feed: null } },
     { name: 'a catalogue entry in a bound catalogue', facts: { kind: 'catalogue', feed: null, bound: true } },
+    { name: "a node's data seen through /proc", facts: { kind: 'directory', feed: 12, node: 456, projection: true } },
+    { name: 'a file seen through /proc', facts: { kind: 'file', feed: 12, projection: true } },
   ],
 };
 

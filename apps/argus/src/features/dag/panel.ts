@@ -47,6 +47,12 @@ export interface DagPanelHandlers {
   node_dive?: (vfsPath: string) => void;
   /** A node was selected: the pane indicates its data address (a regard write). */
   node_regard?: (vfsPath: string) => void;
+  /**
+   * PROCESS on a node: open the bound catalogue on the node's own data, so
+   * the run appends to it. The surface decides where the pane lands; the
+   * graph only says which node was asked about.
+   */
+  node_process?: (node: { vfsPath: string; instanceId: number; label: string }) => void;
   /** A feed was picked in the roster: the pane indicates the feed's address (a regard write). */
   feed_regard?: (procPath: string) => void;
   /**
@@ -1329,6 +1335,32 @@ export class DagPanel {
       this.facts.appendChild(row);
     }
     this.facts.appendChild(subway_build(payload.status));
+    // The verb sits on the overlay, which is where the operator is already
+    // looking when they pick a node: the facts describe this node, and the
+    // one thing to do about it acts on this node. A collapsed ×N group is
+    // withheld rather than guessed at — an aggregate has no single instance
+    // for a run to append to, and picking a representative silently would
+    // be the surface inventing an answer.
+    if (this.handlers.node_process !== undefined) {
+      const process: (node: { vfsPath: string; instanceId: number; label: string }) => void = this.handlers.node_process;
+      const pill: HTMLButtonElement = document.createElement('button');
+      pill.className = 'pacs-capsule dag-process';
+      if (tally !== undefined) {
+        pill.textContent = 'PROCESS';
+        pill.disabled = true;
+        pill.title = `${tally.count} instances stand here: open one to process it`;
+        pill.classList.add('pacs-capsule-off');
+      } else {
+        pill.textContent = 'PROCESS';
+        pill.title = `open /bin bound to ${payload.label} — a run appends to this node`;
+        pill.addEventListener('click', (): void => process({
+          vfsPath: payload.vfsPath,
+          instanceId: payload.instanceId,
+          label: payload.label,
+        }));
+      }
+      this.facts.appendChild(pill);
+    }
   }
 
   /** Activation: fly into the node — literally when the host can overlay. */

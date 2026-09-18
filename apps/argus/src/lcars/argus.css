@@ -5687,3 +5687,14 @@ button.launcher-row:hover {
 .ask-bar-abandon {
   background-color: var(--october-sunset);
 }
+
+
+/* The verb on the node overlay. A node's facts say what it IS; the one
+   thing to do about it acts on the same node, so it stands with them
+   rather than on a rail somewhere else — the control lives where it acts.
+   Withheld (dimmed, and saying why) on a collapsed group, which has no
+   single instance for a run to append to. */
+.dag-process {
+  align-self: flex-start;
+  margin-top: 0.6rem;
+}

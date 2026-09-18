@@ -2453,6 +2453,20 @@ async function surface_start(token: string): Promise<void> {
         node_regard: (vfsPath: string): void => {
           subjects.regard_write(id, { address: vfsPath, modelKind: 'feed.node' });
         },
+        node_process: (node: { vfsPath: string; instanceId: number; label: string }): void => {
+          // The graph addresses a node by its projection; the catalogue is
+          // bound to the place a run will `cd` into, which is the node's own
+          // data under the session's home. Same place, two names — and the
+          // kernel appends to the instance it finds at the path.
+          const feed: number | null = feedOf_path(node.vfsPath)
+            ?? (/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) === null
+              ? null
+              : Number((/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) as RegExpExecArray)[1]));
+          const input: string = promptUser === null
+            ? node.vfsPath
+            : node.vfsPath.replace(/^\/proc\/jobs\//, `/home/${promptUser}/feeds/`);
+          process_open(id, { input, feed, node: node.instanceId });
+        },
         feed_regard: (procPath: string): void => {
           subjects.regard_write(id, { address: procPath, modelKind: 'feed' });
         },

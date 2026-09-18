@@ -194,6 +194,10 @@ button.panel-1 {
  * the separation there, and it takes whatever height the head has left. */
 /* The elbow takes whatever the head has left once the first block has its
  * 160px: the gutter's head is as tall as the frame's head beside it. */
+/* The block that CLOSES this column carries the frame's corner and no rule
+ * beneath it — the corner IS the separation there — and its ground runs on
+ * into the frame below. That block is 02-CALYPSO, which is why the
+ * cohort's block sits above it rather than after it. */
 button.panel-2 {
   position: relative;
   flex: 1 1 auto;
@@ -233,7 +237,7 @@ button.panel-lang {
 
 .panel-1, .panel-4, .panel-spacer { background-color: var(--orange); }
 .panel-2, .panel-3, .panel-6 { background-color: var(--october-sunset); }
-.panel-5, .panel-7 { background-color: var(--harvestgold); }
+.panel-5, .panel-7, .panel-gather { background-color: var(--harvestgold); }
 
 .panel-spacer {
   width: var(--lfw);
@@ -3474,12 +3478,29 @@ body[data-header='dag'] #header-dag {
   color: var(--butter);
 }
 
-/* The third face's button, in the column that already selects faces. */
+/* The cohort's block, third in the column that selects the header's faces.
+ * A block like the two above it: the column's width, the frame's padding,
+ * its label against the bottom-right, its ground a SEAT in the hue cycle
+ * (dark, dark, light towards the elbow) rather than a colour of its own —
+ * so a theme that re-seats the cycle moves this with the rest. It closes
+ * the column, so the corner and the missing rule come from the rule above
+ * rather than from anything written here. */
 button.panel-gather {
   flex: none;
-  min-height: 2.4rem;
+  min-height: 3.2rem;
+  /* One line, hard right, like the plate below it. A column direction
+     broke `01-GATHER 5` onto three lines, one word each. */
   align-items: flex-end;
-  background-color: var(--harvestgold);
+  justify-content: flex-end;
+  white-space: nowrap;
+  border-bottom: 8px solid #000;
+}
+
+/* Nothing gathered yet: the block is the same block, dimmed, as an armed
+ * control and a resting one are one capsule at two strengths. */
+button.panel-gather.panel-gather-empty {
+  background-color: color-mix(in srgb, var(--harvestgold) 38%, #000);
+  color: color-mix(in srgb, #000 70%, var(--harvestgold));
 }
 
 body[data-header='stats'] #header-telemetry {
@@ -3794,6 +3815,7 @@ body[data-zoom] #header-restore {
  * leaves between blocks. */
 [data-theme='pharos'] .left-frame-top .panel-1,
 [data-theme='pharos'] .left-frame-top .panel-2,
+[data-theme='pharos'] .left-frame-top .panel-gather,
 [data-theme='pharos'] .left-frame button[class^='panel-'],
 [data-theme='pharos'] .left-frame .panel-spacer,
 [data-theme='pharos'] .lcars-bar-horizontal,

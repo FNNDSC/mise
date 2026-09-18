@@ -5712,3 +5712,68 @@ button.launcher-row:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+
+/* ------------------------------------------- a delimited file is a table */
+
+/* The table view is a field like any other listing's: a rule turning
+   through an elbow into the spine, the frame beside it, the rows filling
+   what is left. The pane's own listing keeps its place beneath, restored
+   by CLOSE. */
+.files-table-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* Laid out the way every other field on this surface is: the frame and the
+   rule are absolute chrome, the rows are the flex child that fills what is
+   left and scrolls inside itself. Hand-rolled absolute insets put the rows
+   1353px tall starting above their own view — measured, not guessed. */
+.files-table-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-right: var(--spine-w);
+}
+
+.files-table-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding-top: calc(var(--rule-h) + 0.3rem);
+  /* The grid the caps and every row read; the tracks themselves are the
+     façade's, computed from the traits it was declared with. */
+  --roster-gap: 0.6rem;
+  --roster-pad: 0.4rem;
+}
+
+/* The caps stay at the head of the scrolling field, opaque, so the rows
+   pass beneath them rather than through them. */
+.files-table-rows > .roster-order {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  background: #000;
+}
+
+/* A cell holds a field of the file: ellipsised rather than wrapped, so a
+   long value cannot push the grid out of line with its caps. */
+.files-table-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* RAW stands beside CLOSE: the bytes as written, for when the quoting is
+   the thing being read. */
+.files-raw-pill {
+  background-color: var(--october-sunset);
+}

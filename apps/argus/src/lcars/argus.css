@@ -3512,6 +3512,14 @@ body[data-header='gather'] #header-gather {
   flex-direction: column;
   /* The face is a field, not a column layout: its rows want the width. */
   columns: auto;
+  /* And the WHOLE width. The band's faces are flex items in a row that
+     packs to the right, which suits a block of readouts and strands a
+     listing in the last third of the screen — a table of series with the
+     study, the MRN and the state squeezed into a column while two thirds
+     of the band sits empty. A listing takes the field it is given. */
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Pressing the selected face's button again sends the whole header off the

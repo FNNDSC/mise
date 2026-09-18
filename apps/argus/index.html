@@ -266,6 +266,9 @@
                   <span class="mode-elbow"></span>
                   <aside class="mode-frame">
                     <button class="strategy-pill gather-filter rail-off" title="filter the cohort (the bar reads FILTERED n/m)">FILTER OFF</button>
+                    <!-- The frame acts on the whole cohort: PULL fetches
+                         the members CUBE does not hold yet. -->
+                    <button class="strategy-pill gather-pull" title="retrieve every member CUBE does not hold yet" hidden>PULL</button>
                     <span class="mode-fill"></span>
                   </aside>
                   <div class="gather-rows"></div>
@@ -721,6 +724,12 @@
                 <span class="mode-elbow"></span>
                 <aside class="mode-frame">
                   <button class="strategy-pill pacs-filter rail-off" title="filter the results (the bar reads FILTERED n/m)">FILTER OFF</button>
+                  <!-- The frame's verbs act on the WHOLE listing, which is
+                       what the frame answers to: PULL fetches every series
+                       the listing is showing, the filtered set when a
+                       filter is on. It says its count and stands down at
+                       zero (aegis.adoc: a-readout-that-acts-says-so). -->
+                  <button id="pacs-pull-shown" class="strategy-pill pacs-pull-shown" title="retrieve every series the listing is showing" hidden>PULL SHOWN</button>
                   <!-- The ROW ZONE is minted here by the listing façade:
                        the indicated study's or series' verbs, one under
                        another (aegis.adoc: a-row-s-verbs-live-in-the-frame). -->

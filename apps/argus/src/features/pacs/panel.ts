@@ -300,6 +300,91 @@ function elapsed_describe(at: string): string | null {
 /**
  * The PACS workspace controller.
  */
+/**
+ * A series' STATE cell, as the PACS listing paints it.
+ *
+ * Exported because a cohort shows the SAME series: GATHER is an organized
+ * subset of the answer, not a second kind of thing, so it reads the same
+ * columns from the same declaration rather than describing a series twice
+ * in two vocabularies that drift apart.
+ *
+ * @param series - The series.
+ * @returns The badge.
+ */
+export function seriesBadge_build(series: PacsSeries): HTMLElement {
+  const badge: HTMLSpanElement = document.createElement('span');
+  badge.className = 'pacs-badge';
+  if (series.pulled === true) {
+    const bar: HTMLSpanElement = document.createElement('span');
+    bar.className = 'pacs-bar-full';
+    const note: HTMLSpanElement = document.createElement('span');
+    note.className = 'pacs-badge-note';
+    note.textContent = series.pulledFiles !== undefined ? `✓ ${series.pulledFiles} IN CUBE` : '✓ IN CUBE';
+    badge.append(bar, note);
+    badge.dataset['state'] = 'done';
+    return badge;
+  }
+  // Nothing asked of it yet: a dim track rather than an empty cell, which
+  // would read as a column that does not apply here.
+  const track: HTMLSpanElement = document.createElement('span');
+  track.className = 'pacs-bar';
+  const note: HTMLSpanElement = document.createElement('span');
+  note.className = 'pacs-badge-note';
+  note.textContent = 'NOT RETRIEVED';
+  badge.append(track, note);
+  badge.dataset['state'] = 'idle';
+  return badge;
+}
+
+/**
+ * What a series row shows, wherever it is shown.
+ *
+ * @param series_of - Reads the series out of the pane's own row type.
+ * @param badge_of - Builds the STATE cell; the PACS pane's registers its
+ *   badge for live progress, a cohort's paints the state it can see.
+ * @returns The traits, in cap order.
+ */
+export function seriesTraits_build<T>(
+  series_of: (row: T) => PacsSeries,
+  badge_of: (series: PacsSeries) => HTMLElement,
+): Array<ListingTrait<T>> {
+  return [
+    {
+      key: 'series',
+      label: 'SERIES',
+      className: 'pacs-series-desc',
+      width: '35.5em',
+      cell: (row: T): string => series_of(row).description,
+    },
+    {
+      key: 'state',
+      label: 'STATE',
+      className: 'pacs-badge',
+      width: '1fr',
+      cell: (row: T): HTMLElement => badge_of(series_of(row)),
+      compare: (row: T): string => (series_of(row).pulled === true ? 'done' : 'idle'),
+    },
+    {
+      key: 'modality',
+      label: 'MODALITY',
+      className: 'pacs-series-modality',
+      width: '4em',
+      cell: (row: T): string => series_of(row).modality,
+    },
+    {
+      key: 'files',
+      label: 'FILES',
+      className: 'pacs-series-files',
+      width: '6em',
+      cell: (row: T): string => {
+        const count: number | undefined = series_of(row).fileCount;
+        return count !== undefined ? `${count} FILES` : '';
+      },
+      compare: (row: T): number => series_of(row).fileCount ?? -1,
+    },
+  ];
+}
+
 export class PacsPanel {
   private readonly root: HTMLElement;
   private readonly command: HTMLInputElement;
@@ -492,6 +577,8 @@ export class PacsPanel {
     // hang under: a study survives because a child matched, and sweeping
     // its other series in would gather exactly what the filter excluded.
     element_query(root, '#pacs-gather-shown').addEventListener('click', (): void => this.shown_gather());
+    // The frame's own verb: retrieve everything the listing is showing.
+    element_query(root, '#pacs-pull-shown').addEventListener('click', (): void => this.shown_pull());
   }
 
   /**
@@ -881,41 +968,12 @@ export class PacsPanel {
    * @returns The traits, in cap order.
    */
   private traits_declare(): ReadonlyArray<ListingTrait<SeriesRow>> {
-    return [
-      {
-        key: 'series',
-        label: 'SERIES',
-        className: 'pacs-series-desc',
-        width: '35.5em',
-        cell: (row: SeriesRow): string => row.series.description || '(no description)',
-        compare: (row: SeriesRow): string => row.series.description,
-      },
-      {
-        key: 'state',
-        label: 'STATE',
-        className: 'pacs-badge',
-        width: '1fr',
-        cell: (row: SeriesRow): HTMLElement => this.badge_build(row.series),
-        compare: (row: SeriesRow): string => this.state_name(row.series),
-      },
-      {
-        key: 'modality',
-        label: 'MODALITY',
-        className: 'pacs-series-modality',
-        width: '4em',
-        cell: (row: SeriesRow): string => row.series.modality,
-      },
-      {
-        key: 'files',
-        label: 'FILES',
-        className: 'pacs-series-files',
-        width: '6em',
-        cell: (row: SeriesRow): string =>
-          row.series.fileCount !== undefined ? `${row.series.fileCount} FILES` : '',
-        compare: (row: SeriesRow): number => row.series.fileCount ?? -1,
-      },
-    ];
+    return seriesTraits_build<SeriesRow>(
+      (row: SeriesRow): PacsSeries => row.series,
+      (series: PacsSeries): HTMLElement => this.badge_build(series),
+    );
   }
+
 
   /**
    * A series' verbs. A series already in CUBE is gathered, not pulled; one
@@ -1551,7 +1609,7 @@ export class PacsPanel {
     // The state line is composed on every repaint, which is exactly when
     // the frame's GATHER block has to say a new number: a filter narrowing
     // the field narrows what that block would take.
-    queueMicrotask((): void => this.shownGather_render());
+    queueMicrotask((): void => { this.shownGather_render(); this.shownPull_render(); });
     const words: string[] = [];
     const patients: ReadonlyArray<PacsPatient> = this.model?.patients ?? [];
     if (patients.length > 0) {
@@ -1612,6 +1670,56 @@ export class PacsPanel {
     block.textContent = `GATHER ${count} SHOWN`;
   }
 
+  /**
+   * The series the listing is showing that are not home yet.
+   *
+   * @returns The series, in the order they stand.
+   */
+  private shown_pullable(): PacsSeries[] {
+    const found: PacsSeries[] = [];
+    for (const element of this.root.querySelectorAll<HTMLElement>('#pacs-results .pacs-series')) {
+      const uid: string | undefined = element.dataset['seriesuid'];
+      if (uid === undefined) continue;
+      for (const study of this.model?.studies ?? []) {
+        const series: PacsSeries | undefined = study.series.find(
+          (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
+        );
+        if (series !== undefined && seriesVerbs_offered(series).pull && series.vfsPath !== undefined) {
+          found.push(series);
+        }
+      }
+    }
+    return found;
+  }
+
+  /** Repaints the frame's PULL block: what it would fetch, or nothing. */
+  private shownPull_render(): void {
+    const block: HTMLElement | null = this.root.querySelector<HTMLElement>('#pacs-pull-shown');
+    if (block === null) return;
+    const count: number = this.shown_pullable().length;
+    block.hidden = count === 0;
+    block.textContent = `PULL ${count} SHOWN`;
+  }
+
+  /**
+   * Retrieves every series the listing is showing.
+   *
+   * ONE command over many operands, as a set act must be: twenty pulls is
+   * twenty lines the operator has to audit, and the kernel already takes
+   * a list. Each series is marked queued so its own row says so.
+   */
+  private shown_pull(): void {
+    const taking: PacsSeries[] = this.shown_pullable();
+    if (taking.length === 0) return;
+    const paths: string = taking
+      .map((series: PacsSeries): string => `"${series.vfsPath as string}"`)
+      .join(' ');
+    this.handlers.command_show(`pull ${paths}`);
+    for (const series of taking) this.badgeState_set(series.seriesUID, { status: 'queued' });
+    this.handlers.note(`pull: ${taking.length} series asked for`);
+    this.shownPull_render();
+  }
+
   /** Takes every series the listing is showing into the cohort. */
   private shown_gather(): void {
     const taking: Array<{ study: PacsStudy; series: PacsSeries }> = this.shown_gatherable();
@@ -1627,6 +1735,8 @@ export class PacsPanel {
       seriesUID: series.seriesUID,
       description: series.description,
       modality: series.modality,
+      // The row itself travels: the cohort shows what the answer shows.
+      series,
       patient: study.patientId || study.patientName,
       vfsPath: series.vfsPath,
       ...(series.folderPath !== undefined ? { folderPath: series.folderPath } : {}),

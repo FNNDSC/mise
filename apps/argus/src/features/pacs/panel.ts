@@ -51,6 +51,13 @@ export interface PacsPanelHandlers {
   command_run: (line: string) => void;
   /** Runs a command visibly in the console (the big, auditable actions). */
   command_show: (line: string) => void;
+  /**
+   * Says something in the transcript that is not a command: what a set act
+   * did, member by member. A readout on the frame would be wiped by the
+   * repaint the act itself causes, and what became of a set is worth
+   * keeping in the scrollback anyway.
+   */
+  note: (text: string) => void;
   /** The mars pill: dismiss this workspace. */
   workspace_close: () => void;
   /** Opens a pulled series' folder as an image beside the workspace. */
@@ -478,6 +485,13 @@ export class PacsPanel {
       if (event.key === 'Enter') this.query_run();
     });
     element_query(root, '#pacs-export').addEventListener('click', (): void => this.answer_export());
+    // GATHER acts on the FIELD, so it rides the frame that answers to the
+    // field. What the listing is showing IS the filtered set, so filtering
+    // to `sag` and pressing this gathers the sag series and nothing else.
+    // It takes the SERIES the filter left standing, never the studies they
+    // hang under: a study survives because a child matched, and sweeping
+    // its other series in would gather exactly what the filter excluded.
+    element_query(root, '#pacs-gather-shown').addEventListener('click', (): void => this.shown_gather());
   }
 
   /**
@@ -811,6 +825,27 @@ export class PacsPanel {
               this.badgeState_set(series.seriesUID, { status: 'queued' });
             }
           }
+        },
+      },
+      {
+        // A study is gathered by gathering the series CUBE already holds.
+        // The ones that are not home are not swept up silently: the row
+        // says what it took and what it could not, because a set says what
+        // became of every member. Pulling is the other verb, and pulling
+        // gathers what it pulls as it goes.
+        label: verbRule_get(PACS_STUDY_ROSTER, 'gather').label({ addressable: true, allInCube: false, anyInCube: true }),
+        offered: (row: StudyRow): boolean => row.study.series.some(
+          (series: PacsSeries): boolean => seriesVerbs_offered(series).gather,
+        ),
+        run: (row: StudyRow): void => {
+          const taken: PacsSeries[] = row.study.series.filter(
+            (series: PacsSeries): boolean => seriesVerbs_offered(series).gather,
+          );
+          for (const series of taken) this.gather_note(row.study, series);
+          const away: number = row.study.series.length - taken.length;
+          this.handlers.note(
+            `gather: ${taken.length} series gathered${away > 0 ? `, ${away} not in CUBE (pull them first)` : ''}`,
+          );
         },
       },
       {
@@ -1503,6 +1538,10 @@ export class PacsPanel {
    * @returns The line.
    */
   private stateLine_compose(parts: ListingStateParts): string {
+    // The state line is composed on every repaint, which is exactly when
+    // the frame's GATHER block has to say a new number: a filter narrowing
+    // the field narrows what that block would take.
+    queueMicrotask((): void => this.shownGather_render());
     const words: string[] = [];
     const patients: ReadonlyArray<PacsPatient> = this.model?.patients ?? [];
     if (patients.length > 0) {
@@ -1523,6 +1562,53 @@ export class PacsPanel {
    * Hands one series to the cohort: the GATHER pane beside the workspace
    * lists it, and this row's GATHER lights from the cohort's answer.
    */
+  /**
+   * The series the listing is showing that can still be gathered, in the
+   * order they stand.
+   *
+   * Read from the rows on stage rather than from the model: the rows ARE
+   * what the filter left, and asking the field what it holds keeps one
+   * answer to "what is shown" rather than a second rule that can drift
+   * from the first.
+   *
+   * @returns The series, with the study each hangs under.
+   */
+  private shown_gatherable(): Array<{ study: PacsStudy; series: PacsSeries }> {
+    const found: Array<{ study: PacsStudy; series: PacsSeries }> = [];
+    for (const element of this.root.querySelectorAll<HTMLElement>('#pacs-results .pacs-series')) {
+      const uid: string | undefined = element.dataset['seriesuid'];
+      if (uid === undefined) continue;
+      for (const study of this.model?.studies ?? []) {
+        const series: PacsSeries | undefined = study.series.find(
+          (candidate: PacsSeries): boolean => candidate.seriesUID === uid,
+        );
+        if (series === undefined) continue;
+        if (seriesVerbs_offered(series).gather) found.push({ study, series });
+      }
+    }
+    return found;
+  }
+
+  /** Repaints the frame's GATHER block: what it would take, or nothing. */
+  private shownGather_render(): void {
+    const block: HTMLElement | null = this.root.querySelector<HTMLElement>('#pacs-gather-shown');
+    if (block === null) return;
+    const count: number = this.shown_gatherable().length;
+    // A control that cannot act stands down rather than misleading, and a
+    // readout that acts says what it will do: the count is the promise.
+    block.hidden = count === 0;
+    block.textContent = `GATHER ${count} SHOWN`;
+  }
+
+  /** Takes every series the listing is showing into the cohort. */
+  private shown_gather(): void {
+    const taking: Array<{ study: PacsStudy; series: PacsSeries }> = this.shown_gatherable();
+    if (taking.length === 0) return;
+    for (const { study, series } of taking) this.gather_note(study, series);
+    this.handlers.note(`gather: ${taking.length} series gathered from what the listing was showing`);
+    this.shownGather_render();
+  }
+
   private gather_note(study: PacsStudy, series: PacsSeries): void {
     if (series.vfsPath === undefined) return;
     this.handlers.gather_add({

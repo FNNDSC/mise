@@ -635,7 +635,14 @@ class Level<T> {
       // thing that opens and closes, and a stylesheet or a scenario can
       // address "this study and its series" as one element.
       const key: string = this.declaration.key(row);
-      const open: boolean = expansion_isOpen(this.expansion, key);
+      // A filter that hides its own matches behind a fold is a filter that
+      // did not answer: a row kept only because a CHILD matched opens, so
+      // what the filter found is what the operator sees — and what a verb
+      // reading the field then acts on.
+      const survivesByChild: boolean = this.order.filterText_get() !== ''
+        && !this.order.matches(row)
+        && (this.child?.survives(row) ?? false);
+      const open: boolean = expansion_isOpen(this.expansion, key) || survivesByChild;
       const group: HTMLElement = document.createElement('div');
       const own: string | undefined = this.declaration.row?.groupClassName?.(row);
       group.className = `listing-group${open ? ' listing-open' : ''}${own === undefined || own === '' ? '' : ` ${own}`}`;

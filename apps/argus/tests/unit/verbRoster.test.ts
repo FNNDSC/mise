@@ -171,7 +171,11 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'pacs.study': {
     'a study with a path': ['PULL STUDY'],
     'a study with none': [],
-    'a study wholly home': ['PULL STUDY', 'PROCESS'],
+    // A study with something home can be gathered; one with everything home
+    // can also be processed as a folder. A study with nothing home is
+    // pulled, and pulling gathers what it pulls as it goes.
+    'a study wholly home': ['PULL STUDY', 'GATHER', 'PROCESS'],
+    'a study partly home': ['PULL STUDY', 'GATHER'],
   },
   'pacs.series': {
     'not yet retrieved': ['PULL'],

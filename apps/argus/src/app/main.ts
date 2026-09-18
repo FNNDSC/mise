@@ -2742,6 +2742,7 @@ async function surface_start(token: string): Promise<void> {
     command_show: (line: string): void => {
       terminal.line_run(line);
     },
+    note: (text: string): void => terminal.line_note(text),
     image_open: (folderPath: string): void => {
       void image_open(null, folderPath).then((line: string): void => terminal.line_note(line));
     },

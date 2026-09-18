@@ -107,6 +107,12 @@ export interface PacsStudyFacts {
   addressable: boolean;
   /** Every series is home and its folder known, so the study's folder can be processed. */
   allInCube: boolean;
+  /**
+   * At least one series is home with its folder known, so there is
+   * something to gather. A study none of whose series are home is PULLed,
+   * not gathered — and pulling gathers what it pulls as it goes.
+   */
+  anyInCube?: boolean;
 }
 
 /** What a PACS series row is. */
@@ -204,12 +210,18 @@ export const PACS_STUDY_ROSTER: VerbRoster<PacsStudyFacts> = {
   listing: 'pacs.study',
   rules: [
     { name: 'pullStudy', label: (): string => 'PULL STUDY', offered: (f: PacsStudyFacts): boolean => f.addressable },
+    {
+      name: 'gather',
+      label: (): string => 'GATHER',
+      offered: (f: PacsStudyFacts): boolean => f.anyInCube === true,
+    },
     { name: 'process', label: (): string => 'PROCESS', offered: (f: PacsStudyFacts): boolean => f.allInCube },
   ],
   states: [
     { name: 'a study with a path', facts: { addressable: true, allInCube: false } },
     { name: 'a study with none', facts: { addressable: false, allInCube: false } },
-    { name: 'a study wholly home', facts: { addressable: true, allInCube: true } },
+    { name: 'a study wholly home', facts: { addressable: true, allInCube: true, anyInCube: true } },
+    { name: 'a study partly home', facts: { addressable: true, allInCube: false, anyInCube: true } },
   ],
 };
 

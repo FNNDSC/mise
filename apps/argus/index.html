@@ -714,6 +714,11 @@
                 <span class="mode-elbow"></span>
                 <aside class="mode-frame">
                   <button class="strategy-pill pacs-filter rail-off" title="filter the results (the bar reads FILTERED n/m)">FILTER OFF</button>
+                  <!-- GATHER acts on the FIELD, so it rides the frame that
+                       answers to the field: it takes the series the listing
+                       is showing, which is the filtered set when a filter
+                       is on. It says its count, and stands down at zero. -->
+                  <button id="pacs-gather-shown" class="strategy-pill pacs-gather-shown" title="gather every series the listing is showing" hidden>GATHER SHOWN</button>
                   <!-- The ROW ZONE is minted here by the listing façade:
                        the indicated study's or series' verbs, one under
                        another (aegis.adoc: a-row-s-verbs-live-in-the-frame). -->

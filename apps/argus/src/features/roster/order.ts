@@ -192,6 +192,11 @@ export class RosterOrder<T> {
     this.onFilter = listener;
   }
 
+  /** @returns The filter text as it stands, empty when nothing is filtered. */
+  public filterText_get(): string {
+    return this.state.filter;
+  }
+
   /** Sets the filter text; `syncInput` also writes it into the strip. */
   public filter_set(text: string, syncInput: boolean = true): void {
     this.state = { ...this.state, filter: text };

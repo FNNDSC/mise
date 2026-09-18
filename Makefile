@@ -72,6 +72,7 @@ help:
 	@echo "  make shop          - Freshen the pantry (git pull)"
 	@echo "  make prep          - Install dependencies (links all workspaces)"
 	@echo "  make cook          - Build all packages in dependency order"
+	@echo "  make plate         - Build just the web surface (argus)"
 	@echo "  make taste         - Run the full test suite"
 	@echo "  make serve         - Link 'chell' globally"
 	@echo "  make scrub         - Clean dist/ and node_modules everywhere"
@@ -133,6 +134,17 @@ prep:
 cook:
 	@echo "Cooking the whole stack (dependency order)..."
 	npm run build
+
+# --- Plate (build just the surface) ---
+# The web surface alone, for when only argus changed. A running daemon
+# serves apps/argus/dist from the checkout it was started in, so this plus
+# a browser refresh is the whole loop — no restart, since the surface is
+# read per request while the kernel is loaded once at start.
+# `make cook` builds the whole stack (argus included) and is what to run
+# when anything under packages/ moved.
+plate:
+	@echo "Plating the surface (argus only)..."
+	npm run build -w @fnndsc/argus
 
 # --- Taste (test) ---
 taste:
@@ -318,6 +330,7 @@ meal: taco
 # --- Standard Aliases ---
 install: prep
 build: cook
+surface: plate
 test: taste
 clean: scrub
 link: serve

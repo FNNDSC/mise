@@ -2164,6 +2164,7 @@ body[data-zoom]:not([data-zoom='console'])
 .dag-canvas,
 .dag-roster,
 .gather-listing,
+.header-gather-field,
 .files-table-field,
 .pacs-listing {
   --frame-top: var(--mode-frame-top, 0px);
@@ -2190,6 +2191,11 @@ body[data-zoom]:not([data-zoom='console'])
 .workspace-pane[data-modes='open'] .gather-listing,
 .workspace-pane[data-modes='open'] .files-table-field,
 .workspace-pane[data-modes='open'] .pacs-listing {
+  --spine-w: var(--bar-w);
+}
+
+/* The band is not a pane, so its frame opens on its own declaration. */
+body[data-header-frame='open'] .header-gather-field {
   --spine-w: var(--bar-w);
 }
 
@@ -3413,15 +3419,78 @@ body[data-header='dag'] #header-dag {
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
-  /* The band is a header, not a page: it should cost as little height as
-   * it can. Nothing wraps here any more, so the same content fits in less
-   * room than it used to need. */
-  max-height: 19vh;
+  /* ONE height for every face, whichever is worn.
+   *
+   * The faces used to be content-sized under a ceiling, so switching from
+   * the cycler to the versions moved the workspace beneath them — and a
+   * band that carries the cohort exists precisely so that gathering never
+   * moves the body. A face with less to show leaves room empty; one with
+   * more scrolls inside itself. The operator sets the height by dragging
+   * the boundary, and that height is every face's. */
+  height: var(--header-band-h, 19vh);
+  max-height: var(--header-band-h, 19vh);
   overflow: hidden auto;
+}
+
+/* The cohort's field inside the band: a listing's chrome needs the frame's
+   own variables, which are declared per field container. */
+.header-gather-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-right: var(--spine-w);
+  transition: padding-right 0.22s ease-out;
+}
+
+.header-gather-field .gather-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding-top: calc(var(--rule-h) + 0.3rem);
+  --roster-gap: 0.6rem;
+  --roster-pad: 0.4rem;
+}
+
+.header-gather-field .gather-rows > .roster-order {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  background: #000;
+}
+
+/* The cohort's own readout, beside the rows rather than on a pane bar. */
+.gather-state {
+  flex: none;
+  padding: 0 0.6rem 0.2rem;
+  font-family: var(--face-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: var(--butter);
+}
+
+/* The third face's button, in the column that already selects faces. */
+button.panel-gather {
+  flex: none;
+  min-height: 2.4rem;
+  align-items: flex-end;
+  background-color: var(--harvestgold);
 }
 
 body[data-header='stats'] #header-telemetry {
   display: block;
+}
+
+body[data-header='gather'] #header-gather {
+  display: flex;
+  flex-direction: column;
+  /* The face is a field, not a column layout: its rows want the width. */
+  columns: auto;
 }
 
 /* Pressing the selected face's button again sends the whole header off the
@@ -5794,4 +5863,38 @@ button.launcher-row:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+
+/* ------------------------------------- the header band's own drag strip */
+
+/* The boundary the header shares with the body is a control, as the
+   console's is from the other side: drag it and the band takes that
+   height, for every face at once. Hidden while the band is away or a pane
+   is zoomed, because there is no boundary to move then. */
+#header-strip {
+  position: fixed;
+  left: var(--lfw);
+  right: 0;
+  height: 10px;
+  z-index: 40;
+  cursor: ns-resize;
+  background: transparent;
+}
+
+#header-strip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 6rem;
+  height: 2px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--harvestgold) 45%, transparent);
+}
+
+body[data-header='away'] #header-strip,
+body[data-zoom] #header-strip,
+body:not([data-header]) #header-strip {
+  display: none;
 }

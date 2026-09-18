@@ -202,6 +202,9 @@ function wsUrl_resolve(): string {
   return `ws://${window.location.host}`;
 }
 
+/** Files the surface opens as the table they are, not as their bytes. */
+const TABLE_FILE_PATTERN: RegExp = /\.(csv|tsv)$/i;
+
 /** Watches the header so its slide distance is never a stale measurement. */
 let headerHeightObserver: ResizeObserver | null = null;
 /**
@@ -1498,7 +1501,9 @@ async function surface_start(token: string): Promise<void> {
         panel.contentRefused_show(action.path, read.text);
         return;
       }
-      panel.content_show(action.path, read.text);
+      // A CSV is a table, and every table on this surface is a listing.
+      if (TABLE_FILE_PATTERN.test(action.path)) panel.contentTable_show(action.path, read.text);
+      else panel.content_show(action.path, read.text);
     });
   };
 
@@ -2388,7 +2393,9 @@ async function surface_start(token: string): Promise<void> {
           panel.contentRefused_show(action.path, read.text);
           return;
         }
-        panel.content_show(action.path, read.text);
+        // A CSV is a table, and every table on this surface is a listing.
+        if (TABLE_FILE_PATTERN.test(action.path)) panel.contentTable_show(action.path, read.text);
+        else panel.content_show(action.path, read.text);
       });
     }, previewProvider);
     // A listing inside a node is a listing. Declaring no row verbs left the

@@ -17,6 +17,8 @@
  *
  * @module
  */
+import type { PacsSeries } from '@fnndsc/menu';
+import { seriesBadge_build, seriesTraits_build } from '../pacs/panel.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
 import {
@@ -29,6 +31,16 @@ export interface GatherSeries {
   seriesUID: string;
   description: string;
   modality: string;
+  /**
+   * The series as the PACS answer holds it.
+   *
+   * A cohort is an ORGANIZED SUBSET of the answer, not a second kind of
+   * thing, so its rows show what a series row shows — the same columns
+   * from the same declaration, state badge included. Absent only for a
+   * cohort restored from an older desktop, whose rows fall back to the
+   * facts kept beside this one.
+   */
+  series?: PacsSeries;
   /** The patient it came from (MRN, else name), which the series alone does not know. */
   patient: string;
   /** The series as the kernel addresses it (`pull` takes this). */
@@ -177,7 +189,29 @@ export class GatherPanel {
       state: (parts: ListingStateParts): string => this.stateLine_compose(parts),
       empty: (): HTMLElement => element_note('NOTHING GATHERED'),
     });
+    // The frame's own verb acts on the WHOLE cohort: retrieve the members
+    // CUBE does not hold yet, in ONE command over many operands.
+    this.pullBlock = root.querySelector<HTMLButtonElement>('.gather-pull');
+    this.pullBlock?.addEventListener('click', (): void => this.cohort_pull());
     this.render();
+  }
+
+  /** The frame's PULL block, when the pane's markup carries one. */
+  private readonly pullBlock: HTMLButtonElement | null = null;
+
+  /** The cohort's members CUBE does not hold yet. */
+  private away(): ReadonlyArray<GatherSeries> {
+    return [...this.entries.values()].filter(
+      (entry: GatherSeries): boolean => entry.folderPath === undefined && entry.series?.pulled !== true,
+    );
+  }
+
+  /** Retrieves the members not yet home, as one visible command. */
+  private cohort_pull(): void {
+    const taking: ReadonlyArray<GatherSeries> = this.away();
+    if (taking.length === 0) return;
+    const paths: string = taking.map((entry: GatherSeries): string => `"${entry.vfsPath}"`).join(' ');
+    this.handlers.command_show(`pull ${paths}`);
   }
 
   /** Whether the cohort holds this series. */
@@ -258,6 +292,13 @@ export class GatherPanel {
     // read the fold capsule as the only control there was and pressed it
     // to find them, which is a listing asking to be interrogated before it
     // will say what it can do.
+    // What PULL would fetch, said on the block itself; nothing to fetch
+    // stands it down rather than offering an act that cannot happen.
+    if (this.pullBlock !== null) {
+      const away: number = this.away().length;
+      this.pullBlock.hidden = away === 0;
+      this.pullBlock.textContent = `PULL ${away}`;
+    }
     if (!this.greeted) {
       this.greeted = true;
       this.listing.row_indicate(COHORT_KEY);
@@ -337,45 +378,31 @@ export class GatherPanel {
    * @returns The traits, in cap order.
    */
   private seriesTraits_declare(): ReadonlyArray<ListingTrait<SeriesRow>> {
-    return [
-      {
-        key: 'description',
-        label: 'SERIES',
-        className: 'gather-series-desc',
-        width: '1fr',
-        cell: (row: SeriesRow): string => row.entry.description || row.entry.seriesUID,
-        compare: (row: SeriesRow): string => row.entry.description || row.entry.seriesUID,
-      },
-      {
-        key: 'modality',
-        label: 'MODALITY',
-        className: 'gather-series-modality',
-        width: '6em',
-        cell: (row: SeriesRow): string => row.entry.modality || '—',
-      },
-      {
-        key: 'patient',
-        label: 'MRN',
-        className: 'gather-series-patient',
-        width: '8em',
-        cell: (row: SeriesRow): string => row.entry.patient || '—',
-      },
-      {
-        key: 'files',
-        label: 'FILES',
-        className: 'gather-series-files',
-        width: '5em',
-        cell: (row: SeriesRow): string => (row.entry.files === undefined ? '—' : String(row.entry.files)),
-        compare: (row: SeriesRow): number => row.entry.files ?? -1,
-      },
-      {
-        key: 'state',
-        label: 'STATE',
-        className: 'gather-series-state',
-        width: '7em',
-        cell: (row: SeriesRow): string => (row.entry.folderPath === undefined ? 'listed' : 'in cube'),
-      },
-    ];
+    // The SAME declaration the PACS listing uses, because these are the
+    // same series: a cohort is an organized subset of the answer, not a
+    // second kind of thing, and two vocabularies for one row drift apart.
+    // MRN rides along, since a cohort may span patients where a study's
+    // series never do.
+    const shared: Array<ListingTrait<SeriesRow>> = seriesTraits_build<SeriesRow>(
+      (row: SeriesRow): PacsSeries => row.entry.series ?? {
+        // A cohort restored from an older desktop kept facts but not the
+        // series; the row still reads, from what was kept.
+        seriesUID: row.entry.seriesUID,
+        description: row.entry.description,
+        modality: row.entry.modality,
+        ...(row.entry.files === undefined ? {} : { fileCount: row.entry.files }),
+        ...(row.entry.folderPath === undefined ? {} : { pulled: true, folderPath: row.entry.folderPath }),
+      } as PacsSeries,
+      seriesBadge_build,
+    );
+    const mrn: ListingTrait<SeriesRow> = {
+      key: 'patient',
+      label: 'MRN',
+      className: 'gather-series-patient',
+      width: '8em',
+      cell: (row: SeriesRow): string => row.entry.patient || '—',
+    };
+    return [...shared.slice(0, 1), mrn, ...shared.slice(1)];
   }
 
   /**

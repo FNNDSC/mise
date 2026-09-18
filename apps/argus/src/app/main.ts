@@ -2443,12 +2443,19 @@ async function surface_start(token: string): Promise<void> {
     });
   };
 
-  /** The face's button carries the count, as a readout that acts. */
+  /**
+   * The block says whether the session is holding anything, and no more.
+   *
+   * A plate is a NAME — `01-GATHER`, as `02-CALYPSO` is — so the count
+   * does not get glued to it. Holding something lights the block and
+   * holding nothing dims it, which is the armed-and-resting idiom the
+   * capsules already use; how many, and which, is what the face itself
+   * says on its own state line.
+   */
   const headerGather_annunciate = (): void => {
     const pill: HTMLElement | null = document.querySelector<HTMLElement>('#header-gather-pill');
     if (pill === null) return;
     const held: number = headerCohort?.entries_get().length ?? 0;
-    pill.textContent = held === 0 ? 'GATHER' : `GATHER ${held}`;
     pill.classList.toggle('panel-gather-empty', held === 0);
   };
 

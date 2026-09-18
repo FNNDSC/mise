@@ -3488,9 +3488,11 @@ body[data-header='dag'] #header-dag {
 button.panel-gather {
   flex: none;
   min-height: 3.2rem;
-  flex-direction: column;
+  /* One line, hard right, like the plate below it. A column direction
+     broke `01-GATHER 5` onto three lines, one word each. */
   align-items: flex-end;
   justify-content: flex-end;
+  white-space: nowrap;
   border-bottom: 8px solid #000;
 }
 

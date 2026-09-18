@@ -1563,9 +1563,22 @@ async function surface_start(token: string): Promise<void> {
   const catalogueBindings: Map<string, CatalogueBinding> = new Map();
 
   const feedOf_path = (path: string): number | null => {
-    const held: RegExpMatchArray | null = path.match(/\/feeds\/feed_(\d+)(?:\/|$)/);
+    // A feed has two addresses: the folder it stores its output in, and the
+    // projection the graph renders it as. Both name the same feed, and a
+    // row that knew only the first offered a node under /proc a NEW feed
+    // rather than the one it is already in.
+    const held: RegExpMatchArray | null = path.match(/\/(?:feeds|jobs)\/feed_(\d+)(?:\/|$)/);
     return held === null ? null : Number(held[1]);
   };
+
+  /**
+   * Whether a path is a projection: the kernel renders it and nothing
+   * writes it, so the verbs that would write have nothing to act on.
+   *
+   * @param path - The path a row or a field names.
+   * @returns True for `/proc`, `/net`, `/etc` and `/usr/share`.
+   */
+  const path_isProjection = (path: string): boolean => /^\/(proc|net|etc|usr)(\/|$)/.test(path);
 
   /**
    * What a row may be told to do.
@@ -1600,6 +1613,7 @@ async function surface_start(token: string): Promise<void> {
       feed,
       node: feed === null ? null : nodeOf_path(path),
       bound: catalogueBindings.has(id),
+      projection: path_isProjection(path),
     };
     const runs: Record<string, () => void> = {
       image: (): void => {

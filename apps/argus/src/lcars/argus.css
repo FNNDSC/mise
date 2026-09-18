@@ -5698,3 +5698,13 @@ button.launcher-row:hover {
   align-self: flex-start;
   margin-top: 0.6rem;
 }
+
+
+/* A projection is the kernel's view of something that is not a folder —
+   /proc's jobs, /net's servers — so the blocks that would WRITE into the
+   field have nothing to act on there and stand down. Reading, opening and
+   processing stay: they are what a projection is for. */
+.files-projection .files-mkdir,
+.files-projection .files-upload {
+  display: none;
+}

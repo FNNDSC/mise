@@ -311,6 +311,46 @@ function elapsed_describe(at: string): string | null {
  * @param series - The series.
  * @returns The badge.
  */
+/**
+ * Every badge element on stage for a series, wherever it is shown.
+ *
+ * A cohort is a REFLECTION of the same truth, not a copy of it: the series
+ * pulled from the PACS listing is the series in the cohort, so a retrieve
+ * has to move both. Keyed by UID and holding a set, because the same
+ * series legitimately appears in more than one pane at once; disconnected
+ * elements are dropped as they are found rather than tracked.
+ */
+const badgeElements: Map<string, Set<HTMLElement>> = new Map();
+
+/**
+ * Registers a badge so the wire's progress repaints it.
+ *
+ * @param seriesUID - The series it belongs to.
+ * @param badge - The element.
+ */
+function badgeElement_register(seriesUID: string, badge: HTMLElement): void {
+  const held: Set<HTMLElement> = badgeElements.get(seriesUID) ?? new Set();
+  held.add(badge);
+  badgeElements.set(seriesUID, held);
+}
+
+/**
+ * Runs a paint over every badge standing for a series, dropping the ones
+ * that have left the document.
+ *
+ * @param seriesUID - The series.
+ * @param paint - What to do to each badge.
+ */
+function badgeElements_paint(seriesUID: string, paint: (badge: HTMLElement) => void): void {
+  const held: Set<HTMLElement> | undefined = badgeElements.get(seriesUID);
+  if (held === undefined) return;
+  for (const badge of [...held]) {
+    if (!badge.isConnected) { held.delete(badge); continue; }
+    paint(badge);
+  }
+  if (held.size === 0) badgeElements.delete(seriesUID);
+}
+
 export function seriesBadge_build(series: PacsSeries): HTMLElement {
   const badge: HTMLSpanElement = document.createElement('span');
   badge.className = 'pacs-badge';
@@ -333,6 +373,9 @@ export function seriesBadge_build(series: PacsSeries): HTMLElement {
   note.textContent = 'NOT RETRIEVED';
   badge.append(track, note);
   badge.dataset['state'] = 'idle';
+  // Registered wherever it stands: a cohort's row moves with the pull the
+  // same as the answer's row does, because they are the same series.
+  badgeElement_register(series.seriesUID, badge);
   return badge;
 }
 
@@ -397,7 +440,7 @@ export class PacsPanel {
    * nothing of that series is open here.
    */
   private litFolders: Map<string, { viewer: boolean; browser: boolean }> = new Map();
-  private readonly badges: Map<string, HTMLElement> = new Map();
+
   private readonly badgeStates: Map<string, BadgeState> = new Map();
   /** Per-series progress, seeded from the model and driven by the wire. */
   private readonly seriesProgress: Map<string, ListingProgress> = new Map();
@@ -1443,8 +1486,8 @@ export class PacsPanel {
   private badgeState_set(seriesUID: string, state: BadgeState): void {
     this.badgeStates.set(seriesUID, state);
     this.seriesProgress.set(seriesUID, progress_ofState(state, this.seriesProgress.get(seriesUID)));
-    const badge: HTMLElement | undefined = this.badges.get(seriesUID);
-    if (badge) this.badge_paint(badge, state);
+    // Every badge for this series, in every pane showing it.
+    badgeElements_paint(seriesUID, (badge: HTMLElement): void => this.badge_paint(badge, state));
     for (const [key, track] of this.studyTracks) {
       if (track.uids.includes(seriesUID)) this.studyTrack_paint(key);
     }
@@ -1475,7 +1518,7 @@ export class PacsPanel {
       badge.dataset['state'] = 'done';
       return badge;
     }
-    this.badges.set(series.seriesUID, badge);
+    badgeElement_register(series.seriesUID, badge);
     // A series nothing has been asked of still gets a track, dimmed. An
     // empty cell reads as a column that does not apply here; a dim track
     // reads as nothing has happened yet, which is the truth.
@@ -1567,12 +1610,13 @@ export class PacsPanel {
    * Puts the answer on stage: one block of patients, keyed by the query, so
    * a repeat of the same answer is the same field and a new query is not.
    * The levels beneath — a patient's studies, a study's series — are the
-   * façade's to draw from the child declarations; the badges and tracks
-   * their cells register are cleared first, since the rows are rebuilt.
+   * façade's to draw from the child declarations; the tracks their cells
+   * register are cleared first, since the rows are rebuilt. The badge
+   * registry needs no clearing: it drops elements as it finds them gone,
+   * and it holds other panes' badges as well as this one's.
    */
   private results_repaint(): void {
     const model: PacsQueryModel | null = this.model;
-    this.badges.clear();
     this.studyTracks.clear();
     this.patientTracks.clear();
     if (model === null) {
@@ -1751,6 +1795,8 @@ export class PacsPanel {
       // The row itself travels: the cohort shows what the answer shows.
       series,
       patient: study.patientId || study.patientName,
+      // And where it came from, which the series alone does not know.
+      ...(study.description === undefined || study.description === '' ? {} : { study: study.description }),
       vfsPath: series.vfsPath,
       ...(series.folderPath !== undefined ? { folderPath: series.folderPath } : {}),
       ...(series.fileCount !== undefined ? { files: series.fileCount } : {}),

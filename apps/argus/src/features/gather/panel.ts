@@ -43,6 +43,15 @@ export interface GatherSeries {
   series?: PacsSeries;
   /** The patient it came from (MRN, else name), which the series alone does not know. */
   patient: string;
+  /**
+   * The study it came from, which the series alone does not know either.
+   *
+   * Gathering a STUDY puts its series in the cohort, and without this the
+   * operator had no way to tell WHICH study they had just taken: a column
+   * of series descriptions says what each one is and nothing about where
+   * it came from.
+   */
+  study?: string;
   /** The series as the kernel addresses it (`pull` takes this). */
   vfsPath: string;
   /** Its CFS folder once CUBE has said where it landed (IMAGE and PROCESS need it). */
@@ -422,7 +431,14 @@ export class GatherPanel {
       width: '8em',
       cell: (row: SeriesRow): string => row.entry.patient || '—',
     };
-    return [...shared.slice(0, 1), mrn, ...shared.slice(1)];
+    const study: ListingTrait<SeriesRow> = {
+      key: 'study',
+      label: 'STUDY',
+      className: 'gather-series-study',
+      width: '14em',
+      cell: (row: SeriesRow): string => row.entry.study ?? '—',
+    };
+    return [...shared.slice(0, 1), study, mrn, ...shared.slice(1)];
   }
 
   /**

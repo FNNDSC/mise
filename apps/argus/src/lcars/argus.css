@@ -5785,3 +5785,13 @@ button.launcher-row:hover {
 .files-raw-pill {
   background-color: var(--october-sunset);
 }
+
+
+/* The study a gathered series came from: a cohort may span studies, and a
+   column of series descriptions says what each one IS and nothing about
+   where it came from. */
+.gather-series-study {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -29,6 +29,9 @@ const mockManifestGet: jest.Mock = jest.fn();
 const mockManifestBySlugGet: jest.Mock = jest.fn();
 const mockFileContentGet: jest.Mock = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  // The wait for a run to settle asks for statuses in one batch.
+  jobs_statusBatch: async (ids: number[]): Promise<Map<number, string>> =>
+    new Map(ids.map((id: number): [number, string] => [id, 'finishedSuccessfully'])),
   pipelines_list: mockList,
   pipeline_run: mockRun,
   pipeline_sourceGet: mockSourceGet,

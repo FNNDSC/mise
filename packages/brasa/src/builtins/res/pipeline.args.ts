@@ -16,12 +16,15 @@ export interface PipelineRunOverrides {
   previousOverride: number | undefined;
   paramFile: string | undefined;
   bindings: PipelineInvocationBinding[];
+  /** Whether the operator asked for the handle rather than the outcome. */
+  detach: boolean;
   parseError: string | null;
 }
 
 /**
- * Parses `--compute <resource>` and `--previous <inst_id>` overrides from
- * `pipeline run <name|id> ...` arguments (scanning from index 2).
+ * Parses `--compute <resource>`, `--previous <inst_id>`, `--paramFile <path>`
+ * and `--detach` from `pipeline run <name|id> ...` arguments (scanning from
+ * index 2). Anything else in `--node.field value` form is a binding.
  *
  * @param args - The full `pipeline run` argument list.
  * @returns The parsed overrides.
@@ -31,6 +34,7 @@ export function pipelineRunArgs_parse(args: string[]): PipelineRunOverrides {
   let previousOverride: number | undefined;
   let paramFile: string | undefined;
   const bindings: PipelineInvocationBinding[] = [];
+  let detach: boolean = false;
   let parseError: string | null = null;
 
   for (let i = 2; i < args.length; i++) {
@@ -51,6 +55,8 @@ export function pipelineRunArgs_parse(args: string[]): PipelineRunOverrides {
       }
       previousOverride = Number(value);
       i++;
+    } else if (token === '--detach') {
+      detach = true;
     } else if (token === '--paramFile') {
       const value: string | undefined = args[i + 1];
       if (paramFile !== undefined) {
@@ -90,5 +96,5 @@ export function pipelineRunArgs_parse(args: string[]): PipelineRunOverrides {
     }
   }
 
-  return { computeOverride, previousOverride, paramFile, bindings, parseError };
+  return { computeOverride, previousOverride, paramFile, bindings, detach, parseError };
 }

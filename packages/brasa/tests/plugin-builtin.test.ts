@@ -1,7 +1,10 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 // Real commandArgs_process runs; stub its load-time boundary.
-jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  // The wait for a run to settle asks for statuses in one batch.
+  jobs_statusBatch: async (ids: number[]): Promise<Map<number, string>> =>
+    new Map(ids.map((id: number): [number, string] => [id, 'finishedSuccessfully'])), context_getSingle: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('@fnndsc/chili/models/plugin.js', () => ({}));
 jest.unstable_mockModule('@fnndsc/chili/utils/cli.js', () => ({}));

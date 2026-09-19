@@ -1,5 +1,33 @@
 # @fnndsc/brasa
 
+## 0.24.0
+
+### Minor Changes
+
+- 3320487: brasa: the cohort is a kernel subject.
+
+  `gather list|add|remove|clear|name` holds the set a session is working on, so building a cohort no longer requires a surface to press on. Membership is keyed by PATH: a PACS series still at the modality, a directory of uploads and a single file are all addressable, so one identity rule covers every kind, gathering the same thing twice merges rather than doubles, and `gather remove` takes the same operand whatever it is removing — or the index the operator just read back.
+
+  The cohort lives where the surface already kept it, `~/gather/current.json`, in the shape the surface already wrote, so the two read each other's cohorts with no migration: the kernel fills in what an older record left out (a member written before kinds existed is a series; one written before paths were identity carries its address in `seriesUID`), and preserves the fields it has no name for, because a surface knows things about a series that the kernel does not and a kernel write must not quietly forget them. What a gathered path IS is asked of the filesystem rather than guessed from its spelling, and the holding directory is made and its listing invalidated on every write — a cohort the next `ls` cannot see is the staleness a CSV export already taught once.
+
+  This is the first slice of the manifest work (`docs/manifest.adoc`): a workflow can now gather.
+
+### Patch Changes
+
+- 3c6a0d3: ARGUS and kernel: the gather gesture is reachable, and an exported table is visible where it landed.
+
+  Three faults found by running the operator's own flow against a live PACS.
+
+  **GATHER SHOWN was invisible.** It was put on the results mode frame, which is the closed spine at rest: measured live, 22px wide and `visibility: hidden`. It now stands beside EXPORT CSV on the command row, where the verbs that act on the whole answer already live.
+
+  **GATHER was offered only once a series was home**, so on a fresh answer, where nothing is home, the gesture did not exist. A cohort is a set of targets and the feed it roots is made by a pull over its members, so a series is gatherable once it can be named: a PACS path, or the fact that it has landed. Query, filter, take what matched, fetch it as a set. PULL still means bring this one now.
+
+  **The export was not broken; the listing was stale.** The CSV writer wrote straight to CUBE and never invalidated the folder's cached listing, which every other fs verb does — so `cat` returned the file while `ls` and every browser showed the folder without it. The write now invalidates the folder it wrote into, and the one that shows a folder it had to create. The WROTE readout also opens that folder when pressed.
+
+- Updated dependencies [3320487]
+  - @fnndsc/salsa@3.18.2
+  - @fnndsc/chili@3.6.7
+
 ## 0.23.2
 
 ### Patch Changes

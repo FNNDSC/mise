@@ -1,5 +1,131 @@
 # @fnndsc/argus
 
+## 0.11.0
+
+### Minor Changes
+
+- 50f358b: ARGUS: a cohort can take the stage, as a second view of one set.
+
+  A band is right for reading and curating a cohort and wrong for two hundred members with a filter on. The band's frame carries ON STAGE, which puts the cohort on the main panel as a pane and retracts the band.
+
+  What makes that a second view rather than a second cohort is that the set moved out of the panel. A `Cohort` holds the members, the name and the feed, and tells whoever shows it when it changed, so two panels render one set: removing a member in the pane empties the row in the band without either telling the other.
+
+- 149957f: ARGUS: the cohort rides the header, as the session's own.
+
+  A cohort spans PACS series and will span directories, so it never belonged to a pane — and opening it as a companion pane rearranged the workspace on every gather. It is now the header's third face, on the mechanism the other two use: a button selects it, pressing that button again sends the band away, and the workspace never moves either way.
+
+  The face is a proper field, rule and elbow and spine, because a cohort is a listing: its rows' verbs ride the row zone and PULL and REMOVE ride the frame.
+
+  The band is one height for every face, since a face that sizes to its content moves the workspace beneath it. The boundary it shares with the body is a drag strip with the console drawer's rules read from the other side, and the height is remembered.
+
+  Gathering reveals the band the first time and then respects a dismissal, moving only the count on the button. The cohort is kept in the session at `~/gather/current.json`, so a refresh keeps it and a second surface sees the same one; SAVE still writes the named manifest.
+
+- 161e54d: ARGUS: a cohort shows what a series shows, and a frame pulls what it holds.
+
+  The GATHER pane described a series in columns of its own while the answer it came from used different ones. A cohort is an organized subset of that answer, not a second kind of thing, so one declaration now serves both: a gathered row carries the same SERIES, STATE, MODALITY and FILES columns as the PACS listing, state badge included, with MRN riding along because a cohort may span patients where a study's series never do.
+
+  Both frames also carry the verb that acts on the whole listing. PULL n SHOWN on the PACS frame retrieves every series the listing is showing, which is the filtered set when a filter is on. PULL n on the cohort's frame retrieves the members CUBE does not hold yet. Each is one command over many operands, since twenty pulls is twenty lines to audit and the kernel already takes a list.
+
+- 07f3783: ARGUS: a CSV opens as the table it is.
+
+  A delimited file opened as a `pre` of quoted lines. It now opens as a listing: the header record becomes the caps, the records become rows, and it gets the frame, the sort and the filter every other listing has. RAW stands beside CLOSE for when the quoting is the thing being read.
+
+  The file is read rather than split. A field may carry the delimiter, a newline or a doubled quote, and splitting on commas turns one such row into several wrong ones; `.tsv` is read by its tabs. A first record that is not a header — a blank, a repeat, or a bare number among its cells — is kept as data with the columns numbered, since inventing names out of values would hide a row. A ragged record is filled rather than refused.
+
+  The view is bounded at five thousand records and says so when the bound bites.
+
+- 369b20d: ARGUS: a cohort member has a kind, so a cohort can hold places as well as series.
+
+  GATHER now stands on a browser's directory rows beside PROCESS, and a member carries what it is: a series, a directory, a file.
+
+  The kind keeps the verbs honest, which is the point of having one. PULL is offered only on a series that is not home, since a place is already in ChRIS. IMAGE only on imagery, so a folder of tables is not offered a viewer. PROCESS on anything with a place. The cohort's bar counts what it holds — `1 SERIES · 1 PLACE` — rather than calling everything a series.
+
+  CREATE FEED refuses a mixed cohort by name: a feed is rooted by pulling its members, a place cannot be pulled, and the kernel roots a feed on one directory rather than several. It says so and says what to do instead, rather than rooting a feed on the series and leaving the places out.
+
+- 3bbc65a: ARGUS: a study and a whole filtered table can be gathered, not only a series.
+
+  The cohort is unchanged — it holds series — and what was missing were ways in.
+
+  A study row carries GATHER when any of its series is home. It takes those and says in the transcript how many it took and how many are not in CUBE, since a set says what became of every member.
+
+  The table's GATHER rides the frame, because it acts on the field. It reads `GATHER n SHOWN`, stands down at zero, and takes the series the listing is showing — which is the filtered set when a filter is on. It takes the series the filter left standing, never the studies they hang under: a study survives because a child matched, so sweeping its siblings in would gather exactly what the filter excluded.
+
+  A filter also opens a row it kept only for a child's sake. A filter that hides its own matches behind a fold has not answered, and a verb that reads the field could not see them either.
+
+- 1cb8d03: ARGUS: a field verb acts on the whole answer, a cohort reflects the pull, and it says which study it came from.
+
+  PULL and GATHER read "what is shown" off the painted rows, and a fresh answer has every study folded — so the count was zero and the verb withdrew itself on exactly the table an operator most wants to act on. A fold is a way of looking, not a way of choosing. What is shown now means the filtered set while a filter is on, and the whole answer when none is; the blocks say which, reading `PULL 245` on a fresh answer and `PULL 16 SHOWN` under a filter.
+
+  A cohort is a reflection of the same series, not a copy, so it moves with them. Badge elements are now a registry keyed by series UID holding every element standing for that series in any pane; a progress tick repaints them all. A cohort's row walks NOT RETRIEVED → RETRIEVING → ✓ PULLED during a pull, wherever the pull was started.
+
+  The cohort also carries STUDY beside MRN, so gathering a study leaves the operator able to tell which one they took, and its frame gains REMOVE, which takes every member out — a row's REMOVE takes one, and emptying a cohort one row at a time is not a gesture anyone wants.
+
+- 3c6a0d3: ARGUS and kernel: the gather gesture is reachable, and an exported table is visible where it landed.
+
+  Three faults found by running the operator's own flow against a live PACS.
+
+  **GATHER SHOWN was invisible.** It was put on the results mode frame, which is the closed spine at rest: measured live, 22px wide and `visibility: hidden`. It now stands beside EXPORT CSV on the command row, where the verbs that act on the whole answer already live.
+
+  **GATHER was offered only once a series was home**, so on a fresh answer, where nothing is home, the gesture did not exist. A cohort is a set of targets and the feed it roots is made by a pull over its members, so a series is gatherable once it can be named: a PACS path, or the fact that it has landed. Query, filter, take what matched, fetch it as a set. PULL still means bring this one now.
+
+  **The export was not broken; the listing was stale.** The CSV writer wrote straight to CUBE and never invalidated the folder's cached listing, which every other fs verb does — so `cat` returned the file while `ls` and every browser showed the folder without it. The write now invalidates the folder it wrote into, and the one that shows a folder it had to create. The WROTE readout also opens that folder when pressed.
+
+### Patch Changes
+
+- fa26e17: ARGUS: a listing opens the frame of the pane it is in, not the one it was built in.
+
+  Indicating a row inside a node dive lit the row and put its verbs in the zone, but the mode frame never opened, so the verbs stood behind a closed frame. The listing resolved its pane once, at construction, and the node overlay builds its browser before appending it to the scene — so that listing's pane was null and stayed null, and the attribute that opens the frame was never written.
+
+  The façade now asks the document for the pane each time it needs one, and installs its frame watcher on the first paint that finds one rather than at construction. A unit test builds a listing detached, attaches it, and requires the frame to open.
+
+  The same stale answer had also left the MKDIR smoke scenario typing into the console after that question moved to the pane; it now answers on the bar.
+
+- 77c73aa: ARGUS: a frame opens outside a pane, and every cohort member offers PROCESS.
+
+  Clicking a row in the cohort selected it and left the frame shut. The façade opens a frame by writing `data-modes` on the pane the zone stands in, and the cohort's listing rides the header band, which is not a pane — so the zone filled with the row's verbs behind a frame nothing had told to open. A frame's host is now whatever declares itself one, with a pane the common case rather than the only one.
+
+  The cohort's verbs also follow the rule the operator set. Every member offers PROCESS, refusing by name on one not yet in CUBE and saying to PULL first; PULL stands on the members that are not home; and the frame, which belongs to the whole listing, carries the cohort's PULL, REMOVE and PROCESS.
+
+- b748002: ARGUS: a projection offers only the verbs that can act on it.
+
+  `/proc` and `/net` are the kernel's renderings of things that are not folders, and nothing writes them. A listing there was still offering MKDIR and UPLOAD on the frame and MOVE, COPY, DELETE and SHARE on its rows — verbs with nothing behind them to act on.
+
+  They stand down in a projection. What a projection is for stays: a file offers DOWNLOAD, a series folder IMAGE, and a node's own data offers PROCESS. A row left with no verbs keeps its single click, so `..` still walks and a child job still hops.
+
+  The feed a path names is also read from either address now, the stored one or the projected one. A node reached through `/proc` was being offered a new feed rather than the one it is already in.
+
+- dc369d3: ARGUS: a verb acts while a question stands, and the export path is the whole answer.
+
+  The console refused to dispatch any line while it was busy, and a command that asks a question stays busy until it is answered. So every verb that lowers to a visible line queued behind an unanswered question — including the errand bar's own MKDIR, whose question was what blocked it, and the browser's MKDIR, which read as dead while its listing kept refreshing on the silent channel. A question occupies the prompt, not the session: a verb the operator pressed now goes around it, echoed as always.
+
+  The errand bar's MKDIR is gone. It made the folder the path lives in, so a field holding a directory made its parent, which already existed, and the browser walked up a level for nothing. The typed path is the whole answer: the command that asked makes the holding folder, says which one it made, and refuses by name when it cannot. A browser's own frame still carries MKDIR for making a place before choosing it.
+
+  The WROTE readout no longer carries the kernel's colour reset into its text.
+
+- d3a8335: ARGUS: a question a pressed verb provoked stands on the pane that was pressed, and a CSV listing has a frame.
+
+  DELETE lowers to `rm -i`, which asks before it removes — and that question went to the console, while MKDIR's stood on the pane. The line was drawn too cleanly: a session question does belong in the console, except when a pressed verb provoked it, because the operator is looking at the row they just acted on. A verb that lowers to a command now says which pane pressed it, and the question stands there with YES / NO / ABANDON. The transcript still keeps the exchange.
+
+  The CSV table view also had no frame to open. Two rules reached past their own pane: the content view hid `.mode-frame` by descendant, so a view bringing its own field had that hidden too, and the field variables were declared on a fixed list of containers the new field was not on. Both scoped properly; the table's spine now opens like every other field's.
+
+- 9c5a7c2: ARGUS: the cohort's face takes the whole band, and a cohort row offers the fetch.
+
+  The band's faces are flex items in a row that packs to the right, which suits a block of readouts and stranded the cohort's listing in the last third of the screen with its columns crushed. A listing takes the field it is given.
+
+  The cohort's rows were also written when a cohort held only series already home: REMOVE always, IMAGE and PROCESS once CUBE named the folder, and nothing at all for a member that had not been fetched — while the frame above them pulled the whole set. A member that is not home now carries PULL on its own row, lowering to the one line the operator could have typed.
+
+- d78447d: ARGUS: the cohort's block joins the header column instead of being appended to it.
+
+  The last block of that column carries the frame's elbow, and its ground runs on into the frame sweeping away beneath it. Appending the cohort's block after it cut the corner off that shape and left the new block wearing a radius that belongs to the frame.
+
+  It sits between the nameplate and 02-CALYPSO now, takes the light seat between the two dark ones since it is its own thing, and carries the ordinary rule beneath it. 02-CALYPSO keeps the corner it always had. The block also reads its own state from the first frame, dim while the cohort is empty rather than lit and promising something it does not hold.
+
+- 38fbdb9: ARGUS: `..` navigates and nothing else.
+
+  The parent row was offered a directory's verbs, computed for the place on stage while standing on a row that names the parent — so MKDIR reached from `..` said "make a directory in this listing" from a row meaning "up". It is offered nothing now, and the façade's own rule does the rest: a row with no verbs to hide keeps its single click, which is what going up should cost.
+
+  The field's verbs were never `..`'s to lend. MKDIR, UPLOAD and REFRESH ride the frame, which is what answers to the field.
+
 ## 0.10.0
 
 ### Minor Changes

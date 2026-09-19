@@ -1,0 +1,49 @@
+# Anonymize a series and convert it to NIfTI, then take the feed away again.
+#
+# This is the workflow the exemplars README called TS-only: "static scripts
+# cannot capture ids between commands, so the full feed+dcm2niix workflow is
+# TS-only". They can now — a run WAITS for its outcome, `${run}` and
+# `${run.place}` name what it produced, and `expect` refuses when a claim
+# does not hold, so the workflow is a test without a program around it.
+#
+# Two things are deliberate. The conversion runs on the ANONYMIZED node's
+# output, never on the input, so the manifest cannot quietly convert
+# identified data. And the anonymization is proved by reading the tags back
+# off the files it produced, which is the only check that survives the
+# plugin changing behind us.
+#
+# It leaves nothing behind: the feed it makes is the last thing it removes.
+@name         anonymize and convert
+@description  Anonymize a DICOM series, convert the result to NIfTI, verify both, clean up.
+@param        SERIES
+@param        SUBJECT  = anon-001
+@param        LABEL    = manifest battery · anonymize and convert
+@param        ANON     = pl-pfdicom_tagSub-v3.3.4
+@param        CONVERT  = pl-dcm2niix-v1.0.2
+
+# Root a feed on the series and strip the identifying elements. The tag list
+# is named here because a manifest that anonymizes should say what it changed.
+cd ${SERIES}
+${ANON} --fileFilter dcm --tagInfo 'PatientName,${SUBJECT}++PatientID,${SUBJECT}++AccessionNumber,anon++PatientBirthDate,19000101' -- feed_title="${LABEL}"
+expect run ${run} status eq finishedSuccessfully
+expect path ${run.place} count --deep gt 0
+
+# Prove it on the data, not on the plugin's word. A tag that varies across
+# the folder answers with every value it takes, so one missed instance fails.
+# The claims look BENEATH the node's folder: pfdicom files its output under
+# `share/incoming/<input tree>`, and a claim that only looked at the top
+# would be false about a run that worked.
+expect path ${run.place} tags PatientID eq ${SUBJECT}
+expect path ${run.place} tags PatientName eq ${SUBJECT}
+
+# Convert what came out of the anonymizer, never what went into it.
+cd ${run.place}
+${CONVERT}
+expect run ${run} status eq finishedSuccessfully
+expect path ${run.place} count --matching '*.nii*' --deep gt 0
+
+# Residue-free: the feed goes away with everything in it. Step out of it
+# first — a workflow that deletes the place it is standing in leaves the
+# session in a hole, and the next thing to run finds a cwd that is gone.
+cd ~
+feed rm ${feed} -f

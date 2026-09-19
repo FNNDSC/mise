@@ -20,6 +20,8 @@ let feedID: number | null = null;
 let instanceIDs: number[] = [];
 /** The PACS query the session most recently asked. */
 let queryPath: string | null = null;
+/** Where the session's most recent run writes its output. */
+let runPlace: string | null = null;
 
 /**
  * Notes the feed work just landed in.
@@ -58,6 +60,27 @@ export function recentRuns_get(): number[] {
 }
 
 /**
+ * Notes where a run's output will land.
+ *
+ * This is what makes a chain expressible: the next act works on what the
+ * last one produced, and only the kernel knows where CUBE put it.
+ *
+ * @param place - The run's output directory.
+ */
+export function recentRunPlace_note(place: string): void {
+  runPlace = place;
+}
+
+/**
+ * Where the session's most recent run writes.
+ *
+ * @returns The output directory, or null when this session has run nothing.
+ */
+export function recentRunPlace_get(): string | null {
+  return runPlace;
+}
+
+/**
  * Notes where a PACS answer was written.
  *
  * @param path - The query's projection path.
@@ -80,4 +103,5 @@ export function recent_forget(): void {
   feedID = null;
   instanceIDs = [];
   queryPath = null;
+  runPlace = null;
 }

@@ -1034,6 +1034,7 @@ export const helpText: Record<string, CommandHelp> = {
       '  ${gather.first.place}  one member, where it landed (pull takes the address, image takes the place)',
       '  ${feed}          the feed this session most recently worked in',
       '  ${run}           the run it most recently scheduled',
+      '  ${run.place}     where that run writes — what the next act in a chain takes',
       '  ${query}         where its most recent PACS answer lives',
       '  ${cwd}           where the session is standing',
     ],
@@ -1061,6 +1062,7 @@ export const helpText: Record<string, CommandHelp> = {
       'OPTIONS:',
       '  --within <duration>   Keep asking until the claim holds or the time is up (30s, 20m, 2h)',
       '  --matching <glob>     Narrow a count to names matching a shell pattern',
+      '  --deep                Count beneath the folder too — a plugin files its output in a tree',
     ],
     examples: [
       'expect gather size eq 14',

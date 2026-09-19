@@ -1,0 +1,11 @@
+# The claims that hold for any connected session, and touch nothing.
+#
+# The cheapest thing in the battery: if this refuses, the session is not
+# what the rest of the battery assumes, and a failure further in would be
+# read as a defect in the workflow rather than in the connection.
+@name         session
+@description  Read-only claims about a connected session.
+
+pwd
+expect path ${cwd} exists
+expect gather size gte 0

@@ -20,13 +20,13 @@
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { CommandEnvelope, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
 import type { Result } from '@fnndsc/cumin';
 import { fileContent_get } from '@fnndsc/salsa';
 import { path_resolve } from '../utils.js';
 import { session } from '../../session/index.js';
 import { cohort_read, GatherMember, GatherState } from './gather.store.js';
-import { recentFeed_get, recentQuery_get, recentRuns_get } from '../../session/recent.js';
+import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../../session/recent.js';
 import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
@@ -149,6 +149,14 @@ async function pronoun_resolve(token: string): Promise<string | null> {
     return runs.length === 0 ? null : `${runs[runs.length - 1]}`;
   }
 
+  // Where the last run WRITES, which is what the next act in a chain works
+  // on. Only the kernel knows it: CUBE decides the node's folder, and a
+  // manifest cannot spell it because it holds an instance id it never saw.
+  if (token === 'run.place') {
+    const place: string | null = recentRunPlace_get();
+    return place === null ? null : operand_quote(place);
+  }
+
   if (token === 'query') {
     const query: string | null = recentQuery_get();
     return query === null ? null : operand_quote(query);
@@ -204,9 +212,16 @@ type Expansion = { text: string } | { refusal: string };
  *
  * @param line - The line as written.
  * @param values - Parameter values, already checked for completeness.
+ * @param unresolvedStands - Leave a pronoun the session cannot answer as it
+ *   was written, rather than refusing: what a dry run does, since nothing
+ *   has run to give it a value.
  * @returns The line to run, or why it cannot be built.
  */
-export async function line_expand(line: string, values: Map<string, string>): Promise<Expansion> {
+export async function line_expand(
+  line: string,
+  values: Map<string, string>,
+  unresolvedStands: boolean = false,
+): Promise<Expansion> {
   const tokens: string[] = [...line.matchAll(/\$\{([^}]+)\}/g)].map((match): string => match[1]);
   let text: string = line;
 
@@ -218,6 +233,11 @@ export async function line_expand(line: string, values: Map<string, string>): Pr
     }
     const asPronoun: string | null = await pronoun_resolve(token);
     if (asPronoun === null) {
+      // A dry run has run nothing, so a pronoun that refers to what an
+      // earlier line WOULD have produced cannot be answered — and refusing
+      // there would make `--dry-run` useless for exactly the manifests that
+      // chain, which is most of them. It stands as written instead.
+      if (unresolvedStands) continue;
       return {
         refusal: `\${${token}} — the session has nothing to put there`
           + (token === 'feed' ? ' (nothing has created a feed yet)' : '')
@@ -247,6 +267,39 @@ async function pause_take(ms: number, signal: AbortSignal | undefined): Promise<
     }, ms);
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+
+/**
+ * Reads a manifest, from the ChRIS filesystem or from the engine's own disk.
+ *
+ * A manifest is a ChRIS file: that is what makes one shareable, and sharing
+ * it is `setfacl`, like any other file. But a repository's battery lives
+ * beside the code that it tests, and uploading itself before it can run
+ * would be a ritual, not a requirement — so a path that names no CFS file
+ * is looked for on the host the ENGINE runs on. In a daemon that is the
+ * daemon's disk, never the surface's, which is why CFS is asked first.
+ *
+ * @param target - The manifest, as the operator wrote it.
+ * @returns The text and where it came from, or a refusal when neither has it.
+ */
+async function manifestText_read(target: string): Promise<Result<{ text: string; from: string }>> {
+  const resolved: string = await path_resolve(target);
+  // Asking CFS is how we find out whether the manifest lives there. The
+  // miss is an ANSWER, not a fault: left on the stack it made a play that
+  // ran a host-side battery perfectly exit non-zero.
+  const mark: number = errorStack.checkpoint_mark();
+  const held: Result<string> = await fileContent_get(resolved);
+  if (held.ok) return { ok: true, value: { text: held.value, from: resolved } };
+  errorStack.checkpoint_drain(mark);
+
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const text: string = await readFile(target, 'utf8');
+    return { ok: true, value: { text, from: target } };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /** How a play was asked for. */
@@ -337,14 +390,13 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
     return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} is nested too deep — a manifest may play a manifest, not a chain of them.`)}\n`);
   }
 
-  const resolved: string = await path_resolve(parsed.manifest);
-  const content: Result<string> = await fileContent_get(resolved);
-  if (!content.ok) {
+  const source: Result<{ text: string; from: string }> = await manifestText_read(parsed.manifest);
+  if (!source.ok) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`play: cannot read ${resolved}`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`play: cannot read ${parsed.manifest} — no such manifest in the ChRIS filesystem, and none beside the engine.`)}\n`);
   }
 
-  const manifest: Manifest = manifest_parse(content.value);
+  const manifest: Manifest = manifest_parse(source.value.text);
 
   // Everything the file needs is settled BEFORE the first line runs: a
   // manifest that gets half way and then asks has already changed the
@@ -383,7 +435,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   recorder_mute();
   try {
     for (const line of manifest.lines) {
-      const expanded: Expansion = await line_expand(line.text, values);
+      const expanded: Expansion = await line_expand(line.text, values, parsed.dryRun);
       if ('refusal' in expanded) {
         sink_errLine(chalk.red(`✗ ${parsed.manifest}:${line.number}: ${expanded.refusal}`));
         stoppedAt = line.number;

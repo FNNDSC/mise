@@ -78,6 +78,7 @@ chell -e -f exemplars/chell/30_feed_tour.chell
   folder as the CUBE admin.
 - Static scripts cannot capture ids between commands, so the full
   feed+dcm2niix workflow is TS-only (03); script 30 is a read-only tour.
+  **Manifests lift this** — see below.
 
 ## Bugs found by these exemplars (all fixed)
 
@@ -109,3 +110,39 @@ Browser compatibility is a separate ordinary-CI smoke in
 `packages/calypso/tests/browser.test.ts`: an actual headless browser attaches
 to a local daemon backed by a stub engine, so that proof needs no CUBE
 credentials and cannot destabilize live-CUBE automation.
+
+## Manifest exemplars
+
+`flows/*.mise` are **manifests**: plain files of the lines an operator could
+have typed, played by the kernel's own `play` (see `docs/manifest.adoc`).
+They are the same artifact three ways — a test, a shareable workflow, and,
+played at a surface with `--pace`, a demonstration.
+
+They lift the caveat above. A run now WAITS for its outcome, `${run}` and
+`${run.place}` name what it produced, `${feed}` names where it landed, and
+`expect` refuses when a claim does not hold — so a workflow that captures
+ids between commands no longer needs a TypeScript program around it.
+
+```
+. exemplars/e2e-env.sh
+chell "$CUBE_USER@$CUBE_URL" -p "$CUBE_PASSWORD" -c version
+chell -c "play exemplars/flows/battery.mise --param SERIES=$CUBE_TEST_SERIESPATH"
+```
+
+| file | what it does |
+|---|---|
+| `00_session.mise` | Read-only claims about a connected session. Touches nothing. |
+| `10_anonymize_nii.mise` | Roots a feed on a DICOM series, anonymizes it (`pl-pfdicom_tagSub`), proves the anonymization by reading tags back off the files it produced, converts the anonymized output to NIfTI (`pl-dcm2niix`), and removes the feed. |
+| `battery.mise` | Plays them all. Its exit status is the gate. |
+
+A manifest is read from the ChRIS filesystem, and from the engine's own disk
+when CFS has no such file — which is how a repository's battery runs without
+uploading itself first.
+
+`CUBE_TEST_SERIESPATH` is a folder of DICOM the test user can read: a pulled
+PACS series (`/SERVICES/PACS/<server>/<patient>/<study>/<series>`) or an
+uploaded folder. Like every other identifier here it stays out of the repo.
+
+The invariant holds: `10_anonymize_nii.mise` removes the feed it made — and
+steps out of it first, because a workflow that deletes the place it is
+standing in leaves the session in a hole. Nothing else is created.

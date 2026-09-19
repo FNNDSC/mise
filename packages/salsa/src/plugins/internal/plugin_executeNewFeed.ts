@@ -68,7 +68,14 @@ export async function plugin_executeNewFeed(
 
   const pluginInstanceID: number = pluginResult.id as number;
   const actualPluginName: string = pluginResult.plugin_name as string;
-  const username: string = cwd.split('/')[2];
+  // The feed's owner, not the input's. Read off the path, a feed rooted on
+  // PACS-owned data (`/SERVICES/PACS/…`) claimed an owner called "PACS" and
+  // the predicted output path named a folder nobody could list, while the
+  // feed itself sat in the caller's own home.
+  const owner: unknown = feedResult.owner_username;
+  const username: string = typeof owner === 'string' && owner.length > 0
+    ? owner
+    : cwd.split('/')[2];
   const outputPath: string = `/home/${username}/feeds/feed_${feedID}/pl-dircopy_${dircopyInstanceID}/${actualPluginName}_${pluginInstanceID}/data/`;
 
   return {

@@ -23,6 +23,8 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: () => ({ cache_invalidate: (): void => undefined }),
+  // Reading a manifest asks CFS first and drains the miss when it is not there.
+  errorStack: { checkpoint_mark: (): number => 0, checkpoint_drain: (): unknown[] => [] },
 }));
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -163,6 +165,15 @@ describe('play', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('line 2');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('leaves a pronoun a dry run cannot know as it was written', async () => {
+    // Nothing has run, so ${feed} has no value — refusing there would make
+    // --dry-run useless for exactly the manifests that chain.
+    stored = ['pwd', 'expect feed ${feed} status eq finishedSuccessfully'].join('\n');
+    const envelope = await builtin_play(['f.mise', '--dry-run']);
+    expect(envelope.status).toBe('ok');
+    expect(output.some((line: string): boolean => line.includes('expect feed ${feed} status'))).toBe(true);
   });
 
   it('shows a dry run without running anything', async () => {

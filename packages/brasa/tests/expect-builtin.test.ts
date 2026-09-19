@@ -7,7 +7,7 @@
  * asking and passes the moment the claim holds; and a claim that does not
  * hold exits non-zero, because that is the whole point of the verb.
  */
-import { describe, it, expect as jestExpect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 /** The cohort the fake session holds. */
 let cohort: { version: number; name: string | null; feed: null; series: Array<Record<string, unknown>> } =
@@ -106,33 +106,33 @@ describe('expect', () => {
   it('holds when the cohort is the size claimed, and says so', async () => {
     cohort.series = [member('/a', false), member('/b', false)];
     const envelope = await builtin_expect(['gather', 'size', 'eq', '2']);
-    jestExpect(envelope.status).toBe('ok');
-    jestExpect(envelope.rendered).toContain('✓');
-    jestExpect(process.exitCode).toBe(0);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('✓');
+    expect(process.exitCode).toBe(0);
   });
 
   it('REFUSES, non-zero, when it does not hold — with what it wanted and got', async () => {
     cohort.series = [member('/a', false)];
     const envelope = await builtin_expect(['gather', 'size', 'eq', '14']);
-    jestExpect(envelope.status).toBe('error');
-    jestExpect(envelope.renderedErr).toContain('wanted  14');
-    jestExpect(envelope.renderedErr).toContain('got     1');
-    jestExpect(process.exitCode).toBe(1);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('wanted  14');
+    expect(envelope.renderedErr).toContain('got     1');
+    expect(process.exitCode).toBe(1);
   });
 
   it('counts a member as home only once CUBE has said where it landed', async () => {
     cohort.series = [member('/a', true), member('/b', false)];
-    jestExpect((await builtin_expect(['gather', 'pulled', 'eq', '1'])).status).toBe('ok');
+    expect((await builtin_expect(['gather', 'pulled', 'eq', '1'])).status).toBe('ok');
   });
 
   it('reads a feed status out of the session index', async () => {
-    jestExpect((await builtin_expect(['feed', '4599', 'status', 'eq', 'finishedSuccessfully'])).status).toBe('ok');
+    expect((await builtin_expect(['feed', '4599', 'status', 'eq', 'finishedSuccessfully'])).status).toBe('ok');
   });
 
   it('says a feed it has never indexed cannot answer, rather than calling the claim false', async () => {
     const envelope = await builtin_expect(['feed', '1', 'status', 'eq', 'finishedSuccessfully']);
-    jestExpect(envelope.status).toBe('error');
-    jestExpect(envelope.renderedErr).toContain('not in this session');
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('not in this session');
   });
 
   it('keeps asking within the time given, and passes the moment the run settles', async () => {
@@ -141,77 +141,77 @@ describe('expect', () => {
       new Map([[601152, 'finishedSuccessfully']]),
     ];
     const envelope = await builtin_expect(['run', '601152', 'status', 'eq', 'finishedSuccessfully', '--within', '10s']);
-    jestExpect(envelope.status).toBe('ok');
-    jestExpect(statusAsks).toBeGreaterThan(1);
+    expect(envelope.status).toBe('ok');
+    expect(statusAsks).toBeGreaterThan(1);
   }, 15000);
 
   it('gives up when the time is up, and says how long it waited', async () => {
     statusAnswers = [new Map([[601152, 'started']])];
     const envelope = await builtin_expect(['run', '601152', 'status', 'eq', 'finishedSuccessfully', '--within', '1s']);
-    jestExpect(envelope.status).toBe('error');
-    jestExpect(envelope.renderedErr).toContain('waited');
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('waited');
   }, 15000);
 
   it('asserts on a DICOM tag, which is how an anonymization is proved', async () => {
-    jestExpect((await builtin_expect(['path', '/x', 'tags', 'PatientID', 'eq', 'anon-001'])).status).toBe('ok');
-    jestExpect((await builtin_expect(['path', '/x', 'tags', 'PatientID', 'notContains', '22119730'])).status).toBe('ok');
+    expect((await builtin_expect(['path', '/x', 'tags', 'PatientID', 'eq', 'anon-001'])).status).toBe('ok');
+    expect((await builtin_expect(['path', '/x', 'tags', 'PatientID', 'notContains', '22119730'])).status).toBe('ok');
   });
 
   it('answers a varying tag with every value it takes, never just the first file s', async () => {
     const envelope = await builtin_expect(['path', '/x', 'tags', 'SOPInstanceUID', 'eq', '1.2.3']);
-    jestExpect(envelope.status).toBe('error');
-    jestExpect(envelope.renderedErr).toContain('1.2.3, 1.2.4');
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('1.2.3, 1.2.4');
   });
 
   it('counts what a folder holds, narrowed by a pattern', async () => {
     listings.set('/out', [{ name: 'a.nii.gz' }, { name: 'b.nii' }, { name: 'log.txt' }]);
-    jestExpect((await builtin_expect(['path', '/out', 'count', 'eq', '3'])).status).toBe('ok');
-    jestExpect((await builtin_expect(['path', '/out', 'count', 'gt', '0', '--matching', '*.nii*'])).status).toBe('ok');
-    jestExpect((await builtin_expect(['path', '/out', 'count', 'eq', '3', '--matching', '*.nii*'])).status).toBe('error');
+    expect((await builtin_expect(['path', '/out', 'count', 'eq', '3'])).status).toBe('ok');
+    expect((await builtin_expect(['path', '/out', 'count', 'gt', '0', '--matching', '*.nii*'])).status).toBe('ok');
+    expect((await builtin_expect(['path', '/out', 'count', 'eq', '3', '--matching', '*.nii*'])).status).toBe('error');
   });
 
   it('says whether a path is there, with exists as the whole claim', async () => {
     listings.set('/here', []);
-    jestExpect((await builtin_expect(['path', '/here', 'exists'])).status).toBe('ok');
-    jestExpect((await builtin_expect(['path', '/gone', 'exists'])).status).toBe('error');
+    expect((await builtin_expect(['path', '/here', 'exists'])).status).toBe('ok');
+    expect((await builtin_expect(['path', '/gone', 'exists'])).status).toBe('error');
   });
 
   it('refuses a comparison it does not know, by name', async () => {
     const envelope = await builtin_expect(['gather', 'size', 'approximately', '14']);
-    jestExpect(envelope.status).toBe('error');
-    jestExpect(envelope.renderedErr).toContain('approximately');
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('approximately');
   });
 
   it('refuses a subject it knows nothing about', async () => {
     const envelope = await builtin_expect(['weather', 'today', 'eq', 'fine']);
-    jestExpect(envelope.status).toBe('error');
-    jestExpect(envelope.renderedErr).toContain('weather');
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('weather');
   });
 });
 
 describe('claim_holds', () => {
   it('reads a counted number and a written one as the same claim', () => {
-    jestExpect(claim_holds('14', 'eq', '14')).toEqual({ held: true });
-    jestExpect(claim_holds('14', 'ne', '13')).toEqual({ held: true });
+    expect(claim_holds('14', 'eq', '14')).toEqual({ held: true });
+    expect(claim_holds('14', 'ne', '13')).toEqual({ held: true });
   });
 
   it('refuses to compare text with a numeric predicate', () => {
-    jestExpect(claim_holds('running', 'gt', '3')).toEqual({ refusal: expect_refusal() });
+    expect(claim_holds('running', 'gt', '3')).toEqual({ refusal: expect_refusal() });
   });
 
   it('matches on a regular expression, and refuses a broken one', () => {
-    jestExpect(claim_holds('feed_4599', 'matches', '^feed_\\d+$')).toEqual({ held: true });
-    jestExpect('refusal' in claim_holds('x', 'matches', '([')).toBe(true);
+    expect(claim_holds('feed_4599', 'matches', '^feed_\\d+$')).toEqual({ held: true });
+    expect('refusal' in claim_holds('x', 'matches', '([')).toBe(true);
   });
 });
 
 describe('duration_parse', () => {
   it('reads the durations an operator writes', () => {
-    jestExpect(duration_parse('30s')).toBe(30000);
-    jestExpect(duration_parse('20m')).toBe(1200000);
-    jestExpect(duration_parse('2h')).toBe(7200000);
-    jestExpect(duration_parse('45')).toBe(45000);
-    jestExpect(duration_parse('soon')).toBeNull();
+    expect(duration_parse('30s')).toBe(30000);
+    expect(duration_parse('20m')).toBe(1200000);
+    expect(duration_parse('2h')).toBe(7200000);
+    expect(duration_parse('45')).toBe(45000);
+    expect(duration_parse('soon')).toBeNull();
   });
 });
 

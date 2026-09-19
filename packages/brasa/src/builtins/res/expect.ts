@@ -22,6 +22,9 @@ import { jobs_statusBatch } from '@fnndsc/salsa';
 import type { DicomTag, DicomTagsModel, DicomVaryingTag } from '@fnndsc/menu';
 import type { Result } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, path_resolve } from '../utils.js';
+import { duration_parse } from '../../lib/duration.js';
+
+export { duration_parse };
 import { vfs } from '../../lib/vfs/vfs.js';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { cohort_read, GatherMember, GatherState } from './gather.store.js';
@@ -62,20 +65,6 @@ export interface ExpectVerdict {
   waitedMs: number;
 }
 
-/**
- * Reads a duration the way an operator writes one.
- *
- * @param text - A duration such as `30s`, `20m`, `2h`, or bare seconds.
- * @returns Milliseconds, or null when the text is not a duration.
- */
-export function duration_parse(text: string): number | null {
-  const match: RegExpMatchArray | null = text.trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/);
-  if (match === null) return null;
-  const amount: number = Number(match[1]);
-  const unit: string = match[2] ?? 's';
-  const scale: Record<string, number> = { ms: 1, s: 1000, m: 60000, h: 3600000 };
-  return amount * scale[unit];
-}
 
 /**
  * Compares what was found against what was wanted.

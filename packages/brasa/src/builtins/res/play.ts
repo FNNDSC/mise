@@ -26,6 +26,7 @@ import { fileContent_get } from '@fnndsc/salsa';
 import { path_resolve } from '../utils.js';
 import { session } from '../../session/index.js';
 import { cohort_read, GatherMember, GatherState } from './gather.store.js';
+import { duration_parse } from '../../lib/duration.js';
 import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../../session/recent.js';
 import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
@@ -340,9 +341,12 @@ export function playArgs_parse(args: string[]): PlayArgs {
       params.set(pair.slice(0, equals), pair.slice(equals + 1));
       index++;
     } else if (token === '--pace') {
+      // One duration reader for the language: `expect --within` and
+      // `play --pace` are the same notion of time, and a second parser
+      // beside it is a second set of durations that mean something else.
       const value: string | undefined = args[index + 1];
-      const ms: number = value === undefined ? Number.NaN : Number(value.replace(/s$/, '')) * (value.endsWith('ms') ? 1 : 1000);
-      if (!Number.isFinite(ms) || ms < 0) {
+      const ms: number | null = value === undefined ? null : duration_parse(value);
+      if (ms === null || ms < 0) {
         parseError = '--pace takes a duration such as 2s';
         break;
       }

@@ -13,6 +13,7 @@
  */
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
+import { runs_awaitSettled, settlement_render, type RunSettlement } from './runWait.js';
 import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
 import { pluginFields_fetch } from '@fnndsc/chili/commands/plugins/fields.js';
 import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
@@ -66,17 +67,30 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
        }
        return envelope_ok(rendered);
     } else if (subcommand === 'run') {
-       const searchable: string = parsed._[1];
+       // `--detach` is ours, not the plugin's, and it is taken out before
+       // anything else reads the line: left in, the generic parser treats it
+       // as an option carrying the plugin's name as its value, and the run
+       // refuses with a usage message naming no plugin.
+       const detach: boolean = args.includes('--detach');
+       const clean: string[] = args.filter((arg: string): boolean => arg !== '--detach');
+       const searchable: string = clean[1];
        if (!searchable) {
-          return envelope_ok(`${chalk.red("Usage: plugin run <plugin> [args...]")}\n`);
+          return envelope_ok(`${chalk.red("Usage: plugin run [--detach] <plugin> [args...]")}\n`);
        }
-       const params: string = args.slice(2).join(' ');
+       const params: string = clean.slice(2).join(' ');
        const instance: PluginInstance | null = await plugin_execute(searchable, params);
-       if (instance) {
+       if (!instance) {
+          process.exitCode = 1;
+          return envelope_error('', undefined, `${chalk.red("Plugin execution failed.")}\n`);
+       }
+       if (detach) {
           return envelope_ok(`${pluginRun_render(instance)}\n`);
        }
-       process.exitCode = 1;
-       return envelope_error('', undefined, `${chalk.red("Plugin execution failed.")}\n`);
+       // A run that returns before its output exists reads as done and is
+       // not: the wait holds this line, never the session, and Esc detaches.
+       const settlement: RunSettlement = await runs_awaitSettled([instance.id], searchable);
+       if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
+       return envelope_ok(`${pluginRun_render(instance)}\n${settlement_render(settlement, searchable)}\n`);
     } else if (subcommand === 'add') {
        return await plugin_addInteractive(parsed);
     } else if (subcommand === 'inspect') {

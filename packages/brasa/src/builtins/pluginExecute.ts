@@ -23,6 +23,7 @@ import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd, run_follow } from './feedCreation.js';
+import { runs_awaitSettled, settlement_render, type RunSettlement } from './res/runWait.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
@@ -50,6 +51,13 @@ export async function builtin_executePlugin(
   args: string[]
 ): Promise<CommandEnvelope> {
   try {
+    // 0. `--detach` is the SESSION's flag, never the plugin's: it says the
+    //    operator wants the handle now rather than the outcome later, so it
+    //    is taken out of the line before the plugin's own parameters are
+    //    read. Left in, it would be posted to CUBE as a plugin parameter.
+    const detach: boolean = args.includes('--detach');
+    args = args.filter((arg: string): boolean => arg !== '--detach');
+
     // 1. Split the already-tokenized arguments on the context delimiter.
     const delimiterIndex: number = args.indexOf('--');
     const pluginArgTokens: string[] = delimiterIndex === -1 ? args : args.slice(0, delimiterIndex);
@@ -162,6 +170,16 @@ export async function builtin_executePlugin(
     }
     sink_dataLine(chalk.green(`Job scheduled: ${pluginName} (ID: ${result.pluginInstanceID})`));
     sink_dataLine(chalk.cyan(`Output will be in: ${result.outputPath}`));
+
+    // A run that returns when CUBE accepts it reads as finished and is not:
+    // the next line of a script would work on output that does not exist.
+    // The wait holds this LINE, never the session — progress goes out while
+    // it waits, and Esc detaches, which is what `--detach` asks for up front.
+    if (!detach) {
+      const settlement: RunSettlement = await runs_awaitSettled([result.pluginInstanceID], pluginName);
+      sink_dataLine(settlement_render(settlement, pluginName));
+      if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
+    }
     // The run as a model, so a surface can point at what it started — the
     // feed it landed in and the instance it is — rather than parse the lines.
     const feedID: number | null = result.feedID !== undefined

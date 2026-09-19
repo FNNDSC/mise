@@ -13,6 +13,7 @@ describe('pipelineRunArgs_parse', () => {
       previousOverride: undefined,
       paramFile: undefined,
       bindings: [],
+      detach: false,
       parseError: null,
     });
   });
@@ -22,6 +23,7 @@ describe('pipelineRunArgs_parse', () => {
       previousOverride: 42,
       paramFile: undefined,
       bindings: [],
+      detach: false,
       parseError: null,
     });
   });
@@ -44,6 +46,7 @@ describe('pipelineRunArgs_parse', () => {
         { node: '@481', field: 'memory_limit', value: '8Gi' },
         { node: 'segmentation', field: 'enabled', value: true },
       ],
+      detach: false,
       parseError: null,
     });
   });

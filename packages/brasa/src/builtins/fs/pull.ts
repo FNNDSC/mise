@@ -384,14 +384,14 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   }
 
   if (nowait && newFeedTitle !== null) {
-    sink_errLine(chalk.red('pull: --new-feed cannot be combined with --nowait.'));
+    sink_errLine(chalk.red('pull: --new-feed cannot be combined with --detach.'));
     process.exitCode = 1;
     return envelope_error('');
   }
 
   if (paths.length === 0) {
     sink_errLine(chalk.red(
-      'pull: No paths specified. Usage: pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path> [...]',
+      'pull: No paths specified. Usage: pull [--detach] [--retry N] [--new-feed <title>] <vfs-path> [...]',
     ));
     process.exitCode = 1;
     return envelope_error('');

@@ -2198,9 +2198,16 @@ body[data-zoom]:not([data-zoom='console'])
   --spine-w: var(--bar-w);
 }
 
-/* The band is not a pane, so its frame opens on its own declaration. */
-body[data-header-frame='open'] .header-gather-field {
+/* The band is not a pane, so the FIELD carries the open state: the façade
+   writes `data-modes` on whatever declares itself the frame's host. */
+.header-gather-field[data-modes='open'] {
   --spine-w: var(--bar-w);
+}
+
+.header-gather-field[data-modes='open'] .mode-frame {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0.12s ease-out 0.16s, visibility 0s linear 0.16s;
 }
 
 .field-rule {

@@ -903,7 +903,13 @@ export class Listing<T> {
   private wired: boolean = false;
 
   private zonePane_get(): HTMLElement | null {
-    return this.zone?.closest<HTMLElement>('.workspace-pane') ?? null;
+    // A listing is usually in a pane, and the pane's own `data-modes` is
+    // what opens its frame. Not every listing is: the cohort rides the
+    // header band, which is not a pane at all — so the frame's host is
+    // whatever declares itself one, and a pane is only the common case.
+    // Without this the band's zone filled with verbs behind a frame that
+    // nothing ever told to open: the row lit, and the verbs stayed dark.
+    return this.zone?.closest<HTMLElement>('.workspace-pane, [data-frame-host]') ?? null;
   }
   /**
    * Whether verbs arriving in the zone are what opened the frame. Only then

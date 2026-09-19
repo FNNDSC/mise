@@ -571,9 +571,9 @@ function headerFaces_wire(): void {
     cohortStage_run?.();
   });
   bandField?.querySelector('.mode-strip')?.addEventListener('click', (): void => {
-    const open: boolean = body.dataset['headerFrame'] === 'open';
-    if (open) delete body.dataset['headerFrame'];
-    else body.dataset['headerFrame'] = 'open';
+    if (bandField === null) return;
+    if (bandField.dataset['modes'] === 'open') delete bandField.dataset['modes'];
+    else bandField.dataset['modes'] = 'open';
   });
 
   const header_restore = (): void => {

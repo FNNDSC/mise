@@ -103,7 +103,7 @@ function usage_error(reason: string): CommandEnvelope {
  * @param input - The path as the operator or a surface gave it.
  * @returns The physical path, or the input when it resolves no further.
  */
-async function path_physical(input: string): Promise<string> {
+export async function path_physical(input: string): Promise<string> {
   // Resolution is best effort by design: whatever cannot answer — a stubbed
   // dispatcher, a path no link walk knows — leaves the address as it was,
   // and the command refuses by its own name rather than by an exception.
@@ -163,12 +163,26 @@ async function dcmTags_handle(args: string[]): Promise<CommandEnvelope> {
     filter: typeof parsed.filter === 'string' ? parsed.filter : undefined,
   };
   const resolved: string = await path_physical(await path_resolve(target));
-  const model: Result<DicomTagsModel> = /\.dcm$/i.test(resolved) ? await fileTags_model(resolved) : await folderTags_model(resolved);
+  const model: Result<DicomTagsModel> = await tagsModel_read(resolved);
   if (!model.ok) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`dcm tags: ${resolved}: not a readable DICOM file or folder`)}\n`);
   }
   return envelope_ok(tags_render(model.value, options), { kind: DICOM_MODEL_KINDS.tags, data: model.value });
+}
+
+/**
+ * Reads a path's tags, whether it names one file or a folder of them.
+ *
+ * Shared with `expect`, which asserts on tag values: an assertion must read
+ * the header exactly the way the readout does, or a manifest could pass
+ * against a file the operator is shown differently.
+ *
+ * @param resolved - A physical path, already resolved.
+ * @returns The tags model, or a refusal when the path holds no readable DICOM.
+ */
+export async function tagsModel_read(resolved: string): Promise<Result<DicomTagsModel>> {
+  return /\.dcm$/i.test(resolved) ? await fileTags_model(resolved) : await folderTags_model(resolved);
 }
 
 /**

@@ -93,7 +93,19 @@ Deliberately absent: general capture (`x = $(...)`). A manifest that assigns is 
 expect <subject> <property> <predicate> <value> [--within <duration>]
 ----
 
-Subjects are the kernel's own: `pacs`, `gather`, `feed`, `run`, `path`. Predicates are `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains`, `matches`. With `--within`, `expect` polls the kernel's status until the claim holds or the deadline passes — `expect` is the only verb in the language that knows about time.
+Subjects are the kernel's own. Predicates are `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains`, `notContains` and `matches`. With `--within`, `expect` polls until the claim holds or the deadline passes — `expect` is the only verb in the language that knows about time.
+
+[cols="1,3"]
+|===
+| `gather size\|pulled\|name` | The cohort. A member counts as home once CUBE has said where it landed; a gathered place was never anywhere else.
+| `feed <id> status` | A feed, as this session has indexed it.
+| `run <instance-id> status` | One plugin instance, asked of CUBE.
+| `path <p> exists` | Whether a path is there.
+| `path <p> count [--matching <glob>]` | How many things a folder holds.
+| `path <p> tags <TagName>` | What a DICOM header says. A tag that VARIES across the folder answers with every value it takes, so a claim about "the" value cannot pass by reading only the first file — which is what makes this the honest check on an anonymization.
+|===
+
+The subject a manifest most wants — `pacs`, for "the query answered something" — waits for the pronouns in the next slice, because what it asks about is the query this session last ran. Until then a query's answer is asserted through the path it wrote.
 
 A satisfied expectation prints one confirming line. A failed one prints what it wanted, what it got, and where it was standing, then refuses: play stops at the first refusal (a manifest is a workflow, and the second half of a workflow whose first half failed is noise), and the process exits non-zero.
 
@@ -174,6 +186,8 @@ image ${gather.first}
 gather process --pipeline pl-dcm2niix --name "${LABEL}"
 expect feed status eq finishedSuccessfully --within 20m
 ----
+
+NOTE: The examples are written in the finished language. Until the pronoun slice lands, `${feed}` and `${gather.first}` are not yet substituted and `expect` names a feed or an instance by its id.
 
 Played in ARGUS, an observer sees: the PACS pane fill; the filter narrow it; the header band's `01-GATHER` face count up; the badges turn as the retrieve lands; a viewer open on the first series; the catalogue compose the run; and `RUNS-02` take the new feed. Played headlessly, the same file prints envelopes and exits 0 or non-zero. Neither run knows which it is.
 

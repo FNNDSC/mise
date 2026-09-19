@@ -77,9 +77,11 @@ expect pacs series gt 0
 
 [cols="1,3"]
 |===
-| `${gather}` | The cohort, as an operand list. `pull ${gather}` pulls every member.
-| `${gather.1}` | The nth member's path, one-based. `${gather.first}` and `${gather.last}` read the same.
+| `${gather}` | The cohort, as an operand list, each member at the address it was GATHERED FROM — what `pull` takes.
+| `${gather.1}` | The nth member, one-based. `${gather.first}`, `${gather.last}`, `${gather.size}` and `${gather.name}` read the same way.
+| `${gather.first.place}` | Where a member LANDED in CUBE — what `image` and a run take. A member has two addresses and the difference is load-bearing; `.place` refuses by name when a member is not in CUBE yet.
 | `${feed}` | The feed most recently created in this session.
+| `${run}` | The run most recently scheduled; `${run.place}` is where it writes, which is what the next act in a chain works on.
 | `${query}` | The PACS query most recently answered.
 | `${cwd}` | The session's working directory.
 |===
@@ -101,8 +103,8 @@ Subjects are the kernel's own. Predicates are `eq`, `ne`, `gt`, `gte`, `lt`, `lt
 | `feed <id> status` | A feed, as this session has indexed it.
 | `run <instance-id> status` | One plugin instance, asked of CUBE.
 | `path <p> exists` | Whether a path is there.
-| `path <p> count [--matching <glob>]` | How many things a folder holds.
-| `path <p> tags <TagName>` | What a DICOM header says. A tag that VARIES across the folder answers with every value it takes, so a claim about "the" value cannot pass by reading only the first file — which is what makes this the honest check on an anonymization.
+| `path <p> count [--matching <glob>] [--deep]` | How many things a folder holds. `--deep` looks beneath it: a plugin files its output in a tree (pfdicom writes under `share/incoming/<input tree>`), so a claim made at the node's own folder would otherwise be false about a run that worked.
+| `path <p> tags <TagName>` | What a DICOM header says, looking beneath the path when the folder itself holds none. A tag that VARIES across the folder answers with every value it takes, so a claim about "the" value cannot pass by reading only the first file — which is what makes this the honest check on an anonymization.
 |===
 
 The subject a manifest most wants — `pacs`, for "the query answered something" — waits for the pronouns in the next slice, because what it asks about is the query this session last ran. Until then a query's answer is asserted through the path it wrote.
@@ -130,7 +132,9 @@ play <manifest> [--param K=V]… [--pace <duration>] [--step] [--dry-run]
 
 `play` reads the file through the VFS and runs its lines in order against the current session. Nothing is special about the execution: each line goes through the same path a typed line goes through, so every attached surface renders each step as it lands.
 
-`--pace` puts a delay between lines, for watching. `--step` waits for a keypress instead, for teaching. `--dry-run` expands parameters and pronouns and prints the lines it would run without running them — the manifest's `--help`.
+`--pace` puts a delay between lines, for watching. `--dry-run` expands parameters and pronouns and prints the lines it would run without running them — the manifest's `--help`; a pronoun that refers to what an earlier line WOULD have produced stands as written, since nothing has run to give it a value. `--step` is refused by name: a keypress needs a terminal and a daemon has none, so at a surface the answer is `--pace`.
+
+A manifest is read from the ChRIS filesystem — that is what makes one shareable, and sharing it is `setfacl`, like any other file. A path that names no CFS file is then looked for on the disk the ENGINE runs on, which is how a repository's battery runs without uploading itself first; in a daemon that disk is the daemon's, never the surface's, which is why CFS is asked first.
 
 `play` is itself a kernel verb, so a manifest may play another manifest. One level of nesting is expected (a battery that plays its cases); recursion is refused by name.
 
@@ -213,12 +217,11 @@ expect gather size gt 0
 pull ${gather} --new-feed "${LABEL} · raw"
 expect feed status eq finishedSuccessfully --within 30m
 
-# Strip the identifying elements. The tag list is the plugin's, not ours; naming it here is the record of what was stripped.
-run pl-pfdicom_tagSub ${feed} \
-    --extension .dcm \
-    --splitToken ',' \
-    --tagStruct 'PatientName,${SUBJECT};PatientID,${SUBJECT};PatientBirthDate,19000101;AccessionNumber,anon;InstitutionName,anon'
-expect run status eq finishedSuccessfully --within 20m
+# Strip the identifying elements. The tag list is named here because a
+# manifest that anonymizes should say what it changed.
+pl-pfdicom_tagSub-v3.3.4 --fileFilter dcm \
+    --tagInfo 'PatientName,${SUBJECT}++PatientID,${SUBJECT}++AccessionNumber,anon++PatientBirthDate,19000101'
+expect run ${run} status eq finishedSuccessfully --within 20m
 
 # Prove it, on the data, not on the plugin's word.
 expect path ${feed}/pl-pfdicom_tagSub/data tags PatientID eq ${SUBJECT}
@@ -235,7 +238,7 @@ image ${feed}/pl-dcm2niix/data
 
 Two things are deliberate. The conversion runs on the anonymization's output node, not on the feed root, so the manifest cannot silently convert identified data. And the anonymization is asserted by reading tags back off the produced files — the one check that survives a plugin changing behind you.
 
-NOTE: `pl-pfdicom_tagSub` and `pl-dcm2niix` are named here as the plugins in common use; the manifest's actual operands must be resolved against the store the session is attached to (`bin`), and the first slice that runs this example confirms the flag spellings against the live plugin rather than against this document.
+NOTE: the flag spellings are the live plugin's, confirmed against a running store: `pl-pfdicom_tagSub` takes `--fileFilter` and `--tagInfo` (pairs split on `++`, key and value on `,`), not the `--extension`/`--splitToken` an earlier draft of this document guessed at. The versions are this instance's; a manifest names them as parameters so another instance can supply its own.
 
 === A battery case
 
@@ -290,6 +293,6 @@ Each slice is shippable and verifiable on its own.
 . *`expect`.* The subject/property/predicate grammar, `--within`, the failure readout, the exit status.
 . *`play`.* Header parsing, parameters, pronouns, `--pace`, `--step`, `--dry-run`, refusal on a missing parameter, one level of nesting.
 . *`record`.* Capture of typed and minted lines, parameter offering, write to CFS.
-. *The first battery.* The two worked examples above, run against the live gate, with the plugin flag spellings confirmed.
+. *The first battery.* Built, as `packages/chell/exemplars/flows/`: `00_session.mise`, `10_anonymize_nii.mise` (anonymize, prove it on the produced files, convert, remove the feed) and `battery.mise`, whose exit status is the gate. The exemplars README's standing caveat — "static scripts cannot capture ids between commands, so the full feed+dcm2niix workflow is TS-only" — no longer holds.
 
 A surface decision lands in `apps/argus/docs/aegis.adoc` in the same PR as the slice that makes it, per the standing law; slices 1, 2 and 4 each carry one.

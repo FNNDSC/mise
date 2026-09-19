@@ -8,5 +8,6 @@
   "CUBE_TEST_ACCESSION": "your-designated-test-accession",
   "CUBE_DCM2NIIX_VERSION": "",
   "CUBE_TEST_SERIESUID": "a-small-series-instance-uid",
+  "CUBE_TEST_SERIESPATH": "/SERVICES/PACS/PACSDCM/<patient>/<study>/<a-small-series>",
   "CUBE_TEST_STUDYUID": "its-study-instance-uid"
 }

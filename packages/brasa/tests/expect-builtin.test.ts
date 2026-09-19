@@ -18,7 +18,7 @@ let statusAnswers: Array<Map<number, string>> = [];
 let statusAsks: number = 0;
 
 /** What a listing answers for a path. */
-let listings: Map<string, Array<{ name: string }>> = new Map();
+let listings: Map<string, Array<{ name: string; type?: string }>> = new Map();
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
@@ -47,7 +47,7 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mk
 
 jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
   vfs: {
-    data_get: async (target: string): Promise<{ ok: boolean; value?: Array<{ name: string }> }> => {
+    data_get: async (target: string): Promise<{ ok: boolean; value?: Array<{ name: string; type?: string }> }> => {
       const held = listings.get(target);
       return held === undefined ? { ok: false } : { ok: true, value: held };
     },
@@ -71,12 +71,18 @@ jest.unstable_mockModule('../src/builtins/res/dicom.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
-  commandArgs_process: (args: string[]) => {
+  // Mirrors the real parser closely enough to matter here: a declared
+  // boolean flag must NOT eat the operand after it, which is the whole
+  // reason `--deep` is declared one.
+  commandArgs_process: (args: string[], options: { booleanLongOptions?: readonly string[] } = {}) => {
+    const flags: Set<string> = new Set(options.booleanLongOptions ?? []);
     const parsed: { _: string[]; [key: string]: string | boolean | string[] } = { _: [] };
     for (let i = 0; i < args.length; i++) {
       const arg: string = args[i];
       if (arg.startsWith('--')) {
-        parsed[arg.slice(2)] = args[i + 1] ?? true;
+        const name: string = arg.slice(2);
+        if (flags.has(name)) { parsed[name] = true; continue; }
+        parsed[name] = args[i + 1] ?? true;
         i++;
         continue;
       }
@@ -168,6 +174,24 @@ describe('expect', () => {
     expect((await builtin_expect(['path', '/out', 'count', 'eq', '3'])).status).toBe('ok');
     expect((await builtin_expect(['path', '/out', 'count', 'gt', '0', '--matching', '*.nii*'])).status).toBe('ok');
     expect((await builtin_expect(['path', '/out', 'count', 'eq', '3', '--matching', '*.nii*'])).status).toBe('error');
+  });
+
+  it('counts beneath the folder when a run filed its output in a tree', async () => {
+    // pfdicom writes under share/incoming/<input tree>; a claim made at the
+    // node's own folder must find what the run actually produced.
+    listings.set('/out', [{ name: 'share', type: 'dir' }]);
+    listings.set('/out/share', [{ name: 'incoming', type: 'dir' }]);
+    listings.set('/out/share/incoming', [{ name: 'brain.nii.gz', type: 'file' }, { name: 'log.txt', type: 'file' }]);
+
+    expect((await builtin_expect(['path', '/out', 'count', '--matching', '*.nii*', '--deep', 'eq', '1'])).status).toBe('ok');
+    // Without --deep the same claim sees only the folder at the top.
+    expect((await builtin_expect(['path', '/out', 'count', '--matching', '*.nii*', 'gt', '0'])).status).toBe('error');
+  });
+
+  it('prints the claim as it was made, narrowing included', async () => {
+    listings.set('/out', [{ name: 'a.nii', type: 'file' }]);
+    const envelope = await builtin_expect(['path', '/out', 'count', '--matching', '*.nii*', 'eq', '1']);
+    expect(envelope.rendered).toContain("--matching '*.nii*'");
   });
 
   it('says whether a path is there, with exists as the whole claim', async () => {

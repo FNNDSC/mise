@@ -22,6 +22,9 @@ import { jobs_statusBatch } from '@fnndsc/salsa';
 import type { DicomTag, DicomTagsModel, DicomVaryingTag } from '@fnndsc/menu';
 import type { Result } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, path_resolve } from '../utils.js';
+import { duration_parse } from '../../lib/duration.js';
+
+export { duration_parse };
 import { vfs } from '../../lib/vfs/vfs.js';
 import type { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { cohort_read, GatherMember, GatherState } from './gather.store.js';
@@ -62,20 +65,6 @@ export interface ExpectVerdict {
   waitedMs: number;
 }
 
-/**
- * Reads a duration the way an operator writes one.
- *
- * @param text - A duration such as `30s`, `20m`, `2h`, or bare seconds.
- * @returns Milliseconds, or null when the text is not a duration.
- */
-export function duration_parse(text: string): number | null {
-  const match: RegExpMatchArray | null = text.trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/);
-  if (match === null) return null;
-  const amount: number = Number(match[1]);
-  const unit: string = match[2] ?? 's';
-  const scale: Record<string, number> = { ms: 1, s: 1000, m: 60000, h: 3600000 };
-  return amount * scale[unit];
-}
 
 /**
  * Compares what was found against what was wanted.
@@ -193,6 +182,41 @@ async function run_read(target: string, property: string): Promise<SubjectReadin
   return { got: status };
 }
 
+
+/** How far beneath a named folder a claim will look for what it was asked about. */
+const DEEP_MAX: number = 4;
+
+/**
+ * Walks a folder, gathering what it holds and the folders under it.
+ *
+ * A plugin's output is routinely NESTED — pfdicom writes under
+ * `share/incoming/<input tree>`, and a converter mirrors its input — so a
+ * claim about what a run produced, made at the node's own folder, would be
+ * false about a run that worked perfectly. The walk is bounded: a claim is
+ * a question about a result, not a crawl of the filesystem.
+ *
+ * @param root - Where to start.
+ * @param depth - How many levels below the root to visit.
+ * @returns Every item found, with the folder each was found in.
+ */
+async function folder_walkDeep(root: string, depth: number): Promise<Array<{ folder: string; item: ListingItem }>> {
+  const found: Array<{ folder: string; item: ListingItem }> = [];
+  const queue: Array<{ path: string; level: number }> = [{ path: root, level: 0 }];
+
+  while (queue.length > 0) {
+    const here = queue.shift() as { path: string; level: number };
+    const listed: Result<ListingItem[]> = await vfs.data_get(here.path);
+    if (!listed.ok) continue;
+    for (const item of listed.value) {
+      found.push({ folder: here.path, item });
+      if (item.type === 'dir' && here.level < depth) {
+        queue.push({ path: `${here.path.replace(/\/$/, '')}/${item.name}`, level: here.level + 1 });
+      }
+    }
+  }
+  return found;
+}
+
 /**
  * Turns a shell-style pattern into a matcher.
  *
@@ -214,6 +238,7 @@ function glob_toRegExp(pattern: string): RegExp {
  * @param property - `exists`, `count`, or `tags`.
  * @param tagName - The tag to read, when the property is `tags`.
  * @param matching - A glob narrowing a count.
+ * @param deep - Look beneath the folder, not only in it.
  * @returns What the path says.
  */
 async function path_read(
@@ -221,6 +246,7 @@ async function path_read(
   property: string,
   tagName: string | undefined,
   matching: string | undefined,
+  deep: boolean,
 ): Promise<SubjectReading> {
   const resolved: string = await path_resolve(target);
 
@@ -235,6 +261,15 @@ async function path_read(
   }
 
   if (property === 'count') {
+    if (deep) {
+      const walked: Array<{ folder: string; item: ListingItem }> = await folder_walkDeep(resolved, DEEP_MAX);
+      const files: ListingItem[] = walked
+        .map((entry): ListingItem => entry.item)
+        .filter((item: ListingItem): boolean => item.type !== 'dir');
+      if (matching === undefined) return { got: `${files.length}` };
+      const deepPattern: RegExp = glob_toRegExp(matching);
+      return { got: `${files.filter((item: ListingItem): boolean => deepPattern.test(item.name)).length}` };
+    }
     const listed: Result<ListingItem[]> = await vfs.data_get(resolved);
     if (!listed.ok) return { got: null, refusal: `${resolved} cannot be listed` };
     if (matching === undefined) return { got: `${listed.value.length}` };
@@ -245,8 +280,21 @@ async function path_read(
   if (property === 'tags') {
     if (tagName === undefined) return { got: null, refusal: 'expect path <p> tags <TagName> <predicate> <value>' };
     const physical: string = await path_physical(resolved);
-    const model: Result<DicomTagsModel> = await tagsModel_read(physical);
-    if (!model.ok) return { got: null, refusal: `${resolved} holds no readable DICOM` };
+    let model: Result<DicomTagsModel> = await tagsModel_read(physical);
+    if (!model.ok) {
+      // A plugin's output is routinely nested, so a tag claim made at the
+      // node's own folder looks BENEATH it before giving up: the files a run
+      // produced are what the claim is about, wherever the plugin filed them.
+      const walked: Array<{ folder: string; item: ListingItem }> = await folder_walkDeep(resolved, DEEP_MAX);
+      const folders: string[] = [...new Set(walked
+        .filter((entry): boolean => entry.item.type === 'dir')
+        .map((entry): string => `${entry.folder.replace(/\/$/, '')}/${entry.item.name}`))];
+      for (const folder of folders) {
+        const beneath: Result<DicomTagsModel> = await tagsModel_read(await path_physical(folder));
+        if (beneath.ok) { model = beneath; break; }
+      }
+    }
+    if (!model.ok) return { got: null, refusal: `${resolved} holds no readable DICOM, here or beneath it` };
     const constant: DicomTag | undefined = model.value.constant.find(
       (tag: DicomTag): boolean => tag.name === tagName || tag.tag === tagName,
     );
@@ -276,6 +324,7 @@ async function path_read(
  * @param property - What about it.
  * @param tagName - The tag, when the property is `tags`.
  * @param matching - A glob, when the property is `count`.
+ * @param deep - Whether to look beneath the path as well as in it.
  * @returns What the session answered.
  */
 async function subject_read(
@@ -284,11 +333,12 @@ async function subject_read(
   property: string,
   tagName: string | undefined,
   matching: string | undefined,
+  deep: boolean,
 ): Promise<SubjectReading> {
   if (subject === 'gather') return await gather_read(property);
   if (subject === 'feed') return await feed_read(target ?? '', property);
   if (subject === 'run') return await run_read(target ?? '', property);
-  if (subject === 'path') return await path_read(target ?? '', property, tagName, matching);
+  if (subject === 'path') return await path_read(target ?? '', property, tagName, matching, deep);
   return { got: null, refusal: `expect knows nothing about "${subject}" — try gather, feed, run or path` };
 }
 
@@ -328,7 +378,9 @@ function claim_render(parts: string[]): string {
  * @returns An ok envelope when the claim holds, an error envelope when it does not.
  */
 export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args);
+  // `--deep` carries no value: undeclared, the parser hands it the next
+  // operand — which is the COMPARISON — and the claim loses its predicate.
+  const parsed: ParsedArgs = commandArgs_process(args, { booleanLongOptions: ['deep'] });
   const operands: string[] = parsed._;
   const subject: string | undefined = operands[0];
 
@@ -375,7 +427,14 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
     deadlineMs = parsedWait;
   }
 
-  const claim: string = claim_render([subject, target ?? '', property, tagName ?? '', predicate, wanted]);
+  // The claim is printed as it was MADE, narrowing included: a ✓ reading
+  // `count gt 0` for a claim that was about `*.nii*` says the wrong thing
+  // held, and a battery is read by people who were not there.
+  const narrowing: string = matching_get(parsed) === undefined ? '' : `--matching '${matching_get(parsed)}'`;
+  const claim: string = claim_render([
+    subject, target ?? '', property, tagName ?? '', narrowing,
+    parsed.deep === true ? '--deep' : '', predicate, wanted,
+  ]);
   const started: number = Date.now();
   if (deadlineMs > 0) commandCancellation_enable();
   const signal: AbortSignal | undefined = deadlineMs > 0 ? commandCancellation_signalGet() : undefined;
@@ -384,7 +443,7 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   let outcome: { held: boolean } | { refusal: string } = { held: false };
 
   for (;;) {
-    reading = await subject_read(subject, target, property, tagName, matching_get(parsed));
+    reading = await subject_read(subject, target, property, tagName, matching_get(parsed), parsed.deep === true);
     if (reading.got !== null) {
       outcome = claim_holds(reading.got, predicate, wanted);
       if ('refusal' in outcome) break;

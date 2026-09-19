@@ -45,6 +45,24 @@ describe('plugin_executeNewFeed', () => {
     });
   });
 
+  // A feed rooted on data somebody else owns — a PACS retrieve lives under
+  // /SERVICES/PACS — belongs to the caller, and its output path must say so.
+  // Read off the INPUT path, the owner came back as "PACS" and the predicted
+  // folder was one nobody could list.
+  it('takes the output path\'s owner from the FEED, not from the input', async () => {
+    mockFeedCreate.mockResolvedValue({
+      id: 124, owner_username: 'chris', pluginInstance: { data: { id: 457 } },
+    });
+    mockPluginRun.mockResolvedValue({ id: 790, plugin_name: 'pl-x' });
+
+    const r = await plugin_executeNewFeed(
+      'pl-x', {}, {}, '/SERVICES/PACS/PACSDCM/patient/study/series', bin,
+    );
+    expect(r).toMatchObject({
+      outputPath: '/home/chris/feeds/feed_124/pl-dircopy_457/pl-x_790/data/',
+    });
+  });
+
   it('fails when pl-dircopy is not in the bin listing', async () => {
     expect(await plugin_executeNewFeed('pl-x', {}, {}, '/home/chris/uploads/d', [])).toBeNull();
   });

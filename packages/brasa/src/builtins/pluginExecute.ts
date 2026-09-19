@@ -24,7 +24,7 @@ import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd, run_follow } from './feedCreation.js';
 import { runs_awaitSettled, settlement_render, type RunSettlement } from './res/runWait.js';
-import { recentFeed_note, recentRuns_note } from '../session/recent.js';
+import { recentFeed_note, recentRunPlace_note, recentRuns_note } from '../session/recent.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
@@ -179,6 +179,7 @@ export async function builtin_executePlugin(
     // the run it started.
     if (feedIDForPronoun !== null) recentFeed_note(feedIDForPronoun);
     recentRuns_note([result.pluginInstanceID]);
+    recentRunPlace_note(result.outputPath);
 
     // A run that returns when CUBE accepts it reads as finished and is not:
     // the next line of a script would work on output that does not exist.

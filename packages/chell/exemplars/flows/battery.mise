@@ -1,0 +1,12 @@
+# The battery: every manifest exemplar, at full speed.
+#
+# Headless this is a gate — `chell -c 'play …/battery.mise …'` exits non-zero
+# the moment a claim does not hold. At a surface, played with `--pace 2s`,
+# it is the same file as a demonstration.
+@name         manifest battery
+@description  Play every manifest exemplar in order.
+@param        SERIES
+@param        FLOWS = exemplars/flows
+
+play ${FLOWS}/00_session.mise
+play ${FLOWS}/10_anonymize_nii.mise --param SERIES=${SERIES}

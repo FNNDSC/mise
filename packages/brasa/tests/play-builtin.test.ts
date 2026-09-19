@@ -15,18 +15,24 @@ let refuseAt: string | null = null;
 
 /** The manifest the fake filesystem holds. */
 let stored: string = '';
+/** Whether the manifest is nowhere to be found. */
+let missing: boolean = false;
 
 /** The cohort the fake session holds. */
-let members: Array<{ vfsPath: string; kind: string }> = [];
+let members: Array<{ vfsPath: string; kind: string; folderPath?: string }> = [];
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: () => ({ cache_invalidate: (): void => undefined }),
+  // Reading a manifest asks CFS first and drains the miss when it is not there.
+  errorStack: { checkpoint_mark: (): number => 0, checkpoint_drain: (): unknown[] => [] },
 }));
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
-  fileContent_get: async (): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: stored }),
+  fileContent_get: async (): Promise<{ ok: boolean; value?: string }> => (
+    missing ? { ok: false } : { ok: true, value: stored }
+  ),
   files_path_isDirectory: async (): Promise<boolean> => true,
 }));
 
@@ -62,7 +68,8 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
 }));
 
 const { builtin_play, manifest_parse, line_expand, playArgs_parse } = await import('../src/builtins/res/play.js');
-const { recentFeed_note, recent_forget } = await import('../src/session/recent.js');
+const { recentFeed_note, recentQuery_note, recentRunPlace_note, recentRuns_note, recent_forget } =
+  await import('../src/session/recent.js');
 
 beforeEach(() => {
   ran.length = 0;
@@ -70,6 +77,7 @@ beforeEach(() => {
   refuseAt = null;
   stored = '';
   members = [];
+  missing = false;
   recent_forget();
   process.exitCode = 0;
 });
@@ -132,7 +140,75 @@ describe('line_expand', () => {
   });
 });
 
+describe('pronouns beyond the cohort', () => {
+  it('answers ${run} and ${run.place} once something has run', async () => {
+    recentRuns_note([601164, 601165]);
+    recentRunPlace_note('/home/chris/feeds/feed_1/pl-x_2/data/');
+    expect(await line_expand('expect run ${run} status eq x', new Map()))
+      .toEqual({ text: 'expect run 601165 status eq x' });
+    expect(await line_expand('cd ${run.place}', new Map()))
+      .toEqual({ text: 'cd /home/chris/feeds/feed_1/pl-x_2/data/' });
+  });
+
+  it('answers ${query} and ${cwd}, and refuses ${run.place} before anything has run', async () => {
+    recentQuery_note('/net/pacs/queries/q 1');
+    expect(await line_expand('ls ${query}', new Map())).toEqual({ text: "ls '/net/pacs/queries/q 1'" });
+    expect(await line_expand('pwd ${cwd}', new Map())).toEqual({ text: 'pwd /home/chris/uploads' });
+    const refused = await line_expand('cd ${run.place}', new Map());
+    expect('refusal' in refused && refused.refusal).toContain('${run.place}');
+  });
+
+  it('gives the cohort member\'s PLACE when asked, and refuses when it has none', async () => {
+    members = [{ vfsPath: '/net/pacs/q/Series_1', kind: 'series', folderPath: '/home/chris/SERVICES/s1' }];
+    expect(await line_expand('image ${gather.first.place}', new Map()))
+      .toEqual({ text: 'image /home/chris/SERVICES/s1' });
+
+    members = [{ vfsPath: '/net/pacs/q/Series_2', kind: 'series' }];
+    const refused = await line_expand('image ${gather.first.place}', new Map());
+    expect('refusal' in refused && refused.refusal).toContain('not in CUBE yet');
+  });
+
+  it('refuses a pronoun it has never heard of', async () => {
+    const refused = await line_expand('echo ${weather}', new Map());
+    expect('refusal' in refused && refused.refusal).toContain('${weather}');
+  });
+});
+
+describe('playArgs_parse, the rest', () => {
+  it('reads a pace in seconds and in milliseconds', () => {
+    expect(playArgs_parse(['f.mise', '--pace', '2s']).paceMs).toBe(2000);
+    expect(playArgs_parse(['f.mise', '--pace', '250ms']).paceMs).toBe(250);
+  });
+
+  it('refuses what it cannot make sense of', () => {
+    expect(playArgs_parse(['f.mise', '--pace', 'soon']).parseError).toContain('--pace');
+    expect(playArgs_parse(['f.mise', '--param', 'MRN']).parseError).toContain('--param');
+    expect(playArgs_parse(['f.mise', '--sideways']).parseError).toContain('--sideways');
+    expect(playArgs_parse(['one.mise', 'two.mise']).parseError).toContain('two.mise');
+  });
+});
+
 describe('play', () => {
+  it('refuses when there is no manifest to play, and when neither filesystem has it', async () => {
+    const noName = await builtin_play([]);
+    expect(noName.status).toBe('error');
+    expect(noName.renderedErr).toContain('Usage: play');
+
+    missing = true;
+    const notThere = await builtin_play(['nowhere.mise']);
+    expect(notThere.status).toBe('error');
+    expect(notThere.renderedErr).toContain('nowhere.mise');
+    missing = false;
+  });
+
+  it('paces the lines when asked', async () => {
+    stored = ['pwd', 'pwd'].join('\n');
+    const started: number = Date.now();
+    await builtin_play(['f.mise', '--pace', '60ms']);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
+    expect(ran).toEqual(['pwd', 'pwd']);
+  });
+
   it('refuses a manifest it cannot fill in, BEFORE running any line', async () => {
     stored = ['@param MRN', 'pacs query PatientID:${MRN}'].join('\n');
     const envelope = await builtin_play(['f.mise']);
@@ -163,6 +239,15 @@ describe('play', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('line 2');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('leaves a pronoun a dry run cannot know as it was written', async () => {
+    // Nothing has run, so ${feed} has no value — refusing there would make
+    // --dry-run useless for exactly the manifests that chain.
+    stored = ['pwd', 'expect feed ${feed} status eq finishedSuccessfully'].join('\n');
+    const envelope = await builtin_play(['f.mise', '--dry-run']);
+    expect(envelope.status).toBe('ok');
+    expect(output.some((line: string): boolean => line.includes('expect feed ${feed} status'))).toBe(true);
   });
 
   it('shows a dry run without running anything', async () => {

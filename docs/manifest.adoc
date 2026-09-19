@@ -270,7 +270,7 @@ Not settled, and deliberately out of scope here: whether a shared session is sym
 
 Each slice is shippable and verifiable on its own.
 
-. *`gather` as a kernel subject.* `gather add|list|remove|clear|process|name` over the session file the surface writes today, path-identified, with a `gather.changed` annunciation. The header band becomes a subscriber instead of the owner. No manifest yet — this alone makes the cohort scriptable.
+. *`gather` as a kernel subject.* `gather list|add|remove|clear|name` over the session file the surface writes today, path-identified. No manifest yet — this alone makes the cohort scriptable. `gather process` waits for a `run` that blocks (slices 2 and 3), because a process verb that returns before its feed exists cannot be asserted on; the `gather.changed` annunciation and the header band's subscription follow in a slice of their own, so the surface changes hands only once the kernel's cohort is proven.
 . *Blocking verbs.* `pull` and `run` block their own line with progress on the progress channel, `--detach` restores today's behaviour, Esc detaches live. The law about the lane gets its enforcement.
 . *`expect`.* The subject/property/predicate grammar, `--within`, the failure readout, the exit status.
 . *`play`.* Header parsing, parameters, pronouns, `--pace`, `--step`, `--dry-run`, refusal on a missing parameter, one level of nesting.

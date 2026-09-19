@@ -49,6 +49,7 @@ export * from './res/compute.js';
 export * from './res/tag.js';
 export * from './res/expect.js';
 export * from './res/play.js';
+export * from './res/record.js';
 export * from './res/gather.js';
 export * from './res/group.js';
 export * from './res/user.js';

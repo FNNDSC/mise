@@ -45,6 +45,7 @@ import {
 } from './dispatch.js';
 import { capability_require, surface_get } from './surface.js';
 import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
+import { recorder_note } from '../session/recorder.js';
 import { sink_get } from './sink.js';
 
 /**
@@ -270,6 +271,10 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
 async function line_execute_run(line: string): Promise<CommandEnvelope[]> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return [];
+
+  // A press on a surface and a line at a console arrive here alike, which is
+  // what makes recording a session cost nothing: the lowering is the law.
+  recorder_note(trimmedLine);
 
   // Start timing if enabled
   const timingEnabled: boolean = session.timingEnabled_get();

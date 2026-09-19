@@ -2429,17 +2429,37 @@ async function surface_start(token: string): Promise<void> {
    */
   const headerCohort_build = (): GatherPanel => {
     const face: HTMLElement = element_require('header-gather');
-    const host: string = 'pacs';
+    /**
+     * Where the cohort's work LANDS: a pane that is actually on stage.
+     *
+     * The band is everywhere, so what it opens has to arrive where the
+     * operator is looking. Anchoring it to the PACS pane put the catalogue
+     * beside a pane that may not be on stage at all — the operator viewed
+     * a gathered series, pressed PROCESS, and the thing it made appeared
+     * somewhere they were not. Resolved at the moment of the press, not
+     * when the cohort was built.
+     */
+    const host = (): string => errandHost_find() ?? 'pacs';
     return new GatherPanel(face, pane_find(face, '.gather-rows'), {
       command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
       command_show: (line: string): void => terminal.line_run(line),
       note: (text: string): void => terminal.line_note(text),
       image_open: (folderPath: string): void => {
-        void image_open(host, folderPath).then((line: string): void => terminal.line_note(line));
+        void image_open(host(), folderPath).then((line: string): void => terminal.line_note(line));
       },
-      process_open: (folderPath: string): void => process_open(host, { input: folderPath, feed: null, node: null }),
-      name_ask: (suggest: string): Promise<string | null> =>
-        ask_onPane(host, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
+      process_open: (folderPath: string): void => process_open(host(), { input: folderPath, feed: null, node: null }),
+      // The question stands where the press was, and the press was in the
+      // BAND: asking on the PACS pane put it on a pane the operator may
+      // not even have on stage, which reads as the verb doing nothing.
+      name_ask: async (suggest: string): Promise<string | null> => {
+        const face: HTMLElement = element_require('header-gather');
+        const noted: (answer: string | null) => void = terminal.ask_note('Cohort name: ');
+        const answered: string | null = await paneAsk_open(face, {
+          message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT',
+        });
+        noted(answered);
+        return answered;
+      },
       changed: (): void => {
         pacsStage_relight();
         headerGather_annunciate();
@@ -2472,8 +2492,8 @@ async function surface_start(token: string): Promise<void> {
         }
         return null;
       },
-      cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(host, binding),
-      feed_open: (feedId: number): void => feed_open(host, feedId),
+      cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(host(), binding),
+      feed_open: (feedId: number): void => feed_open(host(), feedId),
     }, cohort);
   };
 

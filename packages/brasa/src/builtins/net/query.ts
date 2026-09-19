@@ -10,6 +10,7 @@
  */
 
 import chalk from 'chalk';
+import { recentQuery_note } from '../../session/recent.js';
 import {
   errorStack,
   chrisContext,
@@ -161,6 +162,8 @@ export async function pacsQuery_createAndWait(
     (typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined)
     ?? (await askingIdentity_get()) ?? undefined;
   const vfsPath: string = queryVfsPath_build(queryId, queryObj, ownerUsername);
+  // What `${query}` refers to in a manifest: the answer this session just asked for.
+  recentQuery_note(vfsPath);
   const deadline: number = Date.now() + QUERY_TIMEOUT_MS;
 
   const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));

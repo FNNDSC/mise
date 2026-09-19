@@ -147,10 +147,15 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'files.row': {
     'a plain file outside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
     'a file inside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    'a directory': ['PROCESS', 'MOVE', 'COPY', 'DELETE'],
-    'a directory inside a feed that is not a node': ['MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    "a node's data inside a feed": ['PROCESS', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    'a DICOM series folder': ['IMAGE', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
+    // A place can be gathered: a cohort is what the session is working on,
+    // and that is not only PACS.
+    'a directory': ['GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
+    // Gatherable even though it cannot be PROCESSed: the kernel runs on a
+    // whole node, so a directory beneath one is no input — but it is still
+    // a place a cohort can hold.
+    'a directory inside a feed that is not a node': ['GATHER', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    "a node's data inside a feed": ['GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    'a DICOM series folder': ['IMAGE', 'GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
     'a catalogue entry': [],
     'a catalogue entry in a bound catalogue': ['RUN'],
     // A projection is rendered by the kernel and written by nothing: there
@@ -192,6 +197,9 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   },
   'gather.series': {
     'folder named': ['REMOVE', 'IMAGE', 'PROCESS'],
+    // A gathered directory that is not a series folder: processable, not
+    // viewable, since IMAGE on a folder of tables cannot act.
+    'a place that is not imagery': ['REMOVE', 'PROCESS'],
     'folder not yet named': ['REMOVE'],
     // A member that is not home is offered the fetch, on its own row: the
     // frame pulls the whole cohort, the row pulls this one.

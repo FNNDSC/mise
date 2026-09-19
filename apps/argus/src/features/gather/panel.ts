@@ -27,9 +27,38 @@ import {
   type GatherCohortFacts, type GatherSeriesFacts,
 } from '../roster/verbs.js';
 
+/**
+ * Where a member IS, when it is a place rather than a series to fetch.
+ *
+ * @param entry - The member.
+ * @returns Its path, or undefined for a series that has not landed.
+ */
+function placeOf_member(entry: GatherSeries): string | undefined {
+  return (entry.kind ?? 'series') === 'series' ? undefined : entry.vfsPath;
+}
+
 /** One gathered series: the cohort's unit, as the PACS row handed it over. */
 export interface GatherSeries {
+  /**
+   * Identity within the cohort, and what the member IS.
+   *
+   * A cohort spans what a session works on, not what one instrument
+   * answers: a PACS series, a directory in ChRIS storage, a file. The kind
+   * decides which verbs can act on it — PULL means nothing to a directory
+   * that is already home, IMAGE means nothing to a folder of CSVs — and a
+   * cohort holding several kinds offers each verb only where it can act
+   * and says what it skipped. Absent means 'series', which is what every
+   * member was before kinds existed.
+   */
+  kind?: 'series' | 'dir' | 'file';
+  /** The member's key: a series UID, or the path for a place. */
   seriesUID: string;
+  /**
+   * Whether the member is imagery: a series always is, a gathered place
+   * only when it is a series folder. IMAGE on a folder of CSVs is a verb
+   * that cannot act.
+   */
+  imagery?: boolean;
   description: string;
   modality: string;
   /**
@@ -67,6 +96,8 @@ export interface GatherPanelHandlers {
   command_run: (line: string) => void;
   /** Runs a command visibly in the console (the big, auditable actions). */
   command_show: (line: string) => void;
+  /** Says something in the transcript that is not a command: a refusal, a count. */
+  note: (text: string) => void;
   /** Opens a series' folder as an image beside the pane. */
   image_open: (folderPath: string) => void;
   /** Opens a catalogue bound to a series' folder. */
@@ -485,10 +516,18 @@ export class GatherPanel {
    */
   private seriesActions_declare(): ReadonlyArray<ListingAction<SeriesRow>> {
     const facts = (row: SeriesRow): GatherSeriesFacts => ({
-      folderKnown: row.entry.folderPath !== undefined,
+      // A place is already where it lives, so its folder is known; only a
+      // SERIES has to be fetched before anything can be done with it.
+      folderKnown: (row.entry.kind ?? 'series') !== 'series' || row.entry.folderPath !== undefined,
+      // IMAGE needs imagery. A series is; a gathered place only when it
+      // is a series folder, so a folder of tables is not offered a viewer.
+      imagery: (row.entry.kind ?? 'series') === 'series' || row.entry.imagery === true,
       // Not home, and it carries the path a pull takes. The frame pulls
-      // the whole cohort; the row pulls the one the operator is looking at.
-      pullable: row.entry.folderPath === undefined
+      // the whole cohort; the row pulls the one the operator is looking
+      // at. A directory or a file is already in ChRIS: there is nothing
+      // to pull, and offering it would be a promise nothing can keep.
+      pullable: (row.entry.kind ?? 'series') === 'series'
+        && row.entry.folderPath === undefined
         && row.entry.series?.pulled !== true
         && row.entry.vfsPath !== '',
     });
@@ -496,10 +535,12 @@ export class GatherPanel {
       remove: (row: SeriesRow): void => this.series_remove(row.entry.seriesUID),
       pull: (row: SeriesRow): void => this.handlers.command_show(`pull "${row.entry.vfsPath}"`),
       image: (row: SeriesRow): void => {
-        if (row.entry.folderPath !== undefined) this.handlers.image_open(row.entry.folderPath);
+        const place: string | undefined = row.entry.folderPath ?? placeOf_member(row.entry);
+        if (place !== undefined) this.handlers.image_open(place);
       },
       process: (row: SeriesRow): void => {
-        if (row.entry.folderPath !== undefined) this.handlers.process_open(row.entry.folderPath);
+        const place: string | undefined = row.entry.folderPath ?? placeOf_member(row.entry);
+        if (place !== undefined) this.handlers.process_open(place);
       },
     };
     return GATHER_SERIES_ROSTER.rules.map((rule): ListingAction<SeriesRow> => ({
@@ -521,7 +562,20 @@ export class GatherPanel {
    * @returns The line.
    */
   private stateLine_compose(parts: ListingStateParts): string {
-    const words: string[] = [`${this.cohort.size()} SERIES · ${this.patients_count()} PATIENTS`];
+    // A cohort of series says patients, because that is what a set of
+    // series is about. Once it holds PLACES as well, saying `28 SERIES`
+    // would be a count of something the cohort does not only hold — so a
+    // mixed set counts what it actually has, each kind by name.
+    const members: ReadonlyArray<GatherSeries> = this.cohort.members_get();
+    const places: number = members.filter(
+      (entry: GatherSeries): boolean => (entry.kind ?? 'series') !== 'series',
+    ).length;
+    const series: number = members.length - places;
+    const counted: string[] = [];
+    if (series > 0 || places === 0) counted.push(`${series} SERIES`);
+    if (places > 0) counted.push(`${places} ${places === 1 ? 'PLACE' : 'PLACES'}`);
+    if (places === 0) counted.push(`${this.patients_count()} PATIENTS`);
+    const words: string[] = [counted.join(' · ')];
     if (parts.filter !== '') words.push(parts.filter);
     return words.join('  ·  ');
   }
@@ -591,6 +645,22 @@ export class GatherPanel {
     const standing: GatherFeed | null = this.cohort.feed_get();
     if (standing !== null) return standing;
     if (this.cohort.size() === 0) return null;
+    // A feed is rooted on a PULL of the cohort's members, and a place is
+    // not pulled: it is already in ChRIS. Rooting a feed on several places
+    // at once is something the kernel cannot do today — `pl-dircopy` takes
+    // one directory — so this refuses BY NAME rather than rooting a feed
+    // on the series and quietly leaving the places out of it.
+    const places: ReadonlyArray<GatherSeries> = this.cohort.members_get().filter(
+      (entry: GatherSeries): boolean => (entry.kind ?? 'series') !== 'series',
+    );
+    if (places.length > 0) {
+      this.handlers.note(
+        `gather: this cohort holds ${places.length} ${places.length === 1 ? 'place' : 'places'} as well as series, `
+        + 'and a feed is rooted by pulling its members — a place is already in ChRIS. '
+        + 'PROCESS one place from its own row, or remove them to make a feed of the series.',
+      );
+      return null;
+    }
     const name: string | null = await this.name_ensure();
     if (name === null) return null;
     const paths: string = [...this.cohort.members_get()].map((entry: GatherSeries): string => entry.vfsPath).join(' ');

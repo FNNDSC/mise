@@ -1707,6 +1707,20 @@ async function surface_start(token: string): Promise<void> {
       download: (): void => { window.open(vfsUrl_build(path), '_blank'); },
       // PROCESS acts on the place: a bound catalogue opens beside this pane.
       process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
+      // GATHER takes the PLACE into the session's cohort, beside whatever
+      // PACS series are already in it. The member is keyed by its path,
+      // since a directory has no series UID and the path is what a run
+      // would be given.
+      gather: (): void => cohort_gather([{
+        kind: 'dir',
+        seriesUID: path,
+        description: entry.name,
+        imagery: seriesFolder_is(path, entry.name),
+        modality: seriesFolder_is(path, entry.name) ? 'MR' : '—',
+        patient: promptUser ?? '',
+        vfsPath: path,
+        folderPath: path,
+      }]),
       // RUN runs the line on the catalogue's input, as the console would.
       run: (): void => { void run_press(id, entry.name, entry.type === 'pipeline' ? 'pipeline' : 'plugin'); },
       move: (): void => verbLine_run(id, `mv ${quoted}`),
@@ -2277,6 +2291,7 @@ async function surface_start(token: string): Promise<void> {
     const panel: GatherPanel = new GatherPanel(mount, pane_find(mount, '.gather-rows'), {
       command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
       command_show: (line: string): void => terminal.line_run(line),
+      note: (text: string): void => terminal.line_note(text),
       image_open: (folderPath: string): void => {
         void image_open(id, folderPath).then((line: string): void => terminal.line_note(line));
       },
@@ -2418,6 +2433,7 @@ async function surface_start(token: string): Promise<void> {
     return new GatherPanel(face, pane_find(face, '.gather-rows'), {
       command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
       command_show: (line: string): void => terminal.line_run(line),
+      note: (text: string): void => terminal.line_note(text),
       image_open: (folderPath: string): void => {
         void image_open(host, folderPath).then((line: string): void => terminal.line_note(line));
       },

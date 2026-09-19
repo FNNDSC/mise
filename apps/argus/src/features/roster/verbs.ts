@@ -302,7 +302,16 @@ export const GATHER_SERIES_ROSTER: VerbRoster<GatherSeriesFacts> = {
       label: (): string => 'IMAGE',
       offered: (f: GatherSeriesFacts): boolean => f.folderKnown && f.imagery !== false,
     },
-    { name: 'process', label: (): string => 'PROCESS', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
+    {
+      // Every member offers PROCESS, because that is what a cohort is FOR
+      // and a verb that appears only on the rows that happen to be home
+      // reads as a listing that changes its mind. One not yet in CUBE is
+      // refused BY NAME when pressed, which says what to do about it;
+      // hiding the verb says nothing at all.
+      name: 'process',
+      label: (): string => 'PROCESS',
+      offered: (): boolean => true,
+    },
   ],
   states: [
     { name: 'folder named', facts: { folderKnown: true } },

@@ -83,7 +83,9 @@
                  through an elbow into a spine, the frame carrying what acts
                  on the whole cohort, the rows beneath. -->
             <div class="header-face" id="header-gather">
-              <div class="gather-listing header-gather-field">
+              <!-- data-frame-host: this field is not in a pane, so it is
+                   the thing whose `data-modes` opens its own frame. -->
+              <div class="gather-listing header-gather-field" data-frame-host>
                 <span class="field-rule"></span>
                 <button class="mode-strip" title="display modes" aria-label="display modes"></button>
                 <span class="mode-elbow"></span>
@@ -91,6 +93,11 @@
                   <button class="strategy-pill gather-filter rail-off" title="filter the cohort (the bar reads FILTERED n/m)">FILTER OFF</button>
                   <button class="strategy-pill gather-pull" title="retrieve every member CUBE does not hold yet" hidden>PULL</button>
                   <button class="strategy-pill gather-remove" title="take every member out of the cohort" hidden>REMOVE</button>
+                  <!-- The frame acts on the WHOLE listing, so the cohort's
+                       own PROCESS stands here beside its PULL and REMOVE:
+                       a row's verbs are that row's, the frame's are the
+                       listing's. -->
+                  <button class="strategy-pill gather-process" title="process the whole cohort" hidden>PROCESS</button>
                   <!-- A cohort too big for a band deserves a pane. The same
                        cohort, a second view of it: the band retracts as it
                        goes, and both stay in step because neither owns the
@@ -303,6 +310,11 @@
                          takes them all, because emptying a cohort one row
                          at a time is not a gesture anyone wants. -->
                     <button class="strategy-pill gather-remove" title="take every member out of the cohort" hidden>REMOVE</button>
+                  <!-- The frame acts on the WHOLE listing, so the cohort's
+                       own PROCESS stands here beside its PULL and REMOVE:
+                       a row's verbs are that row's, the frame's are the
+                       listing's. -->
+                  <button class="strategy-pill gather-process" title="process the whole cohort" hidden>PROCESS</button>
                     <span class="mode-fill"></span>
                   </aside>
                   <div class="gather-rows"></div>

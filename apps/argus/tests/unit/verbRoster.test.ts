@@ -200,10 +200,13 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     // A gathered directory that is not a series folder: processable, not
     // viewable, since IMAGE on a folder of tables cannot act.
     'a place that is not imagery': ['REMOVE', 'PROCESS'],
-    'folder not yet named': ['REMOVE'],
+    // PROCESS is offered on every member — a verb that appears only on the
+    // rows that happen to be home reads as a listing changing its mind —
+    // and refuses by name on one that is not in CUBE yet.
+    'folder not yet named': ['REMOVE', 'PROCESS'],
     // A member that is not home is offered the fetch, on its own row: the
     // frame pulls the whole cohort, the row pulls this one.
-    'not retrieved yet': ['REMOVE', 'PULL'],
+    'not retrieved yet': ['REMOVE', 'PULL', 'PROCESS'],
   },
 };
 

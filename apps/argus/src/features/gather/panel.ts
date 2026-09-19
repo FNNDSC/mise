@@ -249,6 +249,9 @@ export class GatherPanel {
     // and DISMISS is a different act — it forgets the cohort entirely.
     this.emptyBlock = root.querySelector<HTMLButtonElement>('.gather-remove');
     this.emptyBlock?.addEventListener('click', (): void => this.cohort_empty());
+    // The whole listing's PROCESS, beside the whole listing's PULL.
+    this.processBlock = root.querySelector<HTMLButtonElement>('.gather-process');
+    this.processBlock?.addEventListener('click', (): void => { void this.cohort_process(); });
     this.render();
   }
 
@@ -257,6 +260,9 @@ export class GatherPanel {
 
   /** The frame's REMOVE block: the whole cohort, not one row. */
   private readonly emptyBlock: HTMLButtonElement | null = null;
+
+  /** The frame's PROCESS block: the whole cohort. */
+  private readonly processBlock: HTMLButtonElement | null = null;
 
   /** Takes every member out, leaving the pane standing and empty. */
   private cohort_empty(): void {
@@ -375,6 +381,7 @@ export class GatherPanel {
       this.emptyBlock.hidden = this.cohort.size() === 0;
       this.emptyBlock.textContent = `REMOVE ${this.cohort.size()}`;
     }
+    if (this.processBlock !== null) this.processBlock.hidden = this.cohort.size() === 0;
     if (!this.greeted) {
       this.greeted = true;
       this.listing.row_indicate(COHORT_KEY);
@@ -412,8 +419,11 @@ export class GatherPanel {
         label: 'SERIES',
         className: 'gather-cohort-count',
         width: '6em',
-        cell: (): string => String(this.cohort.size()),
-        compare: (): number => this.cohort.size(),
+        // SERIES counts series. A gathered PLACE is not one, and counting
+        // it here said `2 SERIES` over a cohort holding one series and one
+        // directory, while the bar beneath said `1 SERIES · 1 PLACE`.
+        cell: (): string => String(this.series_count()),
+        compare: (): number => this.series_count(),
       },
       {
         key: 'patients',
@@ -540,7 +550,13 @@ export class GatherPanel {
       },
       process: (row: SeriesRow): void => {
         const place: string | undefined = row.entry.folderPath ?? placeOf_member(row.entry);
-        if (place !== undefined) this.handlers.process_open(place);
+        if (place !== undefined) { this.handlers.process_open(place); return; }
+        // Offered on every member, and honest on the ones that are not
+        // there yet: a run takes a PLACE, and a series still at the PACS
+        // has none until it is fetched.
+        this.handlers.note(
+          `gather: ${row.entry.description || row.entry.seriesUID} is not in CUBE yet — PULL it first, then PROCESS it.`,
+        );
       },
     };
     return GATHER_SERIES_ROSTER.rules.map((rule): ListingAction<SeriesRow> => ({
@@ -552,7 +568,18 @@ export class GatherPanel {
 
   /** How many distinct patients the cohort spans. */
   private patients_count(): number {
-    return new Set([...this.cohort.members_get()].map((entry: GatherSeries): string => entry.patient)).size;
+    // Patients are a fact about SERIES. A place carries its owner in the
+    // same field, and counting that made a cohort of one series and one
+    // directory read as two patients.
+    return new Set(this.cohort.members_get()
+      .filter((entry: GatherSeries): boolean => (entry.kind ?? 'series') === 'series')
+      .map((entry: GatherSeries): string => entry.patient)).size;
+  }
+
+  /** How many of the cohort's members are series. */
+  private series_count(): number {
+    return this.cohort.members_get()
+      .filter((entry: GatherSeries): boolean => (entry.kind ?? 'series') === 'series').length;
   }
 
   /**

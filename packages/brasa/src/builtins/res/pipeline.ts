@@ -48,6 +48,7 @@ import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
 import { runs_awaitSettled, settlement_render, type RunSettlement } from './runWait.js';
+import { recentFeed_note, recentRuns_note } from '../../session/recent.js';
 import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
 import { pipelineManifest_render, pipelineParameters_render } from './pipeline.manifest.js';
 import { path_resolve } from '../utils.js';
@@ -232,6 +233,10 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   }
   sink_dataLine(chalk.green(`✓ Workflow ${workflowId} created — ${pluginInstanceIds.length} node(s) queued`));
   sink_dataLine(chalk.gray(`  Instance IDs: ${pluginInstanceIds.join(', ')}`));
+
+  // What a later line's pronouns refer to.
+  if (feedID !== undefined) recentFeed_note(feedID);
+  recentRuns_note(pluginInstanceIds);
 
   // A workflow that returns when CUBE accepts it reads as finished and is
   // not: the wait holds this line, never the session, and Esc detaches it.

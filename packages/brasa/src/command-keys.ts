@@ -23,6 +23,7 @@ export const COMMAND_HANDLERS_KEYS: string[] = [
   'store',
   'tag', 'tags',
   'expect',
+  'play',
   'gather',
   'group', 'groups',
   'user', 'users',

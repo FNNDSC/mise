@@ -14,7 +14,7 @@
  *
  * @module
  */
-import { Ok, Err, type Result } from '@fnndsc/cumin';
+import { Ok, Err, errorStack, type Result } from '@fnndsc/cumin';
 import { vfsDispatcher } from '../vfs/dispatcher.js';
 import type { VFSItem } from '../vfs/provider.js';
 import { fileContent_getBinary } from '../files/index.js';
@@ -211,7 +211,14 @@ export async function dicomSeries_summarize(
 
   if (options.annotationRoot !== undefined && seriesInstanceUID !== undefined) {
     const root: string = options.annotationRoot.endsWith('/') ? options.annotationRoot.slice(0, -1) : options.annotationRoot;
+    // Most series have no annotations, and the folder that would hold them
+    // does not exist. Asking is how we find out — so the listing's failure
+    // is an ANSWER here, not a fault: left on the stack it made a perfectly
+    // good `dcm series` readout exit non-zero, which stopped any manifest
+    // that read a header.
+    const mark: number = errorStack.checkpoint_mark();
     const found: Result<VFSItem[]> = await io.list(`${root}/${seriesInstanceUID}`);
+    if (!found.ok) errorStack.checkpoint_drain(mark);
     if (found.ok) {
       summary.annotations = found.value
         .filter((item: VFSItem): boolean => item.type === 'file')

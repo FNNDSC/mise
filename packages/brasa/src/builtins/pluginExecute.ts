@@ -24,6 +24,7 @@ import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd, run_follow } from './feedCreation.js';
 import { runs_awaitSettled, settlement_render, type RunSettlement } from './res/runWait.js';
+import { recentFeed_note, recentRuns_note } from '../session/recent.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
@@ -168,8 +169,16 @@ export async function builtin_executePlugin(
     if (result.feedID) {
       sink_dataLine(chalk.green(`Feed created: ${result.feedID}`));
     }
+    const feedIDForPronoun: number | null = result.feedID !== undefined
+      ? result.feedID
+      : result.parentID !== null ? (procCache_get().instance_get(result.parentID)?.feedID ?? null) : null;
     sink_dataLine(chalk.green(`Job scheduled: ${pluginName} (ID: ${result.pluginInstanceID})`));
     sink_dataLine(chalk.cyan(`Output will be in: ${result.outputPath}`));
+
+    // What a later line's pronouns refer to: the feed this landed in and
+    // the run it started.
+    if (feedIDForPronoun !== null) recentFeed_note(feedIDForPronoun);
+    recentRuns_note([result.pluginInstanceID]);
 
     // A run that returns when CUBE accepts it reads as finished and is not:
     // the next line of a script would work on output that does not exist.
@@ -182,9 +191,7 @@ export async function builtin_executePlugin(
     }
     // The run as a model, so a surface can point at what it started — the
     // feed it landed in and the instance it is — rather than parse the lines.
-    const feedID: number | null = result.feedID !== undefined
-      ? result.feedID
-      : result.parentID !== null ? (procCache_get().instance_get(result.parentID)?.feedID ?? null) : null;
+    const feedID: number | null = feedIDForPronoun;
     if (feedID === null) return envelope_ok('');
     return envelope_ok('', {
       kind: 'run.scheduled',

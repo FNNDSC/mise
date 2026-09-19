@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import dcmjs from 'dcmjs';
-import type { Result } from '@fnndsc/cumin';
+import { errorStack, type Result } from '@fnndsc/cumin';
 import type { VFSItem } from '../src/vfs/provider';
 import {
   dicomSeries_summarize,
@@ -118,6 +118,15 @@ describe('dicomSeries_summarize', () => {
   it('reports no annotations when the folder is absent', async () => {
     const result = await dicomSeries_summarize(folder, { annotationRoot: '/home/synth/annotations' }, io_over(files));
     expect(result.ok && result.value.annotations).toEqual([]);
+  });
+
+  // Most series have no annotations. Asking is how we find out, so the
+  // listing's failure is an answer — left on the error stack it made a
+  // successful `dcm series` exit non-zero and stopped manifests dead.
+  it('leaves no error behind when the annotations folder is absent', async () => {
+    errorStack.stack_clear();
+    await dicomSeries_summarize(folder, { annotationRoot: '/home/synth/annotations' }, io_over(files));
+    expect(errorStack.stack_search('').length).toBe(0);
   });
 
   it('fails on a folder with no DICOM files or an unreadable first file', async () => {
